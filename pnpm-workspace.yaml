@@ -1,0 +1,116 @@
+# One pnpm workspace for the JavaScript apps and the packages they share (CUR-4446). One install from
+# any member installs the lot, against the one pnpm-lock.yaml beside this file. agent-service/ is
+# Python and stays outside; shared/icons, mock-oidc, storage-backup and tools/ keep their own lockfiles.
+packages:
+  - web
+  - packages/*
+
+# pnpm 11 reads its settings from this file only: it ignores the `pnpm` field of package.json and
+# every non-auth line of .npmrc, both silently (CUR-2472). In a workspace it reads them from the root
+# file only, so web/'s and payload/'s former settings are merged here.
+
+# Packages allowed to run install-time build scripts. sharp was web/'s until 0.35, which dropped its
+# install script and ships prebuilt @img/* binaries; payload/ still lists it.
+#
+# pnpm 11 fails the install on any build script left unlisted, where pnpm 10 only warned, so the three
+# that never ran under pnpm 10 are listed as false. @ast-grep/cli and @posthog/cli resolve their
+# platform binary at runtime without it (both print their version from a fresh install), and core-js's
+# script only prints a funding notice.
+allowBuilds:
+  '@ast-grep/cli': false
+  '@posthog/cli': false
+  '@resvg/resvg-js': true
+  '@tailwindcss/oxide': true
+  bufferutil: true
+  core-js: false
+  esbuild: true
+  sharp: true
+  unrs-resolver: true
+
+# pnpm 11 deletes a node_modules that pnpm 10 laid out and reinstalls it, and asks first. With no
+# terminal to ask in (git hooks, editor tasks, agent shells) it aborts instead, and since pnpm 11
+# checks dependencies before every `pnpm run`, so does every script. The purge only removes what the
+# same install puts back, so skip the question.
+confirmModulesPurge: false
+
+# Was `engine-strict=true` in web/.npmrc: refuse an install on a Node outside a package's engines.
+engineStrict: true
+
+# Overrides apply to the whole workspace. Where web/ and payload/ pinned the same package to
+# different majors, the override names the major it lifts (`name@^N`), so each tree keeps the
+# version it resolved before the merge.
+overrides:
+  # pnpm links an optional peer it finds anywhere in the workspace, so web's better-auth picked up
+  # payload's next. next's global types then make NODE_ENV required on every ProcessEnv in web/'s
+  # svelte-check. web/ never imports better-auth's Next.js entry, so the peer is dropped.
+  better-auth>next: '-'
+  '@reflink/reflink': file:web/stub/@reflink/reflink
+  cookie: ^0.7.0
+  # esbuild below 0.25 carries the dev-server advisory web/ moved past. Only those are lifted:
+  # payload's tsx runs on 0.28, which a bare `esbuild: ^0.25.0` would pull back down.
+  esbuild@<0.25.0: ^0.25.0
+  postcss>nanoid: ^3.3.18
+  satori>fflate: ^0.7.5
+  posthog-js>dompurify: ^3.4.17
+  hono: ^4.13.7
+  devalue: ^5.9.4
+  # payload's minimatch 3 needs brace-expansion 1; only web's 5.x line is lifted.
+  brace-expansion@^5: ^5.0.12
+  fast-uri: ^3.1.8
+  qs: ^6.16.0
+  source-map-js: ^1.2.2
+  # sprintf-js has no fixed release (GHSA-hp3w-g68c-fv3c, CUR-2940). Only mammoth's CLI (bin/mammoth)
+  # loads argparse; the library we call never does, and argparse 2 drops sprintf-js.
+  mammoth>argparse: ^2.0.1
+  fast-copy@^3: ^3.1.0
+  fast-copy@^4: ^4.1.0
+  # express-rate-limit (via @modelcontextprotocol/sdk) asks for ip-address ^10.2.0, and payload's
+  # lockfile held 10.5.0, below 10.7.1, the first release clear of the advisories web/ moved past
+  # (CUR-2295). Dependabot cannot lift that transitive version on its own.
+  ip-address: ^10.7.2
+  # Patch releases clear of the advisories Dependabot reported on payload's lockfile, each inside the
+  # major its dependents ask for (CUR-2557, CUR-2678). braces is absent on purpose: 3.0.3 is its
+  # latest release and its advisory has no fix.
+  dompurify: ^3.4.17
+  js-yaml@^4: ^4.3.2
+  undici@^7: ^7.30.1
+  # proxy-addr (critical IP spoofing, CUR-3141), the MCP SDK (OAuth client, CUR-3137).
+  proxy-addr: ^2.0.8
+  '@modelcontextprotocol/sdk': ^1.31.0
+  # Quadratic-time parse advisories in lint tooling (CUR-4457): knip's smol-toml and
+  # svelte-eslint-parser's postcss-selector-parser 7. @tailwindcss/typography pins
+  # postcss-selector-parser 6.0.10 exactly and 6.x has no fixed release, so that copy is left.
+  smol-toml: ^1.9.0
+  postcss-selector-parser@^7: ^7.1.6
+  # Security advisory overrides (CUR-4504 to CUR-4512). dompurify 3.4.17 and undici 7.30.1 are
+  # raised on the lines above. These sit under payload's @modelcontextprotocol/sdk (zod, express >
+  # body-parser), the alpha-ds vitest peer (happy-dom, test-only) and vite-node ^6, which locks vite
+  # at 8.2.2. Remove each once its parent's own range resolves to the fixed release without help.
+  # zod 3.25.76 stays: @payloadcms/plugin-mcp pins zod ^3 and calls z.record(z.any()), which zod 4
+  # rejects, and zod 3 has no fixed release (GHSA-mrhx-c7xc-m3w5, CUR-4510). Lift it when
+  # plugin-mcp moves to zod 4.
+  body-parser@^2: ^2.4.0
+  zod@^4: ^4.6.6
+  vite@^8: ^8.2.4
+  happy-dom: ^21.0.4
+
+# SvelteKit 2.x builds a streamed page response without the page's status, and every /chat page
+# streams (the layout returns the sidebar's conversations as a promise), so a chat page that throws
+# error(404) answered HTTP 200. The patch adds `status` to that Response, the fix upstream made
+# for SvelteKit 3 only (sveltejs/kit#16933, fixed by #16935; CUR-2605). It names an exact version, so
+# a SvelteKit bump fails the install until it is moved or, on SvelteKit 3, deleted.
+patchedDependencies:
+  '@sveltejs/kit@2.70.3': web/patches/@sveltejs__kit@2.70.3.patch
+
+# web/ and payload/ resolved their peers separately before the merge. Deduping peer dependents across
+# the workspace would hand one app's packages the other's optional peers (better-auth would see
+# payload's next and pg), so each app keeps the peer set it resolved on its own.
+dedupePeerDependents: false
+
+# @payloadcms/live-preview's typings import `payload` without declaring it. With payload in the hidden
+# hoist (node_modules/.pnpm/node_modules), web/'s svelte-check resolved that import to payload, then to
+# next, whose global types make NODE_ENV required on every ProcessEnv. Every package that imports
+# payload at runtime declares it, so keeping payload out of the hidden hoist changes no runtime import.
+hoistPattern:
+  - '*'
+  - '!payload'

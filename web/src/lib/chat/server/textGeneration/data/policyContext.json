@@ -1,0 +1,41 @@
+[
+	{
+		"id": "policy.delete-data",
+		"title": "AI Potluck — how to delete your data",
+		"text": "How to delete your data in AI Potluck: open Settings → Data & privacy and choose 'Forget everything…'. Settings is in the account menu, and the “Where it goes” pill under the message box also links to Data & privacy. It permanently deletes all of your conversations, your saved settings, and your usage records, and afterward tells you exactly what was removed. As a guest, 'Forget everything' is the only control you need — there's no account to delete from. If you signed in, you can also review linked sign-in methods and delete your account and its data from Account Settings at any time. Guest conversations are also deleted automatically after 30 days even if you do nothing.",
+		"synonyms": [
+			"how do I delete my chat history",
+			"how do I delete my conversations",
+			"how do I delete my data",
+			"how do I clear my chat history",
+			"delete my chat history",
+			"delete my conversations",
+			"delete everything",
+			"erase my conversations",
+			"clear my history",
+			"clear chat history",
+			"remove my data",
+			"wipe my data",
+			"where do I click to delete my data",
+			"how do I forget everything",
+			"how do I remove my chat history"
+		]
+	},
+	{
+		"id": "policy.sign-in",
+		"title": "AI Potluck — signing in with more than one method",
+		"text": "Signing in to AI Potluck with more than one method: an email code opens the account that already uses that address, so someone who first signed in with Google, GitHub or Hugging Face and later uses an email code with the same address gets their existing account and chats. Signing in with a different provider on an address that already has an account, for example GitHub after Google or GitHub after an email code, is refused with \"An account with this email already exists.\" To use it, sign in the way you originally did, then add it as another way in from Settings → Account. A passkey opens the account it was added to.",
+		"synonyms": [
+			"can I sign in with GitHub and Google",
+			"will I see my old chats if I use an email code",
+			"same email different sign-in method",
+			"do I get a new account if I sign in another way",
+			"sign in with email code after Google",
+			"sign in with GitHub after email code",
+			"link Google to my account",
+			"add another way to sign in",
+			"an account with this email already exists",
+			"does a passkey open my account"
+		]
+	}
+]

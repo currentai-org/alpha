@@ -1,0 +1,107 @@
+@font-face {
+	font-family: 'aipotluck-icons';
+	src: url('/fonts/icons/aipotluck-icons.woff2?24bd0c508d3e2adaae3dfbeda2fd05a3') format('woff2');
+}
+
+i[class^='icon-']:before,
+i[class*=' icon-']:before {
+	font-family: aipotluck-icons !important;
+	font-style: normal;
+	font-weight: normal !important;
+	font-variant: normal;
+	text-transform: none;
+	line-height: 1;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+}
+
+.icon-trash:before {
+	content: '\f101';
+}
+.icon-squares:before {
+	content: '\f102';
+}
+.icon-square-plus:before {
+	content: '\f103';
+}
+.icon-square-open:before {
+	content: '\f104';
+}
+.icon-square-lightning:before {
+	content: '\f105';
+}
+.icon-square-exclamation:before {
+	content: '\f106';
+}
+.icon-plus:before {
+	content: '\f107';
+}
+.icon-people:before {
+	content: '\f108';
+}
+.icon-open-book:before {
+	content: '\f109';
+}
+.icon-magnifier:before {
+	content: '\f10a';
+}
+.icon-human-target:before {
+	content: '\f10b';
+}
+.icon-house-key:before {
+	content: '\f10c';
+}
+.icon-globe:before {
+	content: '\f10d';
+}
+.icon-globe-megaphone:before {
+	content: '\f10e';
+}
+.icon-gap-map:before {
+	content: '\f10f';
+}
+.icon-flag:before {
+	content: '\f110';
+}
+.icon-cross:before {
+	content: '\f111';
+}
+.icon-comment:before {
+	content: '\f112';
+}
+.icon-clock:before {
+	content: '\f113';
+}
+.icon-circle-cross:before {
+	content: '\f114';
+}
+.icon-circle-arrow-up:before {
+	content: '\f115';
+}
+.icon-chevron-up:before {
+	content: '\f116';
+}
+.icon-chevron-right:before {
+	content: '\f117';
+}
+.icon-chevron-left:before {
+	content: '\f118';
+}
+.icon-chevron-down:before {
+	content: '\f119';
+}
+.icon-bars:before {
+	content: '\f11a';
+}
+.icon-bars-sort:before {
+	content: '\f11b';
+}
+.icon-arrow-up-right:before {
+	content: '\f11c';
+}
+.icon-alpha:before {
+	content: '\f11d';
+}
+.icon-ai-potluck:before {
+	content: '\f11e';
+}

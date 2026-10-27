@@ -1,0 +1,8 @@
+# allow crawling everything by default
+User-agent: *
+Disallow:
+
+# Absolute by protocol requirement, and hardcoded to the canonical production host on purpose:
+# this file is static, so it ships identically to preview deployments, and a preview must not
+# advertise its own throwaway URL as the site's sitemap.
+Sitemap: https://www.aipotluck.org/sitemap.xml

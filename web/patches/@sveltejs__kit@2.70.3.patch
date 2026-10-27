@@ -1,0 +1,16 @@
+Upstream: sveltejs/kit#16933 (Streamed error pages are served with HTTP 200), fixed by
+sveltejs/kit#16935 on the version-3 branch only, with no 2.x release. Delete this patch on the
+SvelteKit 3 upgrade. CUR-2605.
+
+diff --git a/src/runtime/server/page/render.js b/src/runtime/server/page/render.js
+index ca7e044248e5137d52322650d677503f3872c9f1..d812e7329a9978072cf1bda3ece8628236c5dd03 100644
+--- a/src/runtime/server/page/render.js
++++ b/src/runtime/server/page/render.js
+@@ -677,6 +677,7 @@ export async function render_response({
+ 					type: 'bytes'
+ 				}),
+ 				{
++					status,
+ 					headers
+ 				}
+ 			);

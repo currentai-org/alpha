@@ -1,0 +1,8 @@
+{
+	"path": ["src"],
+	"format": ["typescript", "svelte"],
+	"ignore": ["**/*.spec.ts", "**/*.test.ts", "**/*.generated.ts"],
+	"gitignore": true,
+	"absolute": false,
+	"reporters": ["json"]
+}

@@ -1,0 +1,28 @@
+<svg width="100%" height="100%" viewBox="0 0 16 16" preserveAspectRatio="none" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect width="16" height="16" fill="url(#pattern0_1240_293949)"/>
+<defs>
+<pattern id="pattern0_1240_293949" patternUnits="userSpaceOnUse" patternTransform="matrix(11.2 0 0 11.2 3.93617 0)" preserveAspectRatio="none" viewBox="0 0 16 16" width="1" height="1">
+<g id="pattern0_1240_293949_inner">
+<rect width="16" height="16" fill="#f88376" mask="url(#hatch_gaps)"/>
+<mask id="hatch_gaps" maskUnits="userSpaceOnUse" x="0" y="0" width="16" height="16">
+<rect width="16" height="16" fill="white"/>
+<rect x="6" width="2" height="2" fill="black"/>
+<rect x="6" y="8" width="2" height="2" fill="black"/>
+<rect x="4" y="2" width="2" height="2" fill="black"/>
+<rect x="4" y="10" width="2" height="2" fill="black"/>
+<rect x="2" y="4" width="2" height="2" fill="black"/>
+<rect x="2" y="12" width="2" height="2" fill="black"/>
+<rect y="6" width="2" height="2" fill="black"/>
+<rect y="14" width="2" height="2" fill="black"/>
+<rect x="14" width="2" height="2" fill="black"/>
+<rect x="14" y="8" width="2" height="2" fill="black"/>
+<rect x="12" y="2" width="2" height="2" fill="black"/>
+<rect x="12" y="10" width="2" height="2" fill="black"/>
+<rect x="10" y="4" width="2" height="2" fill="black"/>
+<rect x="10" y="12" width="2" height="2" fill="black"/>
+<rect x="8" y="6" width="2" height="2" fill="black"/>
+<rect x="8" y="14" width="2" height="2" fill="black"/>
+</mask>
+</g>
+</pattern></defs>
+</svg>

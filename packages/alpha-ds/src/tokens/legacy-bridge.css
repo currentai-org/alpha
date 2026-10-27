@@ -1,0 +1,143 @@
+/*
+ * LEGACY BRIDGE — removed when the legacy read count reaches zero; do not extend it.
+ *
+ * The chat subtree predates this system and reads ~1,500 `var(--ap-*)` references, raw Tailwind
+ * greys and shadcn's semantic variables. Inside a `.ds-root`, every one of those is re-pointed at a
+ * design-system token, so the entire legacy surface re-skins — and follows light/dark — from the
+ * token layer, before each component is individually migrated.
+ *
+ * The design linter (`alpha-ds/no-legacy-tokens`, `alpha-ds/no-raw-colors`) reports every legacy
+ * read; `pnpm lint:design` ratchets that count down. When it hits zero, delete this file.
+ */
+
+.ds-root {
+	/* CUR-509 --ap-* chat palette → design-system tokens */
+	--ap-paper: var(--ds-bg-1);
+	--ap-paper-2: var(--ds-bg-2);
+	--ap-paper-3: var(--ds-bg-3);
+	--ap-stack-panel: var(--ds-bg-3);
+	--ap-background-3: var(--ds-bg-3);
+	--ap-map-grad-1: var(--ds-bg-1);
+	--ap-map-grad-2: var(--ds-bg-2);
+	--ap-ink: var(--ds-fg-1);
+	--ap-ink-2: var(--ds-fg-2);
+	--ap-ink-3: var(--ds-fg-3);
+	--ap-rule: var(--ds-line-2);
+	--ap-border-1: var(--ds-line-1);
+	--ap-border-2: var(--ds-line-2);
+	--ap-border-3: var(--ds-line-3);
+	--ap-accent-1: var(--ds-accent-1);
+	--ap-danger: var(--ds-accent-2);
+	--ap-live: var(--ds-accent-1);
+	--ap-live-text: var(--ds-accent-1-text);
+	--ap-building: var(--ds-caution);
+	--ap-building-text: var(--ds-caution-text);
+	--ap-gap: var(--ds-accent-2);
+	--ap-gap-text: var(--ds-accent-2-text);
+	--ap-coral: var(--ds-accent-2);
+	--ap-coral-text: var(--ds-accent-2-text);
+	--ap-wanted: var(--ds-fg-1);
+	--ap-stack-grid-line: var(--ds-grid);
+	--ap-text-1: var(--ds-text-micro);
+	--ap-text-2: var(--ds-text-small);
+	--ap-text-3: var(--ds-text-body);
+	--ap-text-4: var(--ds-text-subhead);
+	--ap-text-5: var(--ds-text-heading);
+	--ap-text-6: var(--ds-text-display);
+	--ap-radius-1: var(--ds-radius-sharp);
+	--ap-radius-2: var(--ds-radius-field);
+	--ap-radius-3: var(--ds-radius-pill);
+
+	/* Potluck site palette vars that chat markup reads directly (bg-[var(--salmon)] etc.). */
+	--salmon: var(--ds-accent-1);
+	--paper: var(--ds-bg-1);
+	--light-grey: var(--ds-bg-2);
+	--medium-grey: var(--ds-bg-3);
+	--grid-line: var(--ds-grid);
+	--dark-blue: var(--ds-fg-1);
+
+	/* shadcn semantic variables (lib/components/ui/*) */
+	--background: var(--ds-bg-1);
+	--foreground: var(--ds-fg-1);
+	--card: var(--ds-bg-2);
+	--card-foreground: var(--ds-fg-1);
+	--popover: var(--ds-bg-3);
+	--popover-foreground: var(--ds-fg-1);
+	--primary: var(--ds-fg-1);
+	--primary-foreground: var(--ds-bg-1);
+	--secondary: var(--ds-bg-3);
+	--secondary-foreground: var(--ds-fg-1);
+	--muted: var(--ds-bg-2);
+	--muted-foreground: var(--ds-fg-3);
+	--accent: var(--ds-tint-hover);
+	--accent-foreground: var(--ds-fg-1);
+	--destructive: var(--ds-accent-2);
+	--border: var(--ds-line-2);
+	--input: var(--ds-line-2);
+	--ring: var(--ds-focus);
+
+	/*
+	 * Tailwind neutral ramp. Legacy markup pairs light steps with `dark:` overrides
+	 * (`bg-gray-100 dark:bg-gray-800`) but also uses light steps bare. The light end therefore
+	 * resolves per mode (so a bare `bg-gray-100` never glares inside a dark window), the dark end
+	 * keeps Tailwind's absolute meaning (so `dark:bg-gray-800` stays dark).
+	 */
+	--color-gray-50: light-dark(var(--ds-bg-2), var(--ds-bg-2));
+	--color-gray-100: light-dark(oklch(0.955 0 0), oklch(0.24 0 0));
+	--color-gray-200: light-dark(oklch(0.922 0 0), oklch(0.285 0 0));
+	--color-gray-300: light-dark(oklch(0.87 0 0), oklch(0.34 0 0));
+	--color-destructive: var(--ds-accent-2);
+}
+
+/* Prose (rendered markdown) reads the text ladder directly — identical in both modes, so the
+   legacy `dark:prose-invert` becomes a no-op rather than a second palette. */
+.ds-root .prose,
+.ds-root .prose-invert {
+	--tw-prose-body: var(--ds-fg-1);
+	--tw-prose-headings: var(--ds-fg-1);
+	--tw-prose-lead: var(--ds-fg-2);
+	--tw-prose-links: var(--ds-fg-1);
+	--tw-prose-bold: var(--ds-fg-1);
+	--tw-prose-counters: var(--ds-fg-3);
+	--tw-prose-bullets: var(--ds-fg-3);
+	--tw-prose-hr: var(--ds-line-2);
+	--tw-prose-quotes: var(--ds-fg-1);
+	--tw-prose-quote-borders: var(--ds-line-3);
+	--tw-prose-captions: var(--ds-fg-3);
+	--tw-prose-code: var(--ds-fg-1);
+	--tw-prose-pre-code: var(--ds-fg-1);
+	--tw-prose-pre-bg: var(--ds-bg-2);
+	--tw-prose-th-borders: var(--ds-line-2);
+	--tw-prose-td-borders: var(--ds-line-1);
+	--tw-prose-invert-body: var(--ds-fg-1);
+	--tw-prose-invert-headings: var(--ds-fg-1);
+	--tw-prose-invert-lead: var(--ds-fg-2);
+	--tw-prose-invert-links: var(--ds-fg-1);
+	--tw-prose-invert-bold: var(--ds-fg-1);
+	--tw-prose-invert-counters: var(--ds-fg-3);
+	--tw-prose-invert-bullets: var(--ds-fg-3);
+	--tw-prose-invert-hr: var(--ds-line-2);
+	--tw-prose-invert-quotes: var(--ds-fg-1);
+	--tw-prose-invert-quote-borders: var(--ds-line-3);
+	--tw-prose-invert-captions: var(--ds-fg-3);
+	--tw-prose-invert-code: var(--ds-fg-1);
+	--tw-prose-invert-pre-code: var(--ds-fg-1);
+	--tw-prose-invert-pre-bg: var(--ds-bg-2);
+	--tw-prose-invert-th-borders: var(--ds-line-2);
+	--tw-prose-invert-td-borders: var(--ds-line-1);
+}
+
+/* Legacy radii → theme radii. Pre-system chat components still carry Tailwind's rounded-sm…3xl,
+   which ignore the theme (rounded in the square Alpha theme, square-ish next to a rounded theme's
+   cards). Inside a design-system root they now resolve to the theme's own tiers, so corners are
+   uniform everywhere: small controls → sharp, containers → card, large panels → field. */
+.ds-root,
+.ds-portal-host {
+	--radius-xs: var(--ds-radius-sharp);
+	--radius-sm: var(--ds-radius-sharp);
+	--radius-md: var(--ds-radius-sharp);
+	--radius-lg: var(--ds-radius-card);
+	--radius-xl: var(--ds-radius-card);
+	--radius-2xl: var(--ds-radius-field);
+	--radius-3xl: var(--ds-radius-field);
+}

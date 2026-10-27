@@ -1,0 +1,35 @@
+<script lang="ts">
+	interface Props {
+		classNames?: string;
+		label?: string;
+		position?: string;
+		/** True while the tooltip is faded out. It stays in the DOM, so without this its label becomes
+		 *  the accessible name of whatever button contains it. */
+		hidden?: boolean;
+	}
+
+	let {
+		classNames = "",
+		label = "Copied",
+		position = "left-1/2 top-full transform -translate-x-1/2 translate-y-2",
+		hidden = false,
+	}: Props = $props();
+</script>
+
+<div
+	aria-hidden={hidden}
+	class="
+		pointer-events-none absolute rounded-sm bg-black px-2 py-1 leading-tight font-normal text-white shadow-sm transition-opacity
+		{position}
+		{classNames}
+	"
+>
+	<div
+		class="absolute bottom-full left-1/2 h-0 w-0 -translate-x-1/2 transform border-4 border-t-0 border-black"
+		style="
+				border-left-color: transparent;
+				border-right-color: transparent;
+			"
+	></div>
+	{label}
+</div>

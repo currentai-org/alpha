@@ -1,0 +1,10 @@
+{
+  "requestHash": "df8ea41b27cf06f6415b57288d55723d",
+  "body": "data: {\"id\":\"bbaff5baf5d9423f8e90365dd0dba48b\",\"object\":\"chat.completion.chunk\",\"created\":1791260193,\"model\":\"mistral-small-2603\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"bbaff5baf5d9423f8e90365dd0dba48b\",\"object\":\"chat.completion.chunk\",\"created\":1791260193,\"model\":\"mistral-small-2603\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"The\"},\"finish_reason\":null}],\"p\":\"abcdefghijklmnopqrstuvwxyz01234567\"}\n\ndata: {\"id\":\"bbaff5baf5d9423f8e90365dd0dba48b\",\"object\":\"chat.completion.chunk\",\"created\":1791260193,\"model\":\"mistral-small-2603\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" capital of Japan is\"},\"finish_reason\":null}],\"p\":\"abcdefghijklmnopqrstuvwxyz01234567\"}\n\ndata: {\"id\":\"bbaff5baf5d9423f8e90365dd0dba48b\",\"object\":\"chat.completion.chunk\",\"created\":1791260193,\"model\":\"mistral-small-2603\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\" Tokyo.\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":1631,\"total_tokens\":1639,\"completion_tokens\":8,\"prompt_tokens_details\":{\"cached_tokens\":1088},\"service_tier\":\"standard\"},\"p\":\"abcdefghijklmnopqrstuvwxyz0123456\"}\n\ndata: [DONE]\n\n",
+  "path": "/v1/chat/completions",
+  "status": 200,
+  "headers": {
+    "content-type": "text/event-stream; charset=utf-8"
+  },
+  "recordedAt": "2026-10-06T04:16:34.637Z"
+}

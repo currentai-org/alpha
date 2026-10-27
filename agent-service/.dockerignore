@@ -1,0 +1,28 @@
+# Keep the build context small and the runtime image clean. The image needs only requirements.txt,
+# deploy/hermes/, and api/ source — not the dev toolchain, tests, or local artifacts.
+.git
+.github
+.venv
+venv
+__pycache__
+*.pyc
+
+# Tests + their config are dev-only (pytest is in requirements-dev.txt, not the image).
+api/test_*.py
+api/conftest.py
+pyproject.toml
+requirements-dev.txt
+
+# Local artifacts / secrets / scratch — never in an image.
+*.db
+*.db-wal
+*.db-shm
+.coverage
+htmlcov/
+.env
+.env.local
+*.token
+*.log
+eval/cache/
+docs/private/
+fly/*.local.toml

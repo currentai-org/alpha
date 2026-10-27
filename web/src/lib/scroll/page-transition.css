@@ -1,0 +1,24 @@
+/* One content page to another (page-transition.ts): the old page fades out quickly while the new one
+   fades in and rises a little into place. The header is its own group, so it holds still and only
+   cross-fades where the two pages give it different tones. Scoped to the class, so /alpha ⇄
+   /alpha/demo keeps its own timing (alpha-landing/demo-transition.css). */
+html.page-transition [data-site-header] {
+	view-transition-name: site-header;
+}
+html.page-transition::view-transition-old(root) {
+	animation: 200ms ease-in both page-transition-out;
+}
+html.page-transition::view-transition-new(root) {
+	animation: 400ms cubic-bezier(0.22, 1, 0.36, 1) both page-transition-in;
+}
+@keyframes page-transition-out {
+	to {
+		opacity: 0;
+	}
+}
+@keyframes page-transition-in {
+	from {
+		opacity: 0;
+		transform: translateY(24px);
+	}
+}

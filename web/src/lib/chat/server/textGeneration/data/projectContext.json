@@ -1,0 +1,24 @@
+{
+	"id": "about.project",
+	"display_name": "AI Potluck",
+	"parity_rationale": "AI Potluck is the open, map-grounded chat from Current AI, a nonprofit coalition assembling a full-stack, open source alternative to closed AI from open components. Current AI serves open models here, it does not build them. For the current list of partners or how the project is funded, point people to the project website rather than naming or inventing specific partners, funders, or funding sources.",
+	"synonyms": [
+		"current ai",
+		"ai potluck",
+		"the potluck",
+		"who's behind this",
+		"who is behind this",
+		"who made this site",
+		"who runs this",
+		"who built this",
+		"what is this project",
+		"who's responsible for this",
+		"who funds this",
+		"who funds it",
+		"who is funding this",
+		"how is this funded",
+		"how is it funded",
+		"who pays for this",
+		"who finances this"
+	]
+}

@@ -1,0 +1,31 @@
+/*
+ * State variants — the engine-agnostic state vocabulary for component recipes.
+ *
+ * Base UI styles parts through data attributes (`data-open`, `data-checked`, `data-highlighted`,
+ * `data-disabled`, …). The behaviour engine behind our parts today is bits-ui, which spells the
+ * same states `data-state="open"`, `data-state="checked"`, etc. Each `ui-*` variant matches BOTH
+ * spellings, so recipes are written once in Base UI's vocabulary and survive an engine swap
+ * (bits-ui → a Svelte Base UI port) without a single class change.
+ *
+ * Rule: component recipes use `ui-*:` for state. Never `data-[state=…]:` directly.
+ */
+
+@custom-variant ui-open (&:where([data-open], [data-state='open']));
+@custom-variant ui-closed (&:where([data-closed], [data-state='closed']));
+@custom-variant ui-checked (&:where([data-checked], [data-state='checked']));
+@custom-variant ui-unchecked (&:where([data-unchecked], [data-state='unchecked']));
+@custom-variant ui-indeterminate (&:where([data-indeterminate], [data-state='indeterminate']));
+@custom-variant ui-pressed (&:where([data-pressed], [data-state='on'], [aria-pressed='true']));
+@custom-variant ui-selected (&:where([data-selected], [data-active], [data-state='active'], [aria-selected='true'], [aria-current='page']));
+@custom-variant ui-highlighted (&:where([data-highlighted]));
+@custom-variant ui-disabled (&:where([data-disabled]:not([data-disabled='false']), :disabled, [aria-disabled='true']));
+@custom-variant ui-invalid (&:where([data-invalid], [aria-invalid='true']));
+@custom-variant ui-vertical (&:where([data-orientation='vertical']));
+@custom-variant ui-horizontal (&:where([data-orientation='horizontal']));
+@custom-variant ui-side-top (&:where([data-side='top']));
+@custom-variant ui-side-bottom (&:where([data-side='bottom']));
+@custom-variant ui-side-left (&:where([data-side='left']));
+@custom-variant ui-side-right (&:where([data-side='right']));
+
+/* Surface context — style a part by the surface it sits on (see [data-surface] in tokens.css). */
+@custom-variant on-surface-3 (&:where([data-surface='3'] *));

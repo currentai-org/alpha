@@ -1,0 +1,39 @@
+<script lang="ts">
+	import { cn, type WithElementRef } from '$lib/utils.js';
+	import { getEmblaContext } from './context.js';
+	import type { HTMLAttributes } from 'svelte/elements';
+
+	let {
+		ref = $bindable(null),
+		class: className,
+		index,
+		children,
+		...restProps
+	}: WithElementRef<HTMLAttributes<HTMLDivElement>> & {
+		/**
+		 * This slide's position. Supplying it exposes `data-active` on the slide, so a call site can
+		 * style the selected slide differently (`data-[active=false]:…`) without tracking the
+		 * carousel's state itself.
+		 */
+		index?: number;
+	} = $props();
+
+	const emblaCtx = getEmblaContext('<Carousel.Item/>');
+</script>
+
+<div
+	bind:this={ref}
+	data-slot="carousel-item"
+	role="group"
+	aria-roledescription="slide"
+	class={cn(
+		'min-w-0 shrink-0 grow-0 basis-full',
+		emblaCtx.orientation === 'horizontal' ? 'ps-4' : 'pt-4',
+		className
+	)}
+	data-embla-slide=""
+	data-active={index === undefined ? undefined : index === emblaCtx.selectedIndex}
+	{...restProps}
+>
+	{@render children?.()}
+</div>

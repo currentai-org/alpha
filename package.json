@@ -1,0 +1,15 @@
+{
+	"name": "aipotluck",
+	"private": true,
+	"license": "MIT",
+	"packageManager": "pnpm@11.0.8",
+	"scripts": {
+		"build": "turbo run build",
+		"check": "turbo run check",
+		"lint": "turbo run lint",
+		"test": "turbo run test"
+	},
+	"devDependencies": {
+		"turbo": "2.11.7"
+	}
+}

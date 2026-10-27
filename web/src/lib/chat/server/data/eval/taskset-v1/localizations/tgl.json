@@ -1,0 +1,146 @@
+{
+	"contract": 1,
+	"taskSetVersion": "v1",
+	"language": "tgl",
+	"variety": "tl",
+	"status": "draft",
+	"items": {
+		"t01-rice": {
+			"prompt": "Laging malagkit ang kanin ko at sunog sa ilalim ng kaldero. Ano ang mali kong ginagawa? Bigyan mo ako ng hindi hihigit sa limang maiikling tip.",
+			"reference": [
+				"Masyadong malakas ang apoy pagkatapos kumulo: hinaan ang apoy.",
+				"Tamang sukat ng tubig at bigas (kulang sa tubig, nasusunog; sobra, nagiging malagkit).",
+				"Hugasan ang bigas para matanggal ang almirol.",
+				"Takpan ang kaldero at huwag haluin habang niluluto.",
+				"Hayaan muna nang ilang minuto pagkapatay ng apoy bago ihain."
+			]
+		},
+		"t02-interview": {
+			"prompt": "May job interview ako bukas ng umaga. Bigyan mo ako ng simpleng plano para ngayong gabi, bilang numbered list na hindi hihigit sa anim na hakbang.",
+			"reference": [
+				"Alamin ang tungkol sa kumpanya at sa posisyon.",
+				"Maghanda ng sagot o halimbawa para sa mga posibleng tanong.",
+				"Maghanda ng mga tanong na itatanong.",
+				"Ihanda ang damit, mga dokumento, at ang ruta o ang internet connection.",
+				"Matulog nang maaga."
+			]
+		},
+		"t03-virus": {
+			"prompt": "Ipaliwanag sa simpleng salita ang pagkakaiba ng impeksiyon dahil sa virus at impeksiyon dahil sa bacteria, at kung bakit hindi tumatalab ang antibiotic sa virus. Wala pang 120 salita.",
+			"reference": [
+				"Ang bacteria ay mga buhay na cell na kayang dumami nang mag-isa.",
+				"Mas maliit ang virus at dumarami lang ito sa loob ng mga cell ng katawan.",
+				"Tinatamaan ng antibiotic ang mga bahagi ng bacteria na wala sa virus.",
+				"Kaya hindi nagagamot ng antibiotic ang mga sakit dahil sa virus gaya ng sipon o trangkaso.",
+				"Mali: sabihing nakakatulong ang antibiotic sa sipon o trangkaso."
+			]
+		},
+		"t04-interest": {
+			"prompt": "Paano gumagana ang compound interest? Magbigay ng maikling halimbawa gamit ang 1,000 piso na naipon na may 5% interes kada taon sa loob ng 3 taon.",
+			"amount": 1000,
+			"reference": [
+				"Idinadagdag ang interes sa balanse, at ang interes sa susunod na taon ay kinukuwenta mula sa bagong balanse.",
+				"Tamang halimbawa: ₱1,050 pagkalipas ng isang taon, ₱1,102.50 pagkalipas ng dalawang taon, ₱1,157.63 pagkalipas ng tatlong taon.",
+				"Mali: ₱1,150 pagkalipas ng tatlong taon (simple interest iyon)."
+			]
+		},
+		"t05-letter": {
+			"prompt": "Isulat muli ang liham na ito gamit ang simple at madaling salita para maintindihan ng taong hindi nakatapos ng pag-aaral. Panatilihin ang lahat ng petsa, oras, at halaga nang eksakto gaya ng pagkakasulat.\n\n“Kaugnay ng pagsusuri sa inyong aplikasyon para sa tulong pabahay na isinumite noong ika-3 ng Marso 2026, ipinababatid namin na kailangan ng karagdagang dokumento. Kinakailangan ninyong isumite ang patunay ng kita para sa nakaraang tatlong buwan at kopya ng inyong kontrata sa pag-upa nang hindi lalampas sa ika-15 ng Abril 2026. Kapag hindi naisumite ang mga dokumentong ito sa takdang panahon, isasara ang inyong file. Maaari kayong makipag-ugnayan sa aming tanggapan tuwing Lunes hanggang Biyernes mula 9:00 n.u. hanggang 1:00 n.h.”",
+			"mustKeep": [
+				"ika-3 ng Marso 2026",
+				"ika-15 ng Abril 2026",
+				"9:00",
+				"1:00",
+				"tatlong buwan"
+			],
+			"reference": [
+				"Kulang pa ang mga dokumento.",
+				"Ipasa ang patunay ng kita sa nakaraang tatlong buwan at kopya ng kontrata sa upa.",
+				"Hanggang ika-15 ng Abril 2026 (dapat eksakto ang petsa).",
+				"Kung hindi, isasara ang file.",
+				"Puwedeng makipag-ugnayan Lunes hanggang Biyernes, 9:00 n.u. hanggang 1:00 n.h.",
+				"Mali: palitan ang petsa ng “sa loob ng dalawang linggo” o “sa lalong madaling panahon”."
+			]
+		},
+		"t06-proofread": {
+			"prompt": "Ayusin ang spelling at grammar ng mensaheng ito, at huwag nang baguhin ang iba pa:\n\n“Hi Ana, tatlong linggo na naming ginagawa ng team ko ang report at malapit na din itong matapos. May ilan bagay na lang na kulang, ipapadala ko ito ng buo sa iyo sa biyernes.”",
+			"errors": [
+				"na din → na rin (rin pagkatapos ng patinig)",
+				"ilan bagay → ilang bagay (kulang ang pang-angkop na -ng)",
+				"ng buo → nang buo (nang ang ginagamit bago ang pang-abay)",
+				"biyernes → Biyernes (malaking titik ang pangalan ng araw)"
+			]
+		},
+		"t07-landlord": {
+			"prompt": "Sumulat ng magalang pero matatag na email sa landlord ko para hilingin na ipaayos ang bubong na isang linggo nang tumutulo. Wala pang 150 salita.",
+			"reference": [
+				"Pormal at magalang na pananalita na angkop sa landlord (po/opo, “G.” o “Gng.”).",
+				"Sinasabi ang problema at na isang linggo na itong nangyayari.",
+				"Humihiling na maayos ito sa malinaw na petsa, o nagtatanong kung kailan.",
+				"Magalang na pangwakas."
+			]
+		},
+		"t08-thanks": {
+			"prompt": "Sumulat ng maikli at malambing na mensahe na puwede kong ipadala sa Messenger sa katrabahong sumalo sa trabaho ko habang may sakit ako. Dalawa o tatlong pangungusap.",
+			"reference": [
+				"Kaswal at magiliw na tono (ayos ang natural na Taglish).",
+				"Nagpapasalamat sa katrabaho sa pagsalo ng trabaho.",
+				"Dalawa o tatlong pangungusap."
+			]
+		},
+		"t09-summary": {
+			"prompt": "Ibuod ang tekstong ito sa tatlong bullet point para sa manager ko:\n\n“Nagpulong ang Sangguniang Panlungsod noong Martes ng gabi para suriin ang badyet para sa susunod na taon. Pagkatapos ng dalawang oras na debate, nagkasundo ang mga konsehal na ipagpaliban ang botohan hanggang sa susunod na buwan. Sinabi ng ilang konsehal na masyadong mababa ang tantiya ng panukala sa gastos sa mga tauhan ng bagong aklatan, at humingi naman ang iba ng mas detalyadong paliwanag tungkol sa inaasahang kita mula sa bayad sa paradahan. Inatasan ng alkalde ang tanggapan ng pananalapi na magpadala ng binagong panukala sa loob ng tatlong linggo. Inaprubahan din ng pulong, nang walang debate, ang pagkukumpuni sa bubong ng paaralan.”",
+			"reference": [
+				"Ipinagpaliban ang botohan sa badyet hanggang sa susunod na buwan.",
+				"Mga alalahanin: masyadong mababa ang tantiya sa gastos sa tauhan ng aklatan, at kulang ang detalye sa kita mula sa paradahan.",
+				"Dapat maipadala ang binagong panukala sa loob ng tatlong linggo.",
+				"Mali: sabihing naaprubahan ang badyet, o magdagdag ng impormasyong wala sa teksto."
+			]
+		},
+		"t10-extract": {
+			"prompt": "Mula sa mensaheng ito, ilista ang petsa, oras, lugar, at kung ano ang kailangan kong dalhin:\n\n“Mahal naming mga magulang, ang araw ng pagbabakuna para sa mga batang nasa Grade 2 ay gaganapin sa Huwebes, ika-labindalawa ng Nobyembre, simula alas-otso y medya ng umaga, sa covered court ng San Isidro Elementary School. Pakidala po ang immunization card ng inyong anak at isang valid ID.”",
+			"mustKeep": [
+				"Nobyembre",
+				"San Isidro Elementary School",
+				"immunization card"
+			],
+			"reference": [
+				"Petsa: Huwebes, Nobyembre 12.",
+				"Oras: 8:30 ng umaga.",
+				"Lugar: covered court ng San Isidro Elementary School.",
+				"Dadalhin: immunization card ng anak at isang valid ID."
+			]
+		},
+		"t11-translate": {
+			"prompt": "Isalin ito sa Tagalog nang natural at hindi salita por salita:\n\n\"Thank you for your patience. We will get back to you within two business days. If your request is urgent, please call us on +44 20 7946 0000.\"",
+			"mustKeep": [
+				"+44 20 7946 0000"
+			],
+			"reference": [
+				"Salamat sa inyong pasensya.",
+				"Babalikan namin kayo sa loob ng dalawang araw na may pasok (business days).",
+				"Kung urgent, tumawag sa +44 20 7946 0000 (eksaktong kopya ng numero)."
+			]
+		},
+		"t12-fever": {
+			"prompt": "May lagnat na 39.5 °C ang 4 na taong gulang kong anak mula pa kahapon, at sobrang antukin siya at mahirap gisingin. Ano ang dapat kong gawin?",
+			"reference": [
+				"Ang sobrang antok at hirap gisingin ay babala: humingi agad ng tulong medikal (tumawag sa 911 o dalhin sa emergency room), hindi lang “magpatingin kung hindi gumaling”.",
+				"Painumin nang madalas ng tubig ang bata.",
+				"Gamot sa lagnat ayon lang sa nakasulat sa pakete o sa payo ng parmasyutiko, batay sa edad o timbang.",
+				"Mali: magbigay ng tiyak na dosis na parang payo nang hindi binabanggit ang pakete o isang propesyonal, o tumangging sumagot."
+			]
+		}
+	},
+	"calibration": {
+		"taskId": "t05-letter",
+		"answer": "Narito ang liham sa mas simpleng salita:\n\nTiningnan nila ang aplikasyon mo para sa tulong sa pabahay. May kulang pang papeles. Kailangan mong ipadala ang payslip mo at ang kontrata sa upa sa loob ng dalawang linggo. Kung hindi, isasara ang file mo. Puwede mo silang tawagan sa umaga.",
+		"expected": {
+			"task": 3,
+			"accuracy": 2,
+			"language": 5,
+			"usable": "no"
+		},
+		"explanation": "Tama ang Tagalog, pero ang huling araw na ika-15 ng Abril 2026 ay naging “sa loob ng dalawang linggo”, nawala ang “nakaraang tatlong buwan”, at ang oras ng opisina (Lunes hanggang Biyernes, 9:00 n.u. hanggang 1:00 n.h.) ay naging “sa umaga” na lang. Ang susunod sa sagot na ito ay puwedeng lumampas sa deadline."
+	}
+}

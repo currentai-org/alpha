@@ -1,0 +1,16 @@
+/*
+ * Alpha design system — stylesheet entry. Imported once, from src/app.css, after Tailwind.
+ *
+ *   tokens/generated/tokens.css     custom properties (generated from tokens/*.ts)
+ *   tokens/generated/tailwind.css   @theme utilities + type-* roles (generated)
+ *   tokens/variants.css             ui-* state variants (engine-agnostic)
+ *   tokens/utilities.css            spec rules as utilities (tint layers, motion)
+ *   tokens/base.css                 .ds-root base layer
+ *   tokens/legacy-bridge.css        --ap-* / grey ramp → tokens (removed when the legacy count reaches zero)
+ */
+@import './tokens/generated/tokens.css';
+@import './tokens/generated/tailwind.css';
+@import './tokens/variants.css';
+@import './tokens/utilities.css';
+@import './tokens/base.css';
+@import './tokens/legacy-bridge.css';

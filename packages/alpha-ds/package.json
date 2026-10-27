@@ -1,0 +1,41 @@
+{
+	"name": "@aipotluck/alpha-ds",
+	"private": true,
+	"license": "MIT",
+	"type": "module",
+	"description": "The Alpha design system: tokens, theme runtime, components, primitives and patterns, shipped as Svelte and TypeScript source with no build step. SvelteKit-only: a few parts import $app/*.",
+	"exports": {
+		".": {
+			"types": "./src/index.ts",
+			"svelte": "./src/index.ts",
+			"default": "./src/index.ts"
+		},
+		"./styles.css": "./src/styles.css",
+		"./catalog/registry": "./src/catalog/registry.ts",
+		"./catalog/highlight.server": "./src/catalog/highlight.server.ts",
+		"./catalog/foundations": "./src/catalog/foundations/index.ts",
+		"./catalog/foundations/snippets": "./src/catalog/foundations/snippets.ts",
+		"./catalog/ui/*.svelte": "./src/catalog/ui/*.svelte",
+		"./version/changelog.server": "./src/version/changelog.server.ts",
+		"./package.json": "./package.json"
+	},
+	"peerDependencies": {
+		"@sveltejs/kit": "^2.70.3",
+		"svelte": "^5.57.0"
+	},
+	"dependencies": {
+		"bits-ui": "^2.19.3",
+		"clsx": "^2.1.1",
+		"marked": "^18.1.0",
+		"shiki": "^3.23.0",
+		"tailwind-merge": "^3.6.0",
+		"tailwind-variants": "^3.3.1"
+	},
+	"devDependencies": {
+		"@sveltejs/kit": "^2.70.3",
+		"@vitest/browser-playwright": "^4.1.11",
+		"svelte": "^5.57.0",
+		"vitest": "^4.1.11",
+		"vitest-browser-svelte": "^3.1.0"
+	}
+}

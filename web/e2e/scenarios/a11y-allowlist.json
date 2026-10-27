@@ -1,0 +1,14 @@
+[
+	{
+		"page": "home",
+		"rule": "color-contrast",
+		"ticket": "CUR-1518",
+		"note": "site-header.svelte's \"Contribute\" CTA — white text on the salmon secondary-button token, 2.47:1 against the 4.5:1 minimum. A design-system color-token fix, not a local style; see the ticket."
+	},
+	{
+		"page": "chat-entry",
+		"rule": "color-contrast",
+		"ticket": "CUR-1518",
+		"note": "Same header, same CTA, same violation — the chat entry page shares site-header.svelte with home."
+	}
+]

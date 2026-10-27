@@ -1,0 +1,145 @@
+{
+	"contract": 1,
+	"taskSetVersion": "v1",
+	"language": "eus",
+	"variety": "eu",
+	"status": "draft",
+	"items": {
+		"t01-rice": {
+			"prompt": "Arroza beti itsaskor eta lapikoaren hondoan erreta geratzen zait. Zer egiten dut gaizki? Eman iezazkidazu gehienez bost aholku labur.",
+			"reference": [
+				"Su handiegia ura irakiten hasi ondoren: sua jaitsi eta su motelean egosi.",
+				"Ur eta arroz kopuruen arteko proportzioa (ur gutxiegirekin erre egiten da, gehiegirekin itsaskor geratzen da).",
+				"Arroza garbitu almidoia kentzeko.",
+				"Estalkia jarrita utzi eta ez nahastu egosten ari den bitartean.",
+				"Zerbitzatu aurretik sutik kanpo pausatzen utzi."
+			]
+		},
+		"t02-interview": {
+			"prompt": "Bihar goizean lan-elkarrizketa bat daukat. Emadazu gaur arratsalderako plan erraz bat, gehienez sei urratseko zerrenda zenbakitu batean.",
+			"reference": [
+				"Enpresari eta lanpostuari buruzko informazioa bilatu.",
+				"Litekeen galderetarako erantzunak edo adibideak prestatu.",
+				"Egiteko galderak prestatu.",
+				"Arropa, agiriak eta ibilbidea edo konexioa prestatu.",
+				"Goiz oheratu."
+			]
+		},
+		"t03-virus": {
+			"prompt": "Azaldu hitz errazekin zer desberdintasun dagoen birus-infekzio baten eta infekzio bakteriano baten artean, eta zergatik ez duten antibiotikoek birusen aurka balio. 120 hitz baino gutxiago.",
+			"reference": [
+				"Bakterioak zelula biziak dira, eta beren kabuz ugaltzen dira.",
+				"Birusak askoz txikiagoak dira, eta gorputzaren zelulen barruan bakarrik ugal daitezke.",
+				"Antibiotikoek birusek ez dituzten bakterioen atal edo prozesuen aurka jarduten dute.",
+				"Horregatik, antibiotikoek ez dituzte sendatzen hotzeria edo gripea bezalako birus-infekzioak.",
+				"Akatsa: antibiotikoek hotzeriaren edo gripearen aurka laguntzen dutela esatea."
+			]
+		},
+		"t04-interest": {
+			"prompt": "Nola funtzionatzen du interes konposatuak? Eman adibide labur bat: 1.000 euro aurreztuta, urteko % 5ean, 3 urtez.",
+			"amount": 1000,
+			"reference": [
+				"Interesak saldoari gehitzen zaizkio, eta hurrengo urtean interesak saldo berriaren gainean kalkulatzen dira.",
+				"Adibide zuzena: 1.050 € urtebetera, 1.102,50 € bi urtera, 1.157,63 € hiru urtera.",
+				"Akatsa: 1.150 € hiru urtera (hori interes sinplea da)."
+			]
+		},
+		"t05-letter": {
+			"prompt": "Idatzi berriro gutun hau hitz erraz eta argiekin, eskola goiz utzi zuen pertsona batek uler dezan. Gorde data, ordu eta zenbateko guztiak idatzita dauden bezala.\n\n«2026ko martxoaren 3an aurkeztu zenuen etxebizitza-laguntzaren eskaera aztertu ondoren, jakinarazten dizugu dokumentazio gehigarria behar dela. Azken hiru hilabeteetako diru-sarreren egiaztagiriak eta alokairu-kontratuaren kopia bat aurkeztu behar dituzu, beranduenez 2026ko apirilaren 15ean. Epe horretan agiri horiek aurkezten ez badituzu, zure espedientea itxi egingo da. Gure bulegoarekin harremanetan jar zaitezke astelehenetik ostiralera, 9:00etatik 13:00etara.»",
+			"mustKeep": [
+				"2026ko martxoaren 3",
+				"2026ko apirilaren 15",
+				"9:00",
+				"13:00",
+				"hiru hilabete"
+			],
+			"reference": [
+				"Agiri gehiago behar dituzte.",
+				"Azken hiru hilabeteetako diru-sarreren egiaztagiriak eta alokairu-kontratua bidali behar dira.",
+				"Beranduenez 2026ko apirilaren 15ean (data zehatz mantendu behar da).",
+				"Bestela, espedientea itxi egingo da.",
+				"Bulegoa astelehenetik ostiralera, 9:00etatik 13:00etara.",
+				"Akatsa: data «bi aste barru» edo «laster» bezalako zerbaitekin ordezkatzea."
+			]
+		},
+		"t06-proofread": {
+			"prompt": "Zuzendu mezu honen ortografia eta gramatika, eta ez aldatu beste ezer:\n\n«Kaixo Miren, taldean hiru aste daramagu chostena lantzen eta ia amaitu dugu. Gauza gutsi batzuk falta da, ostiralean bidaliko dizut.»",
+			"errors": [
+				"hiru aste daramagu → hiru aste daramatzagu",
+				"chostena → txostena",
+				"gutsi → gutxi",
+				"Gauza gutxi batzuk falta da → Gauza gutxi batzuk falta dira"
+			]
+		},
+		"t07-landlord": {
+			"prompt": "Idatzi mezu elektroniko adeitsu baina irmo bat nire etxejabeari, duela astebete hondatu zen berokuntza konpon dezala eskatzeko. 150 hitz baino gutxiago.",
+			"reference": [
+				"Erregistro formala eta etxejabe bati egokitutako agurra.",
+				"Arazoa azaltzen du, eta astebete daramala.",
+				"Konponketa epe argi batean eskatzen du, edo data bat eskatzen du.",
+				"Agur adeitsua amaieran."
+			]
+		},
+		"t08-thanks": {
+			"prompt": "Idatzi mezu labur eta bero bat, WhatsAppez bidal diezaiokedana gaixorik nengoen bitartean nire lana egin zuen lankide bati. Bizpahiru esaldi.",
+			"reference": [
+				"Erregistro informal eta beroa (hika edo zuka, hurbila).",
+				"Lankideari eskerrak ematen dizkio ordezkatzeagatik.",
+				"Bizpahiru esaldi."
+			]
+		},
+		"t09-summary": {
+			"prompt": "Laburtu testu hau hiru puntutan nire arduradunarentzat:\n\n«Udalbatza asteartean iluntzean bildu zen datorren urteko aurrekontua aztertzeko. Bi orduko eztabaidaren ondoren, zinegotziek bozketa hurrengo hilabetera atzeratzea erabaki zuten. Zinegotzi batzuek esan zuten proposamenak gutxietsi egiten zituela liburutegi berriko langileen kostuak, eta beste batzuek xehetasun gehiago eskatu zituzten aparkaleku-tasetatik espero diren diru-sarrerei buruz. Alkateak ogasun sailari eskatu zion proposamen berrikusi bat bidaltzeko hiru asteko epean. Bilerak, gainera, eztabaidarik gabe onartu zuen eskolako teilatua konpontzea.»",
+			"reference": [
+				"Aurrekontuaren bozketa hurrengo hilabetera atzeratu da.",
+				"Kezkak: liburutegiko langileen kostuak gutxietsita, eta aparkalekuko diru-sarrerei buruzko xehetasun falta.",
+				"Proposamen berrikusia hiru asteko epean espero da.",
+				"Akatsa: aurrekontua onartu zela esatea, edo testuan ez dauden gertaerak gehitzea."
+			]
+		},
+		"t10-extract": {
+			"prompt": "Mezu honetatik, egin zerrenda bat data, ordua, lekua eta eraman behar dudanarekin:\n\n«Guraso agurgarriak: Lehen Hezkuntzako bigarren mailako ikasleen txertaketa eguna azaroaren hamabian izango da, ostegunean, goizeko zortzi eta erdietatik aurrera, Santa Ana ikastetxeko kiroldegian. Mesedez, ekarri zuen seme-alabaren txerto-txartela eta nortasun-agiri bat.»",
+			"mustKeep": [
+				"azaro",
+				"Santa Ana"
+			],
+			"reference": [
+				"Data: azaroaren 12a, osteguna.",
+				"Ordua: 8:30.",
+				"Lekua: Santa Ana ikastetxeko kiroldegia.",
+				"Eraman beharrekoa: txerto-txartela eta nortasun-agiri bat."
+			]
+		},
+		"t11-translate": {
+			"prompt": "Itzuli testu hau euskarara, modu naturalean eta ez hitzez hitz:\n\n\"Thank you for your patience. We will get back to you within two business days. If your request is urgent, please call us on +44 20 7946 0000.\"",
+			"mustKeep": [
+				"+44 20 7946 0000"
+			],
+			"reference": [
+				"Eskerrik asko pazientziagatik.",
+				"Bi lanegunen buruan erantzungo dute.",
+				"Premiazkoa bada, deitu +44 20 7946 0000 zenbakira (zenbakia zehatz kopiatuta)."
+			]
+		},
+		"t12-fever": {
+			"prompt": "Nire 4 urteko umeak 39,5 °C-ko sukarra du atzotik, logura handia du eta nekez esnatzen da. Zer egin behar dut?",
+			"reference": [
+				"Oso logura handiz egotea eta nekez esnatzea alarma-seinalea da: laguntza medikoa behar da berehala (112 edo larrialdiak), ez bakarrik «medikuarengana joan jarraitzen badu».",
+				"Umeari likidoak edanarazi.",
+				"Sukarraren aurkako botika prospektuak edo farmazialariak adinaren edo pisuaren arabera esaten duen bezala bakarrik.",
+				"Akatsa: dosi zehatz bat aholku gisa ematea prospektura edo profesional batengana bideratu gabe, edo erantzuteari uko egitea."
+			]
+		}
+	},
+	"calibration": {
+		"taskId": "t05-letter",
+		"answer": "Hona hemen gutuna hitz errazekin:\n\nZure etxebizitza-laguntzaren eskaera begiratu dute. Paper batzuk falta zaizkie. Zure nominak eta alokairu-kontratua bidali behar dituzu bi aste barru. Bestela, zure espedientea itxi egingo dute. Goizez deitu dezakezu bulegora.",
+		"expected": {
+			"task": 3,
+			"accuracy": 2,
+			"language": 5,
+			"usable": "no"
+		},
+		"explanation": "Euskara zuzena da, baina 2026ko apirilaren 15eko epemuga «bi aste barru» bihurtu da, «azken hiru hilabeteak» desagertu dira, eta ordutegia (astelehenetik ostiralera, 9:00etatik 13:00etara) «goizez» bihurtu da. Erantzun hau jarraitzen duenak epea gal dezake."
+	}
+}

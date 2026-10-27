@@ -1,0 +1,104 @@
+{
+	"_note": "Warm RESPONSE CACHE: genuine model outputs captured from the live pipeline (persona + grounding + open-web search), not hand-authored demo answers. Served live-first with this as a flaky-connection fallback. Regenerate with `npm run warm-cache`.",
+	"generatedAt": "2026-07-04T15:59:30.873Z",
+	"base": "https://develop.aipotluck.org",
+	"model": "swiss-ai/Apertus-70B-Instruct-2509",
+	"keyScheme": "sha256(model + '\\n' + normalized-prompt)[:16]",
+	"entries": {
+		"b3fb15e4e4a6679b": {
+			"prompt": "I'm building a chatbot on open components. What open source options exist for the model, vector store, and moderation layer — and where is the open stack still thin?",
+			"answer": "To build a chatbot on open components, here are some open source options for each layer: 1. **Model**: - **Mistral** (Meta AI) — another open model with similar capabilities. 2. **Vector Store**: - **Weaviate** — an open source vector database for storing and querying embeddings. - **Faiss** (Facebook AI) — a library for efficient vector similarity search. 3. **Moderation Layer**: - **Llama Guard 3** (open source project from the community, not just a tool name) — designed to detect toxicity and harmful content. - **NeMo Guardrails** (NVIDIA's NeMo framework includes guardrails for safety). - **Perspective API** (Google's API is closed, but there are open alternatives like *Perspective API Clone* or *Hugging Face's Perspective* which are community-driven but may lack full features). The open stack is still thin in areas like: - Highly advanced toxicity detection models that match closed systems' accuracy. - Scalable, production-ready vector stores with strong support for real-time updates and high throughput. - Comprehensive moderation tools that cover all types of harmful content without false positives. For building a full stack, you might need to combine multiple tools or contribute to existing projects to fill gaps. For example, using Llama 2 with Weaviate and customizing Llama Guard 3 or NeMo Guardrails for your use case. Always test thoroughly and consider community feedback.",
+			"sources": [],
+			"asOf": null,
+			"grounded": false,
+			"model": "swiss-ai/Apertus-70B-Instruct-2509",
+			"generatedAt": "2026-07-04T15:58:41.031Z"
+		},
+		"ae0d0bce83695e3d": {
+			"prompt": "What's the current state of AI regulation like the EU AI Act, and what sources can I check before a board decision?",
+			"answer": "The EU AI Act, a comprehensive regulatory framework for AI, entered into force on August 1, 2024. It governs most AI systems across sectors with varying levels of risk-based requirements. To check its current state and details before a board decision, consult the European Commission's official website (ec.europa.eu/digital-single-market/en/eu-ai-act), the EU AI Watch tracker (ai-watch.eu), or the Harvard University's Information Technology Policy group's summary (huit.harvard.edu/eu-ai-act). These sources provide up-to-date information on prohibited use cases, risk assessments, and compliance requirements. Note that specifics may vary by country within the EU due to national implementations; please share your country or jurisdiction for more tailored guidance. [1], [2], [3], [4]",
+			"sources": [
+				{
+					"title": "The EU AI Act – the current state of play | Travers Smith",
+					"url": "https://www.traverssmith.com/knowledge/knowledge-container/the-eu-ai-act-the-current-state-of-play/",
+					"snippet": "The EU AI Act is one of the most significant pieces of technology regulation to emerge in recent years and it is still taking shape.",
+					"engine": "Firecrawl",
+					"n": 1
+				},
+				{
+					"title": "EU AI Act - DETE",
+					"url": "https://enterprise.gov.ie/en/what-we-do/innovation-research-development/artificial-intelligence/eu-ai-act/",
+					"snippet": "The EU Artificial Intelligence (AI) Act is an EU regulation which entered into force on 2 August 2024 and is directly applicable across the EU.",
+					"engine": "Firecrawl",
+					"n": 2
+				},
+				{
+					"title": "Artificial Intelligence Act",
+					"url": "https://en.wikipedia.org/wiki/Artificial_Intelligence_Act",
+					"snippet": "The Artificial Intelligence Act (AI Act) is a European Union regulation concerning artificial intelligence (AI). It establishes a common regulatory and legal framework for AI within the European Union (EU). The regulation entered into force on 1 August 2024, with provisions that shall come into operation gradually over the following 6 to 36 months. It covers most AI systems across a wide range of sectors, with exemptions for AI used only for military, national security, resea",
+					"engine": "Wikipedia",
+					"asOf": "2026-07-04T06:03:18Z",
+					"imageUrl": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b7/Flag_of_Europe.svg/250px-Flag_of_Europe.svg.png",
+					"n": 3
+				},
+				{
+					"title": "AI Watch: Global regulatory tracker - European Union",
+					"url": "https://www.whitecase.com/insight-our-thinking/ai-watch-global-regulatory-tracker-european-union",
+					"snippet": "The EU AI Act entered into force on August 1, 2024, and will be effective from August 2, 2026,1 except for the specific provisions listed in ...",
+					"engine": "Firecrawl",
+					"n": 4
+				},
+				{
+					"title": "AI Act | Shaping Europe's digital future - European Union",
+					"url": "https://digital-strategy.ec.europa.eu/en/policies/regulatory-framework-ai",
+					"snippet": "The AI Act entered into force on 1 August 2024, and will be fully applicable 2 years later on 2 August 2026, with some exceptions: prohibited AI practices and ...",
+					"engine": "Firecrawl",
+					"n": 5
+				},
+				{
+					"title": "EU Artificial Intelligence Act | Up-to-date developments and ...",
+					"url": "https://artificialintelligenceact.eu/",
+					"snippet": "The EU's AI regulation is already making waves internationally – in late September 2021, Brazil's Congress passed a bill that creates a legal framework for ...",
+					"engine": "Firecrawl",
+					"n": 6
+				},
+				{
+					"title": "EU AI Act Prohibited Use Cases | Harvard University Information ...",
+					"url": "https://www.huit.harvard.edu/eu-ai-act",
+					"snippet": "As of February 2, 2025, the EU AI Act specifically prohibits placing on the market, putting into service in the EU, or use of AI systems in the EU in the ...",
+					"engine": "Firecrawl",
+					"n": 7
+				},
+				{
+					"title": "The EU AI Act Explained: Risk Tiers, Deadlines and Compliance",
+					"url": "https://www.snowflake.com/en/artificial-intelligence/ai-governance/eu-ai-act/",
+					"snippet": "It entered into force on Aug. 1, 2024, and applies in phases. Prohibited practices, AI literacy, and general-purpose AI obligations are already applicable.",
+					"engine": "Firecrawl",
+					"n": 8
+				}
+			],
+			"asOf": "2026-07-04T15:58:41.487Z",
+			"grounded": true,
+			"model": "swiss-ai/Apertus-70B-Instruct-2509",
+			"generatedAt": "2026-07-04T15:59:06.834Z"
+		},
+		"9af3aac5666dc835": {
+			"prompt": "My team defaults to ChatGPT. In plain terms — what makes you different, who built you, and where do you actually run?",
+			"answer": "I'm Apertus 70B, an open model developed by the Swiss National AI Institute (SNAI) and served by Current AI. I'm not built by OpenAI or any other company; my weights, training recipe, and data are openly published. I run on public compute — currently through HuggingFace, not CSCS (the sovereign compute target for production). My openness and transparency set me apart from closed models like ChatGPT.",
+			"sources": [],
+			"asOf": null,
+			"grounded": false,
+			"model": "swiss-ai/Apertus-70B-Instruct-2509",
+			"generatedAt": "2026-07-04T15:59:19.388Z"
+		},
+		"fde043d9fb0a5a90": {
+			"prompt": "People say open models can't keep up with closed ones. Give me your honest take — and can other open models double-check you?",
+			"answer": "Open models like me are often smaller and less capable than closed ones, but they're designed for transparency and auditability. While I may not match the latest closed models in performance, my openness allows others to study, improve, and verify my behavior. Other open models (like Llama 2 or Meta's OPT) can be compared to me for accuracy and fairness. However, no model is perfect — all can have biases or errors. To double-check me, anyone can inspect my weights and training data (published openly by the Swiss National AI Institute), run their own tests, or use tools like Hugging Face's model comparison tool to see how I stack up against other open models. My openness means others can build on or correct me if needed.",
+			"sources": [],
+			"asOf": null,
+			"grounded": false,
+			"model": "swiss-ai/Apertus-70B-Instruct-2509",
+			"generatedAt": "2026-07-04T15:59:30.873Z"
+		}
+	}
+}

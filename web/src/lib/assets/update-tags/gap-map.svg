@@ -1,0 +1,71 @@
+<svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<rect width="13.23" height="13.23" fill="#F88376"/>
+<rect width="13.23" height="4.41" fill="url(#pattern0_1508_2013)"/>
+<rect y="8.82031" width="13.23" height="4.41" fill="url(#pattern1_1508_2013)"/>
+<rect y="4.41016" width="13.23" height="4.41" fill="url(#pattern2_1508_2013)"/>
+<rect x="0.163086" y="2.56445" width="1.37043" height="1.37044" fill="white"/>
+<rect x="2.90527" y="2.56445" width="1.37043" height="1.37044" fill="white"/>
+<rect x="5.64746" y="2.56445" width="1.37043" height="1.37044" fill="white"/>
+<defs>
+<pattern id="pattern0_1508_2013" patternUnits="userSpaceOnUse" patternTransform="matrix(10.08 0 0 10.08 3.15 0)" preserveAspectRatio="none" viewBox="0 0 16 16" width="1" height="1">
+<g id="pattern0_1508_2013_inner">
+<rect width="16" height="16" fill="#F88376"/>
+<rect x="6" width="2" height="2" fill="#F7F6F6"/>
+<rect x="6" y="8" width="2" height="2" fill="#F7F6F6"/>
+<rect x="4" y="2" width="2" height="2" fill="#F7F6F6"/>
+<rect x="4" y="10" width="2" height="2" fill="#F7F6F6"/>
+<rect x="2" y="4" width="2" height="2" fill="#F7F6F6"/>
+<rect x="2" y="12" width="2" height="2" fill="#F7F6F6"/>
+<rect y="6" width="2" height="2" fill="#F7F6F6"/>
+<rect y="14" width="2" height="2" fill="#F7F6F6"/>
+<rect x="14" width="2" height="2" fill="#F7F6F6"/>
+<rect x="14" y="8" width="2" height="2" fill="#F7F6F6"/>
+<rect x="12" y="2" width="2" height="2" fill="#F7F6F6"/>
+<rect x="12" y="10" width="2" height="2" fill="#F7F6F6"/>
+<rect x="10" y="4" width="2" height="2" fill="#F7F6F6"/>
+<rect x="10" y="12" width="2" height="2" fill="#F7F6F6"/>
+<rect x="8" y="6" width="2" height="2" fill="#F7F6F6"/>
+<rect x="8" y="14" width="2" height="2" fill="#F7F6F6"/>
+</g>
+</pattern><pattern id="pattern1_1508_2013" patternUnits="userSpaceOnUse" patternTransform="matrix(5.04 0 0 5.04 8.19 8.82031)" preserveAspectRatio="none" viewBox="0 0 16 16" width="1" height="1">
+<g id="pattern1_1508_2013_inner">
+<rect width="16" height="16" fill="#F88376"/>
+<rect x="6" width="2" height="2" fill="#F7F6F6"/>
+<rect x="6" y="8" width="2" height="2" fill="#F7F6F6"/>
+<rect x="4" y="2" width="2" height="2" fill="#F7F6F6"/>
+<rect x="4" y="10" width="2" height="2" fill="#F7F6F6"/>
+<rect x="2" y="4" width="2" height="2" fill="#F7F6F6"/>
+<rect x="2" y="12" width="2" height="2" fill="#F7F6F6"/>
+<rect y="6" width="2" height="2" fill="#F7F6F6"/>
+<rect y="14" width="2" height="2" fill="#F7F6F6"/>
+<rect x="14" width="2" height="2" fill="#F7F6F6"/>
+<rect x="14" y="8" width="2" height="2" fill="#F7F6F6"/>
+<rect x="12" y="2" width="2" height="2" fill="#F7F6F6"/>
+<rect x="12" y="10" width="2" height="2" fill="#F7F6F6"/>
+<rect x="10" y="4" width="2" height="2" fill="#F7F6F6"/>
+<rect x="10" y="12" width="2" height="2" fill="#F7F6F6"/>
+<rect x="8" y="6" width="2" height="2" fill="#F7F6F6"/>
+<rect x="8" y="14" width="2" height="2" fill="#F7F6F6"/>
+</g>
+</pattern><pattern id="pattern2_1508_2013" patternUnits="userSpaceOnUse" patternTransform="matrix(3.024 0 0 3.024 10.206 4.41016)" preserveAspectRatio="none" viewBox="0 0 16 16" width="1" height="1">
+<g id="pattern2_1508_2013_inner">
+<rect width="16" height="16" fill="#F88376"/>
+<rect x="6" width="2" height="2" fill="#F7F6F6"/>
+<rect x="6" y="8" width="2" height="2" fill="#F7F6F6"/>
+<rect x="4" y="2" width="2" height="2" fill="#F7F6F6"/>
+<rect x="4" y="10" width="2" height="2" fill="#F7F6F6"/>
+<rect x="2" y="4" width="2" height="2" fill="#F7F6F6"/>
+<rect x="2" y="12" width="2" height="2" fill="#F7F6F6"/>
+<rect y="6" width="2" height="2" fill="#F7F6F6"/>
+<rect y="14" width="2" height="2" fill="#F7F6F6"/>
+<rect x="14" width="2" height="2" fill="#F7F6F6"/>
+<rect x="14" y="8" width="2" height="2" fill="#F7F6F6"/>
+<rect x="12" y="2" width="2" height="2" fill="#F7F6F6"/>
+<rect x="12" y="10" width="2" height="2" fill="#F7F6F6"/>
+<rect x="10" y="4" width="2" height="2" fill="#F7F6F6"/>
+<rect x="10" y="12" width="2" height="2" fill="#F7F6F6"/>
+<rect x="8" y="6" width="2" height="2" fill="#F7F6F6"/>
+<rect x="8" y="14" width="2" height="2" fill="#F7F6F6"/>
+</g>
+</pattern></defs>
+</svg>

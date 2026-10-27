@@ -1,0 +1,78 @@
+{
+	"$comment": "Prompt-restricted SyftHub. With SYFTHUB_PROMPT_ONLY=on (or SYFTHUB_PROMPT_ROUTING=on), the federated store fires ONLY when the query EXACTLY matches one of these prompts (after normalization) and queries ONLY that rule's endpoints directly. Everything else = no SyftHub. Endpoints correlated 2026-07-09 against the live syfthub.openmined.org catalog (browse + retrieval probe). Four relevant offices, caseworker variants: tax=cantonax_tax_office/federal-tax-administration-caseworker (income thresholds), health=federal-office-public-health/federal-office-health-casework (which chronic conditions qualify + certification), migration=cantonal-migration-office/state-secretariat-migration-caseworker (residency/permit access rules), social=cantonal-social-services/cantonal-social-services-fsio-casework (benefits: who qualifies, amounts, appeals, coordination).",
+	"rules": [
+		{
+			"prompt": "My applicant has COPD and holds a B permit. They've been registered for 11 months, with one 20-day gap. Do they qualify for the Chronic Care Supplement yet?",
+			"endpoints": [
+				"federal-office-public-health/federal-office-health-casework",
+				"cantonal-migration-office/state-secretariat-migration-caseworker",
+				"cantonal-social-services/cantonal-social-services-fsio-casework"
+			]
+		},
+		{
+			"prompt": "Applicant runs a village bakery (self-employed) and had a loss year. She also receives a disability allowance. Is her income under the threshold?",
+			"endpoints": [
+				"cantonax_tax_office/federal-tax-administration-caseworker",
+				"cantonal-social-services/cantonal-social-services-fsio-casework"
+			]
+		},
+		{
+			"prompt": "Applicant has Type 2 diabetes. Does that qualify, and what exactly counts as a 'documented complication'?",
+			"endpoints": [
+				"federal-office-public-health/federal-office-health-casework",
+				"cantonal-social-services/cantonal-social-services-fsio-casework"
+			]
+		},
+		{
+			"prompt": "An earlier COPD application was refused in May and has now been reopened. Is there precedent for how far back we backdate the award — and does it matter that an IV pension application is also pending?",
+			"endpoints": [
+				"federal-office-public-health/federal-office-health-casework",
+				"cantonal-social-services/cantonal-social-services-fsio-casework"
+			]
+		},
+		{
+			"prompt": "Has a cross-border commuter (G permit) with a qualifying condition ever been decided before? What was the reasoning on the residence condition?",
+			"endpoints": [
+				"cantonal-migration-office/state-secretariat-migration-caseworker",
+				"federal-office-public-health/federal-office-health-casework",
+				"cantonal-social-services/cantonal-social-services-fsio-casework"
+			]
+		},
+		{
+			"prompt": "Applicant moved from another canton eight months into their registration period. Is there precedent that the accrued time carries across the move?",
+			"endpoints": [
+				"cantonal-migration-office/state-secretariat-migration-caseworker",
+				"cantonal-social-services/cantonal-social-services-fsio-casework"
+			]
+		},
+		{
+			"prompt": "The household already receives a carer's allowance and is now claiming the supplement. What's the combined cap, and is there precedent on a stacking dispute like this?",
+			"endpoints": [
+				"cantonal-social-services/cantonal-social-services-fsio-casework",
+				"cantonax_tax_office/federal-tax-administration-caseworker"
+			]
+		},
+		{
+			"prompt": "my benefits got cut and I don't know why, can I appeal, and does my health condition make a difference?",
+			"endpoints": [
+				"cantonal-social-services/cantonal-social-services-fsio-public",
+				"federal-office-public-health/federal-office-health-public"
+			]
+		},
+		{
+			"prompt": "I'm here on a residency permit and just moved cantons, do I need to redo it, and does it affect my benefits?",
+			"endpoints": [
+				"cantonal-migration-office/state-secretariat-migration-public",
+				"cantonal-social-services/cantonal-social-services-fsio-public"
+			]
+		},
+		{
+			"prompt": "I just lost my job, my income dropped, and my spouse has a chronic illness. What support can we get, and would our income disqualify us?",
+			"endpoints": [
+				"cantonal-social-services/cantonal-social-services-fsio-public",
+				"cantonax_tax_office/federal-tax-administration-public",
+				"federal-office-public-health/federal-office-health-public"
+			]
+		}
+	]
+}

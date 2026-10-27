@@ -1,0 +1,138 @@
+# Tooling config for the agent-service. Runtime deps stay in requirements.txt (the Dockerfile
+# installs from that file); this file configures the dev toolchain (ruff, pytest, coverage).
+# Not a packaged distribution — there's no [project]/build-system; the service runs from source.
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+# api/ is the source of truth; scripts/ + deploy/ are operational glue.
+extend-exclude = [".venv", "eval/cache"]
+
+[tool.ruff.lint]
+# CUR-1226. The code is annotated as though bandit and blind-except are running: each `noqa` documents
+# a considered `except Exception`. A `noqa` for a rule that is not enabled does nothing, and a new blind
+# except would be caught by nothing. RUF100 below prevents that: a `noqa` for a rule we do not run is
+# itself an error.
+#
+# Enabling these found no live bug (checked: every production-code hit was a false positive with a
+# real reason — an allowlisted SQL column list, a lambda consumed inside its own loop iteration, a
+# deliberate re-reading sleep). That is the expected outcome and not an argument against the rules:
+# what they buy is the NEXT one, and a noqa-with-a-reason is already the house style here.
+select = [
+  "E", "F", "W", "I",   # pyflakes, pycodestyle, import order — as before
+  "B",                  # bugbear: loop-variable capture, mutable defaults, zip() without strict
+  "S",                  # bandit: subprocess, url-open, hardcoded secrets — this service shells out
+  "BLE",                # blind-except: the 76 noqa above finally mean something
+  "ASYNC",              # blocking calls and busy-waits in async defs — this is an asyncio service
+  "UP", "C4", "SIM", "RUF",   # modernization + comprehension/simplification correctness
+  "DTZ",                # naive datetimes: a service reasoning about deadlines must stay tz-aware
+  "LOG",                # logging call misuse
+]
+ignore = [
+  "E701",  # multiple-statements-on-one-line (colon) — compact state setup in tests
+  "E702",  # multiple-statements-on-one-line (semicolon) — compact state setup in tests
+  "E731",  # lambda-assignment — used as tiny test doubles
+  "E501",  # line-too-long — long single-line asserts/comments are the existing style
+  "S104",  # 0.0.0.0 bind — correct inside a container, which is the only place this runs
+  "SIM105",  # contextlib.suppress over try/except/pass — cosmetic, and less greppable
+  "SIM108",  # ternary over if/else — hurts readability on the multi-line cases here
+  "RUF001", "RUF002", "RUF003",  # ambiguous unicode: the prose deliberately uses — and …
+  # S110/S112 flag the SAME lines BLE001 does, and BLE001 is the one that forces a written reason.
+  # Nearly every try/except/pass site in this service already carries
+  # a `# noqa: BLE001 — <why>`. Keeping both means every documented best-effort handler needs two
+  # codes, which is the pressure that turns a considered annotation into a blanket `# noqa`.
+  "S110", "S112",
+  # S603 fires on EVERY list-form subprocess call — i.e. on the correct way to call subprocess. This
+  # service's whole job is spawning a sandboxed child, so the rule is all signal-free noise here.
+  # The argument construction it cannot see is covered by the sandbox tests in api/test_*.py.
+  "S603",
+]
+# E402 is NOT ignored globally any more. The `sys.path.insert(...)`-then-import pattern is real, and
+# it carries an explicit `# noqa: E402` at each of its 16 sites — a blanket ignore made those 16
+# annotations dead and, worse, silently forgave an accidental mid-file import anywhere else.
+
+[tool.ruff.lint.per-file-ignores]
+# Test doubles legitimately shadow/reuse names and define throwaway helpers.
+"api/test_*.py" = [
+  "F811", "E741",
+  "S101",    # assert IS the test framework here
+  "B011",    # assert False — same
+  "B023",    # loop-variable capture in a table-driven test double, consumed in-iteration
+  "S105", "S106", "S107",   # "hardcoded passwords" are fixture tokens like "tok"/"secret"
+  "S108",    # /tmp paths in fixtures — not a real temp-file race
+  "S607",    # tests invoke `git`/`python` by name; PATH is the runner's, not a user's
+  "SIM115",  # a test may hold a handle open deliberately to exercise a failure path
+  "RUF059",  # unused unpacked value — naming the whole tuple documents the shape under test
+]
+"scripts/tests/test_*.py" = ["S101", "B011"]
+"loadtest/test_*.py" = ["S101", "S310"]   # S310: urlopen on the mock's own loopback URL
+# Measurement and ops glue: these shell out, poll URLs and write scratch files by design. The rules
+# are still on for api/, which is the part that runs in production.
+"scripts/*.py" = ["S101", "S108", "S310", "S603", "S607", "SIM115"]
+"eval/*.py" = ["S101", "S108", "S310", "S603", "S607"]
+
+[tool.pyright]
+# Type-checks api/ (CUR-1227). The code is written for a checker: `from __future__ import annotations`,
+# `str | None` signatures, pydantic models on the wire, a State(str, Enum) persisted to SQLite.
+#
+# pyright rather than ty or mypy: at default settings on api/ the three report nearly the same set
+# (ty 191, pyright 192, mypy 41, which skips unannotated function bodies). Only pyright flags a name
+# bound solely in a `try` body and an `except` handler and then read in `finally`, where any other
+# exception raises UnboundLocalError instead of the real error. A checker that models "exception
+# mid-try, before the assignment" costs about 3s a run.
+include = ["api"]
+# Tests are excluded on purpose. The suite is 10k lines of monkeypatching, and 151 of pyright's 192
+# findings are in it: assigning a stub over a typed attribute is `reportAttributeAccessIssue` by
+# construction, and a fixture's `VerifySpec | None` is Optional at every use. Those come from the
+# test style, not defects. Widening to the suite later means shortening this list.
+exclude = ["api/test_*.py", "api/conftest.py", "**/.venv", "**/__pycache__"]
+# Resolve fastapi/pydantic/acp from the dev venv `make venv` builds. Without it, 20 of the 192 findings
+# are `reportMissingImports`, and the checker has nothing to say about code using an unseen library.
+venvPath = "."
+venv = ".venv"
+# The floor CI actually promises, not ruff's `target-version` above: the pinned numpy ships no 3.11 wheel,
+# so nothing can install this service on 3.11. (ruff's py311 only withholds newer-syntax suggestions,
+# so it is harmless.)
+pythonVersion = "3.12"
+typeCheckingMode = "standard"
+
+[tool.pytest.ini_options]
+testpaths = ["api", "scripts/tests"]  # scripts/tests: the probes' own scoring rules (CUR-4595)
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-q --strict-markers"
+filterwarnings = [
+  # in-memory test DBs are GC'd, not leaked — the reload test triggers the collection
+  "ignore:unclosed database:ResourceWarning",
+  # third-party: starlette's TestClient still imports httpx (not actionable for us)
+  "ignore:Using .httpx. with .starlette.testclient.",
+]
+
+[tool.mutmut]
+# CUR-1189, candidate 3. Real keys confirmed against the installed mutmut==3.8.0's own
+# configuration.py — its README examples target an older config shape. `pyproject.toml`'s
+# [tool.pytest.ini_options] restricts bare `pytest` to testpaths=["api"], so mutmut's own
+# pytest invocation needs the test path spelled out explicitly via
+# pytest_add_cli_args_test_selection, and also_copy needs scripts/tests/ named directly —
+# mutmut's default also_copy only grabs a top-level tests/ or test/, not a nested one.
+source_paths = ["scripts/route_probe_scoring.py"]
+also_copy = ["scripts/tests/"]
+pytest_add_cli_args_test_selection = ["scripts/tests/test_route_probe_scoring.py"]
+
+[tool.coverage.run]
+source = ["api"]
+omit = ["api/test_*.py", "api/conftest.py"]
+
+[tool.coverage.report]
+# These two are interactive/entrypoint shims (asyncio.run + stdio JSON-RPC loop) that a unit
+# test can't drive without a live ACP client; we cover their pure helpers, not the main() loop.
+exclude_lines = ["pragma: no cover", "if __name__ == .__main__.:", "def main\\("]
+show_missing = true
+# Floor below the current offline number — catches a real coverage collapse without being brittle.
+# (The live I/O paths — subprocess agent runs, streaming upstream forward — are covered by the
+# bash integration tests, not this offline suite.)
+#
+# The floor is 75 against an actual 77.95% (CUR-1226): a floor far below the real number is
+# closer to off than on.
+# 3 points of slack absorbs an honest refactor; a whole module going untested does not fit in it.
+fail_under = 75

@@ -1,0 +1,1 @@
+ALTER TABLE "turn_outcomes" ADD COLUMN "ttft_ms" integer;

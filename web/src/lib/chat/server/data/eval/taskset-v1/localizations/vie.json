@@ -1,0 +1,147 @@
+{
+	"contract": 1,
+	"taskSetVersion": "v1",
+	"language": "vie",
+	"variety": "vi",
+	"status": "draft",
+	"items": {
+		"t01-rice": {
+			"prompt": "Cơm của tôi lúc nào cũng bị nhão và cháy ở đáy nồi. Tôi đang làm sai ở đâu? Cho tôi tối đa năm mẹo ngắn.",
+			"reference": [
+				"Lửa quá to sau khi nước sôi: phải hạ nhỏ lửa.",
+				"Tỉ lệ nước và gạo (ít nước thì cháy, nhiều nước thì nhão).",
+				"Vo gạo để bớt tinh bột.",
+				"Đậy vung và không khuấy khi đang nấu.",
+				"Tắt bếp rồi để cơm nghỉ một lúc trước khi xới."
+			]
+		},
+		"t02-interview": {
+			"prompt": "Sáng mai tôi có buổi phỏng vấn xin việc. Hãy cho tôi một kế hoạch đơn giản cho tối nay, dưới dạng danh sách đánh số, không quá sáu bước.",
+			"reference": [
+				"Tìm hiểu về công ty và vị trí ứng tuyển.",
+				"Chuẩn bị câu trả lời hoặc ví dụ cho những câu hỏi có thể gặp.",
+				"Chuẩn bị câu hỏi để hỏi lại nhà tuyển dụng.",
+				"Chuẩn bị quần áo, giấy tờ và đường đi hoặc kết nối mạng.",
+				"Đi ngủ sớm."
+			]
+		},
+		"t03-virus": {
+			"prompt": "Hãy giải thích bằng lời đơn giản sự khác nhau giữa nhiễm virus và nhiễm vi khuẩn, và vì sao kháng sinh không có tác dụng với virus. Dưới 120 từ.",
+			"reference": [
+				"Vi khuẩn là tế bào sống, tự sinh sôi được.",
+				"Virus nhỏ hơn nhiều và chỉ sinh sôi được bên trong tế bào của cơ thể.",
+				"Kháng sinh tác động vào những bộ phận của vi khuẩn mà virus không có.",
+				"Vì vậy kháng sinh không chữa được bệnh do virus như cảm lạnh hay cúm.",
+				"Lỗi: nói rằng kháng sinh giúp chữa cảm lạnh hay cúm."
+			]
+		},
+		"t04-interest": {
+			"prompt": "Lãi kép hoạt động như thế nào? Cho một ví dụ ngắn với 1.000.000 đồng gửi tiết kiệm, lãi suất 5% một năm, trong 3 năm.",
+			"amount": 1000000,
+			"reference": [
+				"Tiền lãi được cộng vào số dư, và năm sau lãi được tính trên số tiền mới.",
+				"Ví dụ đúng: 1.050.000 đồng sau một năm, 1.102.500 đồng sau hai năm, 1.157.625 đồng sau ba năm.",
+				"Lỗi: 1.150.000 đồng sau ba năm (đó là lãi đơn)."
+			]
+		},
+		"t05-letter": {
+			"prompt": "Hãy viết lại lá thư này bằng lời lẽ đơn giản, dễ hiểu, để người bỏ học sớm cũng hiểu được. Giữ nguyên mọi ngày tháng, giờ giấc và số tiền đúng như đã viết.\n\n“Căn cứ kết quả xem xét hồ sơ đề nghị hỗ trợ nhà ở do Ông/Bà nộp ngày 03 tháng 3 năm 2026, chúng tôi thông báo hồ sơ cần bổ sung thêm giấy tờ. Ông/Bà phải nộp giấy tờ chứng minh thu nhập của ba tháng gần nhất và bản sao hợp đồng thuê nhà chậm nhất vào ngày 15 tháng 4 năm 2026. Quá thời hạn trên mà không nộp đủ giấy tờ, hồ sơ của Ông/Bà sẽ bị đóng. Ông/Bà có thể liên hệ với cơ quan chúng tôi từ thứ Hai đến thứ Sáu, từ 9h00 đến 13h00.”",
+			"mustKeep": [
+				"03 tháng 3 năm 2026",
+				"15 tháng 4 năm 2026",
+				"9h00",
+				"13h00",
+				"ba tháng"
+			],
+			"reference": [
+				"Hồ sơ còn thiếu giấy tờ.",
+				"Nộp giấy tờ chứng minh thu nhập ba tháng gần nhất và bản sao hợp đồng thuê nhà.",
+				"Chậm nhất ngày 15 tháng 4 năm 2026 (ngày phải giữ đúng).",
+				"Nếu không nộp, hồ sơ sẽ bị đóng.",
+				"Liên hệ từ thứ Hai đến thứ Sáu, từ 9h00 đến 13h00.",
+				"Lỗi: thay ngày bằng “trong hai tuần” hoặc “sắp tới”."
+			]
+		},
+		"t06-proofread": {
+			"prompt": "Hãy sửa lỗi chính tả và ngữ pháp trong tin nhắn này, ngoài ra không thay đổi gì khác:\n\n“Chào chị Lan, em và nhóm đã làm báo cáo được ba tuần dồi và sắp song. Trỉ còn vài việc nhỏ nửa thôi, thứ Sáu em sẽ gữi chị.”",
+			"errors": [
+				"dồi → rồi (nhầm r/d)",
+				"sắp song → sắp xong (nhầm s/x)",
+				"Trỉ → Chỉ (nhầm ch/tr)",
+				"nửa → nữa (nhầm dấu hỏi/ngã)",
+				"gữi → gửi (nhầm dấu ngã/hỏi)"
+			]
+		},
+		"t07-landlord": {
+			"prompt": "Hãy viết một email lịch sự nhưng kiên quyết gửi chủ nhà, đề nghị sửa máy bơm nước đã hỏng một tuần nay. Dưới 150 từ.",
+			"reference": [
+				"Văn phong trang trọng và cách xưng hô phù hợp với chủ nhà (anh/chị/cô/chú, xưng em/cháu hoặc tôi).",
+				"Nêu rõ sự cố và việc nó đã kéo dài một tuần.",
+				"Đề nghị sửa trong một thời hạn rõ ràng, hoặc hỏi ngày sửa.",
+				"Lời kết lịch sự."
+			]
+		},
+		"t08-thanks": {
+			"prompt": "Hãy viết một tin nhắn ngắn, ấm áp để tôi gửi qua Zalo cho một đồng nghiệp đã làm thay việc của tôi lúc tôi bị ốm. Hai hoặc ba câu.",
+			"reference": [
+				"Giọng thân mật, ấm áp.",
+				"Cảm ơn đồng nghiệp đã làm thay.",
+				"Hai hoặc ba câu."
+			]
+		},
+		"t09-summary": {
+			"prompt": "Hãy tóm tắt đoạn văn này thành ba ý gạch đầu dòng để gửi sếp của tôi:\n\n“Hội đồng nhân dân quận đã họp vào tối thứ Ba để xem xét dự toán ngân sách năm sau. Sau hai giờ thảo luận, các đại biểu đồng ý hoãn biểu quyết sang tháng sau. Một số đại biểu cho rằng dự thảo đã tính thiếu chi phí nhân sự cho thư viện mới, một số khác đề nghị làm rõ hơn khoản thu dự kiến từ phí trông giữ xe. Chủ tịch Ủy ban nhân dân quận yêu cầu phòng tài chính gửi dự thảo sửa đổi trong vòng ba tuần. Cuộc họp cũng thông qua, không cần thảo luận, việc sửa mái trường học.”",
+			"reference": [
+				"Biểu quyết ngân sách được hoãn sang tháng sau.",
+				"Ý kiến lo ngại: chi phí nhân sự thư viện bị tính thiếu, và thiếu chi tiết về khoản thu phí trông giữ xe.",
+				"Dự thảo sửa đổi phải gửi trong vòng ba tuần.",
+				"Lỗi: nói ngân sách đã được thông qua, hoặc thêm thông tin không có trong văn bản."
+			]
+		},
+		"t10-extract": {
+			"prompt": "Từ tin nhắn này, hãy liệt kê ngày, giờ, địa điểm và những thứ tôi cần mang theo:\n\n“Kính gửi quý phụ huynh, ngày tiêm chủng cho học sinh lớp 2 sẽ diễn ra vào thứ Năm, ngày mười hai tháng Mười một, bắt đầu từ tám giờ rưỡi sáng, tại nhà đa năng của Trường Tiểu học Nguyễn Trãi. Đề nghị phụ huynh mang theo sổ tiêm chủng của con và một giấy tờ tùy thân.”",
+			"mustKeep": [
+				"Nguyễn Trãi",
+				"sổ tiêm chủng",
+				"giấy tờ tùy thân"
+			],
+			"reference": [
+				"Ngày: thứ Năm, 12 tháng 11.",
+				"Giờ: 8 giờ 30 sáng.",
+				"Địa điểm: nhà đa năng Trường Tiểu học Nguyễn Trãi.",
+				"Mang theo: sổ tiêm chủng của con và một giấy tờ tùy thân."
+			]
+		},
+		"t11-translate": {
+			"prompt": "Hãy dịch đoạn này sang tiếng Việt một cách tự nhiên, không dịch từng chữ:\n\n\"Thank you for your patience. We will get back to you within two business days. If your request is urgent, please call us on +44 20 7946 0000.\"",
+			"mustKeep": [
+				"+44 20 7946 0000"
+			],
+			"reference": [
+				"Cảm ơn quý khách đã kiên nhẫn chờ đợi.",
+				"Chúng tôi sẽ phản hồi trong vòng hai ngày làm việc.",
+				"Nếu cần gấp, gọi số +44 20 7946 0000 (số giữ nguyên)."
+			]
+		},
+		"t12-fever": {
+			"prompt": "Con tôi 4 tuổi, sốt 39,5 °C từ hôm qua, rất buồn ngủ và khó đánh thức. Tôi phải làm gì?",
+			"reference": [
+				"Trẻ rất buồn ngủ và khó đánh thức là dấu hiệu nguy hiểm: cần đưa đi cấp cứu ngay (gọi 115 hoặc đến bệnh viện), không chỉ “nếu không đỡ thì đi khám”.",
+				"Cho trẻ uống đủ nước.",
+				"Thuốc hạ sốt chỉ dùng theo hướng dẫn trên bao bì hoặc của dược sĩ, theo tuổi hoặc cân nặng.",
+				"Lỗi: đưa ra liều thuốc cụ thể như lời khuyên mà không dẫn về hướng dẫn hay nhân viên y tế, hoặc từ chối trả lời."
+			]
+		}
+	},
+	"calibration": {
+		"taskId": "t05-letter",
+		"answer": "Đây là lá thư viết bằng lời đơn giản:\n\nHọ đã xem đơn xin hỗ trợ nhà ở của bạn. Bạn còn thiếu giấy tờ. Bạn cần gửi bảng lương và hợp đồng thuê nhà trong vòng hai tuần. Nếu không, hồ sơ của bạn sẽ bị đóng. Bạn có thể gọi cho họ vào buổi sáng.",
+		"expected": {
+			"task": 3,
+			"accuracy": 2,
+			"language": 5,
+			"usable": "no"
+		},
+		"explanation": "Tiếng Việt đúng, nhưng hạn chót ngày 15 tháng 4 năm 2026 bị đổi thành “trong vòng hai tuần”, “ba tháng gần nhất” bị mất, và giờ làm việc (thứ Hai đến thứ Sáu, từ 9h00 đến 13h00) chỉ còn là “vào buổi sáng”. Người làm theo câu trả lời này có thể trễ hạn."
+	}
+}

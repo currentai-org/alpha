@@ -1,0 +1,145 @@
+{
+	"contract": 1,
+	"taskSetVersion": "v1",
+	"language": "hau",
+	"variety": "ha-NG",
+	"status": "draft",
+	"items": {
+		"t01-rice": {
+			"prompt": "Shinkafata kullum tana caɓewa tana mannewa, kuma tana ƙonewa a ƙasan tukunya. Me nake yi ba daidai ba? Ba ni gajerun shawarwari waɗanda ba su wuce biyar ba.",
+			"reference": [
+				"Wuta ta yi ƙarfi da yawa bayan ruwa ya tafasa: a rage wutar ta yi ƙasa.",
+				"Daidaiton ruwa da shinkafa (ruwa kaɗan yana sa ta ƙone, ruwa da yawa yana sa ta caɓe).",
+				"Wanke shinkafa don cire sitaci.",
+				"A rufe tukunya kuma kada a juya lokacin dafawa.",
+				"A sauke ta daga wuta a bar ta ta ɗan huta kafin a zuba."
+			]
+		},
+		"t02-interview": {
+			"prompt": "Ina da hirar neman aiki gobe da safe. Ba ni tsari mai sauƙi na yau da yamma, a matsayin jerin matakai masu lamba da ba su wuce shida ba.",
+			"reference": [
+				"Yin bincike game da kamfanin ko ma'aikatar da kuma matsayin aikin.",
+				"Shirya amsoshi ko misalai ga tambayoyin da ake iya yi.",
+				"Shirya tambayoyin da za ka yi musu.",
+				"Shirya tufafi, takardu, da hanyar zuwa wurin ko haɗin intanet.",
+				"Kwanciya da wuri."
+			]
+		},
+		"t03-virus": {
+			"prompt": "Bayyana da kalmomi masu sauƙi bambancin da ke tsakanin cutar da ƙwayar bairus (virus) ke haifarwa da wadda ƙwayar bakteriya ke haifarwa, da kuma dalilin da ya sa magungunan kashe ƙwayoyin cuta (antibiotics) ba sa aiki a kan bairus. Kada ya wuce kalmomi 120.",
+			"reference": [
+				"Bakteriya ƙwayoyin halitta ne masu rai da ke iya hayayyafa da kansu.",
+				"Bairus ya fi ƙanƙanta sosai, kuma yana hayayyafa ne kawai a cikin ƙwayoyin halittar jiki.",
+				"Magungunan antibiotics suna kai hari ga sassa ko ayyukan bakteriya waɗanda bairus ba shi da su.",
+				"Don haka antibiotics ba sa warkar da cututtukan bairus kamar mura ko murar flu.",
+				"Kuskure: cewa antibiotics suna taimakawa wajen mura ko flu, ko cewa bairus wani nau'in bakteriya ne."
+			]
+		},
+		"t04-interest": {
+			"prompt": "Yaya kuɗin ruwa a kan ruwa (compound interest) yake aiki? Ba da gajeren misali da Naira 1,000,000 da aka ajiye da kuɗin ruwa na 5% a shekara na tsawon shekara 3.",
+			"amount": 1000000,
+			"reference": [
+				"Ana ƙara kuɗin ruwa a kan ajiyar, kuma ana lissafa kuɗin ruwan shekara mai zuwa a kan sabon jimillar.",
+				"Misali daidai: Naira 1,050,000 bayan shekara ɗaya, 1,102,500 bayan shekara biyu, 1,157,625 bayan shekara uku.",
+				"Kuskure: Naira 1,150,000 bayan shekara uku (wannan kuɗin ruwa ne mai sauƙi, ba na ruwa a kan ruwa ba)."
+			]
+		},
+		"t05-letter": {
+			"prompt": "Sake rubuta wannan wasiƙa da kalmomi masu sauƙi, yadda wanda bai yi zurfin karatu ba zai fahimta. Bar kowace kwanan wata, lokaci da adadin kuɗi daidai yadda aka rubuta su.\n\n“Bayan nazarin takardar neman tallafin gidaje da kuka gabatar a ranar 3 ga Maris, 2026, muna sanar da ku cewa ana buƙatar ƙarin takardu. Dole ne ku gabatar da shaidar kuɗin shigarku na watanni uku da suka gabata tare da kwafin yarjejeniyar hayar gidanku a ranar 15 ga Afrilu, 2026 ko kafin nan. Rashin gabatar da waɗannan takardu cikin wa'adin da aka ƙayyade zai sa a rufe fayil ɗinku. Kuna iya tuntuɓar ofishinmu a ranakun aiki daga ƙarfe 9:00 na safe zuwa ƙarfe 1:00 na rana.”",
+			"mustKeep": [
+				"3 ga Maris, 2026",
+				"15 ga Afrilu, 2026",
+				"9:00",
+				"1:00",
+				"watanni uku"
+			],
+			"reference": [
+				"Suna buƙatar ƙarin takardu.",
+				"A aika da shaidar kuɗin shiga na watanni uku da suka gabata da yarjejeniyar haya.",
+				"A ranar 15 ga Afrilu, 2026 ko kafin nan (dole kwanan watan ya zauna daidai).",
+				"Idan ba haka ba, za a rufe fayil ɗin.",
+				"Ofishin yana buɗe a ranakun aiki, daga ƙarfe 9:00 na safe zuwa ƙarfe 1:00 na rana.",
+				"Kuskure: maye gurbin kwanan watan da “cikin mako biyu” ko “nan ba da daɗewa ba”."
+			]
+		},
+		"t06-proofread": {
+			"prompt": "Gyara kurakuran rubutu da nahawu a cikin wannan saƙo, kuma kada ka canza wani abu dabam:\n\n“Sannu Hauwa, ni da kungiyata muna aiki a kan rahoton tsawon mako uku, kuma mun kusa gamawa. Saura 'yan abubuwa kadan, zan aiko maka shi ranar juma'a.”",
+			"errors": [
+				"kungiyata → ƙungiyata (ƙ mai ƙugiya)",
+				"kadan → kaɗan (ɗ mai ƙugiya)",
+				"aiko maka → aiko miki (Hauwa mace ce)",
+				"juma'a → Juma'a (sunan rana yana farawa da babban baƙi)"
+			]
+		},
+		"t07-landlord": {
+			"prompt": "Rubuta imel mai ladabi amma mai ƙarfi zuwa ga mai gidana, ina roƙonsa ya gyara injin famfon ruwa, wanda ya lalace tun mako ɗaya da ya wuce. Kada ya wuce kalmomi 150.",
+			"reference": [
+				"Harshe na ladabi da gaisuwa da suka dace da mai gida.",
+				"Ya bayyana matsalar da kuma cewa ta ɗauki mako ɗaya.",
+				"Ya nemi a gyara cikin lokaci bayyananne, ko ya nemi a sa rana.",
+				"Rufewa ta ladabi."
+			]
+		},
+		"t08-thanks": {
+			"prompt": "Rubuta gajeren saƙo mai daɗi da zan iya aikawa ta WhatsApp ga abokiyar aikina wadda ta riƙe min aikina lokacin da nake rashin lafiya. Jimloli biyu ko uku.",
+			"reference": [
+				"Harshe na sakewa, mai daɗi, ba na ofis ba.",
+				"Ya gode wa abokiyar aikin don riƙe aikin.",
+				"Jimloli biyu ko uku."
+			]
+		},
+		"t09-summary": {
+			"prompt": "Taƙaita wannan rubutu a cikin maki uku don manajata:\n\n“Majalisar ƙaramar hukuma ta yi taro ranar Talata da yamma don duba kasafin kuɗin shekara mai zuwa. Bayan sa'o'i biyu na muhawara, kansiloli sun amince su ɗage jefa ƙuri'a zuwa wata mai zuwa. Wasu kansiloli sun ce shirin ya rage ƙiyasin kuɗin ma'aikatan sabon ɗakin karatu, wasu kuma sun nemi ƙarin bayani kan kuɗin shigar da ake sa ran samu daga kuɗin ajiye motoci. Shugaban ƙaramar hukuma ya umarci sashen kuɗi ya aiko da gyararren shiri cikin mako uku. Taron ya kuma amince, ba tare da muhawara ba, da gyaran rufin makaranta.”",
+			"reference": [
+				"An ɗage jefa ƙuri'a kan kasafin kuɗi zuwa wata mai zuwa.",
+				"Damuwa: an rage ƙiyasin kuɗin ma'aikatan ɗakin karatu, kuma babu isasshen bayani kan kuɗin ajiye motoci.",
+				"Ana sa ran gyararren shiri cikin mako uku.",
+				"Kuskure: cewa an amince da kasafin kuɗin, ko ƙara abubuwan da ba su cikin rubutun."
+			]
+		},
+		"t10-extract": {
+			"prompt": "Daga wannan saƙo, jera kwanan wata, lokaci, wuri, da abin da ya kamata in kawo:\n\n“Ya ku iyaye, ranar allurar rigakafi ga yaran aji biyu za ta gudana ranar Alhamis, sha biyu ga watan Nuwamba, daga ƙarfe takwas da rabi na safe, a ɗakin wasanni na Makarantar Firamare ta Tudun Wada. Don Allah ku kawo katin rigakafin ɗanku da katin shaida.”",
+			"mustKeep": [
+				"Nuwamba",
+				"Makarantar Firamare ta Tudun Wada"
+			],
+			"reference": [
+				"Kwanan wata: Alhamis, 12 ga Nuwamba.",
+				"Lokaci: ƙarfe 8:30 na safe.",
+				"Wuri: ɗakin wasanni na Makarantar Firamare ta Tudun Wada.",
+				"Abin da za a kawo: katin rigakafin yaro da katin shaida."
+			]
+		},
+		"t11-translate": {
+			"prompt": "Fassara wannan rubutu zuwa Hausa, ta hanyar da ta dace da harshe, ba kalma da kalma ba:\n\n\"Thank you for your patience. We will get back to you within two business days. If your request is urgent, please call us on +44 20 7946 0000.\"",
+			"mustKeep": [
+				"+44 20 7946 0000"
+			],
+			"reference": [
+				"Mun gode da haƙurinku.",
+				"Za mu dawo muku da amsa cikin kwanakin aiki biyu.",
+				"Idan buƙatarku ta gaggawa ce, ku kira +44 20 7946 0000 (a kwafi lambar daidai)."
+			]
+		},
+		"t12-fever": {
+			"prompt": "Ɗana ɗan shekara 4 yana da zazzaɓi na 39.5 °C tun jiya, kuma yana barci sosai, da ƙyar ake tashe shi. Me zan yi?",
+			"reference": [
+				"Barci sosai da wahalar tashi alamar haɗari ce: a nemi taimakon likita yanzu nan take (a kira 112 ko a je sashen gaggawa na asibiti), ba wai kawai “a ga likita idan ya ci gaba” ba.",
+				"A riƙa ba yaron ruwa yana sha.",
+				"Maganin zazzaɓi sai kamar yadda takardar maganin ko mai sayar da magani (pharmacist) ya ce, gwargwadon shekaru ko nauyin yaro.",
+				"Kuskure: ba da takamaiman adadin magani a matsayin shawara ba tare da komawa ga takardar magani ko ƙwararre ba, ko ƙin amsawa."
+			]
+		}
+	},
+	"calibration": {
+		"taskId": "t05-letter",
+		"answer": "Ga wasiƙar da kalmomi masu sauƙi:\n\nSun duba takardar neman tallafin gidanku. Suna buƙatar ƙarin takardu. Dole ku aika da takardun albashinku da yarjejeniyar hayar gida cikin mako biyu. Idan ba haka ba, za su rufe fayil ɗinku. Kuna iya kiran su da safe.",
+		"expected": {
+			"task": 3,
+			"accuracy": 2,
+			"language": 5,
+			"usable": "no"
+		},
+		"explanation": "Hausar daidai ce, amma wa'adin 15 ga Afrilu, 2026 ya koma “cikin mako biyu”, “watanni uku da suka gabata” ya ɓace, kuma lokutan ofis (ranakun aiki, daga ƙarfe 9:00 na safe zuwa ƙarfe 1:00 na rana) sun koma “da safe”. Wanda ya bi wannan amsar zai iya rasa wa'adin."
+	}
+}

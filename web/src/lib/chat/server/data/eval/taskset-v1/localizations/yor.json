@@ -1,0 +1,145 @@
+{
+	"contract": 1,
+	"taskSetVersion": "v1",
+	"language": "yor",
+	"variety": "yo-NG",
+	"status": "draft",
+	"items": {
+		"t01-rice": {
+			"prompt": "Ìrẹsì mi máa ń lẹ̀ pọ̀, ó sì máa ń jóná nísàlẹ̀ ìkòkò. Kí ni mò ń ṣe tí kò tọ́? Fún mi ní ìmọ̀ràn kúkúrú tí kò ju márùn-ún lọ.",
+			"reference": [
+				"Iná pọ̀ jù lẹ́yìn tí omi bá hó: dín iná kù kí ó máa hó díẹ̀díẹ̀.",
+				"Ìwọ̀n omi sí ìrẹsì (omi tí kò tó máa ń jẹ́ kí ó jóná, omi tó pọ̀ jù máa ń jẹ́ kí ó lẹ̀ pọ̀).",
+				"Fífọ ìrẹsì láti yọ sítáàṣì kúrò.",
+				"Fi ìdérí bò ó, má sì ṣe rú u nígbà tí ó ń sè.",
+				"Gbé e kúrò lórí iná kí o jẹ́ kí ó sinmi díẹ̀ kí o tó pín in."
+			]
+		},
+		"t02-interview": {
+			"prompt": "Mo ní ìfọ̀rọ̀wánilẹ́nuwò iṣẹ́ ní àárọ̀ ọ̀la. Fún mi ní ètò tó rọrùn fún alẹ́ òní, gẹ́gẹ́ bí àkójọ onínọ́mbà tí kò ju ìgbésẹ̀ mẹ́fà lọ.",
+			"reference": [
+				"Ṣe ìwádìí nípa ilé-iṣẹ́ náà àti ipò iṣẹ́ náà.",
+				"Múra ìdáhùn tàbí àpẹẹrẹ sílẹ̀ fún àwọn ìbéèrè tí wọ́n ṣeé ṣe kí wọ́n béèrè.",
+				"Múra àwọn ìbéèrè tí ìwọ náà máa béèrè sílẹ̀.",
+				"Múra aṣọ, ìwé-ẹ̀rí, àti ọ̀nà tí o máa gbà dé ibẹ̀ tàbí ìsopọ̀ íntánẹ́ẹ̀tì sílẹ̀.",
+				"Sùn ní kùtùkùtù."
+			]
+		},
+		"t03-virus": {
+			"prompt": "Ṣàlàyé ní ọ̀rọ̀ tó rọrùn ìyàtọ̀ láàárín àìsàn tí fáírọ́ọ̀sì ń fà àti èyí tí bakitéríà ń fà, àti ìdí tí oògùn apakòkòrò (antibiotics) kò fi ṣiṣẹ́ lórí fáírọ́ọ̀sì. Má ṣe jẹ́ kí ó ju ọ̀rọ̀ 120 lọ.",
+			"reference": [
+				"Bakitéríà jẹ́ sẹ́ẹ̀lì alààyè tí ó lè pọ̀ sí i fúnra rẹ̀.",
+				"Fáírọ́ọ̀sì kéré púpọ̀, ó sì lè pọ̀ sí i nínú sẹ́ẹ̀lì ara nìkan.",
+				"Oògùn apakòkòrò ń ṣiṣẹ́ lórí àwọn apá tàbí iṣẹ́ bakitéríà tí fáírọ́ọ̀sì kò ní.",
+				"Nítorí náà, oògùn apakòkòrò kò lè wo àìsàn fáírọ́ọ̀sì bí òtútù tàbí flu.",
+				"Àṣìṣe: sísọ pé oògùn apakòkòrò ń ran òtútù tàbí flu lọ́wọ́, tàbí pé fáírọ́ọ̀sì jẹ́ irú bakitéríà kan."
+			]
+		},
+		"t04-interest": {
+			"prompt": "Báwo ni èlé orí èlé (compound interest) ṣe ń ṣiṣẹ́? Fún mi ní àpẹẹrẹ kúkúrú pẹ̀lú ₦1,000,000 tí a fi pamọ́ ní èlé 5% lọ́dún fún ọdún mẹ́ta.",
+			"amount": 1000000,
+			"reference": [
+				"Wọ́n máa ń fi èlé kún owó tó wà nínú àkáǹtì, èlé ọdún tó tẹ̀lé e sì máa ń jẹ́ lórí iye tuntun náà.",
+				"Àpẹẹrẹ tó tọ́: ₦1,050,000 lẹ́yìn ọdún kan, ₦1,102,500 lẹ́yìn ọdún méjì, ₦1,157,625 lẹ́yìn ọdún mẹ́ta.",
+				"Àṣìṣe: ₦1,150,000 lẹ́yìn ọdún mẹ́ta (èlé lásán ni ìyẹn)."
+			]
+		},
+		"t05-letter": {
+			"prompt": "Tún lẹ́tà yìí kọ ní ọ̀rọ̀ tó rọrùn, kí ẹni tí kò kàwé jìnnà lè lóye rẹ̀. Má ṣe yí ọjọ́, àkókò tàbí iye owó kankan padà; kọ wọ́n gẹ́lẹ́ bí wọ́n ṣe wà.\n\n“Lẹ́yìn àyẹ̀wò ìwé-ìbéèrè rẹ fún ìrànlọ́wọ́ ilé gbígbé tí o fi sílẹ̀ ní ọjọ́ 3 oṣù Kẹta ọdún 2026, a fi tó ọ létí pé a nílò àwọn ìwé àfikún. O gbọ́dọ̀ fi ẹ̀rí owó tí ó ń wọlé fún ọ ní oṣù mẹ́ta sẹ́yìn àti ẹ̀dà ìwé àdéhùn ilé-àyálò rẹ ránṣẹ́ ní ọjọ́ 15 oṣù Kẹrin ọdún 2026 tàbí ṣáájú rẹ̀. Bí o kò bá fi àwọn ìwé wọ̀nyí ránṣẹ́ láàárín àkókò tí a dá, a ó pa fáìlì rẹ dé. O lè kàn sí ọ́fíìsì wa ní ọjọ́ iṣẹ́ láti agogo 9:00 àárọ̀ sí agogo 1:00 ọ̀sán.”",
+			"mustKeep": [
+				"ọjọ́ 3 oṣù Kẹta ọdún 2026",
+				"ọjọ́ 15 oṣù Kẹrin ọdún 2026",
+				"9:00",
+				"1:00",
+				"oṣù mẹ́ta"
+			],
+			"reference": [
+				"Wọ́n nílò ìwé sí i.",
+				"Fi ẹ̀rí owó tó ń wọlé fún ọ ní oṣù mẹ́ta sẹ́yìn àti ìwé àdéhùn ilé-àyálò ránṣẹ́.",
+				"Ní ọjọ́ 15 oṣù Kẹrin ọdún 2026 tàbí ṣáájú (ọjọ́ náà gbọ́dọ̀ wà bí ó ṣe wà).",
+				"Bí bẹ́ẹ̀ kọ́, wọn yóò pa fáìlì náà dé.",
+				"Ọ́fíìsì wà ní ṣíṣí ní ọjọ́ iṣẹ́, láti agogo 9:00 àárọ̀ sí agogo 1:00 ọ̀sán.",
+				"Àṣìṣe: fífi “láàárín ọ̀sẹ̀ méjì” tàbí “láìpẹ́” rọ́pò ọjọ́ náà."
+			]
+		},
+		"t06-proofread": {
+			"prompt": "Ṣàtúnṣe àṣìṣe sípẹ́lì àti gírámà nínú ọ̀rọ̀ yìí, má sì yí nǹkan mìíràn padà:\n\n“Báwo ni Tolú, mo àti ẹgbẹ́ mi ti ń ṣiṣẹ́ lórí ìjábọ̀ náà fún ọ̀sẹ̀ mẹ́tà, a sì ti fẹ́rẹ̀ parí. Nǹkan díẹ̀ ló kú, màá fi ránṣẹ́ sí ẹ ní ọjọ́ ẹtì.”",
+			"errors": [
+				"mo àti ẹgbẹ́ mi → èmi àti ẹgbẹ́ mi (“mo” kò lè dúró pẹ̀lú “àti”)",
+				"ọ̀sẹ̀ mẹ́tà → ọ̀sẹ̀ mẹ́ta (ohùn tí kò tọ́)",
+				"ló kú → ló kù (“kú” ni ikú; “kù” ni ṣíṣẹ́kù)",
+				"ọjọ́ ẹtì → ọjọ́ Ẹtì (orúkọ ọjọ́ ń bẹ̀rẹ̀ pẹ̀lú lẹ́tà ńlá)"
+			]
+		},
+		"t07-landlord": {
+			"prompt": "Kọ ímeèlì tó bọ̀wọ̀ fúnni ṣùgbọ́n tó dúró ṣinṣin sí onílé mi, láti béèrè pé kó tún ẹ̀rọ fífa omi (pump) ṣe, èyí tó ti bàjẹ́ fún ọ̀sẹ̀ kan báyìí. Kí ó má ju ọ̀rọ̀ 150 lọ.",
+			"reference": [
+				"Èdè tó bọ̀wọ̀ fúnni àti ìkíni tó yẹ fún onílé.",
+				"Ó ṣàlàyé ìṣòro náà àti pé ó ti tó ọ̀sẹ̀ kan.",
+				"Ó béèrè fún àtúnṣe láàárín àkókò tó ṣe kedere, tàbí ó béèrè ọjọ́.",
+				"Ìparí tó bọ̀wọ̀ fúnni."
+			]
+		},
+		"t08-thanks": {
+			"prompt": "Kọ ọ̀rọ̀ kúkúrú tó lọ́yàyà tí mo lè fi ránṣẹ́ lórí WhatsApp sí alábàáṣiṣẹ́ mi tó bá mi ṣe iṣẹ́ mi nígbà tí ara mi kò yá. Gbólóhùn méjì tàbí mẹ́ta.",
+			"reference": [
+				"Èdè ìrọ̀rùn, tó lọ́yàyà, tí kì í ṣe ti ìjọba.",
+				"Ó dúpẹ́ lọ́wọ́ alábàáṣiṣẹ́ náà fún bíbá a ṣe iṣẹ́.",
+				"Gbólóhùn méjì tàbí mẹ́ta."
+			]
+		},
+		"t09-summary": {
+			"prompt": "Ṣe àkópọ̀ ọ̀rọ̀ yìí ní kókó mẹ́ta fún ọ̀gá mi:\n\n“Ìgbìmọ̀ ìjọba ìbílẹ̀ ṣe ìpàdé ní alẹ́ Ọjọ́ Ìṣẹ́gun láti ṣàyẹ̀wò ètò ìṣúná ọdún tó ń bọ̀. Lẹ́yìn wákàtí méjì tí wọ́n fi jiyàn, àwọn kansílọ̀ gbà láti sún ìdìbò síwájú di oṣù tó ń bọ̀. Àwọn kansílọ̀ kan sọ pé àbá náà fojú kéré owó òṣìṣẹ́ fún ilé-ìkàwé tuntun, àwọn mìíràn sì béèrè àlàyé síwájú sí i lórí owó tí wọ́n retí láti owó ìgbọ́kọ̀sí. Alága ní kí ẹ̀ka ìṣúná fi àbá tí a tún ṣe ránṣẹ́ láàárín ọ̀sẹ̀ mẹ́ta. Ìpàdé náà tún fọwọ́ sí àtúnṣe òrùlé ilé-ìwé láìsí àríyànjiyàn.”",
+			"reference": [
+				"Wọ́n sún ìdìbò lórí ètò ìṣúná síwájú di oṣù tó ń bọ̀.",
+				"Ìṣòro: owó òṣìṣẹ́ ilé-ìkàwé tí wọ́n fojú kéré, àti àlàyé tí kò tó lórí owó ìgbọ́kọ̀sí.",
+				"Wọ́n retí àbá tí a tún ṣe láàárín ọ̀sẹ̀ mẹ́ta.",
+				"Àṣìṣe: sísọ pé wọ́n ti fọwọ́ sí ètò ìṣúná náà, tàbí fífi ohun tí kò sí nínú ọ̀rọ̀ náà kún un."
+			]
+		},
+		"t10-extract": {
+			"prompt": "Láti inú ọ̀rọ̀ yìí, ṣe àkójọ ọjọ́, àkókò, ibi, àti ohun tí mo gbọ́dọ̀ mú wá:\n\n“Ẹ̀yin òbí, ọjọ́ abẹ́rẹ́ àjẹsára fún àwọn ọmọ kíláàsì kejì yóò wáyé ní Ọjọ́bọ̀, ọjọ́ kejìlá oṣù kọkànlá, láti agogo mẹ́jọ ààbọ̀ òwúrọ̀, nínú gbọ̀ngàn eré ìdárayá Ilé-ìwé Alákọ̀ọ́bẹ̀rẹ̀ St. Anne. Ẹ jọ̀wọ́, ẹ mú káàdì abẹ́rẹ́ àjẹsára ọmọ yín àti ìwé ìdánimọ̀ wá.”",
+			"mustKeep": [
+				"oṣù kọkànlá",
+				"St. Anne"
+			],
+			"reference": [
+				"Ọjọ́: Ọjọ́bọ̀, 12 oṣù kọkànlá (November).",
+				"Àkókò: 8:30 òwúrọ̀.",
+				"Ibi: gbọ̀ngàn eré ìdárayá Ilé-ìwé Alákọ̀ọ́bẹ̀rẹ̀ St. Anne.",
+				"Ohun tí a ó mú wá: káàdì abẹ́rẹ́ àjẹsára ọmọ àti ìwé ìdánimọ̀."
+			]
+		},
+		"t11-translate": {
+			"prompt": "Túmọ̀ ọ̀rọ̀ yìí sí èdè Yorùbá, lọ́nà tó bá ìlò èdè mu, kì í ṣe ọ̀rọ̀ sí ọ̀rọ̀:\n\n\"Thank you for your patience. We will get back to you within two business days. If your request is urgent, please call us on +44 20 7946 0000.\"",
+			"mustKeep": [
+				"+44 20 7946 0000"
+			],
+			"reference": [
+				"Ẹ ṣé fún sùúrù yín.",
+				"A ó dá yín lóhùn láàárín ọjọ́ iṣẹ́ méjì.",
+				"Bí ọ̀rọ̀ náà bá kánjú, ẹ pè wá ní +44 20 7946 0000 (nọ́mbà náà gbọ́dọ̀ wà gẹ́lẹ́)."
+			]
+		},
+		"t12-fever": {
+			"prompt": "Ọmọ mi ọlọ́dún mẹ́rin ti ní ibà 39.5 °C láti àná, oorun ń kùn ún gan-an, ó sì ṣòro láti jí i. Kí ni kí n ṣe?",
+			"reference": [
+				"Oorun tó pọ̀ jù àti ṣíṣòro láti jí jẹ́ àmì ewu: wá ìrànlọ́wọ́ ìṣègùn lẹ́sẹ̀kẹsẹ̀ (pe 112 tàbí lọ sí ẹ̀ka pàjáwìrì ilé-ìwòsàn), kì í ṣe “lọ rí dókítà bí ó bá ń bá a lọ” nìkan.",
+				"Máa fún ọmọ náà ní omi mu.",
+				"Oògùn ibà nìkan gẹ́gẹ́ bí ìwé inú páálí oògùn tàbí oníṣègùn òyìnbó (pharmacist) ṣe sọ, ní ìbámu pẹ̀lú ọjọ́ orí tàbí ìwọ̀n ara.",
+				"Àṣìṣe: fífúnni ní ìwọ̀n oògùn kan pàtó bí ìmọ̀ràn láìtọ́ka sí ìwé oògùn tàbí akọ́ṣẹ́mọṣẹ́, tàbí kíkọ̀ láti dáhùn."
+			]
+		}
+	},
+	"calibration": {
+		"taskId": "t05-letter",
+		"answer": "Lẹ́tà náà nìyí ní ọ̀rọ̀ tó rọrùn:\n\nWọ́n ti wo ìwé-ìbéèrè rẹ fún ìrànlọ́wọ́ ilé. Wọ́n nílò ìwé sí i. O gbọ́dọ̀ fi ìwé owó-oṣù rẹ àti ìwé àdéhùn ilé rẹ ránṣẹ́ láàárín ọ̀sẹ̀ méjì. Bí bẹ́ẹ̀ kọ́, wọn yóò pa fáìlì rẹ dé. O lè pè wọ́n ní àárọ̀.",
+		"expected": {
+			"task": 3,
+			"accuracy": 2,
+			"language": 5,
+			"usable": "no"
+		},
+		"explanation": "Èdè Yorùbá náà dára, ṣùgbọ́n ọjọ́ ìkẹyìn, ọjọ́ 15 oṣù Kẹrin ọdún 2026, di “láàárín ọ̀sẹ̀ méjì”, “oṣù mẹ́ta sẹ́yìn” ti pòórá, àti àkókò ọ́fíìsì (ọjọ́ iṣẹ́, láti agogo 9:00 àárọ̀ sí agogo 1:00 ọ̀sán) di “ní àárọ̀”. Ẹni tó bá tẹ̀lé ìdáhùn yìí lè pàdánù ọjọ́ ìkẹyìn."
+	}
+}

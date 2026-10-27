@@ -1,0 +1,14 @@
+# Overrides live here because pnpm 11 reads them from this file only, never from package.json.
+# Every one is a dev-only dependency of fantasticon, the icon font build, and each stays inside the
+# major its dependents already ask for. Dependabot cannot lift these transitive versions on its own.
+# ttf2woff2 compiles the woff2 encoder; es5-ext's script only prints a notice.
+allowBuilds:
+  es5-ext: false
+  ttf2woff2: true
+overrides:
+  '@xmldom/xmldom': ^0.9.12
+  brace-expansion@^2: ^2.1.7
+  brace-expansion@^5: ^5.0.12
+  handlebars: ^4.7.10
+  http-cache-semantics: ^4.3.0
+  ip-address: ^10.7.2

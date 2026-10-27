@@ -1,0 +1,17 @@
+# Overlay for the ISOLATED config (bwrap), used by deploy/smoke-iso.sh:
+#   docker compose -f compose.yaml -f deploy/compose.iso.yaml up -d --build
+# Sandbox ON + fail-closed. Runs NON-root (default agent uid): bwrap then uses the unprivileged
+# user-namespace path for its mounts. (Root-in-container is WORSE — it takes bwrap's privileged path,
+# which fails "make / slave: Permission denied" because a container's root mount can't be re-propagated
+# even with SYS_ADMIN.) Needs: host allows unprivileged userns (it does) + seccomp/apparmor not blocking
+# the CLONE_NEWUSER clone. Fly's microVM should allow userns the same way; SANDBOX_REQUIRED fails closed.
+services:
+  app:
+    environment:
+      AGENT_SANDBOX_BACKEND: "bwrap"
+      AGENT_SANDBOX: "bwrap"
+      AGENT_SANDBOX_REQUIRED: "1"
+    security_opt:
+      - "seccomp=unconfined"        # don't block bwrap's namespace syscalls (clone CLONE_NEWUSER, mount)
+      - "apparmor=unconfined"       # apparmor can also block unprivileged userns on some hosts
+      - "systempaths=unconfined"    # unmask /proc so bwrap can mount a fresh procfs (Docker masks it by default)

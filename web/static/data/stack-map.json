@@ -1,0 +1,218 @@
+{
+	"generatedFrom": "OSO product-view (local)",
+	"layers": [
+		{
+			"label": "Routing",
+			"ghost": false,
+			"nodes": [
+				{
+					"id": "router",
+					"nm": "model-router",
+					"org": "Arch-Router · Katanemo",
+					"st": "building",
+					"d": "Planned: route each query to the right open model by task (Arch-Router-1.5B). One model serves every answer today; provider routing (LiteLLM) is {routingProvider}."
+				}
+			]
+		},
+		{
+			"label": "Model",
+			"ghost": false,
+			"nodes": [
+				{
+					"id": "apertus",
+					"nm": "{modelShort}",
+					"org": "Swiss National AI Institute (SNAI)",
+					"st": "live",
+					"d": "Open-weights Swiss foundation model (text-only today; multimodal incoming). Multilingual, open training data. Served checkpoint: {servedCheckpoint}.",
+					"prov": "open weights · HuggingFace · trained on CSCS",
+					"url": "https://huggingface.co/swiss-ai/Apertus-70B-Instruct-2509",
+					"lineage": {
+						"summary": "fully open & reproducible, opt-out-respecting",
+						"facts": [
+							"15T tokens · 1811 languages",
+							"open weights + open data + open training recipe",
+							"respects data-owner opt-out, even retroactively"
+						],
+						"links": [
+							{
+								"label": "Technical report ↗",
+								"url": "https://arxiv.org/abs/2509.14233"
+							},
+							{
+								"label": "Data recipe ↗",
+								"url": "https://github.com/swiss-ai/pretrain-data"
+							}
+						]
+					}
+				}
+			]
+		},
+		{
+			"label": "Compute",
+			"ghost": false,
+			"nodes": [
+				{
+					"id": "cscs",
+					"nm": "CSCS 🇨🇭",
+					"org": "Swiss National Supercomputing Centre",
+					"st": "live",
+					"d": "Sovereign public compute — owned by the public, not a company. Apertus was trained here; it's the production serving target too ({cscsServingNote}).",
+					"prov": "public infrastructure · Switzerland",
+					"lineage": {
+						"summary": "Public infrastructure, not a company: CSCS is a unit of ETH Zürich, publicly funded. It trained Apertus and is the production serving target.",
+						"facts": [
+							"Swiss National Supercomputing Centre, in Lugano — operated by ETH Zürich, publicly funded.",
+							"Apertus was trained on its Alps supercomputer."
+						],
+						"links": [
+							{ "label": "cscs.ch", "url": "https://www.cscs.ch" },
+							{ "label": "SNAI · Apertus", "url": "https://huggingface.co/swiss-ai" }
+						]
+					}
+				}
+			]
+		},
+		{
+			"label": "Safety",
+			"ghost": false,
+			"nodes": [
+				{
+					"id": "safety",
+					"nm": "safety screen",
+					"org": "Mistral (Shieldstral-1.0-3B)",
+					"st": "live",
+					"d": "Pre-model input screen — content + child-safety via a self-hosted Shieldstral-1.0-3B judge, live in preview and production. Coop runs the same check only as the flag-off fallback. Declines before the message reaches the model.",
+					"prov": "open safety classifier"
+				},
+				{
+					"id": "coop",
+					"nm": "Coop",
+					"org": "ROOST",
+					"st": "building",
+					"d": "Human-in-the-loop review — reviewers triage flagged content for edge cases and appeals, closing the loop on the automated classifiers with reviewable logs. Building.",
+					"prov": "open moderation tooling"
+				}
+			]
+		},
+		{
+			"label": "Tools",
+			"ghost": false,
+			"nodes": [
+				{
+					"id": "websearch",
+					"nm": "Web search",
+					"org": "Wikipedia · Firecrawl · OpenAlex",
+					"st": "live",
+					"d": "Open-knowledge search over Wikipedia (open public knowledge), Firecrawl (open web search), and OpenAlex (open scholarly index), grounding answers with cited sources. A Google-scale open web index is still the honest gap.",
+					"prov": "open knowledge + open web search + scholarly index"
+				},
+				{
+					"id": "potluck-rag",
+					"nm": "Catalog RAG",
+					"org": "AI Potluck · OSAI gap-map",
+					"st": "live",
+					"d": "Vector retrieval over the AI Potluck catalog — the committed ecosystem index (gap-map categories, exemplar repos, stack narrative) plus documents the team has uploaded to the admin catalog. Only the committed index grounds answers with real project names from the map.",
+					"prov": "committed catalog index · HF embeddings"
+				},
+				{
+					"id": "syft-rag",
+					"nm": "Federated RAG",
+					"org": "OpenMined SyftHub",
+					"st": "live",
+					"d": "Pattern-A federated retrieval over SyftHub — discovery (hub.search) picks the most relevant data sources for a query, then server-side retrieval + rerank returns cited snippets. Sources stay at their origin; the app never hosts their bytes.",
+					"prov": "federated data sources · SyftHub"
+				},
+				{
+					"id": "syft-epfl",
+					"nm": "EPFL News",
+					"org": "EPFL · OpenMined SyftHub",
+					"st": "live",
+					"d": "Federated semantic retrieval over the EPFL news publisher endpoint on SyftHub. Paid per-query; returns cited news snippets.",
+					"prov": "federated publisher · SyftHub"
+				},
+				{
+					"id": "upload",
+					"nm": "File upload",
+					"org": "Docling · pgvector",
+					"st": "building",
+					"d": "Open document parsing + retrieval over open vector stores — building. File attach is wired but turned off for the alpha; parsing isn't built yet.",
+					"atlas": {
+						"pid": "repo:docling-project/docling",
+						"stars": 58707,
+						"stars7d": 425,
+						"contributors": 54,
+						"commits90d": 1503,
+						"language": "Python",
+						"license": null,
+						"desc": "Get your documents ready for gen AI",
+						"url": "https://github.com/docling-project/docling",
+						"openness": "open",
+						"sparkline": [165, 206, 226, 229, 177, 158, 116, 73, 47, 81, 134, 84, 54]
+					}
+				},
+				{
+					"id": "voice",
+					"nm": "Voice",
+					"org": "open invitation",
+					"st": "wanted",
+					"d": "Talk to it out loud. Not part of the open stack here yet — an open invitation, not a closed door."
+				},
+				{
+					"id": "imagegen",
+					"nm": "Image generation",
+					"org": "open invitation",
+					"st": "wanted",
+					"d": "Make images from a prompt. Open projects exist; nobody has wired one in here yet."
+				}
+			]
+		},
+		{
+			"label": "Agent",
+			"ghost": false,
+			"nodes": [
+				{
+					"id": "hermes",
+					"nm": "Nous Hermes",
+					"org": "Nous Research",
+					"st": "building",
+					"d": "Hosted agent service — developer API only for the alpha.",
+					"prov": "open agent models · API-only for alpha"
+				},
+				{
+					"id": "computeruse",
+					"nm": "Computer use",
+					"org": "open invitation",
+					"st": "wanted",
+					"d": "Let the AI act in apps and the browser on your behalf."
+				},
+				{
+					"id": "memory",
+					"nm": "Memory",
+					"org": "open invitation",
+					"st": "wanted",
+					"d": "Remember context across conversations."
+				}
+			]
+		},
+		{
+			"label": "Community",
+			"ghost": false,
+			"nodes": [
+				{
+					"id": "localculture",
+					"nm": "local-culture",
+					"org": "OpenMined SyftHub",
+					"st": "live",
+					"d": "Federated local-culture vault: a privacy-preserving agent synthesizes answers from private canton data without exposing raw documents. Demo endpoint on SyftHub.",
+					"prov": "federated synthesis · SyftHub"
+				}
+			]
+		}
+	],
+	"coverage": {
+		"live": 7,
+		"building": 4,
+		"gap": 0,
+		"wanted": 4
+	}
+}

@@ -1,0 +1,41 @@
+# Package Managers
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+bun.lock
+bun.lockb
+
+# Miscellaneous
+/static/
+
+# Vitest coverage output. Generated, and `pnpm lint` failed on it the first time
+# test:ci:coverage ever produced a report (it used to race the stateful specs and
+# exit before writing one).
+/coverage/
+
+# Generated files — byte-exact output of build-roadmap.mjs (check:roadmap asserts
+# they match the generator, so they must not be reformatted by hand).
+*.generated.ts
+
+# Vendored chat-ui fork + its support dirs — keep their own (double-quote) style; the
+# unified repo's prettier config (single quotes) is not enforced on them.
+src/lib/chat/
+src/routes/chat/
+config/
+coop/
+scripts/
+evals/
+models/
+drizzle/
+stub/
+
+# Alpha design-system generated tokens (pnpm ds:tokens owns their format)
+../packages/alpha-ds/src/tokens/generated/
+
+# calque's registry: the weekly job appends entries in calque's own format, and a reflow would fail
+# every one of its PRs (CUR-2569).
+/.calque/
+
+# Inlang/Paraglide working files; only project.inlang/settings.json is tracked.
+project.inlang/*
+!project.inlang/settings.json

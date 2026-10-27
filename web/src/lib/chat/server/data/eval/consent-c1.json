@@ -1,0 +1,15 @@
+{
+	"version": "c1",
+	"status": "checked",
+	"title": "Before you start",
+	"paragraphs": [
+		"You will rate answers that AI models gave to everyday requests written in {language}. You will not see which model wrote each answer.",
+		"We keep your ratings, any comment you write, how long each rating took, the level of {language} you declared and, if you gave it, your variety of the language. They are linked to your AI Potluck account.",
+		"We combine everyone's ratings to show how each model does in each language, on AI Potluck and in what we publish about AI in different languages. Your name and account are never published with your ratings.",
+		"We may also share the ratings as an open dataset so that others can study how models do in these languages. If we do, we remove everything that links them to you, and ratings already shared this way cannot be withdrawn. Please do not write personal information in your comments.",
+		"We check ratings for quality, and some ratings do not count towards the results.",
+		"Taking part is voluntary and you can stop at any time. Your ratings are included when you download your data, and deleting your data removes them and takes them out of the results."
+	],
+	"agree": "I agree that my ratings are used this way.",
+	"reviewedBy": "Project lead (2026-10-14; text confirmed by two colleagues in parallel, CUR-2278)"
+}

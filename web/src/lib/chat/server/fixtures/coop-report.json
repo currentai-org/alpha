@@ -1,0 +1,19 @@
+{
+  "reporter": { "kind": "user", "typeId": "coop-user-type-id", "id": "shieldstral-gate" },
+  "reportedAt": "2026-01-01T00:00:00.000Z",
+  "reportedForReason": { "reason": "shieldstral:chat-block-violence" },
+  "reportedItem": {
+    "id": "msg-parity-fixture",
+    "typeId": "coop-item-type-id",
+    "data": {
+      "text": "detected content excerpt",
+      "detection": {
+        "source": "shieldstral",
+        "surface": "chat-output",
+        "hits": [{ "key": "chat-block-violence", "action": "block", "tier": "content" }],
+        "subjectId": "subject-parity-fixture",
+        "scope": "assistant-output"
+      }
+    }
+  }
+}

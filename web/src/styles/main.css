@@ -1,0 +1,324 @@
+@import './highlight-js.css' layer(base);
+
+/*
+  Chat shares the gap map's own type ramp (Noto Serif / Plus Jakarta Sans, loaded via
+  the Google Fonts @import in app.css), so /chat and /map read as one typographic system.
+  DM Mono (code, mono labels) is self-hosted here — it's the one font both subtrees already shared.
+*/
+@import '@fontsource/dm-mono/400.css';
+
+/* The single Tailwind root is src/app.css (it declares `@import "tailwindcss"`, the
+   plugins, theme tokens and chat @utility classes). We @reference it here so the
+   @apply / theme() calls below resolve WITHOUT re-emitting Tailwind's utilities a
+   second time (which is what the old duplicate `@import "tailwindcss"` did). */
+@reference "../app.css";
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   CHAT SCOPE. All of chat's bare-element base rules and palette warming are scoped
+   under `.chat-root` (set on the chat layout's wrapper) so they style the /chat
+   subtree only and never reshade the os-ai map/explorer pages.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* Colour for the chat subtree comes from the Alpha design system: the window is a `.ds-root`,
+   and packages/alpha-ds/src/tokens/legacy-bridge.css re-points the grey ramp, --ap-* and prose
+   variables at design tokens in both modes. Only layout/typography defaults remain here. */
+.chat-root {
+	--font-sans: var(--font-jakarta);
+	--font-serif: var(--font-noto-serif);
+	font-family: var(--font-jakarta);
+
+	/* Fills the encapsulated window card's body (the card owns the height now that the
+	   chat is an in-flow window rather than a fixed full-viewport takeover). */
+	height: 100%;
+	background-color: var(--ds-surface, var(--ap-paper));
+	overscroll-behavior: none;
+	touch-action: pan-x pan-y;
+}
+
+/*
+  The default border color is `currentcolor` in Tailwind v4; restore the v3-style
+  gray default — scoped to chat so the map's own borders are untouched.
+*/
+@layer base {
+	.chat-root *,
+	.chat-root ::after,
+	.chat-root ::before,
+	.chat-root ::backdrop,
+	.chat-root ::file-selector-button {
+		border-color: var(--ds-line-2, var(--color-gray-200, currentcolor));
+	}
+
+	.chat-root button:not(:disabled),
+	.chat-root [role='button']:not(:disabled) {
+		cursor: pointer;
+	}
+
+	.chat-root ::placeholder {
+		color: var(--color-gray-400);
+		opacity: 1;
+	}
+}
+
+/* Editorial display headings — Noto Serif (via --font-serif, repointed to --font-noto-serif
+   above), regular weight, matching the app.css `h1 { font-noto-serif }` base rule. */
+/* In @layer base (not unlayered) so design-system type roles (`type-heading`, `type-body`…) and
+   utilities on a heading win — an unlayered rule would beat every layered utility. */
+@layer base {
+	.chat-root :is(h1, h2) {
+		font-family: var(--font-serif);
+		font-weight: 400;
+		letter-spacing: 0;
+	}
+}
+
+/*
+  Typography overrides, previously theme.extend.typography plus prose tweaks. They live
+  OUTSIDE Tailwind's cascade layers on purpose: unlayered rules beat the layered plugin
+  defaults, restoring the v3 cascade where the config values were merged into `.prose`.
+*/
+.prose {
+	--tw-prose-body: var(--color-gray-700);
+	--tw-prose-headings: var(--color-gray-900);
+	--tw-prose-lead: var(--color-gray-600);
+	--tw-prose-links: var(--color-gray-900);
+	--tw-prose-bold: var(--color-gray-900);
+	--tw-prose-counters: var(--color-gray-500);
+	--tw-prose-bullets: var(--color-gray-300);
+	--tw-prose-hr: var(--color-gray-200);
+	--tw-prose-quotes: var(--color-gray-900);
+	--tw-prose-quote-borders: var(--color-gray-200);
+	--tw-prose-captions: var(--color-gray-500);
+	--tw-prose-kbd: var(--color-gray-900);
+	--tw-prose-kbd-shadows: 10 10 10;
+	--tw-prose-code: var(--color-gray-900);
+	--tw-prose-pre-code: var(--color-gray-200);
+	--tw-prose-pre-bg: var(--color-gray-800);
+	--tw-prose-th-borders: var(--color-gray-300);
+	--tw-prose-td-borders: var(--color-gray-200);
+	--tw-prose-invert-body: var(--color-gray-300);
+	--tw-prose-invert-lead: var(--color-gray-400);
+	--tw-prose-invert-counters: var(--color-gray-400);
+	--tw-prose-invert-bullets: var(--color-gray-600);
+	--tw-prose-invert-hr: var(--color-gray-700);
+	--tw-prose-invert-quotes: var(--color-gray-100);
+	--tw-prose-invert-quote-borders: var(--color-gray-700);
+	--tw-prose-invert-captions: var(--color-gray-400);
+	--tw-prose-invert-pre-code: var(--color-gray-300);
+	--tw-prose-invert-th-borders: var(--color-gray-600);
+	--tw-prose-invert-td-borders: var(--color-gray-700);
+}
+
+.prose-invert,
+.dark\:prose-invert:where(.dark, .dark *) {
+	--tw-prose-body: var(--tw-prose-invert-body);
+	--tw-prose-headings: var(--tw-prose-invert-headings);
+	--tw-prose-lead: var(--tw-prose-invert-lead);
+	--tw-prose-links: var(--tw-prose-invert-links);
+	--tw-prose-bold: var(--tw-prose-invert-bold);
+	--tw-prose-counters: var(--tw-prose-invert-counters);
+	--tw-prose-bullets: var(--tw-prose-invert-bullets);
+	--tw-prose-hr: var(--tw-prose-invert-hr);
+	--tw-prose-quotes: var(--tw-prose-invert-quotes);
+	--tw-prose-quote-borders: var(--tw-prose-invert-quote-borders);
+	--tw-prose-captions: var(--tw-prose-invert-captions);
+	--tw-prose-kbd: var(--tw-prose-invert-kbd);
+	--tw-prose-kbd-shadows: var(--tw-prose-invert-kbd-shadows);
+	--tw-prose-code: var(--tw-prose-invert-code);
+	--tw-prose-pre-code: var(--tw-prose-invert-pre-code);
+	--tw-prose-pre-bg: var(--tw-prose-invert-pre-bg);
+	--tw-prose-th-borders: var(--tw-prose-invert-th-borders);
+	--tw-prose-td-borders: var(--tw-prose-invert-td-borders);
+}
+
+.prose :where(h2):not(:where([class~='not-prose'], [class~='not-prose'] *)) {
+	margin-top: 1em;
+}
+
+.prose :where(h3):not(:where([class~='not-prose'], [class~='not-prose'] *)) {
+	margin-top: 0.8em;
+}
+
+.prose table {
+	@apply scrollbar-thin block max-w-full scrollbar-thumb-black/10 scrollbar-track-transparent overflow-x-auto scrollbar-thumb-rounded-full dark:scrollbar-thumb-white/10 scrollbar-hover:scrollbar-thumb-black/20 dark:scrollbar-hover:scrollbar-thumb-white/20;
+}
+
+.prose :is(th, td) {
+	min-width: 6rem;
+	max-width: 16rem;
+}
+
+.prose hr {
+	@apply my-4;
+}
+
+.prose strong {
+	@apply font-medium;
+}
+
+.prose pre {
+	@apply border-[0.5px] bg-white font-mono text-gray-600 dark:border-gray-700 dark:bg-gray-900! dark:bg-inherit dark:text-inherit;
+}
+
+.prose code:not(pre code) {
+	@apply rounded-md bg-gray-200/60 px-[0.4em] py-[0.2em] text-[85%] dark:bg-gray-700;
+}
+
+.prose code:not(pre code)::before,
+.prose code:not(pre code)::after {
+	content: none;
+}
+
+.prose-sm :where(h1):not(:where([class~='not-prose'], [class~='not-prose'] *)) {
+	font-size: 1.6em;
+	@apply font-semibold;
+}
+
+.prose-sm :where(h2):not(:where([class~='not-prose'], [class~='not-prose'] *)) {
+	font-size: 1.07em;
+	@apply font-semibold;
+}
+
+.prose-sm :where(h3):not(:where([class~='not-prose'], [class~='not-prose'] *)) {
+	font-size: 0.96em;
+	@apply font-semibold;
+}
+
+.prose-sm :where(h4):not(:where([class~='not-prose'], [class~='not-prose'] *)) {
+	font-size: 0.8em;
+	@apply font-semibold;
+}
+
+.prose-sm :where(h5):not(:where([class~='not-prose'], [class~='not-prose'] *)) {
+	font-size: 0.75em;
+	@apply font-semibold;
+}
+
+.prose-sm :where(h6):not(:where([class~='not-prose'], [class~='not-prose'] *)) {
+	font-size: 0.7em;
+	@apply font-semibold;
+}
+
+.katex-display {
+	overflow: auto hidden;
+}
+
+.router-shimmer {
+	display: inline-block;
+	background-image: linear-gradient(
+		90deg,
+		rgba(156, 163, 175, 1) 0%,
+		rgba(156, 163, 175, 0.6) 10%,
+		rgba(156, 163, 175, 0.6) 50%,
+		rgba(156, 163, 175, 0.6) 90%,
+		rgba(156, 163, 175, 1) 100%
+	);
+	background-size: 220% 100%;
+	animation: router-shimmer 2.8s linear infinite;
+	background-clip: text;
+	-webkit-background-clip: text;
+	color: transparent;
+	-webkit-text-fill-color: transparent;
+}
+
+.dark .router-shimmer {
+	background-image: linear-gradient(
+		90deg,
+		rgba(255, 255, 255, 0.15) 0%,
+		rgba(255, 255, 255, 0.7) 50%,
+		rgba(255, 255, 255, 0.15) 100%
+	);
+}
+
+@keyframes router-shimmer {
+	0% {
+		background-position: 200% 0;
+	}
+	100% {
+		background-position: -200% 0;
+	}
+}
+
+/*
+  Persistent highlight: 2px solid white inset stroke around the card, matching the
+  design reference (white rectangular border on the active/named node).
+*/
+.ap-trail {
+	box-shadow: 0 0 0 2px #ffffff;
+}
+
+/*
+  Active node while a turn streams: same white stroke, breathing opacity.
+  Settles to the static .ap-trail when the turn ends.
+*/
+.ap-pulse {
+	box-shadow: 0 0 0 2px #ffffff;
+	animation: ap-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes ap-pulse {
+	0%,
+	100% {
+		box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.4);
+	}
+	50% {
+		box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 1);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.ap-pulse {
+		animation: none;
+	}
+}
+
+/*
+  Answer headings (ChatMessage's `.chat-answer`): a real h1–h6 scale, each level one visible step
+  down, sized in em so it tracks the answer's text size. Chat-scaled rather than document-scaled —
+  an h1 in a reply shouldn't dwarf the conversation. h5/h6 drop to label treatments (small caps /
+  muted) so all six stay distinguishable.
+*/
+.chat-answer
+	:where(h1, h2, h3, h4, h5, h6):not(:where([class~='not-prose'], [class~='not-prose'] *)) {
+	color: var(--tw-prose-headings);
+	font-weight: 600;
+	letter-spacing: -0.01em;
+	margin-bottom: 0.5em;
+}
+.chat-answer :where(h1):not(:where([class~='not-prose'], [class~='not-prose'] *)) {
+	font-size: 1.6em;
+	line-height: 1.2;
+	font-weight: 700;
+	margin-top: 1.2em;
+}
+.chat-answer :where(h2):not(:where([class~='not-prose'], [class~='not-prose'] *)) {
+	font-size: 1.35em;
+	line-height: 1.25;
+	margin-top: 1.1em;
+}
+.chat-answer :where(h3):not(:where([class~='not-prose'], [class~='not-prose'] *)) {
+	font-size: 1.15em;
+	line-height: 1.3;
+	margin-top: 1em;
+}
+.chat-answer :where(h4):not(:where([class~='not-prose'], [class~='not-prose'] *)) {
+	font-size: 1em;
+	line-height: 1.4;
+	margin-top: 0.9em;
+}
+.chat-answer :where(h5):not(:where([class~='not-prose'], [class~='not-prose'] *)) {
+	font-size: 0.8em;
+	line-height: 1.4;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	margin-top: 0.9em;
+}
+.chat-answer :where(h6):not(:where([class~='not-prose'], [class~='not-prose'] *)) {
+	font-size: 0.8em;
+	line-height: 1.4;
+	font-weight: 500;
+	color: var(--tw-prose-captions);
+	margin-top: 0.9em;
+}
+.chat-answer > :where(h1, h2, h3, h4, h5, h6):first-child {
+	margin-top: 0;
+}

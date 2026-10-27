@@ -1,0 +1,1153 @@
+@import '@fontsource/dm-mono/300.css';
+@import '@fontsource/dm-mono/300-italic.css';
+@import '@fontsource/dm-mono/400.css';
+@import '@fontsource/dm-mono/400-italic.css';
+@import '@fontsource/dm-mono/500.css';
+@import '@fontsource/dm-mono/500-italic.css';
+@import './styles/fonts-self-hosted.css';
+@import './lib/icons/icons.generated.css';
+@import 'tailwindcss';
+@import '@aipotluck/alpha-ds/styles.css';
+/* CUR-4479: Tailwind scans web/ on its own; the design system lives outside it, and a class used only
+   inside packages/alpha-ds would otherwise drop out of the CSS. */
+@source '../../packages/alpha-ds/src';
+@import 'tw-animate-css';
+@import 'shadcn-svelte/tailwind.css';
+@import '@fontsource-variable/inter';
+
+@plugin '@tailwindcss/typography';
+@plugin 'tailwind-scrollbar' {
+	nocompatible: true;
+}
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+	/* CUR-963: the MAP/marketing site is light-only right now — .dark below is parked: nothing puts
+	   it on <html>. The /chat window is a separate
+	   case: it's dark by default through its own switch (CHAT_WINDOW_DARK, chatTheme.ts), and
+	   Appearance in settings can change it, so the
+	   settings page's Theme row must not claim "Light theme only" (CUR-1109). With no color-scheme declared anywhere, a browser on a dark-mode OS
+	   still renders native form-control chrome (a <select>'s own dropdown popup, scrollbars) with
+	   dark UA styling regardless of this page's own light CSS — the one part of "the selector" our
+	   styles can't reach. Declaring it here keeps native controls light on the map/marketing site.
+	   The chat window overrides it: `.ds-root[data-mode='dark']` (alpha-ds tokens) sets
+	   `color-scheme: dark` on the window, so its native controls and scrollbars render dark (CUR-1112). */
+	color-scheme: light;
+	--radius: 0.625rem;
+
+	/* Figma palette — single source of truth */
+	--white: #ffffff;
+	--light-grey: #f2f1f1;
+	--medium-grey: #ebeaea;
+	--highlight-grey: #e6e6e6;
+	--light-blue: #b7cacc;
+	--dark-grey: #272726;
+	--label-grey: #575757;
+	--dark-blue: #142e3e;
+	--slate-blue: #435865;
+	--pink: #fbc7bf;
+	--salmon: #f29186;
+	--coral: #ff6452;
+	--muted-red: #c04841;
+	/* #df0000, not #ff0d0d (3.95:1): white gap letters on it, and it as text on white and pale grey,
+	   need WCAG AA's 4.5:1. */
+	--bright-red: #df0000;
+	--bright-green: #c7e907;
+	--bright-pink: #ffa3ff;
+	--paper: #f7f6f6;
+	--pale-grey: #f3f5f5;
+	--grid-line: #edecec;
+
+	--chevron-right: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='5' height='7' viewBox='0 0 5 7' fill='none'%3E%3Cpath d='M0.353546 0.353516L3.35355 3.35352L0.353546 6.35352' stroke='%23000'/%3E%3C/svg%3E");
+
+	/* Gap map layout tokens — shared by nav and page */
+	--cell: 0.75rem;
+	--square-size: calc(var(--cell) * 2);
+	--side-panel-md-width: calc(var(--cell) * 34);
+	--side-panel-xl-width: calc(var(--cell) * 48);
+	--panel-padding: clamp(1.75rem, 4vw, 2.875rem);
+	/* The site header sizes itself from this padding around its tallest item, the Contribute CTA
+	   (2.5rem). The offset mirrors that height plus the 1px bottom border, so the page content
+	   and the mobile panel clear the bar exactly. Change the CTA's size and this changes too;
+	   site-header.svelte.test.ts fails when they drift apart. */
+	--nav-bar-padding: 0.625rem;
+	--nav-bar-offset: calc(2.5rem + var(--nav-bar-padding) * 2 + 0.0625rem);
+	--page-top-padding: calc(var(--nav-bar-offset) + clamp(2rem, 4vw, 3rem));
+	/* Centered content shell — width includes horizontal panel padding so inner copy
+	   tracks max-w-8xl (88rem) or template overrides (e.g. calc(var(--cell) * 90)). */
+	--content-max-width: calc(88rem + var(--panel-padding) * 2);
+
+	/* side panel width tokens */
+	--side-panel-width: var(--side-panel-md-width);
+	--side-panel-rail-width: calc(var(--cell) * 5);
+	@media (min-width: 80rem) {
+		:root {
+			--side-panel-width: var(--side-panel-xl-width);
+		}
+	}
+
+	/* shadcn semantic tokens */
+	--background: var(--white);
+	--foreground: var(--dark-blue);
+	--card: var(--white);
+	--card-foreground: var(--dark-blue);
+	--popover: var(--white);
+	--popover-foreground: var(--dark-blue);
+	--primary: var(--dark-blue);
+	--primary-foreground: var(--light-grey);
+	--secondary: var(--salmon);
+	--secondary-foreground: var(--white);
+	--tertiary: var(--medium-grey);
+	--tertiary-foreground: var(--dark-blue);
+	--muted: var(--light-grey);
+	/* Light blue reads 1.7:1 on white; 70% dark blue clears WCAG AA's 4.5:1 on white and the greys. */
+	--muted-foreground: color-mix(in oklab, var(--dark-blue) 70%, var(--white));
+	--accent: var(--light-grey);
+	--accent-foreground: var(--dark-blue);
+	--destructive: var(--muted-red);
+	--border: var(--light-blue);
+	--input: var(--light-blue);
+	--ring: var(--dark-blue);
+}
+
+.dark {
+	--background: var(--dark-blue);
+	--foreground: var(--light-grey);
+	--card: var(--dark-grey);
+	--card-foreground: var(--light-grey);
+	--popover: var(--dark-grey);
+	--popover-foreground: var(--light-grey);
+	--primary: var(--light-grey);
+	--primary-foreground: var(--dark-blue);
+	--secondary: var(--dark-grey);
+	--secondary-foreground: var(--light-grey);
+	--tertiary: var(--dark-grey);
+	--tertiary-foreground: var(--light-grey);
+	--muted: var(--dark-grey);
+	--muted-foreground: var(--light-blue);
+	--accent: var(--dark-grey);
+	--accent-foreground: var(--light-grey);
+	--destructive: var(--muted-red);
+	--border: rgb(165 187 190 / 20%);
+	--input: rgb(165 187 190 / 15%);
+	--ring: var(--light-blue);
+}
+
+/*
+ * Chat (chat-ui) "paper" palette. These --ap-* tokens are referenced by chat components,
+ * the chat sidebar theme tokens below, and the live-stack map. They are plain CSS variables
+ * (the map/explorer never reference them), so defining them globally is inert for the os-ai
+ * side and lets the /chat subtree pick them up.
+ *
+ * Values are drawn directly from the Figma palette above (--white/--light-grey/--dark-blue/
+ * etc.) so chat shares the gap map's exact colors instead of running its own theme. The
+ * status ramp (live/building/gap/wanted) has no map equivalent — the map only ever signals
+ * "gap" (the bright-red diamond, see overview-gap-icon.svelte) — so it's newly composed here
+ * from the same palette: calmer/bluer as a component matures, redder as it's more missing.
+ * Light theme; .dark is parked (kept for future work, not actively designed against Figma).
+ */
+:root {
+	--ap-paper: var(--paper);
+	--ap-paper-2: var(--light-grey);
+	--ap-paper-3: var(--medium-grey);
+	--ap-ink: var(--dark-blue);
+	--ap-ink-2: var(--dark-grey);
+	--ap-ink-3: var(--light-blue);
+	--ap-rule: rgba(20, 46, 62, 0.16);
+	--ap-live: #f88376;
+	--ap-building: #ffada4;
+	--ap-gap: var(--bright-red);
+	/* Destructive/danger accent (Alpha "Delete all" + forget trash icon) — Accent 2 in
+	   src/lib/chat/design-system.md (CUR-509/530). Distinct from --bright-red (#ff0d0d). */
+	--ap-danger: #ea3729;
+	/* Positive/online status accent (managed local-inference endpoint status dot, CUR-1266) — no
+	   existing --ap-* token covers this; the chat design system has no green anywhere else (only
+	   the red-tinted --ap-live/--ap-building/--ap-gap freshness ramp and --ap-danger). Not
+	   theme-flipped, same posture as --ap-danger above. */
+	--ap-healthy: #2f9e6e;
+	/* Primary-action accent (send button, XRAY close) — Accent 1 in design-system.md (CUR-530).
+	   Aliases --salmon rather than defining a new value: --salmon already IS this color at every
+	   existing primary-action call site (ChatWindow.svelte's send button + XRAY close, both
+	   `bg-[var(--salmon)]`). NOT an alias of --ap-live — --ap-live/
+	   --ap-building/--ap-gap/--ap-wanted are the source-freshness status ramp, a separate system
+	   CUR-509 doesn't cover, even though --ap-live happens to share --salmon's value today; the two
+	   tokens must be free to diverge independently. Not theme-flipped, same as --ap-danger — the
+	   accent doesn't change between light and dark. */
+	--ap-accent-1: var(--salmon);
+	--ap-wanted: #ffffff;
+	--ap-coral: var(--bright-red);
+	--ap-live-text: var(--dark-blue);
+	--ap-building-text: var(--muted-red);
+	--ap-gap-text: var(--muted-red);
+	--ap-coral-text: var(--muted-red);
+	--ap-map-grad-1: var(--light-grey);
+	--ap-map-grad-2: var(--medium-grey);
+	--ap-stack-panel: var(--paper);
+	/* Background 3 in design-system.md (CUR-530) — "the side panel (XRAY view) and anything that
+	   floats above the main content." --ap-stack-panel is already exactly that surface (the XRAY
+	   panel's own fill); this aliases it rather than introducing a second source of truth.
+	   --ap-paper-3 is deliberately NOT this token — its current call sites (NavMenu/MobileNav's
+	   icon-button fill, ChatMessage's hover state) are small persistent/hover fills, not floating
+	   panel content, and resolving which (if either) of those should move to a Background tier is
+	   real per-component judgment this ticket doesn't take on; see CUR-531. */
+	--ap-background-3: var(--ap-stack-panel);
+	--ap-stack-grid-line: var(--grid-line);
+	/* The map never elevates cards with shadow — flat, bordered blocks only. */
+	--shadow-card: none;
+}
+
+/* Alpha chat type-size scale (Size 1-6), src/lib/chat/design-system.md § Typography (CUR-509).
+   Not theme-dependent — same six steps in light and dark, so this lives only in :root, not
+   duplicated under .dark like the color tokens above.
+   Definitions only. NOT yet applied to components — the codebase currently hardcodes font
+   sizes ad hoc (a mix of arbitrary text-[Npx] values and Tailwind's own text-xs/sm/base/lg/xl)
+   at several hundred call sites across chat, not the ~15-file surface the color tokens have.
+   Applying this scale is real per-instance work (matching each site's role against the spec's
+   Type Scale table), not a mechanical find-replace (CUR-530). */
+:root {
+	--ap-text-1: 10px; /* Micro — meta labels */
+	--ap-text-2: 12px; /* Small — supporting/secondary text */
+	--ap-text-3: 14px; /* Body — default reading size */
+	--ap-text-4: 16px; /* Subhead — bold emphasis above body */
+	--ap-text-5: 20px; /* Heading — inline section headings */
+	--ap-text-6: 34px; /* Display — onboarding headline only (spec range 28-34px) */
+}
+
+/* Alpha corner-radius tiers, src/lib/chat/design-system.md § Buttons (CUR-509/530). Not
+   theme-dependent, same reasoning as the type scale above. Definitions only — applying these across
+   components (vs. the equivalent literal Tailwind values already in place) is CUR-531's per-component
+   audit, not this pass. */
+:root {
+	--ap-radius-1: 0px; /* Sharp — the default; top bar, XRAY view + cards, pills, rail icons */
+	--ap-radius-2: 10px; /* Prompt-example buttons and the chat input — these two only */
+	--ap-radius-3: 9999px; /* Fully rounded — send button, toggle pills */
+}
+
+/* Legacy chat dark tokens — only OUTSIDE a design-system root. Inside `.ds-root` the Alpha design
+   system (packages/alpha-ds/src/tokens/legacy-bridge.css) owns every --ap-* value. */
+.dark:not(.ds-root) {
+	/* Neutral near-black — the Alpha dark window. Surface #181818 (Figma node 563-13906,
+	   "Conversational UI BG + left side panel"), white primary ink.
+	   Background 1 and Text 1 already matched src/lib/chat/design-system.md (CUR-509) exactly.
+	   Background 2 and Text 2/3 below follow the spec's values (CUR-530); Text 2/3
+	   are opacity-derived (white @ 75%/50% over #181818), not hand-picked greys. Background 3
+	   is deliberately untouched here: --ap-paper-3 and --ap-stack-panel currently serve two
+	   different roles at two different values, and CUR-531 picks the right one per component
+	   rather than this pass guessing.
+	   Borders (CUR-531): the spec is white-only, three opacities keyed to what's behind the
+	   border — 10% (--ap-border-1, reply/message-box outlines), 30% (--ap-border-2, the
+	   default for general boxes/cards/layout lines), 50% (--ap-border-3, on Background 3).
+	   --ap-rule takes the Border 2 value directly (not the map palette's light-blue hairline), since --ap-rule's actual
+	   role in every chat call site (general boxes, cards, dropdowns, layout lines) already IS
+	   Border 2's role; --ap-border-2 exists as an explicit alias for new code that wants to
+	   reference the spec's numbering directly. */
+	--ap-paper: #181818;
+	--ap-paper-2: #121212;
+	--ap-paper-3: #242424;
+	--ap-ink: #ffffff;
+	--ap-ink-2: #c5c5c5;
+	--ap-ink-3: #8c8c8c;
+	--ap-rule: rgba(255, 255, 255, 0.3);
+	--ap-border-1: rgba(255, 255, 255, 0.1);
+	--ap-border-2: var(--ap-rule);
+	--ap-border-3: rgba(255, 255, 255, 0.5);
+	--ap-live: #f88376;
+	--ap-gap: #d56b7b;
+	--ap-live-text: #f88376;
+	--ap-building-text: #d4a255;
+	--ap-gap-text: #d56b7b;
+	--ap-coral-text: #f88376;
+	--ap-map-grad-1: #171717;
+	--ap-map-grad-2: #101010;
+	--ap-stack-panel: #2f2f2f;
+	--ap-background-3: var(--ap-stack-panel);
+	--ap-stack-grid-line: #383838;
+}
+
+@theme inline {
+	/* shadcn → Tailwind utilities */
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+	--color-card: var(--card);
+	--color-card-foreground: var(--card-foreground);
+	--color-popover: var(--popover);
+	--color-popover-foreground: var(--popover-foreground);
+	--color-primary: var(--primary);
+	--color-primary-foreground: var(--primary-foreground);
+	--color-secondary: var(--secondary);
+	--color-secondary-foreground: var(--secondary-foreground);
+	--color-tertiary: var(--tertiary);
+	--color-tertiary-foreground: var(--tertiary-foreground);
+	--color-muted: var(--muted);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-accent: var(--accent);
+	--color-accent-foreground: var(--accent-foreground);
+	--color-destructive: var(--destructive);
+	--color-border: var(--border);
+	--color-input: var(--input);
+	--color-ring: var(--ring);
+
+	/* Figma → Tailwind utilities */
+	--color-dark-blue: var(--dark-blue);
+	--color-slate-blue: var(--slate-blue);
+	--color-light-grey: var(--light-grey);
+	--color-medium-grey: var(--medium-grey);
+	--color-highlight-grey: var(--highlight-grey);
+	--color-light-blue: var(--light-blue);
+	--color-salmon: var(--salmon);
+	--color-coral: var(--coral);
+	--color-muted-red: var(--muted-red);
+	--color-pink: var(--pink);
+	--color-paper: var(--paper);
+	--color-pale-grey: var(--pale-grey);
+	--color-dark-grey: var(--dark-grey);
+	--color-label-grey: var(--label-grey);
+	--color-bright-red: var(--bright-red);
+	--color-bright-green: var(--bright-green);
+	--color-bright-pink: var(--bright-pink);
+	--color-grid-line: var(--grid-line);
+
+	--background-image-dark-gradient:
+		linear-gradient(0deg, rgba(20, 46, 62, 0) 0%, rgba(20, 46, 62, 0) 100%),
+		linear-gradient(92deg, var(--dark-blue) 10.64%, #406e80 97.07%);
+
+	--background-image-updates-gradient: linear-gradient(
+		132.32deg,
+		rgba(248, 131, 118, 1) 43.997%,
+		rgba(255, 255, 255, 1) 113.15%
+	);
+	/* Left-edge strips (Promo Banner, Contribute Paths): each one 12×12 pixel-art tile, sized with
+	   bg-size-[1rem] or smaller. */
+	--background-image-keychain-salmon: url('./lib/assets/patterns/keychain-salmon.svg');
+	--background-image-keychain-pink: url('./lib/assets/patterns/keychain-pink.svg');
+	--background-image-dots-green: url('./lib/assets/patterns/dots-green.svg');
+	/* Salmon dots on a transparent 22×24 tile: the band closing the editorial template's dark
+	   section (1.1rem × 1.2rem), and the Promo Banner's manifesto strip (1rem × 0.925rem). */
+	--background-image-dots-salmon: url('./lib/assets/patterns/dots-salmon.svg');
+	/* Editorial template: the pixel-tile illustration beside its title, 444×359 (2x). */
+	--background-image-editorial-tiles: url('./lib/assets/editorial-tiles.png');
+	/* Animations */
+	--animate-salmon-pulse: salmon-pulse 1.5s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+
+	/* Fonts */
+	--font-noto-serif: 'Noto Serif', serif;
+	--font-jakarta: 'Plus Jakarta Sans', sans-serif;
+	--font-mono: 'DM Mono', ui-monospace, monospace;
+
+	/* One step below Tailwind's text-xs: 10px on a 14px line. */
+	--text-2xs: 0.625rem;
+	--text-2xs--line-height: calc(0.875 / 0.625);
+
+	/* Fluid heading sizes, by role. No line height of their own: each heading sets its leading. */
+	--text-clamp-display: clamp(2.75rem, 1.992rem + 3.37vw, 4.5rem); /* hero titles */
+	--text-clamp-page-title: clamp(2.125rem, 4vw, 3.125rem); /* page titles */
+	--text-clamp-section: clamp(2.25rem, 5vw, 3.75rem); /* block headings */
+	--text-clamp-subsection: clamp(1.75rem, 4vw, 2.5rem); /* smaller section headings */
+	--text-clamp-card-title: clamp(1.25rem, 2.5vw, 1.5rem); /* card and sub headings */
+
+	--shadow-xs: 0px 4px 4px 0px rgba(0, 0, 0, 0.05);
+
+	--container-8xl: 88rem;
+
+	/* Chat (chat-ui) theme tokens — register the utilities chat components use (bg-sidebar,
+   text-xxs/smd, the font ramp). Only chat markup uses these classes, so they are inert on
+   the map. The warmed gray ramp + destructive are scoped to .chat-root in main.css so they
+   don't reshade the os-ai pages. Fonts are the map's own (Plus Jakarta Sans / Noto Serif)
+   so chat and map read as the same typographic system. */
+	--font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+	--font-serif: 'Noto Serif', Georgia, 'Times New Roman', serif;
+
+	--text-xxs: 0.625rem;
+	--text-smd: 0.94rem;
+
+	--color-sidebar: var(--ap-map-grad-2);
+	--color-sidebar-foreground: var(--ap-ink-2);
+	--color-sidebar-primary: var(--ap-ink);
+	--color-sidebar-primary-foreground: #f2efe9;
+	--color-sidebar-accent: rgba(11, 30, 45, 0.06);
+	--color-sidebar-accent-foreground: var(--ap-ink);
+	--color-sidebar-border: var(--ap-rule);
+	--color-sidebar-ring: var(--ap-ink-3);
+}
+
+@layer base {
+	:root {
+		@apply text-dark-blue;
+		@apply bg-paper;
+		@apply font-jakarta;
+	}
+
+	body {
+		@apply antialiased;
+	}
+
+	* {
+		@apply scrollbar-custom;
+	}
+
+	h1 {
+		@apply font-noto-serif;
+	}
+
+	/* In-page `#…` jumps glide rather than cut. Page-to-page navigations are exempted in the root
+	   +layout.svelte, since SvelteKit's reset to the top would otherwise glide too. Under
+	   ScrollSmoother the jump already glides, so this would smooth it twice. */
+	@media (prefers-reduced-motion: no-preference) {
+		html:not(.scroll-smoothed) {
+			scroll-behavior: smooth;
+		}
+	}
+
+	/* Anchored sections (every page block's outer <section>) land just below the fixed nav bar.
+	   `:where()` keeps specificity at zero so a section's own `scroll-mt-*` utility still wins. */
+	:where(section[id]) {
+		scroll-margin-top: var(--nav-bar-offset);
+	}
+}
+
+/* A map view's layer-tab jump (map-view/jumpScroll.ts) unsticks the column headers while it
+   scrolls, so the headers of the sections it passes don't flash by, then fades in the one that
+   lands stuck. Unlayered: inside any layer, the headers' own `sticky` utility would win. */
+html.jumping [data-sticky-header] {
+	position: static;
+}
+html.landed [data-sticky-header] {
+	animation: sticky-header-in 200ms ease-out;
+}
+
+@keyframes sticky-header-in {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+/*
+ * Styling scope for Payload Lexical rich text (and legacy Markdoc HTML). Wrap
+ * rendered content in `.richtext` and style the raw HTML tags here. Embedded
+ * interactive components (e.g. the dataset table) opt out by living inside a
+ * `.not-richtext` element, so these rules don't leak into them. `:where()` keeps
+ * specificity at zero so inline utility classes still win.
+ */
+@layer components {
+	.richtext :where(h1):not(:where(.not-richtext *)) {
+		@apply mt-6 mb-4 text-3xl font-semibold tracking-tight first:mt-0;
+	}
+	.richtext :where(h2):not(:where(.not-richtext *)) {
+		@apply mt-6 mb-3 text-2xl font-semibold tracking-tight first:mt-0;
+	}
+	.richtext :where(h3):not(:where(.not-richtext *)) {
+		@apply mt-4 mb-2 text-xl font-semibold first:mt-0;
+	}
+	.richtext :where(h4):not(:where(.not-richtext *)) {
+		@apply mt-3 mb-2 text-lg font-semibold first:mt-0;
+	}
+	.richtext :where(p):not(:where(.not-richtext *)) {
+		@apply mb-4 leading-7;
+	}
+	/* Exclude shadcn buttons (rendered as <a data-slot="button">) from link styling, and any link
+	   marked `.plain-link` (one that wraps a card or a logo). Unlike `.not-richtext`, the marker
+	   affects only the link itself, so rich text inside it keeps its paragraph and heading styles. */
+	.richtext :where(a):not(:where(.not-richtext *, .plain-link, [data-slot='button'])) {
+		@apply link-pulse text-primary;
+	}
+	/* `link-pulse` draws the link's underline, so text an editor also marked Underline (a `<u>`)
+	   would get a second line under it. */
+	.richtext :where(a):not(:where(.not-richtext *, .plain-link, [data-slot='button'])) :where(u) {
+		text-decoration: none;
+	}
+	.richtext :where(ul):not(:where(.not-richtext *)) {
+		@apply my-4 list-disc space-y-1 ps-6;
+	}
+	.richtext :where(ol):not(:where(.not-richtext *)) {
+		@apply my-4 list-decimal space-y-1 ps-6;
+	}
+	.richtext :where(li):not(:where(.not-richtext *)) {
+		@apply leading-7;
+	}
+	.richtext :where(blockquote):not(:where(.not-richtext *)) {
+		@apply my-4 border-s-2 border-border ps-4 text-muted-foreground italic;
+	}
+	.richtext :where(code):not(:where(.not-richtext *)) {
+		@apply rounded bg-muted px-1 py-0.5 text-sm;
+	}
+	.richtext :where(hr):not(:where(.not-richtext *)) {
+		@apply my-8;
+	}
+	.richtext :where(img):not(:where(.not-richtext *)) {
+		@apply my-6;
+	}
+	/* An inline upload's figure carries the spacing, so its caption sits right under the image. */
+	.richtext :where(figure):not(:where(.not-richtext *)) {
+		@apply my-6;
+	}
+	.richtext :where(figure img):not(:where(.not-richtext *)) {
+		@apply my-0;
+	}
+	.richtext :where(table):not(:where(.not-richtext *)) {
+		@apply my-6 block max-w-full border-collapse overflow-x-auto text-left text-sm;
+	}
+	.richtext :where(th):not(:where(.not-richtext *)) {
+		@apply border border-dark-blue bg-pink px-3 py-2 align-top font-semibold uppercase;
+	}
+	.richtext :where(td):not(:where(.not-richtext *)) {
+		@apply border border-dark-blue px-3 py-2 align-top leading-6;
+	}
+	/* Lexical wraps table cell text in a <p> (unlike the legacy Markdoc tables), which would
+	   otherwise inherit the standalone paragraph's mb-4 and add unwanted space below the header
+	   cell's text. */
+	.richtext :where(th p):not(:where(.not-richtext *)) {
+		@apply m-0;
+	}
+	/* Same issue in data cells, but only trailing space matters there — a cell with multiple
+	   paragraphs should still keep mb-4 between them, just not below the last (or only) one. */
+	.richtext :where(td p:last-child):not(:where(.not-richtext *)) {
+		@apply mb-0;
+	}
+	/* Jump targets — empty <a id="..."> anchors and headings that carry the id directly
+	   (e.g. Markdoc `## Manifesto {% #potluck %}` → <h2 id="potluck">, linked from the footer):
+	   offset the scroll position so the target clears the fixed nav bar. */
+	.richtext :where(a[id], :is(h1, h2, h3, h4, h5, h6)[id]):not(:where(.not-richtext *)) {
+		scroll-margin-top: calc(var(--nav-bar-offset) + var(--cell));
+	}
+	/* No stray margin at the very top/bottom of a content block. */
+	.richtext > :first-child {
+		@apply mt-0;
+	}
+	.richtext > :last-child {
+		@apply mb-0;
+	}
+	/* Embedded blocks (Button, Text Columns, ...) get breathing room from surrounding prose —
+	   takes precedence over the first-child mt-0 above, since a block opening the content
+	   should still be set off from the page title above it. Email Signup is excluded: it
+	   already carries its own spacing and sits flush against adjacent content by design. */
+	.richtext > [data-block]:not([data-block='email-signup']) {
+		@apply mt-[clamp(3rem,5vw,7rem)];
+	}
+	/* An Epic Card is a bordered box, so prose after it is set off by the same gap as above it. */
+	.richtext > [data-block='epic-card']:not(:last-child) {
+		@apply mb-[clamp(3rem,5vw,7rem)];
+	}
+	/* Notebooks pads its own tab strip and iframes with --panel-padding, as a top-level page block
+	   does. Inside rich text that would inset it a second time from the text's left edge, so it
+	   reaches back by the same amount and its padded content lines up with the text. */
+	.richtext > [data-block='notebooks'] {
+		margin-inline: calc(var(--panel-padding) * -1);
+	}
+
+	/* data-bg-color is a block's rendered background: dark (dark blue), light (pale grey) or white.
+	   On a Promo Banner that's the surround, the opposite of its Background color setting.
+
+	   Dark or light blocks in a row read as one panel: each after the first drops its top padding,
+	   so the bottom padding of the block above is the only gap. Every block that can be dark or
+	   light takes its top padding from --block-padding-top. */
+	[data-bg-color='dark'] + [data-bg-color='dark'],
+	[data-bg-color='light'] + [data-bg-color='light'] {
+		--block-padding-top: 0;
+	}
+
+	/* White blocks in a row are split by a dark-blue rule along the top of each after the first,
+	   spanning the content width: the max-w-8xl row inside the shared panel padding. A background
+	   image rather than a pseudo-element, so it needs no positioned block. */
+	[data-bg-color='white'] + [data-bg-color='white'] {
+		@apply bg-[linear-gradient(var(--color-dark-blue)_0_0)] bg-size-[calc(min(100%,var(--container-8xl))_-_var(--panel-padding)_*_2)_0.125rem] bg-top bg-no-repeat;
+	}
+
+	.richtext {
+		/* Body copy is text-base, text-lg from lg up. Set on the container, not on <p>, so a
+		   component that sizes its rich text with a utility on the wrapper (`text-sm` and the like)
+		   still wins. Font size only: the container keeps its inherited line height. */
+		font-size: var(--text-base);
+		@media (min-width: 64rem) {
+			font-size: var(--text-lg);
+		}
+	}
+
+	.richtext.map-content :where(p):not(:where(.not-richtext *)) {
+		@apply text-sm leading-[1.42];
+	}
+
+	/* Landing pages (e.g. /about) use the site's display type: large serif section
+	   headings (matching the homepage sections + IconGrid block) and small uppercase
+	   eyebrow labels for subsections. Scoped so plain content pages keep the compact
+	   prose headings above. */
+	.richtext.landing-content :where(h2):not(:where(.not-richtext *)) {
+		@apply mt-20 mb-8 font-noto-serif text-clamp-display leading-[1.1] font-semibold tracking-[-0.03em] text-dark-blue;
+	}
+	.richtext.landing-content :where(h3):not(:where(.not-richtext *)) {
+		@apply mt-14 mb-6 font-jakarta text-clamp-card-title leading-tight font-extrabold tracking-[0.1em] text-dark-blue uppercase;
+	}
+	.richtext.landing-content :where(p):not(:where(.not-richtext *)) {
+		@apply mb-5 max-w-[42rem] text-lg leading-[28px] tracking-[-0.03em] text-dark-blue;
+	}
+	.richtext.landing-content :where(strong):not(:where(.not-richtext *)) {
+		@apply font-semibold;
+	}
+	.richtext.landing-content :where(img):not(:where(.not-richtext *)) {
+		@apply my-10 rounded-2xl;
+	}
+
+	/* Editorial pages (editorial-template.svelte, Figma 497:57107): long-form serif prose in white
+	   on a dark-blue section, a blank line's worth of space between paragraphs, and wide gaps
+	   around images and section headings. */
+	.richtext.editorial-content :where(h2, h3):not(:where(.not-richtext *)) {
+		@apply mt-[clamp(3.5rem,6vw,6.125rem)] mb-[1.875rem] font-noto-serif text-clamp-card-title leading-[1.07] font-semibold tracking-[-0.03em] text-white;
+	}
+	.richtext.editorial-content :where(p):not(:where(.not-richtext *)) {
+		@apply mb-8 font-noto-serif leading-[1.78] tracking-[-0.03em] text-white;
+	}
+	.richtext.editorial-content
+		:where(a):not(:where(.not-richtext *, .plain-link, [data-slot='button'])) {
+		@apply text-salmon;
+	}
+	.richtext.editorial-content :where(figure):not(:where(.not-richtext *)) {
+		@apply my-[clamp(2.5rem,5vw,4.375rem)];
+	}
+
+	/* Default pages (default-template.svelte): documents like the privacy notice set straight on the
+	   white page in the type of Figma's About page (497:10343). Serif section and sub headings, and
+	   Jakarta medium body at 1.5 line height. Prose keeps to a centred 42rem measure, left-aligned
+	   within it, under the centred title; tables get 56rem for the privacy notice's four-column
+	   partner table; embedded blocks span the full width. */
+	.richtext.document-content :where(h2):not(:where(.not-richtext *)) {
+		@apply mt-[clamp(3rem,5vw,4.5rem)] mb-5 font-noto-serif text-clamp-subsection leading-[1.2] font-semibold tracking-[-0.03em];
+	}
+	.richtext.document-content :where(h3):not(:where(.not-richtext *)) {
+		@apply mt-10 mb-3 font-noto-serif text-2xl leading-[1.2] font-semibold tracking-[-0.03em];
+	}
+	.richtext.document-content :where(h4, h5, h6):not(:where(.not-richtext *)) {
+		@apply mt-8 mb-3 font-jakarta text-lg leading-[1.5] font-semibold;
+	}
+	/* A heading that opens the page sits right under the title, like the base .richtext's first
+	   child. Headings only: a block that opens it keeps the base rule's larger gap. */
+	.richtext.document-content > :where(h2, h3, h4, h5, h6):first-child {
+		@apply mt-0;
+	}
+	.richtext.document-content :where(p, li):not(:where(.not-richtext *)) {
+		@apply leading-[1.5] font-medium;
+	}
+	.richtext.document-content :where(hr):not(:where(.not-richtext *)) {
+		@apply border-dark-blue;
+	}
+	/* The :where() adds no specificity, so the table rule below can widen tables past this cap. */
+	.richtext.document-content > :where(:not([data-block])) {
+		@apply mx-auto max-w-2xl;
+	}
+	.richtext.document-content > table {
+		@apply mx-auto max-w-4xl;
+	}
+	/* An update's page (updates/[slug]) sets its text at its title's width, the page's 56rem column,
+	   so the measure caps above are lifted there. */
+	.richtext.document-content.update-content > * {
+		@apply max-w-none;
+	}
+
+	/* The CMS's Overline block: the label set above a heading, in the type of the Epic Listing
+	   block's heading. Last in this layer so it overrides each template's paragraph rules at the
+	   same specificity; the heading under it drops its top margin so the two read as a pair. */
+	.richtext .richtext-overline:not(:where(.not-richtext *)) {
+		@apply mt-8 mb-2.5 font-jakarta text-sm leading-normal font-bold tracking-[0.075rem] uppercase;
+	}
+	.richtext > .richtext-overline:first-child {
+		@apply mt-0;
+	}
+	.richtext .richtext-overline + :where(h1, h2, h3, h4, h5, h6) {
+		@apply mt-0;
+	}
+}
+
+/* Homepage page background. Scoped by the isHome-driven `.homepage` class (see +layout.svelte),
+   not the `.page-home` slug coincidence — same reasoning as the `template-*` classes. */
+.homepage {
+	@apply bg-white;
+}
+
+/* The `hero`, default and map landing templates' pages sit on white, the same as the homepage. */
+.template-hero,
+.template-default,
+.template-map {
+	@apply bg-white;
+}
+
+/* The roadmap page is designed on white, not the site-wide paper background (`:root` above). */
+.template-roadmap {
+	@apply bg-white;
+}
+
+/* Org and product pages sit on white too, which keeps their small grey labels further above AA's
+   4.5:1 than paper does. */
+.entity-page {
+	@apply bg-white;
+}
+
+/* Latest Progress card hover stroke (latest-progress.svelte), Figma 1780:320's two halves split
+   across hover in and hover out. The svg sits directly inside the card, so the card's own hover or
+   focus drives it. The rect's dash is a fraction of the perimeter (pathLength="1"), and each
+   state's `transition` is the one used to enter it:
+   - Hover in: the dash grows from the top-left corner to the full perimeter (1s, linear) and
+     stays. The offset snaps back to 0 so the draw always starts at the corner.
+   - Hover out: the dash shrinks while the offset moves by the same amount, so the tail catches up
+     to the head and the line clears clockwise (1s, ease). The fade hides the round-cap dot left
+     at zero length.
+   In the components layer, so a utility class on the svg can still override these rules. */
+@layer components {
+	.stroke-loop {
+		opacity: 0;
+	}
+
+	.stroke-loop rect {
+		stroke-dasharray: 0 1;
+		stroke-dashoffset: -1;
+	}
+
+	:is(:hover, :focus-visible) > .stroke-loop {
+		opacity: 1;
+	}
+
+	:is(:hover, :focus-visible) > .stroke-loop rect {
+		stroke-dasharray: 1 1;
+		stroke-dashoffset: 0;
+	}
+
+	/* Reduced motion keeps the states above and drops the transitions: the full outline shows at
+	   once. */
+	@media (prefers-reduced-motion: no-preference) {
+		.stroke-loop {
+			transition: opacity 0.15s linear 0.85s;
+		}
+
+		.stroke-loop rect {
+			transition:
+				stroke-dasharray 1s cubic-bezier(0.4, 0, 0.2, 1),
+				stroke-dashoffset 1s cubic-bezier(0.4, 0, 0.2, 1);
+		}
+
+		:is(:hover, :focus-visible) > .stroke-loop {
+			transition: opacity 0.1s linear;
+		}
+
+		:is(:hover, :focus-visible) > .stroke-loop rect {
+			transition:
+				stroke-dasharray 1s linear,
+				stroke-dashoffset 0s;
+		}
+	}
+}
+
+/* Stats panel count-up (stats-panel/count-up.svelte). A figure prints `--count` with a CSS counter,
+   and the `countUp` action counts it from 0 to `--count-to` as the panel scrolls into view. The
+   resting value is the final one, which is what shows without JavaScript and with reduced motion.
+   With both available, the figure holds at 0 from first paint until the action's inline
+   `--count` takes over. */
+@layer components {
+	.count-up {
+		--count: var(--count-to);
+		display: inline-block;
+		min-width: calc(var(--count-digits) * 1ch);
+		counter-reset: count var(--count);
+
+		&::after {
+			content: counter(count);
+		}
+	}
+
+	@media (scripting: enabled) and (prefers-reduced-motion: no-preference) {
+		.count-up {
+			--count: 0;
+		}
+	}
+}
+
+/* Timeline reveal (blocks/timeline), per the roadmap HTML demo. Event `--i` takes 630ms: its marker
+   pops in (0.45s, slight overshoot), 280ms later the rail leaving it grows towards the next event
+   (0.5s, ease-out), and the next marker pops 350ms after that, so the line pauses at each event.
+   The end arrow fades in (0.35s) 350ms after the last rail starts.
+   Every piece holds its start state from first paint and runs once the `revealInView` action sets
+   `data-revealed` on the block and the block's content has faded up into place (`data-reveal-done`), so the line draws after the fade rather than during it. The fill is `backwards` so a finished piece drops back to its own
+   static style instead of holding an animated `scale: 1`, which Chromium rasterises differently.
+   Without JavaScript or with reduced motion the timeline shows in full. */
+@layer components {
+	@media (scripting: enabled) and (prefers-reduced-motion: no-preference) {
+		.timeline-marker {
+			animation: timeline-marker-pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) backwards paused;
+			animation-delay: calc(var(--i) * 630ms);
+		}
+
+		.timeline-rail {
+			--rail-from: 0 1;
+			transform-origin: left center;
+			animation: timeline-rail-grow 0.5s ease-out backwards paused;
+			animation-delay: calc(var(--i) * 630ms + 280ms);
+		}
+
+		.timeline-rail--vertical {
+			--rail-from: 1 0;
+			transform-origin: center top;
+		}
+
+		.timeline-arrow {
+			animation: timeline-arrow-fade 0.35s ease-out backwards paused;
+			animation-delay: calc(var(--i) * 630ms + 630ms);
+		}
+
+		[data-block='timeline'][data-revealed]
+			[data-reveal-done]
+			:is(.timeline-marker, .timeline-rail, .timeline-arrow) {
+			animation-play-state: running;
+		}
+	}
+
+	@keyframes salmon-pulse {
+		0%,
+		100% {
+			transform: scale(1);
+		}
+		50% {
+			transform: scale(0.25);
+		}
+	}
+
+	@keyframes timeline-marker-pop {
+		0% {
+			opacity: 0;
+			scale: 0;
+		}
+		60% {
+			opacity: 1;
+			scale: 1.2;
+		}
+		100% {
+			opacity: 1;
+			scale: 1;
+		}
+	}
+
+	@keyframes timeline-rail-grow {
+		from {
+			scale: var(--rail-from);
+		}
+	}
+
+	@keyframes timeline-arrow-fade {
+		from {
+			opacity: 0;
+		}
+	}
+
+	/* The live seam's travelled run ends in a round cap, and keeps moving. The cap is
+	   a 2px half-circle past the run's end (like an SVG round linecap), along the rail: right on
+	   desktop, down on mobile. It is positioned, so it paints over the remaining run next to it,
+	   and inside the rail, so it only shows once the rail has grown in. The pulse lengthens the cap
+	   by 14px and back, 1.8s ease-in-out, on a loop. It animates the cap's length rather than
+	   scaling it, so the end stays round. */
+	.timeline-rail-pulse {
+		--cap: 2px;
+		position: relative;
+
+		&::after {
+			content: '';
+			position: absolute;
+			top: 0;
+			left: 100%;
+			width: var(--cap);
+			height: 100%;
+			border-radius: 0 9999px 9999px 0;
+			background-color: inherit;
+		}
+	}
+
+	.timeline-rail--vertical .timeline-rail-pulse::after {
+		top: 100%;
+		left: 0;
+		width: 100%;
+		height: var(--cap);
+		border-radius: 0 0 9999px 9999px;
+	}
+
+	@media (prefers-reduced-motion: no-preference) {
+		.timeline-rail-pulse::after {
+			animation: timeline-rail-pulse-x 1.8s ease-in-out infinite;
+		}
+
+		.timeline-rail--vertical .timeline-rail-pulse::after {
+			animation-name: timeline-rail-pulse-y;
+		}
+	}
+
+	@keyframes timeline-rail-pulse-x {
+		50% {
+			width: calc(var(--cap) + 14px);
+		}
+	}
+
+	@keyframes timeline-rail-pulse-y {
+		50% {
+			height: calc(var(--cap) + 14px);
+		}
+	}
+}
+
+/* Partners ticker (blocks/partners, `layout: ticker`). The row is content-width but doesn't clip:
+   its logos run out to the screen edges, where the page layout's `overflow-x-clip` cuts them off.
+   The track holds the logo list `--ticker-copies` times, `--ticker-lead` of them before the copy
+   that starts at the content edge (both counted by the component, so the screen stays covered).
+   Each copy ends in the same 70px gap that separates its logos, so sliding the track by exactly
+   one copy (100% / copies of its own width) brings the next copy to where the previous one was
+   and the loop has no seam. Speed is set per logo by the component (`--ticker-duration`). Hover
+   pauses it. With reduced motion the row stands still at content width, keeps only
+   the reachable copy and scrolls sideways by hand instead. */
+@layer components {
+	.partners-ticker {
+		--ticker-gap: 70px;
+		--ticker-copy: calc(-100% / var(--ticker-copies, 2));
+
+		/* Right to left, the track is anchored at the right edge and the copies run leftwards. */
+		&:dir(rtl) {
+			--ticker-copy: calc(100% / var(--ticker-copies, 2));
+		}
+	}
+
+	.partners-ticker-track {
+		display: flex;
+		width: max-content;
+	}
+
+	.partners-ticker-group {
+		display: flex;
+		flex-shrink: 0;
+		align-items: center;
+		gap: var(--ticker-gap);
+		margin: 0;
+		padding: 0 var(--ticker-gap) 0 0;
+		list-style: none;
+
+		&:dir(rtl) {
+			padding: 0 0 0 var(--ticker-gap);
+		}
+	}
+
+	@media (prefers-reduced-motion: no-preference) {
+		.partners-ticker-track {
+			translate: calc(var(--ticker-copy) * var(--ticker-lead, 0)) 0;
+			animation: partners-ticker var(--ticker-duration, 45s) linear infinite;
+		}
+
+		.partners-ticker:hover .partners-ticker-track {
+			animation-play-state: paused;
+		}
+	}
+
+	/* Until the component has measured the screen and placed the leading copies (`data-measured`),
+	   the row is transparent and paused, then fades in. Without JavaScript nothing measures, so it
+	   shows as rendered; with reduced motion there are no leading copies to wait for. */
+	@media (scripting: enabled) and (prefers-reduced-motion: no-preference) {
+		.partners-ticker {
+			transition: opacity 0.4s ease-out;
+		}
+
+		.partners-ticker:not([data-measured]) {
+			opacity: 0;
+
+			.partners-ticker-track {
+				animation-play-state: paused;
+			}
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.partners-ticker {
+			overflow-x: auto;
+		}
+
+		.partners-ticker-group[inert] {
+			display: none;
+		}
+	}
+
+	@keyframes partners-ticker {
+		from {
+			translate: calc(var(--ticker-copy) * var(--ticker-lead, 0)) 0;
+		}
+		to {
+			translate: calc(var(--ticker-copy) * (var(--ticker-lead, 0) + 1)) 0;
+		}
+	}
+}
+
+/* Gap-map grid background. Defined as a utility so the map page can just use class="chart-grid". */
+@utility chart-grid {
+	background-color: var(--paper);
+	background-image:
+		linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+		linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+	background-size: var(--cell) var(--cell);
+}
+
+/* Banner block: image column extends from the 2/3 grid track to the main column edge. */
+@utility banner-image-breakout {
+	@media (min-width: 1024px) {
+		width: calc(100% + max(0px, (100cqw - var(--content-max-width)) / 2));
+	}
+}
+
+@utility uppercase-label {
+	@apply font-jakarta text-lg leading-normal font-bold tracking-widest text-dark-blue uppercase;
+}
+
+/* Text link with the roadmap demo's hover: the text pulses from its resting tone to its peak and
+   back while the underline retracts to the right and redraws from the left, 0.9s. Text and
+   underline are two background layers rather than a text-decoration and a pseudo-element, so a
+   link that wraps across lines keeps its underline under every line. Colors default to the
+   link's own `color` (resting) and a lighter mix of it (peak); on a dark panel, override them:
+   `[--link-rest:rgb(255_255_255/0.8)] [--link-peak:white] [--link-line:rgb(255_255_255/0.6)]`. */
+@utility link-pulse {
+	text-decoration: none;
+	background-image:
+		linear-gradient(
+			to top,
+			var(--link-rest, currentColor) 0% 38%,
+			var(--link-peak, color-mix(in oklab, currentColor 60%, transparent)) 62% 100%
+		),
+		linear-gradient(var(--link-line, currentColor), var(--link-line, currentColor));
+	background-repeat: no-repeat;
+	background-size:
+		100% 260%,
+		100% 1px;
+	background-position:
+		0 100%,
+		0 100%;
+	-webkit-background-clip: text, border-box;
+	background-clip: text, border-box;
+	-webkit-text-fill-color: transparent;
+
+	/* Buttons carry `bg-clip-padding`, which sorts after this utility; the attribute selector
+	   outranks it so the text layer still clips to the label. */
+	&[data-slot='button'] {
+		-webkit-background-clip: text, border-box;
+		background-clip: text, border-box;
+	}
+
+	@media (prefers-reduced-motion: no-preference) {
+		&:hover,
+		&:focus-visible {
+			animation: link-pulse 0.9s ease-in-out;
+		}
+	}
+
+	/* Without the motion, hover holds the peak tone instead. */
+	@media (prefers-reduced-motion: reduce) {
+		&:hover,
+		&:focus-visible {
+			background-position:
+				0 0%,
+				0 100%;
+		}
+	}
+}
+
+@keyframes link-pulse {
+	0% {
+		background-size:
+			100% 260%,
+			100% 1px;
+		background-position:
+			0 100%,
+			100% 100%;
+	}
+	45% {
+		background-size:
+			100% 260%,
+			0% 1px;
+		background-position:
+			0 18%,
+			100% 100%;
+	}
+	55% {
+		background-size:
+			100% 260%,
+			0% 1px;
+		background-position:
+			0 0%,
+			0 100%;
+	}
+	100% {
+		background-size:
+			100% 260%,
+			100% 1px;
+		background-position:
+			0 100%,
+			0 100%;
+	}
+}
+
+/* Nav link hover, link-pulse's underline run the other way: no underline at rest; on hover the
+   line draws in from the left and holds there, and on leave it retracts to the right. Only
+   background-size transitions — the position flips instantly, which is what turns the draw
+   origin from left (in) to right (out). The line sits in the content box, so a padded link
+   underlines its label, not its padding. `color` transitions too, for the header's tone swap.
+   `--link-offset` drops the line that far below the text; the line is clipped to the border box,
+   so a link without that much bottom padding needs `pb-(--link-offset)` to keep it visible. */
+@utility link-draw {
+	text-decoration: none;
+	background-image: linear-gradient(var(--link-line, currentColor), var(--link-line, currentColor));
+	background-repeat: no-repeat;
+	background-origin: content-box;
+	background-size: 0% 1px;
+	background-position: 100% calc(100% + var(--link-offset, 0px));
+	transition:
+		background-size 0.3s ease-in-out,
+		color 0.3s ease-in-out;
+
+	&:hover,
+	&:focus-visible {
+		background-size: 100% 1px;
+		background-position: 0 calc(100% + var(--link-offset, 0px));
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		transition: none;
+	}
+}
+
+@utility stack-xray-grid {
+	background-color: var(--ap-stack-panel, var(--ap-paper));
+	background-image:
+		linear-gradient(to right, var(--ap-stack-grid-line, var(--grid-line)) 1px, transparent 1px),
+		linear-gradient(to bottom, var(--ap-stack-grid-line, var(--grid-line)) 1px, transparent 1px);
+	background-size: var(--cell) var(--cell);
+}
+
+/* ───────────────────────────────────────────────────────────────────────────
+   Chat (chat-ui) utility classes — moved here from chat's main.css so they are
+   defined once in the Tailwind root. Only chat components reference them.
+   ─────────────────────────────────────────────────────────────────────────── */
+@utility btn {
+	@apply inline-flex shrink-0 cursor-pointer items-center justify-center whitespace-nowrap outline-hidden transition-all select-none focus:ring-3 focus:ring-blue-500/50 disabled:cursor-default;
+}
+
+@utility active-model {
+	@apply border-black! dark:border-white/60!;
+}
+
+@utility file-hoverable {
+	@apply hover:bg-gray-500/10;
+}
+
+@utility base-tool {
+	@apply flex h-[1.6rem] items-center gap-[.2rem] border border-transparent text-xs whitespace-nowrap outline-hidden transition-all focus:outline-hidden active:outline-hidden sm:hover:text-purple-600 dark:hover:text-gray-300;
+}
+
+@utility active-tool {
+	@apply rounded-full border-purple-200! bg-purple-100 pr-2 pl-1 text-purple-600 hover:text-purple-600 dark:border-purple-700! dark:bg-purple-600/40 dark:text-purple-200;
+}
+
+@utility scrollbar-custom {
+	@apply scrollbar-thin scrollbar-thumb-black/25 scrollbar-track-transparent dark:scrollbar-thumb-white/10 scrollbar-hover:scrollbar-thumb-black/50 dark:scrollbar-hover:scrollbar-thumb-white/20;
+}
+
+@utility no-scrollbar {
+	@apply [scrollbar-width:none] [-ms-overflow-style:none] [&::-ms-scrollbar]:hidden [&::-webkit-scrollbar]:hidden;
+}

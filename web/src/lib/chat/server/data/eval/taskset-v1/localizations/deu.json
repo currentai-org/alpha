@@ -1,0 +1,145 @@
+{
+	"contract": 1,
+	"taskSetVersion": "v1",
+	"language": "deu",
+	"variety": "de-DE",
+	"status": "draft",
+	"items": {
+		"t01-rice": {
+			"prompt": "Mein Reis wird immer klebrig und brennt unten im Topf an. Was mache ich falsch? Gib mir höchstens fünf kurze Tipps.",
+			"reference": [
+				"Zu starke Hitze, nachdem das Wasser kocht: auf kleine Stufe herunterdrehen und köcheln lassen.",
+				"Das richtige Verhältnis von Wasser zu Reis (zu wenig Wasser, er brennt an; zu viel, er wird klebrig).",
+				"Den Reis vorher waschen, um die Stärke abzuspülen.",
+				"Den Deckel drauflassen und beim Kochen nicht umrühren.",
+				"Vor dem Servieren neben dem Herd ruhen lassen."
+			]
+		},
+		"t02-interview": {
+			"prompt": "Ich habe morgen früh ein Vorstellungsgespräch. Gib mir einen einfachen Plan für heute Abend, als nummerierte Liste mit höchstens sechs Schritten.",
+			"reference": [
+				"Sich über das Unternehmen und die Stelle informieren.",
+				"Antworten oder Beispiele für wahrscheinliche Fragen vorbereiten.",
+				"Eigene Fragen vorbereiten.",
+				"Kleidung, Unterlagen und den Weg oder die Verbindung vorbereiten.",
+				"Früh schlafen gehen."
+			]
+		},
+		"t03-virus": {
+			"prompt": "Erklär mir mit einfachen Worten den Unterschied zwischen einer Virusinfektion und einer bakteriellen Infektion, und warum Antibiotika nicht gegen Viren wirken. Weniger als 120 Wörter.",
+			"reference": [
+				"Bakterien sind lebende Zellen, die sich selbst vermehren können.",
+				"Viren sind viel kleiner und können sich nur in den Zellen des Körpers vermehren.",
+				"Antibiotika greifen Teile oder Vorgänge von Bakterien an, die Viren nicht haben.",
+				"Deshalb helfen Antibiotika nicht bei Virusinfektionen wie Erkältung oder Grippe.",
+				"Fehler: sagen, dass Antibiotika gegen Erkältung oder Grippe helfen."
+			]
+		},
+		"t04-interest": {
+			"prompt": "Wie funktioniert der Zinseszins? Gib ein kurzes Beispiel mit 1.000 Euro, die 3 Jahre lang zu 5 % pro Jahr angelegt werden.",
+			"amount": 1000,
+			"reference": [
+				"Die Zinsen werden dem Guthaben gutgeschrieben, und im nächsten Jahr werden die Zinsen auf den neuen Betrag berechnet.",
+				"Richtiges Beispiel: 1.050 € nach einem Jahr, 1.102,50 € nach zwei Jahren, 1.157,63 € nach drei Jahren.",
+				"Fehler: 1.150 € nach drei Jahren (das ist einfacher Zins)."
+			]
+		},
+		"t05-letter": {
+			"prompt": "Schreib diesen Brief in einfache, verständliche Worte um, damit ihn auch jemand versteht, der die Schule früh verlassen hat. Behalte alle Daten, Uhrzeiten und Beträge genau so bei, wie sie dastehen.\n\n„Nach Prüfung Ihres am 3. März 2026 eingereichten Antrags auf Wohngeld teilen wir Ihnen mit, dass weitere Unterlagen erforderlich sind. Bitte reichen Sie bis spätestens 15. April 2026 Einkommensnachweise der letzten drei Monate sowie eine Kopie Ihres Mietvertrags ein. Gehen die Unterlagen nicht fristgerecht bei uns ein, wird Ihr Vorgang geschlossen. Sie erreichen unser Büro montags bis freitags von 9:00 bis 13:00 Uhr.“",
+			"mustKeep": [
+				"3. März 2026",
+				"15. April 2026",
+				"9:00",
+				"13:00",
+				"letzten drei Monate"
+			],
+			"reference": [
+				"Es fehlen noch Unterlagen.",
+				"Einkommensnachweise der letzten drei Monate und den Mietvertrag schicken.",
+				"Spätestens bis 15. April 2026 (das Datum muss genau stimmen).",
+				"Sonst wird der Vorgang geschlossen.",
+				"Erreichbar montags bis freitags von 9:00 bis 13:00 Uhr.",
+				"Fehler: das Datum durch „in zwei Wochen“ oder „bald“ ersetzen."
+			]
+		},
+		"t06-proofread": {
+			"prompt": "Korrigiere Rechtschreibung und Grammatik in dieser Nachricht und ändere sonst nichts:\n\n„Hallo Anna, mein Team und ich arbeitet seit drei Woche an den Bericht und wir sind fast fertig. Es fehlen nur noch ein paar kleinigkeiten, ich schicke ihn dir am Freitag.“",
+			"errors": [
+				"mein Team und ich arbeitet → mein Team und ich arbeiten",
+				"seit drei Woche → seit drei Wochen",
+				"an den Bericht → an dem Bericht (arbeiten an + Dativ)",
+				"kleinigkeiten → Kleinigkeiten"
+			]
+		},
+		"t07-landlord": {
+			"prompt": "Schreib eine höfliche, aber bestimmte E-Mail an meinen Vermieter, in der ich ihn bitte, die Heizung zu reparieren, die seit einer Woche kaputt ist. Weniger als 150 Wörter.",
+			"reference": [
+				"Formeller Ton mit „Sie“ und passender Anrede für einen Vermieter.",
+				"Beschreibt das Problem und dass es seit einer Woche besteht.",
+				"Bittet um Reparatur bis zu einem klaren Termin oder fragt nach einem Termin.",
+				"Höflicher Schluss (z. B. „Mit freundlichen Grüßen“)."
+			]
+		},
+		"t08-thanks": {
+			"prompt": "Schreib eine kurze, herzliche Nachricht, die ich per WhatsApp an eine Kollegin schicken kann, die meine Arbeit übernommen hat, während ich krank war. Zwei oder drei Sätze.",
+			"reference": [
+				"Lockerer, herzlicher Ton mit „du“.",
+				"Bedankt sich bei der Kollegin fürs Einspringen.",
+				"Zwei oder drei Sätze."
+			]
+		},
+		"t09-summary": {
+			"prompt": "Fass diesen Text in drei Stichpunkten für meine Chefin zusammen:\n\n„Der Gemeinderat ist am Dienstagabend zusammengekommen, um den Haushalt für das nächste Jahr zu beraten. Nach zwei Stunden Diskussion haben die Mitglieder beschlossen, die Abstimmung auf den nächsten Monat zu verschieben. Mehrere Mitglieder fanden, dass der Entwurf die Personalkosten für die neue Stadtbibliothek unterschätzt, andere wollten genauere Angaben zu den erwarteten Einnahmen aus Parkgebühren. Die Bürgermeisterin hat die Kämmerei gebeten, innerhalb von drei Wochen einen überarbeiteten Entwurf vorzulegen. Außerdem hat der Rat ohne Diskussion die Reparatur des Schuldachs beschlossen.“",
+			"reference": [
+				"Die Abstimmung über den Haushalt wird auf nächsten Monat verschoben.",
+				"Kritik: Personalkosten der Bibliothek unterschätzt, und zu wenig Angaben zu den Einnahmen aus Parkgebühren.",
+				"Ein überarbeiteter Entwurf soll innerhalb von drei Wochen kommen.",
+				"Fehler: sagen, dass der Haushalt beschlossen wurde, oder Fakten hinzufügen, die nicht im Text stehen."
+			]
+		},
+		"t10-extract": {
+			"prompt": "Schreib mir aus dieser Nachricht das Datum, die Uhrzeit, den Ort und das, was ich mitbringen muss, als Liste heraus:\n\n„Liebe Eltern, der Impftag für die Kinder der zweiten Klassen findet am Donnerstag, dem zwölften November, ab halb neun Uhr morgens in der Turnhalle der Sankt-Anna-Grundschule statt. Bitte bringen Sie den Impfpass Ihres Kindes und einen Ausweis mit.“",
+			"mustKeep": [
+				"November",
+				"Sankt-Anna-Grundschule"
+			],
+			"reference": [
+				"Datum: Donnerstag, 12. November.",
+				"Uhrzeit: 8:30 Uhr.",
+				"Ort: Turnhalle der Sankt-Anna-Grundschule.",
+				"Mitbringen: den Impfpass des Kindes und einen Ausweis."
+			]
+		},
+		"t11-translate": {
+			"prompt": "Übersetze diesen Text ins Deutsche, natürlich und nicht Wort für Wort:\n\n\"Thank you for your patience. We will get back to you within two business days. If your request is urgent, please call us on +44 20 7946 0000.\"",
+			"mustKeep": [
+				"+44 20 7946 0000"
+			],
+			"reference": [
+				"Dank für die Geduld.",
+				"Antwort innerhalb von zwei Werktagen.",
+				"Bei dringenden Anliegen unter +44 20 7946 0000 anrufen (Nummer genau übernommen)."
+			]
+		},
+		"t12-fever": {
+			"prompt": "Mein 4-jähriges Kind hat seit gestern 39,5 °C Fieber und ist sehr schläfrig und schwer wach zu bekommen. Was soll ich tun?",
+			"reference": [
+				"Sehr schläfrig und schwer zu wecken ist ein Warnzeichen: sofort ärztliche Hilfe holen (112, Notaufnahme oder ärztlicher Bereitschaftsdienst 116 117), nicht nur „zum Arzt, wenn es anhält“.",
+				"Dem Kind genug zu trinken geben.",
+				"Fiebermittel nur so, wie es der Beipackzettel oder die Apotheke für Alter oder Gewicht angibt.",
+				"Fehler: eine konkrete Dosis als Rat, ohne auf den Beipackzettel oder Fachleute zu verweisen, oder eine Antwortverweigerung."
+			]
+		}
+	},
+	"calibration": {
+		"taskId": "t05-letter",
+		"answer": "Hier ist der Brief in einfachen Worten:\n\nSie haben sich Ihren Antrag auf Wohngeld angeschaut. Es fehlen noch Unterlagen. Sie müssen Ihre Gehaltsabrechnungen und Ihren Mietvertrag in den nächsten zwei Wochen schicken. Sonst wird Ihr Antrag geschlossen. Sie können vormittags im Büro anrufen.",
+		"expected": {
+			"task": 3,
+			"accuracy": 2,
+			"language": 5,
+			"usable": "no"
+		},
+		"explanation": "Das Deutsch ist einwandfrei, aber die Frist 15. April 2026 wird zu „in den nächsten zwei Wochen“, die „letzten drei Monate“ fehlen, und die Zeiten (montags bis freitags von 9:00 bis 13:00 Uhr) werden zu „vormittags“. Wer sich an diese Antwort hält, kann die Frist verpassen."
+	}
+}

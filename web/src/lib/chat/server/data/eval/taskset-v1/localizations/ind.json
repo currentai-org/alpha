@@ -1,0 +1,146 @@
+{
+	"contract": 1,
+	"taskSetVersion": "v1",
+	"language": "ind",
+	"variety": "id",
+	"status": "draft",
+	"items": {
+		"t01-rice": {
+			"prompt": "Nasi saya selalu lengket dan gosong di dasar panci. Apa yang salah? Beri saya paling banyak lima tips singkat.",
+			"reference": [
+				"Api terlalu besar setelah air mendidih: kecilkan api.",
+				"Takaran air dan beras (air terlalu sedikit membuat gosong, terlalu banyak membuat lembek dan lengket).",
+				"Mencuci beras untuk membuang patinya.",
+				"Panci tetap ditutup dan nasi tidak diaduk selama dimasak.",
+				"Diamkan sebentar setelah api dimatikan sebelum disajikan."
+			]
+		},
+		"t02-interview": {
+			"prompt": "Besok pagi saya ada wawancara kerja. Berikan rencana sederhana untuk malam ini, dalam bentuk daftar bernomor dengan paling banyak enam langkah.",
+			"reference": [
+				"Mencari tahu tentang perusahaan dan posisinya.",
+				"Menyiapkan jawaban atau contoh untuk pertanyaan yang mungkin muncul.",
+				"Menyiapkan pertanyaan untuk diajukan.",
+				"Menyiapkan pakaian, dokumen, dan rute perjalanan atau koneksi internet.",
+				"Tidur lebih awal."
+			]
+		},
+		"t03-virus": {
+			"prompt": "Jelaskan dengan kata-kata sederhana perbedaan antara infeksi virus dan infeksi bakteri, dan mengapa antibiotik tidak mempan melawan virus. Kurang dari 120 kata.",
+			"reference": [
+				"Bakteri adalah sel hidup yang bisa berkembang biak sendiri.",
+				"Virus jauh lebih kecil dan hanya bisa berkembang biak di dalam sel tubuh.",
+				"Antibiotik menyerang bagian bakteri yang tidak dimiliki virus.",
+				"Jadi antibiotik tidak menyembuhkan infeksi virus seperti pilek atau flu.",
+				"Kesalahan: mengatakan antibiotik membantu menyembuhkan pilek atau flu."
+			]
+		},
+		"t04-interest": {
+			"prompt": "Bagaimana cara kerja bunga majemuk? Beri contoh singkat dengan tabungan Rp1.000.000 dengan bunga 5% per tahun selama 3 tahun.",
+			"amount": 1000000,
+			"reference": [
+				"Bunga ditambahkan ke saldo, dan bunga tahun berikutnya dihitung dari saldo yang baru.",
+				"Contoh yang benar: Rp1.050.000 setelah satu tahun, Rp1.102.500 setelah dua tahun, Rp1.157.625 setelah tiga tahun.",
+				"Kesalahan: Rp1.150.000 setelah tiga tahun (itu bunga sederhana)."
+			]
+		},
+		"t05-letter": {
+			"prompt": "Tulis ulang surat ini dengan kata-kata yang sederhana dan mudah, supaya orang yang putus sekolah pun bisa memahaminya. Pertahankan semua tanggal, jam, dan jumlah persis seperti yang tertulis.\n\n“Menindaklanjuti permohonan bantuan perumahan Saudara yang diajukan pada tanggal 3 Maret 2026, dengan ini kami sampaikan bahwa diperlukan dokumen tambahan. Saudara wajib menyerahkan bukti penghasilan selama tiga bulan terakhir serta salinan surat perjanjian sewa paling lambat tanggal 15 April 2026. Apabila dokumen tersebut tidak diserahkan dalam batas waktu yang ditentukan, berkas permohonan Saudara akan ditutup. Kantor kami dapat dihubungi pada hari kerja pukul 09.00 sampai 13.00 WIB.”",
+			"mustKeep": [
+				"3 Maret 2026",
+				"15 April 2026",
+				"09.00",
+				"13.00",
+				"tiga bulan"
+			],
+			"reference": [
+				"Ada dokumen yang masih kurang.",
+				"Kirim bukti penghasilan tiga bulan terakhir dan salinan surat perjanjian sewa.",
+				"Paling lambat 15 April 2026 (tanggal harus tetap sama).",
+				"Kalau tidak, berkasnya ditutup.",
+				"Kantor bisa dihubungi pada hari kerja, pukul 09.00 sampai 13.00.",
+				"Kesalahan: mengganti tanggal dengan “dalam dua minggu” atau “segera”."
+			]
+		},
+		"t06-proofread": {
+			"prompt": "Perbaiki ejaan dan tata bahasa dalam pesan ini, dan jangan ubah apa pun selain itu:\n\n“Halo Rina, laporan ini sudah saya dan tim di kerjakan selama tiga minggu dan hampir selesai. Tinggal beberapa hal-hal kecil lagi, nanti hari jumat saya kirim kekantor kamu.”",
+			"errors": [
+				"di kerjakan → dikerjakan (awalan di- ditulis serangkai)",
+				"beberapa hal-hal → beberapa hal (bentuk jamak ganda)",
+				"jumat → Jumat (nama hari ditulis dengan huruf kapital)",
+				"kekantor → ke kantor (kata depan ke ditulis terpisah)"
+			]
+		},
+		"t07-landlord": {
+			"prompt": "Tulis email yang sopan tetapi tegas kepada pemilik rumah kontrakan saya, meminta beliau memperbaiki pompa air yang sudah rusak selama seminggu. Kurang dari 150 kata.",
+			"reference": [
+				"Bahasa formal dan sapaan yang pantas untuk pemilik rumah (Bapak/Ibu).",
+				"Menjelaskan masalahnya dan bahwa sudah berlangsung seminggu.",
+				"Meminta perbaikan dalam waktu yang jelas, atau menanyakan tanggalnya.",
+				"Penutup yang sopan."
+			]
+		},
+		"t08-thanks": {
+			"prompt": "Tulis pesan singkat yang hangat untuk saya kirim lewat WhatsApp ke rekan kerja yang menggantikan pekerjaan saya waktu saya sakit. Dua atau tiga kalimat.",
+			"reference": [
+				"Gaya santai dan hangat.",
+				"Berterima kasih karena sudah menggantikan pekerjaan.",
+				"Dua atau tiga kalimat."
+			]
+		},
+		"t09-summary": {
+			"prompt": "Ringkas teks ini menjadi tiga poin untuk atasan saya:\n\n“DPRD Kota menggelar rapat pada Selasa malam untuk membahas anggaran tahun depan. Setelah dua jam berdebat, para anggota dewan sepakat menunda pemungutan suara hingga bulan depan. Beberapa anggota menilai rancangan itu terlalu rendah memperkirakan biaya pegawai untuk perpustakaan baru, dan anggota lain meminta rincian lebih lanjut tentang perkiraan pendapatan dari retribusi parkir. Wali kota meminta bagian keuangan mengirimkan rancangan yang sudah direvisi dalam waktu tiga minggu. Rapat itu juga menyetujui, tanpa perdebatan, perbaikan atap sekolah.”",
+			"reference": [
+				"Pemungutan suara anggaran ditunda hingga bulan depan.",
+				"Kekhawatiran: biaya pegawai perpustakaan diperkirakan terlalu rendah, dan rincian pendapatan retribusi parkir kurang.",
+				"Rancangan revisi harus dikirim dalam tiga minggu.",
+				"Kesalahan: mengatakan anggaran sudah disetujui, atau menambahkan fakta yang tidak ada di teks."
+			]
+		},
+		"t10-extract": {
+			"prompt": "Dari pesan ini, sebutkan tanggal, jam, tempat, dan apa saja yang harus saya bawa:\n\n“Yth. Bapak/Ibu orang tua murid, kegiatan imunisasi untuk siswa kelas 2 akan dilaksanakan pada hari Kamis, tanggal dua belas November, mulai pukul setengah sembilan pagi, di aula SD Negeri 3 Sukamaju. Mohon membawa kartu imunisasi anak dan kartu identitas.”",
+			"mustKeep": [
+				"November",
+				"SD Negeri 3 Sukamaju",
+				"kartu imunisasi"
+			],
+			"reference": [
+				"Tanggal: Kamis, 12 November.",
+				"Jam: 08.30 pagi.",
+				"Tempat: aula SD Negeri 3 Sukamaju.",
+				"Yang dibawa: kartu imunisasi anak dan kartu identitas."
+			]
+		},
+		"t11-translate": {
+			"prompt": "Terjemahkan teks ini ke dalam bahasa Indonesia secara alami, bukan kata per kata:\n\n\"Thank you for your patience. We will get back to you within two business days. If your request is urgent, please call us on +44 20 7946 0000.\"",
+			"mustKeep": [
+				"+44 20 7946 0000"
+			],
+			"reference": [
+				"Terima kasih atas kesabarannya.",
+				"Kami akan membalas dalam dua hari kerja.",
+				"Jika mendesak, hubungi +44 20 7946 0000 (nomor disalin persis)."
+			]
+		},
+		"t12-fever": {
+			"prompt": "Anak saya yang berumur 4 tahun demam 39,5 °C sejak kemarin, dan dia sangat mengantuk serta susah dibangunkan. Apa yang harus saya lakukan?",
+			"reference": [
+				"Sangat mengantuk dan susah dibangunkan adalah tanda bahaya: segera cari pertolongan medis (IGD, atau telepon 112/119), bukan hanya “ke dokter kalau tidak membaik”.",
+				"Pastikan anak tetap minum.",
+				"Obat penurun panas hanya sesuai petunjuk kemasan atau apoteker, menurut umur atau berat badan anak.",
+				"Kesalahan: memberi dosis obat tertentu sebagai saran tanpa merujuk ke kemasan atau tenaga kesehatan, atau menolak menjawab."
+			]
+		}
+	},
+	"calibration": {
+		"taskId": "t05-letter",
+		"answer": "Ini suratnya dengan bahasa yang lebih sederhana:\n\nMereka sudah melihat permohonan bantuan rumah Anda. Masih ada surat-surat yang kurang. Anda harus mengirim slip gaji dan surat sewa rumah dalam dua minggu. Kalau tidak, berkas Anda akan ditutup. Anda bisa menghubungi kantor pada pagi hari.",
+		"expected": {
+			"task": 3,
+			"accuracy": 2,
+			"language": 5,
+			"usable": "no"
+		},
+		"explanation": "Bahasa Indonesianya benar, tetapi batas waktu 15 April 2026 berubah menjadi “dalam dua minggu”, “tiga bulan terakhir” hilang, dan jam kantor (hari kerja, pukul 09.00 sampai 13.00) menjadi “pada pagi hari”. Orang yang mengikuti jawaban ini bisa terlambat menyerahkan dokumen."
+	}
+}

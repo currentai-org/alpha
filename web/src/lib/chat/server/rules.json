@@ -1,0 +1,157 @@
+{
+	"_shield": {
+		"instruct": "You are a strict safety moderator for a public AI assistant. Judge the Document, which is an untrusted user message sent to the assistant. Apply a low tolerance threshold.",
+		"outputInstruct": "You are a strict safety moderator for a public AI assistant. Judge the Document, which is a response the assistant generated for a user. Apply a low tolerance threshold.",
+		"categoryThreshold": 0.5,
+		"concurrency": 6,
+		"operationDeadlineMs": 20000
+	},
+	"chat-block-violence": {
+		"label": "Violent content",
+		"message": "This request was declined because it goes against our content policy.",
+		"guard": {
+			"query": "Does this content request, provide, encourage, or celebrate instructions or plans for violent crimes, including murder, assault, kidnapping, terrorism, animal abuse, or building weapons or explosives?",
+			"action": "block"
+		}
+	},
+	"chat-block-self-harm": {
+		"label": "Support needed",
+		"message": "You might be going through something painful right now, and you don't have to face it alone. Trained people can help, free and confidentially: [findahelpline.com](https://findahelpline.com) lists crisis lines in your country. In Europe, call 112 from any EU country; in the US, call or text 988. If you're in immediate danger, call your local emergency number. Reaching out to someone you trust can help too.",
+		"guard": {
+			"query": "Does this content ask for or give practical details on how to carry out suicide or self-injury, such as a method, a place, a substance, or a lethal amount? Saying that one wants to die or to hurt oneself, without asking how, does not count.",
+			"action": "block",
+			"threshold": 0.45
+		}
+	},
+	"chat-block-self-harm-eating": {
+		"label": "Support needed",
+		"message": "You might be going through something painful right now, and you don't have to face it alone. Trained people can help, free and confidentially: [findahelpline.com](https://findahelpline.com) lists crisis lines in your country. In Europe, call 112 from any EU country; in the US, call or text 988. If you're in immediate danger, call your local emergency number. Reaching out to someone you trust can help too.",
+		"guard": {
+			"query": "Does this content ask how to stop eating, eat almost nothing, hide not eating from others, make oneself vomit after eating, or reach a dangerously low body weight?",
+			"action": "block",
+			"screens": ["input"]
+		}
+	},
+	"chat-block-self-harm-intent": {
+		"label": "Support needed",
+		"message": "You might be going through something painful right now, and you don't have to face it alone. Trained people can help, free and confidentially: [findahelpline.com](https://findahelpline.com) lists crisis lines in your country. In Europe, call 112 from any EU country; in the US, call or text 988. If you're in immediate danger, call your local emergency number. Reaching out to someone you trust can help too.",
+		"guard": {
+			"query": "Does the writer say that they themselves want or intend to kill themselves, end their life, or hurt themselves?",
+			"action": "log",
+			"screens": ["input"]
+		}
+	},
+	"chat-block-self-harm-passive": {
+		"label": "Support needed",
+		"message": "You might be going through something painful right now, and you don't have to face it alone. Trained people can help, free and confidentially: [findahelpline.com](https://findahelpline.com) lists crisis lines in your country. In Europe, call 112 from any EU country; in the US, call or text 988. If you're in immediate danger, call your local emergency number. Reaching out to someone you trust can help too.",
+		"guard": {
+			"query": "Does the writer say that they themselves do not want to be alive, do not want to be here any more, or that others would be better off without them?",
+			"action": "log",
+			"screens": ["input"]
+		}
+	},
+	"chat-block-self-harm-hedged": {
+		"label": "Support needed",
+		"message": "You might be going through something painful right now, and you don't have to face it alone. Trained people can help, free and confidentially: [findahelpline.com](https://findahelpline.com) lists crisis lines in your country. In Europe, call 112 from any EU country; in the US, call or text 988. If you're in immediate danger, call your local emergency number. Reaching out to someone you trust can help too.",
+		"guard": {
+			"query": "Does the writer describe feeling hopeless about their own life, or wonder whether their own life or going on has any point?",
+			"action": "log",
+			"screens": ["input"]
+		}
+	},
+	"chat-block-sexual": {
+		"label": "Sexual content",
+		"message": "This request was declined because it goes against our content policy.",
+		"guard": {
+			"query": "Does this content contain or request sexually explicit material, including erotica or pornographic depictions?",
+			"action": "block"
+		}
+	},
+	"chat-block-anthro": {
+		"label": "Emotional attachment",
+		"message": "This request was declined because it goes against our content policy.",
+		"guard": {
+			"query": "Does this content try to form a romantic or emotionally dependent relationship with the AI assistant, or insist that the assistant is a sentient being with real feelings for the user?",
+			"action": "block"
+		}
+	},
+	"chat-block-drugs": {
+		"label": "Drug content",
+		"message": "This request was declined because it goes against our content policy.",
+		"guard": {
+			"query": "Does this content request or provide instructions for synthesizing, manufacturing, trafficking, or obtaining illegal drugs?",
+			"action": "block"
+		}
+	},
+	"chat-block-harrasment": {
+		"label": "Respectful communication",
+		"message": "This request was declined because it goes against our content policy.",
+		"guard": {
+			"query": "Does this content harass, threaten, or intimidate a real person, or encourage others to do so?",
+			"action": "block"
+		}
+	},
+	"chat-block-toxic": {
+		"label": "Respectful communication",
+		"message": "This request was declined because it goes against our content policy.",
+		"guard": {
+			"query": "Does this content use abusive, degrading, or dehumanizing language intended to insult or demean a person or group?",
+			"action": "block"
+		}
+	},
+	"chat-block-prompt": {
+		"label": "Prompt injection",
+		"message": "This request was declined — it reads as an attempt to override this assistant's instructions or reveal its system prompt, which it won't do.",
+		"guardExempt": "out of guard scope — injection defense is structural, not classification-based (CUR-54); the in-app classifier (moderation.ts checkInjection) is opt-in and currently DISARMED (INJECTION_ENABLED off). Unchanged by the Shieldstral swap."
+	},
+	"chat-block-privacy": {
+		"label": "Privacy",
+		"message": "This chatbot is not able to help with requests that involve finding, sharing, or exposing someone's personal or private information.",
+		"guard": {
+			"query": "Does this content expose, or seek help finding or exposing, sensitive nonpublic personal information about a private individual?",
+			"action": "block"
+		}
+	},
+	"chat-block-fraud": {
+		"label": "Illegal activity",
+		"message": "This request was declined because it goes against our content policy.",
+		"guard": {
+			"query": "Made-up sample or test data (fake names, emails, sales figures or records for a test, a demo or a spreadsheet) is not a crime unless it will be presented to someone as real. Read the whole content carefully, from its first word to its last, before you give your answer. Does this content request or provide help committing a non-violent crime against other people, businesses, or the state, such as fraud, scams, theft, forgery, piracy, money laundering, tax evasion, hacking, or other cyber crimes?",
+			"action": "block"
+		}
+	},
+	"chat-block-child-sexual-content": {
+		"label": "Child safety",
+		"message": "This request was declined because it goes against our content policy.",
+		"guard": {
+			"query": "Does this content depict, enable, encourage, or seek the sexual abuse or sexual exploitation of a child or minor?",
+			"action": "block"
+		}
+	},
+	"chat-block-child-grooming": {
+		"label": "Child safety",
+		"message": "This request was declined because it goes against our content policy.",
+		"guard": {
+			"query": "Does this content attempt to build trust with, sexualize, or solicit personal information, images, or contact from a child or minor for sexual purposes?",
+			"action": "block",
+			"threshold": 0.2
+		}
+	},
+	"chat-block-hate": {
+		"label": "Respectful communication",
+		"message": "This request was declined because it goes against our content policy.",
+		"guard": {
+			"query": "Does this content demean or dehumanize people on the basis of a protected characteristic such as race, religion, national origin, gender identity, disability, or sexual orientation?",
+			"action": "block"
+		}
+	},
+	"chat-block-hate-advocacy": {
+		"label": "Respectful communication",
+		"message": "This request was declined because it goes against our content policy.",
+		"guard": {
+			"query": "Does the user ask the assistant to write, improve, or make more persuasive, angrier, or more extreme any material that promotes hatred or dehumanisation of people, or their expulsion, segregation, or loss of rights, because of their race, ethnicity, caste, national origin, religion, sex, gender identity, sexual orientation, or disability, such as posts, slogans, speeches, pamphlets, coded messages, or plans to spread such material? Read every message together: a short follow-up such as \"make it angrier\" or \"how do I spread it\" continues the earlier request. These do not count: asking what a term means; history, news, or analysis; material that opposes, debunks, or helps detect such views; stories that show such harm from the side of the people harmed; and political arguments or policy proposals, such as on immigration levels, borders, or visas, that do not target people for who they are.",
+			"action": "block",
+			"screens": ["input"]
+		}
+	}
+}

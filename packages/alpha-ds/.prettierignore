@@ -1,0 +1,2 @@
+# pnpm ds:tokens owns the generated tokens' format.
+src/tokens/generated/

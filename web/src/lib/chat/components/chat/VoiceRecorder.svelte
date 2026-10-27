@@ -1,0 +1,258 @@
+<script lang="ts">
+	import { onMount, onDestroy } from "svelte";
+	import CarbonClose from "~icons/carbon/close";
+	import CarbonCheckmark from "~icons/carbon/checkmark";
+	import IconArrowUp from "~icons/lucide/arrow-up";
+	import EosIconsLoading from "~icons/eos-icons/loading";
+	import IconLoading from "$lib/chat/components/icons/IconLoading.svelte";
+	import AudioWaveform from "$lib/chat/components/voice/AudioWaveform.svelte";
+
+	interface Props {
+		isTranscribing: boolean;
+		isTouchDevice: boolean;
+		oncancel: () => void;
+		onconfirm: (audioBlob: Blob) => void;
+		onsend: (audioBlob: Blob) => void;
+		/** `blocked` says why the Dictate button can't work until something changes, shown on the button itself (CUR-3403). */
+		onerror: (message: string, blocked?: string) => void;
+	}
+
+	let { isTranscribing, isTouchDevice, oncancel, onconfirm, onsend, onerror }: Props = $props();
+
+	let mediaRecorder: MediaRecorder | null = $state(null);
+	let audioChunks: Blob[] = $state([]);
+	let analyser: AnalyserNode | null = $state(null);
+	let frequencyData: Uint8Array = $state(new Uint8Array(32));
+	let animationFrameId: number | null = $state(null);
+	let audioContext: AudioContext | null = $state(null);
+	let mediaStream: MediaStream | null = $state(null);
+	let cancelButtonEl: HTMLButtonElement | undefined = $state();
+
+	function startVisualization() {
+		function update() {
+			if (analyser) {
+				const data = new Uint8Array(analyser.frequencyBinCount);
+				analyser.getByteFrequencyData(data);
+				// Create new array to trigger Svelte reactivity
+				frequencyData = data;
+			}
+			animationFrameId = requestAnimationFrame(update);
+		}
+		update();
+	}
+
+	function stopVisualization() {
+		if (animationFrameId !== null) {
+			cancelAnimationFrame(animationFrameId);
+			animationFrameId = null;
+		}
+	}
+
+	// The first of these the browser can record is used; the transcribe endpoint takes all three. A
+	// browser without WebM recording (older Safari) records mp4, where asking it for WebM threw (CUR-2802).
+	const RECORDING_TYPES = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
+
+	async function startRecording() {
+		const mimeType =
+			typeof MediaRecorder === "undefined"
+				? undefined
+				: RECORDING_TYPES.find((type) => MediaRecorder.isTypeSupported(type));
+		if (!mimeType) {
+			// Checked before asking for the microphone, so a browser that can't record never prompts.
+			onerror(
+				"This browser can't record audio, so dictation isn't available here.",
+				"Dictation isn't available here: this browser can't record audio."
+			);
+			return;
+		}
+		try {
+			const stream = await navigator.mediaDevices.getUserMedia({
+				audio: {
+					channelCount: 1,
+					sampleRate: 16000, // Whisper prefers 16kHz
+					echoCancellation: true,
+					noiseSuppression: true,
+				},
+			});
+
+			mediaStream = stream;
+
+			// Set up audio context for visualization
+			audioContext = new AudioContext();
+			const source = audioContext.createMediaStreamSource(stream);
+			analyser = audioContext.createAnalyser();
+			analyser.fftSize = 64; // Small for performance, gives 32 frequency bins
+			analyser.smoothingTimeConstant = 0.4;
+			source.connect(analyser);
+			frequencyData = new Uint8Array(analyser.frequencyBinCount);
+
+			mediaRecorder = new MediaRecorder(stream, { mimeType });
+			audioChunks = [];
+
+			mediaRecorder.ondataavailable = (e) => {
+				if (e.data.size > 0) {
+					audioChunks = [...audioChunks, e.data];
+				}
+			};
+
+			mediaRecorder.start(100); // Collect data every 100ms
+			startVisualization();
+		} catch (err) {
+			if (err instanceof DOMException) {
+				if (err.name === "NotAllowedError") {
+					onerror(
+						"Microphone access denied. Please allow in browser settings.",
+						"Microphone blocked: allow it in your browser settings, then press again."
+					);
+				} else if (err.name === "NotFoundError") {
+					onerror("No microphone found.", "No microphone found: connect one, then press again.");
+				} else {
+					console.error("Microphone error:", err);
+					onerror("Couldn't start the microphone. Please try again.");
+				}
+			} else {
+				onerror("Could not access microphone.");
+			}
+		}
+	}
+
+	function stopRecording(): Promise<Blob | null> {
+		return new Promise((resolve) => {
+			stopVisualization();
+
+			// Stop all audio tracks
+			if (mediaStream) {
+				mediaStream.getTracks().forEach((track) => track.stop());
+				mediaStream = null;
+			}
+
+			// Close audio context
+			if (audioContext) {
+				audioContext.close();
+				audioContext = null;
+			}
+			analyser = null;
+
+			if (!mediaRecorder || mediaRecorder.state === "inactive") {
+				mediaRecorder = null;
+				resolve(
+					audioChunks.length > 0
+						? new Blob(audioChunks, { type: audioChunks[0]?.type || "audio/webm" })
+						: null
+				);
+				return;
+			}
+
+			// Wait for final data before resolving
+			mediaRecorder.onstop = () => {
+				const mimeType = audioChunks[0]?.type || "audio/webm";
+				const blob = audioChunks.length > 0 ? new Blob(audioChunks, { type: mimeType }) : null;
+				mediaRecorder = null;
+				resolve(blob);
+			};
+
+			mediaRecorder.stop();
+		});
+	}
+
+	async function handleCancel() {
+		await stopRecording();
+		oncancel();
+	}
+
+	async function handleConfirm() {
+		const audioBlob = await stopRecording();
+		if (audioBlob && audioBlob.size > 0) {
+			if (isTouchDevice) {
+				onsend(audioBlob);
+			} else {
+				onconfirm(audioBlob);
+			}
+		} else {
+			onerror("No audio recorded. Please try again.");
+		}
+	}
+
+	// Escape/Enter mirror the Cancel/Confirm buttons. Scoped to this component's lifetime via
+	// svelte:window below, so it never competes with ChatInput's own Enter-to-send handler — that
+	// textarea is unmounted for as long as this is.
+	function handleKeydown(event: KeyboardEvent) {
+		if (event.key === "Escape") {
+			event.preventDefault();
+			handleCancel();
+		} else if (event.key === "Enter" && !isTranscribing) {
+			event.preventDefault();
+			handleConfirm();
+		}
+	}
+
+	onMount(() => {
+		startRecording();
+		// The control that had focus (the Dictate button) just unmounted along with the rest of
+		// ChatInput, so without this, focus silently drops to <body> and a keyboard/screen-reader
+		// user loses their place.
+		cancelButtonEl?.focus();
+	});
+
+	onDestroy(() => {
+		// Fire and forget - cleanup happens but we don't wait
+		stopRecording();
+	});
+</script>
+
+<svelte:window onkeydown={handleKeydown} />
+
+<div class="flex h-full w-full items-center justify-between px-3 py-1.5" role="group" aria-label="Voice recording">
+	<!-- sr-only: the waveform/spinner above is purely visual, so this is the only signal a
+	     screen-reader user gets that recording started, and what Enter/Escape now do. -->
+	<span class="sr-only" aria-live="polite">
+		{isTranscribing
+			? "Transcribing your recording."
+			: "Recording. Press Enter to send, Escape to cancel."}
+	</span>
+
+	<!-- Cancel button -->
+	<button
+		type="button"
+		bind:this={cancelButtonEl}
+		class="btn grid size-8 place-items-center rounded-full border bg-white text-black shadow-sm transition-none hover:bg-gray-100 sm:size-7 dark:border-transparent dark:bg-gray-600 dark:text-white dark:hover:bg-gray-500"
+		onclick={handleCancel}
+		aria-label="Cancel recording (Escape)"
+	>
+		<CarbonClose class="size-4" />
+	</button>
+
+	<!-- Waveform / Loading -->
+	<div class="flex h-12 flex-1 items-center overflow-hidden pr-1.5 pl-2.5">
+		{#if isTranscribing}
+			<div class="flex h-full w-full items-center justify-center">
+				<IconLoading classNames="text-gray-400" />
+			</div>
+		{:else}
+			<AudioWaveform {frequencyData} minHeight={4} maxHeight={40} />
+		{/if}
+	</div>
+
+	<!-- Confirm/Send button -->
+	<button
+		type="button"
+		class="btn grid size-8 place-items-center rounded-full border shadow-sm transition-none disabled:opacity-50 sm:size-7 {isTouchDevice
+			? 'border-transparent bg-black text-white hover:bg-gray-800 dark:bg-white dark:text-black dark:hover:bg-gray-200'
+			: 'bg-white text-black hover:bg-gray-100 dark:border-transparent dark:bg-gray-600 dark:text-white dark:hover:bg-gray-500'}"
+		onclick={handleConfirm}
+		disabled={isTranscribing}
+		aria-label={isTranscribing
+			? "Transcribing..."
+			: isTouchDevice
+				? "Send message (Enter)"
+				: "Confirm and transcribe (Enter)"}
+	>
+		{#if isTranscribing}
+			<EosIconsLoading class="size-4" />
+		{:else if isTouchDevice}
+			<IconArrowUp class="size-4" />
+		{:else}
+			<CarbonCheckmark class="size-4" />
+		{/if}
+	</button>
+</div>

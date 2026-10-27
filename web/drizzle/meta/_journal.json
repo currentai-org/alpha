@@ -1,0 +1,272 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1781727245600,
+      "tag": "0000_init_docstore_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1781738357519,
+      "tag": "0001_goofy_expediter",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1781941605828,
+      "tag": "0002_add_generations",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1781942605828,
+      "tag": "0003_hash_contribution_ips",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1781942606828,
+      "tag": "0004_hash_message_event_ips",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1782192831415,
+      "tag": "0005_colorful_deathstrike",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1782411023153,
+      "tag": "0006_panoramic_gunslinger",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1782577924538,
+      "tag": "0007_melodic_talos",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1784695521709,
+      "tag": "0008_lumpy_morbius",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1784835102556,
+      "tag": "0009_flawless_roulette",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1787197283178,
+      "tag": "0010_magenta_veda",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1787926146800,
+      "tag": "0011_clammy_natasha_romanoff",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1788638725810,
+      "tag": "0012_damp_centennial",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1788642515204,
+      "tag": "0013_mature_william_stryker",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1788650632868,
+      "tag": "0014_oval_the_hand",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1788678485000,
+      "tag": "0015_purge_data_sharing_field",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1788807138072,
+      "tag": "0016_cloudy_sandman",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1788913042768,
+      "tag": "0017_lying_may_parker",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1789327774317,
+      "tag": "0018_oval_dorian_gray",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1789502329629,
+      "tag": "0019_chief_the_call",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1789583320763,
+      "tag": "0020_wooden_felicia_hardy",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1789671689352,
+      "tag": "0021_glamorous_psylocke",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1790754599863,
+      "tag": "0022_gigantic_mauler",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1790877397769,
+      "tag": "0023_user_id_foreign_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1791237070374,
+      "tag": "0024_blue_masked_marvel",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1791320200227,
+      "tag": "0025_heavy_reaper",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1791347134334,
+      "tag": "0026_quick_tomorrow_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1791879048645,
+      "tag": "0027_curved_mimic",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1791879048646,
+      "tag": "0028_human_evaluation",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1791909249187,
+      "tag": "0029_contributions_data_interest",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1791925141055,
+      "tag": "0030_turn_outcomes_ttft",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1791999439185,
+      "tag": "0031_user_admin_role",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1792042592740,
+      "tag": "0032_user_mcp_servers",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1792270472845,
+      "tag": "0033_guard_daily_counts",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1792277272405,
+      "tag": "0034_account_issuer_nullable",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1792360590280,
+      "tag": "0035_local_inference_pairings",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1792389331315,
+      "tag": "0036_upload_chunks",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1792566501328,
+      "tag": "0037_sync_oauth_provider",
+      "breakpoints": true
+    }
+  ]
+}

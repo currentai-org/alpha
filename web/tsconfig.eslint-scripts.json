@@ -1,0 +1,35 @@
+// CUR-1617: type-aware program for eslint.quality.config.js's scripts/**, evals/**, config/**
+// block (the probe/metric surface, per that ticket's own scoping) -- separate from tsconfig.json
+// deliberately: that one drives `pnpm check` (svelte-check) against src/** only, and pulling
+// scripts/evals/config into it would make every probe/audit script's typing a build-time gate
+// for the app itself, which is a different, bigger decision than this ticket makes. Not used by
+// any build or check script; ESLint's type-aware rules are its only consumer.
+//
+// `strictNullChecks` only, not full `strict` -- matches CUR-1617's own stated scope
+// ("`@typescript-eslint/no-unnecessary-condition` with `strictNullChecks`"). Most of this
+// surface is untyped .mjs with no annotations, so full strict mode (noImplicitAny etc.) would
+// surface a wave of unrelated findings this ticket isn't about.
+{
+	"compilerOptions": {
+		"allowJs": true,
+		"checkJs": true,
+		"strictNullChecks": true,
+		"esModuleInterop": true,
+		"resolveJsonModule": true,
+		"skipLibCheck": true,
+		"moduleResolution": "bundler",
+		"module": "esnext",
+		"target": "es2022"
+	},
+	"include": [
+		"scripts/**/*.js",
+		"scripts/**/*.mjs",
+		"scripts/**/*.ts",
+		"evals/**/*.js",
+		"evals/**/*.mjs",
+		"evals/**/*.ts",
+		"config/**/*.js",
+		"config/**/*.mjs",
+		"config/**/*.ts"
+	]
+}

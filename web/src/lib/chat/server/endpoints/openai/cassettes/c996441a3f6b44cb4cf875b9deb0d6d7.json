@@ -1,0 +1,11 @@
+{
+	"requestHash": "c996441a3f6b44cb4cf875b9deb0d6d7",
+	"path": "/v1/cloudflare/clef",
+	"host": "router.stg.aipotluck.org",
+	"status": 200,
+	"headers": {
+		"content-type": "application/json"
+	},
+	"body": "{\"result\":{\"model\":\"clef\",\"answers\":{\"language\":{\"type\":\"choice\",\"choice\":\"hau\",\"probabilities\":{\"hau\":0.7182,\"amh\":0.0065,\"arb\":0.0077,\"cat\":0.004,\"ces\":0.0021,\"cmn\":0.0027,\"dan\":0.0019,\"deu\":0.0031,\"ell\":0.0019,\"eng\":0.0145,\"eus\":0.0037,\"fin\":0.0036,\"fra\":0.0033,\"glg\":0.0023,\"hin\":0.0111,\"hun\":0.0039,\"ind\":0.0262,\"ita\":0.0039,\"jpn\":0.0654,\"khm\":0.0025,\"kor\":0.0045,\"lao\":0.0025,\"mri\":0.0031,\"mya\":0.0031,\"nld\":0.0034,\"pol\":0.0023,\"por\":0.0041,\"ron\":0.0022,\"rus\":0.0028,\"spa\":0.0048,\"swe\":0.0027,\"swh\":0.0085,\"tam\":0.0021,\"tgl\":0.0048,\"tha\":0.0041,\"tur\":0.0158,\"ukr\":0.0027,\"vie\":0.0044,\"zlm\":0.014,\"other\":0.0196},\"confidence\":0.5103}},\"usage\":{\"input_tokens\":837,\"output_tokens\":0}},\"success\":true,\"errors\":[],\"messages\":[]}",
+	"recordedAt": "2026-10-16T15:15:21.583Z"
+}

@@ -1,0 +1,70 @@
+# Cluster-free demo — `docker compose up`. Mirrors the prod two-plane topology on one host: the proxy
+# (Plane A) holds the token and is the only egress to the model; the app (Plane B) runs credential-free.
+# Needs only Docker + the model serving key in a .env file next to this one (PROVIDER_CSCS_TOKEN holds
+# whatever the upstream wants — a CSCS token by default, since that is the only route serving Apertus-1.5):
+#
+#     PROVIDER_CSCS_TOKEN=<cscs-token>   # or override PROVIDER_CSCS_BASE + AGENT_MODEL for a different upstream
+#     PROXY_ADMIN_KEY=$(openssl rand -hex 24)
+#
+# Then:  docker compose up --build      and drive it at  http://127.0.0.1:8731
+#   curl -s localhost:8731/healthz
+#   curl -s -X POST localhost:8731/run -H 'content-type: application/json' \
+#        -d '{"prompt":"create a.py b.py and count the .py files; write the number to out.txt"}'
+#
+# SAFETY: this is a TRUSTED-LOCAL demo. It binds to 127.0.0.1 only, auth is disabled, and spend is capped.
+# Do NOT expose it to the internet as-is (the agent runs --yolo shell). For a remote demo, put it behind a
+# tunnel + basic-auth and set WEBUI_SECRET_KEY (drop AGENT_AUTH_DISABLED). Use a throwaway ceilinged token.
+services:
+  proxy:                                   # Plane A — holds the real credential; not published to the host
+    build: {context: ., dockerfile: deploy/Dockerfile}
+    command: ["uvicorn", "proxy:app", "--host", "0.0.0.0", "--port", "8732"]
+    environment:
+      PROXY_ADMIN_KEY: ${PROXY_ADMIN_KEY:?set PROXY_ADMIN_KEY in .env}
+      # Named-provider chain (see proxy.py _load_providers), matching the deployed gateway.
+      # MODEL_UPSTREAM_TOKEN is deliberately absent: the legacy pair is only consulted when the named
+      # chain resolves empty, so leaving it unset means a broken cscs config 503s instead of silently
+      # serving whatever the legacy credential reaches.
+      MODEL_PROVIDERS: "cscs"
+      PROVIDER_CSCS_BASE: ${PROVIDER_CSCS_BASE:-https://api.swissai.svc.cscs.ch/v1}   # Swiss-sovereign
+      PROVIDER_CSCS_TOKEN: ${PROVIDER_CSCS_TOKEN:?set PROVIDER_CSCS_TOKEN in .env}
+      GRANT_MAX_REQUESTS: "200"
+    expose: ["8732"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8732/healthz').status==200 else 1)"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:                                     # Plane B — credential-free; published on loopback only
+    build: {context: ., dockerfile: deploy/Dockerfile}
+    depends_on:
+      proxy: {condition: service_healthy}
+    ports: ["127.0.0.1:8731:8731"]
+    environment:
+      AGENT_MODEL_PROXY_URL: "http://proxy:8732"
+      PROXY_ADMIN_KEY: ${PROXY_ADMIN_KEY:?set PROXY_ADMIN_KEY in .env}
+      AGENT_AUTH_DISABLED: "1"             # demo only — trusted/local. Remove + set WEBUI_SECRET_KEY for shared use.
+      AGENT_MODERATION_DISABLED: "1"       # demo only — wire COOP_URL/COOP_API_KEY for a real surface.
+      AGENT_DB_PATH: "/data/tasks.db"
+      # Apertus-1.5-70B, passed to hermes -m (no config.yaml in-container). The released weights are
+      # swiss-ai/Apertus-v1.5-70B (Apache-2.0); this apertus-ai/ id is the persistent k8s deployment
+      # on CSCS, the only route serving 1.5 without an expires_at.
+      AGENT_MODEL: "${AGENT_MODEL:-apertus-ai/Apertus-v1.5-70B}"
+      AGENT_MODEL_PROVIDER: "huggingface"          # OpenAI-compatible wire format (works against CSCS too)
+      AGENT_COMPUTE_PROVIDER: "${AGENT_COMPUTE_PROVIDER:-CSCS (preview)}"   # honest "what's running" provenance
+      AGENT_TOOLSETS: "coding"             # read_file/write_file/patch/search_files + terminal
+      AGENT_BEST_OF: "3"                   # verify-gated retry (needs a verify spec on /run to engage)
+      AGENT_SANDBOX_BACKEND: "bwrap"       # the host-local runner; the code default is e2b, which needs an E2B install
+      AGENT_SANDBOX: "${AGENT_SANDBOX:-off}"   # bwrap needs unprivileged userns in-container (see note); off by default for demo portability
+      AGENT_MAX_TOKENS: "60000"            # per-task spend ceiling
+      AGENT_USER_DAILY_TOKENS: "500000"    # per-user/day ceiling
+      AGENT_MAX_CONCURRENCY: "4"
+      AGENT_ACP: "1"                       # ACP transport, validated; oneshot is the
+                                            # explicit per-request opt-out
+    volumes: [agent-data:/data]
+    # To enable the bwrap sandbox in the demo, set AGENT_SANDBOX=bwrap AND uncomment (host must allow
+    # unprivileged user namespaces); otherwise the demo relies on the restricted toolset + caps:
+    # security_opt: ["seccomp=unconfined"]
+
+volumes:
+  agent-data: {}

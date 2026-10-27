@@ -1,0 +1,146 @@
+{
+	"contract": 1,
+	"taskSetVersion": "v1",
+	"language": "swh",
+	"variety": "sw-KE",
+	"status": "draft",
+	"items": {
+		"t01-rice": {
+			"prompt": "Wali wangu kila mara unanata na kuungua chini ya sufuria. Ninakosea wapi? Nipe vidokezo vifupi visivyozidi vitano.",
+			"reference": [
+				"Moto mkali mno baada ya maji kuchemka: punguza moto uwe mdogo.",
+				"Kiasi cha maji ukilinganisha na mchele (maji kidogo mno unaungua, maji mengi mno unanata).",
+				"Kuosha mchele ili kuondoa wanga.",
+				"Kufunika sufuria na kutokoroga wakati wa kupika.",
+				"Kuuacha wali utulie nje ya moto kabla ya kupakua."
+			]
+		},
+		"t02-interview": {
+			"prompt": "Nina mahojiano ya kazi kesho asubuhi. Nipe mpango rahisi wa jioni hii, kama orodha yenye namba ya hatua zisizozidi sita.",
+			"reference": [
+				"Kutafuta habari kuhusu kampuni au shirika na nafasi ya kazi.",
+				"Kuandaa majibu au mifano ya maswali yanayotarajiwa.",
+				"Kuandaa maswali ya kuuliza.",
+				"Kuandaa nguo, vyeti na nyaraka, na njia ya kufika au muunganisho wa mtandao.",
+				"Kulala mapema."
+			]
+		},
+		"t03-virus": {
+			"prompt": "Eleza kwa maneno rahisi tofauti kati ya maambukizi ya virusi na maambukizi ya bakteria, na kwa nini dawa za antibiotiki hazifanyi kazi dhidi ya virusi. Usizidi maneno 120.",
+			"reference": [
+				"Bakteria ni seli hai zinazoweza kuzaliana zenyewe.",
+				"Virusi ni vidogo zaidi na huzaliana tu ndani ya seli za mwili.",
+				"Antibiotiki hushambulia sehemu au michakato ya bakteria ambayo virusi havina.",
+				"Kwa hiyo antibiotiki hazitibu maambukizi ya virusi kama mafua au homa ya mafua (flu).",
+				"Kosa: kusema antibiotiki husaidia dhidi ya mafua au flu, au kwamba virusi ni aina ya bakteria."
+			]
+		},
+		"t04-interest": {
+			"prompt": "Riba ya mchanganyiko inafanyaje kazi? Nipe mfano mfupi wa shilingi 1,000,000 zilizowekwa akiba kwa riba ya 5% kwa mwaka kwa miaka 3.",
+			"amount": 1000000,
+			"reference": [
+				"Riba huongezwa kwenye salio, na riba ya mwaka unaofuata huhesabiwa kwa salio jipya.",
+				"Mfano sahihi: shilingi 1,050,000 baada ya mwaka mmoja, 1,102,500 baada ya miaka miwili, 1,157,625 baada ya miaka mitatu.",
+				"Kosa: shilingi 1,150,000 baada ya miaka mitatu (hiyo ni riba sahili)."
+			]
+		},
+		"t05-letter": {
+			"prompt": "Iandike upya barua hii kwa maneno rahisi ili mtu aliyeacha shule mapema aweze kuielewa. Acha kila tarehe, saa na kiasi kama kilivyoandikwa.\n\n“Kufuatia ukaguzi wa ombi lako la msaada wa makazi lililowasilishwa tarehe 3 Machi 2026, tunakujulisha kwamba nyaraka za ziada zinahitajika. Unatakiwa kuwasilisha uthibitisho wa mapato ya miezi mitatu iliyopita pamoja na nakala ya mkataba wako wa upangaji kufikia tarehe 15 Aprili 2026. Kushindwa kuwasilisha nyaraka hizi ndani ya muda uliowekwa kutasababisha faili lako kufungwa. Unaweza kuwasiliana na ofisi yetu siku za kazi kuanzia saa 3:00 asubuhi hadi saa 7:00 mchana.”",
+			"mustKeep": [
+				"3 Machi 2026",
+				"15 Aprili 2026",
+				"saa 3:00 asubuhi",
+				"saa 7:00 mchana",
+				"miezi mitatu"
+			],
+			"reference": [
+				"Wanahitaji nyaraka zaidi.",
+				"Tuma uthibitisho wa mapato ya miezi mitatu iliyopita na mkataba wa upangaji.",
+				"Kufikia tarehe 15 Aprili 2026 (tarehe lazima ibaki sahihi).",
+				"La sivyo, faili litafungwa.",
+				"Ofisi inapatikana siku za kazi, saa 3:00 asubuhi hadi saa 7:00 mchana (saa za Kiswahili).",
+				"Kosa: kubadilisha tarehe kuwa “ndani ya wiki mbili” au “hivi karibuni”, au kugeuza saa za Kiswahili kuwa saa nyingine."
+			]
+		},
+		"t06-proofread": {
+			"prompt": "Rekebisha tahajia na sarufi katika ujumbe huu, bila kubadilisha kitu kingine chochote:\n\n“Habari Amina, mimi na timu yangu tumekua tukifanya kazi kwenye ripoti kwa wiki tatu sasa na tunakaribia kumaliza. Mambo machache tu ndiyo imebaki, nita kutumia siku ya ijumaa.”",
+			"errors": [
+				"tumekua → tumekuwa (tahajia: “kuwa”, si “kua”)",
+				"imebaki → yamebaki (upatanisho wa ngeli na “mambo”)",
+				"nita kutumia → nitakutumia (kitenzi kimoja kiandikwe pamoja)",
+				"ijumaa → Ijumaa (jina la siku huanza kwa herufi kubwa)"
+			]
+		},
+		"t07-landlord": {
+			"prompt": "Niandikie barua pepe ya heshima lakini thabiti kwa mwenye nyumba wangu, nikimwomba arekebishe pampu ya maji, ambayo imeharibika kwa wiki moja sasa. Isizidi maneno 150.",
+			"reference": [
+				"Lugha rasmi na salamu zinazofaa kwa mwenye nyumba.",
+				"Inaeleza tatizo na kwamba limedumu kwa wiki moja.",
+				"Inaomba marekebisho ndani ya muda ulio wazi, au inaomba tarehe.",
+				"Hitimisho la heshima."
+			]
+		},
+		"t08-thanks": {
+			"prompt": "Niandikie ujumbe mfupi na wa kirafiki ninaoweza kutuma kwenye WhatsApp kwa mfanyakazi mwenzangu aliyeshughulikia kazi yangu nilipokuwa mgonjwa. Sentensi mbili au tatu.",
+			"reference": [
+				"Lugha isiyo rasmi na ya kirafiki.",
+				"Inamshukuru mwenzako kwa kushughulikia kazi.",
+				"Sentensi mbili au tatu."
+			]
+		},
+		"t09-summary": {
+			"prompt": "Fupisha maandishi haya kwa vitone vitatu kwa ajili ya meneja wangu:\n\n“Bunge la Kaunti lilikutana Jumanne jioni kujadili bajeti ya mwaka ujao. Baada ya saa mbili za mjadala, wawakilishi wadi walikubaliana kuahirisha upigaji kura hadi mwezi ujao. Wawakilishi kadhaa walisema pendekezo hilo lilikadiria chini gharama za wafanyakazi wa maktaba mpya, na wengine waliomba maelezo zaidi kuhusu mapato yanayotarajiwa kutokana na ada za maegesho. Gavana aliiomba idara ya fedha kutuma pendekezo lililorekebishwa ndani ya wiki tatu. Kikao hicho pia kiliidhinisha, bila mjadala, ukarabati wa paa la shule.”",
+			"reference": [
+				"Upigaji kura wa bajeti umeahirishwa hadi mwezi ujao.",
+				"Wasiwasi: gharama za wafanyakazi wa maktaba zimekadiriwa chini, na maelezo ya mapato ya maegesho hayatoshi.",
+				"Pendekezo lililorekebishwa linatarajiwa ndani ya wiki tatu.",
+				"Kosa: kusema bajeti imepitishwa, au kuongeza mambo ambayo hayamo kwenye maandishi."
+			]
+		},
+		"t10-extract": {
+			"prompt": "Kutoka kwenye ujumbe huu, orodhesha tarehe, saa, mahali, na vitu ninavyopaswa kuleta:\n\n“Wazazi wapendwa, siku ya chanjo kwa wanafunzi wa Gredi ya Pili itafanyika Alhamisi, tarehe kumi na mbili Novemba, kuanzia saa mbili na nusu asubuhi, katika ukumbi wa michezo wa Shule ya Msingi ya Mtakatifu Anna. Tafadhali leteni kadi ya chanjo ya mtoto wenu na kitambulisho.”",
+			"mustKeep": [
+				"Novemba",
+				"Shule ya Msingi ya Mtakatifu Anna"
+			],
+			"reference": [
+				"Tarehe: Alhamisi, 12 Novemba.",
+				"Saa: saa mbili na nusu asubuhi (8:30 kwa saa za Kizungu).",
+				"Mahali: ukumbi wa michezo wa Shule ya Msingi ya Mtakatifu Anna.",
+				"Kuleta: kadi ya chanjo ya mtoto na kitambulisho.",
+				"Kosa: kuchanganya saa za Kiswahili na za Kizungu, kwa mfano kuandika “2:30 mchana”."
+			]
+		},
+		"t11-translate": {
+			"prompt": "Tafsiri maandishi haya kwa Kiswahili, kwa njia ya kawaida na si neno kwa neno:\n\n\"Thank you for your patience. We will get back to you within two business days. If your request is urgent, please call us on +44 20 7946 0000.\"",
+			"mustKeep": [
+				"+44 20 7946 0000"
+			],
+			"reference": [
+				"Asante kwa uvumilivu.",
+				"Tutakujibu ndani ya siku mbili za kazi.",
+				"Ikiwa ni dharura, piga +44 20 7946 0000 (namba inakiliwa kama ilivyo)."
+			]
+		},
+		"t12-fever": {
+			"prompt": "Mtoto wangu wa miaka 4 amekuwa na homa ya 39.5 °C tangu jana, na ana usingizi mwingi sana na ni vigumu kumwamsha. Nifanye nini?",
+			"reference": [
+				"Usingizi mwingi na kuwa vigumu kuamka ni dalili ya hatari: tafuta msaada wa matibabu sasa hivi (piga 999 au 112, au nenda idara ya dharura ya hospitali), si tu “muone daktari ikiendelea”.",
+				"Mpe mtoto maji au vinywaji.",
+				"Dawa ya homa tu kama karatasi ya maelekezo au mfamasia anavyosema, kulingana na umri au uzito.",
+				"Kosa: kutoa kipimo maalum cha dawa kama ushauri bila kurejelea maelekezo au mtaalamu, au kukataa kujibu."
+			]
+		}
+	},
+	"calibration": {
+		"taskId": "t05-letter",
+		"answer": "Hii hapa barua kwa maneno rahisi:\n\nWameangalia ombi lako la msaada wa nyumba. Wanahitaji karatasi zaidi. Unatakiwa kutuma hati za mshahara wako na mkataba wa nyumba ndani ya wiki mbili. La sivyo, faili lako litafungwa. Unaweza kuwapigia simu asubuhi.",
+		"expected": {
+			"task": 3,
+			"accuracy": 2,
+			"language": 5,
+			"usable": "no"
+		},
+		"explanation": "Kiswahili ni sahihi, lakini tarehe ya mwisho ya 15 Aprili 2026 imegeuzwa kuwa “ndani ya wiki mbili”, “miezi mitatu iliyopita” imepotea, na saa za ofisi (siku za kazi, saa 3:00 asubuhi hadi saa 7:00 mchana) zimekuwa “asubuhi”. Mtu anayefuata jibu hili anaweza kukosa tarehe ya mwisho."
+	}
+}

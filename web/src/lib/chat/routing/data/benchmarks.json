@@ -1,0 +1,482 @@
+{
+  "version": 1,
+  "status": "placeholder",
+  "source": "Intelligence: Artificial Analysis Intelligence Index v4.3.2 (read 2026-10-20), each row's own page where rated, its base model's where it is a fine-tune (the SEA-LION rows), hand-set where AA has no entry (ALIA 40B, Bielik 11B; Apertus 1.5 sits near AA's estimate for Apertus v1). Language support: hand-set estimates, checked against SEA-HELM (2026-09-18), model cards and tech reports; each row lists the pages it was checked against. Mistral Medium 3.5 stays at 8 against AA's 14 until its routing effect is decided (CUR-4294).",
+  "updated": "2026-10-20",
+  "models": {
+    "apertus-70b": {
+      "intelligence": 5,
+      "defaultSupport": 0.4,
+      "languages": {
+        "eng": 0.9,
+        "deu": 0.86,
+        "fra": 0.86,
+        "ita": 0.83,
+        "spa": 0.86,
+        "por": 0.83,
+        "por-BR": 0.83,
+        "nld": 0.8,
+        "pol": 0.76,
+        "cat": 0.76,
+        "cat-valencia": 0.7,
+        "glg": 0.66,
+        "eus": 0.55,
+        "ces": 0.72,
+        "ron": 0.72,
+        "hun": 0.68,
+        "fin": 0.68,
+        "swe": 0.76,
+        "dan": 0.73,
+        "ell": 0.7,
+        "ukr": 0.72,
+        "rus": 0.78,
+        "tur": 0.7,
+        "gsw": 0.6,
+        "cmn": 0.7,
+        "jpn": 0.65,
+        "kor": 0.6,
+        "arb": 0.65,
+        "hin": 0.6,
+        "ind": 0.7,
+        "zlm": 0.62,
+        "tgl": 0.55,
+        "vie": 0.65,
+        "tha": 0.55,
+        "swh": 0.5,
+        "yor": 0.3,
+        "quz": 0.32,
+        "yua": 0.18,
+        "tzh": 0.15,
+        "mri": 0.35
+      },
+      "basis": {
+        "intelligence": "estimate",
+        "languages": "estimate"
+      },
+      "sources": [
+        {
+          "url": "https://artificialanalysis.ai/leaderboards/models",
+          "title": "Artificial Analysis LLM leaderboard (Intelligence Index v4.3.2)",
+          "read": "2026-10-20",
+          "covers": "intelligence"
+        },
+        {
+          "url": "https://leaderboard.sea-lion.ai/",
+          "title": "SEA-HELM leaderboard (data last updated 2026-09-18), SSR payload seaRows",
+          "read": "2026-10-20",
+          "covers": "languages"
+        },
+        {
+          "url": "https://arxiv.org/abs/2610.15542",
+          "title": "Apertus 1.5 Technical Report",
+          "read": "2026-10-20",
+          "covers": "languages"
+        }
+      ]
+    },
+    "apertus-8b": {
+      "intelligence": 5,
+      "defaultSupport": 0.3,
+      "languages": {
+        "eng": 0.84,
+        "deu": 0.78,
+        "fra": 0.78,
+        "ita": 0.74,
+        "spa": 0.78,
+        "por": 0.74,
+        "nld": 0.7,
+        "pol": 0.64,
+        "cat": 0.64,
+        "glg": 0.55,
+        "eus": 0.42,
+        "rus": 0.66,
+        "cmn": 0.55,
+        "jpn": 0.5,
+        "arb": 0.5,
+        "ind": 0.58,
+        "vie": 0.52,
+        "tha": 0.42,
+        "swh": 0.38,
+        "gsw": 0.45,
+        "yor": 0.2,
+        "quz": 0.22,
+        "yua": 0.1,
+        "tzh": 0.08,
+        "mri": 0.25
+      },
+      "basis": {
+        "intelligence": "estimate",
+        "languages": "estimate"
+      },
+      "sources": [
+        {
+          "url": "https://artificialanalysis.ai/leaderboards/models",
+          "title": "Artificial Analysis LLM leaderboard (Intelligence Index v4.3.2)",
+          "read": "2026-10-20",
+          "covers": "intelligence"
+        },
+        {
+          "url": "https://leaderboard.sea-lion.ai/",
+          "title": "SEA-HELM leaderboard (data last updated 2026-09-18), SSR payload seaRows",
+          "read": "2026-10-20",
+          "covers": "languages"
+        },
+        {
+          "url": "https://arxiv.org/abs/2601.11579",
+          "title": "Bielik 11B v3 report (Open PL table incl. Apertus-8B v1)",
+          "read": "2026-10-20",
+          "covers": "languages"
+        }
+      ]
+    },
+    "alia-40b": {
+      "intelligence": 4,
+      "defaultSupport": 0.2,
+      "languages": {
+        "spa": 0.92,
+        "spa-ES": 0.93,
+        "spa-419": 0.88,
+        "spa-AR": 0.86,
+        "cat": 0.93,
+        "cat-valencia": 0.9,
+        "glg": 0.9,
+        "eus": 0.86,
+        "eng": 0.78,
+        "por": 0.74,
+        "fra": 0.72,
+        "ita": 0.62
+      },
+      "basis": {
+        "intelligence": "estimate",
+        "languages": "estimate"
+      },
+      "sources": [
+        {
+          "url": "https://huggingface.co/BSC-LT/ALIA-40b",
+          "title": "BSC-LT/ALIA-40b model card",
+          "read": "2026-10-20",
+          "covers": "languages"
+        }
+      ]
+    },
+    "sea-lion-qwen-32b": {
+      "intelligence": 7,
+      "defaultSupport": 0.25,
+      "languages": {
+        "ind": 0.9,
+        "zlm": 0.88,
+        "tha": 0.9,
+        "vie": 0.9,
+        "tgl": 0.86,
+        "mya": 0.8,
+        "khm": 0.78,
+        "lao": 0.75,
+        "tam": 0.8,
+        "eng": 0.86,
+        "cmn": 0.82
+      },
+      "basis": {
+        "intelligence": "base-model",
+        "languages": "estimate"
+      },
+      "sources": [
+        {
+          "url": "https://artificialanalysis.ai/leaderboards/models",
+          "title": "Artificial Analysis LLM leaderboard (Intelligence Index v4.3.2)",
+          "read": "2026-10-20",
+          "covers": "intelligence"
+        },
+        {
+          "url": "https://leaderboard.sea-lion.ai/",
+          "title": "SEA-HELM leaderboard (data last updated 2026-09-18), SSR payload seaRows",
+          "read": "2026-10-20",
+          "covers": "languages"
+        }
+      ]
+    },
+    "sea-lion-nemotron-120b": {
+      "intelligence": 13,
+      "defaultSupport": 0.25,
+      "languages": {
+        "ind": 0.9,
+        "zlm": 0.9,
+        "tha": 0.91,
+        "vie": 0.9,
+        "tgl": 0.88,
+        "mya": 0.43,
+        "khm": 0.6,
+        "lao": 0.58,
+        "tam": 0.65,
+        "eng": 0.9,
+        "cmn": 0.8
+      },
+      "basis": {
+        "intelligence": "base-model",
+        "languages": "estimate"
+      },
+      "sources": [
+        {
+          "url": "https://artificialanalysis.ai/leaderboards/models",
+          "title": "Artificial Analysis LLM leaderboard (Intelligence Index v4.3.2)",
+          "read": "2026-10-20",
+          "covers": "intelligence"
+        },
+        {
+          "url": "https://artificialanalysis.ai/models/nvidia-nemotron-3-super-120b-a12b",
+          "title": "AA model page Nemotron 3 Super 120B A12B",
+          "read": "2026-10-20",
+          "covers": "intelligence"
+        },
+        {
+          "url": "https://arxiv.org/abs/2609.18310",
+          "title": "SEA-LION-v4.8: A Technical Report (arXiv 2609.18310)",
+          "read": "2026-10-20",
+          "covers": "languages"
+        },
+        {
+          "url": "https://leaderboard.sea-lion.ai/",
+          "title": "SEA-HELM leaderboard (data last updated 2026-09-18), SSR payload seaRows",
+          "read": "2026-10-20",
+          "covers": "languages"
+        }
+      ]
+    },
+    "sea-lion-gemma-27b": {
+      "intelligence": 5,
+      "defaultSupport": 0.25,
+      "languages": {
+        "ind": 0.86,
+        "zlm": 0.84,
+        "tha": 0.85,
+        "vie": 0.85,
+        "tgl": 0.8,
+        "mya": 0.72,
+        "khm": 0.7,
+        "lao": 0.68,
+        "tam": 0.74,
+        "eng": 0.8
+      },
+      "basis": {
+        "intelligence": "base-model",
+        "languages": "estimate"
+      },
+      "sources": [
+        {
+          "url": "https://artificialanalysis.ai/leaderboards/models",
+          "title": "Artificial Analysis LLM leaderboard (Intelligence Index v4.3.2)",
+          "read": "2026-10-20",
+          "covers": "intelligence"
+        },
+        {
+          "url": "https://leaderboard.sea-lion.ai/",
+          "title": "SEA-HELM leaderboard (data last updated 2026-09-18), SSR payload seaRows",
+          "read": "2026-10-20",
+          "covers": "languages"
+        }
+      ]
+    },
+    "bielik-11b": {
+      "intelligence": 3,
+      "defaultSupport": 0.15,
+      "languages": {
+        "pol": 0.93,
+        "eng": 0.7
+      },
+      "basis": {
+        "intelligence": "estimate",
+        "languages": "estimate"
+      },
+      "sources": [
+        {
+          "url": "https://arxiv.org/abs/2601.11579",
+          "title": "Bielik 11B v3 technical report",
+          "read": "2026-10-20",
+          "covers": "languages"
+        }
+      ]
+    },
+    "glm-5.2": {
+      "intelligence": 34,
+      "defaultSupport": 0.35,
+      "languages": {
+        "cmn": 0.95,
+        "yue": 0.72,
+        "eng": 0.9,
+        "jpn": 0.7,
+        "kor": 0.6
+      },
+      "basis": {
+        "intelligence": "measured",
+        "languages": "estimate"
+      },
+      "sources": [
+        {
+          "url": "https://artificialanalysis.ai/leaderboards/models",
+          "title": "Artificial Analysis LLM leaderboard (Intelligence Index v4.3.2)",
+          "read": "2026-10-20",
+          "covers": "intelligence"
+        },
+        {
+          "url": "https://leaderboard.sea-lion.ai/",
+          "title": "SEA-HELM leaderboard (data last updated 2026-09-18), SSR payload seaRows",
+          "read": "2026-10-20",
+          "covers": "languages"
+        }
+      ]
+    },
+    "mistral-large": {
+      "intelligence": 9,
+      "defaultSupport": 0.35,
+      "languages": {
+        "fra": 0.93,
+        "eng": 0.92,
+        "deu": 0.88,
+        "spa": 0.88,
+        "ita": 0.88,
+        "por": 0.85,
+        "nld": 0.78,
+        "pol": 0.7
+      },
+      "basis": {
+        "intelligence": "measured",
+        "languages": "estimate"
+      },
+      "sources": [
+        {
+          "url": "https://artificialanalysis.ai/leaderboards/models",
+          "title": "Artificial Analysis LLM leaderboard (Intelligence Index v4.3.2)",
+          "read": "2026-10-20",
+          "covers": "intelligence"
+        }
+      ]
+    },
+    "mistral-large-4": {
+      "intelligence": 38,
+      "defaultSupport": 0.35,
+      "languages": {
+        "fra": 0.93,
+        "eng": 0.92,
+        "deu": 0.88,
+        "spa": 0.88,
+        "ita": 0.88,
+        "por": 0.85,
+        "nld": 0.78,
+        "pol": 0.7
+      },
+      "basis": {
+        "intelligence": "measured",
+        "languages": "estimate"
+      },
+      "sources": [
+        {
+          "url": "https://artificialanalysis.ai/leaderboards/models",
+          "title": "Artificial Analysis LLM leaderboard (Intelligence Index v4.3.2)",
+          "read": "2026-10-20",
+          "covers": "intelligence"
+        }
+      ]
+    },
+    "mistral-medium": {
+      "intelligence": 8,
+      "defaultSupport": 0.32,
+      "languages": {
+        "fra": 0.9,
+        "eng": 0.91,
+        "deu": 0.86,
+        "spa": 0.86,
+        "ita": 0.86,
+        "por": 0.82,
+        "nld": 0.75,
+        "pol": 0.67
+      },
+      "basis": {
+        "intelligence": "estimate",
+        "languages": "estimate"
+      },
+      "sources": [
+        {
+          "url": "https://artificialanalysis.ai/leaderboards/models",
+          "title": "Artificial Analysis LLM leaderboard (Intelligence Index v4.3.2)",
+          "read": "2026-10-20",
+          "covers": "intelligence"
+        },
+        {
+          "url": "https://leaderboard.sea-lion.ai/",
+          "title": "SEA-HELM leaderboard (data last updated 2026-09-18), SSR payload seaRows",
+          "read": "2026-10-20",
+          "covers": "languages"
+        }
+      ]
+    },
+    "mistral-small": {
+      "intelligence": 11,
+      "defaultSupport": 0.3,
+      "languages": {
+        "fra": 0.88,
+        "eng": 0.9,
+        "deu": 0.84,
+        "spa": 0.84,
+        "ita": 0.84,
+        "por": 0.8,
+        "nld": 0.72,
+        "pol": 0.64
+      },
+      "basis": {
+        "intelligence": "measured",
+        "languages": "estimate"
+      },
+      "sources": [
+        {
+          "url": "https://artificialanalysis.ai/leaderboards/models",
+          "title": "Artificial Analysis LLM leaderboard (Intelligence Index v4.3.2)",
+          "read": "2026-10-20",
+          "covers": "intelligence"
+        },
+        {
+          "url": "https://leaderboard.sea-lion.ai/",
+          "title": "SEA-HELM leaderboard (data last updated 2026-09-18), SSR payload seaRows",
+          "read": "2026-10-20",
+          "covers": "languages"
+        }
+      ]
+    },
+    "cohere-command-a": {
+      "intelligence": 7,
+      "defaultSupport": 0.45,
+      "languages": {
+        "eng": 0.9,
+        "arb": 0.86,
+        "jpn": 0.84,
+        "kor": 0.84,
+        "hin": 0.8,
+        "fra": 0.85,
+        "deu": 0.85,
+        "spa": 0.85,
+        "por": 0.84,
+        "ita": 0.84,
+        "cmn": 0.84,
+        "ind": 0.78,
+        "vie": 0.78,
+        "tur": 0.76
+      },
+      "basis": {
+        "intelligence": "measured",
+        "languages": "estimate"
+      },
+      "sources": [
+        {
+          "url": "https://artificialanalysis.ai/leaderboards/models",
+          "title": "Artificial Analysis LLM leaderboard (Intelligence Index v4.3.2)",
+          "read": "2026-10-20",
+          "covers": "intelligence"
+        },
+        {
+          "url": "https://arxiv.org/abs/2504.00698",
+          "title": "Command A: An Enterprise-Ready LLM (arXiv 2504.00698)",
+          "read": "2026-10-20",
+          "covers": "languages"
+        }
+      ]
+    }
+  }
+}

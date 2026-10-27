@@ -1,0 +1,134 @@
+{
+	"contract": 1,
+	"taskSetVersion": "v1",
+	"language": "ron",
+	"variety": "ro-RO",
+	"status": "draft",
+	"items": {
+		"t01-rice": {
+			"prompt": "Orezul meu iese mereu lipicios și ars pe fundul oalei. Ce fac greșit? Dă-mi cel mult cinci sfaturi scurte.",
+			"reference": [
+				"Focul e prea mare după ce dă în clocot: dă focul mic, să fiarbă încet.",
+				"Proporția corectă de apă și orez (prea puțină apă îl arde, prea multă îl face lipicios).",
+				"Clătirea orezului ca să plece amidonul.",
+				"Capacul pus și fără amestecat în timpul fierberii.",
+				"Lăsat să stea la odihnă, de pe foc, înainte de servire."
+			]
+		},
+		"t02-interview": {
+			"prompt": "Mâine dimineață am un interviu de angajare. Dă-mi un plan simplu pentru seara asta, ca listă numerotată de cel mult șase pași.",
+			"reference": [
+				"Informează-te despre firmă și despre post.",
+				"Pregătește răspunsuri sau exemple pentru întrebările probabile.",
+				"Pregătește întrebări pe care să le pui tu.",
+				"Pregătește hainele, actele și traseul sau conexiunea.",
+				"Culcă-te devreme."
+			]
+		},
+		"t03-virus": {
+			"prompt": "Explică-mi pe înțelesul tuturor diferența dintre o infecție virală și una bacteriană, și de ce antibioticele nu funcționează împotriva virusurilor. Sub 120 de cuvinte.",
+			"reference": [
+				"Bacteriile sunt celule vii care se înmulțesc singure.",
+				"Virusurile sunt mult mai mici și se pot înmulți doar în interiorul celulelor corpului.",
+				"Antibioticele acționează asupra unor părți sau procese ale bacteriilor pe care virusurile nu le au.",
+				"Deci antibioticele nu tratează infecțiile virale, cum sunt răceala sau gripa.",
+				"Greșeală: să spună că antibioticele ajută la răceală sau gripă, sau că virusurile sunt un fel de bacterii."
+			]
+		},
+		"t04-interest": {
+			"prompt": "Cum funcționează dobânda compusă? Dă un exemplu scurt cu 1.000 de lei economisiți cu o dobândă de 5% pe an, timp de 3 ani.",
+			"amount": 1000,
+			"reference": [
+				"Dobânda se adaugă la sumă, iar în anul următor dobânda se calculează la noua sumă.",
+				"Exemplu corect: 1.050 lei după un an, 1.102,50 lei după doi ani, 1.157,63 lei după trei ani.",
+				"Greșeală: 1.150 de lei după trei ani (aceasta este dobândă simplă)."
+			]
+		},
+		"t05-letter": {
+			"prompt": "Rescrie această scrisoare în cuvinte simple, ca s-o înțeleagă cineva care a lăsat școala devreme. Păstrează toate datele, orele și sumele exact cum sunt scrise.\n\n„În urma analizării cererii dumneavoastră privind acordarea ajutorului pentru locuință, depusă la data de 3 martie 2026, vă informăm că sunt necesare documente suplimentare. Aveți obligația de a depune dovada veniturilor din ultimele trei luni, precum și o copie a contractului de închiriere, cel târziu până la data de 15 aprilie 2026. Nedepunerea acestor documente în termenul stabilit atrage închiderea dosarului dumneavoastră. Ne puteți contacta de luni până vineri, între orele 9:00 și 13:00.”",
+			"mustKeep": ["3 martie 2026", "15 aprilie 2026", "9:00", "13:00", "ultimele trei luni"],
+			"reference": [
+				"Mai trebuie niște acte.",
+				"Trimiteți dovada veniturilor din ultimele trei luni și contractul de închiriere.",
+				"Cel târziu pe 15 aprilie 2026 (data trebuie să rămână exactă).",
+				"Altfel, dosarul se închide.",
+				"Îi puteți contacta de luni până vineri, între 9:00 și 13:00.",
+				"Greșeală: înlocuirea datei cu „în două săptămâni” sau „curând”."
+			]
+		},
+		"t06-proofread": {
+			"prompt": "Corectează ortografia și gramatica din acest mesaj, fără să schimbi nimic altceva:\n\n„Bună, Ioana! Sper să fi bine. Eu și ceilalți membrii ai echipei lucrăm la raport de trei săptămâni și aproape am terminat. Mai sunt doar căteva lucruri, ți-l trimit Vineri.”",
+			"errors": [
+				"să fi bine → să fii bine (persoana a II-a singular)",
+				"ceilalți membrii ai echipei → ceilalți membri ai echipei (forma nearticulată)",
+				"căteva → câteva",
+				"Vineri → vineri (zilele săptămânii se scriu cu literă mică)"
+			]
+		},
+		"t07-landlord": {
+			"prompt": "Scrie un e-mail politicos, dar ferm, proprietarului meu, prin care să-i cer să repare centrala termică, care nu funcționează de o săptămână. Sub 150 de cuvinte.",
+			"reference": [
+				"Registru formal și adresare cu „dumneavoastră”, potrivite pentru un proprietar.",
+				"Descrie problema și spune că durează de o săptămână.",
+				"Cere reparația până la un termen clar sau cere o dată.",
+				"O formulă de încheiere politicoasă."
+			]
+		},
+		"t08-thanks": {
+			"prompt": "Scrie un mesaj scurt și cald pe care să-l trimit pe WhatsApp unei colege care mi-a ținut locul cât am fost bolnav. Două sau trei propoziții.",
+			"reference": [
+				"Ton familiar și cald (cu „tu”).",
+				"Îi mulțumește colegei că l-a înlocuit.",
+				"Două sau trei propoziții."
+			]
+		},
+		"t09-summary": {
+			"prompt": "Rezumă acest text în trei puncte pentru șefa mea:\n\n„Consiliul Local s-a întrunit marți seară pentru a analiza bugetul pe anul viitor. După două ore de dezbateri, consilierii au hotărât să amâne votul pentru luna viitoare. Mai mulți consilieri au spus că proiectul subestimează cheltuielile de personal pentru noua bibliotecă municipală, iar alții au cerut mai multe detalii despre veniturile estimate din parcările cu plată. Primarul a cerut direcției economice să trimită un proiect revizuit în termen de trei săptămâni. Consiliul a aprobat de asemenea, fără dezbateri, repararea acoperișului școlii.”",
+			"reference": [
+				"Votul pe buget a fost amânat pentru luna viitoare.",
+				"Obiecții: cheltuielile de personal pentru bibliotecă sunt subestimate și lipsesc detalii despre veniturile din parcări.",
+				"Un proiect revizuit trebuie trimis în trei săptămâni.",
+				"Greșeală: să spună că bugetul a fost aprobat sau să adauge fapte care nu sunt în text."
+			]
+		},
+		"t10-extract": {
+			"prompt": "Din acest mesaj, fă o listă cu data, ora, locul și ce trebuie să aduc:\n\n„Stimați părinți, ziua de vaccinare pentru elevii din clasa a II-a va avea loc joi, doisprezece noiembrie, începând cu ora opt și jumătate dimineața, în sala de sport a Școlii Gimnaziale „Ion Creangă”. Vă rugăm să aduceți carnetul de vaccinări al copilului și un act de identitate.”",
+			"mustKeep": ["noiembrie", "Ion Creangă"],
+			"reference": [
+				"Data: joi, 12 noiembrie.",
+				"Ora: 8:30.",
+				"Locul: sala de sport a Școlii Gimnaziale „Ion Creangă”.",
+				"De adus: carnetul de vaccinări al copilului și un act de identitate."
+			]
+		},
+		"t11-translate": {
+			"prompt": "Tradu acest text în română, natural și nu cuvânt cu cuvânt:\n\n\"Thank you for your patience. We will get back to you within two business days. If your request is urgent, please call us on +44 20 7946 0000.\"",
+			"mustKeep": ["+44 20 7946 0000"],
+			"reference": [
+				"Vă mulțumim pentru răbdare.",
+				"Vă răspundem în cel mult două zile lucrătoare.",
+				"Dacă e urgent, sunați la +44 20 7946 0000 (numărul copiat exact)."
+			]
+		},
+		"t12-fever": {
+			"prompt": "Copilul meu de 4 ani are febră 39,5 °C de ieri și e foarte somnoros și greu de trezit. Ce trebuie să fac?",
+			"reference": [
+				"Un copil foarte somnoros și greu de trezit este un semn de alarmă: e nevoie de ajutor medical imediat (112 sau urgențe pediatrie), nu doar „mergeți la medic dacă nu trece”.",
+				"Copilul să bea lichide.",
+				"Medicament pentru febră doar cum scrie în prospect sau cum spune farmacistul, după vârstă sau greutate.",
+				"Greșeală: o doză exactă de medicament dată ca sfat fără trimitere la prospect sau la un specialist, sau refuzul de a răspunde."
+			]
+		}
+	},
+	"calibration": {
+		"taskId": "t05-letter",
+		"answer": "Iată scrisoarea în cuvinte simple:\n\nV-au verificat cererea pentru ajutorul la chirie. Le mai lipsesc niște acte. Trebuie să le trimiteți fluturașii de salariu și contractul de închiriere în două săptămâni. Dacă nu, dosarul vi se închide. Îi puteți suna dimineața.",
+		"expected": {
+			"task": 3,
+			"accuracy": 2,
+			"language": 5,
+			"usable": "no"
+		},
+		"explanation": "Româna este corectă, dar termenul limită de 15 aprilie 2026 a devenit „în două săptămâni”, „ultimele trei luni” au dispărut, iar programul (de luni până vineri, între 9:00 și 13:00) a devenit „dimineața”. Cine urmează acest răspuns poate rata termenul."
+	}
+}

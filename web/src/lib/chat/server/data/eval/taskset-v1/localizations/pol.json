@@ -1,0 +1,146 @@
+{
+	"contract": 1,
+	"taskSetVersion": "v1",
+	"language": "pol",
+	"variety": "pl",
+	"status": "draft",
+	"items": {
+		"t01-rice": {
+			"prompt": "Mój ryż zawsze wychodzi klejący i przypalony na dnie garnka. Co robię źle? Daj mi maksymalnie pięć krótkich wskazówek.",
+			"reference": [
+				"Za duży ogień po zagotowaniu wody: zmniejszyć ogień i gotować na małym.",
+				"Proporcja wody do ryżu (za mało wody i się przypala, za dużo i się klei).",
+				"Przepłukać ryż, żeby usunąć skrobię.",
+				"Nie zdejmować pokrywki i nie mieszać podczas gotowania.",
+				"Odstawić z ognia i pozwolić mu chwilę odpocząć przed podaniem."
+			]
+		},
+		"t02-interview": {
+			"prompt": "Jutro rano mam rozmowę o pracę. Daj mi prosty plan na dzisiejszy wieczór w formie numerowanej listy, maksymalnie sześć kroków.",
+			"reference": [
+				"Poczytać o firmie i o stanowisku.",
+				"Przygotować odpowiedzi lub przykłady do prawdopodobnych pytań.",
+				"Przygotować własne pytania.",
+				"Przygotować ubranie, dokumenty i dojazd albo połączenie.",
+				"Wcześnie pójść spać."
+			]
+		},
+		"t03-virus": {
+			"prompt": "Wyjaśnij prostymi słowami, czym różni się infekcja wirusowa od bakteryjnej i dlaczego antybiotyki nie działają na wirusy. Mniej niż 120 słów.",
+			"reference": [
+				"Bakterie to żywe komórki, które mogą się same namnażać.",
+				"Wirusy są dużo mniejsze i mogą się namnażać tylko wewnątrz komórek organizmu.",
+				"Antybiotyki działają na części lub procesy bakterii, których wirusy nie mają.",
+				"Dlatego antybiotyki nie leczą infekcji wirusowych, takich jak przeziębienie czy grypa.",
+				"Błąd: twierdzenie, że antybiotyki pomagają na przeziębienie lub grypę."
+			]
+		},
+		"t04-interest": {
+			"prompt": "Jak działa procent składany? Podaj krótki przykład: 1000 zł oszczędzone na 5% rocznie przez 3 lata.",
+			"amount": 1000,
+			"reference": [
+				"Odsetki są dopisywane do salda, a w następnym roku odsetki liczy się od nowej kwoty.",
+				"Poprawny przykład: 1050 zł po roku, 1102,50 zł po dwóch latach, 1157,63 zł po trzech latach.",
+				"Błąd: 1150 zł po trzech latach (to jest procent prosty)."
+			]
+		},
+		"t05-letter": {
+			"prompt": "Przepisz ten list prostymi, zrozumiałymi słowami, tak żeby zrozumiała go osoba, która wcześnie skończyła szkołę. Zachowaj wszystkie daty, godziny i kwoty dokładnie tak, jak są zapisane.\n\n„W związku z rozpatrywaniem Pana/Pani wniosku o dodatek mieszkaniowy, złożonego dnia 3 marca 2026 r., uprzejmie informujemy, że konieczne jest uzupełnienie dokumentacji. Należy dostarczyć zaświadczenie o dochodach z ostatnich trzech miesięcy oraz kopię umowy najmu w terminie do 15 kwietnia 2026 r. Niedostarczenie powyższych dokumentów w wyznaczonym terminie skutkować będzie zamknięciem sprawy. Z naszym biurem można kontaktować się od poniedziałku do piątku w godzinach 9:00–13:00.”",
+			"mustKeep": [
+				"3 marca 2026",
+				"15 kwietnia 2026",
+				"9:00",
+				"13:00",
+				"trzech miesięcy"
+			],
+			"reference": [
+				"Brakuje dokumentów.",
+				"Trzeba dostarczyć zaświadczenie o dochodach z ostatnich trzech miesięcy i umowę najmu.",
+				"Najpóźniej do 15 kwietnia 2026 r. (data musi zostać dokładnie taka sama).",
+				"Jeśli nie, sprawa zostanie zamknięta.",
+				"Biuro czynne od poniedziałku do piątku, 9:00–13:00.",
+				"Błąd: zamiana daty na „za dwa tygodnie” albo „wkrótce”."
+			]
+		},
+		"t06-proofread": {
+			"prompt": "Popraw ortografię i gramatykę w tej wiadomości i nie zmieniaj nic więcej:\n\n„Cześć Kasiu, razem z zespołem pracójemy nad raportem od trzech tygodnie i prawie skończyliśmy. Zostało tylko kilka żeczy, wyśle ci go w Piątek.”",
+			"errors": [
+				"pracójemy → pracujemy",
+				"od trzech tygodnie → od trzech tygodni",
+				"żeczy → rzeczy",
+				"wyśle → wyślę",
+				"w Piątek → w piątek (dni tygodnia małą literą)"
+			]
+		},
+		"t07-landlord": {
+			"prompt": "Napisz uprzejmego, ale stanowczego maila do mojego właściciela mieszkania z prośbą o naprawę ogrzewania, które od tygodnia nie działa. Mniej niż 150 słów.",
+			"reference": [
+				"Formalny ton i zwroty grzecznościowe (Pan/Pani) odpowiednie wobec właściciela mieszkania.",
+				"Opisuje problem i to, że trwa od tygodnia.",
+				"Prosi o naprawę w jasnym terminie albo pyta o termin.",
+				"Uprzejme zakończenie (np. „Z poważaniem”)."
+			]
+		},
+		"t08-thanks": {
+			"prompt": "Napisz krótką, serdeczną wiadomość, którą mogę wysłać na Messengerze koleżance z pracy, która mnie zastępowała, kiedy byłem chory. Dwa albo trzy zdania.",
+			"reference": [
+				"Nieformalny, ciepły ton (na „ty”).",
+				"Dziękuje koleżance za zastępstwo.",
+				"Dwa albo trzy zdania."
+			]
+		},
+		"t09-summary": {
+			"prompt": "Streść ten tekst w trzech punktach dla mojej szefowej:\n\n„Rada miasta zebrała się we wtorek wieczorem, żeby omówić budżet na przyszły rok. Po dwóch godzinach dyskusji radni zdecydowali się przełożyć głosowanie na przyszły miesiąc. Kilku radnych uznało, że projekt zaniża koszty zatrudnienia w nowej bibliotece miejskiej, a inni prosili o więcej szczegółów na temat spodziewanych wpływów z opłat za parkowanie. Burmistrz poprosił wydział finansowy o przesłanie poprawionego projektu w ciągu trzech tygodni. Rada zatwierdziła też bez dyskusji remont dachu szkoły.”",
+			"reference": [
+				"Głosowanie nad budżetem przełożono na przyszły miesiąc.",
+				"Zastrzeżenia: zaniżone koszty zatrudnienia w bibliotece i brak szczegółów o wpływach z parkowania.",
+				"Poprawiony projekt ma być gotowy w ciągu trzech tygodni.",
+				"Błąd: stwierdzenie, że budżet przyjęto, albo dodanie faktów, których nie ma w tekście."
+			]
+		},
+		"t10-extract": {
+			"prompt": "Wypisz z tej wiadomości datę, godzinę, miejsce i to, co muszę przynieść:\n\n„Szanowni Rodzice, dzień szczepień dla uczniów klas drugich odbędzie się w czwartek dwunastego listopada, od wpół do dziewiątej rano, w sali gimnastycznej Szkoły Podstawowej im. św. Anny. Prosimy o zabranie książeczki szczepień dziecka oraz dokumentu tożsamości.”",
+			"mustKeep": [
+				"listopada",
+				"św. Anny"
+			],
+			"reference": [
+				"Data: czwartek, 12 listopada.",
+				"Godzina: 8:30.",
+				"Miejsce: sala gimnastyczna Szkoły Podstawowej im. św. Anny.",
+				"Zabrać: książeczkę szczepień dziecka i dokument tożsamości."
+			]
+		},
+		"t11-translate": {
+			"prompt": "Przetłumacz ten tekst na polski, naturalnie, a nie słowo w słowo:\n\n\"Thank you for your patience. We will get back to you within two business days. If your request is urgent, please call us on +44 20 7946 0000.\"",
+			"mustKeep": [
+				"+44 20 7946 0000"
+			],
+			"reference": [
+				"Podziękowanie za cierpliwość.",
+				"Odpowiedź w ciągu dwóch dni roboczych.",
+				"W pilnej sprawie prosimy dzwonić pod numer +44 20 7946 0000 (numer przepisany dokładnie)."
+			]
+		},
+		"t12-fever": {
+			"prompt": "Moje 4-letnie dziecko ma od wczoraj 39,5°C gorączki, jest bardzo senne i trudno je dobudzić. Co mam zrobić?",
+			"reference": [
+				"Bardzo senne dziecko, które trudno dobudzić, to sygnał alarmowy: pomoc medyczna od razu (112 lub 999, SOR), a nie tylko „do lekarza, jeśli to nie minie”.",
+				"Podawać dziecku płyny.",
+				"Lek przeciwgorączkowy tylko zgodnie z ulotką albo zaleceniem farmaceuty, według wieku lub wagi.",
+				"Błąd: konkretna dawka podana jako rada bez odesłania do ulotki lub specjalisty, albo odmowa odpowiedzi."
+			]
+		}
+	},
+	"calibration": {
+		"taskId": "t05-letter",
+		"answer": "Oto list prostymi słowami:\n\nUrząd sprawdził Pana/Pani wniosek o dodatek mieszkaniowy. Brakuje im papierów. Musi Pan/Pani wysłać zaświadczenie o zarobkach i umowę najmu w ciągu dwóch tygodni. Jeśli nie, sprawa zostanie zamknięta. Można do nich dzwonić rano.",
+		"expected": {
+			"task": 3,
+			"accuracy": 2,
+			"language": 5,
+			"usable": "no"
+		},
+		"explanation": "Polszczyzna jest poprawna, ale termin 15 kwietnia 2026 r. zmienił się w „w ciągu dwóch tygodni”, zniknęły „ostatnie trzy miesiące”, a godziny pracy biura (od poniedziałku do piątku, 9:00–13:00) zmieniły się w „rano”. Ktoś, kto zastosuje się do tej odpowiedzi, może nie zdążyć w terminie."
+	}
+}

@@ -1,0 +1,16 @@
+/* /alpha ⇄ /alpha/demo: the preview window grows into the demo window and back (demo-transition.ts).
+   One smooth, eased resize; the page behind cross-fades a little faster. */
+::view-transition-group(alpha-demo) {
+	animation-duration: 480ms;
+	animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+::view-transition-old(alpha-demo),
+::view-transition-new(alpha-demo) {
+	height: 100%;
+	object-fit: cover;
+	overflow: hidden;
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+	animation-duration: 320ms;
+}

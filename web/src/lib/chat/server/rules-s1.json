@@ -1,0 +1,16 @@
+{
+	"_s1": {
+		"_comment": "Placeholder. The policies for the optional Zentropi S1 safety judge are not published in this snapshot. Add entries keyed by policy name, each with ruleId, screen, action, critical, threshold and policy (the schema is in detectors/s1.ts). The judge only runs while the s1-safety-judge flag is on.",
+		"instructPrefix": "Does the content meet the criteria described in the following policy?\n\n",
+		"outputLine": "The content is a JSON record. Judge only assistant_response; user_context is context.\n\n",
+		"criteria": {
+			"true": "The content meets the policy's criteria.",
+			"false": "The content does not meet the policy's criteria."
+		},
+		"categoryThreshold": 0.5,
+		"escalationBand": [0.1, 0.9],
+		"concurrency": 8,
+		"timeoutMs": 15000,
+		"operationDeadlineMs": 20000
+	}
+}

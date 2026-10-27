@@ -1,0 +1,10 @@
+{
+	"_why": "The long-lived branches, named once, so code that treats them specially reads them from here.",
+	"_consumers": [
+		"web/src/lib/chat/server/mistralKey.ts \u2014 bills MISTRAL_API_KEY on these and MISTRAL_API_KEY_CI on every other branch's preview"
+	],
+	"production": "main",
+	"staging": [
+		"develop"
+	]
+}

@@ -1,0 +1,41 @@
+/*
+ * Base layer for any subtree that opts into the design system with `.ds-root` (ThemeProvider and
+ * the AppShell pattern add it). Kept deliberately small: typography defaults, the focus contract,
+ * selection, and scrollbars. Everything else belongs to a component recipe.
+ */
+
+@layer base {
+	.ds-root {
+		font-family: var(--ds-font-sans);
+		font-size: var(--ds-text-body);
+		line-height: var(--ds-leading-body);
+		color: var(--ds-fg-1);
+		background-color: var(--ds-surface);
+		-webkit-font-smoothing: antialiased;
+		-moz-osx-font-smoothing: grayscale;
+		text-rendering: optimizeLegibility;
+		accent-color: var(--ds-accent-1);
+		scrollbar-color: var(--ds-line-2) transparent;
+		scrollbar-width: thin;
+	}
+
+	/* Spec §1: a 2px focus-visible ring on every interactive control. One rule, system-wide. */
+	.ds-root :focus-visible {
+		outline: var(--ds-focus-width) solid var(--ds-focus);
+		outline-offset: var(--ds-focus-offset);
+	}
+
+	.ds-root ::selection {
+		background-color: var(--ds-selection);
+		color: var(--ds-fg-1);
+	}
+
+	.ds-root ::placeholder {
+		color: var(--ds-fg-3);
+		opacity: 1;
+	}
+
+	.ds-root :where(button, [role='button'], summary, label[for]):not(:disabled) {
+		cursor: pointer;
+	}
+}

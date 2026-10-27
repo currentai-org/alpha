@@ -1,0 +1,58 @@
+{
+  "graded_on": "2026-10-01",
+  "base": "develop.aipotluck.org",
+  "model": "mistral-large-2512",
+  "runs": 5,
+  "pass_at": 4,
+  "log": "2026-10-01T16-06-38-00-00_starter-prompts_QHkFhkhBNLNNcbFSEUWWLf.eval",
+  "prompts": {
+    "Fact-check this: electric cars are worse for the climate than petrol cars once you count the battery.": {
+      "correct": 5,
+      "runs": 5
+    },
+    "How do I write a polite message to a landlord who keeps ignoring a repair request?": {
+      "correct": 5,
+      "runs": 5
+    },
+    "What should I check before signing a rental contract?": {
+      "correct": 5,
+      "runs": 5
+    },
+    "What does a day of public transit look like in Bogotá compared to Tokyo?": {
+      "correct": 5,
+      "runs": 5
+    },
+    "Explain how a mortgage works, in Portuguese, to someone who has never had one.": {
+      "correct": 4,
+      "runs": 5
+    },
+    "I think social media should be banned for under-16s. Where is that argument strongest, and where does it fall apart?": {
+      "correct": 5,
+      "runs": 5
+    },
+    "Nuclear power is the only realistic way to decarbonise. What is the strongest case against that?": {
+      "correct": 5,
+      "runs": 5
+    },
+    "Is it true that most of the plastic people put in recycling bins is never recycled? Show me where the answer comes from.": {
+      "correct": 5,
+      "runs": 5
+    },
+    "What actually changed in the EU AI Act this year, and what is still undecided?": {
+      "correct": 0,
+      "runs": 5
+    },
+    "My electricity bill doubled this quarter, what are the usual reasons and what should I check first?": {
+      "correct": 5,
+      "runs": 5
+    },
+    "Explain what an ETF is to someone who has never bought anything financial before.": {
+      "correct": 2,
+      "runs": 5
+    },
+    "I need to write to a public administration in German and my German is basic. Help me ask for a document I was promised and never received.": {
+      "correct": 4,
+      "runs": 5
+    }
+  }
+}

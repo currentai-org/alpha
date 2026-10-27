@@ -1,0 +1,1814 @@
+[
+  {
+    "id": "infrastructure.cloud_compute",
+    "layer_id": "infrastructure",
+    "parent_id": null,
+    "display_name": "Cloud Compute",
+    "description": "GPU and CPU cloud services for training and inference, including managed GPU provisioning, cluster scheduling, and cloud-native ML platforms.",
+    "is_dataset_blind_spot": false,
+    "parity_verdict": "competitive",
+    "gap_score": 3,
+    "parity_rationale": "Open source orchestrators (Ray, SkyPilot, Volcano) cover scheduling and multi-cloud provisioning, but managed GPU availability and pricing remain dominated by hyperscalers.",
+    "parity_sources": [
+      {
+        "url": "https://docs.google.com/spreadsheets/d/1plMCnpEoIJsc29wGnEGiaZGI1IFfFMnCIB0SG85N4gg",
+        "label": "OSAI Gap Map working spreadsheet",
+        "date": "2025-01-15"
+      }
+    ],
+    "repo_count": 356,
+    "open_contributions": 356,
+    "closed_contributions": 0,
+    "scores": {
+      "breadth": 4,
+      "production_readiness": 4,
+      "ease_of_adoption": 3,
+      "documentation": 4,
+      "community_activity": 4,
+      "performance_vs_closed": 3,
+      "enterprise_readiness": 3,
+      "interoperability": 3,
+      "sustainability": 4,
+      "standardization": 2
+    },
+    "criteria_avg": 3.4,
+    "maturity": "Viable",
+    "synonyms": [
+      "cloud GPU",
+      "GPU cloud",
+      "compute",
+      "training cluster",
+      "GPU provisioning"
+    ],
+    "last_audited": "2026-04-29",
+    "verdict_date": "2026-04-29"
+  },
+  {
+    "id": "infrastructure.communication_libs",
+    "layer_id": "infrastructure",
+    "parent_id": null,
+    "display_name": "Communication Libs",
+    "description": "Libraries for distributed computing across machines — collective operations, gradient synchronization, and inter-node communication for training at scale.",
+    "is_dataset_blind_spot": false,
+    "parity_verdict": "competitive",
+    "gap_score": 3,
+    "parity_rationale": "NCCL and Gloo are open and widely used, but tightly coupled to NVIDIA hardware. Cross-vendor distributed training remains fragmented.",
+    "parity_sources": [
+      {
+        "url": "https://docs.google.com/spreadsheets/d/1plMCnpEoIJsc29wGnEGiaZGI1IFfFMnCIB0SG85N4gg",
+        "label": "OSAI Gap Map working spreadsheet",
+        "date": "2025-01-15"
+      }
+    ],
+    "repo_count": 15,
+    "open_contributions": 15,
+    "closed_contributions": 0,
+    "scores": {
+      "breadth": 4,
+      "production_readiness": 4,
+      "ease_of_adoption": 3,
+      "documentation": 4,
+      "community_activity": 4,
+      "performance_vs_closed": 3,
+      "enterprise_readiness": 2,
+      "interoperability": 3,
+      "sustainability": 4,
+      "standardization": 2
+    },
+    "criteria_avg": 3.3,
+    "maturity": "Viable",
+    "synonyms": [
+      "distributed training",
+      "NCCL",
+      "collective ops",
+      "gradient sync"
+    ],
+    "last_audited": "2026-04-29",
+    "verdict_date": "2026-04-29"
+  },
+  {
+    "id": "infrastructure.compilers",
+    "layer_id": "infrastructure",
+    "parent_id": null,
+    "display_name": "Compilers",
+    "description": "Tools that optimize models for specific hardware — graph compilers, kernel generators, and model conversion pipelines (TensorRT, ONNX Runtime, TVM, Triton).",
+    "is_dataset_blind_spot": false,
+    "parity_verdict": "closed_leads",
+    "gap_score": 3,
+    "parity_rationale": "Open compilers (TVM, Triton, MLIR) are viable but lag behind vendor-optimized stacks (TensorRT, XLA) in production performance and hardware coverage.",
+    "parity_sources": [
+      {
+        "url": "https://openai.com/index/triton/",
+        "label": "OpenAI Triton announcement",
+        "date": "2021-07-28"
+      }
+    ],
+    "repo_count": 422,
+    "open_contributions": 422,
+    "closed_contributions": 1,
+    "scores": {
+      "breadth": 4,
+      "production_readiness": 3,
+      "ease_of_adoption": 3,
+      "documentation": 3,
+      "community_activity": 4,
+      "performance_vs_closed": 2,
+      "enterprise_readiness": 2,
+      "interoperability": 3,
+      "sustainability": 3,
+      "standardization": 2
+    },
+    "criteria_avg": 2.9,
+    "maturity": "Viable",
+    "synonyms": [
+      "model compiler",
+      "graph compiler",
+      "kernel generator",
+      "TensorRT",
+      "ONNX"
+    ],
+    "last_audited": "2026-04-29",
+    "verdict_date": "2026-04-29"
+  },
+  {
+    "id": "infrastructure.firmware_drivers",
+    "layer_id": "infrastructure",
+    "parent_id": null,
+    "display_name": "Firmware Drivers",
+    "description": "Low-level software that interfaces with accelerator hardware — CUDA, ROCm, Metal, and driver-level APIs.",
+    "is_dataset_blind_spot": true,
+    "parity_verdict": "closed_leads",
+    "gap_score": 3,
+    "parity_rationale": "CUDA dominates with no open equivalent. ROCm is open but AMD-only. Limited direct repo coverage — most firmware is proprietary.",
+    "parity_sources": [
+      {
+        "url": "https://rocm.docs.amd.com/en/latest/",
+        "label": "ROCm documentation",
+        "date": "2024-06-01"
+      }
+    ],
+    "repo_count": 0,
+    "open_contributions": 2,
+    "closed_contributions": 2,
+    "scores": {
+      "breadth": 4,
+      "production_readiness": 3,
+      "ease_of_adoption": 3,
+      "documentation": 4,
+      "community_activity": 4,
+      "performance_vs_closed": 2,
+      "enterprise_readiness": 3,
+      "interoperability": 3,
+      "sustainability": 4,
+      "standardization": 3
+    },
+    "criteria_avg": 3.3,
+    "maturity": "Viable",
+    "synonyms": [
+      "CUDA",
+      "ROCm",
+      "GPU drivers",
+      "device drivers",
+      "accelerator SDK"
+    ],
+    "last_audited": "2026-04-29",
+    "verdict_date": "2026-04-29"
+  },
+  {
+    "id": "infrastructure.hardware_chips",
+    "layer_id": "infrastructure",
+    "parent_id": null,
+    "display_name": "Hardware Chips",
+    "description": "AI-specific chips and accelerators — GPUs, TPUs, custom ASICs, and neuromorphic hardware.",
+    "is_dataset_blind_spot": true,
+    "parity_verdict": "closed_leads",
+    "gap_score": 2,
+    "parity_rationale": "Hardware is inherently proprietary. Open efforts (RISC-V AI extensions, OpenTPU designs) are early-stage. NVIDIA, Google, and custom silicon vendors lead.",
+    "parity_sources": [
+      {
+        "url": "https://semianalysis.com/2024/02/19/google-gemini-infrastructure/",
+        "label": "SemiAnalysis: Gemini Infrastructure",
+        "date": "2024-02-19"
+      }
+    ],
+    "repo_count": 0,
+    "open_contributions": 0,
+    "closed_contributions": 16,
+    "scores": {
+      "breadth": 3,
+      "production_readiness": 2,
+      "ease_of_adoption": 2,
+      "documentation": 3,
+      "community_activity": 3,
+      "performance_vs_closed": 1,
+      "enterprise_readiness": 2,
+      "interoperability": 2,
+      "sustainability": 3,
+      "standardization": 2
+    },
+    "criteria_avg": 2.3,
+    "maturity": "Early stage",
+    "synonyms": [
+      "GPU",
+      "TPU",
+      "silicon",
+      "accelerator",
+      "AI chip",
+      "NPU",
+      "ASIC"
+    ],
+    "last_audited": "2026-04-29",
+    "verdict_date": "2026-04-29"
+  },
+  {
+    "id": "infrastructure.ml_frameworks",
+    "layer_id": "infrastructure",
+    "parent_id": null,
+    "display_name": "ML Frameworks",
+    "description": "Core deep learning frameworks — PyTorch, JAX, TensorFlow, MLX — providing tensor operations, autograd, and training loops.",
+    "is_dataset_blind_spot": false,
+    "parity_verdict": "competitive",
+    "gap_score": 4,
+    "parity_rationale": "PyTorch and JAX are the dominant training frameworks and both fully open. This is the strongest layer in the open source AI stack.",
+    "parity_sources": [
+      {
+        "url": "https://www.assemblyai.com/blog/pytorch-vs-tensorflow-in-2024/",
+        "label": "PyTorch vs TensorFlow adoption",
+        "date": "2024-01-15"
+      }
+    ],
+    "repo_count": 391,
+    "open_contributions": 391,
+    "closed_contributions": 0,
+    "scores": {
+      "breadth": 5,
+      "production_readiness": 5,
+      "ease_of_adoption": 4,
+      "documentation": 5,
+      "community_activity": 5,
+      "performance_vs_closed": 4,
+      "enterprise_readiness": 4,
+      "interoperability": 3,
+      "sustainability": 5,
+      "standardization": 3
+    },
+    "criteria_avg": 4.3,
+    "maturity": "Strong",
+    "synonyms": [
+      "deep learning framework",
+      "PyTorch",
+      "JAX",
+      "TensorFlow",
+      "MLX"
+    ],
+    "last_audited": "2026-04-29",
+    "verdict_date": "2026-04-29"
+  },
+  {
+    "id": "infrastructure.storage",
+    "layer_id": "infrastructure",
+    "parent_id": null,
+    "display_name": "Storage",
+    "description": "Data storage and retrieval for large-scale ML — data loaders, distributed file systems, vector databases, and dataset management.",
+    "is_dataset_blind_spot": false,
+    "parity_verdict": "closed_leads",
+    "gap_score": 3,
+    "parity_rationale": "Open tools exist (MinIO, LanceDB, WebDataset) but managed storage and retrieval at scale is dominated by cloud vendor offerings.",
+    "parity_sources": [
+      {
+        "url": "https://docs.google.com/spreadsheets/d/1plMCnpEoIJsc29wGnEGiaZGI1IFfFMnCIB0SG85N4gg",
+        "label": "OSAI Gap Map working spreadsheet",
+        "date": "2025-01-15"
+      }
+    ],
+    "repo_count": 144,
+    "open_contributions": 144,
+    "closed_contributions": 0,
+    "scores": {
+      "breadth": 4,
+      "production_readiness": 4,
+      "ease_of_adoption": 3,
+      "documentation": 4,
+      "community_activity": 4,
+      "performance_vs_closed": 3,
+      "enterprise_readiness": 2,
+      "interoperability": 3,
+      "sustainability": 4,
+      "standardization": 3
+    },
+    "criteria_avg": 3.4,
+    "maturity": "Viable",
+    "synonyms": [
+      "vector database",
+      "data loader",
+      "ML storage",
+      "dataset storage"
+    ],
+    "last_audited": "2026-04-29",
+    "verdict_date": "2026-04-29"
+  },
+  {
+    "id": "model_code.evaluation_code",
+    "layer_id": "model_code",
+    "parent_id": null,
+    "display_name": "Evaluation Code",
+    "description": "Scripts, harnesses, and frameworks for benchmarking model performance — HELM, lm-evaluation-harness, EleutherAI eval tools.",
+    "is_dataset_blind_spot": false,
+    "parity_verdict": "competitive",
+    "gap_score": 3,
+    "parity_rationale": "Open eval harnesses are widely used and many closed providers publish results on them. Gap is in proprietary internal eval suites that closed labs use but don't release.",
+    "parity_sources": [
+      {
+        "url": "https://docs.google.com/spreadsheets/d/1plMCnpEoIJsc29wGnEGiaZGI1IFfFMnCIB0SG85N4gg",
+        "label": "OSAI Gap Map working spreadsheet",
+        "date": "2025-01-15"
+      }
+    ],
+    "repo_count": 548,
+    "open_contributions": 549,
+    "closed_contributions": 3,
+    "scores": {
+      "breadth": 4,
+      "production_readiness": 3,
+      "ease_of_adoption": 3,
+      "documentation": 3,
+      "community_activity": 4,
+      "performance_vs_closed": 3,
+      "enterprise_readiness": 2,
+      "interoperability": 3,
+      "sustainability": 3,
+      "standardization": 2
+    },
+    "criteria_avg": 3,
+    "maturity": "Viable",
+    "synonyms": [
+      "eval harness",
+      "benchmarking",
+      "model evaluation",
+      "testing"
+    ],
+    "last_audited": "2026-04-29",
+    "verdict_date": "2026-04-29"
+  },
+  {
+    "id": "model_code.finetuning_code",
+    "layer_id": "model_code",
+    "parent_id": null,
+    "display_name": "Finetuning Code",
+    "description": "Code for adapting pretrained models to specific tasks — PEFT, LoRA, TRL, QLoRA, and fine-tuning frameworks.",
+    "is_dataset_blind_spot": false,
+    "parity_verdict": "competitive",
+    "gap_score": 3,
+    "parity_rationale": "Open fine-tuning tools (PEFT, TRL, Axolotl) are production-grade. Closed labs have internal tooling but the open ecosystem is catching up quickly.",
+    "parity_sources": [
+      {
+        "url": "https://docs.google.com/spreadsheets/d/1plMCnpEoIJsc29wGnEGiaZGI1IFfFMnCIB0SG85N4gg",
+        "label": "OSAI Gap Map working spreadsheet",
+        "date": "2025-01-15"
+      }
+    ],
+    "repo_count": 607,
+    "open_contributions": 607,
+    "closed_contributions": 0,
+    "scores": {
+      "breadth": 4,
+      "production_readiness": 3,
+      "ease_of_adoption": 3,
+      "documentation": 3,
+      "community_activity": 4,
+      "performance_vs_closed": 3,
+      "enterprise_readiness": 2,
+      "interoperability": 3,
+      "sustainability": 4,
+      "standardization": 2
+    },
+    "criteria_avg": 3.1,
+    "maturity": "Viable",
+    "synonyms": [
+      "fine-tuning",
+      "LoRA",
+      "PEFT",
+      "QLoRA",
+      "adapter training"
+    ],
+    "last_audited": "2026-04-29",
+    "verdict_date": "2026-04-29"
+  },
+  {
+    "id": "model_code.inference_code",
+    "layer_id": "model_code",
+    "parent_id": null,
+    "display_name": "Inference Code",
+    "description": "Code for running models in production — vLLM, TGI, llama.cpp, and inference engines optimized for latency and throughput.",
+    "is_dataset_blind_spot": false,
+    "parity_verdict": "competitive",
+    "gap_score": 4,
+    "parity_rationale": "vLLM and TGI are best-in-class inference engines used by both open and closed providers. Strong open source position.",
+    "parity_sources": [
+      {
+        "url": "https://blog.vllm.ai/2023/06/20/vllm.html",
+        "label": "vLLM announcement",
+        "date": "2023-06-20"
+      }
+    ],
+    "repo_count": 168,
+    "open_contributions": 168,
+    "closed_contributions": 0,
+    "scores": {
+      "breadth": 5,
+      "production_readiness": 4,
+      "ease_of_adoption": 4,
+      "documentation": 4,
+      "community_activity": 5,
+      "performance_vs_closed": 4,
+      "enterprise_readiness": 3,
+      "interoperability": 3,
+      "sustainability": 4,
+      "standardization": 3
+    },
+    "criteria_avg": 3.9,
+    "maturity": "Strong",
+    "synonyms": [
+      "inference engine",
+      "model serving",
+      "vLLM",
+      "TGI",
+      "llama.cpp"
+    ],
+    "last_audited": "2026-04-29",
+    "verdict_date": "2026-04-29"
+  },
+  {
+    "id": "model_code.model_architecture",
+    "layer_id": "model_code",
+    "parent_id": null,
+    "display_name": "Model Architecture",
+    "description": "Neural network structure definitions — attention mechanisms, transformer variants, mixture-of-experts, state-space models.",
+    "is_dataset_blind_spot": false,
+    "parity_verdict": "closed_leads",
+    "gap_score": 3,
+    "parity_rationale": "Architecture innovation is published in papers but leading labs (Google, OpenAI, Anthropic) keep production architectures proprietary. Open reproductions lag by months.",
+    "parity_sources": [
+      {
+        "url": "https://docs.google.com/spreadsheets/d/1plMCnpEoIJsc29wGnEGiaZGI1IFfFMnCIB0SG85N4gg",
+        "label": "OSAI Gap Map working spreadsheet",
+        "date": "2025-01-15"
+      }
+    ],
+    "repo_count": 1502,
+    "open_contributions": 1502,
+    "closed_contributions": 0,
+    "scores": {
+      "breadth": 4,
+      "production_readiness": 3,
+      "ease_of_adoption": 3,
+      "documentation": 3,
+      "community_activity": 4,
+      "performance_vs_closed": 2,
+      "enterprise_readiness": 2,
+      "interoperability": 3,
+      "sustainability": 3,
+      "standardization": 2
+    },
+    "criteria_avg": 2.9,
+    "maturity": "Viable",
+    "synonyms": [
+      "transformer",
+      "attention",
+      "MoE",
+      "architecture",
+      "neural network"
+    ],
+    "last_audited": "2026-04-29",
+    "verdict_date": "2026-04-29"
+  },
+  {
+    "id": "model_code.supporting_libraries",
+    "layer_id": "model_code",
+    "parent_id": null,
+    "display_name": "Supporting Libraries",
+    "description": "Utility libraries for tokenization, data loading, prompt formatting, and other model-adjacent tooling.",
+    "is_dataset_blind_spot": false,
+    "parity_verdict": "competitive",
+    "gap_score": 4,
+    "parity_rationale": "HuggingFace tokenizers, datasets, and safetensors are the standard. Open source dominates this layer.",
+    "parity_sources": [
+      {
+        "url": "https://docs.google.com/spreadsheets/d/1plMCnpEoIJsc29wGnEGiaZGI1IFfFMnCIB0SG85N4gg",
+        "label": "OSAI Gap Map working spreadsheet",
+        "date": "2025-01-15"
+      }
+    ],
+    "repo_count": 806,
+    "open_contributions": 806,
+    "closed_contributions": 0,
+    "scores": {
+      "breadth": 4,
+      "production_readiness": 4,
+      "ease_of_adoption": 4,
+      "documentation": 4,
+      "community_activity": 5,
+      "performance_vs_closed": 4,
+      "enterprise_readiness": 3,
+      "interoperability": 4,
+      "sustainability": 4,
+      "standardization": 4
+    },
+    "criteria_avg": 4,
+    "maturity": "Strong",
+    "synonyms": [
+      "tokenizer",
+      "utilities",
+      "data loading",
+      "safetensors"
+    ],
+    "last_audited": "2026-04-29",
+    "verdict_date": "2026-04-29"
+  },
+  {
+    "id": "model_code.training_code",
+    "layer_id": "model_code",
+    "parent_id": null,
+    "display_name": "Training Code",
+    "description": "End-to-end training pipelines and scripts — Megatron-LM, DeepSpeed, Composer, NeMo, and distributed training infrastructure.",
+    "is_dataset_blind_spot": false,
+    "parity_verdict": "competitive",
+    "gap_score": 4,
+    "parity_rationale": "Open training stacks (DeepSpeed, Megatron, NeMo) are used to train frontier-class models. The code is open even when the resulting weights aren't.",
+    "parity_sources": [
+      {
+        "url": "https://docs.google.com/spreadsheets/d/1plMCnpEoIJsc29wGnEGiaZGI1IFfFMnCIB0SG85N4gg",
+        "label": "OSAI Gap Map working spreadsheet",
+        "date": "2025-01-15"
+      }
+    ],
+    "repo_count": 395,
+    "open_contributions": 397,
+    "closed_contributions": 0,
+    "scores": {
+      "breadth": 4,
+      "production_readiness": 4,
+      "ease_of_adoption": 4,
+      "documentation": 4,
+      "community_activity": 5,
+      "performance_vs_closed": 4,
+      "enterprise_readiness": 3,
+      "interoperability": 3,
+      "sustainability": 4,
+      "standardization": 3
+    },
+    "criteria_avg": 3.8,
+    "maturity": "Strong",
+    "synonyms": [
+      "training pipeline",
+      "distributed training",
+      "DeepSpeed",
+      "Megatron"
+    ],
+    "last_audited": "2026-04-29",
+    "verdict_date": "2026-04-29"
+  },
+  {
+    "id": "model_datasets.benchmark_eval_data",
+    "layer_id": "model_datasets",
+    "parent_id": null,
+    "display_name": "Benchmark Eval Data",
+    "description": "Standard datasets for measuring model performance — MMLU, HellaSwag, HumanEval, and domain-specific evaluation sets.",
+    "is_dataset_blind_spot": false,
+    "parity_verdict": "competitive",
+    "gap_score": 4,
+    "parity_rationale": "Most major benchmarks are publicly available. Gap is in proprietary internal test sets that closed labs maintain.",
+    "parity_sources": [
+      {
+        "url": "https://docs.google.com/spreadsheets/d/1plMCnpEoIJsc29wGnEGiaZGI1IFfFMnCIB0SG85N4gg",
+        "label": "OSAI Gap Map working spreadsheet",
+        "date": "2025-01-15"
+      }
+    ],
+    "repo_count": 0,
+    "open_contributions": 7,
+    "closed_contributions": 0,
+    "scores": {
+      "breadth": 5,
+      "production_readiness": 4,
+      "ease_of_adoption": 4,
+      "documentation": 4,
+      "community_activity": 5,
+      "performance_vs_closed": 4,
+      "enterprise_readiness": 3,
+      "interoperability": 3,
+      "sustainability": 4,
+      "standardization": 3
+    },
+    "criteria_avg": 3.9,
+    "maturity": "Strong",
+    "synonyms": [
+      "benchmark",
+      "MMLU",
+      "HumanEval",
+      "evaluation dataset"
+    ],
+    "last_audited": "2026-04-29",
+    "verdict_date": "2026-04-29"
+  },
+  {
+    "id": "model_datasets.data_preprocessing",
+    "layer_id": "model_datasets",
+    "parent_id": null,
+    "display_name": "Data Preprocessing",
+    "description": "Tools for cleaning, filtering, deduplicating, and preparing training data — annotation platforms, data pipelines, and quality filters.",
+    "is_dataset_blind_spot": false,
+    "parity_verdict": "competitive",
+    "gap_score": 3,
+    "parity_rationale": "Open tools (Label Studio, Argilla, datatrove) are viable but enterprise-grade data pipelines at scale remain a closed-source strength.",
+    "parity_sources": [
+      {
+        "url": "https://docs.google.com/spreadsheets/d/1plMCnpEoIJsc29wGnEGiaZGI1IFfFMnCIB0SG85N4gg",
+        "label": "OSAI Gap Map working spreadsheet",
+        "date": "2025-01-15"
+      }
+    ],
+    "repo_count": 850,
+    "open_contributions": 850,
+    "closed_contributions": 0,
+    "scores": {
+      "breadth": 4,
+      "production_readiness": 4,
+      "ease_of_adoption": 3,
+      "documentation": 4,
+      "community_activity": 4,
+      "performance_vs_closed": 3,
+      "enterprise_readiness": 3,
+      "interoperability": 3,
+      "sustainability": 4,
+      "standardization": 2
+    },
+    "criteria_avg": 3.4,
+    "maturity": "Viable, but fragmented",
+    "synonyms": [
+      "data cleaning",
+      "annotation",
+      "labeling",
+      "data pipeline"
+    ],
+    "last_audited": "2026-04-29",
+    "verdict_date": "2026-04-29"
+  },
+  {
+    "id": "model_datasets.preference_alignment_data",
+    "layer_id": "model_datasets",
+    "parent_id": null,
+    "display_name": "Preference Alignment Data",
+    "description": "Human feedback data for RLHF, DPO, and alignment — preference pairs, reward model training sets, and constitutional AI datasets.",
+    "is_dataset_blind_spot": false,
+    "parity_verdict": "competitive",
+    "gap_score": 4,
+    "parity_rationale": "Open preference datasets (Open Assistant, Nectar, UltraFeedback) are substantial. Closed labs generate proprietary RLHF data but open alternatives are competitive.",
+    "parity_sources": [
+      {
+        "url": "https://huggingface.co/datasets/HuggingFaceH4/ultrafeedback_binarized",
+        "label": "UltraFeedback dataset",
+        "date": "2024-01-01"
+      }
+    ],
+    "repo_count": 0,
+    "open_contributions": 0,
+    "closed_contributions": 2,
+    "scores": {
+      "breadth": 5,
+      "production_readiness": 4,
+      "ease_of_adoption": 4,
+      "documentation": 3,
+      "community_activity": 5,
+      "performance_vs_closed": 5,
+      "enterprise_readiness": 3,
+      "interoperability": 4,
+      "sustainability": 4,
+      "standardization": 3
+    },
+    "criteria_avg": 4,
+    "maturity": "Strong",
+    "synonyms": [
+      "RLHF",
+      "DPO",
+      "human feedback",
+      "preference data"
+    ],
+    "last_audited": "2026-04-29",
+    "verdict_date": "2026-04-29"
+  },
+  {
+    "id": "model_datasets.pretraining_data",
+    "layer_id": "model_datasets",
+    "parent_id": null,
+    "display_name": "Pretraining Data",
+    "description": "Large-scale corpora used to train foundation models — Common Crawl, The Pile, RedPajama, FineWeb, and web-scale text datasets.",
+    "is_dataset_blind_spot": false,
+    "parity_verdict": "closed_leads",
+    "gap_score": 3,
+    "parity_rationale": "Open corpora exist but are smaller and less curated than what closed labs use. Data quality and curation at frontier scale remains a closed advantage.",
+    "parity_sources": [
+      {
+        "url": "https://docs.google.com/spreadsheets/d/1plMCnpEoIJsc29wGnEGiaZGI1IFfFMnCIB0SG85N4gg",
+        "label": "OSAI Gap Map working spreadsheet",
+        "date": "2025-01-15"
+      }
+    ],
+    "repo_count": 1,
+    "open_contributions": 1,
+    "closed_contributions": 3,
+    "scores": {
+      "breadth": 4,
+      "production_readiness": 3,
+      "ease_of_adoption": 3,
+      "documentation": 3,
+      "community_activity": 4,
+      "performance_vs_closed": 3,
+      "enterprise_readiness": 2,
+      "interoperability": 3,
+      "sustainability": 4,
+      "standardization": 2
+    },
+    "criteria_avg": 3.1,
+    "maturity": "Viable",
+    "synonyms": [
+      "training corpus",
+      "web crawl",
+      "pretraining corpus",
+      "Common Crawl"
+    ],
+    "last_audited": "2026-04-29",
+    "verdict_date": "2026-04-29"
+  },
+  {
+    "id": "model_datasets.synthetic_data",
+    "layer_id": "model_datasets",
+    "parent_id": null,
+    "display_name": "Synthetic Data",
+    "description": "Machine-generated data for training augmentation — distillation outputs, synthetic instruction sets, and data generation pipelines.",
+    "is_dataset_blind_spot": false,
+    "parity_verdict": "closed_leads",
+    "gap_score": 3,
+    "parity_rationale": "Closed labs generate high-quality synthetic data from their own frontier models. Open tools (distilabel, Cosmopedia) are emerging but lag in quality.",
+    "parity_sources": [
+      {
+        "url": "https://docs.google.com/spreadsheets/d/1plMCnpEoIJsc29wGnEGiaZGI1IFfFMnCIB0SG85N4gg",
+        "label": "OSAI Gap Map working spreadsheet",
+        "date": "2025-01-15"
+      }
+    ],
+    "repo_count": 0,
+    "open_contributions": 3,
+    "closed_contributions": 2,
+    "scores": {
+      "breadth": 4,
+      "production_readiness": 3,
+      "ease_of_adoption": 3,
+      "documentation": 4,
+      "community_activity": 3,
+      "performance_vs_closed": 3,
+      "enterprise_readiness": 2,
+      "interoperability": 2,
+      "sustainability": 3,
+      "standardization": 2
+    },
+    "criteria_avg": 2.9,
+    "maturity": "Viable",
+    "synonyms": [
+      "synthetic generation",
+      "data augmentation",
+      "distillation data"
+    ],
+    "last_audited": "2026-04-29",
+    "verdict_date": "2026-04-29"
+  },
+  {
+    "id": "model_weights.base_pretrained",
+    "layer_id": "model_weights",
+    "parent_id": null,
+    "display_name": "Base Pretrained",
+    "description": "Foundation model weights before fine-tuning — Llama, Mistral, Falcon, Gemma, and other base model releases.",
+    "is_dataset_blind_spot": false,
+    "parity_verdict": "competitive",
+    "gap_score": 4,
+    "parity_rationale": "Open base models (Llama 3, Mistral, Qwen) are competitive with closed frontiers on many benchmarks. The gap has narrowed significantly since 2023.",
+    "parity_sources": [
+      {
+        "url": "https://huggingface.co/spaces/open-llm-leaderboard/open_llm_leaderboard",
+        "label": "Open LLM Leaderboard",
+        "date": "2025-04-01"
+      }
+    ],
+    "repo_count": 227,
+    "open_contributions": 237,
+    "closed_contributions": 21,
+    "scores": {
+      "breadth": 5,
+      "production_readiness": 4,
+      "ease_of_adoption": 4,
+      "documentation": 4,
+      "community_activity": 5,
+      "performance_vs_closed": 4,
+      "enterprise_readiness": 3,
+      "interoperability": 3,
+      "sustainability": 4,
+      "standardization": 3
+    },
+    "criteria_avg": 3.9,
+    "maturity": "Strong",
+    "synonyms": [
+      "foundation model",
+      "base model",
+      "pretrained weights",
+      "LLM"
+    ],
+    "last_audited": "2026-04-29",
+    "verdict_date": "2026-04-29"
+  },
+  {
+    "id": "model_weights.compressed_weights",
+    "layer_id": "model_weights",
+    "parent_id": null,
+    "display_name": "Compressed Weights",
+    "description": "Quantized, pruned, or distilled models optimized for efficiency — GGUF, GPTQ, AWQ formats and compressed model variants.",
+    "is_dataset_blind_spot": false,
+    "parity_verdict": "closed_leads",
+    "gap_score": 3,
+    "parity_rationale": "Open quantization tools are strong (llama.cpp, GPTQ) but closed providers optimize internally with proprietary techniques. Open models often rely on community quantization.",
+    "parity_sources": [
+      {
+        "url": "https://docs.google.com/spreadsheets/d/1plMCnpEoIJsc29wGnEGiaZGI1IFfFMnCIB0SG85N4gg",
+        "label": "OSAI Gap Map working spreadsheet",
+        "date": "2025-01-15"
+      }
+    ],
+    "repo_count": 10,
+    "open_contributions": 10,
+    "closed_contributions": 0,
+    "scores": {
+      "breadth": 4,
+      "production_readiness": 3,
+      "ease_of_adoption": 3,
+      "documentation": 4,
+      "community_activity": 4,
+      "performance_vs_closed": 3,
+      "enterprise_readiness": 2,
+      "interoperability": 3,
+      "sustainability": 3,
+      "standardization": 2
+    },
+    "criteria_avg": 3.1,
+    "maturity": "Viable",
+    "synonyms": [
+      "quantized model",
+      "GGUF",
+      "GPTQ",
+      "pruned",
+      "distilled"
+    ],
+    "last_audited": "2026-04-29",
+    "verdict_date": "2026-04-29"
+  },
+  {
+    "id": "model_weights.domain_weights",
+    "layer_id": "model_weights",
+    "parent_id": null,
+    "display_name": "Domain Weights",
+    "description": "Models fine-tuned for specific fields — medical (Med-PaLM), legal, financial, scientific, and code-specialized models.",
+    "is_dataset_blind_spot": false,
+    "parity_verdict": "closed_leads",
+    "gap_score": 3,
+    "parity_rationale": "Domain models require specialized data that closed providers often have through partnerships. Open domain models exist but coverage is uneven.",
+    "parity_sources": [
+      {
+        "url": "https://docs.google.com/spreadsheets/d/1plMCnpEoIJsc29wGnEGiaZGI1IFfFMnCIB0SG85N4gg",
+        "label": "OSAI Gap Map working spreadsheet",
+        "date": "2025-01-15"
+      }
+    ],
+    "repo_count": 271,
+    "open_contributions": 271,
+    "closed_contributions": 0,
+    "scores": {
+      "breadth": 4,
+      "production_readiness": 3,
+      "ease_of_adoption": 3,
+      "documentation": 3,
+      "community_activity": 4,
+      "performance_vs_closed": 3,
+      "enterprise_readiness": 2,
+      "interoperability": 3,
+      "sustainability": 3,
+      "standardization": 2
+    },
+    "criteria_avg": 3,
+    "maturity": "Viable, but fragmented",
+    "synonyms": [
+      "domain model",
+      "specialized model",
+      "medical AI",
+      "code model"
+    ],
+    "last_audited": "2026-04-29",
+    "verdict_date": "2026-04-29"
+  },
+  {
+    "id": "model_weights.finetuned_chat",
+    "layer_id": "model_weights",
+    "parent_id": null,
+    "display_name": "Finetuned Chat",
+    "description": "Instruction-tuned and chat-optimized model weights — Llama Chat, Vicuna, Zephyr, and RLHF-aligned conversational models.",
+    "is_dataset_blind_spot": false,
+    "parity_verdict": "closed_leads",
+    "gap_score": 3,
+    "parity_rationale": "Closed chat models (GPT-4, Claude) still lead on safety, instruction-following, and user experience. Open chat models are rapidly improving.",
+    "parity_sources": [
+      {
+        "url": "https://docs.google.com/spreadsheets/d/1plMCnpEoIJsc29wGnEGiaZGI1IFfFMnCIB0SG85N4gg",
+        "label": "OSAI Gap Map working spreadsheet",
+        "date": "2025-01-15"
+      }
+    ],
+    "repo_count": 0,
+    "open_contributions": 0,
+    "closed_contributions": 1,
+    "scores": {
+      "breadth": 4,
+      "production_readiness": 3,
+      "ease_of_adoption": 3,
+      "documentation": 3,
+      "community_activity": 4,
+      "performance_vs_closed": 3,
+      "enterprise_readiness": 2,
+      "interoperability": 3,
+      "sustainability": 3,
+      "standardization": 2
+    },
+    "criteria_avg": 3,
+    "maturity": "Viable",
+    "synonyms": [
+      "chat model",
+      "instruct model",
+      "RLHF model",
+      "assistant"
+    ],
+    "last_audited": "2026-04-29",
+    "verdict_date": "2026-04-29"
+  },
+  {
+    "id": "model_weights.multimodal_weights",
+    "layer_id": "model_weights",
+    "parent_id": null,
+    "display_name": "Multimodal Weights",
+    "description": "Models handling multiple modalities — vision-language (LLaVA, GPT-4V), audio-language, video, and cross-modal models.",
+    "is_dataset_blind_spot": false,
+    "parity_verdict": "competitive",
+    "gap_score": 3,
+    "parity_rationale": "Open multimodal models (LLaVA, Whisper, CLIP) are competitive. Video and real-time multimodal remain closed-led.",
+    "parity_sources": [
+      {
+        "url": "https://docs.google.com/spreadsheets/d/1plMCnpEoIJsc29wGnEGiaZGI1IFfFMnCIB0SG85N4gg",
+        "label": "OSAI Gap Map working spreadsheet",
+        "date": "2025-01-15"
+      }
+    ],
+    "repo_count": 1257,
+    "open_contributions": 1262,
+    "closed_contributions": 5,
+    "scores": {
+      "breadth": 4,
+      "production_readiness": 4,
+      "ease_of_adoption": 3,
+      "documentation": 3,
+      "community_activity": 4,
+      "performance_vs_closed": 3,
+      "enterprise_readiness": 2,
+      "interoperability": 3,
+      "sustainability": 4,
+      "standardization": 2
+    },
+    "criteria_avg": 3.2,
+    "maturity": "Viable, but fragmented",
+    "synonyms": [
+      "vision-language",
+      "multimodal",
+      "image generation",
+      "speech",
+      "video"
+    ],
+    "last_audited": "2026-04-29",
+    "verdict_date": "2026-04-29"
+  },
+  {
+    "id": "product_ux.deployment",
+    "layer_id": "product_ux",
+    "parent_id": null,
+    "display_name": "Deployment",
+    "description": "Tools for serving and scaling models in production — containerization, model serving platforms, API gateways, and deployment automation.",
+    "is_dataset_blind_spot": false,
+    "parity_verdict": "competitive",
+    "gap_score": 4,
+    "parity_rationale": "Open deployment tools (BentoML, Seldon, KServe) are production-grade. MLOps deployment is a strong open source area.",
+    "parity_sources": [
+      {
+        "url": "https://docs.google.com/spreadsheets/d/1plMCnpEoIJsc29wGnEGiaZGI1IFfFMnCIB0SG85N4gg",
+        "label": "OSAI Gap Map working spreadsheet",
+        "date": "2025-01-15"
+      }
+    ],
+    "repo_count": 257,
+    "open_contributions": 257,
+    "closed_contributions": 12,
+    "scores": {
+      "breadth": 4,
+      "production_readiness": 4,
+      "ease_of_adoption": 4,
+      "documentation": 4,
+      "community_activity": 4,
+      "performance_vs_closed": 4,
+      "enterprise_readiness": 3,
+      "interoperability": 4,
+      "sustainability": 4,
+      "standardization": 3
+    },
+    "criteria_avg": 3.8,
+    "maturity": "Strong",
+    "synonyms": [
+      "model deployment",
+      "serving",
+      "MLOps",
+      "containerization"
+    ],
+    "last_audited": "2026-04-29",
+    "verdict_date": "2026-04-29"
+  },
+  {
+    "id": "product_ux.orchestration_agents",
+    "layer_id": "product_ux",
+    "parent_id": null,
+    "display_name": "Orchestration Agents",
+    "description": "Frameworks for building AI agents — LangChain, CrewAI, AutoGen, and tool-use orchestration libraries.",
+    "is_dataset_blind_spot": false,
+    "parity_verdict": "competitive",
+    "gap_score": 3,
+    "parity_rationale": "Agent frameworks are overwhelmingly open source. The gap is in production reliability and enterprise features, not availability.",
+    "parity_sources": [
+      {
+        "url": "https://www.langchain.com/langgraph",
+        "label": "LangGraph",
+        "date": "2024-06-01"
+      }
+    ],
+    "repo_count": 771,
+    "open_contributions": 771,
+    "closed_contributions": 0,
+    "scores": {
+      "breadth": 4,
+      "production_readiness": 3,
+      "ease_of_adoption": 3,
+      "documentation": 3,
+      "community_activity": 4,
+      "performance_vs_closed": 3,
+      "enterprise_readiness": 2,
+      "interoperability": 2,
+      "sustainability": 4,
+      "standardization": 2
+    },
+    "criteria_avg": 3,
+    "maturity": "Viable",
+    "synonyms": [
+      "AI agent",
+      "LangChain",
+      "agent framework",
+      "tool use",
+      "RAG"
+    ],
+    "last_audited": "2026-04-29",
+    "verdict_date": "2026-04-29"
+  },
+  {
+    "id": "product_ux.output_settings",
+    "layer_id": "product_ux",
+    "parent_id": null,
+    "display_name": "Output Settings",
+    "description": "Controls for structured output — temperature, response format, JSON mode, function calling schemas, and generation constraints.",
+    "is_dataset_blind_spot": false,
+    "parity_verdict": "closed_leads",
+    "gap_score": 3,
+    "parity_rationale": "Closed APIs (OpenAI, Anthropic) lead in structured output reliability. Open tools (Outlines, Instructor) are catching up but less battle-tested.",
+    "parity_sources": [
+      {
+        "url": "https://docs.google.com/spreadsheets/d/1plMCnpEoIJsc29wGnEGiaZGI1IFfFMnCIB0SG85N4gg",
+        "label": "OSAI Gap Map working spreadsheet",
+        "date": "2025-01-15"
+      }
+    ],
+    "repo_count": 0,
+    "open_contributions": 2,
+    "closed_contributions": 3,
+    "scores": {
+      "breadth": 4,
+      "production_readiness": 3,
+      "ease_of_adoption": 3,
+      "documentation": 4,
+      "community_activity": 4,
+      "performance_vs_closed": 3,
+      "enterprise_readiness": 2,
+      "interoperability": 2,
+      "sustainability": 3,
+      "standardization": 2
+    },
+    "criteria_avg": 3,
+    "maturity": "Viable, but fragmented",
+    "synonyms": [
+      "structured output",
+      "JSON mode",
+      "function calling",
+      "constrained generation"
+    ],
+    "last_audited": "2026-04-29",
+    "verdict_date": "2026-04-29"
+  },
+  {
+    "id": "product_ux.system_prompt",
+    "layer_id": "product_ux",
+    "parent_id": null,
+    "display_name": "System Prompt",
+    "description": "System-level prompt configuration and management — prompt templates, prompt versioning, and system message tooling.",
+    "is_dataset_blind_spot": false,
+    "parity_verdict": "closed_leads",
+    "gap_score": 3,
+    "parity_rationale": "Prompt management is fragmented in open source. Closed platforms bundle prompt engineering directly into their APIs.",
+    "parity_sources": [
+      {
+        "url": "https://docs.google.com/spreadsheets/d/1plMCnpEoIJsc29wGnEGiaZGI1IFfFMnCIB0SG85N4gg",
+        "label": "OSAI Gap Map working spreadsheet",
+        "date": "2025-01-15"
+      }
+    ],
+    "repo_count": 345,
+    "open_contributions": 345,
+    "closed_contributions": 0,
+    "scores": {
+      "breadth": 4,
+      "production_readiness": 3,
+      "ease_of_adoption": 3,
+      "documentation": 3,
+      "community_activity": 4,
+      "performance_vs_closed": 3,
+      "enterprise_readiness": 2,
+      "interoperability": 3,
+      "sustainability": 3,
+      "standardization": 2
+    },
+    "criteria_avg": 3,
+    "maturity": "Viable",
+    "synonyms": [
+      "prompt engineering",
+      "system message",
+      "prompt template"
+    ],
+    "last_audited": "2026-04-29",
+    "verdict_date": "2026-04-29"
+  },
+  {
+    "id": "product_ux.telemetry_observability",
+    "layer_id": "product_ux",
+    "parent_id": null,
+    "display_name": "Telemetry Observability",
+    "description": "Monitoring, logging, tracing, and debugging for LLM applications — LangSmith, Langfuse, Phoenix, and OpenTelemetry integrations.",
+    "is_dataset_blind_spot": false,
+    "parity_verdict": "closed_leads",
+    "gap_score": 3,
+    "parity_rationale": "Open observability tools exist (Langfuse, Phoenix) but closed platforms (LangSmith, Datadog LLM) offer more integrated experiences.",
+    "parity_sources": [
+      {
+        "url": "https://docs.google.com/spreadsheets/d/1plMCnpEoIJsc29wGnEGiaZGI1IFfFMnCIB0SG85N4gg",
+        "label": "OSAI Gap Map working spreadsheet",
+        "date": "2025-01-15"
+      }
+    ],
+    "repo_count": 107,
+    "open_contributions": 107,
+    "closed_contributions": 0,
+    "scores": {
+      "breadth": 4,
+      "production_readiness": 4,
+      "ease_of_adoption": 3,
+      "documentation": 4,
+      "community_activity": 4,
+      "performance_vs_closed": 3,
+      "enterprise_readiness": 2,
+      "interoperability": 3,
+      "sustainability": 4,
+      "standardization": 3
+    },
+    "criteria_avg": 3.4,
+    "maturity": "Viable, but fragmented",
+    "synonyms": [
+      "LLM monitoring",
+      "tracing",
+      "observability",
+      "Langfuse"
+    ],
+    "last_audited": "2026-04-29",
+    "verdict_date": "2026-04-29"
+  },
+  {
+    "id": "product_ux.ui_api",
+    "layer_id": "product_ux",
+    "parent_id": null,
+    "display_name": "UI & API",
+    "description": "User-facing interfaces and API endpoints — chat UIs, playground apps, API wrappers, and developer portals.",
+    "is_dataset_blind_spot": false,
+    "parity_verdict": "closed_leads",
+    "gap_score": 3,
+    "parity_rationale": "Open chat UIs (Open WebUI, LibreChat) exist but lack the polish and integration of ChatGPT, Claude, or Gemini interfaces.",
+    "parity_sources": [
+      {
+        "url": "https://docs.google.com/spreadsheets/d/1plMCnpEoIJsc29wGnEGiaZGI1IFfFMnCIB0SG85N4gg",
+        "label": "OSAI Gap Map working spreadsheet",
+        "date": "2025-01-15"
+      }
+    ],
+    "repo_count": 2868,
+    "open_contributions": 2868,
+    "closed_contributions": 6,
+    "scores": {
+      "breadth": 4,
+      "production_readiness": 3,
+      "ease_of_adoption": 3,
+      "documentation": 3,
+      "community_activity": 4,
+      "performance_vs_closed": 2,
+      "enterprise_readiness": 2,
+      "interoperability": 3,
+      "sustainability": 3,
+      "standardization": 2
+    },
+    "criteria_avg": 2.9,
+    "maturity": "Viable",
+    "synonyms": [
+      "chat UI",
+      "API wrapper",
+      "playground",
+      "developer portal"
+    ],
+    "last_audited": "2026-04-29",
+    "verdict_date": "2026-04-29"
+  },
+  {
+    "id": "documentation.data_documentation",
+    "layer_id": "documentation",
+    "parent_id": null,
+    "display_name": "Data Documentation",
+    "description": "Data cards, provenance records, and lineage documentation — Croissant, dataset cards, and data governance tooling.",
+    "is_dataset_blind_spot": false,
+    "parity_verdict": "closed_leads",
+    "gap_score": 3,
+    "parity_rationale": "Open standards (Croissant, HF dataset cards) exist but adoption is inconsistent. Closed providers document data provenance selectively.",
+    "parity_sources": [
+      {
+        "url": "https://docs.google.com/spreadsheets/d/1plMCnpEoIJsc29wGnEGiaZGI1IFfFMnCIB0SG85N4gg",
+        "label": "OSAI Gap Map working spreadsheet",
+        "date": "2025-01-15"
+      }
+    ],
+    "repo_count": 29,
+    "open_contributions": 30,
+    "closed_contributions": 0,
+    "scores": {
+      "breadth": 4,
+      "production_readiness": 4,
+      "ease_of_adoption": 3,
+      "documentation": 3,
+      "community_activity": 4,
+      "performance_vs_closed": 3,
+      "enterprise_readiness": 2,
+      "interoperability": 3,
+      "sustainability": 3,
+      "standardization": 2
+    },
+    "criteria_avg": 3.1,
+    "maturity": "Viable, but fragmented",
+    "synonyms": [
+      "dataset card",
+      "data provenance",
+      "data governance"
+    ],
+    "last_audited": "2026-04-29",
+    "verdict_date": "2026-04-29"
+  },
+  {
+    "id": "documentation.eval_results",
+    "layer_id": "documentation",
+    "parent_id": null,
+    "display_name": "Eval Results",
+    "description": "Published benchmark results, leaderboards, and comparative evaluations — Open LLM Leaderboard, Chatbot Arena, and results publishing.",
+    "is_dataset_blind_spot": false,
+    "parity_verdict": "closed_leads",
+    "gap_score": 3,
+    "parity_rationale": "Leaderboards are open but results are often self-reported. Independent evaluation infrastructure is underfunded.",
+    "parity_sources": [
+      {
+        "url": "https://docs.google.com/spreadsheets/d/1plMCnpEoIJsc29wGnEGiaZGI1IFfFMnCIB0SG85N4gg",
+        "label": "OSAI Gap Map working spreadsheet",
+        "date": "2025-01-15"
+      }
+    ],
+    "repo_count": 485,
+    "open_contributions": 485,
+    "closed_contributions": 0,
+    "scores": {
+      "breadth": 4,
+      "production_readiness": 3,
+      "ease_of_adoption": 3,
+      "documentation": 3,
+      "community_activity": 4,
+      "performance_vs_closed": 3,
+      "enterprise_readiness": 2,
+      "interoperability": 3,
+      "sustainability": 3,
+      "standardization": 2
+    },
+    "criteria_avg": 3,
+    "maturity": "Viable",
+    "synonyms": [
+      "leaderboard",
+      "benchmark results",
+      "model comparison"
+    ],
+    "last_audited": "2026-04-29",
+    "verdict_date": "2026-04-29"
+  },
+  {
+    "id": "documentation.model_cards",
+    "layer_id": "documentation",
+    "parent_id": null,
+    "display_name": "Model Cards",
+    "description": "Standardized model documentation — capabilities, limitations, intended use, training data, and ethical considerations.",
+    "is_dataset_blind_spot": false,
+    "parity_verdict": "closed_leads",
+    "gap_score": 3,
+    "parity_rationale": "Model card tooling exists but quality varies wildly. Closed providers publish polished cards; many open models ship with minimal documentation.",
+    "parity_sources": [
+      {
+        "url": "https://docs.google.com/spreadsheets/d/1plMCnpEoIJsc29wGnEGiaZGI1IFfFMnCIB0SG85N4gg",
+        "label": "OSAI Gap Map working spreadsheet",
+        "date": "2025-01-15"
+      }
+    ],
+    "repo_count": 47,
+    "open_contributions": 47,
+    "closed_contributions": 0,
+    "scores": {
+      "breadth": 3,
+      "production_readiness": 3,
+      "ease_of_adoption": 3,
+      "documentation": 3,
+      "community_activity": 4,
+      "performance_vs_closed": 2,
+      "enterprise_readiness": 2,
+      "interoperability": 2,
+      "sustainability": 3,
+      "standardization": 2
+    },
+    "criteria_avg": 2.7,
+    "maturity": "Viable, but fragmented",
+    "synonyms": [
+      "model documentation",
+      "model card",
+      "capabilities"
+    ],
+    "last_audited": "2026-04-29",
+    "verdict_date": "2026-04-29"
+  },
+  {
+    "id": "documentation.sample_outputs_demos",
+    "layer_id": "documentation",
+    "parent_id": null,
+    "display_name": "Sample Outputs & Demos",
+    "description": "Example outputs, interactive demos, and showcase applications that demonstrate model capabilities.",
+    "is_dataset_blind_spot": false,
+    "parity_verdict": "competitive",
+    "gap_score": 4,
+    "parity_rationale": "Open source demos (Gradio, Streamlit, HF Spaces) are a unique strength. The demo ecosystem is overwhelmingly open.",
+    "parity_sources": [
+      {
+        "url": "https://docs.google.com/spreadsheets/d/1plMCnpEoIJsc29wGnEGiaZGI1IFfFMnCIB0SG85N4gg",
+        "label": "OSAI Gap Map working spreadsheet",
+        "date": "2025-01-15"
+      }
+    ],
+    "repo_count": 2388,
+    "open_contributions": 2388,
+    "closed_contributions": 0,
+    "scores": {
+      "breadth": 5,
+      "production_readiness": 4,
+      "ease_of_adoption": 4,
+      "documentation": 4,
+      "community_activity": 5,
+      "performance_vs_closed": 4,
+      "enterprise_readiness": 3,
+      "interoperability": 3,
+      "sustainability": 4,
+      "standardization": 3
+    },
+    "criteria_avg": 3.9,
+    "maturity": "Strong",
+    "synonyms": [
+      "demo",
+      "tutorial",
+      "example",
+      "showcase",
+      "Gradio"
+    ],
+    "last_audited": "2026-04-29",
+    "verdict_date": "2026-04-29"
+  },
+  {
+    "id": "licensing.code_licenses",
+    "layer_id": "licensing",
+    "parent_id": null,
+    "display_name": "Code Licenses",
+    "description": "License terms for source code — license scanning, compliance tooling, and open source license management.",
+    "is_dataset_blind_spot": false,
+    "parity_verdict": "closed_leads",
+    "gap_score": 3,
+    "parity_rationale": "License scanning tools exist but AI-specific code licensing (training code, fine-tuning scripts) has unresolved questions.",
+    "parity_sources": [
+      {
+        "url": "https://docs.google.com/spreadsheets/d/1plMCnpEoIJsc29wGnEGiaZGI1IFfFMnCIB0SG85N4gg",
+        "label": "OSAI Gap Map working spreadsheet",
+        "date": "2025-01-15"
+      }
+    ],
+    "repo_count": 0,
+    "open_contributions": 1,
+    "closed_contributions": 0,
+    "scores": {
+      "breadth": 3,
+      "production_readiness": 3,
+      "ease_of_adoption": 4,
+      "documentation": 4,
+      "community_activity": 3,
+      "performance_vs_closed": 2,
+      "enterprise_readiness": 2,
+      "interoperability": 3,
+      "sustainability": 3,
+      "standardization": 3
+    },
+    "criteria_avg": 3,
+    "maturity": "Viable",
+    "synonyms": [
+      "open source license",
+      "code license",
+      "MIT",
+      "Apache"
+    ],
+    "last_audited": "2026-04-29",
+    "verdict_date": "2026-04-29"
+  },
+  {
+    "id": "licensing.dataset_licenses",
+    "layer_id": "licensing",
+    "parent_id": null,
+    "display_name": "Dataset Licenses",
+    "description": "License terms for training data — data licensing frameworks, consent documentation, and rights management.",
+    "is_dataset_blind_spot": false,
+    "parity_verdict": "competitive",
+    "gap_score": 4,
+    "parity_rationale": "Open data licensing is more transparent than closed. CDLA, ODC, and CC frameworks are well-established.",
+    "parity_sources": [
+      {
+        "url": "https://docs.google.com/spreadsheets/d/1plMCnpEoIJsc29wGnEGiaZGI1IFfFMnCIB0SG85N4gg",
+        "label": "OSAI Gap Map working spreadsheet",
+        "date": "2025-01-15"
+      }
+    ],
+    "repo_count": 0,
+    "open_contributions": 3,
+    "closed_contributions": 0,
+    "scores": {
+      "breadth": 4,
+      "production_readiness": 5,
+      "ease_of_adoption": 4,
+      "documentation": 4,
+      "community_activity": 4,
+      "performance_vs_closed": 3,
+      "enterprise_readiness": 3,
+      "interoperability": 4,
+      "sustainability": 4,
+      "standardization": 4
+    },
+    "criteria_avg": 3.9,
+    "maturity": "Strong",
+    "synonyms": [
+      "data license",
+      "CDLA",
+      "CC-BY",
+      "ODC"
+    ],
+    "last_audited": "2026-04-29",
+    "verdict_date": "2026-04-29"
+  },
+  {
+    "id": "licensing.terms_of_service",
+    "layer_id": "licensing",
+    "parent_id": null,
+    "display_name": "Terms of Service",
+    "description": "Usage policies, acceptable use terms, and terms-of-service analysis tooling for AI products.",
+    "is_dataset_blind_spot": true,
+    "parity_verdict": "closed_leads",
+    "gap_score": 2,
+    "parity_rationale": "Almost no open source tooling for ToS analysis or comparison. Closed providers set terms unilaterally.",
+    "parity_sources": [
+      {
+        "url": "https://docs.google.com/spreadsheets/d/1plMCnpEoIJsc29wGnEGiaZGI1IFfFMnCIB0SG85N4gg",
+        "label": "OSAI Gap Map working spreadsheet",
+        "date": "2025-01-15"
+      }
+    ],
+    "repo_count": 0,
+    "open_contributions": 1,
+    "closed_contributions": 3,
+    "scores": {
+      "breadth": 2,
+      "production_readiness": 2,
+      "ease_of_adoption": 3,
+      "documentation": 2,
+      "community_activity": 2,
+      "performance_vs_closed": 2,
+      "enterprise_readiness": 1,
+      "interoperability": 2,
+      "sustainability": 2,
+      "standardization": 1
+    },
+    "criteria_avg": 1.9,
+    "maturity": "Early stage",
+    "synonyms": [
+      "ToS",
+      "acceptable use",
+      "usage policy"
+    ],
+    "last_audited": "2026-04-29",
+    "verdict_date": "2026-04-29"
+  },
+  {
+    "id": "licensing.weight_licenses",
+    "layer_id": "licensing",
+    "parent_id": null,
+    "display_name": "Weight Licenses",
+    "description": "License terms for model weights — Llama Community License, RAIL, OpenRAIL, and weight-specific licensing frameworks.",
+    "is_dataset_blind_spot": false,
+    "parity_verdict": "competitive",
+    "gap_score": 3,
+    "parity_rationale": "Weight licensing is actively evolving. Open frameworks (RAIL, Llama license) exist but lack standardization.",
+    "parity_sources": [
+      {
+        "url": "https://docs.google.com/spreadsheets/d/1plMCnpEoIJsc29wGnEGiaZGI1IFfFMnCIB0SG85N4gg",
+        "label": "OSAI Gap Map working spreadsheet",
+        "date": "2025-01-15"
+      }
+    ],
+    "repo_count": 0,
+    "open_contributions": 1,
+    "closed_contributions": 0,
+    "scores": {
+      "breadth": 4,
+      "production_readiness": 4,
+      "ease_of_adoption": 3,
+      "documentation": 3,
+      "community_activity": 3,
+      "performance_vs_closed": 3,
+      "enterprise_readiness": 3,
+      "interoperability": 2,
+      "sustainability": 4,
+      "standardization": 2
+    },
+    "criteria_avg": 3.1,
+    "maturity": "Viable",
+    "synonyms": [
+      "model license",
+      "RAIL",
+      "Llama license",
+      "weight license"
+    ],
+    "last_audited": "2026-04-29",
+    "verdict_date": "2026-04-29"
+  },
+  {
+    "id": "safeguards.access_release",
+    "layer_id": "safeguards",
+    "parent_id": null,
+    "display_name": "Access & Release",
+    "description": "How models are distributed and access-controlled — staged releases, gated downloads, and responsible disclosure practices.",
+    "is_dataset_blind_spot": false,
+    "parity_verdict": "closed_leads",
+    "gap_score": 3,
+    "parity_rationale": "Closed providers have established release processes. Open model releases vary from careful (Llama) to permissive (community fine-tunes).",
+    "parity_sources": [
+      {
+        "url": "https://docs.google.com/spreadsheets/d/1plMCnpEoIJsc29wGnEGiaZGI1IFfFMnCIB0SG85N4gg",
+        "label": "OSAI Gap Map working spreadsheet",
+        "date": "2025-01-15"
+      }
+    ],
+    "repo_count": 0,
+    "open_contributions": 2,
+    "closed_contributions": 2,
+    "scores": {
+      "breadth": 4,
+      "production_readiness": 4,
+      "ease_of_adoption": 4,
+      "documentation": 4,
+      "community_activity": 5,
+      "performance_vs_closed": 3,
+      "enterprise_readiness": 2,
+      "interoperability": 3,
+      "sustainability": 4,
+      "standardization": 2
+    },
+    "criteria_avg": 3.5,
+    "maturity": "Viable",
+    "synonyms": [
+      "gated release",
+      "staged release",
+      "responsible disclosure"
+    ],
+    "last_audited": "2026-04-29",
+    "verdict_date": "2026-04-29"
+  },
+  {
+    "id": "safeguards.auditing_reporting",
+    "layer_id": "safeguards",
+    "parent_id": null,
+    "display_name": "Auditing & Reporting",
+    "description": "Third-party audits, transparency reports, bias assessments, and safety auditing infrastructure.",
+    "is_dataset_blind_spot": false,
+    "parity_verdict": "closed_leads",
+    "gap_score": 3,
+    "parity_rationale": "Auditing tooling is sparse. Closed providers publish transparency reports; open models rarely undergo systematic safety audits.",
+    "parity_sources": [
+      {
+        "url": "https://docs.google.com/spreadsheets/d/1plMCnpEoIJsc29wGnEGiaZGI1IFfFMnCIB0SG85N4gg",
+        "label": "OSAI Gap Map working spreadsheet",
+        "date": "2025-01-15"
+      }
+    ],
+    "repo_count": 112,
+    "open_contributions": 113,
+    "closed_contributions": 0,
+    "scores": {
+      "breadth": 4,
+      "production_readiness": 3,
+      "ease_of_adoption": 3,
+      "documentation": 3,
+      "community_activity": 4,
+      "performance_vs_closed": 3,
+      "enterprise_readiness": 2,
+      "interoperability": 3,
+      "sustainability": 3,
+      "standardization": 2
+    },
+    "criteria_avg": 3,
+    "maturity": "Viable",
+    "synonyms": [
+      "safety audit",
+      "bias report",
+      "transparency report",
+      "interpretability"
+    ],
+    "last_audited": "2026-04-29",
+    "verdict_date": "2026-04-29"
+  },
+  {
+    "id": "safeguards.governance",
+    "layer_id": "safeguards",
+    "parent_id": null,
+    "display_name": "Governance",
+    "description": "Decision-making structures, oversight mechanisms, and AI governance tooling — policy frameworks and organizational governance.",
+    "is_dataset_blind_spot": false,
+    "parity_verdict": "closed_leads",
+    "gap_score": 3,
+    "parity_rationale": "AI governance is mostly institutional, not software. Open governance tools are early-stage.",
+    "parity_sources": [
+      {
+        "url": "https://www.nist.gov/artificial-intelligence/executive-order-safe-secure-and-trustworthy-artificial-intelligence",
+        "label": "NIST AI RMF",
+        "date": "2023-01-26"
+      }
+    ],
+    "repo_count": 0,
+    "open_contributions": 4,
+    "closed_contributions": 0,
+    "scores": {
+      "breadth": 4,
+      "production_readiness": 3,
+      "ease_of_adoption": 3,
+      "documentation": 4,
+      "community_activity": 4,
+      "performance_vs_closed": 3,
+      "enterprise_readiness": 2,
+      "interoperability": 3,
+      "sustainability": 4,
+      "standardization": 2
+    },
+    "criteria_avg": 3.2,
+    "maturity": "Viable",
+    "synonyms": [
+      "AI governance",
+      "oversight",
+      "policy framework"
+    ],
+    "last_audited": "2026-04-29",
+    "verdict_date": "2026-04-29"
+  },
+  {
+    "id": "safeguards.moderation",
+    "layer_id": "safeguards",
+    "parent_id": null,
+    "display_name": "Moderation",
+    "description": "Content filtering, safety guardrails, toxicity detection, and content moderation systems.",
+    "is_dataset_blind_spot": false,
+    "parity_verdict": "closed_leads",
+    "gap_score": 3,
+    "parity_rationale": "Open moderation tools (Llama Guard, Perspective API) exist but closed providers have more sophisticated multi-layered systems.",
+    "parity_sources": [
+      {
+        "url": "https://docs.google.com/spreadsheets/d/1plMCnpEoIJsc29wGnEGiaZGI1IFfFMnCIB0SG85N4gg",
+        "label": "OSAI Gap Map working spreadsheet",
+        "date": "2025-01-15"
+      }
+    ],
+    "repo_count": 0,
+    "open_contributions": 2,
+    "closed_contributions": 2,
+    "scores": {
+      "breadth": 3,
+      "production_readiness": 3,
+      "ease_of_adoption": 3,
+      "documentation": 3,
+      "community_activity": 3,
+      "performance_vs_closed": 2,
+      "enterprise_readiness": 2,
+      "interoperability": 2,
+      "sustainability": 3,
+      "standardization": 2
+    },
+    "criteria_avg": 2.6,
+    "maturity": "Viable",
+    "synonyms": [
+      "content filter",
+      "safety guardrail",
+      "toxicity detection",
+      "Llama Guard"
+    ],
+    "last_audited": "2026-04-29",
+    "verdict_date": "2026-04-29"
+  },
+  {
+    "id": "safeguards.safety_alignment",
+    "layer_id": "safeguards",
+    "parent_id": null,
+    "display_name": "Safety & Alignment",
+    "description": "Techniques to align model behavior with human values — RLHF, constitutional AI, red teaming, and alignment research tooling.",
+    "is_dataset_blind_spot": false,
+    "parity_verdict": "closed_leads",
+    "gap_score": 3,
+    "parity_rationale": "Alignment research is published openly but production alignment techniques (RLHF at scale, constitutional AI) are practiced primarily by closed labs.",
+    "parity_sources": [
+      {
+        "url": "https://www.anthropic.com/research/constitutional-ai-harmlessness-from-ai-feedback",
+        "label": "Constitutional AI paper",
+        "date": "2022-12-15"
+      }
+    ],
+    "repo_count": 0,
+    "open_contributions": 4,
+    "closed_contributions": 1,
+    "scores": {
+      "breadth": 4,
+      "production_readiness": 3,
+      "ease_of_adoption": 3,
+      "documentation": 3,
+      "community_activity": 4,
+      "performance_vs_closed": 3,
+      "enterprise_readiness": 2,
+      "interoperability": 3,
+      "sustainability": 3,
+      "standardization": 2
+    },
+    "criteria_avg": 3,
+    "maturity": "Viable",
+    "synonyms": [
+      "RLHF",
+      "alignment",
+      "red teaming",
+      "constitutional AI"
+    ],
+    "last_audited": "2026-04-29",
+    "verdict_date": "2026-04-29"
+  }
+]

@@ -1,0 +1,894 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`marked rendering corpus > autolink 1`] = `
+{
+  "blocksFinal": "<p dir="ltr">visit <a href="https://example.com" target="_blank" rel="noreferrer">https://example.com</a> and <a href="https://b.example" target="_blank" rel="noreferrer">https://b.example</a></p>
+",
+  "blocksStreaming": "<p dir="ltr">visit <a href="https://example.com" target="_blank" rel="noreferrer">https://example.com</a> and <a href="https://b.example" target="_blank" rel="noreferrer">https://b.example</a></p>
+",
+  "tokens": "<p dir="ltr">visit <a href="https://example.com" target="_blank" rel="noreferrer">https://example.com</a> and <a href="https://b.example" target="_blank" rel="noreferrer">https://b.example</a></p>
+",
+}
+`;
+
+exports[`marked rendering corpus > blockquote 1`] = `
+{
+  "blocksFinal": "<blockquote dir="ltr">
+<p dir="ltr">quoted<br>more</p>
+</blockquote>
+",
+  "blocksStreaming": "<blockquote dir="ltr">
+<p dir="ltr">quoted<br>more</p>
+</blockquote>
+",
+  "tokens": "<blockquote dir="ltr">
+<p dir="ltr">quoted<br>more</p>
+</blockquote>
+",
+}
+`;
+
+exports[`marked rendering corpus > blockquote-code 1`] = `
+{
+  "blocksFinal": "<blockquote>
+<pre><code translate="no">code
+</code></pre>
+</blockquote>
+",
+  "blocksStreaming": "<blockquote>
+<pre><code translate="no">code
+</code></pre>
+</blockquote>
+",
+  "tokens": "<blockquote>
+<pre><code translate="no">code
+</code></pre>
+</blockquote>
+",
+}
+`;
+
+exports[`marked rendering corpus > blockquote-nested 1`] = `
+{
+  "blocksFinal": "<blockquote dir="ltr">
+<p dir="ltr">outer</p>
+<blockquote dir="ltr">
+<p dir="ltr">inner</p>
+</blockquote>
+</blockquote>
+",
+  "blocksStreaming": "<blockquote dir="ltr">
+<p dir="ltr">outer</p>
+<blockquote dir="ltr">
+<p dir="ltr">inner</p>
+</blockquote>
+</blockquote>
+",
+  "tokens": "<blockquote dir="ltr">
+<p dir="ltr">outer</p>
+<blockquote dir="ltr">
+<p dir="ltr">inner</p>
+</blockquote>
+</blockquote>
+",
+}
+`;
+
+exports[`marked rendering corpus > citation-in-code 1`] = `
+{
+  "blocksFinal": "<p dir="ltr"><code translate="no">[1]</code> stays literal</p>
+",
+  "blocksStreaming": "<p dir="ltr"><code translate="no">[1]</code> stays literal</p>
+",
+  "tokens": "<p dir="ltr"><code translate="no">[1]</code> stays literal</p>
+",
+}
+`;
+
+exports[`marked rendering corpus > citations 1`] = `
+{
+  "blocksFinal": "<p dir="ltr">See <span style="white-space:nowrap;">&#8202;<a href="https://example.com/apertus?a=1&amp;b=2" target="_blank" rel="noreferrer" style="color: var(--ap-live-text); text-decoration: none; font-size: 0.82em; vertical-align: baseline; letter-spacing: 0.02em;">[1]</a></span> and <span style="white-space:nowrap;">&#8202;<span style="color: var(--ap-ink-3); font-size: 0.82em; vertical-align: baseline; letter-spacing: 0.02em;">[No-url doc &lt;script&gt;]</span></span> for detail.</p>
+",
+  "blocksStreaming": "<p dir="ltr">See <span style="white-space:nowrap;">&#8202;<a href="https://example.com/apertus?a=1&amp;b=2" target="_blank" rel="noreferrer" style="color: var(--ap-live-text); text-decoration: none; font-size: 0.82em; vertical-align: baseline; letter-spacing: 0.02em;">[1]</a></span> and <span style="white-space:nowrap;">&#8202;<span style="color: var(--ap-ink-3); font-size: 0.82em; vertical-align: baseline; letter-spacing: 0.02em;">[No-url doc &lt;script&gt;]</span></span> for detail.</p>
+",
+  "tokens": "<p dir="ltr">See <span style="white-space:nowrap;">&#8202;<a href="https://example.com/apertus?a=1&amp;b=2" target="_blank" rel="noreferrer" style="color: var(--ap-live-text); text-decoration: none; font-size: 0.82em; vertical-align: baseline; letter-spacing: 0.02em;">[1]</a></span> and <span style="white-space:nowrap;">&#8202;<span style="color: var(--ap-ink-3); font-size: 0.82em; vertical-align: baseline; letter-spacing: 0.02em;">[No-url doc &lt;script&gt;]</span></span> for detail.</p>
+",
+}
+`;
+
+exports[`marked rendering corpus > code-fence 1`] = `
+{
+  "blocksFinal": "[[code]]",
+  "blocksStreaming": "[[code]]",
+  "tokens": "[[code]]",
+}
+`;
+
+exports[`marked rendering corpus > code-fence-nolang 1`] = `
+{
+  "blocksFinal": "[[code]]",
+  "blocksStreaming": "[[code]]",
+  "tokens": "[[code]]",
+}
+`;
+
+exports[`marked rendering corpus > code-indented 1`] = `
+{
+  "blocksFinal": "[[code]]",
+  "blocksStreaming": "[[code]]",
+  "tokens": "[[code]]",
+}
+`;
+
+exports[`marked rendering corpus > currency 1`] = `
+{
+  "blocksFinal": "<p dir="ltr">it costs $1 more, together $1.10</p>
+",
+  "blocksStreaming": "<p dir="ltr">it costs $1 more, together $1.10</p>
+",
+  "tokens": "<p dir="ltr">it costs $1 more, together $1.10</p>
+",
+}
+`;
+
+exports[`marked rendering corpus > emphasis 1`] = `
+{
+  "blocksFinal": "<p dir="ltr"><em>em</em> <strong>strong</strong> <em><strong>both</strong></em> <del>struck</del> <code translate="no">code</code></p>
+",
+  "blocksStreaming": "<p dir="ltr"><em>em</em> <strong>strong</strong> <em><strong>both</strong></em> <del>struck</del> <code translate="no">code</code></p>
+",
+  "tokens": "<p dir="ltr"><em>em</em> <strong>strong</strong> <em><strong>both</strong></em> <del>struck</del> <code translate="no">code</code></p>
+",
+}
+`;
+
+exports[`marked rendering corpus > entities 1`] = `
+{
+  "blocksFinal": "<p dir="ltr">AT&amp;T &amp; &lt;tag&gt; &copy;</p>
+",
+  "blocksStreaming": "<p dir="ltr">AT&amp;T &amp; &lt;tag&gt; &copy;</p>
+",
+  "tokens": "<p dir="ltr">AT&amp;T &amp; &lt;tag&gt; &copy;</p>
+",
+}
+`;
+
+exports[`marked rendering corpus > heading-atx 1`] = `
+{
+  "blocksFinal": "<h1 dir="ltr">One</h1>
+
+<h2 dir="ltr">Two</h2>
+
+<h3 dir="ltr">Three</h3>
+",
+  "blocksStreaming": "<h1 dir="ltr">One</h1>
+
+<h2 dir="ltr">Two</h2>
+
+<h3 dir="ltr">Three</h3>
+",
+  "tokens": "<h1 dir="ltr">One</h1>
+
+<h2 dir="ltr">Two</h2>
+
+<h3 dir="ltr">Three</h3>
+",
+}
+`;
+
+exports[`marked rendering corpus > heading-setext 1`] = `
+{
+  "blocksFinal": "<h1 dir="ltr">Title</h1>
+
+
+<h2 dir="ltr">Sub</h2>
+",
+  "blocksStreaming": "<h1 dir="ltr">Title</h1>
+
+
+<h2 dir="ltr">Sub</h2>
+",
+  "tokens": "<h1 dir="ltr">Title</h1>
+
+
+<h2 dir="ltr">Sub</h2>
+",
+}
+`;
+
+exports[`marked rendering corpus > hr 1`] = `
+{
+  "blocksFinal": "<p dir="ltr">above</p>
+
+
+<hr>
+
+
+<p dir="ltr">below</p>
+",
+  "blocksStreaming": "<p dir="ltr">above</p>
+
+
+<hr>
+
+
+<p dir="ltr">below</p>
+",
+  "tokens": "<p dir="ltr">above</p>
+
+
+<hr>
+
+
+<p dir="ltr">below</p>
+",
+}
+`;
+
+exports[`marked rendering corpus > hr-multi-newline 1`] = `
+{
+  "blocksFinal": "<p dir="ltr">above</p>
+
+
+<hr>
+
+
+<p dir="ltr">below</p>
+",
+  "blocksStreaming": "<p dir="ltr">above</p>
+
+
+<hr>
+
+
+<p dir="ltr">below</p>
+",
+  "tokens": "<p dir="ltr">above</p>
+
+
+<hr>
+
+
+<p dir="ltr">below</p>
+",
+}
+`;
+
+exports[`marked rendering corpus > html-audio 1`] = `
+{
+  "blocksFinal": "<p dir="ltr"><a href="https://e.com/a.mp3" target="_blank" rel="noreferrer">https://e.com/a.mp3</a></p>
+",
+  "blocksStreaming": "<p dir="ltr"><a href="https://e.com/a.mp3" target="_blank" rel="noreferrer">https://e.com/a.mp3</a></p>
+",
+  "tokens": "<p dir="ltr"><a href="https://e.com/a.mp3" target="_blank" rel="noreferrer">https://e.com/a.mp3</a></p>
+",
+}
+`;
+
+exports[`marked rendering corpus > html-disallowed 1`] = `
+{
+  "blocksFinal": "&lt;script&gt;alert(1)&lt;/script&gt;",
+  "blocksStreaming": "&lt;script&gt;alert(1)&lt;/script&gt;",
+  "tokens": "&lt;script&gt;alert(1)&lt;/script&gt;",
+}
+`;
+
+exports[`marked rendering corpus > html-inline-tag 1`] = `
+{
+  "blocksFinal": "<p dir="ltr">text &lt;b&gt;bold&lt;/b&gt; more</p>
+",
+  "blocksStreaming": "<p dir="ltr">text &lt;b&gt;bold&lt;/b&gt; more</p>
+",
+  "tokens": "<p dir="ltr">text &lt;b&gt;bold&lt;/b&gt; more</p>
+",
+}
+`;
+
+exports[`marked rendering corpus > html-video 1`] = `
+{
+  "blocksFinal": "<p dir="ltr"><a href="https://e.com/a.mp4" target="_blank" rel="noreferrer">https://e.com/a.mp4</a></p>
+",
+  "blocksStreaming": "<p dir="ltr"><a href="https://e.com/a.mp4" target="_blank" rel="noreferrer">https://e.com/a.mp4</a></p>
+",
+  "tokens": "<p dir="ltr"><a href="https://e.com/a.mp4" target="_blank" rel="noreferrer">https://e.com/a.mp4</a></p>
+",
+}
+`;
+
+exports[`marked rendering corpus > html-video-relative-source 1`] = `
+{
+  "blocksFinal": "<p><video controls><source src="/chat/conversation/abc/output/a.mp4"></video></p>
+",
+  "blocksStreaming": "<p><video controls><source src="/chat/conversation/abc/output/a.mp4"></video></p>
+",
+  "tokens": "<p><video controls><source src="/chat/conversation/abc/output/a.mp4"></video></p>
+",
+}
+`;
+
+exports[`marked rendering corpus > image 1`] = `
+{
+  "blocksFinal": "<p dir="ltr"><a href="https://example.com/pic.png" target="_blank" rel="noreferrer">alt text</a></p>
+",
+  "blocksStreaming": "<p dir="ltr"><a href="https://example.com/pic.png" target="_blank" rel="noreferrer">alt text</a></p>
+",
+  "tokens": "<p dir="ltr"><a href="https://example.com/pic.png" target="_blank" rel="noreferrer">alt text</a></p>
+",
+}
+`;
+
+exports[`marked rendering corpus > image-title 1`] = `
+{
+  "blocksFinal": "<p dir="ltr"><a href="https://example.com/pic.png" target="_blank" rel="noreferrer">alt</a></p>
+",
+  "blocksStreaming": "<p dir="ltr"><a href="https://example.com/pic.png" target="_blank" rel="noreferrer">alt</a></p>
+",
+  "tokens": "<p dir="ltr"><a href="https://example.com/pic.png" target="_blank" rel="noreferrer">alt</a></p>
+",
+}
+`;
+
+exports[`marked rendering corpus > image-video 1`] = `
+{
+  "blocksFinal": "<p dir="ltr"><a href="https://example.com/clip.mp4" target="_blank" rel="noreferrer">https://example.com/clip.mp4</a></p>
+",
+  "blocksStreaming": "<p dir="ltr"><a href="https://example.com/clip.mp4" target="_blank" rel="noreferrer">https://example.com/clip.mp4</a></p>
+",
+  "tokens": "<p dir="ltr"><a href="https://example.com/clip.mp4" target="_blank" rel="noreferrer">https://example.com/clip.mp4</a></p>
+",
+}
+`;
+
+exports[`marked rendering corpus > katex-block 1`] = `
+{
+  "blocksFinal": "<div data-katex-pending style="opacity:.55;font-family:ui-monospace,monospace">\\frac{a}{b}</div>",
+  "blocksStreaming": "<div data-katex-pending style="opacity:.55;font-family:ui-monospace,monospace">\\frac{a}{b}</div>",
+  "tokens": "<div data-katex-pending style="opacity:.55;font-family:ui-monospace,monospace">\\frac{a}{b}</div>",
+}
+`;
+
+exports[`marked rendering corpus > katex-inline 1`] = `
+{
+  "blocksFinal": "<p dir="ltr">the value <code data-katex-pending style="opacity:.55">x^2</code> here</p>
+",
+  "blocksStreaming": "<p dir="ltr">the value <code data-katex-pending style="opacity:.55">x^2</code> here</p>
+",
+  "tokens": "<p dir="ltr">the value <code data-katex-pending style="opacity:.55">x^2</code> here</p>
+",
+}
+`;
+
+exports[`marked rendering corpus > link-bad-scheme 1`] = `
+{
+  "blocksFinal": "<p dir="ltr"><span>x</span></p>
+",
+  "blocksStreaming": "<p dir="ltr"><span>x</span></p>
+",
+  "tokens": "<p dir="ltr"><span>x</span></p>
+",
+}
+`;
+
+exports[`marked rendering corpus > link-media 1`] = `
+{
+  "blocksFinal": "<p dir="ltr"><a href="https://example.com/a.mp4" target="_blank" rel="noreferrer">clip</a></p>
+",
+  "blocksStreaming": "<p dir="ltr"><a href="https://example.com/a.mp4" target="_blank" rel="noreferrer">clip</a></p>
+",
+  "tokens": "<p dir="ltr"><a href="https://example.com/a.mp4" target="_blank" rel="noreferrer">clip</a></p>
+",
+}
+`;
+
+exports[`marked rendering corpus > link-nested-markup 1`] = `
+{
+  "blocksFinal": "<p dir="ltr"><a href="https://example.com" target="_blank" rel="noreferrer"><strong>bold</strong> and <code translate="no">code</code></a></p>
+",
+  "blocksStreaming": "<p dir="ltr"><a href="https://example.com" target="_blank" rel="noreferrer"><strong>bold</strong> and <code translate="no">code</code></a></p>
+",
+  "tokens": "<p dir="ltr"><a href="https://example.com" target="_blank" rel="noreferrer"><strong>bold</strong> and <code translate="no">code</code></a></p>
+",
+}
+`;
+
+exports[`marked rendering corpus > link-plain 1`] = `
+{
+  "blocksFinal": "<p dir="ltr"><a href="https://example.com" target="_blank" rel="noreferrer">link</a></p>
+",
+  "blocksStreaming": "<p dir="ltr"><a href="https://example.com" target="_blank" rel="noreferrer">link</a></p>
+",
+  "tokens": "<p dir="ltr"><a href="https://example.com" target="_blank" rel="noreferrer">link</a></p>
+",
+}
+`;
+
+exports[`marked rendering corpus > link-title 1`] = `
+{
+  "blocksFinal": "<p dir="ltr"><a href="https://example.com" target="_blank" rel="noreferrer">link</a></p>
+",
+  "blocksStreaming": "<p dir="ltr"><a href="https://example.com" target="_blank" rel="noreferrer">link</a></p>
+",
+  "tokens": "<p dir="ltr"><a href="https://example.com" target="_blank" rel="noreferrer">link</a></p>
+",
+}
+`;
+
+exports[`marked rendering corpus > link-unverified-legacy 1`] = `
+{
+  "blocksFinal": "<p dir="ltr">See <span class="uv-link" style="color: var(--ap-ink-2); text-decoration: underline dotted var(--ap-ink-3); text-underline-offset: 2px; cursor: help;" title="Generated link — not retrieved or verified this turn. The chat only leaves a link clickable when it retrieved the page or recognises the domain.">github.com/x<sup class="uv-mark" style="color: var(--ap-gap); font-size: 0.72em; vertical-align: super; margin-left: 1px; font-weight: 600; cursor: pointer;" data-uv-mark role="button" tabindex="0" aria-label="Why this link isn't clickable">?</sup></span> here.</p>
+",
+  "blocksStreaming": "<p dir="ltr">See <span class="uv-link" style="color: var(--ap-ink-2); text-decoration: underline dotted var(--ap-ink-3); text-underline-offset: 2px; cursor: help;" title="Generated link — not retrieved or verified this turn. The chat only leaves a link clickable when it retrieved the page or recognises the domain.">github.com/x<sup class="uv-mark" style="color: var(--ap-gap); font-size: 0.72em; vertical-align: super; margin-left: 1px; font-weight: 600; cursor: pointer;" data-uv-mark role="button" tabindex="0" aria-label="Why this link isn't clickable">?</sup></span> here.</p>
+",
+  "tokens": "<p dir="ltr">See <span class="uv-link" style="color: var(--ap-ink-2); text-decoration: underline dotted var(--ap-ink-3); text-underline-offset: 2px; cursor: help;" title="Generated link — not retrieved or verified this turn. The chat only leaves a link clickable when it retrieved the page or recognises the domain.">github.com/x<sup class="uv-mark" style="color: var(--ap-gap); font-size: 0.72em; vertical-align: super; margin-left: 1px; font-weight: 600; cursor: pointer;" data-uv-mark role="button" tabindex="0" aria-label="Why this link isn't clickable">?</sup></span> here.</p>
+",
+}
+`;
+
+exports[`marked rendering corpus > link-unverified-title 1`] = `
+{
+  "blocksFinal": "<p dir="ltr"><a class="uv-link" href="https://example.com" target="_blank" rel="noreferrer" style="text-decoration: underline dotted var(--ap-ink-3); text-underline-offset: 2px;" title="Generated link — the chat didn&#39;t retrieve or verify this page this turn. It&#39;s clickable, but treat it with caution.">gh<span class="sr-only"> (unverified link)</span></a><sup class="uv-mark" style="color: var(--ap-gap); font-size: 0.72em; vertical-align: super; margin-left: 1px; font-weight: 600; cursor: pointer;" data-uv-mark role="button" tabindex="0" aria-label="Why this link is marked unverified">?</sup></p>
+",
+  "blocksStreaming": "<p dir="ltr"><a class="uv-link" href="https://example.com" target="_blank" rel="noreferrer" style="text-decoration: underline dotted var(--ap-ink-3); text-underline-offset: 2px;" title="Generated link — the chat didn&#39;t retrieve or verify this page this turn. It&#39;s clickable, but treat it with caution.">gh<span class="sr-only"> (unverified link)</span></a><sup class="uv-mark" style="color: var(--ap-gap); font-size: 0.72em; vertical-align: super; margin-left: 1px; font-weight: 600; cursor: pointer;" data-uv-mark role="button" tabindex="0" aria-label="Why this link is marked unverified">?</sup></p>
+",
+  "tokens": "<p dir="ltr"><a class="uv-link" href="https://example.com" target="_blank" rel="noreferrer" style="text-decoration: underline dotted var(--ap-ink-3); text-underline-offset: 2px;" title="Generated link — the chat didn&#39;t retrieve or verify this page this turn. It&#39;s clickable, but treat it with caution.">gh<span class="sr-only"> (unverified link)</span></a><sup class="uv-mark" style="color: var(--ap-gap); font-size: 0.72em; vertical-align: super; margin-left: 1px; font-weight: 600; cursor: pointer;" data-uv-mark role="button" tabindex="0" aria-label="Why this link is marked unverified">?</sup></p>
+",
+}
+`;
+
+exports[`marked rendering corpus > list-citation-leading 1`] = `
+{
+  "blocksFinal": "<ul dir="ltr">
+<li dir="ltr">leading citation moves <span style="white-space:nowrap;">&#8202;<a href="https://example.com/apertus?a=1&amp;b=2" target="_blank" rel="noreferrer" style="color: var(--ap-live-text); text-decoration: none; font-size: 0.82em; vertical-align: baseline; letter-spacing: 0.02em;">[1]</a></span></li>
+<li dir="ltr">and this one <span style="white-space:nowrap;">&#8202;<span style="color: var(--ap-ink-3); font-size: 0.82em; vertical-align: baseline; letter-spacing: 0.02em;">[No-url doc &lt;script&gt;]</span></span>.</li>
+</ul>
+",
+  "blocksStreaming": "<ul dir="ltr">
+<li dir="ltr">leading citation moves <span style="white-space:nowrap;">&#8202;<a href="https://example.com/apertus?a=1&amp;b=2" target="_blank" rel="noreferrer" style="color: var(--ap-live-text); text-decoration: none; font-size: 0.82em; vertical-align: baseline; letter-spacing: 0.02em;">[1]</a></span></li>
+<li dir="ltr">and this one <span style="white-space:nowrap;">&#8202;<span style="color: var(--ap-ink-3); font-size: 0.82em; vertical-align: baseline; letter-spacing: 0.02em;">[No-url doc &lt;script&gt;]</span></span>.</li>
+</ul>
+",
+  "tokens": "<ul dir="ltr">
+<li dir="ltr">leading citation moves <span style="white-space:nowrap;">&#8202;<a href="https://example.com/apertus?a=1&amp;b=2" target="_blank" rel="noreferrer" style="color: var(--ap-live-text); text-decoration: none; font-size: 0.82em; vertical-align: baseline; letter-spacing: 0.02em;">[1]</a></span></li>
+<li dir="ltr">and this one <span style="white-space:nowrap;">&#8202;<span style="color: var(--ap-ink-3); font-size: 0.82em; vertical-align: baseline; letter-spacing: 0.02em;">[No-url doc &lt;script&gt;]</span></span>.</li>
+</ul>
+",
+}
+`;
+
+exports[`marked rendering corpus > list-loose 1`] = `
+{
+  "blocksFinal": "<ul dir="ltr">
+<li dir="ltr"><p dir="ltr">a</p>
+</li>
+<li dir="ltr"><p dir="ltr">b</p>
+</li>
+<li dir="ltr"><p dir="ltr">c</p>
+</li>
+</ul>
+",
+  "blocksStreaming": "<ul dir="ltr">
+<li dir="ltr"><p dir="ltr">a</p>
+</li>
+<li dir="ltr"><p dir="ltr">b</p>
+</li>
+<li dir="ltr"><p dir="ltr">c</p>
+</li>
+</ul>
+",
+  "tokens": "<ul dir="ltr">
+<li dir="ltr"><p dir="ltr">a</p>
+</li>
+<li dir="ltr"><p dir="ltr">b</p>
+</li>
+<li dir="ltr"><p dir="ltr">c</p>
+</li>
+</ul>
+",
+}
+`;
+
+exports[`marked rendering corpus > list-multiline-item 1`] = `
+{
+  "blocksFinal": "<ul dir="ltr">
+<li dir="ltr">first line<br>continued here</li>
+<li dir="ltr">second</li>
+</ul>
+",
+  "blocksStreaming": "<ul dir="ltr">
+<li dir="ltr">first line<br>continued here</li>
+<li dir="ltr">second</li>
+</ul>
+",
+  "tokens": "<ul dir="ltr">
+<li dir="ltr">first line<br>continued here</li>
+<li dir="ltr">second</li>
+</ul>
+",
+}
+`;
+
+exports[`marked rendering corpus > list-nested 1`] = `
+{
+  "blocksFinal": "<ul dir="ltr">
+<li dir="ltr">a<ul dir="ltr">
+<li dir="ltr">a1</li>
+<li dir="ltr">a2</li>
+</ul>
+</li>
+<li dir="ltr">b</li>
+</ul>
+",
+  "blocksStreaming": "<ul dir="ltr">
+<li dir="ltr">a<ul dir="ltr">
+<li dir="ltr">a1</li>
+<li dir="ltr">a2</li>
+</ul>
+</li>
+<li dir="ltr">b</li>
+</ul>
+",
+  "tokens": "<ul dir="ltr">
+<li dir="ltr">a<ul dir="ltr">
+<li dir="ltr">a1</li>
+<li dir="ltr">a2</li>
+</ul>
+</li>
+<li dir="ltr">b</li>
+</ul>
+",
+}
+`;
+
+exports[`marked rendering corpus > list-ordered 1`] = `
+{
+  "blocksFinal": "<ol dir="ltr">
+<li dir="ltr">one</li>
+<li dir="ltr">two</li>
+<li dir="ltr">three</li>
+</ol>
+",
+  "blocksStreaming": "<ol dir="ltr">
+<li dir="ltr">one</li>
+<li dir="ltr">two</li>
+<li dir="ltr">three</li>
+</ol>
+",
+  "tokens": "<ol dir="ltr">
+<li dir="ltr">one</li>
+<li dir="ltr">two</li>
+<li dir="ltr">three</li>
+</ol>
+",
+}
+`;
+
+exports[`marked rendering corpus > list-ordered-start 1`] = `
+{
+  "blocksFinal": "<ol dir="ltr" start="5">
+<li dir="ltr">five</li>
+<li dir="ltr">six</li>
+</ol>
+",
+  "blocksStreaming": "<ol dir="ltr" start="5">
+<li dir="ltr">five</li>
+<li dir="ltr">six</li>
+</ol>
+",
+  "tokens": "<ol dir="ltr" start="5">
+<li dir="ltr">five</li>
+<li dir="ltr">six</li>
+</ol>
+",
+}
+`;
+
+exports[`marked rendering corpus > list-task 1`] = `
+{
+  "blocksFinal": "<ul dir="ltr">
+<li dir="ltr"><input disabled="" type="checkbox"> todo</li>
+<li dir="ltr"><input checked="" disabled="" type="checkbox"> done</li>
+</ul>
+",
+  "blocksStreaming": "<ul dir="ltr">
+<li dir="ltr"><input disabled="" type="checkbox"> todo</li>
+<li dir="ltr"><input checked="" disabled="" type="checkbox"> done</li>
+</ul>
+",
+  "tokens": "<ul dir="ltr">
+<li dir="ltr"><input disabled="" type="checkbox"> todo</li>
+<li dir="ltr"><input checked="" disabled="" type="checkbox"> done</li>
+</ul>
+",
+}
+`;
+
+exports[`marked rendering corpus > list-tight 1`] = `
+{
+  "blocksFinal": "<ul dir="ltr">
+<li dir="ltr">a</li>
+<li dir="ltr">b</li>
+<li dir="ltr">c</li>
+</ul>
+",
+  "blocksStreaming": "<ul dir="ltr">
+<li dir="ltr">a</li>
+<li dir="ltr">b</li>
+<li dir="ltr">c</li>
+</ul>
+",
+  "tokens": "<ul dir="ltr">
+<li dir="ltr">a</li>
+<li dir="ltr">b</li>
+<li dir="ltr">c</li>
+</ul>
+",
+}
+`;
+
+exports[`marked rendering corpus > mixed-doc 1`] = `
+{
+  "blocksFinal": "<h1 dir="ltr">T</h1>
+
+
+<p dir="ltr">para with <span style="white-space:nowrap;">&#8202;<a href="https://example.com/apertus?a=1&amp;b=2" target="_blank" rel="noreferrer" style="color: var(--ap-live-text); text-decoration: none; font-size: 0.82em; vertical-align: baseline; letter-spacing: 0.02em;">[1]</a></span>.</p>
+
+
+<ul dir="ltr">
+<li dir="ltr">item</li>
+<li dir="ltr">item2</li>
+</ul>
+
+
+[[code]]
+
+<blockquote dir="ltr">
+<p dir="ltr">q</p>
+</blockquote>
+
+
+<table dir="ltr">
+<thead>
+<tr>
+<th dir="ltr">a</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+</tr>
+</tbody></table>
+",
+  "blocksStreaming": "<h1 dir="ltr">T</h1>
+
+
+<p dir="ltr">para with <span style="white-space:nowrap;">&#8202;<a href="https://example.com/apertus?a=1&amp;b=2" target="_blank" rel="noreferrer" style="color: var(--ap-live-text); text-decoration: none; font-size: 0.82em; vertical-align: baseline; letter-spacing: 0.02em;">[1]</a></span>.</p>
+
+
+<ul dir="ltr">
+<li dir="ltr">item</li>
+<li dir="ltr">item2</li>
+</ul>
+
+
+[[code]]
+
+<blockquote dir="ltr">
+<p dir="ltr">q</p>
+</blockquote>
+
+
+<table dir="ltr">
+<thead>
+<tr>
+<th dir="ltr">a</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+</tr>
+</tbody></table>
+",
+  "tokens": "<h1 dir="ltr">T</h1>
+
+
+<p dir="ltr">para with <span style="white-space:nowrap;">&#8202;<a href="https://example.com/apertus?a=1&amp;b=2" target="_blank" rel="noreferrer" style="color: var(--ap-live-text); text-decoration: none; font-size: 0.82em; vertical-align: baseline; letter-spacing: 0.02em;">[1]</a></span>.</p>
+
+
+<ul dir="ltr">
+<li dir="ltr">item</li>
+<li dir="ltr">item2</li>
+</ul>
+
+
+[[code]]
+
+<blockquote dir="ltr">
+<p dir="ltr">q</p>
+</blockquote>
+
+
+<table dir="ltr">
+<thead>
+<tr>
+<th dir="ltr">a</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+</tr>
+</tbody></table>
+",
+}
+`;
+
+exports[`marked rendering corpus > para-breaks 1`] = `
+{
+  "blocksFinal": "<p dir="ltr">line one<br>line two</p>
+
+
+<p dir="ltr">new para</p>
+",
+  "blocksStreaming": "<p dir="ltr">line one<br>line two</p>
+
+
+<p dir="ltr">new para</p>
+",
+  "tokens": "<p dir="ltr">line one<br>line two</p>
+
+
+<p dir="ltr">new para</p>
+",
+}
+`;
+
+exports[`marked rendering corpus > table 1`] = `
+{
+  "blocksFinal": "<table dir="ltr">
+<thead>
+<tr>
+<th dir="ltr">a</th>
+<th dir="ltr" align="right">b</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td align="right">2</td>
+</tr>
+<tr>
+<td>3</td>
+<td align="right">4</td>
+</tr>
+</tbody></table>
+",
+  "blocksStreaming": "<table dir="ltr">
+<thead>
+<tr>
+<th dir="ltr">a</th>
+<th dir="ltr" align="right">b</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td align="right">2</td>
+</tr>
+<tr>
+<td>3</td>
+<td align="right">4</td>
+</tr>
+</tbody></table>
+",
+  "tokens": "<table dir="ltr">
+<thead>
+<tr>
+<th dir="ltr">a</th>
+<th dir="ltr" align="right">b</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td align="right">2</td>
+</tr>
+<tr>
+<td>3</td>
+<td align="right">4</td>
+</tr>
+</tbody></table>
+",
+}
+`;
+
+exports[`marked rendering corpus > table-inline 1`] = `
+{
+  "blocksFinal": "<table dir="ltr">
+<thead>
+<tr>
+<th dir="ltr">a</th>
+<th dir="ltr">b</th>
+</tr>
+</thead>
+<tbody><tr>
+<td dir="ltr"><strong>x</strong></td>
+<td dir="ltr"><a href="https://e.com" target="_blank" rel="noreferrer">l</a></td>
+</tr>
+</tbody></table>
+",
+  "blocksStreaming": "<table dir="ltr">
+<thead>
+<tr>
+<th dir="ltr">a</th>
+<th dir="ltr">b</th>
+</tr>
+</thead>
+<tbody><tr>
+<td dir="ltr"><strong>x</strong></td>
+<td dir="ltr"><a href="https://e.com" target="_blank" rel="noreferrer">l</a></td>
+</tr>
+</tbody></table>
+",
+  "tokens": "<table dir="ltr">
+<thead>
+<tr>
+<th dir="ltr">a</th>
+<th dir="ltr">b</th>
+</tr>
+</thead>
+<tbody><tr>
+<td dir="ltr"><strong>x</strong></td>
+<td dir="ltr"><a href="https://e.com" target="_blank" rel="noreferrer">l</a></td>
+</tr>
+</tbody></table>
+",
+}
+`;
+
+exports[`marked rendering corpus > table-trailing-newlines 1`] = `
+{
+  "blocksFinal": "<table dir="ltr">
+<thead>
+<tr>
+<th dir="ltr">a</th>
+<th dir="ltr">b</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td>2</td>
+</tr>
+</tbody></table>
+
+
+<p dir="ltr">after</p>
+",
+  "blocksStreaming": "<table dir="ltr">
+<thead>
+<tr>
+<th dir="ltr">a</th>
+<th dir="ltr">b</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td>2</td>
+</tr>
+</tbody></table>
+
+
+<p dir="ltr">after</p>
+",
+  "tokens": "<table dir="ltr">
+<thead>
+<tr>
+<th dir="ltr">a</th>
+<th dir="ltr">b</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td>2</td>
+</tr>
+</tbody></table>
+
+
+<p dir="ltr">after</p>
+",
+}
+`;

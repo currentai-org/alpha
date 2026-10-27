@@ -1,0 +1,30 @@
+/* Shiki CSS-variables theme → design tokens. Code blocks follow theme + mode. */
+.ds-code {
+	--shiki-foreground: var(--ds-fg-1);
+	--shiki-background: transparent;
+	--shiki-token-constant: var(--ds-accent-1-text);
+	--shiki-token-string: var(--ds-positive-text);
+	--shiki-token-string-expression: var(--ds-positive-text);
+	--shiki-token-comment: var(--ds-fg-3);
+	--shiki-token-keyword: var(--ds-accent-2-text);
+	--shiki-token-parameter: var(--ds-fg-2);
+	--shiki-token-function: var(--ds-caution-text);
+	--shiki-token-punctuation: var(--ds-fg-3);
+	--shiki-token-link: var(--ds-accent-1-text);
+	--shiki-token-inserted: var(--ds-positive-text);
+	--shiki-token-deleted: var(--ds-accent-2-text);
+	--shiki-token-changed: var(--ds-caution-text);
+}
+.ds-code pre {
+	margin: 0;
+	padding: var(--ds-space-4);
+	overflow-x: auto;
+	font-family: var(--ds-font-mono);
+	font-size: var(--ds-text-small);
+	line-height: 20px;
+	background: transparent !important;
+	tab-size: 2;
+}
+.ds-code code {
+	counter-reset: line;
+}

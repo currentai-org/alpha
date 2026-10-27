@@ -1,0 +1,2 @@
+ALTER TABLE "local_inference_endpoints" ADD COLUMN "kind" text DEFAULT 'direct' NOT NULL;--> statement-breakpoint
+ALTER TABLE "local_inference_endpoints" ADD COLUMN "managed_config" jsonb DEFAULT 'null'::jsonb;

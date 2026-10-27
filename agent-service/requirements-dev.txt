@@ -1,0 +1,20 @@
+# Dev/test deps — NOT installed into the Docker image (runtime uses requirements.txt only).
+# `make venv` installs both; CI installs this file. Pinned to match the validated toolchain.
+-r requirements.txt
+
+pytest==9.1.1
+pytest-cov==7.1.0
+coverage==7.17.0
+ruff==0.17.2
+mutmut==3.8.0
+# CUR-1227. Type checker; see [tool.pyright] in pyproject.toml for why this one and not ty or mypy.
+# It runs on node, and prefers whatever `node` is on PATH (pyright-python's USE_GLOBAL_NODE default) —
+# ubuntu-latest ships one, so CI needs no setup-node step. With no node anywhere it downloads a
+# nodeenv on first run, which is slow but not a failure.
+pyright==1.1.414
+
+# Exercised only by the ACP front-door tests (api/acp_remote.py imports it).
+# In production this lives in the Hermes venv, not the image.
+# Match Hermes's own `acp` extra at deploy/Dockerfile's HERMES_SHA, which is what the service runs: a newer
+# version here can pass tests that fail against that build (CUR-4501). Move it when HERMES_SHA moves.
+agent-client-protocol==0.12.1

@@ -1,0 +1,197 @@
+/*
+ * The bold look's pattern system: the brand's three pattern kinds in three tones.
+ *
+ *   .pat-dots     ink octagon dots on the tone
+ *   .pat-tiles    tone octagon tiles with ink diamonds between them
+ *   .pat-inverse  tone octagon dots on ink
+ *
+ * A tone class (.tone-sky, .tone-coral, .tone-pink) or an inherited --tone sets the colour;
+ * --pat-cell sets the repeat. The motif is a mask over a pseudo-element, so every colour stays a
+ * token and the shapes stay crisp at any size.
+ *
+ * Everything sits in the components layer so Tailwind utilities (absolute, inset-0, size-*)
+ * still win on the same element.
+ */
+
+@layer components {
+	.bold-look {
+		--ink: var(--dark-blue);
+		/* The primary: the brand coral, with white text on it, on every call to action and the
+		   headline's key word. */
+		--bold-coral: #e9897b;
+		/* The cool counterweight to coral and pink: a sky blue across the wheel from both. */
+		--bold-sky: oklch(0.81 0.095 236);
+		--tone: var(--bold-sky);
+		--octagon-dot: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpolygon points='3.9,2.7 6.1,2.7 7.3,3.9 7.3,6.1 6.1,7.3 3.9,7.3 2.7,6.1 2.7,3.9'/%3E%3C/svg%3E");
+		--octagon-tile: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpolygon points='2.9,0 7.1,0 10,2.9 10,7.1 7.1,10 2.9,10 0,7.1 0,2.9'/%3E%3C/svg%3E");
+	}
+
+	.bold-look .tone-sky {
+		--tone: var(--bold-sky);
+	}
+
+	.bold-look .tone-coral {
+		--tone: var(--bold-coral);
+		/* What sits on the tone: white on coral, ink on the lighter sky and pink. */
+		--tone-ink: var(--white);
+	}
+
+	.bold-look .tone-pink {
+		--tone: var(--bright-pink);
+	}
+
+	.bold-look .pat {
+		position: relative;
+		isolation: isolate;
+		background-color: var(--pat-bg);
+	}
+
+	.bold-look .pat::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+		z-index: -1;
+		pointer-events: none;
+		background: var(--pat-fg);
+		-webkit-mask-image: var(--pat-mask);
+		mask-image: var(--pat-mask);
+		-webkit-mask-size: var(--pat-cell, 16px) var(--pat-cell, 16px);
+		mask-size: var(--pat-cell, 16px) var(--pat-cell, 16px);
+		-webkit-mask-repeat: repeat;
+		mask-repeat: repeat;
+	}
+
+	.bold-look .pat-dots {
+		--pat-bg: var(--tone);
+		--pat-fg: var(--ink);
+		--pat-mask: var(--octagon-dot);
+	}
+
+	.bold-look .pat-tiles {
+		--pat-bg: var(--ink);
+		--pat-fg: var(--tone);
+		--pat-mask: var(--octagon-tile);
+	}
+
+	.bold-look .pat-inverse {
+		--pat-bg: var(--ink);
+		--pat-fg: var(--tone);
+		--pat-mask: var(--octagon-dot);
+	}
+
+	/*
+	 * .pat-field: a quiet stage behind content. A light wash of the tone with the motif faint
+	 * across it, brightening around --mx/--my (moved by the spotlight action). .pat-field-tiles
+	 * uses the tile motif, .pat-field-dark sits on ink.
+	 */
+	.bold-look .pat-field {
+		position: relative;
+		isolation: isolate;
+		background: color-mix(in oklab, var(--tone) 9%, var(--white));
+		transition:
+			--mx 0.5s ease-out,
+			--my 0.5s ease-out;
+	}
+
+	.bold-look .pat-field-dark {
+		background: color-mix(in oklab, var(--tone) 7%, var(--ink));
+	}
+
+	.bold-look .pat-field::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+		z-index: -1;
+		pointer-events: none;
+		background: var(--tone);
+		-webkit-mask-image:
+			var(--field-mask, var(--octagon-dot)),
+			radial-gradient(
+				circle 460px at var(--mx) var(--my),
+				#000 0%,
+				rgb(0 0 0 / 0.38) 50%,
+				rgb(0 0 0 / 0.16) 100%
+			);
+		mask-image:
+			var(--field-mask, var(--octagon-dot)),
+			radial-gradient(
+				circle 460px at var(--mx) var(--my),
+				#000 0%,
+				rgb(0 0 0 / 0.38) 50%,
+				rgb(0 0 0 / 0.16) 100%
+			);
+		-webkit-mask-size:
+			var(--pat-cell, 18px) var(--pat-cell, 18px),
+			100% 100%;
+		mask-size:
+			var(--pat-cell, 18px) var(--pat-cell, 18px),
+			100% 100%;
+		-webkit-mask-repeat: repeat, no-repeat;
+		mask-repeat: repeat, no-repeat;
+		-webkit-mask-composite: source-in;
+		mask-composite: intersect;
+	}
+
+	.bold-look .pat-field-tiles {
+		--field-mask: var(--octagon-tile);
+	}
+
+	@media (prefers-reduced-motion: no-preference) {
+		.bold-look .pat-field::after {
+			animation: field-drift 60s linear infinite;
+		}
+
+		.bold-look .pat-drift::after {
+			animation: pat-drift 24s linear infinite;
+		}
+
+		@supports (animation-timeline: view()) {
+			.bold-look .reveal {
+				animation: reveal linear both;
+				animation-timeline: view();
+				animation-range: entry 0% cover 28%;
+			}
+		}
+	}
+}
+
+@property --mx {
+	syntax: '<percentage>';
+	inherits: true;
+	initial-value: 78%;
+}
+
+@property --my {
+	syntax: '<percentage>';
+	inherits: true;
+	initial-value: 18%;
+}
+
+@keyframes field-drift {
+	to {
+		-webkit-mask-position:
+			calc(var(--pat-cell, 18px) * 6) calc(var(--pat-cell, 18px) * 3),
+			0 0;
+		mask-position:
+			calc(var(--pat-cell, 18px) * 6) calc(var(--pat-cell, 18px) * 3),
+			0 0;
+	}
+}
+
+@keyframes pat-drift {
+	to {
+		-webkit-mask-position: calc(var(--pat-cell, 16px) * 8) calc(var(--pat-cell, 16px) * 4);
+		mask-position: calc(var(--pat-cell, 16px) * 8) calc(var(--pat-cell, 16px) * 4);
+	}
+}
+
+@keyframes reveal {
+	from {
+		opacity: 0;
+		translate: 0 48px;
+	}
+	to {
+		opacity: 1;
+		translate: 0 0;
+	}
+}

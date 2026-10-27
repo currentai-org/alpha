@@ -1,0 +1,36 @@
+{
+	"contract": 1,
+	"taskSetVersion": "v1",
+	"language": "eng",
+	"variety": "en",
+	"status": "draft",
+	"items": {
+		"t01-rice": { "prompt": "My rice always comes out sticky and burnt at the bottom of the pot. What am I doing wrong? Give me no more than five short tips." },
+		"t02-interview": { "prompt": "I have a job interview tomorrow morning. Give me a simple plan for this evening, as a numbered list of no more than six steps." },
+		"t03-virus": { "prompt": "Explain in simple words the difference between a virus and a bacterial infection, and why antibiotics do not work against viruses. Keep it under 120 words." },
+		"t04-interest": { "prompt": "How does compound interest work? Give a short example with 1,000 dollars saved at 5% per year for 3 years.", "amount": 1000 },
+		"t05-letter": {
+			"prompt": "Rewrite this letter in plain, simple words so that someone who left school early can understand it. Keep every date, time and amount exactly as written.\n\n\"Following the review of your application for housing assistance submitted on 3 March 2026, we inform you that additional documentation is required. You must submit proof of income for the last three months and a copy of your rental contract no later than 15 April 2026. Failure to submit these documents within the deadline will result in the closure of your file. You may contact our office on weekdays between 9:00 and 13:00.\"",
+			"mustKeep": ["3 March 2026", "15 April 2026", "9:00", "13:00", "three months"]
+		},
+		"t06-proofread": {
+			"prompt": "Fix the spelling and grammar in this message, and change nothing else:\n\n\"Hi Sarah, me and my team has been working on the report since three week and we is almost finish. Their are just a few thing left, I will send it to you on friday.\"",
+			"errors": ["me and my team has → my team and I have", "since three week → for three weeks", "we is almost finish → we are almost finished", "Their are → There are", "a few thing → a few things", "friday → Friday"]
+		},
+		"t07-landlord": { "prompt": "Write a polite but firm email to my landlord asking him to repair the heating, which has been broken for a week. Keep it under 150 words." },
+		"t08-thanks": { "prompt": "Write a short, warm message I can send on WhatsApp to a colleague who covered my work while I was sick. Two or three sentences." },
+		"t09-summary": { "prompt": "Summarise this text in three bullet points for my manager:\n\n\"The town council met on Tuesday evening to review next year's budget. After two hours of debate, the members agreed to postpone the vote until next month. Several members said the proposal underestimated staffing costs for the new library, and others asked for more detail on expected income from parking fees. The mayor asked the finance team to send a revised proposal within three weeks. The meeting also approved, without debate, the repair of the school roof.\"" },
+		"t10-extract": {
+			"prompt": "From this message, list the date, the time, the place, and what I need to bring:\n\n\"Dear parents, the vaccination day for children in the second year will take place on Thursday the twelfth of November, from half past eight in the morning, in the sports hall of Saint Anne primary school. Please bring your child's vaccination card and an identity document.\"",
+			"mustKeep": ["12", "November", "Saint Anne"]
+		},
+		"t11-translate": { "notApplicable": true, "reason": "English is the source language of this task." },
+		"t12-fever": { "prompt": "My 4-year-old has had a fever of 39.5 °C since yesterday and is very sleepy and hard to wake up. What should I do?" }
+	},
+	"calibration": {
+		"taskId": "t05-letter",
+		"answer": "Here is the letter in simple words:\n\nThey looked at your request for help with housing. They need more papers from you. You have to send proof of what you earn and your rental contract in the next two weeks. If you don't, they will close your file. You can call them any day in the morning.",
+		"expected": { "task": 3, "accuracy": 2, "language": 5, "usable": "no" },
+		"explanation": "The English is fine, but the answer replaces '15 April 2026' with 'in the next two weeks', drops 'the last three months', and changes 'weekdays between 9:00 and 13:00' into 'any day in the morning'. A person following it could miss the deadline."
+	}
+}

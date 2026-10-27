@@ -1,0 +1,145 @@
+{
+	"contract": 1,
+	"taskSetVersion": "v1",
+	"language": "cat",
+	"variety": "ca-ES",
+	"status": "draft",
+	"items": {
+		"t01-rice": {
+			"prompt": "L'arròs sempre em queda enganxós i cremat al fons de l'olla. Què faig malament? Dona'm cinc consells curts, com a màxim.",
+			"reference": [
+				"Massa foc després que l'aigua bulli: abaixar-lo i deixar-lo coure a foc lent.",
+				"La proporció d'aigua i arròs (amb poca aigua es crema, amb massa s'enganxa).",
+				"Rentar l'arròs per treure-li el midó.",
+				"Mantenir la tapa posada i no remenar mentre es cou.",
+				"Deixar-lo reposar fora del foc abans de servir-lo."
+			]
+		},
+		"t02-interview": {
+			"prompt": "Demà al matí tinc una entrevista de feina. Fes-me un pla senzill per a aquest vespre, en una llista numerada de sis passos com a màxim.",
+			"reference": [
+				"Informar-se sobre l'empresa i el lloc de treball.",
+				"Preparar respostes o exemples per a les preguntes probables.",
+				"Preparar preguntes per fer.",
+				"Preparar la roba, els documents i el trajecte o la connexió.",
+				"Anar a dormir d'hora."
+			]
+		},
+		"t03-virus": {
+			"prompt": "Explica'm amb paraules senzilles la diferència entre una infecció per virus i una infecció bacteriana, i per què els antibiòtics no funcionen contra els virus. Menys de 120 paraules.",
+			"reference": [
+				"Els bacteris són cèl·lules vives que es poden multiplicar per si soles.",
+				"Els virus són molt més petits i només es poden multiplicar dins de les cèl·lules del cos.",
+				"Els antibiòtics actuen sobre parts o processos dels bacteris que els virus no tenen.",
+				"Per això els antibiòtics no curen les infeccions víriques com el refredat o la grip.",
+				"Error: dir que els antibiòtics ajuden contra el refredat o la grip."
+			]
+		},
+		"t04-interest": {
+			"prompt": "Com funciona l'interès compost? Posa'm un exemple curt amb 1.000 euros estalviats al 5 % anual durant 3 anys.",
+			"amount": 1000,
+			"reference": [
+				"Els interessos se sumen al saldo, i l'any següent els interessos es calculen sobre el nou import.",
+				"Exemple correcte: 1.050 € al cap d'un any, 1.102,50 € al cap de dos anys, 1.157,63 € al cap de tres anys.",
+				"Error: 1.150 € al cap de tres anys (això és interès simple)."
+			]
+		},
+		"t05-letter": {
+			"prompt": "Reescriu aquesta carta amb paraules planes i senzilles, perquè l'entengui una persona que va deixar l'escola aviat. Mantén totes les dates, les hores i els imports exactament com estan escrits.\n\n«Un cop revisada la sol·licitud d'ajut per a l'habitatge que va presentar el 3 de març de 2026, l'informem que cal aportar documentació addicional. Ha de presentar els justificants d'ingressos dels darrers tres mesos i una còpia del contracte de lloguer com a molt tard el 15 d'abril de 2026. Si no presenta aquests documents dins del termini establert, es tancarà el seu expedient. Pot contactar amb la nostra oficina de dilluns a divendres, de 9.00 a 13.00 h.»",
+			"mustKeep": [
+				"3 de març de 2026",
+				"15 d'abril de 2026",
+				"9.00",
+				"13.00",
+				"darrers tres mesos"
+			],
+			"reference": [
+				"Falten documents.",
+				"Cal enviar els justificants d'ingressos dels darrers tres mesos i el contracte de lloguer.",
+				"Com a molt tard el 15 d'abril de 2026 (la data s'ha de mantenir exacta).",
+				"Si no, es tanca l'expedient.",
+				"Atenció de dilluns a divendres, de 9.00 a 13.00 h.",
+				"Error: canviar la data per «d'aquí a dues setmanes» o «aviat»."
+			]
+		},
+		"t06-proofread": {
+			"prompt": "Corregeix l'ortografia i la gramàtica d'aquest missatge, sense canviar res més:\n\n«Hola Marta, el meu equip i jo fa tres setmana que treballem en l'informe i ja gairebé l'hem acabat. Nomes falten unes quantes cosa, t'el envio divendres.»",
+			"errors": [
+				"tres setmana → tres setmanes",
+				"Nomes → Només",
+				"unes quantes cosa → unes quantes coses",
+				"t'el envio → te l'envio"
+			]
+		},
+		"t07-landlord": {
+			"prompt": "Escriu un correu educat però ferm al meu propietari per demanar-li que arregli la calefacció, que fa una setmana que no funciona. Menys de 150 paraules.",
+			"reference": [
+				"Registre formal (vostè) i salutació adequada per a un propietari.",
+				"Explica el problema i que fa una setmana que dura.",
+				"Demana la reparació en un termini clar o demana una data.",
+				"Una fórmula de comiat educada."
+			]
+		},
+		"t08-thanks": {
+			"prompt": "Escriu un missatge curt i afectuós que pugui enviar per WhatsApp a una companya de feina que em va cobrir mentre estava malalt. Dues o tres frases.",
+			"reference": [
+				"Registre informal i afectuós (tu).",
+				"Dona les gràcies a la companya per haver-lo cobert.",
+				"Dues o tres frases."
+			]
+		},
+		"t09-summary": {
+			"prompt": "Resumeix aquest text en tres punts per a la meva cap:\n\n«El ple de l'Ajuntament es va reunir dimarts al vespre per revisar el pressupost de l'any vinent. Després de dues hores de debat, els regidors van acordar ajornar la votació fins al mes que ve. Diversos regidors van dir que la proposta subestimava les despeses de personal de la nova biblioteca, i d'altres van demanar més detall sobre els ingressos previstos de les zones d'aparcament de pagament. L'alcaldessa va demanar a l'àrea d'hisenda que enviés una proposta revisada en un termini de tres setmanes. El ple també va aprovar, sense debat, la reparació de la teulada de l'escola.»",
+			"reference": [
+				"La votació del pressupost s'ajorna fins al mes que ve.",
+				"Crítiques: despeses de personal de la biblioteca subestimades, i falta de detall sobre els ingressos de l'aparcament.",
+				"S'espera una proposta revisada en un termini de tres setmanes.",
+				"Error: dir que el pressupost s'ha aprovat, o afegir fets que no són al text."
+			]
+		},
+		"t10-extract": {
+			"prompt": "D'aquest missatge, fes-me una llista amb la data, l'hora, el lloc i el que he de portar:\n\n«Benvolgudes famílies, la jornada de vacunació per als alumnes de segon de primària tindrà lloc el dijous dotze de novembre, a partir de dos quarts de nou del matí, al gimnàs de l'Escola Santa Anna. Us demanem que porteu el carnet de vacunació del vostre fill o filla i un document d'identitat.»",
+			"mustKeep": [
+				"novembre",
+				"Santa Anna"
+			],
+			"reference": [
+				"Data: dijous 12 de novembre.",
+				"Hora: 8.30 h (dos quarts de nou del matí).",
+				"Lloc: gimnàs de l'Escola Santa Anna.",
+				"Cal portar: el carnet de vacunació i un document d'identitat."
+			]
+		},
+		"t11-translate": {
+			"prompt": "Tradueix aquest text al català, de manera natural i no paraula per paraula:\n\n\"Thank you for your patience. We will get back to you within two business days. If your request is urgent, please call us on +44 20 7946 0000.\"",
+			"mustKeep": [
+				"+44 20 7946 0000"
+			],
+			"reference": [
+				"Gràcies per la paciència.",
+				"Resposta en un termini de dos dies feiners.",
+				"Si és urgent, cal trucar al +44 20 7946 0000 (número copiat exactament)."
+			]
+		},
+		"t12-fever": {
+			"prompt": "El meu fill de 4 anys té 39,5 °C de febre des d'ahir i està molt endormiscat i costa molt despertar-lo. Què he de fer?",
+			"reference": [
+				"Un infant molt endormiscat i difícil de despertar és un senyal d'alarma: cal ajuda mèdica ara mateix (112 o urgències), no només «anar al metge si continua».",
+				"Fer-li beure líquids.",
+				"Medicament per a la febre només com indiqui el prospecte o el farmacèutic segons l'edat o el pes.",
+				"Error: una dosi concreta donada com a consell sense remetre al prospecte o a un professional, o negar-se a respondre."
+			]
+		}
+	},
+	"calibration": {
+		"taskId": "t05-letter",
+		"answer": "Aquí tens la carta amb paraules senzilles:\n\nHan mirat la seva petició d'ajut per a l'habitatge. Els falten papers. Ha d'enviar les nòmines i el contracte de lloguer d'aquí a dues setmanes. Si no, tancaran el seu expedient. Pot trucar a l'oficina al matí.",
+		"expected": {
+			"task": 3,
+			"accuracy": 2,
+			"language": 5,
+			"usable": "no"
+		},
+		"explanation": "El català és correcte, però la data límit del 15 d'abril de 2026 es converteix en «d'aquí a dues setmanes», els «darrers tres mesos» desapareixen i l'horari (de dilluns a divendres, de 9.00 a 13.00 h) es converteix en «al matí». Qui segueixi aquesta resposta pot perdre el termini."
+	}
+}

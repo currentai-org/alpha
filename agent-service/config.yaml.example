@@ -1,0 +1,38 @@
+# Public AI agent service — Hermes provider config (template).
+# Copy to ~/.hermes/config.yaml. NEVER commit the token (it lives in ~/.hermes/.env or the env).
+#
+# SCOPE: this file configures the HERMES (ReAct/oneshot, native tool-calling) path only. The shipped
+# production default (Apertus-1.5-70B on CSCS, driving Hermes' own loop directly —
+# see README.md) is NOT configured here; it's set via env vars (AGENT_MODEL/AGENT_MODEL_PROVIDER) instead, so that the gateway's provider chain stays the single
+# place an upstream is named. This file is the dev/CI and sovereign-characterization surface — the
+# model below is what local dev and the offline suite exercise, not necessarily what's live in prod.
+#
+# DEV/CI path: HF Inference Providers. Use SYNTHETIC DATA ONLY here — real user data must stay
+# on sovereign infra.
+model:
+  provider: huggingface
+  default: Qwen/Qwen3-Next-80B-A3B-Instruct      # cheap MoE (~3B active); passed 3/3 adherence (model-adherence-test.sh).
+                                                  # Alternatives that also pass 3/3: Qwen3-32B (dense), Qwen3-235B (heaviest).
+                                                  # Llama-3.3-70B is not used with Hermes' prompt.
+  context_length: 131072                          # override Hermes' 32k registry default for unknown models.
+  max_tokens: 8192
+# HF_TOKEN read from ~/.hermes/.env (HF_TOKEN=...) or process env.
+
+# -----------------------------------------------------------------------------------------------
+# SOVEREIGN endpoint: SwissAI on CSCS (Alps), the same host aipotluck.org chat serves Apertus from,
+# and now the production default too. Data-residency comes from running here. Apertus-1.5-70B emits
+# native tool_calls under Hermes' prompt, so no code-as-controller workaround is needed. CSCS's research catalog churns fast —
+# checkpoints rotate on an hours-to-days timescale. Don't treat the model id below as durable;
+# `scripts/dogfood.py`'s check_model_live() re-verifies it every run.
+# The serving key goes in the env (CSCS_SERVING_API for chat; PROVIDER_CSCS_TOKEN on the gateway).
+# model:
+#   provider: custom
+#   base_url: https://api.swissai.svc.cscs.ch/v1
+#   default: apertus-ai/Apertus-v1.5-70B           # sovereign + fully-open; name the exact checkpoint
+#                                                   # AND serving build; the two can differ.
+#     # Released weights are swiss-ai/Apertus-v1.5-70B (Apache-2.0). The apertus-ai/ id above is
+#     # the persistent k8s deployment, the only 1.5 route on CSCS without an expires_at; the
+#     # swiss-ai/-prefixed catalog entries are short-lived SLURM jobs.
+#   context_length: 32000
+#   max_tokens: 8192
+# CUSTOM_API_KEY read from ~/.hermes/.env.

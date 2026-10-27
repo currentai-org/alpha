@@ -1,0 +1,42 @@
+# Runtime deps for the agent-service (app + proxy roles). Single source of truth —
+# the Dockerfile installs from this file too, so local dev and the image can't drift.
+# Pinned for reproducible builds + a stable supply-chain surface; bump deliberately.
+fastapi==0.162.0
+uvicorn[standard]==0.54.0
+httpx==0.28.1
+pydantic==2.14.1
+PyJWT==2.15.1
+# The sandbox's MCP face (api/sandbox_mcp.py, CUR-4232): the official SDK, MIT.
+mcp==2.3.0
+# CUR-4443: the shared task store (agent-service's own Postgres, set by AGENT_TASKS_DATABASE_URL). LGPL-3.0.
+psycopg[binary]==3.3.6
+psycopg-pool==3.3.3
+# The E2B sandbox backend (api/sandbox_e2b.py, CUR-4451), imported only when AGENT_SANDBOX_BACKEND=e2b. MIT.
+e2b==2.59.0
+# Refuses new sandboxes for a cool-off when the E2B host is full (CUR-4484). BSD-3-Clause; holds no lock across the call.
+circuitbreaker==2.1.3
+# The gateway's per-model requests-a-minute share (api/proxy.py RPM_LIMITERS, CUR-4603). MIT.
+aiolimiter==1.3.0
+# Reads the app's machine ids from Fly's internal DNS for conversation routing (api/home_machine.py, CUR-4435). ISC.
+dnspython==2.9.0
+
+# Baseline data-analysis packages for the sandbox's code_execution tool (CUR-612). Not a
+# dependency of this service's own app/proxy roles. Models import these by default for
+# "read a CSV, aggregate/analyze" prompts, so scripts fail at import without them. The
+# sandbox boundary (bwrap + egress lockdown, CUR-207) is the security control, not the package list.
+pandas==3.0.6
+numpy==2.5.4
+# pandas' Excel writer and reader (CUR-4106): an Excel request fails at import without it and the agent
+# falls back to CSV.
+openpyxl==3.1.5
+# Charts, Word and PDF (CUR-4106): without these a PDF note with a chart or a Word file cannot be built
+# in the sandbox, and the agent falls back to Markdown or plain text.
+matplotlib==3.11.2
+python-docx==1.2.0
+reportlab==5.0.1
+
+# Hermes (the agent harness) is installed separately in the Dockerfile from a pinned
+# PUBLIC upstream commit; locally it lives in its own venv. See deploy/Dockerfile.
+# The ACP frontend path additionally needs, in the Hermes env:
+#   uv pip install --python <hermes-venv>/bin/python agent-client-protocol==0.9.0
+# (the Hermes venv is uv-managed and has NO pip — plain `pip install` silently no-ops).

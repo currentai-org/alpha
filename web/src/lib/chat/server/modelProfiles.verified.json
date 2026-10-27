@@ -1,0 +1,295 @@
+{
+	"zai-org/glm-5.2": {
+		"scaleway": {
+			"reasoningOff": {
+				"path": "reasoning_effort",
+				"value": "none"
+			},
+			"efforts": [
+				"none",
+				"low",
+				"medium",
+				"high"
+			],
+			"effortNoneRejected": false,
+			"systemRoleSupported": true,
+			"reasoningFormat": "field",
+			"tools": true,
+			"verifiedAt": "2026-09-27",
+			"n": 24
+		},
+		"deepinfra": {
+			"reasoningOff": {
+				"path": "reasoning_effort",
+				"value": "none"
+			},
+			"efforts": [
+				"none",
+				"low",
+				"medium",
+				"high"
+			],
+			"effortNoneRejected": false,
+			"systemRoleSupported": true,
+			"reasoningFormat": "field",
+			"tools": true,
+			"verifiedAt": "2026-09-27",
+			"n": 24
+		}
+	},
+	"zai-org/glm-5.3": {
+		"novita": {
+			"reasoningOff": {
+				"path": "thinking.type",
+				"value": "disabled"
+			},
+			"efforts": [
+				"none",
+				"low",
+				"medium",
+				"high"
+			],
+			"effortNoneRejected": false,
+			"systemRoleSupported": true,
+			"reasoningFormat": "field",
+			"tools": true,
+			"verifiedAt": "2026-09-27",
+			"n": 24
+		},
+		"deepinfra": {
+			"reasoningOff": {
+				"path": "reasoning_effort",
+				"value": "none"
+			},
+			"efforts": [
+				"none",
+				"low",
+				"medium",
+				"high"
+			],
+			"effortNoneRejected": false,
+			"systemRoleSupported": true,
+			"reasoningFormat": "field",
+			"tools": true,
+			"verifiedAt": "2026-09-27",
+			"n": 24
+		}
+	},
+	"zai-org/glm-5.2-fp8": {
+		"zai-org": {
+			"reasoningOff": {
+				"path": "thinking.type",
+				"value": "disabled"
+			},
+			"efforts": [
+				"none",
+				"low",
+				"medium",
+				"high"
+			],
+			"effortNoneRejected": false,
+			"systemRoleSupported": true,
+			"reasoningFormat": "field",
+			"tools": true,
+			"verifiedAt": "2026-09-27",
+			"n": 24
+		}
+	},
+	"qwen/qwen3.6-35b-a3b": {
+		"scaleway": {
+			"reasoningOff": {
+				"path": "reasoning_effort",
+				"value": "none"
+			},
+			"efforts": [
+				"none",
+				"low",
+				"medium",
+				"high"
+			],
+			"effortNoneRejected": false,
+			"systemRoleSupported": true,
+			"reasoningFormat": "field",
+			"tools": false,
+			"verifiedAt": "2026-09-27",
+			"n": 24
+		}
+	},
+	"google/gemma-4-26b-a4b-it": {
+		"scaleway": {
+			"reasoningOff": {
+				"path": "reasoning_effort",
+				"value": "none"
+			},
+			"efforts": [
+				"none",
+				"low",
+				"medium",
+				"high"
+			],
+			"effortNoneRejected": false,
+			"systemRoleSupported": true,
+			"reasoningFormat": "field",
+			"tools": true,
+			"verifiedAt": "2026-09-27",
+			"n": 24
+		}
+	},
+	"meta-llama/llama-3.3-70b-instruct": {
+		"scaleway": {
+			"reasoningOff": null,
+			"efforts": [
+				"none",
+				"low",
+				"medium",
+				"high"
+			],
+			"effortNoneRejected": false,
+			"systemRoleSupported": true,
+			"reasoningFormat": "none",
+			"tools": true,
+			"verifiedAt": "2026-09-27",
+			"n": 24
+		}
+	},
+	"openai/gpt-oss-120b": {
+		"scaleway": {
+			"reasoningOff": null,
+			"efforts": [
+				"low",
+				"medium",
+				"high"
+			],
+			"effortNoneRejected": true,
+			"systemRoleSupported": true,
+			"reasoningFormat": "field",
+			"tools": true,
+			"verifiedAt": "2026-09-27",
+			"n": 24
+		}
+	},
+	"swiss-ai/apertus-v1.5-70b": {
+		"gateway:api.infomaniak.com": {
+			"reasoningOff": null,
+			"efforts": [
+				"none",
+				"low",
+				"medium",
+				"high"
+			],
+			"effortNoneRejected": false,
+			"systemRoleSupported": true,
+			"reasoningFormat": "none",
+			"tools": true,
+			"verifiedAt": "2026-09-27",
+			"n": 19
+		},
+		"featherless-ai": {
+			"reasoningOff": null,
+			"efforts": [
+				"none",
+				"low",
+				"medium",
+				"high"
+			],
+			"effortNoneRejected": false,
+			"systemRoleSupported": false,
+			"reasoningFormat": "none",
+			"tools": false,
+			"verifiedAt": "2026-09-27",
+			"n": 24
+		},
+		"publicai": {
+			"reasoningOff": null,
+			"efforts": [
+				"none",
+				"low",
+				"medium",
+				"high"
+			],
+			"effortNoneRejected": false,
+			"systemRoleSupported": true,
+			"reasoningFormat": "none",
+			"tools": false,
+			"verifiedAt": "2026-09-27",
+			"n": 24
+		},
+		"gateway:api.featherless.ai": {
+			"reasoningOff": null,
+			"efforts": [
+				"none",
+				"medium",
+				"high"
+			],
+			"effortNoneRejected": false,
+			"systemRoleSupported": null,
+			"reasoningFormat": "none",
+			"tools": false,
+			"verifiedAt": "2026-09-27",
+			"n": 5
+		}
+	},
+	"swiss-ai/apertus-v1.5-8b": {
+		"gateway:api.featherless.ai": {
+			"reasoningOff": null,
+			"efforts": [
+				"none",
+				"low",
+				"medium",
+				"high"
+			],
+			"effortNoneRejected": false,
+			"systemRoleSupported": true,
+			"reasoningFormat": "none",
+			"tools": false,
+			"verifiedAt": "2026-09-27",
+			"n": 24
+		}
+	},
+	"mistral-large-2512": {
+		"gateway:api.mistral.ai": {
+			"reasoningOff": null,
+			"efforts": [],
+			"effortNoneRejected": true,
+			"systemRoleSupported": true,
+			"reasoningFormat": "none",
+			"tools": true,
+			"verifiedAt": "2026-09-29",
+			"n": 24
+		}
+	},
+	"mistralai/mistral-large-2610": {
+		"gateway:router.stg.aipotluck.org": {
+			"reasoningOff": {
+				"path": "reasoning_effort",
+				"value": "none"
+			},
+			"efforts": [
+				"none"
+			],
+			"effortNoneRejected": false,
+			"systemRoleSupported": true,
+			"reasoningFormat": "none",
+			"tools": true,
+			"verifiedAt": "2026-10-25",
+			"n": 5
+		}
+	},
+	"google/gemma-4-31b-it": {
+		"featherless-ai": {
+			"reasoningOff": null,
+			"efforts": [
+				"none",
+				"low",
+				"medium",
+				"high"
+			],
+			"effortNoneRejected": false,
+			"systemRoleSupported": true,
+			"reasoningFormat": "field",
+			"tools": true,
+			"verifiedAt": "2026-10-02",
+			"n": 24
+		}
+	}
+}

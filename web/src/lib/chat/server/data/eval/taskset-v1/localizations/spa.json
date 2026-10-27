@@ -1,0 +1,148 @@
+{
+	"contract": 1,
+	"taskSetVersion": "v1",
+	"language": "spa",
+	"variety": "es-419",
+	"status": "draft",
+	"items": {
+		"t01-rice": {
+			"prompt": "Mi arroz siempre queda pegajoso y quemado en el fondo de la olla. ¿Qué estoy haciendo mal? Dame como máximo cinco consejos cortos.",
+			"reference": [
+				"Fuego demasiado alto después de que hierve el agua: bajarlo a fuego lento.",
+				"Proporción correcta de agua y arroz (poca agua lo quema, demasiada lo deja pegajoso).",
+				"Lavar el arroz para quitarle el almidón.",
+				"Mantener la olla tapada y no revolver durante la cocción.",
+				"Dejarlo reposar fuera del fuego antes de servir."
+			]
+		},
+		"t02-interview": {
+			"prompt": "Tengo una entrevista de trabajo mañana por la mañana. Dame un plan sencillo para esta noche, en una lista numerada de no más de seis pasos.",
+			"reference": [
+				"Investigar sobre la empresa y el puesto.",
+				"Preparar respuestas o ejemplos para las preguntas más probables.",
+				"Preparar preguntas para hacer.",
+				"Dejar listos la ropa, los documentos y el camino o la conexión.",
+				"Dormir temprano."
+			]
+		},
+		"t03-virus": {
+			"prompt": "Explica con palabras sencillas la diferencia entre una infección por virus y una infección bacteriana, y por qué los antibióticos no sirven contra los virus. Usa menos de 120 palabras.",
+			"reference": [
+				"Las bacterias son células vivas que se multiplican por sí solas.",
+				"Los virus son mucho más pequeños y solo se multiplican dentro de las células del cuerpo.",
+				"Los antibióticos actúan sobre partes de las bacterias que los virus no tienen.",
+				"Por eso los antibióticos no curan infecciones virales como el resfriado o la gripe.",
+				"Error: decir que los antibióticos ayudan contra el resfriado o la gripe."
+			]
+		},
+		"t04-interest": {
+			"prompt": "¿Cómo funciona el interés compuesto? Da un ejemplo corto con 1000 dólares ahorrados al 5 % anual durante 3 años.",
+			"amount": 1000,
+			"reference": [
+				"Los intereses se suman al saldo, y el año siguiente se calculan sobre el nuevo monto.",
+				"Ejemplo correcto: 1050 dólares después de un año, 1102.50 después de dos años, 1157.63 después de tres años.",
+				"Error: 1150 dólares después de tres años (eso es interés simple)."
+			]
+		},
+		"t05-letter": {
+			"prompt": "Reescribe esta carta con palabras sencillas para que la entienda una persona que dejó la escuela temprano. Mantén todas las fechas, horas y cantidades exactamente como están escritas.\n\n\"En relación con la revisión de su solicitud de subsidio de vivienda presentada el 3 de marzo de 2026, le informamos que se requiere documentación adicional. Deberá presentar comprobantes de ingresos de los últimos tres meses y una copia de su contrato de arrendamiento a más tardar el 15 de abril de 2026. La falta de presentación de dichos documentos dentro del plazo establecido dará lugar al cierre de su expediente. Puede comunicarse con nuestra oficina de lunes a viernes, de 9:00 a 13:00 horas.\"",
+			"mustKeep": [
+				"3 de marzo de 2026",
+				"15 de abril de 2026",
+				"9:00",
+				"13:00",
+				"tres meses"
+			],
+			"reference": [
+				"Faltan documentos.",
+				"Enviar los comprobantes de ingresos de los últimos tres meses y el contrato de arrendamiento.",
+				"A más tardar el 15 de abril de 2026 (la fecha debe quedar exacta).",
+				"Si no, se cierra el expediente.",
+				"Atención de lunes a viernes, de 9:00 a 13:00.",
+				"Error: cambiar la fecha por \"en dos semanas\" o \"pronto\"."
+			]
+		},
+		"t06-proofread": {
+			"prompt": "Corrige la ortografía y la gramática de este mensaje, sin cambiar nada más:\n\n\"Hola Sofía, mi equipo y yo emos estado trabajando en el informe desde hace tres semana y ya casi esta listo. Solo faltan unas pocas cosa, te lo envio el viernes.\"",
+			"errors": [
+				"emos → hemos",
+				"tres semana → tres semanas",
+				"esta listo → está listo",
+				"unas pocas cosa → unas pocas cosas",
+				"envio → envío"
+			]
+		},
+		"t07-landlord": {
+			"prompt": "Escribe un correo educado pero firme a mi arrendador para pedirle que repare el calentador de agua, que lleva una semana descompuesto. Usa menos de 150 palabras.",
+			"reference": [
+				"Tono formal y trato de usted, adecuado para un arrendador.",
+				"Explica el problema y dice que lleva una semana.",
+				"Pide la reparación en un plazo claro o pide una fecha.",
+				"Cierre cortés."
+			],
+			"adaptationNote": "Heating replaced by the water heater, which is more common across Latin America."
+		},
+		"t08-thanks": {
+			"prompt": "Escribe un mensaje corto y cariñoso para mandar por WhatsApp a una compañera que cubrió mi trabajo mientras estaba enfermo. Dos o tres oraciones.",
+			"reference": [
+				"Tono informal y cariñoso.",
+				"Le agradece a la compañera por cubrir su trabajo.",
+				"Dos o tres oraciones."
+			]
+		},
+		"t09-summary": {
+			"prompt": "Resume este texto en tres viñetas para mi jefe:\n\n\"El concejo municipal se reunió el martes por la noche para revisar el presupuesto del próximo año. Después de dos horas de debate, los concejales acordaron posponer la votación hasta el próximo mes. Varios concejales dijeron que la propuesta subestimaba los costos de personal de la nueva biblioteca, y otros pidieron más detalles sobre los ingresos previstos por los parquímetros. La alcaldesa pidió al equipo de finanzas que enviara una propuesta revisada en un plazo de tres semanas. En la misma sesión se aprobó, sin debate, la reparación del techo de la escuela.\"",
+			"reference": [
+				"La votación del presupuesto se pospuso al próximo mes.",
+				"Críticas: costos de personal de la biblioteca subestimados y falta de detalle sobre los ingresos de los parquímetros.",
+				"Se espera una propuesta revisada en un plazo de tres semanas.",
+				"Error: decir que el presupuesto fue aprobado, o agregar hechos que no están en el texto."
+			]
+		},
+		"t10-extract": {
+			"prompt": "De este mensaje, haz una lista con la fecha, la hora, el lugar y lo que tengo que llevar:\n\n\"Estimados padres de familia: la jornada de vacunación para los niños de segundo grado se realizará el jueves doce de noviembre, a partir de las ocho y media de la mañana, en el gimnasio de la escuela primaria Santa Ana. Les pedimos traer la cartilla de vacunación de su hijo o hija y una identificación oficial.\"",
+			"mustKeep": [
+				"12",
+				"noviembre",
+				"Santa Ana"
+			],
+			"reference": [
+				"Fecha: jueves 12 de noviembre.",
+				"Hora: 8:30 de la mañana.",
+				"Lugar: gimnasio de la escuela primaria Santa Ana.",
+				"Llevar: la cartilla de vacunación y una identificación oficial."
+			]
+		},
+		"t11-translate": {
+			"prompt": "Traduce este texto al español, de forma natural y no palabra por palabra:\n\n\"Thank you for your patience. We will get back to you within two business days. If your request is urgent, please call us on +44 20 7946 0000.\"",
+			"mustKeep": [
+				"+44 20 7946 0000"
+			],
+			"reference": [
+				"Gracias por la paciencia.",
+				"Respuesta en un plazo de dos días hábiles.",
+				"Si es urgente, llamar al +44 20 7946 0000 (número copiado exactamente)."
+			]
+		},
+		"t12-fever": {
+			"prompt": "Mi hijo de 4 años tiene fiebre de 39.5 °C desde ayer y está muy somnoliento, cuesta mucho despertarlo. ¿Qué debo hacer?",
+			"reference": [
+				"Un niño muy somnoliento y difícil de despertar es una señal de alarma: buscar atención médica ya (número de emergencias o urgencias), no solo \"ir al médico si sigue así\".",
+				"Darle líquidos.",
+				"Medicamento para la fiebre solo como indica el empaque o un farmacéutico, según la edad o el peso.",
+				"Error: una dosis precisa dada como consejo sin remitir al empaque o a un profesional, o negarse a responder."
+			]
+		}
+	},
+	"calibration": {
+		"taskId": "t05-letter",
+		"answer": "Aquí está la carta en palabras sencillas:\n\nRevisaron tu solicitud de ayuda para la vivienda. Te faltan algunos papeles. Tienes que mandar tus comprobantes de sueldo y tu contrato de renta en las próximas dos semanas. Si no, cierran tu expediente. Puedes llamarles en la mañana.",
+		"expected": {
+			"task": 3,
+			"accuracy": 2,
+			"language": 5,
+			"usable": "no"
+		},
+		"explanation": "El español es correcto, pero la fecha límite del 15 de abril de 2026 se convierte en \"en las próximas dos semanas\", desaparecen \"los últimos tres meses\" y el horario (de lunes a viernes, de 9:00 a 13:00) se convierte en \"en la mañana\". Quien siga esta respuesta puede perder el plazo."
+	}
+}

@@ -1,0 +1,1747 @@
+{
+	"version": 1,
+	"benchmarks": {
+		"belebele-2026-10-16": {
+			"name": "Belebele",
+			"version": "7899cdfa4e1e0d733fd77c848e2c273cb1d32be2",
+			"ran": "2026-10-16",
+			"questions": 900,
+			"chance": 0.25,
+			"url": "https://huggingface.co/datasets/facebook/belebele",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers."
+		},
+		"belebele-2026-10-17": {
+			"name": "Belebele",
+			"version": "7899cdfa4e1e0d733fd77c848e2c273cb1d32be2",
+			"ran": "2026-10-17",
+			"questions": 900,
+			"chance": 0.25,
+			"url": "https://huggingface.co/datasets/facebook/belebele",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers."
+		},
+		"belebele-cip-2026-10-27-apertus-70b-arb": {
+			"name": "Belebele (provisional, CIP run stopped early)",
+			"version": "CIP weval run of hf:facebook/belebele, stopped before it finished, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 638,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was stopped before it finished, so it rests on the 638 of the 900 questions answered."
+		},
+		"belebele-cip-2026-10-27-apertus-70b-ben": {
+			"name": "Belebele (provisional, CIP run stopped early)",
+			"version": "CIP weval run of hf:facebook/belebele, stopped before it finished, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 639,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was stopped before it finished, so it rests on the 639 of the 900 questions answered."
+		},
+		"belebele-cip-2026-10-27-apertus-70b-cat": {
+			"name": "Belebele (provisional, CIP run stopped early)",
+			"version": "CIP weval run of hf:facebook/belebele, stopped before it finished, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 661,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was stopped before it finished, so it rests on the 661 of the 900 questions answered."
+		},
+		"belebele-cip-2026-10-27-apertus-70b-cmn": {
+			"name": "Belebele (provisional, CIP run stopped early)",
+			"version": "CIP weval run of hf:facebook/belebele, stopped before it finished, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 665,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was stopped before it finished, so it rests on the 665 of the 900 questions answered."
+		},
+		"belebele-cip-2026-10-27-apertus-70b-deu": {
+			"name": "Belebele (provisional, CIP run stopped early)",
+			"version": "CIP weval run of hf:facebook/belebele, stopped before it finished, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 648,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was stopped before it finished, so it rests on the 648 of the 900 questions answered."
+		},
+		"belebele-cip-2026-10-27-apertus-70b-ell": {
+			"name": "Belebele (provisional, CIP run stopped early)",
+			"version": "CIP weval run of hf:facebook/belebele, stopped before it finished, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 667,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was stopped before it finished, so it rests on the 667 of the 900 questions answered."
+		},
+		"belebele-cip-2026-10-27-apertus-70b-eus": {
+			"name": "Belebele (provisional, CIP run stopped early)",
+			"version": "CIP weval run of hf:facebook/belebele, stopped before it finished, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 661,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was stopped before it finished, so it rests on the 661 of the 900 questions answered."
+		},
+		"belebele-cip-2026-10-27-apertus-70b-fra": {
+			"name": "Belebele (provisional, CIP run stopped early)",
+			"version": "CIP weval run of hf:facebook/belebele, stopped before it finished, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 655,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was stopped before it finished, so it rests on the 655 of the 900 questions answered."
+		},
+		"belebele-cip-2026-10-27-apertus-70b-hau": {
+			"name": "Belebele (provisional, CIP run stopped early)",
+			"version": "CIP weval run of hf:facebook/belebele, stopped before it finished, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 659,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was stopped before it finished, so it rests on the 659 of the 900 questions answered."
+		},
+		"belebele-cip-2026-10-27-apertus-70b-hin": {
+			"name": "Belebele (provisional, CIP run stopped early)",
+			"version": "CIP weval run of hf:facebook/belebele, stopped before it finished, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 658,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was stopped before it finished, so it rests on the 658 of the 900 questions answered."
+		},
+		"belebele-cip-2026-10-27-apertus-70b-ind": {
+			"name": "Belebele (provisional, CIP run stopped early)",
+			"version": "CIP weval run of hf:facebook/belebele, stopped before it finished, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 653,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was stopped before it finished, so it rests on the 653 of the 900 questions answered."
+		},
+		"belebele-cip-2026-10-27-apertus-70b-ita": {
+			"name": "Belebele (provisional, CIP run stopped early)",
+			"version": "CIP weval run of hf:facebook/belebele, stopped before it finished, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 653,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was stopped before it finished, so it rests on the 653 of the 900 questions answered."
+		},
+		"belebele-cip-2026-10-27-apertus-70b-pbt": {
+			"name": "Belebele (provisional, CIP run stopped early)",
+			"version": "CIP weval run of hf:facebook/belebele, stopped before it finished, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 681,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was stopped before it finished, so it rests on the 681 of the 900 questions answered."
+		},
+		"belebele-cip-2026-10-27-apertus-70b-pol": {
+			"name": "Belebele (provisional, CIP run stopped early)",
+			"version": "CIP weval run of hf:facebook/belebele, stopped before it finished, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 668,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was stopped before it finished, so it rests on the 668 of the 900 questions answered."
+		},
+		"belebele-cip-2026-10-27-apertus-70b-por": {
+			"name": "Belebele (provisional, CIP run stopped early)",
+			"version": "CIP weval run of hf:facebook/belebele, stopped before it finished, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 660,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was stopped before it finished, so it rests on the 660 of the 900 questions answered."
+		},
+		"belebele-cip-2026-10-27-apertus-70b-ron": {
+			"name": "Belebele (provisional, CIP run stopped early)",
+			"version": "CIP weval run of hf:facebook/belebele, stopped before it finished, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 672,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was stopped before it finished, so it rests on the 672 of the 900 questions answered."
+		},
+		"belebele-cip-2026-10-27-apertus-70b-spa": {
+			"name": "Belebele (provisional, CIP run stopped early)",
+			"version": "CIP weval run of hf:facebook/belebele, stopped before it finished, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 666,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was stopped before it finished, so it rests on the 666 of the 900 questions answered."
+		},
+		"belebele-cip-2026-10-27-apertus-70b-swh": {
+			"name": "Belebele (provisional, CIP run stopped early)",
+			"version": "CIP weval run of hf:facebook/belebele, stopped before it finished, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 668,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was stopped before it finished, so it rests on the 668 of the 900 questions answered."
+		},
+		"belebele-cip-2026-10-27-apertus-70b-tam": {
+			"name": "Belebele (provisional, CIP run stopped early)",
+			"version": "CIP weval run of hf:facebook/belebele, stopped before it finished, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 671,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was stopped before it finished, so it rests on the 671 of the 900 questions answered."
+		},
+		"belebele-cip-2026-10-27-apertus-70b-tgl": {
+			"name": "Belebele (provisional, CIP run stopped early)",
+			"version": "CIP weval run of hf:facebook/belebele, stopped before it finished, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 675,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was stopped before it finished, so it rests on the 675 of the 900 questions answered."
+		},
+		"belebele-cip-2026-10-27-apertus-70b-ukr": {
+			"name": "Belebele (provisional, CIP run stopped early)",
+			"version": "CIP weval run of hf:facebook/belebele, stopped before it finished, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 677,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was stopped before it finished, so it rests on the 677 of the 900 questions answered."
+		},
+		"belebele-cip-2026-10-27-apertus-70b-urd": {
+			"name": "Belebele (provisional, CIP run stopped early)",
+			"version": "CIP weval run of hf:facebook/belebele, stopped before it finished, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 669,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was stopped before it finished, so it rests on the 669 of the 900 questions answered."
+		},
+		"belebele-cip-2026-10-27-apertus-70b-vie": {
+			"name": "Belebele (provisional, CIP run stopped early)",
+			"version": "CIP weval run of hf:facebook/belebele, stopped before it finished, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 665,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was stopped before it finished, so it rests on the 665 of the 900 questions answered."
+		},
+		"belebele-cip-2026-10-27-apertus-70b-yor": {
+			"name": "Belebele (provisional, CIP run stopped early)",
+			"version": "CIP weval run of hf:facebook/belebele, stopped before it finished, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 675,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was stopped before it finished, so it rests on the 675 of the 900 questions answered."
+		},
+		"belebele-cip-2026-10-27-bielik-11b-amh": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 300,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (300 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-bielik-11b-arb": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 300,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (300 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-bielik-11b-ben": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 300,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (300 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-bielik-11b-cat": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 300,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (300 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-bielik-11b-cmn": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 300,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (300 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-bielik-11b-deu": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 300,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (300 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-bielik-11b-ell": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 300,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (300 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-bielik-11b-eng": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 299,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (299 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-bielik-11b-eus": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 299,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (299 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-bielik-11b-fra": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 300,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (300 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-bielik-11b-hau": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 299,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (299 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-bielik-11b-hin": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 299,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (299 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-bielik-11b-ind": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 300,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (300 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-bielik-11b-ita": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 300,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (300 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-bielik-11b-pbt": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 300,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (300 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-bielik-11b-pol": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 300,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (300 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-bielik-11b-por": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 298,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (298 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-bielik-11b-ron": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 300,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (300 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-bielik-11b-spa": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 300,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (300 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-bielik-11b-swh": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 300,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (300 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-bielik-11b-tam": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 300,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (300 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-bielik-11b-tgl": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 300,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (300 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-bielik-11b-ukr": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 299,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (299 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-bielik-11b-urd": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 299,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (299 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-bielik-11b-vie": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 300,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (300 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-bielik-11b-yor": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 300,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (300 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-glm-5.2-amh": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 290,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (290 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-glm-5.2-arb": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 300,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (300 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-glm-5.2-ben": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 293,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (293 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-glm-5.2-cat": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 300,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (300 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-glm-5.2-cmn": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 276,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (276 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-glm-5.2-deu": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 288,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (288 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-glm-5.2-ell": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 293,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (293 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-glm-5.2-eus": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 285,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (285 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-glm-5.2-fra": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 289,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (289 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-glm-5.2-hau": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 295,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (295 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-glm-5.2-hin": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 288,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (288 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-glm-5.2-ind": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 298,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (298 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-glm-5.2-ita": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 300,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (300 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-glm-5.2-pbt": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 287,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (287 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-glm-5.2-pol": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 294,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (294 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-glm-5.2-por": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 286,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (286 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-glm-5.2-ron": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 287,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (287 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-glm-5.2-spa": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 290,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (290 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-glm-5.2-swh": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 296,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (296 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-glm-5.2-tam": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 288,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (288 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-glm-5.2-tgl": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 292,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (292 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-glm-5.2-ukr": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 289,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (289 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-glm-5.2-urd": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 300,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (300 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-glm-5.2-vie": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 300,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (300 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-glm-5.2-yor": {
+			"name": "Belebele (CIP’s 300-question sample)",
+			"version": "CIP weval run of hf:facebook/belebele, a seeded 300-question sample per language, exported 2026-10-27",
+			"ran": "2026-10-27",
+			"questions": 296,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score rests on CIP’s seeded sample of 300 of the 900 questions (296 answered), not the full set."
+		},
+		"belebele-cip-2026-10-27-sea-lion-nemotron-120b-arb": {
+			"name": "Belebele (provisional, CIP run in progress)",
+			"version": "CIP weval run of hf:facebook/belebele, exported 2026-10-27 while still in progress",
+			"ran": "2026-10-27",
+			"questions": 287,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was still going, so it rests on the 287 of the 900 questions answered so far."
+		},
+		"belebele-cip-2026-10-27-sea-lion-nemotron-120b-ben": {
+			"name": "Belebele (provisional, CIP run in progress)",
+			"version": "CIP weval run of hf:facebook/belebele, exported 2026-10-27 while still in progress",
+			"ran": "2026-10-27",
+			"questions": 263,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was still going, so it rests on the 263 of the 900 questions answered so far."
+		},
+		"belebele-cip-2026-10-27-sea-lion-nemotron-120b-cat": {
+			"name": "Belebele (provisional, CIP run in progress)",
+			"version": "CIP weval run of hf:facebook/belebele, exported 2026-10-27 while still in progress",
+			"ran": "2026-10-27",
+			"questions": 287,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was still going, so it rests on the 287 of the 900 questions answered so far."
+		},
+		"belebele-cip-2026-10-27-sea-lion-nemotron-120b-cmn": {
+			"name": "Belebele (provisional, CIP run in progress)",
+			"version": "CIP weval run of hf:facebook/belebele, exported 2026-10-27 while still in progress",
+			"ran": "2026-10-27",
+			"questions": 305,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was still going, so it rests on the 305 of the 900 questions answered so far."
+		},
+		"belebele-cip-2026-10-27-sea-lion-nemotron-120b-deu": {
+			"name": "Belebele (provisional, CIP run in progress)",
+			"version": "CIP weval run of hf:facebook/belebele, exported 2026-10-27 while still in progress",
+			"ran": "2026-10-27",
+			"questions": 298,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was still going, so it rests on the 298 of the 900 questions answered so far."
+		},
+		"belebele-cip-2026-10-27-sea-lion-nemotron-120b-ell": {
+			"name": "Belebele (provisional, CIP run in progress)",
+			"version": "CIP weval run of hf:facebook/belebele, exported 2026-10-27 while still in progress",
+			"ran": "2026-10-27",
+			"questions": 261,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was still going, so it rests on the 261 of the 900 questions answered so far."
+		},
+		"belebele-cip-2026-10-27-sea-lion-nemotron-120b-eus": {
+			"name": "Belebele (provisional, CIP run in progress)",
+			"version": "CIP weval run of hf:facebook/belebele, exported 2026-10-27 while still in progress",
+			"ran": "2026-10-27",
+			"questions": 274,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was still going, so it rests on the 274 of the 900 questions answered so far."
+		},
+		"belebele-cip-2026-10-27-sea-lion-nemotron-120b-fra": {
+			"name": "Belebele (provisional, CIP run in progress)",
+			"version": "CIP weval run of hf:facebook/belebele, exported 2026-10-27 while still in progress",
+			"ran": "2026-10-27",
+			"questions": 293,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was still going, so it rests on the 293 of the 900 questions answered so far."
+		},
+		"belebele-cip-2026-10-27-sea-lion-nemotron-120b-hin": {
+			"name": "Belebele (provisional, CIP run in progress)",
+			"version": "CIP weval run of hf:facebook/belebele, exported 2026-10-27 while still in progress",
+			"ran": "2026-10-27",
+			"questions": 267,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was still going, so it rests on the 267 of the 900 questions answered so far."
+		},
+		"belebele-cip-2026-10-27-sea-lion-nemotron-120b-ind": {
+			"name": "Belebele (provisional, CIP run in progress)",
+			"version": "CIP weval run of hf:facebook/belebele, exported 2026-10-27 while still in progress",
+			"ran": "2026-10-27",
+			"questions": 278,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was still going, so it rests on the 278 of the 900 questions answered so far."
+		},
+		"belebele-cip-2026-10-27-sea-lion-nemotron-120b-ita": {
+			"name": "Belebele (provisional, CIP run in progress)",
+			"version": "CIP weval run of hf:facebook/belebele, exported 2026-10-27 while still in progress",
+			"ran": "2026-10-27",
+			"questions": 287,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was still going, so it rests on the 287 of the 900 questions answered so far."
+		},
+		"belebele-cip-2026-10-27-sea-lion-nemotron-120b-pol": {
+			"name": "Belebele (provisional, CIP run in progress)",
+			"version": "CIP weval run of hf:facebook/belebele, exported 2026-10-27 while still in progress",
+			"ran": "2026-10-27",
+			"questions": 293,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was still going, so it rests on the 293 of the 900 questions answered so far."
+		},
+		"belebele-cip-2026-10-27-sea-lion-nemotron-120b-por": {
+			"name": "Belebele (provisional, CIP run in progress)",
+			"version": "CIP weval run of hf:facebook/belebele, exported 2026-10-27 while still in progress",
+			"ran": "2026-10-27",
+			"questions": 283,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was still going, so it rests on the 283 of the 900 questions answered so far."
+		},
+		"belebele-cip-2026-10-27-sea-lion-nemotron-120b-ron": {
+			"name": "Belebele (provisional, CIP run in progress)",
+			"version": "CIP weval run of hf:facebook/belebele, exported 2026-10-27 while still in progress",
+			"ran": "2026-10-27",
+			"questions": 274,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was still going, so it rests on the 274 of the 900 questions answered so far."
+		},
+		"belebele-cip-2026-10-27-sea-lion-nemotron-120b-spa": {
+			"name": "Belebele (provisional, CIP run in progress)",
+			"version": "CIP weval run of hf:facebook/belebele, exported 2026-10-27 while still in progress",
+			"ran": "2026-10-27",
+			"questions": 299,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was still going, so it rests on the 299 of the 900 questions answered so far."
+		},
+		"belebele-cip-2026-10-27-sea-lion-nemotron-120b-swh": {
+			"name": "Belebele (provisional, CIP run in progress)",
+			"version": "CIP weval run of hf:facebook/belebele, exported 2026-10-27 while still in progress",
+			"ran": "2026-10-27",
+			"questions": 281,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was still going, so it rests on the 281 of the 900 questions answered so far."
+		},
+		"belebele-cip-2026-10-27-sea-lion-nemotron-120b-tam": {
+			"name": "Belebele (provisional, CIP run in progress)",
+			"version": "CIP weval run of hf:facebook/belebele, exported 2026-10-27 while still in progress",
+			"ran": "2026-10-27",
+			"questions": 275,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was still going, so it rests on the 275 of the 900 questions answered so far."
+		},
+		"belebele-cip-2026-10-27-sea-lion-nemotron-120b-tgl": {
+			"name": "Belebele (provisional, CIP run in progress)",
+			"version": "CIP weval run of hf:facebook/belebele, exported 2026-10-27 while still in progress",
+			"ran": "2026-10-27",
+			"questions": 268,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was still going, so it rests on the 268 of the 900 questions answered so far."
+		},
+		"belebele-cip-2026-10-27-sea-lion-nemotron-120b-ukr": {
+			"name": "Belebele (provisional, CIP run in progress)",
+			"version": "CIP weval run of hf:facebook/belebele, exported 2026-10-27 while still in progress",
+			"ran": "2026-10-27",
+			"questions": 267,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was still going, so it rests on the 267 of the 900 questions answered so far."
+		},
+		"belebele-cip-2026-10-27-sea-lion-nemotron-120b-urd": {
+			"name": "Belebele (provisional, CIP run in progress)",
+			"version": "CIP weval run of hf:facebook/belebele, exported 2026-10-27 while still in progress",
+			"ran": "2026-10-27",
+			"questions": 270,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was still going, so it rests on the 270 of the 900 questions answered so far."
+		},
+		"belebele-cip-2026-10-27-sea-lion-nemotron-120b-vie": {
+			"name": "Belebele (provisional, CIP run in progress)",
+			"version": "CIP weval run of hf:facebook/belebele, exported 2026-10-27 while still in progress",
+			"ran": "2026-10-27",
+			"questions": 253,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was still going, so it rests on the 253 of the 900 questions answered so far."
+		},
+		"belebele-cip-provisional-2026-10-26-amh": {
+			"name": "Belebele (provisional, Mistral Large 4’s run)",
+			"version": "CIP weval run of hf:facebook/belebele through OpenRouter, exported 2026-10-26 while still in progress",
+			"ran": "2026-10-26",
+			"questions": 41,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was still going, so it rests on 41 of the 900 questions, and Mistral Medium 3.5 is shown Mistral Large 4’s score until it is measured itself."
+		},
+		"belebele-cip-provisional-2026-10-26-arb": {
+			"name": "Belebele (provisional, Mistral Large 4’s run)",
+			"version": "CIP weval run of hf:facebook/belebele through OpenRouter, exported 2026-10-26 while still in progress",
+			"ran": "2026-10-26",
+			"questions": 162,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was still going, so it rests on 162 of the 900 questions, and Mistral Medium 3.5 is shown Mistral Large 4’s score until it is measured itself."
+		},
+		"belebele-cip-provisional-2026-10-26-ben": {
+			"name": "Belebele (provisional, Mistral Large 4’s run)",
+			"version": "CIP weval run of hf:facebook/belebele through OpenRouter, exported 2026-10-26 while still in progress",
+			"ran": "2026-10-26",
+			"questions": 49,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was still going, so it rests on 49 of the 900 questions, and Mistral Medium 3.5 is shown Mistral Large 4’s score until it is measured itself."
+		},
+		"belebele-cip-provisional-2026-10-26-cat": {
+			"name": "Belebele (provisional, Mistral Large 4’s run)",
+			"version": "CIP weval run of hf:facebook/belebele through OpenRouter, exported 2026-10-26 while still in progress",
+			"ran": "2026-10-26",
+			"questions": 17,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was still going, so it rests on 17 of the 900 questions, and Mistral Medium 3.5 is shown Mistral Large 4’s score until it is measured itself."
+		},
+		"belebele-cip-provisional-2026-10-26-deu": {
+			"name": "Belebele (provisional, Mistral Large 4’s run)",
+			"version": "CIP weval run of hf:facebook/belebele through OpenRouter, exported 2026-10-26 while still in progress",
+			"ran": "2026-10-26",
+			"questions": 19,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was still going, so it rests on 19 of the 900 questions, and Mistral Medium 3.5 is shown Mistral Large 4’s score until it is measured itself."
+		},
+		"belebele-cip-provisional-2026-10-26-ell": {
+			"name": "Belebele (provisional, Mistral Large 4’s run)",
+			"version": "CIP weval run of hf:facebook/belebele through OpenRouter, exported 2026-10-26 while still in progress",
+			"ran": "2026-10-26",
+			"questions": 20,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was still going, so it rests on 20 of the 900 questions, and Mistral Medium 3.5 is shown Mistral Large 4’s score until it is measured itself."
+		},
+		"belebele-cip-provisional-2026-10-26-eus": {
+			"name": "Belebele (provisional, Mistral Large 4’s run)",
+			"version": "CIP weval run of hf:facebook/belebele through OpenRouter, exported 2026-10-26 while still in progress",
+			"ran": "2026-10-26",
+			"questions": 34,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was still going, so it rests on 34 of the 900 questions, and Mistral Medium 3.5 is shown Mistral Large 4’s score until it is measured itself."
+		},
+		"belebele-cip-provisional-2026-10-26-fra": {
+			"name": "Belebele (provisional, Mistral Large 4’s run)",
+			"version": "CIP weval run of hf:facebook/belebele through OpenRouter, exported 2026-10-26 while still in progress",
+			"ran": "2026-10-26",
+			"questions": 22,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was still going, so it rests on 22 of the 900 questions, and Mistral Medium 3.5 is shown Mistral Large 4’s score until it is measured itself."
+		},
+		"belebele-cip-provisional-2026-10-26-hin": {
+			"name": "Belebele (provisional, Mistral Large 4’s run)",
+			"version": "CIP weval run of hf:facebook/belebele through OpenRouter, exported 2026-10-26 while still in progress",
+			"ran": "2026-10-26",
+			"questions": 19,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was still going, so it rests on 19 of the 900 questions, and Mistral Medium 3.5 is shown Mistral Large 4’s score until it is measured itself."
+		},
+		"belebele-cip-provisional-2026-10-26-ind": {
+			"name": "Belebele (provisional, Mistral Large 4’s run)",
+			"version": "CIP weval run of hf:facebook/belebele through OpenRouter, exported 2026-10-26 while still in progress",
+			"ran": "2026-10-26",
+			"questions": 30,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was still going, so it rests on 30 of the 900 questions, and Mistral Medium 3.5 is shown Mistral Large 4’s score until it is measured itself."
+		},
+		"belebele-cip-provisional-2026-10-26-ita": {
+			"name": "Belebele (provisional, Mistral Large 4’s run)",
+			"version": "CIP weval run of hf:facebook/belebele through OpenRouter, exported 2026-10-26 while still in progress",
+			"ran": "2026-10-26",
+			"questions": 72,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was still going, so it rests on 72 of the 900 questions, and Mistral Medium 3.5 is shown Mistral Large 4’s score until it is measured itself."
+		},
+		"belebele-cip-provisional-2026-10-26-pbt": {
+			"name": "Belebele (provisional, Mistral Large 4’s run)",
+			"version": "CIP weval run of hf:facebook/belebele through OpenRouter, exported 2026-10-26 while still in progress",
+			"ran": "2026-10-26",
+			"questions": 25,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was still going, so it rests on 25 of the 900 questions, and Mistral Medium 3.5 is shown Mistral Large 4’s score until it is measured itself."
+		},
+		"belebele-cip-provisional-2026-10-26-ron": {
+			"name": "Belebele (provisional, Mistral Large 4’s run)",
+			"version": "CIP weval run of hf:facebook/belebele through OpenRouter, exported 2026-10-26 while still in progress",
+			"ran": "2026-10-26",
+			"questions": 33,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was still going, so it rests on 33 of the 900 questions, and Mistral Medium 3.5 is shown Mistral Large 4’s score until it is measured itself."
+		},
+		"belebele-cip-provisional-2026-10-26-spa": {
+			"name": "Belebele (provisional, Mistral Large 4’s run)",
+			"version": "CIP weval run of hf:facebook/belebele through OpenRouter, exported 2026-10-26 while still in progress",
+			"ran": "2026-10-26",
+			"questions": 31,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was still going, so it rests on 31 of the 900 questions, and Mistral Medium 3.5 is shown Mistral Large 4’s score until it is measured itself."
+		},
+		"belebele-cip-provisional-2026-10-26-swh": {
+			"name": "Belebele (provisional, Mistral Large 4’s run)",
+			"version": "CIP weval run of hf:facebook/belebele through OpenRouter, exported 2026-10-26 while still in progress",
+			"ran": "2026-10-26",
+			"questions": 112,
+			"chance": 0.25,
+			"url": "https://studio.weval.org/public/blueprints/family/XzPHJwka1NkEQYsW04CDw7eZzjj8N2VT",
+			"measures": "Belebele checks whether a model understands a short text in this language well enough to answer multiple-choice questions about it.",
+			"doesNotMeasure": "It doesn’t measure how well the model writes in the language, whether it gets everyday tasks right, or whether its answers are culturally appropriate or safe, which is why we also ask people who speak the language to rate answers. This score is provisional: CIP’s run was still going, so it rests on 112 of the 900 questions, and Mistral Medium 3.5 is shown Mistral Large 4’s score until it is measured itself."
+		}
+	},
+	"scores": {
+		"belebele-2026-10-16": {
+			"mistral-medium": {
+				"amh": 0.441
+			},
+			"apertus-70b": {
+				"amh": 0.566
+			}
+		},
+		"belebele-2026-10-17": {
+			"mistral-large-4": {
+				"arb": 0.937
+			},
+			"mistral-small": {
+				"arb": 0.882
+			}
+		},
+		"belebele-cip-2026-10-27-apertus-70b-arb": {
+			"apertus-70b": {
+				"arb": 0.87
+			}
+		},
+		"belebele-cip-2026-10-27-apertus-70b-ben": {
+			"apertus-70b": {
+				"ben": 0.78
+			}
+		},
+		"belebele-cip-2026-10-27-apertus-70b-cat": {
+			"apertus-70b": {
+				"cat": 0.88
+			}
+		},
+		"belebele-cip-2026-10-27-apertus-70b-cmn": {
+			"apertus-70b": {
+				"cmn": 0.88
+			}
+		},
+		"belebele-cip-2026-10-27-apertus-70b-deu": {
+			"apertus-70b": {
+				"deu": 0.9
+			}
+		},
+		"belebele-cip-2026-10-27-apertus-70b-ell": {
+			"apertus-70b": {
+				"ell": 0.9
+			}
+		},
+		"belebele-cip-2026-10-27-apertus-70b-eus": {
+			"apertus-70b": {
+				"eus": 0.8
+			}
+		},
+		"belebele-cip-2026-10-27-apertus-70b-fra": {
+			"apertus-70b": {
+				"fra": 0.91
+			}
+		},
+		"belebele-cip-2026-10-27-apertus-70b-hau": {
+			"apertus-70b": {
+				"hau": 0.48
+			}
+		},
+		"belebele-cip-2026-10-27-apertus-70b-hin": {
+			"apertus-70b": {
+				"hin": 0.78
+			}
+		},
+		"belebele-cip-2026-10-27-apertus-70b-ind": {
+			"apertus-70b": {
+				"ind": 0.88
+			}
+		},
+		"belebele-cip-2026-10-27-apertus-70b-ita": {
+			"apertus-70b": {
+				"ita": 0.88
+			}
+		},
+		"belebele-cip-2026-10-27-apertus-70b-pbt": {
+			"apertus-70b": {
+				"pbt": 0.68
+			}
+		},
+		"belebele-cip-2026-10-27-apertus-70b-pol": {
+			"apertus-70b": {
+				"pol": 0.87
+			}
+		},
+		"belebele-cip-2026-10-27-apertus-70b-por": {
+			"apertus-70b": {
+				"por": 0.89
+			}
+		},
+		"belebele-cip-2026-10-27-apertus-70b-ron": {
+			"apertus-70b": {
+				"ron": 0.88
+			}
+		},
+		"belebele-cip-2026-10-27-apertus-70b-spa": {
+			"apertus-70b": {
+				"spa": 0.88
+			}
+		},
+		"belebele-cip-2026-10-27-apertus-70b-swh": {
+			"apertus-70b": {
+				"swh": 0.77
+			}
+		},
+		"belebele-cip-2026-10-27-apertus-70b-tam": {
+			"apertus-70b": {
+				"tam": 0.75
+			}
+		},
+		"belebele-cip-2026-10-27-apertus-70b-tgl": {
+			"apertus-70b": {
+				"tgl": 0.84
+			}
+		},
+		"belebele-cip-2026-10-27-apertus-70b-ukr": {
+			"apertus-70b": {
+				"ukr": 0.87
+			}
+		},
+		"belebele-cip-2026-10-27-apertus-70b-urd": {
+			"apertus-70b": {
+				"urd": 0.76
+			}
+		},
+		"belebele-cip-2026-10-27-apertus-70b-vie": {
+			"apertus-70b": {
+				"vie": 0.84
+			}
+		},
+		"belebele-cip-2026-10-27-apertus-70b-yor": {
+			"apertus-70b": {
+				"yor": 0.41
+			}
+		},
+		"belebele-cip-2026-10-27-bielik-11b-amh": {
+			"bielik-11b": {
+				"amh": 0.32
+			}
+		},
+		"belebele-cip-2026-10-27-bielik-11b-arb": {
+			"bielik-11b": {
+				"arb": 0.78
+			}
+		},
+		"belebele-cip-2026-10-27-bielik-11b-ben": {
+			"bielik-11b": {
+				"ben": 0.46
+			}
+		},
+		"belebele-cip-2026-10-27-bielik-11b-cat": {
+			"bielik-11b": {
+				"cat": 0.88
+			}
+		},
+		"belebele-cip-2026-10-27-bielik-11b-cmn": {
+			"bielik-11b": {
+				"cmn": 0.89
+			}
+		},
+		"belebele-cip-2026-10-27-bielik-11b-deu": {
+			"bielik-11b": {
+				"deu": 0.92
+			}
+		},
+		"belebele-cip-2026-10-27-bielik-11b-ell": {
+			"bielik-11b": {
+				"ell": 0.92
+			}
+		},
+		"belebele-cip-2026-10-27-bielik-11b-eng": {
+			"bielik-11b": {
+				"eng": 0.92
+			}
+		},
+		"belebele-cip-2026-10-27-bielik-11b-eus": {
+			"bielik-11b": {
+				"eus": 0.45
+			}
+		},
+		"belebele-cip-2026-10-27-bielik-11b-fra": {
+			"bielik-11b": {
+				"fra": 0.93
+			}
+		},
+		"belebele-cip-2026-10-27-bielik-11b-hau": {
+			"bielik-11b": {
+				"hau": 0.28
+			}
+		},
+		"belebele-cip-2026-10-27-bielik-11b-hin": {
+			"bielik-11b": {
+				"hin": 0.7
+			}
+		},
+		"belebele-cip-2026-10-27-bielik-11b-ind": {
+			"bielik-11b": {
+				"ind": 0.84
+			}
+		},
+		"belebele-cip-2026-10-27-bielik-11b-ita": {
+			"bielik-11b": {
+				"ita": 0.92
+			}
+		},
+		"belebele-cip-2026-10-27-bielik-11b-pbt": {
+			"bielik-11b": {
+				"pbt": 0.32
+			}
+		},
+		"belebele-cip-2026-10-27-bielik-11b-pol": {
+			"bielik-11b": {
+				"pol": 0.9
+			}
+		},
+		"belebele-cip-2026-10-27-bielik-11b-por": {
+			"bielik-11b": {
+				"por": 0.91
+			}
+		},
+		"belebele-cip-2026-10-27-bielik-11b-ron": {
+			"bielik-11b": {
+				"ron": 0.88
+			}
+		},
+		"belebele-cip-2026-10-27-bielik-11b-spa": {
+			"bielik-11b": {
+				"spa": 0.92
+			}
+		},
+		"belebele-cip-2026-10-27-bielik-11b-swh": {
+			"bielik-11b": {
+				"swh": 0.42
+			}
+		},
+		"belebele-cip-2026-10-27-bielik-11b-tam": {
+			"bielik-11b": {
+				"tam": 0.41
+			}
+		},
+		"belebele-cip-2026-10-27-bielik-11b-tgl": {
+			"bielik-11b": {
+				"tgl": 0.69
+			}
+		},
+		"belebele-cip-2026-10-27-bielik-11b-ukr": {
+			"bielik-11b": {
+				"ukr": 0.92
+			}
+		},
+		"belebele-cip-2026-10-27-bielik-11b-urd": {
+			"bielik-11b": {
+				"urd": 0.55
+			}
+		},
+		"belebele-cip-2026-10-27-bielik-11b-vie": {
+			"bielik-11b": {
+				"vie": 0.79
+			}
+		},
+		"belebele-cip-2026-10-27-bielik-11b-yor": {
+			"bielik-11b": {
+				"yor": 0.28
+			}
+		},
+		"belebele-cip-2026-10-27-glm-5.2-amh": {
+			"glm-5.2": {
+				"amh": 0.86
+			}
+		},
+		"belebele-cip-2026-10-27-glm-5.2-arb": {
+			"glm-5.2": {
+				"arb": 0.96
+			}
+		},
+		"belebele-cip-2026-10-27-glm-5.2-ben": {
+			"glm-5.2": {
+				"ben": 0.9
+			}
+		},
+		"belebele-cip-2026-10-27-glm-5.2-cat": {
+			"glm-5.2": {
+				"cat": 0.93
+			}
+		},
+		"belebele-cip-2026-10-27-glm-5.2-cmn": {
+			"glm-5.2": {
+				"cmn": 0.92
+			}
+		},
+		"belebele-cip-2026-10-27-glm-5.2-deu": {
+			"glm-5.2": {
+				"deu": 0.92
+			}
+		},
+		"belebele-cip-2026-10-27-glm-5.2-ell": {
+			"glm-5.2": {
+				"ell": 0.89
+			}
+		},
+		"belebele-cip-2026-10-27-glm-5.2-eus": {
+			"glm-5.2": {
+				"eus": 0.92
+			}
+		},
+		"belebele-cip-2026-10-27-glm-5.2-fra": {
+			"glm-5.2": {
+				"fra": 0.92
+			}
+		},
+		"belebele-cip-2026-10-27-glm-5.2-hau": {
+			"glm-5.2": {
+				"hau": 0.86
+			}
+		},
+		"belebele-cip-2026-10-27-glm-5.2-hin": {
+			"glm-5.2": {
+				"hin": 0.9
+			}
+		},
+		"belebele-cip-2026-10-27-glm-5.2-ind": {
+			"glm-5.2": {
+				"ind": 0.89
+			}
+		},
+		"belebele-cip-2026-10-27-glm-5.2-ita": {
+			"glm-5.2": {
+				"ita": 0.89
+			}
+		},
+		"belebele-cip-2026-10-27-glm-5.2-pbt": {
+			"glm-5.2": {
+				"pbt": 0.9
+			}
+		},
+		"belebele-cip-2026-10-27-glm-5.2-pol": {
+			"glm-5.2": {
+				"pol": 0.9
+			}
+		},
+		"belebele-cip-2026-10-27-glm-5.2-por": {
+			"glm-5.2": {
+				"por": 0.9
+			}
+		},
+		"belebele-cip-2026-10-27-glm-5.2-ron": {
+			"glm-5.2": {
+				"ron": 0.91
+			}
+		},
+		"belebele-cip-2026-10-27-glm-5.2-spa": {
+			"glm-5.2": {
+				"spa": 0.91
+			}
+		},
+		"belebele-cip-2026-10-27-glm-5.2-swh": {
+			"glm-5.2": {
+				"swh": 0.9
+			}
+		},
+		"belebele-cip-2026-10-27-glm-5.2-tam": {
+			"glm-5.2": {
+				"tam": 0.85
+			}
+		},
+		"belebele-cip-2026-10-27-glm-5.2-tgl": {
+			"glm-5.2": {
+				"tgl": 0.9
+			}
+		},
+		"belebele-cip-2026-10-27-glm-5.2-ukr": {
+			"glm-5.2": {
+				"ukr": 0.94
+			}
+		},
+		"belebele-cip-2026-10-27-glm-5.2-urd": {
+			"glm-5.2": {
+				"urd": 0.91
+			}
+		},
+		"belebele-cip-2026-10-27-glm-5.2-vie": {
+			"glm-5.2": {
+				"vie": 0.87
+			}
+		},
+		"belebele-cip-2026-10-27-glm-5.2-yor": {
+			"glm-5.2": {
+				"yor": 0.71
+			}
+		},
+		"belebele-cip-2026-10-27-sea-lion-nemotron-120b-arb": {
+			"sea-lion-nemotron-120b": {
+				"arb": 0.97
+			}
+		},
+		"belebele-cip-2026-10-27-sea-lion-nemotron-120b-ben": {
+			"sea-lion-nemotron-120b": {
+				"ben": 0.78
+			}
+		},
+		"belebele-cip-2026-10-27-sea-lion-nemotron-120b-cat": {
+			"sea-lion-nemotron-120b": {
+				"cat": 0.97
+			}
+		},
+		"belebele-cip-2026-10-27-sea-lion-nemotron-120b-cmn": {
+			"sea-lion-nemotron-120b": {
+				"cmn": 0.97
+			}
+		},
+		"belebele-cip-2026-10-27-sea-lion-nemotron-120b-deu": {
+			"sea-lion-nemotron-120b": {
+				"deu": 0.96
+			}
+		},
+		"belebele-cip-2026-10-27-sea-lion-nemotron-120b-ell": {
+			"sea-lion-nemotron-120b": {
+				"ell": 0.99
+			}
+		},
+		"belebele-cip-2026-10-27-sea-lion-nemotron-120b-eus": {
+			"sea-lion-nemotron-120b": {
+				"eus": 0.27
+			}
+		},
+		"belebele-cip-2026-10-27-sea-lion-nemotron-120b-fra": {
+			"sea-lion-nemotron-120b": {
+				"fra": 0.97
+			}
+		},
+		"belebele-cip-2026-10-27-sea-lion-nemotron-120b-hin": {
+			"sea-lion-nemotron-120b": {
+				"hin": 0.93
+			}
+		},
+		"belebele-cip-2026-10-27-sea-lion-nemotron-120b-ind": {
+			"sea-lion-nemotron-120b": {
+				"ind": 0.97
+			}
+		},
+		"belebele-cip-2026-10-27-sea-lion-nemotron-120b-ita": {
+			"sea-lion-nemotron-120b": {
+				"ita": 0.98
+			}
+		},
+		"belebele-cip-2026-10-27-sea-lion-nemotron-120b-pol": {
+			"sea-lion-nemotron-120b": {
+				"pol": 0.96
+			}
+		},
+		"belebele-cip-2026-10-27-sea-lion-nemotron-120b-por": {
+			"sea-lion-nemotron-120b": {
+				"por": 0.95
+			}
+		},
+		"belebele-cip-2026-10-27-sea-lion-nemotron-120b-ron": {
+			"sea-lion-nemotron-120b": {
+				"ron": 0.98
+			}
+		},
+		"belebele-cip-2026-10-27-sea-lion-nemotron-120b-spa": {
+			"sea-lion-nemotron-120b": {
+				"spa": 0.97
+			}
+		},
+		"belebele-cip-2026-10-27-sea-lion-nemotron-120b-swh": {
+			"sea-lion-nemotron-120b": {
+				"swh": 0.94
+			}
+		},
+		"belebele-cip-2026-10-27-sea-lion-nemotron-120b-tam": {
+			"sea-lion-nemotron-120b": {
+				"tam": 0.91
+			}
+		},
+		"belebele-cip-2026-10-27-sea-lion-nemotron-120b-tgl": {
+			"sea-lion-nemotron-120b": {
+				"tgl": 0.95
+			}
+		},
+		"belebele-cip-2026-10-27-sea-lion-nemotron-120b-ukr": {
+			"sea-lion-nemotron-120b": {
+				"ukr": 0.98
+			}
+		},
+		"belebele-cip-2026-10-27-sea-lion-nemotron-120b-urd": {
+			"sea-lion-nemotron-120b": {
+				"urd": 0.91
+			}
+		},
+		"belebele-cip-2026-10-27-sea-lion-nemotron-120b-vie": {
+			"sea-lion-nemotron-120b": {
+				"vie": 0.95
+			}
+		},
+		"belebele-cip-provisional-2026-10-26-amh": {
+			"mistral-large-4": {
+				"amh": 0.71
+			}
+		},
+		"belebele-cip-provisional-2026-10-26-arb": {
+			"mistral-medium": {
+				"arb": 0.92
+			}
+		},
+		"belebele-cip-provisional-2026-10-26-ben": {
+			"mistral-large-4": {
+				"ben": 0.96
+			},
+			"mistral-medium": {
+				"ben": 0.96
+			}
+		},
+		"belebele-cip-provisional-2026-10-26-cat": {
+			"mistral-large-4": {
+				"cat": 0.94
+			},
+			"mistral-medium": {
+				"cat": 0.94
+			}
+		},
+		"belebele-cip-provisional-2026-10-26-deu": {
+			"mistral-large-4": {
+				"deu": 0.95
+			},
+			"mistral-medium": {
+				"deu": 0.95
+			}
+		},
+		"belebele-cip-provisional-2026-10-26-ell": {
+			"mistral-large-4": {
+				"ell": 0.9
+			},
+			"mistral-medium": {
+				"ell": 0.9
+			}
+		},
+		"belebele-cip-provisional-2026-10-26-eus": {
+			"mistral-large-4": {
+				"eus": 0.97
+			},
+			"mistral-medium": {
+				"eus": 0.97
+			}
+		},
+		"belebele-cip-provisional-2026-10-26-fra": {
+			"mistral-large-4": {
+				"fra": 0.95
+			},
+			"mistral-medium": {
+				"fra": 0.95
+			}
+		},
+		"belebele-cip-provisional-2026-10-26-hin": {
+			"mistral-large-4": {
+				"hin": 0.95
+			},
+			"mistral-medium": {
+				"hin": 0.95
+			}
+		},
+		"belebele-cip-provisional-2026-10-26-ind": {
+			"mistral-large-4": {
+				"ind": 0.9
+			},
+			"mistral-medium": {
+				"ind": 0.9
+			}
+		},
+		"belebele-cip-provisional-2026-10-26-ita": {
+			"mistral-large-4": {
+				"ita": 0.93
+			},
+			"mistral-medium": {
+				"ita": 0.93
+			}
+		},
+		"belebele-cip-provisional-2026-10-26-pbt": {
+			"mistral-large-4": {
+				"pbt": 0.8
+			},
+			"mistral-medium": {
+				"pbt": 0.8
+			}
+		},
+		"belebele-cip-provisional-2026-10-26-ron": {
+			"mistral-large-4": {
+				"ron": 1.0
+			},
+			"mistral-medium": {
+				"ron": 1.0
+			}
+		},
+		"belebele-cip-provisional-2026-10-26-spa": {
+			"mistral-large-4": {
+				"spa": 0.94
+			},
+			"mistral-medium": {
+				"spa": 0.94
+			}
+		},
+		"belebele-cip-provisional-2026-10-26-swh": {
+			"mistral-large-4": {
+				"swh": 0.87
+			},
+			"mistral-medium": {
+				"swh": 0.87
+			}
+		}
+	}
+}
