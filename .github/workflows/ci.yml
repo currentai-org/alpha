@@ -1,0 +1,71 @@
+# Checks every pull request and every push to main. No job reads a secret, so a pull request from a
+# fork gets the same checks as one from a branch here.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web-unit:
+    name: web unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      # The lockfile also names workspace packages this repository does not carry, so a frozen install
+      # cannot pass yet; a plain install prunes them.
+      - name: Install
+        run: pnpm install --no-frozen-lockfile
+      - name: Compile messages
+        working-directory: web
+        run: pnpm i18n:compile
+      - name: Unit tests (server, hermetic)
+        working-directory: web
+        run: pnpm test:ci:fast
+
+  agent-service:
+    name: agent-service tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: agent-service
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # The sandbox tests run the real bubblewrap binary. Ubuntu 24.04 restricts unprivileged user
+      # namespaces through AppArmor, which stops bubblewrap from bringing up loopback inside one.
+      - name: Install bubblewrap
+        run: |
+          sudo apt-get -o DPkg::Lock::Timeout=180 update
+          sudo apt-get -o DPkg::Lock::Timeout=180 install -y bubblewrap make postgresql
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.14"
+      - name: Install
+        run: make venv
+      - name: Lint
+        run: make lint
+      - name: Start Postgres for the shared task store tests
+        run: |
+          sudo service postgresql start
+          sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres'"
+          sudo -u postgres createdb agent_tasks_test
+      - name: Test
+        env:
+          AGENT_TEST_POSTGRES_URL: postgresql://postgres:postgres@localhost:5432/agent_tasks_test
+        run: make test
