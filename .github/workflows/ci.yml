@@ -58,8 +58,9 @@ jobs:
           python-version: "3.14"
       - name: Install
         run: make venv
+      # `make lint` also names eval/, which this repository does not carry.
       - name: Lint
-        run: make lint
+        run: make venv && .venv/bin/python -m ruff check api scripts
       - name: Start Postgres for the shared task store tests
         run: |
           sudo service postgresql start
