@@ -3,7 +3,7 @@ import { render, cleanup } from "vitest-browser-svelte";
 import { page } from "vitest/browser";
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 
-// CUR-996 item 3: WelcomeModal is gated on `messages.length === 0`, a condition a shared
+// WelcomeModal is gated on `messages.length === 0`, a condition a shared
 // conversation almost never meets, so it can never fire on that path. This banner is the Art. 50
 // first-interaction disclosure for shared views instead. These tests pin the two things that
 // actually matter: it renders by default, and dismissal persists across a remount in the same tab.

@@ -1,6 +1,6 @@
 import { m } from '$lib/paraglide/messages.js';
 
-// The location summary the server sends (registry.ts's LocationSummary), as the client sees it. (CUR-2930)
+// The location summary the server sends (registry.ts's LocationSummary), as the client sees it.
 export type LocationSummary = {
 	id: string;
 	kind: 'alpha' | 'hf-bucket';
@@ -13,7 +13,7 @@ export type LocationSummary = {
 
 // registry.ts's LocationsSummary. `defaultLocation` is the saved choice ("last" when never chosen);
 // `lastUsed` is where "Last used" points now; `uploadsGoTo` is where an unnamed upload goes, "ask"
-// only when there is more than one place (CUR-3077).
+// only when there is more than one place.
 export type LocationsState = {
 	locations: LocationSummary[];
 	defaultLocation: string;
@@ -24,7 +24,7 @@ export type LocationsState = {
 
 /** The default value that asks on every upload instead of naming a place. */
 export const ASK_EVERY_TIME = 'ask';
-/** The default that follows the most recent upload (CUR-3077), and the one an account starts on. */
+/** The default that follows the most recent upload, and the one an account starts on. */
 export const LAST_USED = 'last';
 export const ALPHA_LOCATION_ID = 'alpha';
 

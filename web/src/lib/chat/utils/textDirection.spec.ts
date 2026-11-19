@@ -1,9 +1,9 @@
 import { describe, expect, test } from "vitest";
 import { htmlTextDirection, textDirection } from "./textDirection";
 
-// CUR-1917. The direction comes from the majority of letters, not the first one, because answers about
+// The direction comes from the majority of letters, not the first one, because answers about
 // the product open with "AI Potluck" and the first-letter rule laid those Arabic answers left to right.
-describe("textDirection (CUR-1917)", () => {
+describe("textDirection", () => {
 	test("an Arabic question that opens with a Latin name is right to left", () => {
 		expect(textDirection("AI Potluck ما هو الذكاء الاصطناعي العام؟")).toBe("rtl");
 	});

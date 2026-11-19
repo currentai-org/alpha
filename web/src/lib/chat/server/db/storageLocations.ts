@@ -1,9 +1,9 @@
 /**
- * per-user storage location rows and the default-location choice (schema.ts's
+ * Per-user storage location rows and the default-location choice (schema.ts's
  * `storage_locations`, `storage_preferences`). Plain drizzle, same shape as localInferenceEndpoints.ts.
  *
  * Every read, update and delete scopes by `userId` in the query itself, never by id alone: the id
- * space is opaque but not secret, and this check is what keeps one account off another's location. (CUR-2930)
+ * space is opaque but not secret, and this check is what keeps one account off another's location.
  */
 import { and, eq } from "drizzle-orm";
 import { getDb } from "./client";
@@ -55,7 +55,7 @@ export async function setStorageLocationStatus(
 		.where(and(eq(storageLocations.userId, userId), eq(storageLocations.id, id)));
 }
 
-/** Replaces a location's sealed credential, after an OAuth refresh hands back new tokens (CUR-2932). */
+/** Replaces a location's sealed credential, after an OAuth refresh hands back new tokens. */
 export async function setStorageLocationCredential(userId: string, id: string, credential: string): Promise<void> {
 	await getDb()
 		.update(storageLocations)
@@ -95,7 +95,7 @@ export async function getStoragePreferences(
 	return rows[0] ?? { defaultLocation: null, lastUsedLocation: null };
 }
 
-/** Records where an upload just went, for "Last used". Leaves the chosen default alone. (CUR-3077) */
+/** Records where an upload just went, for "Last used". Leaves the chosen default alone. */
 export async function setLastUsedStorageLocation(userId: string, locationId: string): Promise<void> {
 	await getDb()
 		.insert(storagePreferences)

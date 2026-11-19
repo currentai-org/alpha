@@ -3,7 +3,7 @@
  * Plain drizzle, same shape as storageLocations.ts.
  *
  * Every read and delete scopes by `userId` in the query itself, never by id alone: the id space is
- * opaque but not secret, and this check is what keeps one account off another's server and token. (CUR-4016)
+ * opaque but not secret, and this check is what keeps one account off another's server and token.
  */
 import { and, eq } from "drizzle-orm";
 import { getDb } from "./client";

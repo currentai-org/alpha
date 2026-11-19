@@ -33,8 +33,8 @@ beforeEach(() => {
 // This route has no requireAuth check at all today (dictation never required sign-in), but
 // a Whisper call per upload was reachable with zero counter regardless — a guest always carries
 // `locals.sessionId`, so the limiter needs no auth change to key on. These tests prove it now gates
-// the route, before the fetch to the model. (CUR-832)
-describe("POST /chat/api/transcribe — rate limiting (CUR-832)", () => {
+// the route, before the fetch to the model.
+describe("POST /chat/api/transcribe — rate limiting", () => {
 	it("keys the limiter on the session id and the real client address, before the model fetch", async () => {
 		const fetchMock = vi.fn(async () => new Response(JSON.stringify({ text: "hi" }), { status: 200 }));
 		vi.stubGlobal("fetch", fetchMock);
@@ -66,8 +66,8 @@ describe("POST /chat/api/transcribe — rate limiting (CUR-832)", () => {
 });
 
 // An upstream failure's body can name the HF user who owns our token, and the client prints the message of
-// a 429. So the browser gets a fixed 502 carrying only the upstream status number (CUR-3522).
-describe("POST /chat/api/transcribe — upstream failures (CUR-3522)", () => {
+// a 429. So the browser gets a fixed 502 carrying only the upstream status number.
+describe("POST /chat/api/transcribe — upstream failures", () => {
 	async function postWithUpstream(status: number, body: string) {
 		vi.stubGlobal(
 			"fetch",

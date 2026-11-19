@@ -7,15 +7,18 @@
 //
 // A recording is keyed by the request: its path and its JSON body, with the values that change on
 // every turn of the same conversation written out (the injection fence's nonce, the prompt's date
-// line). SOL-148: a recording is looked up in this branch's scope, then develop's, in a store every run
+// line). A recording is looked up in this branch's scope, then develop's, in a store every run
 // shares (replayStore.ts), and last among the cassettes committed with the build. The two modes follow
 // VCR.py's record modes. `new_episodes`: a miss calls the live model and records it under this branch,
 // so a changed prompt costs one live call and the next run hits. `none`: a miss fails the call, which
-// is how a run proves it made no live model call at all. (SOL-92)
+// is how a run proves it made no live model call at all.
 
 import { createHash } from "node:crypto";
+import { FENCE_NONCE_SOURCE } from "$lib/chat/utils/fenceTags";
 import { logger } from "$lib/chat/server/logger";
 import { lookup, record } from "./replayStore";
+import { sameModelId } from "./servedModelPeek";
+import { liveThroughReplayLayer } from "$lib/chat/server/replayBypass";
 
 /** What a recording holds: enough of the response for customFetch and the SDK to treat it as live. */
 export type Cassette = {
@@ -28,7 +31,7 @@ export type Cassette = {
 	headers: Record<string, string>;
 	body: string;
 	recordedAt: string;
-	/** Set on a recorded 429, which is replayed only until then (replayStore.ts). (CUR-3982) */
+	/** Set on a recorded 429, which is replayed only until then (replayStore.ts). */
 	refusedUntil?: string;
 };
 
@@ -37,8 +40,8 @@ const KEPT_HEADER = /^(content-type|x-litellm-.*|x-router-.*|x-inference-provide
 
 /**
  * The HF router reports the provider that served in `x-inference-provider`, and customFetch reads a
- * turn's served model from it (endpointOai.ts). Recordings made before the header was kept replay a
- * GLM turn with no served model, so a recording from this host without it is refreshed like a stale one.
+ * turn's served model from it (endpointOai.ts). A recording from this host without the header would
+ * replay a GLM turn with no served model, so it is refreshed like a stale one.
  */
 const HF_ROUTER_HOST = "router.huggingface.co";
 const lacksProvider = (c: Cassette) =>
@@ -46,18 +49,61 @@ const lacksProvider = (c: Cassette) =>
 	c.status === 200 &&
 	!Object.keys(c.headers).some((k) => k.toLowerCase() === "x-inference-provider");
 
+/**
+ * The provider a request pins on the HF router, read from its wire id (`zai-org/GLM-5.2:featherless-ai`).
+ * The key uses the app's id (keyedBody), so moving a pin does not re-key a recording, and one made
+ * before the move replays the old provider's name. Such a recording is refreshed like a stale one,
+ * so a moved pin never shows the previous provider as "served via".
+ */
+function pinnedProvider(sentBody: string): string | undefined {
+	try {
+		const model = (JSON.parse(sentBody) as { model?: unknown }).model;
+		if (typeof model !== "string") return undefined;
+		const at = model.lastIndexOf(":");
+		return at > 0 ? model.slice(at + 1).toLowerCase() : undefined;
+	} catch {
+		return undefined;
+	}
+}
+const servedElsewhere = (c: Cassette, pin: string | undefined) => {
+	if (!pin || c.host !== HF_ROUTER_HOST || c.status !== 200) return false;
+	const served = Object.entries(c.headers).find(([k]) => k.toLowerCase() === "x-inference-provider")?.[1];
+	return Boolean(served) && served!.toLowerCase() !== pin;
+};
+
+/**
+ * The model a request asks for on the wire, without an HF `:provider` pin. A recording keeps the
+ * gateway's `x-litellm-model-group`, and a recording made when that gateway grouped the model under
+ * another name (a hash id in place of the model's name) replays that name; endpointOai.ts's
+ * substitution guard would then shed the answer, and the hit would never be recorded over. Such a
+ * recording is stale like one from another provider.
+ */
+function wireModel(sentBody: string): string | undefined {
+	try {
+		const model = (JSON.parse(sentBody) as { model?: unknown }).model;
+		return typeof model === "string" ? model.replace(/:[^/:]+$/, "") : undefined;
+	} catch {
+		return undefined;
+	}
+}
+const groupedElsewhere = (c: Cassette, model: string | undefined) => {
+	if (!model || c.status !== 200) return false;
+	const group = Object.entries(c.headers).find(([k]) => k.toLowerCase() === "x-litellm-model-group")?.[1];
+	return Boolean(group) && !sameModelId(group!, model);
+};
+
 /** Set on a replayed response, naming when the recording was made. */
 export const REPLAY_HEADER = "x-model-replay";
 
 /** Set on a mock answer: no recording matched, and no model was called. */
-const MOCK_HEADER = "x-model-mock";
+export const MOCK_HEADER = "x-model-mock";
 
 /** The text of every mock answer, so a spec or a log can tell one from a model's. */
 const MOCK_ANSWER = "[mock answer] No recording matched this request, so the scenario harness answered in place of the model.";
 
 /**
  * VCR.py's record modes, the three this needs. `all` skips the lookup and records over any match, so
- * a retry gets a fresh draw instead of the answer its first attempt failed on (SOL-166). `mock` (SOL-208)
+ * a retry gets a fresh draw instead of the answer its first attempt failed on. `mock`
  * replays a recording when one matches and otherwise answers with a mock, so a run that is not meant to
  * record never calls the live model and never fails on an upstream failure. `nearest` is
  * `new_episodes` that first tries the loose keys mock mode reads: a graded build's persona prompt
@@ -74,7 +120,7 @@ const recordsMisses = (mode: ReplayMode) => mode === "new_episodes" || mode === 
 export const REPLAY_MISS_STATUS = 599;
 
 /**
- * How long a live 429 on a miss is replayed in place of calling the model again (CUR-3982). A refusal
+ * How long a live 429 on a miss is replayed in place of calling the model again. A refusal
  * is not recorded, so with a model at its limit the same requests would miss repeatedly across
  * branches and each would go live again. Ten minutes covers a rerun of the red
  * suite; a run in the first ten minutes after the model recovers still sees the refusal.
@@ -84,15 +130,15 @@ const REFUSAL_TTL_MS = 10 * 60 * 1000;
 /** A recording larger than this is not stored; a streamed chat answer is a few tens of KB. */
 const MAX_RECORDED_BYTES = 512 * 1024;
 
-// The fence nonce native.ts and grounding.ts write around the latest message (Q_ + 8 hex).
-const FENCE_NONCE = /\bQ_[0-9a-f]{8}\b/g;
+// The fence nonce native.ts and grounding.ts write around the latest message (fenceTags.ts).
+const FENCE_NONCE = new RegExp(`\\b${FENCE_NONCE_SOURCE}\\b`, "g");
 // todayLine() in datetimeTool.ts: "Tuesday, 6 October 2026 (Asia/Seoul)". A shape we write ourselves.
 const TODAY_LINE =
 	/\b(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), \d{1,2} [A-Z][a-z]+ \d{4} \([^)]*\)/g;
 // The scaffolded prompt's bare ISO date and anything else that names the calendar day.
 const ISO_DATE = /\b20\d\d-\d\d-\d\d\b/g;
-// A `Date.now()` stamp, which about 20 scenario specs write into the prompt to keep a chat's text
-// unique on the page (SOL-181). A spec that needs a live answer says so with `@no-replay` instead.
+// A `Date.now()` stamp, which scenario specs write into the prompt to keep a chat's text unique on
+// the page. A spec that needs a live answer says so with `@no-replay` instead.
 const EPOCH_MS = /\b1\d{12}\b/g;
 
 /** The request as it is matched: the per-turn values replaced by fixed markers. */
@@ -127,7 +173,7 @@ export function requestParts(body: string): Record<string, string> {
 		system: h(byRole(["system", "developer"])),
 		users: h(byRole(["user"])),
 		replies: h(byRole(["assistant", "tool"])),
-		// One hash per reply message, so a miss names which message differed (SOL-217).
+		// One hash per reply message, so a miss names which message differed.
 		reply_each: byRole(["assistant", "tool"]).map(h).join(","),
 		tools: h(tools),
 		params: h(params),
@@ -141,7 +187,7 @@ export function requestParts(body: string): Record<string, string> {
  * `mistralai/mistral-medium-3-5` on the router), and that map is env, so a pin change would
  * re-key every Medium recording with no code change, and every PR preview built after it would answer
  * Medium with a mock. A body whose `model` is already `appModelId`, or that is not JSON, is returned as is,
- * so every recording keyed before this still matches.
+ * so its key is the same as the plain request key.
  *  @internal exported for its unit tests */
 export function keyedBody(body: string, appModelId?: string): string {
 	if (!appModelId || !body) return body;
@@ -165,7 +211,7 @@ export function replayKey(path: string, body: string): string {
  * The key with the system and developer messages left out, or null for a body that is not a chat
  * request. The persona prompt carries deployment facts (screening, account, offered models) that differ
  * between develop and a PR preview, so an exact key recorded on develop never matches on a PR, whose
- * request differs from develop's recording in `system` alone (SOL-208). Mock mode
+ * request differs from develop's recording in `system` alone. Mock mode
  * reads it after an exact miss, where the alternative is a canned answer; a live mode never does, so a
  * PR that changes the prompt still records against the model.
  *  @internal exported for its unit tests */
@@ -177,7 +223,7 @@ export function looseReplayKey(path: string, body: string): string | null {
 }
 
 /**
- * The loose key with tool rounds normalized too (SOL-217), or null for a body that is not a chat
+ * The loose key with tool rounds normalized too, or null for a body that is not a chat
  * request. Mock mode reads it after `looseReplayKey` misses. It is a second key, never a replacement:
  * it reduces `tools` to names, so it differs from `looseReplayKey` for every request that offers tools,
  * and replacing the first key with it would orphan every recording develop had made.
@@ -222,12 +268,12 @@ type LooseMessage = {
 const LOOSE_TOOL_RESULT = "[tool result]";
 
 /**
- * The conversation as the loose key sees it. A tool-using turn never matched develop's recording on a
- * PR (SOL-217): the requests differ in `replies` alone. Three parts of a
- * reply differ per run without changing what the model is asked: the provider's `tool_calls` ids, the
- * tool output (a live search returns different pages each time), and the system and developer
- * messages SOL-208 already dropped. Ids become positional `call_N` on both the call and its result,
- * so a renumbering keeps the pairing; every tool result becomes one marker.
+ * The conversation as the loose key sees it. Without this, a tool-using turn would never match
+ * develop's recording on a PR: the requests differ in `replies` alone. Three parts of a reply differ
+ * per run without changing what the model is asked: the provider's `tool_calls` ids, the tool output
+ * (a live search returns different pages each time), and the system and developer messages the loose
+ * key already drops. Ids become positional `call_N` on both the call and its result, so a
+ * renumbering keeps the pairing; every tool result becomes one marker.
  */
 function looseMessages(messages: LooseMessage[]): LooseMessage[] {
 	const ids = new Map<string, string>();
@@ -285,7 +331,7 @@ function cassetteResponse(c: Cassette): Response {
 	});
 }
 
-/** open-web search's vendor. Its calls replay like a model's, so CI stops spending credits. (SOL-219) */
+/** open-web search's vendor. Its calls replay like a model's, so CI spends no credits on them. */
 const FIRECRAWL_HOST = "api.firecrawl.dev";
 
 /**
@@ -331,7 +377,7 @@ function lastUserText(messages: unknown): string {
  * A request that forces one named tool it offers gets a mock call to that tool, so the turn
  * runs the tool (whose own vendor is mocked too, e.g. Firecrawl) and its next round, which no longer
  * forces anything, gets the mock answer. Each required string argument is the last user message; any
- * other required argument has no generic value, so such a tool gets no mock call. (CUR-4083)
+ * other required argument has no generic value, so such a tool gets no mock call.
  */
 function mockToolCall(req: MockRequest): { name: string; arguments: string } | null {
 	const choice = req.tool_choice as { type?: unknown; function?: { name?: unknown } } | undefined;
@@ -417,11 +463,11 @@ function urlOf(url: string | URL | Request): URL {
 /**
  * Whether a response body is a whole answer: a stream that reached a finish reason or `[DONE]`, or a
  * JSON body that parses. A stream the upstream closed mid-answer is neither, and is never recorded,
- * since another branch would replay it as a complete answer (SOL-180).
+ * since another branch would replay it as a complete answer.
  */
 function isFinished(text: string, contentType: string): boolean {
 	if (/event-stream/i.test(contentType)) return /"finish_reason"\s*:\s*"|data:\s*\[DONE\]/.test(text);
-	// arXiv answers Atom XML (SOL-262), which is whole when its root element has closed.
+	// arXiv answers Atom XML, which is whole when its root element has closed.
 	if (/xml/i.test(contentType)) return /<\/[A-Za-z:]+>\s*$/.test(text);
 	try {
 		JSON.parse(text);
@@ -444,9 +490,9 @@ export async function replayOrRecord(
 	log: Record<string, unknown> = {},
 	mode: ReplayMode = "new_episodes",
 	/**
-	 * A request that ran live before scenario runs replayed it (the open-web engines, the
-	 * reranker, the embedder) still runs live on a mock-mode miss, unrecorded, until develop's push run
-	 * has recorded it. A model call never does. (SOL-262)
+	 * A request that is not a model call (the open-web engines, the reranker, the embedder) still runs
+	 * live on a mock-mode miss, unrecorded, until develop's push run has recorded it. A model call never
+	 * does.
 	 */
 	{
 		liveOnMiss = false,
@@ -466,11 +512,11 @@ export async function replayOrRecord(
 	// Recordings made before appModelId are keyed on the wire id, and a mock-mode PR run never records,
 	// so each lookup also reads the wire-id key until develop's runs have re-recorded under ours.
 	const legacyBody = body === sentBody ? null : sentBody;
-	// A GET carries its request in the query string (SOL-262: the open-web engines), so it keys on that.
-	// A model call with a body keys on the path alone, as every recording made before SOL-262 did.
+	// A GET carries its request in the query string (the open-web engines), so it keys on that.
+	// A model call with a body keys on the path alone.
 	// A liveOnMiss request (embed, rerank, engines) keys on its host too: the search-intent and
-	// self-identity embedders post the same body to "/" on two hosts, and one shared recording answered
-	// both with one model's vector, so the French identity question searched the web (SOL-269).
+	// self-identity embedders post the same body to "/" on two hosts, and a shared recording would
+	// answer both with one model's vector.
 	const keyPath = (liveOnMiss ? host : "") + (body ? path : path + search);
 	const key = replayKey(keyPath, body);
 	const startedAt = Date.now();
@@ -488,19 +534,26 @@ export async function replayOrRecord(
 	}
 	// `refreshDue` marks a good recording due for a refresh, so the request goes live and
 	// records over it; one it does not mark replays. The guard's `@real-screen` leg uses it to refresh
-	// each verdict off-peak and spread out, instead of on every develop run. (SOL-267)
-	const stale = (c: Cassette | undefined) =>
-		Boolean(
-			c &&
-				!c.refusedUntil &&
-				((refreshDue && refreshDue(c.recordedAt, key)) || (recordsMisses(mode) && lacksProvider(c)))
-		);
+	// each verdict off-peak and spread out, instead of on every develop run.
+	const pin = host === HF_ROUTER_HOST ? pinnedProvider(sentBody) : undefined;
+	// A recording served by another provider than the request pins is never replayed, in any mode, so a
+	// mock run never shows "served via" a provider other than the one the call is pinned to.
+	const asked = wireModel(sentBody);
+	let pinMoved = false;
+	const stale = (c: Cassette | undefined) => {
+		if (!c || c.refusedUntil) return false;
+		if (servedElsewhere(c, pin) || groupedElsewhere(c, asked)) {
+			pinMoved = true;
+			return true;
+		}
+		return Boolean((refreshDue && refreshDue(c.recordedAt, key)) || (recordsMisses(mode) && lacksProvider(c)));
+	};
 	let staleAt: string | undefined;
 	if (found && stale(found.cassette)) {
 		staleAt = found.cassette.recordedAt;
 		found = null;
 	}
-	// A bundled good cassette outranks a refusal from the store, as every good recording does (CUR-3996).
+	// A bundled good cassette outranks a refusal from the store, as every good recording does.
 	let bundled = (found && !found.cassette.refusedUntil) || mode === "all" ? undefined : (cassettes.get(key) ?? (legacyBody ? cassettes.get(replayKey(keyPath, legacyBody)) : undefined));
 	if (bundled && stale(bundled)) {
 		staleAt ??= bundled.recordedAt;
@@ -538,9 +591,14 @@ export async function replayOrRecord(
 		} catch (err) {
 			logger.error({ ...log, key, err: String(err) }, "[replay] store unreachable or unset, treating as a miss");
 		}
+		// Only the provider and group checks: a loose hit is not due a refresh on a schedule, and mock mode never records.
+		if (near && !near.cassette.refusedUntil && (servedElsewhere(near.cassette, pin) || groupedElsewhere(near.cassette, asked))) {
+			pinMoved = true;
+			near = null;
+		}
 		if (near && !near.cassette.refusedUntil) {
 			// `parts` ties a hit to its ask, and `matched` says which loose key found it, so a
-			// spec's tool turns can be shown hitting rather than inferred from an absence of mocks. (SOL-217)
+			// spec's tool turns can be shown hitting rather than inferred from an absence of mocks.
 			const matched = loose === looseReplayKey(path, body) ? "plain" : "tool";
 			logger.info(
 				{ ...log, key, loose, matched, path, parts: requestParts(body), from: near.scope, lookupMs: Date.now() - startedAt },
@@ -548,6 +606,12 @@ export async function replayOrRecord(
 			);
 			return cassetteResponse(near.cassette);
 		}
+	}
+	if (mode === "mock" && pinMoved) {
+		// A mock answer names no provider, so a call whose recording named the wrong one goes live,
+		// unrecorded, and the footer names the provider the pin asks for.
+		logger.warn({ ...log, key, host, path, pin }, "[replay] the only recordings were served by another provider than the pin: calling live without recording it");
+		return liveThroughReplayLayer(() => live(init));
 	}
 	if (mode === "mock") {
 		const mocked = mockResponse(path, body, host);
@@ -561,7 +625,7 @@ export async function replayOrRecord(
 			{ ...log, key, host, path, lookupMs: Date.now() - startedAt },
 			"[replay] miss in mock mode: no recording yet, calling live without recording it"
 		);
-		return live(init);
+		return liveThroughReplayLayer(() => live(init));
 	}
 	if (mode === "none" || mode === "mock") {
 		logger.error({ ...log, key, path }, `[replay] miss in ${mode} mode: no recording, and this run makes no live model call`);
@@ -584,7 +648,7 @@ export async function replayOrRecord(
 	// and one after them ends the caller's half of the stream. Either way the recording half drains to
 	// the model's own end, so a spec that presses Stop still leaves a recording for the next run.
 	const signal = init?.signal ?? undefined;
-	const settled = live(signal ? { ...init, signal: undefined } : init).then((response) =>
+	const settled = liveThroughReplayLayer(() => live(signal ? { ...init, signal: undefined } : init)).then((response) =>
 		recordLive(response, { key, path, host, body, parts, mode, signal })
 	);
 	if (!signal) return settled;

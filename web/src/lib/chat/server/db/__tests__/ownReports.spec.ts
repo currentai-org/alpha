@@ -1,7 +1,7 @@
 /**
  * A visitor's own reports page. Two contracts. Each visitor sees only the reports they sent:
  * a guest by session, never a row that carries a user id, and a signed-in user by user id. And the
- * status a reporter reads is the one staff set on the admin page, which only an admin can set. (CUR-3903)
+ * status a reporter reads is the one staff set on the admin page, which only an admin can set.
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { listOwnReports, saveReport } from "$lib/chat/server/db/reports";
@@ -16,12 +16,12 @@ async function setStatusAs(locals: App.Locals, id: string, status: string) {
 	return actions.setStatus({ request, locals, cookies: { get: () => undefined } } as never);
 }
 
-/** A signed-in person holding the admin role, the only role that reads reports (CUR-3992). */
+/** A signed-in person holding the admin role, the only role that reads reports. */
 function adminLocals(): App.Locals {
 	return createTestLocals({ user: { role: "admin" } as App.Locals["user"] });
 }
 
-describe.sequential("own reports (CUR-3903)", () => {
+describe.sequential("own reports", () => {
 	afterEach(async () => {
 		await cleanupTestData();
 	});

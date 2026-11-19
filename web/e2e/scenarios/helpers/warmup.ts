@@ -1,10 +1,10 @@
 // One real, throwaway chat turn, run once in global-setup before any spec's own
 // assertions start — so a PR preview's cold start is paid for on a step with no 45s ceiling of its
-// own, not on whichever spec's turn happens to run first (CUR-1803).
+// own, not on whichever spec's turn happens to run first.
 //
 // A cheap route ping does NOT do this: pinging
 // /folkways-adapter/v1/models and /chat/api/v2/models every 60s against real chat turns showed no
-// evidence it helps (mean rose, if anything; CUR-1747) — ~90% of the wait is the upstream first-token call,
+// evidence it helps (mean rose, if anything) — ~90% of the wait is the upstream first-token call,
 // which a route ping that never reaches the model never touches. This has to be a real turn through
 // the real generation path, same shape as scripts/synthetic-turn.mjs: create a conversation
 // (anonymous, no sign-in needed), send one turn, drain the stream, delete the conversation.

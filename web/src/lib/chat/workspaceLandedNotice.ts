@@ -1,6 +1,6 @@
 // When someone's current workspace is deleted, or they are removed from it, Settings →
 // Workspace lands them in Personal with a line saying why. The line is kept for this tab so a reload
-// still shows it, and it is dropped as soon as a team workspace is current again. (CUR-3089)
+// still shows it, and it is dropped as soon as a team workspace is current again.
 const KEY = 'workspace-landed-notice';
 
 /** Remembers `notice` for this tab, or forgets it when `notice` is empty. */

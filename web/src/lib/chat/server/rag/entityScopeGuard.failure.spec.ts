@@ -23,7 +23,7 @@ function answering(text: string) {
 	};
 }
 
-describe("classifyEntityMatch records an entity-scope departure when it keeps a hit without a verdict (CUR-2123)", () => {
+describe("classifyEntityMatch records an entity-scope departure when it keeps a hit without a verdict", () => {
 	beforeEach(() => {
 		h.endpoint.mockReset();
 		vi.mocked(failOpenDeparture).mockReset();
@@ -63,5 +63,49 @@ describe("classifyEntityMatch records an entity-scope departure when it keeps a 
 		h.endpoint.mockImplementation(answering("yes"));
 		expect(await classifyEntityMatch("who runs Current AI", HIT, undefined)).toBe(true);
 		expect(vi.mocked(failOpenDeparture)).not.toHaveBeenCalled();
+	});
+
+	it("a refused call (503) is asked once more, and a real verdict on the retry counts with no departure", async () => {
+		let calls = 0;
+		h.endpoint.mockImplementation(async function* () {
+			calls++;
+			if (calls === 1) {
+				yield* [];
+				throw Object.assign(new Error("503 upstream refused"), { status: 503 });
+			}
+			yield { token: { text: "no" }, generated_text: "no" };
+		});
+		expect(await classifyEntityMatch("is Anthropic's safety team any good", HIT, undefined)).toBe(false);
+		expect(calls).toBe(2);
+		expect(vi.mocked(failOpenDeparture)).not.toHaveBeenCalled();
+	});
+
+	it("a call refused twice (429) keeps the hit and records one departure, after exactly two calls", async () => {
+		let calls = 0;
+		h.endpoint.mockImplementation(async function* () {
+			calls++;
+			yield* [];
+			throw Object.assign(new Error("429 per-user concurrency limit exceeded"), { status: 429 });
+		});
+		expect(await classifyEntityMatch("is Anthropic's safety team any good", HIT, undefined)).toBe(true);
+		expect(calls).toBe(2);
+		expect(vi.mocked(failOpenDeparture)).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(failOpenDeparture)).toHaveBeenCalledWith(
+			"entity-scope",
+			"error",
+			expect.objectContaining({ status: 429 })
+		);
+	});
+
+	it("a failure that is not a refusal (500) is not retried", async () => {
+		let calls = 0;
+		h.endpoint.mockImplementation(async function* () {
+			calls++;
+			yield* [];
+			throw Object.assign(new Error("500 upstream broke"), { status: 500 });
+		});
+		expect(await classifyEntityMatch("is Anthropic's safety team any good", HIT, undefined)).toBe(true);
+		expect(calls).toBe(1);
+		expect(vi.mocked(failOpenDeparture)).toHaveBeenCalledTimes(1);
 	});
 });

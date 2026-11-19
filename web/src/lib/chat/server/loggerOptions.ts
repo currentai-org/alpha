@@ -6,7 +6,7 @@
 // when something else is broken.
 //
 // The consumer is not hypothetical. scripts/axiom-alert.mjs:52 is the http-5xx alert, and its query is
-//   ['vercel'] | extend p = parse_json(message) | extend sc = toint(p['status_code']) | where sc >= 500
+//   ['<log dataset>'] | extend p = parse_json(message) | extend sc = toint(p['status_code']) | where sc >= 500
 // which depends on Vercel's envelope carrying our whole JSON line in `message` AND on `status_code`
 // being a flat top-level key inside it. Rename or nest either and that alert reports zero 5xx forever
 // — silently, because "no rows" and "no errors" are the same answer. p['level'] takes `info`/`warn`,
@@ -39,16 +39,16 @@ export function buildLoggerOptions({
 	dev: boolean;
 	level: string;
 	/** The deployment environment, stamped on every line as `env`. Without it the
-	 *  `aipotluck` Axiom dataset cannot tell production from preview, and every production-only (CUR-2057)
+	 *  log dataset cannot tell production from preview, and every production-only
 	 *  measurement had to join through the Vercel drain's `vercel.environment` instead. */
 	env?: string;
 	/** The commit and branch that built this deployment, stamped as `commit` and `branch`.
-	 *  Preview's background lines (warm, cron) carry no request host, so `branch` is what tells (CUR-2019)
+	 *  Preview's background lines (warm, cron) carry no request host, so `branch` is what tells
 	 *  develop's lines from a PR preview's in the Vercel drain. */
 	commit?: string;
 	branch?: string;
 	/** Which production instance (instance.ts), stamped as `instance`. Every production
-	 *  instance logs as `env=production`, `branch=main`, and some send nothing to the Vercel drain, so (CUR-3202)
+	 *  instance logs as `env=production`, `branch=main`, and some send nothing to the Vercel drain, so
 	 *  `instance` is the only way to tell their lines apart. */
 	instance?: string;
 }): LoggerOptions {
@@ -60,7 +60,7 @@ export function buildLoggerOptions({
 		// The target is an absolute path. pino resolves a bare name from its callers' files,
 		// and from 10.4.0 it reads them with `util.getCallSites()`, which skips a module vite evaluates.
 		// Under SvelteKit's dev server the callers left are kit's own files, which can't see
-		// pino-pretty, so pino threw on every route that logged. (CUR-3977)
+		// pino-pretty, so pino threw on every route that logged.
 		...(dev
 			? { transport: { target: createRequire(import.meta.url).resolve("pino-pretty"), options: { colorize: true } } }
 			: {}),
@@ -70,7 +70,7 @@ export function buildLoggerOptions({
 		formatters: {
 			// The label ("warn"), not pino's numeric level (40). Queries filter on the word.
 			level: (label) => ({ level: label }),
-			// User content and identity never leave the process; see logRedaction.ts. (CUR-1721)
+			// User content and identity never leave the process; see logRedaction.ts.
 			log: redactLogObject,
 		},
 		serializers: { err: redactingErrSerializer, error: redactingErrSerializer },

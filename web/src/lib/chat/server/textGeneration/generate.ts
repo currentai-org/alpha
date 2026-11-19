@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { config } from "$lib/chat/server/config";
 import { modelTakesImagesNow } from "$lib/chat/server/textOnly";
 import {
@@ -19,41 +22,48 @@ import { generateSummaryOfReasoning } from "./reasoning";
 import { GROUNDED_DECODING, resolveDecoding } from "./persona";
 import { DEFAULT_ANSWER_RESERVE } from "../endpoints/openai/endpointOai";
 import { evalLayers, markEvalLayerApplied } from "../evalLayers";
-import { opensReasoningUntagged } from "../harnessProfiles";
+import { opensReasoningUntagged, reasoningTokensFor } from "../harnessProfiles";
 import { stripFenceTags, stripResponseTags } from "./grounding";
 import { logger } from "../logger";
 import { unreadFilesNotice } from "../chat/unreadFilesNotice";
 import { storeChatAttachments } from "../storage/attachmentsToCustodial";
+import { region } from "$lib/server/runtimeEnv";
 
 type GenerateContext = Omit<TextGenerationContext, "messages"> & {
 	messages: EndpointMessage[];
 	unhardenedUserText?: string;
-	/** The visitor's own system text (see EndpointParameters.clientInstructions). (CUR-4088) */
+	/** The visitor's own system text (see EndpointParameters.clientInstructions). */
 	clientInstructions?: string;
-	/** Offer the native calculate tool on this turn. Decided once in index.ts, next to the (CUR-2273)
+	/** Offer the native calculate tool on this turn. Decided once in index.ts, next to the
 	 *  persona paragraph that tells the model to use it. */
 	calculateTool?: boolean;
-	/** A native turn's tools, run by the endpoint's tool loop in place of calculate alone. (CUR-2420) */
+	/** A native turn's tools, run by the endpoint's tool loop in place of calculate alone. */
 	nativeTools?: NativeToolKit;
-	/** Send no decoding overrides, so the model's own defaults apply. (CUR-2420) */
+	/** Send no decoding overrides, so the model's own defaults apply. */
 	modelDecoding?: boolean;
-	/** The person's fixed answer language, for the agent endpoint; see EndpointParameters. (CUR-3929) */
+	/** The person's fixed answer language, for the agent endpoint; see EndpointParameters. */
 	replyLanguage?: string;
 };
 
 /** The model `wrong_model_served` makes the first lane's body name, standing in for a lane
- *  that answers under the wrong badge (servedModelPeek.ts). A different maker from every (CUR-1614)
+ *  that answers under the wrong badge (servedModelPeek.ts). A different maker from every
  *  model we offer, so the badge's backup rule (identity.ts servedByBackup) applies whichever is asked. */
 const WRONG_MODEL_SUBSTITUTE = "aisingapore/Qwen-SEA-LION-v4-32B-IT";
 
-/** The layer test's max_tokens switch, set last so it holds on native turns too. (CUR-2139) */
+/** The layer test's max_tokens switch, set last so it holds on native turns too. */
 // Grounded decoding's cap was sized for an answer. A model that reasons in-band before it
 // answers spends that same budget on its reasoning and can run out before `</think>`, so its cap is
-// the answer reserve. A tuning-panel max_tokens still wins. (CUR-4241)
+// the answer reserve. A tuning-panel max_tokens still wins.
 function groundedFor(modelId: string, override?: Partial<typeof GROUNDED_DECODING>): typeof GROUNDED_DECODING {
 	const decoding = resolveDecoding(override);
-	if (override?.max_tokens !== undefined || !opensReasoningUntagged(modelId)) return decoding;
-	return { ...decoding, max_tokens: Math.max(decoding.max_tokens, DEFAULT_ANSWER_RESERVE) };
+	if (override?.max_tokens !== undefined) return decoding;
+	if (!opensReasoningUntagged(modelId) && reasoningTokensFor(modelId) === 0) return decoding;
+	return { ...decoding, max_tokens: Math.max(decoding.max_tokens, answerCapFor(modelId)) };
+}
+
+/** The answer reserve plus what this model spends reasoning, which shares the same cap. */
+function answerCapFor(modelId: string): number {
+	return DEFAULT_ANSWER_RESERVE + reasoningTokensFor(modelId);
 }
 
 function withEvalCap<T extends object>(settings: T): T | (T & { max_tokens: number }) {
@@ -136,23 +146,23 @@ async function* generateImpl(
 	}
 
 	if (faultInjection === "lane_rate_limited") {
-		// The openai SDK's RateLimitError as it reached the route on develop, status and text. (CUR-2307)
+		// The openai SDK's RateLimitError as it reaches the route, status and text.
 		throw Object.assign(new Error("429 Rate limit exceeded"), { status: 429 });
 	}
 	if (faultInjection === "lane_not_found") {
 		// The router's answer for a model entry it cannot serve, text and status as it reaches
-		// the route. (CUR-4629)
+		// the route.
 		throw Object.assign(new Error("404 litellm.NotFoundError: OpenAIException - Not Found"), { status: 404 });
 	}
 	if (faultInjection === "lane_server_error") {
-		// The openai SDK's InternalServerError text and status, which no named copy maps. (CUR-2829)
+		// The openai SDK's InternalServerError text and status, which no named copy maps.
 		throw Object.assign(new Error("500 Internal Server Error"), { status: 500 });
 	}
-	// Older exchanges the endpoint left out to fit the model's context (CUR-2893), reported once below so
+	// Older exchanges the endpoint left out to fit the model's context, reported once below so
 	// the answer can say the model did not read the whole chat. A backup lane refits and reports its own.
 	// Older pastes and attachments cut by the corpus budget count too: the model never read them either.
 	const mediaCut = preparedMedia?.olderMessagesCut ?? 0;
-	// An attached file the turn could not read is named before the answer, which never saw it. (CUR-3291)
+	// An attached file the turn could not read is named before the answer, which never saw it.
 	const unreadNotice = preparedMedia?.unreadFiles?.length ? unreadFilesNotice(preparedMedia.unreadFiles) : undefined;
 	if (unreadNotice) yield { type: MessageUpdateType.AttachmentNotice, kind: "unread", message: unreadNotice };
 	let historyLeftOut = mediaCut;
@@ -165,16 +175,16 @@ async function* generateImpl(
 		// temperature the model runs at its provider default.
 		// Merged OVER model.parameters in the endpoint, so they win regardless of env.
 		// A model-decoding turn keeps the model's sampling but not an unbounded answer. Without a
-		// cap only the repetition cut ends a runaway; the model's own max_tokens wins when it sets one. (CUR-2697)
+		// cap only the repetition cut ends a runaway; the model's own max_tokens wins when it sets one.
 		generateSettings: withEvalCap(
 			modelDecoding
 				? model.parameters.max_tokens
 					? {}
-					: { max_tokens: DEFAULT_ANSWER_RESERVE }
+					: { max_tokens: answerCapFor(model.id) }
 				: groundedFor(model.id, decodingOverride)
 		),
 		// Allow user-level override to force multimodal. The model's own field is the deployment's
-		// answer, so it is ANDed with this request's flag (CUR-2725).
+		// answer, so it is ANDed with this request's flag.
 		isMultimodal: (forceMultimodal ?? false) || modelTakesImagesNow(model),
 		conversationId: conv._id,
 		locals,
@@ -198,7 +208,9 @@ async function* generateImpl(
 		...(faultInjection === "primary_lane_hangs" ? { hangPrimaryLane: true } : {}),
 		...(faultInjection === "every_lane_hangs" ? { hangEveryLane: true } : {}),
 		...(faultInjection === "primary_lane_rate_limited" ? { rateLimitPrimaryLane: true } : {}),
+		...(faultInjection === "primary_stream_errors_once" ? { failStreamOnce: true } : {}),
 		...(faultInjection === "every_lane_rate_limited" ? { rateLimitEveryLane: true } : {}),
+		...(faultInjection === "every_lane_payment_required" ? { paymentRequiredEveryLane: true } : {}),
 		...(faultInjection === "tool_round_rate_limited" ? { rateLimitToolRound: true } : {}),
 		...(faultInjection === "tool_round_rate_limited_sustained" ? { rateLimitToolRoundSustained: true } : {}),
 		...(faultInjection === "wrong_model_served" ? { substituteServedModel: WRONG_MODEL_SUBSTITUTE } : {}),
@@ -211,7 +223,7 @@ async function* generateImpl(
 	});
 
 	// `stream_truncates_midway` lets this many answer tokens through and then fails the way a
-	// lane's socket closing mid-answer does under undici: a TypeError "terminated" out of the stream. (CUR-1614)
+	// lane's socket closing mid-answer does under undici: a TypeError "terminated" out of the stream.
 	const truncateAfterTokens = faultInjection === "stream_truncates_midway" ? 12 : Infinity;
 	let streamedTokens = 0;
 	for await (const output of stream) {
@@ -220,7 +232,7 @@ async function* generateImpl(
 			yield { type: MessageUpdateType.HistoryNotice, leftOut: historyLeftOut };
 		}
 		// The adapter is holding the model's untagged reasoning back until `</think>`. Say so,
-		// without the text, so the client opens its reasoning panel instead of a blank wait. (CUR-3942)
+		// without the text, so the client opens its reasoning panel instead of a blank wait.
 		if ("reasoningHeld" in output && output.reasoningHeld) {
 			yield {
 				type: MessageUpdateType.Reasoning,
@@ -241,7 +253,7 @@ async function* generateImpl(
 			};
 			continue;
 		}
-		// Write-permission provenance (Story B, CUR-471): the agent endpoint resolved this caller's
+		// Write-permission provenance: the agent endpoint resolved this caller's
 		// write access for the task. Forward as a WritePolicy update so the client can explain a
 		// silently-missing terminal/code_execution capability — see messageProvenance.writePolicyProvenance
 		// for why only a "deny_writes" resolution ever actually renders.
@@ -261,7 +273,7 @@ async function* generateImpl(
 			};
 			continue;
 		}
-		// Agent tool-execution provenance (Story B, CUR-601): the agent endpoint observed at least one
+		// Agent tool-execution provenance: the agent endpoint observed at least one
 		// real ACP tool run this turn. Forward as an AgentTools update so the client's grounding
 		// classifier can tell this apart from "recall" — see messageProvenance.agentToolsProvenance for
 		// why only a non-empty toolKinds ever actually renders.
@@ -275,18 +287,19 @@ async function* generateImpl(
 			continue;
 		}
 		// The agent-service task this turn submitted. Stored on the message so the run can be
-		// found again after the tab that started it is gone. (CUR-993)
+		// found again after the tab that started it is gone.
 		if ("agentRun" in output && output.agentRun) {
 			yield {
 				type: MessageUpdateType.AgentRun,
 				taskId: output.agentRun.taskId,
 				machineId: output.agentRun.machineId,
 				...(output.agentRun.closed ? { closed: true } : {}),
+				...(output.agentRun.handoff ? { handoff: true } : {}),
 			};
 			continue;
 		}
 		// A file the agent wrote, now saved with the conversation. The reference rides the
-		// message's files, so the reply shows it as a file and a reload still finds it. (CUR-4398)
+		// message's files, so the reply shows it as a file and a reload still finds it.
 		if ("agentFile" in output && output.agentFile) {
 			yield {
 				type: MessageUpdateType.File,
@@ -297,7 +310,7 @@ async function* generateImpl(
 			};
 			continue;
 		}
-		// Unrun-code provenance (CUR-1341): the agent endpoint's own unrun check fired, so the answer below
+		// Unrun-code provenance: the agent endpoint's own unrun check fired, so the answer below
 		// is predicted rather than measured. Forwarded as its own update rather than left as the prose
 		// prefix it already produces, because the reasoning panel's header has no other way to know — see
 		// MessageUnrunCodeUpdate for why the absence of agentTools cannot stand in for it.
@@ -309,7 +322,7 @@ async function* generateImpl(
 			};
 			continue;
 		}
-		// Agent confirmation gate opened (Story B, CUR-218): agent-service paused a tool call and needs a
+		// Agent confirmation gate opened: agent-service paused a tool call and needs a
 		// human answer. Forwarded so the client can render a live Allow/Deny prompt WHILE the turn is still
 		// streaming — the one update type in this file that a UI acts on mid-turn rather than after.
 		if ("agentConfirm" in output && output.agentConfirm) {
@@ -336,7 +349,7 @@ async function* generateImpl(
 			};
 			continue;
 		}
-		// Agent confirmation gate resolved (CUR-218): the pause above ended, one way or another.
+		// Agent confirmation gate resolved: the pause above ended, one way or another.
 		if ("agentConfirmResult" in output && output.agentConfirmResult) {
 			const acr = output.agentConfirmResult as {
 				confirmId: string;
@@ -352,7 +365,7 @@ async function* generateImpl(
 			continue;
 		}
 		// A native tool round is retrieving, so the live line names what is running, as the
-		// scaffolded path's search gate does. Literal markers: liveRequestLabels.spec reads them here. (CUR-2275)
+		// scaffolded path's search gate does. Literal markers: liveRequestLabels.spec reads them here.
 		if (output.toolRetrieval) {
 			yield {
 				type: MessageUpdateType.Status,
@@ -367,7 +380,7 @@ async function* generateImpl(
 			continue;
 		}
 		// A code call is waiting for a free sandbox, or has stopped waiting. The live line says so,
-		// and the route holds the turn's deadline while it does (streamUpdate.ts). (CUR-4584)
+		// and the route holds the turn's deadline while it does (streamUpdate.ts).
 		if (output.sandboxWait) {
 			yield {
 				type: MessageUpdateType.Status,
@@ -376,7 +389,7 @@ async function* generateImpl(
 			};
 			continue;
 		}
-		// The configured MCP servers' calls in this round, one update each, for the trace. (CUR-3026)
+		// The configured MCP servers' calls in this round, one update each, for the trace.
 		if (output.mcpCalls) {
 			for (const c of output.mcpCalls) {
 				yield {
@@ -392,7 +405,7 @@ async function* generateImpl(
 			continue;
 		}
 		// Code evaluated the model's calculate calls. Each expression and its result go to the
-		// UI so the reader can check the setup, not only the number. (CUR-2273)
+		// UI so the reader can check the setup, not only the number.
 		if (output.calculations) {
 			for (const c of output.calculations) {
 				yield {
@@ -406,11 +419,14 @@ async function* generateImpl(
 			continue;
 		}
 		// Sources a native tool call (web_search, search_catalog) retrieved. Each result carries
-		// the turn's set so far, so the update replaces what the message holds rather than adding to it. (CUR-2420)
+		// the turn's set so far, so the update replaces what the message holds rather than adding to it.
 		if (output.toolSources) {
-			const { webSearch, rag, searchFailed } = output.toolSources;
+			const { webSearch, rag, searchFailed, searchEmpty } = output.toolSources;
 			if (searchFailed)
 				yield { type: MessageUpdateType.SearchAttempt, grounded: false, searched: false, failed: searchFailed };
+			// A search that finished with nothing to cite: the same `searched: true` state the scaffolded
+			// turn stamps for it, so the note under the answer reads one state on both paths.
+			else if (searchEmpty) yield { type: MessageUpdateType.SearchAttempt, grounded: false, searched: true };
 			if (rag)
 				yield {
 					type: MessageUpdateType.Rag,
@@ -428,7 +444,7 @@ async function* generateImpl(
 				};
 			continue;
 		}
-		// What the tool round cost, summed into the turn's persisted timings. (CUR-2273)
+		// What the tool round cost, summed into the turn's persisted timings.
 		if (output.calculateToolMs !== undefined) {
 			if (timings) {
 				timings.calculateToolMs = (timings.calculateToolMs ?? 0) + output.calculateToolMs;
@@ -438,7 +454,7 @@ async function* generateImpl(
 			continue;
 		}
 		// The backup lane's announcement. Not `continue`d: the same chunk carries the backup's
-		// routerMetadata, handled just below. (CUR-2239)
+		// routerMetadata, handled just below.
 		if (output.failover) {
 			yield {
 				type: MessageUpdateType.Failover,
@@ -449,37 +465,49 @@ async function* generateImpl(
 			};
 		}
 		// Check if this output contains router metadata. Emit if any of:
-		// 1) route+model are present (router models),
+		// 1) a model is present, with or without a route (router models; see 3),
 		// 2) provider-only is present (non-router models exposing x-inference-provider), or
 		// 3) a served-model id is present (cross-model backup lanes seed it so provenance can name the
 		//    model that actually answered even when the host sends no provider header)
 		if ("routerMetadata" in output && output.routerMetadata) {
-			const hasRouteModel = Boolean(output.routerMetadata.route && output.routerMetadata.model);
 			const hasProviderOnly = Boolean(output.routerMetadata.provider);
 			const hasServedModel = Boolean(output.routerMetadata.model);
 			// 4) the LiteLLM backend host is present — the only signal on a HEALTHY gateway turn, and the
-			//    one that lets the served lane be asserted downstream (CUR-114/115).
+			//    one that lets the served lane be asserted downstream.
 			const hasBackend = Boolean(output.routerMetadata.backend);
-			// 5) verify_method is present (CUR-756) — presence, not truthiness: "" is a real "checked,
+			// 5) verify_method is present — presence, not truthiness: "" is a real "checked,
 			//    unverified" signal and must still trigger the yield, unlike the other fields above where
 			//    empty genuinely means "this frame says nothing about it".
 			const hasVerifyMethod = "verifyMethod" in output.routerMetadata;
-			if (hasRouteModel || hasProviderOnly || hasServedModel || hasBackend || hasVerifyMethod) {
+			// 6) the agent's opening frame, route "agent" with no model until the run's done.model names it
+			//    (AGENT_SERVICE_MODEL is unset). Without the route, a watchdog end before done.model
+			//    marks the picked model busy in the tab, though it never served the turn.
+			const hasAgentRoute = output.routerMetadata.route === "agent";
+			if (
+				hasProviderOnly ||
+				hasServedModel ||
+				hasBackend ||
+				hasVerifyMethod ||
+				hasAgentRoute
+			) {
 				// `provenance_header_stripped` drops the report, so the turn reaches the visitor
-				// with nothing saying which model served it, as on a lane that sends no provenance. (CUR-1614)
+				// with nothing saying which model served it, as on a lane that sends no provenance.
 				if (faultInjection === "provenance_header_stripped") continue;
+				// `provenance_host_stripped` keeps the served model and drops where it ran, as a
+				// lane that names its model but sends no provider or backend header.
+				const hostStripped = faultInjection === "provenance_host_stripped";
 				yield {
 					type: MessageUpdateType.RouterMetadata,
 					route: output.routerMetadata.route || "",
 					model: output.routerMetadata.model || "",
-					provider:
-						(output.routerMetadata
-							.provider as unknown as import("@huggingface/inference").InferenceProvider) ||
-						undefined,
-					backend: output.routerMetadata.backend || undefined,
+					provider: hostStripped
+						? undefined
+						: (output.routerMetadata
+								.provider as unknown as import("@huggingface/inference").InferenceProvider) || undefined,
+					backend: hostStripped ? undefined : output.routerMetadata.backend || undefined,
 					lane: output.routerMetadata.lane || undefined,
-					// Where this app server ran, for X-ray's hop list. Set by Vercel at runtime. (CUR-4580)
-					appRegion: process.env.VERCEL_REGION || undefined,
+					// Where this app server ran, for X-ray's hop list. Set by Vercel at runtime.
+					appRegion: region() || undefined,
 					...(hasVerifyMethod ? { verifyMethod: output.routerMetadata.verifyMethod } : {}),
 				};
 				continue;
@@ -596,7 +624,7 @@ async function* generateImpl(
 			// `truncated` is set by the endpoint transform on a finish_reason of "length". It rides the
 			// update rather than the text because this branch is exactly where a capped answer's last
 			// token is discarded — we `continue` without yielding it as a Stream token, so anything the
-			// transform appended to `token.text` never reaches the screening rebuild (CUR-149).
+			// transform appended to `token.text` never reaches the screening rebuild.
 			const truncated = Boolean(Reflect.get(output, "truncated"));
 			yield {
 				type: MessageUpdateType.FinalAnswer,

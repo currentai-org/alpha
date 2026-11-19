@@ -49,15 +49,15 @@ export const POST: RequestHandler = async ({ request, locals, params, getClientA
 		throw error(404, "Conversation not found");
 	}
 
-	// The same limiter as the other side routes (CUR-832). Fan-out dedupes per session only,
+	// The same limiter as the other side routes. Fan-out dedupes per session only,
 	// so without this a guest who clears the cookie between reports opens a new tracker issue and chat
-	// post each time. A 429 here saves nothing and sends nothing. (CUR-3520)
+	// post each time. A 429 here saves nothing and sends nothing.
 	await enforceRequestRateLimits({
 		userId: locals.user?._id ?? locals.sessionId,
 		clientAddress: getClientAddress(),
 	});
 
-	// Snapshot the answer into the row (CUR-997). Deleting the conversation keeps the report but
+	// Snapshot the answer into the row. Deleting the conversation keeps the report but
 	// detaches it, so this copy is the only record left of what was reported. The model is the one
 	// that actually served when the answer carries provenance, else the one the conversation asked for.
 	const reported = conv.messages.find((m) => m.id === body.messageId);
@@ -92,12 +92,12 @@ export const POST: RequestHandler = async ({ request, locals, params, getClientA
 			text: reported?.content,
 			reason: body.reason,
 			reporterId: locals.user?._id?.toString() ?? locals.sessionId,
-			// Preview plus the e2e secret only, so a spec can see a Coop refusal leave the flag intact. (CUR-2598)
+			// Preview plus the e2e secret only, so a spec can see a Coop refusal leave the flag intact.
 			injectedStatus: (await resolveFaultInjection(request)) === "coop_report_rate_limited" ? 429 : undefined,
 		})
 	);
 
-	// Chat and tracker fan-out, behind the `report-fanout` flag (CUR-997). Same best-effort shape as Coop: the
+	// Chat and tracker fan-out, behind the `report-fanout` flag. Same best-effort shape as Coop: the
 	// row is saved, fanOutReport never rejects, and it sends a link, never the answer.
 	await runInBackground(fanOutReport(saved));
 

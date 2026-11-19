@@ -2,9 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { EndpointMessage } from "../endpoints/types";
 import { ANSWER_DEFAULTS, type AnswerPreferences } from "$lib/chat/answerPreferences";
 
-// Where each answer setting lands on each prompt path, and that the defaults leave every
-// path's text as it was. The fenced user turn is read through the real hardenLastUserTurn; the
-// guards-only and native system prompts through their real renderers. (CUR-3929)
+// Where each answer setting lands on each prompt path, and that the defaults add nothing to any
+// path's text. The fenced user turn is read through the real hardenLastUserTurn, and the
+// guards-only and native system prompts through their real renderers.
 
 let lengthFirst = false;
 vi.mock("./lengthFirstBrevityGate", () => ({ lengthFirstBrevityEnabled: () => lengthFirst }));
@@ -114,7 +114,6 @@ describe("the fenced user turn (guardFor) with answer preferences", () => {
 		expect(neutral).not.toContain(PLAIN_LANGUAGE_CLAUSE);
 	});
 
-	// CUR-549
 	it("auto keeps today's bullets rule; prose and bullets replace it", async () => {
 		expect(await fencedTurn(ANSWER_DEFAULTS)).toContain(BULLETS_RULE);
 		for (const answerFormat of ["prose", "bullets"] as const) {
@@ -147,7 +146,7 @@ describe("answerShapeFor and answerVoiceFor", () => {
 		).toEqual([LENGTH_SENTENCES.short, NO_SUGGESTIONS_SENTENCE, FORMAT_SENTENCES.prose, fixedLanguageSentence("German")]);
 	});
 
-	it("the voice extras are plain language, emojis, in that order, and the receipt adds none (CUR-549)", () => {
+	it("the voice extras are plain language, emojis, in that order, and the receipt adds none", () => {
 		expect(voiceExtrasFor({ ...ANSWER_DEFAULTS, plainLanguage: true, emojis: "helpful" })).toEqual([
 			PLAIN_LANGUAGE_CLAUSE,
 			EMOJIS_HELPFUL_CLAUSE,
@@ -200,7 +199,7 @@ describe("the native system prompt with answer preferences", () => {
 		expect(out).toContain(fixedLanguageSentence("French"));
 	});
 
-	it("carries the format as shape and emojis as voice (CUR-549)", () => {
+	it("carries the format as shape and emojis as voice", () => {
 		const out = nativeSystemPrompt({
 			...native,
 			answer: { ...ANSWER_DEFAULTS, answerFormat: "bullets", emojis: "helpful", showServing: false },
@@ -212,7 +211,7 @@ describe("the native system prompt with answer preferences", () => {
 	});
 });
 
-// Plan 4.9.3 and 4.9.5: the digest is the rules of the set values, in a fixed order, one per line.
+// The digest is the rules of the set values, in a fixed order, one per line.
 describe("answerDigestFor", () => {
 	const PLAIN_TONE = `Write this answer the way a friendly colleague chats: warm, relaxed and personal, not flat like a reference page. Use contractions ("it's", "you'll"), speak to the person as "you", use everyday words, and add a friendly touch. Do not use formal phrases such as "it is important to note" or "in summary".`;
 	const PROSE = `Write this answer as prose: full sentences in paragraphs, with no bullet points, no numbered list and no headings. When the answer has steps or several items, describe them in connected sentences instead of a list. When the message asks for a list, a table or a document with sections, give that shape.`;
@@ -234,7 +233,7 @@ describe("answerDigestFor", () => {
 
 	// A feature list alone can leave the answer speaking to the reader ("our eyes", "you may
 	// register"), so the formal rule names the impersonal voice and the pronouns it replaces, plus the
-	// recall sentence of the short rule. (CUR-4287)
+	// recall sentence of the short rule.
 	it("asks formal for an impersonal voice that replaces you, we and our, and keeps what the person said earlier", () => {
 		const rule = answerDigestFor({ ...ANSWER_DEFAULTS, tone: "formal" }) ?? "";
 		expect(rule).toMatch(/\bimpersonal\b/);
@@ -245,14 +244,14 @@ describe("answerDigestFor", () => {
 		expect(rule).toMatch(/what the person told you earlier/);
 	});
 
-	// The rule's exact words, typed out so a changed rule turns this red. (CUR-4288)
+	// The rule's exact words, typed out so a changed rule turns this red.
 	it("format prose and format bullets each carry their own measured rule, and auto carries none", () => {
 		expect(answerDigestFor({ ...ANSWER_DEFAULTS, answerFormat: "prose" })).toBe(PROSE);
 		expect(answerDigestFor({ ...ANSWER_DEFAULTS, answerFormat: "bullets" })).toBe(BULLETS);
 		expect(answerDigestFor({ ...ANSWER_DEFAULTS, answerFormat: "auto" })).toBeUndefined();
 	});
 
-	// The rule's exact words, typed out so a changed rule turns this red. (CUR-4288)
+	// The rule's exact words, typed out so a changed rule turns this red.
 	it("length detailed carries its own measured rule in the length slot, and normal carries none", () => {
 		expect(answerDigestFor({ ...ANSWER_DEFAULTS, answerLength: "detailed" })).toBe(DETAILED);
 		expect(answerDigestFor({ ...ANSWER_DEFAULTS, answerLength: "normal" })).toBeUndefined();
@@ -260,7 +259,7 @@ describe("answerDigestFor", () => {
 		expect(answerDigestFor(all)).toBe([DIGEST_RULES.formal, DETAILED, DIGEST_RULES.noSuggestions, PROSE].join("\n"));
 	});
 
-	// The rule's exact words, typed out so a changed rule turns this red. (CUR-4288)
+	// The rule's exact words, typed out so a changed rule turns this red.
 	it("emojis helpful carries its own measured rule, and never carries none", () => {
 		expect(answerDigestFor({ ...ANSWER_DEFAULTS, emojis: "helpful" })).toBe(EMOJIS);
 		expect(answerDigestFor({ ...ANSWER_DEFAULTS, emojis: "never" })).toBeUndefined();

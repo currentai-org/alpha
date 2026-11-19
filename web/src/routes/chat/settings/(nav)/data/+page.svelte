@@ -11,18 +11,21 @@
 	import RiDeleteBinFill from "~icons/ri/delete-bin-fill";
 	import RiArrowRightUpLine from "~icons/ri/arrow-right-up-line";
 	import AccountUsage from "$lib/chat/components/settings/AccountUsage.svelte";
+	import SharedLinks from "$lib/chat/components/settings/SharedLinks.svelte";
 
 	// Settings → Data & privacy: where your data lives (the words come from DATA_HOME), how long it is
 	// kept, and the "Forget everything" wipe. The wipe is a page, not an account-menu row: a destructive, account-wide
 	// action reads better as a page you arrive at deliberately than as a menu row one slip away from
 	// "Log out". It opens DeleteAllConversationsModal (mounted once in ChatShell) in "data" mode: a
-	// signed-in person's data goes and their account stays (CUR-1420). Deleting the account is its own
+	// signed-in person's data goes and their account stays. Deleting the account is its own
 	// action, on the Account page.
 	const filesHost = orgs[DATA_HOME.filesHost];
 	const signedIn = $derived(Boolean(page.data.user));
+	// Layout data's `shareLinksEnabled`: signed in, share-links flag on.
+	const shareLinksOffered = $derived(page.data.shareLinksEnabled === true);
 
 	// With a bucket of their own linked, "held by Current AI" is false for that bucket's files.
-	// Read the same way the Forget everything confirm does; unavailable (flag off) reads as none. (CUR-3386)
+	// Read the same way the Forget everything confirm does; unavailable (flag off) reads as none.
 	let hasLinkedBucket = $state(false);
 	$effect(() => {
 		if (!signedIn) return;
@@ -61,7 +64,7 @@
 				</p>
 			</div>
 		</div>
-		<!-- CUR-2728: a guest has no way to upload (no attach button, and My files needs an account), so
+		<!-- a guest has no way to upload (no attach button, and My files needs an account), so
 		the line about where uploads are stored is only true once signed in. -->
 		{#if signedIn}
 			<div class="flex gap-3">
@@ -75,7 +78,11 @@
 
 	<AccountUsage />
 
-	<!-- CUR-4071: the same DangerRow in a Surface as Delete account on the Account page, so the two
+	{#if shareLinksOffered}
+		<SharedLinks />
+	{/if}
+
+	<!-- the same DangerRow in a Surface as Delete account on the Account page, so the two
 	     danger zones match in frame and button size. -->
 	<section class="flex flex-col gap-3" aria-labelledby="forget-heading">
 		<h2 id="forget-heading" class="type-label text-fg-1">{m.chat_forgetEverything()}</h2>

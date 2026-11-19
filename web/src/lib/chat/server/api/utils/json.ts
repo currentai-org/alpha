@@ -3,7 +3,7 @@ import { json as kitJson } from "@sveltejs/kit";
 import type { NoSecretFields } from "./noSecretFields";
 
 /**
- * SvelteKit's `json`, refusing a payload whose type carries a secret-named field (CUR-2643, see
+ * SvelteKit's `json`, refusing a payload whose type carries a secret-named field (see
  * noSecretFields.ts). Server code imports this one; lint refuses `json` from `@sveltejs/kit`.
  */
 export function json<T>(data: T & NoSecretFields<T>, init?: ResponseInit): Response {

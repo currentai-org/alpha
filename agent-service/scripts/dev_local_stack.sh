@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Long-running local agent-service stack, for testing the aipotluck.org chat frontend against a
+# Long-running local agent-service stack, for testing the Alpha chat frontend (web/) against a
 # REAL agent without touching prod. `make run`/`make proxy` are one-shot-per-terminal; this backgrounds
 # both under one Ctrl-C-to-stop, mirroring dogfood.py's env but never tearing down after one task.
 #
@@ -7,10 +7,10 @@
 # deployed Fly instance; this stack is two local processes on local ports that nothing prod-side reads.
 #
 # Usage:
-#   doppler run --project agent-service --config prd -- scripts/dev_local_stack.sh
+#   with the service's production environment loaded: scripts/dev_local_stack.sh
 #   PROVIDER_CSCS_TOKEN=... AGENT_ACP=1 scripts/dev_local_stack.sh   # also exercise ACP (see api/app.py _use_acp)
 #
-# Then in aipotluck.org/web/.env.local:
+# Then in web/.env.local:
 #   AGENT_SERVICE_URL=http://127.0.0.1:8731
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -19,21 +19,21 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 export PROVIDER_CSCS_TOKEN
 export PROXY_ADMIN_KEY="${PROXY_ADMIN_KEY:-devlocaladmin}"
 # Matches dogfood.py, which sets this too. It de-streams tool-call requests for endpoints that only run
-# their tool-call parser on the non-streaming path. CSCS does not need it — the deployed
+# their tool-call parser on the non-streaming path (see docs/DEV.md). CSCS does not need it — the Fly
 # gateway runs without it — so this is belt-and-braces for local runs against other upstreams.
 export PROXY_DESTREAM="${PROXY_DESTREAM:-1}"
 # proxy.py's own default upstream is the HF router, which won't serve the model named below whatever
 # credential you hand it, so the chain has to be set explicitly — dogfood.py overrides it the same way.
-# Named-provider chain rather than the legacy MODEL_UPSTREAM_* pair, matching what the deployed gateway
-# uses. MODEL_UPSTREAM_TOKEN is deliberately NOT exported: _load_providers() falls back to it only
+# Named-provider chain rather than the legacy MODEL_UPSTREAM_* pair, matching what fly/agent-proxy.toml
+# deploys. MODEL_UPSTREAM_TOKEN is deliberately NOT exported: _load_providers() falls back to it only
 # when the named chain resolves empty, which would silently serve a different model than the one below.
 export MODEL_PROVIDERS="${MODEL_PROVIDERS:-cscs}"
 export PROVIDER_CSCS_BASE="${PROVIDER_CSCS_BASE:-https://api.swissai.svc.cscs.ch/v1}"
 export AGENT_MODEL_PROXY_URL="http://127.0.0.1:8732"
-# Apertus-1.5-70B. The released weights are swiss-ai/Apertus-v1.5-70B (Apache-2.0); this
-# apertus-ai/ id is the persistent k8s deployment on CSCS, the only route serving 1.5 without an
-# expires_at (the swiss-ai/ entries are short-lived SLURM jobs). scripts/dogfood.py check_model_live()
-# fails loud if this id leaves the catalog.
+# Apertus-1.5-70B. The released weights are swiss-ai/Apertus-v1.5-70B (Apache-2.0); this apertus-ai/
+# id is a persistent k8s deployment on CSCS, the route that serves 1.5 without an expires_at. Switch
+# to the swiss-ai/ id once a durable deployment under that name exists; swiss-ai/ entries on CSCS are
+# short-lived SLURM jobs. scripts/dogfood.py check_model_live() will fail loud if this id leaves the catalog.
 export AGENT_MODEL="${AGENT_MODEL:-apertus-ai/Apertus-v1.5-70B}"   # dogfood.py MODES["apertus15"]
 export AGENT_MODEL_PROVIDER="huggingface"
 export AGENT_TOOLSETS="${AGENT_TOOLSETS:-coding}"
@@ -88,7 +88,7 @@ echo "  app  : http://127.0.0.1:8731"
 echo "  proxy: http://127.0.0.1:8732"
 echo "  model: $AGENT_MODEL  acp=$AGENT_ACP"
 echo
-echo "Point aipotluck.org/web/.env.local at:"
+echo "Point web/.env.local at:"
 echo "  AGENT_SERVICE_URL=http://127.0.0.1:8731"
 echo
 echo "Ctrl-C to stop both."

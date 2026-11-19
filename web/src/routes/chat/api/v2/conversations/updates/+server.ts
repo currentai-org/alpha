@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import type { RequestHandler } from "@sveltejs/kit";
 import { requireAuth } from "$lib/chat/server/api/utils/requireAuth";
 import { collections } from "$lib/chat/server/database";

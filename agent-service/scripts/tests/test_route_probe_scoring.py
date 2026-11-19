@@ -1,4 +1,4 @@
-"""Real pytest coverage for route_probe_scoring.py, written to give mutmut (CUR-1189) something to
+"""Real pytest coverage for route_probe_scoring.py, written to give mutmut something to
 kill — logic mutations (inverted conditionals, wrong comparisons, dropped guards) that this module's
 own type checker can't see. Pins the exact CATEGORY_THRESHOLD boundary, since that's where a `>=`->`>`
 or `>=`->`<` mutation would otherwise survive silently.
@@ -95,7 +95,7 @@ def test_all_categories_ok_vacuously_true_on_empty_input():
 
 
 def test_case_ok_counts_a_fallback_as_a_miss_even_where_direct_was_the_label():
-    """CUR-2154: a router timeout falls back to DIRECT, and a timeout must not score ok on a direct case."""
+    """A router timeout falls back to DIRECT, so without this rule a timeout would score ok on a direct case."""
     assert case_ok(want=False, got=False, source="fallback") is False
     assert case_ok(want=True, got=False, source="fallback") is False
 
@@ -109,7 +109,7 @@ def test_case_ok_is_a_label_match_for_real_verdicts():
 
 
 # The input screen refusing a probe prompt is reported as its own outcome, not as a router miss
-# and not as a crash of the run. (CUR-2154)
+# and not as a crash of the run.
 BLOCK_BODY = '{"detail":"blocked by moderation (input): block:chat-block-fraud"}'
 
 

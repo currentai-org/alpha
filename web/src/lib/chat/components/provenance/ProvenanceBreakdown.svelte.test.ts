@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { catalog, orgs } from '$lib/chat/routing/catalog';
 
 // For a model its maker also runs (Mistral Large 3 on Mistral AI), the host row repeated the
-// maker's blurb word for word under "Where it runs". (CUR-3317)
+// maker's blurb word for word under "Where it runs".
 describe('the provenance breakdown', () => {
 	it('does not repeat the maker’s blurb on the host row when the maker runs its own model', async () => {
 		const model = catalog.find((m) => m.provider && m.provider === m.maker)!;
@@ -21,7 +21,7 @@ describe('the provenance breakdown', () => {
 	});
 
 	// An answer's "Where it ran" comes from its routing record. The catalogue's host is a
-	// forecast, and a direct lane or a fallback can serve the turn somewhere else. (CUR-3562)
+	// forecast, and a direct lane or a fallback can serve the turn somewhere else.
 	it('says where an answer ran was not recorded, rather than naming the catalogue’s host', async () => {
 		const model = catalog.find((m) => m.provider && m.provider !== m.maker)!;
 		const { container } = await render(ProvenanceBreakdown, { model, mode: 'answer' });

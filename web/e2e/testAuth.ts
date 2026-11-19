@@ -1,5 +1,5 @@
 // A test-only Better Auth instance, so a spec that needs a signed-in person can have one
-// without walking the email-code sign-in screen (CUR-2184). Better Auth's own guidance for its test-utils plugin
+// without walking the email-code sign-in screen. Better Auth's own guidance for its test-utils plugin
 // (https://www.better-auth.com/docs/plugins/test-utils): keep `testUtils()` in a separate test-only
 // instance and never in the production config. Nothing under src/ imports this file.
 //

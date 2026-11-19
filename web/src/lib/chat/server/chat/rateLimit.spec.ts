@@ -34,7 +34,7 @@ vi.mock("$lib/chat/server/logger.js", () => ({
 }));
 // enforceRequestRateLimits must ALERT on a trip, not just 429 it — mocked here (not the real
 // DB-backed module) so these tests assert the call site, matching alerting.spec.ts's own thorough
-// coverage of recordRateLimitTrip's actual fire/debounce logic rather than duplicating it. (CUR-1134)
+// coverage of recordRateLimitTrip's actual fire/debounce logic rather than duplicating it.
 vi.mock("$lib/chat/server/alerting", () => ({ recordRateLimitTrip }));
 
 import { chargeScreeningCost, enforceRequestRateLimits } from "./rateLimit";
@@ -62,8 +62,8 @@ describe("enforceRequestRateLimits", () => {
 		expect(recordRateLimitTrip).not.toHaveBeenCalled(); // no trip, nothing to alert on
 	});
 
-	// A 429 with no alert is the exact gap this ticket closes — pin the call site directly,
-	// not just that recordRateLimitTrip itself works (alerting.spec.ts already covers that in full). (CUR-1134)
+	// A 429 with no alert would go unnoticed, so pin the call site directly,
+	// not just that recordRateLimitTrip itself works (alerting.spec.ts already covers that in full).
 	it("throws 429 AND records the trip when the per-session count exceeds the limit", async () => {
 		countDocuments.mockResolvedValue(6); // 6 > 5
 		await expect(enforceRequestRateLimits(OPTS)).rejects.toMatchObject({ status: 429 });
@@ -71,7 +71,7 @@ describe("enforceRequestRateLimits", () => {
 		expect(recordRateLimitTrip.mock.calls[0][0]).toContain("session");
 	});
 
-	// The session_rate_limit_low fault's override replaces both the limit and the window. (CUR-2804)
+	// The session_rate_limit_low fault's override replaces both the limit and the window.
 	it("with a per-session override, refuses past its limit and records events for its window, not a minute", async () => {
 		countDocuments.mockResolvedValue(2); // 2 > 1, though 2 ≤ messagesPerMinute's 5
 		const before = Date.now();
@@ -83,7 +83,7 @@ describe("enforceRequestRateLimits", () => {
 		expect(expiresAt.getTime() - createdAt.getTime()).toBeLessThan(6_000);
 	});
 
-	it("with a per-session override, counts only after this send's own row has landed, so a limit of one refuses the second send every time (CUR-2804)", async () => {
+	it("with a per-session override, counts only after this send's own row has landed, so a limit of one refuses the second send every time", async () => {
 		let stored = 1; // the first send's row
 		let land: () => void = () => {};
 		insertOne.mockImplementation(
@@ -99,8 +99,8 @@ describe("enforceRequestRateLimits", () => {
 
 	// Under the session_rate_limit_low override (one send per 30 s), a second send is refused with the
 	// wait left on the first send's row, so the edit box can count it down. This covers the server-side
-	// refusal without a real model turn (SOL-206).
-	it("with a per-session override, the refusal says how much of the window is left (CUR-3410)", async () => {
+	// refusal without a real model turn.
+	it("with a per-session override, the refusal says how much of the window is left", async () => {
 		countDocuments.mockResolvedValue(2); // the first send's row and this one
 		// Both rows must expire before a second send fits under a limit of one. They expire sooner than a
 		// whole window, so a wait read from them (18) differs from the unreadable-wait fallback (30).
@@ -166,7 +166,7 @@ describe("enforceRequestRateLimits", () => {
 		expect(countDocuments).toHaveBeenCalledTimes(1); // per-session only, no per-IP count
 	});
 
-	// The ceiling is on unless someone turns it off, and sized for a room behind one NAT. (CUR-3191)
+	// The ceiling is on unless someone turns it off, and sized for a room behind one NAT.
 	it("enforces the per-IP ceiling by default, at 25 × the per-session rate, when no multiplier is set", async () => {
 		mockConfig.RATE_LIMIT_IP_MULTIPLIER = "";
 		countDocuments
@@ -198,8 +198,8 @@ describe("enforceRequestRateLimits", () => {
 	});
 
 	// The client holds Send only for a refusal that says how long. These mocks have no `find`,
-	// so the wait read fails, and the refusal must still carry a wait. (CUR-3410)
-	it("still says how long when the per-session wait can't be read: the whole window (CUR-3410)", async () => {
+	// so the wait read fails, and the refusal must still carry a wait.
+	it("still says how long when the per-session wait can't be read: the whole window", async () => {
 		countDocuments.mockResolvedValue(6);
 		const refusal = (await enforceRequestRateLimits(OPTS).catch((e) => e)) as {
 			body: { retryAfterSeconds?: number };
@@ -207,7 +207,7 @@ describe("enforceRequestRateLimits", () => {
 		expect(refusal.body.retryAfterSeconds).toBe(60);
 	});
 
-	it("says how long on the per-IP ceiling's refusal too, so a room at an event sees Send held (CUR-3410)", async () => {
+	it("says how long on the per-IP ceiling's refusal too, so a room at an event sees Send held", async () => {
 		mockConfig.RATE_LIMIT_IP_MULTIPLIER = "";
 		countDocuments.mockResolvedValueOnce(1).mockResolvedValueOnce(126);
 		const refusal = (await enforceRequestRateLimits(OPTS).catch((e) => e)) as {
@@ -219,7 +219,7 @@ describe("enforceRequestRateLimits", () => {
 		expect(refusal.body.retryAfterSeconds).toBe(60);
 	});
 
-	it("reads the per-IP wait from the network's own rows against the ceiling, not the session's (CUR-3410)", async () => {
+	it("reads the per-IP wait from the network's own rows against the ceiling, not the session's", async () => {
 		mockConfig.RATE_LIMIT_IP_MULTIPLIER = "2"; // ceiling = 5 * 2 = 10
 		countDocuments.mockResolvedValueOnce(1).mockResolvedValueOnce(11);
 		const now = Date.now();
@@ -247,8 +247,8 @@ describe("enforceRequestRateLimits", () => {
 	});
 });
 
-// Conversation creates had no limit at all. They count under their own event type, so a
-// create never spends the turn it precedes, and stay out of the daily cap, which counts model calls. (CUR-3529)
+// Conversation creates count under their own event type, so a
+// create never spends the turn it precedes, and stay out of the daily cap, which counts model calls.
 describe("enforceRequestRateLimits for conversation creates", () => {
 	const CREATE = { ...OPTS, event: "conversationCreate" as const };
 
@@ -277,9 +277,56 @@ describe("enforceRequestRateLimits for conversation creates", () => {
 	});
 });
 
+describe("enforceRequestRateLimits: the per-account daily turn cap", () => {
+	const chatTurnRows = () =>
+		insertOne.mock.calls.filter(([row]) => (row as { type?: string }).type === "chatTurn");
+
+	it("refuses the turn once the account has sent its day's turns, with a message the composer holds", async () => {
+		countDocuments.mockResolvedValue(3); // under the per-session 5, at the day's 3
+		const err = await enforceRequestRateLimits({ ...OPTS, dailyTurns: 3 }).catch((e) => e);
+		expect(err).toMatchObject({ status: 429 });
+		expect(err.body.message).toMatch(/today's message limit of 3 messages/);
+		expect(isRateLimitMessage(err.body.message)).toBe(true);
+		expect(recordRateLimitTrip.mock.calls[0][0]).toContain("daily-turns");
+	});
+
+	it("does not count a refused turn, so pressing Send past the cap never pushes the wait out", async () => {
+		countDocuments.mockResolvedValue(3);
+		await expect(enforceRequestRateLimits({ ...OPTS, dailyTurns: 3 })).rejects.toMatchObject({ status: 429 });
+		expect(chatTurnRows()).toHaveLength(0);
+	});
+
+	it("counts an accepted turn against the account for 24 hours", async () => {
+		countDocuments.mockResolvedValue(2);
+		await expect(enforceRequestRateLimits({ ...OPTS, dailyTurns: 3 })).resolves.toBeUndefined();
+		await vi.waitFor(() => expect(chatTurnRows()).toHaveLength(1));
+		const { userId, createdAt, expiresAt } = chatTurnRows()[0][0] as {
+			userId: string;
+			createdAt: Date;
+			expiresAt: Date;
+		};
+		expect(userId).toBe("session-1");
+		expect(expiresAt.getTime() - createdAt.getTime()).toBe(24 * 60 * 60 * 1000);
+	});
+
+	it("never counts or refuses a turn for a caller that passes no daily turns (search, speech, report)", async () => {
+		countDocuments.mockResolvedValue(5); // at the per-session limit, not over it
+		await expect(enforceRequestRateLimits(OPTS)).resolves.toBeUndefined();
+		expect(chatTurnRows()).toHaveLength(0);
+	});
+
+	it("FAILS OPEN when the account's count cannot be read: the service-wide cap is the backstop", async () => {
+		countDocuments.mockImplementation(async (q: { type?: string }) => {
+			if (q.type === "chatTurn") throw new Error("db down");
+			return 0;
+		});
+		await expect(enforceRequestRateLimits({ ...OPTS, dailyTurns: 3 })).resolves.toBeUndefined();
+	});
+});
+
 // A turn's guard screen re-reads the conversation's whole history, up to 9 chunks of 13
 // judge calls each. The turn is charged a row per chunk past its first against the same shared
-// per-minute rows, so the cost is bounded whichever server instance answers. (CUR-3532)
+// per-minute rows, so the cost is bounded whichever server instance answers.
 describe("chargeScreeningCost", () => {
 	type Row = { type: string; userId?: string; ipHash?: string };
 	let rows: Row[];

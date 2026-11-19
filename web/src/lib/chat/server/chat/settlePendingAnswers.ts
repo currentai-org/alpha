@@ -13,7 +13,7 @@ function unsavedAnswerIds(messages: Message[]): string[] {
 }
 
 /**
- * Let an earlier turn on this conversation finish saving before a new turn builds on it (CUR-2667).
+ * Let an earlier turn on this conversation finish saving before a new turn builds on it.
  *
  * @remarks
  * Every turn writes the whole `messages` array, so the last writer wins: Retry pressed right after

@@ -1,24 +1,22 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
-// The account route is signed-in-only content (CUR-580), and the server load enforces it (CUR-850):
+// The account route is signed-in-only content, and the server load enforces it:
 // a client-side check gated on the site-wide automaticLogin flag does nothing when login is merely
 // offered, not mandatory. A signed-out visitor needs a redirect rather than a rendered page whose
 // four client loads all come back unauthenticated.
 const cfg: Record<string, string> = {};
 vi.mock("$lib/chat/server/config", () => ({ config: cfg }));
-const { exportEnabled, thunderboltEnabled, nextExportAt } = vi.hoisted(() => ({
-	exportEnabled: vi.fn(() => false),
+const { thunderboltEnabled, nextExportAt } = vi.hoisted(() => ({
 	thunderboltEnabled: vi.fn(() => false),
 	nextExportAt: vi.fn(async (_id: unknown, _now?: Date, _type?: string): Promise<Date | null> => null),
 }));
 vi.mock("$lib/chat/server/dataPortability", () => ({
-	dataExportEnabled: exportEnabled,
 	thunderboltExportEnabled: thunderboltEnabled,
 	nextExportAt,
 }));
 
 // The load reads the page's four Better Auth sections server-side. Each stub resolves by
-// default; a test makes one throw the way Better Auth's APIError does, with `body.code`. (CUR-2710)
+// default; a test makes one throw the way Better Auth's APIError does, with `body.code`.
 const api = vi.hoisted(() => ({
 	listUserAccounts: vi.fn(),
 	listPasskeys: vi.fn(),
@@ -50,7 +48,6 @@ const SESSION = { session: { token: "t1" }, user: { email: "x@example.org", name
 
 beforeEach(() => {
 	for (const k of Object.keys(cfg)) delete cfg[k];
-	exportEnabled.mockReset().mockReturnValue(false);
 	thunderboltEnabled.mockReset().mockReturnValue(false);
 	nextExportAt.mockReset().mockResolvedValue(null);
 	setHeaders.mockReset();
@@ -60,7 +57,7 @@ beforeEach(() => {
 	api.getSession.mockReset().mockResolvedValue(SESSION);
 });
 
-describe("account +page.server load — the page's sections arrive with the HTML (CUR-2710)", () => {
+describe("account +page.server load — the page's sections arrive with the HTML", () => {
 	it("reads accounts, passkeys, sessions and the session with the visitor's own request headers", async () => {
 		const result = (await load(fakeEvent({ id: "user-1" }))) as { initial: unknown };
 		expect(result.initial).toEqual({
@@ -88,7 +85,7 @@ describe("account +page.server load — the page's sections arrive with the HTML
 	});
 });
 
-// The page renders on the server, and that HTML carries the visitor's session (CUR-2146).
+// The page renders on the server, and that HTML carries the visitor's session.
 describe("account +page.server load — server-rendered, never shared-cached", () => {
 	it("marks a signed-in render private and uncacheable, since it carries that visitor's session", async () => {
 		await load(fakeEvent({ id: "user-1" }));
@@ -117,7 +114,6 @@ describe("account +page.server load — signed-in-only, enforced server-side", (
 	});
 
 	it("says when the next export is possible while the last one's hour is running, so the page never links to a 429", async () => {
-		exportEnabled.mockReturnValue(true);
 		nextExportAt.mockResolvedValue(new Date("2026-09-23T05:00:00.000Z"));
 		const result = (await load(fakeEvent({ _id: "abc", id: "user-1" } as never))) as {
 			nextExportAt: string | null;
@@ -126,8 +122,7 @@ describe("account +page.server load — signed-in-only, enforced server-side", (
 		expect(nextExportAt).toHaveBeenCalledWith("abc");
 	});
 
-	it("says when the next Thunderbolt file is possible, read from its own window and not the ZIP's (CUR-2407)", async () => {
-		exportEnabled.mockReturnValue(true);
+	it("says when the next Thunderbolt file is possible, read from its own window and not the ZIP's", async () => {
 		thunderboltEnabled.mockReturnValue(true);
 		nextExportAt.mockImplementation(async (_id, _now, type) =>
 			type === "export-thunderbolt" ? new Date("2026-10-20T07:30:00.000Z") : null
@@ -138,5 +133,19 @@ describe("account +page.server load — signed-in-only, enforced server-side", (
 		};
 		expect(result.nextExportAt).toBeNull();
 		expect(result.nextThunderboltExportAt).toBe("2026-10-20T07:30:00.000Z");
+	});
+
+	it("says when the next Open WebUI file is possible, from its own window and not the ZIP's", async () => {
+		nextExportAt.mockImplementation(async (_id, _now, type) =>
+			type === "export-open-webui" ? new Date("2026-11-06T07:30:00.000Z") : null
+		);
+		const result = (await load(fakeEvent({ _id: "abc", id: "user-1" } as never))) as {
+			nextExportAt: string | null;
+			nextThunderboltExportAt: string | null;
+			nextOpenWebUiExportAt: string | null;
+		};
+		expect(result.nextExportAt).toBeNull();
+		expect(result.nextThunderboltExportAt).toBeNull();
+		expect(result.nextOpenWebUiExportAt).toBe("2026-11-06T07:30:00.000Z");
 	});
 });

@@ -4,7 +4,7 @@ import { test, expect, type Page } from './helpers/test';
 import { signInAsFreshUser } from './helpers/session';
 import { setFlagOverrides } from './helpers/flagOverride';
 
-// Connect Hugging Face (CUR-2932). Settings → Storage (its "Link your own Hugging Face bucket" section) offers a consent on the storage OAuth
+// Connect Hugging Face. Settings → Storage (its "Link your own Hugging Face bucket" section) offers a consent on the storage OAuth
 // app, separate from sign-in's app, that asks for `contribute-repos` and nothing wider.
 //
 // The consent screen itself is huggingface.co's and needs a real person's account, so the spec stops
@@ -22,7 +22,7 @@ async function openLinkSection(page: Page): Promise<void> {
 		.getByRole('link', { name: 'How much storage you use, where new files go, and linked buckets' })
 		.click({ timeout: 30_000 });
 	await expect(page.getByTestId('storage-locations')).toBeVisible({ timeout: 30_000 });
-	// Linking a bucket is its own section of Settings → Storage, in plain view (CUR-4363).
+	// Linking a bucket is its own section of Settings → Storage, in plain view.
 	await expect(page.getByTestId('storage-connect')).toBeVisible();
 }
 
@@ -57,7 +57,7 @@ test.beforeEach(async ({ context, baseURL }) => {
 });
 
 // The section reads as two titled choices, the recommended one first, with the approval and
-// token detail behind a disclosure each rather than a paragraph under every field (CUR-4659).
+// token detail behind a disclosure each rather than a paragraph under every field.
 test(
 	'Link your own bucket offers Make a new bucket (recommended) before Link a bucket you already have, with the approval and token detail one click away',
 	{ tag: ['@preview-only', '@A3', '@CUR-4659'] },
@@ -230,7 +230,7 @@ test(
 );
 
 // A name Hugging Face would refuse used to end on a bare 400 page with the name gone, and
-// `trail-` got past our check to fail at Hugging Face as "try again in a minute" (CUR-4234).
+// `trail-` got past our check to fail at Hugging Face as "try again in a minute".
 test(
 	'a bucket name Hugging Face would refuse comes back to Storage with a message saying why and the name still in the field',
 	{ tag: ['@preview-only', '@A3', '@CUR-4234'] },
@@ -257,7 +257,7 @@ test(
 	}
 );
 
-// Connect again with no name lands on the bucket already linked (CUR-3326). The callback refreshes it
+// Connect again with no name lands on the bucket already linked. The callback refreshes it
 // and adds nothing (its route spec proves the redirect), and the page has to say so rather than
 // report a new connection over an unchanged list.
 test(

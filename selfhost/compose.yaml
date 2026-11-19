@@ -1,0 +1,347 @@
+# Alpha, self-hosted: the chat app, Postgres, and one OpenAI-compatible model endpoint. No PostHog,
+# Firecrawl, E2B, Doppler or any hosted service of ours. README.md in this directory has the full guide.
+#
+#   cp .env.example .env            # then pick one of the two model blocks in it
+#   docker compose up --build                     # a hosted OpenAI-compatible provider (Mistral, ...)
+#   docker compose --profile local up --build     # a small open-weight model on CPU, no key at all
+#
+# Then open http://localhost:3000. The app reaches every model through OPENAI_BASE_URL, so any server
+# that answers GET /models and POST /chat/completions works: vLLM, Ollama, LiteLLM, a Cairn gateway.
+#
+# The web service builds web/Dockerfile from this checkout with APP_SURFACE=chat, so the chat is served
+# at the root of the host, and tags it alpha-selfhost-web. compose.release.yaml swaps it for the
+# published, signed image ghcr.io/currentai-org/alpha, built the same way, and removes the build, so a
+# local build never carries the release's name:
+#
+#   docker compose -f compose.yaml -f compose.release.yaml --profile local up
+# CI boots this file with the local profile and sends one chat turn.
+#
+# TRUSTED-LOCAL: published on 127.0.0.1 only, cookies without the Secure flag. Put a TLS proxy in front
+# and set PUBLIC_ORIGIN to its https origin before anyone else uses it.
+name: alpha
+
+services:
+  db:
+    # Docker Hub's library image through AWS's public mirror, so no anonymous pull limit stops a start.
+    image: public.ecr.aws/docker/library/postgres:17-alpine
+    environment:
+      POSTGRES_USER: alpha
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-alpha}
+      POSTGRES_DB: alpha
+    volumes: [db:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U alpha -d alpha"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  # Only with --profile local: llama.cpp's OpenAI-compatible server, downloading a GGUF from Hugging Face
+  # on first start (cached in the `models` volume, or the directory LOCAL_MODELS_DIR names). The alias is
+  # the model id /v1/models reports, so it is what MODEL_ALLOWLIST names. Pinned by digest so a new
+  # upstream build can't change what a smoke run measures; LLAMACPP_IMAGE picks another.
+  llama:
+    profiles: [local]
+    image: ${LLAMACPP_IMAGE:-ghcr.io/ggml-org/llama.cpp:server@sha256:41988e510b6fe0a0b5b9be00a9dbf91d9f0fa691da173d7b06d97d370329fe84}
+    command:
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --hf-repo
+      - ${LOCAL_MODEL_REPO:-Qwen/Qwen2.5-0.5B-Instruct-GGUF}
+      - --hf-file
+      - ${LOCAL_MODEL_FILE:-qwen2.5-0.5b-instruct-q4_k_m.gguf}
+      - --alias
+      - ${LOCAL_MODEL_ALIAS:-qwen2.5-0.5b-instruct}
+      - --ctx-size
+      - ${LOCAL_MODEL_CTX:-16384}
+      - --jinja
+    environment:
+      LLAMA_CACHE: /models
+    volumes: ["${LOCAL_MODELS_DIR:-models}:/models"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 120
+      start_period: 30s
+
+  # Only with --profile s3: SeaweedFS (Apache-2.0) as the S3-compatible store for people's files, for
+  # CUSTODIAL_STORAGE_BACKEND=s3 (block S in .env.example). Not MinIO: AGPL, and its repo is archived.
+  # Onyx runs SeaweedFS the same way in its compose file: only the S3 gateway listens beyond the
+  # container's loopback, because the filer, master and volume HTTP APIs take no credentials, and a filer
+  # rule turns fsync on for bucket writes. The S3 port is not published; the web service reaches it on
+  # the compose network. AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY from .env become its admin identity,
+  # the same pair the web service signs with. The bucket CUSTODIAL_S3_BUCKET names is created at start.
+  seaweedfs:
+    profiles: [s3]
+    image: ${SEAWEEDFS_IMAGE:-chrislusf/seaweedfs:4.50@sha256:c2658820e763294a9e9de7b36c81e59b879e3459148351aee4e31a126ca64860}
+    environment:
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      S3_BUCKET: ${CUSTODIAL_S3_BUCKET:-alpha-files}
+      # A bucket grows one volume at a time, not seven, so it writes with as little as one volume of free disk.
+      WEED_MASTER_VOLUME_GROWTH_COPY_1: "1"
+    volumes: [objects:/data]
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        /entrypoint.sh server -s3 -ip=127.0.0.1 -ip.bind=127.0.0.1 -s3.ip.bind=0.0.0.0 &
+        pid=$$!
+        trap 'kill -TERM $$pid; wait $$pid' TERM INT
+        until echo 'fs.configure -locationPrefix=/buckets/ -fsync -apply' | weed shell -master=127.0.0.1:9333 >/dev/null 2>&1; do
+          kill -0 $$pid 2>/dev/null || exit 1
+          sleep 1
+        done
+        # Already there on a restart, which the shell reports and the healthcheck ignores.
+        echo "s3.bucket.create -name $$S3_BUCKET" | weed shell -master=127.0.0.1:9333 || true
+        touch /tmp/ready
+        wait $$pid
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/ready && wget -q -O /dev/null http://127.0.0.1:8333/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+    restart: unless-stopped
+
+  # Only with --profile agent: the Docker socket proxy agent mode's sandbox creates its containers
+  # through, so no other service mounts the Docker socket. sockguard (MIT) reads each create body and
+  # refuses a host bind mount, a privileged container, host namespaces, added capabilities and devices;
+  # sockguard.yaml beside this file is the policy. Pinned by digest because the policy is only as good as
+  # the proxy enforcing it: the socket-proxy job in .github/workflows/selfhost-smoke.yml sends `-v /:/host`,
+  # `--privileged`, `--pid host` and `--network host` creates through it and fails unless all are refused.
+  # Anyone who can reach port 2375 on the compose network can create containers within that policy; it
+  # is not published.
+  # DOCKER_SOCK_GID is the numeric group of the Docker socket: `stat -c %g /var/run/docker.sock` on Linux.
+  sockguard:
+    profiles: [agent]
+    image: ${SOCKGUARD_IMAGE:-docker.io/codeswhat/sockguard:2.4.6@sha256:9a7142d9f8254e7fde7543e046eff920463f5df27b36d959915b44fb4878d06f}
+    command: ["serve", "-c", "/etc/sockguard/sockguard.yaml"]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    group_add: ["${DOCKER_SOCK_GID:-999}"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./sockguard.yaml:/etc/sockguard/sockguard.yaml:ro
+    environment:
+      # Plain TCP on the compose network, never published; both acknowledgements are sockguard's own.
+      SOCKGUARD_LISTEN_ADDRESS: ":2375"
+      SOCKGUARD_LISTEN_INSECURE_ALLOW_PLAIN_TCP: "true"
+      SOCKGUARD_LISTEN_INSECURE_ALLOW_UNAUTHENTICATED_CLIENTS: "true"
+    healthcheck:
+      # Checks the Docker API answers through the socket and the proxy's own /health answers.
+      test: ["CMD", "/sockguard", "verify"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  # Only with --profile agent, the next three services: agent mode, which lets the model run code and write
+  # files for the people signed in to this stack. The agent runs in a hardened container of its own per
+  # conversation (agent-service/api/sandbox_docker.py), created through the sockguard service above.
+  # README.md, "Agent mode", says what that does and does not isolate. It is a demo-grade sandbox: read it
+  # before anyone else uses the stack.
+  #
+  # One image runs agent-init (which builds it), gateway and agent, and is also the image each sandbox container
+  # starts from (it carries the agent runtime, Hermes). Built here, so the sandbox image is named by tag, not digest.
+  # agent-init makes the secrets the first time the stack starts, keeps them in the agent-secrets volume
+  # and never overwrites them: a random key that signs the token web sends (agent-service accepts only a
+  # token signed with it) and a random key the agent and the gateway share. Nothing is checked in or
+  # defaulted. The token goes to the agent-token volume, the only one web reads. Delete both volumes
+  # (docker volume rm alpha_agent-secrets alpha_agent-token) to rotate everything.
+  agent-init:
+    profiles: [agent]
+    build:
+      context: ../agent-service
+      dockerfile: deploy/Dockerfile
+    image: alpha-selfhost-agent
+    entrypoint:
+      - python
+      - -c
+      - |
+        import pathlib, secrets, jwt
+        d = pathlib.Path("/secrets")
+        def keep(name):
+            p = d / name
+            if not p.exists():
+                p.write_text(secrets.token_hex(32))
+                p.chmod(0o644)
+            return p.read_text().strip()
+        key = keep("webui-secret-key")
+        keep("proxy-admin-key")
+        out = pathlib.Path("/agent-token/token")
+        out.write_text(jwt.encode({"sub": "alpha-web"}, key, algorithm="HS256"))
+        out.chmod(0o644)
+        print("agent secrets ready")
+    volumes: [agent-secrets:/secrets, agent-token:/agent-token]
+
+  # The model gateway: the agent's sandbox never holds your model key. It holds a one-task grant that this
+  # service honours and forwards to your OPENAI_BASE_URL, the same endpoint chat uses. Each sandbox's
+  # internal network gets this container joined to it, which is the only thing a sandbox can reach.
+  gateway:
+    profiles: [agent]
+    image: alpha-selfhost-agent
+    pull_policy: never   # agent-init builds it, and both wait for agent-init
+    container_name: alpha-agent-gateway
+    depends_on:
+      agent-init: { condition: service_completed_successfully }
+    entrypoint:
+      - sh
+      - -c
+      - |
+        [ -n "$$PROVIDER_STACK_BASE" ] || { echo "the agent profile needs OPENAI_BASE_URL in .env" >&2; exit 1; }
+        export PROXY_ADMIN_KEY="$$(cat /secrets/proxy-admin-key)"
+        exec python gateway_serve.py
+    environment:
+      GATEWAY_PRIVATE_HOST: 0.0.0.0
+      MODEL_PROVIDERS: stack
+      PROVIDER_STACK_BASE: ${OPENAI_BASE_URL:-}
+      PROVIDER_STACK_TOKEN: ${OPENAI_API_KEY:-none}
+    volumes: [agent-secrets:/secrets:ro]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8732/healthz').status==200 else 1)"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  # agent-service. Never published to the host: web reaches it at http://agent:8731 with the token agent-init
+  # made, and every other caller gets a 401. Nothing in this directory switches its auth off.
+  agent:
+    profiles: [agent]
+    image: alpha-selfhost-agent
+    pull_policy: never   # agent-init builds it, and both wait for agent-init
+    depends_on:
+      agent-init: { condition: service_completed_successfully }
+      gateway: { condition: service_healthy }
+      sockguard: { condition: service_healthy }
+    entrypoint:
+      - sh
+      - -c
+      - |
+        export WEBUI_SECRET_KEY="$$(cat /secrets/webui-secret-key)" PROXY_ADMIN_KEY="$$(cat /secrets/proxy-admin-key)"
+        exec /usr/local/bin/entrypoint.sh python serve.py
+    environment:
+      AGENT_SANDBOX_BACKEND: docker
+      DOCKER_HOST: tcp://sockguard:2375
+      AGENT_SANDBOX_IMAGE: alpha-selfhost-agent
+      AGENT_SANDBOX_ALLOW_TAG: "1"
+      AGENT_SANDBOX_GATEWAY_CONTAINER: alpha-agent-gateway
+      AGENT_GATEWAY_PUBLIC_URL: http://gateway:8733
+      AGENT_MODEL_PROXY_URL: http://gateway:8732
+      # The model chat answers with; set AGENT_MODEL in .env to run tasks on another model your endpoint serves.
+      AGENT_MODEL: ${AGENT_MODEL:-${LOCAL_MODEL_ALIAS:-qwen2.5-0.5b-instruct}}
+      AGENT_ACP: "1"
+      AGENT_DB_PATH: /data/tasks.db
+      # Tasks are not screened: the service's screen is chat's own endpoint, which a self-host does not point it
+      # at. Left unset the service refuses every task, so it is off here, and the README says so.
+      AGENT_MODERATION_DISABLED: "1"
+    volumes: [agent-secrets:/secrets:ro, agent-data:/data]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8731/healthz').status==200 else 1)"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 20s
+    restart: unless-stopped
+
+  web:
+    # Only ever this checkout's build. compose.release.yaml names the published image instead.
+    image: alpha-selfhost-web
+    build:
+      context: ..
+      dockerfile: web/Dockerfile
+      args:
+        APP_SURFACE: chat
+    depends_on:
+      db: { condition: service_healthy }
+      llama: { condition: service_healthy, required: false }
+      seaweedfs: { condition: service_healthy, required: false }
+      agent-init: { condition: service_completed_successfully, required: false }
+      agent: { condition: service_healthy, required: false }
+    ports: ["127.0.0.1:${PORT:-3000}:3000"]
+    # On SIGTERM the server drains open chat streams and background work within this grace period.
+    stop_grace_period: 30s
+    # Every variable in .env reaches the app, the ones not listed below too (RESEND_API_KEY, the OAuth
+    # client ids, STATUS_PAGE_URL). A key under `environment:` wins over the same key here.
+    env_file: [.env]
+    environment:
+      # development: no flag targets it and the CMS origin is not required (bootRequiredKeys in
+      # web/config/env-manifest.mjs), where production and preview are the deployments we operate.
+      DEPLOY_ENV: ${DEPLOY_ENV:-development}
+      # Required under DEPLOY_ENV=production (web/config/env-manifest.mjs). Never "hosted" here: CSAM_SCAN=off is
+      # honoured only for an edition that is set and is not hosted.
+      ALPHA_EDITION: ${ALPHA_EDITION:-selfhost}
+      # "off" stores uploads unscanned; the operator then owns detecting and reporting CSAM. See README.
+      CSAM_SCAN: ${CSAM_SCAN:-}
+      DATABASE_URL: postgres://alpha:${POSTGRES_PASSWORD:-alpha}@db:5432/alpha
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:3000}
+      ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:3000}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in .env (openssl rand -hex 32)}
+      CRON_SECRET: ${CRON_SECRET:-}
+      # The model: one OpenAI-compatible base URL and its key.
+      # Set OPENAI_BASE_URL, or Open WebUI's OPENAI_API_BASE_URLS and OPENAI_API_KEYS in its place. The app
+      # refuses to boot when neither names an endpoint, or when the Open WebUI lists differ in length.
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      OPENAI_API_BASE_URLS: ${OPENAI_API_BASE_URLS:-}
+      OPENAI_API_KEYS: ${OPENAI_API_KEYS:-}
+      # The app requires a key; a keyless server (llama.cpp, Ollama) ignores whatever is sent.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-none}
+      MODEL_ALLOWLIST: ${MODEL_ALLOWLIST:-*}
+      # The committed boot snapshot lists our hosted gateway's models, not yours.
+      MODELS_BOOT_SNAPSHOT: "off"
+      # A CPU model spends tens of seconds reading the prompt before its first token, which the 45 s
+      # default watchdog reads as a stall. 150 s sits under the app's own ceiling (155 s).
+      GENERATION_TIMEOUT_MS: ${GENERATION_TIMEOUT_MS:-150000}
+      SILENCE_TIMEOUT_MS: ${SILENCE_TIMEOUT_MS:-150000}
+      # People's files stay on this machine, in the `files` volume. CUSTODIAL_STORAGE_BACKEND has no
+      # default in the app, so this sets one; set it to s3 with CUSTODIAL_S3_* to keep them in a bucket
+      # instead (block S in .env.example, with --profile s3 for the bundled SeaweedFS). Any backend set
+      # here turns My files on by its self-host default.
+      CUSTODIAL_STORAGE_BACKEND: ${CUSTODIAL_STORAGE_BACKEND:-local}
+      CUSTODIAL_LOCAL_DIR: /data/files
+      # Plain http on localhost: a Secure cookie would never come back.
+      ALLOW_INSECURE_COOKIES: ${ALLOW_INSECURE_COOKIES:-true}
+      # Feature switches the README explains. Each is read by the app only when set (flags.ts, multimodalMode.ts,
+      # agentMode.ts, custodialCrypto.ts, moderation.ts, csamScan.ts); each reader treats an empty
+      # string as unset.
+      ALPHA_FLAGS: ${ALPHA_FLAGS:-}
+      MULTIMODAL_ENABLED: ${MULTIMODAL_ENABLED:-}
+      AGENT_SERVICE_URL: ${AGENT_SERVICE_URL:-}
+      AGENT_SERVICE_TOKEN: ${AGENT_SERVICE_TOKEN:-}
+      CUSTODIAL_SEAL_WRITES: ${CUSTODIAL_SEAL_WRITES:-}
+      CUSTODIAL_MASTER_IDENTITIES: ${CUSTODIAL_MASTER_IDENTITIES:-}
+      CUSTODIAL_MASTER_ACTIVE: ${CUSTODIAL_MASTER_ACTIVE:-}
+      GUARD_SHADOW_URL: ${GUARD_SHADOW_URL:-}
+      CSAM_SCAN_BASE_URL: ${CSAM_SCAN_BASE_URL:-}
+      CSAM_SCAN_TOKEN: ${CSAM_SCAN_TOKEN:-}
+      COOP_URL: ${COOP_URL:-}
+      COOP_API_KEY: ${COOP_API_KEY:-}
+      HF_BUCKETS_TOKEN: ${HF_BUCKETS_TOKEN:-}
+      HF_BUCKETS_REPO: ${HF_BUCKETS_REPO:-}
+      PUBLIC_APP_DESCRIPTION: ${PUBLIC_APP_DESCRIPTION:-An open AI chat, self-hosted}
+    # With --profile agent, agent-init leaves the token for agent-service in agent-token. Set it, and
+    # AGENT_SERVICE_URL, in .env instead to point web at an agent-service of your own.
+    command:
+      - sh
+      - -c
+      - |
+        # The token volume outlives the profile, so also require that an agent is running on the network now.
+        if [ -z "$$AGENT_SERVICE_TOKEN" ] && [ -s /agent-token/token ] \
+          && node -e "require('dns').lookup('agent',e=>process.exit(e?1:0))"; then
+          export AGENT_SERVICE_TOKEN="$$(cat /agent-token/token)"
+          export AGENT_SERVICE_URL="$${AGENT_SERVICE_URL:-http://agent:8731}"
+        fi
+        node scripts/db-migrate.mjs && exec node build
+    volumes: [files:/data/files, "agent-token:/agent-token:ro"]
+    restart: unless-stopped
+
+volumes:
+  db:
+  models:
+  files:
+  objects:
+  agent-secrets:
+  agent-token:
+  agent-data:

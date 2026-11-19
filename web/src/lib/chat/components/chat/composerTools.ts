@@ -6,8 +6,8 @@ import { m } from '$lib/paraglide/messages.js';
  * behaviour tested in composerTools.spec.ts, not markup read back from source.
  *
  * Contracts carried over from the tests this replaces:
- *  - read-aloud has ONE gate — `readAloudEnabled` — never a second hardcoded off switch (CUR-225);
- *  - reasoning effort writes the bindable value the parent forwards as `reasoning_effort` (CUR-680),
+ *  - read-aloud has ONE gate — `readAloudEnabled` — never a second hardcoded off switch;
+ *  - reasoning effort writes the bindable value the parent forwards as `reasoning_effort`,
  *    and is offered only when the per-model override is on.
  */
 
@@ -58,7 +58,7 @@ export interface ComposerTool {
 	/** True when the composer shows this tool's chip: it is on, and it is a tool that has one. */
 	readonly showsChip: boolean;
 	/** The chip's text: the tool and its current mode, e.g. "Read aloud · Always", so the composer says
-	 *  how the tool will behave without reopening the menu (CUR-3570). */
+	 *  how the tool will behave without reopening the menu. */
 	readonly chipLabel: string;
 }
 
@@ -72,7 +72,7 @@ const DEFINITIONS: Record<ToolId, Omit<ComposerTool, 'get' | 'set' | 'active' | 
 			{
 				value: 'off',
 				label: 'Off',
-				// Say why you'd turn it off — a few seconds faster, and the question stays away from search engines. (CUR-2030)
+				// Say why you'd turn it off — a few seconds faster, and the question stays away from search engines.
 				description: "Faster and more private — pasted links aren't opened"
 			},
 			{
@@ -161,12 +161,12 @@ export function composerTools(flags: ToolFlags, bindings: Record<ToolId, ToolBin
 }
 
 /**
- * The file types the composer offers: text always, PDF and DOCX where the server reads them (CUR-987),
+ * The file types the composer offers: text always, PDF and DOCX where the server reads them,
  * images when the model takes them. Nothing is offered where the server refuses every upload, which
  * hides the attach button, the dropzone and file paste together: with no CSAM scanner configured
- * (`attachmentsEnabled` false, CUR-2382), or where the `multimodal` flag is shut for this visitor
+ * (`attachmentsEnabled` false), or where the `multimodal` flag is shut for this visitor
  * (`uploadsEnabled` false), since parseRequest then answers any file, text included, with a 415.
- * A model's `image/*` is narrowed to the types a browser can draw (CUR-3051).
+ * A model's `image/*` is narrowed to the types a browser can draw.
  */
 export function offeredMimeTypes(opts: {
 	attachmentsEnabled: boolean;
@@ -197,7 +197,7 @@ export function mimeOffered(offered: readonly string[], mime: string): boolean {
 
 /**
  * The file picker's `accept` list: what the composer offers, plus the photo types it redraws as JPEG
- * wherever a JPEG is offered (CUR-3073). The extensions are there because some systems give a HEIC
+ * wherever a JPEG is offered. The extensions are there because some systems give a HEIC
  * no type, and the dialog would then grey it out.
  */
 export function pickerAccept(offered: readonly string[]): string[] {
@@ -210,7 +210,7 @@ let photosOnSignInAnswer: Promise<boolean> | undefined;
 /**
  * Would signing in let this guest attach photos? Asked of the server only the first time a
  * guest's photo is refused on this page, then remembered, so PostHog is asked about the guests who try
- * rather than on every page load. Any failure answers no, which shows the plain "can't be attached". (CUR-3015)
+ * rather than on every page load. Any failure answers no, which shows the plain "can't be attached".
  */
 export function photosOnSignIn(url: string, fetchFn: typeof fetch = fetch): Promise<boolean> {
 	photosOnSignInAnswer ??= fetchFn(url)
@@ -239,7 +239,7 @@ export function photoTypesHint(file: { type: string; name: string }, imagesOffer
  * What to say when a paste brought files the composer refused, so a pasted photo never
  * vanishes without a word. Undefined when nothing was refused. A photo's line follows the `multimodal`
  * flag: "sign in" only for a guest whom signing in would actually give images (`imageInputOnSignIn`),
- * since preview offers them to team accounts only. (CUR-2949)
+ * since preview offers them to team accounts only.
  */
 export function refusedPasteMessage(
 	refused: readonly { type: string; name: string }[],
@@ -248,7 +248,7 @@ export function refusedPasteMessage(
 		imageInputOnSignIn: boolean;
 		signedIn: boolean;
 		loginEnabled: boolean;
-		/** Some image type is offered, so a refused image is refused for its type (a TIFF, CUR-3051). */
+		/** Some image type is offered, so a refused image is refused for its type (a TIFF). */
 		imagesOffered?: boolean;
 		/** The model the message goes to, named in a photo refusal so it says which one can't read it. */
 		modelName?: string;
@@ -272,7 +272,7 @@ export function refusedPasteMessage(
 		else parts.push("Photos can't be attached here yet.");
 	}
 	if (other) parts.push(`This file type can't be attached here: ${fileTypeLabel(other.type, other.name)}.`);
-	// A photo this browser couldn't redraw (a HEIC outside Safari, CUR-3073) gets the types that work.
+	// A photo this browser couldn't redraw (a HEIC outside Safari) gets the types that work.
 	if (other && photoTypesHint(other, opts.imagesOffered ?? false)) parts.push(PHOTO_TYPES_THAT_ATTACH);
 	return parts.length > 0 ? parts.join(' ') : undefined;
 }

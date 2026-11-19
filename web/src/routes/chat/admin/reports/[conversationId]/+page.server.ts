@@ -7,7 +7,7 @@
 //
 // Every read carries a reason. A conversation somebody reported cites its report ids; any
 // other conversation shows nothing until the staff member types why, and the read is then recorded
-// in admin_audit and in the Axiom security dataset, which database access cannot alter. (CUR-4385)
+// in admin_audit and in the Axiom security dataset, which database access cannot alter.
 import { isAdminPermitted, adminActor } from "$lib/chat/server/adminAuth";
 import { collections } from "$lib/chat/server/database";
 import { reportIdsForConversation } from "$lib/chat/server/db/reports";

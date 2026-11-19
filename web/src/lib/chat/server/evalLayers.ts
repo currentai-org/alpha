@@ -9,7 +9,7 @@
 // Every turn that carries the cookie reports what it actually applied (`evalLayers` on the finished update, and one log
 // line), and the runner fails the sample when that differs from what it asked for. A switch that stops
 // taking effect, e.g. a tuning-panel persona with no few-shot block to remove, then shows up as an
-// error instead of reading as "this layer has no effect". (CUR-2139)
+// error instead of reading as "this layer has no effect".
 import { z } from "zod";
 import { getRequestContext } from "$lib/chat/server/requestContext";
 import { ALL_TRICKS, type HarnessTrick } from "$lib/chat/server/harnessProfiles";
@@ -24,11 +24,11 @@ const EvalLayersSchema = z
 		retrieval: z.boolean(),
 		/** The turn's max_tokens, over whatever the decoding would otherwise send. */
 		maxTokens: z.number().int().min(1).max(16384),
-		/** The honesty stream and grounded-bail regen around the answer, over the harness plan's. (CUR-2697) */
+		/** The honesty stream and grounded-bail regen around the answer, over the harness plan's. */
 		streamGuards: z.boolean(),
-		/** false: the scaffolded turn gets the base guards (native.ts `guardsOnlyPrompt`), not the persona. (CUR-2331) */
+		/** false: the scaffolded turn gets the base guards (native.ts `guardsOnlyPrompt`), not the persona. */
 		persona: z.boolean(),
-		/** Tricks taken off this turn's model row, so each can be A/B'd on the model that carries it. (CUR-2697) */
+		/** Tricks taken off this turn's model row, so each can be A/B'd on the model that carries it. */
 		dropTricks: z.array(z.enum(ALL_TRICKS as [HarnessTrick, ...HarnessTrick[]])).min(1).max(ALL_TRICKS.length),
 	})
 	.partial()

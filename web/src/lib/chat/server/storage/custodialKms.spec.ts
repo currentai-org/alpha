@@ -1,7 +1,7 @@
 // The KMS master backend, through the crypto module's own entry points. AWS is faked at the
 // SDK's `send`, as a key store that hands out opaque handles and refuses a Decrypt whose key or
 // encryption context differs from the Encrypt's, which is the behaviour of real KMS this module
-// leans on. The age side is the real library. (CUR-4136)
+// leans on. The age side is the real library.
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { Encrypter, generateHybridIdentity, identityToRecipient } from "age-encryption";
 
@@ -9,12 +9,13 @@ const H = vi.hoisted(() => ({
 	config: {} as Record<string, string | undefined>,
 	security: vi.fn(),
 	info: vi.fn(),
+	warn: vi.fn(),
 	wrapped: new Map<string, { keyId: string; context: string; plaintext: Uint8Array }>(),
 	calls: [] as { op: "Encrypt" | "Decrypt"; keyId: string; context: Record<string, string> }[],
 	refuse: { name: null as string | null },
 	// The role each KMS call was signed with: the OIDC role's ARN, or "default chain".
 	signedAs: [] as string[],
-	// Whether the owner's key lock was held during each KMS call, and every client config. (CUR-4431)
+	// Whether the owner's key lock was held during each KMS call, and every client config.
 	lockHeld: false,
 	callsUnderLock: [] as string[],
 	clientConfigs: [] as Record<string, unknown>[],
@@ -30,7 +31,7 @@ vi.mock("@vercel/oidc-aws-credentials-provider", () => ({
 
 vi.mock("$lib/chat/server/config", () => ({ config: H.config }));
 vi.mock("$lib/chat/server/logger", () => {
-	const quiet = { info: H.info, warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+	const quiet = { info: H.info, warn: H.warn, error: vi.fn(), debug: vi.fn() };
 	return { logger: quiet, securityLogger: { ...quiet, error: H.security } };
 });
 
@@ -114,6 +115,9 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+	// Off Vercel unless a test says otherwise, whatever the runner's own env holds.
+	vi.stubEnv("VERCEL", "");
+	H.warn.mockClear();
 	for (const k of Object.keys(H.config)) delete H.config[k];
 	H.config.CUSTODIAL_MASTER_KMS_KEYS = JSON.stringify({ kms1: KMS_KEY });
 	H.config.CUSTODIAL_MASTER_ACTIVE = "kms1";
@@ -183,9 +187,21 @@ describe("a KMS master", () => {
 		const wrapped = H.signedAs.splice(0);
 		expect(wrapped.length).toBeGreaterThan(0);
 		expect(new Set(wrapped)).toEqual(new Set(["default chain"]));
+		vi.stubEnv("VERCEL", "1");
 		H.config.CUSTODIAL_KMS_ROLE_ARN = role;
 		expect(await openText(alice, await sealTo(recipient, "alice's notes"))).toBe("alice's notes");
 		expect(H.signedAs).toEqual([role]);
+	});
+
+	it("off Vercel, signs with the SDK's default chain even when CUSTODIAL_KMS_ROLE_ARN is set, and says so once", async () => {
+		H.config.CUSTODIAL_KMS_ROLE_ARN = "arn:aws:iam::111122223333:role/custodial-kms-preview";
+		H.stsConfigs.length = 0;
+		const recipient = await ownerRecipient(alice, bucket, lock);
+		expect(await openText(alice, await sealTo(recipient, "alice's notes"))).toBe("alice's notes");
+		expect(new Set(H.signedAs)).toEqual(new Set(["default chain"]));
+		expect(H.stsConfigs).toEqual([]);
+		const ignored = H.warn.mock.calls.filter(([fields]) => fields?.event === "custodial-kms-role-ignored");
+		expect(ignored).toHaveLength(1);
 	});
 
 	it("ignores a KMS entry that is not a key ARN, leaving no master to activate", () => {
@@ -201,7 +217,7 @@ it("an owner's age recipient matches the identity KMS returns", async () => {
 });
 
 // The owner lock is a Postgres advisory lock inside a transaction, and an instance has one
-// pooled connection, so a KMS call made under it stalls every other request on the instance. (CUR-4431)
+// pooled connection, so a KMS call made under it stalls every other request on the instance.
 describe("key creation and the owner lock", () => {
 	const watchedLock: OwnerLock = async (_name, fn) => {
 		H.lockHeld = true;
@@ -260,6 +276,7 @@ describe("key creation and the owner lock", () => {
 });
 
 it("gives every KMS call and its STS credentials a request timeout and at most two attempts", async () => {
+	vi.stubEnv("VERCEL", "1");
 	H.config.CUSTODIAL_KMS_ROLE_ARN = "arn:aws:iam::111122223333:role/custodial-kms-timeouts";
 	H.clientConfigs.length = 0;
 	H.stsConfigs.length = 0;

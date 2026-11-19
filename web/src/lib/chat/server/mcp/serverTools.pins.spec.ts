@@ -1,6 +1,6 @@
 // A pinned server offers only the tools whose listing still hashes to what the operator
 // approved. The listing goes through the real listServerTools; only the connection is faked, so the
-// hash is computed from exactly what a server would send. (CUR-3985)
+// hash is computed from exactly what a server would send.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const logged = vi.hoisted(() => ({ error: [] as string[], warn: [] as string[] }));

@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2018- The Hugging Face team
+SPDX-License-Identifier: Apache-2.0
+Modified by Current AI from huggingface/chat-ui.
+-->
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages.js';
 	import { base } from "$lib/chat/paths";
@@ -49,7 +54,7 @@
 		</div>
 	{/each}
 	<ul data-surface="2" class="flex flex-col divide-y divide-line-surface border border-line-2 bg-surface-2 rounded-card">
-		{#each settingsExternalLinks() as link (link.href)}
+		{#each settingsExternalLinks(page.data.statusPageUrl) as link (link.href)}
 			<li>
 				<a
 					href={link.href}

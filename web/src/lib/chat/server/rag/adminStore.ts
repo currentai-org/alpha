@@ -8,7 +8,7 @@
 // orchestrator additionally wraps this in a reject-safe withTimeout, so this store can never
 // block or break a turn.
 //
-// SERVERLESS-SAFE CACHE: Vercel instances do not share memory, so a naive
+// SERVERLESS-SAFE CACHE: Vercel instances do not share memory (see adminToken.ts), so a naive
 // per-instance TTL cache could keep serving a chunk another instance just retired. Each turn we
 // probe a cheap DB watermark and reuse the in-process chunk cache ONLY if the watermark is
 // unchanged; a retire/activate/edit thus propagates within one turn across all instances. A hard
@@ -18,10 +18,10 @@
 // makes an edit to a NON-newest active document detectable: count and max can both stay fixed, but
 // any write bumps that row's updated_at to now() (monotonic), so the sum strictly increases. This
 // relies on the writer contract that every create/edit/activate/retire/re-embed sets
-// rag_documents.updated_at = now() (Phase 2/3 write paths MUST honor this; the seed does via
-// defaultNow()).
+// rag_documents.updated_at = now() (the admin write and ingest paths MUST honor this; the seed does
+// via defaultNow()).
 //
-// WORKSPACE SCOPE (CUR-4152): `rag_documents.organization_id` NULL is the site-wide corpus; a value
+// WORKSPACE SCOPE: `rag_documents.organization_id` NULL is the site-wide corpus; a value
 // marks one workspace's own document. Every read here takes the asker's workspace and keeps
 // site-wide documents plus that workspace's, never another's, and the cache is keyed per workspace
 // so one workspace's chunks never sit in the set another turn reads. No workspace means site-wide only.
@@ -105,8 +105,8 @@ export function toCommunitySource(chunk: AdminChunk, score: number): Omit<RagSou
  *  NOT float seconds — so the sum is EXACT and order-independent: Postgres parallel aggregation can
  *  reorder a float sum and return a different value for identical data, which would spuriously bust
  *  the cache every turn. Relies on the writer contract that every create/edit/activate/retire/
- *  re-embed sets rag_documents.updated_at = now() (Phase 2/3 write paths MUST honor this; the seed
- *  does via defaultNow()). One indexed aggregate, no extra writes. */
+ *  re-embed sets rag_documents.updated_at = now() (the admin write and ingest paths MUST honor this;
+ *  the seed does via defaultNow()). One indexed aggregate, no extra writes. */
 async function probeWatermark(workspaceId: RagWorkspace): Promise<string> {
 	const rows = (await getDb().execute(sql`
 		SELECT

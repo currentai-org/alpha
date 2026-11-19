@@ -90,7 +90,7 @@ export default defineConfig(
 		}
 	},
 	{
-		// CUR-1617: type-aware checks for the probe/metric surface — a separate block because
+		// type-aware checks for the probe/metric surface — a separate block because
 		// these need real type information (tsconfig.eslint-scripts.json), which the shared block
 		// above doesn't have and shouldn't: building a full TS program is real cost, so the
 		// type-aware rules cover probe and metric code only, not the whole tree linted above.
@@ -111,7 +111,7 @@ export default defineConfig(
 		},
 		rules: {
 			// Catches `if (x)`/`x ? a : b`/`x && y`/`!x` where x's type can never be false, such as
-			// `Boolean(detect(answer))` in language-turn-probe.mjs (CUR-1617). Does NOT catch a value
+			// `Boolean(detect(answer))` in language-turn-probe.mjs. Does NOT catch a value
 			// passed as a function-call argument (Boolean(x), assert(x)); that gap is what
 			// local/no-vacuous-truthiness-assertion below is for.
 			//
@@ -123,7 +123,7 @@ export default defineConfig(
 			// `expr && expr` / `if (expr)` on a non-boolean type (a string, a number, an object)
 			// must go through an explicit conversion (`!!expr`, `expr != null`, `expr.length > 0`)
 			// instead of relying on JS's own coercion rules. Scoped here, not repo-wide: turning it
-			// on tree-wide would be a much bigger, separate lint-policy decision (CUR-1617).
+			// on tree-wide would be a much bigger, separate lint-policy decision.
 			//
 			// `warn`, not `error`, for the same reason as above: hits are almost all
 			// "any value in conditional" from untyped JSON/fetch-response handling throughout

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 /**
  * Database seam — Postgres/Neon via Drizzle, presented through the Mongo-shaped `collections` API the
  * app is built on (B1-lite migration off MongoDB). Each collection is backed by a document-store table
@@ -23,6 +26,8 @@ import type { ConfigKey } from "$lib/chat/types/ConfigKey";
 
 const text = (prop: string) => ({ prop, kind: "text" as const });
 const date = (prop: string) => ({ prop, kind: "date" as const });
+const bool = (prop: string) => ({ prop, kind: "bool" as const });
+const textArray = (prop: string) => ({ prop, kind: "textArray" as const });
 
 const base = { idProp: "id", idField: "_id", emitObjectId: true } satisfies Partial<CollectionSpec>;
 
@@ -36,6 +41,9 @@ export const collections = {
 			createdAt: date("createdAt"),
 			updatedAt: date("updatedAt"),
 			organizationId: text("organizationId"),
+			pinned: bool("pinned"),
+			archived: bool("archived"),
+			tags: textArray("tags"),
 		},
 	}),
 	users: docCollection<User>({

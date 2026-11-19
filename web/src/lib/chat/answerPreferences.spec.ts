@@ -19,7 +19,7 @@ import {
 
 // The one list the schema, the resolver, the prompt carriers and the page read. These pin
 // the contracts the rest of the feature leans on: an unset field is the default, an unknown value is
-// the default too, and `auto` names no language. (CUR-3929)
+// the default too, and `auto` names no language.
 describe("resolveAnswerPreferences", () => {
 	it("resolves an empty row, a null row and an undefined row to the defaults", () => {
 		expect(resolveAnswerPreferences({})).toEqual(ANSWER_DEFAULTS);
@@ -52,7 +52,7 @@ describe("resolveAnswerPreferences", () => {
 		expect(EMOJIS).toContain(ANSWER_DEFAULTS.emojis);
 	});
 
-	it("resolves the milestone 7 fields the same way: set values kept, unknown ones defaulted (CUR-549)", () => {
+	it("resolves the milestone 7 fields the same way: set values kept, unknown ones defaulted", () => {
 		expect(resolveAnswerPreferences({ answerFormat: "prose", emojis: "helpful", showServing: false })).toEqual({
 			...ANSWER_DEFAULTS,
 			answerFormat: "prose",
@@ -62,7 +62,7 @@ describe("resolveAnswerPreferences", () => {
 		expect(resolveAnswerPreferences({ answerFormat: "table", emojis: "lots" } as never)).toEqual(ANSWER_DEFAULTS);
 	});
 
-	it("never reads a stored explainTerms, off the page under rule 4.6, so an old row with it on resolves to the defaults (CUR-4288)", () => {
+	it("never reads a stored explainTerms, off the page under rule 4.6, so an old row with it on resolves to the defaults", () => {
 		const resolved = resolveAnswerPreferences({ explainTerms: true } as never);
 		expect(resolved).toEqual(ANSWER_DEFAULTS);
 		expect("explainTerms" in resolved).toBe(false);
@@ -70,7 +70,7 @@ describe("resolveAnswerPreferences", () => {
 });
 
 // A preset writes exactly PRESET_FIELDS and is read back over exactly PRESET_FIELDS, so the
-// write and the comparison cannot drift, and a field outside the list is the person's own. (CUR-549)
+// write and the comparison cannot drift, and a field outside the list is the person's own.
 describe("presets", () => {
 	it("every preset names every preset field and no other, with values from the lists", () => {
 		for (const name of PRESET_NAMES) {
@@ -82,7 +82,7 @@ describe("presets", () => {
 		}
 	});
 
-	it("writes no explainTerms from any preset: the explanatory preset sets the detailed length and nothing about terms (CUR-4288)", () => {
+	it("writes no explainTerms from any preset: the explanatory preset sets the detailed length and nothing about terms", () => {
 		for (const name of PRESET_NAMES) expect("explainTerms" in PRESETS[name], name).toBe(false);
 		expect(PRESETS.explanatory.answerLength).toBe("detailed");
 	});

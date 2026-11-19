@@ -1,7 +1,6 @@
 import { error } from "@sveltejs/kit";
 import { z } from "zod";
 import type { RequestHandler } from "./$types";
-import { agentArtifactDownloadEnabled } from "$lib/chat/server/agentArtifactDownload";
 import { agentServiceUrl, agentServiceToken } from "$lib/chat/server/agentMode";
 import { agentServiceHeaders } from "$lib/chat/server/endpoints/agent/endpointAgent";
 import { loadOwnedConversation } from "$lib/chat/server/loadOwnedConversation";
@@ -17,8 +16,8 @@ import { hasUnsafePathSegment } from "$lib/chat/server/pathSafety";
 import mimeTypes from "mime-types";
 import { downloadFile } from "$lib/chat/server/files/downloadFile";
 
-// Proxies a file an agent turn produced (CUR-546) out of agent-service's still-alive session
-// workdir (CUR-196) — the server round-trip renderArtifacts() links to once a turn completes.
+// Proxies a file an agent turn produced out of agent-service's still-alive session
+// workdir — the server round-trip renderArtifacts links to once a turn completes.
 // Same threat model as the sibling `output/[sha256]` route (arbitrary agent-authored bytes served
 // same-origin), same CSP, but an entirely different data path: a proxied agent-service fetch, not
 // a Postgres blob read. There is no separate retention mechanism here — the file's survival is
@@ -27,20 +26,12 @@ const CSP = "default-src 'none'; script-src 'none'; style-src 'none'; sandbox;";
 
 function contentDisposition(filename: string): string {
 	// ASCII fallback for clients that don't read filename* (RFC 6266), real UTF-8 name alongside it
-	// — CUR-571 means real agent-chosen filenames (spaces, unicode) are now in play.
+	// — means real agent-chosen filenames (spaces, unicode) are now in play.
 	const ascii = filename.replace(/[^\x20-\x7e]/g, "_").replace(/"/g, "'");
 	return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
 }
 
 export const GET: RequestHandler = async ({ locals, params, url }) => {
-	// Flag check FIRST, same posture as the sibling route: a flag-off feature is a stated policy
-	// ("not available"), not an absent resource — 403 says "closed," 404 would ambiguously also
-	// mean "never existed," which is the distinction that keeps a crafted request from probing
-	// behavior while the flag is off.
-	if (!agentArtifactDownloadEnabled()) {
-		error(403, "Agent file download is disabled.");
-	}
-
 	const convId = await loadOwnedConversation(locals, params.id);
 
 	const filename = z.string().min(1).parse(params.filename);
@@ -59,7 +50,7 @@ export const GET: RequestHandler = async ({ locals, params, url }) => {
 
 	// The copy the turn saved with the conversation outlives the workdir, so it answers first.
 	// The link names that copy by hash; a link without one is a file its turn did not save, and it goes
-	// to the workdir rather than to another turn's copy of the same path. (CUR-4398)
+	// to the workdir rather than to another turn's copy of the same path.
 	const savedSha = url.searchParams.get("saved");
 	const saved = savedSha ? await savedArtifactBytes(convId, filename, savedSha) : undefined;
 	if (saved) return artifactResponse(new Response(new Uint8Array(saved)), filename);
@@ -72,12 +63,10 @@ export const GET: RequestHandler = async ({ locals, params, url }) => {
 
 	const baseURL = agentServiceUrl();
 	if (!baseURL) {
-		// Flag ON but AGENT_SERVICE_URL unset is the same class of loud misconfiguration
-		// agentModeEnabled() guards elsewhere — log it, but don't leak internal config state to the
-		// response; from the caller's side this is indistinguishable from "not available".
-		logger.warn(
-			"[agent-artifact] agent-artifact-download flag is ON but AGENT_SERVICE_URL is unset"
-		);
+		// AGENT_SERVICE_URL unset is the same class of loud misconfiguration agentModeEnabled() guards
+		// elsewhere — log it, but don't leak internal config state to the response; from the caller's
+		// side this is indistinguishable from "not available".
+		logger.warn("[agent-artifact] AGENT_SERVICE_URL is unset; no workdir to serve the file from");
 		error(404, GONE);
 	}
 
@@ -110,7 +99,7 @@ const GONE = "This file isn't available anymore — it's only kept while this co
 /**
  * The bytes of the copy an agent turn saved for `filename` with hash `sha`, read where the
  * conversation's other files are read. Undefined when the conversation holds no such reference, or when
- * the stored copy cannot be read; the live workdir is asked next either way. (CUR-4398)
+ * the stored copy cannot be read; the live workdir is asked next either way.
  */
 async function savedArtifactBytes(
 	convId: ObjectId,
@@ -145,7 +134,7 @@ async function savedArtifactBytes(
  * A file a scenario run's stand-in agent wrote (fakeAgentService.ts), found by the fake task id
  * on this conversation's newest agent turn. `undefined` when there is no such turn, or on production,
  * where the stand-in never runs and this costs no read; `null` when there is one but it wrote no file
- * by that name. (SOL-212)
+ * by that name.
  */
 async function fakeArtifactBytes(convId: ObjectId, filename: string): Promise<string | null | undefined> {
 	if (!fakeAgentAllowed()) return undefined;

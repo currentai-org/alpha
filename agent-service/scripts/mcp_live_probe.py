@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Live probe for CUR-3025: a real `hermes acp` session calls tools on a configured MCP server.
+"""Live probe: a real `hermes acp` session calls tools on a configured MCP server.
 
 Runs everything on loopback, offline, with no model spend:
 

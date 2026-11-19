@@ -4,9 +4,9 @@
  * that ALL THREE conditions must hold simultaneously, and any one missing echoes `currentRule`
  * back unchanged (Better Auth's customRules signature is `false | Rule`, no `undefined` — echoing
  * the rule it already resolved is the typed equivalent of "apply the real limit"), never `false`.
- * The Injury case from the ticket ("send four OTPs inside a minute without the header — the fourth
- * must still be refused") is the "missing header" test below; the others are the same shape for
- * the other two conditions plus the two ways "non-production" itself can be gotten wrong. (CUR-1553)
+ * The main harm case ("send four OTPs inside a minute without the header — the fourth must still
+ * be refused") is the "missing header" test below; the others are the same shape for
+ * the other two conditions plus the two ways "non-production" itself can be gotten wrong.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
@@ -43,7 +43,7 @@ function req({
 	});
 }
 
-describe("otpSendCapCarveOut (CUR-1553)", () => {
+describe("otpSendCapCarveOut", () => {
 	it("bypasses the cap when all three conditions hold, on preview", async () => {
 		process.env.VERCEL_ENV = "preview";
 		const otpSendCapCarveOut = await importSubject();
@@ -56,8 +56,8 @@ describe("otpSendCapCarveOut (CUR-1553)", () => {
 		expect(await otpSendCapCarveOut(req({ header: "test-secret-value" }))).toBe(false);
 	});
 
-	// The Injury case from the ticket: send four OTPs inside a minute without the header — the
-	// fourth must still be refused. This is that refusal at the source: no header, no bypass.
+	// The main harm case: send four OTPs inside a minute without the header, and the fourth must
+	// still be refused. This is that refusal at the source: no header, no bypass.
 	it("does NOT bypass on preview with no header at all (the ticket's Injury case)", async () => {
 		process.env.VERCEL_ENV = "preview";
 		const otpSendCapCarveOut = await importSubject();

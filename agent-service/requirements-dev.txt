@@ -2,19 +2,22 @@
 # `make venv` installs both; CI installs this file. Pinned to match the validated toolchain.
 -r requirements.txt
 
-pytest==9.1.1
+pytest==9.2.0
 pytest-cov==7.1.0
-coverage==7.17.0
-ruff==0.17.2
-mutmut==3.8.0
-# CUR-1227. Type checker; see [tool.pyright] in pyproject.toml for why this one and not ty or mypy.
+coverage==7.17.3
+ruff==0.17.5
+mutmut==3.8.1
+# Type checker; see [tool.pyright] in pyproject.toml for why this one and not ty or mypy.
 # It runs on node, and prefers whatever `node` is on PATH (pyright-python's USE_GLOBAL_NODE default) —
 # ubuntu-latest ships one, so CI needs no setup-node step. With no node anywhere it downloads a
 # nodeenv on first run, which is slow but not a failure.
 pyright==1.1.414
 
-# Exercised only by the ACP front-door tests (api/acp_remote.py imports it).
-# In production this lives in the Hermes venv, not the image.
+# Imported by api/acp_client.py, api/acp_remote.py and api/sandbox_backend.py; here for their tests.
+# In production this lives in the Hermes venv, not the image. See docs/streaming-spec.md.
 # Match Hermes's own `acp` extra at deploy/Dockerfile's HERMES_SHA, which is what the service runs: a newer
-# version here can pass tests that fail against that build (CUR-4501). Move it when HERMES_SHA moves.
+# version here passed tests that failed on develop. Move it when HERMES_SHA moves.
 agent-client-protocol==0.12.1
+
+# Decodes the LZ4-framed E2B build headers (version 4 and up) in scripts/tests/test_snapshot_janitor.py.
+lz4==4.4.5

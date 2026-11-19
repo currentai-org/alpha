@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Adversarial-hardening regression test. Proves the SERVER-level interlocks the
+# Adversarial-hardening regression test (playtest round 2 fixes). Proves the SERVER-level interlocks the
 # offline unit suite (api/test_agent_service.py) can't: concurrency cap (#1), orphan reaping on shutdown (#3),
 # check_cmd moderation (#5), proxy upstream-status propagation (#4/C), healthz path-leak fix (#7/G).
 # Minimal live agent use: one short `sleep` task to hold a slot. Run from the repo root.
@@ -14,35 +14,55 @@ try:print(json.load(sys.stdin).get('$1',''))
 except Exception as e:print('ERR',e)"; }
 fail=0; pass(){ echo "  PASS $1"; }; bad(){ echo "  FAIL $1"; fail=1; }
 
-# --- Coop stub: speaks the real /api/v1/content contract, blocks anything containing BLOCKME -----
-COOPKEY="ck-$RANDOM$RANDOM"
+# --- Screen stub: speaks the web app's POST /chat/api/safety/screen contract -----------------------
+# Request : bearer token + {text, surface}. Response: {status, hits}. Text containing BLOCKME gets
+# status "unsafe" with a valid child BLOCK hit; all other text gets {"status":"safe","hits":[]}, the string
+# app.py's moderate() treats as the clean verdict.
+# Every accepted request body is written to $REQDIR so the script can assert what reached the stub.
+SCREEN_TOKEN="st-$RANDOM$RANDOM$RANDOM"
+SCREEN_PATH="/chat/api/safety/screen"
+SCREEN_URL="$MBASE$SCREEN_PATH"
+REQDIR="$(mktemp -d)"
 STUB="$(mktemp)"; cat >"$STUB" <<PYEOF
-import json
+import json, os, itertools
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import sys
+SEQ = itertools.count(1)
 class H(BaseHTTPRequestHandler):
+    def _send(self, code, obj):
+        out = json.dumps(obj).encode()
+        self.send_response(code); self.send_header('content-type', 'application/json')
+        self.send_header('content-length', str(len(out))); self.end_headers(); self.wfile.write(out)
     def do_POST(self):
-        n=int(self.headers.get('content-length',0)); body=self.rfile.read(n)
-        try: req=json.loads(body)
-        except Exception: req={}
-        if self.headers.get('x-api-key') != "$COOPKEY" or self.path != '/api/v1/content':
-            self.send_response(401); self.end_headers(); return
-        text=(req.get('content') or {}).get('text','')
-        actions=[{'name':'chat-block-test'}] if 'BLOCKME' in text else []
-        out=json.dumps({'actionsTriggered':actions}).encode()
-        self.send_response(200); self.send_header('content-type','application/json')
-        self.send_header('content-length',str(len(out))); self.end_headers(); self.wfile.write(out)
-    def log_message(self,*a): pass
-HTTPServer(('127.0.0.1',int(sys.argv[1])),H).serve_forever()
+        n = int(self.headers.get('content-length', 0)); body = self.rfile.read(n)
+        if self.path != "$SCREEN_PATH" or self.headers.get('authorization') != "Bearer $SCREEN_TOKEN":
+            return self._send(401, {'error': 'Unauthorized'})
+        try: req = json.loads(body)
+        except Exception: return self._send(400, {'error': 'body must be JSON'})
+        text, surface = req.get('text'), req.get('surface')
+        if not isinstance(text, str) or not isinstance(surface, str):
+            return self._send(400, {'error': 'body must be { text: string, surface: string }'})
+        with open(os.path.join("$REQDIR", "%04d.json" % next(SEQ)), 'w') as f: json.dump(req, f)
+        if 'BLOCKME' in text:
+            return self._send(200, {'status': 'unsafe', 'hits': [
+                {'key': 'chat-block-child-grooming', 'action': 'block', 'tier': 'child'}]})
+        self._send(200, {'status': 'safe', 'hits': []})
+    def log_message(self, *a): pass
+HTTPServer(('127.0.0.1', int(sys.argv[1])), H).serve_forever()
 PYEOF
 
 "$PY" "$STUB" $MP >/tmp/ht-m.log 2>&1 & MPID=$!
 ( cd "$AS/api" && MODEL_UPSTREAM_TOKEN="$REAL_TOKEN" PROXY_ADMIN_KEY="$ADMIN" "$PY" -m uvicorn proxy:app --port $PP --log-level warning ) >/tmp/ht-p.log 2>&1 & P1=$!
 HTDB="$(mktemp -u /tmp/ht-XXXX.db)"
-( cd "$AS/api" && env -u MODEL_UPSTREAM_TOKEN AGENT_MODEL_PROXY_URL="$PBASE" PROXY_ADMIN_KEY="$ADMIN" \
-    AGENT_AUTH_DISABLED=1 COOP_URL="$MBASE" COOP_API_KEY="$COOPKEY" AGENT_MAX_CONCURRENCY=1 AGENT_TOOLSETS=terminal AGENT_DB_PATH="$HTDB" \
+# Every COOP_* var is unset by name pattern, so a rename (the COOP_DETECTION_ITEM_TYPE_ID) cannot
+# re-enable a real review report through the inherited environment.
+( cd "$AS/api" && env -u MODEL_UPSTREAM_TOKEN -u AGENT_MODERATION_DISABLED \
+    $(env | sed -n 's/^\(COOP_[A-Z0-9_]*\)=.*/-u \1/p') \
+    AGENT_MODEL_PROXY_URL="$PBASE" PROXY_ADMIN_KEY="$ADMIN" \
+    SAFETY_SCREEN_URL="$SCREEN_URL" SAFETY_SCREEN_TOKEN="$SCREEN_TOKEN" AGENT_MODERATION_ATTEMPTS=1 \
+    AGENT_AUTH_DISABLED=1 AGENT_MAX_CONCURRENCY=1 AGENT_TOOLSETS=terminal AGENT_DB_PATH="$HTDB" \
     AGENT_SANDBOX_BACKEND=bwrap "$PY" -m uvicorn app:app --port $AP --log-level warning ) >/tmp/ht-a.log 2>&1 & P2=$!
-trap 'kill $MPID $P1 $P2 2>/dev/null; pkill -f "hermes -z .*sleep" 2>/dev/null; rm -f "$STUB" "$HTDB"*' EXIT
+trap 'kill $MPID $P1 $P2 2>/dev/null; pkill -f "hermes -z .*sleep" 2>/dev/null; rm -rf "$STUB" "$REQDIR" "$HTDB"*' EXIT
 for i in $(seq 1 40); do curl -sf "$ABASE/healthz" >/dev/null 2>&1 && curl -sf "$PBASE/healthz" >/dev/null 2>&1 && break; sleep 0.5; done; sleep 1
 
 echo "=============================================================="
@@ -58,6 +78,12 @@ c1="$(code -X POST "$ABASE/run" -H 'content-type: application/json' -d '{"prompt
 [[ "$c1" == 403 ]] && pass "benign prompt + BLOCKME check_cmd -> 403 (check_cmd moderated)" || bad "check_cmd not moderated (got $c1, want 403)"
 c2="$(code -X POST "$ABASE/run" -H 'content-type: application/json' -d '{"prompt":"please BLOCKME now"}')"
 [[ "$c2" == 403 ]] && pass "BLOCKME prompt -> 403 (baseline prompt moderation)" || bad "prompt moderation broken (got $c2)"
+
+# Both texts must have reached OUR stub (not a real screen endpoint inherited from the environment).
+# Text and surface are checked in the SAME recorded body, so a prompt screened on the wrong surface fails.
+seen(){ local f; for f in "$REQDIR"/*.json; do grep -q "$1" "$f" 2>/dev/null && grep -q "\"surface\": \"$2\"" "$f" && return 0; done; return 1; }
+seen 'hello world' agent-input && pass "stub received the task prompt on surface agent-input" || bad "task prompt never reached the stub on surface agent-input"
+seen 'echo BLOCKME' agent-check_cmd && pass "stub received the check_cmd text on surface agent-check_cmd" || bad "check_cmd text never reached the stub on surface agent-check_cmd"
 
 echo; echo "--- #4/C  proxy propagates upstream error status (not masked as 200) ---"
 curl -s -X POST "$PBASE/admin/grant" -H "authorization: Bearer $ADMIN" -H 'content-type: application/json' -d '{"nonce":"htswallow1","max_requests":5}' >/dev/null

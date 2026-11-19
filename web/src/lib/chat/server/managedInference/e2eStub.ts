@@ -1,4 +1,4 @@
-// A stub Pangolin answered inside this deployment, for the `pangolin_stub` fault (CUR-4110). Previews
+// A stub Pangolin answered inside this deployment, for the `pangolin_stub` fault. Previews
 // have no Pangolin (it is a separate piece of infra, see pangolin/README.md), so without this a spec
 // could never provision a managed endpoint there and the pairing link's whole path would go untested
 // in CI. Every response has the shape the real Integration API returns (pangolinClient.ts's schemas),

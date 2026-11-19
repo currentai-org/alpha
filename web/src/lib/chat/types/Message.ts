@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import type { InferenceProvider } from "@huggingface/inference";
 import type {
 	FailoverCause,
@@ -20,11 +23,9 @@ export type Message = Partial<Timestamps> & {
 	// which resolves to the LAST overload (the Uint8Array one) instead of the one actually used.
 	id: string;
 	content: string;
-	/** The OAuth client_id of the sync client that wrote this message (config/thunderbolt.ts), (CUR-4312)
-	 *  absent for one written in Alpha. Set only by /chat/api/v2/sync/push, never from a turn's input. */
+	/** The app that wrote this message when it was not Alpha, absent for one written in Alpha. Never set
+	 *  from a turn's input; rows written by the removed Thunderbolt sync still carry it. */
 	origin?: string;
-	/** The id the sync client pushed this message under, for its idempotent re-push. (CUR-4312) */
-	syncClientId?: string;
 	updates?: MessageUpdate[];
 
 	// Optional server or client-side reasoning content (<think> blocks)
@@ -54,7 +55,7 @@ export type Message = Partial<Timestamps> & {
 	timings?: MessageTimings;
 
 	// What each forced-tool-call pre-pass decided on this turn (gate verdict, exit code, ms,
-	// number count). Codes and counts only, never user text. Absent on turns persisted before it shipped. (CUR-2043)
+	// number count). Codes and counts only, never user text. Absent on turns persisted before it shipped.
 	rungs?: RungStep[];
 
 	// Router metadata when using llm-router
@@ -63,19 +64,19 @@ export type Message = Partial<Timestamps> & {
 		model: string;
 		provider?: InferenceProvider;
 		backend?: string;
-		// The host the request was sent to. Absent on messages persisted before it shipped. (CUR-3193)
+		// The host the request was sent to. Absent on messages persisted before it shipped.
 		lane?: string;
 		// The Vercel region of the app server that ran the turn (`VERCEL_REGION`, e.g. "fra1").
-		// Absent off Vercel and on messages persisted before it shipped. (CUR-4580)
+		// Absent off Vercel and on messages persisted before it shipped.
 		appRegion?: string;
 		// agent-service's verify tier — "" (unverified) | "execution" | "judge" |
-		// "execution+judge". Absent on non-agent routes and on messages persisted before this shipped. (CUR-756)
+		// "execution+judge". Absent on non-agent routes and on messages persisted before this shipped.
 		verifyMethod?: string;
 		// The other models that worked on this turn without writing it, one entry per role.
-		// Absent when none ran or the provenance-assisted-by flag is off. (CUR-984)
+		// Absent when none ran or the provenance-assisted-by flag is off.
 		assistedBy?: AssistedBy[];
 		// The language the answer was asked for by name, for a model measured to drift out of
-		// it (Apertus and Hausa). Absent when no language was named. (CUR-2237)
+		// it (Apertus and Hausa). Absent when no language was named.
 		answerLanguage?: string;
 	};
 
@@ -107,7 +108,7 @@ export type Message = Partial<Timestamps> & {
 		// no engines were ever queried — a lighter-weight non-event than a real, failed search.
 		searched: boolean;
 		// The search ran and did not finish: it passed its deadline ("timeout") or threw
-		// ("error"). The answer was written without web sources, and the note under it says so. (CUR-4091)
+		// ("error"). The answer was written without web sources, and the note under it says so.
 		failed?: "timeout" | "error";
 	};
 
@@ -136,20 +137,20 @@ export type Message = Partial<Timestamps> & {
 		 *  `skipMs` is how long we waited before giving up. Persisted via JSONB so it survives reload. */
 		skipped?: boolean;
 		skipMs?: number;
-		/** With `skipped`: the tool answered with an error (CUR-2645) instead of timing out. */
+		/** With `skipped`: the tool answered with an error instead of timing out. */
 		failed?: boolean;
-		/** With `skipped`: read-aloud has no voice for the answer's language (CUR-3151). */
+		/** With `skipped`: read-aloud has no voice for the answer's language. */
 		unsupportedLanguage?: string;
-		/** With `unsupportedLanguage`: the English-voice clip, played only on the visitor's request (CUR-3989). */
+		/** With `unsupportedLanguage`: the English-voice clip, played only on the visitor's request. */
 		fallbackAudio?: string;
-		/** With `audio`: the voice's accent when the language has regional variants (CUR-3989). */
+		/** With `audio`: the voice's accent when the language has regional variants. */
 		voice?: string;
 	};
 
-	// Write-permission provenance (agent turns only, CUR-471): set when the agent service resolved this
+	// Write-permission provenance (agent turns only): set when the agent service resolved this
 	// caller to deny_writes for the task — most commonly a `staged`-mode account still accruing trust.
 	// Its presence is what lets the UI explain a silently-missing terminal/code_execution capability:
-	// CUR-217's tool-effect gating removes those tools from the toolset before the session starts
+	// The tool-effect gating removes those tools from the toolset before the session starts
 	// rather than denying the call, so there is no tool_result frame to narrate a refusal from.
 	// Persisted via JSONB so the explanation survives reload, mirroring mcp above. Absent whenever the
 	// caller had full write access — see writePolicyProvenance for the "only stamp when it explains
@@ -168,7 +169,7 @@ export type Message = Partial<Timestamps> & {
 	// agent-service tool execution before this field existed. Persisted via JSONB so the label survives
 	// reload, mirroring mcp/writePolicy above. Absent whenever toolKinds was empty — see
 	// agentToolsProvenance for the "only stamp when it's real" contract (mirrors mcp/writePolicy).
-	// counts (CUR-775): per-kind call counts, optional so a message persisted before this field existed
+	// counts: per-kind call counts, optional so a message persisted before this field existed
 	// still matches the type — see toolRunSummary.ts for how it renders.
 	agentTools?: {
 		toolKinds: string[];
@@ -177,27 +178,30 @@ export type Message = Partial<Timestamps> & {
 
 	// The agent-service task this turn ran as, and the Fly machine that holds it. The run keeps
 	// going when the tab closes (agent-service ends only the event stream), so this is the handle a later
-	// visit uses to re-attach to it or collect its result. (CUR-993)
+	// visit uses to re-attach to it or collect its result.
 	agentRun?: {
 		taskId: string;
 		machineId?: string;
 		/** Nothing is left to re-attach to: the person pressed Stop, which cancels the task, or
 		 *  agent-service no longer holds it. */
 		closed?: boolean;
+		/** the run was submitted to outlive its request, so a request ending (its watchdog, a
+		 *  drop) hands it to the page instead of ending it, and the page follows it. Set once, at submit. */
+		handoff?: boolean;
 	};
 
-	// The negative of agentTools above (CUR-1341): this turn's output is PREDICTED rather than measured —
+	// The negative of agentTools above: this turn's output is PREDICTED rather than measured —
 	// the agent wrote code it never executed, claimed steps no tool frame backs, or agent-service's own
 	// repair loop flagged the answer. Set from the same check that prepends UNRUN_CODE_NOTICE to the
 	// answer text, so the reasoning panel's header and that sentence are driven by one value and cannot
 	// contradict each other. Absent is the ordinary case and means nothing was flagged — NOT "nothing
-	// ran", which is the CUR-234 ambiguity agentTools exists to avoid asserting. Persisted via JSONB so
+	// ran", which is the ambiguity agentTools exists to avoid asserting. Persisted via JSONB so
 	// the header still reads honestly after reload, mirroring agentTools/writePolicy above.
 	unrunCode?: {
 		reason: UnrunCodeReason;
 	};
 
-	// Agent confirmation gate (CUR-218): agent-service paused a tool call on ACP_PERMISSION_POLICY=confirm
+	// Agent confirmation gate: agent-service paused a tool call on ACP_PERMISSION_POLICY=confirm
 	// and needs a human answer before it continues. An ARRAY, not a single stamp like writePolicy/mcp
 	// above — one turn can pause more than once (each tool call under a live confirmation gate opens its
 	// own), so entries accumulate as they open and get filled in in place as they resolve. `decision`/
@@ -217,9 +221,9 @@ export type Message = Partial<Timestamps> & {
 		reason?: string;
 		// Epoch ms this confirmation auto-denies at, when agent-service's own confirm_timeout_secs
 		// crossed the ACP boundary (see MessageAgentConfirmUpdate). Absent on an older/coarse build — the
-		// prompt falls back to its old static "times out eventually" copy rather than a fabricated countdown. (CUR-1094)
+		// prompt falls back to its old static "times out eventually" copy rather than a fabricated countdown.
 		deadlineAt?: number;
-		// "mcp" when this asked before an MCP tool ran; its answer goes to the elicitation route. (CUR-3026)
+		// "mcp" when this asked before an MCP tool ran; its answer goes to the elicitation route.
 		channel?: "agent" | "mcp";
 	}[];
 
@@ -242,20 +246,23 @@ export type Message = Partial<Timestamps> & {
 		// Curated, public-safe name of the Coop rule that blocked this turn (resolved server-side from
 		// the triggered action via $lib/chat/server/ruleLabel). Present ONLY when the rule has a reviewed label;
 		// absent → the generic decline copy stands. This is the ONLY rule identity shown to the user — the
-		// raw action code in `label` is never surfaced (see SafetyBadge / ProvenanceTrace / requestTrace).
+		// raw action code in `label` is never surfaced (see SafetyBadge / ProvenanceTrace).
 		ruleLabel?: string;
+		// Every labeled content rule that blocked this turn, deduplicated, when more than one did.
+		// `ruleLabel` stays the one whose message is shown; absent on older rows and single-rule declines.
+		ruleLabels?: string[];
 		// The input screen could not run (fail-closed UNKNOWN): the turn was held back unchecked and
-		// nothing was flagged. The badge reads "not checked" rather than naming a classifier (CUR-2301).
+		// nothing was flagged. The badge reads "not checked" rather than naming a classifier.
 		unscreened?: boolean;
 		// A self-harm rule declined this turn, so it carries crisis support: the Support resources card
-		// shows with it whatever words tripped the rule (CUR-2111).
+		// shows with it whatever words tripped the rule.
 		support?: boolean;
-		// The language the support classifier read the message as, a BCP-47 primary subtag ("fr") (CUR-4093).
-		// The support card renders its copy in it when the catalogs carry it (CUR-4094), and the neutral
-		// sidebar title is written in it (CUR-4095).
+		// The language the support classifier read the message as, a BCP-47 primary subtag ("fr").
+		// The support card renders its copy in it when the catalogs carry it, and the neutral
+		// sidebar title is written in it.
 		supportLang?: string;
 		// The country the support classifier read the message as placing the person at risk in, a
-		// lower-case code findahelpline has a page for (CUR-4488). The card and the helpline number guard
+		// lower-case code findahelpline has a page for. The card and the helpline number guard
 		// prefer it to the visitor's IP country.
 		supportCountry?: string;
 	};
@@ -280,9 +287,9 @@ export type Message = Partial<Timestamps> & {
 		// the triggered action). Mirrors `moderation.ruleLabel`; present only when the rule has a reviewed
 		// label, absent → generic output-decline copy. The raw action code is never surfaced.
 		ruleLabel?: string;
-		// true = the guard could not answer, so the answer was withheld unchecked, not flagged (CUR-3891).
+		// true = the guard could not answer, so the answer was withheld unchecked, not flagged.
 		unscreened?: boolean;
-		// How many flagged batches the output re-check released (CUR-3975). Absent when none.
+		// How many flagged batches the output re-check released. Absent when none.
 		rechecked?: number;
 	};
 
@@ -296,27 +303,27 @@ export type Message = Partial<Timestamps> & {
 	};
 
 	// Set when the server answered this turn with a fixed string and no model ran (the
-	// low-resource-language notice, and the at-capacity notice, CUR-1872). The receipt then says that plainly, where it would otherwise say
+	// low-resource-language notice, and the at-capacity notice). The receipt then says that plainly, where it would otherwise say
 	// "from training" and that nothing reported which model served it. Persisted via JSONB, mirroring
-	// nameNotice above. Matching the notice's text instead would misfire: a model can repeat it verbatim. (CUR-1579)
+	// nameNotice above. Matching the notice's text instead would misfire: a model can repeat it verbatim.
 	fixedReply?: {
 		kind: FixedReplyKind;
 	};
 
 	// The picker was on Auto and Auto chose this answer's model. `model` is the catalog id,
 	// `reasons` the chips and `explanation` the sentence the composer showed when it chose. Absent when
-	// the person picked the model themselves. Persisted via JSONB, like calculations below. (CUR-3944)
+	// the person picked the model themselves. Persisted via JSONB, like calculations below.
 	autoRoute?: {
 		model: string;
 		reasons: string[];
 		explanation: string;
-		/** The catalog id of Auto's first choice, when it was busy or silent and Auto picked again. (CUR-4384) */
+		/** The catalog id of Auto's first choice, when it was busy or silent and Auto picked again. */
 		repickedFrom?: string;
 	};
 
 	// Every calculate call code evaluated for this answer, in order. Persisted so the
 	// expressions stay under the answer after reload. `counts` is the group list the call wrote, which a
-	// follow-up's replay sends back (CUR-1202); the UI does not show it. (CUR-2273)
+	// follow-up's replay sends back; the UI does not show it.
 	calculations?: {
 		expression: string;
 		result?: string;
@@ -325,15 +332,15 @@ export type Message = Partial<Timestamps> & {
 	}[];
 
 	// The ledger code summed and rendered at the top of this answer. The rendered rows carry
-	// no marker, so a later turn's planner reads the ledger from here rather than from the text. (CUR-3663)
+	// no marker, so a later turn's planner reads the ledger from here rather than from the text.
 	mathLedger?: {
 		lines: { factors: number[]; label: string }[];
 		unit?: string;
 	};
 
 	// Each call this turn made to an operator-configured MCP server, for the step-by-step
-	// trace. Names, outcome and time; arguments and results only for the conversation's own sandbox
-	// (CUR-4232), where they are the model's code and its output. (CUR-3026)
+	// trace. Names, outcome and time; arguments and results only for the conversation's own sandbox,
+	// where they are the model's code and its output.
 	mcpCalls?: {
 		server: string;
 		tool: string;
@@ -351,7 +358,7 @@ export type Message = Partial<Timestamps> & {
 
 	// Set when the primary model did not answer and a backup serving a different model did.
 	// Persisted so the receipt still shows the attempt after reload; routerMetadata keeps only the model
-	// that answered. (CUR-2239)
+	// that answered.
 	failover?: {
 		from: string;
 		to: string;
@@ -372,26 +379,26 @@ export type Message = Partial<Timestamps> & {
 	};
 
 	// The files sent with this turn were refused because they could not be scanned, so none
-	// was stored. Persisted so the note survives reload, mirroring safetyNotice above. (CUR-2382)
+	// was stored. Persisted so the note survives reload, mirroring safetyNotice above.
 	attachmentNotice?: {
 		message: string;
 	};
 
 	// On a sent message, the files the server left out of it (scanner down, a type or document
 	// not accepted, a file it could not check). The sent message still shows them, marked not added,
-	// where they would otherwise vanish when the answer lands. Names only; the bytes were never stored. (CUR-3405)
+	// where they would otherwise vanish when the answer lands. Names only; the bytes were never stored.
 	leftOutFiles?: { name: string; mime: string }[];
 
 	// Attached files this turn could not read back from storage, named, so the person knows the
-	// answer did not use them. Persisted so the note survives reload. (CUR-3291)
+	// answer did not use them. Persisted so the note survives reload.
 	unreadFilesNotice?: string;
 
 	// How many of the chat's oldest exchanges were left out so the request fit the model's
-	// context. Absent when nothing was left out. Persisted so the note under the answer survives reload. (CUR-2893)
+	// context. Absent when nothing was left out. Persisted so the note under the answer survives reload.
 	historyLeftOut?: number;
 
 	// Agent was on Auto and the agent service's route check failed or timed out, so the selected
-	// model answered without anyone deciding the turn was ordinary. Persisted so the note survives reload. (CUR-2830)
+	// model answered without anyone deciding the turn was ordinary. Persisted so the note survives reload.
 	agentRouteFailed?: true;
 
 	// Unverified-link advisory: set when the post-generation URL guard ($lib/chat/server/urlGuard) de-linked
@@ -431,11 +438,11 @@ export type Message = Partial<Timestamps> & {
 	// reload, mirroring sourceNotice/labelNotice above.
 	//
 	// `kind` distinguishes WHICH substitution ran, because the honest disclosure copy differs: "regen" is
-	// a fresh answer from the model's own knowledge (groundedBailRegen.ts, gated by the grounded-bail-regen
-	// flag — CUR-148's preferred path per Corrective RAG / "sufficient context" practice: re-answer rather
-	// than cite sources the model already declined to use); "pointer" is the older, always-available
-	// fallback-of-fallback (buildGroundedHedgeReplacement, $lib/chat/server/hedgeGuard) — a deterministic
-	// list of the retrieved sources, used when regen isn't wired, is flag-off, or itself produced nothing
+	// a fresh answer from the model's own knowledge (groundedBailRegen.ts — the preferred path per
+	// Corrective RAG / "sufficient context" practice: re-answer rather than cite sources the model
+	// already declined to use); "pointer" is the older, always-available fallback-of-fallback
+	// (buildGroundedHedgeReplacement, $lib/chat/server/hedgeGuard) — a deterministic list of the
+	// retrieved sources, used when regen isn't wired (a native turn) or itself produced nothing
 	// usable. `sourceCount` is how many retrieved sources were available (0 → the vault-synthesis-only,
 	// no-citable-list wording on the pointer path; on the regen path it's informational only).
 	groundedHedgeNotice?: {
@@ -446,10 +453,10 @@ export type Message = Partial<Timestamps> & {
 	// What groundcheck (groundcheckStage.ts) did to this answer, so the provenance trace can
 	// tell a check that removed claims from one that passed it and one that never ran. Absent when the
 	// check never applied (flag off, nothing retrieved, a decline, a cut-off answer). A sourced answer
-	// that skipped it for code-rendered numbers or a guard's rewrite carries "stood-down". (CUR-2765)
+	// that skipped it for code-rendered numbers or a guard's rewrite carries "stood-down".
 	groundcheckNotice?: {
 		outcome: GroundcheckOutcome;
-		/** Claims deleted on a `revised` or `emptied` answer (CUR-2927). Absent on answers stamped earlier. */
+		/** Claims deleted on a `revised` or `emptied` answer. Absent on answers stamped earlier. */
 		removed?: number;
 	};
 
@@ -465,11 +472,15 @@ export type Message = Partial<Timestamps> & {
 		openness: string;
 		sovereign: boolean;
 		answer: string;
-		/** Where this panelist's own call ran, from its response's routing record (CUR-3563). Absent
+		/** Where this panelist's own call ran, from its response's routing record. Absent
 		 *  when the call reported neither, and then the take says so rather than naming a planned host. */
 		backend?: string;
 		provider?: string;
 	}[];
+
+	// Panelists the panel listed that gave no take (empty, failed, or still running at the deadline), so a
+	// reload shows each with an honest state and the header counts listed panelists, not only the takes.
+	unanswered?: { model: string; modelShort: string; reason?: string }[];
 
 	// Collective cross-check verdict over the panel of independent opinions (above) AS A
 	// JUDGMENT ON the primary answer — never a merged/synthesized answer of its own. The
@@ -486,6 +497,33 @@ export type Message = Partial<Timestamps> & {
 		weakSpots: string[];
 	};
 
+	// History encryption: base64 of an age file
+	// sealed to the owner's history recipient, opening to a JSON envelope bound to this conversation and
+	// message id (`SealedEnvelope` in $lib/chat/crypto/sealedShape). While it is set, every field not named
+	// in `SKELETON_MESSAGE_FIELDS` (and the update text and file names) is read from it, never from the
+	// plaintext skeleton. The server writes it on persist while the history-seal-writes flag is on.
+	sealed?: string;
+
+	// The revision of `sealed`, raised on every reseal. The envelope carries the same number, and the
+	// reader refuses a blob whose revision differs, so an older blob cannot be put back in this slot.
+	sealedRev?: number;
+
+	// HMAC-SHA-256 of the sealed body at `sealedRev`, under a server secret. A turn's `history`
+	// must match it, so a body minted by anyone holding only the public recipient is refused. Written as
+	// `m2.<key id>.<base64url>` over the body and the envelope's salt; a bare base64url value
+	// is the older unsalted form under key id `k0` (sealedTurn.ts).
+	sealedMac?: string;
+
+	// The length of `content` when the message was sealed. Plaintext, like the rest of the
+	// skeleton, so the usage counts in Settings can sum it without opening anything. Absent on a
+	// message stored in plaintext, whose `content` is counted instead.
+	chars?: number;
+
+	// TRANSIENT, client-render-only, never persisted: why a sealed message shows no text. "locked" = this
+	// browser has not unlocked the history key; "unreadable" = the blob did not open for this message's
+	// place (another key, damaged, or moved from another message). Set by `openConversationDoc`.
+	sealedState?: "locked" | "unreadable";
+
 	// needed for conversation trees
 	ancestors?: Message["id"][];
 
@@ -498,15 +536,15 @@ export type MessageFile = {
 	name: string;
 	value: string;
 	mime: string;
-	/** Set when the attachment was written to a storage location the person linked rather (CUR-2930)
+	/** Set when the attachment was written to a storage location the person linked rather
 	 *  than Alpha storage. `path` is the location's own path, read back with that location's `read`. */
 	location?: { id: string; path: string };
-	/** On a file an agent turn wrote, its path in the agent's workdir. The reply's download (CUR-4398)
+	/** On a file an agent turn wrote, its path in the agent's workdir. The reply's download
 	 *  link names this path, and the link's route serves this saved copy before asking the agent. */
 	agentPath?: string;
 };
 
-/** What a helper model did on a turn it did not write (CUR-984). */
+/** What a helper model did on a turn it did not write. */
 export type AssistRole = "search-decision" | "math-route" | "safety-screen" | "query-rewrite" | "title";
 
 /** One helper model on a turn: the model id it was called with, and where it ran. `backend` is the

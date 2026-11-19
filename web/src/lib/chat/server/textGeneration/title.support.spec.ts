@@ -1,7 +1,7 @@
 /**
  * A conversation whose turn carries crisis support is never titled by the model, which could
- * otherwise name it "Pensées suicidaires" in the sidebar. It gets a fixed, neutral title from the catalogs, in the
- * language the support classifier read (CUR-4093). (CUR-4095)
+ * otherwise name it "Pensées suicidaires" in the sidebar. It gets a fixed, neutral title from the
+ * catalogs, in the language the support classifier read.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MessageUpdateType, type MessageUpdate } from "$lib/chat/types/MessageUpdate";
@@ -52,7 +52,7 @@ async function titles(gen: AsyncGenerator<MessageUpdate, undefined, undefined>) 
 	return out;
 }
 
-describe("a support-stamped turn gets the neutral title, never the titler's output (CUR-4095)", () => {
+describe("a support-stamped turn gets the neutral title, never the titler's output", () => {
 	beforeEach(() => {
 		call.count = 0;
 	});
@@ -95,7 +95,7 @@ describe("a support-stamped turn gets the neutral title, never the titler's outp
 		expect(call.count).toBe(1);
 	});
 
-	it("waits for the classifier's late stamp before titling, so French distress the guard missed gets the neutral title (CUR-4093)", async () => {
+	it("waits for the classifier's late stamp before titling, so French distress the guard missed gets the neutral title", async () => {
 		const c = conv({ flagged: false, label: null, score: 0, kind: "content_policy" });
 		const reply = c.messages[1];
 		const verdict = new Promise<boolean>((resolve) =>

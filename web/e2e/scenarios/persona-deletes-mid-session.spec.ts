@@ -5,7 +5,7 @@ import { chatEntry } from './helpers/chatEntry';
 import { signInAsFreshUser } from './helpers/session';
 import { personaTurns, resolvePersonaLane, runPersona } from './helpers/personaDriver';
 
-// The sixth persona (CUR-2676). See persona-chaos-monkey.spec.ts for the shared reasoning.
+// The sixth persona. See persona-chaos-monkey.spec.ts for the shared reasoning.
 //
 // Deletion is where this product's promise lives ("my data stays mine") and where several defects
 // have hidden: Forget everything flashing the onboarding splash, a deleted chat lingering in the side
@@ -36,7 +36,7 @@ test(
 
 		test.setTimeout(5 * 60_000);
 
-		await signInAsFreshUser(page); // CUR-2676, see persona-chaos-monkey.spec.ts
+		await signInAsFreshUser(page); // see persona-chaos-monkey.spec.ts
 
 		await runPersona({
 			page,

@@ -1,0 +1,17 @@
+# Runs the published, signed app image in place of a build from this checkout. Use it on top of
+# compose.yaml, with the same profiles:
+#
+#   docker compose -f compose.yaml -f compose.release.yaml --profile local up
+#
+# The image comes from the public repository's .github/workflows/image.yml: web/Dockerfile with
+# APP_SURFACE=chat, for amd64 and arm64, signed with cosign (../deploy/README.md says how to verify
+# it). `build` is removed here, so `--build` cannot tag a local build with the release's name and
+# what runs is always the pulled image. `!reset` needs Compose v2.24 or newer.
+services:
+  web:
+    # A release tag, never a moving one. ALPHA_IMAGE picks another tag or a digest.
+    image: ${ALPHA_IMAGE:-ghcr.io/currentai-org/alpha:0.1.0}
+    build: !reset null
+    # Every `up` checks the registry, so a local image that once took this tag (an older `--build`)
+    # is replaced by the signed one rather than run under its name. A start needs the registry.
+    pull_policy: always

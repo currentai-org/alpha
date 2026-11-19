@@ -3,27 +3,26 @@
 import { test, expect } from './helpers/test';
 import { LARGE4_MODEL } from './helpers/chatEntry';
 import { pinnedChatEntry, type ServedModel } from './helpers/servedModel';
-import { setFlagOverrides } from './helpers/flagOverride';
 import { turnDone } from './helpers/turn';
 import { warmupContext } from './helpers/warmup';
 import { openStepByStep } from './helpers/xray';
 import { startChattingPastWelcome } from './helpers/welcome';
 
-// With `native-calculate-tool` on, a model that can call tools works a number out with the
+// a model that can call tools works a number out with the
 // `calculate` tool, and the turn shows the expression it evaluated and the result under the answer
 // (CalculationNote.svelte), so a reader can check the arithmetic rather than trust the prose. Pinned to
 // Mistral Large 4, which calls tools natively. A picked model is answered by itself or ends on the busy
-// notice (CUR-4383), so the turn is Large 4's.
+// notice, so the turn is Large 4's.
 //
-// Preview-only: the flag is forced through the fuzz_override cookie, which production refuses.
+// Preview-only: it was written when its `native-calculate-tool` flag had to be forced through the
+// fuzz_override cookie, which production refuses. That flag is retired, so nothing here is forced now.
 const MODEL = LARGE4_MODEL;
 
 test(
-	'with native-calculate-tool on, a budget question pinned to Large 4 shows the evaluated expression and the right total',
+	'a budget question pinned to Large 4 shows the evaluated expression and the right total',
 	{ tag: ['@preview-only', '@CUR-2273'] },
-	async ({ page, context, baseURL }) => {
+	async ({ page }) => {
 		test.setTimeout(140_000);
-		await setFlagOverrides(context, baseURL!, { 'native-calculate-tool': true });
 
 		// A target that does not list Large 4 as tool-capable never offers the tool, and the turn would fail
 		// below for a reason that has nothing to do with the note. Say so here instead.
@@ -108,5 +107,48 @@ test(
 			served,
 			'the turn was answered by a model other than the Large 4 that was picked'
 		).toMatch(/mistral-large-(2610|4)/);
+	}
+);
+
+// A float holds 53 bits, so an integer product past 2^53 came back rounded
+// (121932631113000000) under "Worked out with a calculator". The calculator line must carry the exact
+// product, and the answer must state it.
+test(
+	'an 18-digit product pinned to Large 4 comes back exact from the calculator',
+	{ tag: ['@preview-only', '@CUR-5021'] },
+	async ({ page }) => {
+		test.setTimeout(140_000);
+
+		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });
+		await page.addLocatorHandler(welcomeDialog, async () => {
+			await startChattingPastWelcome(welcomeDialog);
+		});
+		await page.goto(pinnedChatEntry(MODEL), { waitUntil: 'commit' });
+
+		const composer = page.getByLabel('Message AI Potluck');
+		const message = page.locator('[data-message-role="assistant"]').first();
+		await composer.click({ timeout: 30_000 });
+		await composer.fill('What is 987654321 × 123456789? Give the exact whole number.');
+		await composer.press('Enter');
+		await expect(
+			turnDone(message),
+			'the product answer never finished within 60s' + warmupContext()
+		).toBeVisible({ timeout: 60_000 });
+
+		const calculations = message.getByTestId('calculation');
+		await expect(
+			calculations.first(),
+			`the turn shows no calculate note, so the model answered without the tool: "${(await message.innerText()).slice(0, 500)}"`
+		).toBeVisible();
+		const notes = await calculations.allInnerTexts();
+		expect(
+			notes.some((n) => /=\s*121932631112635269\s*$/.test(n.trim())),
+			`no calculate note carries the exact product 121932631112635269: ${JSON.stringify(notes)}`
+		).toBe(true);
+
+		const text = await message.innerText();
+		expect(text, `the answer does not state the exact product: "${text.slice(0, 500)}"`).toMatch(
+			/121[,.\u202f\u00a0 ]?932[,.\u202f\u00a0 ]?631[,.\u202f\u00a0 ]?112[,.\u202f\u00a0 ]?635[,.\u202f\u00a0 ]?269/
+		);
 	}
 );

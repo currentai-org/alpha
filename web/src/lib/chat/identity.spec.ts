@@ -14,13 +14,13 @@ describe("resolveModelIdentity — version brand read from the served checkpoint
 	it("keeps the version brand for the v-prefixed 1.5 release form (Apertus-v1.5-70B)", () => {
 		// SNAI ships 1.5 as "apertus-ai/Apertus-v1.5-70B"; the "v" between the dash and the
 		// digits must still match, so the badge reads the version and the transparent-swap tester can tell
-		// which checkpoint answered (CUR-127).
+		// which checkpoint answered.
 		const id = resolveModelIdentity("apertus-ai/Apertus-v1.5-70B");
 		expect(id.short).toBe("Apertus 1.5 70B");
 		expect(id.makerShort).toBe("SNAI");
 	});
 
-	it("names the thinking variant apart from its base, and links no card it lacks (CUR-1683)", () => {
+	it("names the thinking variant apart from its base, and links no card it lacks", () => {
 		const base = resolveModelIdentity("swiss-ai/apertus-v1.5-70b");
 		const thinking = resolveModelIdentity("swiss-ai/apertus-v1.5-70b-thinking");
 		expect(base.short).toBe("Apertus 1.5 70B");
@@ -35,7 +35,7 @@ describe("resolveModelIdentity — version brand read from the served checkpoint
 		expect(id.makerShort).toBe("SNAI");
 	});
 
-	it("names the maker exactly as the model card does — Institute, never Initiative (CUR-152)", () => {
+	it("names the maker exactly as the model card does — Institute, never Initiative", () => {
 		// This is not a style assertion. `maker` is spliced into the model's own answer to "who made
 		// you", so a wrong noun here is a factual error about our supplier delivered in the first
 		// sentence a new user reads. The card's acceptable-use agreement is the source:
@@ -96,8 +96,8 @@ describe("resolveModelIdentity — a catalog model is named the way the picker n
 // `local:{24-hex endpointId}:{servedModelId}` (localModels.ts). Whenever routerMetadata.model is
 // available it's already the labeled string (endpointOai.ts's routerModel param) and never reaches
 // this branch at all — this is specifically the floor for the brief window before that's known, where
-// the raw conversation model id is all that's available. (CUR-1194/CUR-1262)
-describe("resolveModelIdentity — local (LAN/self-hosted) endpoint ids (CUR-1194/CUR-1262)", () => {
+// the raw conversation model id is all that's available.
+describe("resolveModelIdentity — local (LAN/self-hosted) endpoint ids", () => {
 	it("strips the local: prefix and endpoint id, leaving just the served model tag", () => {
 		const id = resolveModelIdentity("local:20a5be97fcb02afb7ef902d2:llama3.2:latest");
 		expect(id.short).toBe("llama3.2:latest");
@@ -129,7 +129,7 @@ describe("resolveModelIdentity — local (LAN/self-hosted) endpoint ids (CUR-119
 });
 
 // ChatIntroduction's empty-state greeting needs to know "is this a local model at all",
-// without needing the full parse resolveModelIdentity does — see its own use of this. (CUR-1194)
+// without needing the full parse resolveModelIdentity does — see its own use of this.
 describe("isLocalModelId", () => {
 	it("recognizes a real local model id", () => {
 		expect(isLocalModelId("local:20a5be97fcb02afb7ef902d2:llama3.2:latest")).toBe(true);
@@ -144,7 +144,7 @@ describe("isLocalModelId", () => {
 	});
 });
 
-describe("servedModelId — CUR-125, corrected", () => {
+describe("servedModelId corrected", () => {
 	const requested = "swiss-ai/apertus-v1.5-70b";
 
 	it("prefers a verified router-reported model override over the requested id", () => {
@@ -155,7 +155,7 @@ describe("servedModelId — CUR-125, corrected", () => {
 
 	it("falls back to the requested model when only .backend is present — the ordinary healthy gateway turn", () => {
 		// The primary CSCS/gateway lane reports its serving backend on every healthy turn and never sends a
-		// model-override header, because there is nothing to override. Gating on .model alone (CUR-125)
+		// model-override header, because there is nothing to override. Gating on .model alone
 		// would suppress the badge even though the requested model answered.
 		expect(servedModelId({ backend: "https://cscs.example/v1" }, requested)).toBe(requested);
 	});
@@ -178,11 +178,11 @@ describe("servedModelId — CUR-125, corrected", () => {
 	});
 });
 
-// CUR-1017 contract test (Alpha differentiator: "the badge names the model and host"). The model
+// contract test (Alpha differentiator: "the badge names the model and host"). The model
 // half is covered above via resolveModelIdentity/servedModelId; providerDisplay is the other half
 // that actually resolves the "host" text a user sees in the provenance chip; a merge silently
 // reverting PROVIDER_NAMES to empty would otherwise pass every check.
-describe("providerDisplay — the badge's host half (CUR-1017)", () => {
+describe("providerDisplay — the badge's host half", () => {
 	it("names the known sovereign-inference provider by its friendly name, not the raw slug", () => {
 		expect(providerDisplay("publicai")).toBe("Public AI");
 		expect(providerDisplay("PUBLICAI")).toBe("Public AI");
@@ -192,21 +192,21 @@ describe("providerDisplay — the badge's host half (CUR-1017)", () => {
 		expect(providerDisplay("some-vendor")).toBe("Some-Vendor");
 	});
 
-	it("names no provider when none was captured, rather than a configured default (CUR-3562)", () => {
+	it("names no provider when none was captured, rather than a configured default", () => {
 		// A default here would read as the turn's record and be wrong whenever a direct lane or a
 		// fallback served the turn.
 		expect(providerDisplay(undefined)).toBeUndefined();
 		expect(providerDisplay("")).toBeUndefined();
 	});
 
-	it("names a local (LAN/self-hosted) endpoint's own venue (CUR-1194)", () => {
+	it("names a local (LAN/self-hosted) endpoint's own venue", () => {
 		// A local turn never left the user's own network — naming a remote host would
 		// be a false provenance claim, not just an unhelpful one.
 		expect(providerDisplay("local")).toBe("Local");
 	});
 });
 
-describe("resolveModelIdentity — a Mistral `-latest` alias whose version went unconfirmed (CUR-2928)", () => {
+describe("resolveModelIdentity — a Mistral `-latest` alias whose version went unconfirmed", () => {
 	it("names Mistral AI and the size, and claims no version, openness or card", () => {
 		const id = resolveModelIdentity("mistral-large-latest");
 		expect(id).toMatchObject({ short: "Mistral Large (latest)", makerShort: "Mistral AI", openness: "" });
@@ -219,7 +219,7 @@ describe("resolveModelIdentity — a Mistral `-latest` alias whose version went 
 	});
 });
 
-describe("resolveModelIdentity — Mistral Large 4, served by the staging router as 2610 (CUR-3027)", () => {
+describe("resolveModelIdentity — Mistral Large 4, served by the staging router as 2610", () => {
 	it("names it Mistral Large 4 from Mistral AI under either name, and claims no openness or card before the weights are out", () => {
 		for (const raw of ["mistral-large-2610", "mistralai/mistral-large-2610", "mistral-large-4"]) {
 			const id = resolveModelIdentity(raw);
@@ -268,7 +268,7 @@ describe("describeLocalServer", () => {
 	});
 });
 
-describe("servedByBackup — the arithmetic route is not a backup (CUR-3316)", () => {
+describe("servedByBackup — the arithmetic route is not a backup", () => {
 	const routed = {
 		model: "mistral-medium-2604",
 		assistedBy: [{ role: "math-route", model: "mistralai/mistral-medium-2604" }]
@@ -289,7 +289,7 @@ describe("servedByBackup — the arithmetic route is not a backup (CUR-3316)", (
 });
 
 // The prompt's maker comes from the catalog, so ALIA and Bielik are credited to BSC and
-// SpeakLeash as the answer footer credits them, never to "an open source community". (CUR-3836)
+// SpeakLeash as the answer footer credits them, never to "an open source community".
 describe("resolveModelIdentity — the prompt names the same maker the catalog credits", () => {
 	it.each(catalog.filter((m) => m.gatewayId).map((m) => [m.gatewayId!, orgs[m.maker].name]))(
 		"%s is made by %s",
@@ -314,7 +314,7 @@ describe("resolveModelIdentity — the prompt names the same maker the catalog c
 });
 
 describe("second-opinion panelists", () => {
-	it("every panel model is named, never headed by its checkpoint like 'gemma-4-31B-it' (CUR-2203)", () => {
+	it("every panel model is named, never headed by its checkpoint like 'gemma-4-31B-it'", () => {
 		for (const id of ROLE_MODELS.COMPARE_PANEL) {
 			const { short, served } = resolveModelIdentity(id);
 			expect(short, id).not.toBe(served);

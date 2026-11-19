@@ -26,9 +26,9 @@ def _req(method, url, token, body=None, machine_id=None):
     data = json.dumps(body).encode() if body is not None else None
     headers = {"authorization": f"Bearer {token}", "x-agent-account": "user", "content-type": "application/json"}
     if machine_id:
-        # Pin follow-up requests to the machine that created the task — a multi-machine
+        # Pin follow-up requests to the machine that created the task: a multi-machine
         # deploy has no session affinity by default, so an unpinned poll can land on a machine that
-        # never saw it and 404. (CUR-895)
+        # never saw it and 404.
         headers["Fly-Force-Instance-Id"] = machine_id
     req = urllib.request.Request(url, data=data, method=method, headers=headers)
     try:

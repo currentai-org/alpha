@@ -15,7 +15,7 @@
  * expires_at) shape), so it's reused to carry a second hash where a row needs two:
  *   - targetEmailSendAllowed/recordTargetEmailSend: one hash (the target email), stored in `ipHash`.
  *   - otpSourceSendAllowed/recordOtpSourceSend: TWO hashes on one row — the source IP in `ipHash`
- *     and the target email in
+ *     (matching adminTokenRate.ts's own use of that column) and the target email in
  *     `userId`, so a single countDocuments can filter on the (ip, target) PAIR at once. `userId` never
  *     holds a real user id anywhere in this file — it is not a precedent for "userId = real id", the
  *     way every OTHER table in this schema uses it.
@@ -27,7 +27,7 @@
  * the fan-out case the in-memory Map structurally cannot see.
  *
  * FAIL OPEN, same posture as every other cap on this table: a DB blip (or no pepper configured) must
- * never block a legitimate send. (CUR-920)
+ * never block a legitimate send.
  */
 import { recordEvent, underEventLimit } from "$lib/chat/server/db/eventWindow";
 import { hashIp, hashTargetEmail } from "$lib/chat/server/db/ipHash";
@@ -46,7 +46,7 @@ const OTP_SOURCE_TYPE = "otpSourceRate";
 export const OTP_SOURCE_MAX = 2;
 
 /**
- * targetEmailSendAllowed above (CUR-920) stops a cap-BYPASS (fanning across serverless
+ * targetEmailSendAllowed above stops a cap-BYPASS (fanning across serverless
  * instances), but once it's reliable it ALSO makes a targeted lockout DoS reliable — a handful of
  * automated requests from one source burns a specific victim's whole OTP quota and denies them email
  * sign-in. OTP requests are unauthenticated, so unlike sendWorkspaceInvitationEmail's own per-inviter

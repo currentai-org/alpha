@@ -4,8 +4,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import CopyToClipBoardBtn from "./CopyToClipBoardBtn.svelte";
 
 // The code-block copy button returned early on a refused clipboard, so the visitor saw
-// nothing and couldn't tell the copy had failed. (CUR-2920)
-describe("CopyToClipBoardBtn — a refused copy says so (CUR-2920)", () => {
+// nothing and couldn't tell the copy had failed.
+describe("CopyToClipBoardBtn — a refused copy says so", () => {
 	afterEach(() => {
 		vi.restoreAllMocks();
 		cleanup();

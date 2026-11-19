@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { localEndpointFetch } from "$lib/chat/server/localEndpointFetch";
 import { z } from "zod";
 import { APP_USER_AGENT } from "$lib/chat/constants/app";
@@ -19,12 +22,14 @@ import { createOpenAIClient } from "$lib/chat/server/openaiClient";
 import { PLATFORM_MAX_DURATION_MS } from "$lib/chat/utils/deadlineLadder";
 import { firstKey } from "$lib/chat/server/env/firstKey";
 import { logger } from "$lib/chat/server/logger";
+import { isTestDeployment } from "$lib/chat/server/deployEnv";
+import { describeRequest } from "./requestLog";
 import { backendIsSwiss, sovereignCopyFalsifiedBy, throughOpenRouter } from "$lib/chat/servingProvenance";
 import { wireModelId } from "./providerPin";
 import { endpointApiKey } from "$lib/chat/server/endpointKey";
-import { peekServedModel, sameModelId, withServedModel } from "./servedModelPeek";
+import { peekServedModel, sameModelId, withServedModel, withoutLitellmProvider } from "./servedModelPeek";
 import { isSameMistralModel, routerUpstreamFor } from "$lib/chat/server/mistralVersions";
-import { replayOrRecord, type ReplayMode } from "./modelReplay";
+import { MOCK_HEADER, replayOrRecord, type ReplayMode } from "./modelReplay";
 import { getRequestContext } from "$lib/chat/server/requestContext";
 import { isDirectLane } from "./directLane";
 import { hfBillToHeader } from "$lib/chat/server/hfBillTo";
@@ -48,6 +53,7 @@ import {
 import {
 	crossModelRouterURL,
 	gatewayFallbackOverride,
+	gatewayNoCache,
 	gatewayRetryDelayMs,
 } from "$lib/chat/server/gatewayFallbackGate";
 import {
@@ -55,19 +61,21 @@ import {
 	CALCULATE_KIT,
 	CALCULATE_TOOL_NAME,
 	TOOL_ROUND_HEDGE_AFTER_MS,
+	TOOL_LOOP_ANSWER_BY_MS,
 	withPastCalculations,
 	withToolLoop,
+	wireToolChoice,
 	type ToolChoice,
 } from "./calculateTool";
 import type { InlineToolParameters } from "./inlineToolReference";
 import { HEDGE_TOOL_ROUNDS_FLAG } from "../failover";
 import { upstreamFetch } from "../../upstreamFetch";
+import { backendForDeployment } from "./gatewayDeployments";
 
-/** Kept free for the answer when the model sets no max_tokens (CUR-2893), and the cap a model-decoding
+/** Kept free for the answer when the model sets no max_tokens, and the cap a model-decoding
  *  turn sends (generate.ts), so the room the history leaves and the answer's ceiling agree. */
 export const DEFAULT_ANSWER_RESERVE = 4_096;
 
-// uuid import removed (no tool call ids)
 
 /**
  * Per-request marker telling `customFetch` whether the response it is inspecting served the user's
@@ -86,11 +94,11 @@ const SERVES_USER_ANSWER_HEADER = "ChatUI-Serves-User-Answer";
  */
 const FAULT_SUBSTITUTE_HEADER = "ChatUI-Fault-Substitute-Model";
 
-/** Per-request carrier for the `model_replay` faults' mode (SOL-92, SOL-148), stripped the same way. */
+/** Per-request carrier for the `model_replay` faults' mode, stripped the same way. */
 const FAULT_REPLAY_HEADER = "ChatUI-Fault-Model-Replay";
 
 /**
- * CUR-1291 macro expansion: `{{name}}` inside a LOCAL endpoint's custom header VALUE (defaultHeaders,
+ * Macro expansion: `{{name}}` inside a LOCAL endpoint's custom header VALUE (defaultHeaders,
  * see localModels.ts's headersRecord()) expands to a per-request fact — a user wiring their own
  * inference server up to correlate requests with `{{conversationId}}` doesn't need a real templating
  * engine for it. An unknown/absent `{{name}}` expands to "" rather than throwing (this is a header
@@ -118,9 +126,9 @@ export const endpointOAIParametersSchema = z.object({
 	// the primary checkpoint's warm lane and would corrupt a different model's id (":publicai" on a
 	// GLM id 400s). Also seeded into routerMetadata.model UNLESS routerModel (below) is given.
 	modelId: z.string().optional(),
-	// Our id for `modelId` when the host names the model differently. The staging router
-	// serves Mistral Large as `mistralai/mistral-large-2512` and reports that id back. The answer is
-	// recorded under this id only after its version checks out against Mistral's alias list (`ours`). (CUR-2928)
+	// Our id for `modelId` when the host names the model differently: a router can serve Mistral
+	// Large as `mistralai/mistral-large-2512` and report that id back. The answer is recorded under
+	// this id only after its version checks out against Mistral's alias list (`ours`).
 	servedAs: z.string().optional(),
 	// A per-user local (LAN/self-hosted) endpoint has no gateway in front of it to report
 	// provenance via response headers (no X-Router-Model, no x-litellm-*) — it's a single, known,
@@ -130,15 +138,15 @@ export const endpointOAIParametersSchema = z.object({
 	// stay e.g. "llama3.2:latest" or Ollama 404s), while this is display-only — the endpoint's own
 	// label prefixed on, e.g. "nx16g:llama3.2:latest" — and must never reach the request body. Wins
 	// over modelId for routerMetadata.model when present; every other (non-local) caller leaves this
-	// unset and gets the existing modelId-seeds-routerMetadata behavior unchanged. (CUR-1194)
+	// unset, and routerMetadata.model is seeded from modelId.
 	routerModel: z.string().optional(),
 	// Companion to routerModel: what providerDisplay() (identity.ts) shows for this turn's serving
-	// venue. Absent → the turn's own provider header, or no "served via" at all (CUR-3562); set to
+	// venue. Absent → the turn's own provider header, or no "served via" at all; set to
 	// "local" for a local endpoint so the provenance badge names the LAN server.
 	routerProvider: z.string().optional(),
 	type: z.literal("openai"),
 	baseURL: z.string().url().default("https://api.openai.com/v1"),
-	// The env var this lane's key lives in (CUR-2640). The registry stores only this name; the caller
+	// The env var this lane's key lives in. The registry stores only this name; the caller
 	// resolves it into `apiKey` at call time (endpointKey.ts), so the value never sits on a model object.
 	apiKeyEnv: z.string().optional(),
 	// Canonical auth token is OPENAI_API_KEY; keep HF_TOKEN as legacy alias. Call-time only: a registry
@@ -209,10 +217,10 @@ export async function endpointOai(
 	// served by a cross-model backup lane is attributed to the model that actually wrote it — the
 	// provenance badge resolves identity from this served id, never from the primary it stood in for.
 	// `routerModel`/`routerProvider` (local endpoints only, see their own doc comments above) win over
-	// the modelId-derived seed when present, since they're already the exact display-worthy values —
-	// every other caller leaves them unset and this is unchanged from before they existed.
+	// the modelId-derived seed when present, since they're already the exact display-worthy values;
+	// every other caller leaves them unset.
 	// The host this request was sent to. `backend` cannot tell the lanes apart: a router turn
-	// reports its upstream (api.mistral.ai) and a direct turn its own base, which is the same host. (CUR-3193)
+	// reports its upstream (api.mistral.ai) and a direct turn its own base, which is the same host.
 	const lane = new URL(baseURL).host;
 	let routerMetadata: { route?: string; model?: string; provider?: string; backend?: string; lane?: string } = {
 		lane,
@@ -223,7 +231,7 @@ export async function endpointOai(
 	// litellm's own per-request routing can land an answer on a different MODEL than requested (one
 	// provider's own checkpoint answering under another model's id), and a fresh routing decision on
 	// retry can land back on the requested model, since the gateway's lane weights decide this, not
-	// anything this request controls (CUR-1313). Bounded at 2 total attempts: this sits on live TTFT,
+	// anything this request controls. Bounded at 2 total attempts: this sits on live TTFT,
 	// so it is one retry, not a failover chain; the same shape as agent-service/api/proxy.py, narrower.
 	//
 	// The retry keys on model substitution, never on which backend served: a correct answer from any
@@ -233,7 +241,7 @@ export async function endpointOai(
 	const jitteredRetryDelayMs = () => 100 + Math.random() * 200;
 	const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 	// The model this call actually asked for. Never carries a `:provider` wire suffix by construction —
-	// endpointOAIParametersSchema's `modelId` is sent verbatim (endpointOai.ts:42-46) and a suffixed one
+	// endpointOAIParametersSchema's `modelId` is sent verbatim (see the schema above) and a suffixed one
 	// would 400 on the wire, so there's nothing to strip here. litellm's own x-litellm-model-group
 	// report is the bare alias on a healthy turn too, and on a substituted turn alike, so this is the correct thing to diff it
 	// against, not the suffixed wire id resolveProviderModelId builds per call.
@@ -241,13 +249,13 @@ export async function endpointOai(
 	// A lane that names its own key reaches its host directly, so it never takes the default pin.
 	const ownLane = Boolean(endpointApiKey({ apiKeyEnv: input.apiKeyEnv }));
 	// The host's report of the model we asked for, recorded under our own id only once the version is
-	// checked (CUR-2928). `upstream` (x-litellm-model-name) is the name the router asked Mistral for. A
+	// checked. `upstream` (x-litellm-model-name) is the name the router asked Mistral for. A
 	// dated name settles it on sight; a `*-latest` one is looked up in Mistral's own alias list, which
 	// needs a La Plateforme key. A version that doesn't check out, or couldn't be checked, is recorded
 	// as the name the router asked for, with no version claimed. Any other id is a different model and
 	// is recorded as the host named it. A direct host (`direct`) that answers as exactly the name we
 	// sent it is our model under that host's name: La Plateforme serves Large 4 (preview) as
-	// `mistral-large-4-0` for our `mistral-large-2610` (CUR-3027).
+	// `mistral-large-4-0` for our `mistral-large-2610`.
 	const ours = async (id: string, upstream?: string, direct = false) => {
 		if (!servedAs || !sameModelId(id, requestedModel)) return id;
 		if (direct) return servedAs;
@@ -257,11 +265,11 @@ export async function endpointOai(
 		const routerName = routerUpstreamFor(servedAs);
 		if (routerName && sameModelId(tail, routerName)) return servedAs;
 		const same = await isSameMistralModel(upstream, servedAs);
-		return same ? servedAs : upstream.replace(/^openai\//, "");
+		return same ? servedAs : withoutLitellmProvider(upstream);
 	};
 
 	// A user's own local endpoint goes through the private-address guard; every other lane is ours and
-	// reaches its configured host directly (CUR-3387), keeping its connection to the router open
+	// reaches its configured host directly, keeping its connection to the router open
 	// between calls (upstreamFetch.ts).
 	const baseFetch = routerProvider === "local" ? localEndpointFetch : upstreamFetch;
 
@@ -280,7 +288,7 @@ export async function endpointOai(
 		// through it (see SERVES_USER_ANSWER_HEADER's own comment above for the identical race); a
 		// shared retry counter would let one request's attempt count leak into another's.
 		// With `disable_fallbacks` on the answer lane, a cooling-down deployment answers 429 instead of
-		// silently substituting (CUR-1729). That answer is recoverable in a way the substitution is not:
+		// silently substituting. That answer is recoverable in a way the substitution is not:
 		// the gateway names an interval, and the lane flaps rather than being down (a substitution and a
 		// healthy answer can follow each other minutes apart). Retried once, then the 429 goes through as
 		// the honest failure it is.
@@ -293,7 +301,7 @@ export async function endpointOai(
 		const substitute = outgoing.get(FAULT_SUBSTITUTE_HEADER) ?? undefined;
 		const replayHeader = outgoing.get(FAULT_REPLAY_HEADER);
 		// The answer call names its mode in a header; a side call through this endpoint (title,
-		// search decision, reasoning summary) inherits the request's mode from its context instead. (SOL-148)
+		// search decision, reasoning summary) inherits the request's mode from its context instead.
 		const replay: ReplayMode | null =
 			replayHeader === "none" ? "none" : replayHeader ? "new_episodes" : (getRequestContext()?.replayMode ?? null);
 		if (substitute || replay) {
@@ -313,11 +321,29 @@ export async function endpointOai(
 				: await baseFetch(url, init);
 			if (substitute) response = await withServedModel(response, substitute);
 
+			// The wrong_model_served fault stands for a gateway that swaps the model on every call. A mock
+			// answer (a PR run's replay miss, modelReplay.ts) has none of the gateway headers the
+			// substitution check below reads, so that check would pass the swap through as the turn's answer
+			// under the substitute's id. It is shed here with the same 503. Neither the fault nor a mock
+			// answer reaches production.
+			if (substitute && response.headers.get(MOCK_HEADER) === "1") {
+				await response.body?.cancel().catch(() => {});
+				logger.error(
+					{ requestedModel, served: substitute, substituted: true, mock: true, attempt },
+					"[serving] wrong_model_served fault on a mock answer — shedding as the gateway check would"
+				);
+				return new Response(
+					JSON.stringify({
+						error: { message: "model substitution exhausted retries", type: "server_error" },
+					}),
+					{ status: 503, headers: { "content-type": "application/json" } }
+				);
+			}
+
 			// A 429 here reports a deployment cooldown at the gateway, rather than any rate limit
-			// applied to this deployment's key. The interval lives in the
-			// body prose of the LiteLLM 429 actually observed ("Try again in 5 seconds"), so the body
-			// has to be consumed to read it — hence the rebuilt Response on the paths that keep it,
-			// which would otherwise hand the SDK a stream already drained.
+			// applied to this deployment's key. LiteLLM puts the interval in the 429's body prose
+			// ("Try again in 5 seconds"), so the body has to be consumed to read it — hence the rebuilt
+			// Response on the paths that keep it, which would otherwise hand the SDK a stream already drained.
 			if (response.status === 429) {
 				const text = await response.text().catch(() => undefined);
 				const waitMs = gatewayCooldownRetried
@@ -362,7 +388,7 @@ export async function endpointOai(
 			}
 			if (providerHeader) {
 				// The HF router names the provider that served. Logged beside the id we sent, so a pin
-				// (providerPin.ts's table) can be checked against where the text actually went (CUR-2112).
+				// (providerPin.ts's table) can be checked against where the text actually went.
 				logger.info(
 					{
 						requestedModel,
@@ -375,24 +401,32 @@ export async function endpointOai(
 				);
 			}
 
-			// LiteLLM (the publicai gateway) reports the ACTUAL backend that served on every response. The
-			// swiss-ai/apertus-70b-instruct routing GROUP rotates across CSCS / Infomaniak / Singapore, and
-			// this header is the only place the real deployment shows through — the pre-turn provenance
-			// resolve derives from the gateway host and cannot see it (CUR-75).
+			// A LiteLLM gateway reports the ACTUAL backend that served on every response. One routing GROUP
+			// can rotate across deployments in several countries, and this header is the only place the
+			// real deployment shows through — the pre-turn provenance resolve derives from the gateway host
+			// and cannot see it.
 			//
 			// The warn is the point, not the info. Every surface — greeting, welcome modal, map, system
 			// prompt — tells the user this runs on sovereign public compute IN SWITZERLAND, and that
 			// sentence is the deployment's assertion, made before the turn, about a backend chosen during
-			// it. A non-Swiss backend on the ANSWER is the condition under which the copy misstates provenance
-			// to a user, and nothing anywhere could go red for it: the copy said
-			// the same thing whichever backend answered. SWISS_BACKEND_HOSTS is committed in the catalog (routing/catalog.ts)
-			// so this warns the moment routing moves somewhere the copy hasn't followed.
+			// it. A non-Swiss backend on the ANSWER is the condition under which the copy misstates
+			// provenance to a user, and the copy itself reads the same whichever backend answered.
+			// SWISS_BACKEND_HOSTS is committed in the catalog (routing/catalog.ts), so this warns the moment
+			// routing moves somewhere the copy hasn't followed.
 			//
 			// `servesUserAnswer` is what keeps that warn TRUE when it fires. This client carries the
-			// side-calls too, and the second-opinion panel fans out to EuroLLM and Olmo precisely because
-			// Public AI doesn't host them — they land off the allowlist and falsify nothing. See
-			// `sovereignCopyFalsifiedBy`, which carries the measurement and the reasoning.
-			const litellmBackend = response.headers.get("x-litellm-model-api-base");
+			// side-calls too, and the second-opinion panel fans out to models the Swiss deployment doesn't
+			// host, such as EuroLLM and Olmo — they land off the allowlist and falsify nothing. See
+			// `sovereignCopyFalsifiedBy` for the reasoning.
+			// The gateway names the answering deployment on every response but its base URL only on some,
+			// so a missing base URL is read from the gateway's deployment list by that id.
+			const litellmDeployment = response.headers.get("x-litellm-model-id") || undefined;
+			const litellmBackend =
+				response.headers.get("x-litellm-model-api-base") ||
+				(await backendForDeployment(litellmDeployment, {
+					baseURL,
+					authorization: new Headers(init?.headers).get("authorization"),
+				}));
 			if (litellmBackend) {
 				routerMetadata = { ...routerMetadata, backend: litellmBackend };
 				const servesUserAnswer =
@@ -407,7 +441,7 @@ export async function endpointOai(
 				// backup lane's id (e.g. aisingapore/Qwen-SEA-LION-v4-32B-IT). It's the only served-identity
 				// signal this gateway sends (no X-Router-Model header here), so it overrides what laneModelId
 				// seeded routerMetadata.model with, and a substituted turn does not keep the requested model's
-				// badge (CUR-874). servedModelId/ChatMessage's backup-lane detection handles a populated
+				// badge. servedModelId/ChatMessage's backup-lane detection handles a populated
 				// .model.
 				// servedGroupFor: a request pinned to one deployment (apertusStrictLane.ts) is answered
 				// under the deployment's id in both places; map it back to the group it belongs to.
@@ -439,12 +473,12 @@ export async function endpointOai(
 				const openRouter = throughOpenRouter(litellmBackend, peeked.provider);
 				if (openRouter) routerMetadata = { ...routerMetadata, ...openRouter };
 
-				// The retry now fires on a genuine model substitution, not on backend location —
+				// The retry fires on a genuine model substitution, not on backend location —
 				// a served-vs-requested mismatch is wrong regardless of which call this is (side-call or
 				// answer), so it is NOT gated on servesUserAnswer the way the Swiss-host check below is.
 				// Compared through sameModelId, not `!==`: a caller asking for the Hugging Face spelling
 				// `swiss-ai/Apertus-v1.5-70B` gets the group header `swiss-ai/apertus-v1.5-70b` back, and a
-				// strict compare would shed that real Apertus answer as a substitution (CUR-1960). (CUR-1313)
+				// strict compare would shed that real Apertus answer as a substitution.
 				const isSubstitution =
 					(!!litellmGroup && !sameModelId(litellmGroup, requestedModel)) || bodySubstituted;
 				const isLastAttempt = attempt === SAME_BACKEND_RETRY_ATTEMPTS;
@@ -456,7 +490,7 @@ export async function endpointOai(
 				}
 
 				// The Swiss-host fact is a claim about user-facing sovereignty copy, not about whether
-				// serving is correct (CUR-1313) — a non-Swiss host such as Featherless is an accepted Apertus
+				// serving is correct — a non-Swiss host such as Featherless is an accepted Apertus
 				// lane, so this warns without retrying or blocking anything, purely so any gap between the
 				// copy and routing stays visible in the logs.
 				const nonSwissAnswer = sovereignCopyFalsifiedBy({ backend: litellmBackend, servesUserAnswer });
@@ -466,13 +500,14 @@ export async function endpointOai(
 				// one clean "warn" naming the FINAL backend, not a duplicate per retry.
 				const fields = {
 					backend: litellmBackend,
+					deployment: litellmDeployment,
 					swissBackend,
 					servesUserAnswer,
 					group: litellmGroup,
 					served: bodyModel,
 					bodyProvider: peeked.provider,
-					// What the gateway asked its upstream for. The staging router asks Mistral for `*-latest`, so this
-					// is where a move of "latest" would show (CUR-2928).
+					// What the gateway asked its upstream for. When a router asks Mistral for `*-latest`, this is
+					// where a move of "latest" shows.
 					upstream: response.headers.get("x-litellm-model-name") || undefined,
 					requestedModel,
 					substituted: isSubstitution,
@@ -482,17 +517,16 @@ export async function endpointOai(
 				};
 
 				if (isSubstitution) {
-					// Retries exhausted and the gateway is still substituting a different model. Not
-					// shed to avoid a dishonest label — the body-model check above already stamps
-					// routerMetadata.model with the real served id, so a served substitute is honestly
-					// labeled. It sheds because the person asked for a specific model and a substitute's
-					// answer is not that model's. A 503 after two retries is faster and more truthful than a
-					// 45s wait ending in nothing, or a very short reply from a different model under a
-					// request for Apertus.
+					// Retries exhausted and the gateway is still substituting a different model. The label is
+					// not the reason to shed: the body-model check above already stamps routerMetadata.model
+					// with the real served id, so a served substitute would be honestly labeled. It sheds
+					// because the person asked for a specific model and a substitute's answer is not that
+					// model's. A 503 after two retries is faster and more truthful than a 45s wait ending in
+					// nothing, or a very short reply from a different model under a request for Apertus.
 					//
 					// HAZARD, narrowed but not gone: isSubstitution compares x-litellm-model-group against
 					// requestedModel through sameModelId (servedModelPeek.ts), which forgives case,
-					// surrounding whitespace and a leading `openai/` (CUR-1960). A model whose litellm group
+					// surrounding whitespace and a leading `openai/`. A model whose litellm group
 					// alias differs from its registry id in any other way (a renamed alias, a suffix) would
 					// still shed 100% of its own traffic on deploy, indistinguishable from this real
 					// substitution case. Check that match before onboarding a new model onto this gateway.
@@ -507,7 +541,11 @@ export async function endpointOai(
 						}),
 						{ status: 503, headers: { "content-type": "application/json" } }
 					);
-				} else if (nonSwissAnswer) {
+				} else if (nonSwissAnswer && /apertus/i.test(requestedModel)) {
+					// Only an Apertus model is supposed to run on Swiss compute, so only its departure is a
+					// defect worth a warn. Every other model (Mistral, SEA-LION, GLM, Bielik, and the per-minute
+					// warm probes that call them) is expected off the allowlist and takes the info line below;
+					// the turn's provenance and copy are computed above and are unchanged.
 					logger.warn(
 						fields,
 						"[serving] litellm route left the Swiss backend allowlist — the sovereign-compute copy is false for this turn"
@@ -516,11 +554,11 @@ export async function endpointOai(
 					logger.info(fields, "[serving] litellm route");
 				}
 			} else if (response.ok && !routerModel && isDirectLane(baseURL, config.OPENAI_BASE_URL)) {
-				// A direct host sends no provenance header, so without this a Large 3 turn persisted no
-				// served model and its badge could never show a measured marker (CUR-2283). The body's own
-				// model id is the host's report of what answered, the same evidence the gateway branch
-				// above reads; the backend is the host this request actually reached. A local endpoint
-				// (routerModel set, CUR-1194) keeps the label its caller chose.
+				// A direct host sends no provenance header, so without this a direct turn would persist no
+				// served model and its badge could never show a measured marker. The body's own model id is
+				// the host's report of what answered, the same evidence the gateway branch above reads; the
+				// backend is the host this request actually reached. A local endpoint (routerModel set) keeps
+				// the label its caller chose.
 				const peeked = await peekServedModel(response);
 				response = peeked.response;
 				if (peeked.model) {
@@ -550,8 +588,8 @@ export async function endpointOai(
 		timeout: PLATFORM_MAX_DURATION_MS,
 		defaultHeaders: {
 			// The HF Inference Providers router's WAF returns 403 ("Your request was blocked") for the
-			// OpenAI Node SDK's default User-Agent ("OpenAI/JS x.y.z"). Always override it with our own
-			// Identifies this deployment to upstream providers. See constants/app.ts.
+			// OpenAI Node SDK's default User-Agent ("OpenAI/JS x.y.z"), so it is always replaced with our
+			// own, which identifies this deployment to upstream providers. See constants/app.ts.
 			"User-Agent": APP_USER_AGENT,
 			...defaultHeaders,
 		},
@@ -561,10 +599,14 @@ export async function endpointOai(
 
 	const imageProcessor = makeImageProcessor(multimodal.image);
 
-	/** The `every_lane_rate_limited` fault (CUR-4042): the SDK's 429 as a host with a spent budget sends
+	/** The `every_lane_rate_limited` fault: the SDK's 429 as a host with a spent budget sends
 	 *  it, thrown before any request leaves, so no model is called and every lane refuses alike. */
 	const everyLaneRateLimited = () =>
 		Object.assign(new Error("429 every_lane_rate_limited fault: the host refused the call"), { status: 429 });
+	/** The `every_lane_payment_required` fault: the 402 and text the router sends when a
+	 *  provider has pay-as-you-go disabled, thrown before any request leaves. */
+	const everyLanePaymentRequired = () =>
+		Object.assign(new Error('402 {"error":"Pay-as-you go is not enabled for provider scaleway yet."}'), { status: 402 });
 
 	/** The headers every gateway request carries, shared by the completions and chat paths. */
 	const requestHeaders = (
@@ -588,12 +630,12 @@ export async function endpointOai(
 		...(config.USE_USER_TOKEN === "true" && locals?.token
 			? { Authorization: `Bearer ${locals.token}` }
 			: {}),
-		// Only the HF router reads it; the gateway and direct hosts get no org name (CUR-1877). A backup
+		// Only the HF router reads it; the gateway and direct hosts get no org name. A backup
 		// lane's own bill-to rides in its defaultHeaders (modelsCatalog.ts), which this still overrides.
 		...hfBillToHeader(baseURL, { ownLane: false }, locals?.billingOrganization),
 		// A local endpoint's own custom headers, `{{conversationId}}`/etc. expanded — spread
 		// LAST so a user-named header wins over one of ours on a name collision, since it's their own
-		// server they're configuring. (CUR-1291)
+		// server they're configuring.
 		...expandHeaderMacros(defaultHeaders, {
 			conversationId: conversationId?.toString() ?? "",
 			userId: locals?.user?._id?.toString() ?? "",
@@ -614,8 +656,10 @@ export async function endpointOai(
 			substituteServedModel,
 			replayModelCalls,
 			rateLimitEveryLane,
+			paymentRequiredEveryLane,
 		}) => {
 			if (rateLimitEveryLane) throw everyLaneRateLimited();
+			if (paymentRequiredEveryLane) throw everyLanePaymentRequired();
 			const prompt = await buildPrompt({
 				messages,
 				preprompt,
@@ -647,11 +691,12 @@ export async function endpointOai(
 				presence_penalty: parameters?.presence_penalty,
 			};
 
-			const openAICompletion = await openai.completions.create(body, {
+			const sent = {
 				body: { ...body, ...gatewayFallbackOverride(servesUserAnswer, baseURL, [config.OPENAI_BASE_URL, config.FALLBACK_BASE_URL]), ...extraBody },
 				headers: requestHeaders({ conversationId, locals, servesUserAnswer, substituteServedModel, replayModelCalls }, modelId),
-				signal: abortSignal,
-			});
+			};
+			logger.info({ ...describeRequest(sent.body, sent.headers, isTestDeployment()), lane }, "[request] sent");
+			const openAICompletion = await openai.completions.create(body, { ...sent, signal: abortSignal });
 
 			return openAICompletionToTextGenerationStream(openAICompletion);
 		};
@@ -667,6 +712,7 @@ export async function endpointOai(
 			provider,
 			reasoningEffort,
 			disableThinking,
+			skipGatewayCache,
 			servesUserAnswer,
 			onHistoryFitted,
 			calculateTool,
@@ -679,8 +725,10 @@ export async function endpointOai(
 			substituteServedModel,
 			replayModelCalls,
 			rateLimitEveryLane,
+			paymentRequiredEveryLane,
 		}) => {
 			if (rateLimitEveryLane) throw everyLaneRateLimited();
+			if (paymentRequiredEveryLane) throw everyLanePaymentRequired();
 			// Format messages for the chat API, handling multimodal content if supported
 			let messagesOpenAI: OpenAI.Chat.Completions.ChatCompletionMessageParam[] =
 				await prepareMessagesWithFiles(
@@ -690,7 +738,7 @@ export async function endpointOai(
 				);
 			// A turn that offers calculate also sees the calls earlier answers made, so a follow-up
 			// works from those groups and not from the prose total. Only on the tool loop's own path: the
-			// native-first resend flattens roles, and a request without the tool has nothing to pair them with. (CUR-1202)
+			// native-first resend flattens roles, and a request without the tool has nothing to pair them with.
 			const offersCalculate = (nativeTools ?? (calculateTool ? CALCULATE_KIT : undefined))?.definitions.some(
 				(d) => d.function?.name === CALCULATE_TOOL_NAME
 			);
@@ -726,7 +774,7 @@ export async function endpointOai(
 			// Fit the history to the context this lane accepts. Here because `messagesOpenAI` is
 			// whole and still role-shaped (the flatten below would merge the exchanges it cuts along), and
 			// because it is rebuilt per invocation, so a backup lane is fitted to its own context. A chat
-			// that fits goes out as the same array. (CUR-2893)
+			// that fits goes out as the same array.
 			{
 				const reserveTokens =
 					{ ...model.parameters, ...generateSettings }.max_tokens ?? DEFAULT_ANSWER_RESERVE;
@@ -750,9 +798,8 @@ export async function endpointOai(
 				onHistoryFitted?.(fit.leftOut);
 			}
 
-			// The Apertus deployments do not take a non-user role and the gateway then serves
-			// SEA-LION instead, so the user's answer goes out as ONE user message when this flag is on. See
-			// flattenForApertus.ts for the measurement and for why it is a workaround with a delete date.
+			// Some Apertus deployments do not take a non-user role, so for a model whose profile says so
+			// (rolesNeedFlattening) the user's answer goes out as ONE user message. See flattenForApertus.ts.
 			//
 			// HERE and not in generate.ts, for two reasons. `messagesOpenAI` is final at this point — the
 			// preprompt merge above is the last thing that touches it — and it is rebuilt from `messages` on
@@ -760,28 +807,26 @@ export async function endpointOai(
 			// double-flattens. Moving this up to the endpoint() call site would lose both properties.
 			//
 			// `servesUserAnswer` keeps this to the main generation. Side calls that need it flatten their
-			// own request: the search classifier (searchDecision.ts) and the title (title.ts, CUR-2175).
+			// own request: the search classifier (searchDecision.ts) and the title (title.ts).
 			// ensureFlagsPolled because this is a per-request read and preview runs no warm cron, so a cold
 			// instance would otherwise read every flag as its OFF fallback (same guard as guardGate.ts).
-			// (CUR-1294)
 			// With native-first on, the flatten is deferred to the resend inside withNativeFirst
-			// below, because the flattened transcript is what makes later answers copy earlier ones. (CUR-1886)
-			// Only for a model some lane refuses roles on, so a model that takes roles (GLM on the
-			// preview backup lane, or under math routing) gets neither the flatten nor a hedged duplicate
-			// request. (CUR-2145)
+			// below, because the flattened transcript is what makes later answers copy earlier ones.
+			// Only for a model some lane refuses roles on, so a model that takes roles (GLM on a backup
+			// lane, or under math routing) gets neither the flatten nor a hedged duplicate request.
 			let nativeFirst = false;
 			if (servesUserAnswer) {
 				await ensureFlagsPolled();
 				const needsFlattening = rolesNeedFlattening(requestedModel);
 				const flatten = needsFlattening;
 				// One predicate with calculateToolOffered, so the turn that offers `calculate` is never the
-				// turn this path drops it on (CUR-2273).
+				// turn this path drops it on.
 				nativeFirst = answersNativeFirst(requestedModel);
-				// LOGGED, not inferred. Whether this branch ran is otherwise invisible: a turn that shipped
-				// the old shape and one that shipped the flattened shape look identical in every existing
-				// line, and the only downstream tell — which model answered — is absent on exactly the
-				// turns that fail, because a hung request never returns a model at all. Without this,
-				// "did the flag apply" can only be argued from timing.
+				// LOGGED, not inferred. Whether this branch ran is otherwise invisible: a turn sent with roles
+				// and one sent flattened look identical in every other log line, and the only downstream
+				// tell — which model answered — is absent on exactly the turns that fail, because a hung
+				// request never returns a model at all. Without this line, whether the flatten applied could
+				// only be argued from timing.
 				const roles = messagesOpenAI.map((m) => m.role);
 				if (flatten && !nativeFirst) messagesOpenAI = flattenForApertus(messagesOpenAI);
 				logger.info(
@@ -815,9 +860,9 @@ export async function endpointOai(
 			});
 
 			// Every call to an Apertus group refuses substitution, and the answer lane's role-shaped
-			// attempt goes to a deployment that accepts roles (apertusStrictLane.ts, CUR-2092); the
-			// model's harness row says whether it takes the lane (harnessProfiles.ts). Side calls are not
-			// pinned: pinned to one deployment, the arithmetic pre-checks hit their 8s timeout (CUR-2082).
+			// attempt goes to a deployment that accepts roles (apertusStrictLane.ts); the model's harness
+			// row says whether it takes the lane (harnessProfiles.ts). Side calls are not pinned, because
+			// pinned to one deployment the arithmetic pre-checks run past their 8s timeout.
 			const strictLane = takesStrictLane(modelId);
 			const fallbackOverride = gatewayFallbackOverride(
 				servesUserAnswer || strictLane,
@@ -828,9 +873,9 @@ export async function endpointOai(
 					crossModelRouterURL(modelId, Reflect.get(config, "MISTRAL_CHAT_BASE_URL") as string | undefined),
 				]
 			);
-			// A GLM side call (title, classifier) gets reasoning off as well. Reached through the backup
-			// lane, GLM can spend a title's whole token budget reasoning and return nothing (CUR-1933). The answer keeps its reasoning, which the stream strips. On
-			// the HF router the call is also pinned to a provider that honours the field (CUR-2090).
+			// A GLM side call (title, classifier) gets reasoning off as well: GLM can spend a title's whole
+			// token budget reasoning and return nothing. The answer keeps its reasoning, which streams into
+			// the Working panel. On the HF router the call is also pinned to a provider that honours the field.
 			const reasoningOff =
 				disableThinking || (!servesUserAnswer && dropsReasoning(modelId))
 					? reasoningOffRequest(modelId, baseURL, config.OPENAI_BASE_URL)
@@ -864,6 +909,11 @@ export async function endpointOai(
 				body: {
 					...wire,
 					...fallbackOverride,
+					...gatewayNoCache(skipGatewayCache, baseURL, [
+						config.OPENAI_BASE_URL,
+						config.FALLBACK_BASE_URL,
+						Reflect.get(config, "MISTRAL_CHAT_BASE_URL") as string | undefined,
+					]),
 					...extraBody,
 				},
 				headers: requestHeaders({ conversationId, locals, servesUserAnswer, substituteServedModel, replayModelCalls }, modelId),
@@ -871,9 +921,9 @@ export async function endpointOai(
 
 			// Handle both streaming and non-streaming responses with appropriate processors. Each resolves
 			// when the response headers arrive, which is the moment withNativeFirst's hedge races on.
-			// `toolChoice` set means this request offers the turn's tools: calculate alone (CUR-2273), or the
-			// native harness's kit (CUR-2420).
-			// A planned math turn on a `calculateOnPlannedMath` model forces calculate on round one. (CUR-4191)
+			// `toolChoice` set means this request offers the turn's tools: calculate alone, or the native
+			// harness's kit. A planned math turn on a `calculateOnPlannedMath` model forces calculate on
+			// round one.
 			const kit =
 				nativeTools ??
 				(calculateTool
@@ -901,13 +951,21 @@ export async function endpointOai(
 					...(reasoningOff ? reasoningOff.fields : {}),
 					model: wireModel,
 					messages: msgs,
-					...(toolChoice && kit ? { tools: kit.definitions, tool_choice: toolChoice } : {}),
+					...(toolChoice && kit ? { tools: kit.definitions, tool_choice: wireToolChoice(toolChoice, requestedModel) } : {}),
+					// The closing round keeps the turn's whole cap: Large 4 reasons before it answers there, and
+					// a 4,096 cap can end the turn while it is still reasoning.
 				};
+				const sent = requestOptions(wire);
+				// What this request carried, so two turns can be compared after the fact.
+				logger.info(
+					{ ...describeRequest(sent.body, sent.headers, isTestDeployment()), lane },
+					"[request] sent"
+				);
 				const sentAt = Date.now();
 				if (streamingSupported) {
 					const openChatAICompletion = await openai.chat.completions.create(
 						wire as ChatCompletionCreateParamsStreaming,
-						{ ...requestOptions(wire), signal: attemptSignal }
+						{ ...sent, signal: attemptSignal }
 					);
 					return openAIChatToTextGenerationStream(
 						openChatAICompletion,
@@ -921,27 +979,28 @@ export async function endpointOai(
 									return { name: fn?.name ?? "", parameters: fn?.parameters };
 								})
 							: [],
-						turnShapeOf(msgs)
+						turnShapeOf(msgs),
+						servesUserAnswer
 					);
 				}
 				const openChatAICompletion = await openai.chat.completions.create(
 					wire as ChatCompletionCreateParamsNonStreaming,
-					{ ...requestOptions(wire), signal: attemptSignal }
+					{ ...sent, signal: attemptSignal }
 				);
 				return openAIChatToTextGenerationSingle(openChatAICompletion, () => routerMetadata);
 			};
 
 			// The answer offers `calculate` and runs the tool loop. Streaming only, because the
 			// loop reads tool calls off the stream; and not on the Apertus native-first path, whose hedged
-			// resend has no place for a second round (Apertus is not offered tools anyway). (CUR-2273)
+			// resend has no place for a second round (Apertus is not offered tools anyway).
 			if (kit && servesUserAnswer) {
 				if (streamingSupported && !nativeFirst) {
 					// The `tool_round_rate_limited` fault: the first request after round 1 is refused as over-cap.
-					// `tool_round_rate_limited_sustained` refuses every one, so the retries run out (CUR-2307).
+					// `tool_round_rate_limited_sustained` refuses every one, so the retries run out.
 					let sends = 0;
 					let faultArmed = rateLimitToolRound === true;
 					return withToolLoop({
-						// A backup lane continuing the loop the lane before it could not finish (CUR-2307).
+						// A backup lane continues the loop the lane before it could not finish.
 						messages: toolTranscript?.messages ?? messagesOpenAI,
 						resumeRound: toolTranscript?.round,
 						attempt: (msgs, toolChoice, signal) => {
@@ -957,8 +1016,11 @@ export async function endpointOai(
 						...(kit.maxRounds ? { maxRounds: kit.maxRounds } : {}),
 						retry: {
 							deadlineAt: turnDeadlineAt,
+							// A search loop answers by then. A sandbox kit (sequential) may run code for longer,
+							// so it keeps only its round cap.
+							...(kit.sequential ? {} : { answerBy: Date.now() + TOOL_LOOP_ANSWER_BY_MS }),
 							signal: abortSignal,
-							// A later round hedges after its own delay, under its own flag. (CUR-4372)
+							// A later round hedges after its own delay, under its own flag.
 							hedgeAfterMs: flagEnabledOr(HEDGE_TOOL_ROUNDS_FLAG, () => false)
 								? TOOL_ROUND_HEDGE_AFTER_MS
 								: null,
@@ -981,8 +1043,8 @@ export async function endpointOai(
 				attempt: send,
 				signal: abortSignal,
 			});
-			// Which shape served this turn. The copying defect only exists on `flat-retry`, so this is the
-			// line that says how often the old behavior still reaches users.
+			// Which shape served this turn. Only `flat-retry` sends the flattened transcript that makes later
+			// answers copy earlier ones, so this line shows how often a turn is still served that shape.
 			logger.info(
 				{ leg: "native-first", shape: outcome.shape, reason: outcome.reason, ms: Date.now() - t0 },
 				"[native-first] served shape"

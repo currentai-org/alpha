@@ -17,11 +17,11 @@ import {
 import { CLOCK_TIME_RULE, PLAN_SYSTEM, planSystemFor, planTranscript } from "./turnPlan";
 import { LEDGER_STAMP, ledgerClockTime, type Ledger } from "./ledger";
 
-// An answer persisted before CUR-3663, when renderLedger put the label on the total line.
+// An answer persisted by an earlier version of renderLedger, which put the label on the total line.
 const legacyRender = (l: Ledger) => renderLedger(l).replace(/^(Total: .*)$/m, `$1 ${LEDGER_STAMP}`);
 import { parsePlan } from "./turnPlan";
 
-describe("parseLedgerArgs, the check behind the forced ledger call (CUR-2065)", () => {
+describe("parseLedgerArgs, the check behind the forced ledger call", () => {
 	it("reads typed lines and an optional unit", () => {
 		const ledger = parseLedgerArgs(
 			JSON.stringify({
@@ -68,7 +68,7 @@ describe("parseLedgerArgs, the check behind the forced ledger call (CUR-2065)", 
 });
 
 describe("renderLedger and ledgerTotal, the arithmetic code does for the model", () => {
-	// The label vouched for totals whose setup was wrong, so the rows are the only claim made. (CUR-3663)
+	// A label would vouch for totals whose setup was wrong, so the rows are the only claim made.
 	it("sums the FTE sequence to 10.5 and puts no \"checked by code\" label on the total", () => {
 		const ledger = { lines: [{ factors: [9, 1], label: "full-time" }, { factors: [3, 0.5], label: "part-time" }] };
 		expect(ledgerTotal(ledger)).toBe(10.5);
@@ -86,7 +86,7 @@ describe("renderLedger and ledgerTotal, the arithmetic code does for the model",
 		expect(renderLedger(ledger)).toContain("Total: **0.3**");
 	});
 
-	// The walk's shopping question, as GLM ledgered it on develop. (CUR-2206)
+	// A shopping question as GLM records it in a ledger.
 	const shopping = {
 		lines: [
 			{ factors: [3, 4.75], label: "notebooks" },
@@ -160,7 +160,7 @@ describe("compactRenderedLedgers", () => {
 const eggs = { lines: [{ factors: [3, 12], label: "boxes bought" }, { factors: [-1, 12], label: "box that broke" }], unit: "intact eggs" };
 
 // A rendered ledger carries no label, so the text alone cannot tell it from model prose that
-// looks the same. The planner reads the ledger the answer stored, and nothing else. (CUR-3663)
+// looks the same. The planner reads the ledger the answer stored, and nothing else.
 describe("planTranscript reads an earlier ledger from the answer's stored mathLedger", () => {
 	it("turns the stored ledger into the plan_turn call and result that made it, and keeps the prose after it", () => {
 		const out = planTranscript([
@@ -186,8 +186,9 @@ describe("planTranscript reads an earlier ledger from the answer's stored mathLe
 });
 
 // renderLedger wrote any unit up to 24 characters, spaces included, and GLM chooses units like
-// "intact eggs". A pattern that took one word skipped the whole ledger, so the planner saw it as prose. (CUR-2236)
-describe("planTranscript reads back a stamped ledger in an answer persisted before CUR-3663", () => {
+// "intact eggs". A pattern that took one word would skip the whole ledger, so the planner would see it
+// as prose.
+describe("planTranscript reads back a stamped ledger in an answer persisted before", () => {
 
 	it("turns an earlier ledger whose unit has a space into the plan_turn call and result that made it", () => {
 		const out = planTranscript([
@@ -210,7 +211,7 @@ describe("planTranscript reads back a stamped ledger in an answer persisted befo
 	});
 });
 
-describe("namedServedModel: a ledger turn's badge names the model that wrote it (CUR-2198)", () => {
+describe("namedServedModel: a ledger turn's badge names the model that wrote it", () => {
 	async function served(events: MessageUpdate[]): Promise<MessageUpdate[]> {
 		async function* src(): AsyncGenerator<MessageUpdate> {
 			yield* events;
@@ -231,7 +232,7 @@ describe("namedServedModel: a ledger turn's badge names the model that wrote it 
 	});
 });
 
-describe("stripForgedStamp: only code puts \"checked by code\" on a total (CUR-2199)", () => {
+describe("stripForgedStamp: only code puts \"checked by code\" on a total", () => {
 	// Real answers where a stamp from an earlier rendered ledger is copied onto the model's
 	// own total, and some of those totals are wrong (15.25 for 15, 16 for 15).
 	const forged = [
@@ -327,7 +328,7 @@ describe("stripForgedStamp: only code puts \"checked by code\" on a total (CUR-2
 	});
 });
 
-// Large 3 answers its own arithmetic; only a model that cannot call tools is routed. (CUR-2282)
+// Large 3 answers its own arithmetic; only a model that cannot call tools is routed.
 describe("plansTurnFor — which turns get a plan call", () => {
 	it("skips a model that can call tools, so Large 3's math turn stays on Large 3", () => {
 		expect(plansTurnFor({ supportsTools: true })).toBe(false);
@@ -338,15 +339,15 @@ describe("plansTurnFor — which turns get a plan call", () => {
 		expect(plansTurnFor({})).toBe(true);
 	});
 
-	// The agent model declares no tool support, so it was planned, and a ledger then handed
-	// its turn to the planner's model: Agent on, and Mistral Medium answered with no agent run. (CUR-3884)
+	// The agent model declares no tool support, so without this exception it would be planned, and a
+	// ledger would hand its turn to the planner's model with no agent run.
 	it("skips the agent model, so an agent turn with a number in it still runs the agent", () => {
 		expect(plansTurnFor({ id: AGENT_MODEL_ID })).toBe(false);
 		expect(plansTurnFor({ id: AGENT_MODEL_ID, supportsTools: false })).toBe(false);
 	});
 });
 
-// ALIA can call tools but rarely calls calculate unprompted, so its row asks for the plan. (CUR-4191)
+// ALIA can call tools but rarely calls calculate unprompted, so its row asks for the plan.
 describe("plannedMathForcesCalculate — a tool-calling model whose row forces calculate on planned math", () => {
 	const alia = { id: "bsc-lt/alia-40b-instruct", supportsTools: true };
 	const large3 = { id: "mistral-large-2512", supportsTools: true };
@@ -367,7 +368,7 @@ describe("plannedMathForcesCalculate — a tool-calling model whose row forces c
 	});
 });
 
-// The plan transcript is text only, so a plan over an attachment stamped a count it never saw. (CUR-3011)
+// The plan transcript is text only, so a plan over an attachment would total a count it never saw.
 describe("plannerSeesTurn — no plan over a file the planner is not shown", () => {
 	const paste = { type: "application/vnd.chatui.clipboard", name: "Pasted Content" };
 
@@ -395,8 +396,8 @@ describe("plannerSeesTurn — no plan over a file the planner is not shown", () 
 	});
 });
 
-// Told a total of 780 minutes from midnight, the answer model wrote 13:00 on 3 of 20 preview
-// turns and 12:40, 12:20, 12:55 or 10:00 on the rest. Code states the clock time instead. (CUR-2381)
+// Told a total of 780 minutes from midnight, the answer model often writes a wrong clock time such as
+// 12:40 or 10:00 instead of 13:00. Code states the clock time instead.
 describe("a ledger in minutes from midnight carries its clock time, worked out by code", () => {
 	const train = {
 		lines: [
@@ -434,7 +435,7 @@ describe("a ledger in minutes from midnight carries its clock time, worked out b
 	});
 });
 
-describe("planSystemFor: only a turn that names a clock time gets the clock rule (CUR-2381)", () => {
+describe("planSystemFor: only a turn that names a clock time gets the clock rule", () => {
 	it("adds the rule, before the closing sentences, for a clock time written as 09:40, 21h15 or 9am", () => {
 		for (const q of ["A train leaves at 09:40. When does it arrive?", "Le train part à 21h15", "We start at 9am"]) {
 			const system = planSystemFor(q);
@@ -456,8 +457,8 @@ describe("planSystemFor: only a turn that names a clock time gets the clock rule
 });
 
 // "How many cantons does Switzerland have?" must not come back as one line holding one number, and the
-// turn must not move off Apertus to the planner's model for a ledger with nothing to add. (CUR-3316)
-describe("parsePlan drops a one-number ledger, so a count read off the question stays on the picked model (CUR-3316)", () => {
+// turn must not move off Apertus to the planner's model for a ledger with nothing to add.
+describe("parsePlan drops a one-number ledger, so a count read off the question stays on the picked model", () => {
 	it("plans no math for one line holding one number", () => {
 		const plan = parsePlan(JSON.stringify({ math: { lines: [{ factors: [26], label: "cantons" }] } }));
 		expect(plan?.math).toEqual({ outcome: "nothing-to-compute", ledger: null });
@@ -469,5 +470,25 @@ describe("parsePlan drops a one-number ledger, so a count read off the question 
 			JSON.stringify({ math: { lines: [{ factors: [26], label: "a" }, { factors: [4], label: "b" }] } })
 		);
 		expect(two?.math.outcome).toBe("ok");
+	});
+});
+
+// Mistral refuses a request whose history holds a tool call id that is not exactly nine of [a-zA-Z0-9].
+describe("planTranscript emits only nine-alphanumeric tool call ids that pair with their results", () => {
+	it("gives every plan_turn call a unique 9-character alphanumeric id and its result the same id", () => {
+		const out = planTranscript([
+			{ from: "user", content: "How many eggs are left?" },
+			{ from: "assistant", content: `${renderLedger(eggs)}\n\nYou have 24 intact eggs.`, mathLedger: eggs },
+			{ from: "user", content: "And if I drop one?" },
+			{ from: "assistant", content: `${renderLedger(eggs)}\n\nStill 24.` },
+			{ from: "user", content: "Again?" },
+			{ from: "assistant", content: `${renderLedger(eggs)}\n\nStill 24.`, mathLedger: eggs },
+		]);
+		const callIds = out.flatMap((m) => (m.role === "assistant" && m.tool_calls ? m.tool_calls.map((c) => c.id) : []));
+		const resultIds = out.flatMap((m) => (m.role === "tool" ? [m.tool_call_id] : []));
+		expect(callIds.length, "no ledger was replayed as a call").toBeGreaterThanOrEqual(2);
+		for (const id of [...callIds, ...resultIds]) expect(id).toMatch(/^[A-Za-z0-9]{9}$/);
+		expect(new Set(callIds).size).toBe(callIds.length);
+		expect(resultIds).toEqual(callIds);
 	});
 });

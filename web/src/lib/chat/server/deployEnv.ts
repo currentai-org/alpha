@@ -1,9 +1,9 @@
-// The deployment environment, as OUR variable rather than the host's (CUR-208).
+// The deployment environment, as OUR variable rather than the host's.
 //
 // Every environment-scoped feature decision in the app reads this: the `env` person-property on
 // PostHog flag evaluations (`flags.ts`, `agentMode.ts`) and the env allowlists that decide which
 // models a deployment registers at all (`models.ts`). Reading `process.env.VERCEL_ENV` directly
-// would tie every one of them to a single host (CUR-46).
+// would tie every one of them to a single host.
 //
 // The failure that motivates it is silent. Off Vercel, `process.env.VERCEL_ENV` is `undefined`, the
 // flag sites fall back to the literal string "development", and any flag scoped
@@ -29,6 +29,7 @@
 // model somewhere nobody intended. A null forces each to say which it is.
 
 import { logger } from "$lib/chat/server/logger";
+import { deployEnvName, deployEnvSources } from "$lib/server/runtimeEnv";
 
 export type DeployEnv = "production" | "preview" | "development";
 
@@ -48,18 +49,18 @@ const warned = new Set<string>();
  */
 export function deployEnv(): DeployEnv | null {
 	// `||`, not `??`: a blank string (the manifest scaffold declares every key, so an unconfigured
-	// DEPLOY_ENV can arrive as "" rather than undefined — CUR-142) must fall through to VERCEL_ENV
+	// DEPLOY_ENV can arrive as "" rather than undefined —) must fall through to VERCEL_ENV
 	// exactly like an absent one does. Both vars are meant to hold a non-empty environment name, so
 	// there is no legitimate falsy value here for `||` to swallow that `??` would have preserved.
-	const raw = (process.env.DEPLOY_ENV || process.env.VERCEL_ENV || "").trim();
+	// The fallback itself lives in $lib/server/runtimeEnv, the one module that reads the host's names.
+	const raw = (deployEnvName() || "").trim();
 	if (VALID.includes(raw)) return raw as DeployEnv;
 
 	if (!warned.has(raw)) {
 		warned.add(raw);
 		logger.warn(
 			{
-				DEPLOY_ENV: process.env.DEPLOY_ENV ?? null,
-				VERCEL_ENV: process.env.VERCEL_ENV ?? null,
+				...deployEnvSources(),
 				expected: VALID,
 			},
 			raw === ""
@@ -72,8 +73,8 @@ export function deployEnv(): DeployEnv | null {
 
 /**
  * Whether a test-only switch may arm here: a declared preview or development deployment, never an
- * undeclared one (CUR-1881). An allow-list, so a deployment that loses its environment label (a move
- * off Vercel, CUR-46) keeps every such switch off, the same choice `carriesFaultInjectToken` and the
+ * undeclared one. An allow-list, so a deployment that loses its environment label (a move
+ * off Vercel) keeps every such switch off, the same choice `carriesFaultInjectToken` and the
  * OTP bypass make.
  */
 export function isTestDeployment(): boolean {

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// The search classifier's own call must follow the one bill-to rule (CUR-1877): the org goes to the
+// The search classifier's own call must follow the one bill-to rule: the org goes to the
 // HF router and to nothing else. Hermetic: models, config and the client factory are stubbed, and the
 // test reads the headers the decider hands the client.
 const h = vi.hoisted(() => ({
@@ -41,7 +41,7 @@ const sentBillTo = () => [
 	h.requestOpts[0]?.headers?.["X-HF-Bill-To"],
 ];
 
-describe("decideSearchViaTool bill-to header (CUR-1877)", () => {
+describe("decideSearchViaTool bill-to header", () => {
 	beforeEach(() => {
 		h.clientOpts.length = 0;
 		h.requestOpts.length = 0;
@@ -77,8 +77,8 @@ describe("decideSearchViaTool bill-to header (CUR-1877)", () => {
 });
 
 // The photo itself reaches the model that decides, as an image part beside the question, so the
-// model can judge it and write a query from what it shows. (CUR-3192)
-describe("decideSearchViaTool sees the photo (CUR-3192)", () => {
+// model can judge it and write a query from what it shows.
+describe("decideSearchViaTool sees the photo", () => {
 	beforeEach(() => {
 		h.bodies.length = 0;
 		for (const k of Object.keys(h.cfg)) delete h.cfg[k];

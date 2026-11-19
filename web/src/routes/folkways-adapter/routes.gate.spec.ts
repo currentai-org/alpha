@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// CUR-1626, at the level the defect lived: what each of the four real handlers answers. flag.spec.ts
+// at the level the defect lived: what each of the four real handlers answers. flag.spec.ts
 // pins adapterGate itself, which stays green if a handler stops calling it or calls it after its own
 // work. These tests import the four exported handlers and fail in either case (dropping the gate
 // from the safety handler turns its two cases red while flag.spec.ts stays 9/9). A new handler needs

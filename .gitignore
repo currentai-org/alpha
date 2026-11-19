@@ -1,0 +1,26 @@
+# Dependencies and build output
+node_modules/
+.pnpm-store/
+.turbo/
+.svelte-kit/
+build/
+dist/
+coverage/
+.cache/
+
+# Python (agent-service)
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# Local configuration and secrets: copy web/.env.example to web/.env and fill it in
+.env
+.env.*
+!.env.example
+
+# Editors and OS files
+.vscode/
+.idea/
+.DS_Store

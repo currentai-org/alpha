@@ -3,7 +3,7 @@
 import { test, expect } from './helpers/test';
 
 // A script injected into the page itself could send what it reads to any server until
-// connect-src and script-src were enforced; they shipped report-only first (CUR-3187). These check
+// connect-src and script-src were enforced; they shipped report-only first. These check
 // the enforced policy on the deployed build: the page loads with no violation of its own, a request
 // or script pointed at another host is refused, and the things the app relies on still run (an
 // inline script, a fetch to our own origin, and a blob: worker, which artifacts start).

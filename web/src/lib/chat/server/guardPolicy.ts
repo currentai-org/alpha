@@ -33,9 +33,9 @@ export type GuardRule = {
 	action: GuardAction;
 	tier: GuardTier;
 	threshold?: number;
-	/** Which screens ask this rule's question; absent means both (CUR-2111). */
+	/** Which screens ask this rule's question; absent means both. */
 	screens?: Array<"input" | "output">;
-	/** A flag that must be on for the visitor before the input screen asks this rule (CUR-2111). */
+	/** A flag that must be on for the visitor before the input screen asks this rule. */
 	flag?: string;
 };
 

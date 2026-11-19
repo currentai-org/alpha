@@ -21,9 +21,9 @@ const TRUST_PCT: Record<SearchEngine, number> = {
 	arXiv: 0,
 	Wikinews: 0,
 	"Hugging Face": 0,
-	// The page a person linked, read directly when Firecrawl couldn't — the same open web. (CUR-2152)
+	// The page a person linked, read directly when Firecrawl couldn't — the same open web.
 	Direct: -0.05,
-	// Unmeasured against ours; neutral until the head-to-head says otherwise. (CUR-2420)
+	// Unmeasured against ours; neutral until the head-to-head says otherwise.
 	Mistral: 0,
 };
 

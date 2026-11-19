@@ -11,12 +11,12 @@ set -euo pipefail
 
 NAME="aipotluck-dev-pg"
 
-if docker ps --format '{{.Names}}' | grep -qx "$NAME"; then
+if docker ps --format '{{.Names}}' | grep -x "$NAME" >/dev/null; then
 	echo "== $NAME already running"
 	exit 0
 fi
 
-if docker ps -a --format '{{.Names}}' | grep -qx "$NAME"; then
+if docker ps -a --format '{{.Names}}' | grep -x "$NAME" >/dev/null; then
 	echo "== starting existing $NAME container"
 	docker start "$NAME" >/dev/null
 else

@@ -5,7 +5,7 @@ import { LARGE4_MODEL } from './helpers/chatEntry';
 import { pinnedChatEntry } from './helpers/servedModel';
 import { turnDone } from './helpers/turn';
 
-// Second opinion could not be found among an answer's actions (CUR-4187):
+// Second opinion could not be found among an answer's actions:
 // it rendered only at the foot of X-ray's Step by step. The answer now carries a Second opinion action
 // that opens X-ray there, so this starts from the answer, never from the X-ray tabs, and holds out for
 // the panel's verdict on the page and on the stored message.

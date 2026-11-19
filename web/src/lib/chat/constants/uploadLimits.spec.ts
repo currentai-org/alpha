@@ -22,7 +22,7 @@ import { CLIPBOARD_MIME } from "./mime";
 
 const file = (bytes: number, name = "f", type = "") => new File([new Uint8Array(bytes)], name, { type });
 
-describe("upload limits fit the transport that carries them (CUR-2631)", () => {
+describe("upload limits fit the transport that carries them", () => {
 	it("a message at the chat attachment limit, base64-encoded with its headroom, fits the platform body cap", () => {
 		expect(base64Bytes(CHAT_ATTACHMENTS_MAX_BYTES) + CHAT_MESSAGE_HEADROOM_BYTES).toBeLessThanOrEqual(
 			PLATFORM_BODY_BYTES
@@ -58,7 +58,7 @@ describe("admitAttachments", () => {
 	});
 });
 
-describe("admitAttachments against My files' headroom (CUR-3235)", () => {
+describe("admitAttachments against My files' headroom", () => {
 	it("refuses a file My files has no bytes left for, with the line that says to delete one", () => {
 		const out = admitAttachments([], [file(10, "big"), file(1, "small")], { files: 5, bytes: 5 });
 		expect(out.admitted.map((f) => f.name)).toEqual(["small"]);
@@ -104,7 +104,7 @@ describe("myFilesHeadroom", () => {
 	});
 });
 
-describe("admitAttachments against the 24-hour allowance as well as My files (CUR-3235)", () => {
+describe("admitAttachments against the 24-hour allowance as well as My files", () => {
 	const allowance = (files: number, bytes = 1_000) => ({
 		files,
 		bytes,
@@ -130,14 +130,14 @@ describe("admitAttachments against the 24-hour allowance as well as My files (CU
 		);
 	});
 
-	it("tells a guest whose network ran out that it is the shared Wi-Fi, not them (CUR-3600)", () => {
+	it("tells a guest whose network ran out that it is the shared Wi-Fi, not them", () => {
 		expect(attachmentAllowanceMessage({ guest: true, network: true, resetsInMs: 3 * 3_600_000 })).toBe(
 			"Too many files have been attached from your network today. If you're at an event sharing Wi-Fi, sign in to attach more, or you can attach more in about 3 hours."
 		);
 	});
 });
 
-describe("the near-limit line under the composer's files (CUR-3235)", () => {
+describe("the near-limit line under the composer's files", () => {
 	const guest = ATTACHMENT_ALLOWANCE.guest;
 	const near = (files: number, bytes: number, isGuest = true) =>
 		attachmentAllowanceNearMessage({

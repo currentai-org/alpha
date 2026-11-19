@@ -1,6 +1,6 @@
 // e2e-product: @chat
 // e2e-area: @history
-// Journey C1 (docs/journeys/c1-find-and-tidy-my-chats.md, CUR-2821): a chat link that can't open says
+// Journey C1 (docs/journeys/c1-find-and-tidy-my-chats.md): a chat link that can't open says
 // why. A deleted chat's 404 already has its note (find-and-tidy-my-chats.spec.ts, step 5); these are
 // the cut-off link, which the server answers 400, and a server error while opening a real chat.
 import type { Locator, Page } from '@playwright/test';
@@ -10,11 +10,12 @@ import { signInAsFreshUser } from './helpers/session';
 import { journeyStep } from './helpers/journeyStep';
 import { accountButton, accountMenuItem } from './helpers/accountMenu';
 import { startChattingPastWelcome } from './helpers/welcome';
+import { createChat } from './helpers/sideRail';
 
 test.use({ viewport: { width: 1280, height: 800 } });
 
 // This test checks the note against the welcome's intro, so it meets the welcome itself rather than
-// through the shared handler (SOL-343).
+// through the shared handler.
 test.describe(() => {
 	test.use({ welcome: 'show' });
 	test(
@@ -39,7 +40,7 @@ test.describe(() => {
 	);
 
 	// Logging out starts a guest session, which meets the welcome again, and the walkthrough
-	// reaches the cut-off link from there (CUR-2883).
+	// reaches the cut-off link from there.
 	test(
 		'right after logging out, a cut-off chat link shows the unavailable note clear of the welcome intro',
 		{ tag: ['@preview-only', '@C1', '@CUR-2883'] },
@@ -85,19 +86,7 @@ async function expectNoteClearOfWelcomeIntro(page: Page, note: Locator) {
  */
 async function aChatThatWillNotOpen(page: Page) {
 	await signInAsFreshUser(page);
-	const models = (await (await page.request.get('/chat/api/models')).json()) as {
-		id?: string;
-		name?: string;
-	}[];
-	const created = await page.request.post('/chat/conversation', {
-		data: { model: models[0]?.id ?? models[0]?.name }
-	});
-	expect(created.ok(), `POST /chat/conversation answered ${created.status()}`).toBe(true);
-	const { conversationId } = (await created.json()) as { conversationId: string };
-	const titled = await page.request.patch(`/chat/api/v2/conversations/${conversationId}`, {
-		data: { title: 'Garden plan' }
-	});
-	expect(titled.ok(), `PATCH title answered ${titled.status()}`).toBe(true);
+	const conversationId = await createChat(page, 'Garden plan');
 
 	const welcome = page.getByRole('dialog', { name: 'Welcome to Alpha' });
 	await page.addLocatorHandler(welcome, async () => {
@@ -171,7 +160,7 @@ async function textContrast(page: Page, selector: string): Promise<number> {
 }
 
 test(
-	'CUR-3409: the server-error card shows its status and message at readable contrast',
+	'the server-error card shows its status and message at readable contrast',
 	{ tag: ['@preview-only', '@C1', '@CUR-3409'] },
 	async ({ page }) => {
 		test.setTimeout(90_000);

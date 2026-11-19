@@ -5,7 +5,7 @@ import { chatEntry } from './helpers/chatEntry';
 import { signInAsFreshUser } from './helpers/session';
 import { personaTurns, resolvePersonaLane, runPersona } from './helpers/personaDriver';
 
-// The adversarial half of the journey suite (CUR-1530). Read helpers/personaDriver.ts first — it
+// The adversarial half of the journey suite. Read helpers/personaDriver.ts first — it
 // carries why this exists and why the `ref` validator is the part everything else rests on.
 //
 // TAGGED @P1 RATHER THAN BORROWING AN A-NUMBER. The A-series is the product roadmap — "A2. Alpha speaks
@@ -41,7 +41,7 @@ test(
 	async ({ page }, testInfo) => {
 		const lane = resolvePersonaLane();
 		// A missing model lane is skipped with the reason stated, never failed and never quietly
-		// passed. Where the environment carries no ANTHROPIC_API_KEY (CUR-1528), this
+		// passed. Where the environment carries no ANTHROPIC_API_KEY, this
 		// skips — and a skip is exactly the signal that should reach the
 		// gallery, where it renders as a coverage gap rather than as a clean journey.
 		test.skip('error' in lane, 'error' in lane ? lane.error : '');

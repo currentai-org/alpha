@@ -124,18 +124,18 @@ describe("bucketNameOk", () => {
 			expect(bucketNameOk(bad), bad).toBe(false);
 	});
 
-	// A name Hugging Face refuses must be refused by our check too, not read as "try again in a minute". (CUR-4234)
-	it("refuses what the Hub refuses: a trailing '-' or '.', and '--' anywhere (CUR-4234)", () => {
+	// A name Hugging Face refuses must be refused by our check too, not read as "try again in a minute".
+	it("refuses what the Hub refuses: a trailing '-' or '.', and '--' anywhere", () => {
 		for (const bad of ["trail-", "trail.", "a--b", "café"]) expect(bucketNameOk(bad), bad).toBe(false);
 	});
 
-	it("takes '_' at either end and exactly 96 characters, as the Hub does (CUR-4234)", () => {
+	it("takes '_' at either end and exactly 96 characters, as the Hub does", () => {
 		for (const ok of ["_x_", "x".repeat(96), "a-b.c_d"]) expect(bucketNameOk(ok), ok).toBe(true);
 	});
 });
 
 describe("sameRepo", () => {
-	it("treats names that differ only in case as one bucket, as Hugging Face does (CUR-4234)", () => {
+	it("treats names that differ only in case as one bucket, as Hugging Face does", () => {
 		expect(sameRepo("buckets/someone/ALPHA-FILES", "buckets/someone/alpha-files")).toBe(true);
 		expect(sameRepo("buckets/someone/alpha-files", "buckets/someone/alpha-walk")).toBe(false);
 	});
@@ -153,7 +153,7 @@ function hub(create: number, list: number) {
 describe("provisionAlphaBucket", () => {
 	const grant = { access: "hf_invented", refresh: null, expiresAt: Date.now() + 3600_000 };
 
-	it("says the name is taken, not that the grant fell short, when the bucket already exists and the grant cannot open it (CUR-4234)", async () => {
+	it("says the name is taken, not that the grant fell short, when the bucket already exists and the grant cannot open it", async () => {
 		const err = await provisionAlphaBucket("someone", grant, hub(409, 403), "hand-made").catch((e: unknown) => e);
 		expect(err).toBeInstanceOf(BucketTakenError);
 	});

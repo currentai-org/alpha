@@ -7,8 +7,8 @@ import { FLAG_KEY_NAMES, type FlagKey } from '../../../src/lib/chat/server/flagK
 
 /**
  * Throws on a key flagKeys.ts does not declare. The server ignores an override for a key it never
- * reads, so a retired or misspelled key would leave the spec running on a setup that does nothing
- * (CUR-4588). The `FlagKey` type says the same thing at compile time; this covers a key that
+ * reads, so a retired or misspelled key would leave the spec running on a setup that does nothing.
+ * The `FlagKey` type says the same thing at compile time; this covers a key that
  * reaches here through a `Record<string, boolean>` the type cannot see into.
  */
 export function assertKnownFlagKeys(flags: Partial<Record<FlagKey, boolean>>): void {
@@ -38,7 +38,7 @@ export async function setFlagOverrides(
 }
 
 /**
- * A hosted preview honours `fuzz_override` only alongside `fuzz_override_key` (CUR-3516, flags.ts's
+ * A hosted preview honours `fuzz_override` only alongside `fuzz_override_key` (flags.ts's
  * fuzzOverrideAuthorized). Without the token a spec would run against the unforced flag and pass or
  * fail for the wrong reason, so a hosted target with no token throws here instead.
  */

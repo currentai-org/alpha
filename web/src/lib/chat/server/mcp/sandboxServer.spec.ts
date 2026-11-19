@@ -1,7 +1,7 @@
 // The conversation's sandbox on a native chat turn. The server config is checked for the
 // headers agent-service keys the workdir on; the turn kit is run against a fixture speaking the real
 // Streamable HTTP shape (answerMcpRequest). "Ran without a card" is read off whether the fixture was
-// called, since our own outcome label is the thing under test. (CUR-4232)
+// called, since our own outcome label is the thing under test.
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("$lib/chat/server/logger", () => ({
@@ -37,13 +37,13 @@ describe("sandboxServerFor", () => {
 		expect(s?.headers).toEqual({
 			authorization: "Bearer tok",
 			"x-agent-subject": deriveAgentSubject("tok", "account-1"),
-			// agent-service refuses a call that names no account kind. (CUR-4402)
+			// agent-service refuses a call that names no account kind.
 			"x-agent-account": "user",
 			"x-agent-session": "conv-9",
 		});
 	});
 
-	it("CUR-4400: offers nothing to a guest even with the flag on, since running code is for signed-in accounts", () => {
+	it("offers nothing to a guest even with the flag on, since running code is for signed-in accounts", () => {
 		expect(sandboxServerFor("conv-9", { sessionId: "visitor-1" } as App.Locals, deps)).toBeUndefined();
 		expect(sandboxServerFor("conv-9", undefined, deps)).toBeUndefined();
 	});
@@ -114,7 +114,7 @@ describe("the turn kit with the sandbox", () => {
 		expect(mcpToolsClause(kit!)).toContain(SANDBOX_CLAUSE);
 	});
 
-	it("CUR-4578: sandbox_stub swaps the sandbox for the in-process stand-in, only where the sandbox is offered", async () => {
+	it("sandbox_stub swaps the sandbox for the in-process stand-in, only where the sandbox is offered", async () => {
 		const fx = fixtureSandbox();
 		const stubbed = await mcpServersKitForTurn({ ...ctx, faultInjection: "sandbox_stub" }, async () => ({}), async () => [], {
 			withSandbox: true,
@@ -144,7 +144,7 @@ describe("the turn kit with the sandbox", () => {
 		expect(fx.calls).toEqual([]);
 	});
 
-	it("CUR-4388: offers the handoff beside the sandbox only when chat-agent-handoff is on, and tells the model when to use it", async () => {
+	it("offers the handoff beside the sandbox only when chat-agent-handoff is on, and tells the model when to use it", async () => {
 		const { HANDOFF_CLAUSE } = await import("./handoffKit");
 		const fx = fixtureSandbox();
 		const opts = { withSandbox: true, sandboxFor: () => fx.server };
@@ -182,7 +182,7 @@ describe("what the trace shows of a call", () => {
 	});
 });
 
-describe("the sandbox turn's limits (CUR-4239)", () => {
+describe("the sandbox turn's limits", () => {
 	it("a kit with the sandbox runs 16 calls in order and asks for 6 rounds, kept when composed with the base kit", async () => {
 		const { composeKits, MAX_MCP_CALLS_PER_TURN } = await import("./serversKit");
 		const { CALCULATE_KIT } = await import("$lib/chat/server/endpoints/openai/calculateTool");

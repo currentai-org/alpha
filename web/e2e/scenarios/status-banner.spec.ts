@@ -6,7 +6,7 @@ import { installFaultInjectionHeader } from './helpers/faultInjection';
 import { startChattingPastWelcome } from './helpers/welcome';
 
 // While status.aipotluck.org reports a problem, /chat says so above the conversation and
-// links there (CUR-4062). The `status_page_degraded` fault makes /chat/api/status answer `degraded` for this page
+// links there. The `status_page_degraded` fault makes /chat/api/status answer `degraded` for this page
 // alone. That drives the banner on a day when status.aipotluck.org itself reads operational.
 const STATUS_API = /\/chat\/api\/status$/;
 

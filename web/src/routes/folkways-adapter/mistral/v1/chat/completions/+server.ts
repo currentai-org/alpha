@@ -1,4 +1,4 @@
-// Folkways adapter — the Mistral lane (CUR-3186).
+// Folkways adapter — the Mistral lane.
 //
 // Chat sends Mistral models (Large 3 among them) to `MISTRAL_CHAT_BASE_URL`, never to
 // `OPENAI_BASE_URL`, so the gateway route next door never sees them. Pointing
@@ -8,7 +8,7 @@
 // gateway model id Mistral does not serve. The request goes upstream as the exact bytes chat sent,
 // with chat's own bearer, and the upstream body comes back untouched. That matters here: Mistral
 // streams `delta.content` as a list of parts (text plus `reference` parts carrying citations) and
-// tool-call deltas, which a proxy that re-serializes content into a string loses (CUR-3067). The
+// tool-call deltas, which a proxy that re-serializes content into a string loses. The
 // trace and reports come from the shared observe pipeline in ../../../../observe.ts.
 //
 // Env:

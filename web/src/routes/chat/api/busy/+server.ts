@@ -9,7 +9,7 @@ import { readBusyModels } from "$lib/chat/server/chatShellData";
 // read failure, so Auto falls back to its normal pick.
 //
 // `private`: under a spec's busy scope (the fault-inject gate) the answer is that spec's own marks, which
-// must never reach a shared cache. The browser holds it for less than the tab's refresh interval. (CUR-4629)
+// must never reach a shared cache. The browser holds it for less than the tab's refresh interval.
 export const GET: RequestHandler = async ({ request }) => {
 	const busyModels = await readBusyModels(request);
 	return json({ busyModels }, { headers: { "Cache-Control": "private, max-age=30" } });

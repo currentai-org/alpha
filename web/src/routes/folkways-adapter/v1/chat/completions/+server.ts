@@ -178,8 +178,8 @@ export const POST = async ({ request }: { request: Request }) => {
 	});
 	if (safety) await reportSafety(bundle.context, safety);
 
-	// Stream straight through: SSE or JSON, with the gateway's provenance headers carried across
-	// (CUR-1452): rebuilding the response with content-type alone would silently remove the only
+	// Stream straight through: SSE or JSON, with the gateway's provenance headers carried across:
+	// rebuilding the response with content-type alone would silently remove the only
 	// header naming the model that served.
 	return new Response(upstream.body, {
 		status: upstream.status,

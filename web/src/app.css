@@ -8,7 +8,7 @@
 @import './lib/icons/icons.generated.css';
 @import 'tailwindcss';
 @import '@aipotluck/alpha-ds/styles.css';
-/* CUR-4479: Tailwind scans web/ on its own; the design system lives outside it, and a class used only
+/* Tailwind scans web/ on its own; the design system lives outside it, and a class used only
    inside packages/alpha-ds would otherwise drop out of the CSS. */
 @source '../../packages/alpha-ds/src';
 @import 'tw-animate-css';
@@ -23,16 +23,16 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-	/* CUR-963: the MAP/marketing site is light-only right now — .dark below is parked: nothing puts
+	/* the MAP/marketing site is light-only right now — .dark below is parked: nothing puts
 	   it on <html>. The /chat window is a separate
 	   case: it's dark by default through its own switch (CHAT_WINDOW_DARK, chatTheme.ts), and
 	   Appearance in settings can change it, so the
-	   settings page's Theme row must not claim "Light theme only" (CUR-1109). With no color-scheme declared anywhere, a browser on a dark-mode OS
+	   settings page's Theme row must not claim "Light theme only". With no color-scheme declared anywhere, a browser on a dark-mode OS
 	   still renders native form-control chrome (a <select>'s own dropdown popup, scrollbars) with
 	   dark UA styling regardless of this page's own light CSS — the one part of "the selector" our
 	   styles can't reach. Declaring it here keeps native controls light on the map/marketing site.
 	   The chat window overrides it: `.ds-root[data-mode='dark']` (alpha-ds tokens) sets
-	   `color-scheme: dark` on the window, so its native controls and scrollbars render dark (CUR-1112). */
+	   `color-scheme: dark` on the window, so its native controls and scrollbars render dark. */
 	color-scheme: light;
 	--radius: 0.625rem;
 
@@ -159,19 +159,19 @@
 	--ap-building: #ffada4;
 	--ap-gap: var(--bright-red);
 	/* Destructive/danger accent (Alpha "Delete all" + forget trash icon) — Accent 2 in
-	   src/lib/chat/design-system.md (CUR-509/530). Distinct from --bright-red (#ff0d0d). */
+	   src/lib/chat/design-system.md. Distinct from --bright-red (#ff0d0d). */
 	--ap-danger: #ea3729;
-	/* Positive/online status accent (managed local-inference endpoint status dot, CUR-1266) — no
+	/* Positive/online status accent (managed local-inference endpoint status dot) — no
 	   existing --ap-* token covers this; the chat design system has no green anywhere else (only
 	   the red-tinted --ap-live/--ap-building/--ap-gap freshness ramp and --ap-danger). Not
 	   theme-flipped, same posture as --ap-danger above. */
 	--ap-healthy: #2f9e6e;
-	/* Primary-action accent (send button, XRAY close) — Accent 1 in design-system.md (CUR-530).
+	/* Primary-action accent (send button, XRAY close) — Accent 1 in design-system.md.
 	   Aliases --salmon rather than defining a new value: --salmon already IS this color at every
 	   existing primary-action call site (ChatWindow.svelte's send button + XRAY close, both
 	   `bg-[var(--salmon)]`). NOT an alias of --ap-live — --ap-live/
 	   --ap-building/--ap-gap/--ap-wanted are the source-freshness status ramp, a separate system
-	   CUR-509 doesn't cover, even though --ap-live happens to share --salmon's value today; the two
+doesn't cover, even though --ap-live happens to share --salmon's value today; the two
 	   tokens must be free to diverge independently. Not theme-flipped, same as --ap-danger — the
 	   accent doesn't change between light and dark. */
 	--ap-accent-1: var(--salmon);
@@ -184,27 +184,27 @@
 	--ap-map-grad-1: var(--light-grey);
 	--ap-map-grad-2: var(--medium-grey);
 	--ap-stack-panel: var(--paper);
-	/* Background 3 in design-system.md (CUR-530) — "the side panel (XRAY view) and anything that
+	/* Background 3 in design-system.md — "the side panel (XRAY view) and anything that
 	   floats above the main content." --ap-stack-panel is already exactly that surface (the XRAY
 	   panel's own fill); this aliases it rather than introducing a second source of truth.
 	   --ap-paper-3 is deliberately NOT this token — its current call sites (NavMenu/MobileNav's
 	   icon-button fill, ChatMessage's hover state) are small persistent/hover fills, not floating
 	   panel content, and resolving which (if either) of those should move to a Background tier is
-	   real per-component judgment this ticket doesn't take on; see CUR-531. */
+	   real per-component judgment this ticket doesn't take on. */
 	--ap-background-3: var(--ap-stack-panel);
 	--ap-stack-grid-line: var(--grid-line);
 	/* The map never elevates cards with shadow — flat, bordered blocks only. */
 	--shadow-card: none;
 }
 
-/* Alpha chat type-size scale (Size 1-6), src/lib/chat/design-system.md § Typography (CUR-509).
+/* Alpha chat type-size scale (Size 1-6), src/lib/chat/design-system.md § Typography.
    Not theme-dependent — same six steps in light and dark, so this lives only in :root, not
    duplicated under .dark like the color tokens above.
    Definitions only. NOT yet applied to components — the codebase currently hardcodes font
    sizes ad hoc (a mix of arbitrary text-[Npx] values and Tailwind's own text-xs/sm/base/lg/xl)
    at several hundred call sites across chat, not the ~15-file surface the color tokens have.
    Applying this scale is real per-instance work (matching each site's role against the spec's
-   Type Scale table), not a mechanical find-replace (CUR-530). */
+   Type Scale table), not a mechanical find-replace. */
 :root {
 	--ap-text-1: 10px; /* Micro — meta labels */
 	--ap-text-2: 12px; /* Small — supporting/secondary text */
@@ -214,9 +214,9 @@
 	--ap-text-6: 34px; /* Display — onboarding headline only (spec range 28-34px) */
 }
 
-/* Alpha corner-radius tiers, src/lib/chat/design-system.md § Buttons (CUR-509/530). Not
+/* Alpha corner-radius tiers, src/lib/chat/design-system.md § Buttons. Not
    theme-dependent, same reasoning as the type scale above. Definitions only — applying these across
-   components (vs. the equivalent literal Tailwind values already in place) is CUR-531's per-component
+   components (vs. the equivalent literal Tailwind values already in place) is the per-component
    audit, not this pass. */
 :root {
 	--ap-radius-1: 0px; /* Sharp — the default; top bar, XRAY view + cards, pills, rail icons */
@@ -229,13 +229,13 @@
 .dark:not(.ds-root) {
 	/* Neutral near-black — the Alpha dark window. Surface #181818 (Figma node 563-13906,
 	   "Conversational UI BG + left side panel"), white primary ink.
-	   Background 1 and Text 1 already matched src/lib/chat/design-system.md (CUR-509) exactly.
-	   Background 2 and Text 2/3 below follow the spec's values (CUR-530); Text 2/3
+	   Background 1 and Text 1 already matched src/lib/chat/design-system.md exactly.
+	   Background 2 and Text 2/3 below follow the spec's values; Text 2/3
 	   are opacity-derived (white @ 75%/50% over #181818), not hand-picked greys. Background 3
 	   is deliberately untouched here: --ap-paper-3 and --ap-stack-panel currently serve two
-	   different roles at two different values, and CUR-531 picks the right one per component
+	   different roles at two different values, and picks the right one per component
 	   rather than this pass guessing.
-	   Borders (CUR-531): the spec is white-only, three opacities keyed to what's behind the
+	   Borders: the spec is white-only, three opacities keyed to what's behind the
 	   border — 10% (--ap-border-1, reply/message-box outlines), 30% (--ap-border-2, the
 	   default for general boxes/cards/layout lines), 50% (--ap-border-3, on Background 3).
 	   --ap-rule takes the Border 2 value directly (not the map palette's light-blue hairline), since --ap-rule's actual

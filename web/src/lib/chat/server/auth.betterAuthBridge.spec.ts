@@ -11,7 +11,7 @@ vi.mock("$lib/chat/server/database", () => ({
 		sessions: {
 			findOne: vi.fn(async () => null),
 		},
-		// first-login migration of an anonymous session's conversations/settings. (CUR-849)
+		// first-login migration of an anonymous session's conversations/settings.
 		conversations: {
 			updateMany: vi.fn(async () => ({})),
 		},
@@ -21,7 +21,7 @@ vi.mock("$lib/chat/server/database", () => ({
 		},
 		// mintAnonymousSession sweeps the retired coalescing rows on every mint, so the
 		// anonymous fall-through these tests reach touches this collection. The mock describes the real call
-		// graph; the sweep's own contract is asserted in auth.anonSessionMint.spec.ts, not here. (CUR-1645)
+		// graph; the sweep's own contract is asserted in auth.anonSessionMint.spec.ts, not here.
 		semaphores: {
 			deleteMany: vi.fn(async () => ({ acknowledged: true, deletedCount: 0 })),
 		},
@@ -29,7 +29,7 @@ vi.mock("$lib/chat/server/database", () => ({
 }));
 
 // The first-login insert and migrations share one transaction. The mock records which
-// collection calls ran inside it, so a test can say what the transaction covered and in what order. (CUR-769)
+// collection calls ran inside it, so a test can say what the transaction covered and in what order.
 const inTransaction: string[] = [];
 let transactionOpen = false;
 const withTransaction = vi.fn(async (fn: () => Promise<unknown>) => {
@@ -73,7 +73,7 @@ const cookiesWithAnonymousSession = (token: string) =>
 		get: (name: string) => (name === sessionCookieName ? token : undefined),
 	}) as unknown as Parameters<typeof authenticateRequest>[1];
 
-describe("authenticateRequest — Better Auth bridge (CUR-434)", () => {
+describe("authenticateRequest — Better Auth bridge", () => {
 	beforeEach(() => {
 		getSession.mockReset();
 		usersFindOne.mockReset().mockResolvedValue(null);
@@ -126,7 +126,7 @@ describe("authenticateRequest — Better Auth bridge (CUR-434)", () => {
 		expect(inserted.name).toBe("Ada");
 		expect(inserted.email).toBe("ada@example.com");
 		expect(inserted.hfUserId).toBeUndefined();
-		// The verification bit is per request, from the session, and never written to the row. (CUR-3182)
+		// The verification bit is per request, from the session, and never written to the row.
 		expect(inserted).not.toHaveProperty("emailVerified");
 		expect(result.user).toEqual({ ...inserted, emailVerified: false });
 		// Not the raw HF token even when the linked account IS Hugging Face — see the comment in auth.ts.
@@ -135,7 +135,7 @@ describe("authenticateRequest — Better Auth bridge (CUR-434)", () => {
 
 	// A visitor's anonymous conversations/settings otherwise stay orphaned on the old
 	// sessionId forever, since authCondition switches to querying by userId the moment locals.user
-	// exists — see auth.ts's authCondition and the ticket for the full symptom. (CUR-849)
+	// exists — see auth.ts's authCondition.
 	it("migrates an anonymous session's conversations and settings on first Better Auth login", async () => {
 		getSession.mockResolvedValueOnce({
 			user: { id: "ba_user_3", name: "Cid", email: "cid@example.com", image: null },
@@ -153,8 +153,8 @@ describe("authenticateRequest — Better Auth bridge (CUR-434)", () => {
 	});
 
 	// Settings and conversations reference users.id, so the shadow row must exist before
-	// either is re-keyed. CUR-1558 needs the opposite from the outside: no other request may see
-	// that row before the migration lands. One transaction, row first, satisfies both. (CUR-769)
+	// either is re-keyed. Concurrent requests need the opposite from the outside: no other request may see
+	// that row before the migration lands. One transaction, row first, satisfies both.
 	it("inserts the shadow user first and re-keys settings and conversations in the same transaction", async () => {
 		getSession.mockResolvedValueOnce({
 			user: { id: "ba_user_tx", name: "Tx", email: "tx@example.com", image: null },
@@ -208,7 +208,7 @@ describe("authenticateRequest — Better Auth bridge (CUR-434)", () => {
 	// browser, has a conversation, then signs back in must have it migrated, so
 	// migrateAnonymousConversations runs on every sign-in, not only inside the first-login `if (!user)`
 	// branch. Settings still must NOT re-migrate here — migrateAnonymousSettings' own docstring warns that
-	// calling it for a returning user "would stomp them". (CUR-1719)
+	// calling it for a returning user "would stomp them".
 	it("re-migrates a fresh anonymous session's conversations (but not settings) on a returning Better Auth user", async () => {
 		const shadowId = { toHexString: () => "existing-2" };
 		usersFindOne.mockResolvedValueOnce({ _id: shadowId, name: "Cid", email: "cid@example.com" });
@@ -258,7 +258,7 @@ describe("authenticateRequest — Better Auth bridge (CUR-434)", () => {
 		expect(result.user).toEqual({ ...existingUser, emailVerified: false });
 	});
 
-	it("carries Better Auth's emailVerified onto the request's user, so flag evaluation can tell a verified address (CUR-3182)", async () => {
+	it("carries Better Auth's emailVerified onto the request's user, so flag evaluation can tell a verified address", async () => {
 		const existingUser = { _id: { toHexString: () => "existing" }, name: "Ada", email: "ada@currentai.org" };
 		usersFindOne.mockResolvedValueOnce(existingUser);
 		getSession.mockResolvedValueOnce({
@@ -296,9 +296,10 @@ describe("authenticateRequest — Better Auth bridge (CUR-434)", () => {
 		expect(result.sessionId).toBe(await sha256("ba_session_token_3"));
 	});
 
-	// Admin comes only from the stored isAdmin flag; this proves this authenticateRequest() branch
-	// passes it through. (CUR-575)
-	it("surfaces an existing shadow user's isAdmin flag (CUR-575)", async () => {
+	// This branch is one of the authenticateRequest() call sites that go through the
+	// shared composeIsAdmin() (auth.composeIsAdmin.spec.ts covers that function's OR-composition in
+	// isolation) — this proves the real wiring at this specific call site, not just the function.
+	it("surfaces an existing shadow user's isAdmin flag", async () => {
 		const shadowId = { toHexString: () => "existing-admin" };
 		const adminUser = { _id: shadowId, name: "Ada", email: "ada@example.com", isAdmin: true };
 		usersFindOne.mockResolvedValueOnce(adminUser);

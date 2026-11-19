@@ -3,7 +3,7 @@ import { chromeCopy, chromeLanguage, gapCardCopy } from "./chromeCopy";
 import { failoverLine, liveActiveLine, UNKNOWN_MODEL_LABEL } from "./components/chat/liveRequestLabels";
 import { preferredLanguage } from "./constants/starterShelf";
 
-describe("chromeLanguage (CUR-1575, CUR-2394)", () => {
+describe("chromeLanguage", () => {
 	it("follows the browser's first choice when there is a table for it", () => {
 		expect(chromeLanguage(preferredLanguage("fr-FR,fr;q=0.9,en;q=0.8"))).toBe("fr");
 		expect(chromeLanguage(preferredLanguage("es-MX,es;q=0.9"))).toBe("es");
@@ -21,7 +21,7 @@ describe("chromeLanguage (CUR-1575, CUR-2394)", () => {
 	});
 });
 
-describe("gapCardCopy (CUR-2394, CUR-2885)", () => {
+describe("gapCardCopy", () => {
 	it("translates the whole web-search gap card, its sentence included, for a French browser", () => {
 		const { copy, line } = gapCardCopy("fr", "websearch", "a Google-scale open web search index");
 		expect(copy.gapAction).toBe(chromeCopy("fr").gapAction);
@@ -43,7 +43,7 @@ describe("gapCardCopy (CUR-2394, CUR-2885)", () => {
 	});
 });
 
-describe("live request log in the browser's language (CUR-1575)", () => {
+describe("live request log in the browser's language", () => {
 	const fr = chromeCopy("fr");
 
 	it("writes the active line in French, the model's name untouched", () => {

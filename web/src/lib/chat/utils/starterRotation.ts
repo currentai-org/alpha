@@ -1,8 +1,8 @@
 // Picks which starter prompts to show on a given visit, and remembers what was shown last
 // time (via a small first-party cookie, see +layout.server.ts) so a returning visitor doesn't see
-// the identical set twice in a row. (CUR-620)
+// the identical set twice in a row.
 
-/** Starter prompts on the empty state (CUR-620). Client-safe: the chat loader and the /alpha demo both read it. */
+/** Starter prompts on the empty state. Client-safe: the chat loader and the /alpha demo both read it. */
 export const STARTER_COUNT = 3;
 
 /** Fisher-Yates, seeded via an injectable rng so tests can be deterministic. */

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { describe, expect, it } from "vitest";
 
 import { clampFinishedMessage, clampStoppedContent } from "$lib/chat/server/stopTruncation";
@@ -115,7 +118,7 @@ describe("clampStoppedContent", () => {
 	});
 });
 
-// Stop pressed while smooth mode was still revealing an answer the server had finished. (CUR-2306)
+// Stop pressed while smooth mode was still revealing an answer the server had finished.
 describe("clampFinishedMessage", () => {
 	const finished = (content: string, finalText = content) => ({
 		content,

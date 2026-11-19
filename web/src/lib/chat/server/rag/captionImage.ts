@@ -10,6 +10,7 @@
 // mitigates silent OCR/caption mistakes. Oversized images are downscaled with sharp first to bound
 // the vision token cost and request payload.
 
+import { APP_USER_AGENT } from "$lib/chat/constants/app";
 import sharp from "sharp";
 import { config } from "$lib/chat/server/config";
 import { createOpenAIClient } from "$lib/chat/server/openaiClient";
@@ -81,7 +82,7 @@ export function assembleImageText(fields: VisionFields): string {
  *  when the pure helpers (parseVisionJson/assembleImageText) are imported in the hermetic test gate.
  *
  *  The last step sends an image to a model nobody declared able to read one, so it logs both facts at
- *  warn (`visionModelFallback`) rather than passing silently (CUR-2319). `registry` is for specs. */
+ *  warn (`visionModelFallback`) rather than passing silently. `registry` is for specs. */
 export async function pickVisionModel(registry?: {
 	models: { id: string; multimodal?: boolean }[];
 	defaultModel?: { id?: string; name?: string };
@@ -142,10 +143,10 @@ export async function captionImage(input: {
 			apiKey: embeddingToken() || "sk-",
 			// Ingestion rather than a turn, so a slow caption costs nobody an answer and this is a
 			// leak-stopper rather than a latency budget — without it a hung vision request holds the
-			// invocation open until the platform kills it (CUR-1345).
+			// invocation open until the platform kills it.
 			timeout: 60_000,
 			defaultHeaders: {
-				"User-Agent": "aipotluck.org",
+				"User-Agent": APP_USER_AGENT,
 				// Bill vision inference to the configured HF org when OPENAI_BASE_URL is the HF router.
 				...hfBillToHeader(config.OPENAI_BASE_URL, { ownLane: false }, billTo),
 			},

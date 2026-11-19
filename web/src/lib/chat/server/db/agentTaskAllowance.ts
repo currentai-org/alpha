@@ -8,17 +8,17 @@
  * the machines that run visitors' code away from chat's data.
  *
  * One `message_events` row per task agent-service accepted, counted through eventWindow.ts like every
- * other limit there. A guest is refused agent mode before this (CUR-4400); one that got this far is
+ * other limit there. A guest is refused agent mode before this; one that got this far is
  * keyed by session id rather than let through uncounted.
  *
- * A team account (teamAccount.ts, CUR-4620) gets STAFF_TIER.agentTasksPerDay instead, and agent-service is
+ * A team account (teamAccount.ts) gets STAFF_TIER.agentTasksPerDay instead, and agent-service is
  * told the same number in X-Agent-Subject-Daily-Tasks (agentServiceHeaders), so its per-visitor cap does
  * not stop the account at 25 behind chat's back.
  *
  * FAILS OPEN on a count error, like the attachment allowance: agent-service's own caps still bound the
- * run, so a database blip costs a few extra tasks and nothing more. (CUR-4401)
+ * run, so a database blip costs a few extra tasks and nothing more.
  */
-import { countLiveEvents, recordEvent, secondsUntilRoom, type EventKey } from "$lib/chat/server/db/eventWindow";
+import { allowanceRoom, recordEvent, type EventKey } from "$lib/chat/server/db/eventWindow";
 import { retryAfterWords } from "$lib/chat/server/retryAfterWords";
 import { STAFF_TIER, isTeamAccount } from "$lib/chat/server/teamAccount";
 
@@ -47,9 +47,8 @@ export async function agentTaskRoom(
 	const key = keyFor(locals);
 	if (!key) return { ok: true };
 	const limit = agentTasksPerDay(locals);
-	const used = await countLiveEvents(key, LABEL);
-	if (used === null || used < limit) return { ok: true };
-	return { ok: false, limit, retryAfterSecs: await secondsUntilRoom(key, limit, LABEL) };
+	const room = await allowanceRoom(key, limit, LABEL);
+	return room.ok ? room : { ...room, limit };
 }
 
 /** Count one task agent-service accepted. Never throws. */

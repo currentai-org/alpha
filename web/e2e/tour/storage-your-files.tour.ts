@@ -9,6 +9,7 @@ import {
 	waitForNarration
 } from 'playwright-recast/helpers';
 import { openHome, clickIntoChat, TOUR_RECAST } from './show';
+import { tourEmail } from '../../scripts/lib/tourPersonas.mjs';
 import { signInWithEmailOtp } from '../scenarios/helpers/signIn';
 
 // The STORAGE walkthrough: Your files. One person signs in, opens Files from the chat rail, uploads
@@ -22,7 +23,7 @@ import { signInWithEmailOtp } from '../scenarios/helpers/signIn';
 setupRecast(test, TOUR_RECAST);
 
 const DATABASE_URL = process.env.SCENARIO_DATABASE_URL;
-const EMAIL = `jo.lindqvist.${Math.random().toString(36).slice(2, 7)}@example.org`;
+const EMAIL = tourEmail('jo.lindqvist');
 const NAME = 'trip-notes.txt';
 const CONTENT = 'Trip notes\nTrain to Lucerne 08:12, back 18:40.\n';
 
@@ -54,7 +55,7 @@ test('STORAGE: Your files — upload, download and delete, kept with Hugging Fac
 	await expect(page.getByRole('heading', { name: 'Your files', level: 1 })).toBeVisible({
 		timeout: 30_000
 	});
-	// Where the files live is a storage setting (CUR-4363); the Files page links there.
+	// Where the files live is a storage setting; the Files page links there.
 	const manage = page.getByRole('link', { name: 'Manage storage' });
 	await expect(manage).toBeVisible();
 	await narrate(

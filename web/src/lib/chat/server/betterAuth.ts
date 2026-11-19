@@ -1,6 +1,6 @@
 /**
- * Better Auth server instance (CUR-434/CUR-432) — the identity/session source of truth for the new
- * sign-in surface: Google, GitHub, passkey, email-OTP (delivery via Resend, CUR-518), and Hugging Face
+ * Better Auth server instance — the identity/session source of truth for the new
+ * sign-in surface: Google, GitHub, passkey, email-OTP (delivery via Resend), and Hugging Face
  * on `genericOAuth` so it gets the same native account-linking-by-verified-email as every
  * other provider, instead of a second hand-rolled merge path.
  *
@@ -20,10 +20,11 @@
  * drizzleAdapter(getDb(), ...) })` would crash on import alone in any environment without a DB
  * configured: every cold serverless instance and any DB-less build/test run.
  */
+import { DEPLOYMENT } from "$lib/deployment";
 import { betterAuth } from "better-auth";
 import { APIError } from "better-auth/api";
 // Per-plugin subpaths: the better-auth/plugins barrel loads every plugin (~2.6 s), and this
-// file sits under every auth spec (CUR-2446).
+// file sits under every auth spec.
 import { emailOTP } from "better-auth/plugins/email-otp";
 import { genericOAuth } from "better-auth/plugins/generic-oauth";
 import { organization } from "better-auth/plugins/organization";
@@ -32,10 +33,6 @@ import { admin } from "better-auth/plugins/admin";
 import { sveltekitCookies } from "better-auth/svelte-kit";
 import { passkey } from "@better-auth/passkey";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
-import { oauthProvider } from "@better-auth/oauth-provider";
-import { syncClientsPlugin } from "$lib/chat/server/sync/syncClients";
-import { SYNC_ACCESS_TOKEN_PREFIX, SYNC_REFRESH_TOKEN_PREFIX } from "$lib/chat/server/sync/syncToken";
-import { SYNC_CLIENTS, SYNC_SCOPE } from "../../../../config/thunderbolt";
 import { getDb, schema } from "$lib/chat/server/db/client";
 import { config } from "$lib/chat/server/config";
 import { OIDConfig } from "$lib/chat/server/oidcConfig";
@@ -48,13 +45,16 @@ import { getRequestEvent } from "$app/server";
 import { dev } from "$app/environment";
 import { deployEnv, isTestDeployment, type DeployEnv } from "$lib/chat/server/deployEnv";
 import { mockOidcProvider } from "$lib/chat/server/mockOidc";
+import { ORG_OIDC_ENV_KEYS, orgOidcProvider } from "$lib/chat/server/orgOidc";
 import { huggingFaceOAuthConfig, memoizeAuthUntilRejected } from "$lib/chat/server/authStartup";
 import { authBaseURL, authOrigins } from "$lib/chat/server/authOrigins";
 import { deploymentInstance, isEventInstance } from "$lib/chat/server/instance";
 import { rememberActiveWorkspace, workspaceToResume } from "$lib/chat/server/resumeWorkspace";
 import { refreshProviderEmail } from "$lib/chat/server/refreshProviderEmail";
 import { stampDeletedWorkspace } from "$lib/chat/server/formerWorkspaces";
-import { isReservedTestAddress, sendViaResend } from "$lib/chat/server/resend";
+import { isReservedTestAddress } from "$lib/chat/server/resend";
+import { emailPasswordSignIn, mailTransport, sendMail } from "$lib/chat/server/mailer";
+import { refuseClosedSignUp, undoLosingFirstSignUp } from "$lib/chat/server/selfHostSignUp";
 import { deviceIdForSignIn, newDeviceNoticeAccount, noticeNewDevice } from "$lib/chat/server/newDeviceNotice";
 import { runInBackground } from "$lib/chat/server/vercelBackground";
 import {
@@ -88,6 +88,7 @@ import {
 	recordNewAddressCode,
 } from "$lib/chat/server/db/signInCodeRate";
 import { recordRateLimitTrip } from "$lib/chat/server/alerting";
+import { deployEnvName, deploymentUrl, gitRef, type RuntimeEnv } from "$lib/server/runtimeEnv";
 
 function refuseJoinMethodWithoutAFlow(joinMethod: unknown) {
 	const message = joinMethodRefusal(joinMethod);
@@ -95,7 +96,7 @@ function refuseJoinMethodWithoutAFlow(joinMethod: unknown) {
 }
 
 // The name travels into the invitation email, so it is checked here and not only by the
-// page's input, which any direct call to the API skips. (CUR-3194)
+// page's input, which any direct call to the API skips.
 function refuseUnsendableWorkspaceName(name: unknown) {
 	const message = workspaceNameRefusal(name);
 	if (message) throw new APIError("BAD_REQUEST", { message });
@@ -106,27 +107,23 @@ function refuseUnsendableWorkspaceName(name: unknown) {
 // elsewhere (auth.ts's OIDC redirect URI construction has the same fallback shape).
 const publicOrigin = config.PUBLIC_ORIGIN || undefined;
 
-// baseURL must stay this ONE static value (CUR-1152/CUR-1162): it also seeds passkeyRpId and the
-// cookie Domain below, and develop.aipotluck.org (a preview env with its OWN stable custom domain) is
-// correctly served by it. Deriving baseURL from VERCEL_URL (the platform's auto-generated
-// *.vercel.app hostname, unspoofable unlike a request's Host header) would break that domain, since
-// VERCEL_URL is NEVER a custom domain, even on a deployment that has one aliased. No single baseURL
-// value is correct for both "a deployment with its own domain" and "a deployment with only an
-// auto-generated one", so the auto-generated hostname is ADDED as a second trusted origin below,
-// alongside the static one baseURL already trusts implicitly.
+// baseURL must stay this ONE static value: it also seeds passkeyRpId and the cookie Domain below, and
+// the develop host (a preview env with its OWN stable custom domain) is correctly served by it.
+// Deriving baseURL from VERCEL_URL (the platform's auto-generated *.vercel.app hostname, unspoofable
+// unlike a request's Host header) would break that domain, since VERCEL_URL is NEVER a custom domain,
+// even on a deployment that has one aliased. No single baseURL value is correct for both "a deployment
+// with its own domain" and "a deployment with only an auto-generated one", so the auto-generated
+// hostname is ADDED as a second trusted origin below, alongside the static one baseURL already trusts
+// implicitly.
 //
-// Only this team's preview hosts, never all of *.vercel.app. Any Vercel user can mint a
-// *.vercel.app host, and oAuthProxy hands the encrypted sign-in payload to whatever callback passes this
-// list. Vercel names a deployment `aipotluck-<9 chars>-current-ai.vercel.app` and a branch alias
-// `aipotluck-git-<branch>-current-ai.vercel.app`; better-auth's `?` matches one character and `*` any
-// run. Someone could still claim a Vercel project named in one of these shapes, which only a check
-// against Vercel's own API would rule out. (CUR-3521)
-const PREVIEW_TRUSTED_ORIGINS = [
-	"https://aipotluck-?????????-current-ai.vercel.app",
-	"https://aipotluck-git-*-current-ai.vercel.app",
-];
+// Only the installation's own preview hosts (previewTrustedOrigins, src/lib/deployment.ts), never all
+// of *.vercel.app. Any Vercel user can mint a *.vercel.app host, and oAuthProxy hands the encrypted
+// sign-in payload to whatever callback passes this list, so each pattern names the project and team:
+// better-auth's `?` matches one character and `*` any run. Someone could still claim a Vercel project
+// named in one of these shapes, which only a check against Vercel's own API would rule out.
+const PREVIEW_TRUSTED_ORIGINS = DEPLOYMENT.previewTrustedOrigins;
 export function computePreviewTrustedOrigins(env: DeployEnv | null): string[] | undefined {
-	return env === "preview" ? PREVIEW_TRUSTED_ORIGINS : undefined;
+	return env === "preview" && PREVIEW_TRUSTED_ORIGINS.length ? PREVIEW_TRUSTED_ORIGINS : undefined;
 }
 const previewTrustedOrigins = computePreviewTrustedOrigins(deployEnv());
 
@@ -136,73 +133,65 @@ const previewTrustedOrigins = computePreviewTrustedOrigins(deployEnv());
 // of truth rather than hand-tuning two. Known limitation, not a blocker: a passkey registered on a
 // preview deploy won't carry to prod, or to a different preview URL next time.
 //
-// Pinned to the apex when PUBLIC_ORIGIN's hostname is the apex or one of its subdomains — a
-// credential (or session cookie, below) scoped to the exact hostname today would not carry to a
-// sibling subdomain after a chat.aipotluck.org/alpha.aipotluck.org split, and a WebAuthn credential
-// already registered narrow can't be widened after the fact. Per spec, any subdomain of an RP ID's
-// registrable domain is a valid origin for that credential, so pinning to the apex covers every
-// subdomain permanently, including the split that hasn't happened yet. Guarded rather than
-// unconditional: a preview deploy's real hostname is a *.vercel.app domain, not a subdomain of the
+// Pinned to the installation's apex (apexDomain, src/lib/deployment.ts) when it names one and
+// PUBLIC_ORIGIN's hostname sits under it — a credential (or session cookie, below) scoped to the exact
+// hostname would not carry to a sibling subdomain, and a WebAuthn credential already registered narrow
+// can't be widened after the fact. Per spec, any subdomain of an RP ID's registrable domain is a valid
+// origin for that credential, so pinning to the apex covers every subdomain permanently. Guarded rather
+// than unconditional: a preview deploy's real hostname is a *.vercel.app domain, not a subdomain of the
 // apex, and the browser rejects an RP ID that isn't a registrable-domain suffix of the actual origin —
-// pinning those to "aipotluck.org" would break passkeys there outright, not just leave them narrow. (CUR-697)
-export const APEX_DOMAIN = "aipotluck.org";
+// pinning those to the apex would break passkeys there outright, not just leave them narrow.
+export const APEX_DOMAIN: string | null = DEPLOYMENT.apexDomain;
 
-/** True when `hostname` is the apex or one of its subdomains. Pure, exported for testing (CUR-697) —
- * the check that decides whether it's safe to pin the RP ID / cookie Domain to the apex rather than
- * the exact serving hostname. */
+/** True when `hostname` is the apex or one of its subdomains, false when there is no apex. Pure,
+ * exported for testing — the check that decides whether it's safe to pin the RP ID / cookie Domain to
+ * the apex rather than the exact serving hostname. */
 export function isApexOrSubdomain(hostname: string | undefined): boolean {
+	if (!APEX_DOMAIN) return false;
 	return hostname === APEX_DOMAIN || (hostname?.endsWith(`.${APEX_DOMAIN}`) ?? false);
 }
 
-// Not isApexOrSubdomain(PUBLIC_ORIGIN's hostname): PUBLIC_ORIGIN is the same Doppler `preview` value
-// synced identically to every preview deployment, ephemeral or not (no per-branch scoping in Vercel),
-// so it would read true on every preview build, including an ephemeral per-PR one whose real serving
-// host is a *.vercel.app domain, the case the guard above exists for. Better Auth's session cookie
-// would then ship Domain=aipotluck.org from a *.vercel.app response, Chromium discards it on receipt,
-// and a signed-in visitor loses their session on the next navigation with nothing logged (CUR-1172).
+// Not isApexOrSubdomain(PUBLIC_ORIGIN's hostname): PUBLIC_ORIGIN is the same `preview` value synced
+// identically to every preview deployment, ephemeral or not (no per-branch scoping in Vercel), so it
+// would read true on every preview build, including an ephemeral per-PR one whose real serving host is
+// a *.vercel.app domain, the case the guard above exists for. Better Auth's session cookie would then
+// ship Domain=<apex> from a *.vercel.app response, Chromium discards it on receipt, and a signed-in
+// visitor loses their session on the next navigation with nothing logged.
 //
 // VERCEL_GIT_COMMIT_REF is per-deployment (the actual branch being built), unlike PUBLIC_ORIGIN — only
-// develop's own deployments get "develop" here, the one preview branch with a real aipotluck.org
-// subdomain aliased to it. VERCEL_URL alone is not enough (CUR-1152): it's develop's own
-// auto-generated *.vercel.app hostname too, not its aliased custom domain.
+// develop's own deployments get "develop" here, the one preview branch with a real subdomain of the
+// apex aliased to it. VERCEL_URL alone is not enough: it's develop's own auto-generated *.vercel.app
+// hostname too, not its aliased custom domain. With no apex, computePasskeyRp pins nothing.
 //
-// Pure and exported (CUR-1172) for the same reason isApexOrSubdomain above is — a module-level const
-// computed once from process.env can't be exercised by a test without reimporting the whole module.
-export function computeOriginIsApexOrSubdomain(env: {
-	VERCEL_ENV?: string;
-	VERCEL_GIT_COMMIT_REF?: string;
-}): boolean {
-	return env.VERCEL_ENV === "production" || env.VERCEL_GIT_COMMIT_REF === "develop";
+// Pure and exported for the same reason isApexOrSubdomain above is — a module-level const computed
+// once from process.env can't be exercised by a test without reimporting the whole module.
+export function computeOriginIsApexOrSubdomain(env: RuntimeEnv): boolean {
+	return deployEnvName(env) === "production" || gitRef(env) === "develop";
 }
 
 // The session cookie's name and scope, per deployment. Every deployment's cookie is host-only (no
 // Domain attribute), so it goes back only to the host that set it.
 //
-// production's cookies are `__Host-aip.*`. A browser sends a host-only cookie to no other
-// aipotluck.org host, so develop, the status page and the other third-party subdomains never see a
-// production session. The `__Host-` prefix also makes the browser refuse a same-name cookie that a
-// subdomain tries to plant with Domain=aipotluck.org. It requires Secure, Path=/ and no Domain. Better
+// production's cookies are `__Host-aip.*`. A browser sends a host-only cookie to no other host under
+// the apex, so develop, the status page and the other third-party subdomains never see a production
+// session. The `__Host-` prefix also makes the browser refuse a same-name cookie that a subdomain
+// tries to plant with Domain=<apex>. It requires Secure, Path=/ and no Domain. Better
 // Auth only knows the `__Secure-` prefix, so production turns that off and sets Secure itself. The old
 // apex cookies are expired by `expireLegacySessionCookies` (hooks.server.ts).
-// (CUR-4442)
 // Develop and previews keep a name of their own as well, so a sign-in on one never
-// overwrites another's cookie. (CUR-1904)
+// overwrites another's cookie.
 export const PRODUCTION_COOKIE_PREFIX = "__Host-aip";
 const PREVIEW_COOKIE_PREFIX = "aip-preview";
 //
 // An event instance (mozfest, lugano) is a second production deployment with its own
-// database, so it gets `aip-<instance>`, checked before the production branch. (CUR-3156)
-export function computeSessionCookieScope(env: {
-	VERCEL_ENV?: string;
-	VERCEL_GIT_COMMIT_REF?: string;
-	INSTANCE?: string;
-}): {
+// database, so it gets `aip-<instance>`, checked before the production branch.
+export function computeSessionCookieScope(env: RuntimeEnv): {
 	cookiePrefix: string;
 	useSecureCookies?: false;
 	defaultCookieAttributes?: { secure: true };
 } {
 	if (isEventInstance(env)) return { cookiePrefix: `aip-${deploymentInstance(env)}` };
-	if (env.VERCEL_ENV === "production") {
+	if (deployEnvName(env) === "production") {
 		return { cookiePrefix: PRODUCTION_COOKIE_PREFIX, useSecureCookies: false, defaultCookieAttributes: { secure: true } };
 	}
 	return { cookiePrefix: PREVIEW_COOKIE_PREFIX };
@@ -214,20 +203,20 @@ const sessionCookieScope = computeSessionCookieScope(process.env);
 // browser isn't on and every registration is refused. vercel.app is a public suffix, so the RP ID has
 // to be that exact hostname. A passkey made there works on that deployment only, which is all a
 // throwaway preview needs.
-// (CUR-1708)
 // An event instance registers against its own host, checked before the apex branch. Its
 // database holds none of www's passkeys, so an apex RP ID would offer the browser credentials it
-// can't verify. (CUR-3156)
+// can't verify.
 export function computePasskeyRp(
-	env: { VERCEL_ENV?: string; VERCEL_GIT_COMMIT_REF?: string; VERCEL_URL?: string; INSTANCE?: string },
+	env: RuntimeEnv,
 	publicOrigin: string | undefined
 ): { rpID: string | undefined; origins: string[] | undefined } {
 	if (!publicOrigin) return { rpID: undefined, origins: undefined };
 	const origins = authOrigins(publicOrigin, env);
 	if (isEventInstance(env)) return { rpID: new URL(publicOrigin).hostname, origins };
-	if (computeOriginIsApexOrSubdomain(env)) return { rpID: APEX_DOMAIN, origins };
-	if (env.VERCEL_ENV === "preview" && env.VERCEL_URL) {
-		return { rpID: env.VERCEL_URL, origins: [...origins, `https://${env.VERCEL_URL}`] };
+	if (APEX_DOMAIN && computeOriginIsApexOrSubdomain(env)) return { rpID: APEX_DOMAIN, origins };
+	const ownHost = deploymentUrl(env);
+	if (deployEnvName(env) === "preview" && ownHost) {
+		return { rpID: ownHost, origins: [...origins, `https://${ownHost}`] };
 	}
 	return { rpID: new URL(publicOrigin).hostname, origins };
 }
@@ -243,10 +232,10 @@ const { rpID: passkeyRpId, origins: passkeyOrigins } = computePasskeyRp(process.
 // the normal handler.
 //
 // It proxies `/sign-in/social` only, so Hugging Face (genericOAuth) stays develop-only. Passkeys are
-// untouched: a PR preview already registers against its own host (computePasskeyRp, CUR-1708).
+// untouched: a PR preview already registers against its own host (computePasskeyRp).
 // The proxy secret defaults to BETTER_AUTH_SECRET, which develop and every PR preview already share
 // through the `preview` Doppler config along with develop's database, so it grants a preview nothing
-// it doesn't hold today. Production never registers it. (CUR-3096)
+// it doesn't hold today. Production never registers it.
 export function computeOAuthProxyProductionURL(
 	env: DeployEnv | null,
 	publicOrigin: string | undefined
@@ -269,7 +258,7 @@ const hfClientId =
 
 // The stand-in OIDC provider for the sign-in e2e spec. See mockOidc.ts for why it never
 // replaces Hugging Face, never registers on production or at a public address, and cannot take the
-// other providers down. (CUR-1551)
+// other providers down.
 const mockOidc = mockOidcProvider({
 	deployEnv: deployEnv(),
 	url: config.MOCK_OIDC_PROVIDER_URL,
@@ -288,6 +277,20 @@ if (!mockOidc.register && mockOidc.reason === "not-loopback") {
 	);
 }
 
+// The organisation's own sign-in provider, for a self-hosted Alpha, read from env (orgOidc.ts).
+const orgOidc = orgOidcProvider(Object.fromEntries(ORG_OIDC_ENV_KEYS.map((k) => [k, config[k]])));
+if (orgOidc.register) {
+	logger.info(
+		{ provider: orgOidc.config.providerId, name: orgOidc.name, names: orgOidc.names },
+		"[auth] organisation sign-in provider registered from env"
+	);
+} else if (orgOidc.reason !== "unset") {
+	logger.error(
+		{ reason: orgOidc.reason, detail: orgOidc.detail },
+		"[auth] organisation sign-in env is set but unusable, so that provider is off; the other sign-in methods are unaffected"
+	);
+}
+
 // Defense-in-depth against email bombing: Better Auth's own rate limiter is keyed on (ip, path), not
 // the target email (createRateLimitKey, api/rate-limiter/index.mjs) — so from many IPs there's no cap
 // at all on how many real emails land on one arbitrary address, existing user or not. This is a
@@ -295,7 +298,7 @@ if (!mockOidc.register && mockOidc.reason === "not-loopback") {
 // own default (no secondaryStorage is configured here either) — not a distributed guarantee, just a
 // real backstop where none existed for this dimension.
 //
-// Two independent instances (OTP sends, workspace invitations, CUR-550) rather than one shared map —
+// Two independent instances (OTP sends, workspace invitations) rather than one shared map —
 // a flood of sign-in codes to an address shouldn't also block a legitimate workspace invite to it, or
 // vice versa. Each is still keyed on the target email, not the caller, matching the threat this guards
 // against (an app-controlled sender spamming one arbitrary inbox).
@@ -320,7 +323,7 @@ function createTargetEmailRateLimiter(windowMs: number, max: number) {
 // admin IS Better Auth's "admin" role (creatorRole below), and "owner" is never assigned (the app has
 // two roles, admin and member), so without this an app admin calling the plugin's own
 // /organization/delete gets a 403 (YOU_ARE_NOT_ALLOWED_TO_DELETE_THIS_ORGANIZATION) from the installed
-// hasPermission check (CUR-827). This extends rather than replaces the built-in admin role (spreads
+// hasPermission check. This extends rather than replaces the built-in admin role (spreads
 // adminAc.statements) so every existing admin ability (invite, remove, cancel) is unaffected; only
 // `organization` widens to add "delete".
 // A plain module-level object (not built inside buildAuth()) so it's importable by a test with no live
@@ -335,7 +338,7 @@ export const ORG_ROLES = {
 
 // Deliberately loose (10 min / 3 sends) since it's a backstop, not the primary control, and a
 // legitimate user rarely needs more retries than that inside one 5-minute-expiry code's lifetime.
-// Named so the CUR-920 DB-backed backstop (targetEmailRate.ts) shares the exact same thresholds
+// Named so the DB-backed backstop (targetEmailRate.ts) shares the exact same thresholds
 // rather than duplicating the literals in a second place.
 const OTP_RATE_WINDOW_MS = 10 * 60 * 1000;
 // Exported so a test can assert OTP_SOURCE_MAX (targetEmailRate.ts) stays strictly below this — the
@@ -378,8 +381,8 @@ const INVITE_RATE_MAX = 10;
 const tooManyRecentInvitationSends = createTargetEmailRateLimiter(INVITE_RATE_WINDOW_MS, INVITE_RATE_MAX);
 
 /**
- * Real Resend delivery when RESEND_API_KEY is set (Preview/Production, CUR-518);
- * otherwise a log-only stub (local dev, or if the key is unset elsewhere) — same
+ * Real delivery through the deployment's mailer (mailer.ts: Resend when RESEND_API_KEY is set, as on
+ * Preview/Production; else SMTP_URL); otherwise a log-only stub (local dev, or if the key is unset elsewhere) — same
  * "unset → gracefully absent" shape as GOOGLE_CLIENT_ID/GITHUB_CLIENT_ID above. Extracted to a
  * standalone export (not an inline closure in buildAuth()) so it's unit-testable without a live
  * betterAuth() instance — buildAuth() eagerly calls getDb(), which throws without DATABASE_URL — the
@@ -406,17 +409,25 @@ export async function sendVerificationOTP({
 	otp: string;
 	type: "sign-in" | "email-verification" | "forget-password" | "change-email";
 }) {
-	if (!config.RESEND_API_KEY) {
+	// Resend, else SMTP_URL, else no mailer (mailer.ts has the precedence).
+	if (mailTransport() === "none") {
 		if (dev) {
 			// Local dev only: the code has to be readable somewhere or nobody can sign in. In any deploy
 			// this branch is a misconfiguration, and a sign-in code must never land in a shipped log line.
 			logger.info({ email, otp, type }, "[auth] email-OTP stub — RESEND_API_KEY unset (dev)");
+		} else if (emailPasswordSignIn()) {
+			// A self-host with no mailer signs people in with email and password instead; a code request
+			// here came from the API, not the sign-in page, which offers no code on this deployment.
+			logger.warn(
+				{ type },
+				"[auth] no mailer (RESEND_API_KEY, SMTP_URL) — email-OTP not sent; this self-host signs in with email and password"
+			);
 		} else {
 			logger.error(
 				{ type },
-				"[auth] RESEND_API_KEY unset — email-OTP not sent and not logged; sign-in by email is down"
+				"[auth] no mailer (RESEND_API_KEY, SMTP_URL) — email-OTP not sent and not logged; sign-in by email is down"
 			);
-			void captureServerException(new Error("RESEND_API_KEY unset — email-OTP not sent"));
+			void captureServerException(new Error("No mailer (RESEND_API_KEY, SMTP_URL) — email-OTP not sent"));
 		}
 		return;
 	}
@@ -430,7 +441,7 @@ export async function sendVerificationOTP({
 	// there's nothing worth tracking for a domain that will never receive mail either way. What this
 	// deliberately gives up: the suite no longer exercises the real Resend call for these addresses, a call
 	// into a void that only proved "we called Resend," never "mail arrives." Real delivery coverage needs
-	// one deliberate test against a domain that can actually receive mail, not one on every e2e run. (CUR-1254)
+	// one deliberate test against a domain that can actually receive mail, not one on every e2e run.
 	if (isReservedTestAddress(email)) {
 		logger.info({ type, domain: "example.org" }, "[auth] email-OTP suppressed — reserved test domain");
 		return;
@@ -458,7 +469,7 @@ export async function sendVerificationOTP({
 	}
 
 	// DB-backed backstop for the in-memory check above — see targetEmailRate.ts for why the
-	// in-memory Map alone is bypassable across Vercel's per-instance serverless model. (CUR-920)
+	// in-memory Map alone is bypassable across Vercel's per-instance serverless model.
 	if (!(await targetEmailSendAllowed(email, "otp", OTP_RATE_WINDOW_MS, OTP_RATE_MAX))) {
 		securityLogger.info(
 			{ type },
@@ -469,7 +480,7 @@ export async function sendVerificationOTP({
 	// The caps above are per address, so a script rotating addresses passes them all. Both daily
 	// caps below apply only to addresses with no account. Spending either stops a new sign-up for the day,
 	// never an existing account's sign-in, which keeps only the 10-minute caps above: a daily cap on a
-	// member's own address would let anyone who knows it lock them out for 24 hours. (CUR-4172)
+	// member's own address would let anyone who knows it lock them out for 24 hours.
 	const isNewAddress = !(await accountExistsForEmail(email));
 	if (isNewAddress && !(await addressCodeAllowedToday(email))) {
 		securityLogger.info({ type }, "[auth] email-OTP over the per-address daily cap — skipping Resend send");
@@ -490,7 +501,7 @@ export async function sendVerificationOTP({
 		void recordNewAddressCode();
 	}
 
-	const sent = await sendViaResend({
+	const sent = await sendMail({
 		to: email,
 		// Code stays in the body only, not the subject — considered putting it in the subject too
 		// (skips opening the email) but decided against it: the subject line is visible in
@@ -499,15 +510,21 @@ export async function sendVerificationOTP({
 		subject: "Your Alpha sign-in code",
 		text: `Your sign-in code is ${otp}. It expires in 10 minutes. If you didn't request this, you can ignore this email.`,
 	});
+	if (!sent) return;
 
 	if (!sent.ok) {
-		logger.error({ type, status: sent.status, body: sent.body }, "[auth] Resend send failed");
-		void captureServerException(new Error(`Resend send failed: ${sent.status}`));
+		const name = MAILER_NAME[sent.via];
+		logger.error({ type, status: sent.status, body: sent.body }, `[auth] ${name} send failed`);
+		void captureServerException(new Error(`${name} send failed: ${sent.status}`));
 		return;
 	}
 
-	logger.info({ type, resendId: sent.id }, "[auth] email-OTP sent via Resend");
+	if (sent.via === "resend") logger.info({ type, resendId: sent.id }, "[auth] email-OTP sent via Resend");
+	else logger.info({ type, messageId: sent.id }, "[auth] email-OTP sent via SMTP");
 }
+
+/** The transport's name in a log line. */
+const MAILER_NAME = { resend: "Resend", smtp: "SMTP" } as const;
 
 /**
  * Real Resend delivery for a workspace invitation — wired as the organization plugin's own
@@ -517,7 +534,7 @@ export async function sendVerificationOTP({
  * Resend failure only becomes visible through this file's own logger.
  *
  * `origin` is resolved by the caller (buildAuth's plugin config) from the same PUBLIC_ORIGIN-or-
- * request.url fallback auth.ts already uses for its own redirect URIs, not duplicated here. (CUR-550)
+ * request.url fallback auth.ts already uses for its own redirect URIs, not duplicated here.
  */
 export async function sendWorkspaceInvitationEmail({
 	id,
@@ -532,7 +549,7 @@ export async function sendWorkspaceInvitationEmail({
 	inviterEmail: string;
 	acceptUrl: string;
 }) {
-	if (!config.RESEND_API_KEY) {
+	if (mailTransport() === "none") {
 		if (dev) {
 			logger.info(
 				{ email, id, acceptUrl },
@@ -541,15 +558,15 @@ export async function sendWorkspaceInvitationEmail({
 		} else {
 			logger.error(
 				{},
-				"[auth] RESEND_API_KEY unset — workspace-invite email not sent and not logged"
+				"[auth] no mailer (RESEND_API_KEY, SMTP_URL) — workspace-invite email not sent and not logged"
 			);
-			void captureServerException(new Error("RESEND_API_KEY unset — workspace-invite email not sent"));
+			void captureServerException(new Error("No mailer (RESEND_API_KEY, SMTP_URL) — workspace-invite email not sent"));
 		}
 		return;
 	}
 
 	// workspaces.spec.ts invites a fresh `@example.org` address on every run and checks the
-	// Pending row, never the mailbox. Checked before the rate limiters, as in sendVerificationOTP. (CUR-1930)
+	// Pending row, never the mailbox. Checked before the rate limiters, as in sendVerificationOTP.
 	if (isReservedTestAddress(email)) {
 		logger.info({ domain: "example.org" }, "[auth] workspace-invite suppressed — reserved test domain");
 		return;
@@ -560,7 +577,7 @@ export async function sendWorkspaceInvitationEmail({
 		return;
 	}
 
-	// DB-backed backstop for the in-memory check above — see targetEmailRate.ts. (CUR-920)
+	// DB-backed backstop for the in-memory check above — see targetEmailRate.ts.
 	if (!(await targetEmailSendAllowed(email, "invite", INVITE_RATE_WINDOW_MS, INVITE_RATE_MAX))) {
 		logger.info(
 			{},
@@ -570,33 +587,60 @@ export async function sendWorkspaceInvitationEmail({
 	}
 	void recordTargetEmailSend(email, "invite", INVITE_RATE_WINDOW_MS);
 
-	const sent = await sendViaResend({
+	const sent = await sendMail({
 		to: email,
 		// The subject is fixed text and the body names who sent it, so the part a stranger
-		// controls (the workspace name, already refused if it holds a link) never leads the email. (CUR-3194)
+		// controls (the workspace name, already refused if it holds a link) never leads the email.
 		subject: "You've been invited to a workspace on Alpha",
 		text: `${inviterEmail} invited you to join the workspace "${organizationName}" on Alpha. Accept the invitation: ${acceptUrl}\n\nIf you don't know ${inviterEmail}, you can ignore this email.`,
 	});
 
+	if (!sent) return;
+
 	if (!sent.ok) {
-		logger.error({ status: sent.status, body: sent.body }, "[auth] Resend send failed (workspace invite)");
-		void captureServerException(new Error(`Resend send failed (workspace invite): ${sent.status}`));
+		const name = MAILER_NAME[sent.via];
+		logger.error({ status: sent.status, body: sent.body }, `[auth] ${name} send failed (workspace invite)`);
+		void captureServerException(new Error(`${name} send failed (workspace invite): ${sent.status}`));
 		return;
 	}
 
-	logger.info({ resendId: sent.id, invitationId: id }, "[auth] workspace-invite email sent via Resend");
+	if (sent.via === "resend")
+		logger.info({ resendId: sent.id, invitationId: id }, "[auth] workspace-invite email sent via Resend");
+	else logger.info({ messageId: sent.id, invitationId: id }, "[auth] workspace-invite email sent via SMTP");
+}
+
+/**
+ * The organization plugin's `sendInvitationEmail` hook. Exported so a spec can hand the plugin this
+ * same function and read the mail a real invite produces.
+ *
+ * Same PUBLIC_ORIGIN-or-request-origin fallback as auth.ts's own OIDC redirect URI (getOIDCClient):
+ * publicOrigin is unset in local dev, and request is the live invite call's own Request, so its
+ * origin is always the right one to fall back to.
+ */
+export async function sendInvitationEmailFromPlugin(
+	data: { id: string; email: string; organization: { name: string }; inviter: { user: { email: string } } },
+	request?: Request
+) {
+	const origin = publicOrigin || (request ? new URL(request.url).origin : undefined);
+	const acceptUrl = new URL(`${base}/workspace/accept/${data.id}`, origin ?? "http://localhost:5173").toString();
+	await sendWorkspaceInvitationEmail({
+		id: data.id,
+		email: data.email,
+		organizationName: data.organization.name,
+		inviterEmail: data.inviter.user.email,
+		acceptUrl,
+	});
 }
 
 /**
  * The invitation caps, checked before the invitation row exists. Counted in the
  * send path, a capped invite left a Pending row nobody would ever receive. The per-inviter cap
- * (CUR-912) goes first so one account's refusal never spends a site-wide slot. The site-wide ceiling
+ * goes first so one account's refusal never spends a site-wide slot. The site-wide ceiling
  * guards Resend's quota and real inboxes, so an invite to the reserved test domain, which never
- * reaches Resend (CUR-1930), doesn't count against it.
- * (CUR-2835 / CUR-3194)
+ * reaches Resend, doesn't count against it.
  * An invite also shows in the invitee's account menu, with no mail sent, so the number one
  * address can be holding is capped for every address, the reserved test domain included. Fails open
- * on a read error, like the caps above. (CUR-4167)
+ * on a read error, like the caps above.
  */
 const MAX_PENDING_INVITES_PER_ADDRESS = 5;
 
@@ -617,15 +661,20 @@ export async function refuseOverInviteCaps(
 		});
 	}
 	const sendsMail = !isReservedTestAddress(email);
-	if (sendsMail && !(await siteInviteAllowed())) {
+	if (sendsMail && !(await siteInviteAllowed(inviter.createdAt))) {
 		securityLogger.warn({}, "[auth] site-wide workspace-invite ceiling reached (CUR-3194)");
 		void captureServerException(new Error("Site-wide workspace-invite ceiling reached (CUR-3194)"));
+		// One alert line once refusals pile up, as the sign-in-code ceiling does.
+		void recordRateLimitTrip("invite-site-ceiling", {
+			limitName: "the daily ceiling on workspace invitations",
+			identity: "signed-in accounts across many addresses",
+		});
 		throw new APIError("TOO_MANY_REQUESTS", {
 			message: "Alpha has sent as many workspace invitations as it can today. Try again tomorrow.",
 		});
 	}
 	await recordWorkspaceInviteSend(inviterId);
-	if (sendsMail) await recordSiteInviteSend();
+	if (sendsMail) await recordSiteInviteSend(inviter.createdAt);
 }
 
 // The email-OTP plugin's own built-in per-(ip,path) rate limit (3/60s independently on
@@ -651,19 +700,19 @@ export async function refuseOverInviteCaps(
 //   1. deployEnv() must be explicitly "preview" or "development" — an allow-list, not `!== "production"`,
 //      so a misconfigured/undeclared environment (deployEnv() returning null) fails closed rather than
 //      being treated as "not production". Reads deployEnv(), not raw VERCEL_ENV: reading the host var
-//      directly is the mistake this module exists to prevent (CUR-208).
+//      directly is the mistake this module exists to prevent.
 //   2. a secret header matching E2E_OTP_BYPASS_TOKEN, set ONLY in Doppler's preview/dev configs, never
 //      prd — so even a defect in condition 1 can't fire in production, because the value the header
-//      would need to match doesn't exist there. Compared as fixed-width HMAC digests, the CUR-922
-//      pattern (safety/screen/+server.ts, hooks/handle.ts) — never a raw string `===`.
+//      would need to match doesn't exist there. Compared as fixed-width HMAC digests, the same
+//      pattern as safety/screen/+server.ts and hooks/handle.ts — never a raw string `===`.
 //   3. the request's target email ends with @example.org — the one domain sendVerificationOTP above
 //      already proves inert: it suppresses both the real send AND the app's own (ip,target)/
-//      target-wide OTP_RATE_MAX budget for it, before either ever runs (CUR-1254). Stacking this means a leaked
+//      target-wide OTP_RATE_MAX budget for it, before either ever runs. Stacking this means a leaked
 //      header secret is bounded to hammering an endpoint that can only ever no-op — not "bypass the
 //      send cap for any target on any preview," which conditions 1+2 alone would allow.
 // Any condition failing echoes currentRule back unchanged (the customRules type signature is
 // `false | Rule`, no `undefined` — echoing the rule Better Auth already resolved is the typed
-// equivalent of "apply the real limit", never widening it). (CUR-1553)
+// equivalent of "apply the real limit", never widening it).
 const OTP_BYPASS_HASH_LABEL = "otp-send-cap-carveout-v1";
 
 export async function otpSendCapCarveOut(
@@ -696,8 +745,8 @@ export async function otpSendCapCarveOut(
 // 60 s for the email-code send, so everyone behind one venue or conference NAT address shares them
 // and the fourth visitor is told "Too many requests". The multiplier raises the per-IP max for the
 // sign-in family only and keeps each window. The real guards stay: the per-address and per-source
-// OTP send caps (CUR-920, CUR-4172), and the per-code attempt limit. check-verification-otp is not
-// listed, so it keeps the built-in cap. (CUR-4594)
+// OTP send caps, and the per-code attempt limit. check-verification-otp is not
+// listed, so it keeps the built-in cap.
 export const SIGN_IN_SHARED_IP_MULTIPLIER = 20;
 
 export async function venueSignInRule(
@@ -718,21 +767,20 @@ function buildAuth() {
 			database: drizzleAdapter(getDb(), { provider: "pg", schema, usePlural: false }),
 			secret: config.BETTER_AUTH_SECRET,
 			// Production answers on www. and chat. per request; everywhere else this is still
-			// the static PUBLIC_ORIGIN. See authOrigins.ts. (CUR-1067)
+			// the static PUBLIC_ORIGIN. See authOrigins.ts.
 			baseURL: authBaseURL(publicOrigin, process.env),
-			// Pinned on every surface (CUR-4448): every OAuth callback registered with Google, GitHub and
-			// Hugging Face, and the Thunderbolt issuer, carry this path. A reserved path (paths.ts).
+			// Pinned on every surface: every OAuth callback registered with Google, GitHub and
+			// Hugging Face carry this path. A reserved path (paths.ts).
 			basePath: AUTH_BASE_PATH,
 			// Additive-only: no window/max here, so production's built-in 3/60s default on every email-otp path
 			// (including the two named below) is unchanged. customRules can only skip the limit for a path key it
 			// matches, and only when otpSendCapCarveOut's three conditions all hold (see its own comment above);
-			// same function for both, since both requests carry the same `email` body field the function reads
-			// (CUR-1553).
+			// same function for both, since both requests carry the same `email` body field the function reads.
 			// findVerificationValue purges all lapsed verification rows on every call (better-auth
 			// db/internal-adapter.mjs). Once anyone else signs in, a person's lapsed code has been purged before
 			// they type it; the verify then finds nothing and answers "Invalid OTP", shown as "That code doesn't
-			// match" in place of the copy for a lapsed code (CUR-2793). The daily cron sweeps lapsed rows instead
-			// (db/cleanup.ts, CUR-939), and a code its own verify finds lapsed is still deleted then.
+			// match" in place of the copy for a lapsed code. The daily cron sweeps lapsed rows instead
+			// (db/cleanup.ts), and a code its own verify finds lapsed is still deleted then.
 			verification: { disableCleanup: true },
 			rateLimit: {
 				customRules: {
@@ -748,13 +796,13 @@ function buildAuth() {
 			// every request. The wildcard is scoped to Vercel's own domain, not attacker-controlled: an
 			// Origin header reflects the REQUESTING PAGE's real origin (browser-enforced on fetch/XHR, not
 			// spoofable by page script the way a Host header is), so this only ever matches a page actually
-			// served from one of this team's preview deployments (CUR-3521). (CUR-1162)
+			// served from one of this team's preview deployments.
 			trustedOrigins: previewTrustedOrigins,
-			// CUR-697 pinned production's session cookie to the apex; CUR-1904 gives every other deployment
-			// its own cookie name, host-only. See computeSessionCookieScope above.
+			// Every deployment's session cookie is host-only under a name of its own: `__Host-aip` on
+			// production, a separate name elsewhere. See computeSessionCookieScope above.
 			advanced: sessionCookieScope,
 			// disableImplicitLinking, not an empty trustedProviders list, is the switch for "no silent
-			// cross-provider merge" (CUR-850; betterAuth.accountMerge.spec.ts). In the installed source
+			// cross-provider merge" (betterAuth.accountMerge.spec.ts). In the installed source
 			// (oauth2/link-account.mjs) the implicit-link gate is `isTrustedProvider || userInfo.emailVerified`,
 			// and Google and GitHub both assert emailVerified in their own OAuth response, so an empty
 			// trustedProviders array does not block them; only disableImplicitLinking does. `enabled: true` keeps
@@ -763,16 +811,16 @@ function buildAuth() {
 			// `account_not_linked` on the sign-in page (login/+page.svelte) rather than a silent merge or a
 			// dead-end redirect.
 			// The default also requires the linking provider's email to match the signed-in user's on this same
-			// explicit flow, which doesn't need it (CUR-1768), since the flow's own
+			// explicit flow, which doesn't need it, since the flow's own
 			// authentication (a live session plus a completed OAuth round trip) is already stronger
 			// than an email match, and a real person legitimately holds a work and a personal Hugging
 			// Face account on different addresses. Safe to relax: every per-user table here keys on
-			// shadowUserId (auth.ts, sha256 of Better Auth's own opaque user.id — CUR-552), never on
+			// shadowUserId (auth.ts, sha256 of Better Auth's own opaque user.id), never on
 			// email, and Better Auth's own applyUpdateUserInfoOnLink (oauth2/link-account.mjs) excludes
 			// email from what a link can update — so a link never touches user.email and can't reach
 			// another account's rows.
 			// A returning OAuth sign-in takes the provider's new email when it is verified and
-			// nobody else holds it (refreshProviderEmail.ts). It never refuses a sign-in. (CUR-3249)
+			// nobody else holds it (refreshProviderEmail.ts). It never refuses a sign-in.
 			user: {
 				validateUserInfo: async (data, ctx) => {
 					await refreshProviderEmail(data, ctx.context.internalAdapter);
@@ -788,8 +836,21 @@ function buildAuth() {
 			// A new session starts in the workspace the person last chose, rather than Personal.
 			// The org plugin's setActive, create, accept-invitation and delete all write the session
 			// through internalAdapter.updateSession, which runs update.after with the whole row; sign-out
-			// deletes that row, so the choice is kept on the user (resumeWorkspace.ts). (CUR-3024)
+			// deletes that row, so the choice is kept on the user (resumeWorkspace.ts).
 			databaseHooks: {
+				// A self-host with no mailer: the first password account succeeds and password sign-up
+				// closes after it, unless ALPHA_OPEN_SIGNUP=true (selfHostSignUp.ts). Both hooks return at
+				// once on any other route or deployment.
+				user: {
+					create: {
+						before: async (_user, ctx) => {
+							await refuseClosedSignUp(ctx);
+						},
+						after: async (created, ctx) => {
+							await undoLosingFirstSignUp(created, ctx);
+						},
+					},
+				},
 				session: {
 					create: {
 						before: async (session) => {
@@ -800,7 +861,7 @@ function buildAuth() {
 						},
 						// One security line per new session, which is what a sign-in is here. The
 						// account is hashed by the logger; the network is hashed here, in the same domain as
-						// the per-IP rate limit so the two can be matched. (CUR-4143)
+						// the per-IP rate limit so the two can be matched.
 						after: async (session, ctx) => {
 							securityLogger.info(
 								{
@@ -811,7 +872,7 @@ function buildAuth() {
 								"[security] sign-in"
 							);
 							// Mail the account when this device is new to it. In the background, so
-							// the sign-in response never waits on the lookups or on Resend. (CUR-4181)
+							// the sign-in response never waits on the lookups or on Resend.
 							let origin = publicOrigin;
 							try {
 								origin ??= getRequestEvent().url.origin;
@@ -819,7 +880,7 @@ function buildAuth() {
 								// no request in scope (a direct call in a test); noticeNewDevice sends nothing without one
 							}
 							// The device cookie rides on this sign-in's response, so the flag is read and the
-							// cookie set here; only the lookup and the email run in the background. (CUR-4231)
+							// cookie set here; only the lookup and the email run in the background.
 							const account = ctx ? await newDeviceNoticeAccount(session.userId) : null;
 							let deviceId: string | undefined;
 							try {
@@ -852,6 +913,16 @@ function buildAuth() {
 			},
 			// Google and GitHub gate independently — each is simply absent from the sign-in screen when
 			// its own client id is unset, same posture as every other optional provider here.
+			// A self-host with no mailer (mailer.ts emailPasswordSignIn): nobody can receive a sign-in code,
+			// so Better Auth's own email-and-password sign-in takes its place on the sign-in page. Unverified by
+			// necessity, as there is no mail to verify with; the operator owns who reaches the stack. Never on a
+			// hosted deployment. The email-OTP plugin stays registered: a code still lands in the verification
+			// table, which the stack's own e2e specs read.
+			emailAndPassword: {
+				enabled: emailPasswordSignIn(),
+				requireEmailVerification: false,
+				autoSignIn: true,
+			},
 			socialProviders: {
 				...(config.GOOGLE_CLIENT_ID
 					? {
@@ -872,13 +943,13 @@ function buildAuth() {
 			},
 			plugins: [
 				// per-person staff roles for /chat/admin; what each role may do is adminRoles.ts.
-				// No role holds `user:impersonate`, so impersonation is off. (CUR-3990)
+				// No role holds `user:impersonate`, so impersonation is off.
 				admin({ ac: staffAc, roles: staffRoles, defaultRole: "user", adminRoles: ["admin"] }),
 				passkey({
 					rpID: passkeyRpId,
 					rpName: "Alpha",
 					// Every host sign-in answers on. The RP ID stays the apex, so one credential
-					// works on both. (CUR-1067)
+					// works on both.
 					origin: passkeyOrigins,
 				}),
 				emailOTP({
@@ -897,28 +968,31 @@ function buildAuth() {
 					// email-OTP, Google and GitHub sign-in too, not just HF. An empty `config: []` is
 					// genericOAuth's own no-op path (its init() loop never runs), per the installed plugin source.
 					// Since Better Auth 1.7.10 a configured HF entry whose discovery fetch fails at startup is
-					// skipped, not thrown (CUR-2128, authStartup.ts).
-					config: hfClientId
-						? [
-								huggingFaceOAuthConfig({
-									providerUrl: OIDConfig.PROVIDER_URL,
-									clientId: hfClientId,
-									clientSecret: OIDConfig.CLIENT_SECRET,
-									scopes: OIDConfig.SCOPES.split(" ").filter(Boolean),
-								}),
-								...(mockOidc.register ? [mockOidc.config] : []),
-							]
-						: mockOidc.register
-							? [mockOidc.config]
-							: [],
+					// skipped, not thrown (authStartup.ts).
+					// The organisation's own provider joins on the same terms, and its discovery
+					// failing skips only it.
+					config: [
+						...(hfClientId
+							? [
+									huggingFaceOAuthConfig({
+										providerUrl: OIDConfig.PROVIDER_URL,
+										clientId: hfClientId,
+										clientSecret: OIDConfig.CLIENT_SECRET,
+										scopes: OIDConfig.SCOPES.split(" ").filter(Boolean),
+									}),
+								]
+							: []),
+						...(mockOidc.register ? [mockOidc.config] : []),
+						...(orgOidc.register ? [orgOidc.config] : []),
+					],
 				}),
-				// A workspace IS a Better Auth "organization" (CUR-550) — see the schema.ts header comment
+				// A workspace IS a Better Auth "organization" — see the schema.ts header comment
 				// for why creatorRole is "admin" rather than the plugin's own "owner" default. That is the
 				// whole mechanism behind the two roles, admin and member (admin/member permission sets are
 				// the plugin's built-in defaults; "owner" is never assigned).
 				organization({
 					creatorRole: "admin",
-					// See ORG_ROLES above — the built-in admin role can't delete its own workspace. (CUR-827)
+					// See ORG_ROLES above — the built-in admin role can't delete its own workspace.
 					roles: ORG_ROLES,
 					// Unset defaults to NO CAP (the installed plugin's over-limit check only fires
 					// for a number/function, and `undefined` matches neither branch) — any signed-in user
@@ -926,7 +1000,7 @@ function buildAuth() {
 					// 100-per-org default. 5 is generous for a real admin managing a few teams/customers and
 					// small enough to bound the "many orgs" vector; pairs with workspaceInviteRate.ts's
 					// per-user invite counter below, which bounds the other half (invites spread across many
-					// target addresses within those orgs). (CUR-912)
+					// target addresses within those orgs).
 					organizationLimit: 5,
 					// The three switches, registered as additional fields on the plugin's OWN
 					// organization model — so createOrganization/updateOrganization/getFullOrganization all
@@ -941,7 +1015,7 @@ function buildAuth() {
 					// DB-level NOT NULL, so `required: true` here would make every createOrganization call missing
 					// these fields 400 with "expected string, received undefined", including the create-workspace
 					// form, which has no reason to know about these switches. `defaultValue` still fills the
-					// column when the field is omitted; `required` only decides whether omitting it is legal. (CUR-826)
+					// column when the field is omitted; `required` only decides whether omitting it is legal.
 					schema: {
 						organization: {
 							additionalFields: {
@@ -959,29 +1033,13 @@ function buildAuth() {
 							},
 						},
 					},
-					sendInvitationEmail: async (data, request) => {
-						// Same PUBLIC_ORIGIN-or-request-origin fallback as auth.ts's own OIDC redirect URI
-						// (getOIDCClient) — publicOrigin is unset in local dev; request is the live invite
-						// call's own Request, so its origin is always the right one to fall back to.
-						const origin = publicOrigin || (request ? new URL(request.url).origin : undefined);
-						const acceptUrl = new URL(
-							`${base}/workspace/accept/${data.id}`,
-							origin ?? "http://localhost:5173"
-						).toString();
-						await sendWorkspaceInvitationEmail({
-							id: data.id,
-							email: data.email,
-							organizationName: data.organization.name,
-							inviterEmail: data.inviter.user.email,
-							acceptUrl,
-						});
-					},
+					sendInvitationEmail: sendInvitationEmailFromPlugin,
 					// The only durable record of a workspace deletion, since there's no per-workspace
 					// audit table (admin_audit is the SITE admin console's own, a different actor namespace —
-					// see its schema.ts header comment — not reused here for that reason). (CUR-827)
+					// see its schema.ts header comment — not reused here for that reason).
 					organizationHooks: {
 						// Only a join method with a flow behind it can be stored, so no workspace
-						// reads as joinable a way nobody can use. (CUR-3021)
+						// reads as joinable a way nobody can use.
 						beforeCreateOrganization: async ({ organization }) => {
 							refuseJoinMethodWithoutAFlow(organization.joinMethod);
 							refuseUnsendableWorkspaceName(organization.name);
@@ -990,14 +1048,14 @@ function buildAuth() {
 							refuseJoinMethodWithoutAFlow(organization.joinMethod);
 							refuseUnsendableWorkspaceName(organization.name);
 						},
-						// The per-inviter daily cap (CUR-912) refuses before the invitation row
+						// The per-inviter daily cap refuses before the invitation row
 						// exists. Counting it in the send path would let the row through and skip the email,
-						// leaving the admin a Pending invite nobody would ever receive. (CUR-2835)
+						// leaving the admin a Pending invite nobody would ever receive.
 						beforeCreateInvitation: async ({ invitation, inviter }) => {
 							await refuseOverInviteCaps(inviter, invitation.email);
 						},
 						// The delete nulls organization_id on its chats, so they are stamped with the
-						// workspace's id and name first and list under "Former: <name>" rather than in Personal. (CUR-3040)
+						// workspace's id and name first and list under "Former: <name>" rather than in Personal.
 						beforeDeleteOrganization: async ({ organization }) => {
 							const stamped = await stampDeletedWorkspace(organization.id, organization.name);
 							logger.info(
@@ -1014,25 +1072,6 @@ function buildAuth() {
 					},
 				}),
 				...(oAuthProxyProductionURL ? [oAuthProxy({ productionURL: oAuthProxyProductionURL })] : []),
-				// Alpha as an OAuth 2.1 authorization server for conversation sync. One scope,
-				// opaque tokens (no JWT plugin), public PKCE clients from config/thunderbolt.ts only: the
-				// seed plugin below writes them, and clientPrivileges refuses every client create, read,
-				// update and delete through the plugin's own endpoints. A token it issues authenticates
-				// /chat/api/v2/sync/* and nothing else (auth.ts, authenticateSyncRequest). Authorize and
-				// consent 404 while thunderbolt-sync is off for the account ([...all]/+server.ts). (CUR-4312)
-				oauthProvider({
-					loginPage: `${base}/oauth/sign-in`,
-					consentPage: `${base}/settings/connections/authorize`,
-					scopes: [SYNC_SCOPE, "offline_access"],
-					grantTypes: ["authorization_code", "refresh_token"],
-					disableJwtPlugin: true,
-					allowDynamicClientRegistration: false,
-					clientPrivileges: () => false,
-					cachedTrustedClients: new Set(SYNC_CLIENTS.map((c) => c.clientId)),
-					prefix: { opaqueAccessToken: SYNC_ACCESS_TOKEN_PREFIX, refreshToken: SYNC_REFRESH_TOKEN_PREFIX },
-					accessTokenExpiresIn: 3600,
-				}),
-				syncClientsPlugin(),
 				// MUST be last — bridges Better Auth's internal Set-Cookie responses into SvelteKit's own
 				// event.cookies for any call made through $app/server's request-scoped event (e.g. the
 				// authenticateRequest bridge in auth.ts calling auth.api.getSession). Better Auth's own
@@ -1042,6 +1081,5 @@ function buildAuth() {
 	});
 }
 
-// Rebuilds after a failed startup instead of serving a rejected context until the instance recycles
-// (CUR-2128).
+// Rebuilds after a failed startup instead of serving a rejected context until the instance recycles.
 export const getAuth = memoizeAuthUntilRejected(buildAuth);

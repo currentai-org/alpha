@@ -27,7 +27,7 @@ import { GenerationWatchdogAbort } from "$lib/chat/server/chat/generationDeadlin
 import { agentConfirmOpened, agentConfirmResolved } from "$lib/chat/messageProvenance";
 import { MessageUpdateType } from "$lib/chat/types/MessageUpdate";
 
-// The daily allowance reads chat's database; these tests set its answer rather than reach one. (CUR-4401)
+// The daily allowance reads chat's database; these tests set its answer rather than reach one.
 const allowance = vi.hoisted(() => ({
 	room: vi.fn(async (): Promise<{ ok: true } | { ok: false; retryAfterSecs: number | null }> => ({ ok: true })),
 	record: vi.fn(async () => {}),
@@ -42,11 +42,40 @@ vi.mock("$lib/chat/server/db/agentTaskAllowance", async (importOriginal) => ({
 const autoApprove = vi.hoisted(() => ({ on: vi.fn(async () => false) }));
 vi.mock("$lib/chat/server/agentConfirmUi", () => ({ agentAutoApproveFor: autoApprove.on }));
 
-// `agent-run-handoff`, off unless a test turns it on. (CUR-4410)
+// `agent-run-handoff`, off unless a test turns it on.
 const handoffFlag = vi.hoisted(() => ({ on: false }));
 vi.mock("$lib/chat/server/agentRunHandoffGate", () => ({ agentRunHandoffEnabled: () => handoffFlag.on }));
 
-describe("agent auto mode (CUR-3142)", () => {
+describe("an agent run carries the conversation's photos", () => {
+	it("sends an attached photo in the /run body's files, and none for a turn without one", async () => {
+		const bodies: Record<string, unknown>[] = [];
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (url: string | URL, init?: RequestInit) => {
+				const u = String(url);
+				if (u.endsWith("/run")) {
+					bodies.push(JSON.parse(String(init?.body)));
+					return { ok: true, status: 200, json: async () => ({ id: "t1" }), text: async () => "" } as Response;
+				}
+				if (u.includes("/run/t1/events"))
+					return { ok: true, status: 200, body: sseStream([frame("done", { state: "COMPLETED", result: "blue." })]) } as unknown as Response;
+				throw new Error(`unexpected url ${u}`);
+			})
+		);
+		const factory = await endpointAgent({ type: "agent", baseURL: "http://agent.test", model: {} });
+		const photo = Buffer.from("not decodable, so no rendition").toString("base64");
+		for (const files of [[{ type: "base64" as const, value: photo, mime: "image/png", name: "shapes.png" }], undefined]) {
+			const stream = await factory({
+				messages: [{ from: "user", content: "what colour is the circle?", files }],
+			} as Parameters<typeof factory>[0]);
+			for await (const c of stream) void c;
+		}
+		expect(bodies[0].files).toEqual([{ name: "shapes.png", mime: "image/png", data: photo }]);
+		expect(bodies[1]).not.toHaveProperty("files");
+	});
+});
+
+describe("agent auto mode", () => {
 	async function run(frames: string[]) {
 		const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
 			void init;
@@ -119,7 +148,7 @@ describe("buildTaskPrompt", () => {
 	});
 
 	// The minutes' last paragraph holds the party's date and place, past the 600-character cut,
-	// so without the whole document the agent invents both (CUR-4104). The document reaches it whole, and
+	// so without the whole document the agent invents both. The document reaches it whole, and
 	// the typed words stay in the turn.
 	it("keeps an earlier turn's attached document whole, past the per-turn cut", () => {
 		const minutes =
@@ -183,7 +212,7 @@ describe("buildTaskPrompt", () => {
 
 	// The /run wire has one `prompt` field, no separate system-prompt slot, so the identity
 	// preamble (see agentIdentityPreamble below) has to be prepended here; without it the model answers
-	// "who are you" from its own pretrained priors (CUR-573).
+	// "who are you" from its own pretrained priors.
 	it("prepends the identity preamble when present, single-turn", () => {
 		const msgs = [{ from: "user", content: "who are you?" }];
 		const out = buildTaskPrompt(msgs, 0, "who are you?", "You are potluck agent, an open model.");
@@ -211,7 +240,7 @@ describe("buildTaskPrompt", () => {
 		expect(buildTaskPrompt(msgs, 0, "who are you?", "   ")).toBe("who are you?");
 	});
 
-	// A system prompt or Personalization asking for emoji got an agent answer with none. (CUR-4088)
+	// A system prompt or Personalization that asks for emoji must reach the agent, so its answer uses them.
 	it("carries the visitor's own instructions after the identity line and before the task", () => {
 		const msgs = [{ from: "user", content: "summarise this" }];
 		const out = buildTaskPrompt(msgs, 0, "summarise this", "IDENTITY", "Answer with lots of emoji.");
@@ -229,12 +258,12 @@ describe("buildTaskPrompt", () => {
 });
 
 describe("agentIdentityPreamble", () => {
-	// The agent half of "which of my files can you read", answered from nowhere. (CUR-4052)
+	// The agent half of "which of my files can you read": the preamble must say what the agent can read.
 	it("tells the agent it cannot see My files, in the same words the chat persona uses", () => {
 		expect(agentIdentityPreamble("potluck-agent")).toContain(MY_FILES_FACT);
 	});
 
-	// With no identity text at all, the model names a maker from its own pretrained priors (CUR-573).
+	// With no identity text at all, the model names a maker from its own pretrained priors.
 	// This is deliberately NOT the full conversational
 	// persona (buildPersonaPrompt) — see the doc comment on agentIdentityPreamble for why gluing that
 	// template's few-shot dialogue onto a task prompt is its own hazard.
@@ -254,10 +283,10 @@ describe("agentIdentityPreamble", () => {
 		expect(out).toContain("Swiss National AI Institute");
 	});
 
-	// Asked what it can do, the model recited its raw tool schema (terminal(), read_file,
+	// Asked what it can do, the model recites its raw tool schema (terminal(), read_file,
 	// search_files...) instead of the jobs those tools accomplish. The /run wire has one prompt field
 	// and no separate system-prompt slot, so this instruction has to live in the same preamble as the
-	// identity line above — there's nowhere else for it to reach the model. (CUR-594)
+	// identity line above — there's nowhere else for it to reach the model.
 	it("instructs plain-language capability descriptions, not tool/function names", () => {
 		const out = agentIdentityPreamble("potluck-agent");
 		expect(out).toMatch(/plain task language/i);
@@ -266,16 +295,16 @@ describe("agentIdentityPreamble", () => {
 
 	// This preamble is the agent path's only prompt slot (no separate system prompt, see
 	// buildTaskPrompt), and unlike persona.ts's non-agent prose it needs its own language instruction: without
-	// one a Portuguese task is answered in English with the agent on. (CUR-706)
+	// one a Portuguese task is answered in English with the agent on.
 	it("instructs the model to reply in the user's language", () => {
 		const out = agentIdentityPreamble("potluck-agent");
 		expect(out).toMatch(/reply in the user's language/i);
 	});
 
-	// The agent ignores `preprompt` (CUR-542), so a fixed answer language from settings can
-	// only reach it through this preamble. With none, the preamble is today's, byte for byte.
-	// The literal is the preamble as it stood before the parameter existed, typed out rather than
-	// rebuilt from the function under test, so a wording change cannot pass by matching itself. (CUR-3929)
+	// The agent ignores `preprompt`, so a fixed answer language from settings can only reach it
+	// through this preamble. With none, the preamble keeps its default reply-language sentence.
+	// The literal is that default preamble typed out rather than rebuilt from the function under
+	// test, so a wording change cannot pass by matching itself.
 	const PREAMBLE_BEFORE_THE_PARAMETER = `If asked who you are or who made you, answer honestly: you are potluck agent, developed by an open source community, answering inside AI Potluck, a chat app that Current AI runs; Current AI did not build you and does not run you. Never claim a different name or maker. If asked what you can do, describe it in plain task language — "read and summarize a document," "run a script and check its output" — never by naming a function, tool, method, or API. Reply in the user's language (default English) — a task written in Portuguese, German, or any other language gets its answer in that language, not English. ${MY_FILES_FACT}`;
 
 	it("is byte-identical with no fixed language to the preamble before the parameter existed", () => {
@@ -304,7 +333,7 @@ describe("renderArtifacts", () => {
 	it("wraps a file containing ``` in a fence that file cannot close", async () => {
 		// Agents write markdown, and markdown holds fences. A 3-backtick wrapper around a file that
 		// itself contains ``` ends the block on the file's OWN fence and spills the remainder as prose —
-		// the CUR-227 failure from the other side, where there a marker broke someone else's fence and
+		// the progress-marker hazard from the other side: there a marker can break someone else's fence,
 		// here the content breaks its own. Judged through the real marked, because the claim is about
 		// what the reader sees.
 		const body = "Intro.\n\n```python\nprint(1)\n```\n\nOutro.\n";
@@ -372,7 +401,7 @@ describe("renderArtifacts", () => {
 		expect(renderArtifacts([], false, "answer", undefined)).toBe("");
 	});
 
-	// A live session turns the bare filename into a real download link. (CUR-546)
+	// A live session turns the bare filename into a real download link.
 	it("links each filename to a download href, keyed by name, when a live session exists", () => {
 		const out = renderArtifacts(
 			[{ name: "notes.txt", bytes: 5, text: "hello" }],
@@ -482,10 +511,12 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 		const submitInit = submitCall[1] as RequestInit;
 		const body = JSON.parse(submitInit.body as string);
 		expect(body.synthesize).toBe(true);
-		// The /run wire has one `prompt` field, so the identity preamble (agentIdentityPreamble)
-		// rides ahead of the real task — this is what makes the model answer "who are you" honestly
-		// instead of from its own pretrained priors. (CUR-573)
-		expect(body.prompt.startsWith(agentIdentityPreamble("potluck-agent"))).toBe(true);
+		// The identity line (agentIdentityPreamble) is what makes the model answer "who are you"
+		// honestly instead of from its own pretrained priors. It travels in its own `preamble`
+		// field, never inside `prompt`, so agent-service screens it apart from the person's task: glued
+		// together, the two can be flagged as fraud.
+		expect(body.preamble).toBe(agentIdentityPreamble("potluck-agent"));
+		expect(body.prompt).not.toContain("If asked who you are");
 		expect(body.prompt.trimEnd().endsWith("how many files?")).toBe(true);
 		// Asserted on the REQUEST BODY, not on the constant: the ladder spec already proves the number
 		// is sized correctly, and that proof is worth nothing if this call site stops sending it. Omit
@@ -514,9 +545,9 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 		expect(steps[1]).toMatchObject({ index: 1, tool: "write", total: 2 });
 	});
 
-	// agent-service's own live-polled provider (CUR-1107's `_effective_compute_provider()`)
+	// agent-service's own live-polled provider (`_effective_compute_provider()`)
 	// corrects the badge the same way `done.model` already does — a `done` frame carrying
-	// `compute_provider` must win over the endpoint's static configured `provenanceProvider`. (CUR-996)
+	// `compute_provider` must win over the endpoint's static configured `provenanceProvider`.
 	it("corrects the provider badge from done.compute_provider", async () => {
 		const frames = [
 			frame("done", {
@@ -552,7 +583,7 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 	});
 
 	// agent-service refuses a /run that doesn't say the visitor is signed in, so the submit
-	// and the event stream a signed-in turn opens must both carry the claim. (CUR-4402)
+	// and the event stream a signed-in turn opens must both carry the claim.
 	it("a signed-in visitor's /run and its event stream say the visitor is signed in", async () => {
 		const frames = [frame("done", { state: "COMPLETED", result: "Done.", model: "some/model" })];
 		const fetchMock = vi.fn(async (url: string | URL, _init?: RequestInit) => {
@@ -584,8 +615,8 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 	});
 
 	// A `done` frame with no `compute_provider` (older agent-service, or the field genuinely absent)
-	// must keep falling back to the endpoint's own static `provenanceProvider` — the pre-CUR-996 badge
-	// behavior — rather than clearing the field.
+	// must keep falling back to the endpoint's own static `provenanceProvider` rather
+	// than clearing the field.
 	it("falls back to the configured provider when done carries no compute_provider", async () => {
 		const frames = [frame("done", { state: "COMPLETED", result: "Done.", model: "some/model" })];
 		const fetchMock = vi.fn(async (url: string | URL) => {
@@ -614,7 +645,7 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 		expect(withProvider?.routerMetadata?.provider).toBe(""); // default provenanceProvider in this harness
 	});
 
-	// ── CUR-759: a submit failure's real message must survive both generate.ts and screenOutputStream ──
+	// ── a submit failure's real message must survive both generate.ts and screenOutputStream ──
 	// generate.ts's FinalAnswer branch reads its text from `generated_text`, not `token.text` — and
 	// screenOutputStream discards a FinalAnswer's own text unconditionally, trusting only content it saw as a
 	// Stream token first. So a real message here has to actually stream (this test asserts on `chunks.map(c =>
@@ -679,7 +710,7 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 		expect(finalChunk?.generated_text).toBe("The agent service returned no task id.");
 	});
 
-	// ── CUR-1067: a CONFIGURED but UNREACHABLE service (network-level failure before any Response) ──
+	// ── a CONFIGURED but UNREACHABLE service (network-level failure before any Response) ──
 	// is a different failure than the non-OK branch above: `fetch` itself throws (DNS, ECONNREFUSED, TLS)
 	// rather than resolving. Left uncaught, a bare `TypeError: fetch failed` propagates to the turn's
 	// top-level stream catch, which renders `err.message` straight to the user.
@@ -744,7 +775,7 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 		}).rejects.toMatchObject({ name: "AbortError" });
 	});
 
-	// ── CUR-218: agent confirmation gate (ACP_PERMISSION_POLICY=confirm) ─────────────────────────────
+	// ── agent confirmation gate (ACP_PERMISSION_POLICY=confirm) ─────────────────────────────
 	it("translates awaiting_confirmation + confirm_result frames into agentConfirm chunks, narrated and carrying taskId", async () => {
 		const beforeMs = Date.now();
 		const frames = [
@@ -794,7 +825,7 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 
 		const opened = chunks.find((c) => c.agentConfirm)?.agentConfirm;
 		// deadlineAt is stamped from THIS process's own Date.now(), not agent-service's clock —
-		// assert it lands in the expected window (±slack for test overhead) rather than an exact value. (CUR-1094)
+		// assert it lands in the expected window (±slack for test overhead) rather than an exact value.
 		expect(opened?.deadlineAt).toBeGreaterThanOrEqual(beforeMs + 45_000);
 		expect(opened?.deadlineAt).toBeLessThan(beforeMs + 45_000 + 5_000);
 		expect({ ...opened, deadlineAt: undefined }).toEqual({
@@ -810,9 +841,9 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 		expect(resolved).toEqual({ confirmId: "c1", decision: "allow", reason: "human" });
 	});
 
-	it("CUR-4070: a stream that drops with a confirmation still open cancels it, so no Allow/Deny card is left resolving to nothing", async () => {
-		// awaiting_confirmation opens c1, then the web↔agent SSE resets before any confirm_result or done
-		// (CUR-4030). The turn ends on "stream dropped" with the card open.
+	it("a stream that drops with a confirmation still open cancels it, so no Allow/Deny card is left resolving to nothing", async () => {
+		// awaiting_confirmation opens c1, then the web↔agent SSE resets before any confirm_result or done.
+		// The turn ends on "stream dropped" with the card open.
 		const enc = new TextEncoder();
 		let pulls = 0;
 		const droppedStream = new ReadableStream<Uint8Array>({
@@ -867,7 +898,7 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 		expect(results).toEqual([{ confirmId: "c1", decision: "canceled", reason: "stream-ended" }]);
 
 		// folded the way streamUpdate folds every confirm chunk, the persisted entry reads terminal, so a
-		// reload renders "Canceled." rather than a live Allow/Deny card (CUR-4070 Done when).
+		// reload renders "Canceled." rather than a live Allow/Deny card.
 		const opened = agentConfirmOpened(undefined, {
 			type: MessageUpdateType.AgentConfirm,
 			taskId: "t1",
@@ -881,7 +912,7 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 		expect(persisted[0].decision).toBe("canceled");
 	});
 
-	describe("CUR-4660: a turn that ends with approval cards still open", () => {
+	describe("a turn that ends with approval cards still open", () => {
 		/** Opens `confirmIds` as cards, then holds the stream open until the turn's signal aborts. */
 		async function turnEndedBy(abort: (ctrl: AbortController) => void, confirmIds: string[]) {
 			const enc = new TextEncoder();
@@ -981,7 +1012,7 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 		});
 	});
 
-	it("CUR-1094: an older/coarse awaiting_confirmation frame with no timeout_secs produces no deadlineAt (never a fabricated countdown)", async () => {
+	it("an older/coarse awaiting_confirmation frame with no timeout_secs produces no deadlineAt (never a fabricated countdown)", async () => {
 		const { chunks } = await agentRun([
 			frame("awaiting_confirmation", { confirm_id: "c1", kind: "edit", title: "write_file: x", summary: "" }),
 			frame("confirm_result", { confirm_id: "c1", decision: "allow", reason: "human" }),
@@ -1019,7 +1050,7 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 		expect(chunks.map((c) => c.token.text).join("")).toContain("declined (timed out)");
 	});
 
-	// ── A proposed-but-denied call must not count as "ran" (CUR-705) ────────────────────────────────
+	// ── A proposed-but-denied call must not count as "ran" ────────────────────────────────
 	// A continued-session turn that proposes an edit whose confirm times out and is denied writes
 	// nothing, yet the model can answer with fabricated figures anyway. toolKinds must therefore be set
 	// on the tool's result, not at `tool_call` (mere proposal), or claimedActionOnContinuedSession (gated
@@ -1027,7 +1058,7 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 	// timed-out confirm never produces a tool_result for that call at all, which these two tests
 	// reproduce exactly (no tool_result frame follows the denial) rather than simulating one with ok:false.
 
-	it("CUR-705: a denied/timed-out tool call does not count toward toolKinds — the honesty caveat fires", async () => {
+	it("a denied/timed-out tool call does not count toward toolKinds — the honesty caveat fires", async () => {
 		const { chunks } = await agentRun([
 			frame("tool_call", { tool: "edit", step: 1 }),
 			frame("awaiting_confirmation", { confirm_id: "c1", kind: "edit", title: "Approve edit: x.csv", summary: "" }),
@@ -1036,14 +1067,14 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 				state: "COMPLETED",
 				result: "Top three months: June $18,500, May $7,200, April $6,000.",
 				session_continued: true,
-				session_files_at_start: 2,   // CUR-1394: this shape's session holds prior files
+				session_files_at_start: 2,   // this shape's session holds prior files
 				transport_used: "acp",
 			}),
 		]);
 		const answer = chunks.find((c) => c.generated_text)?.generated_text ?? "";
 		const afterThink = answer.slice(answer.indexOf("</think>"));
 		// A continued-session-no-action verdict. The caveat still fires — this session held
-		// files and the denied edit never ran — but it no longer claims to know files were written. (CUR-1394)
+		// files and the denied edit never ran — but it does not claim to know files were written.
 		expect(afterThink).toContain("no tool call was observed");
 		expect(afterThink).not.toContain("wrote files");
 		expect(afterThink).toContain("June $18,500"); // the answer itself is untouched
@@ -1066,7 +1097,7 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 		expectNoUnrunCaveat(answer);
 	});
 
-	// ── session_id: keys agent-service's workdir reuse (CUR-196 / CUR-542) ───────────────────────────
+	// ── session_id: keys agent-service's workdir reuse ───────────────────────────
 	it("sends session_id on /run, derived from the conversation id, so a follow-up reuses the workdir", async () => {
 		const frames = [frame("done", { state: "COMPLETED", result: "ok." })];
 		const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
@@ -1166,7 +1197,7 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 	// Consumer half of the agent-service "Contract (BINDING)" (docs/streaming-spec.md). The done-frame
 	// `state` is the UPPERCASE State enum value; this endpoint compares against "COMPLETED". These pin that
 	// dependency so a backend casing change (or a refactor here) is caught cross-repo, not in prod.
-	it("translates a `policy` frame into a writePolicy chunk, not <think> narration (CUR-471)", async () => {
+	it("translates a `policy` frame into a writePolicy chunk, not <think> narration", async () => {
 		// agent-service fires `policy` once, early (same point as `plan`), reporting this caller's
 		// write-permission resolution for the task. Deliberately a structured chunk, not prose: the
 		// model gets its own explanation via a server-injected prompt note, and this must stay
@@ -1222,7 +1253,7 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 		expect(text).not.toContain("Write access"); // not narrated into the think block
 	});
 
-	it("stamps an agentTools chunk when toolKinds is non-empty at done, not before (CUR-601)", async () => {
+	it("stamps an agentTools chunk when toolKinds is non-empty at done, not before", async () => {
 		const frames = [
 			frame("plan", { attempt: 1, steps: ["write"] }),
 			frame("tool_call", { tool: "write_file", step: 1 }),
@@ -1267,9 +1298,9 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 		expect(agentToolsChunks[0].token.text).toBe("");
 	});
 
-	// toolKinds is a distinct-kind list (deduped), but the accumulator underneath it now also
+	// toolKinds is a distinct-kind list (deduped), but the accumulator underneath it also
 	// tracks per-kind counts for the tool-run summary line — this proves the two stay independently
-	// correct against a real repeated-tool SSE stream, not just a hand-built literal. (CUR-775)
+	// correct against a real repeated-tool SSE stream, not just a hand-built literal.
 	it("dedupes toolKinds but preserves per-kind counts across repeated tool_call frames", async () => {
 		const { chunks } = await agentRun([
 			frame("tool_call", { tool: "edit", step: 1 }),
@@ -1339,7 +1370,7 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 		expect(failed).toContain("FAILED");
 	});
 
-	it("surfaces agent-service's own reason when a FAILED task carries one (CUR-856)", async () => {
+	it("surfaces agent-service's own reason when a FAILED task carries one", async () => {
 		// The case this exists for: a moderation block or failure on the agent's OWN artifacts leaves
 		// `result` empty on a FAILED task — without `error`, the person sees only "(FAILED)" with no
 		// hint a safety check fired, let alone which one.
@@ -1388,7 +1419,7 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 		);
 		vi.stubGlobal("fetch", fetchMock);
 
-		// Asked again inside the wait (30 ms here, a minute in production), then given up. (CUR-4584)
+		// Asked again inside the wait (30 ms here, a minute in production), then given up.
 		const factory = await endpointAgent({ type: "agent", baseURL: "http://agent.test", model: {}, capacityWaitMs: 30 });
 		const stream = await factory({ messages: [{ from: "user", content: "hi" }] } as Parameters<
 			typeof factory
@@ -1405,7 +1436,7 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 		expect(fetchMock.mock.calls.length, "the capacity answer was not asked again").toBeGreaterThan(1);
 	});
 
-	it("waits through a 'server at capacity' answer, showing the wait, and runs the task once a slot frees (CUR-4584)", async () => {
+	it("waits through a 'server at capacity' answer, showing the wait, and runs the task once a slot frees", async () => {
 		let runs = 0;
 		const fetchMock = vi.fn(async (url: string | URL) => {
 			const u = String(url);
@@ -1439,7 +1470,7 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 		expect(chunks.at(-1)?.generated_text).toContain("Done.");
 	});
 
-	it("waits through a draining machine's 503 and runs the task on the machine that replaces it (CUR-4598)", async () => {
+	it("waits through a draining machine's 503 and runs the task on the machine that replaces it", async () => {
 		let runs = 0;
 		const fetchMock = vi.fn(async (url: string | URL) => {
 			const u = String(url);
@@ -1472,7 +1503,7 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 		expect(chunks.at(-1)?.generated_text).toContain("Done.");
 	});
 
-	it("says the service is restarting, not an HTTP dump, when the drain outlasts the wait (CUR-4598)", async () => {
+	it("says the service is restarting, not an HTTP dump, when the drain outlasts the wait", async () => {
 		const fetchMock = vi.fn(
 			async () =>
 				({
@@ -1492,7 +1523,7 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 		expect(text).not.toContain("HTTP");
 	});
 
-	it("tells the person a restart ended the task and to send it again, never the dropped-stream line (CUR-4598)", async () => {
+	it("tells the person a restart ended the task and to send it again, never the dropped-stream line", async () => {
 		const fetchMock = vi.fn(async (url: string | URL) => {
 			const u = String(url);
 			if (u.endsWith("/run"))
@@ -1538,7 +1569,7 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 		expect(chunks.map((c) => c.token.text).join("")).toContain("today's task limit");
 	});
 
-	// A daily limit is a 429 a retry cannot clear, so "wait a moment" must not answer every 429 (CUR-4401).
+	// A daily limit is a 429 a retry cannot clear, so "wait a moment" must not answer every 429.
 	it("says today's task limit is reached, not 'wait a moment', when agent-service's daily cap answers 429", async () => {
 		vi.stubGlobal(
 			"fetch",
@@ -1562,7 +1593,7 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 	});
 
 	// One visitor's live-task cap clears when their own task ends, so neither "at capacity" nor
-	// "try tomorrow" is the true thing to tell them. (CUR-2194)
+	// "try tomorrow" is the true thing to tell them.
 	it("says the visitor's own tasks are still running when agent-service's per-visitor live cap answers 429", async () => {
 		vi.stubGlobal(
 			"fetch",
@@ -1587,7 +1618,7 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 		expect(text).not.toContain("at capacity");
 	});
 
-	describe("the per-account daily allowance (CUR-4401)", () => {
+	describe("the per-account daily allowance", () => {
 		const locals = { user: { _id: "user-1" }, sessionId: "sess-1" } as unknown as App.Locals;
 		// beforeEach: the rest of the suite runs the same mocks with no reset of its own.
 		beforeEach(() => {
@@ -1632,11 +1663,11 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 		});
 	});
 
-	// ── Coarse (ACP-OFF) transport — the one every DEPLOYED env runs today (endpointAgent.ts:17) ─────────
+	// ── Coarse (ACP-OFF) transport ───────────────────────────────────────────────────────────────────
 	// Every other streaming test above opens with a `plan` frame and narrates `tool_call`s, i.e. the ACP-ON
-	// path. The deployed contract has NO per-tool frames — just state{working} · usage · done — so the
-	// usage-derived step summary at endpointAgent.ts:308-317 (the code that keeps the coarse <think> block
-	// from rendering as a bare shell) was reachable nowhere in the hermetic suite. These pin it. (CUR-67)
+	// path. The coarse contract has NO per-tool frames — just state{working} · usage · done — so these
+	// pin the usage-derived step summary in endpointAgent.ts, the code that keeps the coarse <think> block
+	// from rendering as a bare shell.
 	async function coarseChunks(frames: string[]) {
 		const fetchMock = vi.fn(async (url: string | URL) => {
 			const u = String(url);
@@ -1810,7 +1841,7 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 		// lands as one piece at `done`, AFTER any tool narration that interleaved with it, not
 		// interleaved with it the way it arrived on the wire. This test is the guard: if a future change
 		// closes </think> on the first token instead of flushing pendingTokenBuffer there, the "step 2:
-		// read" narration lands in the answer and the ordering assertion below fails. (CUR-767)
+		// read" narration lands in the answer and the ordering assertion below fails.
 		const { chunks } = await agentRun([
 			frame("plan", { attempt: 1, steps: ["edit", "read"] }),
 			frame("token", { delta: "I'll write the file ", attempt: 1 }),
@@ -1843,7 +1874,7 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 		expect(chunks.find((c) => c.generated_text)?.generated_text).toContain("(5 bytes)");
 	});
 
-	it("CUR-767: discards a rejected attempt's buffered prose — it never appears anywhere in the stream", async () => {
+	it("discards a rejected attempt's buffered prose — it never appears anywhere in the stream", async () => {
 		const { chunks } = await agentRun([
 			frame("token", { delta: "The answer is definitely 42", attempt: 1 }),
 			frame("attempt_rejected", { attempt: 1, reason: "judge rejected: unsupported claim" }),
@@ -1862,7 +1893,7 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 		expect(text).toContain("The answer is 7.");
 	});
 
-	it("CUR-767: two attempts run without an intervening attempt_rejected frame — doesn't carry the first attempt's text into the second's buffer (defensive, contract says this shouldn't happen)", async () => {
+	it("two attempts run without an intervening attempt_rejected frame — doesn't carry the first attempt's text into the second's buffer (defensive, contract says this shouldn't happen)", async () => {
 		const { chunks } = await agentRun([
 			frame("token", { delta: "stale attempt-1 prose", attempt: 1 }),
 			frame("token", { delta: "attempt-2 prose", attempt: 2 }),
@@ -1899,7 +1930,7 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 		expect(chunks.map((c) => c.token.text).join("")).toContain("ok.");
 	});
 
-	// ── progress markers begin a line, whatever prose preceded them (CUR-227) ─────────────────────────
+	// ── progress markers begin a line, whatever prose preceded them ─────────────────────────
 
 	it("a step summary landing on a closing code fence still lets that fence close", async () => {
 		// The failure this names, precisely. `token` deltas are raw model prose and carry no trailing
@@ -1965,7 +1996,7 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 		}
 	});
 
-	// ── an un-run turn says so, in the answer (CUR-226) ───────────────────────────────────────────────
+	// ── an un-run turn says so, in the answer ───────────────────────────────────────────────
 
 	it("says the code was never run when the turn only edited — in the answer, not the think block", async () => {
 		// The case: a cold first turn writes a sieve script, emits no execute step, and prints a block
@@ -1973,8 +2004,8 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 		// someone who never expands `Computed` will read it, because that
 		// is the reader the fabricated measurement fools.
 		//
-		// artifacts carries the sieve script itself (CUR-592 also requires a code/script artifact to
-		// fire the caveat, not just the edit tool kind — this file IS that artifact).
+		// artifacts carries the sieve script itself (the caveat also requires a code/script artifact,
+		// not just the edit tool kind — this file IS that artifact).
 		const { chunks } = await agentRun([
 			frame("plan", { attempt: 1, steps: ["edit"] }),
 			frame("tool_call", { tool: "edit", step: 1 }),
@@ -1992,12 +2023,12 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 		expect(afterThink).toContain("25 primes"); // the answer itself is untouched
 	});
 
-	// ── CUR-592: the caveat also requires an actual code/script artifact, not just the tool kind ───────
+	// ── the caveat also requires an actual code/script artifact, not just the tool kind ───────
 	// A turn that only rewrites a `.txt` benefits letter (no computation, nothing to "run") must not trip
 	// this caveat, so `wroteCodeWithoutRunningIt` looks at what got edited. The caveat is wrong on a
 	// plain-language task, and it teaches a non-technical user to distrust a fine answer.
 
-	it("stays quiet when the only edited artifact is plain text — CUR-542's benefits-letter finding", async () => {
+	it("stays quiet when the only edited artifact is plain text — the benefits-letter finding", async () => {
 		const { chunks } = await agentRun([
 			frame("plan", { attempt: 1, steps: ["edit"] }),
 			frame("tool_call", { tool: "edit", step: 1 }),
@@ -2046,7 +2077,7 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 
 	it("stays quiet when the turn actually executed something", async () => {
 		// The control for the test above. Without this, a caveat that fired unconditionally would pass
-		// the first test just as well, and would be worse than the bug — it would teach readers to skip it.
+		// the first test just as well, and would be worse than no caveat — it would teach readers to skip it.
 		const { chunks } = await agentRun([
 			frame("tool_call", { tool: "edit", step: 1 }),
 			frame("tool_result", { ok: true, step: 1, summary: "ok" }),
@@ -2061,7 +2092,7 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 	it("stays quiet when no tool frames arrived at all — not knowing is not the same as knowing it didn't", async () => {
 		// The coarse (ACP-off) path emits state/usage/done and NO tool frames, so the tool set is empty
 		// for a reason that has nothing to do with what the agent did. Claiming "never ran anything" there
-		// would be the same class of error as the bug: an assertion about something never observed.
+		// would be the same class of error the caveat exists to flag: an assertion about something never observed.
 		const { chunks } = await agentRun([
 			frame("state", { state: "working" }),
 			frame("usage", { tokens: 5094, steps: 1 }),
@@ -2085,10 +2116,10 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 		expectNoUnrunCaveat(chunks.find((c) => c.generated_text)?.generated_text ?? "");
 	});
 
-	// ── transport observability, so an empty toolKinds is legible from outside (CUR-234) ─────────────
+	// ── transport observability, so an empty toolKinds is legible from outside ─────────────
 	// "ACP off, correctly never observed a tool" and "ACP on but a check silently didn't run" both render
 	// as an empty toolKinds and no caveat — indistinguishable from outside.
-	// `done.transport_used` (CUR-773) is agent-service's own record of which transport ran, which these
+	// `done.transport_used` is agent-service's own record of which transport ran, which these
 	// pin directly — not a guess reconstructed from which frames happened to arrive. `state{working}`
 	// fires unconditionally on BOTH transports (see the file header), so its presence proves nothing
 	// about which one ran; it's included below only for wire realism.
@@ -2133,7 +2164,7 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 			frame("state", { state: "working" }),
 			frame("usage", { tokens: 512, steps: 0 }),
 			// session_files_at_start present so this stays quiet because the session is fresh, which is
-			// what it claims to test — not because the field was missing too (CUR-1394).
+			// what it claims to test — not because the field was missing too.
 			frame("done", { state: "COMPLETED", result: "The answer is 4.", session_files_at_start: 2 }),
 		]);
 		const call = infoSpy.mock.calls.find(([, msg]) => msg === "[agent] tool-frame observability");
@@ -2152,7 +2183,7 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 				state: "COMPLETED",
 				result: "Execution result:\n25 primes.",
 				transport_used: "acp",
-				// wroteNotRun also requires a code/script artifact now. (CUR-592)
+				// wroteNotRun also requires a code/script artifact.
 				artifacts: [{ name: "sieve.py", bytes: 210, text: "primes = [2, 3, 5]\n", truncated: false }],
 			}),
 		]);
@@ -2169,7 +2200,7 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 /**
  * No unrun caveat of ANY kind reached the answer.
  *
- * The notice has two sentences (CUR-1394), so asserting the absence of the original string alone is
+ * The notice has two sentences, so asserting the absence of the original string alone is
  * not sufficient: a branch that wrongly fired UNOBSERVED_ACTION_NOTICE would sail past a check that
  * only looks for "never ran anything". Both sentences are named from the exported constants rather than
  * retyped, so a future copy edit cannot quietly blind every negative assertion in this file at once.
@@ -2217,7 +2248,7 @@ describe("claimedStepsWithoutObservedTools", () => {
 		expect(claimedStepsWithoutObservedTools(new Map([["edit", 1]]), true, 1, 2)).toBe(false);
 	});
 
-	// Coverage for the Set→Map widening (CUR-775) — a repeatedly-called tool (count > 1) must
+	// A repeatedly-called tool (count > 1) must
 	// still read as "a tool was observed", the same as the count=1 case above. Note this test does NOT
 	// discriminate a hypothetical sum-of-counts bug from the correct .size read: both agree whenever
 	// claimedSteps > 0 and the map is non-empty, since every key here only ever exists with count >= 1
@@ -2247,8 +2278,8 @@ describe("claimedActionOnContinuedSession", () => {
 	});
 });
 
-// Named for the contract rather than the behaviour, per this repo's rule 1 — the guarantee wanted is
-// that the caveat only speaks about a session where a measurement was possible at all (CUR-1394).
+// Named for the contract rather than the behaviour: the guarantee wanted is that the caveat only
+// speaks about a session where a measurement was possible at all.
 describe("the unrun caveat only fires where there was something to measure", () => {
 	it("stays quiet on a continued session whose workdir is empty — the ordinary chat follow-up", () => {
 		// The chat client sends session_id=conversationId, so every turn after the first is `sessionContinued:
@@ -2258,13 +2289,13 @@ describe("the unrun caveat only fires where there was something to measure", () 
 		expect(claimedStepsWithoutObservedTools(new Map(), true, 3, 0)).toBe(false);
 	});
 
-	it("still fires on a continued session that DOES hold files — CUR-705 keeps its caveat", () => {
+	it("still fires on a continued session that DOES hold files keeps its caveat", () => {
 		// A claim of "I have updated sample_revenue.csv" with zero tool calls, against a workdir holding both
 		// files, is checkable and wrong. The narrowing must not reach it.
 		expect(claimedActionOnContinuedSession(new Map(), true, true, 2)).toBe(true);
 	});
 
-	it("still fires on a fresh session that already claimed steps against files — CUR-574 keeps its caveat", () => {
+	it("still fires on a fresh session that already claimed steps against files keeps its caveat", () => {
 		expect(claimedStepsWithoutObservedTools(new Map(), true, 1, 1)).toBe(true);
 	});
 
@@ -2316,7 +2347,7 @@ describe("noticeForCaveat", () => {
 });
 
 describe("wroteCodeWithoutRunningIt", () => {
-	// Direct unit coverage, beside the indirect SSE-integration coverage (CUR-775); the parameter is a
+	// Direct unit coverage, beside the indirect SSE-integration coverage; the parameter is a
 	// Map<string, number>.
 	it("requires an edit among only inert kinds", () => {
 		expect(wroteCodeWithoutRunningIt(new Map([["edit", 1]]))).toBe(true);
@@ -2352,7 +2383,7 @@ describe("editedCodeArtifact", () => {
 		expect(editedCodeArtifact([{ name: "sieve.py" }])).toBe(true);
 	});
 
-	it("stays quiet on plain text — CUR-592's benefits-letter shape", () => {
+	it("stays quiet on plain text — the benefits-letter shape", () => {
 		expect(editedCodeArtifact([{ name: "benefits-letter.txt" }])).toBe(false);
 	});
 
@@ -2383,7 +2414,7 @@ describe("editedCodeArtifact", () => {
 	});
 });
 
-	// ── a claimed step with no tool behind it, on a transport that would have shown one (CUR-574) ────
+	// ── a claimed step with no tool behind it, on a transport that would have shown one ────
 	// wroteCodeWithoutRunningIt only fires when THIS turn's own tool_call frames show an edit-and-
 	// nothing-else. A follow-up that calls no tool at all ("actually run it," answered with numbers, zero
 	// tool_call frames) would slip past that check even though the ACP transport (which reports every tool
@@ -2398,7 +2429,7 @@ describe("editedCodeArtifact", () => {
 				// The session held the file the agent was asked to re-run (top_months.py), so "claimed a
 				// step, called nothing" has something to bite on. Stated in the coarse-transport
 				// case below too, so that test stays quiet for the transport gate alone rather than for two
-				// reasons at once. (CUR-1394)
+				// reasons at once.
 				session_files_at_start: 2,
 				result: "The three best months are 2025-10, 2025-08, 2025-09.",
 				transport_used: "acp",
@@ -2407,7 +2438,7 @@ describe("editedCodeArtifact", () => {
 		const answer = chunks.find((c) => c.generated_text)?.generated_text ?? "";
 		const afterThink = answer.slice(answer.indexOf("</think>"));
 		// This branch observes an empty tool stream and cannot know what was written, so it does
-		// not use the wrote-and-never-ran sentence. The warning stays; the claim narrows. (CUR-1394)
+		// not use the wrote-and-never-ran sentence. The warning stays; the claim narrows.
 		expect(afterThink).toContain("no tool call was observed");
 		expect(afterThink).not.toContain("wrote files");
 		expect(afterThink).toContain("2025-10, 2025-08, 2025-09"); // the answer itself is untouched
@@ -2415,7 +2446,7 @@ describe("editedCodeArtifact", () => {
 
 	// `usage.steps` is the model-call count, at least 1 on every answer, so the shape above also
 	// matched an honest "I cannot send emails" in a conversation holding a file. The service's no-tool review
-	// now says when the answer claimed nothing. (CUR-4599)
+	// says when the answer claimed nothing.
 	for (const verdict of ["declined", "answered"]) {
 		it(`stays quiet on that shape when the service's no-tool review calls the answer ${verdict}`, async () => {
 			const { chunks } = await agentRun([
@@ -2480,16 +2511,16 @@ describe("editedCodeArtifact", () => {
 		expectNoUnrunCaveat(answer);
 	});
 
-	it("logs caveatReason:claimed-not-observed for the CUR-574 shape, distinct from CUR-226's", async () => {
+	it("logs caveatReason:claimed-not-observed for the shape, distinct from 's", async () => {
 		const infoSpy = vi.spyOn(logger, "info").mockImplementation(() => undefined as never);
 		await agentRun([
 			frame("usage", { tokens: 5235, steps: 1 }),
 			frame("done", {
 				state: "COMPLETED",
-				// CUR-574 asked the agent to re-run top_months.py, so its session held that file
-				// and "claimed a step, called nothing" had something to bite on. Stated in the coarse-transport
+				// The agent was asked to re-run top_months.py, so its session held that file
+				// and "claimed a step, called nothing" has something to bite on. Stated in the coarse-transport
 				// case below too, so that test stays quiet for the transport gate alone rather than for two
-				// reasons at once. (CUR-1394)
+				// reasons at once.
 				session_files_at_start: 2,
 				result: "The three best months are 2025-10, 2025-08.",
 				transport_used: "acp",
@@ -2515,10 +2546,10 @@ describe("editedCodeArtifact", () => {
 			frame("usage", { tokens: 5235, steps: 1 }),
 			frame("done", {
 				state: "COMPLETED",
-				// CUR-574 asked the agent to re-run top_months.py, so its session held that file
-				// and "claimed a step, called nothing" had something to bite on. Stated in the coarse-transport
+				// The agent was asked to re-run top_months.py, so its session held that file
+				// and "claimed a step, called nothing" has something to bite on. Stated in the coarse-transport
 				// case below too, so that test stays quiet for the transport gate alone rather than for two
-				// reasons at once. (CUR-1394)
+				// reasons at once.
 				session_files_at_start: 2,
 				result: "The three best months are 2025-10, 2025-08.",
 				transport_used: "oneshot",
@@ -2528,7 +2559,7 @@ describe("editedCodeArtifact", () => {
 		expectNoUnrunCaveat(answer);
 	});
 
-	// ── the repair loop's own verdict, when neither client heuristic can see it (CUR-574 follow-up) ──
+	// ── the repair loop's own verdict, when neither client heuristic can see it ──
 	// wroteCodeWithoutRunningIt and claimedStepsWithoutObservedTools both read the tool-call stream this
 	// endpoint itself observed. agent-service's in-session repair loop can exhaust its retry budget (or
 	// the attempt's wall clock) on a turn that DID call real tools but whose answer repair_check still
@@ -2593,7 +2624,7 @@ describe("editedCodeArtifact", () => {
 		infoSpy.mockRestore();
 	});
 
-	// CUR-855/846: a structural failure (gateway down, wall-clock cap, the agent process crashing) is a
+	// A structural failure (gateway down, wall-clock cap, the agent process crashing) is a
 	// different claim than the other four unrun_detail shapes above — those all mean "the agent
 	// overclaimed what it did," which UNRUN_CODE_NOTICE ("wrote files but never ran anything") describes
 	// accurately. A structural failure tried and didn't finish; that sentence would be false there.
@@ -2628,16 +2659,16 @@ describe("editedCodeArtifact", () => {
 		infoSpy.mockRestore();
 	});
 
-	// ── CUR-1341: the same verdict carried as structure, so the reasoning panel's header can read it ──
-	// The header at OpenReasoningResults.svelte read `loading ? "Computing…" : "Computed"` — whether the
-	// block finished STREAMING, which is a different question — so a turn whose answer opens "This turn
-	// wrote files but never ran anything" rendered "Computed" one line above the sentence denying it,
-	// and the header is what a reader who never expands the block walks away with.
+	// ── the same verdict carried as structure, so the reasoning panel's header can read it ──
+	// Without it, the header in OpenReasoningResults.svelte would follow only whether the block finished
+	// STREAMING (`loading ? "Computing…" : "Computed"`), a different question, and a turn whose answer
+	// opens "This turn wrote files but never ran anything" would show "Computed" one line above the
+	// sentence denying it. The header is what a reader who never expands the block walks away with.
 	//
 	// These name the COUPLING, not the chunk on its own, and the names say so: what has to hold is that
-	// the prose and the structured flag fire on exactly the same turns. Two independent conditions are
-	// what let the two lines disagree in the first place, so a test that only checked the chunk existed
-	// would pass just as happily on the arrangement that produced the bug.
+	// the prose and the structured flag fire on exactly the same turns. Two independent conditions would
+	// let the two lines disagree, so a test that only checked the chunk existed would pass just as
+	// happily on that arrangement.
 
 	it("emits an unrunCode chunk on the same turn the prose caveat fires, never one without the other", async () => {
 		const { chunks } = await agentRun([
@@ -2727,14 +2758,14 @@ describe("editedCodeArtifact", () => {
 		// Still coupled to the prose, same as every other case above.
 		const answer = chunks.find((c) => c.generated_text)?.generated_text ?? "";
 		// A wrote-not-run verdict: an edit tool ran and left sieve.py, so this keeps the original
-		// sentence — it is the one branch that genuinely proved a file was written (CUR-1394).
+		// sentence — it is the one branch that genuinely proved a file was written.
 		expect(answer.slice(answer.indexOf("</think>"))).toContain("never ran anything");
 	});
 
-	// ── a continued-session follow-up that calls no tool at all, and never even claims a step (CUR-705) ─
-	// The CUR-574 shape above still has ONE structured signal to compare against: a `usage` frame
-	// claiming steps > 0. This turn had none — no plan, no tool_call, no usage/steps — while its prose
-	// claimed a file was edited and a script re-run, with wrong numbers. `claimedStepsWithoutObserved
+	// ── a continued-session follow-up that calls no tool at all, and never even claims a step ─
+	// The claimed-step shape above still has ONE structured signal to compare against: a `usage` frame
+	// claiming steps > 0. This turn has none — no plan, no tool_call, no usage/steps — while its prose
+	// claims a file was edited and a script re-run, with wrong numbers. `claimedStepsWithoutObserved
 	// Tools` requires a claimed step count precisely so it stays quiet, which is correct for a fresh
 	// session's plain question but wrong here: `session_continued` is what tells the two apart.
 
@@ -2744,15 +2775,15 @@ describe("editedCodeArtifact", () => {
 				state: "COMPLETED",
 				result: "I have updated sample_revenue.csv and run top_months.py again. June, March, May.",
 				session_continued: true,
-				session_files_at_start: 2,   // CUR-1394: this shape's session holds prior files
+				session_files_at_start: 2,   // this shape's session holds prior files
 				transport_used: "acp",
 			}),
 		]);
 		const answer = chunks.find((c) => c.generated_text)?.generated_text ?? "";
 		const afterThink = answer.slice(answer.indexOf("</think>"));
-		// The session held both files the answer claims to have touched, so it keeps its caveat (CUR-705).
+		// The session held both files the answer claims to have touched, so it keeps its caveat.
 		// The sentence asserts only that no tool call was observed — an empty tool stream cannot tell us a
-		// file was written (CUR-1394).
+		// file was written.
 		expect(afterThink).toContain("no tool call was observed");
 		expect(afterThink).not.toContain("wrote files");
 		expect(afterThink).toContain("June, March, May"); // the answer itself is untouched
@@ -2776,7 +2807,7 @@ describe("editedCodeArtifact", () => {
 				state: "COMPLETED",
 				result: "Added the June rows. June, March, May.",
 				session_continued: true,
-				session_files_at_start: 2,   // CUR-1394: this shape's session holds prior files
+				session_files_at_start: 2,   // this shape's session holds prior files
 			}),
 		]);
 		const answer = chunks.find((c) => c.generated_text)?.generated_text ?? "";
@@ -2790,7 +2821,7 @@ describe("editedCodeArtifact", () => {
 				state: "COMPLETED",
 				result: "I have updated the file.",
 				session_continued: true,
-				session_files_at_start: 2,   // CUR-1394: this shape's session holds prior files
+				session_files_at_start: 2,   // this shape's session holds prior files
 				transport_used: "acp",
 			}),
 		]);
@@ -2805,11 +2836,11 @@ describe("editedCodeArtifact", () => {
 		infoSpy.mockRestore();
 	});
 
-	// ── the agent's files reach the reader (CUR-228 / CUR-195) ───────────────────────────────────────
+	// ── the agent's files reach the reader ───────────────────────────────────────
 
 	it("renders the files the turn produced, which the wire has always carried", async () => {
 		// A sieve script redirects stdout to a file, so the run's REAL numbers live in primes_output.txt and
-		// nowhere in the answer prose (CUR-226). `done.artifacts` carries that file (CUR-195), and the client
+		// nowhere in the answer prose. `done.artifacts` carries that file, and the client
 		// must render it, not only `ev.result`.
 		const { chunks } = await agentRun([
 			frame("tool_call", { tool: "edit", step: 1 }),
@@ -2913,7 +2944,7 @@ describe("editedCodeArtifact", () => {
 		expect(deriveAgentSubject("k1", "a")).not.toBe(deriveAgentSubject("k2", "a"));
 	});
 
-	it("CUR-4402: tells agent-service the visitor is signed in only when there is an account", () => {
+	it("tells agent-service the visitor is signed in only when there is an account", () => {
 		const user = { user: { _id: "u1" }, sessionId: "s1" } as unknown as App.Locals;
 		const guest = { sessionId: "s1" } as unknown as App.Locals;
 		expect(agentServiceHeaders("k", user)).toMatchObject({ "x-agent-account": "user" });
@@ -2921,7 +2952,7 @@ describe("editedCodeArtifact", () => {
 		expect(agentServiceHeaders("k", undefined)).not.toHaveProperty("x-agent-account");
 	});
 
-	it("CUR-4620: tells agent-service a team account's 1,000-task allowance, and sends nothing for anyone else", () => {
+	it("tells agent-service a team account's 1,000-task allowance, and sends nothing for anyone else", () => {
 		const team = { user: { _id: "u1", email: "someone@currentai.org", emailVerified: true }, sessionId: "s1" } as unknown as App.Locals;
 		const unverified = { user: { _id: "u2", email: "someone@currentai.org", emailVerified: false }, sessionId: "s2" } as unknown as App.Locals;
 		const stranger = { user: { _id: "u3", email: "stranger@example.com", emailVerified: true }, sessionId: "s3" } as unknown as App.Locals;
@@ -2946,7 +2977,7 @@ describe("editedCodeArtifact", () => {
 	});
 
 	it("one endpoint serving two visitors does not leak the first visitor's subject onto the second", async () => {
-		// The regression this guards: the headers object is built ONCE per endpoint and reused by every
+		// What this guards: the headers object is built ONCE per endpoint and reused by every
 		// concurrent turn. Setting the subject on it, instead of on a per-request copy, would attribute
 		// one visitor's run to another — and silently, since both requests still succeed.
 		const { factory, fetchMock } = await agentRun(
@@ -2974,11 +3005,11 @@ describe("editedCodeArtifact", () => {
 		);
 	});
 
-	// ── CUR-895: pin the events stream to the machine that created the task ──────────────────────────
+	// ── pin the events stream to the machine that created the task ──────────────────────────
 	// Task state (TASKS + the SQLite mirror) lives on whichever Fly machine ran /run, and a multi-machine
 	// deploy has no session affinity by default — the GET /run/{id}/events open below is a SEPARATE
-	// request from the POST that could land on a machine that never saw the task and 404 immediately
-	// (CUR-651).
+	// request from the POST that could land on a machine that never saw the task and 404
+	// immediately.
 	it("pins the events stream to the machine /run reports", async () => {
 		const fetchMock = vi.fn(async (url: string | URL) => {
 			const u = String(url);
@@ -3005,7 +3036,7 @@ describe("editedCodeArtifact", () => {
 		expect(headersOf(fetchMock.mock.calls, 0)).not.toHaveProperty("Fly-Force-Instance-Id"); // POST /run itself has no machine to pin to yet
 	});
 
-	it("records the task and its machine before any other chunk streams, so a closed tab leaves the handle behind (CUR-993)", async () => {
+	it("records the task and its machine before any other chunk streams, so a closed tab leaves the handle behind", async () => {
 		const fetchMock = vi.fn(async (url: string | URL) => {
 			const u = String(url);
 			if (u.endsWith("/run"))
@@ -3031,7 +3062,7 @@ describe("editedCodeArtifact", () => {
 		expect(runAt).toBeLessThan(chunks.findIndex((c) => c.routerMetadata));
 	});
 
-	it("re-attaches to the stored task without submitting a new one, on the machine that holds it (CUR-993)", async () => {
+	it("re-attaches to the stored task without submitting a new one, on the machine that holds it", async () => {
 		const fetchMock = vi.fn(async (url: string | URL) => {
 			const u = String(url);
 			if (u.includes("/run/t-stored/events"))
@@ -3053,7 +3084,7 @@ describe("editedCodeArtifact", () => {
 		expect(chunks.at(-1)?.generated_text).toContain("Finished while you were away.");
 	});
 
-	it("closes the handle when agent-service no longer holds the stored task, so a reload doesn't retry it (CUR-993)", async () => {
+	it("closes the handle when agent-service no longer holds the stored task, so a reload doesn't retry it", async () => {
 		vi.stubGlobal(
 			"fetch",
 			vi.fn(async () => ({ ok: false, status: 404, body: null }) as unknown as Response)
@@ -3081,7 +3112,7 @@ describe("editedCodeArtifact", () => {
 		expect(chunks.some((c) => c.agentRun?.closed)).toBe(false);
 	});
 
-	// ── CUR-4393: a follow-up goes to the machine that holds the conversation's workdir ─────────────
+	// ── a follow-up goes to the machine that holds the conversation's workdir ─────────────
 	const earlierAgentTurn = [
 		{ from: "user", content: "make notes.txt" },
 		{ from: "assistant", content: "done", agentRun: { taskId: "t0", machineId: "owner-machine" } },
@@ -3162,7 +3193,7 @@ describe("editedCodeArtifact", () => {
 });
 
 // Each SSE frame the agent service sends is expected to name its event and parse as JSON, and
-// the stream to end on a done frame, a timeout or a stop. A keepalive is expected; the rest is a departure. (CUR-68)
+// the stream to end on a done frame, a timeout or a stop. A keepalive is expected; the rest is a departure.
 describe("endpointAgent fail-open departures", () => {
 	async function run(frames: string[]) {
 		const warn = vi.spyOn(logger, "warn");
@@ -3209,8 +3240,8 @@ describe("endpointAgent fail-open departures", () => {
 // textGeneration/index.ts hardens the last user turn for every model, agent turns included,
 // which rewrites it into grounding.ts's whole user-role preamble plus a <Q_…> fence. The agent service
 // must not read that rewritten turn as its task, or a question it cannot read (Tzeltal, say) comes
-// back as the preamble's own decline rule ("I don't have real steps for this query…"). (CUR-750)
-describe("endpointAgent task text (CUR-750)", () => {
+// back as the preamble's own decline rule ("I don't have real steps for this query…").
+describe("endpointAgent task text", () => {
 	it("sends the person's own words as the task, never the hardened grounding preamble", async () => {
 		const { hardenLastUserTurn } = await import("$lib/chat/server/textGeneration/grounding");
 		const original = "Bin ut'il ya xju' ya akoltayon?";
@@ -3248,14 +3279,14 @@ describe("endpointAgent task text (CUR-750)", () => {
 });
 
 // The preamble is built per call, so the language a person fixes between two turns reaches
-// the next task. Two calls on one endpoint, one with a fixed language and one without. (CUR-3929)
-describe("endpointAgent reads replyLanguage per call (CUR-3929)", () => {
+// the next task. Two calls on one endpoint, one with a fixed language and one without.
+describe("endpointAgent reads replyLanguage per call", () => {
 	it("prepends the fixed-language preamble on the call that carries one, and today's on the call that does not", async () => {
 		const prompts: string[] = [];
 		const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
 			const u = String(url);
 			if (u.endsWith("/run")) {
-				prompts.push(JSON.parse(init?.body as string).prompt as string);
+				prompts.push(JSON.parse(init?.body as string).preamble as string);
 				return { ok: true, status: 200, json: async () => ({ id: `t${prompts.length}` }), text: async () => "" } as Response;
 			}
 			if (u.includes("/events")) {
@@ -3275,18 +3306,18 @@ describe("endpointAgent reads replyLanguage per call (CUR-3929)", () => {
 		await drain(await factory({ messages: [{ from: "user", content: "resume" }], replyLanguage: "pt" } as Parameters<typeof factory>[0]));
 		await drain(await factory({ messages: [{ from: "user", content: "resume" }] } as Parameters<typeof factory>[0]));
 		expect(prompts).toHaveLength(2);
-		expect(prompts[0].startsWith(agentIdentityPreamble("potluck-agent", "pt"))).toBe(true);
+		expect(prompts[0]).toBe(agentIdentityPreamble("potluck-agent", "pt"));
 		expect(prompts[0]).toContain("Reply in Portuguese");
-		expect(prompts[1].startsWith(agentIdentityPreamble("potluck-agent"))).toBe(true);
+		expect(prompts[1]).toBe(agentIdentityPreamble("potluck-agent"));
 		expect(prompts[1]).toContain("(default English)");
 	});
 });
 
-// The stream is read by eventsource-parser (CUR-4065), so a frame follows the SSE spec rather than the
-// single-line LF shape agent-service happens to send today. A reader that split frames on "\n\n" only
+// The stream is read by eventsource-parser, so a frame follows the SSE spec rather than only the
+// single-line LF shape agent-service sends. A reader that split frames on "\n\n" only
 // would never yield a frame from a CRLF stream, and the turn would end with no answer. The other two
 // cases pin the remaining legal shapes.
-describe("endpointAgent reads the event stream by the SSE spec (CUR-4065)", () => {
+describe("endpointAgent reads the event stream by the SSE spec", () => {
 	async function answerFrom(body: string): Promise<string> {
 		vi.stubGlobal(
 			"fetch",
@@ -3333,7 +3364,7 @@ describe("endpointAgent reads the event stream by the SSE spec (CUR-4065)", () =
 	});
 });
 
-// A person has two live agent tasks. A turn chat has given up on must not keep one of them. (CUR-2194)
+// A person has two live agent tasks. A turn chat has given up on must not keep one of them.
 describe("a turn that ends without the service's result gives back its task slot", () => {
 	async function turn(events: () => Response | Promise<Response>, abortSignal?: AbortSignal) {
 		const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
@@ -3391,7 +3422,7 @@ describe("a turn that ends without the service's result gives back its task slot
 	});
 });
 
-describe("endpointAgent — an agent task waiting for a free sandbox (CUR-4584)", () => {
+describe("endpointAgent — an agent task waiting for a free sandbox", () => {
 	it("narrates the wait in the progress block, shows it on the live line, and ends it when the task works again", async () => {
 		const frames = [
 			frame("state", { state: "working" }),
@@ -3505,7 +3536,7 @@ describe("a turn that ends before the service's done gives an account of the par
 	});
 });
 
-describe("an agent run longer than one request is handed off to the page, not cut off (CUR-4410)", () => {
+describe("an agent run longer than one request is handed off to the page, not cut off", () => {
 	beforeEach(() => {
 		handoffFlag.on = true;
 	});
@@ -3517,10 +3548,15 @@ describe("an agent run longer than one request is handed off to the page, not cu
 		generated_text?: string | null;
 		agentHandoff?: boolean;
 		agentConfirmResult?: unknown;
+		agentRun?: { taskId: string; handoff?: boolean };
 	};
 	/** Streams a plan, a finished step and an open approval card, then holds the stream open the way a
 	 *  still-running task does. Returns every chunk and every call the endpoint made. */
-	async function longRun(turnDeadlineAt: number | undefined, ctrl = new AbortController()) {
+	async function longRun(
+		turnDeadlineAt: number | undefined,
+		ctrl = new AbortController(),
+		extra: { agentAttach?: { taskId: string; handoff?: boolean } } = {}
+	) {
 		const enc = new TextEncoder();
 		const calls: { url: string; method: string }[] = [];
 		let eventsSignal: AbortSignal | undefined;
@@ -3561,6 +3597,7 @@ describe("an agent run longer than one request is handed off to the page, not cu
 			messages: [{ from: "user", content: "build the board pack" }],
 			abortSignal: ctrl.signal,
 			turnDeadlineAt,
+			...extra,
 		} as Parameters<typeof factory>[0]);
 		const chunks: Chunk[] = [];
 		for await (const c of stream) chunks.push(c as Chunk);
@@ -3585,6 +3622,36 @@ describe("an agent run longer than one request is handed off to the page, not cu
 		const { chunks, calls } = await longRun(Date.now() + 400);
 		expect(calls.some((c) => c.method === "DELETE")).toBe(false);
 		expect(chunks.some((c) => c.agentConfirmResult)).toBe(false);
+	});
+
+	it("records on the run, at submit, that it hands off, so later requests and the page read that fact", async () => {
+		const { chunks } = await longRun(Date.now() + 400);
+		expect(chunks.find((c) => c.agentRun)?.agentRun).toEqual({ taskId: "t1", handoff: true });
+	});
+
+	it("an attach of a run stored as handing off hands it off again even when this instance's flag reads off", async () => {
+		handoffFlag.on = false;
+		const { chunks, calls } = await longRun(Date.now() + 400, new AbortController(), {
+			agentAttach: { taskId: "t1", handoff: true },
+		});
+		expect(calls.some((c) => c.url.endsWith("/run"))).toBe(false);
+		expect(chunks.at(-1)?.agentHandoff).toBe(true);
+		expect(calls.some((c) => c.method === "DELETE")).toBe(false);
+	});
+
+	it("the watchdog ending a request on a handed-off run hands it to the page: no cancel, no denied card, no 'no answer in time'", async () => {
+		const ctrl = new AbortController();
+		setTimeout(() => ctrl.abort(new GenerationWatchdogAbort()), 300);
+		// A deadline far enough out that the handoff mark is never reached before the watchdog fires.
+		const { chunks, calls } = await longRun(Date.now() + 60_000, ctrl, {
+			agentAttach: { taskId: "t1", handoff: true },
+		});
+		expect(calls.some((c) => c.method === "DELETE")).toBe(false);
+		expect(chunks.some((c) => c.agentConfirmResult)).toBe(false);
+		const terminal = chunks.at(-1);
+		expect(terminal?.agentHandoff).toBe(true);
+		expect(terminal?.generated_text).toContain(AGENT_HANDOFF_TEXT);
+		expect(terminal?.generated_text).not.toContain("No answer arrived in time");
 	});
 
 	it("a turn with no deadline never hands off (a Stop still ends it as stopped)", async () => {

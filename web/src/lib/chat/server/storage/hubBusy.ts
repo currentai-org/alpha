@@ -16,8 +16,8 @@ export function hubThrottledUrl(e: unknown): string | null {
 
 /**
  * The answer to a request that failed because Hugging Face throttled the storage token: a 503 whose
- * `message` says storage is busy and whose `Retry-After` is when the token's window resets
- * (CUR-3120, CUR-3680). `error()` cannot set a header, so it is a Response. Null when it wasn't a
+ * `message` says storage is busy and whose `Retry-After` is when the token's window resets.
+ * `error()` cannot set a header, so it is a Response. Null when it wasn't a
  * throttle, for the caller to answer as it otherwise would.
  */
 export function hubBusyResponse(e: unknown, message: string, scope: string): Response | null {
@@ -30,7 +30,7 @@ export function hubBusyResponse(e: unknown, message: string, scope: string): Res
 
 /**
  * `storage_hub_rate_limited` (preview only, see faultInjection.ts) answers as Hugging Face
- * does when it throttles the token, so a spec reaches the busy answer through the real route. (CUR-3120)
+ * does when it throttles the token, so a spec reaches the busy answer through the real route.
  */
 export async function throwIfHubRateLimitFault(request: Request): Promise<void> {
 	if ((await resolveFaultInjection(request)) === "storage_hub_rate_limited") {

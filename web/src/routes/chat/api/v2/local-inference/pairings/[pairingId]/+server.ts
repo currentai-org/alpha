@@ -3,7 +3,7 @@
  * (routes/chat/local-inference/pair) with a random id it made up, then GETs this route with the same
  * id until the person's visit has provisioned a managed endpoint. Until then the answer is `{}`; the
  * first answer after carries the endpoint and its install flags, and every answer after that is `{}`
- * again, because collectPairing() clears them in the same transaction that reads them.
+ * again, because collectPairing clears them in the same transaction that reads them.
  *
  * No session: the CLI has none. The pairing id is the credential, which is why it must be 32-128
  * URL-safe characters (192 bits at the minimum) and why an unknown, pending, collected or expired id
@@ -13,7 +13,7 @@
  * Deliberately NOT gated on the local-inference flags. Both are account-scoped (flagKeys.ts), and this
  * caller is anonymous, so it would read the deployment-wide answer: with the feature staged to team
  * accounts only, every poll would 404 while the person's own pairing page worked. The flags already
- * gate the only thing that writes here (the pairing page), so with them off this can only answer `{}`. (CUR-4110)
+ * gate the only thing that writes here (the pairing page), so with them off this can only answer `{}`.
  */
 import { error, type RequestHandler } from "@sveltejs/kit";
 import { json } from "$lib/chat/server/api/utils/json";

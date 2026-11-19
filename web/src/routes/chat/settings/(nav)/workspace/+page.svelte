@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages.js';
 	import { getLocale } from '$lib/paraglide/runtime.js';
-	// Workspaces (CUR-550): one person brings Alpha into a group without us doing it by hand. Create a
+	// Workspaces: one person brings Alpha into a group without us doing it by hand. Create a
 	// workspace, invite people by email, remove them, see who's joined. Built on Better Auth's
 	// organization plugin (betterAuth.ts): every call below is the same generic path-proxy
 	// account/+page.svelte uses for listAccounts/listSessions/etc, and
@@ -11,26 +11,26 @@
 	// creatorRole is "admin" (betterAuth.ts), so the plugin's built-in "owner" role is never assigned
 	// or shown anywhere here; this UI only offers "admin" and "member". A brand-new workspace's creator
 	// becomes its admin automatically; every invite is sent as "member", and an admin changes a
-	// member's role afterwards from that member's row (CUR-1685).
+	// member's role afterwards from that member's row.
 	//
-	// Joining by request is not built. The joinMethod SWITCH (CUR-826) is only stored and displayed; the only
+	// Joining by request is not built. The joinMethod SWITCH is only stored and displayed; the only
 	// way in is an admin's email invite regardless of what the switch reads, since no request/open
 	// join flow exists to act on the other two values.
 	//
 	// The "Workspace rules" section renders for every member, not just admins, because members can
-	// always see the rules that govern them (CUR-826). Labels come from workspacePermissions.ts, never
+	// always see the rules that govern them. Labels come from workspacePermissions.ts, never
 	// a restated string, so a switch this page doesn't anticipate still renders as its raw value
 	// rather than silently vanishing.
 	//
 	// Switching workspace uses Better Auth's OWN active-organization concept
-	// (session.activeOrganizationId, set via /organization/set-active), not page-local state
-	// (CUR-553). It is scoped to THIS page and its own heading: there is no nav-wide or chat-wide
+	// (session.activeOrganizationId, set via /organization/set-active), not page-local state.
+	// It is scoped to THIS page and its own heading: there is no nav-wide or chat-wide
 	// "current workspace" indicator, and nothing in chat itself reads activeOrganizationId, so
 	// switching here does not re-scope any prompt/document/model behavior (no workspace-scoped content
 	// exists to re-scope). A personal account with zero workspaces stays exactly that; nothing
 	// auto-provisions a "workspace of one" for it.
 	//
-	// An admin never sees the content of a member's conversations (CUR-552). The
+	// An admin never sees the content of a member's conversations. The
 	// /settings/workspace/usage endpoint enforces it (workspaceUsage.ts only ever selects aggregate
 	// scalars, never `doc`), not this component. There is no per-conversation view anywhere on this
 	// page, on purpose: a conversation's title is usually a model-generated summary of its first
@@ -114,7 +114,7 @@
 		ORGANIZATION_ERROR_CODES.ORGANIZATION_SLUG_ALREADY_TAKEN.code,
 	]);
 
-	// Better Auth speaks of organizations and owners; this page has workspaces and admins (CUR-2835).
+	// Better Auth speaks of organizations and owners; this page has workspaces and admins.
 	function memberErrorCopy(code: string | undefined, action: "remove" | "leave" = "remove"): string | null {
 		switch (code) {
 			case ORGANIZATION_ERROR_CODES.YOU_CANNOT_LEAVE_THE_ORGANIZATION_AS_THE_ONLY_OWNER.code:
@@ -122,7 +122,7 @@
 				return action === "leave"
 					? m.workspace_onlyAdminLeave()
 					: m.workspace_onlyAdmin();
-			// Any address already in the workspace, the inviter's own included, so the copy names no one. (CUR-3053)
+			// Any address already in the workspace, the inviter's own included, so the copy names no one.
 			case ORGANIZATION_ERROR_CODES.USER_IS_ALREADY_A_MEMBER_OF_THIS_ORGANIZATION.code:
 				return m.workspace_alreadyMember();
 			case ORGANIZATION_ERROR_CODES.USER_IS_ALREADY_INVITED_TO_THIS_ORGANIZATION.code:
@@ -154,11 +154,11 @@
 	let currentUserId = $state<string | null>(null);
 	// The account record this deployment's personal-workspace view is rendered from when org
 	// creation is off — never a real organization row (no schema change), just the session's own name/
-	// email, the same fields the real member-list already shows for "(you)". (CUR-957)
+	// email, the same fields the real member-list already shows for "(you)".
 	let myAccountName = $state<string | null>(null);
 	let myAccountEmail = $state<string | null>(null);
 	// Which provider(s) actually authenticate this account, for the zero-org identity badge
-	// below — the name/email alone can't distinguish a GitHub sign-in from Google or email/password. (CUR-1175)
+	// below — the name/email alone can't distinguish a GitHub sign-in from Google or email/password.
 	let myAccountProviders = $state<string[]>([]);
 	let orgs = $state<OrgRow[] | null>(null);
 	let orgsError = $state("");
@@ -168,12 +168,11 @@
 	let full = $state<FullOrg | null>(null);
 	let fullError = $state("");
 	// Once any request comes back 401 the session is gone, and every control on the page
-	// would fail the same way, so the page shows the signed-out notice and a way to sign in instead. (CUR-4108)
+	// would fail the same way, so the page shows the signed-out notice and a way to sign in instead.
 	let signedOut = $state(false);
 	const loginHref = $derived(`${base}/login?next=${encodeURIComponent(page.url.pathname)}`);
 	// The account row at the foot of the sidebar names the signed-in person unless the chat shell's
-	// load re-runs. Re-running it reads the ended session, so the row says guest beside the notice
-	// (CUR-4108).
+	// load re-runs. Re-running it reads the ended session, so the row says guest beside the notice.
 	$effect(() => {
 		if (signedOut) invalidate("app:workspace").catch(() => {});
 	});
@@ -198,15 +197,15 @@
 
 	// A refused invite, Leave or member action re-renders the page, and the refusal line can land below
 	// the fold while the person looks at the button. Each refusal line scrolls itself into view as it
-	// appears and is announced, so the answer is where they look (CUR-3207). Centred, not "nearest",
-	// which parks it flush against the bottom edge, half cut off (CUR-4060).
+	// appears and is announced, so the answer is where they look. Centred, not "nearest",
+	// which parks it flush against the bottom edge, half cut off.
 	function revealRefusal(node: HTMLElement) {
 		node.scrollIntoView({ block: "center" });
 	}
 
 	// admin-triggered whole-workspace delete. Two steps — reveal, then require typing the
 	// workspace's own name — since this destroys OTHER members' access and pending invitations, not just
-	// the admin's own data (the bar DeleteAllConversationsModal's single click sets for a self-only wipe). (CUR-827)
+	// the admin's own data (the bar DeleteAllConversationsModal's single click sets for a self-only wipe).
 	let confirmingDelete = $state(false);
 	let deleteConfirmText = $state("");
 	let deleteError = $state("");
@@ -214,7 +213,7 @@
 	// With org creation off, every /organization/* route is refused categorically for the deployment,
 	// so the list call cannot succeed. Calling it anyway and branching on its error would land a
 	// zero-org visitor on the {:else if orgsError} template branch (a bare error string) instead of
-	// the zero-org personal-workspace view that exists for this case (CUR-957). The enabled/disabled
+	// the zero-org personal-workspace view that exists for this case. The enabled/disabled
 	// branch is decided by resolveOrganizationsState (orgsState.ts, unit-tested), not inline here, so
 	// that decision stays covered without mounting this whole page.
 	async function loadOrganizations() {
@@ -223,12 +222,12 @@
 
 	// The list on its own, unapplied, so a create or rename can show it in the same step as the rest of
 	// the page. Applied early, the new or renamed row would show while the heading and Current mark still
-	// described the old state (CUR-3948, CUR-3960).
+	// described the old state.
 	async function fetchOrganizations() {
 		if (!page.data.workspaceOrgCreationEnabled) {
 			return resolveOrganizationsState(false);
 		}
-		// Better Auth's own client-side Organization type doesn't know about the CUR-826 additionalFields
+		// Better Auth's own client-side Organization type doesn't know about the additionalFields
 		// (declared server-side only, in betterAuth.ts) — the values are there at runtime, this app's own
 		// OrgRow type is the accurate one.
 		const result = (await authClient.organization.list()) as unknown as {
@@ -248,7 +247,7 @@
 	}
 
 	// A dropped connection rejects instead of answering with an error. Both read the same to the
-	// person, and neither may escape: the switch that called this has already been saved (CUR-3373).
+	// person, and neither may escape: the switch that called this has already been saved.
 	function fetchFull(organizationId: string) {
 		return authClient.organization
 			.getFullOrganization({ query: { organizationId } })
@@ -272,7 +271,7 @@
 			// aggregate usage query) on top of an already-blank cold-load tab with no skeleton visible until
 			// hydration finishes. The Usage section below already has its own "Loading…" fallback (it's
 			// admin-only and per-org, unlike the member list ready gates), so there's nothing for the rest of
-			// the page to wait on here (CUR-963).
+			// the page to wait on here.
 			void loadUsage(full.id);
 		} else {
 			usage = null;
@@ -282,7 +281,7 @@
 
 	// "counts only" — this endpoint independently re-checks the caller is an admin of THIS
 	// organization server-side (not just this page choosing not to show the button), so a 403 here
-	// means the caller genuinely isn't one, not that the UI merely hid the section. (CUR-552)
+	// means the caller genuinely isn't one, not that the UI merely hid the section.
 	async function loadUsage(organizationId: string) {
 		usageError = "";
 		try {
@@ -314,7 +313,7 @@
 	}
 
 	// The panel describes the current workspace and nothing else, so the list's Current badge
-	// and the panel never name different workspaces. Under Personal there is no team detail to show. (CUR-3373)
+	// and the panel never name different workspaces. Under Personal there is no team detail to show.
 	async function showCurrent() {
 		if (activeOrgId) {
 			await selectOrg(activeOrgId);
@@ -328,7 +327,7 @@
 
 	// "switch, and have everything follow" — the deliberate gesture. Calls Better Auth's own
 	// /organization/set-active (not just local UI state) so activeOrganizationId is the actual source of
-	// truth other surfaces can read later, not something only this page's memory knows about. (CUR-553)
+	// truth other surfaces can read later, not something only this page's memory knows about.
 	async function switchTo(id: string) {
 		if (busy || id === activeOrgId) {
 			await selectOrg(id);
@@ -347,7 +346,7 @@
 			// The row highlight, the Current badge, the panel and the account row's name all
 			// change in one step, once the detail and the chat shell have both loaded. The clicked row
 			// stays disabled until then. A failed detail load still moves them, because the server has
-			// already switched (CUR-3373). (CUR-3462)
+			// already switched.
 			shellAskedFor = id;
 			const [detail] = await Promise.all([
 				fetchFull(id),
@@ -365,7 +364,7 @@
 		}
 	}
 
-	// Personal is the session with no active workspace, so choosing it unsets the active one. (CUR-3020)
+	// Personal is the session with no active workspace, so choosing it unsets the active one.
 	async function switchToPersonal() {
 		if (busy || (activeOrgId === null && viewingFormerId === null)) return;
 		busy = "switch:personal";
@@ -378,7 +377,7 @@
 				return;
 			}
 			// As in switchTo, Current and the account row move together, once the chat shell has reloaded,
-			// so Current never moves while the account row still names the team (CUR-3462).
+			// so Current never moves while the account row still names the team.
 			shellAskedFor = null;
 			await invalidate("app:workspace").catch(() => {});
 			activeOrgId = null;
@@ -391,13 +390,13 @@
 
 	// Chats from a workspace this person left, or that was deleted, list under that former
 	// workspace instead of in Personal. Looking at one is a Personal session plus a pick the server
-	// keeps in a cookie, so it is read-only by construction: no team workspace is active. (CUR-3040)
+	// keeps in a cookie, so it is read-only by construction: no team workspace is active.
 	type FormerWorkspaceRow = { id: string; name: string; kind: "left" | "deleted" };
 	let formerWorkspaces = $derived((page.data.formerWorkspaces ?? []) as FormerWorkspaceRow[]);
 	let viewingFormerId = $state<string | null>((page.data.viewingFormerId as string | null) ?? null);
 
 	// Invitations waiting on this person's own address (not the ones this workspace sent,
-	// which are `pendingInvitations`). Open goes to the accept page; Decline answers it here. (CUR-4167)
+	// which are `pendingInvitations`). Open goes to the accept page; Decline answers it here.
 	type InviteToMe = { id: string; workspaceName: string; inviterEmail: string };
 	let invitesToMe = $derived((page.data.pendingInvitations ?? []) as InviteToMe[]);
 	let decliningInvite = $state<string | null>(null);
@@ -455,7 +454,7 @@
 	}
 
 	// Losing the current workspace (deleted, or this person removed from it) lands them in
-	// Personal with a line saying why. Another team workspace is never picked for them. (CUR-3022)
+	// Personal with a line saying why. Another team workspace is never picked for them.
 	let landedNotice = $state("");
 	function setLandedNotice(notice: string) {
 		landedNotice = notice;
@@ -476,7 +475,7 @@
 
 	// The account menu names the current workspace from the chat shell's load. Once this
 	// page knows the active workspace, re-run that load whenever it changes (a switch, a create, a
-	// delete), asking at most once per change so a load that disagrees can never loop. (CUR-3014)
+	// delete), asking at most once per change so a load that disagrees can never loop.
 	let activeOrgKnown = $state(false);
 	let shellAskedFor: string | null | undefined = undefined;
 	$effect(() => {
@@ -520,11 +519,11 @@
 				await selectOrg(activeOrgId!);
 			} else if (!activeOrgId) {
 				// No active workspace means Personal, which is where every session starts.
-				// Leave the person there; the panel says so rather than showing a team's detail (CUR-3373). (CUR-3020)
+				// Leave the person there; the panel says so rather than showing a team's detail.
 				await showCurrent();
 			} else {
-				// The session's workspace was deleted or this person was removed from it (CUR-2835), so
-				// they land in Personal (CUR-3022).
+				// The session's workspace was deleted or this person was removed from it, so
+				// they land in Personal.
 				await fallBackToPersonal(LOST_WORKSPACE_NOTICE);
 				await showCurrent();
 			}
@@ -534,7 +533,7 @@
 			if (activeOrgId) await fallBackToPersonal(LOST_WORKSPACE_NOTICE);
 			if (page.data.workspaceOrgCreationEnabled) {
 			// Org creation is on for this deployment (preview) — unchanged behaviour, the same
-			// "create a workspace" prompt this page has always shown a zero-org visitor. (CUR-957)
+			// "create a workspace" prompt this page has always shown a zero-org visitor.
 				showCreateForm = true;
 			}
 		}
@@ -544,7 +543,7 @@
 	});
 
 	let myMember = $derived(full?.members.find((m) => m.userId === currentUserId) ?? null);
-	// Join order, so a role change never moves a row under the admin's next click (CUR-2906). The server
+	// Join order, so a role change never moves a row under the admin's next click. The server
 	// returns members unordered, and an update can change where a row comes back.
 	let membersInJoinOrder = $derived(
 		[...(full?.members ?? [])].sort(
@@ -553,7 +552,7 @@
 	);
 	let isAdmin = $derived(myMember?.role?.split(",").includes("admin") ?? false);
 	// Better Auth refuses the last admin's Leave, so that person is told up front instead of
-	// being offered a Leave that answers "Leaving…" and then a refusal. (CUR-4020)
+	// being offered a Leave that answers "Leaving…" and then a refusal.
 	let soleAdmin = $derived(
 		isAdmin && (full?.members.filter((m) => m.role?.split(",").includes("admin")).length ?? 0) === 1,
 	);
@@ -573,11 +572,11 @@
 			const { data: created, error } = await authClient.organization.create({ name, slug });
 			if (!error) {
 				// As in switchTo, the new row's highlight, its Current badge, the heading and the account row
-				// move in one step, once the list, the detail and the chat shell have all loaded (CUR-3462).
+				// move in one step, once the list, the detail and the chat shell have all loaded.
 				// Lighting the row first would leave Personal still marked Current for a moment.
 				// Better Auth makes a freshly created workspace active (no keepCurrentActiveOrganization
-				// override here), so this mirrors that locally rather than re-deriving it from a second call
-				// (CUR-553). The form keeps reading "Creating…" until then.
+				// override here), so this mirrors that locally rather than re-deriving it from a second call.
+				// The form keeps reading "Creating…" until then.
 				if (created?.id) shellAskedFor = created.id;
 				const [listed, detail] = await Promise.all([
 					fetchOrganizations(),
@@ -587,7 +586,7 @@
 				// Collapse the create form only once the reloaded list already contains the new workspace —
 				// flipping this BEFORE the await would leave a frame where the form was gone and `orgs` was
 				// still the pre-create (often empty) list, rendering as a bare "+ New workspace" button with
-				// nothing to suggest the create had worked (CUR-1560). The typed name is cleared here too, not
+				// nothing to suggest the create had worked. The typed name is cleared here too, not
 				// before the await: clearing it first would blank the field to its placeholder while the button
 				// still read "Creating…".
 				newWorkspaceName = "";
@@ -606,7 +605,7 @@
 				return;
 			}
 			// Slugs are shared across every account, and create answers a taken one with
-			// ORGANIZATION_ALREADY_EXISTS; only /check-slug says SLUG_ALREADY_TAKEN (CUR-2835).
+			// ORGANIZATION_ALREADY_EXISTS; only /check-slug says SLUG_ALREADY_TAKEN.
 			if (SLUG_TAKEN_CODES.has(error.code ?? "") && attempt < 2) {
 				slug = `${slugify(name)}-${Math.random().toString(36).slice(2, 6)}`;
 				continue;
@@ -638,7 +637,7 @@
 	}
 
 	// Remove asks first, naming the person, the way Leave and Delete do. It is offered on
-	// other members' rows only; Leave is how anyone takes themselves out. (CUR-3385)
+	// other members' rows only; Leave is how anyone takes themselves out.
 	let confirmingRemove = $state<string | null>(null);
 	async function removeMember(member: MemberRow) {
 		if (busy || !selectedOrgId) return;
@@ -661,7 +660,7 @@
 	// An admin gives another member the admin role, or takes it back. Because creatorRole is
 	// "admin" (betterAuth.ts), Better Auth's /organization/update-member-role lets an admin set and
 	// clear "admin" on others and refuses to leave a workspace with no admin. The control is offered on
-	// other members' rows only, so nobody demotes themselves by accident. (CUR-1685)
+	// other members' rows only, so nobody demotes themselves by accident.
 	async function setMemberRole(member: MemberRow, role: "admin" | "member") {
 		if (busy || !selectedOrgId) return;
 		busy = `role:${member.id}`;
@@ -695,7 +694,7 @@
 	}
 
 	// Deletes the organization row — Postgres cascades member + invitation rows itself
-	// (schema.ts's onDelete:"cascade" on both), so nothing here needs to delete those explicitly. (CUR-827)
+	// (schema.ts's onDelete:"cascade" on both), so nothing here needs to delete those explicitly.
 	async function deleteWorkspace() {
 		if (busy || !selectedOrgId || !full || deleteConfirmText.trim() !== full.name) return;
 		busy = "delete-workspace";
@@ -712,7 +711,7 @@
 		const deletedName = full.name;
 		selectedOrgId = null;
 		full = null;
-		// Deleting the current workspace lands in Personal, never the next team workspace. (CUR-3022)
+		// Deleting the current workspace lands in Personal, never the next team workspace.
 		if (wasActive) await fallBackToPersonal(`${deletedName} was deleted. You're in your personal workspace.`);
 		await loadOrganizations();
 		if (orgs && orgs.length > 0) {
@@ -723,7 +722,7 @@
 	}
 
 	// An admin renames the workspace. Our admin role carries Better Auth's organization:update
-	// (betterAuth.ts, CUR-827), and the account menu's label follows through the shell load. (CUR-3106)
+	// (betterAuth.ts), and the account menu's label follows through the shell load.
 	let renaming = $state(false);
 	let renameText = $state("");
 	let renameError = $state("");
@@ -750,7 +749,7 @@
 			return;
 		}
 		// The field keeps the new name and the button "Saving…" until the list, the heading and the
-		// account row can all show it (CUR-3960). Closing the form first would put the old name back for
+		// account row can all show it. Closing the form first would put the old name back for
 		// a moment, which reads as a rename that failed.
 		const [listed, detail] = await Promise.all([
 			fetchOrganizations(),
@@ -764,7 +763,7 @@
 	}
 
 	// Any member leaves. Better Auth refuses the last admin, and when the workspace was the
-	// current one it unsets it, so the person lands in Personal the way CUR-3022 does. (CUR-3106)
+	// current one it unsets it, so the person lands in Personal the way that change does.
 	let confirmingLeave = $state(false);
 	let leaveError = $state("");
 	async function leaveWorkspace() {
@@ -814,11 +813,11 @@
 <div class="flex w-full flex-col gap-4 text-[length:var(--ap-text-3)] text-[color:var(--ap-ink)]">
 	<!-- "Workspace" comes from the settings layout's PageHeader; the active org's name stays here. -->
 	{#if signedOut}
-		<!-- CUR-4108: no workspace name over the signed-out notice. -->
+		<!-- no workspace name over the signed-out notice. -->
 	{:else if full && selectedOrgId === activeOrgId}
 		<h2 class="type-heading text-fg-1">{full.name}</h2>
 	{:else if ready && orgs && orgs.length > 0 && activeOrgId === null}
-		<!-- CUR-3462: the heading slot stays filled under Personal, so a switch never moves the list
+		<!-- the heading slot stays filled under Personal, so a switch never moves the list
 		     out from under the pointer that made it. -->
 		<h2 class="type-heading text-fg-1">
 			{formerWorkspaces.find((w) => w.id === viewingFormerId)?.name ?? m.product_personalWorkspace()}
@@ -886,13 +885,13 @@
 			</section>
 		{/if}
 
-		<!-- CUR-553: every workspace, always — "see all of their workspaces... without hunting for them in
+		<!-- every workspace, always — "see all of their workspaces... without hunting for them in
 		     a menu" — not gated on having more than one, so a single-workspace member still sees the
 		     "you're in X" confirmation this list doubles as. -->
 		{#if orgs && orgs.length > 0}
 			<section class="flex flex-col gap-2">
 				<h3 class="text-[length:var(--ap-text-2)] text-[color:var(--ap-ink-2)] uppercase">{m.workspace_yourWorkspaces()}</h3>
-				<!-- CUR-3023: switching changes the conversation list, so say so where the switch is. -->
+				<!-- switching changes the conversation list, so say so where the switch is. -->
 				<p class="type-body text-fg-2">{m.workspace_ownConversations()}</p>
 				{@render switchNotices()}
 				<div class={cardClass}>
@@ -909,7 +908,7 @@
 						{#if activeOrgId === null && viewingFormerId === null}
 							<span class="flex-none type-caption text-fg-2 uppercase">{m.workspace_current()}</span>
 						{:else if busy === "switch:personal"}
-							<!-- CUR-3462: Current stays on the team until the shell reloads, so without this the
+							<!-- Current stays on the team until the shell reloads, so without this the
 							     pointer's hover fill on Personal read as a second selection. -->
 							<span class="flex-none type-caption text-fg-2" role="status"
 								>{m.workspace_switching()}</span
@@ -932,7 +931,7 @@
 									>{m.workspace_current()}</span
 								>
 							{:else if busy === `switch:${org.id}`}
-								<!-- CUR-3462: the highlight and badge wait for the new workspace to load, so the
+								<!-- the highlight and badge wait for the new workspace to load, so the
 								     clicked row says it heard the click. -->
 								<span class="flex-none type-caption text-fg-2" role="status"
 									>{m.workspace_switching()}</span
@@ -948,7 +947,7 @@
 			{@render switchNotices()}
 		{/if}
 
-		<!-- CUR-3040: shown with or without a team workspace, since a person whose only one was deleted
+		<!-- shown with or without a team workspace, since a person whose only one was deleted
 		     still has its chats. -->
 		{#if formerWorkspaces.length > 0}
 			<section class="flex flex-col gap-2">
@@ -980,7 +979,7 @@
 		<!-- Current workspace detail -->
 		{#if selectedOrgId}
 			{#if fullError}
-				<!-- CUR-4026: a failed detail load says what to do next. The switch itself was saved, so asking
+				<!-- a failed detail load says what to do next. The switch itself was saved, so asking
 				     again is the whole recovery. -->
 				<div class="flex items-center justify-between gap-3 px-3 py-3">
 					<p class="text-[length:var(--ap-text-2)]">{fullError}</p>
@@ -995,7 +994,7 @@
 				</div>
 			{:else if full}
 				{#if isAdmin}
-					<!-- CUR-3106: an admin fixes the workspace's name in place, rather than deleting and starting over. -->
+					<!-- an admin fixes the workspace's name in place, rather than deleting and starting over. -->
 					<section class="flex flex-col gap-2">
 						<h3 class="text-small text-fg-2 uppercase">{m.workspace_nameHeading()}</h3>
 						<div class={cardClass}>
@@ -1069,7 +1068,7 @@
 					</div>
 				</section>
 
-				<!-- CUR-826: the section above is unconditional — every member, not just admins, "always"
+				<!-- the section above is unconditional — every member, not just admins, "always"
 				     sees the rules that govern them (the third switch). -->
 				<section class="flex flex-col gap-2">
 					<h3 class="text-[length:var(--ap-text-2)] text-[color:var(--ap-ink-2)] uppercase">
@@ -1090,7 +1089,7 @@
 									<div class="text-[length:var(--ap-text-1)] text-[color:var(--ap-ink-3)]">
 										{member.user.email} · {member.role.split(",").includes("admin") ? m.workspace_admin() : m.workspace_member()}
 									</div>
-									<!-- CUR-552: counts only — no per-conversation content, just this row's own totals. -->
+									<!-- counts only — no per-conversation content, just this row's own totals. -->
 									{#if isAdmin && usageByUserId.get(member.userId)}
 										{@const u = usageByUserId.get(member.userId)}
 										<div class="text-[length:var(--ap-text-1)] text-[color:var(--ap-ink-3)]">
@@ -1170,7 +1169,7 @@
 				</section>
 
 				{#if isAdmin}
-					<!-- CUR-552: "counts only... an admin never sees the content of a member's conversations."
+					<!-- "counts only... an admin never sees the content of a member's conversations."
 					     No per-conversation row anywhere here, on purpose — see this file's own header comment. -->
 					<section class="flex flex-col gap-2">
 						<h3 class="text-[length:var(--ap-text-2)] text-[color:var(--ap-ink-2)] uppercase">{m.workspace_usage()}</h3>
@@ -1200,7 +1199,7 @@
 						</div>
 					</section>
 
-					<!-- CUR-957: gated on workspaceOrgCreationEnabled, not just isAdmin — inviting anyone must
+					<!-- gated on workspaceOrgCreationEnabled, not just isAdmin — inviting anyone must
 					     be unreachable by screen in production regardless of how this org came to exist. -->
 					{#if page.data.workspaceOrgCreationEnabled}
 					<section class="flex flex-col gap-2">
@@ -1267,7 +1266,7 @@
 						</section>
 					{/if}
 
-					<!-- CUR-827: admin-triggered whole-workspace delete. -->
+					<!-- admin-triggered whole-workspace delete. -->
 					<section class="flex flex-col gap-2">
 						<h3 class="text-[length:var(--ap-text-2)] text-[color:var(--ap-ink-2)] uppercase">{m.workspace_dangerZone()}</h3>
 						<div class={cardClass}>
@@ -1333,7 +1332,7 @@
 					</section>
 				{/if}
 
-				<!-- CUR-3106: every member, admin or not, can take themselves out of a workspace. -->
+				<!-- every member, admin or not, can take themselves out of a workspace. -->
 				<section class="flex flex-col gap-2">
 					<h3 class="text-small text-fg-2 uppercase">{m.workspace_leaveHeading()}</h3>
 					<div class={cardClass}>
@@ -1359,7 +1358,7 @@
 							</div>
 						{:else}
 							<div class="flex flex-col gap-2.5 px-3 py-3">
-								<!-- CUR-4020: once Leave is refused, the "you'll stop being a member" line would contradict
+								<!-- once Leave is refused, the "you'll stop being a member" line would contradict
 								     the refusal, so the refusal takes its place. -->
 								{#if leaveError}
 									<p role="alert" use:revealRefusal class="text-small">{leaveError}</p>
@@ -1404,7 +1403,7 @@
 			</p>
 		{/if}
 
-		<!-- CUR-957: zero orgs, and org creation is off for this deployment (production) — the personal
+		<!-- zero orgs, and org creation is off for this deployment (production) — the personal
 		     workspace view, rendered straight from the account record (no schema change, no organization
 		     row exists). Name + email only; the real "Workspace rules"/members/usage sections above read
 		     fields an actual organization row carries, which this account-derived view doesn't have and
@@ -1427,7 +1426,7 @@
 									{myAccountEmail}
 								</div>
 							{/if}
-							<!-- CUR-1175: name/email alone can't tell you HOW you're signed in — a GitHub sign-in
+							<!-- name/email alone can't tell you HOW you're signed in — a GitHub sign-in
 							     looked identical to an email/password one. Same PROVIDER_META the Account tab's
 							     "Linked providers" list already uses, so this can never drift out of sync with it. -->
 							{#if myAccountProviders.length > 0}
@@ -1449,9 +1448,8 @@
 			</section>
 		{/if}
 
-		<!-- Create another workspace — CUR-957: gated separately from workspacesEnabled above (this
-		     section is entirely about the org-creation privilege, not seeing your own workspace), so it
-		     stays hidden in production even once the personal view is live. -->
+		<!-- Create another workspace —: gated on its own flag (this section is entirely
+		     about the org-creation privilege, not seeing your own workspace, which everyone signed in has). -->
 		{#if page.data.workspaceOrgCreationEnabled}
 			<section class="flex flex-col gap-2">
 				{#if !showCreateForm}

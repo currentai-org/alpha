@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 // preprocessMessages — endpoint-side consumer of the ONE shared media pass. Hydrating and
 // clipboard-expanding here, downstream of the safety gate, would be an unscreened path, so
 // prepareTurnMedia owns hydrate/decode/splice/clipboard ONCE, and this function only projects its
@@ -5,12 +8,14 @@
 //
 //   user messages    → content = finalText (documents + clipboard + typed, budget-capped);
 //                      files = the retained image occurrences as base64 SOURCE bytes (the
-//                      endpoint's own imageProcessor consumes these), named by sha.
+//                      endpoint's own imageProcessor consumes these), named as the person named
+//                      them, or by sha when they gave no name. The agent endpoint copies them
+//                      into its workdir under that name.
 //   non-user messages → passed through UNCHANGED, without hydration. Their files are never read
 //                      downstream: prepareMessagesWithFiles formats files only for from === "user",
-//                      and endpointAgent builds its prompt from {from, content} alone (verified by
-//                      grep over prepareFiles.ts / endpointOai.ts / agent/ — nothing else touches
-//                      EndpointMessage.files).
+//                      and endpointAgent builds its prompt from {from, content} alone. Nothing
+//                      else in prepareFiles.ts, endpointOai.ts or agent/ reads
+//                      EndpointMessage.files.
 //
 // The route passes the turn's already-settled PreparedTurnMedia; when absent (tests, non-route
 // callers) it is computed here — ONE implementation either way, never a duplicated hydrate path.
@@ -42,7 +47,7 @@ export async function preprocessMessages(
 				type: "base64" as const,
 				value: img.source.toString("base64"),
 				mime: img.mime,
-				name: img.sha,
+				name: img.name ?? img.sha,
 			})),
 		};
 	});

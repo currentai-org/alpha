@@ -3,6 +3,7 @@
 // list, null, a no-op) when they are not. Callers keep their own error handling, as they had when
 // they imported the modules directly.
 import type { Cookies } from '@sveltejs/kit';
+import { env } from '$env/dynamic/public';
 import type { AlphaLandingContent } from '$lib/alpha-landing/content';
 import type { Locale } from '$lib/i18n/locales';
 
@@ -21,17 +22,20 @@ type CachedClient = {
 };
 const cachedClient = import.meta.glob<CachedClient>('/src/lib/payload/cached-client.ts');
 
+/** True when a CMS origin is set. A self-hosted build carries the CMS client but has no CMS to ask. */
+const hasCmsOrigin = () => Boolean(env.PUBLIC_CMS_PAYLOAD_URL?.trim());
+
 /** The CMS maintenance banner; off when there is no CMS. */
 export async function maintenanceBanner(
 	f: Fetch
 ): Promise<{ enabled?: boolean | null; message?: string | null }> {
-	const cms = await load(cachedClient);
+	const cms = hasCmsOrigin() ? await load(cachedClient) : undefined;
 	return cms ? cms.getMaintenanceBannerCached(f) : { enabled: false };
 }
 
 /** The CMS page at `/chat`, which contributes only SEO fields; null when there is no CMS or no page. */
 export async function chatLandingSeoPage(f: Fetch): Promise<Record<string, unknown> | null> {
-	const cms = await load(cachedClient);
+	const cms = hasCmsOrigin() ? await load(cachedClient) : undefined;
 	return cms ? cms.getPageByPathCached(f, ['chat']) : null;
 }
 
@@ -123,16 +127,61 @@ export async function cmsRedirect(f: Fetch, pathname: string) {
 const droppedDocModule = import.meta.glob<{
 	setDroppedDocSink(sink: (detail: { id: string; issues: unknown }, message: string) => void): void;
 }>('/src/lib/payload/log.ts');
-const invalidationModule = import.meta.glob<{ startInvalidationPoller(): void }>(
-	'/src/lib/cache/invalidation.ts'
-);
 
-/** Server start-up for the CMS client: report dropped docs to `sink`, and poll for cache invalidations. */
+const hostServicesModule = import.meta.glob<{
+	setSiteHostServices(services: {
+		logger?: SiteHostLogger;
+		flagEnabledOr?: (key: string, fallback: () => boolean) => boolean;
+		onCmsPublish?: (body: unknown) => Promise<void>;
+	}): void;
+}>('/src/lib/payload/hostServices.ts');
+
+type SiteHostLogFn = (detail: Record<string, unknown>, message: string) => void;
+type SiteHostLogger = { info: SiteHostLogFn; warn: SiteHostLogFn; error: SiteHostLogFn };
+
+/**
+ * Server start-up for the CMS client: report dropped docs to `sink`, and hand site code the host
+ * app's logger and flag reader (payload/hostServices.ts), so site code imports neither from chat. It
+ * opens no database connection and starts no timer, on any surface: a publish clears the receiving
+ * instance's cache and the others refresh on their TTL.
+ */
 export async function startCms(
-	sink: (detail: { id: string; issues: unknown }, message: string) => void
+	sink: (detail: { id: string; issues: unknown }, message: string) => void,
+	services: {
+		logger?: SiteHostLogger;
+		flagEnabledOr?: (key: string, fallback: () => boolean) => boolean;
+		onCmsPublish?: (body: unknown) => Promise<void>;
+	} = {}
 ): Promise<void> {
 	(await load(droppedDocModule))?.setDroppedDocSink(sink);
-	(await load(invalidationModule))?.startInvalidationPoller();
+	(await load(hostServicesModule))?.setSiteHostServices(services);
+}
+
+const invalidationKeysModule = import.meta.glob<{
+	keysForInvalidation(req: never): (readonly unknown[])[];
+}>('/src/lib/payload/invalidationKeys.ts');
+// The CMS reads' server cache leaves the build with the website (the public snapshot drops both).
+const queryClientModule = import.meta.glob<{
+	getServerQueryClient(): {
+		invalidateQueries(filters: { queryKey: readonly unknown[] }): Promise<void>;
+	};
+}>('/src/lib/cache/query-client.ts');
+
+/**
+ * Clear this instance's cached CMS reads that a publish (the body Payload sent) changed, such as the
+ * maintenance banner chat shows, and return the cache-key prefixes cleared. Nothing to clear, and an
+ * empty list, when the website's CMS client is not in the build.
+ */
+export async function clearCmsReads(body: unknown): Promise<(readonly unknown[])[]> {
+	const [keysModule, qcModule] = await Promise.all([
+		load(invalidationKeysModule),
+		load(queryClientModule)
+	]);
+	if (!keysModule || !qcModule) return [];
+	const keys = keysModule.keysForInvalidation(body as never);
+	const qc = qcModule.getServerQueryClient();
+	await Promise.all(keys.map((queryKey) => qc.invalidateQueries({ queryKey })));
+	return keys;
 }
 
 const layoutModule = import.meta.glob<{

@@ -1,5 +1,5 @@
 // e2e-product: @site
-import { test, expect, type Page } from './helpers/test';
+import { test, expect, type Locator, type Page } from './helpers/test';
 import { scrollFooterToRest } from './helpers/footer';
 
 // Hovering a chevron button (the footer's salmon ones here) fills the label side with the
@@ -142,5 +142,83 @@ test(
 				'a lagged block or the footer sat between pixels (roundLagged in smooth-scroll.ts)'
 			)
 			.toEqual([]);
+	}
+);
+
+type ContrastSample = { ms: number; fill: string; chevron: string; ratio: number };
+
+/**
+ * Reads the icon box's fill and the chevron's colour on every animation frame for `ms`, and the
+ * WCAG contrast ratio between them. Started before the pointer moves, so the frames span the whole
+ * hover transition rather than only its end.
+ */
+function sampleIconContrast(iconBox: Locator, ms: number) {
+	return iconBox.evaluate(
+		(box, ms) =>
+			new Promise<ContrastSample[]>((resolve) => {
+				const svg = box.querySelector('svg')!;
+				const rgb = (c: string) => (c.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number);
+				const lum = (c: string) => {
+					const [r, g, b] = rgb(c).map((v) => {
+						const s = v / 255;
+						return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+					});
+					return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+				};
+				const out: ContrastSample[] = [];
+				const start = performance.now();
+				const frame = () => {
+					const t = Math.round(performance.now() - start);
+					const fill = getComputedStyle(box).backgroundColor;
+					const chevron = getComputedStyle(svg).color;
+					const [hi, lo] = [lum(fill), lum(chevron)].sort((a, b) => b - a);
+					out.push({ ms: t, fill, chevron, ratio: (hi + 0.05) / (lo + 0.05) });
+					if (t < ms) requestAnimationFrame(frame);
+					else resolve(out);
+				};
+				requestAnimationFrame(frame);
+			}),
+		ms
+	);
+}
+
+// WCAG 1.4.11's floor for a graphic against what sits next to it. The settled states clear it
+// easily (salmon on dark blue is about 6:1, white on dark blue about 14:1); a fill and chevron that
+// cross-fade through each other drop to about 1.6:1 halfway.
+const CONTRAST_FLOOR = 3;
+
+test(
+	'hovering in and out of a footer chevron button never drops the chevron below 3:1 against its icon box',
+	{ tag: '@CUR-4031' },
+	async ({ page }) => {
+		await page.goto('/');
+		const button = page.locator('footer .site-footer-intro [data-slot="button"]').first();
+		await expect(button, 'the footer has no chevron button').toBeAttached();
+		await smoothed(page);
+		await scrollFooterToRest(page, button);
+		const iconBox = button.locator(':scope > span').last();
+		await expect(iconBox.locator('svg'), 'the icon box has no chevron').toBeAttached();
+
+		const box = (await button.boundingBox())!;
+		const away = { x: box.x + box.width / 2, y: Math.max(0, box.y - 60) };
+		await page.mouse.move(away.x, away.y);
+
+		// Both directions: a cross-fade passes its midpoint on the way in and again on the way out.
+		for (const [direction, target, settled] of [
+			['hover in', { x: box.x + box.width / 2, y: box.y + box.height / 2 }, SALMON],
+			['hover out', away, DARK_BLUE]
+		] as const) {
+			const sampling = sampleIconContrast(iconBox, 600);
+			await page.mouse.move(target.x, target.y);
+			const samples = await sampling;
+			expect(samples.length, `${direction}: too few frames sampled`).toBeGreaterThan(10);
+			expect(samples.at(-1)!.fill, `${direction}: the icon box never changed colour`).toBe(settled);
+			const worst = samples.reduce((a, b) => (b.ratio < a.ratio ? b : a));
+			expect(
+				worst.ratio,
+				`${direction}: the chevron lost contrast against its icon box at ${worst.ms} ms ` +
+					`(fill ${worst.fill}, chevron ${worst.chevron})`
+			).toBeGreaterThanOrEqual(CONTRAST_FLOOR);
+		}
 	}
 );

@@ -3,7 +3,7 @@ import { queryLanguageMismatch, rewriteQueryNote } from "./queryLanguage";
 
 const reads = (tag: string | undefined) => vi.fn(async () => tag);
 
-describe("only a query in a different non-English language from the person's is sent back (CUR-4376)", () => {
+describe("only a query in a different non-English language from the person's is sent back", () => {
 	it("returns the person's language for a Spanish query on a Catalan message", async () => {
 		expect(await queryLanguageMismatch("cat", "diseñador", reads("spa"))).toBe("cat");
 	});

@@ -1,0 +1,15 @@
+{
+	"installCommand": "pnpm install --frozen-lockfile --filter aipotluck-web...",
+	"buildCommand": "pnpm run vercel-build",
+	"ignoreCommand": "node scripts/vercel-ignore-build.mjs",
+	"crons": [
+		{
+			"path": "/chat/api/cleanup",
+			"schedule": "0 3 * * *"
+		},
+		{
+			"path": "/chat/api/probes",
+			"schedule": "* * * * *"
+		}
+	]
+}

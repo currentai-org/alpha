@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Fault-tolerance / failure-recovery test.
+# Fault-tolerance / failure-recovery test (brief §9 launch-gate; one of the two open reliability tests).
 #
-# Framing: this is deterministic FAULT INJECTION (cf. ReliabilityBench 2026's fault-tolerance
+# 2026 SOTA framing: this is deterministic FAULT INJECTION (cf. ReliabilityBench 2026's fault-tolerance
 # dimension; tau-bench/tau2-bench pass^k). A tool call is rigged to FAIL on its first invocation and
 # succeed on the second. We then assert the agent's loop OBSERVED the error and RECOVERED (retried)
 # rather than giving up or hallucinating a result. We report pass^k = (clean recoveries)/RUNS — the

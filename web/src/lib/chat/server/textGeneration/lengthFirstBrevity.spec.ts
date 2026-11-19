@@ -3,7 +3,7 @@ import type { EndpointMessage } from "../endpoints/types";
 
 // Wiring only: proves the length-first-brevity flag decides which brevity sentence reaches the user
 // turn. Whether Apertus then writes the long guide is a live question, answered by
-// evals/inspect_tasks/office_drafts.py with the flag forced on and off (CUR-2126).
+// evals/inspect_tasks/office_drafts.py with the flag forced on and off.
 
 let flagValue = false;
 vi.mock("./lengthFirstBrevityGate", () => ({ lengthFirstBrevityEnabled: () => flagValue }));

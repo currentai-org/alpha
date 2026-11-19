@@ -11,7 +11,7 @@
  *     pair an ipHash with a userId, so these rows add no new join.
  *
  * FAILS OPEN on a count error, like the per-minute chat limits: the route still applies the strict
- * SSRF guard and its size cap, so a database blip costs a little extra fetching and nothing more. (CUR-3191)
+ * SSRF guard and its size cap, so a database blip costs a little extra fetching and nothing more.
  */
 import { recordEvent, countLiveEvents } from "$lib/chat/server/db/eventWindow";
 import { hashIp } from "$lib/chat/server/db/ipHash";

@@ -1,18 +1,18 @@
+import { env } from '$env/dynamic/private';
+import { posthogAssetsHost, posthogIngestHost } from '$lib/posthogUpstream';
 import type { RequestHandler } from './$types';
 
 // First-party PostHog proxy (ad-blocker evasion; path `/rs` — see web/docs/posthog-reverse-proxy.md).
 //
-// This server route is the adapter-agnostic GUARANTEE: it works in local dev, on any adapter, and on
-// Vercel whether or not the vercel.json edge rewrite is honored. When the edge rewrite IS honored,
-// `/rs/*` is served at the edge and this never runs — so it's a free floor, not a second code path
-// to reason about.
+// The ONLY PostHog proxy: it works the same in local dev, on Vercel and on any host that
+// runs the container. vercel.json's three edge rewrites that used to sit in front of it are gone, so a
+// host that never reads vercel.json loses nothing.
 //
-// SECURITY: the upstreams are HARDCODED and never derived from the request, so this can only ever
-// forward to PostHog — it is not an open proxy / SSRF surface. `/static/*` (JS bundle, recorder,
+// SECURITY: the upstreams come from deployment config (POSTHOG_INGEST_HOST, absolute https only, see
+// posthogUpstream.js) and are never derived from the request, so this can only forward to the
+// deployment's own PostHog — it is not an open proxy / SSRF surface. `/static/*` (JS bundle, recorder,
 // surveys) and `/array/*` (remote config `config.js`) go to the assets host; everything else
-// (`/e`, `/i/v0/e`, `/flags`, `/decide`) to ingestion.
-const ASSETS = 'https://us-assets.i.posthog.com';
-const INGEST = 'https://us.i.posthog.com';
+// (`/e`, `/i/v0/e`, `/flags`, `/decide`, `/report`) to ingestion.
 
 // Always dynamic; never prerender this route. And don't 308-redirect posthog's `/rs/e/`
 // (trailing slash) — proxy it exactly as sent.
@@ -45,7 +45,9 @@ const handler: RequestHandler = async ({ url, request }) => {
 	// Exact path after `/rs/`, trailing slash preserved. String-concat onto a fixed host literal so
 	// the path can never redirect the request to another origin.
 	const rest = url.pathname.replace(/^\/rs\/?/, '');
-	const host = rest.startsWith('static/') || rest.startsWith('array/') ? ASSETS : INGEST;
+	const ingest = posthogIngestHost(env);
+	const host =
+		rest.startsWith('static/') || rest.startsWith('array/') ? posthogAssetsHost(ingest) : ingest;
 	const target = `${host}/${rest}${url.search}`;
 
 	const headers = new Headers();

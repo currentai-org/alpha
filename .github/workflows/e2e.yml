@@ -1,0 +1,113 @@
+# The scenario suite (Playwright) against the pull request's own Vercel preview. It needs secrets, so it
+# runs only where they can be read safely:
+#
+# - A pull request from a branch in this repository runs in the `preview-e2e` environment, whose required
+#   reviewers approve each run before any secret reaches it.
+# - A merge queue batch runs in `merge-queue-e2e`, open only to the queue's own branches. Its code was
+#   already reviewed, so it needs no second approval.
+# - A pull request from a fork never runs it here: GitHub gives a fork's `pull_request` run no secrets.
+#   The merge queue runs it on the batch before the change lands on main.
+#
+# With no secrets set (a fork of this repository, or before the environments are configured) the job
+# says so in a notice and passes, so the CI stays green for anyone who cannot run it.
+name: E2E
+
+on:
+  pull_request:
+  merge_group:
+
+permissions: {}
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scenarios:
+    name: scenario suite against the preview
+    if: github.event_name == 'merge_group' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: ${{ github.event_name == 'merge_group' && 'merge-queue-e2e' || 'preview-e2e' }}
+    permissions:
+      contents: read
+      deployments: read # the Vercel git integration reports each preview as a deployment on the commit
+    env:
+      HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+    steps:
+      - name: Are the secrets here?
+        id: gate
+        env:
+          SCENARIO_ENV: ${{ secrets.SCENARIO_ENV }}
+        run: |
+          if [ -z "$SCENARIO_ENV" ]; then
+            echo "::notice title=e2e skipped::the SCENARIO_ENV secret is not set in this environment, so the scenario suite did not run."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        if: steps.gate.outputs.run == 'true'
+        with:
+          ref: ${{ env.HEAD_SHA }}
+          persist-credentials: false
+
+      - name: Wait for the commit's Vercel preview
+        id: preview
+        if: steps.gate.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          deadline=$(( $(date +%s) + 1200 ))
+          while [ "$(date +%s)" -lt "$deadline" ]; do
+            for id in $(gh api "repos/$REPO/deployments?sha=$HEAD_SHA&per_page=20" --jq '.[] | select(.environment | test("^Preview")) | .id'); do
+              url=$(gh api "repos/$REPO/deployments/$id/statuses" --jq '[.[] | select(.state == "success")][0].environment_url // empty')
+              if [ -n "$url" ]; then
+                echo "base_url=$url" >> "$GITHUB_OUTPUT"
+                echo "preview: $url"
+                exit 0
+              fi
+            done
+            sleep 20
+          done
+          echo "::error::no successful Vercel preview deployment for $HEAD_SHA within 20 minutes"
+          exit 1
+
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        if: steps.gate.outputs.run == 'true'
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        if: steps.gate.outputs.run == 'true'
+        with:
+          node-version-file: .nvmrc
+
+      - name: Install
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          pnpm install --frozen-lockfile
+          cd web && pnpm exec playwright install --with-deps chromium
+
+      - name: Scenario suite
+        if: steps.gate.outputs.run == 'true'
+        working-directory: web
+        env:
+          # The contents of a dotenv file: one KEY=value per line, with the keys web/.env.example names.
+          SCENARIO_ENV: ${{ secrets.SCENARIO_ENV }}
+          SCENARIO_BASE_URL: ${{ steps.preview.outputs.base_url }}
+          # A pull request reads the quarantine list and skips the live-model specs; the queue runs all.
+          SCENARIO_QUARANTINE: ${{ github.event_name == 'pull_request' && '1' || '0' }}
+          SCENARIO_SKIP_LIVE_MODEL: ${{ github.event_name == 'pull_request' && '1' || '0' }}
+        run: |
+          set -a
+          . <(printf '%s\n' "$SCENARIO_ENV")
+          set +a
+          pnpm test:e2e:scenarios
+
+      - name: Upload the report
+        if: failure() && steps.gate.outputs.run == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: playwright-report
+          path: web/playwright-report
+          retention-days: 7

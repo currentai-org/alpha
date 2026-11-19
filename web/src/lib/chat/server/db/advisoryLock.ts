@@ -1,5 +1,5 @@
 // A lock across every instance that shares this database, for work whose state lives
-// somewhere with no compare-and-set of its own (an owner's first key in the custodial bucket). (CUR-4116)
+// somewhere with no compare-and-set of its own (an owner's first key in the custodial bucket).
 import { sql } from "drizzle-orm";
 import { getDb, withTransaction } from "./client";
 

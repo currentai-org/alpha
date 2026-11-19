@@ -1,6 +1,10 @@
+<!--
+SPDX-FileCopyrightText: 2018- The Hugging Face team
+SPDX-License-Identifier: Apache-2.0
+Modified by Current AI from huggingface/chat-ui.
+-->
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages.js';
-	import type { EmbeddedIntent } from '$lib/chat/types/EmbeddedIntent';
 	import { base } from '$lib/chat/paths';
 	import { page } from '$app/state';
 	import { Menu, Sidebar } from '@aipotluck/alpha-ds';
@@ -8,23 +12,35 @@
 	import RiDeleteBinFill from '~icons/ri/delete-bin-fill';
 	import RiMore from '~icons/ri/more-line';
 	import RiPencilLine from '~icons/ri/pencil-line';
+	import RiShareLine from '~icons/ri/share-line';
+	import RiPushpinLine from '~icons/ri/pushpin-line';
+	import RiUnpinLine from '~icons/ri/unpin-line';
+	import RiArchiveLine from '~icons/ri/archive-line';
 	import RiSpyLine from '~icons/ri/spy-line';
+	import RiPriceTag3Line from '~icons/ri/price-tag-3-line';
 	import type { ConvSidebar } from '$lib/chat/types/ConvSidebar';
+	import type { ChatTag } from '$lib/chat/utils/chatTags';
 
 	import DeleteConversationModal from '$lib/chat/components/DeleteConversationModal.svelte';
 	import RenameConversationDialog from '$lib/chat/components/RenameConversationDialog.svelte';
+	import ShareConversationDialog from '$lib/chat/components/ShareConversationDialog.svelte';
+	import ConversationTagsDialog from '$lib/chat/components/ConversationTagsDialog.svelte';
 	import { requireAuthUser } from '$lib/chat/utils/auth';
 	import { isActiveConversationId } from '$lib/chat/utils/conversationId';
 	import { isLocalModelId } from '$lib/chat/identity';
+	import { shownTitle } from '$lib/chat/crypto/shownTitle.svelte';
 
 	interface Props {
 		conv: ConvSidebar;
 		readOnly?: true;
 		ondeleteConversation?: (id: string) => void;
 		onrenameConversation?: (id: string, title: string) => void;
-		embeddedDemo?: boolean;
-		embeddedActiveConversationId?: string;
-		onEmbeddedNavigate?: (intent?: EmbeddedIntent) => void;
+		onpinConversation?: (id: string, pinned: boolean) => void;
+		onarchiveConversation?: (id: string) => void;
+		/** Set the chat's whole tag list, by name. */
+		ontagConversation?: (id: string, names: string[]) => void;
+		/** The person's tags, offered in the Tags dialog. */
+		knownTags?: ChatTag[];
 	}
 
 	let {
@@ -32,9 +48,10 @@
 		readOnly,
 		ondeleteConversation,
 		onrenameConversation,
-		embeddedDemo = false,
-		embeddedActiveConversationId,
-		onEmbeddedNavigate
+		onpinConversation,
+		onarchiveConversation,
+		ontagConversation,
+		knownTags = []
 	}: Props = $props();
 
 	// No extra query: layoutData already projects each conversation's own model onto the sidebar row
@@ -44,16 +61,22 @@
 
 	let deleteOpen = $state(false);
 	let renameOpen = $state(false);
+	let shareOpen = $state(false);
+	let tagsOpen = $state(false);
+	// Layout data's `chatTagsEnabled`: signed in, since a tag is kept on the account.
+	const tagsOffered = $derived(page.data.chatTagsEnabled === true && !!ontagConversation);
+	// Layout data's `shareLinksEnabled`: signed in, with the share-links flag on.
+	const shareOffered = $derived(page.data.shareLinksEnabled === true);
 	let isMenuOpen = $state(false);
 
 	// See conversationId.ts: conv.id is an ObjectId INSTANCE (not a string) for conversations loaded
 	// via the sidebar's infinite-scroll pagination, so a bare `conv.id === page.params.id` would silently
 	// never highlight those rows, even while their own page is open.
-	let isActive = $derived(
-		embeddedDemo && embeddedActiveConversationId
-			? String(conv.id) === embeddedActiveConversationId
-			: isActiveConversationId(conv.id, page.params.id)
-	);
+	let isActive = $derived(isActiveConversationId(conv.id, page.params.id));
+
+	// A sealed title opens in the browser with the unlocked history key; shownTitle is the one
+	// place every surface reads the title from.
+	const title = $derived(shownTitle(conv));
 </script>
 
 {#snippet rowMenu()}
@@ -73,10 +96,30 @@
 		<Menu.Portal>
 			<Menu.Positioner side="bottom" align="end" sideOffset={4}>
 				<Menu.Popup onCloseAutoFocus={(e) => e.preventDefault()}>
-					<Menu.Item onSelect={() => (renameOpen = true)}>
+					<Menu.Item onSelect={() => onpinConversation?.(conv.id.toString(), !conv.pinned)} data-conv-action="pin">
+							{#if conv.pinned}
+								<RiUnpinLine aria-hidden="true" /> {m.product_unpin()}
+							{:else}
+								<RiPushpinLine aria-hidden="true" /> {m.product_pin()}
+							{/if}
+						</Menu.Item>
+						<Menu.Item onSelect={() => (renameOpen = true)}>
 						<RiPencilLine aria-hidden="true" /> Rename
 					</Menu.Item>
-					<Menu.Item tone="destructive" onSelect={() => (deleteOpen = true)}>
+					{#if tagsOffered}
+						<Menu.Item onSelect={() => (tagsOpen = true)} data-conv-action="tags">
+							<RiPriceTag3Line aria-hidden="true" /> {m.product_tags()}
+						</Menu.Item>
+					{/if}
+					{#if shareOffered}
+						<Menu.Item onSelect={() => (shareOpen = true)}>
+							<RiShareLine aria-hidden="true" /> Share chat
+						</Menu.Item>
+					{/if}
+					<Menu.Item onSelect={() => onarchiveConversation?.(conv.id.toString())} data-conv-action="archive">
+							<RiArchiveLine aria-hidden="true" /> {m.product_archive()}
+						</Menu.Item>
+						<Menu.Item tone="destructive" onSelect={() => (deleteOpen = true)}>
 						<RiDeleteBinFill aria-hidden="true" /> {m.product_delete()}
 					</Menu.Item>
 				</Menu.Popup>
@@ -103,41 +146,44 @@
 	</span>
 {/snippet}
 
-{#if embeddedDemo}
-	<Sidebar.Item
-		current={isActive}
-		label={conv.title}
-		marker={isLocal ? localTag : undefined}
-		onclick={() => onEmbeddedNavigate?.({ kind: 'conversation', id: String(conv.id) })}
-	>
-		{conv.title}
-	</Sidebar.Item>
-{:else}
-	<Sidebar.Item
-		current={isActive}
-		label={conv.title}
-		href="{base}/conversation/{conv.id}"
-		data-sveltekit-noscroll
-		data-sveltekit-preload-data="tap"
-		data-title-source={conv.titleSource ?? undefined}
-		marker={isLocal ? localTag : undefined}
-		trailing={readOnly ? undefined : rowMenu}
-	>
-		{conv.title}
-	</Sidebar.Item>
-{/if}
+<Sidebar.Item
+	current={isActive}
+	label={title}
+	href="{base}/conversation/{conv.id}"
+	data-sveltekit-noscroll
+	data-sveltekit-preload-data="tap"
+	data-title-source={conv.titleSource ?? undefined}
+	marker={isLocal ? localTag : undefined}
+	trailing={readOnly ? undefined : rowMenu}
+>
+	{title}
+</Sidebar.Item>
 
 <RenameConversationDialog
 	bind:open={renameOpen}
-	title={conv.title}
+	{title}
 	onrename={(title) => onrenameConversation?.(conv.id.toString(), title)}
 />
+
+{#if tagsOffered && tagsOpen}
+	<ConversationTagsDialog
+		bind:open={tagsOpen}
+		{title}
+		current={conv.tags ?? []}
+		known={knownTags}
+		onsave={(names) => ontagConversation?.(conv.id.toString(), names)}
+	/>
+{/if}
+
+{#if shareOffered && shareOpen}
+	<ShareConversationDialog bind:open={shareOpen} conversationId={conv.id.toString()} {title} />
+{/if}
 
 <!-- Delete confirmation modal -->
 {#if deleteOpen}
 	<DeleteConversationModal
 		open={deleteOpen}
-		title={conv.title}
+		{title}
 		onclose={() => (deleteOpen = false)}
 		ondelete={() => {
 			deleteOpen = false;

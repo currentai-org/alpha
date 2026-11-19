@@ -13,7 +13,7 @@
  *
  * Counted through eventWindow.ts on the message_events table, like every other cap there. The address is
  * stored only as its peppered hash (hashTargetEmail). FAIL OPEN, the same posture as those caps: a DB
- * blip must never stop a real person signing in. (CUR-4172)
+ * blip must never stop a real person signing in.
  */
 import { config } from "$lib/chat/server/config";
 import { getDb } from "$lib/chat/server/db/client";

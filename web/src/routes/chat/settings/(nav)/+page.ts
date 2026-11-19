@@ -16,7 +16,7 @@ import type { PageLoad } from "./$types";
 // The account menu's Settings link is a client-side navigation, so this load runs in the browser and
 // can see the width. A phone goes to the section list, the first screen iOS and Claude's app show;
 // landing it on the first section leaves the rest one tap behind a back button nobody reads as the
-// list (CUR-3601). A server render can't know the width and goes to Personalization.
+// list. A server render can't know the width and goes to Personalization.
 export const load: PageLoad = ({ url }) => {
 	if (url.searchParams.has("sections")) return;
 	if (browser && !window.matchMedia("(min-width: 768px)").matches) {

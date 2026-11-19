@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { groundcheckAnswer } from "./groundcheck";
 
 // LIVE: groundcheck end to end, the real detector and the real reviser on TASK_MODEL's lane, over three
-// sets of answers under evals/data/ (CUR-2692).
+// sets of answers under evals/data/.
 //
 //   groundcheck-real-answers.jsonl, set "fabrication": 24 real model answers to "list four European
 //     open-weight projects with their country", each with the countries no source gives (`cut`).
@@ -13,8 +13,8 @@ import { groundcheckAnswer } from "./groundcheck";
 //     questions. Every deletion groundcheck makes in one is printed and looked up in
 //     groundcheck-deletion-verdicts.json; a wrong one fails the spec, and so does one nobody has
 //     judged yet, which is how a new kind of deletion gets read rather than averaged away.
-//   groundcheck-cases.json: one hand-written answer per guard, each the case a ticket was filed on
-//     (CUR-2594, CUR-2680, CUR-2682, CUR-2688). Every `keep` sentence and [n] marker must survive.
+//   groundcheck-cases.json: one hand-written answer per guard, each the case a ticket was filed on.
+//     Every `keep` sentence and [n] marker must survive.
 //
 // The reviser runs at temperature 0, so a second pass over the same answer mostly repeats the first:
 // breadth comes from more answers. GROUNDCHECK_RUNS (default 1) repeats the whole set for the rare
@@ -24,7 +24,7 @@ import { groundcheckAnswer } from "./groundcheck";
 //   pnpm test:live src/lib/chat/server/groundcheck.live.spec.ts
 // GROUNDCHECK_LIVE=0 skips it. live-vendor-tests.yml sets that on its vendor-contract step and runs this
 // eval in its own step with its own alert, because a red here is the reviser's behaviour, not a
-// vendor changing shape (CUR-2759).
+// vendor changing shape.
 
 // The test setup stubs $env/dynamic/private, so the app's config reads every key as empty and the
 // detector call goes to a bare "/detect". Here config reads the environment Doppler injected, which is

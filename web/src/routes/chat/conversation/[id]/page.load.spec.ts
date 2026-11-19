@@ -44,7 +44,7 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 });
 
-describe("conversation page load when the chat can't be opened (CUR-2821)", () => {
+describe("conversation page load when the chat can't be opened", () => {
 	it("sends a cut-off id's 400 to the chat home with the unavailable note, like a 404", async () => {
 		const thrown = await opening("66f1c2a9b3e4", answering(400));
 		expect(isRedirect(thrown) && thrown.location).toMatch(/\/\?unavailable=1$/);
@@ -66,7 +66,7 @@ describe("conversation page load when the chat can't be opened (CUR-2821)", () =
 	});
 });
 
-describe("conversation page load when the chat on screen reloads with no connection (CUR-2805)", () => {
+describe("conversation page load when the chat on screen reloads with no connection", () => {
 	const ID = "66f1c2a9b3e4a5b6c7d8e9f1";
 	const conversation = { id: ID, title: "Glaciers", messages: [], model: "m", modelId: "m", shared: false };
 	const serving = vi.fn(async () => new Response(superjson.stringify(conversation), { status: 200 }));

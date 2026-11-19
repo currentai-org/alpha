@@ -85,7 +85,7 @@ describe("leadWithEuropeanLine", () => {
 	});
 });
 
-describe("leadWithEuropeanLine writes its sentence in the person's language (CUR-4061)", () => {
+describe("leadWithEuropeanLine writes its sentence in the person's language", () => {
 	const es = "Tu amiga no está sola. Si está en crisis en Estados Unidos, puede llamar o escribir al 988.";
 
 	it("inserts the Spanish sentence into a Spanish answer, never the English one", () => {

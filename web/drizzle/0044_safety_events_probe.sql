@@ -1,0 +1,1 @@
+ALTER TABLE "safety_events" ADD COLUMN "probe" text;

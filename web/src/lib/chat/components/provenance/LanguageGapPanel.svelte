@@ -3,7 +3,6 @@
 	import { m } from '$lib/paraglide/messages.js';
 	import { base } from '$lib/chat/paths';
 	import type { LanguageGap, ModelScore } from '$lib/chat/routing/router';
-	import type { EmbeddedIntent } from '$lib/chat/types/EmbeddedIntent';
 	import LanguageDataActions from '$lib/chat/components/language-data/LanguageDataActions.svelte';
 	import RiArrowRightLine from '~icons/ri/arrow-right-line';
 
@@ -24,9 +23,7 @@
 		scores,
 		weakSupport,
 		reference,
-		placeholder = false,
-		embeddedDemo = false,
-		onEmbeddedNavigate
+		placeholder = false
 	}: {
 		gap: LanguageGap;
 		/** Every catalog model's score for this message; the served ones are charted. */
@@ -36,9 +33,6 @@
 		/** A well-covered language for scale: its support and, when measured, its raw accuracy. */
 		reference?: { name: string; value: number; raw?: number };
 		placeholder?: boolean;
-		/** The /alpha demo: the Contribute page is the full app's, so its link reports an intent. */
-		embeddedDemo?: boolean;
-		onEmbeddedNavigate?: (intent?: EmbeddedIntent) => void;
 	} = $props();
 
 	const charted = $derived(
@@ -70,11 +64,6 @@
 		casing="sentence"
 		class="shrink-0"
 		data-language-gap-more
-		onclick={(e) => {
-			if (!embeddedDemo) return;
-			e.preventDefault();
-			onEmbeddedNavigate?.({ kind: 'app', label: m.chat_waysToContribute() });
-		}}
 	>
 		{m.chat_otherWaysToHelp()} <RiArrowRightLine aria-hidden="true" />
 	</Button>
@@ -157,8 +146,6 @@
 			<h3 id="gap-help-heading" class="type-body text-fg-1">{m.languageData_helpHeading({ language: gap.name })}</h3>
 			{@render more()}
 		</div>
-		{#if !embeddedDemo}
-			<LanguageDataActions language={gap.tag} name={gap.name} surface="composer_language_panel" layout="tiles" />
-		{/if}
+		<LanguageDataActions language={gap.tag} name={gap.name} surface="composer_language_panel" layout="tiles" />
 	</section>
 </div>

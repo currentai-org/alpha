@@ -3,7 +3,7 @@ import type { OpennessBucket } from '$lib/types/category';
 /**
  * The gap map's one vocabulary for a product's score level. The legend, the "How to read the map"
  * dialog, row captions, tooltips and the side panels all read from here, so the three levels are
- * never called anything else (CUR-624).
+ * never called anything else.
  *
  * Two terms, two levels: "maturity stage" belongs to a category, "product score" to a product.
  * Changing a word here changes it everywhere.

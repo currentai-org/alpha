@@ -29,7 +29,7 @@ export function stripDeclinedTurns(messages: Message[]): Message[] {
 }
 
 /**
- * The history every turn sends the model, whatever its harness (CUR-2697): declined pairs stripped,
+ * The history every turn sends the model, whatever its harness: declined pairs stripped,
  * and a personal name an earlier answer adopted (the name guard's `nameNotice`) neutralized, so it
  * cannot compound into an established identity over the session. Every message is a shallow copy:
  * the injection fence is written into the last user message in place, and an alias would carry it

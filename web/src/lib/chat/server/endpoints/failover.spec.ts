@@ -10,7 +10,7 @@ import { MessageTooLongError } from "./openai/fitHistory";
 import { ToolRoundHandoff } from "./openai/calculateTool";
 import type { Endpoint, EndpointParameters, TextGenerationStreamOutputSimplified } from "./types";
 
-// The busy mark's writes go to the database; these specs read which turns would have counted (CUR-4098).
+// The busy mark's writes go to the database; these specs read which turns would have counted.
 const busy = vi.hoisted(() => ({ noteFailed: vi.fn(), noteAnswered: vi.fn() }));
 vi.mock("$lib/chat/server/modelBusy", () => busy);
 
@@ -51,7 +51,7 @@ const laneThrowsBeforeFirst =
 			// the behaviour is unchanged: this still dies on the first pull with nothing yielded.
 			//
 			// A bare throw needs a no-unreachable disable, which the main config reports as UNUSED, so --fix deletes
-			// it and lint:quality goes red (CUR-219). Needing no directive keeps that from recurring.
+			// it and lint:quality goes red. A conditional throw needs no directive at all.
 			if (msg) throw new Error(msg);
 			yield chunk("never");
 		})();
@@ -199,7 +199,7 @@ describe("withFailover", () => {
 	});
 
 	// A lane that comes back with zero chunks produced no answer, which is the lost-turn symptom, so
-	// it fails over rather than counting as a clean completion. (CUR-1344)
+	// it fails over rather than counting as a clean completion.
 	it("a lane completing with zero chunks FAILS OVER — an empty answer is a lost turn, not a clean finish", async () => {
 		const backup = vi.fn(laneYielding("hf"));
 		const ep = withFailover([laneYielding(), backup]); // primary completes with no chunks
@@ -213,7 +213,7 @@ describe("withFailover", () => {
 	});
 });
 
-describe("CUR-1210: retry the SAME lane before falling over to a different model", () => {
+describe("retry the SAME lane before falling over to a different model", () => {
 	it("recovers from a transient primary failure WITHOUT ever touching the backup model", async () => {
 		const primary = vi.fn(laneThrowsThenRecovers(1, "transient timeout", "apertus-answer"));
 		const backup = vi.fn(laneYielding("glm-answer"));
@@ -242,18 +242,18 @@ describe("CUR-1210: retry the SAME lane before falling over to a different model
 	});
 });
 
-describe("CUR-1344: a hung lane never throws, so hedge on first token instead of retrying after it", () => {
+describe("a hung lane never throws, so hedge on first token instead of retrying after it", () => {
 	it("serves the turn from a hedged second attempt when the first produces no first chunk", async () => {
 		const lane = laneByCall({ delayMs: 400, text: "stalled" }, { delayMs: 5, text: "hedged" });
 		const backup = vi.fn(laneYielding("backup-model"));
 		const ep = withFailover([lane, backup], { hedgeDelayMs: 10, throttle: createHedgeThrottle() });
 		expect(await collect(ep)).toEqual(["hedged"]);
-		// CUR-1210's invariant still holds: a hedge is a SAME-lane attempt, so the different-model
-		// backup is no closer than a sequential retry would have put it.
+		// Same-lane retries come before failover, and a hedge is a SAME-lane attempt, so the
+		// different-model backup is no closer than a sequential retry would have put it.
 		expect(backup).not.toHaveBeenCalled();
 	});
 
-	// The distinction the whole change turns on. Envoy's hedge issues a retry "without resetting the
+	// The distinction hedging turns on. Envoy's hedge issues a retry "without resetting the
 	// original request"; a per-try timeout that cancelled and retried would throw away a prefill that
 	// was about to land. Here the original answers 10ms AFTER the hedge fires — under cancel-and-retry
 	// this returns "hedged", and the only way it returns "original" is if the first was left running.
@@ -325,7 +325,7 @@ describe("CUR-1344: a hung lane never throws, so hedge on first token instead of
 	});
 });
 
-describe("CUR-1658: a hedge loser whose first pull never settles is never cancelled", () => {
+describe("a hedge loser whose first pull never settles is never cancelled", () => {
 	it("cuts an attempt started while the turn's signal is ALREADY aborted", async () => {
 		// addEventListener only fires on a FUTURE transition, so chaining by listener alone leaves an
 		// attempt started after the turn was cancelled with a controller nothing will ever abort — this
@@ -376,7 +376,7 @@ describe("CUR-1658: a hedge loser whose first pull never settles is never cancel
 	});
 });
 
-// The preview fault a spec uses to put the backup lane in front of a visitor (CUR-1933). It has to
+// The preview fault a spec uses to put the backup lane in front of a visitor. It has to
 // reach the backup without calling the primary at all, and it has to be inert with no backup.
 describe("primary_lane_down fault", () => {
 	const faulted = { failPrimaryLane: true } as EndpointParameters;
@@ -398,10 +398,10 @@ describe("primary_lane_down fault", () => {
 	});
 });
 
-// The contract (CUR-2239): before a backup serving a DIFFERENT model starts, the stream says which
+// The contract: before a backup serving a DIFFERENT model starts, the stream says which
 // model it replaces, which one takes over and why, so the live log and the receipt can show both.
 // Nothing else names the backup until its own first chunk.
-describe("CUR-2239: a cross-model backup is announced, with the model it replaces, before it answers", () => {
+describe("a cross-model backup is announced, with the model it replaces, before it answers", () => {
 	const APERTUS = "swiss-ai/apertus-v1.5-70b";
 	const GLM = "zai-org/GLM-5.3";
 	const drain = async (ep: Endpoint, p: EndpointParameters = params) => {
@@ -458,11 +458,11 @@ describe("CUR-2239: a cross-model backup is announced, with the model it replace
 	});
 });
 
-// CUR-2316. A primary that never sends headers never throws, so the ladder above never reaches the
+// A primary that never sends headers never throws, so the ladder above never reaches the
 // backup: with or without the same-lane hedge, the turn waits on the primary until something outside
 // this file ends it (the output screen's 25s no-token deadline, then the 45s watchdog). The deadline
 // below moves a silent lane's turn to the next lane while the visitor is still waiting.
-describe("CUR-2316: a primary that sends no headers moves to the backup lane", () => {
+describe("a primary that sends no headers moves to the backup lane", () => {
 	const hung = { hangPrimaryLane: true } as EndpointParameters;
 	const firstWithin = async (ep: Endpoint, p: EndpointParameters, ms: number) => {
 		const gen = await ep(p);
@@ -553,7 +553,7 @@ describe("CUR-2316: a primary that sends no headers moves to the backup lane", (
 		expect(await collect(ep)).toEqual(["glm"]);
 	});
 
-	// A silent backup (CUR-3750) with no deadline of its own, as the last lane, would hold a turn the
+	// A silent backup with no deadline of its own, as the last lane, would hold a turn the
 	// primary had already given up on until the 45s watchdog fired.
 	it("moves a turn past a silent backup to the lane behind it, so a second backup gets the turn", async () => {
 		const silentBackup = vi.fn<Endpoint>(() => new Promise(() => {}));
@@ -576,10 +576,10 @@ describe("CUR-2316: a primary that sends no headers moves to the backup lane", (
 	});
 });
 
-// CUR-2346. A rate-limited lane is refused for the rest of its window, so a same-lane retry 100–300ms
+// A rate-limited lane is refused for the rest of its window, so a same-lane retry 100–300ms
 // later spends another request of the shared cap and fails the same way. With a lane behind it, the turn
 // moves on after one attempt; the last lane keeps its retry because there is nowhere else to go.
-describe("CUR-2346: a 429 moves the turn to the next lane without a same-lane retry", () => {
+describe("a 429 moves the turn to the next lane without a same-lane retry", () => {
 	const laneRateLimited = (): Endpoint => async () => {
 		throw Object.assign(new Error("429 Rate limit exceeded"), { status: 429 });
 	};
@@ -644,9 +644,9 @@ describe("CUR-2346: a 429 moves the turn to the next lane without a same-lane re
 	});
 });
 
-// CUR-3313. When Large 3 sends nothing for 12s and Mistral Medium answers, the persisted failover
+// When Large 3 sends nothing for 12s and Mistral Medium answers, the persisted failover
 // names the cause, so each one has to come out as itself, never as the default.
-describe("CUR-3313: the failover record names why the primary gave up", () => {
+describe("the failover record names why the primary gave up", () => {
 	const LARGE3 = "mistral-large-2512";
 	const MEDIUM = "mistral-medium-2604";
 	const causeOf = async (primary: Endpoint, opts: Parameters<typeof withFailover>[1] = {}) => {
@@ -703,10 +703,10 @@ describe("CUR-3313: the failover record names why the primary gave up", () => {
 	});
 });
 
-// CUR-2893. A 100,000-character paste refused by Mistral Medium's lane (needs ~63,633 tokens of
+// A 100,000-character paste refused by Mistral Medium's lane (needs ~63,633 tokens of
 // 30,976) must not be answered by Mistral Small's 262,144-token lane: the visitor would see an answer
 // from a model they had not picked instead of the refusal.
-describe("CUR-2893: a message too long for the chosen model is refused, not retried or failed over", () => {
+describe("a message too long for the chosen model is refused, not retried or failed over", () => {
 	const laneTooLong = (): Endpoint => async () => {
 		throw new MessageTooLongError(63_633, 30_976);
 	};
@@ -740,7 +740,7 @@ describe("CUR-2893: a message too long for the chosen model is refused, not retr
 	});
 });
 
-// CUR-2460. Medium-served answers must not introduce themselves as Mistral Large 3: the system
+// Medium-served answers must not introduce themselves as Mistral Large 3: the system
 // prompt follows the lane that is picked, not the primary.
 describe("a backup lane serving another model is told which model it is", () => {
 	const LARGE = "mistral-large-2512";
@@ -797,8 +797,8 @@ describe("a backup lane serving another model is told which model it is", () => 
 
 // `wrong_model_served` swaps the first lane's answer. The backup must answer clean, or a
 // shed primary would hand the turn to a backup that sheds too, and the fault would prove nothing about
-// the backup's honest label. (CUR-1614)
-describe("CUR-1614: the wrong_model_served fault reaches the first lane only", () => {
+// the backup's honest label.
+describe("the wrong_model_served fault reaches the first lane only", () => {
 	it("passes the substitute to lane 0 and leaves it off the backup lane's call", async () => {
 		const seen: (string | undefined)[] = [];
 		const recording =
@@ -822,9 +822,9 @@ describe("CUR-1614: the wrong_model_served fault reaches the first lane only", (
 	});
 });
 
-// CUR-3939. A picked model is answered by itself or not at all (CUR-3936), so most models have one lane. A
-// silent one ends the turn at its give-up rather than holding it until the route's 45s watchdog.
-describe("CUR-3939: a silent last lane ends the turn at its give-up, not the watchdog", () => {
+// A picked model is answered by itself or not at all, so most models have one lane. A silent one
+// ends the turn at its give-up rather than holding it until the route's 45s watchdog.
+describe("a silent last lane ends the turn at its give-up, not the watchdog", () => {
 	const silent: Endpoint = () => new Promise(() => {});
 	// A settling case passes the moment the give-up fires; the window only bounds a failure. It is wide
 	// enough to hold on a loaded runner under coverage.
@@ -872,7 +872,7 @@ describe("CUR-3939: a silent last lane ends the turn at its give-up, not the wat
 		).toBeInstanceOf(NoFirstChunkError);
 	});
 
-	it("counts a silent last lane toward the model's busy mark, as a 429 does (CUR-4098)", async () => {
+	it("counts a silent last lane toward the model's busy mark, as a 429 does", async () => {
 		busy.noteFailed.mockClear();
 		const ep = withFailover([silent], { lastLaneGiveUpMs: 30, busyKey: "swiss-ai/apertus-v1.5-70b" });
 		expect(await settleWithin(ep, {} as EndpointParameters, GIVE_UP_WINDOW_MS)).toBeInstanceOf(NoFirstChunkError);
@@ -891,7 +891,7 @@ describe("CUR-3939: a silent last lane ends the turn at its give-up, not the wat
 		expect(busy.noteFailed).not.toHaveBeenCalled();
 	});
 
-	it("stalls every lane under the every_lane_hangs fault, so a backup cannot answer and the turn ends silent (CUR-4384)", async () => {
+	it("stalls every lane under the every_lane_hangs fault, so a backup cannot answer and the turn ends silent", async () => {
 		busy.noteFailed.mockClear();
 		const backup = vi.fn(laneYielding("apertus"));
 		const ep = withFailover([laneYielding("apertus"), backup], {
@@ -906,7 +906,7 @@ describe("CUR-3939: a silent last lane ends the turn at its give-up, not the wat
 		expect(busy.noteFailed, "an injected stall marked the model busy for the whole preview").not.toHaveBeenCalled();
 	});
 
-	it("counts a last lane the gateway ended with 504 toward the model's busy mark (CUR-4345)", async () => {
+	it("counts a last lane the gateway ended with 504 toward the model's busy mark", async () => {
 		busy.noteFailed.mockClear();
 		const timedOut: Endpoint = async () => {
 			throw Object.assign(new Error("504 Gateway Timeout"), { status: 504 });
@@ -928,7 +928,7 @@ describe("CUR-3939: a silent last lane ends the turn at its give-up, not the wat
 		expect(busy.noteFailed).not.toHaveBeenCalled();
 	});
 
-	it("counts a last lane's 404 or 5xx toward the model's busy mark: the router has no working entry for it (CUR-4629)", async () => {
+	it("counts a last lane's 404 or 5xx toward the model's busy mark: the router has no working entry for it", async () => {
 		for (const status of [404, 500, 503]) {
 			busy.noteFailed.mockClear();
 			const down: Endpoint = async () => {
@@ -940,7 +940,7 @@ describe("CUR-3939: a silent last lane ends the turn at its give-up, not the wat
 		}
 	});
 
-	it("counts a later tool round's 404 before any answer text toward the busy mark, after round 1 answered (CUR-4629)", async () => {
+	it("counts a later tool round's 404 before any answer text toward the busy mark, after round 1 answered", async () => {
 		busy.noteFailed.mockClear();
 		busy.noteAnswered.mockClear();
 		const roundTwoNotFound: Endpoint = async () =>
@@ -999,11 +999,9 @@ describe("CUR-3939: a silent last lane ends the turn at its give-up, not the wat
 	});
 });
 
-describe("firstChunkTimings (CUR-3487)", () => {
-	const on = { hedging: true, silentLaneFailover: true };
-
+describe("firstChunkTimings", () => {
 	it("keeps the fleet defaults (8s hedge, 12s failover) for a model with no allowance of its own", () => {
-		expect(firstChunkTimings(null, on)).toEqual({
+		expect(firstChunkTimings(null)).toEqual({
 			hedgeDelayMs: 8_000,
 			failoverAfterMs: 12_000,
 			lastLaneGiveUpMs: null,
@@ -1011,34 +1009,24 @@ describe("firstChunkTimings (CUR-3487)", () => {
 	});
 
 	it("neither hedges nor fails over before a slow-prefill model's own allowance", () => {
-		expect(firstChunkTimings(20_000, on)).toEqual({
+		expect(firstChunkTimings(20_000)).toEqual({
 			hedgeDelayMs: 20_000,
 			failoverAfterMs: 20_000,
 			lastLaneGiveUpMs: null,
 		});
 	});
 
-	it("gives a last-lane give-up only to a model that opted in, so a slow healthy model keeps the watchdog (CUR-3939)", () => {
-		expect(firstChunkTimings(null, { ...on, giveUpMs: 20_000 }).lastLaneGiveUpMs).toBe(20_000);
-		expect(firstChunkTimings(null, on).lastLaneGiveUpMs).toBeNull();
+	it("gives a last-lane give-up only to a model that opted in, so a slow healthy model keeps the watchdog", () => {
+		expect(firstChunkTimings(null, { giveUpMs: 20_000 }).lastLaneGiveUpMs).toBe(20_000);
+		expect(firstChunkTimings(null).lastLaneGiveUpMs).toBeNull();
 	});
 
 	it("never hedges sooner than the fleet default, even for an allowance shorter than it", () => {
-		expect(firstChunkTimings(5_000, on).hedgeDelayMs).toBe(8_000);
-	});
-
-	it("leaves each half off when its flag is off, whatever the allowance", () => {
-		expect(
-			firstChunkTimings(20_000, { hedging: false, silentLaneFailover: false, giveUpMs: 20_000 })
-		).toEqual({
-			hedgeDelayMs: null,
-			failoverAfterMs: null,
-			lastLaneGiveUpMs: null,
-		});
+		expect(firstChunkTimings(5_000).hedgeDelayMs).toBe(8_000);
 	});
 });
 
-// CUR-2928. A router that names Large 3 `mistralai/mistral-large-2512` is asked for that id, but the
+// A router that names Large 3 `mistralai/mistral-large-2512` is asked for that id, but the
 // answer is recorded under ours, and `tool-round-retry.spec.ts` reads the failover record's `from`.
 describe("laneModelIds", () => {
 	it("names each lane by our id when its host asks for the model under another name", () => {
@@ -1060,8 +1048,8 @@ describe("laneModelIds", () => {
 
 // A tool loop's later round goes out after the lane committed. When it stays over the host's
 // cap through its retries before the answer has written a word, the next lane continues the same
-// transcript, so the reader gets an answer and no tool runs twice. (CUR-2307)
-describe("CUR-2307: a tool round still rate-limited before any answer text continues on the next lane", () => {
+// transcript, so the reader gets an answer and no tool runs twice.
+describe("a tool round still rate-limited before any answer text continues on the next lane", () => {
 	const LARGE = "mistral-large-2512";
 	const MEDIUM = "mistral-medium-2604";
 	const rateLimited = () => Object.assign(new Error("429 Rate limit exceeded"), { status: 429 });
@@ -1168,5 +1156,90 @@ describe("a turn's abort reason reaches the lane through the failover wrapper", 
 	it("a lane with a first-chunk give-up forwards the turn's reason, not a bare abort", async () => {
 		const { seen, why } = await reasonSeenThrough({ lastLaneGiveUpMs: 1_000 });
 		expect(seen).toEqual([why]);
+	});
+});
+
+// A router can end a stream with `finish_reason: error`; the SDK throws it as an APIError with the
+// payload's code (500) and no HTTP status. The stream has already sent its provenance report by then,
+// so the lane's "first chunk" was not output, and the lane is asked once more before the error reaches
+// the visitor.
+describe("a stream that errors before any output is asked for again on the same lane", () => {
+	const provenance = (): TextGenerationStreamOutputSimplified =>
+		({
+			token: { id: -1, text: "", logprob: 0, special: true },
+			generated_text: null,
+			details: null,
+			routerMetadata: { model: "mistral-medium-2604" },
+		}) as unknown as TextGenerationStreamOutputSimplified;
+	const streamError = () => Object.assign(new Error("openai raised a streaming error - finish_reason: error"), { code: 500 });
+
+	// Calls up to `failCount` send the provenance report and then throw; later calls answer.
+	const laneErrorsAfterProvenance = (failCount: number, ...texts: string[]): Endpoint => {
+		let calls = 0;
+		return async () => {
+			const fail = ++calls <= failCount;
+			return (async function* () {
+				yield provenance();
+				if (fail) throw streamError();
+				for (const t of texts) yield chunk(t);
+			})();
+		};
+	};
+
+	it("answers from the same lane when the first stream errors after only its provenance report", async () => {
+		const lane = vi.fn(laneErrorsAfterProvenance(1, "answer"));
+		const backup = vi.fn(laneYielding("other-model"));
+		const ep = withFailover([lane, backup]);
+		expect((await collect(ep)).filter(Boolean)).toEqual(["answer"]);
+		expect(lane).toHaveBeenCalledTimes(2);
+		expect(backup).not.toHaveBeenCalled();
+	});
+
+	it("serves a single-lane model the same way, which is how Mistral Medium runs", async () => {
+		const lane = vi.fn(laneErrorsAfterProvenance(1, "answer"));
+		const ep = withFailover([lane], { hedgeDelayMs: 60_000, throttle: createHedgeThrottle() });
+		expect((await collect(ep)).filter(Boolean)).toEqual(["answer"]);
+		expect(lane).toHaveBeenCalledTimes(2);
+	});
+
+	it("asks once and no more: a second stream error reaches the turn's handler", async () => {
+		const lane = vi.fn(laneErrorsAfterProvenance(5, "never"));
+		const ep = withFailover([lane], { hedgeDelayMs: 60_000, throttle: createHedgeThrottle() });
+		await expect(collect(ep)).rejects.toMatchObject({ code: 500 });
+		expect(lane).toHaveBeenCalledTimes(2);
+	});
+
+	it("never retries once answer text has reached the visitor", async () => {
+		const lane = vi.fn(async () =>
+			(async function* () {
+				yield provenance();
+				yield chunk("partial");
+				throw streamError();
+			})()
+		);
+		const ep = withFailover([lane], { hedgeDelayMs: 60_000, throttle: createHedgeThrottle() });
+		await expect(collect(ep)).rejects.toMatchObject({ code: 500 });
+		expect(lane).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not retry a stream error that is not a server failure", async () => {
+		const lane = vi.fn(async () =>
+			(async function* () {
+				yield provenance();
+				throw Object.assign(new Error("bad request"), { code: 400 });
+			})()
+		);
+		const ep = withFailover([lane], { hedgeDelayMs: 60_000, throttle: createHedgeThrottle() });
+		await expect(collect(ep)).rejects.toMatchObject({ code: 400 });
+		expect(lane).toHaveBeenCalledTimes(1);
+	});
+
+	it("the primary_stream_errors_once fault fails the first call only, on a one-lane model under the hedge, as on www", async () => {
+		const lane = vi.fn(laneYielding("answer"));
+		const ep = withFailover([lane], { hedgeDelayMs: 60_000, throttle: createHedgeThrottle() });
+		const texts: string[] = [];
+		for await (const v of await ep({ failStreamOnce: true } as EndpointParameters)) texts.push(v.token.text);
+		expect(texts.filter(Boolean)).toEqual(["answer"]);
+		expect(lane).toHaveBeenCalledOnce();
 	});
 });

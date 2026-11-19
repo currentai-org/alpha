@@ -169,10 +169,10 @@
 		0 12px 32px -22px var(--ds-xray-glow);
 }
 /* The XRAY panel's tab body: 24rem on a window 864px or taller, shrinking with the window below that so
-   the answer stays in view above the panel (a 690px laptop on a projector keeps ~210px), never under 10rem. */
+   the answer stays in view above the panel (a 690px-tall window keeps about 210px for it), never under 10rem. */
 @utility xray-body {
 	height: clamp(10rem, 100dvh - 30rem, 24rem);
-	/* Set by the X-ray panel when it gives height back so the answer's footer fits above it (CUR-3951). */
+	/* Set by the X-ray panel when it gives height back so the answer's footer fits above it. */
 	max-height: var(--xray-body-max, none);
 }
 @utility xray-sweep {

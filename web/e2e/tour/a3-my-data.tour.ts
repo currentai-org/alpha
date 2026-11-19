@@ -9,6 +9,7 @@ import {
 	TOUR_RECAST,
 	TOUR_TYPING_DELAY_MS
 } from './show';
+import { tourEmail } from '../../scripts/lib/tourPersonas.mjs';
 import { installOtpBypassHeader, signInWithEmailOtp } from '../scenarios/helpers/signIn';
 import { accountButton, accountMenuItem } from '../scenarios/helpers/accountMenu';
 import { setFlagOverrides } from '../scenarios/helpers/flagOverride';
@@ -28,7 +29,7 @@ setupRecast(test, TOUR_RECAST);
 const DATABASE_URL = process.env.SCENARIO_DATABASE_URL;
 const QUESTION = 'This is my fern. Give me three tips for keeping it alive in winter.';
 const PHOTO = 'fern.png';
-const EMAIL = `alex.moreau.${Math.random().toString(36).slice(2, 7)}@example.org`;
+const EMAIL = tourEmail('alex.moreau');
 
 // A green leaf shape on a pot, drawn here so the tour carries no binary fixture.
 async function plantPng(): Promise<Buffer> {
@@ -57,7 +58,6 @@ async function meetAlpha(page: Page) {
 test('A3: your data is yours to take, see, and delete', async ({ page, context, baseURL }) => {
 	expect(DATABASE_URL, 'SCENARIO_DATABASE_URL is needed to read the sign-in code').toBeTruthy();
 	await setFlagOverrides(context, baseURL!, {
-		'data-export': true,
 		'custodial-storage-view': true,
 		'storage-locations': true,
 		// The router would send a how-to question to the agent; this tour is about the person's data.
@@ -103,7 +103,7 @@ test('A3: your data is yours to take, see, and delete', async ({ page, context, 
 	});
 	await waitForNarration(page);
 
-	// Row 29 (CUR-3289)
+	// Row 29
 	await narrate('The photo is now one of Alex’s files. Files in the sidebar lists it.');
 	const openSidebar = page.getByRole('button', { name: 'Open sidebar' });
 	if (await openSidebar.isVisible()) await click(openSidebar);
@@ -150,7 +150,7 @@ test('A3: your data is yours to take, see, and delete', async ({ page, context, 
 	);
 	await waitForNarration(page);
 
-	// Rows 7 and 21. CUR-4363: Settings → Storage holds the storage settings; the files are a link away.
+	// Rows 7 and 21. Settings → Storage holds the storage settings; the files are a link away.
 	await narrate('Settings, Storage says how much is stored, and where.');
 	await click(section(page, 'storage'));
 	await page.waitForURL(/\/settings\/storage/, { timeout: 30_000 });
@@ -183,7 +183,7 @@ test('A3: your data is yours to take, see, and delete', async ({ page, context, 
 	await click(page.getByRole('link', { name: 'Manage storage' }));
 	await page.waitForURL(/\/settings\/storage/, { timeout: 30_000 });
 
-	// Row 14 (CUR-2960)
+	// Row 14
 	await narrate(
 		'Personalization is where memory will live. Alpha does not remember Alex across chats yet, and says so.'
 	);

@@ -1,9 +1,9 @@
 """
-Public AI Agent Service — model-boundary gateway (secrets-at-boundary + caps).
+Public AI Agent Service — model-boundary gateway (brief §6B.1 secrets-at-boundary + §6B caps).
 
 ONE owned chokepoint in front of Plane A that solves four interlocks the Hermes one-shot CLI cannot
-enforce itself (the `hermes -z` path does not read config `max_turns`, and passing the real upstream token
-through to the agent subprocess env would expose it):
+enforce itself (the `hermes -z` path ignores config `max_turns`, and passing the real
+upstream token through to the agent subprocess env is the known exfil gap):
 
   1. SECRETS BOUNDARY — the agent subprocess is given a per-task NONCE as its HF_TOKEN (Hermes' own
      hardcoded credential env var — see below), never the real one. This proxy holds the real
@@ -17,9 +17,9 @@ through to the agent subprocess env would expose it):
      upstream emitting `usage` in the stream. If usage never appears, the cap can't bind — revoke()
      surfaces `usage_seen:false` so the caller knows the spend-cap was inert and the REQUEST cap was the
      only backstop.
-  4. COMPUTE-ROUTER — an ORDERED, sovereign-first provider list
+  4. COMPUTE-ROUTER (the PRD "compute-router" module) — an ORDERED, sovereign-first provider list
      (MODEL_PROVIDERS) with failover.
-     One provider being unavailable or overloaded doesn't take the agent down, and "where the model ran" becomes a
+     One provider's outage/overload doesn't take the agent down, and "where the model ran" becomes a
      routing fact this boundary owns + reports (x-agent-provider header, /healthz chain) — the basis for
      honest provenance. Failover fires only on availability signals (transport error / 5xx / 429 / 408);
      4xx is forwarded unmasked so config/request errors surface. Per-provider `model` rewrite handles the
@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import hmac
 import json
 import os
 import random
@@ -57,17 +58,16 @@ REAL_TOKEN = os.environ.get("MODEL_UPSTREAM_TOKEN", "")   # the real credential 
 PROXY_ADMIN_KEY = os.environ.get("PROXY_ADMIN_KEY", "")   # shared secret so only app.py can grant/revoke
 UPSTREAM_TIMEOUT = float(os.environ.get("MODEL_UPSTREAM_TIMEOUT", "120"))
 # A call that STALLS is a different failure from a call that is slow, and it needs its own instrument.
-# About 2% of model calls open the stream and then go silent, each burning
-# the whole UPSTREAM_TIMEOUT on a single-provider chain with nowhere to fail over — 120s, or 40% of the
-# app's 300s wall clock, spent on one call. **Do not fix that by lowering UPSTREAM_TIMEOUT**: httpx
-# applies it as a READ timeout per chunk of a streamed response, so 120s of inter-frame silence is legal
+# A stalled call opens the stream and then goes silent, and on a single-provider chain with nowhere to
+# fail over it holds the whole UPSTREAM_TIMEOUT, a large share of the app's wall clock, on one call.
+# **Do not handle that by lowering UPSTREAM_TIMEOUT**: httpx
+# applies it as a READ timeout per chunk of a streamed response, so a long inter-frame silence is legal
 # and any threshold under it kills healthy calls mid-answer. Time-to-first-token is separable and, unlike
-# inter-frame gap, has a measured distribution against this endpoint: 0.38-0.39s on a prefix-cache hit and
-# 0.82-0.86s cold, so 30s is ~35x the slowest first token observed and still 4x cheaper than the stall.
+# inter-frame gap, is short and tightly bounded for a healthy call, so a 30s first-token limit sits far
+# above any healthy first token and far below the stall.
 FIRST_TOKEN_TIMEOUT = float(os.environ.get("MODEL_FIRST_TOKEN_TIMEOUT", "30"))
 # Opens per client request before giving up with a 504. 2 bounds a persistently silent upstream at ~60s
-# instead of looping. The retry re-sends the prompt, which at the measured stall rate and ~10k prompt
-# tokens/call amortizes to roughly 180 tokens per call — and note the abandoned attempt meters ZERO,
+# instead of looping. The retry re-sends the prompt, and the abandoned attempt meters ZERO,
 # because a response that never streamed never reported a usage block. That under-reports real upstream
 # spend by exactly the stalls, which is why `router.stall` is logged rather than silently retried.
 FIRST_TOKEN_ATTEMPTS = max(1, int(os.environ.get("MODEL_FIRST_TOKEN_ATTEMPTS", "2")))
@@ -75,17 +75,19 @@ GRANT_TTL_SECS = int(os.environ.get("GRANT_TTL_SECS", "3600"))   # a nonce self-
 MAX_GRANTS = int(os.environ.get("MAX_GRANTS", "10000"))          # backstop against unbounded grant growth
 GRANT_MAX_REQUESTS = int(os.environ.get("GRANT_MAX_REQUESTS", "1000"))  # hard ceiling per grant — gateway-side clamp so an absurd cap can't slip through (defense-in-depth vs app clamp)
 GRANT_MAX_TOKENS = int(os.environ.get("GRANT_MAX_TOKENS", "0"))         # hard token ceiling per grant (0 = no gateway-side token ceiling)
-# Some upstream inference backends sit behind a WAF that 403-blocks Python-HTTP-client User-Agents
-# (python-httpx, Python-urllib, OpenAI/Python) as bots while allowing curl/browser UAs. Hermes uses the
-# OpenAI Python SDK, so without this its requests get "HTTP 403: Your request was blocked" and the agent
-# produces no output. Normalizing the UA at this boundary handles it for every model with no Hermes fork.
-# (The upstream fix is the backend allowlisting the agent UA; this is the safe default.)
+# Some upstream inference backends (e.g. HF-router-served Apertus models)
+# front a WAF that 403-blocks Python-HTTP-client User-Agents (python-httpx, Python-urllib,
+# OpenAI/Python) as bots — while allowing curl/browser UAs. Hermes uses the OpenAI Python SDK, so
+# without this its requests get "HTTP 403: Your request was blocked" and the agent produces no
+# output. Normalizing the UA at this boundary fixes it for every model with no Hermes fork.
+# (Allowlisting the agent UA on the backend would make this unnecessary; this is the safe default.)
 UPSTREAM_USER_AGENT = os.environ.get("UPSTREAM_USER_AGENT", "curl/8.5.0")
 # Diagnostic: log secret-free metadata about each upstream request (model, tool_choice, temperature,
 # tool/message counts, roles — NEVER content). Off by default; set PROXY_LOG_REQUESTS=1 to see exactly
 # what the harness sends — e.g. to debug why a model tool-calls on a raw curl but not through Hermes.
 LOG_REQUESTS = os.environ.get("PROXY_LOG_REQUESTS", "") not in ("", "0", "false")
-# De-stream mode: some upstreams run the tool-call parser ONLY on their non-streaming codepath — a streamed request returns the tool
+# Interim Apertus fix: some upstreams (the HF-routed `publicai` Apertus provider)
+# run the tool-call parser ONLY on their non-streaming codepath — a streamed request returns the tool
 # call as plain-text content, so an agent that always streams (Hermes) never sees a tool call. When this
 # is set, the proxy DE-STREAMS: it calls upstream with stream=false (parser engaged → real tool_calls),
 # then re-emits the result to the client as a synthetic SSE stream. The client (Hermes) sees a normal
@@ -93,27 +95,28 @@ LOG_REQUESTS = os.environ.get("PROXY_LOG_REQUESTS", "") not in ("", "0", "false"
 # token-by-token (fine for agent/tool turns; -z has no display anyway). Drop this once the provider
 # parses tool calls while streaming.
 #
-# Off everywhere. Two things to know before turning it on: there is no stream, so FIRST_TOKEN_TIMEOUT does not apply and a stalled call
-# reverts to burning the full UPSTREAM_TIMEOUT with no retry; and gap distributions measured under it
+# Off by default: that provider is no longer on the path, and the flag distorts every inter-frame
+# measurement taken while it is on. Two things to know
+# before turning it on: there is no stream, so FIRST_TOKEN_TIMEOUT does not apply and a stalled call
+# burns the full UPSTREAM_TIMEOUT with no retry; and gap distributions measured under it
 # quantize to whole-call latency, because no frame can arrive mid-call.
 DESTREAM = os.environ.get("PROXY_DESTREAM", "") not in ("", "0", "false")
 # Force the model to answer with a tool call instead of prose. The dominant long-horizon failure is the
-# model writing the whole deliverable into a chat message and calling nothing. In
-# `scripts/modelcheck.py --tool-choice` the `folded` control makes tool calls under "required" and
-# none under "auto" on this model and endpoint, so the endpoint enforces the constraint rather than
-# passing it through. Wording cannot make prose impossible; this can.
+# model writing the whole deliverable into a chat message and calling nothing, so no file is written.
+# `scripts/modelcheck.py --tool-choice` measures the fix: the `folded` control makes no tool calls under
+# "auto" and calls a tool every time under "required", so the endpoint enforces the
+# constraint rather than passing it through. Wording cannot make prose impossible; this can.
 FORCE_TOOL_CHOICE = os.environ.get("PROXY_FORCE_TOOL_CHOICE", "") not in ("", "0", "false")
-# Compute-router. The boundary routes across an ORDERED, sovereign-first
-# list of providers with failover, so a single provider being unavailable or overloaded doesn't take the agent down — and
+# Compute-router (the PRD "compute-router" module). The boundary routes across an ORDERED, sovereign-first
+# list of providers with failover, so a single provider's outage/overload doesn't take the agent down — and
 # so "where the model ran" is a routing fact this chokepoint owns (provenance honesty). Statuses that mean
 # "this provider is unavailable/overloaded" (not "the request is bad") trigger failover; everything
 # else (2xx, 4xx) is forwarded as-is so config/request errors surface loudly instead of being masked.
 FAILOVER_STATUSES = {int(s) for s in os.environ.get("ROUTER_FAILOVER_STATUSES", "408,429,500,502,503,504").split(",") if s.strip().isdigit()}
 # The LAST provider in the chain (with MODEL_PROVIDERS unset, the only one) has nobody to fail over to,
 # so `_open_stream_failover`'s `i < len(provs) - 1` guard is never true for it, and a single 502/503/504
-# there would go straight to the caller as a blank turn (CUR-1201). A 504 from the served model is often
-# followed seconds later by a success against the same upstream, so it is worth one bounded retry in place
-# before giving up. Short backoff: this is a live user waiting on a stream, not a batch job.
+# there would go straight to the caller as a blank turn. A transient 5xx on the same upstream can clear
+# on an immediate retry, so such a call gets one bounded retry in place before the status is returned. Short backoff: this is a live user waiting on a stream, not a batch job.
 SAME_PROVIDER_RETRY_ATTEMPTS = max(1, int(os.environ.get("MODEL_SAME_PROVIDER_RETRY_ATTEMPTS", "2")))
 
 
@@ -140,24 +143,27 @@ class Provider:
     model: str = ""
     no_cache: bool = False
     bill_to: str = ""
-    # The app's model id -> this provider's wire id, for a provider that serves more than one
+    # the app's model id -> this provider's wire id, for a provider that serves more than one
     # model. Set, it replaces `model`: a request naming a model the map lacks is not this provider's to
-    # serve, and is never rewritten to some other model (`routable`). Keys are lower case. (CUR-4603)
+    # serve, and is never rewritten to some other model (`routable`). Keys are lower case.
     model_map: dict[str, str] = field(default_factory=dict)
     # App model ids whose calls carry LiteLLM's `disable_fallbacks`, because the router's backup for them
     # is a different model under the same name (Large 4 -> Bedrock's Large 3, web gatewayFallbackGate.ts).
     no_fallback: frozenset[str] = frozenset()
     # Request fields a model needs that the caller doesn't send, keyed by app model id; the caller's own
     # value always wins. `model_extra` goes on every call, `model_unstreamed_extra` only on stream=false
-    # calls. On the gateway (CUR-4605), Large 4 answers 400 to temperature 0 unless
+    # calls. On the gateway, Large 4 answers 400 to temperature 0 unless
     # top_p is 1, and 500 after ~36 s to an unstreamed call unless reasoning is off; Large 3 answers 400 to
     # any reasoning_effort, so neither can be set provider-wide.
     model_extra: dict[str, dict] = field(default_factory=dict)
     model_unstreamed_extra: dict[str, dict] = field(default_factory=dict)
+    # app model ids whose stream=false calls go upstream streamed and come back joined into one
+    # completion (`_restream`). The gateway 400s Large 4 on reasoning_effort none and 500s every other
+    # unstreamed call after a long wait, while a streamed call answers promptly.
+    stream_upstream: frozenset[str] = frozenset()
 
     def routable(self, model: str) -> bool:
-        """Whether this provider may serve a request naming `model`. A provider with no map takes anything,
-        as before CUR-4603; one with a map takes only what it names."""
+        """Whether this provider may serve a request naming `model`. A provider with no map takes anything; one with a map takes only what it names."""
         return not self.model_map or (model or "").strip().lower() in self.model_map
 
     def wire_model(self, model: str) -> str:
@@ -171,7 +177,7 @@ class Provider:
     def pinned(self) -> str:
         """The inference provider this route pins through HF's `model:provider` suffix
         (`zai-org/GLM-5.2:scaleway` → "scaleway"), or "" when the route leaves the choice to the router.
-        CUR-1932: a pin is a request-side claim, so `_record_backend` checks it against the response."""
+        a pin is a request-side claim, so `_record_backend` checks it against the response."""
         return self.model.rsplit(":", 1)[1].strip().lower() if ":" in self.model else ""
 
 
@@ -223,7 +229,8 @@ def _load_providers() -> list[Provider]:
                                 model_map=_parse_model_map(os.environ.get(f"PROVIDER_{key}_MODEL_MAP", "")),
                                 no_fallback=frozenset(_id_list(os.environ.get(f"PROVIDER_{key}_NO_FALLBACK_MODELS", ""))),
                                 model_extra=_per_model_json(f"PROVIDER_{key}_MODEL_EXTRA"),
-                                model_unstreamed_extra=_per_model_json(f"PROVIDER_{key}_MODEL_UNSTREAMED_EXTRA")))
+                                model_unstreamed_extra=_per_model_json(f"PROVIDER_{key}_MODEL_UNSTREAMED_EXTRA"),
+                                stream_upstream=frozenset(_id_list(os.environ.get(f"PROVIDER_{key}_STREAM_UPSTREAM_MODELS", "")))))
     if not out and REAL_TOKEN:
         out.append(Provider(name=os.environ.get("AGENT_COMPUTE_PROVIDER", "") or "primary",
                             base_url=UPSTREAM_BASE.rstrip("/"), token=REAL_TOKEN,
@@ -235,7 +242,7 @@ PROVIDERS: list[Provider] = _load_providers()
 
 
 def routable_models(providers: list[Provider] | None = None) -> list[str]:
-    """The app model ids this gateway can route, for the app's per-task model check (CUR-4603).
+    """The app model ids this gateway can route, for the app's per-task model check.
 
     Only a chain whose every provider carries a MODEL_MAP can say: a provider with none rewrites every
     request to its one model, so it can honestly route only the app's default, and the answer is [].
@@ -246,11 +253,11 @@ def routable_models(providers: list[Provider] | None = None) -> list[str]:
     return sorted({k for p in provs for k in p.model_map})
 
 
-# Requests a minute this gateway sends a model, per model, for models whose account limit is
+# requests a minute this gateway sends a model, per model, for models whose account limit is
 # shared with chat (`MODEL_RPM_LIMITS=mistral-large-2512=60`). Once tasks run on the person's pick, a
 # handful of agent tasks on Large 3 could take its whole shared allowance, so the gateway takes a share.
 # Per process: the gateway runs one machine. A call over the limit waits up to MODEL_RPM_MAX_WAIT_SECS for
-# room (aiolimiter's leaky bucket), then is refused with 429, which Hermes retries. (CUR-4603)
+# room (aiolimiter's leaky bucket), then is refused with 429, which Hermes retries.
 MODEL_RPM_MAX_WAIT_SECS = float(os.environ.get("MODEL_RPM_MAX_WAIT_SECS", "20"))
 
 
@@ -315,9 +322,9 @@ class Grant:
     # attempt (the derive, judge and route calls each take their own single-request grant).
     label: str = ""
     attempt: int = 0
-    # The app model id this grant may spend on, or "" for any (the derive/judge/route side calls).
+    # the app model id this grant may spend on, or "" for any (the derive/judge/route side calls).
     # Every call on a pinned grant goes out as this model whatever its body names, so an agent with the
-    # nonce in its shell cannot spend its task's budget on a different, scarcer model. (CUR-4603)
+    # nonce in its shell cannot spend its task's budget on a different, scarcer model.
     model: str = ""
     # The model ids upstream reported serving on this grant's calls, read off each response. Returned on
     # revoke so the task records what actually ran, not only what was asked for.
@@ -333,7 +340,7 @@ app = FastAPI(title="Agent Service — model boundary gateway", version="0.4.0")
 def _require_admin(authorization: str | None) -> None:
     if not PROXY_ADMIN_KEY:
         raise HTTPException(503, "PROXY_ADMIN_KEY not configured — gateway refuses to grant (fail closed)")
-    if authorization != f"Bearer {PROXY_ADMIN_KEY}":
+    if not hmac.compare_digest((authorization or "").encode(), f"Bearer {PROXY_ADMIN_KEY}".encode()):
         raise HTTPException(401, "bad admin key")
 
 
@@ -361,7 +368,7 @@ class GrantReq(BaseModel):
     ttl_secs: int | None = Field(default=None, ge=1)  # optional override of GRANT_TTL_SECS
     label: str = Field(default="", max_length=64)     # task id, for the operational log (never the nonce)
     attempt: int = Field(default=0, ge=0)             # best-of attempt number; 0 = derive/judge/route grant
-    model: str = Field(default="", max_length=200)    # CUR-4603: pin every call on this grant to this model
+    model: str = Field(default="", max_length=200)    # pin every call on this grant to this model
 
 
 @app.post("/admin/grant")
@@ -371,7 +378,8 @@ def grant(req: GrantReq, authorization: str | None = Header(default=None)) -> di
     now = time.monotonic()
     ttl = req.ttl_secs or GRANT_TTL_SECS
     # Gateway-side clamp: a grant can never exceed the gateway's own ceiling, even if the caller (app.py,
-    # which also clamps) or a holder of the admin key asks for more (e.g. a grant of max_requests=10_000_000). 0 = off for tokens; the ceiling only binds when set.
+    # which also clamps) or a holder of the admin key asks for more (an absurd max_requests must be
+    # clamped). 0 = off for tokens; the ceiling only binds when set.
     max_requests = min(req.max_requests, GRANT_MAX_REQUESTS)
     max_tokens = req.max_tokens
     if GRANT_MAX_TOKENS > 0:
@@ -409,7 +417,7 @@ def _plog(event: str, **fields) -> None:
     """Emit one operational log line, epoch-stamped. Every proxy event goes through here.
 
     The stamp is the point: without it the proxy log is an ordered list, not a timeline, so per-call
-    latency cannot be recovered from it and two 120s upstream stalls cannot be told from four slow
+    latency cannot be recovered from it, and a stalled upstream call cannot be told apart from several slow
     serves. Matches the app log's
     `ts` field (api/app.py `_log_event`) so the two can be merged on one axis — which is only a real
     merge once both planes reach the same sink, hence the logsink.emit below (a no-op without a
@@ -451,9 +459,9 @@ def _request_meta(body: bytes) -> dict:
         "n_messages": len(msgs),
         "roles": [m.get("role") for m in msgs if isinstance(m, dict)],
         # Fingerprint of the cacheable prefix — the tool schemas plus the system message, in the exact
-        # order they go on the wire. It must be CONSTANT across a run's calls. On CSCS, with a
-        # warm-up control and two prefix sizes, a repeated prefix reaches first token in
-        # 0.38s where a novel one takes 0.82s, and the gap grows from 0.22s to 0.43s as the prefix grows
+        # order they go on the wire. It must be CONSTANT across a run's calls. Measured against CSCS with a
+        # warm-up control and two prefix sizes: a repeated prefix reaches first token in
+        # 0.38s where a novel one takes 0.82s, and the gap grew from 0.22s to 0.43s as the prefix grew
         # from 3.6k to 6.3k tokens — the server skips prefill on a prefix it has already seen. At the real
         # ~9.8k-token prefix that is most of a second per call, on every call. A prefix cache is
         # unforgiving: one varying byte near the front turns every hit into a miss while every other
@@ -475,14 +483,15 @@ def _provider_headers(prov: Provider, accept: str | None = None) -> dict:
     return h
 
 
-def _rewrite_model(body: bytes, prov: Provider) -> bytes:
+def _rewrite_model(body: bytes, prov: Provider, unstreamed: bool | None = None) -> bytes:
     """Rewrite the request's `model` to this provider's catalog id when one is configured (same weights,
     different id per provider). No-op if the provider has no override or the body isn't a JSON object.
 
-    CUR-4603: a provider with a MODEL_MAP is sent the mapped id for the model the body names, plus
+    a provider with a MODEL_MAP is sent the mapped id for the model the body names, plus
     `disable_fallbacks` for a model whose router backup is another model, plus that model's extra fields
     (`Provider.model_extra`, and `model_unstreamed_extra` when the body is not streamed). A caller only
-    reaches here with a model the provider can route (`Provider.routable`)."""
+    reaches here with a model the provider can route (`Provider.routable`). `unstreamed=True` marks a call
+    the caller sent unstreamed and `_restream` streams upstream, so it keeps that call's extra."""
     if not prov.model and not prov.model_map:
         return body
     try:
@@ -497,7 +506,7 @@ def _rewrite_model(body: bytes, prov: Provider) -> bytes:
     if key in prov.no_fallback:
         d["disable_fallbacks"] = True
     extra = dict(prov.model_extra.get(key) or {})
-    if not d.get("stream"):
+    if unstreamed or not d.get("stream"):
         extra.update(prov.model_unstreamed_extra.get(key) or {})
     if extra:
         d = {**extra, **d}                                     # the caller's own value wins
@@ -517,7 +526,8 @@ def _no_cache(body: bytes, prov: Provider) -> bytes:
          empty history. Its whole premise is that attempt 2 might differ from attempt 1. Against a cache
          it cannot: attempt 2 opens with attempt 1's exact response and diverges only if a tool result
          later differs. That is best-of-1 charged at best-of-3's wall clock. (CSCS-direct decorrelates
-         weakly rather than not at all, so a cache removes the little variance there is.)
+         weakly rather than not at all — 5 identical requests, 2 distinct outputs — so this is a real
+         loss of the little variance we had, not a loss of variance we imagined.)
       2. Within ONE attempt, an agent that repeats a call with identical messages is looping. Uncached,
          it has some chance of sampling its way out. Cached, the loop is guaranteed.
 
@@ -538,17 +548,16 @@ def _no_cache(body: bytes, prov: Provider) -> bytes:
 
 # Where the model ACTUALLY ran, read off the response instead of inferred from the base URL we dialed.
 #
-# A gateway host implies nothing about the backend behind it: one gateway can route to backends in
-# different countries. Pinning the executor to a direct provider protects its provenance by avoidance,
-# which stops working once the executor moves onto the gateway (CUR-189). So the claim is asserted per
-# response, falsifiably, rather than assumed per config.
+# A gateway host implies nothing about the backend behind it: the gateway can route one model name to
+# several backends in different countries. Pinning the executor to one direct host protects provenance by
+# avoidance, which stops working once the executor moves onto the gateway. So: assert per response,
+# falsifiably, rather than assume per config.
 BACKEND_HEADER = "x-litellm-model-api-base"
 
 # Ported from the chat app's `backendIsSwiss()` (servingProvenance.ts) so the two agree on the claim.
-# `api.swissai.svc.cscs.ch` is the direct CSCS endpoint this service uses and is absent from the chat app's
-# list, which only sees traffic through the gateway. Without it every direct-CSCS response would fail the check.
-# maas.phoeniqs.com: Apertus 1.5 70B's host on the gateway since CUR-4545 (Phoenix Technologies AG,
-# Pfäffikon SZ; IP block registered in CH to that company).
+# `api.swissai.svc.cscs.ch` is our own host and is not in the chat app's list, which only covers traffic
+# through the gateway, so it is listed here.
+# maas.phoeniqs.com: Apertus 1.5 70B's host on the gateway, a Swiss provider.
 SWISS_BACKENDS = frozenset({"api.inference.cscs.ch", "api.swissai.svc.cscs.ch", "api.infomaniak.com",
                             "maas.phoeniqs.com"})
 
@@ -575,7 +584,7 @@ def _served_by(headers) -> str:
 
 def _backend_swiss(host: str) -> bool | None:
     """True/False for a host we can place; None when the upstream named none. None must never be read as
-    True: an unnamed host is unknown, not Swiss."""
+    True: unknown is the state an unplaced backend hides in."""
     return None if not host else host in SWISS_BACKENDS
 
 
@@ -591,11 +600,10 @@ def _force_tool_choice(body: bytes) -> bytes:
     two halves have to travel together or the agent runs until the wall clock every single time.
 
     So the presence of `task_complete` in the request's own tool list IS the precondition, checked here
-    rather than stated in a comment telling an operator to set two env vars. Hermes provides the tool and
-    this function provides the forcing: `agent/done_tool.py` says the forcing comes from "the weak-model
-    profile", and that profile is not in the checkout — the string appears in that docstring and nowhere
-    else in the tree. Enabling HERMES_DONE_TOOL alone therefore enables an escape hatch for a constraint
-    nothing applies.
+    rather than stated in a comment telling an operator to set two env vars. Hermes' half exists and ours
+    did not: `agent/done_tool.py` says the forcing comes from "the weak-model profile", and that profile
+    is not in the checkout — the string appears in that docstring and nowhere else in the tree. Enabling
+    HERMES_DONE_TOOL alone therefore opens an escape hatch for a constraint nothing applies.
 
     Leaves an explicit "none"/named-function choice alone — a caller that already decided is not guessing.
     Touches neither `messages` nor `tools`, so the upstream prefix cache (see `_prefix_sha`) is unmoved."""
@@ -620,9 +628,9 @@ def _grant_identity(nonce: str | None) -> dict:
     Empty when there is no nonce or the grant is gone. **The nonce itself is a bearer token and is never
     returned** — only `Grant.label`, which the app sets to a task id.
 
-    Without this an operational line is unattributable: with several trials running, nothing says which
-    trial ate a given stall. `attempt` matters for the
-    same reason: a stall on attempt 1 that succeeds on attempt 2 divides into the same per-call average as
+    Without this an operational line is unattributable: with several trials in one run, nothing says which
+    trial a stall belongs to. `attempt` matters for the
+    same reason: a stall on attempt 1 that succeeds on attempt 2 averages the same per call as
     one genuinely slow serve, so without it the fast-retry and slow-serve cases stay merged."""
     if not nonce:
         return {}
@@ -716,7 +724,7 @@ def _meter(nonce: str, usage: dict, path: str) -> int:
 
 
 def _pin_model(body: bytes, pinned: str, nonce: str) -> tuple[bytes, str]:
-    """`(body, model)` for a call on a grant pinned to `pinned` (CUR-4603): the body names `pinned` whatever
+    """`(body, model)` for a call on a grant pinned to `pinned`: the body names `pinned` whatever
     it asked for, and a call that asked for something else is logged. Unpinned, the body is unchanged and
     `model` is what it names ("" for a body that isn't a JSON object)."""
     try:
@@ -734,7 +742,7 @@ def _pin_model(body: bytes, pinned: str, nonce: str) -> tuple[bytes, str]:
 
 
 def _note_served(nonce: str, model: object) -> None:
-    """Record a model id an upstream response named on this grant (CUR-4603). Blank or non-string: nothing."""
+    """Record a model id an upstream response named on this grant. Blank or non-string: nothing."""
     if not isinstance(model, str) or not model.strip():
         return
     with _LOCK:
@@ -786,7 +794,7 @@ def _scan_usage(buf: bytes) -> tuple[bytes, dict]:
     return remainder, best
 
 
-_LAST_SERVED: dict = {}   # most recent _record_backend call — read by /healthz, and by the app's badge (CUR-1107)
+_LAST_SERVED: dict = {}   # most recent _record_backend call — read by /healthz, and by the app's badge
 
 
 def _record_backend(prov: Provider, upstream_headers, nonce: str | None = None) -> dict:
@@ -794,29 +802,28 @@ def _record_backend(prov: Provider, upstream_headers, nonce: str | None = None) 
 
     Logged UNCONDITIONALLY, not behind PROXY_LOG_REQUESTS: a provenance fact that only appears when
     someone has turned up verbosity is a provenance fact nobody has. One record per model call is the
-    volume — ~6 a turn — and per-call is deliberate rather than change-only, because the routing this
-    is watching for is mixed rather than switched. A chat model group can look uniformly CSCS across
-    consecutive samples while a share of calls lands elsewhere (13% Infomaniak over 7 days in production);
-    a change-detector would call that stable.
+    volume, and per-call is deliberate rather than change-only, because the routing this
+    is watching for is mixed rather than switched: a pool that looks uniform across consecutive samples can
+    still send a fraction of calls elsewhere, which a change-detector would call stable.
 
     Also latches into _LAST_SERVED — a single most-recent reading, not a mixed-pool average (the same
     "mixed rather than switched" fact above means one sample can misrepresent the mix), but a live one
     beats the alternative: AGENT_COMPUTE_PROVIDER is a human-typed intent that has drifted from the
-    real chain before (CUR-1107) and cannot self-correct. Global rather than per-nonce because the
+    real chain before and cannot self-correct. Global rather than per-nonce because the
     app-side reader (/healthz) has no per-task context to key on; a caller wanting real per-task
     provenance for THIS call already has it in the returned x-agent-provider header."""
     host = _backend_of(upstream_headers)
     served_by = _served_by(upstream_headers)
-    # A pinned route states which provider it asked for; the response states which one answered.
-    # pin_ok=false is the record that the two disagree, and it is logged on every call rather than sampled. (CUR-1932)
+    # a pinned route states which provider it asked for; the response states which one answered.
+    # pin_ok=false is the record that the two disagree, and it is logged on every call rather than sampled.
     pin = {"pinned": prov.pinned, "pin_ok": served_by == prov.pinned} if prov.pinned else {}
     _plog("upstream.backend", provider=prov.name, backend=host or None, served_by=served_by or None,
           swiss=_backend_swiss(host), **pin, **_grant_identity(nonce))
     global _LAST_SERVED
     # The badge reads "provider" from here. When the response names who served, that name wins over the
     # chain entry's configured name, so the badge carries a measurement rather than this proxy's config.
-    # The verifier route runs on its own host outside the reported chain, so it never writes the latch.
-    # Latching it would badge a Mistral-only task with the verifier's host (CUR-2434).
+    # The verifier route runs on its own host outside the reported chain, so a verifier call never writes
+    # the last-served latch: the badge reflects only the chain's own providers.
     if prov is not VERIFIER:
         _LAST_SERVED = {"provider": served_by or prov.name, "backend": host or None,
                         "swiss": _backend_swiss(host), "at": time.time(), **pin}
@@ -869,8 +876,8 @@ async def _destream(req: dict, nonce: str, providers: list[Provider] | None = No
     if r is None or served is None:
         raise HTTPException(502, "all providers unreachable (destream)")
     if r.status_code >= 400:
-        # Same unconditional record as the streaming path above, so an error path's silence never depends
-        # on DESTREAM staying off.
+        # Same unconditional record as the streaming path above: an error path whose
+        # silence depends on a flag staying off is not a property worth keeping.
         _plog("upstream.error", status=r.status_code, provider=served.name, path="destream",
               **({"body": r.content.decode(errors="replace")[:1000]} if LOG_REQUESTS else {}))
         return Response(content=r.content, status_code=r.status_code,
@@ -915,17 +922,120 @@ async def _destream(req: dict, nonce: str, providers: list[Provider] | None = No
                              headers=_record_backend(served, r.headers, nonce))
 
 
+def _wants_restream(body: bytes, chain: list[Provider]) -> bool:
+    """Whether this call is a stream=false call for a model the first provider in `chain` lists in
+    `stream_upstream`. A body that isn't a JSON object never is."""
+    try:
+        d = json.loads(body)
+    except Exception:  # noqa: BLE001
+        return False
+    if not isinstance(d, dict) or d.get("stream") or not chain:
+        return False
+    return str(d.get("model") or "").strip().lower() in chain[0].stream_upstream
+
+
+def _content_text(content: object) -> str:
+    """A delta's text. Large 4 streams `content` as a list of blocks, thinking first and then text, where
+    other models send a string; the thinking blocks are dropped, as the unstreamed answer never had them."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(b.get("text") or "" for b in content if isinstance(b, dict) and b.get("type") == "text")
+    return ""
+
+
+def _join_stream(raw: bytes) -> dict:
+    """Join an OpenAI-shaped SSE stream into the one chat.completion object an unstreamed call returns:
+    the text, any tool calls (by index), the finish reason and the usage block. A frame carrying an
+    `error` raises 502 with it, since the stream ended without an answer."""
+    out: dict = {"id": "", "object": "chat.completion", "created": 0, "model": ""}
+    text: list[str] = []
+    calls: dict[int, dict] = {}
+    finish = None
+    usage: dict = {}
+    for line in raw.splitlines():
+        if not line.startswith(b"data:"):
+            continue
+        data = line[5:].strip()
+        if not data or data == b"[DONE]":
+            continue
+        try:
+            frame = json.loads(data)
+        except Exception:  # noqa: BLE001 — a malformed frame carries nothing we can join
+            continue
+        if not isinstance(frame, dict):
+            continue
+        if frame.get("error"):
+            raise HTTPException(502, f"upstream stream error: {json.dumps(frame['error'])[:500]}")
+        for k in ("id", "created", "model"):
+            if frame.get(k) and not out[k]:
+                out[k] = frame[k]
+        if isinstance(frame.get("usage"), dict) and frame["usage"]:
+            usage = frame["usage"]
+        for ch in frame.get("choices") or []:
+            delta = ch.get("delta") or {}
+            text.append(_content_text(delta.get("content")))
+            for tc in delta.get("tool_calls") or []:
+                slot = calls.setdefault(int(tc.get("index") or 0),
+                                        {"id": "", "type": "function", "function": {"name": "", "arguments": ""}})
+                if tc.get("id"):
+                    slot["id"] = tc["id"]
+                fn = tc.get("function") or {}
+                slot["function"]["name"] += fn.get("name") or ""
+                slot["function"]["arguments"] += fn.get("arguments") or ""
+            if ch.get("finish_reason"):
+                finish = ch["finish_reason"]
+    message: dict = {"role": "assistant", "content": "".join(text)}
+    if calls:
+        message["tool_calls"] = [calls[i] for i in sorted(calls)]
+    out["choices"] = [{"index": 0, "message": message, "finish_reason": finish}]
+    if usage:
+        out["usage"] = usage
+    return out
+
+
+async def _restream(body: bytes, nonce: str, chain: list[Provider]) -> Response:
+    """Serve a stream=false call by streaming it upstream and joining the frames. Same failover
+    as every other call (`_open_stream_failover`); an upstream error status is forwarded unmasked."""
+    req = json.loads(body)
+    req["stream"] = True
+    req["stream_options"] = {**(req.get("stream_options") or {}), "include_usage": True}
+    client = httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT)
+    r: httpx.Response | None = None
+    try:
+        served, r = await _open_stream_failover(client, json.dumps(req).encode(), "text/event-stream", chain, nonce,
+                                                unstreamed=True)
+        raw = await r.aread()
+        headers = _record_backend(served, r.headers, nonce)
+        ctype = r.headers.get("content-type", "")
+        status = r.status_code
+    finally:
+        if r is not None:
+            await r.aclose()
+        await client.aclose()
+    if status >= 400:
+        _plog("upstream.error", status=status, provider=served.name, path="restream",
+              **({"body": raw.decode(errors="replace")[:1000]} if LOG_REQUESTS else {}))
+        return Response(content=raw, status_code=status, media_type=ctype or "application/json", headers=headers)
+    if "text/event-stream" not in ctype:                      # an upstream that answered unstreamed anyway
+        return Response(content=raw, status_code=status, media_type=ctype or "application/json", headers=headers)
+    completion = _join_stream(raw)
+    _note_served(nonce, completion.get("model"))
+    _meter(nonce, completion.get("usage") or {}, "restream")
+    return JSONResponse(completion, status_code=status, headers=headers)
+
+
 async def _open_stream_failover(client: httpx.AsyncClient, body: bytes, accept: str | None,
                                 providers: list[Provider] | None = None,
-                                nonce: str | None = None) -> tuple[Provider, httpx.Response]:
+                                nonce: str | None = None, unstreamed: bool = False) -> tuple[Provider, httpx.Response]:
     """Open the chat-completions stream against providers in order. Advances on a transport error or a
     FAILOVER status (closing that response first); commits on 2xx OR any forwardable status — so a 4xx, or
-    the LAST provider's error, reaches the caller unmasked (the playtest lesson: never dress an upstream
+    the LAST provider's error, reaches the caller unmasked (never dress an upstream
     failure as a 200). Returns (served_provider, open_response); raises 502 if no provider is reachable."""
     last = None
     provs = providers or PROVIDERS
     for i, prov in enumerate(provs):
-        pbody = _rewrite_model(body, prov)                     # this provider's catalog id for the same weights
+        pbody = _rewrite_model(body, prov, unstreamed)         # this provider's catalog id for the same weights
         pbody = _no_cache(pbody, prov)                         # a cached completion is not a second attempt
         if FORCE_TOOL_CHOICE:
             forced = _force_tool_choice(pbody)                 # prose is not an option when a stop tool exists
@@ -956,7 +1066,7 @@ async def _open_stream_failover(client: httpx.AsyncClient, body: bytes, accept: 
                 _log_failover(prov, f"{last}:retry{attempt}", nonce)
                 await r.aclose()
                 await asyncio.sleep(0.5 + random.random())  # noqa: S311 — retry jitter, not a secret  # noqa: S311 — retry jitter, not a secret
-                continue                                          # CUR-1201: retry the last provider in place
+                continue                                          # retry the last provider in place
             return prov, r                                        # retries exhausted on the last provider
     raise HTTPException(502, f"all providers unreachable (last={last})")
 
@@ -987,7 +1097,7 @@ async def chat_completions(request: Request, authorization: str | None = Header(
     if LOG_REQUESTS:
         _plog("upstream.request", **_request_meta(body))
 
-    # A grant pinned to a model sends every call as that model, whatever the body names. (CUR-4603)
+    # a grant pinned to a model sends every call as that model, whatever the body names.
     body, model = _pin_model(body, pinned, nonce)
     chain = [p for p in _providers_for(body) if p.routable(model)]
     if not chain:
@@ -1008,6 +1118,9 @@ async def chat_completions(request: Request, authorization: str | None = Header(
             raise HTTPException(429, f"{model} is at this gateway's requests-a-minute share — retry shortly",
                                 headers={"Retry-After": "5"}) from None
 
+    if _wants_restream(body, chain):
+        return await _restream(body, nonce, chain)
+
     # Interim Apertus fix (see DESTREAM above): when the client asked to stream, call upstream
     # NON-streaming (so the provider's tool-call parser engages) and re-emit the result as a synthetic
     # SSE stream. Counts usage from the non-streamed `usage` block (more reliable than mid-stream scan).
@@ -1020,10 +1133,10 @@ async def chat_completions(request: Request, authorization: str | None = Header(
         if isinstance(_req, dict) and _req.get("stream"):
             return await _destream(json.loads(body), nonce, chain)
 
-    # Open the stream and inspect its status BEFORE committing to a response. Committing to a 200
-    # StreamingResponse first would let an upstream 401/402/429/5xx reach the agent as a 200 with an
-    # error body, masking real billing/quota/auth failures as model hiccups, so non-2xx is forwarded with
-    # its true status. The ROUTER tries providers
+    # Open the stream and inspect its status BEFORE committing to a response. A committed 200
+    # StreamingResponse would deliver an upstream 401/402/429/5xx to the agent as a 200 with an
+    # error body, masking real billing/quota/auth
+    # failures as model hiccups, so non-2xx is forwarded with its true status. The ROUTER tries providers
     # in order (failover on transport error / overload) and reports which one served via x-agent-provider.
     # The same window also bounds TIME-TO-FIRST-TOKEN (see FIRST_TOKEN_TIMEOUT): pull the first frame here,
     # before the response commits, so a provider that opens and then goes silent can be retried invisibly.
@@ -1038,17 +1151,17 @@ async def chat_completions(request: Request, authorization: str | None = Header(
         for _open in range(1, FIRST_TOKEN_ATTEMPTS + 1):
             # `chain` is this call's routable providers, computed once above.
             # Prefer a provider that hasn't already stalled this call. A single-provider chain has nobody
-            # else, so it retries itself — which is the deployed shape (MODEL_PROVIDERS=cscs, deliberately
-            # no failover partner: routing an Apertus failure to another provider would silently serve a
-            # different model).
+            # else, so it retries itself, as in a single-provider deployment (MODEL_PROVIDERS=cscs, deliberately
+            # no failover partner: routing an Apertus outage to Infomaniak would silently serve Mistral).
             served, r = await _open_stream_failover(
                 client, body, request.headers.get("accept"),
                 [p for p in chain if p.name not in stalled] or chain, nonce)
             if r.status_code >= 400:
                 err_body = await r.aread()
                 # The FACT of an upstream 4xx/5xx is never routine traffic, so it is logged
-                # unconditionally; only the BODY stays behind the verbose flag. A logging flag that can
-                # hide an authentication failure is the wrong shape.
+                # unconditionally; only the BODY stays behind the verbose flag. PROXY_LOG_REQUESTS unset is a
+                # supported deployment, and a logging flag that can hide an
+                # authentication failure is the wrong shape regardless of how it happens to be set.
                 _plog("upstream.error", status=r.status_code, provider=served.name,
                       **({"body": err_body.decode(errors="replace")[:1000]} if LOG_REQUESTS else {}))
                 await r.aclose()
@@ -1058,7 +1171,7 @@ async def chat_completions(request: Request, authorization: str | None = Header(
                                 headers=_record_backend(served, r.headers, nonce))
 
             # Non-streaming upstream response (a caller posts stream=false → a single JSON object, not SSE):
-            # the SSE usage-scanner below never fires on it, so without this these calls would meter 0 tokens. Buffer it, meter
+            # the SSE usage-scanner below never fires on it, so these calls metered 0 tokens. Buffer it, meter
             # usage.total_tokens from the JSON, and return as-is. (Streaming clients fall through to stream().)
             ctype = r.headers.get("content-type", "")
             if "text/event-stream" not in ctype:
@@ -1115,7 +1228,7 @@ async def chat_completions(request: Request, authorization: str | None = Header(
                 yield chunk
                 buf += chunk
                 if not seen_model:
-                    served_model = _sse_model(buf)       # CUR-4603: what upstream says it ran, first frame on
+                    served_model = _sse_model(buf)       # what upstream says it ran, first frame on
                     if served_model:
                         _note_served(nonce, served_model)
                         seen_model = True
@@ -1150,16 +1263,17 @@ def healthz() -> dict:
                            "model_map": p.model_map or None, "no_fallback": sorted(p.no_fallback) or None,
                            "model_extra": p.model_extra or None,
                            "model_unstreamed_extra": p.model_unstreamed_extra or None,
+                           "stream_upstream": sorted(p.stream_upstream) or None,
                            "no_cache": p.no_cache} for p in PROVIDERS],
-            # The app model ids a task may run on here; the app refuses any other. [] = the
-            # chain has a provider with no MODEL_MAP, so only the app's default is routable. (CUR-4603)
+            # the app model ids a task may run on here; the app refuses any other. [] = the
+            # chain has a provider with no MODEL_MAP, so only the app's default is routable.
             "models": routable_models(),
             "rpm_limits": {m: int(lim.max_rate) for m, lim in RPM_LIMITERS.items()},
             "primary": PROVIDERS[0].name if PROVIDERS else None,
             "failover_statuses": sorted(FAILOVER_STATUSES),
             "credential": "configured" if PROVIDERS else "MISSING",
-            # Which provider actually served the most recent call, not just which one is
-            # configured as primary — the app polls this to keep its own "what's running" badge honest. (CUR-1107)
+            # which provider actually served the most recent call, not just which one is
+            # configured as primary — the app polls this to keep its own "what's running" badge honest.
             "last_served": _LAST_SERVED or None,
             "admin": "configured" if PROXY_ADMIN_KEY else "unconfigured(fails-closed)",
             "active_grants": active, "grant_ttl_s": GRANT_TTL_SECS,
@@ -1168,10 +1282,10 @@ def healthz() -> dict:
             "logsink": logsink.stats()}
 
 
-# The public face, for an agent run whose Hermes lives in a sandbox off Fly's private network.
+# the public face, for an agent run whose Hermes lives in a sandbox off Fly's private network.
 # It carries only the routes a per-task nonce opens; /admin/* has no route here at all, so the admin key
 # is never checked on a public port. gateway_serve.py runs it beside `app` in one process, so both read
-# the same in-memory grants. (CUR-4480)
+# the same in-memory grants.
 public_app = FastAPI(title="Agent Service — model gateway (public)", docs_url=None, redoc_url=None,
                      openapi_url=None)
 public_app.add_api_route("/v1/models", models, methods=["GET"])

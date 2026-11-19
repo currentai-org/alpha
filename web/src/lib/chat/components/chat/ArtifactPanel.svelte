@@ -1,4 +1,10 @@
+<!--
+SPDX-FileCopyrightText: 2018- The Hugging Face team
+SPDX-License-Identifier: Apache-2.0
+Modified by Current AI from huggingface/chat-ui.
+-->
 <script lang="ts">
+	import { downloadBlob } from "$lib/chat/utils/downloadBlob";
 	import { onDestroy, onMount } from "svelte";
 
 	import type { ArtifactRegistry, ArtifactVersion } from "$lib/chat/utils/artifacts";
@@ -31,7 +37,7 @@
 		registry: ArtifactRegistry;
 	}
 
-	// The panel takes no `loading` prop: Escape closes it mid-generation (CUR-1405), so it has no
+	// The panel takes no `loading` prop: Escape closes it mid-generation, so it has no
 	// interest in whether a turn is streaming, and an unread prop invites a later reader to restore a
 	// guard around it.
 	let { registry }: Props = $props();
@@ -250,7 +256,7 @@
 		return buildArtifactSrcdoc(version.type, version.content, previewChannel);
 	});
 
-	// A frame that navigates away from its srcdoc is replaced with a notice (CUR-3527)
+	// A frame that navigates away from its srcdoc is replaced with a notice
 	const leave = new PreviewLeave(
 		() => iframeEl,
 		() => srcdoc
@@ -307,15 +313,7 @@
 
 	function download() {
 		if (!version) return;
-		const blob = new Blob([version.content], { type: "text/plain;charset=utf-8" });
-		const url = URL.createObjectURL(blob);
-		const a = document.createElement("a");
-		a.href = url;
-		a.download = artifactFileName(version);
-		document.body.appendChild(a);
-		a.click();
-		a.remove();
-		URL.revokeObjectURL(url);
+		downloadBlob(new Blob([version.content], { type: "text/plain;charset=utf-8" }), artifactFileName(version));
 	}
 
 	function gotoVersion(n: number) {
@@ -326,7 +324,7 @@
 
 	function handleKeydown(e: KeyboardEvent) {
 		// Condition lives in artifactPanelKeys.ts so it can be tested against the states it has to
-		// survive — chiefly a still-generating turn, which it must not refuse (CUR-1405).
+		// survive — chiefly a still-generating turn, which it must not refuse.
 		if (
 			!shouldCloseArtifactPanel({
 				key: e.key,

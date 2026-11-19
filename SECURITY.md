@@ -14,7 +14,14 @@ you would like to be credited.
 
 ## What this snapshot leaves out
 
-Secrets, deployment settings and account ids are not in this tree. The policies and reference vectors for
-the optional safety judge ship as placeholders (`web/src/lib/chat/server/rules-s1.json`,
-`web/src/lib/chat/server/data/guard-vectors.json`); the screen that runs by default reads
-`web/src/lib/chat/server/rules.json`, which is here in full.
+Secrets, deployment settings and account ids are not in this tree. The optional S1 safety judge's
+policies (`web/src/lib/chat/server/rules-s1.json`) and the semantic guards' precomputed example embeddings
+(`web/src/lib/chat/server/data/guard-vectors.json`) ship as placeholders.
+
+`web/src/lib/chat/server/rules.json` is the screening policy: its categories, the queries that detect
+them, and the copy a declined turn shows. It is here in full, but it detects nothing on its own. It is
+enforced by the Shieldstral guard, which needs the `guard-primary` flag on and `GUARD_SHADOW_URL` set.
+With that flag off (the default), the screen is Coop (`COOP_URL`, `COOP_API_KEY`), whose rules live in
+the Coop service and are not in this repository. With neither configured, moderation allows everything
+off a deployment; on a deployment (`DEPLOY_ENV` or `VERCEL_ENV` set to `production` or `preview`) the
+child-safety check fails closed and every turn is declined.

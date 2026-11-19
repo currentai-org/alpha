@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import MarkdownRenderer from "./MarkdownRenderer.svelte";
 import { render } from "vitest-browser-svelte";
 import { page } from "vitest/browser";
@@ -118,7 +121,7 @@ describe("MarkdownRenderer streaming", () => {
 	});
 
 	// A drafted letter bracketed in --- rules, with the closing one right
-	// under the signature, which CommonMark reads as a four-line setext heading. (CUR-3662)
+	// under the signature, which CommonMark reads as a four-line setext heading.
 	it("renders a signature followed directly by --- as plain lines and a rule, not a heading", async () => {
 		const { baseElement } = await render(MarkdownRenderer, {
 			content:
@@ -136,7 +139,7 @@ describe("MarkdownRenderer streaming", () => {
 	});
 	// The read-aloud player appears in the flush where the turn ends. If the text still
 	// showed the worker's last streaming result there, the player sat over a half-written answer
-	// until the worker answered. The final text has to be on the page in that same flush. (CUR-2048)
+	// until the worker answered. The final text has to be on the page in that same flush.
 	it("shows the final text in the same render where streaming stops, not a worker round trip later", async () => {
 		const { baseElement, rerender } = await render(MarkdownRenderer, {
 			content: "Bread",

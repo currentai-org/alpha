@@ -50,7 +50,7 @@ beforeEach(async () => {
 
 const text = (f: { value: string }) => Buffer.from(f.value, "base64").toString();
 
-describe("downloadFile (CUR-2183)", () => {
+describe("downloadFile", () => {
 	it("reads the owner's My files copy, at conversations/<conversation>/<sha>/<name>, with the turn's key store, before the files table", async () => {
 		const keys = { read: vi.fn() };
 		const file = await downloadFile(sha, conv, { ownerId: "u1", name: "notes.txt", keys });
@@ -136,7 +136,7 @@ describe("downloadFile (CUR-2183)", () => {
 	});
 
 	// A bucket-only attachment has no table row, so a read error must not fall through to the table:
-	// that would come back as 404 and the turn would answer without the file (CUR-3291).
+	// that would come back as 404 and the turn would answer without the file.
 	it("rejects a bucket-only attachment with AttachmentReadError, never 404, when the bucket errors twice", async () => {
 		readCustodialAttachment.mockRejectedValue(new HubApiError("https://huggingface.co/buckets/x", 429));
 		getFileByFilename.mockResolvedValue(undefined);

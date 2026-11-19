@@ -1,5 +1,5 @@
 /**
- * Per-turn terminal outcomes — the numerator+denominator for the turn-outcome RATE alert (CUR-89).
+ * Per-turn terminal outcomes — the numerator+denominator for the turn-outcome RATE alert.
  *
  * One row per terminal turn, written best-effort from the `[turn] outcome` site. It exists because no
  * existing table answers "what fraction of real turns did not produce an answer": generations.status
@@ -7,13 +7,16 @@
  * exactly the failure the rate alert has to catch. The `[turn] outcome` log line has the right
  * taxonomy but lives in Axiom, which the warm cron cannot read.
  *
- * Stores ONLY the outcome label + decline kind + time to first token + a timestamp — never any user text.
+ * Stores ONLY the outcome label, decline kind, time to first token, failure layer, served model id and a
+ * timestamp — never any user text.
  */
-import { and, count, desc, eq, gt, gte, inArray, isNotNull, lt, max } from "drizzle-orm";
+import { and, desc, eq, gte, isNotNull, lt, sql } from "drizzle-orm";
 import { logger } from "$lib/chat/server/logger";
 import { getDb } from "./client";
 import { newId } from "./ids";
 import { turnOutcomes } from "./schema";
+import type { FailureLayer } from "$lib/chat/utils/failureLayer";
+import type { OutcomeAgg } from "../turnBurnRate";
 
 /** Persist one turn outcome. Best-effort by design: the caller runs it through runInBackground, which
  *  keeps the Vercel function alive until the write lands. This fires at turn FINALIZATION, so a bare
@@ -33,12 +36,20 @@ import { turnOutcomes } from "./schema";
 export async function recordTurnOutcome(
 	outcome: string,
 	declineKind: string | null,
-	ttftMs: number | null = null
+	ttftMs: number | null = null,
+	attribution: { failureLayer: FailureLayer | null; model: string | null } = { failureLayer: null, model: null }
 ): Promise<void> {
 	try {
 		await getDb()
 			.insert(turnOutcomes)
-			.values({ id: newId(), outcome, declineKind, ttftMs: ttftMs === null ? null : Math.round(ttftMs) });
+			.values({
+				id: newId(),
+				outcome,
+				declineKind,
+				ttftMs: ttftMs === null ? null : Math.round(ttftMs),
+				failureLayer: attribution.failureLayer,
+				model: attribution.model,
+			});
 	} catch (e) {
 		logger.warn(
 			{ err: e instanceof Error ? e.message : String(e), outcome },
@@ -47,19 +58,35 @@ export async function recordTurnOutcome(
 	}
 }
 
-/** Count terminal turns by outcome over the last `windowMs`. The alerting probe's distribution. */
-export async function countTurnOutcomes(windowMs: number): Promise<Record<string, number>> {
-	const since = new Date(Date.now() - windowMs);
+/** Turns over the last 6 hours by outcome, failure layer and model, counted in each burn-rate window
+ *  (turnBurnRate.ts). One indexed scan of the 6h range; the windows are FILTER clauses on it. */
+export async function countTurnOutcomeWindows(): Promise<OutcomeAgg[]> {
+	const t = turnOutcomes.createdAt;
+	const n = (minutes: number) =>
+		sql<number>`count(*) filter (where ${t} >= now() - make_interval(mins => ${minutes}))`.mapWith(Number);
 	const rows = await getDb()
-		.select({ outcome: turnOutcomes.outcome, n: count() })
+		.select({
+			outcome: turnOutcomes.outcome,
+			failureLayer: turnOutcomes.failureLayer,
+			model: turnOutcomes.model,
+			n5m: n(5),
+			n30m: n(30),
+			n1h: n(60),
+			n6h: n(360),
+		})
 		.from(turnOutcomes)
-		.where(gte(turnOutcomes.createdAt, since))
-		.groupBy(turnOutcomes.outcome);
-	return Object.fromEntries(rows.map((r) => [r.outcome, r.n]));
+		.where(sql`${t} >= now() - interval '6 hours'`)
+		.groupBy(turnOutcomes.outcome, turnOutcomes.failureLayer, turnOutcomes.model);
+	return rows.map((r) => ({
+		outcome: r.outcome,
+		failureLayer: r.failureLayer,
+		model: r.model,
+		counts: { "5m": r.n5m, "30m": r.n30m, "1h": r.n1h, "6h": r.n6h },
+	}));
 }
 
 /** Time to first token of the newest `limit` completed turns in the last `windowMs`, newest first, for the
- *  first-token median probe (CUR-2243). Turns written before the column existed carry no time and are
+ *  first-token median probe. Turns written before the column existed carry no time and are
  *  left out rather than counted as fast. */
 export async function recentCompleteTtfts(windowMs: number, limit: number): Promise<number[]> {
 	const since = new Date(Date.now() - windowMs);
@@ -74,31 +101,7 @@ export async function recentCompleteTtfts(windowMs: number, limit: number): Prom
 	return rows.flatMap((r) => (r.ttftMs === null ? [] : [r.ttftMs]));
 }
 
-/** The evidence a firing rate alert needs to clear (CUR-2242): when the newest failed turn in the window
- *  happened, and how many turns completed after it. Two small aggregates rather than the rows, because
- *  the window can hold thousands of rows. `newestFailureAt` is null when the window
- *  holds no failure at all. */
-export async function turnOutcomeRecovery(
-	windowMs: number,
-	failureOutcomes: readonly string[]
-): Promise<{ newestFailureAt: Date | null; completesSinceFailure: number }> {
-	const since = new Date(Date.now() - windowMs);
-	const db = getDb();
-	const [newest] = await db
-		.select({ at: max(turnOutcomes.createdAt) })
-		.from(turnOutcomes)
-		.where(and(gte(turnOutcomes.createdAt, since), inArray(turnOutcomes.outcome, [...failureOutcomes])));
-	const newestFailureAt = newest?.at ?? null;
-	if (!newestFailureAt) return { newestFailureAt: null, completesSinceFailure: 0 };
-	const [after] = await db
-		.select({ n: count() })
-		.from(turnOutcomes)
-		.where(and(gt(turnOutcomes.createdAt, newestFailureAt), eq(turnOutcomes.outcome, "complete")));
-	return { newestFailureAt, completesSinceFailure: after?.n ?? 0 };
-}
-
-/** Delete rows older than `retentionMs` so this alerting table never becomes the conversations-table
- *  problem (load-test rows that look like data loss when they age out). Best-effort. */
+/** Delete rows older than `retentionMs` so this alerting table never grows without bound. Best-effort. */
 export async function pruneTurnOutcomes(retentionMs: number): Promise<number> {
 	const cutoff = new Date(Date.now() - retentionMs);
 	const deleted = await getDb().delete(turnOutcomes).where(lt(turnOutcomes.createdAt, cutoff)).returning({

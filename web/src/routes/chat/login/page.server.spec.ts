@@ -1,12 +1,25 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // providers.huggingface must reflect real config, the same way google/github do, so an "always configured"
-// assumption about Hugging Face cannot go unverified (CUR-605).
+// assumption about Hugging Face cannot go unverified.
 const cfg: Record<string, string> = {};
 vi.mock("$lib/chat/server/config", () => ({ config: cfg }));
 
 const oidConfig: { CLIENT_ID: string } = { CLIENT_ID: "" };
 vi.mock("$lib/chat/server/oidcConfig", () => ({ OIDConfig: oidConfig }));
+
+// the providers Better Auth registered, which decide whether the organisation button shows.
+const registered: { ids: string[] } = { ids: [] };
+vi.mock("$lib/chat/server/betterAuth", () => ({
+	getAuth: () => ({ $context: Promise.resolve({ socialProviders: registered.ids.map((id) => ({ id })) }) }),
+}));
+
+// the user rows selfHostSignUp.ts reads to decide whether password sign-up is closed.
+const accounts: { rows: { id: string }[] } = { rows: [] };
+vi.mock("$lib/chat/server/db/client", () => {
+	const query = { from: () => query, limit: async () => accounts.rows };
+	return { schema: { user: { id: "id" } }, getDb: () => ({ select: () => query }) };
+});
 
 const { load } = await import("./+page.server");
 
@@ -23,8 +36,8 @@ function fakeEvent(opts?: { user?: User; next?: string }) {
 // per call.
 async function loadProviders(
 	opts?: Parameters<typeof fakeEvent>[0]
-): Promise<{ providers: Record<string, boolean>; next?: string }> {
-	return (await load(fakeEvent(opts))) as { providers: Record<string, boolean>; next?: string };
+): Promise<{ providers: Record<string, boolean | string | null>; next?: string }> {
+	return (await load(fakeEvent(opts))) as { providers: Record<string, boolean | string | null>; next?: string };
 }
 
 function catchRedirect(
@@ -39,18 +52,69 @@ function catchRedirect(
 beforeEach(() => {
 	for (const k of Object.keys(cfg)) delete cfg[k];
 	oidConfig.CLIENT_ID = "";
+	registered.ids = [];
 });
 
 describe("login +page.server load — providers reflect config, not an assumption", () => {
+	it("offers the organisation's own login under the name its operator set, read from the same env betterAuth.ts registers it from", async () => {
+		Object.assign(cfg, {
+			OIDC_ISSUER: "https://login.example.org",
+			OIDC_CLIENT_ID: "alpha",
+			OIDC_CLIENT_SECRET: "s3cret",
+			OIDC_PROVIDER_NAME: "Example Org",
+		});
+		registered.ids = ["org-oidc"];
+		expect((await loadProviders()).providers.org).toBe("Example Org");
+		registered.ids = [];
+		expect(
+			(await loadProviders()).providers.org,
+			"a provider Better Auth skipped at startup (unreachable issuer, no JWKS) offers no button"
+		).toBeNull();
+		registered.ids = ["org-oidc"];
+		delete cfg.OIDC_CLIENT_SECRET;
+		expect((await loadProviders()).providers.org, "a half-set provider offers no button").toBeNull();
+	});
+
+	it("offers email and password only on a self-host with no mailer, and email codes everywhere else", async () => {
+		cfg.ALPHA_EDITION = "selfhost";
+		let data = (await load(fakeEvent())) as { emailSignIn: string };
+		expect(data.emailSignIn).toBe("password");
+		cfg.SMTP_URL = "smtp://mailpit:1025";
+		data = (await load(fakeEvent())) as { emailSignIn: string };
+		expect(data.emailSignIn, "a self-host with SMTP sends codes").toBe("code");
+		delete cfg.SMTP_URL;
+		cfg.ALPHA_EDITION = "hosted";
+		data = (await load(fakeEvent())) as { emailSignIn: string };
+		expect(data.emailSignIn, "a hosted deployment never offers a password").toBe("code");
+	});
+
+	it("says password sign-up is closed once an account exists on a mailless self-host, and open with ALPHA_OPEN_SIGNUP=true", async () => {
+		cfg.ALPHA_EDITION = "selfhost";
+		accounts.rows = [];
+		let data = (await load(fakeEvent())) as { signUpClosed: boolean };
+		expect(data.signUpClosed, "the first account can be created").toBe(false);
+		accounts.rows = [{ id: "operator" }];
+		data = (await load(fakeEvent())) as { signUpClosed: boolean };
+		expect(data.signUpClosed, "a second sign-up is refused").toBe(true);
+		cfg.ALPHA_OPEN_SIGNUP = "true";
+		data = (await load(fakeEvent())) as { signUpClosed: boolean };
+		expect(data.signUpClosed, "the operator reopened sign-up").toBe(false);
+		delete cfg.ALPHA_OPEN_SIGNUP;
+		cfg.ALPHA_EDITION = "hosted";
+		data = (await load(fakeEvent())) as { signUpClosed: boolean };
+		expect(data.signUpClosed, "a hosted deployment is never limited").toBe(false);
+		accounts.rows = [];
+	});
+
 	it("offers no OAuth provider when none are configured", async () => {
 		const result = await loadProviders();
-		expect(result.providers).toEqual({ google: false, github: false, huggingface: false });
+		expect(result.providers).toEqual({ google: false, github: false, huggingface: false, org: null });
 	});
 
 	it("offers huggingface only when OIDConfig.CLIENT_ID is set, independently of google/github", async () => {
 		oidConfig.CLIENT_ID = "hf-client-id";
 		const result = await loadProviders();
-		expect(result.providers).toEqual({ google: false, github: false, huggingface: true });
+		expect(result.providers).toEqual({ google: false, github: false, huggingface: true, org: null });
 	});
 
 	it("offers all three when all three are configured", async () => {
@@ -58,15 +122,15 @@ describe("login +page.server load — providers reflect config, not an assumptio
 		cfg.GITHUB_CLIENT_ID = "github-id";
 		oidConfig.CLIENT_ID = "hf-client-id";
 		const result = await loadProviders();
-		expect(result.providers).toEqual({ google: true, github: true, huggingface: true });
+		expect(result.providers).toEqual({ google: true, github: true, huggingface: true, org: null });
 	});
 });
 
 // The login load must honour `next`. A new visitor invited to a workspace signs up via this page,
 // and the invitation-accept redirect that sent them here has to survive it: without it they land on the
 // bare app root with no trace of the invitation. The sending side (workspace/accept/[id]'s own load, see
-// its page.server.spec.ts) is the other half. (CUR-960)
-describe("login +page.server load — `next` (CUR-960)", () => {
+// its page.server.spec.ts) is the other half.
+describe("login +page.server load — `next`", () => {
 	it("returns a valid same-app `next` for an unauthenticated visitor to use once signed in", async () => {
 		const result = await loadProviders({ next: "/chat/workspace/accept/inv-1" });
 		expect(result.next).toBe("/chat/workspace/accept/inv-1");
@@ -94,7 +158,7 @@ describe("login +page.server load — `next` (CUR-960)", () => {
 		expect(result.next).toBeUndefined();
 	});
 
-	// On the chat surface `base` is "", so the prefix check alone would pass these. (CUR-4448)
+	// On the chat surface `base` is "", so the prefix check alone would pass these.
 	it("drops a protocol-relative, backslash or control-character `next` (open redirect), on either surface", async () => {
 		for (const next of ["//evil.com/x", "/chat/\\evil.com", "/\\evil.com", "/chat/a\r\nSet-Cookie: x=1"]) {
 			const result = await loadProviders({ next });

@@ -1,7 +1,7 @@
 import { getRequestEvent } from '$app/server';
 
 /**
- * What the CDN may do with a rendered public page (CUR-1597): fresh for 60s, then served stale while
+ * What the CDN may do with a rendered public page: fresh for 60s, then served stale while
  * one request refreshes it, so a visitor after an idle spell never waits on a cold function.
  */
 export const CDN_PAGE_CACHE_CONTROL =
@@ -9,7 +9,7 @@ export const CDN_PAGE_CACHE_CONTROL =
 
 /**
  * The tag every CDN-cached CMS page carries in `Vercel-Cache-Tag`, so a publish can delete those
- * entries at once instead of a visitor after a quiet spell getting the pre-edit copy (CUR-1597).
+ * entries at once instead of a visitor after a quiet spell getting the pre-edit copy.
  */
 export const CMS_PAGE_CACHE_TAG = 'cms-page';
 
@@ -19,7 +19,7 @@ export const CMS_PAGE_CACHE_TAG = 'cms-page';
  * for 5s instead of 60s. The refresh after an idle spell lands on a cold instance, the one most
  * likely to stand in, and without this every visitor in the next minute would get that render.
  *
- * No `stale-while-revalidate` (CUR-3700): with one, the CDN serves the expired stand-in as STALE to
+ * No `stale-while-revalidate`: with one, the CDN serves the expired stand-in as STALE to
  * whoever comes next, however much later, and refreshes behind them, so a tile-less home page would keep
  * reaching visitors for as long as the region stayed quiet. Past 5s the next request renders afresh.
  */

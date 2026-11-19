@@ -2,7 +2,7 @@
  * The admin-authored corpus is one table, and `rag_documents.organization_id` marks a
  * workspace's own document. Retrieval has to read that mark, or the first workspace document would be
  * cited to every visitor as shared Potluck evidence. These tests seed real documents and chunks and run
- * the real query; only the query embedding and the RAG_ADMIN_ENABLED gate are stubbed. (CUR-4152)
+ * the real query; only the query embedding and the RAG_ADMIN_ENABLED gate are stubbed.
  */
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import { inArray } from "drizzle-orm";
@@ -35,7 +35,7 @@ async function retrievedFor(workspaceId: string | null): Promise<string[]> {
 	return sources.map((s) => s.documentId!).filter((id) => seeded.includes(id)).sort();
 }
 
-describe.sequential("admin RAG retrieval is scoped to the asker's workspace (CUR-4152)", () => {
+describe.sequential("admin RAG retrieval is scoped to the asker's workspace", () => {
 	beforeEach(async () => {
 		const db = getDb();
 		const now = new Date();

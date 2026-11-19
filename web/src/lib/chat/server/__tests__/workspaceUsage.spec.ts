@@ -7,7 +7,7 @@
  * Also covers the id-space trap the module's own header documents: getWorkspaceUsage takes Better
  * Auth ids, conversations.userId stores the SHADOW id (auth.ts's shadowUserId) — these tests seed
  * conversations keyed by the shadow id computed from each test's own Better-Auth-shaped id, exactly
- * as the real bridge in auth.ts would, rather than assuming the two are interchangeable. (CUR-552)
+ * as the real bridge in auth.ts would, rather than assuming the two are interchangeable.
  */
 import { describe, expect, it, afterEach } from "vitest";
 import { ObjectId } from "bson";
@@ -32,8 +32,8 @@ async function localsForBetterAuthUser(betterAuthUserId: string) {
 	return createTestLocals({ user: { _id: new ObjectId(shadowId) } as never });
 }
 
-// conversations.organizationId is a real FK now, so any test that stamps one on a test
-// conversation needs a row in `organization` to point at — a bare string id 404s the insert. (CUR-961)
+// conversations.organizationId is a real foreign key, so any test that stamps one on a test
+// conversation needs a row in `organization` to point at — a bare string id 404s the insert.
 async function withTestOrgs<T>(ids: string[], fn: () => Promise<T>): Promise<T> {
 	const db = getDb();
 	const now = new Date();
@@ -45,7 +45,7 @@ async function withTestOrgs<T>(ids: string[], fn: () => Promise<T>): Promise<T> 
 	}
 }
 
-describe.sequential("getWorkspaceUsage (CUR-552)", () => {
+describe.sequential("getWorkspaceUsage", () => {
 	afterEach(async () => {
 		await cleanupTestData();
 	});
@@ -140,7 +140,7 @@ describe.sequential("getWorkspaceUsage (CUR-552)", () => {
 		});
 	});
 
-	it("CUR-961: a workspace with no attributed activity reads zero, even for an admin with a long personal history elsewhere", async () => {
+	it("a workspace with no attributed activity reads zero, even for an admin with a long personal history elsewhere", async () => {
 		const orgId = `org-${crypto.randomUUID()}`;
 		const admin = "ba-usage-admin";
 
@@ -157,7 +157,7 @@ describe.sequential("getWorkspaceUsage (CUR-552)", () => {
 		]);
 	});
 
-	it("CUR-961: two workspaces belonging to the same person show different numbers when their activity differs", async () => {
+	it("two workspaces belonging to the same person show different numbers when their activity differs", async () => {
 		const orgWithActivity = `org-${crypto.randomUUID()}`;
 		const orgWithoutActivity = `org-${crypto.randomUUID()}`;
 		await withTestOrgs([orgWithActivity, orgWithoutActivity], async () => {
@@ -173,7 +173,7 @@ describe.sequential("getWorkspaceUsage (CUR-552)", () => {
 		});
 	});
 
-	it("CUR-736/CUR-827: documentCount counts only THIS workspace's own rag_documents, by organizationId", async () => {
+	it("documentCount counts only THIS workspace's own rag_documents, by organizationId", async () => {
 		const db = getDb();
 		const orgId = `org-${crypto.randomUUID()}`;
 		const otherOrgId = `org-${crypto.randomUUID()}`;
@@ -195,8 +195,8 @@ describe.sequential("getWorkspaceUsage (CUR-552)", () => {
 			// column is that a caller who forgets to scope gets nothing, never everyone else's documents.
 			expect((await getWorkspaceUsage([])).documentCount).toBe(0);
 		} finally {
-			// Cascades rag_documents (onDelete:"cascade") for free — same mechanism CUR-827's admin
-			// delete relies on in production, exercised here as cleanup rather than product behavior.
+			// Cascades rag_documents (onDelete:"cascade") for free — the same mechanism the admin
+			// workspace delete relies on in production, exercised here as cleanup rather than product behavior.
 			await db.delete(organization).where(eq(organization.id, orgId));
 			await db.delete(organization).where(eq(organization.id, otherOrgId));
 		}

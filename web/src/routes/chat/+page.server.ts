@@ -1,7 +1,10 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { chatLandingSeoPage } from '$lib/website.server';
 import type { PageServerLoad } from './$types';
 
-// Chat's landing page is code-owned (CUR-2195): the models and shell come from +layout.server.ts,
+// Chat's landing page is code-owned: the models and shell come from +layout.server.ts,
 // and a CMS page at slug `chat` contributes only its SEO fields, so an editor can still change
 // the title and description. A missing page, a failed lookup or a build with no CMS leaves
 // ChatShell's own head tags in place rather than failing the page.

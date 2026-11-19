@@ -9,6 +9,7 @@ import { defaultModel, taskModel } from "$lib/chat/server/models";
 import { flattenForApertus } from "$lib/chat/server/endpoints/openai/flattenForApertus";
 import { measuredReasoningOff, rolesNeedFlattening } from "$lib/chat/server/modelProfiles";
 import {
+	isLocalLane,
 	resolveClassifierLane,
 	type ClassifierLane,
 	type ServingLaneModel,
@@ -54,7 +55,7 @@ function classifierGlobalKey(): string {
  * on behalf of user …") on every turn. Prefer the per-turn billing org (respects user overrides),
  * fall back to the HF_BILL_TO env.
  *
- * Sent only to the HF router on the global lane; `hfBillToHeader` holds the rule (CUR-1877).
+ * Sent only to the HF router on the global lane; `hfBillToHeader` holds the rule.
  */
 function classifierBillingHeaders(
 	lane: ClassifierLane,
@@ -86,30 +87,38 @@ function classifierRequestHeaders(
 }
 
 /** A decider's verdict plus whether it produced one. `ok: false` means the call failed and the
- *  verdict is meaningless; the caller logs that as a fail-open departure (CUR-2108) instead of reading
+ *  verdict is meaningless; the caller logs that as a fail-open departure instead of reading
  *  it as a "no". Every decider in this file and searchIntent.ts returns this shape. */
 export type DeciderVerdict = {
 	shouldSearch: boolean;
 	ok: boolean;
-	/** Which model answered and where, as the endpoint reported it (CUR-984). Set only on a real call. */
+	/** Which model answered and where, as the endpoint reported it. Set only on a real call. */
 	served?: { model: string; backend?: string; provider?: string };
+	/** How the completion classifier's reply read. "malformed" decides "no" like a real no, and is
+	 *  carried so the decision log can tell the two apart. Set only by classifySearchNeed. */
+	reading?: "yes" | "no" | "malformed";
 };
 
+/** The reply the `search_classifier_malformed` fault stands in for the model's: neither yes nor no. */
+const MALFORMED_CLASSIFIER_REPLY = "Perhaps";
+
 /** Deadline for the search-need call. Without one it inherits the 15 s side-call default, which a
- *  stalled classifier model would hold a declined-search turn for (decideMs p50 488 ms, p90
- *  1.39 s, p99 6.9 s; the model's own ttfb p99 3.5 s). Past it the call is `ok: false` and the
- *  strategy's fallback decides (CUR-3952). */
+ *  stalled classifier model would hold a declined-search turn for; a healthy call answers well
+ *  inside 3 s. Past it the call is `ok: false` and the strategy's fallback decides. */
 const SEARCH_CLASSIFIER_TIMEOUT_MS = 3_000;
 
 /**
  * Ask the model whether this query needs open-web grounding. Never throws, never blocks the turn.
  * A short query is a real "no" (`ok: true`); a failed call is `ok: false`, which the logs
- * tell apart from the model declining (CUR-2108).
+ * tell apart from the model declining.
  */
 export async function classifySearchNeed(
 	query: string,
 	locals: App.Locals | undefined,
-	attachments: readonly AttachmentKind[] = []
+	attachments: readonly AttachmentKind[] = [],
+	/** The `search_classifier_malformed` fault (preview only): the model is not called and its reply is
+	 *  one that is neither yes nor no, so the real parse and log below run on it. */
+	opts: { malformedReply?: boolean } = {}
 ): Promise<DeciderVerdict> {
 	const q = query.trim();
 	if (q.length < 3) {
@@ -117,17 +126,17 @@ export async function classifySearchNeed(
 	}
 	try {
 		// Live-tunable (admin /tuning panel) with the constant as fallback. The attachment rule is added
-		// after either, so a tuned prompt still learns about the files (CUR-3192).
+		// after either, so a tuned prompt still learns about the files.
 		const note = attachmentNote(attachments);
 		const basePrompt = (await getTuning()).searchClassifierPrompt || CLASSIFIER_PREPROMPT;
 		const preprompt = note ? `${basePrompt}\n\n${ATTACHMENT_RULE}` : basePrompt;
 		// generateFromDefaultEndpoint never throws: a failed call comes back as "", which parses as a
-		// "no". Without onFailure that read as the model declining, and the catch below never ran.
+		// "no". onFailure is what tells a failed call apart from the model declining.
 		let failed: { kind: "ceiling" | "error"; status?: number } | undefined;
 		const served: { model?: string; backend?: string; provider?: string } = {};
 		// One user message for a model whose deployments refuse the system role. The main
-		// answer's flatten (CUR-1294) and Infomaniak pin (CUR-2092) both skip side calls, so a classifier
-		// routed to a deployment that refuses the system role needs the flatten here too. (CUR-2141)
+		// answer's role flattening and provider pin both skip side calls, so a classifier routed to a
+		// deployment that refuses the system role needs the flatten here too.
 		const user = note ? `User message: "${q}"\n${note}` : `User message: "${q}"`;
 		const flat = rolesNeedFlattening(taskModel.id)
 			? flattenForApertus([
@@ -135,31 +144,33 @@ export async function classifySearchNeed(
 					{ role: "user", content: user },
 				])[0]?.content
 			: undefined;
-		const raw = await getReturnFromGenerator(
-			generateFromDefaultEndpoint({
-				messages: [{ from: "user", content: typeof flat === "string" ? flat : user }],
-				preprompt: typeof flat === "string" ? undefined : preprompt,
-				// No modelId: this is a side call, so it runs on TASK_MODEL like every other one (CUR-2092).
-				// It does not follow the turn's model, so a 3-token yes/no never lands on a large, rate-limited one.
-				generateSettings: { max_tokens: 3, temperature: 0 },
-				timeoutMs: SEARCH_CLASSIFIER_TIMEOUT_MS,
-				onFailure: (kind, status) => (failed = { kind, status }),
-				// Merged: the requested id arrives first, the served model and host near the end.
-				onServed: (s) => {
-					served.model = s.model || served.model || s.requestedModel;
-					served.backend = s.backend || served.backend;
-					served.provider = s.provider || served.provider;
-				},
-				locals,
-			})
-		);
+		const raw = opts.malformedReply
+			? MALFORMED_CLASSIFIER_REPLY
+			: await getReturnFromGenerator(
+				generateFromDefaultEndpoint({
+					messages: [{ from: "user", content: typeof flat === "string" ? flat : user }],
+					preprompt: typeof flat === "string" ? undefined : preprompt,
+					// No modelId: this is a side call, so it runs on TASK_MODEL like every other one.
+					// It does not follow the turn's model, so a 3-token yes/no never lands on a large, rate-limited one.
+					generateSettings: { max_tokens: 3, temperature: 0 },
+					timeoutMs: SEARCH_CLASSIFIER_TIMEOUT_MS,
+					onFailure: (kind, status) => (failed = { kind, status }),
+					// Merged: the requested id arrives first, the served model and host near the end.
+					onServed: (s) => {
+						served.model = s.model || served.model || s.requestedModel;
+						served.backend = s.backend || served.backend;
+						served.provider = s.provider || served.provider;
+					},
+					locals,
+				})
+			);
 		if (failed) {
 			logger.warn({ ...failed, modelId: taskModel.id }, "search-need classifier call failed");
 			return { shouldSearch: false, ok: false };
 		}
 		const reading = readClassifierVerdict(String(raw ?? ""));
-		// A reply that is neither yes nor no still decides "no" here, as it always has; this line only
-		// makes it countable, since the decision log reads it exactly like a real no (CUR-2141). The
+		// A reply that is neither yes nor no still decides "no" here; this line only makes it
+		// countable, since the decision log reads it exactly like a real no. The
 		// length and model, never the reply: it can echo the user's text.
 		if (reading === "malformed") {
 			logger.warn(
@@ -170,6 +181,7 @@ export async function classifySearchNeed(
 		return {
 			shouldSearch: reading === "yes",
 			ok: true,
+			reading,
 			...(served.model
 				? { served: { model: served.model, backend: served.backend, provider: served.provider } }
 				: {}),
@@ -249,7 +261,7 @@ export async function decideSearchViaTool(
 	servingModel?: ServingLaneModel,
 	attachments: readonly AttachmentKind[] = [],
 	// The conversation's photos, for a serving model that reads images. Seeing one, the model decides from
-	// the photo and the question together and writes the query from what is in it (CUR-3192).
+	// the photo and the question together and writes the query from what is in it.
 	images: readonly DeciderImage[] = []
 ): Promise<ToolDeciderVerdict> {
 	const q = query.trim();
@@ -263,16 +275,18 @@ export async function decideSearchViaTool(
 			? `${q}\n\n(${note} ${ATTACHMENT_RULE})`
 			: q;
 	try {
+		// A turn served by a visitor-registered local endpoint decides search on the default model: the
+		// classifier carries the deployment's gateway key, which must never reach a URL the visitor typed.
 		const lane = resolveClassifierLane(
-			servingModel ?? defaultModel,
+			servingModel && !isLocalLane(servingModel) ? servingModel : defaultModel,
 			config.OPENAI_BASE_URL,
 			config.OPENAI_PROVIDER
 		);
 		const client = await createOpenAIClient({
 			apiKey: lane.apiKey ?? classifierGlobalKey(),
 			baseURL: lane.baseURL,
-			// Also at construction, not only per-request below: CUR-1345 made the factory require it, so
-			// the cap CUR-1069 added holds even if a future call here forgets the per-request option.
+			// Also at construction, not only per-request below: the factory requires it, so the cap
+			// holds even if a future call here forgets the per-request option.
 			timeout: CLASSIFIER_HTTP_TIMEOUT_MS,
 			defaultHeaders: {
 				"User-Agent": APP_USER_AGENT,
@@ -283,7 +297,7 @@ export async function decideSearchViaTool(
 			{
 				model: lane.modelId,
 				// The files ride as context, so a question about them doesn't read as a lookup. One
-				// user message, since some deployments refuse the system role (CUR-2141). (CUR-3192)
+				// user message, since some deployments refuse the system role.
 				messages: [
 					{
 						role: "user",
@@ -304,7 +318,7 @@ export async function decideSearchViaTool(
 				max_tokens: 80,
 				temperature: 0,
 				// The serving model answers this, unstreamed: a model that reasons by default needs its
-				// known off switch here, or it waits out the timeout (CUR-4281).
+				// known off switch here, or it waits out the timeout.
 				...measuredReasoningOff(lane.modelId, lane.baseURL),
 			},
 			{

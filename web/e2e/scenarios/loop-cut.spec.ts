@@ -9,10 +9,10 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // An answer that starts repeating itself is cut while it streams, before the output screen
 // reads it. A looping model once produced about 12,000 characters, and the screen declined
 // the whole run as violent. Real loops come up about once in thirty turns, so the `answer_loops` fault
-// streams one: a sentence, then "The tide comes in and the tide goes out again." 300 times (CUR-3318).
+// streams one: a sentence, then "The tide comes in and the tide goes out again." 300 times.
 const LOOP_SPAN = 'The tide comes in and the tide goes out again.';
 const NOTICE = 'I got stuck repeating myself';
-// The same notice on a French turn (CUR-4052), from repetitionGuard.ts's repetitionNotice('fr').
+// The same notice on a French turn, from repetitionGuard.ts's repetitionNotice('fr').
 const NOTICE_FR = 'Je me suis mis à me répéter';
 
 async function askAndReadStored(
@@ -88,10 +88,30 @@ test(
 		test.setTimeout(150_000);
 		// The detector reads some plain French as Catalan (a question built on "la" and "de", which its
 		// Catalan word list counts and its French one does not), so this one leans on les/est/des.
-		// That miss is reported on CUR-1380, the detector's ticket; this spec tests the notice.
+		// That miss is reported, the detector's ticket; this spec tests the notice.
 		const stored = await askAndReadStored(
 			page,
 			"Pourquoi est-ce que les marées changent deux fois par jour ? Explique-moi avec des mots simples, s'il te plaît."
+		);
+		expect(stored, 'the fault never reached the server: no loop sentence in the answer').toContain(
+			LOOP_SPAN
+		);
+		expect(stored, 'the loop notice on a French turn is still in English').not.toContain(NOTICE);
+		expect(stored, 'the loop ran on without the French notice').toContain(NOTICE_FR);
+		await expect(page.locator('[data-message-role="assistant"]').last()).toContainText(NOTICE_FR);
+	}
+);
+
+test(
+	'a French turn built on la and de, which the old word lists read as Catalan, loops and ends with the French notice',
+	{ tag: ['@F2', '@preview-only', '@CUR-4080'] },
+	async ({ page }) => {
+		test.setTimeout(150_000);
+		// The Observed draft shape: a short question carried by "la" and "de". The old word-list
+		// read scored it Catalan (0.66) and the repetition notice came back in Catalan (the run).
+		const stored = await askAndReadStored(
+			page,
+			'Quelle est la cause de la marée haute et de la marée basse sur la côte de la Bretagne ?'
 		);
 		expect(stored, 'the fault never reached the server: no loop sentence in the answer').toContain(
 			LOOP_SPAN

@@ -1,5 +1,5 @@
 // One Slack incoming-webhook post, shared by the server and scripts so timeout and error text stay
-// identical (CUR-2654).
+// identical.
 
 /**
  * POSTs `{ text }` to a Slack webhook and throws when Slack refuses it. A Workflow trigger accepts

@@ -163,7 +163,7 @@ describe("mcpProvenance", () => {
 		expect(mcpProvenance({ tool: "flux_generate_image" })?.tool).toBe("flux_generate_image");
 	});
 
-	it("keeps `failed` on a skip, so a tool's error is never relabelled a cold start (CUR-2645)", () => {
+	it("keeps `failed` on a skip, so a tool's error is never relabelled a cold start", () => {
 		expect(mcpProvenance({ tool: "", skipped: true, skipMs: 12, failed: true })).toEqual({
 			tool: "",
 			skipped: true,
@@ -246,7 +246,7 @@ describe("agentToolsProvenance", () => {
 		expect(agentToolsProvenance(undefined)).toBeUndefined();
 	});
 
-	it("forwards counts when present, same gate as toolKinds (CUR-775)", () => {
+	it("forwards counts when present, same gate as toolKinds", () => {
 		expect(
 			agentToolsProvenance({
 				type: "agentTools" as never,
@@ -289,12 +289,12 @@ describe("agentConfirmOpened", () => {
 		expect(result).toHaveLength(1);
 	});
 
-	it("CUR-1094: carries deadlineAt through when the update has one", () => {
+	it("carries deadlineAt through when the update has one", () => {
 		const withDeadline = { ...open("c1"), deadlineAt: 1_000_000 };
 		expect(agentConfirmOpened(undefined, withDeadline)[0].deadlineAt).toBe(1_000_000);
 	});
 
-	it("CUR-1094: omits deadlineAt (not undefined-valued) on an older/coarse frame that carries none", () => {
+	it("omits deadlineAt (not undefined-valued) on an older/coarse frame that carries none", () => {
 		const entry = agentConfirmOpened(undefined, open("c1"))[0];
 		expect("deadlineAt" in entry).toBe(false);
 	});
@@ -382,7 +382,7 @@ describe("moderationMarker", () => {
 		expect(moderationMarker({ label: null, score: 0.8, kind: "toxicity" }).label).toBeNull();
 	});
 
-	it("stamps support only on a self-harm decline, and leaves it absent otherwise (CUR-2111)", () => {
+	it("stamps support only on a self-harm decline, and leaves it absent otherwise", () => {
 		const marker = (support?: boolean) =>
 			moderationMarker({ label: "content_policy", score: 1, kind: "content_policy", support });
 		expect(marker(true).support).toBe(true);
@@ -441,14 +441,14 @@ describe("unrunCodeProvenance", () => {
 		// Unlike agentToolsProvenance above there is no empty case to filter — the server emits this only
 		// when its own unrun check fired, so the update ARRIVING is the signal. A blank reason is a
 		// malformed update, and defaulting it would make the header assert something the server never
-		// said, which is the exact failure CUR-1341 is about.
+		// said, which is the exact failure that change is about.
 		expect(unrunCodeProvenance({ type: "unrunCode" as never, reason: "" as never })).toBeUndefined();
 		expect(unrunCodeProvenance(null)).toBeUndefined();
 		expect(unrunCodeProvenance(undefined)).toBeUndefined();
 	});
 });
 
-describe("assistedByEntry — a helper model's row keeps the host and nothing else of the address (CUR-984)", () => {
+describe("assistedByEntry — a helper model's row keeps the host and nothing else of the address", () => {
 	it("keeps only the host of a full base URL, so a path or query never reaches the message", () => {
 		expect(
 			assistedByEntry("math-route", "mistral-small-2603", "https://api.mistral.ai/v1?key=x", "")

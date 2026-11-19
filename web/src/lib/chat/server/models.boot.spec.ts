@@ -166,11 +166,11 @@ describe("bootModels — snapshot boot vs live fallback (§C)", () => {
 	});
 });
 
-// CUR-1249. The backup lane is a backup for a completion; it is a backup for the MODEL LIST only when
+// The backup lane is a backup for a completion; it is a backup for the MODEL LIST only when
 // its catalogue can satisfy the allowlist. The HF router spells Apertus `swiss-ai/Apertus-v1.5-70B`
 // where the allowlist names `swiss-ai/apertus-v1.5-70b`, so a primary 404 must not swap a
-// working catalogue for one that matches nothing (CUR-1246).
-describe("loadCatalog — the backup lane has to satisfy the allowlist (CUR-1249)", () => {
+// working catalogue for one that matches nothing.
+describe("loadCatalog — the backup lane has to satisfy the allowlist", () => {
 	const BACKUP = "https://backup.test/v1";
 	const PRIMARY_ID = "swiss-ai/apertus-v1.5-70b";
 	const status = (code: number, headers: Record<string, string> = {}) => ({
@@ -229,7 +229,7 @@ describe("loadCatalog — the backup lane has to satisfy the allowlist (CUR-1249
 	});
 });
 
-describe("bootModels with a misconfigured TASK_MODEL (CUR-2319)", () => {
+describe("bootModels with a misconfigured TASK_MODEL", () => {
 	it("fails boot, leaving nothing servable, when TASK_MODEL names no registered model", async () => {
 		H.cfg.TASK_MODEL = "nobody/no-such-model";
 		H.snap.current = { fetchedAt: "", baseURL: "", entries: [] };

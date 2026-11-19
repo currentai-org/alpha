@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2018- The Hugging Face team
+SPDX-License-Identifier: Apache-2.0
+Modified by Current AI from huggingface/chat-ui.
+-->
 <script lang="ts">
 	import PotluckMark from "$lib/chat/components/PotluckMark.svelte";
 	import type { Model } from '$lib/chat/types/Model';
@@ -13,13 +18,13 @@
 	import RiErrorWarningLine from '~icons/ri/error-warning-line';
 	import { loadPotluckRun } from '$lib/website';
 
-	// The layout server already resolved and rotated these (CUR-620: 3 of the pool, not the same 3
+	// The layout server already resolved and rotated these (3 of the pool, not the same 3
 	// every visit — see +layout.server.ts and $lib/chat/utils/starterRotation). `?? suggestions` is
 	// just a defensive fallback, not the normal path.
 	const starters = $derived((page.data as { starters?: string[] | null }).starters ?? shelf);
 
 	// Retention/privacy note on the empty-state, so the storage window is visible up front (minimize
-	// surprise) rather than only on the policy pages. CUR-1731: the 30-day sweep in cleanup.ts only ever
+	// surprise) rather than only on the policy pages. the 30-day sweep in cleanup.ts only ever
 	// touches guest conversations (userId IS NULL) — a signed-in account's own key carries no clock to
 	// substitute, so {retentionDays} is only applied on the guest side. Same auth signal ChatWindow.svelte
 	// already uses to gate GuestRetentionNotice (`!page.data.user`).
@@ -65,7 +70,7 @@
 	}
 
 	// The server renders these buttons before the click handler exists, so a click in the
-	// seconds before hydration did nothing at all. Disabled until mount, the button says so instead. (CUR-3311)
+	// seconds before hydration did nothing at all. Disabled until mount, the button says so instead.
 	let mounted = $state(false);
 	onMount(() => {
 		mounted = true;
@@ -73,7 +78,7 @@
 
 	// The model name is DERIVED, never hardcoded — but which model it derives FROM is the whole point,
 	// and `currentModel.id` is only the right source while the picker's model IS the served one. No
-	// model is substituted at turn resolution today (CUR-243). If a substitution is ever introduced,
+	// model is substituted at turn resolution today. If a substitution is ever introduced,
 	// this greeting would name the picked model while the badge on the answer names the served one, so
 	// this line then needs a served-model source: the picker's id structurally cannot see a swap it is
 	// never offered.
@@ -83,10 +88,10 @@
 	// fallback lanes and Auto make it wrong some of the time (a line could read "served via HuggingFace"
 	// beside a picker row naming another host). So this line names no host, and X-ray's "Where it ran" says
 	// it per answer from the turn's own routing record (ProvenanceBreakdown.svelte). A local model
-	// (CUR-1194) is the exception: its turns never leave the user's own server, which config can't
+	// is the exception: its turns never leave the user's own server, which config can't
 	// get wrong.
 	// With Auto on and left on Auto, no model is chosen until the person types: Auto picks per message
-	// (routing/choice.ts), so naming `currentModel` here promised a model the first answer often wasn't. (CUR-2364)
+	// (routing/choice.ts), so naming `currentModel` here promised a model the first answer often wasn't.
 	const autoChoosing = $derived(auto || (page.data.autoRoutingEnabled === true && $modelChoice === AUTO));
 	const servingLine = $derived(
 		isLocalModelId(currentModel.id)
@@ -99,7 +104,7 @@
 	// A model's measured weak spot is one quiet line in the model's details,
 	// never on the picker row. Its Settings page is developer-only, so the
 	// line sits here, under the sentence naming the picked model, where a guest sees it as they pick.
-	// Auto names no model yet, so it shows no weak spot either. (CUR-3911)
+	// Auto names no model yet, so it shows no weak spot either.
 	const knownWeakSpot = $derived(autoChoosing ? undefined : currentModel.knownWeakSpot);
 </script>
 
@@ -107,7 +112,7 @@
      spec's empty-state heading (DM Mono, Size 5), the serving/retention line at Text 3, then the
      composer, then prompt examples (Radius 2 suggestion buttons, spec §3). -->
 <!-- data-chat-landing: the empty state's own marker, so a test can tell it apart from a conversation
-     without reading its headline, which is catalog copy (sign-in.spec.ts, CUR-1594). -->
+     without reading its headline, which is catalog copy (sign-in.spec.ts). -->
 <div data-chat-landing class="contents">
 	<EmptyState
 		title={m.copy_landingHeadline()}

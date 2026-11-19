@@ -2,7 +2,7 @@ import { describe, expect, it, vi, afterEach } from "vitest";
 import { unzipSync } from "fflate";
 import { userPrefix } from "$lib/chat/server/storage/custodialBucket";
 import { collections } from "$lib/chat/server/database";
-import { eq, getTableColumns, getTableName, is } from "drizzle-orm";
+import { eq, getTableColumns, getTableName, inArray, is } from "drizzle-orm";
 import { PgTable } from "drizzle-orm/pg-core";
 import { getDb } from "$lib/chat/server/db/client";
 import * as schema from "$lib/chat/server/db/schema";
@@ -17,25 +17,15 @@ import {
 	ExportFileError,
 	validateExportFile,
 } from "$lib/chat/server/exportFormat";
+import { setConversationTags } from "$lib/chat/server/db/conversationTags";
 
-// Contract test for the export route (CUR-1017). The load-bearing property is the TEXT-ONLY-ALPHA guard in
+// Contract test for the export route. The load-bearing property is the TEXT-ONLY-ALPHA guard in
 // +server.ts: `(multimodalEnabled() ? hashes : [])`. A merge that resolves this back to plain `hashes`
 // would silently start embedding real file bytes in every export. That regression is what this file exists
 // to catch, not merely "the route returns something."
 
-const dataExportEnabledMock = vi.fn(() => true);
-// The flag is stubbed where PostHog would answer it, in flags.ts, so the route's real gate runs:
-// dataExportEnabled() and requireExportUser() both come from dataPortability.ts, and a stub on that
-// module's export never reaches the call requireExportUser makes inside it. nextExportAt is the real one too, so the 429 test below
-// exercises the real one-an-hour read against the database.
-vi.mock("$lib/chat/server/flags", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("$lib/chat/server/flags")>();
-	return {
-		...actual,
-		flagEnabledOr: (key: string, fallback: () => boolean) =>
-			key === "data-export" ? dataExportEnabledMock() : actual.flagEnabledOr(key, fallback),
-	};
-});
+// requireExportUser() and nextExportAt are the real ones from dataPortability.ts, so the 429 test
+// below exercises the real one-an-hour read against the database.
 
 const multimodalEnabledMock = vi.fn(() => false);
 vi.mock("$lib/chat/server/textOnly", () => ({
@@ -76,18 +66,17 @@ async function readZipBuffer(response: Response): Promise<Buffer> {
 	return Buffer.from(arrayBuffer);
 }
 
-describe.sequential("GET /chat/api/v2/export (CUR-1017)", () => {
+describe.sequential("GET /chat/api/v2/export", () => {
 	afterEach(async () => {
 		await cleanupTestData();
 		await collections.messageEvents.deleteMany({});
-		dataExportEnabledMock.mockReturnValue(true);
 		multimodalEnabledMock.mockReturnValue(false);
 		storage.configured.mockReturnValue(false);
 		storage.list.mockResolvedValue([]);
 		downloadFileMock.mockClear();
 	});
 
-	it("returns a real zip for a signed-in non-admin, not just an admin (CUR-995)", async () => {
+	it("returns a real zip for a signed-in non-admin, not just an admin", async () => {
 		const { locals } = await createTestUser();
 		const { GET } = await import("./+server");
 		const response = await GET({ locals } as Parameters<typeof GET>[0]);
@@ -95,7 +84,7 @@ describe.sequential("GET /chat/api/v2/export (CUR-1017)", () => {
 		expect(buffer.includes("conversations.json")).toBe(true);
 	});
 
-	it("conversations.json names its format, version and account, and our own validator accepts it (CUR-4180)", async () => {
+	it("conversations.json names its format, version and account, and our own validator accepts it", async () => {
 		const { locals } = await createTestUser();
 		const accountId = locals.user!._id.toString();
 		await createTestConversation(locals, { title: "Envelope check" });
@@ -115,20 +104,64 @@ describe.sequential("GET /chat/api/v2/export (CUR-1017)", () => {
 		expect(readmeText).toContain(`"schemaVersion": ${EXPORT_SCHEMA_VERSION}`);
 	});
 
+	it("conversations.json names each chat's tags by the names the person typed, and an untagged chat carries none", async () => {
+		const { locals } = await createTestUser();
+		const tagged = await createTestConversation(locals, { title: "Tagged" });
+		await createTestConversation(locals, { title: "Plain" });
+		await setConversationTags(locals.user!._id.toString(), { _id: tagged._id, userId: locals.user!._id }, ["Grant writing", "teaching"]);
+		const { GET } = await import("./+server");
+		const zip = unzipSync(new Uint8Array(await readZipBuffer(await GET({ locals } as Parameters<typeof GET>[0]))));
+		const file = JSON.parse(Buffer.from(zip["conversations.json"]).toString()) as { conversations: { title: string; tags?: string[] }[] };
+		const byTitle = Object.fromEntries(file.conversations.map((c) => [c.title, c.tags]));
+		expect(byTitle).toEqual({ Tagged: ["Grant writing", "teaching"], Plain: undefined });
+	});
+
+	// stream-follow keeps an answer's streamed text in generation_events while it streams and
+	// for two minutes after. An export taken in that window carries the person's rows, and nobody else's.
+	it("carries the streamed-answer log of the person's own conversations, and never another person's", async () => {
+		const db = getDb();
+		const { locals } = await createTestUser();
+		const mine = await createTestConversation(locals, { title: "Still streaming" });
+		const { locals: otherLocals } = await createTestUser();
+		const theirs = await createTestConversation(otherLocals, { title: "Someone else's" });
+		const minePayload = '{"type":"stream","token":"tide turns at four"}';
+		const theirPayload = '{"type":"stream","token":"not yours to export"}';
+		await db.insert(schema.generationEvents).values([
+			{ generationId: "gen-mine", conversationId: mine._id.toString(), seq: 0, payload: minePayload },
+			{ generationId: "gen-theirs", conversationId: theirs._id.toString(), seq: 0, payload: theirPayload },
+		]);
+		try {
+			const { GET } = await import("./+server");
+			const zip = unzipSync(new Uint8Array(await readZipBuffer(await GET({ locals } as Parameters<typeof GET>[0]))));
+			const everything = Object.values(zip).map((bytes) => Buffer.from(bytes).toString()).join("\n");
+			expect(everything).not.toContain("not yours to export");
+			const log = JSON.parse(Buffer.from(zip["streaming-answers.json"] ?? []).toString() || "null");
+			expect(log).toEqual([
+				expect.objectContaining({
+					conversationId: mine._id.toString(),
+					generationId: "gen-mine",
+					seq: 0,
+					payload: minePayload,
+				}),
+			]);
+			expect(Buffer.from(zip["README.md"]).toString()).toContain("streaming-answers.json");
+		} finally {
+			await db.delete(schema.generationEvents).where(inArray(schema.generationEvents.generationId, ["gen-mine", "gen-theirs"]));
+		}
+	});
+
+	it("leaves the streamed-answer log out when the person has no rows in it", async () => {
+		const { locals } = await createTestUser();
+		await createTestConversation(locals, { title: "Finished long ago" });
+		const { GET } = await import("./+server");
+		const zip = unzipSync(new Uint8Array(await readZipBuffer(await GET({ locals } as Parameters<typeof GET>[0]))));
+		expect(zip["streaming-answers.json"]).toBeUndefined();
+	});
+
 	it("401s a signed-out request", async () => {
 		const { GET } = await import("./+server");
 		await expect(GET({ locals: {} } as Parameters<typeof GET>[0])).rejects.toMatchObject({
 			status: 401,
-		});
-	});
-
-	it("403s when the data-export flag is off, even for an admin", async () => {
-		dataExportEnabledMock.mockReturnValue(false);
-		const { locals } = await createTestUser();
-		locals.isAdmin = true;
-		const { GET } = await import("./+server");
-		await expect(GET({ locals } as Parameters<typeof GET>[0])).rejects.toMatchObject({
-			status: 403,
 		});
 	});
 
@@ -147,7 +180,7 @@ describe.sequential("GET /chat/api/v2/export (CUR-1017)", () => {
 		});
 	});
 
-	it("sends a throttled click on a stale Account page back to that page instead of a bare 429 (CUR-3849)", async () => {
+	it("sends a throttled click on a stale Account page back to that page instead of a bare 429", async () => {
 		const { user, locals } = await createTestUser();
 		locals.isAdmin = true;
 		await collections.messageEvents.insertOne({
@@ -241,7 +274,7 @@ describe.sequential("GET /chat/api/v2/export (CUR-1017)", () => {
 	});
 
 	// A chat attachment kept in Alpha storage is both a message's file and an entry in the
-	// account's listing (CUR-3327). Written from both, the ZIP would hold it twice and the summary count it twice.
+	// account's listing. Written from both, the ZIP would hold it twice and the summary count it twice.
 	async function accountWithStoredAttachment() {
 		multimodalEnabledMock.mockReturnValue(true);
 		storage.configured.mockReturnValue(true);
@@ -282,7 +315,7 @@ describe.sequential("GET /chat/api/v2/export (CUR-1017)", () => {
 	});
 
 	// The readable copy named no attachment, and the README said every stored file sat "in the
-	// folders you put them in" while chat attachments sit under the conversation's id and the file's hash. (CUR-4359)
+	// folders you put them in" while chat attachments sit under the conversation's id and the file's hash.
 	it("the readable conversation names its attachment's path, and the README says where chat attachments are", async () => {
 		const { locals, key } = await accountWithStoredAttachment();
 		const { GET } = await import("./+server");
@@ -304,7 +337,7 @@ describe.sequential("GET /chat/api/v2/export (CUR-1017)", () => {
 	});
 });
 
-// CUR-4183. The export reads conversations and files today, so no credential reaches it. That holds
+// The export reads conversations and files today, so no credential reaches it. That holds
 // only while nobody widens what it reads: a column that holds a sign-in token, an OAuth grant or a
 // tunnel secret is one join away. So the test below gives a person a value in every credential column
 // the schema has, runs the real export, and looks for each value in every file of the ZIP. The walk
@@ -385,7 +418,7 @@ async function personWithEveryCredential(locals: App.Locals) {
 		tokenHash: leak("token_caches.tokenHash"),
 		doc: {},
 	});
-	// An OAuth client this person registered, and a grant to it (CUR-4312): its secret and both tokens.
+	// An OAuth client this person registered, and a grant to it: its secret and both tokens.
 	await db.insert(schema.oauthClient).values({
 		id: `oc-${tag}`,
 		clientId: `client-${tag}`,
@@ -429,7 +462,7 @@ async function personWithEveryCredential(locals: App.Locals) {
 	};
 }
 
-describe.sequential("the data export never carries a credential (CUR-4183)", () => {
+describe.sequential("the data export never carries a credential", () => {
 	let tokenCacheId: string | undefined;
 	afterEach(async () => {
 		// token_caches has no foreign key to cascade from, so cleanupTestData would leave the row.
@@ -480,5 +513,54 @@ describe.sequential("the data export never carries a credential (CUR-4183)", () 
 		expect(uncovered).toEqual([]);
 		// And neither list names a column that has gone, so neither can grow stale.
 		expect([...Object.keys(fixture.seeded), ...Object.keys(NOT_SECRET)].filter((key) => !named.includes(key))).toEqual([]);
+	});
+});
+
+describe.sequential("GET /chat/api/v2/export/open-webui", () => {
+	afterEach(async () => {
+		await cleanupTestData();
+		await collections.messageEvents.deleteMany({});
+	});
+
+	it("downloads every conversation, archived and pinned included, as the JSON list Open WebUI imports", async () => {
+		const { locals } = await createTestUser();
+		await createTestConversation(locals, { title: "Kept out of the list", archived: true });
+		await createTestConversation(locals, { title: "Heads the list", pinned: true });
+		const { GET } = await import("./open-webui/+server");
+		const response = await GET({ locals } as Parameters<typeof GET>[0]);
+		expect(response.headers.get("content-disposition")).toMatch(/^attachment; filename="chat-export-\d+\.json"$/);
+		const file = (await response.json()) as { title: string; pinned: boolean; archived: boolean; user_id: string }[];
+		expect(Array.isArray(file)).toBe(true);
+		expect(file.map((c) => [c.title, c.pinned, c.archived]).sort()).toEqual([
+			["Heads the list", true, false],
+			["Kept out of the list", false, true],
+		]);
+		expect(file.every((c) => c.user_id === ""), "our account id stays out of the file").toBe(true);
+	});
+
+	it("writes a chat's tags as Open WebUI keeps them, tag ids in meta.tags", async () => {
+		const { locals } = await createTestUser();
+		const tagged = await createTestConversation(locals, { title: "Tagged" });
+		await setConversationTags(locals.user!._id.toString(), { _id: tagged._id, userId: locals.user!._id }, ["Grant writing"]);
+		const { GET } = await import("./open-webui/+server");
+		const file = (await (await GET({ locals } as Parameters<typeof GET>[0])).json()) as { meta: { tags: string[] } }[];
+		expect(file.map((c) => c.meta.tags)).toEqual([["grant_writing"]]);
+	});
+
+	it("refuses a second download inside ten minutes: back to the Account page on a click, 429 otherwise", async () => {
+		const { locals } = await createTestUser();
+		const { GET } = await import("./open-webui/+server");
+		await GET({ locals } as Parameters<typeof GET>[0]);
+		const navigate = new Request("http://localhost/chat/api/v2/export/open-webui", { headers: { "sec-fetch-mode": "navigate" } });
+		await expect(GET({ locals, request: navigate } as Parameters<typeof GET>[0])).rejects.toMatchObject({
+			status: 303,
+			location: "/chat/settings/account",
+		});
+		await expect(GET({ locals } as Parameters<typeof GET>[0])).rejects.toMatchObject({ status: 429 });
+	});
+
+	it("401s a signed-out request, the one gate it rides on", async () => {
+		const { GET } = await import("./open-webui/+server");
+		await expect(GET({ locals: {} } as Parameters<typeof GET>[0])).rejects.toMatchObject({ status: 401 });
 	});
 });

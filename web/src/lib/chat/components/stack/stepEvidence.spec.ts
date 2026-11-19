@@ -62,7 +62,7 @@ describe('the sources a web search read', () => {
 				webSearch: { query: 'q', asOf: '2026-09-29', sources: [web(1), web(2), web(3)] }
 			})
 		);
-		// Cited pages come first, numbered as the answer shows them (CUR-3933).
+		// Cited pages come first, numbered as the answer shows them.
 		expect(sources.map((s) => [s.n, s.cited])).toEqual([
 			[1, true],
 			[2, true],
@@ -95,7 +95,7 @@ describe('the passages a knowledge store returned', () => {
 	});
 
 	it('names each store in plain words', () => {
-		// The partner's passage is the one cited, so it is listed first (CUR-3933).
+		// The partner's passage is the one cited, so it is listed first.
 		const [partner, library] = ragSources(message);
 		expect(library.from).toBe('AI Potluck’s knowledge library');
 		expect(partner.from).toBe('A partner’s data source (owner/notes)');
@@ -119,7 +119,7 @@ describe('showing a passage and a day', () => {
 		expect(formatDay(instant, { timeZone: 'Asia/Tokyo', locale: 'en-GB' })).toBe('13 Mar 2026');
 	});
 
-	// A source's publication day, stored as YYYY-MM-DD, reads as that day west of UTC too. (CUR-4171)
+	// A source's publication day, stored as YYYY-MM-DD, reads as that day west of UTC too.
 	it('gives a bare calendar day as that day in every time zone', () => {
 		expect(formatDay('2026-10-18', { timeZone: 'America/Los_Angeles', locale: 'en-GB' })).toBe('18 Oct 2026');
 		expect(formatDay('2026-10-18', { timeZone: 'Pacific/Auckland', locale: 'en-GB' })).toBe('18 Oct 2026');
@@ -142,11 +142,21 @@ describe('the named safety rules for a turn whose screen ran', () => {
 		).toEqual(['not-checked', 'triggered']);
 	});
 
-	it('marks a distress rule that answered under the card triggered, never clear, and the rest clear (CUR-3915)', () => {
+	it('marks a distress rule that answered under the card triggered, never clear, and the rest clear', () => {
 		expect(classifyRules(rules, { triggeredLabel: 'Self-harm' }).map((r) => r.state)).toEqual([
 			'clear',
 			'triggered'
 		]);
+	});
+
+	it('marks every rule that blocked the turn triggered when more than one did', () => {
+		expect(
+			classifyRules(rules, {
+				triggeredLabel: 'Self-harm',
+				triggeredLabels: ['Self-harm', rules[0].label],
+				blocked: true
+			}).map((r) => r.state)
+		).toEqual(['triggered', 'triggered']);
 	});
 
 	it('marks every rule not checked when an unnamed rule blocked the turn', () => {
@@ -171,7 +181,7 @@ describe('when the input safety screen ran relative to the model', () => {
 	});
 });
 
-describe('a page retrieved as several passages (CUR-888)', () => {
+describe('a page retrieved as several passages', () => {
 	it('is one entry, numbered without gaps, and the answer’s marker for any passage marks it cited', () => {
 		const product = (n: number) => ({
 			n,
@@ -201,7 +211,7 @@ describe('a page retrieved as several passages (CUR-888)', () => {
 	});
 });
 
-describe('factCheckStep (CUR-2927)', () => {
+describe('factCheckStep', () => {
 	it('says how many claims a revised answer lost when the stamp carries the count', () => {
 		expect(factCheckStep({ outcome: 'revised', removed: 1 }).what).toBe('Removed 1 claim no source supports.');
 		expect(factCheckStep({ outcome: 'revised', removed: 3 }).what).toBe('Removed 3 claims no source supports.');

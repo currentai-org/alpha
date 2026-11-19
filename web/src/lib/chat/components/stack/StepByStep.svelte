@@ -3,6 +3,7 @@
 	import type { AssistRole, AssistedBy, Message } from '$lib/chat/types/Message';
 	import { Badge, Collapsible, Favicon } from '@aipotluck/alpha-ds';
 	import { faviconSrc } from '$lib/favicon';
+	import { sanitizeHref } from '$lib/chat/utils/safeHref';
 	import { provenanceFacts } from '$lib/chat/utils/trace/provenanceFacts';
 	import { summarizeToolRun } from '$lib/chat/utils/trace/toolRunSummary';
 	import { DISPOSITION_COPY } from '$lib/chat/utils/responseDisposition';
@@ -70,7 +71,7 @@
 		followUp?: boolean;
 		/** The named safety rules (the layout's `safetyRules`), listed under a safety check that ran. */
 		safetyRules?: SafetyRule[];
-		/** Names of the files the question carried. The answer read them, so it isn't from training alone (CUR-4353). */
+		/** Names of the files the question carried. The answer read them, so it isn't from training alone. */
 		attachedFiles?: string[];
 	} = $props();
 
@@ -90,11 +91,11 @@
 		sources?: StepSource[];
 		/** A quoted block the step received, e.g. a private source's summary. */
 		quote?: string;
-		/** Code a step ran and what it printed (CUR-4232), shown as-is. */
+		/** Code a step ran and what it printed, shown as-is. */
 		code?: string;
 		/** The named safety rules and how this turn left each one. */
 		rules?: RuleRow[];
-		/** A helper model's id, the host it ran on, and that host in words (CUR-984). */
+		/** A helper model's id, the host it ran on, and that host in words. */
 		assist?: { model: string; host: string; hostLabel: string };
 	}
 
@@ -105,7 +106,7 @@
 	const model = $derived(catalogByGatewayId(served));
 	const modelName = $derived(model?.name ?? (served ? resolveModelIdentity(served).short : m.message_stepModelFallback()));
 	const maker = $derived(model ? orgs[model.maker] : undefined);
-	// After a failover the footer says "(backup)"; the write step names the model that was picked too. (CUR-3968)
+	// After a failover the footer says "(backup)"; the write step names the model that was picked too.
 	const backupLine = $derived.by(() => {
 		const fo = message.failover;
 		if (!fo) return undefined;
@@ -114,13 +115,13 @@
 			? m.message_stepWriteBackupSkipped({ picked, model: modelName })
 			: m.message_stepWriteBackup({ picked, model: modelName });
 	});
-	// Where it ran comes from this answer's routing record, never the catalogue's planned host. (CUR-3562)
+	// Where it ran comes from this answer's routing record, never the catalogue's planned host.
 	const ran = $derived(ranOn(message.routerMetadata?.backend, message.routerMetadata?.provider));
-	// The person may hide which model wrote the answer and where it ran. (CUR-549)
+	// The person may hide which model wrote the answer and where it ran.
 	const serving = useShowServing();
 
 	// The models that worked on this answer without writing it, each named with where it ran.
-	// Functions, not strings, so the copy follows a language switch. (CUR-984)
+	// Functions, not strings, so the copy follows a language switch.
 	const ASSIST_COPY: Record<
 		AssistRole,
 		{
@@ -129,7 +130,7 @@
 			title: () => string;
 			did: (p: { model: string }) => string;
 			didOn: (p: { model: string; host: string }) => string;
-			// The same fact with no model or host, for when the person hides which model ran. (CUR-549)
+			// The same fact with no model or host, for when the person hides which model ran.
 			didHidden: () => string;
 		}
 	> = {
@@ -149,7 +150,7 @@
 			didOn: (p) => m.message_stepAssistMathWhatHost(p),
 			didHidden: () => m.message_stepAssistMathWhatHidden()
 		},
-		// The other models that read the message, each from its own call's record. (CUR-3563)
+		// The other models that read the message, each from its own call's record.
 		'safety-screen': {
 			id: 'assist-safety-screen',
 			icon: RiShieldCheckLine,
@@ -211,7 +212,7 @@
 			}
 		];
 
-		// The picker was on Auto and Auto chose this answer's model. (CUR-3944)
+		// The picker was on Auto and Auto chose this answer's model.
 		const auto = message.autoRoute;
 		const autoModel = auto && catalog.find((c) => c.id === auto.model);
 		if (auto && autoModel) {
@@ -229,7 +230,7 @@
 		}
 
 		// The answer is asked for by name in the language the person wrote, so a model that
-		// would otherwise default to English (as with Hausa) answers in that language. (CUR-2237)
+		// would otherwise default to English (as with Hausa) answers in that language.
 		const asked = message.routerMetadata?.answerLanguage;
 		if (asked) {
 			const language = languageName(asked);
@@ -264,9 +265,11 @@
 				f.screen === 'flagged'
 					? message.moderation?.unscreened
 						? m.message_stepSafetyUnscreened()
-						: message.moderation?.ruleLabel
-							? m.message_stepSafetyMatchedRule({ rule: message.moderation.ruleLabel })
-							: m.message_stepSafetyMatched()
+						: message.moderation?.ruleLabels
+							? m.message_stepSafetyMatchedRules({ rules: message.moderation.ruleLabels.join(', ') })
+							: message.moderation?.ruleLabel
+								? m.message_stepSafetyMatchedRule({ rule: message.moderation.ruleLabel })
+								: m.message_stepSafetyMatched()
 					: f.screen === 'failed-open'
 						? m.message_stepSafetyFailedOpen()
 						: f.screen === 'clear'
@@ -288,6 +291,7 @@
 				screenRan && !message.moderation?.unscreened && safetyRules.length
 					? classifyRules(safetyRules, {
 							triggeredLabel: message.moderation?.ruleLabel,
+							triggeredLabels: message.moderation?.ruleLabels,
 							blocked: message.moderation?.flagged
 						})
 					: undefined
@@ -382,7 +386,7 @@
 		if (mathHelper) out.push(mathHelper);
 
 		// The model's own calculate calls, which the caption under the answer already shows. Like
-		// that caption, a refused call drops out once a later one worked, and nothing here says "checked". (CUR-3943)
+		// that caption, a refused call drops out once a later one worked, and nothing here says "checked".
 		const calls = message.calculations ?? [];
 		if (calls.length) {
 			const worked = calls.filter((c) => c.result !== undefined);
@@ -490,7 +494,7 @@
 				);
 			}
 
-			// Each call to a configured MCP server, with what came of it. (CUR-3026)
+			// Each call to a configured MCP server, with what came of it.
 			(message.mcpCalls ?? []).forEach((c, i) => {
 				out.push({
 					id: `mcp-call-${i}`,
@@ -536,7 +540,7 @@
 				tone: fixes.length ? 'note' : 'ok'
 			});
 
-			// Only when the fact check ran on this answer; the count comes from its stamp. (CUR-2927)
+			// Only when the fact check ran on this answer; the count comes from its stamp.
 			if (message.groundcheckNotice) {
 				out.push({
 					id: 'factcheck',
@@ -574,7 +578,7 @@
 		return out;
 	});
 
-	// Where each panelist's own call ran, from the stored take's routing record (CUR-3563).
+	// Where each panelist's own call ran, from the stored take's routing record.
 	function panelHosts(opinions: NonNullable<Message['opinions']>): string[] {
 		return opinions.map((o) => {
 			const host = assistHostLabel(o);
@@ -685,11 +689,11 @@
 <li class="flex flex-col gap-0.5 border-l border-line-2 pl-3" data-step-source>
 <span class="flex items-center gap-2 type-caption">
 <span class="text-fg-3 tabular-nums">[{src.n}]</span>
-{#if src.url}
+{#if sanitizeHref(src.url)}
 <Favicon src={faviconSrc(src.url)} />
-<a href={src.url} target="_blank" rel="noreferrer" class="min-w-0 truncate text-fg-1 underline decoration-line-3 underline-offset-2 hover:decoration-fg-1">{src.title || src.url}</a>
+<a href={sanitizeHref(src.url)} target="_blank" rel="noreferrer" class="min-w-0 truncate text-fg-1 underline decoration-line-3 underline-offset-2 hover:decoration-fg-1">{src.title || src.url}</a>
 {:else}
-<span class="min-w-0 truncate text-fg-1">{src.title}</span>
+<span class="min-w-0 truncate text-fg-1">{src.title || src.url}</span>
 {/if}
 </span>
 <span class="type-caption text-fg-3">{src.from}{src.date ? ` · ${formatDay(src.date)}` : ''}{src.cited === true ? ` · ${m.message_sourceCited()}` : src.cited === false ? ` · ${m.message_sourceNotCited()}` : ''}</span>
@@ -711,7 +715,7 @@
 		<div class="flex flex-col gap-2 border-t border-line-1 pt-3" data-second-opinion-offer>
 			<span class="type-body font-medium text-fg-1">{m.message_notSureTitle()}</span>
 			<span class="type-caption text-fg-3">{m.message_notSureBody()}</span>
-			<SecondOpinion {question} messageId={message.id} opinions={message.opinions} verdict={message.verdict} />
+			<SecondOpinion {question} messageId={message.id} opinions={message.opinions} verdict={message.verdict} unanswered={message.unanswered} />
 		</div>
 	{/if}
 </div>

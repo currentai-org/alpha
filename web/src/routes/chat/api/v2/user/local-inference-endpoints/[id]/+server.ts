@@ -1,4 +1,4 @@
-/** Remove one of the signed-in user's local inference endpoints. See the collection route (CUR-1262)
+/** Remove one of the signed-in user's local inference endpoints. See the collection route
  *  (../+server.ts) for the shared auth/gate reasoning. */
 import { error, type RequestHandler } from "@sveltejs/kit";
 import { superjsonResponse } from "$lib/chat/server/api/utils/superjsonResponse";
@@ -18,7 +18,7 @@ export const DELETE: RequestHandler = async ({ locals, params }) => {
 	const row = await getLocalEndpointForUserAndId(userId, id);
 
 	// best-effort revoke on the tunnel side before deleting our own row -- never block the
-	// delete on Pangolin's API succeeding (same fail-soft posture as prewarmLocalModel). (CUR-1266)
+	// delete on Pangolin's API succeeding (same fail-soft posture as prewarmLocalModel).
 	if (row?.kind === "managed" && row.managedConfig) {
 		await revokeManagedEndpoint(row.managedConfig, id);
 	}

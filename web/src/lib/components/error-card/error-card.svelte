@@ -1,7 +1,7 @@
 <!--
   @component
   The chat's error page card: the status, the message, and the error id when there is one. Built on
-  Alpha's surface and text tokens, so it reads in both themes (CUR-3409).
+  Alpha's surface and text tokens, so it reads in both themes.
 -->
 <script lang="ts">
 	import { page } from '$app/state';

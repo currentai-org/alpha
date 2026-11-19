@@ -1,6 +1,6 @@
 import { citationOrder } from './trace/citedIndices';
 
-// One entry per page in the citation strip, without changing what the model saw (CUR-888).
+// One entry per page in the citation strip, without changing what the model saw.
 //
 // A catalog product whose description runs long is several retrieved chunks sharing one url, and each
 // is its own source number in the model's input, so the strip listed one product three times. The
@@ -39,7 +39,7 @@ export function collapseSources<T extends { link?: string }>(
 		display[i] = entries.length;
 	};
 	// The pages the answer cites come first, in the order it first cites them, so an answer citing the
-	// third and fourth of seven pages reads [1][2], not [3][4] (CUR-3933). The rest follow in order.
+	// third and fourth of seven pages reads [1][2], not [3][4]. The rest follow in order.
 	for (const n of citedFirst) if (n >= 1 && n <= sources.length) place(n - 1);
 	sources.forEach((_, i) => place(i));
 	return { entries, display };

@@ -4,7 +4,7 @@
  * searchDecision's `servingModel?.id`) can land on the agent model when the turn is agent-routed.
  * endpointAgent has no notion of a side-call: it always submits a full, independent /run task and
  * ignores preprompt/generateSettings, so a 3-token classifier or a 24-token title would instead get a
- * second, unrelated agent run as its "answer" (CUR-542 — fabricated conversation titles, and auto web
+ * second, unrelated agent run as its "answer" (fabricated conversation titles, and auto web
  * search silently never triggering under agent mode). This pins the fix: resolving to the agent model
  * id redirects to taskModel instead of ever reaching endpointAgent from this function.
  */
@@ -52,7 +52,7 @@ const { agentModel, otherModel, fallbackTaskModel, hangingModel, refusingModel, 
 		),
 	};
 	// A lane that refuses the request outright, the way the OpenAI SDK reports it: an APIError carrying
-	// the HTTP status. HF's router answers 400 for a model whose only provider is in error (CUR-2107).
+	// the HTTP status. HF's router answers 400 for a model whose only provider is in error.
 	const refusingModel = {
 		id: "refusing-model",
 		parameters: {},
@@ -135,7 +135,7 @@ describe("generateFromDefaultEndpoint", () => {
 		expect(result).toBe(`from ${fallbackTaskModel.id}`);
 	});
 
-	it("hands the endpoint the caller's isMultimodal and the message's image files, and leaves it unset when the caller says nothing (CUR-4670)", async () => {
+	it("hands the endpoint the caller's isMultimodal and the message's image files, and leaves it unset when the caller says nothing", async () => {
 		apertusModel.sent.length = 0;
 		const files = [{ type: "base64" as const, value: "aGk=", mime: "image/png", name: "sha-1" }];
 		await getReturnFromGenerator(
@@ -183,7 +183,7 @@ describe("generateFromDefaultEndpoint", () => {
 	});
 });
 
-describe("CUR-1659: every side-call is bounded, not just the two that were noticed", () => {
+describe("every side-call is bounded, not just the two that were noticed", () => {
 	const OUTLIVED = Symbol("outlived-its-ceiling");
 
 	beforeEach(() => {
@@ -246,7 +246,7 @@ describe("CUR-1659: every side-call is bounded, not just the two that were notic
 	});
 });
 
-describe("CUR-2031: a failed side-call says it failed, so its stand-in \"\" is not read as a reply", () => {
+describe("a failed side-call says it failed, so its stand-in \"\" is not read as a reply", () => {
 	it("reports a ceiling cut as a failure, which the title needs to avoid calling it an off-task reply", async () => {
 		const failures: string[] = [];
 		const result = await getReturnFromGenerator(
@@ -262,7 +262,7 @@ describe("CUR-2031: a failed side-call says it failed, so its stand-in \"\" is n
 		expect(failures).toEqual(["ceiling"]);
 	});
 
-	it("passes the HTTP status of a refused request, so a 400 is not read as a model that said nothing (CUR-2107)", async () => {
+	it("passes the HTTP status of a refused request, so a 400 is not read as a model that said nothing", async () => {
 		const failures: [string, number | undefined][] = [];
 		const result = await getReturnFromGenerator(
 			generateFromDefaultEndpoint({
@@ -291,7 +291,7 @@ describe("CUR-2031: a failed side-call says it failed, so its stand-in \"\" is n
 	});
 });
 
-describe("CUR-2140: a side-call can say which lane it went to", () => {
+describe("a side-call can say which lane it went to", () => {
 	it("reports the requested model up front and the gateway's backend once the stream carries it", async () => {
 		const reports: Record<string, string | undefined>[] = [];
 		const result = await getReturnFromGenerator(
@@ -326,7 +326,7 @@ describe("CUR-2140: a side-call can say which lane it went to", () => {
 	});
 });
 
-describe("CUR-2319: a side call naming an unregistered model says so", () => {
+describe("a side call naming an unregistered model says so", () => {
 	it("serves it on the task model and logs both ids at warn, rather than swapping models silently", async () => {
 		const warn = vi.spyOn(logger, "warn").mockImplementation(() => logger);
 		const result = await getReturnFromGenerator(
@@ -342,7 +342,7 @@ describe("CUR-2319: a side call naming an unregistered model says so", () => {
 		warn.mockRestore();
 	});
 
-	it("warns once per unregistered id, however many side calls name it (CUR-2264)", async () => {
+	it("warns once per unregistered id, however many side calls name it", async () => {
 		const warn = vi.spyOn(logger, "warn").mockImplementation(() => logger);
 		const call = (modelId: string) =>
 			getReturnFromGenerator(
@@ -375,7 +375,7 @@ describe("CUR-2319: a side call naming an unregistered model says so", () => {
 	});
 });
 
-describe("CUR-1294: a side call to Apertus goes out as one user message", () => {
+describe("a side call to Apertus goes out as one user message", () => {
 	beforeEach(() => {
 		apertusModel.sent.length = 0;
 	});

@@ -62,7 +62,7 @@ async function askPanel(): Promise<{ opinions?: Message["opinions"] }> {
 	return lines.find((l) => l.type === "done") ?? {};
 }
 
-describe("POST /chat/api/second-opinion — where each take ran (CUR-3563)", () => {
+describe("POST /chat/api/second-opinion — where each take ran", () => {
 	it(
 		"stores each take with the host its own call reported, and no host for a call that reported none",
 		async () => {

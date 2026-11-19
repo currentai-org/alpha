@@ -81,7 +81,7 @@ async function storedAnswers(page: Page): Promise<Stored[]> {
 }
 
 test(
-	"CUR-4384: when Auto's choice refuses a question, Auto asks another model and the answer names both",
+	"when Auto's choice refuses a question, Auto asks another model and the answer names both",
 	{ tag: ['@F2', '@CUR-4384', '@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(180_000);
@@ -128,7 +128,7 @@ test(
 );
 
 test(
-	"CUR-4384: when Auto's choice stays silent until its give-up, Auto asks another model and the answer names both",
+	"when Auto's choice stays silent until its give-up, Auto asks another model and the answer names both",
 	{ tag: ['@F2', '@CUR-4384', '@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(180_000);
@@ -195,7 +195,7 @@ test(
 );
 
 test(
-	'CUR-4384: a hand-picked model that refuses ends on its own error, and no other model is asked',
+	'a hand-picked model that refuses ends on its own error, and no other model is asked',
 	{ tag: ['@F2', '@CUR-4384', '@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(120_000);
@@ -214,7 +214,7 @@ test(
 );
 
 test(
-	"CUR-4384: with auto-repick off, Auto's refused turn ends on its error as before",
+	"with auto-repick off, Auto's refused turn ends on its error as before",
 	{ tag: ['@F2', '@CUR-4384', '@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(120_000);
@@ -239,7 +239,7 @@ test(
 // 404 for its entry, and Auto picked again only on a 429 or silence. The first send now fails with the
 // router's 404 (`lane_not_found`) before any text, and Auto asks another model, as it does for a 429.
 test(
-	"CUR-4629: when Auto's choice fails with the router's 404 before any text, Auto asks another model and the answer names both",
+	"when Auto's choice fails with the router's 404 before any text, Auto asks another model and the answer names both",
 	{ tag: ['@F2', '@CUR-4629', '@CUR-4384', '@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(180_000);
@@ -278,7 +278,7 @@ test(
 );
 
 test(
-	"CUR-4629: a hand-picked model that fails with the router's 404 ends on its own error, and no other model is asked",
+	"a hand-picked model that fails with the router's 404 ends on its own error, and no other model is asked",
 	{ tag: ['@F2', '@CUR-4629', '@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(120_000);

@@ -2,9 +2,9 @@ import mimeTypes from "mime-types";
 import type { MessageFile } from "$lib/chat/types/Message";
 import type { AgentArtifact } from "./endpointAgent";
 
-// The files an agent turn wrote (CUR-4398), copied out of agent-service's session workdir while it still
-// holds them. The workdir sits in the machine's /tmp, so a deploy, a machine stop or the idle reaper
-// erases it, so a download link that reads it live stops working within hours. The copy is stored
+// The files an agent turn wrote, copied out of agent-service's session workdir while it still holds
+// them. The workdir sits in the machine's /tmp, where a deploy, a machine stop or the idle reaper
+// erases it, so a download link that reads it live stops working once that happens. The copy is stored
 // with the conversation the way a chat attachment is (storeChatAttachments): My files for a person the
 // bucket keeps files for, the files table otherwise, and delete-all, deleting the chat and the export
 // already cover both.

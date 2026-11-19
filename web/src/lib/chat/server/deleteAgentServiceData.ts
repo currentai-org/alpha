@@ -7,7 +7,7 @@ import { logger } from "$lib/chat/server/logger";
 // migrateAgentTrust.ts already computes for trust migration — wipeUserData.ts calls into it, since
 // otherwise a deleted account's agent-mode history would survive the wipe. Same reference pattern as
 // migrateAgentTrust.ts: best-effort and non-blocking (the trash-all's own DB wipe is the part that
-// must always succeed; this is additive to it), same bearer auth, same subject derivation. (CUR-1722)
+// must always succeed; this is additive to it), same bearer auth, same subject derivation.
 
 /**
  * Delete this visitor's agent-service task history and session workdirs. `visitor` is whichever of
@@ -25,7 +25,7 @@ export async function deleteAgentServiceData(visitor: string | undefined): Promi
 
 /**
  * Delete what agent-service holds for these conversations: each one's session workdir and its
- * sandboxes, the run-code one and the agent one (CUR-4484). `visitor` is the same value
+ * sandboxes, the run-code one and the agent one. `visitor` is the same value
  * `deleteAgentServiceData` takes, so the subject matches the one the conversation's turns ran under.
  *
  * Returns how many sandboxes went, or undefined when agent mode is off here or the call failed.

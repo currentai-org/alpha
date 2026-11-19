@@ -1,7 +1,7 @@
 // Admin reports dashboard — read-only view of the `reports` table (the ROOST triage seam fed by the
 // per-answer report button AND the general "report a problem" channel). Gated on a role that may read
 // reports (adminAuth.ts). The one
-// mutation is a report's status (CUR-3903), which the reporter sees on their own reports page.
+// mutation is a report's status, which the reporter sees on their own reports page.
 
 import { fail } from "@sveltejs/kit";
 import type { PageServerLoad, Actions } from "./$types";
@@ -23,6 +23,7 @@ export const load: PageServerLoad = async ({ locals, cookies, getClientAddress }
 		return {
 			needsLogin: true,
 			signedIn: Boolean(locals.user),
+			role: locals.user?.role ?? null,
 			reports: [] as Awaited<ReturnType<typeof listReports>>,
 		};
 	}
@@ -30,7 +31,7 @@ export const load: PageServerLoad = async ({ locals, cookies, getClientAddress }
 	// The table shows each reported answer's text, so loading it is a read of those
 	// conversations. The reason is the triage queue itself: every row is a report someone filed.
 	// A report whose conversation was deleted keeps its answer text and has no conversation id, so it
-	// is named by its report id instead. (CUR-4385)
+	// is named by its report id instead.
 	const conversationIds = [
 		...new Set(rows.filter((r) => r.answerText).map((r) => r.conversationId ?? `report:${r.id}`)),
 	];
@@ -46,6 +47,7 @@ export const load: PageServerLoad = async ({ locals, cookies, getClientAddress }
 	return {
 		needsLogin: false,
 		signedIn: Boolean(locals.user),
+		role: locals.user?.role ?? null,
 		reports: rows,
 	};
 };

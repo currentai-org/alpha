@@ -11,16 +11,22 @@
 #   curl -s -X POST localhost:8731/run -H 'content-type: application/json' \
 #        -d '{"prompt":"create a.py b.py and count the .py files; write the number to out.txt"}'
 #
-# SAFETY: this is a TRUSTED-LOCAL demo. It binds to 127.0.0.1 only, auth is disabled, and spend is capped.
-# Do NOT expose it to the internet as-is (the agent runs --yolo shell). For a remote demo, put it behind a
-# tunnel + basic-auth and set WEBUI_SECRET_KEY (drop AGENT_AUTH_DISABLED). Use a throwaway ceilinged token.
+# DEMO ONLY, NO SANDBOX, NO AUTH: this file runs the agent's shell directly inside the app container
+# (AGENT_SANDBOX=off) with outbound network open, and accepts every caller as the same user
+# (AGENT_AUTH_DISABLED=1). It binds 127.0.0.1 only and caps spend. Anything the agent's shell can reach in
+# that container, it can read and change. Do NOT expose it, and do not run it on a machine you care about
+# with a model you do not trust. To run agent mode for people on a self-hosted Alpha, use
+# `docker compose --profile agent up` in selfhost/ instead: each conversation gets its own hardened
+# container, and auth is on with a generated secret (selfhost/README.md, "Agent mode (demo)").
+# For a remote demo of this file, put it behind a tunnel + basic-auth and set WEBUI_SECRET_KEY (drop
+# AGENT_AUTH_DISABLED). Use a throwaway ceilinged token.
 services:
   proxy:                                   # Plane A — holds the real credential; not published to the host
     build: {context: ., dockerfile: deploy/Dockerfile}
     command: ["uvicorn", "proxy:app", "--host", "0.0.0.0", "--port", "8732"]
     environment:
       PROXY_ADMIN_KEY: ${PROXY_ADMIN_KEY:?set PROXY_ADMIN_KEY in .env}
-      # Named-provider chain (see proxy.py _load_providers), matching the deployed gateway.
+      # Named-provider chain (see proxy.py _load_providers), matching what fly/agent-proxy.toml deploys.
       # MODEL_UPSTREAM_TOKEN is deliberately absent: the legacy pair is only consulted when the named
       # chain resolves empty, so leaving it unset means a broken cscs config 503s instead of silently
       # serving whatever the legacy credential reaches.
@@ -47,8 +53,9 @@ services:
       AGENT_MODERATION_DISABLED: "1"       # demo only — wire COOP_URL/COOP_API_KEY for a real surface.
       AGENT_DB_PATH: "/data/tasks.db"
       # Apertus-1.5-70B, passed to hermes -m (no config.yaml in-container). The released weights are
-      # swiss-ai/Apertus-v1.5-70B (Apache-2.0); this apertus-ai/ id is the persistent k8s deployment
-      # on CSCS, the only route serving 1.5 without an expires_at.
+      # swiss-ai/Apertus-v1.5-70B (Apache-2.0, published 2026-07-24); this apertus-ai/ id is the
+      # pre-release org's persistent k8s deployment on CSCS, the only route serving 1.5 without an
+      # expires_at. Move to the swiss-ai/ id when a durable deployment under that name exists.
       AGENT_MODEL: "${AGENT_MODEL:-apertus-ai/Apertus-v1.5-70B}"
       AGENT_MODEL_PROVIDER: "huggingface"          # OpenAI-compatible wire format (works against CSCS too)
       AGENT_COMPUTE_PROVIDER: "${AGENT_COMPUTE_PROVIDER:-CSCS (preview)}"   # honest "what's running" provenance
@@ -59,7 +66,7 @@ services:
       AGENT_MAX_TOKENS: "60000"            # per-task spend ceiling
       AGENT_USER_DAILY_TOKENS: "500000"    # per-user/day ceiling
       AGENT_MAX_CONCURRENCY: "4"
-      AGENT_ACP: "1"                       # ACP transport, validated; oneshot is the
+      AGENT_ACP: "1"                       # ACP transport, validated (docs/streaming-spec.md); oneshot is the
                                             # explicit per-request opt-out
     volumes: [agent-data:/data]
     # To enable the bwrap sandbox in the demo, set AGENT_SANDBOX=bwrap AND uncomment (host must allow

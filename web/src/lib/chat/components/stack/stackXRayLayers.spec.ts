@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { PROVENANCE_PRODUCTS } from "./provenanceProducts.generated";
 import { deriveStackXRayLayers } from "./stackXRayLayers";
+import { chatHome } from "$lib/chat/paths";
+import { entityBases } from "$lib/website";
 import type { Message } from "$lib/chat/types/Message";
 
 const base = (over: Partial<Message> = {}): Message =>
@@ -21,8 +23,9 @@ describe("deriveStackXRayLayers", () => {
 	});
 
 	it("our own product's link is a path on the serving origin, not production's absolute URL", () => {
-		// The roadmap writes it as https://aipotluck.org/chat; on a preview that would leave for prod.
-		expect(layer(undefined, "stack-provenance").osProductUrl).toBe("/chat");
+		// The roadmap writes it at the catalog site's address; on a preview, a local build or another
+		// installation that link would leave for the catalog site's production, so it is chat's own home.
+		expect(layer(undefined, "stack-provenance").osProductUrl).toBe(chatHome);
 		// A third party's URL is left exactly as written.
 		expect(layer(undefined, "foundation-model").osProductUrl ?? "").not.toMatch(/^\//);
 	});
@@ -32,7 +35,19 @@ describe("deriveStackXRayLayers", () => {
 		expect(layer(undefined, "stack-provenance").label).toBe("stack-provenance");
 	});
 
-	it("no row links into a gap map, since this app has none", () => {
+	// Where each link lands is the route's contract (product/stack/[name]/server.spec.ts);
+	// this only pins that every row goes through it rather than a slug frozen at build time.
+	// The live app has the gap map; the public snapshot, which leaves the website out, has not.
+	it.runIf(entityBases)("every row's gap-map link goes through the click-time resolver, keyed by row name", () => {
+		expect(layer(undefined, "foundation-model").mapHref).toBe(
+			"/product/stack/foundation-model"
+		);
+		expect(layer(undefined, "sovereign-compute").mapHref).toBe(
+			"/product/stack/sovereign-compute"
+		);
+	});
+
+	it.skipIf(entityBases)("no row links into a gap map in a build without one", () => {
 		expect(deriveStackXRayLayers(undefined).every((l) => l.mapHref === undefined)).toBe(true);
 	});
 
@@ -119,7 +134,7 @@ describe("deriveStackXRayLayers", () => {
 		expect(layer(m, "agent-service").touched).toBe(true);
 	});
 
-	it("agent-service touched when the agent ran real ACP tools, with no MCP involvement (CUR-601)", () => {
+	it("agent-service touched when the agent ran real ACP tools, with no MCP involvement", () => {
 		const m = base({ agentTools: { toolKinds: ["write_file"] } });
 		expect(layer(m, "agent-service").touched).toBe(true);
 	});
@@ -146,7 +161,7 @@ describe("deriveStackXRayLayers", () => {
 		expect(layer(m, "federated-rag").touched).toBe(true);
 	});
 
-	it("trust-and-safety's maker name links to the maker, and our policy is a separate link labelled as ours (CUR-1745)", () => {
+	it("trust-and-safety's maker name links to the maker, and our policy is a separate link labelled as ours", () => {
 		const m = base();
 		const row = layer(m, "trust-and-safety");
 		expect(row.partner).toBe("Mistral AI");
@@ -173,8 +188,8 @@ describe("deriveStackXRayLayers", () => {
 
 	// A flag-gated feature (agent-mode-access) has no row of its own in PROVENANCE_PRODUCTS —
 	// it rides on the existing `agent-service` row, so a visitor without access must see something that
-	// distinguishes "not built" from "not for you". These pin it: `available` is a THIRD state, independent of `touched` and `status`. (CUR-1447)
-	describe("available (CUR-1447: per-user access, distinct from touched/status)", () => {
+	// distinguishes "not built" from "not for you". These pin it: `available` is a THIRD state, independent of `touched` and `status`.
+	describe("available ( per-user access, distinct from touched/status)", () => {
 		it("agent-service defaults to unavailable when the caller passes no flag state (fail-closed)", () => {
 			expect(layer(base(), "agent-service").available).toBe(false);
 		});
@@ -207,7 +222,7 @@ describe("deriveStackXRayLayers", () => {
 
 		it("agent-mode-access still exists in FLAG_KEYS — the declared tie-back this row's `available` resolves", async () => {
 			// Runs in Node (vitest), never bundled for the browser — stackXRayLayers.ts itself imports
-			// nothing from server/flagKeys.ts (CUR-1447: availability arrives as a resolved boolean prop,
+			// nothing from server/flagKeys.ts (availability arrives as a resolved boolean prop,
 			// never a flag read in client-reachable code). This is what makes "declared from FLAG_KEYS"
 			// a checkable fact instead of a comment: rename or remove agent-mode-access without updating
 			// StackXRay.svelte's wiring, and this goes red before the drift ships silently.
@@ -222,7 +237,7 @@ describe("deriveStackXRayLayers", () => {
 });
 
 // The panel describes the stack that answered, read from what the endpoint recorded
-// (routerMetadata, CUR-2283), not the roadmap's fixed Apertus-through-the-gateway picture. (CUR-2287)
+// (routerMetadata), not the roadmap's fixed Apertus-through-the-gateway picture.
 describe("deriveStackXRayLayers follows the served model", () => {
 	const INTERMEDIARIES = [
 		"inference-platform",
@@ -231,7 +246,7 @@ describe("deriveStackXRayLayers follows the served model", () => {
 		"api-management",
 		"sovereign-compute",
 	];
-	// Sent straight to La Plateforme: the lane is the vendor's own host (CUR-4577).
+	// Sent straight to La Plateforme: the lane is the vendor's own host.
 	const large3 = base({
 		routerMetadata: {
 			route: "",
@@ -246,7 +261,7 @@ describe("deriveStackXRayLayers follows the served model", () => {
 			route: "",
 			model: "mistral-large-2512",
 			backend: "https://api.mistral.ai/v1",
-			lane: "router.stg.aipotluck.org",
+			lane: "router.stg.example.test",
 		},
 	});
 	const apertusViaGateway = base({
@@ -268,9 +283,12 @@ describe("deriveStackXRayLayers follows the served model", () => {
 			{ label: "HuggingFace", url: "https://huggingface.co/mistralai/Mistral-Large-3-675B-Instruct-2512" },
 		]);
 		expect(JSON.stringify(row)).not.toMatch(/apertus|swiss/i);
+		expect(row.mapHref).toBe(
+			entityBases ? "/product/stack/foundation-model?model=Mistral%20Large%203" : undefined
+		);
 	});
 
-	it("a Medium answer, the direct lane's backup, links the model row to Medium 3.5's public card (CUR-2460)", () => {
+	it("a Medium answer, the direct lane's backup, links the model row to Medium 3.5's public card", () => {
 		const medium = base({
 			routerMetadata: { route: "", model: "mistral-medium-2604", backend: "https://api.mistral.ai/v1", lane: "api.mistral.ai" },
 		});
@@ -286,8 +304,8 @@ describe("deriveStackXRayLayers follows the served model", () => {
 		expect(layer(large3, "stack-provenance").touched).toBe(true);
 	});
 
-	// "not used" on its own read as a confident claim that nothing hosted the model. (CUR-3966)
-	it("an answer from the maker's own API names that platform on every row it stood in for, so none reads as plain 'not used' (CUR-3966)", () => {
+	// "not used" on its own read as a confident claim that nothing hosted the model.
+	it("an answer from the maker's own API names that platform on every row it stood in for, so none reads as plain 'not used'", () => {
 		for (const name of INTERMEDIARIES) {
 			expect(layer(large3, name).bypassedBy, name).toBe("Mistral AI's La Plateforme in France");
 		}
@@ -295,7 +313,7 @@ describe("deriveStackXRayLayers follows the served model", () => {
 		expect(layer(apertusViaGateway, "inference-engine").bypassedBy).toBeUndefined();
 	});
 
-	it("a router.stg turn is never direct (CUR-4577)", () => {
+	it("a router.stg turn is never direct", () => {
 		for (const name of INTERMEDIARIES) {
 			expect(layer(large3ViaRouter, name).bypassedBy, name).toBeUndefined();
 		}
@@ -304,14 +322,14 @@ describe("deriveStackXRayLayers follows the served model", () => {
 		expect(layer(large3ViaRouter, "compute-router").touched).toBe(layer(apertusViaGateway, "compute-router").touched);
 	});
 
-	it("a turn with no lane recorded is never called direct, whatever its backend (CUR-4577)", () => {
+	it("a turn with no lane recorded is never called direct, whatever its backend", () => {
 		const noLane = base({
 			routerMetadata: { route: "", model: "mistral-large-2512", backend: "https://api.mistral.ai/v1" },
 		});
 		for (const name of INTERMEDIARIES) expect(layer(noLane, name).bypassedBy, name).toBeUndefined();
 	});
 
-	it("an answer with no recorded backend marks the compute row unreported, never as a reading either way (CUR-3966)", () => {
+	it("an answer with no recorded backend marks the compute row unreported, never as a reading either way", () => {
 		expect(layer(base(), "sovereign-compute").unreported).toBe(true);
 		expect(layer(apertusViaGateway, "sovereign-compute").unreported).toBeUndefined();
 		expect(layer(large3, "sovereign-compute").unreported).toBeUndefined();
@@ -324,7 +342,7 @@ describe("deriveStackXRayLayers follows the served model", () => {
 		}
 	});
 
-	// The compute row claims Switzerland, so it lights only on a recorded Swiss backend. (CUR-1883)
+	// The compute row claims Switzerland, so it lights only on a recorded Swiss backend.
 	it("an Apertus answer from a Swiss backend lights the sovereign-compute row", () => {
 		expect(layer(apertusViaGateway, "sovereign-compute").touched).toBe(true);
 	});
@@ -344,7 +362,7 @@ describe("deriveStackXRayLayers follows the served model", () => {
 		expect(JSON.stringify(row)).not.toMatch(/cscs|lugano|supercomputing/i);
 	});
 
-	it("an answer from Phoeniqs names Phoeniqs and links its catalog org, with nothing of CSCS's (CUR-4587)", () => {
+	it("an answer from Phoeniqs names Phoeniqs and links its catalog org, with nothing of CSCS's", () => {
 		const phoeniqs = base({
 			routerMetadata: { route: "", model: "swiss-ai/apertus-v1.5-70b", backend: "https://maas.phoeniqs.com/v1" },
 		});
@@ -373,7 +391,7 @@ describe("deriveStackXRayLayers follows the served model", () => {
 });
 
 // The chips read as claims about this app, so the two rows whose roadmap status says
-// otherwise follow what the app runs. (CUR-4328)
+// otherwise follow what the app runs.
 describe("deriveStackXRayLayers states what this app runs", () => {
 	const autoPicked = base({
 		routerMetadata: { route: "", model: "mistral-large-2512", backend: "https://api.mistral.ai/v1" },

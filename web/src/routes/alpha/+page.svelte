@@ -5,7 +5,7 @@
 		type AlphaLandingContent
 	} from '$lib/alpha-landing/content';
 	import { setAlphaLandingContent } from '$lib/alpha-landing/content.svelte';
-	import { HandoverLook, LivePreviewListener } from '$lib/websiteAlpha';
+	import { chatLinkHref, HandoverLook, LivePreviewListener } from '$lib/websiteAlpha';
 	import { localizedHref } from '$lib/i18n/routing';
 	import { normalizeLocale } from '$lib/i18n/locales';
 	import BoldLook from '$lib/alpha-landing/looks/bold/BoldLook.svelte';
@@ -30,17 +30,17 @@
 		...content,
 		hero: {
 			...content.hero,
-			ctaHref: localizedHref(content.hero.ctaHref, normalizeLocale(data?.locale))
+			ctaHref: chatLinkHref(localizedHref(content.hero.ctaHref, normalizeLocale(data?.locale)))
 		},
 		closing: {
 			...content.closing,
 			actions: content.closing.actions.map((action) => ({
 				...action,
-				href: localizedHref(action.href, normalizeLocale(data?.locale))
+				href: chatLinkHref(localizedHref(action.href, normalizeLocale(data?.locale)))
 			})),
 			more: {
 				...content.closing.more,
-				href: localizedHref(content.closing.more.href, normalizeLocale(data?.locale))
+				href: chatLinkHref(localizedHref(content.closing.more.href, normalizeLocale(data?.locale)))
 			}
 		}
 	});
@@ -58,7 +58,7 @@
 {#if data?.isPreview && LivePreviewListener}
 	<LivePreviewListener
 		data={content}
-		onChange={(next) => {
+		onChange={(next: unknown) => {
 			const parsed = alphaLandingSchema.safeParse(next);
 			if (parsed.success) content = parsed.data;
 		}}

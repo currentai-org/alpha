@@ -2,10 +2,9 @@
 //
 // WHY NOT LOGPROBS: behind a gateway with a fallback ladder, models differ in how they answer a
 // `logprobs: true` request. One returns an EMPTY array (HTTP 200, no error of any kind), another
-// refuses the request and falls through, and only some return numbers. So a logprob gate (CUR-2108)
+// refuses the request and falls through, and only some return numbers. So a logprob gate
 // gets usable numbers only from certain rungs, against a threshold calibrated for a different model;
-// the threshold's model can change underneath it without anyone changing the threshold (the same
-// shape as CUR-113).
+// the threshold's model can change underneath it without anyone changing the threshold.
 //
 // An embedding gate takes the decision off the completions API entirely. There is no fallback ladder
 // on a feature-extraction call, so there is no model to substitute, nothing to calibrate against a
@@ -19,7 +18,7 @@
 //                                       recall   specificity
 //     embedding, two-sided margin        100%        88%
 //     embedding, fresh-side only          92%        88%   (fitted ON the holdout, so flattered)
-//     LLM logprob gate (CUR-2108)         96%        86%
+//     LLM logprob gate                    96%        86%
 //
 // Read that as "at least as good", not as a win: the holdout is 50 cases, so each percentage point is
 // half a query. What it is unambiguously better at is not depending on which model the gateway
@@ -37,14 +36,9 @@ import { precomputedGuardVecs } from "$lib/chat/server/guardVectors";
 import { embedText, embedTexts, maxCosine } from "$lib/chat/server/rag/embed";
 import { embeddingModel } from "$lib/chat/server/rag/env";
 import { logger } from "$lib/chat/server/logger";
-import { flagEnabledOr } from "$lib/chat/server/flags";
 
 import FRESH_EXAMPLES from "$lib/chat/server/data/searchFreshExamples.json";
 import EVERGREEN_EXAMPLES from "$lib/chat/server/data/searchEvergreenExamples.json";
-
-/** PostHog key gating this migration. Registered in flagKeys.ts with what it gates and what its
- *  absence means. */
-export const SEARCH_INTENT_EMBEDDING_GATE_FLAG = "search-intent-embedding-gate";
 
 /**
  * Operating point, fitted by LEAVE-ONE-OUT on evals/search-decision/cases.jsonl and then applied
@@ -63,7 +57,7 @@ const SEARCH_INTENT_THRESHOLD = -0.0179;
  * it is a meaningless one. precomputedGuardVecs already refuses vectors built by a different model, so
  * a swap degrades to a runtime embed — but that produces vectors in the NEW space and would then
  * compare them against THIS threshold, which is how a threshold goes stale against a changed
- * checkpoint (as in CUR-113).
+ * checkpoint.
  *
  * So on a mismatch this gate returns no opinion, and under margin a turn with no opinion searches
  * (triggerStrategy.ts), rather than getting a confident verdict computed in the wrong units. Re-run pnpm calibrate:search-intent after
@@ -75,18 +69,7 @@ const CALIBRATED_FOR_MODEL = "sentence-transformers/all-MiniLM-L6-v2";
 const FRESH_SET = "search_fresh";
 const EVERGREEN_SET = "search_evergreen";
 
-/** PostHog, not an env var, because this is a MIGRATION gate and not a standing choice between two
- *  supported gates. What a rollout needs is a percentage, a minute-scale rollback with no redeploy,
- *  and one place to watch — none of which a deploy-time string gives you. Same shape as
- *  mathRouting.ts's `mathRoutingEnabled`.
- *
- *  There is no logprob gate to fall back to (CUR-2108), so with the flag off
- *  "margin" has no decider at all: every automatic turn that reaches it searches
- *  (triggerStrategy.ts, CUR-2109) and is logged as a `failopen: search-decision` departure. Delete
- *  this and the flag key once the rollout holds. */
-export function searchIntentEnabled(): boolean {
-	return flagEnabledOr(SEARCH_INTENT_EMBEDDING_GATE_FLAG, () => false);
-}
+// "margin" always decides with this gate; there is no logprob gate to choose instead.
 
 /**
  * PURE: the two-sided margin. Positive means the query looks more like something needing fresh
@@ -146,7 +129,7 @@ export type SearchIntentVerdict = {
  * Decide whether `text` needs fresh web information.
  *
  * `ok: false` means "this gate has no opinion", with `reason` saying why. The caller records that as a
- * fail-open departure before falling back (CUR-2108). It is never a "no" — a degraded
+ * fail-open departure before falling back. It is never a "no" — a degraded
  * embedding endpoint must not silently turn search triggering off, which would be indistinguishable
  * from deciding that nothing on earth needs searching.
  *

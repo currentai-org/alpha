@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { config } from "$lib/chat/server/config";
 import { flattenForApertus } from "$lib/chat/server/endpoints/openai/flattenForApertus";
 import { rolesNeedFlattening } from "$lib/chat/server/modelProfiles";
@@ -47,8 +50,8 @@ export function firstAnsweredUserMessage(messages: Message[]): Message | undefin
 /**
  * A conversation whose first answered turn carries crisis support gets a fixed, neutral title
  * from the catalogs, so the sidebar never names suicide or self-harm to the person or anyone beside
- * them. The language is the one the support classifier read (`moderation.supportLang`, CUR-4093); a
- * stamp without it returns undefined and the titler runs, held by TITLE_PREPROMPT's crisis rule. (CUR-4095)
+ * them. The language is the one the support classifier read (`moderation.supportLang`); a
+ * stamp without it returns undefined and the titler runs, held by TITLE_PREPROMPT's crisis rule.
  */
 function supportTitle(messages: Message[]): string | undefined {
 	const userMessage = firstAnsweredUserMessage(messages);
@@ -67,7 +70,7 @@ const SUPPORT_WAIT_MS = 5_000;
 /**
  * The classifier stamps the reply's moderation after the answer starts, so the titler waits
  * for its verdict before reading the stamp. Without the wait, French distress the guard's English
- * rules miss would be titled by the model before the stamp lands. (CUR-4093)
+ * rules miss would be titled by the model before the stamp lands.
  */
 async function settled(verdict: Promise<unknown> | undefined): Promise<void> {
 	if (!verdict) return;
@@ -81,7 +84,7 @@ async function settled(verdict: Promise<unknown> | undefined): Promise<void> {
 
 /**
  * The title a `canned_reply` turn gets, made without a model call: the question's first five
- * words, as titling-disabled gives. A spec that checks our UI then spends no title call either. (SOL-91)
+ * words, as titling-disabled gives. A spec that checks our UI then spends no title call either.
  */
 export async function* cannedTitleForConversation(
 	conv: Conversation,
@@ -115,12 +118,12 @@ export async function* generateTitleForConversation(
 			return;
 		}
 
-		// entity-name correction (CUR-877) never persists its corrected spelling anywhere on
-		// the message — it's a local variable inside openSearch.ts's search fan-out, gone once that
-		// search call returns — so there is nothing stored to read here. Re-running the same cheap,
-		// best-effort check directly (same function, same 5s-timeout/never-throws contract) gets the
-		// same user-visible result — a title spelled the way the answer actually spells it — without
-		// threading new persisted state through the search pipeline for a sidebar cosmetic. (CUR-1161)
+		// Entity-name correction never persists its corrected spelling anywhere on the message: it's a
+		// local variable inside openSearch.ts's search fan-out, gone once that search call returns, so
+		// there is nothing stored to read here. Re-running the same cheap, best-effort check directly
+		// (same function, same 5s-timeout/never-throws contract) gives a title spelled the way the answer
+		// spells it, without threading new persisted state through the search pipeline for a sidebar
+		// cosmetic.
 		const prompt = entityNameCorrectionEnabled()
 			? ((await correctEntityQuery(userMessage.content, locals, "title")) ?? userMessage.content)
 			: userMessage.content;
@@ -133,7 +136,7 @@ export async function* generateTitleForConversation(
 			source: generated.source,
 		};
 		// The titling model read the message too. Its entry comes from the call's own
-		// response, so a call that failed, or titling switched off, names no model. (CUR-3563)
+		// response, so a call that failed, or titling switched off, names no model.
 		const served = generated.served;
 		const entry =
 			served && assistedByEnabled()
@@ -147,7 +150,7 @@ export async function* generateTitleForConversation(
 
 // Length-shaped check, not a content classifier: a title cannot legitimately be a multi-sentence
 // answer, regardless of language or what it says. Catches a model that ignores the "2-4 word title"
-// instruction and hands back its real answer instead (CUR-593), for an agent-mode identity question
+// instruction and hands back its real answer instead, for an agent-mode identity question
 // ("I'm glad you're curious! I'm an AI assistant created to help you find library resources...") and
 // for normal chat generally, so the gap is the model's obedience, not which endpoint served the call.
 // Word-count alone would miss a
@@ -172,7 +175,7 @@ export function firstFiveWords(prompt: string): string {
 	return prompt.split(/\s+/g).slice(0, 5).join(" ");
 }
 
-/** Decide what to show, and say which path decided it (CUR-1819).
+/** Decide what to show, and say which path decided it.
  *
  *  Pure, so the four outcomes are testable without a model. The caller supplies whatever the
  *  generation returned: a string when it answered, `null` when it threw. */
@@ -187,7 +190,7 @@ export function classifyTitle(
 	const trimmed = String(generated).trim();
 	// A model that ignored the "2-4 word title" instruction and answered the question
 	// instead. Showing that in the sidebar is worse than showing the prompt, so the fallback stands
-	// — and `reply-not-title-shaped` is the honest name for what happened, not a failure to report. (CUR-593)
+	// — and `reply-not-title-shaped` is the honest name for what happened, not a failure to report.
 	return looksLikeTitle(trimmed)
 		? { title: trimmed, source: "model" }
 		: { title: fallback, source: "reply-not-title-shaped" };
@@ -195,7 +198,7 @@ export function classifyTitle(
 
 /** One retry when the title side-call fails (its 15s ceiling or an upstream error such as the
  *  gateway's "503 model substitution exhausted retries"). The title is generated after the answer has
- *  streamed, so the second attempt costs the reader no wait. A reply, even one classifyTitle will (CUR-2046)
+ *  streamed, so the second attempt costs the reader no wait. A reply, even one classifyTitle will
  *  reject, is never retried: that is the model answering, not the call failing. Exported for tests. */
 export async function titleWithOneRetry(attempt: () => Promise<string | null>): Promise<string | null> {
 	const first = await attempt();
@@ -206,7 +209,7 @@ export async function titleWithOneRetry(attempt: () => Promise<string | null>): 
 
 // At temperature 0 the titler copies the label of the nearest example when a message matches none
 // well. The "Quick test" example gives a short-reply instruction a benign label to copy; without it
-// "reply with the single word ready" gets titled "Jailbreak attempt" (CUR-4375). Live check:
+// "reply with the single word ready" gets titled "Jailbreak attempt". Live check:
 // evals/inspect_tasks/instruction_titles.py.
 const TITLE_PREPROMPT = `You are a chat thread titling assistant.
 Goal: Produce a very short, descriptive title (2–4 words) that names the topic of the user's first message.
@@ -231,10 +234,10 @@ User: "Quick test: answer with just OK" -> Short reply test
 User: "J'ai des pensées suicidaires et je ne sais pas à qui parler" -> Conversation personnelle
 Return only the title text.`;
 
-/** The title call's request. CUR-2175: for a model whose deployments refuse the system role (Apertus,
+/** The title call's request. For a model whose deployments refuse the system role (Apertus,
  *  `rolesNeedFlattening`), the instructions and the message go as ONE user message. The answer's own
- *  flatten (CUR-1294) skips side calls, so a role-shaped title call can be served by a different model
- *  or shed, the failure the search classifier had (CUR-2141). Exported for tests. */
+ *  role flattening skips side calls, so a role-shaped title call could otherwise be served by a
+ *  different model or shed, as a role-shaped search-classifier call can. Exported for tests. */
 export function titleRequest(
 	prompt: string,
 	modelId: string | undefined
@@ -269,7 +272,7 @@ async function generateTitle(
 
 	// The side-call swallows every failure and returns "", which classifyTitle would read as
 	// a model that answered with nothing. Knowing it failed is what keeps a slow or broken call from
-	// being reported as the model disobeying the titling prompt. (CUR-2031)
+	// being reported as the model disobeying the titling prompt.
 	let served: TitleServed | undefined;
 	const attempt = async (): Promise<string | null> => {
 		let failed = false;

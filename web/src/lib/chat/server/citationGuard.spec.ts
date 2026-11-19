@@ -117,7 +117,7 @@ describe("stripUnbackedSourceClaims (ungrounded, no retrieved sources)", () => {
 
 	// The strip must leave code blocks intact. It must not fire on any "[" plus the word
 	// "sources", collapse runs of spaces in the restored text (a Python dict keeps its indentation), or
-	// leave a fence unclosed when a stream is cut off by the token cap. (CUR-3874)
+	// leave a fence unclosed when a stream is cut off by the token cap.
 	const dict = [
 		"```python",
 		"recipe_book = {",
@@ -149,7 +149,7 @@ describe("stripUnbackedSourceClaims (ungrounded, no retrieved sources)", () => {
 	});
 });
 
-describe("the visitor's own numbered sources (CUR-3844)", () => {
+describe("the visitor's own numbered sources", () => {
 	it("drops a bolded fabricated marker with its emphasis, leaving no empty ****", () => {
 		const r = stripUnbackedSourceClaims("Apertus is open **[1]**.", 0);
 		expect(r.stripped).toBe(true);

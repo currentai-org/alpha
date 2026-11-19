@@ -9,7 +9,7 @@ import type { Locator, Page } from './helpers/test';
 import { chromeCopy } from '../../src/lib/chat/chromeCopy';
 import { installModelReplay } from './helpers/faultInjection';
 
-// This spec is about the first-run welcome, so it meets the welcome itself rather than through the shared handler (SOL-343).
+// This spec is about the first-run welcome, so it meets the welcome itself rather than through the shared handler.
 test.use({ welcome: 'show' });
 
 // The live request log's lines come and go within a second or two, faster than a locator
@@ -59,7 +59,7 @@ function liveLineStems(lang: string): string[] {
 
 // The two lines that sit directly under an answer, the footer's "How this was made" link and
 // the open-gap card, follow the answer's language. They must not show in English under a
-// French or Spanish answer (CUR-2394). The link is under every answer a model served, so it is asserted
+// French or Spanish answer. The link is under every answer a model served, so it is asserted
 // outright; the card shows only on a turn that searched the web, so it is read when it is there.
 async function expectChromeInAnswerLanguage(
 	assistantMessage: Locator,
@@ -98,8 +98,8 @@ async function expectChromeInAnswerLanguage(
 test.use({ locale: 'es-MX' });
 
 // A2 ("Alpha speaks my language") has no filmed journey at all. A version of "you write in another
-// language, Alpha answers in English" was fixed by hand more than once (CUR-672, CUR-706, CUR-1430), and
-// a checked-in probe exists for exactly that reason (CUR-1442; scripts/language-turn-probe.mjs,
+// language, Alpha answers in English" was fixed by hand more than once, and
+// a checked-in probe exists for exactly that reason (scripts/language-turn-probe.mjs,
 // franc-based, 20 languages) for exactly that reason. That probe calls the chat API directly; it
 // owns detection BREADTH and does not touch a browser. This spec is the other half: drive the real
 // composer, in the real UI, and prove the rendered reply is actually in the language asked — the
@@ -107,20 +107,20 @@ test.use({ locale: 'es-MX' });
 // reuses `franc` (already a devDependency for the probe above) for the one assertion it needs,
 // rather than inventing its own language heuristic.
 //
-// French, specifically, because CUR-1430 ("Detect French and respond in the same language") closed that
+// French, specifically, because ("Detect French and respond in the same language") closed that
 // regression for it, on the most concretely-evidenced case. Latin script also avoids confounding this
-// with the separate RTL-rendering question for Arabic (CUR-672).
+// with the separate RTL-rendering question for Arabic.
 //
 // The question is deliberately generic ("what is artificial intelligence, in one sentence") rather
-// than anything about Current AI or public AI. There are two SEPARATE faults here (CUR-706): an English-opener leak
-// (what CUR-1430 fixes, and what this spec targets),
+// than anything about Current AI or public AI. There are two SEPARATE faults here: an English-opener leak
+// (what that change fixes, and what this spec targets),
 // and questions ABOUT Current AI answering from the org's own English catalog via web-search
 // grounding (a retrieval-scoping issue, not a language-selection one). A question that can't trigger
 // that second path keeps this spec pointed at the one defect it names.
 //
 // No `setFlagOverrides` and no `@preview-only` tag: unlike sign-in's better-auth-signin flag, "answer
 // in the asker's language" is plain, unconditional prompt behavior — no PostHog flag gates it, so
-// there is no override to force in both directions the way sign-in.spec.ts does for CUR-1368.
+// there is no override to force in both directions the way sign-in.spec.ts does.
 // This spec runs signed out with the agent off, as a visitor would: it needs no auth and
 // should mean the same thing on every deployment.
 // A French speaker's browser asks for French, so this visit is recorded with one. The
@@ -149,7 +149,7 @@ test.describe('a French browser', () => {
 			const answerBody = assistantMessage.locator('.prose');
 			await journeyStep(page, 'A2', 1, async () => {
 				await composer.click({ timeout: 30_000 });
-				// A2 step 1 "feels broken if" the placeholder implies English is expected first (CUR-1575).
+				// A2 step 1 "feels broken if" the placeholder implies English is expected first.
 				await expect(
 					composer,
 					'the empty composer asked a French browser in English'
@@ -171,7 +171,7 @@ test.describe('a French browser', () => {
 				// renders each text block into (`proseClasses`, :582) — it holds the answer and nothing
 				// else, so the live "Apertus … is working…" indicator, the provenance line and the button
 				// labels are all outside it. Waiting on it here means a turn that produced nothing fails
-				// with THAT sentence rather than with a claim about language (CUR-1653).
+				// with THAT sentence rather than with a claim about language.
 				await expect(
 					answerBody.first(),
 					'no answer body ever rendered — the turn produced nothing, which is not a language failure'
@@ -185,8 +185,8 @@ test.describe('a French browser', () => {
 				// hits the same limitation. Retry is the completion signal: `ChatMessage.svelte:970` renders
 				// it only once `isTurnStillRunning` goes false, and there is one per message. NOT "Copy to
 				// clipboard" — every code block renders its own copy button as soon as the fence streams in
-				// (`CodeBlock.svelte:63`), so a bubble-scoped wait on that title can resolve mid-stream
-				// (CUR-2040). 45s, not 30s: a full generated sentence takes longer than chat-message-send's
+				// (`CodeBlock.svelte:63`), so a bubble-scoped wait on that title can resolve mid-stream.
+				// 45s, not 30s: a full generated sentence takes longer than chat-message-send's
 				// fixed "2+2" reply.
 				await expect(
 					assistantMessage.getByRole('button', {
@@ -242,14 +242,14 @@ test.describe('a French browser', () => {
 
 // A2 step 4: "asks in a language Alpha is known to handle badly" gets an honest, pre-stored
 // fallback message instead of a confident wrong answer. Gated on `low-resource-language-fallback`
-// (CUR-742/CUR-1680) — preview 100%, no production group — so this forces the flag explicitly
+// — preview 100%, no production group — so this forces the flag explicitly
 // rather than relying on the ambient value, same pattern as sign-in.spec.ts's fuzz-override tests.
 //
 // The text sent is the real Quechua UDHR title line — languageFallback.spec.ts's own unit test
 // already proves this exact string trips
 // detectLowResourceLanguage's >=2-distinct-word threshold and resolves to "quz". A short greeting
 // does NOT work here — the detector's word table is drawn from the UDHR's legal register, and
-// the greetings from CUR-674 ("Napaykullayki. ¿Imaynatam yanapawankiman?") share zero tokens
+// the greetings ("Napaykullayki. ¿Imaynatam yanapawankiman?") share zero tokens
 // with it. Reusing the
 // unit test's already-verified string, rather than inventing a second one, is what keeps this
 // spec pointed at "does the honest message reach the screen" and not at detector coverage, which
@@ -287,7 +287,7 @@ test(
 
 			// The fallback is pre-stored and never generated (languageFallback.ts's own header — the
 			// whole point is that it can't hallucinate or leak scaffolding the way asking the model to
-			// draft its own disclaimer did, CUR-674) — so this can assert the literal
+			// draft its own disclaimer did) — so this can assert the literal
 			// text `lowResourceFallbackMessage('quz')` returns, not just a loose shape. A model-generated
 			// reply could not coincidentally reproduce this exact sentence.
 			const answerBody = assistantMessage.locator('.prose');
@@ -313,7 +313,7 @@ test(
 		// No model ran, so the receipt under the notice says that. It must not claim "from
 		// training" or "nothing reported which model served it", which describe a generation that never
 		// happened. The receipt renders only once the turn has finished, and must survive a reload.
-		// In the browser's language too, like the notice above it (CUR-2394).
+		// In the browser's language too, like the notice above it.
 		const fixedLine = 'Ningún modelo escribió esta respuesta. Es un aviso fijo de Alpha.';
 		for (const when of ['live', 'after a reload']) {
 			if (when === 'after a reload') await page.reload({ waitUntil: 'commit' });
@@ -328,7 +328,7 @@ test(
 	}
 );
 
-// Two failures (CUR-1841): an ordinary Yucatec Maya sentence got no
+// Two failures: an ordinary Yucatec Maya sentence got no
 // notice, and in Quechua, "Yes, please try anyway" got the notice again instead of an attempt. This drives
 // both through the real composer, the second through the notice's own "Try anyway" button. The second turn is a real generation, so it asserts only what the
 // fix promises: the reply is not the notice. How good the Quechua is stays the model's problem.
@@ -346,7 +346,7 @@ test(
 		});
 		await page.goto(chatEntry(), { waitUntil: 'commit' });
 		// The attempt after "try anyway" must be a real generation with no fixed-notice line, which a canned
-		// reply no longer pretends to be (CUR-2954).
+		// reply no longer pretends to be.
 		await installModelReplay(page);
 
 		const composer = page.locator('[data-chat-input]');
@@ -354,13 +354,13 @@ test(
 		// The notice is in the browser's language, Spanish for this es-MX visitor.
 		const notice = 'Todavía no puedo responder con fiabilidad en';
 
-		// The repro from CUR-1841. It holds no word from the detector's list.
+		// The repro. It holds no word from the detector's list.
 		await journeyStep(page, 'A2', 4, async () => {
 			await composer.click({ timeout: 30_000 });
 			await composer.fill(
 				"Ba'ax ka wa'alik? In k'áat in ts'íibt juntúul carta ti' u láak' in múuch'kabil."
 			);
-			// No model runs on the notice turn (CUR-1579, CUR-1978), so the live line must never claim one
+			// No model runs on the notice turn, so the live line must never claim one
 			// is working. It must not read "The model is working…" up to a notice saying no model wrote it. The
 			// line is up for a moment only, so the page records every text it shows until the notice lands.
 			await page.evaluate(() => {
@@ -387,7 +387,7 @@ test(
 			).toEqual([]);
 		});
 
-		// Sent this quickly (CUR-1978), "try anyway" can land while the notice turn was still
+		// Sent this quickly, "try anyway" can land while the notice turn was still
 		// awaiting its post-turn refresh, and that refresh's snapshot (taken before this message existed)
 		// replaces the thread mid-turn: the message vanishes, and the notice sits under this turn's
 		// "is generating…" log until the turn ends. The swap is transient, so the page records every
@@ -436,7 +436,7 @@ test(
 		).toBeVisible({ timeout: 90_000 });
 		// An interrupted reply shows Retry too, so the wait above is also satisfied by one
 		// sentence and "Response was interrupted". That can pass while the pre-generation
-		// classifiers eat most of the 45s budget and the attempt the person asked for never arrives (CUR-2008).
+		// classifiers eat most of the 45s budget and the attempt the person asked for never arrives.
 		await expect(
 			// Substring, not exact: the notice's element also holds its Reintentar button, so an exact
 			// match could never find it and this check could never fail.
@@ -470,7 +470,7 @@ test(
 	}
 );
 
-// The fallback's third language (CUR-2034): the Tzeltal repro from CUR-750, a request for help, which the
+// The fallback's third language: the Tzeltal repro, a request for help, which the
 // word list cannot match (Tzeltal has no conversational tier) and the trigram tier resolves to `tzh`.
 // The notice is pre-stored, so this turn never reaches the model.
 test(
@@ -510,7 +510,7 @@ test(
 	}
 );
 
-// The other direction (CUR-2034). With the fallback forced ON, a language Alpha serves must not get the
+// The other direction. With the fallback forced ON, a language Alpha serves must not get the
 // notice, and must be answered in that language. Spanish because the notice itself points people to it.
 // A false positive here costs more than a miss (languageFallback.ts's own trigram-tier comment): it
 // hands a Spanish speaker a canned "I can't answer" where they would otherwise get an answer.

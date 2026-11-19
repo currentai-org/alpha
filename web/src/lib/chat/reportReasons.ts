@@ -3,8 +3,8 @@
  * The menu, the report route's validation, the `reports.reason` column and the admin reports page
  * all read this one list, so a new reason cannot reach one of them and miss another.
  *
- * `refused` and `language` came in with CUR-997. Language reports are the ones the language-gap
- * work (CUR-394, CUR-395) routes on to data collectors and model builders.
+ * `refused` and `language` came in. Language reports are the ones the language-gap
+ * work routes on to data collectors and model builders.
  *
  * Kept free of `$lib` aliases: `db/schema.ts` imports it, and that file loads under plain Node.
  */
@@ -36,7 +36,7 @@ export const GENERAL_REPORT_CATEGORIES = [
 ] as const;
 
 /**
- * What staff decided about a report (CUR-3903). Set on the admin reports page, shown back to the
+ * What staff decided about a report. Set on the admin reports page, shown back to the
  * person who sent it on their own reports page, with the same label in both places.
  */
 export const REPORT_STATUSES = [

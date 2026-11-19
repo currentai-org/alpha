@@ -1,6 +1,7 @@
-// Web-Crypto primitives for the RAG-admin gate's stateless HMAC proof cookie (rag/ragAuth.ts).
-// Built on the global `crypto.subtle`, no library. Edge-safe: no `node:crypto` / Buffer, so it
-// works in the Vercel serverless runtime.
+// Shared Web-Crypto primitives for the app's stateless HMAC proof cookies (the admin gate in
+// adminToken.ts and the RAG-admin gate in rag/ragAuth.ts), built on the global `crypto.subtle` with
+// no library. Both auth paths share this one definition so they can't drift. Edge-safe: no
+// `node:crypto` / Buffer, so it works in the Vercel serverless runtime.
 
 /** Lowercase hex-encode an ArrayBuffer. */
 export const hex = (buf: ArrayBuffer): string =>
@@ -35,7 +36,7 @@ export function timingSafeEqual(a: string, b: string): boolean {
 
 /**
  * Compares a caller-supplied value against a shared secret in time that depends only on the
- * secret's length (CUR-3524). Unlike `timingSafeEqual`, a wrong-length guess doesn't return early,
+ * secret's length. Unlike `timingSafeEqual`, a wrong-length guess doesn't return early,
  * so the comparison leaks neither a matching prefix nor the secret's length.
  */
 export function secretEquals(given: string | null | undefined, secret: string): boolean {

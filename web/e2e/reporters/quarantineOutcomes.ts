@@ -1,5 +1,5 @@
 // Develop's post-merge run (journey-gallery.yml) keeps running every quarantined scenario, so each
-// one goes on reporting while its owner ticket is open (CUR-2445). That run fails
+// one goes on reporting while its owner ticket is open. That run fails
 // its job on any nonzero suite exit, though, so without this file a quarantined flake would turn
 // develop red exactly as before.
 //
@@ -36,7 +36,7 @@ export default class QuarantineOutcomesReporter implements Reporter {
 		}
 		// The gallery and the develop push run set GRADE_MODEL_ADVISORY=1, and
 		// GRADE_ALL_MODELS_BLOCK=1 when the diff changes model config or the harness. Every other run
-		// leaves `advisory` null. SOL-367: SCENARIO_UPSTREAM_DOWN lists the models whose direct call
+		// leaves `advisory` null. SCENARIO_UPSTREAM_DOWN lists the models whose direct call
 		// failed before the suite (upstream-probe.mjs).
 		const advisoryOpts = {
 			enabled: process.env.GRADE_MODEL_ADVISORY === '1',

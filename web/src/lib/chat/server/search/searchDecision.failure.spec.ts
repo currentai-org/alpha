@@ -30,7 +30,7 @@ function answering(text: string) {
 	};
 }
 
-describe("classifySearchNeed tells a failed call from a model 'no' (CUR-2108)", () => {
+describe("classifySearchNeed tells a failed call from a model 'no'", () => {
 	beforeEach(() => {
 		h.endpoint.mockReset();
 		h.turnEndpoint.mockReset();
@@ -51,7 +51,7 @@ describe("classifySearchNeed tells a failed call from a model 'no' (CUR-2108)", 
 	// Real time, not fake timers: the deadline is AbortSignal.timeout, which Node arms on its own
 	// internal timer. Without the decider's own deadline this inherits the 15 s side-call ceiling
 	// and the test times out at 8 s.
-	it("a decider call that stalls is ok:false within its 3 s deadline, not a 15 s wait (CUR-3952)", { timeout: 8_000 }, async () => {
+	it("a decider call that stalls is ok:false within its 3 s deadline, not a 15 s wait", { timeout: 8_000 }, async () => {
 		h.endpoint.mockImplementation(async function* ({ abortSignal }: { abortSignal: AbortSignal }) {
 			await new Promise((_, reject) => (abortSignal.onabort = () => reject(abortSignal.reason)));
 			yield* [];
@@ -71,22 +71,37 @@ describe("classifySearchNeed tells a failed call from a model 'no' (CUR-2108)", 
 		expect(await classifySearchNeed("what is a prime number", undefined)).toEqual({
 			shouldSearch: false,
 			ok: true,
-			// The model that gave the verdict, for X-ray (CUR-984). A failed call above names none.
+			reading: "no",
+			// The model that gave the verdict, for X-ray. A failed call above names none.
 			served: { model: "test-model" },
 		});
 	});
 
-	it("a reply that is neither yes nor no still decides 'no', and is logged as malformed (CUR-2141)", async () => {
+	it("a reply that is neither yes nor no still decides 'no', and is logged as malformed", async () => {
 		const warn = vi.spyOn(logger, "warn");
 		h.endpoint.mockImplementation(answering("The user"));
 		expect(await classifySearchNeed("what's new with the EU AI Act", undefined)).toEqual({
 			shouldSearch: false,
 			ok: true,
-			// The model that gave the verdict, for X-ray (CUR-984). A failed call above names none.
+			reading: "malformed",
+			// The model that gave the verdict, for X-ray. A failed call above names none.
 			served: { model: "test-model" },
 		});
 		expect(warn).toHaveBeenCalledWith(
 			expect.objectContaining({ outcome: "malformed", replyLength: 8 }),
+			"search-need classifier reply was neither yes nor no"
+		);
+		warn.mockRestore();
+	});
+
+	it("the search_classifier_malformed fault calls no model, decides 'no', and logs malformed", async () => {
+		const warn = vi.spyOn(logger, "warn");
+		expect(
+			await classifySearchNeed("what's new with the EU AI Act", undefined, [], { malformedReply: true })
+		).toEqual({ shouldSearch: false, ok: true, reading: "malformed" });
+		expect(h.endpoint).not.toHaveBeenCalled();
+		expect(warn).toHaveBeenCalledWith(
+			expect.objectContaining({ outcome: "malformed" }),
 			"search-need classifier reply was neither yes nor no"
 		);
 		warn.mockRestore();
@@ -103,7 +118,7 @@ describe("classifySearchNeed tells a failed call from a model 'no' (CUR-2108)", 
 		warn.mockRestore();
 	});
 
-	it("sends an Apertus task model one user message with no system role, since its pooled deployments refuse one (CUR-2141)", async () => {
+	it("sends an Apertus task model one user message with no system role, since its pooled deployments refuse one", async () => {
 		h.taskId = "swiss-ai/apertus-v1.5-70b";
 		h.endpoint.mockImplementation(answering("no"));
 		await classifySearchNeed("what is a prime number", undefined);
@@ -123,7 +138,7 @@ describe("classifySearchNeed tells a failed call from a model 'no' (CUR-2108)", 
 		expect(messages).toEqual([{ from: "user", content: 'User message: "what is a prime number"' }]);
 	});
 
-	it("asks TASK_MODEL, never the model answering the turn (CUR-2092)", async () => {
+	it("asks TASK_MODEL, never the model answering the turn", async () => {
 		h.endpoint.mockImplementation(answering("no"));
 		await classifySearchNeed("what is a prime number", undefined);
 		expect(h.endpoint).toHaveBeenCalledTimes(1);
@@ -135,15 +150,16 @@ describe("classifySearchNeed tells a failed call from a model 'no' (CUR-2108)", 
 		expect(await classifySearchNeed("who won the match last night", undefined)).toEqual({
 			shouldSearch: true,
 			ok: true,
-			// The model that gave the verdict, for X-ray (CUR-984). A failed call above names none.
+			reading: "yes",
+			// The model that gave the verdict, for X-ray. A failed call above names none.
 			served: { model: "test-model" },
 		});
 	});
 });
 
-// The classifier judged "What's in this picture?" without the picture and searched it. It is
-// now told what came with the message; these read the request the endpoint actually received. (CUR-3192)
-describe("classifySearchNeed is told what came with the message (CUR-3192)", () => {
+// Judged without the picture, "What's in this picture?" reads as a lookup. The classifier is told
+// what came with the message; these read the request the endpoint actually received.
+describe("classifySearchNeed is told what came with the message", () => {
 	beforeEach(() => {
 		h.endpoint.mockReset();
 		h.taskId = "test-model";

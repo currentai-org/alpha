@@ -32,7 +32,7 @@
 	const theme = getThemeContext();
 
 	// Haptic feedback, on touch devices only. Held inert until
-	// hydrated, so a tap before the handler attaches is not silently dropped (CUR-2009, CUR-1649).
+	// hydrated, so a tap before the handler attaches is not silently dropped.
 	const settings = useSettingsStore();
 	let hydrated = $state(false);
 	onMount(() => {

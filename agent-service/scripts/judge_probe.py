@@ -2,9 +2,9 @@
 """Drive free-form chat turns so the judge and best-of-N actually run, then read what happened.
 
 WHY THIS EXISTS. `scripts/prod_smoke.py` posts a deterministic `verify` spec, which makes `may_judge`
-False (`_best_of_gates` in api/app.py) — so smoke traffic exercises the one path
-where the judge never runs and best-of-N never retries, which can read as "best-of-3 never fires" when
-it means "best-of-3 has not been asked to".
+False (`_best_of_gates` in api/app.py), so smoke traffic exercises only the one path where the judge
+never runs and best-of-N never retries. Zero retries in smoke logs means "best-of-N was never asked to
+run", not "best-of-N never fires".
 
 `synthesize=true` with no spec is the chat surface. It engages the auto-derive and LLM-judge gates and
 is the only way to observe a rejection without waiting for real users.
@@ -36,7 +36,7 @@ BASE = os.environ.get("AGENT_URL", "http://localhost:8731")  # the compose.yaml 
 #
 #   answer right + judge passed  → true accept
 #   answer wrong + judge passed  → FALSE ACCEPT, the failure that makes `verified` a lie
-#   answer right + judge failed  → false reject, a judge rejecting correct answers
+#   answer right + judge failed  → false reject, a right answer badged unverified
 #   answer wrong + judge failed  → true reject, the seat earning its place
 EASY = [
     ("Write a one-sentence summary of what a semaphore does.", None),
@@ -90,9 +90,9 @@ def _req(url: str, token: str, body: dict | None = None, timeout: int = 60,
     data = json.dumps(body).encode() if body is not None else None
     headers = {"content-type": "application/json", "authorization": f"Bearer {token}", "x-agent-account": "user"}
     if machine_id:
-        # Pin follow-up requests to the machine that created the task — a multi-machine
+        # Pin follow-up requests to the machine that created the task: a multi-machine
         # deploy has no session affinity by default, so an unpinned poll can land on a machine that
-        # never saw it and 404. (CUR-895)
+        # never saw it and 404.
         headers["Fly-Force-Instance-Id"] = machine_id
     r = urllib.request.Request(url, data=data, method="POST" if data else "GET", headers=headers)
     with urllib.request.urlopen(r, timeout=timeout) as resp:

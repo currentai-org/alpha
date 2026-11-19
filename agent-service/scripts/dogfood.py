@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Local dogfood harness — drive the REAL service end-to-end against a real upstream.
 
-Boots `proxy` + `app` exactly like the shipped stack
+Step 1 of docs/agent-frontends.md. Boots `proxy` + `app` exactly like the shipped stack
 (same boundary: proxy holds the token, app is credential-free, per-task nonce + caps +
 sandbox), submits ONE task to `/run`, polls to completion, and prints the result + the
 service's own deterministic `verified` verdict — the "watch it actually work" smoke test.
@@ -10,12 +10,12 @@ Modes:
   apertus15  the shipped default — Apertus-1.5-70B driving Hermes' real multi-turn loop, the
              `coding` toolset, best-of-3. Needs a verify spec for best-of-N to engage (it can't
              pick a winner it can't check). Upstream: the real LiteLLM gateway prod routes
-             through (CUR-189), the same path `MODEL_PROVIDERS=gateway` selects in the deployed
+             through, the same path `MODEL_PROVIDERS=gateway` selects in the deployed
              proxy — not CSCS direct, which prod's real config only ever reaches via a one-line
-             manual rollback (the deployed gateway's `MODEL_PROVIDERS`), never live
+             manual rollback (`fly/agent-proxy.local.toml`'s `MODEL_PROVIDERS`), never live
              failover. Needs PROVIDER_GATEWAY_BASE and PROVIDER_GATEWAY_TOKEN set.
-  mistral    Mistral-Small-4-119B — kept as the comparison baseline the CUR-27 numbers are
-             measured against. Upstream: Infomaniak.
+  mistral    Mistral-Small-4-119B — the earlier default, kept as a comparison baseline.
+             Upstream: Infomaniak.
   qwen       Qwen3.5-122B — the reliable open-WEIGHT fallback/sanity-check comparison. Verify
              spec optional (only sets the `verified` flag). Upstream: Infomaniak.
 
@@ -48,10 +48,11 @@ API = ROOT / "api"
 def _first_venv_bin(name: str, override: str) -> str:
     """A venv executable, from $override if set, else the first checkout that actually has one.
 
-    A single hardcoded `~/hermes-agent/.venv/bin/...` path may not exist on the machine this harness runs
-    on, and a bare run would then fail at spawn time with a bare ENOENT. Listing the real candidates makes
-    the failure legible and lets a patched checkout be selected by its own path rather than by exporting
-    HERMES_BIN."""
+    The default was a single hardcoded `~/hermes-agent/.venv/bin/...` — a path that does not exist on the
+    machine this harness runs on, so every run depended on the
+    caller exporting the variable and a bare run failed at spawn time with a bare ENOENT. Listing the
+    real candidates makes the failure legible and lets a patched checkout be selected by its own path
+    rather than by remembering to export HERMES_BIN."""
     if override:
         return override
     homes = [Path.home() / "Documents/hermes-agent", Path.home() / "hermes-agent"]
@@ -62,9 +63,10 @@ def _first_venv_bin(name: str, override: str) -> str:
     return f"<no {name} venv found in: {', '.join(str(h) for h in homes)}>"
 
 
-# HERMES_BIN selects the executor binary, and a measurement arm that patches Hermes sets it to that
-# checkout's venv. Keep the patch on the SAME base the Dockerfile pins (deploy/Dockerfile clones upstream
-# at a pinned SHA), or an arm silently tests more than one patch at once.
+# HERMES_BIN selects the executor binary, and a measurement arm that patches Hermes (a fork proposal —
+# deploy/Dockerfile clones stock upstream at a pinned SHA and applies nothing) sets it to that checkout's
+# venv. Keep the patch on the SAME base the Dockerfile pins: a checkout that carries other patches too
+# silently tests several changes at once.
 PY = _first_venv_bin("python", os.environ.get("PYBIN", ""))
 HERMES = _first_venv_bin("hermes", os.environ.get("HERMES_BIN", ""))
 
@@ -75,7 +77,7 @@ APORT = int(os.environ.get("APORT", "8751"))
 ADMIN = os.environ.get("PROXY_ADMIN_KEY", "dogfoodadmin")
 CAP = int(os.environ.get("AGENT_MAX_STEPS", "12"))
 WALL = int(os.environ.get("AGENT_WALL_CLOCK_SECS", "240"))
-# Prod sets a real 60k spend cap. Without a token ceiling here, one runaway trial can
+# Prod (fly/agent-app.toml) sets a real 60k spend cap. Without a token ceiling here, one runaway trial can
 # burn several hundred thousand tokens before the wall-clock stops it, so mirror prod's guardrail and keep
 # local runs inside what a production task could spend.
 TOKEN_CAP = int(os.environ.get("AGENT_MAX_TOKENS", "60000"))
@@ -88,9 +90,9 @@ MODES = {
         # Goes through the gateway, the path prod takes. The deployed proxy's compute-router
         # (`_load_providers`, api/proxy.py) reads an ORDERED `MODEL_PROVIDERS` list, and the deployed value
         # is `MODEL_PROVIDERS = "gateway"`, a single entry. CSCS is not a live failover partner:
-        # the deployed gateway config keeps it as a manual rollback (put cscs back in MODEL_PROVIDERS and
+        # `fly/agent-proxy.local.toml` keeps it as a manual rollback (put cscs back in MODEL_PROVIDERS and
         # deploy), so a CSCS-direct mode would test a path prod doesn't take. The model id below is the
-        # gateway catalog alias (prod's AGENT_MODEL), so a rate limit on this model group
+        # gateway catalog alias (fly/agent-app.toml's AGENT_MODEL), so a rate limit on this model group
         # shows up here as it would in prod.
         "model": "swiss-ai/apertus-v1.5-70b",
         "env": {"AGENT_TOOLSETS": "coding", "AGENT_BEST_OF": "3"},
@@ -102,11 +104,12 @@ MODES = {
         # A CONTROL, not a candidate. Same family, same endpoint, ~9x smaller — the point is to check
         # that an eval discriminates at all. If a tier scores the 8B near the 70B, the tier is measuring
         # the harness rather than the model and its headline number should not be trusted. Also on the
-        # durable k8s tier (CSCS's durable tier), so it won't rotate out mid-comparison.
+        # durable CSCS deployment, so it won't rotate out mid-comparison.
         # CSCS-direct on purpose here (unlike apertus15 above, which goes through the gateway) — this is
         # a raw-catalog discriminating-power check, not a claim about prod's routing. The wire id has
-        # changed namespace before; check_model_live() below turns the next such change into a loud
-        # failure instead of a confusing mid-run one.
+        # changed namespace before (swiss-ai/, apertus-ai/, and now CSCS-Inference/swiss-ai/, as listed by
+        # GET {base}/models). check_model_live() below turns the next such rotation into a loud failure
+        # instead of a confusing mid-run one.
         "model": "CSCS-Inference/swiss-ai/Apertus-v1.5-8B",
         "env": {"AGENT_TOOLSETS": "coding", "AGENT_BEST_OF": "3"},
         "blurb": "CONTROL — 8B sibling of the shipped 70B · run to confirm an eval has discriminating power",
@@ -116,7 +119,7 @@ MODES = {
     "mistral": {
         "model": "mistralai/Mistral-Small-4-119B-2603",
         "env": {"AGENT_TOOLSETS": "coding", "AGENT_BEST_OF": "3"},
-        "blurb": "prior shipped default (through 2026-07-24) · the baseline CUR-27 numbers are measured against",
+        "blurb": "prior shipped default · the baseline CUR-27 numbers are measured against",
         "base": INFOMANIAK_BASE, "token_env": "IK_TOKEN", "upstream_name": "Infomaniak",
     },
     "qwen": {
@@ -160,8 +163,9 @@ def snapshot_models(base: str, tok: str) -> list[str]:
     """GET {base}/models — the live catalog right now. Some upstreams (the CSCS research cluster in
     particular) churn on an hours timescale — a checkpoint can rotate out mid-session — so a result
     is only reproducible alongside the catalog snapshot that produced it."""
-    # user-agent matches api/proxy.py's UPSTREAM_USER_AGENT: the gateway upstream's WAF rejects the
-    # default Python-urllib UA. The other upstreams accept the default.
+    # user-agent matches api/proxy.py's UPSTREAM_USER_AGENT: the gateway's WAF blocks the
+    # default Python-urllib UA outright (Cloudflare error 1010). Only the gateway upstream does this;
+    # CSCS and Infomaniak accept the default.
     req = urllib.request.Request(f"{base}/models",
                                   headers={"Authorization": f"Bearer {tok}", "x-agent-account": "user", "user-agent": "curl/8.5.0"})
     try:
@@ -184,9 +188,10 @@ def check_model_live(mode: dict, tok: str) -> list[str]:
 
 
 def check_tool_calls_live(mode: dict, tok: str) -> str:
-    """Catalog membership is not the dependency: an id can stay in the catalog while tool calling stops
-    working. A run that starts against such an endpoint scores it as a row of model failures, which is
-    the most expensive way to find out. Refuses to start the run rather than mislabel one."""
+    """Catalog membership is not the dependency. An id can stay in the catalog for the whole
+    time that every task fails, because what had stopped was tool calling. A run that starts
+    against that endpoint scores a model-side regression as a row of model failures, which is the most
+    expensive way to find out. Refuses to start the run rather than mislabel one."""
     spec = importlib.util.spec_from_file_location("modelcheck", Path(__file__).resolve().parent / "modelcheck.py")
     mc = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mc)
@@ -260,20 +265,20 @@ def _wait_health(port: int, tries: int = 40) -> bool:
 
 PROXY_LOG = "/tmp/dogfood_proxy.log"
 
-# Proxy-side knobs this harness pins, named once so a drift check can assert them against
-# the deployed gateway config instead of asserting only what the app process sets. They live in a separate
-# process from the app's env, which is exactly why they escaped the parity check for so long.
+# Proxy-side knobs this harness pins, named once so eval/prodcheck.py can assert them against
+# fly/agent-proxy.toml instead of asserting only what the app process sets. They live in a separate
+# process from the app's env, so a parity check that reads only the app's env would miss them.
 PROXY_ENV = {
     # A measurement run without per-call timing cannot be traced afterwards; see _plog in api/proxy.py.
     "PROXY_LOG_REQUESTS": "1",
     # The two halves of the upstream-silence ceiling. MODEL_UPSTREAM_TIMEOUT bounds silence BETWEEN
     # frames and is left to its code default, the same as prod. These bound silence BEFORE the first
-    # frame, and prod states them in the gateway config, so the harness has to state them too or a
+    # frame, and prod states them (fly/agent-proxy.toml), so the harness has to state them too or a
     # stall costs 120s here and ~30s in prod — a different failure rate measured on the same upstream.
     "MODEL_FIRST_TOKEN_TIMEOUT": os.environ.get("MODEL_FIRST_TOKEN_TIMEOUT", "30"),
     "MODEL_FIRST_TOKEN_ATTEMPTS": os.environ.get("MODEL_FIRST_TOKEN_ATTEMPTS", "2"),
 }
-# PROXY_DESTREAM is OFF here, which is what the deployed gateway ships. It exists for an upstream whose
+# PROXY_DESTREAM is OFF here, which is what fly/agent-proxy.toml ships. It exists for an upstream whose
 # tool-call parser only runs on the non-streaming codepath. Against CSCS/Apertus-1.5 the streaming path
 # returns real `tool_calls` deltas and no call-shaped prose in `content` (first frame at ~0.55s), so
 # destreaming buys nothing and costs the thing that matters: every streaming request becomes a blocking
@@ -287,13 +292,14 @@ if os.environ.get("PROXY_DESTREAM", "") not in ("", "0", "false"):
 def start_proxy(tok: str, base: str = INFOMANIAK_BASE) -> None:
     # PROXY_LOG_REQUESTS is ON for every harness run, and not left to whoever remembers to export it.
     # It is off by default in prod for volume, but a measurement run without per-call timing is a run
-    # whose result cannot be traced afterwards: a trial that spends 306s on 4 model calls cannot be split
-    # into upstream stalls and slow serves.
+    # whose result cannot be traced afterwards: with it off, a slow trial cannot be split into upstream
+    # stalls and slow serves.
     # The lines are content-free by contract (_request_meta) — ids, counts and params, never messages.
     env = {**os.environ, "MODEL_UPSTREAM_TOKEN": tok, "MODEL_UPSTREAM_BASE": base,
            "PROXY_ADMIN_KEY": ADMIN, **PROXY_ENV}
-    # Per-run path: a fixed /tmp/dogfood_proxy.log lets a later run clobber an earlier one's usage lines,
-    # and the survivor gets read as the earlier run's. Token accounting must not be misattributed.
+    # Per-run path: with a fixed /tmp/dogfood_proxy.log a later run clobbers an earlier one's usage
+    # lines, and the survivor gets read as the earlier run's. Token accounting is exactly what you cannot
+    # afford to misattribute.
     global PROXY_LOG
     PROXY_LOG = f"/tmp/dogfood_proxy-{os.getpid()}.log"
     _spawn([PY, "-m", "uvicorn", "proxy:app", "--host", "127.0.0.1", "--port", str(PPORT)],
@@ -336,7 +342,7 @@ def run_task(task: str, verify: "dict | None") -> dict:
         sys.exit("POST /run did not return an id — see /tmp/dogfood_app.log")
     print(f"  submitted run {rid} — polling (up to {WALL}s)…", flush=True)
     out: dict = {}
-    # State enum serializes UPPERCASE (`State` in api/app.py) — compare case-insensitively so we break
+    # State enum serializes UPPERCASE (api/app.py:412) — compare case-insensitively so we break
     # the instant the task is terminal instead of polling the whole window.
     for _ in range(int(WALL / 3) + 20):
         out = _get(f"/run/{rid}")

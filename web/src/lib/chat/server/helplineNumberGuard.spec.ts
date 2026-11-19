@@ -1,6 +1,6 @@
 /**
  * A phone number the model wrote in a crisis answer is replaced unless it is 112, 988, the visitor's
- * own emergency number, or a sourced national line of any country (CUR-4061, CUR-4488). The inputs
+ * own emergency number, or a sourced national line of any country. The inputs
  * are real model answers from crisis_referral.py.
  */
 import { describe, expect, it } from "vitest";
@@ -8,7 +8,7 @@ import { guardHelplineNumbers, namesOurCrisisResource } from "./helplineNumberGu
 
 const LINK = "[findahelpline.com](https://findahelpline.com)";
 
-describe("guardHelplineNumbers replaces a crisis number the model recalled (CUR-4061)", () => {
+describe("guardHelplineNumbers replaces a crisis number the model recalled", () => {
 	it("replaces the 3115 Bielik gave for France's 3114 line, and keeps 112", () => {
 		const r = guardHelplineNumbers(
 			"contacter le Samu par téléphone au 112 pour une situation d'urgence, ou le Centre National de Prévention du Suicide au 3115 en France métropolitaine.",
@@ -37,21 +37,21 @@ describe("guardHelplineNumbers replaces a crisis number the model recalled (CUR-
 		expect(guardHelplineNumbers("Call or text 988.", "CA").replaced).toBe(false);
 	});
 
-	it("keeps a held national line whatever the visitor's country, since the answer can be about another country (CUR-4488)", () => {
+	it("keeps a held national line whatever the visitor's country, since the answer can be about another country", () => {
 		expect(guardHelplineNumbers("Appelez le 3114.", "fr").replaced).toBe(false);
 		// A Hong Kong connection read as Taiwan, asking about a pupil in France.
 		expect(guardHelplineNumbers("Appelez le 3114, le numéro national de prévention du suicide.", "tw").replaced).toBe(false);
 		expect(guardHelplineNumbers("Puedes llamar al 016 o al 024.", "us").replaced).toBe(false);
 	});
 
-	it("links findahelpline's front page, never the IP country's page, so the model's words never name the wrong country (CUR-4488)", () => {
+	it("links findahelpline's front page, never the IP country's page, so the model's words never name the wrong country", () => {
 		const r = guardHelplineNumbers("Linha Nacional de Prevenção do Suicídio: 808 24 24 24.", "tw");
 		expect(r.numbers).toEqual(["808242424"]);
 		expect(r.cleaned).toBe(`Linha Nacional de Prevenção do Suicídio: ${LINK}.`);
 		expect(r.cleaned).not.toContain("/countries/");
 	});
 
-	it("links the country the message names, not the IP country, when the support classifier read one (CUR-4488)", () => {
+	it("links the country the message names, not the IP country, when the support classifier read one", () => {
 		// a Segurança Social prompt from a Hong Kong connection read as Taiwan.
 		const r = guardHelplineNumbers("Linha Nacional de Prevenção do Suicídio: 808 24 24 24.", "tw", "pt");
 		expect(r.cleaned).toBe(
@@ -59,7 +59,7 @@ describe("guardHelplineNumbers replaces a crisis number the model recalled (CUR-
 		);
 	});
 
-	it("keeps the named country's emergency number and, for the US or Canada, 988 (CUR-4488)", () => {
+	it("keeps the named country's emergency number and, for the US or Canada, 988", () => {
 		expect(guardHelplineNumbers("Call 999 or Samaritans.", "tw", "gb").replaced).toBe(false);
 		expect(guardHelplineNumbers("Call or text 988.", "fr", "us").replaced).toBe(false);
 	});
@@ -84,7 +84,7 @@ describe("guardHelplineNumbers replaces a crisis number the model recalled (CUR-
 		expect(gb.replaced).toBe(false);
 	});
 
-	it("keeps another country's police or ambulance number, since the answer may be about that country (CUR-4122)", () => {
+	it("keeps another country's police or ambulance number, since the answer may be about that country", () => {
 		// A Russian beaten-neighbour question from a US address must keep Russia's police 102.
 		const text = "Немедленно позвоните в полицию по телефону 102 или 112.";
 		expect(guardHelplineNumbers(text, "us").replaced).toBe(false);

@@ -39,7 +39,7 @@ function adapter(
 	return { a, updates, users };
 }
 
-describe("refreshProviderEmail (CUR-3249)", () => {
+describe("refreshProviderEmail", () => {
 	it("takes the provider's new email when it is verified and nobody else holds it", async () => {
 		const { a, updates, users } = adapter({ u1: "old@example.org" });
 		const out = await refreshProviderEmail(

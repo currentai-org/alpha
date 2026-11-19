@@ -23,20 +23,20 @@ export interface LandingSend {
 /**
  * Sends a first message from either page that starts a chat (`ChatLanding.svelte` and
  * `routes/chat/models/[...model]`): creates the conversation, then hands the message to its page.
- * One shared copy keeps a fix (CUR-2971's Stop, CUR-3890) from landing on one page and missing the other.
+ * One shared copy keeps a fix (the Stop) from landing on one page and missing the other.
  */
 export function createLandingSend(draft: { get: () => string; set: (text: string) => void }) {
 	// The composer empties on submit and the conversation page doesn't exist until the round
 	// trip ends, so one synthetic user bubble shows the message meanwhile; the real page's own list
-	// takes over once navigation lands. (CUR-1706)
+	// takes over once navigation lands.
 	let pendingMessages: Message[] = $state([]);
 
 	// Stop pressed before the conversation page has taken over is held here and recorded
-	// against the new conversation once it exists; that page then stops the turn. (CUR-2971)
+	// against the new conversation once it exists; that page then stops the turn.
 	const stopHold = stopBeforeHandoff();
 
 	/** Takes the bubble back and returns the text to the composer, for a send that never became a
-	 *  conversation (CUR-2875). A draft typed since is kept rather than overwritten. */
+	 *  conversation. A draft typed since is kept rather than overwritten. */
 	function restoreUnsent(message: string) {
 		pendingMessages = [];
 		if (!draft.get().trim()) draft.set(message);
@@ -53,7 +53,7 @@ export function createLandingSend(draft: { get: () => string; set: (text: string
 			send.setLoading(true);
 			// The bubble carried only the text, so a photo or file looked dropped until the
 			// conversation page took over seconds later. A read the browser refuses leaves the bubble
-			// text-only; the conversation page's own encode then reports it. (CUR-3402)
+			// text-only; the conversation page's own encode then reports it.
 			const files = send.files.length > 0 ? await encodeMessageFiles(send.files).catch(() => undefined) : undefined;
 			pendingMessages = [{ id: "pending-user-message", content: message, from: "user", files }];
 			const model = send.pickModel();

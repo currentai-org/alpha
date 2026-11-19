@@ -36,12 +36,12 @@ test: venv
 lint: venv
 	$(PY) -m ruff check api eval scripts
 
-# CUR-1227. Scope, config and the reason it's pyright rather than ty or mypy all live in
+# Scope, config and the reason it's pyright rather than ty or mypy all live in
 # [tool.pyright] in pyproject.toml — this target is just the invocation. Needs the venv, and not only
 # to run: pyright resolves fastapi/pydantic/acp FROM it (venvPath/venv), and without them it reports
 # every library's surface as unknown and then has nothing to say about the code using it.
 # --warnings because pyright's default exit code ignores them, and a dead statement
-# (reportUnusedExpression) is a warning at `standard` — see the same flag in ci.yml (CUR-1228).
+# (reportUnusedExpression) is a warning at `standard` — see the same flag in ci.yml.
 typecheck: venv
 	$(PY) -m pyright --warnings
 

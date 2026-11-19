@@ -1,5 +1,5 @@
 // The harness decision. The plan depends on the model's row alone: never on
-// the environment, the person or a flag, so www serves a model the turn develop serves it. (CUR-2420, CUR-2697, CUR-4015)
+// the environment, the person or a flag, so www serves a model the turn develop serves it.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // The environment and PostHog are mocked so the contract can vary them and show the plan does not move.
@@ -43,7 +43,7 @@ beforeEach(() => {
 	override = undefined;
 });
 
-describe("the plan depends on the model's profile, never on the environment (CUR-4015)", () => {
+describe("the plan depends on the model's profile, never on the environment", () => {
 	for (const model of [native, apertus, { id: "bsc-lt/alia-40b-instruct", supportsTools: true }]) {
 		it(`${model.id} gets one plan in production, preview and development, whatever PostHog answers`, () => {
 			const plans = [];
@@ -74,7 +74,7 @@ describe("a model the native shape does not fit carries every trick", () => {
 	it("Large 3 without tool support, since the native shape's retrieval is tools", () => {
 		expect(resolveHarness({ ...native, supportsTools: false })).toEqual(SCAFFOLDED);
 	});
-	it("ALIA without tool support keeps its row's tricks, so the persona it dropped stays off (CUR-3898)", () => {
+	it("ALIA without tool support keeps its row's tricks, so the persona it dropped stays off", () => {
 		const plan = resolveHarness({ id: "bsc-lt/alia-40b-instruct", supportsTools: false });
 		expect(plan.prompt).toBe("minimal");
 		expect(plan.retrieval).toBe("pipeline");
@@ -103,15 +103,15 @@ describe("the rows reproduce the turn each model had before its tricks moved int
 		])
 			expect([id, [...tricksFor(id)].sort()]).toEqual([id, [...ALL_TRICKS].sort()]);
 	});
-	it("ALIA keeps every trick but the persona, which with grounded decoding made it recite its fenced turn (CUR-3835)", () => {
+	it("ALIA keeps every trick but the persona, which with grounded decoding made it recite its fenced turn", () => {
 		expect([...tricksFor("bsc-lt/alia-40b-instruct")].sort()).toEqual(
 			ALL_TRICKS.filter((t) => t !== "fewShotPersona").sort()
 		);
 	});
 });
 
-describe("native calculate asks for group counts only where a model was measured to need it (CUR-4015)", () => {
-	it("Medium and Large 3 ask for them; an unlisted model does not (CUR-1202)", () => {
+describe("native calculate asks for group counts only where a model was measured to need it", () => {
+	it("Medium and Large 3 ask for them; an unlisted model does not", () => {
 		expect(asksCalculateCounts("mistral-medium-2604")).toBe(true);
 		expect(asksCalculateCounts("mistral-large-2512")).toBe(true);
 		expect(asksCalculateCounts("acme/unvetted-7b")).toBe(false);
@@ -139,7 +139,7 @@ describe("each trick turns on exactly one plan field", () => {
 	});
 });
 
-describe("the layer test's dropTricks switch takes named tricks off one model's row (CUR-2697)", () => {
+describe("the layer test's dropTricks switch takes named tricks off one model's row", () => {
 	const withDrop = <T>(drop: string[], fn: () => Promise<T>) =>
 		runWithRequestContext(
 			async () => ({ plan: await fn(), applied: getRequestContext()?.evalLayersApplied }),

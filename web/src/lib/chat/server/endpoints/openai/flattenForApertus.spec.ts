@@ -89,7 +89,7 @@ describe("flattenForApertus", () => {
 	});
 
 	// A turn-3 "which one is easiest?" served in this shape can ask which options the person meant, with
-	// the options in its own reply above (CUR-1957). The earlier turns and the fenced live question have
+	// the options in its own reply above. The earlier turns and the fenced live question have
 	// to read as one conversation.
 	it("tells the model the live question continues the conversation, after its own earlier reply", () => {
 		const body = textOf(flattenForApertus([SYSTEM, Q1, A1, Q2])[0]);

@@ -61,6 +61,7 @@ function parseConfig(raw: unknown): RoutingConfig | null {
 		merged.gapConfidence,
 		merged.continuity,
 		merged.capacityCost,
+		merged.languageMargin,
 		...Object.values(merged.weights),
 		...Object.values(merged.target)
 	];
@@ -121,12 +122,12 @@ export function getInvolvedVisible(dismissedAt: number | null, now: number): boo
 	return dismissedAt === null || now - dismissedAt >= GET_INVOLVED_RETURN_MS;
 }
 
-/** Auto's choice as a turn records it (CUR-3944): the catalog id, its reason chips and sentence. */
+/** Auto's choice as a turn records it: the catalog id, its reason chips and sentence. */
 export interface AutoRouteNote {
 	model: string;
 	reasons: string[];
 	explanation: string;
-	/** Auto's first choice, which was busy or silent, when this note is Auto picking again. (CUR-4384) */
+	/** Auto's first choice, which was busy or silent, when this note is Auto picking again. */
 	repickedFrom?: string;
 }
 

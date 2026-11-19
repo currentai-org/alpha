@@ -12,7 +12,7 @@ import { accountButton, workspaceFlyout } from './helpers/accountMenu';
 import { startChattingPastWelcome } from './helpers/welcome';
 import type { BrowserContext, Page } from '@playwright/test';
 
-// A8 rows 10-14 (CUR-2835): what a workspace admin or invitee sees when the product says no, each
+// A8 rows 10-14: what a workspace admin or invitee sees when the product says no, each
 // graded on its own row. Like the rest of A8, @preview-only: the surface is reached by forcing both workspace flags through the override
 // cookie, which production does not wire.
 //
@@ -20,9 +20,9 @@ import type { BrowserContext, Page } from '@playwright/test';
 // `onTestEnd`), and a context a test opens with `browser.newContext()` is not filmed. So each test
 // below walks its step on `page`, as the person the row is about, and keeps every other account in
 // a side context. Rows 10, 12 and 13 ran wholly in side contexts, passed, and reached the grader with
-// no footage (CUR-2868, CUR-2869, CUR-2870).
+// no footage.
 
-const FLAGS = { workspaces: true, 'workspace-org-creation': true };
+const FLAGS = { 'workspace-org-creation': true };
 
 // Library wording that must never reach a visitor: the app says workspace and admin.
 const LIBRARY_WORDS = /organization|owner/i;
@@ -83,7 +83,7 @@ const personalBadge = (page: Page) =>
 		.getByRole('button', { name: 'Personal workspace' })
 		.getByText('Current', { exact: true });
 
-// Losing your current workspace lands you in Personal with a line saying why (CUR-3022). Another team
+// Losing your current workspace lands you in Personal with a line saying why. Another team
 // workspace you belong to is listed but never picked for you.
 async function expectLandedInPersonal(page: Page, otherWorkspace: string) {
 	await expect(
@@ -129,7 +129,7 @@ test(
 );
 
 test(
-	'a new account’s invite past its daily limit of 5 is refused on the page, naming the limit, and is never listed as pending (CUR-4168)',
+	'a new account’s invite past its daily limit of 5 is refused on the page, naming the limit, and is never listed as pending',
 	{ tag: ['@preview-only', '@A8'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(120_000);
@@ -140,7 +140,7 @@ test(
 			name,
 			slug: slugify(name)
 		});
-		// A fresh account's daily cap is 5 (workspaceInviteRate.ts, CUR-4168), so two throwaway accounts
+		// A fresh account's daily cap is 5 (workspaceInviteRate.ts), so two throwaway accounts
 		// cannot spend the site-wide ceiling. Spend it through the API; the visitor's own attempt is the
 		// 6th, on screen.
 		for (let i = 0; i < 5; i++) {
@@ -160,7 +160,7 @@ test(
 				page.getByText(/\b5 invitations a day/i),
 				'a new account’s 6th invite in a day was not refused with the limit named'
 			).toBeVisible({ timeout: 15_000 });
-			// Visible in the DOM is not the same as on screen (CUR-3207); the graded recording had it below the fold.
+			// Visible in the DOM is not the same as on screen; the graded recording had it below the fold.
 			await expect(
 				page.getByRole('alert').filter({ hasText: /\b5 invitations a day/i }),
 				'the invite-limit refusal is off screen'
@@ -174,10 +174,10 @@ test(
 	}
 );
 
-// Inviting your own address (CUR-3053). Better Auth refuses it and creates nothing, but the page
+// Inviting your own address. Better Auth refuses it and creates nothing, but the page
 // showed its raw "already a member of this organization" text, library words and all.
 test(
-	'inviting your own address is refused in the app’s words, wholly on screen, and the list of workspaces does not change (CUR-4060)',
+	'inviting your own address is refused in the app’s words, wholly on screen, and the list of workspaces does not change',
 	{ tag: ['@preview-only', '@A8'] },
 	async ({ page, context, baseURL }) => {
 		const { email } = await freshAccount(context, baseURL!, undefined, page);
@@ -192,8 +192,8 @@ test(
 			page.getByText('That address is already in this workspace.'),
 			'inviting your own address was not refused in plain words'
 		).toBeVisible({ timeout: 15_000 });
-		// The refusal has to be where the person is looking, not only somewhere on the page (CUR-3207).
-		// And all of it (CUR-4060); a line half under the bottom edge passed a bare toBeInViewport().
+		// The refusal has to be where the person is looking, not only somewhere on the page.
+		// And all of it; a line half under the bottom edge passed a bare toBeInViewport.
 		await expect(
 			page.getByRole('alert').filter({ hasText: 'That address is already in this workspace.' }),
 			'the self-invite refusal is off screen'
@@ -208,11 +208,11 @@ test(
 );
 
 // The Current badge now waits for the workspace's detail, so the list and the panel below
-// change together (CUR-3373). The switch is saved before that load starts, so a load that never answers (a dropped
+// change together. The switch is saved before that load starts, so a load that never answers (a dropped
 // connection, not an error reply) must still move the badge and the account row, and say the detail
 // could not load.
 test(
-	'a switch whose workspace detail fails to load still marks that workspace current, says so, and Try again loads it (CUR-4026)',
+	'a switch whose workspace detail fails to load still marks that workspace current, says so, and Try again loads it',
 	{ tag: ['@preview-only', '@A8'] },
 	async ({ page, context, baseURL }) => {
 		await freshAccount(context, baseURL!, undefined, page);
@@ -240,7 +240,7 @@ test(
 		).toHaveText(first, { timeout: 15_000 });
 		await expect(page.getByText("Couldn't load that workspace.")).toBeVisible();
 		await page.unroute(detail);
-		// The failed load offers a way forward, and taking it loads the workspace (CUR-4026).
+		// The failed load offers a way forward, and taking it loads the workspace.
 		await page.getByRole('button', { name: 'Try again' }).click();
 		await expect(
 			page.getByText(/only admin, so you can't leave/i),
@@ -252,13 +252,13 @@ test(
 );
 
 // Logging out from this page signs out, then spends a moment on the app's own logout
-// before reloading (CUR-3280). A request the page made in that gap came back 401 and printed Better Auth's bare
+// before reloading. A request the page made in that gap came back 401 and printed Better Auth's bare
 // "Unauthorized" under the workspace list. The session is ended here by dropping its cookies, and a
 // click on the workspace makes the page ask again.
 // The notice used to sit under a live workspace list and an enabled New workspace button,
-// with no way to sign in (CUR-4108). Now it replaces the controls and links to sign-in, back to this page.
+// with no way to sign in. Now it replaces the controls and links to sign-in, back to this page.
 test(
-	'a workspace page whose session has ended says so in plain words, never "Unauthorized", hides the controls and offers Sign in (CUR-4108)',
+	'a workspace page whose session has ended says so in plain words, never "Unauthorized", hides the controls and offers Sign in',
 	{ tag: ['@preview-only', '@A8'] },
 	async ({ page, context, baseURL }) => {
 		await freshAccount(context, baseURL!, undefined, page);
@@ -393,7 +393,7 @@ test(
 					'Personal did not survive a reload, so the switch never reached the session'
 				).toBeVisible({ timeout: 30_000 });
 				await expect(currentBadge(m.page, own)).toHaveCount(0);
-				// The reason has to survive the reload too, or Personal just looks like a reset (CUR-3089).
+				// The reason has to survive the reload too, or Personal just looks like a reset.
 				await expect(
 					workspaceList(m.page).getByRole('status'),
 					'after a reload nothing says why the person is in Personal'
@@ -447,7 +447,7 @@ test(
 );
 
 // A removed member's chats from that team used to fold into Personal with nothing saying
-// where they came from (CUR-3040). Chats are made and titled through the API, so no model turn runs.
+// where they came from. Chats are made and titled through the API, so no model turn runs.
 test(
 	"a removed member's chats from that team sit under Former: <team>, read-only, not in Personal",
 	{ tag: ['@preview-only', '@A8'] },
@@ -516,7 +516,7 @@ test(
 	}
 );
 
-// Remove is offered on other members' rows only (CUR-3385). Taking yourself out is Leave, which
+// Remove is offered on other members' rows only. Taking yourself out is Leave, which
 // refuses the only admin ('the only admin trying to leave…' below).
 test(
 	'the only admin finds no Remove on their own row, so nobody takes themselves out by accident',
@@ -545,7 +545,7 @@ test(
 	}
 );
 
-// Remove took a member out on one click while Leave and Delete both asked first (CUR-3385).
+// Remove took a member out on one click while Leave and Delete both asked first.
 test(
 	'an admin removing a member is asked first, naming them; Cancel keeps them and confirming removes them',
 	{ tag: ['@preview-only', '@A8'] },
@@ -604,7 +604,7 @@ test(
 	}
 );
 
-// "request" and "open" have no join flow, so neither can be stored (CUR-3021). The admin is refused in
+// "request" and "open" have no join flow, so neither can be stored. The admin is refused in
 // workspace words, and the workspace still reads as invitation-only.
 test(
 	'a workspace cannot be set to a join method nobody can use, and still reads By invitation only',
@@ -648,7 +648,7 @@ test(
 	}
 );
 
-// Leaving a workspace and renaming one, from its own settings (CUR-3106).
+// Leaving a workspace and renaming one, from its own settings.
 test(
 	'a member leaves a workspace they were invited to and lands in Personal, with it gone from the account menu',
 	{ tag: ['@preview-only', '@A8'] },
@@ -702,7 +702,7 @@ test(
 );
 
 test(
-	'the only admin is told up front, in workspace words, that they cannot leave, is offered no Leave button and no line saying they will leave, and stays in it (CUR-4020)',
+	'the only admin is told up front, in workspace words, that they cannot leave, is offered no Leave button and no line saying they will leave, and stays in it',
 	{ tag: ['@preview-only', '@A8'] },
 	async ({ page, context, baseURL }) => {
 		await setFlagOverrides(context, baseURL!, FLAGS);
@@ -720,7 +720,7 @@ test(
 		await expect(refusal, 'the sole-admin Leave refusal is off screen').toBeInViewport({
 			ratio: 1
 		});
-		// A Leave that answered "Leaving…" and then refused contradicted itself, so none is offered (CUR-4020).
+		// A Leave that answered "Leaving…" and then refused contradicted itself, so none is offered.
 		await expect(
 			page.getByRole('button', { name: /^Leave workspace/ }),
 			'the only admin is offered a Leave that the server will refuse'
@@ -736,7 +736,7 @@ test(
 );
 
 test(
-	'an admin renames their workspace and the new name shows in the list and on the account row after a reload, and the old name never comes back once the form closes (CUR-3960)',
+	'an admin renames their workspace and the new name shows in the list and on the account row after a reload, and the old name never comes back once the form closes',
 	{ tag: ['@preview-only', '@A8'] },
 	async ({ page, context, baseURL }) => {
 		await setFlagOverrides(context, baseURL!, FLAGS);
@@ -752,7 +752,7 @@ test(
 		await page.getByRole('button', { name: 'Rename…' }).click({ timeout: 30_000 });
 		await page.getByRole('textbox', { name: 'Workspace name' }).fill(after);
 		// The form closed on the save's answer and the heading and account row showed the old
-		// name for about two seconds before the reload caught up (CUR-3960). Every DOM change after Save is checked:
+		// name for about two seconds before the reload caught up. Every DOM change after Save is checked:
 		// once the form is gone, the heading and the account row must already read the new name.
 		await page.evaluate((renamed) => {
 			const seen: string[] = [];
@@ -794,7 +794,7 @@ test(
 );
 
 // A workspace's name goes into the invitation email a stranger receives, so a name carrying
-// a link is refused by the server on create and on rename, not only shortened by the page's input (CUR-3194).
+// a link is refused by the server on create and on rename, not only shortened by the page's input.
 test(
 	'a workspace name carrying a web address is refused on create and on rename, and nothing is created',
 	{ tag: ['@preview-only', '@A8'] },
@@ -839,5 +839,56 @@ test(
 		}[];
 		expect(orgs.map((o) => o.name)).toContain(name);
 		expect(orgs.map((o) => o.name).join(' ')).not.toContain('prize-');
+	}
+);
+
+// The page's name fields stop at 60 characters, but the API takes whatever it is sent, so the limit has
+// to hold on the server too (workspacePermissions.ts WORKSPACE_NAME_MAX). A 60-character name
+// is created, so the refusal below is about length and nothing else.
+test(
+	'a workspace name over 60 characters is refused on create and on rename, and nothing is created or changed',
+	{ tag: ['@preview-only', '@A8'] },
+	async ({ page, context, baseURL }) => {
+		await setFlagOverrides(context, baseURL!, FLAGS);
+		await signInAsFreshUser(page, freshTestEmail());
+		await dismissWelcome(page);
+		const stamp = Date.now();
+		const origin = new URL(baseURL!).origin;
+		const ofLength = (prefix: string, n: number) => `${prefix} ${stamp} `.padEnd(n, 'a');
+		const names = async () =>
+			(
+				(await (await page.request.get('/chat/api/auth/organization/list')).json()) as {
+					name: string;
+				}[]
+			).map((o) => o.name);
+
+		const tooLong = ofLength('E2E Too Long', 61);
+		expect(tooLong).toHaveLength(61);
+		const create = await page.request.post('/chat/api/auth/organization/create', {
+			data: { name: tooLong, slug: slugify(tooLong) },
+			headers: { origin }
+		});
+		expect(create.status(), 'a 61-character workspace name was accepted on create').toBe(400);
+		expect(await create.text()).toMatch(/up to 60 characters/);
+		expect(await names(), 'the refused 61-character workspace was created anyway').not.toContain(
+			tooLong
+		);
+
+		const atLimit = ofLength('E2E At Limit', 60);
+		expect(atLimit).toHaveLength(60);
+		const { id: organizationId } = await api(page, baseURL!, 'create', {
+			name: atLimit,
+			slug: slugify(atLimit)
+		});
+		const renamedTo = ofLength('E2E Renamed Long', 61);
+		const rename = await page.request.post('/chat/api/auth/organization/update', {
+			data: { organizationId, data: { name: renamedTo } },
+			headers: { origin }
+		});
+		expect(rename.status(), 'a rename to a 61-character name was accepted').toBe(400);
+		expect(await rename.text()).toMatch(/up to 60 characters/);
+		const after = await names();
+		expect(after, 'the refused rename changed the workspace name').toContain(atLimit);
+		expect(after).not.toContain(renamedTo);
 	}
 );

@@ -19,7 +19,7 @@ describe("resolveConversationModel", () => {
 	});
 
 	it("falls back to the default AND names the retired id, so the substitution cannot be silent", () => {
-		// A conversation created on an id since collapsed onto 1.5 (CUR-243); continuing one must not 410.
+		// A conversation created on an id since collapsed onto 1.5; continuing one must not 410.
 		const r = resolveConversationModel(REGISTRY, DEFAULT, "swiss-ai/apertus-70b-instruct");
 		expect(r.model.id).toBe("swiss-ai/apertus-v1.5-70b");
 		expect(r.retiredId).toBe("swiss-ai/apertus-70b-instruct");

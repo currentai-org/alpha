@@ -1,6 +1,6 @@
 // e2e-product: @chat
 // e2e-area: @agent
-// A full sandbox host makes the person wait, with a status, instead of failing at once (CUR-4584). A run
+// A full sandbox host makes the person wait, with a status, instead of failing at once. A run
 // that has to wait for a free slot shows "Waiting for a free sandbox…" on the live line while it waits,
 // and then the turn carries on with the run's result.
 //
@@ -11,6 +11,9 @@
 // only the host being full is stood in, since a preview cannot fill develop's shared E2B host on demand.
 // Entered on Large 4, which calls tools natively. Preview-only: production refuses the fault and the
 // flag override.
+//
+// The prompt asks for a snippet to be run, not a sum: Large 4 is offered the calculator too, and given
+// arithmetic it answers with that instead, so run_code is never called.
 import { test, expect } from './helpers/test';
 import { LARGE4_MODEL } from './helpers/chatEntry';
 import { installFaultInjectionHeader } from './helpers/faultInjection';
@@ -21,9 +24,12 @@ import { pinnedChatEntry } from './helpers/servedModel';
 import { turnDone } from './helpers/turn';
 import { openStepByStep } from './helpers/xray';
 import { startChattingPastWelcome } from './helpers/welcome';
-
-// What the stand-in's run_code prints once its wait is over (SANDBOX_WAIT_STUB_STDOUT): 2 to the 43.
-const STUB_STDOUT = '8796093022208';
+import {
+	ANSWERED_BY_CALCULATOR,
+	CALCULATOR_STEP,
+	RUN_CODE_PROMPT,
+	STUB_STDOUT
+} from './helpers/sandboxStub';
 
 test(
 	'a run on a full sandbox host shows "Waiting for a free sandbox…" while it waits, then the run’s result',
@@ -36,27 +42,48 @@ test(
 		await page.addLocatorHandler(welcomeDialog, async () => {
 			await startChattingPastWelcome(welcomeDialog);
 		});
-		// The sandbox is offered to signed-in accounts only (CUR-4400).
+		// The sandbox is offered to signed-in accounts only.
 		await signInAsFreshUser(page);
 		await page.goto(pinnedChatEntry(LARGE4_MODEL), { waitUntil: 'commit' });
 		await composerHydrated(page);
 
 		const composer = page.getByLabel('Message AI Potluck');
 		await composer.click({ timeout: 30_000 });
-		await composer.fill('Use code to compute 2 to the power of 43 and tell me the exact number.');
+		await composer.fill(RUN_CODE_PROMPT);
 		await composer.press('Enter');
 
 		// While the run waits for a slot, the live line says so.
 		const waiting = page
 			.locator('[data-live-line]')
 			.filter({ hasText: 'Waiting for a free sandbox' });
-		await expect(waiting, 'the live line never said the run was waiting for a sandbox').toBeVisible(
-			{
-				timeout: 90_000
-			}
-		);
-
 		const reply = page.locator('[data-message-role="assistant"]').last();
+		// Whichever shows first is recorded once, since the waiting line is gone again when its wait ends. A
+		// turn that ends without ever waiting most likely never called run_code: say so from the trace
+		// rather than reporting only the missing line.
+		const firstSeen = await Promise.race([
+			waiting.waitFor({ timeout: 90_000 }).then(
+				() => 'waiting' as const,
+				() => 'neither' as const
+			),
+			turnDone(reply)
+				.waitFor({ timeout: 90_000 })
+				.then(
+					() => 'done' as const,
+					() => 'neither' as const
+				)
+		]);
+		if (firstSeen === 'done') {
+			await openStepByStep(page, reply, {
+				disclosure: { timeout: 30_000 },
+				tab: { timeout: 10_000 }
+			});
+			await expect(
+				page.locator('[data-xray-steps]').locator(CALCULATOR_STEP),
+				ANSWERED_BY_CALCULATOR
+			).toHaveCount(0);
+		}
+		expect(firstSeen, 'the live line never said the run was waiting for a sandbox').toBe('waiting');
+
 		await expect(turnDone(reply), 'the turn never finished after the wait').toBeVisible({
 			timeout: 150_000
 		});

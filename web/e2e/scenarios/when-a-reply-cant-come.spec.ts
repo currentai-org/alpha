@@ -1,6 +1,6 @@
 // e2e-product: @chat
 // e2e-area: @turn
-// CUR-2628 — journey C3 (docs/journeys/c3-when-a-reply-cant-come.md): when a reply can't come, the
+// journey C3 (docs/journeys/c3-when-a-reply-cant-come.md): when a reply can't come, the
 // visitor is told which failure it was, in words, with a way to try again. Steps 1-3 (too long, busy,
 // too slow) are walked by specs that already existed and now carry @C3; this file walks the two that
 // had no visitor-side check: an answer cut off partway, and a send the server fails outright.
@@ -9,6 +9,7 @@ import { test, expect, type Page } from './helpers/test';
 import { chatEntry } from './helpers/chatEntry';
 import { installFaultInjectionHeader, type FaultInjectionName } from './helpers/faultInjection';
 import { journeyStep } from './helpers/journeyStep';
+import { listedModels } from './helpers/servedModel';
 
 async function sendUnderFault(page: Page, fault: FaultInjectionName, question: string) {
 	const welcome = page.getByRole('dialog', { name: 'Welcome to Alpha' });
@@ -41,7 +42,7 @@ test(
 				notice,
 				'the cut-off answer ends with no notice; if it answered in full, the fault never reached the server'
 			).toBeVisible({ timeout: 90_000 });
-			// Before CUR-2628 this notice read undici's own text, "terminated".
+			// this notice read undici's own text, "terminated".
 			await expect(notice).toContainText(
 				/The connection to .+ dropped before this answer finished/
 			);
@@ -59,7 +60,7 @@ test(
 		await journeyStep(page, 'C3', 5, async () => {
 			const question = `C3 journey ${Date.now()}: what is the tallest mountain in Wales?`;
 			await sendUnderFault(page, 'chat_500', question);
-			// Said in the turn itself, with Retry, rather than only in a toast that fades (CUR-2613).
+			// Said in the turn itself, with Retry, rather than only in a toast that fades.
 			const notice = page.locator('[data-message-role="assistant"]').last().getByRole('alert');
 			await expect(notice, 'a send answered 500 does not tell the visitor it failed').toContainText(
 				'The connection dropped before a reply arrived. Please try again.',
@@ -69,7 +70,7 @@ test(
 			await expect(page.locator('[data-message-type="user"]').last()).toContainText(question);
 			await expect(page.getByText('Internal Error')).toHaveCount(0);
 			// Once the visitor is told the send failed, the turn has to stop behaving as though it
-			// were still running (CUR-2613). Before the fix, "Working on it…" kept counting and Stop stayed live.
+			// were still running. Before the fix, "Working on it…" kept counting and Stop stayed live.
 			await expect(
 				page.getByRole('button', { name: 'Stop generating' }),
 				'Stop is still offered after the send was reported as failed'
@@ -85,8 +86,12 @@ test(
 test(
 	'a model error no named copy covers says the model could not answer, with no status code or SDK text',
 	{ tag: ['@C3', '@CUR-2829', '@preview-only'] },
-	async ({ page }) => {
+	async ({ page, request }) => {
 		test.setTimeout(120_000);
+		// The notice names the model the turn ran on. Auto may route the turn to any listed model, so the
+		// check is that the sentence opens with one of the listed models' names, not with a guessed one.
+		const names = (await listedModels(request)).map((m) => m.displayName).filter(Boolean);
+		expect(names.length, 'the models endpoint listed no model').toBeGreaterThan(0);
 		await journeyStep(page, 'C3', 7, async () => {
 			await sendUnderFault(
 				page,
@@ -98,8 +103,14 @@ test(
 				notice,
 				'the failed turn shows no notice; if it answered, the fault never reached the server'
 			).toBeVisible({ timeout: 90_000 });
-			// Before CUR-2829 this notice was the SDK's own text, "500 Internal Server Error".
+			// this notice was the SDK's own text, "500 Internal Server Error".
 			await expect(notice).toContainText(/couldn't answer this time/);
+			// The sentence names the model, so the visitor knows which one failed and could pick another.
+			const text = (await notice.textContent()) ?? '';
+			expect(
+				names.some((n) => text.includes(`${n} couldn't answer this time`)),
+				`the notice names no listed model: "${text}"`
+			).toBe(true);
 			await expect(notice).not.toContainText('500');
 			await expect(notice).not.toContainText('Internal Server Error');
 			await expect(notice.getByRole('button', { name: 'Retry' })).toBeVisible();
@@ -107,13 +118,13 @@ test(
 	}
 );
 
-// Our own per-session limit (CUR-2804). The fault lowers it to one send per 30s window, so the second
+// Our own per-session limit. The fault lowers it to one send per 30s window, so the second
 // question, sent once the first answer is in, lands inside the window and is refused.
 // The refusal used to say only "Try again later", the toast faded, and Send stayed live, so the
-// wait looked like a frozen screen and an early press (which counts too) pushed it further out (CUR-3216).
-// A grader read the held Send as ready, so the spec also checks it is drawn dimmed, not only disabled (CUR-3800).
+// wait looked like a frozen screen and an early press (which counts too) pushed it further out.
+// A grader read the held Send as ready, so the spec also checks it is drawn dimmed, not only disabled.
 test(
-	'a send past our own message limit says so, keeps the typed text, counts down with Send held and dimmed, and goes through once the window passes (CUR-3800)',
+	'a send past our own message limit says so, keeps the typed text, counts down with Send held and dimmed, and goes through once the window passes',
 	{ tag: ['@C3', '@CUR-2804', '@CUR-3216', '@CUR-3800', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(180_000);

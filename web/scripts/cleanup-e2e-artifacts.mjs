@@ -2,11 +2,11 @@
 // cleanup-e2e-artifacts — delete the rows web/e2e/scenarios' sign-in and workspace specs leave
 // behind in a real, PERSISTENT database.
 //
-// WHY THIS EXISTS: CUR-1150 moved the scenario suite off an ephemeral per-PR Neon branch (deleted
+// WHY THIS EXISTS: That change moved the scenario suite off an ephemeral per-PR Neon branch (deleted
 // when the PR closed) onto the shared `preview` Doppler config's own database, so every scenario
 // run now — sign-in, workspace creation — writes real rows that nothing else ever deletes.
 // web/src/lib/chat/server/db/cleanup.ts only ever covered `conversations`; verification/user/
-// session/account/organization/member were never in scope because CUR-1077's original design
+// session/account/organization/member were never in scope because the original design
 // didn't need them to be. Run after every scenario-suite-check.yml run (`if: always()`, so a
 // failed run still cleans up whatever it managed to create) so this doesn't quietly become "the
 // preview verification/organization tables are full of thousands of e2e-* rows."
@@ -15,12 +15,14 @@
 // tagged at creation time — freshTestEmail() always mints `e2e-<uuid>@example.org` or `@currentai.org` (`e2e-r<run>-<uuid>` in CI)
 // (web/e2e/scenarios/helpers/signIn.ts), workspaces.spec.ts always names its workspace
 // `E2E Workspace <timestamp>`. Nothing outside this suite has ever had a reason to create either
-// shape, so these patterns can't collide with real user data. `isE2eEmail` below re-checks every
-// account the SQL selected, and a single mismatch aborts the run before anything is deleted (CUR-2529).
+// shape, so these patterns can't collide with real user data. The walkthrough tours sign in as named
+// personas instead (`sam.rivera.<suffix>@example.org`); scripts/lib/tourPersonas.mjs mints those and
+// lists them, so this script deletes them too once they pass the age floor. `isE2eEmail` below re-checks every
+// account the SQL selected, and a single mismatch aborts the run before anything is deleted.
 //
 // Two identities per e2e sign-in. Better Auth's own `user` row, and the legacy shadow `users` row the
 // auth bridge mints on first sign-in (auth.ts, keyed by shadowUserId) with the account's `settings`
-// and any conversations migrated onto it (CUR-2529). Both are deleted. The shadow rows carry the same
+// and any conversations migrated onto it. Both are deleted. The shadow rows carry the same
 // email in `doc`, so the same pattern finds them, including any an earlier run left behind.
 //
 // Everything runs in one transaction. organization->member and user->session/account/member
@@ -29,23 +31,29 @@
 // on userId (@better-auth/passkey declares its own schema; wipeUserData.ts handles the same gotcha),
 // so it goes before `user`. On the legacy side, `reports` references `conversations` and is detached
 // rather than deleted, as deleteConversations.ts does; conversations, settings and sessions reference
-// `users` (CUR-769), so they go before it.
+// `users`, so they go before it.
 //
 // Usage: DATABASE_URL=postgres://... node scripts/cleanup-e2e-artifacts.mjs [--run <GITHUB_RUN_ID>] [--min-age-minutes N]
 import postgres from "postgres";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { isTourEmail, tourEmailPatterns } from "./lib/tourPersonas.mjs";
 
 const MOCK_OIDC_EMAIL = "mock-oidc-e2e@example.org";
 
 /** The domains freshTestEmail mints on: example.org, and currentai.org for a spec that signs in on a
- *  staff domain a flag targets (CUR-2725). A real staff address never starts `e2e-`. */
+ *  staff domain a flag targets. A real staff address never starts `e2e-`. */
 const E2E_DOMAINS = ["example.org", "currentai.org"];
 
-/** The email shapes this suite mints. Independent of the SQL `like` on purpose. */
+/** The email shapes this suite mints, and the walkthrough tours' persona addresses
+ *  (scripts/lib/tourPersonas.mjs). Independent of the SQL `like` on purpose. */
 export function isE2eEmail(email) {
-	return email === MOCK_OIDC_EMAIL || /^e2e-[^@\s]+@(example|currentai)\.org$/.test(email ?? "");
+	return email === MOCK_OIDC_EMAIL || /^e2e-[^@\s]+@(example|currentai)\.org$/.test(email ?? "") || isTourEmail(email);
 }
+
+/** The SQL `like`s for every account this cleanup may delete. A tour address carries no run tag, so
+ *  it goes once it is past the age floor, like an untagged e2e account. */
+const DEFAULT_PATTERNS = [...E2E_DOMAINS.map((domain) => `e2e-%@${domain}`), ...tourEmailPatterns()];
 
 function assertAllE2e(table, rows) {
 	const strays = rows.filter((r) => !isE2eEmail(r.email));
@@ -79,7 +87,7 @@ export function runPatterns(runId) {
 export async function cleanupE2eArtifacts(
 	sql,
 	{
-		patterns = E2E_DOMAINS.map((domain) => `e2e-%@${domain}`),
+		patterns = DEFAULT_PATTERNS,
 		runId = null,
 		runIds = runId == null ? [] : [runId],
 		minAgeMinutes = MIN_AGE_MINUTES,
@@ -139,7 +147,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 		console.error("Usage: DATABASE_URL=postgres://... node scripts/cleanup-e2e-artifacts.mjs");
 		process.exit(1);
 	}
-	// --run repeats: the pre-run sweep passes every cancelled predecessor of this PR's run (CUR-2918).
+	// --run repeats: the pre-run sweep passes every cancelled predecessor of this PR's run.
 	const { values } = parseArgs({
 		options: { run: { type: "string", multiple: true }, "min-age-minutes": { type: "string" } },
 	});

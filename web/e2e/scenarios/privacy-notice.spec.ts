@@ -3,7 +3,7 @@ import { test, expect } from './helpers/test';
 
 // The privacy notice is CMS content. Where an editor typed an address rather than linking it with the
 // button, Lexical stores an `autolink`, and the renderer only knew `link`, so "To exercise any of
-// these rights, contact us at ." lost its address (CUR-1843). Other paragraphs on the page carry the
+// these rights, contact us at ." lost its address. Other paragraphs on the page carry the
 // same address as ordinary links, so "the page has a mailto link" stays green through the bug; the
 // assertion is scoped to the sentence that uses an autolink.
 test('the privacy notice says where to exercise your rights, with the address as a mailto link', async ({

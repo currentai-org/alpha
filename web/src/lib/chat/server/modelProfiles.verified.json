@@ -33,7 +33,22 @@
 			"systemRoleSupported": true,
 			"reasoningFormat": "field",
 			"tools": true,
-			"verifiedAt": "2026-09-27",
+			"verifiedAt": "2026-11-05",
+			"n": 24
+		},
+		"featherless-ai": {
+			"reasoningOff": null,
+			"efforts": [
+				"none",
+				"low",
+				"medium",
+				"high"
+			],
+			"effortNoneRejected": false,
+			"systemRoleSupported": true,
+			"reasoningFormat": "field",
+			"tools": true,
+			"verifiedAt": "2026-11-05",
 			"n": 24
 		}
 	},
@@ -112,6 +127,42 @@
 			"reasoningFormat": "field",
 			"tools": false,
 			"verifiedAt": "2026-09-27",
+			"n": 24
+		},
+		"featherless-ai": {
+			"reasoningOff": {
+				"path": "reasoning_effort",
+				"value": "none"
+			},
+			"efforts": [
+				"none",
+				"low",
+				"medium",
+				"high"
+			],
+			"effortNoneRejected": false,
+			"systemRoleSupported": true,
+			"reasoningFormat": "field",
+			"tools": false,
+			"verifiedAt": "2026-11-05",
+			"n": 24
+		},
+		"deepinfra": {
+			"reasoningOff": {
+				"path": "reasoning_effort",
+				"value": "none"
+			},
+			"efforts": [
+				"none",
+				"low",
+				"medium",
+				"high"
+			],
+			"effortNoneRejected": false,
+			"systemRoleSupported": true,
+			"reasoningFormat": "field",
+			"tools": false,
+			"verifiedAt": "2026-11-05",
 			"n": 24
 		}
 	},
@@ -259,20 +310,19 @@
 		}
 	},
 	"mistralai/mistral-large-2610": {
-		"gateway:router.stg.aipotluck.org": {
-			"reasoningOff": {
-				"path": "reasoning_effort",
-				"value": "none"
-			},
+		"gateway:api-internal.publicai.co": {
+			"reasoningOff": null,
 			"efforts": [
-				"none"
+				"low",
+				"medium",
+				"high"
 			],
-			"effortNoneRejected": false,
+			"effortNoneRejected": true,
 			"systemRoleSupported": true,
-			"reasoningFormat": "none",
+			"reasoningFormat": "field",
 			"tools": true,
-			"verifiedAt": "2026-10-25",
-			"n": 5
+			"verifiedAt": "2026-11-12",
+			"n": 24
 		}
 	},
 	"google/gemma-4-31b-it": {

@@ -23,7 +23,7 @@ describe('base on the default (site) build', () => {
 });
 
 // These are registered with Google, GitHub, Hugging Face and the sync clients, so they must
-// read the same whichever surface built them. (CUR-4448)
+// read the same whichever surface built them.
 describe('pinned auth paths', () => {
 	it('keep their /chat prefix regardless of surface', () => {
 		expect(AUTH_BASE_PATH).toBe('/chat/api/auth');
@@ -112,7 +112,7 @@ describe('chatSurfaceRedirect (the 308 for an old /chat address on the chat surf
 });
 
 // routeId is what SvelteKit matched after `reroute` mapped the path into /chat. A site page
-// matches the site's `[...slug]` catch-all there (or nothing at all); a chat page matches a chat route. (CUR-4448)
+// matches the site's `[...slug]` catch-all there (or nothing at all); a chat page matches a chat route.
 describe('chatSurfaceSiteRedirect (a site page on the chat surface goes to the site host)', () => {
 	const site = (
 		pathname: string,
@@ -122,18 +122,18 @@ describe('chatSurfaceSiteRedirect (a site page on the chat surface goes to the s
 
 	it('sends an unmatched site path to www in production, keeping path and query', () => {
 		expect(site('/map', '/[...slug]', { search: '?layer=data' })).toBe(
-			'https://www.aipotluck.org/map?layer=data'
+			'https://www.example.test/map?layer=data'
 		);
 		expect(site('/about/the-potluck-metaphor', '/[...slug]')).toBe(
-			'https://www.aipotluck.org/about/the-potluck-metaphor'
+			'https://www.example.test/about/the-potluck-metaphor'
 		);
-		expect(site('/sitemap.xml', '/[...slug]')).toBe('https://www.aipotluck.org/sitemap.xml');
-		expect(site('/alpha', null, { method: 'HEAD' })).toBe('https://www.aipotluck.org/alpha');
+		expect(site('/sitemap.xml', '/[...slug]')).toBe('https://www.example.test/sitemap.xml');
+		expect(site('/alpha', null, { method: 'HEAD' })).toBe('https://www.example.test/alpha');
 	});
 
-	it('sends it to develop.aipotluck.org from a preview deployment or with no VERCEL_ENV', () => {
+	it('sends it to develop.example.test from a preview deployment or with no VERCEL_ENV', () => {
 		expect(site('/map', '/[...slug]', { vercelEnv: 'preview' })).toBe(
-			'https://develop.aipotluck.org/map'
+			'https://develop.example.test/map'
 		);
 		// Called directly: a destructuring default would turn `vercelEnv: undefined` back into production.
 		expect(
@@ -141,7 +141,7 @@ describe('chatSurfaceSiteRedirect (a site page on the chat surface goes to the s
 				{ pathname: '/map', search: '', method: 'GET', routeId: null, vercelEnv: undefined },
 				'chat'
 			)
-		).toBe('https://develop.aipotluck.org/map');
+		).toBe('https://develop.example.test/map');
 	});
 
 	it('never moves a matched chat route, even one that 404s itself (an unknown conversation id)', () => {
@@ -199,10 +199,10 @@ describe('the installed-app manifests', () => {
 describe('sitePageHref (a chat route handing off to a site page never redirects to itself)', () => {
 	it('on the chat surface, names the site host, because the bare path is the chat route itself', () => {
 		expect(sitePageHref('/privacy-notice', 'production', 'chat')).toBe(
-			'https://www.aipotluck.org/privacy-notice'
+			'https://www.example.test/privacy-notice'
 		);
 		expect(sitePageHref('/trust-and-safety', 'preview', 'chat')).toBe(
-			'https://develop.aipotluck.org/trust-and-safety'
+			'https://develop.example.test/trust-and-safety'
 		);
 	});
 	it('on the site surface, stays the bare path, where the CMS page answers it', () => {

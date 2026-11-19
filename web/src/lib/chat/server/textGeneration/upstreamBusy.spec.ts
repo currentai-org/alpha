@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { upstreamBusyMessage } from "./upstreamBusy";
 import { isRateLimitMessage } from "$lib/chat/stores/errors";
 
-// The shape the openai SDK's RateLimitError carries (CUR-2307).
+// The shape the openai SDK's RateLimitError carries.
 const sdk429 = Object.assign(new Error("429 Rate limit exceeded"), { status: 429 });
 
 describe("upstreamBusyMessage", () => {

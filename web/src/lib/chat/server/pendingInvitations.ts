@@ -1,5 +1,5 @@
 // A person invited to a workspace while signed in has the invite only as a link in the
-// email (CUR-550), so the account menu and Settings → Workspace now
+// email, so the account menu and Settings → Workspace now
 // list each pending invite to the signed-in address and link it to the same accept page.
 //
 // One query rather than the organization plugin's `listUserInvitations`: that endpoint returns expired
@@ -8,7 +8,7 @@
 //
 // Any account can put a workspace name it chose in front of any address, so the list is also a way
 // into someone's attention that sends no mail. The name renders as plain text (PendingInviteRow), and
-// the per-address cap on pending invites is enforced where invites are created (refuseOverInviteCaps). (CUR-4167)
+// the per-address cap on pending invites is enforced where invites are created (refuseOverInviteCaps).
 import { and, eq, gt, sql } from "drizzle-orm";
 import { getDb } from "$lib/chat/server/db/client";
 import { invitation, organization, user } from "$lib/chat/server/db/schema";

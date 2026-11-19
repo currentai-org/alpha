@@ -28,18 +28,18 @@ describe("searchGroundingPrompt", () => {
 	});
 });
 
-describe("searchGroundingPrompt — results are not the visitor's words (CUR-3303)", () => {
+describe("searchGroundingPrompt — results are not the visitor's words", () => {
 	it("says, right after the sources, that no result is an earlier message from the person", () => {
 		const out = searchGroundingPrompt(EV, ASOF);
 		const fenceEnd = out.indexOf("</retrieved_web_sources>");
 		expect(out.indexOf(SEARCH_RESULTS_ARE_NOT_THE_CONVERSATION)).toBeGreaterThan(fenceEnd);
 		expect(SEARCH_RESULTS_ARE_NOT_THE_CONVERSATION).toMatch(/none of them is an earlier message/);
-		// 3 of 10 euro-to-dirham answers said "as of today" with no date. (CUR-2424)
+		// Without this line a model can quote an exchange rate "as of today" with no date.
 		expect(SEARCH_RESULTS_ARE_NOT_THE_CONVERSATION).toMatch(/changes from day to day.*calendar date it is for/);
 	});
 });
 
-describe("searchGroundingPrompt — near-miss disambiguation (CUR-875)", () => {
+describe("searchGroundingPrompt — near-miss disambiguation", () => {
 	it("instructs offering close candidates by citation number, never asserting one IS the answer", () => {
 		const out = searchGroundingPrompt(EV, ASOF);
 		expect(out).toMatch(/name the close candidates with their citation numbers/i);
@@ -49,7 +49,7 @@ describe("searchGroundingPrompt — near-miss disambiguation (CUR-875)", () => {
 	it("instructs ENDING with a direct question, not just listing candidates and stopping", () => {
 		// A list-only answer names the candidates and then closes on a decline, leaving the user to
 		// retype the question themselves. Asking directly costs nothing on the honesty axis (still zero
-		// assertion) and keeps the answer usable. (CUR-875)
+		// assertion) and keeps the answer usable.
 		const out = searchGroundingPrompt(EV, ASOF);
 		expect(out).toMatch(/end by directly asking the user which one/i);
 	});
@@ -60,7 +60,7 @@ describe("searchGroundingPrompt — near-miss disambiguation (CUR-875)", () => {
 	});
 });
 
-describe("searchGroundingPrompt — arithmetic carve-out (CUR-852/854)", () => {
+describe("searchGroundingPrompt — arithmetic carve-out", () => {
 	it("tells the model to compute directly when the question already gives every number it needs", () => {
 		const out = searchGroundingPrompt(EV, ASOF);
 		expect(out).toMatch(/compute directly from those stated numbers/i);
@@ -79,7 +79,7 @@ describe("searchGroundingPrompt — arithmetic carve-out (CUR-852/854)", () => {
 	});
 });
 
-describe("searchGroundingPrompt — double-count guard (CUR-959)", () => {
+describe("searchGroundingPrompt — double-count guard", () => {
 	it("names the exact wrong shape (double-counting a named subset) and the right total", () => {
 		const out = searchGroundingPrompt(EV, ASOF);
 		expect(out).toMatch(/total already INCLUDES the special case/i);
@@ -139,8 +139,8 @@ describe("injectSearchGroundingPrompt", () => {
 });
 
 // A searched turn whose prompt holds only the template's UTC "as of" date can answer "Monday,
-// October 13" on Sunday 11 October in Los Angeles, citing calendar pages. (CUR-2276)
-describe("searchGroundingPrompt — today's date in the person's own zone (CUR-2276)", () => {
+// October 13" on Sunday 11 October in Los Angeles, citing calendar pages.
+describe("searchGroundingPrompt — today's date in the person's own zone", () => {
 	// 22:30Z on Thursday 1 October is already Friday 2 October in Tokyo.
 	const LATE_UTC = new Date("2026-10-01T22:30:00.000Z");
 	const tokyo = { zone: "Asia/Tokyo", now: LATE_UTC };
@@ -148,7 +148,7 @@ describe("searchGroundingPrompt — today's date in the person's own zone (CUR-2
 	it("names the weekday and date in the person's zone where it differs from UTC", () => {
 		const out = injectSearchGroundingPrompt("PERSONA", EV, ASOF, undefined, tokyo);
 		expect(out).toContain("Today is Friday, 2 October 2026 (Asia/Tokyo)");
-		// UTC's Thursday appears only as the labelled UTC clock, never as today (CUR-4163).
+		// UTC's Thursday appears only as the labelled UTC clock, never as today.
 		expect(out.match(/Thursday[^.]*/g)).toEqual(["Thursday, 1 October 2026, 22:30 UTC, and that place's UTC offset, never from the person's date or a source"]);
 	});
 
@@ -177,6 +177,17 @@ describe("searchGroundingPrompt — today's date in the person's own zone (CUR-2
 	it("keeps the date line when a tuning-panel override replaces the template", () => {
 		const out = searchGroundingPrompt(EV, ASOF, "Sources:\n{evidence}", tokyo);
 		expect(out).toContain("Today is Friday, 2 October 2026 (Asia/Tokyo)");
+	});
+
+	it("gives the clock for each named place ahead of the sources, and keeps the UTC clock for any other", () => {
+		const out = searchGroundingPrompt(EV, ASOF, undefined, {
+			zone: "America/Los_Angeles",
+			places: ["Pacific/Auckland"],
+			now: new Date("2026-11-07T07:15:00Z"),
+		});
+		expect(out).toContain("Saturday 2026-11-07 20:15 in Pacific/Auckland (UTC+13:00)");
+		expect(out.indexOf("Pacific/Auckland")).toBeLessThan(out.indexOf("<retrieved_web_sources>"));
+		expect(out).toContain("For the date or time in any other place, start from the time now in UTC");
 	});
 
 	it("falls back to the UTC date with its weekday when no zone is known", () => {

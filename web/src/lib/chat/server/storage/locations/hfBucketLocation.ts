@@ -1,7 +1,7 @@
 // A Hugging Face bucket the person owns, linked with a token they gave us. Every path is
 // confined to the location's `prefix` by `resolveUnderPrefix`/`assertUnderPrefix`, the same shape of
 // check custodialBucket.ts makes for users/<id>/. Here the person's own token is the outer wall (it
-// reaches only what they granted), so the prefix check guards the folder they chose, not other people. (CUR-2930)
+// reaches only what they granted), so the prefix check guards the folder they chose, not other people.
 import path from "node:path";
 import {
 	deleteFile,
@@ -101,10 +101,10 @@ export function hfBucketLocation(p: HfBucketParams): StorageLocation {
 		async list() {
 			const files = [];
 			try {
-				for await (const e of listFiles({ ...cred, path: p.prefix || undefined, recursive: true })) {
+				for await (const e of listFiles({ ...cred, path: p.prefix || undefined, recursive: true, expand: true })) {
 					if (e.type !== "file") continue;
 					// Same defense in depth as custodialStorage: re-derive from each entry, never trust the filter.
-					files.push({ path: assertUnderPrefix(p.prefix, e.path), size: e.size });
+					files.push({ path: assertUnderPrefix(p.prefix, e.path), size: e.size, addedAt: e.uploadedAt });
 				}
 			} catch (e) {
 				unavailable(p.id, e);

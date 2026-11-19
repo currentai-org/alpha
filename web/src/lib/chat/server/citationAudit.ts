@@ -1,4 +1,4 @@
-// Did a grounded turn actually cite the sources it was given? (CUR-151)
+// Did a grounded turn actually cite the sources it was given?
 //
 // THE CONTRACT: `searchGrounding.ts:34` and `ragGrounding.ts:29` both instruct the model to cite
 // every factual claim inline with `[n]`, and the second one says "Keep citing even though the answer
@@ -8,7 +8,7 @@
 // This does NOT block or rewrite anything. An uncited grounded answer is still an answer, often a
 // correct one, and suppressing it would trade a real defect for a worse one. The point is that
 // "grounded answers are cited" becomes a query someone can run instead of a belief — the fail-open
-// shape CUR-68 names, where a degradation returns 200 and nothing counts it.
+// shape names, where a degradation returns 200 and nothing counts it.
 //
 // Which means the tally itself has to be able to report the bad case. If every `[n]` counted, `[7]`
 // against three sources would score as a citation and the turn would come out `uncited: false`. An

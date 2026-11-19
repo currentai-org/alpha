@@ -4,7 +4,7 @@ import { test, expect } from './helpers/test';
 import { signInAsFreshUser } from './helpers/session';
 
 // Mid-conversation, the whole chat shell flashed back to its first-load state for about half
-// a second (CUR-2350): the side rail swapped its conversations for grey skeleton rows and the header read the
+// a second: the side rail swapped its conversations for grey skeleton rows and the header read the
 // fallback "Conversation", then both snapped back (seen in A2, A6, F2 and F6 recordings). The chat
 // layout's server load read `route.id`, so every navigation between chat routes re-ran it, handed the
 // shell a fresh conversations promise, and the shell showed the skeleton until it resolved.

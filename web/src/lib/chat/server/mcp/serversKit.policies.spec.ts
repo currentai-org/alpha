@@ -1,14 +1,14 @@
 // The person's per-tool choice from Settings → Connectors, applied by the kit. Run against the
 // e2e stub server (e2eStub.ts) through the real SDK client: set_setting has no annotations, so it is a
 // write tool; get_setting is marked read-only. `connect` is counted, so "did not run" is read off whether
-// the server was reached at all, not off our own outcome label. (CUR-3984)
+// the server was reached at all, not off our own outcome label.
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("$lib/chat/server/logger", () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 vi.mock("$lib/chat/server/flags", () => ({
-	// mcp-servers on for every test here: the flag's own gate is CUR-3026's spec.
+	// mcp-servers on for every test here: this file does not test the flag's own gate.
 	flagEnabledOr: () => true,
 	ensureFlagsPolled: async () => {},
 }));
@@ -55,7 +55,7 @@ async function drain(kit: Awaited<ReturnType<typeof kitWith>>["kit"], calls: Ret
 	return frames;
 }
 
-describe("Settings → Connectors choices in the MCP servers kit (CUR-3984)", () => {
+describe("Settings → Connectors choices in the MCP servers kit", () => {
 	it("block: the tool is not offered, a call naming it never reaches the server, and the model is told the person turned it off", async () => {
 		const { kit, confirm, connects } = await kitWith({ [WRITE]: "block" }, "accept");
 		const offered = kit.definitions.map((d) => d.function.name);
@@ -116,7 +116,7 @@ describe("Settings → Connectors choices in the MCP servers kit (CUR-3984)", ()
 	});
 });
 
-describe("the turn reads the person's choices (CUR-3984)", () => {
+describe("the turn reads the person's choices", () => {
 	const ctx = { conv: { _id: {} as never }, faultInjection: "mcp_stub_server" as const, locals: {} as App.Locals };
 
 	it("passes the locals it was given to the policy read, and applies what comes back", async () => {
@@ -146,7 +146,7 @@ describe("the turn reads the person's choices (CUR-3984)", () => {
 	});
 });
 
-describe("mcpToolPolicies in the settings body (CUR-3984)", () => {
+describe("mcpToolPolicies in the settings body", () => {
 	const schema = settingsSchema(z.string());
 
 	it("accepts allow, ask and block keyed by server__tool names", () => {

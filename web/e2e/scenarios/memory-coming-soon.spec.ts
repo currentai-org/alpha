@@ -1,8 +1,8 @@
 // e2e-product: @chat
 // e2e-area: @settings
-// A3 row 14 (docs/journeys/a3-my-data.md). Memory across chats is not built (CUR-1016). What A3
+// A3 row 14 (docs/journeys/a3-my-data.md). Memory across chats is not built. What A3
 // promises today is that nothing pretends otherwise: Settings → Personalization names memory as
-// "Coming soon", and none of its controls takes a choice it would then ignore (CUR-1060).
+// "Coming soon", and none of its controls takes a choice it would then ignore.
 import { test, expect } from './helpers/test';
 import { signInAsFreshUser } from './helpers/session';
 import { journeyStep } from './helpers/journeyStep';

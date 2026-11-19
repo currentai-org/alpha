@@ -14,13 +14,13 @@
 		active?: boolean;
 		messages?: Message[];
 		/** layoutData.ts's `agentEnabled` (agentModeEnabledForUser(locals)) — resolved server-side,
-		 *  where user context exists, and passed down as a plain boolean. Never read as a flag here
-		 *  (CUR-1447): this component has no `locals` to decide availability with, only the caller does. */
+		 *  where user context exists, and passed down as a plain boolean. Never read as a flag here:
+		 *  this component has no `locals` to decide availability with, only the caller does. */
 		agentAvailable?: boolean;
 		/** layoutData.ts's `autoRoutingEnabled`, passed down the same way. */
 		autoAvailable?: boolean;
 		/** layoutData.ts's `storageRegion`: the region label of the database, for "Where your last
-		 *  message went" (CUR-4580). */
+		 *  message went". */
 		storageRegion?: string | null;
 	}
 	let { active = false, messages = [], agentAvailable = false, autoAvailable = false, storageRegion = null }: Props = $props();

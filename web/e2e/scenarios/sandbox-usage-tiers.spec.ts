@@ -1,6 +1,6 @@
 // e2e-product: @chat
 // e2e-area: @agent
-// Run-code in chat has usage tiers (CUR-4578). A new account runs code from its first message, with one
+// Run-code in chat has usage tiers. A new account runs code from its first message, with one
 // live sandbox at a time: a run in a second conversation, while the first still holds its sandbox, does
 // not run, and the person is told when it frees up and how the allowance grows.
 //

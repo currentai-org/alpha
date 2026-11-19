@@ -12,10 +12,10 @@
  */
 import { describe, expect, it, afterEach, vi } from "vitest";
 
-// The bucket half of the cascade is mocked; custodialStorage.spec.ts owns its listing logic. (CUR-2183)
+// The bucket half of the cascade is mocked; custodialStorage.spec.ts owns its listing logic.
 const { deleteCustodialFolders } = vi.hoisted(() => ({ deleteCustodialFolders: vi.fn() }));
 vi.mock("$lib/chat/server/storage/custodialStorage", () => ({ deleteCustodialFolders }));
-// The agent-service half is mocked; deleteAgentServiceData.spec.ts owns the request. (CUR-4484)
+// The agent-service half is mocked; deleteAgentServiceData.spec.ts owns the request.
 const { deleteAgentSessions } = vi.hoisted(() => ({
 	deleteAgentSessions: vi.fn(async (_visitor: string | undefined, _ids: string[]) => 0 as number | undefined),
 }));
@@ -91,7 +91,7 @@ describe.sequential("deleteConversationsCascade", () => {
 		deleteCustodialFolders.mockReset();
 	});
 
-	it("deletes the owner's My files attachment folders for every conversation, before the rows (CUR-2183)", async () => {
+	it("deletes the owner's My files attachment folders for every conversation, before the rows", async () => {
 		const { locals } = await createTestUser();
 		const a = (await createTestConversation(locals, { title: "A" }))._id.toString();
 		const b = (await createTestConversation(locals, { title: "B" }))._id.toString();
@@ -118,7 +118,7 @@ describe.sequential("deleteConversationsCascade", () => {
 		expect(await collections.conversations.countDocuments()).toBe(1);
 	});
 
-	it("deletes a guest's attachment folders under its session's guests/ prefix (CUR-2183)", async () => {
+	it("deletes a guest's attachment folders under its session's guests/ prefix", async () => {
 		const { locals } = await createTestUser();
 		const id = (await createTestConversation(locals, { title: "Guest" }))._id.toString();
 		const sid = "f".repeat(64);
@@ -126,7 +126,7 @@ describe.sequential("deleteConversationsCascade", () => {
 		expect(deleteCustodialFolders).toHaveBeenCalledWith(sid, "conversations", [id], "guests");
 	});
 
-	it("also deletes the guest folder a signed-in conversation started in, for files the sign-in move left behind (CUR-3292)", async () => {
+	it("also deletes the guest folder a signed-in conversation started in, for files the sign-in move left behind", async () => {
 		const { locals } = await createTestUser();
 		const former = "a".repeat(64);
 		const moved = (await createTestConversation(locals, { title: "Moved", formerGuestSessionId: former }))._id.toString();
@@ -138,7 +138,7 @@ describe.sequential("deleteConversationsCascade", () => {
 		expect(deleteCustodialFolders).toHaveBeenCalledTimes(2);
 	});
 
-	it("deletes the former guest folders on the account wipe's call too, which passes no owner (CUR-3292)", async () => {
+	it("deletes the former guest folders on the account wipe's call too, which passes no owner", async () => {
 		const { locals } = await createTestUser();
 		const former = "b".repeat(64);
 		const moved = (await createTestConversation(locals, { title: "Moved", formerGuestSessionId: former }))._id.toString();
@@ -155,7 +155,7 @@ describe.sequential("deleteConversationsCascade", () => {
 		expect(deleteCustodialFolders).not.toHaveBeenCalled();
 	});
 
-	it("deletes the conversations' agent sandboxes under the owner, or the guest session (CUR-4484)", async () => {
+	it("deletes the conversations' agent sandboxes under the owner, or the guest session", async () => {
 		deleteAgentSessions.mockClear();
 		const { locals } = await createTestUser();
 		const id = (await createTestConversation(locals, { title: "ran code" }))._id.toString();
@@ -165,7 +165,7 @@ describe.sequential("deleteConversationsCascade", () => {
 		expect(deleteAgentSessions).toHaveBeenLastCalledWith("guest-sid", ["000000000000000000000000"]);
 	});
 
-	it("still deletes the conversation when the agent-service cleanup fails (CUR-4484)", async () => {
+	it("still deletes the conversation when the agent-service cleanup fails", async () => {
 		deleteAgentSessions.mockRejectedValueOnce(new Error("agent-service down"));
 		const { locals } = await createTestUser();
 		const id = (await createTestConversation(locals, { title: "x" }))._id.toString();
@@ -179,7 +179,7 @@ describe.sequential("deleteConversationsCascade", () => {
 
 	// This is the wiring only — that the delete actually stops a live
 	// generation from ending in a user-visible error is a live-server behavior no unit test can
-	// see, and web/e2e/scenarios/wipe-during-stream.spec.ts is what proves that. (CUR-1619/CUR-1620/CUR-1773)
+	// see, and web/e2e/scenarios/wipe-during-stream.spec.ts is what proves that.
 	it("aborts a registered in-flight generation for each deleted conversation id", async () => {
 		const { locals } = await createTestUser();
 		const target = await createTestConversation(locals, { title: "Streaming" });
@@ -242,7 +242,7 @@ describe.sequential("deleteConversationsCascade", () => {
 		expect(await collections.conversations.countDocuments()).toBe(0);
 	});
 
-	it("deletes a parked MCP elicitation (CUR-1017) with its conversation, leaving another conversation's untouched", async () => {
+	it("deletes a parked MCP elicitation with its conversation, leaving another conversation's untouched", async () => {
 		const { locals } = await createTestUser();
 		const target = await createTestConversation(locals, { title: "Target" });
 		const keep = await createTestConversation(locals, { title: "Keep" });

@@ -4,7 +4,7 @@ import type { AddressInfo } from "node:net";
 import { localEndpointFetch, privateLocalAddressesAllowed } from "./localEndpointFetch";
 import { endpointOai } from "./endpoints/openai/endpointOai";
 
-// CUR-3387. A user's local inference endpoint URL is user input that our server fetches. Outside local
+// A user's local inference endpoint URL is user input that our server fetches. Outside local
 // development a private address names our host's network, so every request to such an endpoint must
 // refuse one: as a typed literal, as a name that resolves to one, and as a redirect target.
 
@@ -75,7 +75,7 @@ describe("privateLocalAddressesAllowed", () => {
 	);
 });
 
-describe("localEndpointFetch outside development refuses every private address (CUR-3387)", () => {
+describe("localEndpointFetch outside development refuses every private address", () => {
 	beforeEach(() => setDeployEnv("preview"));
 
 	it.each([
@@ -121,7 +121,7 @@ describe("localEndpointFetch in development reaches the visitor's own machine", 
 	});
 });
 
-describe("the chat turn to a stored local endpoint goes through the guard (rows created before CUR-3387)", () => {
+describe("the chat turn to a stored local endpoint goes through the guard (rows created before )", () => {
 	async function turnAgainst(baseURL: string, routerProvider?: string) {
 		const endpoint = await endpointOai({
 			type: "openai",

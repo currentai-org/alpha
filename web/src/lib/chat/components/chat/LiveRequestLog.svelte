@@ -52,14 +52,14 @@
 	let { message, modelId }: Props = $props();
 
 	const reduce = $derived(prefersReducedMotion.current);
-	// The log's lines follow the language the visitor's browser asks for (chromeCopy.ts). (CUR-1575)
+	// The log's lines follow the language the visitor's browser asks for (chromeCopy.ts).
 	const t = $derived(chromeCopy(page.data.uiLang));
 	let facts = $derived(provenanceFacts(message));
 
 	// Resolved per turn, most-measured source first — see liveRequestLabels.
 	// A failover names the backup first. The failover update and the backup's routerMetadata
 	// are painted as separate frames, so reading only routerMetadata left one frame with the switch line
-	// up beside "<primary> is computing…". Once a failover has happened the backup is what is running. (CUR-2239)
+	// up beside "<primary> is computing…". Once a failover has happened the backup is what is running.
 	const resolvedLabel = $derived(
 		liveModelLabel({
 			measured: message.failover?.to ?? message.routerMetadata?.model,
@@ -96,7 +96,7 @@
 			out.push({
 				// Key on node AND engine: two engines (Potluck, Potluck:Community) share CATALOG_RAG_NODE,
 				// so a node-only key collided and threw each_key_duplicate on every streaming frame when a
-				// turn hit both the committed catalog and admin-uploaded docs. Matches requestTrace's id.
+				// turn hit both the committed catalog and admin-uploaded docs.
 				key: `rag-${hit.node}-${hit.engine}`,
 				text: t.retrieved(hit.label, hit.count),
 				done: true,
@@ -104,7 +104,7 @@
 		}
 		if (facts.vault) out.push({ key: "vault", text: "Federated synthesis", done: true });
 		// The primary didn't answer and a backup model took over. Named with both models, so the
-		// "<primary> is computing…" the line showed a moment ago reads as the first half of the switch. (CUR-2239)
+		// "<primary> is computing…" the line showed a moment ago reads as the first half of the switch.
 		if (message.failover) {
 			out.push({ key: "failover", text: failoverLine(message.failover, t), done: true, mark: "↪" });
 		}
@@ -128,7 +128,7 @@
 
 	// The active line counts its seconds once a step holds past a few, so a slow search or a
 	// stalled lane before its watchdog reads as working rather than frozen. The count restarts when the
-	// active line's text changes, since each phase is its own wait. (CUR-1756)
+	// active line's text changes, since each phase is its own wait.
 	let now = $state(Date.now());
 	let activeSince = $state(Date.now());
 	let activeText: string | undefined;
@@ -147,9 +147,9 @@
 	const elapsed = $derived(elapsedLabel(now - activeSince));
 
 	// Auto is waiting on its choice's first word and will ask another model at the give-up. Past
-	// half that wait, a line says so, timed from when this answer's log appeared (the send). CUR-4629: once
+	// half that wait, a line says so, timed from when this answer's log appeared (the send). once
 	// the model has named itself in a provenance frame or a search has brought sources, it has started, and
-	// the line goes. A provenance frame with no model (a screen's or a tool's credit) does not count. (CUR-4384)
+	// the line goes. A provenance frame with no model (a screen's or a tool's credit) does not count.
 	const shownAt = Date.now();
 	const slowToStart = $derived(
 		slowToStartLine({
@@ -172,7 +172,7 @@
 			webGrounded: facts.webCount > 0,
 			rag: message.rag,
 			computeNode: backendComputeNode(message.routerMetadata?.backend),
-			// Pulse the model actually serving this turn, not always the Apertus default. (CUR-1124)
+			// Pulse the model actually serving this turn, not always the Apertus default.
 			modelNode: modelNodeFor(servedModelId(message.routerMetadata, modelId)),
 		});
 		const off = pulsedNodes.filter((n) => !next.includes(n));

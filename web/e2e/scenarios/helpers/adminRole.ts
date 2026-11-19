@@ -3,12 +3,12 @@ import type { Page } from '@playwright/test';
 import { sslFor } from './db';
 import { freshTestEmail, signInWithEmailOtp } from './signIn';
 
-/** The staff roles `adminRoles.ts` defines (CUR-3990). */
+/** The staff roles `adminRoles.ts` defines. */
 export type StaffRole = 'operator' | 'editor' | 'admin';
 
 /**
  * Sign a fresh `example.org` user in through the real OTP flow, then give it `role` in the
- * deployment's own database (CUR-3991).
+ * deployment's own database.
  *
  * This replaces the shared admin password for specs: a PR preview has its own database and no admin
  * credential, so a spec that seeds its own role holder runs there instead of skipping. Better Auth

@@ -1,4 +1,9 @@
 <!--
+SPDX-FileCopyrightText: 2018- The Hugging Face team
+SPDX-License-Identifier: Apache-2.0
+Modified by Current AI from huggingface/chat-ui.
+-->
+<!--
   Chat's shared modal, now a thin adapter over the Alpha design system's Dialog (Base UI anatomy,
   bits-ui behaviour: focus trap, Escape, outside-click, scroll lock). Every chat modal —
   delete conversation, delete everything, welcome, URL fetch, weak spots… — inherits the
@@ -23,7 +28,7 @@
 		/** When false, neither the backdrop nor Escape closes the modal (e.g. a wipe in flight). */
 		closeOnBackdrop?: boolean;
 		/**
-		 * Legacy (CUR-704). The popup now portals into the chat ThemeProvider's body-level host, which
+		 * Legacy. The popup now portals into the chat ThemeProvider's body-level host, which
 		 * carries the window's mode, so it always matches the chat. Accepted and ignored.
 		 */
 		dark?: boolean;
@@ -44,8 +49,7 @@
 
 	// Focus goes to the first tabbable element by default, which in a long dialog can sit below the
 	// fold and scroll the title away. A child marked `data-autofocus` takes focus instead. The popup is
-	// found by its own id: bits-ui never dispatches this event on an element, so `e.target` is null
-	// (CUR-2744).
+	// found by its own id: bits-ui never dispatches this event on an element, so `e.target` is null.
 	const popupId = $props.id();
 	function focusMarked(e: Event) {
 		const target = document.querySelector<HTMLElement>(

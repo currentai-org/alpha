@@ -2,11 +2,12 @@
 
 Both planes already emit one JSON object per line with a shared `ts` — `_log_event` (app.py) and
 `_plog` (proxy.py) — so that the app's timeline and the gateway's merge on one axis. Without a sink that
-merge is theoretical: both end at stdout, which on every host we have used is a live tail and not
+merge is theoretical: both end at stdout, which on most hosts is a live tail and not
 a history. If nobody was watching, it did not happen.
 
-WHY AN HTTP SINK IN-PROCESS, AND NOT A PLATFORM LOG DRAIN. The platform may
-change. Fly is where this runs today, and a platform-specific shipper would be thrown away at a move. A POST from inside the process
+WHY AN HTTP SINK IN-PROCESS, AND NOT A PLATFORM LOG DRAIN. The platform is the thing that is
+changing. Fly is the interim testbed; the eventual sovereign deployment target is still undecided,
+and a platform-specific shipper would be thrown away at that boundary. A POST from inside the process
 depends on none of that, so this survives whatever the migration turns out to be.
 
 OFF UNLESS `AXIOM_TOKEN` IS SET. No token means every function here is a cheap no-op: stdout keeps
@@ -41,14 +42,14 @@ DATASET = os.environ.get("AXIOM_DATASET", "agent-service").strip()
 URL = os.environ.get("AXIOM_URL", "https://api.axiom.co").strip().rstrip("/")
 
 # One dataset, both planes, distinguished by a `service` field. Two datasets would filter more
-# cleanly and would also undo the reason `ts` was aligned in the first place: the question you
+# cleanly and would also undo the reason `ts` is shared: the question you
 # actually ask of these logs is "what was the gateway doing while that run was failing".
 SERVICE = "unset"
 
 MAX_QUEUE = int(os.environ.get("AXIOM_MAX_QUEUE", "5000"))    # records held before dropping
 BATCH = int(os.environ.get("AXIOM_BATCH", "100"))             # records per POST
 FLUSH_SECS = float(os.environ.get("AXIOM_FLUSH_SECS", "5"))   # max age of a queued record
-TIMEOUT = float(os.environ.get("AXIOM_TIMEOUT_SECS", "5"))    # an Axiom failure never affects the service
+TIMEOUT = float(os.environ.get("AXIOM_TIMEOUT_SECS", "5"))    # an Axiom outage is not our outage
 
 # Fields whose values can quote the user's task rather than describe it. Redacted on the way out
 # unless AXIOM_SEND_CONTENT=1. Names are matched exactly, across both planes.
@@ -57,7 +58,7 @@ TIMEOUT = float(os.environ.get("AXIOM_TIMEOUT_SECS", "5"))    # an Axiom failure
 # "ssrf_guard", "wall_clock"), `path` (a mkdtemp name), `host` (a webhook destination the caller
 # configured). Redacting those would cost the alerting the sink exists for and protect nothing.
 # `structural` IS here because `_detect_run_failure` interpolates a stderr tail and a matched stdout
-# marker into it (see `_detect_run_failure` in app.py) — which is why app.py logs a canned `structural_kind` alongside
+# marker into it (app.py:394, :402) — which is why app.py logs a canned `structural_kind` alongside
 # it, so "how many runs hit the step cap" survives the redaction and only the tail is lost.
 CONTENT_FIELDS = frozenset({"detail", "artifacts", "expect_file", "body", "structural"})
 SEND_CONTENT = os.environ.get("AXIOM_SEND_CONTENT", "") not in ("", "0", "false")
@@ -111,6 +112,11 @@ def emit(rec: dict) -> None:
         if isinstance(ts, (int, float)):
             item["_time"] = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(ts)) + f".{int(ts % 1 * 1000):03d}Z"
         item["service"] = SERVICE
+        # The dataset holds every deployment together; the Fly app name is what tells
+        # them apart. Stamped here so every event from both planes carries it. A caller's own value wins.
+        fly_app = os.environ.get("FLY_APP_NAME", "")
+        if fly_app and not item.get("fly_app"):
+            item["fly_app"] = fly_app
         global _dropped
         with _lock:
             if len(_buf) >= MAX_QUEUE:
@@ -141,7 +147,7 @@ def _post(batch: list) -> bool:
         if r.status_code >= 400:
             _failed += 1
             # The status is the whole point of recording this: a 401 here means the sink token is
-            # dead and every number below is stale, which is precisely the failure CUR-182 is about.
+            # dead and every number below is stale, which is precisely the failure this check exists to catch.
             _last_error = f"HTTP {r.status_code}"
             return False
         _sent += len(batch)
@@ -160,7 +166,7 @@ def _drain_once() -> None:
                 return
             batch = [_buf.popleft() for _ in range(min(BATCH, len(_buf)))]
         if not _post(batch):
-            # One retry, then drop. Re-queueing indefinitely turns an unreachable sink into unbounded
+            # One retry, then drop. Re-queueing indefinitely turns a sink outage into unbounded
             # memory growth in a service whose actual job is running agents.
             time.sleep(0.5)
             if not _post(batch):

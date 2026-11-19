@@ -1,10 +1,13 @@
 // e2e-product: @chat
 // e2e-area: @turn
-import { gunzipSync } from 'node:zlib';
-import type { Page, Request } from '@playwright/test';
 import { test, expect } from './helpers/test';
 import { chatEntry } from './helpers/chatEntry';
 import { startChattingPastWelcome } from './helpers/welcome';
+import {
+	captureIngest,
+	letPostHogSeeTheHarness,
+	type CapturedEvent
+} from './helpers/posthogIngest';
 
 // An error thrown in a visitor's browser used to produce nothing anywhere. analytics.ts
 // turns on posthog-js's `capture_exceptions`, which hooks `window.onerror` and
@@ -14,59 +17,13 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // The ingest request is answered here and never reaches PostHog, so a scenario run does not open a
 // probe issue in error tracking on every PR. What this proves is that the browser captures and
 // sends the error, with stack frames. The frames point into minified chunks until source maps
-// upload, and that needs POSTHOG_CLI_API_KEY (CUR-1510's other Done-when items).
+// upload, and that needs POSTHOG_CLI_API_KEY (the other Done-when items).
 
-type CapturedEvent = { event: string; properties?: Record<string, unknown> };
 type ExceptionEntry = {
 	type?: string;
 	value?: string;
 	stacktrace?: { frames?: unknown[] };
 };
-
-// posthog-js posts to `<api_host>/e/` (or `/i/v0/e/`), where api_host is the same-origin `/rs`
-// proxy or us.i.posthog.com depending on PUBLIC_POSTHOG_HOST. Both are matched.
-function isIngest(url: URL): boolean {
-	const viaProxy = url.pathname.startsWith('/rs/');
-	const direct = url.hostname.endsWith('.posthog.com');
-	return (viaProxy || direct) && /\/(?:i\/v0\/)?e\/?$/.test(url.pathname);
-}
-
-// The body is gzip (`compression=gzip-js`), a `data=<base64>` form, or plain JSON, depending on
-// what the browser supports; a batch is an array and a single capture is one object.
-function decodeIngest(request: Request): CapturedEvent[] {
-	const raw = request.postDataBuffer();
-	if (!raw || raw.length === 0) return [];
-	let text: string;
-	if (raw[0] === 0x1f && raw[1] === 0x8b) {
-		text = gunzipSync(raw).toString('utf8');
-	} else {
-		text = raw.toString('utf8');
-		if (text.startsWith('data=')) {
-			text = Buffer.from(decodeURIComponent(text.slice(5)), 'base64').toString('utf8');
-		}
-	}
-	const parsed = JSON.parse(text) as CapturedEvent | CapturedEvent[] | { batch: CapturedEvent[] };
-	if (Array.isArray(parsed)) return parsed;
-	if ('batch' in parsed) return parsed.batch;
-	return [parsed];
-}
-
-async function captureIngest(page: Page): Promise<CapturedEvent[]> {
-	const events: CapturedEvent[] = [];
-	await page.route(
-		(url) => isIngest(url),
-		async (route) => {
-			try {
-				events.push(...decodeIngest(route.request()));
-			} catch (error) {
-				// An undecodable body is recorded rather than thrown, so the assertion below names it.
-				events.push({ event: '__undecodable__', properties: { error: String(error) } });
-			}
-			await route.fulfill({ status: 200, contentType: 'application/json', body: '{"status":1}' });
-		}
-	);
-	return events;
-}
 
 function exceptionFor(events: CapturedEvent[], marker: string): ExceptionEntry | undefined {
 	for (const e of events) {
@@ -78,18 +35,9 @@ function exceptionFor(events: CapturedEvent[], marker: string): ExceptionEntry |
 	return undefined;
 }
 
-test.describe('a browser error reaches PostHog as a $exception event (CUR-1510)', () => {
+test.describe('a browser error reaches PostHog as a $exception event', () => {
 	test.beforeEach(async ({ page }) => {
-		// posthog-js drops every event from a browser it takes for a bot, and it reads Playwright's
-		// Chromium as one twice over: `navigator.webdriver` is true, and `userAgentData.brands` names
-		// HeadlessChrome. Without this the page sends nothing at all, not even $pageview (no `/rs/e/`
-		// requests until both were masked). The config's user agent is already
-		// a plain Chrome string. A real visitor's browser sets neither, so this only removes the
-		// harness, not a product behavior.
-		await page.addInitScript(() => {
-			Object.defineProperty(Navigator.prototype, 'webdriver', { get: () => false });
-			Object.defineProperty(Navigator.prototype, 'userAgentData', { get: () => undefined });
-		});
+		await letPostHogSeeTheHarness(page);
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });
 		await page.addLocatorHandler(welcomeDialog, async () => {
 			await startChattingPastWelcome(welcomeDialog);
@@ -99,7 +47,7 @@ test.describe('a browser error reaches PostHog as a $exception event (CUR-1510)'
 	test('an uncaught error thrown in the chat page is sent as a $exception with its message and stack frames', async ({
 		page
 	}) => {
-		const events = await captureIngest(page);
+		const events = await captureIngest(page, { forward: false });
 		await page.goto(chatEntry());
 		await expect(page.getByLabel('Message AI Potluck')).toBeVisible({ timeout: 30_000 });
 
@@ -140,7 +88,7 @@ test.describe('a browser error reaches PostHog as a $exception event (CUR-1510)'
 	test('the ResizeObserver loop warning is not sent, while a real error thrown right after it is', async ({
 		page
 	}) => {
-		const events = await captureIngest(page);
+		const events = await captureIngest(page, { forward: false });
 		await page.goto(chatEntry());
 		await expect(page.getByLabel('Message AI Potluck')).toBeVisible({ timeout: 30_000 });
 
@@ -175,7 +123,7 @@ test.describe('a browser error reaches PostHog as a $exception event (CUR-1510)'
 	test('an unhandled promise rejection in the chat page is sent as a $exception with its message', async ({
 		page
 	}) => {
-		const events = await captureIngest(page);
+		const events = await captureIngest(page, { forward: false });
 		await page.goto(chatEntry());
 		await expect(page.getByLabel('Message AI Potluck')).toBeVisible({ timeout: 30_000 });
 

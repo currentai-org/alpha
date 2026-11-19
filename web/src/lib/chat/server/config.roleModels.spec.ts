@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ROLE_MODELS, roleModelSetting } from "../../../../config/inference";
 
-// CUR-2277 phase 2: a role's model is committed in config/inference.ts. config.ts snapshots the env at
+// a role's model is committed in config/inference.ts. config.ts snapshots the env at
 // import, so each case mocks it and imports a fresh copy.
 const env = vi.hoisted(() => ({ server: {} as Record<string, string> }));
 vi.mock("$env/dynamic/public", () => ({ env: {} }));
@@ -31,6 +31,7 @@ describe("role models on a deployment come from config/inference.ts, never the e
 		const config = await configWith({ VERCEL_ENV: "production" });
 		expect(config.ARITHMETIC_ROUTE_MODEL).toBe(ROLE_MODELS.ARITHMETIC_ROUTE_MODEL);
 		expect(config.FALLBACK_MODEL_ID).toBe(ROLE_MODELS.FALLBACK_MODEL_ID);
+		expect(config.ENTITY_SCOPE_MODEL).toBe(ROLE_MODELS.ENTITY_SCOPE_MODEL);
 	});
 
 	it("serves COMPARE_PANEL as the comma-joined string its readers split", async () => {

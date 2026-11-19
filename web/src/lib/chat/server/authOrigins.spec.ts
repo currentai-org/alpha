@@ -4,8 +4,8 @@ import { resolveBaseURL } from "better-auth";
 import { authBaseURL, authOrigins } from "$lib/chat/server/authOrigins";
 import { computeSessionCookieScope } from "$lib/chat/server/betterAuth";
 
-const WWW = "https://www.aipotluck.org";
-const CHAT_HOST = "alpha.aipotluck.org";
+const WWW = "https://www.example.test";
+const CHAT_HOST = "alpha.example.test";
 const PRODUCTION = { VERCEL_ENV: "production" };
 const PREVIEW = { VERCEL_ENV: "preview" };
 
@@ -13,8 +13,8 @@ function requestTo(host: string): Request {
 	return new Request(`https://${host}/chat/api/auth/sign-in/social`, { headers: { host } });
 }
 
-// Production serves chat on www. and alpha. (chat's own host, CUR-4439) at once, and sign-in has to answer on whichever
-// host the visitor used. (CUR-1067)
+// Production serves chat on www. and alpha. (chat's own host) at once, and sign-in has to answer on whichever
+// host the visitor used.
 describe("authOrigins", () => {
 	it("answers on www and alpha in production, PUBLIC_ORIGIN first", () => {
 		expect(authOrigins(WWW, PRODUCTION)).toEqual([WWW, `https://${CHAT_HOST}`]);
@@ -22,12 +22,12 @@ describe("authOrigins", () => {
 
 	// alpha.'s OAuth callbacks exist only on the production Google and GitHub clients.
 	it("stays on PUBLIC_ORIGIN alone on preview", () => {
-		expect(authOrigins("https://develop.aipotluck.org", PREVIEW)).toEqual(["https://develop.aipotluck.org"]);
+		expect(authOrigins("https://develop.example.test", PREVIEW)).toEqual(["https://develop.example.test"]);
 	});
 
-	// alpha. is an alias of www alone, so an event instance answers on its own host only. (CUR-3156)
+	// alpha. is an alias of www alone, so an event instance answers on its own host only.
 	it("answers on an event instance's own host only, never alpha.", () => {
-		const mozfest = "https://mozfest.aipotluck.org";
+		const mozfest = "https://mozfest.example.test";
 		expect(authOrigins(mozfest, { ...PRODUCTION, INSTANCE: "mozfest" })).toEqual([mozfest]);
 	});
 
@@ -36,9 +36,9 @@ describe("authOrigins", () => {
 		expect(authOrigins(WWW, { ...PRODUCTION, INSTANCE: "www" })).toEqual([WWW, `https://${CHAT_HOST}`]);
 	});
 
-	// A chat-surface build is chat's own deployment; its PUBLIC_ORIGIN is the one auth origin. (CUR-4448)
+	// A chat-surface build is chat's own deployment; its PUBLIC_ORIGIN is the one auth origin.
 	it("answers on the chat-surface deployment's own PUBLIC_ORIGIN alone, never adding www's alpha. alias", () => {
-		const alphaDevelop = "https://alpha-develop.aipotluck.org";
+		const alphaDevelop = "https://alpha-develop.example.test";
 		expect(authOrigins(alphaDevelop, PRODUCTION, "chat")).toEqual([alphaDevelop]);
 		expect(authOrigins(`https://${CHAT_HOST}`, PRODUCTION, "chat")).toEqual([`https://${CHAT_HOST}`]);
 		expect(authBaseURL(alphaDevelop, PRODUCTION, "chat")).toBe(alphaDevelop);
@@ -51,7 +51,7 @@ describe("authOrigins", () => {
 
 describe("authBaseURL", () => {
 	it("stays the static PUBLIC_ORIGIN string outside production", () => {
-		expect(authBaseURL("https://develop.aipotluck.org", PREVIEW)).toBe("https://develop.aipotluck.org");
+		expect(authBaseURL("https://develop.example.test", PREVIEW)).toBe("https://develop.example.test");
 		expect(authBaseURL(undefined, PREVIEW)).toBeUndefined();
 	});
 
@@ -66,7 +66,7 @@ describe("authBaseURL", () => {
 
 	it("keeps a www request on www", () => {
 		const config = authBaseURL(WWW, PRODUCTION);
-		expect(resolveBaseURL(config, "/chat/api/auth", requestTo("www.aipotluck.org"))).toBe(
+		expect(resolveBaseURL(config, "/chat/api/auth", requestTo("www.example.test"))).toBe(
 			`${WWW}/chat/api/auth`
 		);
 	});
@@ -81,7 +81,7 @@ describe("authBaseURL", () => {
 	});
 
 	// The dynamic baseURL must not change the cookie, or production's `__Host-` name and its
-	// host-only scope would differ between www and alpha. (CUR-4442)
+	// host-only scope would differ between www and alpha.
 	it("gives production the same host-only __Host- session cookie under the dynamic baseURL", () => {
 		const advanced = computeSessionCookieScope(PRODUCTION);
 		const before = getCookies({ baseURL: WWW, advanced }).sessionToken;

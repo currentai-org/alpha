@@ -1,0 +1,275 @@
+# Checks every pull request, every merge queue batch and every push to main. Only the forbidden-text job
+# reads a secret, so a pull request from a fork gets every other check exactly as a branch here does, and
+# its forbidden-text check runs in the merge queue before it can land.
+name: CI
+
+on:
+  pull_request:
+  merge_group:
+  push:
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web-lint:
+    name: web lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .nvmrc
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      # prettier and eslint over web/ and packages/alpha-ds/.
+      - name: Lint
+        working-directory: web
+        run: pnpm lint
+
+  web-check:
+    name: web type check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .nvmrc
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      # Compiles and checks the messages, syncs SvelteKit's types, then svelte-check.
+      - name: Type check
+        working-directory: web
+        run: pnpm check
+
+  web-unit:
+    name: web unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .nvmrc
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Compile messages
+        working-directory: web
+        run: pnpm i18n:compile
+      - name: Unit tests (server, hermetic)
+        working-directory: web
+        run: pnpm test:ci:fast
+
+  web-build:
+    name: web build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .nvmrc
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      # The production build with no environment beyond what the repository holds, as a fork builds it.
+      - name: Build
+        working-directory: web
+        run: pnpm build
+
+  agent-service:
+    name: agent-service tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: agent-service
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      # The sandbox tests run the real bubblewrap binary. Ubuntu 24.04 restricts unprivileged user
+      # namespaces through AppArmor, which stops bubblewrap from bringing up loopback inside one.
+      - name: Install bubblewrap
+        run: |
+          sudo apt-get -o DPkg::Lock::Timeout=180 update
+          sudo apt-get -o DPkg::Lock::Timeout=180 install -y bubblewrap make postgresql
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          python-version: "3.14"
+          enable-cache: false
+      - name: Install
+        run: make venv
+      # `make lint` also names eval/, which this repository does not carry.
+      - name: Lint
+        run: make venv && .venv/bin/python -m ruff check api scripts
+      - name: Start Postgres for the shared task store tests
+        run: |
+          sudo service postgresql start
+          sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres'"
+          sudo -u postgres createdb agent_tasks_test
+      - name: Test
+        env:
+          AGENT_TEST_POSTGRES_URL: postgresql://postgres:postgres@localhost:5432/agent_tasks_test
+        run: make test
+
+  # The workflows themselves: actionlint for syntax, expressions and embedded shell, zizmor for the
+  # security mistakes (template injection, over-broad permissions, unpinned actions, credential leaks).
+  workflows:
+    name: workflow lint (actionlint, zizmor)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      ACTIONLINT_VERSION: 1.7.12
+      ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+      ZIZMOR_VERSION: 1.32.0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: actionlint
+        run: |
+          tarball="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/$tarball" "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/$tarball"
+          echo "${ACTIONLINT_SHA256}  $RUNNER_TEMP/$tarball" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$tarball" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -color
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: false
+      # Offline: the online audits need a token, and this job holds none.
+      - name: zizmor
+        run: uvx "zizmor==${ZIZMOR_VERSION}" --offline --format=github .github
+
+  # Every commit the change adds, through gitleaks with the repository's config. No secret, so it runs on
+  # forks too. The config and the range come from the base commit and the event, never from the change,
+  # so a pull request cannot allowlist its own key.
+  gitleaks:
+    name: leak check (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      GITLEAKS_VERSION: 8.30.1
+      GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+      BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+      HEAD: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Install gitleaks
+        run: |
+          tarball="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/$tarball" "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/$tarball"
+          echo "${GITLEAKS_SHA256}  $RUNNER_TEMP/$tarball" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$tarball" -C "$RUNNER_TEMP" gitleaks
+      # The change under test must not choose its own config or scripts, so they come from the base commit.
+      # Only the change that first adds .github/leak-check/ uses its own copy.
+      - name: Leak check files from the base commit
+        run: |
+          if git cat-file -e "$BASE:.github/leak-check/check-new-lines.sh" 2> /dev/null; then
+            git archive --format=tar "$BASE" .github/leak-check | tar -x -C "$RUNNER_TEMP" --strip-components=1
+          else
+            echo "::notice::The base commit has no .github/leak-check/; using this change's copy."
+            cp -a .github/leak-check "$RUNNER_TEMP/"
+          fi
+      - name: gitleaks
+        run: |
+          "$RUNNER_TEMP/gitleaks" git --log-opts="$BASE..$HEAD" --config "$RUNNER_TEMP/leak-check/gitleaks.toml" \
+            --redact --no-banner --exit-code 1 -v .
+
+  # The lines the change adds, against the patterns the public snapshot is exported under: staff names,
+  # private paths, internal hosts and ids. The list itself names people and hosts, so it is not in this
+  # repository: the FORBIDDEN_TSV secret holds it, and .github/leak-check/forbidden.tsv.sha256 is its
+  # digest, so a secret that has fallen behind the exported list fails instead of checking against less.
+  # A pull request from a fork (or from Dependabot) gets no secret: the job says so and passes, and the
+  # merge queue runs it on the batch, where a missing secret fails.
+  forbidden-text:
+    name: leak check (forbidden text)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+      HEAD: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
+      EVENT: ${{ github.event_name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      # The change under test must not choose its own config or scripts, so they come from the base commit.
+      # Only the change that first adds .github/leak-check/ uses its own copy.
+      - name: Leak check files from the base commit
+        run: |
+          if git cat-file -e "$BASE:.github/leak-check/check-new-lines.sh" 2> /dev/null; then
+            git archive --format=tar "$BASE" .github/leak-check | tar -x -C "$RUNNER_TEMP" --strip-components=1
+          else
+            echo "::notice::The base commit has no .github/leak-check/; using this change's copy."
+            cp -a .github/leak-check "$RUNNER_TEMP/"
+          fi
+      - name: Install ripgrep
+        run: |
+          sudo apt-get -o DPkg::Lock::Timeout=180 update
+          sudo apt-get -o DPkg::Lock::Timeout=180 install -y ripgrep
+      - name: Pattern list from the secret
+        id: patterns
+        env:
+          FORBIDDEN_TSV: ${{ secrets.FORBIDDEN_TSV }}
+        run: |
+          if [ -z "$FORBIDDEN_TSV" ]; then
+            if [ "$EVENT" = pull_request ]; then
+              echo "::notice::No FORBIDDEN_TSV secret in this run (a fork or Dependabot pull request); the merge queue runs this check."
+              echo "skip=1" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "::error::The FORBIDDEN_TSV secret is not set; set it from the exported list's source."
+            exit 1
+          fi
+          umask 077
+          printf '%s\n' "$FORBIDDEN_TSV" > "$RUNNER_TEMP/forbidden.tsv"
+          want=$(cat "$RUNNER_TEMP/leak-check/forbidden.tsv.sha256")
+          got=$(printf '%s' "$(cat "$RUNNER_TEMP/forbidden.tsv")" | sha256sum | cut -d' ' -f1)
+          if [ "$got" != "$want" ]; then
+            echo "::error::The FORBIDDEN_TSV secret does not match .github/leak-check/forbidden.tsv.sha256; update the secret."
+            exit 1
+          fi
+      - name: Forbidden text in added lines
+        if: steps.patterns.outputs.skip != '1'
+        env:
+          LEAK_CHECK_REPO: ${{ github.workspace }}
+        run: LEAK_CHECK_PATTERNS="$RUNNER_TEMP/forbidden.tsv" "$RUNNER_TEMP/leak-check/check-new-lines.sh" "$BASE" "$HEAD"

@@ -1,7 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { flagOn } = vi.hoisted(() => ({ flagOn: { value: false } }));
-vi.mock("$lib/chat/server/flags", () => ({ flagEnabledOr: () => flagOn.value }));
 vi.mock("$lib/chat/server/logger", () => ({ logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn() } }));
 
 import { extractReadableHtml } from "./readableExtract";
@@ -27,18 +25,11 @@ const outcomes = () =>
 	vi.mocked(logger.info).mock.calls.map((c) => (c[0] as { outcome?: string }).outcome).filter(Boolean);
 
 beforeEach(() => {
-	flagOn.value = false;
 	vi.mocked(logger.info).mockClear();
 });
 
-describe("extractReadableHtml (CUR-2152)", () => {
-	it("returns the regex extractor's output unchanged, and logs nothing, when readable-extract is off", async () => {
-		expect(await extractReadableHtml(ARTICLE, "upload")).toEqual(extractTextFromHtml(ARTICLE));
-		expect(outcomes()).toEqual([]);
-	});
-
-	it("keeps the article and drops nav, cookie banner and footer when the flag is on", async () => {
-		flagOn.value = true;
+describe("extractReadableHtml", () => {
+	it("keeps the article and drops nav, cookie banner and footer", async () => {
 		const { title, text } = await extractReadableHtml(ARTICLE, "upload");
 		expect(title).toBe("Open models, explained");
 		expect(text).toContain("Paragraph 1 of the article");
@@ -50,14 +41,12 @@ describe("extractReadableHtml (CUR-2152)", () => {
 	});
 
 	it("falls back to the regex text, logged as short-fallback, when Readability keeps under 600 chars of a table page", async () => {
-		flagOn.value = true;
 		const { text } = await extractReadableHtml(TABLE_PAGE, "linked-page");
 		expect(text).toContain("Team 29");
 		expect(outcomes()).toEqual(["short-fallback"]);
 	});
 
 	it("skips Readability entirely, logged as too-large, above the 1.5 MB input cap", async () => {
-		flagOn.value = true;
 		const big = ARTICLE.replace("</body>", `<div>${"x".repeat(1_500_001)}</div></body>`);
 		expect(await extractReadableHtml(big, "admin-ingest")).toEqual(extractTextFromHtml(big));
 		expect(outcomes()).toEqual(["too-large"]);

@@ -8,7 +8,8 @@ agent tasks in sandboxes.
 
 A **lane** is one route to a model: the main gateway, Hugging Face's router, or
 Mistral's API. **Auto** is the option in the model picker that chooses a model for each message. The
-**X-ray** is the panel beside the chat, visible to users, that shows how an answer was produced.
+**X-ray** is the panel that opens from the pill under the composer, visible to users, that shows how
+an answer was produced.
 **Hermes** is the open-source agent loop the agent service runs. To read the code, start with
 [How a chat turn flows](#how-a-chat-turn-flows).
 
@@ -16,17 +17,35 @@ Alpha is developed in a private repository that also holds our website, content 
 deployment setup. This repository is the chat part of it, exported as a single commit and refreshed as
 the app changes, so other teams can read how a part works or fork it as a starting point. Because it is
 the code we run in production, it is wired to the hosted services we use. Only a model endpoint and
-Postgres are needed to boot: [What boot needs](#what-boot-needs) lists the five variables the app checks
+Postgres are needed to boot: [What boot needs](#what-boot-needs) lists the variables the app checks
 at startup, and [Hosted services](#hosted-services) says what each of the others adds and what happens
 without it. The code is MIT, with the files derived from chat-ui under Apache-2.0 (see
 [Licence](#licence)).
+
+## Run it with Docker Compose
+
+`selfhost/` runs Alpha on one machine: the app, Postgres, and a small open model on CPU, with no key and
+none of our hosted services. You need Docker with Compose v2.20 or newer and about 4 GB of free RAM
+(6 GB once, for the image build).
+
+```sh
+cd selfhost
+cp .env.example .env
+# put a random string in BETTER_AUTH_SECRET:  openssl rand -hex 32
+docker compose --profile local up --build
+```
+
+Then open http://localhost:3000. [`selfhost/README.md`](selfhost/README.md) covers a hosted model in place
+of the local one, sign-in, files, feature flags and TLS. The rest of this README is for running the app
+by hand and for reading the code.
 
 ## Before you start
 
 ### What boot needs
 
-`web/.env.example` lists every variable the app reads and says which are required.
-`web/src/lib/chat/server/env/validate.ts` checks five at boot:
+`web/.env.example` lists the app's configuration variables, one line each, and marks the required ones;
+`web/config/env-manifest.mjs` is where they are declared, and its `bootRequiredKeys` decides which
+ones `web/src/lib/chat/server/env/validate.ts` checks at boot:
 
 | Variable                 | What it is                                                                     |
 | ------------------------ | ------------------------------------------------------------------------------ |
@@ -34,10 +53,12 @@ without it. The code is MIT, with the files derived from chat-ui under Apache-2.
 | `OPENAI_API_KEY`         | The key for that endpoint                                                      |
 | `DATABASE_URL`           | Postgres connection string                                                     |
 | `PUBLIC_ORIGIN`          | The origin the app is served from; sign-in builds its callback URLs from it    |
-| `PUBLIC_CMS_PAYLOAD_URL` | The content management system's origin. See the note below.                    |
+| `ALPHA_EDITION`          | Only with `DEPLOY_ENV=production`. `selfhost` for your own install; `hosted` is for Current AI's deployments |
+| `PUBLIC_CMS_PAYLOAD_URL` | Only with `DEPLOY_ENV` set to `production` or `preview` on a build that serves the site. See the note below. |
 
-A production build refuses to boot without all five. The dev server (`vite dev`) boots anyway, logs what
-is missing, and leaves `/chat` degraded (`web/src/hooks.server.ts`, the `catch` after `validateEnv()`).
+A built server refuses to boot without the ones that apply to it. The dev server (`vite dev`) boots
+anyway, logs what is missing, and leaves `/chat` degraded (`web/src/hooks.server.ts`, the `catch` after
+`validateEnv()`).
 
 `DATABASE_URL` must be set by that name. `web/src/lib/chat/server/db/client.ts` falls back to
 `POSTGRES_URL` when it connects, but the boot check does not accept `POSTGRES_URL` in its place.
@@ -45,6 +66,9 @@ is missing, and leaves `/chat` degraded (`web/src/hooks.server.ts`, the `catch` 
 The content management system is not in this snapshot, and no code here fetches from
 `PUBLIC_CMS_PAYLOAD_URL`. `web/svelte.config.js` only adds its origin to the content security policy, so
 any URL satisfies the check.
+
+Sign-in needs one more: `BETTER_AUTH_SECRET`, 32 or more random bytes. Without it Better Auth uses its
+default secret, which it refuses in a production build. Anonymous chat still works then; sign-in does not.
 
 ### Which models you get
 
@@ -54,8 +78,18 @@ allowlist: comma-separated model ids, first one the default, or `*` for every mo
 Left unset, it defaults to `swiss-ai/apertus-v1.5-70b`, and if your endpoint does not serve that id, no
 model loads. On a deployment, the lists in `web/config/picker.ts` replace it.
 
-The picker offers more than the first model only when the `model-picker` PostHog flag is on. Without
-PostHog it is off.
+Setting `DEPLOY_ENV` (or `VERCEL_ENV`) to `production` or `preview` changes more than the model list,
+so leave it unset unless you mean to run as a deployment:
+
+- the picker comes from `web/config/picker.ts`, and `MODEL_ALLOWLIST` is ignored;
+- `TASK_MODEL` must name a registered model, or building the model registry throws
+  (`web/src/lib/chat/server/models.ts`);
+- unless `ALPHA_EDITION=selfhost`, moderation becomes required: without Coop (or the Shieldstral guard,
+  below), the child-safety check fails closed and every turn is declined. With `ALPHA_EDITION=selfhost`
+  (which `selfhost/compose.yaml` sets) turns go unscreened instead, and the boot log says
+  `SELF-HOST, NO SCREEN` (`web/src/lib/chat/server/guardGate.ts`).
+
+The allowlist alone decides how many models the picker offers (`web/src/lib/chat/server/modelGates.ts`).
 
 ### Hosted services
 
@@ -69,10 +103,11 @@ PostHog it is off.
 | Vercel                               | Hosting, and the deployment environment                 | `ADAPTER` (build), `DEPLOY_ENV` (falls back to `VERCEL_ENV`)                             | `ADAPTER` defaults to `vercel`; see [Build it](#build-it)             |
 | Firecrawl                            | General web search                                      | `FIRECRAWL_API_KEY`                                                                      | Search still runs on Wikipedia, Wikinews, arXiv and OpenAlex          |
 | The agent service (`agent-service/`) | Agent mode                                              | `AGENT_SERVICE_URL`, `AGENT_SERVICE_TOKEN`                                               | Agent mode is withheld                                                |
-| A self-hosted E2B install            | The sandbox each agent conversation runs in             | `E2B_API_URL`, `E2B_API_KEY` (read by `agent-service/`)                                  | The agent service refuses to boot unless `AGENT_SANDBOX_BACKEND=bwrap` |
-| Coop                                 | Content and child-safety moderation                     | `COOP_URL`, `COOP_API_KEY`                                                               | Moderation allows everything                                          |
-| An input guard model                 | Screens each message before the model sees it           | `GUARD_SHADOW_URL` (and the `guard-*` flags)                                             | With its flags off (the default), no guard runs                       |
-| Resend                               | Sign-in code emails                                     | `RESEND_API_KEY`                                                                         | Codes are logged instead of sent; sign-in still works                 |
+| A self-hosted E2B install            | The sandbox each agent conversation runs in             | `E2B_API_URL`, `E2B_API_KEY`, `AGENT_GATEWAY_PUBLIC_URL`, `PROXY_ADMIN_KEY` (read by `agent-service/`) | The agent service refuses to boot unless `AGENT_SANDBOX_BACKEND=bwrap` |
+| Coop                                 | Content and child-safety moderation                     | `COOP_URL`, `COOP_API_KEY`                                                               | Off a deployment, moderation allows everything. On a deployment, child safety fails closed and every turn is declined, unless the Shieldstral guard is the screen |
+| The Shieldstral input guard          | Screens each message against `rules.json` before the model sees it | `GUARD_SHADOW_URL` (and the `guard-primary` flag)                             | With the flag off (the default), Coop is the screen                   |
+| Resend                               | Sign-in code emails                                     | `RESEND_API_KEY`                                                                         | `SMTP_URL` sends the codes through your own mail server instead. With neither, `vite dev` logs the codes; a self-host edition offers email-and-password sign-in; anywhere else email sign-in does not work (`web/src/lib/chat/server/mailer.ts`) |
+| Hugging Face OIDC                    | Sign-in with a Hugging Face account                     | `OPENID_CLIENT_ID`, `OPENID_CLIENT_SECRET`                                               | Without it, and without the `accounts` flag on, the app shows no sign-in link (`/chat/login` still works if typed) |
 | Google and GitHub OAuth              | Sign-in with those accounts                             | `GOOGLE_CLIENT_ID`, `GITHUB_CLIENT_ID` and their secrets                                 | That provider is absent from the sign-in screen                       |
 | SyftHub                              | Federated retrieval                                     | `SYFTHUB_API_TOKEN` and the other `SYFTHUB_*`                                            | Federated retrieval is off                                            |
 
@@ -80,6 +115,16 @@ PostHog it is off.
 `MISTRAL_API_KEY` as the Mistral lane (`web/src/lib/chat/server/mistralKey.ts`). Either way,
 `MISTRAL_MODELS` names the ids that join the catalog, and the allowlist above still decides which of them
 the picker offers.
+
+Whether the app offers sign-in at all is the `accounts` PostHog flag. When PostHog cannot answer, it
+falls back to whether `OPENID_CLIENT_ID` is set (`web/src/lib/chat/server/oidcConfig.ts`,
+`loginEnabled`), so with neither the account menu has no Log in link.
+
+`web/src/lib/chat/server/rules.json` is the screening policy: its categories, the queries that detect
+them, and the copy a declined turn shows. It does not screen anything by itself. The Shieldstral guard
+(`guard-primary` on, `GUARD_SHADOW_URL` set) runs its queries; with that flag off, the default, Coop is
+the screen and applies its own rules, which live in the Coop service. With neither configured, see the
+Coop row above.
 
 To run without PostHog, leave its variables unset. `web/src/lib/chat/server/flagKeys.ts` lists every
 flag with the default the code uses when PostHog cannot answer.
@@ -104,7 +149,8 @@ flag with the default the code uses when PostHog cannot answer.
 
 The X-ray panel lives in `web/src/lib/chat/components/stack/`.
 
-- `StackXRay.svelte` is the panel. `web/src/lib/chat/stores/stack.ts` holds whether it is open and
+- `XRayComposerPanel.svelte` is the pill under the composer that opens it, and `StackXRay.svelte` is
+  the panel's content. `web/src/lib/chat/stores/stack.ts` holds whether it is open and
   which answer it describes.
 - `WhereItWent.svelte` lists each hop of the last message: app server, router, model host, storage.
   The hops come from `web/src/lib/chat/servingRoute.ts`, which reads only what the turn recorded and
@@ -152,9 +198,13 @@ reads their results, against the model, and executes its tool calls in a sandbox
 its own patches to Hermes in `agent-service/deploy/hermes/`.
 
 - `web/src/lib/chat/server/agentMode.ts` decides whether agent mode is on. It needs the `agent-mode`
-  PostHog flag, a deployment environment of `preview` or `production` (`DEPLOY_ENV`), and
-  `AGENT_SERVICE_URL`. A second flag, `agent-mode-access`, decides per account who sees the toggle,
-  so turning on `agent-mode` alone can still show nothing. Without PostHog both are off.
+  flag, `AGENT_SERVICE_URL`, and either a self-host edition (`ALPHA_EDITION=selfhost`) or a deployment
+  environment of `preview` or `production` (`DEPLOY_ENV`). A second flag, `agent-mode-access`, decides
+  per account who sees the toggle, so turning on `agent-mode` alone can still show nothing. Without
+  PostHog, a self-host reads both flags' self-host defaults from `flagKeys.ts`: `agent-mode` is on once
+  `AGENT_SERVICE_URL` and `AGENT_SERVICE_TOKEN` are set, and `agent-mode-access` is on. Agent mode is
+  offered only to signed-in accounts, and setting `DEPLOY_ENV` has the other effects listed under
+  [Which models you get](#which-models-you-get).
 - `web/src/lib/chat/server/endpoints/agent/endpointAgent.ts` starts a run on the agent service and
   streams its events back into the chat.
 - `agent-service/api/app.py` is the service's API. `agent-service/api/proxy.py` is a separate gateway
@@ -166,7 +216,7 @@ its own patches to Hermes in `agent-service/deploy/hermes/`.
 - `agent-service/deploy/e2b-template/` builds the sandbox image.
 
 `agent-service/README.md` covers the service's design, its own variables (`MODEL_UPSTREAM_BASE`,
-`MODEL_UPSTREAM_TOKEN`) and its offline test suite (`make test`).
+`MODEL_UPSTREAM_TOKEN`) and its unit test suite (`make test`).
 
 ### Change the look
 
@@ -187,11 +237,13 @@ come from environment variables.
 - `web/config/inference.ts` declares which model fills which role, on which provider. A provider names
   the variable that holds its key, never the key.
 - `web/config/picker.ts` lists the models each deployed site's picker offers.
-- `web/config/env-manifest.mjs` declares every variable the code reads, and which are required.
-  `web/.env.example` lists the same keys with one line each.
+- `web/config/env-manifest.mjs` declares the app's configuration variables, and which are required.
+  `web/.env.example` lists the same keys with one line each. A few platform and build-time variables,
+  such as `VERCEL_ENV`, `ADAPTER` and `POSTGRES_URL`, are read directly and not declared there.
 - `web/src/lib/chat/server/flagKeys.ts` lists the PostHog flags, and
   `web/src/lib/chat/server/flags.ts` reads them. A flag that PostHog cannot answer takes the fallback
-  its call site passes to `flagEnabledOr`.
+  its call site passes to `flagEnabledOr`; a per-account flag read through `flagEnabledForUser`, such
+  as `agent-mode-access`, counts as off.
 
 ## What you can run
 
@@ -199,15 +251,16 @@ The server unit tests are written to run without outside services:
 
 ```sh
 cd web
-pnpm install --no-frozen-lockfile
+pnpm install --frozen-lockfile
 pnpm test:ci:fast
 ```
 
-`pnpm-lock.yaml` also lists packages from parts of the monorepo this snapshot leaves out, so install
-without the frozen lockfile. `.nvmrc` pins Node 24 LTS (`lts/krypton`). The root `package.json` names
+`.nvmrc` pins Node 24 LTS (`lts/krypton`). The root `package.json` names
 the pnpm version in its `packageManager` field.
 
-The agent service has its own offline suite:
+The agent service has its own unit suite. `make venv` needs Python 3.11+, `uv` and network access to
+install the dependencies; the tests themselves call no model. Install bubblewrap (`bwrap`) for a full
+pass: without it, the tests that need it skip or fail.
 
 ```sh
 cd agent-service
@@ -227,7 +280,9 @@ ADAPTER=node pnpm build
 
 ### Run the dev server
 
-You need an OpenAI-compatible endpoint and Postgres. A minimal `web/.env`:
+You need an OpenAI-compatible endpoint and Postgres. Put the values in `web/.env.local`, which
+`web/vite.config.ts` loads into `process.env` (the server reads `process.env` directly, so a `web/.env`
+file is not enough). A minimal `web/.env.local`:
 
 ```sh
 OPENAI_BASE_URL=https://your-endpoint.example/v1
@@ -242,42 +297,48 @@ Then:
 
 ```sh
 cd web
-pnpm db:start     # Postgres in Docker, at the DATABASE_URL above
-pnpm db:migrate   # create the tables
+pnpm db:start                                     # Postgres in Docker, at the DATABASE_URL above
+node --env-file=.env.local scripts/db-migrate.mjs # create the tables
 pnpm exec vite dev
 ```
 
-`pnpm dev` wraps Vite in `doppler run`, the secrets manager the maintainers use. If you keep your values
-in `web/.env`, start Vite directly as shown.
+The migration script reads only `process.env`, so `pnpm db:migrate` on its own finds no connection
+string; pass the file with `--env-file` as above, or export the variables in your shell first.
+
+`pnpm dev` is plain `vite dev`, which reads `web/.env.local`.
 
 ## What is not in this snapshot
 
 - The content management system that supplies the marketing pages, and the pages themselves.
-- CI workflows and most of the repository's operational tooling. The scripts in `web/scripts/` that
-  are here are the ones the app, its build or its tests import; a few (alerting, the audited
-  production database reader) assume the hosted setup above.
+- The private repository's CI workflows (comments that name a workflow file refer to those) and most
+  of its operational tooling. `.github/workflows/ci.yml` here runs the unit suites on every pull
+  request. The scripts in `web/scripts/` that are here are the ones the app, its build or its tests
+  import; a few (alerting, the audited production database reader) assume the hosted setup above.
 - Secrets, deployment settings and account ids.
-- The policies and reference vectors for the optional S1 safety judge. `web/src/lib/chat/server/rules-s1.json`
-  and `web/src/lib/chat/server/data/guard-vectors.json` are placeholders; the default safety screen's
-  rules (`web/src/lib/chat/server/rules.json`) are here in full.
+- Two data files ship as placeholders: `web/src/lib/chat/server/rules-s1.json`, the policies for the
+  optional S1 safety judge, and `web/src/lib/chat/server/data/guard-vectors.json`, precomputed embeddings
+  of the semantic guards' example phrases (without them the examples are embedded at run time). The
+  Shieldstral guard's policy, `web/src/lib/chat/server/rules.json`, is here in full; Coop's own rules
+  are not part of this repository.
 
 The browser end-to-end specs in `web/e2e/` are here as a record of what the app is expected to do.
 They run against a deployed instance with the hosted services, so they will not pass on a fresh clone.
 
 ## How this repository is maintained
 
-Development happens in a private monorepo, and new versions of this code arrive here as snapshots.
-Issues are welcome. A pull request cannot merge here directly, but the maintainers read every one and
-carry worthwhile changes upstream.
+This repository is a published snapshot. Development still happens in a private monorepo, and new
+versions of this code arrive here as snapshots until development moves here. Issues are welcome; code
+pull requests open once this repository becomes the source of truth.
 `CONTRIBUTING.md` says how, `SECURITY.md` how to report a vulnerability, and `AGENTS.md` is a map of the
 code for a coding agent working in a fork.
 
 ## Reading the code
 
-The team's internal tracker is not public, so the ticket references in comments, such as `CUR-123` or
-`SOL-45`, cannot be looked up from here.
+The team's internal tracker is not public. The export removes its ticket ids from comments and test
+names; a few remain in code and data, such as test tags and flag descriptions, and cannot be looked up
+from here.
 
-`web/UPSTREAM.md` records the chat-ui commit Alpha forked from and how its paths map to this tree.
+`web/UPSTREAM.md` records the chat-ui commit Alpha forked from and which directories descend from it.
 
 ## Licence
 
@@ -287,4 +348,8 @@ derived files stay under Apache-2.0 (`web/LICENSE.chat-ui`). The Hermes patches 
 [Multilingual AI Safety Evaluation Lab by Roya Pakzad](https://github.com/royapakzad/ai-safety-evaluation-lab)
 and keeps its MIT licence with attribution
 (`web/src/lib/chat/server/data/eval/LICENSE.multilingual-ai-safety-lab`). `THIRD_PARTY_NOTICES.md` lists every
-third-party piece with its source, licence and location. Names and logos are not licensed.
+third-party piece with its source, licence and location.
+
+Other organisations' names and logos, such as the model makers' marks in `web/static/logos/`, belong to
+their owners, are used only to identify them, imply no endorsement or affiliation, and are not licensed:
+see the Trademarks section of `THIRD_PARTY_NOTICES.md`.

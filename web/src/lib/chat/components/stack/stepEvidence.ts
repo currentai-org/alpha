@@ -71,7 +71,7 @@ export function ragOrigin(source: Pick<RagSource, 'engine' | 'sourceName'>): str
 /**
  * The day, in the reader's own language and calendar; pass a `timeZone` for a deterministic day. A
  * bare YYYY-MM-DD is a calendar day, which `Date` reads as UTC midnight, so it is formatted in UTC to
- * read the same day everywhere (CUR-4171). A timestamp follows the reader's zone.
+ * read the same day everywhere. A timestamp follows the reader's zone.
  */
 export function formatDay(iso: string, opts: { timeZone?: string; locale?: string } = {}): string {
 	const d = new Date(iso);
@@ -92,7 +92,7 @@ export function tidyExcerpt(text?: string): string | undefined {
 
 /**
  * The [n] numbers the answer cites, as the entry numbers the answer shows (a page retrieved as several
- * passages is one entry, CUR-888), or undefined when it cites none (so no row is called "not cited").
+ * passages is one entry), or undefined when it cites none (so no row is called "not cited").
  */
 function citedNumbers(message: Message): Set<number> | undefined {
 	const cited = extractCitedIndices(message.content ?? '');
@@ -138,16 +138,19 @@ export interface RuleRow {
 /**
  * Each named safety rule as this turn left it. Only for a turn whose screen actually ran: a rule that
  * fired is "triggered"; when the turn was blocked the rest are "not checked", since the screen stopped
- * there; otherwise the rest are "clear". A distress rule fires without blocking (CUR-3915), so its turn
+ * there; otherwise the rest are "clear". A distress rule fires without blocking, so its turn
  * shows that rule triggered and the others clear.
  */
 export function classifyRules(
 	rules: SafetyRule[],
-	turn: { triggeredLabel?: string | null; blocked?: boolean }
+	turn: { triggeredLabel?: string | null; triggeredLabels?: string[]; blocked?: boolean }
 ): RuleRow[] {
 	const stopped = Boolean(turn.blocked);
 	return rules.map((rule) => {
-		if (turn.triggeredLabel && turn.triggeredLabel === rule.label) {
+		if (
+			(turn.triggeredLabel && turn.triggeredLabel === rule.label) ||
+			turn.triggeredLabels?.includes(rule.label)
+		) {
 			return { label: rule.label, state: 'triggered' };
 		}
 		return { label: rule.label, state: stopped ? 'not-checked' : 'clear' };
@@ -169,9 +172,9 @@ export function screenOrder(timings?: {
 
 /**
  * What a revised answer lost, with the count when the stamp carries one; an answer stamped
- * before the count existed says no number. The request trace reads the same phrase. (CUR-2927)
+ * before the count existed says no number. The request trace reads the same phrase.
  */
-export function removedClaimsPhrase(removed?: number): string {
+function removedClaimsPhrase(removed?: number): string {
 	if (removed && removed > 0) return `removed ${removed} claim${removed === 1 ? '' : 's'} no source supports`;
 	return 'removed claims no source supports';
 }
@@ -179,7 +182,7 @@ export function removedClaimsPhrase(removed?: number): string {
 /**
  * The "Fact check" step, from the outcome groundcheck stamped on the answer. A revised answer
  * says how many claims were removed when the stamp carries the count; one stamped before the count
- * existed says only that claims were removed. The removed words are never shown again. (CUR-2927)
+ * existed says only that claims were removed. The removed words are never shown again.
  */
 export function factCheckStep(notice: NonNullable<Message['groundcheckNotice']>): {
 	what: string;

@@ -1,5 +1,5 @@
 /**
- * A registry built from fallback gates must not keep them (CUR-4194).
+ * A registry built from fallback gates must not keep them.
  *
  * A cold instance whose boot flag poll runs past REGISTRY_POLL_CAP_MS builds its registry from each
  * gate's fallback. Two things must then bring the real gates in: the first gate check compares against
@@ -14,7 +14,7 @@ const MODEL_ID = "test-org/model-a";
 const H = vi.hoisted(() => ({
 	cfg: {} as Record<string, string>,
 	snap: { current: {} as unknown },
-	gates: { picker: false, routerAlias: false, agent: false, sideCallLane: false } as Record<
+	gates: { routerAlias: false, agent: false, sideCallLane: false } as Record<
 		string,
 		unknown
 	>,
@@ -49,7 +49,7 @@ beforeEach(() => {
 	for (const k of Object.keys(H.cfg)) delete H.cfg[k];
 	Object.assign(H.cfg, { OPENAI_BASE_URL: BASE, OPENAI_API_KEY: "test-key", MODEL_ALLOWLIST: "*" });
 	H.snap.current = { fetchedAt: "2026-10-18T00:00:00.000Z", baseURL: BASE, entries: [{ id: MODEL_ID }] };
-	H.gates.picker = false;
+	H.gates.routerAlias = false;
 	H.landed.length = 0;
 	vi.stubGlobal(
 		"fetch",
@@ -66,11 +66,11 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 });
 
-describe("a registry built from fallback gates is rebuilt once the real gates arrive (CUR-4194)", () => {
+describe("a registry built from fallback gates is rebuilt once the real gates arrive", () => {
 	it("the first gate check after boot rebuilds when a gate differs from what the registry was built with", async () => {
 		const mod = await import("./models");
-		await mod.bootModels(); // built with picker: false (the fallback a capped poll leaves)
-		H.gates.picker = true; // the poll lands: PostHog has the picker on
+		await mod.bootModels(); // built with routerAlias: false (the fallback a capped poll leaves)
+		H.gates.routerAlias = true; // the poll lands: PostHog has the alias on
 		const r = await mod.refreshRegistryGatesIfChanged();
 		expect(r.changed, "the first check only recorded the gates, so the fallback registry stays").toBe(true);
 	});
@@ -79,12 +79,12 @@ describe("a registry built from fallback gates is rebuilt once the real gates ar
 		const mod = await import("./models");
 		await mod.bootModels();
 		expect(H.landed).toHaveLength(1);
-		H.gates.picker = true;
+		H.gates.routerAlias = true;
 		await H.landed[0]();
 		// The hook calls the module's own binding, which a spy on the export can't see, so assert the
 		// effect: the hook already rebuilt, and a second check finds nothing left to change.
 		const after = await mod.refreshRegistryGatesIfChanged();
 		expect(after.changed).toBe(false);
-		expect(after.gates.picker).toBe(true);
+		expect(after.gates.routerAlias).toBe(true);
 	});
 });

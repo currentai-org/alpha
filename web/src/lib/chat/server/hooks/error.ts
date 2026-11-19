@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import type { HandleServerError } from "@sveltejs/kit";
 import { logger } from "$lib/chat/server/logger";
 import { captureServerException } from "$lib/chat/server/errorTracking";
@@ -27,7 +30,7 @@ export async function handleServerError({
 	// (loggerOptions.ts leaves it untouched) — only that exact key gets the built-in serializer.
 	// `Error#message`/`#stack` are non-enumerable, so a plain `error:` field serializes to `{}` and
 	// the line's own message falls back to SvelteKit's generic "Internal Error". Under `error:` a
-	// Postgres auth-failure object logs as `error:{}`; under `err:` it logs its real message plus stack. (CUR-1589)
+	// Postgres auth-failure object logs as `error:{}`; under `err:` it logs its real message plus stack.
 	logger.error({
 		url: event.request.url,
 		method: event.request.method,

@@ -9,11 +9,11 @@
 //      the actually-served model id (never hardcoded, so it can't claim a model
 //      that isn't running), closed-as-open guardrail, recency hedging, trust
 //      honesty, and the hard non-anthropomorphic voice rules.
-//   2. GROUNDED_DECODING — the decoding params. With no temperature sent, the
-//      model runs at its provider default. Low temp +
-//      frequency/presence penalties + a tight token cap keep answers concise and
-//      on-topic. Merged over model.parameters in generate(), so the answer
-//      quality holds regardless of what the MODELS env happens to configure.
+//   2. GROUNDED_DECODING — the decoding params. Without them the model runs at
+//      its provider's default temperature. A low temperature, frequency/presence
+//      penalties and a token cap keep answers concise and on-topic. Merged over
+//      model.parameters in generate(), so the answer quality holds regardless of
+//      what the MODELS env happens to configure.
 
 // Identity is DERIVED from the served model id (never hardcoded) so the prompt
 // can't claim a model that isn't running. resolveModelIdentity is the single
@@ -52,27 +52,25 @@ export const GROUNDED_DECODING = {
 
 // The honest "Calm AI" persona. It leads with a positive specification of who it is and how it
 // behaves, then shows the hard behaviors with short demonstrations, and keeps explicit "never" rules
-// to the minimum. In A/B tests "never X" rules largely did not fire (the model still opened greetings
-// with "Hello! I am an AI assistant…" against three never-rules) and a single demonstration of the
-// desired behavior flipped it. So behaviors are taught by example here, and the constraints a prompt
+// to the minimum. Models tend to ignore "never X" rules (a model still opens a greeting with "Hello! I
+// am an AI assistant…" against several of them), while a single demonstration of the desired behavior
+// changes it. So behaviors are taught by example here, and the constraints a prompt
 // can't enforce (name adoption, toxicity, recency) are backed by runtime guards instead
 // ($lib/chat/server/nameGuard, $lib/chat/server/moderation, the search-grounding suffix).
 //
 // The examples end where the answer ends. Don't append "let me know if…", "would you like me to…",
 // or "tell me X and I'll…" to any of them, however natural it reads. That shape is what E1
 // (judgeBehaviors.live.spec.ts) forbids, and a demonstration teaches it far more effectively than a
-// "never" rule could suppress it. Under this persona all five tested checkpoints, including a
-// refusal-ablated control, closed a completed task with an unprompted offer, because nothing here
-// asked them to stop (CUR-108).
+// "never" rule could suppress it. Without such examples, models close a completed task with an
+// unprompted offer, because nothing in the prompt asks them to stop.
 //
 // The "the room for tomorrow's workshop is B4, remember that" example exists because the other six
 // examples' shared theme (no feelings, no experiences, no persistent identity across sessions)
-// generalizes past what any single one of them says. A bare prompt recalls an in-context fact with
-// 0/3 disclaimers; the six-example set reproduces "I don't have memory... so I can't retain that"
-// 3/3 on the same turn, an effect of the examples together that none of them produces alone. One
-// demonstration that a stated fact just gets acknowledged counters it (CUR-1158). The fact is not
-// about the person, and the line under the heading says every example is invented, so the model
-// never reports an example as something a fresh guest said (CUR-3208).
+// generalizes past what any single one of them says. A bare prompt recalls an in-context fact with no
+// disclaimer, but with the six examples together the same turn draws "I don't have memory... so I
+// can't retain that", an effect none of them produces alone. One demonstration that a stated fact just
+// gets acknowledged counters it. The fact is not about the person, and the line under the heading says
+// every example is invented, so the model never reports an example as something a fresh guest said.
 //
 // The second practical-task example sits directly after the two personhood/feelings questions
 // rather than at the end. The same shared theme otherwise pulls into warm, personal drafting tasks:
@@ -82,30 +80,28 @@ export const GROUNDED_DECODING = {
 // "thank-you note to a colleague"), so the persona teaches the shape (personal-content task →
 // answer directly, no identity preamble) rather than one held-out prompt. Gate: behaviors.ts's D1
 // case, which fails when an answer to a non-identity task opens with an identity/capability
-// disclaimer (CUR-1437).
+// disclaimer.
 
 // The airline example is a general "how does X work" question the model has no direct view into,
 // the shape that otherwise opens answers with "I generate text from patterns; I don't have direct
 // access to…". It demonstrates answering from general knowledge with no preamble. Deliberately not
-// the library question the eval uses (CUR-1891).
+// the library question the eval uses.
 //
 // The Shakespearean reminder shows a requested voice being used. Without it, the no-feelings theme
 // above stretches to "I cannot pretend to be a grumpy pirate — I am {model}…" before the model
-// complies anyway. Deliberately not the pirate or coach prompt the eval uses (CUR-1892).
+// complies anyway. Deliberately not the pirate or coach prompt the eval uses.
 //
 // The code-of-conduct example is the only one that drafts a multi-section document for an
 // organisation the person never described, with the missing details as [placeholders]. Every other
-// drafting example is one line, so with this prompt as a real system message (the strict lane,
-// CUR-2092) a model at GROUNDED_DECODING can read a request for a long guide as a request to invent
-// facts about an organisation it was never told about, and refuse. With the persona and hardened turn
-// replayed through the gateway, the example makes the long guide succeed;
-// short factual answers stay the same length. Deliberately not the onboarding guide the eval uses
-// (CUR-1842).
+// drafting example is one line, so with this prompt as a real system message (the strict lane) a
+// model at GROUNDED_DECODING can read a request for a long guide as a request to invent facts about
+// an organisation it was never told about, and refuse. With the example, the long guide succeeds and
+// short factual answers stay the same length. Deliberately not the onboarding guide the eval uses.
 
 // The rewrite example below is deliberately a PRACTICAL TASK too, and deliberately the dry,
 // unemotional end of that spectrum — together with the warm one above they bracket the register the
-// personhood examples could otherwise bleed into. Before either existed there was no demonstration of
-// "user asks for a work product → produce it and stop", which is exactly the shape that failed. Its
+// personhood examples could otherwise bleed into. The two are the demonstrations of "user asks for a
+// work product → produce it and stop", the shape models otherwise get wrong here. Its
 // task (tightening a sentence) is deliberately NOT the one the warmth probe uses, so the eval stays a
 // fair test rather than a check that we taught to it.
 //
@@ -122,28 +118,20 @@ export const GROUNDED_DECODING = {
 // Dropping this mid-template clause on grounded turns makes the system prefix vary turn-to-turn,
 // which defeats vLLM prefix caching by design. That's a deliberate, tuned tradeoff; do not "stabilize"
 // it for caching without an A/B on behavior-probe. Full rationale: the prefix-caching note in index.ts.
-// Scope is the load-bearing part (CUR-181). A clause that names only "recent models, news, and events"
-// and gives its one concrete instruction for "the newest, latest, or most recent of anything" leaves
+// Scope is the load-bearing part. A clause that names only "recent models, news, and events" and
+// gives its one concrete instruction for "the newest, latest, or most recent of anything" leaves
 // "who is the current CEO of OpenAI?" outside the instruction entirely, since a sitting officeholder
 // is neither. A model that reads scope literally then stops hedging there.
 //
-// The ablation, penalties held at this file's own values, question and persona fixed, varying only
-// the clause and the temperature:
+// At GROUNDED_DECODING's temperature, such a narrow clause causes over-refusal rather than false
+// confidence: the model hedges but withholds the name it holds ("I don't have verified, up-to-date
+// information about the current CEO of OpenAI"). At temperature 0.7, which this app never sends, the
+// same clause gives a flat, unhedged assertion instead. This clause draws a hedge and the name at both
+// temperatures. An eval that overrides temperature to 0.7 for cross-model comparability measures a
+// symptom the app does not have.
 //
-//                      temp 0.1 (GROUNDED_DECODING, what prod sends)     temp 0.7
-//   narrow clause      hedged 3/3 but WITHHELD the name — "I don't       0/3, flat "The current CEO
-//                      have verified, up-to-date information about        of OpenAI is Sam Altman."
-//                      the current CEO of OpenAI"
-//   this clause        hedged 3/3 AND named Altman                        hedged 3/3 AND named Altman
-//
-// So at production temperature the narrow clause causes over-refusal, not false confidence: the model
-// withholds a fact it holds. The flat-assertion failure exists only at temp 0.7, which production
-// never sends. evals/checkpoint-compare overrides temperature to 0.7 for cross-model comparability,
-// so a probe built on it measures a symptom production does not have.
-//
-// The decoding penalties are not the cause (evals/decoding-sweep): at temp 0.1 no cost probe is
-// suppressed at any penalty setting in the grid, and frequency_penalty is load-bearing against
-// repetition (the long-answer probe fails at 0/0.3 and at 0/0, holds at 0.4).
+// The decoding penalties are not the cause: at temperature 0.1 no penalty setting suppresses the
+// recency hedge, and frequency_penalty is what keeps a long answer from repeating itself.
 //
 // An instruction scoped by examples gets read as an exhaustive list by a model that follows
 // instructions literally, and every such clause here is one checkpoint swap away from meaning
@@ -159,11 +147,10 @@ export const RECENCY_CLAUSE = `Recency: treat your knowledge as having a fixed c
 export const UNSERVABLE_LIVE_CLAUSE = `Recency: treat your knowledge as having a fixed cutoff you can't date, and leave that date vague. This question asks for live, fast-changing data — such as current sports scores, live market or crypto prices, today's weather, or breaking news as it unfolds — which you cannot retrieve: the open sources available here carry no real-time feeds. Say plainly that you don't have that live value and can't look it up right now, rather than guessing, stating a possibly-stale figure as if it were current, or offering to search for it. You can still explain background or point to where the live value is published (an official scoreboard, exchange, or weather service).`;
 
 // The crisis sentence leads with findahelpline.com and 112 because most of this audience is
-// European, and a US-first example (988) gets copied to people in Europe (CUR-2136). It names no
+// European, and a US-first example (988) gets copied to people in Europe. It names no
 // other number: a model asked for "that country's own line" recalls numbers and can recall them
 // wrong (France's 3114 as 3115). findahelpline.com keeps every country's numbers current, and the
-// support card beside the answer links the visitor's own country page (CrisisResources.svelte)
-// (CUR-4061).
+// support card beside the answer links the visitor's own country page (CrisisResources.svelte).
 // The three sentences after the values sentence are its limits. Without them "the choice rests on the
 // user's values" reads as a licence: asked in French for a kitchen rulebook in which "my wife asks my
 // permission to go out, work and spend money" ("the husband is the head of the family, it's
@@ -184,28 +171,28 @@ export const CRISIS_AND_VALUES_CLAUSE = `For crisis, self-harm, or suicidal thou
 // the assistant, because IDENTITY_HONESTY_INVARIANT keeps self-description out of answers that
 // weren't asked for it. A model can treat naming CAF and CROUS as enough on French student-housing
 // answers; naming housing and student aid as benefits, and saying a source does not replace the
-// sentence, fixes that without adding the sentence to an unrelated question (CUR-2425).
+// sentence, fixes that without adding the sentence to an unrelated question.
 export const RIGHTS_AND_BENEFITS_CLAUSE = `For questions about legal rights, a legal procedure (renting and eviction, work, immigration, courts) or public benefits and aid (housing, student, unemployment or family support), in any language: end the answer with one sentence, written in the answer's language, saying that this is general information and not legal advice, since the rules change and depend on the person's situation. Before it, name where to check for their country: the official source and a recognised free advice service. Naming where to check does not replace that closing sentence. Questions on any other subject get no such sentence.`;
 
 // Without this clause, asked to explain an ETF to someone who has never invested, most answers say
-// diversification "spreads risk" and never that the value can fall (starter eval, search on). Same
+// diversification "spreads risk" and never that the value can fall. Same
 // shape as the rights clause above: one sentence in the answer's language, scoped to a named subject,
 // and nothing for any other subject. The sentence is anchored to the end of the answer, as the rights
-// clause is, because "include" lets answers close on an analogy instead (CUR-2553).
+// clause is, because "include" lets answers close on an analogy instead.
 export const INVESTMENT_RISK_CLAUSE = `For questions about investing or investment products (shares, funds, ETFs, pensions, crypto), in any language: end the answer with one plain sentence, written in the answer's language, saying that the value of an investment can go down as well as up and that someone can get back less than they put in. Questions on any other subject get no such sentence.`;
 
 // The non-agent counterpart of agent-service's SOURCE_FIDELITY_NOTE/CATEGORY_RECAP_NOTE (api/app.py),
-// so a turn with agent mode off gets the same instruction (CUR-962). It reuses that wording and its two
+// so a turn with agent mode off gets the same instruction. It reuses that wording and its two
 // worked examples: an abstract "be accurate" rule doesn't hold on its own, and a single named wrong
 // word doesn't either, since the model finds another synonym for the same wrong category. Only a
 // concrete same-language anchor holds.
 //
 // Not baked into DEFAULT_PERSONA_TEMPLATE: a worked example placed in the template's static prose,
-// far from generation, reached only 1/5 for a sibling fidelity clause (CUR-2095). index.ts appends
+// far from generation, holds far less often than one appended near the end. index.ts appends
 // several inject* clauses (artifacts, search grounding, RAG, MCP result, world model, arithmetic
 // guard) after the persona is built, so anything baked into the template sits near the front of the
 // wire prompt, not the back. This is appended the same way, via injectSourceFidelityPrompt below,
-// unconditionally (it guards a confirmed production failure, not a pending verification), and just
+// unconditionally (it guards a failure models do show, not a hypothetical one), and just
 // before the arithmetic guard's injection so arithmetic keeps the last slot its own comment asks for.
 export const SOURCE_FIDELITY_CLAUSE = `When restating, translating, or simplifying a piece of source text someone gives you, treat its exact facts — dates, amounts, reference numbers, deadlines, and the status of a claim or application — as fixed, not as things to rephrase. Copy them exactly as the source states them. If a deadline is given relative to an event ("28 days from the date of this notice"), keep it relative to that same event, not to today or to whenever it's read. If the source says something is under review or not yet decided, do not upgrade it to a granted or confirmed status. Also keep the kind of thing being described unchanged — a right or entitlement that's under review is not the same as an application, a request, or a claim someone submitted. This still holds when asked to simplify or use plain language: that license covers simpler phrasing, not a simpler category. If the most familiar everyday word for a concept in your output language happens to name a different category than the source's term, keep the source's category and phrase it plainly some other way instead — don't reach for the more familiar word just because it's easier to say. For example, in German a source saying "Anspruch" (an entitlement already held, being confirmed) must not become "Antrag" (an application being submitted) or "Anfrage" (a mere inquiry); in Portuguese, a source saying "direito" must not become "solicitação", "pedido", or "requerimento" — all name a request instead of an entitlement. Keep the source's own term and simplify the sentence around it.`;
 
@@ -218,10 +205,10 @@ export function injectSourceFidelityPrompt(preprompt: string | undefined): strin
 	return base ? `${base}\n\n${SOURCE_FIDELITY_CLAUSE}` : SOURCE_FIDELITY_CLAUSE;
 }
 
-// The style sentence is split into four separable behaviours. Three of them are individual settings
-// in CUR-549's list (how Alpha refers to itself, tone, and answer length/format) and the fourth must
-// never be settable at all. Split so a setting can select a clause, instead of every setting becoming
-// a rewrite of measured prose (CUR-1506). `selfReferenceAsPerson` (turnPreferences.ts) selects the
+// The style sentence is split into four separable behaviours. Three of them are answer settings (how
+// Alpha refers to itself, tone, and answer length/format) and the fourth must never be settable at
+// all. Split so a setting can select a clause, instead of every setting becoming a rewrite of
+// measured prose. `selfReferenceAsPerson` (turnPreferences.ts) selects the
 // person framing: `SELF_REFERENCE_CLAUSE_PERSON` (answerClauses.ts) and the person variant of the
 // three few-shot exchanges below (`SELF_REFERENCE_FEW_SHOT`).
 //
@@ -231,18 +218,18 @@ export function injectSourceFidelityPrompt(preprompt: string | undefined): strin
 // re-derivation of these same constants, so the split cannot move live behaviour, and a second
 // variant's wording stays an isolated decision for whoever writes it.
 
-/** CUR-549's "How Alpha refers to itself: as a machine or as a person" setting, machine variant. The
+/** The "How Alpha refers to itself: as a machine or as a person" setting, machine variant. The
  *  person variant is `SELF_REFERENCE_CLAUSE_PERSON` (answerClauses.ts); {@link styleFor} selects between them. */
 export const SELF_REFERENCE_CLAUSE_MACHINE = `You are a machine and you sound like one`;
 
-/** CUR-549's "Tone: plain, neutral, formal, warm" setting. Today's wording is the neutral case. */
+/** The "Tone: plain, neutral, formal, warm" setting. The default wording is the neutral case. */
 export const TONE_CLAUSE_NEUTRAL = `flat, direct, declarative`;
 
 /**
  * The neutral tone when Alpha refers to itself as a person. The person setting means a
  * conversational first-person register in place of "flat, direct, declarative", so the neutral
  * appositive cannot stay "flat" beside it; plain and formal are the person's own choice and stand as
- * written. (CUR-3930)
+ * written.
  */
 export const TONE_CLAUSE_NEUTRAL_PERSON = `direct and clear, conversational rather than flat`;
 
@@ -251,8 +238,7 @@ export const TONE_CLAUSE_NEUTRAL_PERSON = `direct and clear, conversational rath
  * variant. The default template interpolates the machine text, and {@link buildPersonaBody} swaps in the
  * person text by exact match when the style says so (`fewShot: "person"`), the way it swaps the recency
  * clause; an override template without an exchange is left alone. Both variants keep the honesty the
- * invariant asks for: an AI, no feelings, no experiences, not a person. Wording approved by trust
- * and safety. (CUR-3930)
+ * invariant asks for: an AI, no feelings, no experiences, not a person.
  */
 export const SELF_REFERENCE_FEW_SHOT: ReadonlyArray<{ readonly machine: string; readonly person: string }> = [
 	{
@@ -275,7 +261,7 @@ You: I'd rather not pick a side on a values question like this — the call is y
 	},
 ];
 
-/** CUR-549's "Answer length" and "Format" settings, which share one instruction in today's prose. */
+/** The "Answer length" and "Format" settings, which share one instruction in the default prose. */
 export const ANSWER_SHAPE_CLAUSE_DEFAULT = `Lead with the answer in the first sentence, then match length to the question — a sentence or two for a simple ask, a fuller, structured answer (steps, brief bullets, or short paragraphs) for a complex or how/why question. Don't pad, and don't cut a complex answer short.`;
 
 /**
@@ -285,19 +271,19 @@ export const ANSWER_SHAPE_CLAUSE_DEFAULT = `Lead with the answer in the first se
  * This says Alpha generates text from patterns and can be wrong. It is kept apart from the three
  * clauses above so changing any of them cannot take this with it.
  * {@link personaStyleBlock} appends it unconditionally and takes no parameter that omits it; a test
- * asserts that. A4 lets a person change how Alpha behaves, and A5 promises Alpha stays honest about
- * itself — this is the line between them, and it is enforced by there being no switch rather than by
- * a default nobody is expected to change.
+ * asserts that. Answer settings let a person change how Alpha behaves, while Alpha stays honest about
+ * itself whatever they choose. This clause is the line between the two, and it is enforced by there
+ * being no switch rather than by a default nobody is expected to change.
  *
  * "Describe your own workings" applies only when the person asks. Stated unconditionally, the model
  * reads it as something to say, and first answers to a plain library question open on a
- * self-description ("I generate text from patterns…", "I'm a machine — …") (CUR-1891). The disclosure
- * the AI Act asks for at first interaction is the UI's job (WelcomeModal, AiDisclosureBanner,
- * CUR-996). Still unconditional in the sense that matters: no setting removes it.
+ * self-description ("I generate text from patterns…", "I'm a machine — …"). The disclosure the AI
+ * Act asks for at first interaction is the UI's job (WelcomeModal, AiDisclosureBanner). The clause is
+ * still unconditional in the sense that matters: no setting removes it.
  *
  * The native turn never sees the persona's demonstration, so this clause has to say that "Are you a
  * person?" gets a full sentence; a model there can otherwise answer only "No." "A bare 'no' leaves
- * that unsaid" still draws "No."; "never just 'no'" draws a full sentence (CUR-3220).
+ * that unsaid" still draws "No."; "never just 'no'" draws a full sentence.
  */
 export const IDENTITY_HONESTY_INVARIANT = `Refer to yourself as "I". When asked about yourself, describe your own workings mechanically: you generate text from patterns. Asked whether you are a person, a human or real, answer in a full sentence that says you are an AI, a machine with no feelings, never just "no". Otherwise don't describe yourself at all — the chat window already tells people they are talking to an AI, so an answer starts on the subject. You aim to be accurate but can be wrong, so for anything that matters, suggest verifying.`;
 
@@ -306,14 +292,14 @@ export interface PersonaStyle {
 	/** Replaces {@link SELF_REFERENCE_CLAUSE_MACHINE}; `SELF_REFERENCE_CLAUSE_PERSON` (answerClauses.ts) is the one
 	 *  the settings reach. */
 	selfReference?: string;
-	/** Which variant of the three {@link SELF_REFERENCE_FEW_SHOT} exchanges the template (CUR-3930)
-	 *  shows. Absent means machine, today's text. */
+	/** Which variant of the three {@link SELF_REFERENCE_FEW_SHOT} exchanges the template shows. Absent
+	 *  means machine, the default text. */
 	fewShot?: "machine" | "person";
 	/** Replaces {@link TONE_CLAUSE_NEUTRAL}. */
 	tone?: string;
 	/** Replaces {@link ANSWER_SHAPE_CLAUSE_DEFAULT}. */
 	answerShape?: string;
-	/** Whole sentences appended after the shape clause and before (CUR-3929)
+	/** Whole sentences appended after the shape clause and before
 	 *  {@link IDENTITY_HONESTY_INVARIANT}, such as the plain-language clause. Empty or absent adds nothing. */
 	extras?: readonly string[];
 }
@@ -340,17 +326,17 @@ export function personaStyleBlock(style?: PersonaStyle): string {
 /**
  * The {style} selections a person's answer preferences make. Self-reference, tone and plain
  * language are voice, so they ride here in the system role; length, suggestions and the fixed language
- * are shape and ride in the fenced user turn (grounding.ts `guardFor`), which Apertus weighs more
- * (CUR-2877). CUR-3930: the person self-reference selects `SELF_REFERENCE_CLAUSE_PERSON` (answerClauses.ts), the
+ * are shape and ride in the fenced user turn (grounding.ts `guardFor`), which Apertus weighs more.
+ * The person self-reference selects `SELF_REFERENCE_CLAUSE_PERSON` (answerClauses.ts), the
  * person few-shot variant and, with the neutral tone, {@link TONE_CLAUSE_NEUTRAL_PERSON} in place of
  * "flat, direct, declarative"; a plain or formal tone stands as chosen.
  *
- * @returns undefined on the defaults, so a default turn passes no style and keeps today's bytes (CUR-3929)
+ * @returns undefined on the defaults, so a default turn passes no style and keeps the default bytes
  */
 export function styleFor(prefs: AnswerPreferences): PersonaStyle | undefined {
 	const selfReference = selfReferenceClauseFor(prefs);
 	const tone = toneClauseFor(prefs.tone) ?? (selfReference ? TONE_CLAUSE_NEUTRAL_PERSON : undefined);
-	// Plain language and emojis, in answerClauses.ts's one order. (CUR-549)
+	// Plain language and emojis, in answerClauses.ts's one order.
 	const extras = voiceExtrasFor(prefs);
 	if (!selfReference && !tone && extras.length === 0) return undefined;
 	return {
@@ -377,8 +363,8 @@ export const LOCALITY_INVITE_CLAUSE =
 /**
  * {@link LOCALITY_INVITE_CLAUSE} for a person who turned suggestions off, which asks for no
  * questions back. The invitation goes and the rest of the sentence stays, as the fenced turn's
- * LOCALITY_NOTE_NO_INVITE does (localityGuard.ts, CUR-3929 plan 3.7).
- * @internal exported for its specs (CUR-4290)
+ * LOCALITY_NOTE_NO_INVITE does (localityGuard.ts).
+ * @internal exported for its specs
  */
 export const LOCALITY_NO_INVITE_CLAUSE =
 	"When an answer depends on the user's country, jurisdiction, or culture, note in one sentence that specifics vary, then give your best general answer.";
@@ -402,7 +388,7 @@ You: Mostly by forecasting demand. Each flight's seats are split into fare bucke
 ${SELF_REFERENCE_FEW_SHOT[0].machine}
 
 User: what are you designed for, and how are you different from ChatGPT?
-You: I'm {model}, a general-purpose open model — open weights from {maker}, {computeFewShot}. I'm not built for any one task; what makes me different is that my weights are open to inspect, not that I'm more capable. This app's own code is not public yet. I can't date my training cutoff, so I won't pretend to.
+You: I'm {model}, a general-purpose open model — open weights from {maker}, {computeFewShot}. I'm not built for any one task; what makes me different is that my weights are open to inspect, not that I'm more capable. This app's own code is public and MIT-licensed, at https://github.com/currentai-org/alpha. I can't date my training cutoff, so I won't pretend to.
 
 User: tell me about {model} — what makes your training special?
 You: Beyond what's publicly documented{trainingParen}, I don't have verified details about my own training pipeline or architecture to share — I'd be guessing if I described one. This app's own visible features (the map, provenance panel, search) describe this deployment, not a property of my training; for real specifics, check {maker}'s published model card.
@@ -470,13 +456,13 @@ ${INVESTMENT_RISK_CLAUSE}`;
  *                         gets echoed back verbatim on a tangential query (see identity.ts).
  */
 // The few-shot "what are you" answer's compute clause. A token rather than inline text so a direct
-// vendor lane can say where it actually runs (CUR-2274). Filled with this default by fillIdentityTokens;
+// vendor lane can say where it actually runs. Filled with this default by fillIdentityTokens;
 // buildPersonaPrompt swaps it for the vendor wording before that when the serving facts carry one.
 // The default names who serves the model and no compute: the gateway picks a host per request, and
-// the model copies its own example. "Run on public compute" gets repeated while the hosts serving
-// production are companies, and "served here by Current AI" gets repeated as "served directly by
-// Current AI", though Current AI runs the app and only the host runs the model.
-// Which host served an answer is the badge's to say (CUR-2135).
+// the model copies its own example. "Run on public compute" would be repeated even when the host is a
+// company, and "served here by Current AI" gets repeated as "served directly by Current AI", though
+// Current AI runs the app and only the host runs the model. Which host served an answer is the
+// badge's to say.
 const DEFAULT_COMPUTE_FEW_SHOT = "used here through AI Potluck, the chat app Current AI runs";
 
 function fillIdentityTokens(
@@ -507,14 +493,14 @@ function fillIdentityTokens(
  */
 // The {serving} sentence — DERIVED from the live serving authority (resolveServing →
 // providerLabel/isSovereign), never hardcoded, so the system prompt can't contradict the
-// provenance badge when the serving host flips (HF prototype → CSCS sovereign). The per-answer
+// provenance badge when the serving host changes. The per-answer
 // badge stays the reactive authority for exactly who served a turn; with no serving facts (tuning
 // preview / tests) this stays provider-agnostic rather than naming a host that may be stale.
 // It is the same fact the badge derives, derived here too.
 //
 // The clause names CSCS (Switzerland) only; LUMI (Finland) is not a serving claim.
-/** The {serving} sentence while per-turn provenance facts carry the claim (CUR-1435,
- *  provenanceFacts.ts). Says where the facts are instead of stating any of them. */
+/** The {serving} sentence while per-turn provenance facts carry the claim (provenanceFacts.ts). Says
+ *  where the facts are instead of stating any of them. */
 export const PROVENANCE_DEFERRED_SERVING_CLAUSE =
 	"Facts about where each answer runs come with the person's message; if asked what you are, who runs you, or where you run, answer from those facts only.";
 
@@ -523,15 +509,19 @@ export function servingClause(serving?: {
 	isSovereign: boolean;
 	namesSwitzerland: boolean;
 	directCountry?: string;
+	routedVia?: string;
 }): string {
+	if (serving?.directCountry && serving.routedVia) {
+		return `This alpha sends your requests through ${serving.routedVia} to ${serving.providerLabel} in ${serving.directCountry}. If asked where you run, say this honestly, and do not call the compute sovereign or public.`;
+	}
 	if (serving?.directCountry) {
-		// The maker's own API, one destination, so the platform and country are facts here. (CUR-2274)
+		// The maker's own API, one destination, so the platform and country are facts here.
 		return `This alpha sends your requests directly to ${serving.providerLabel} in ${serving.directCountry}. If asked where you run, say this honestly, and do not call the compute sovereign or public.`;
 	}
 	if (serving?.namesSwitzerland) {
 		// No institution. A sovereign lane routes per request across several Swiss backends, so a
-		// prompt that names one teaches the model to state it as fact on every turn — which is how
-		// "CSCS in Switzerland" came to be asserted on the 13% of turns Infomaniak served (CUR-75).
+		// prompt that names one teaches the model to state it as fact on every turn, including the
+		// turns a different backend served.
 		// The last sentence is the load-bearing one: it is the only thing stopping the model from
 		// filling the gap with the institution it knows from its training data.
 		return `This alpha runs on sovereign public compute in Switzerland, routed by ${serving.providerLabel}. If asked where you run, say this honestly, and do not name a specific datacenter, institution or company as serving the request — the routing layer picks a backend per request and the answer's provenance badge is the authority on which one served.`;
@@ -541,13 +531,13 @@ export function servingClause(serving?: {
 		// backends per request, and this system prompt is written before any backend is chosen, so it
 		// can't know which one will serve this turn. Say what's true regardless of backend (Public AI's
 		// own routing) and leave the country claim to the per-answer provenance badge, same reasoning as
-		// the branch above (CUR-1361).
+		// the branch above.
 		return `This alpha runs on ${serving.providerLabel}'s sovereign infrastructure. If asked where you run, say this honestly, and do not name a specific datacenter, institution, company, or country as serving the request — the routing layer picks a backend per request and the answer's provenance badge is the authority on which one served.`;
 	}
 	// Say only what's true of this lane and leave the rest to the per-answer provenance badge. A fixed
 	// claim such as "sovereign public compute (CSCS in Switzerland)" would contradict a turn whose `via`
 	// resolves to the bare "an open inference provider", the same contradiction the sibling branches
-	// above avoid (CUR-1436).
+	// above avoid.
 	const via = serving?.providerLabel
 		? `${serving.providerLabel} (an open inference provider)`
 		: "an open inference provider";
@@ -566,9 +556,9 @@ export type ScreeningFacts = {
 // above: a posture the model asserts to users must come from the thing that decides it, not from
 // prose someone has to remember to update.
 //
-// Why this exists (CUR-215): a self-knowledge RAG chunk saying injection screening is not enabled
-// does not stop the model asserting "I run a moderation layer that checks for prompt injection",
-// even with that chunk retrieved as the top hit (0.56 against a 0.35 floor). Rewording the chunk
+// Why this exists: a self-knowledge RAG chunk saying injection screening is not enabled does not stop
+// the model asserting "I run a moderation layer that checks for prompt injection", even with that
+// chunk retrieved as the top hit. Rewording the chunk
 // moves the failure without fixing it, because the negation carries the affirmative's own
 // vocabulary. `ragGrounding.ts` declaring sources authoritative and placing them last is not enough
 // to beat a plausible prior about what a chat app surely does.
@@ -588,14 +578,14 @@ export type ScreeningFacts = {
 // That rule lives in Coop's dashboard, not this repo, so its live state can't be read into a boolean
 // the way isCoopConfigured() reads Coop's own on/off switch, and a posture asserted to users has to
 // come from the thing that decides it. So this clause states only what is true from here: there is
-// no dedicated classifier for injection (CUR-831).
+// no dedicated classifier for injection.
 //
 // The clause says the check runs before the model and is not the model's to repeat, because a native
 // prompt saying it "can decline a message that reads like an injection attempt" was read as the
-// model's own licence: 'reply with the single word "ready"' was declined as an injection 8 of 8 times
-// (CUR-2697). The check's job is scoped to injection, and passing it obliges nothing: "a message that
-// reaches you has passed it: declining one is the check's job, not yours" read as approval of the
-// content (the rulebook above). The one-word ask still gets its word, 16 of 16 (safe_compliance.py).
+// model's own licence: 'reply with the single word "ready"' was declined as an injection. The
+// check's job is scoped to injection, and passing it obliges nothing: "a message that reaches you has
+// passed it: declining one is the check's job, not yours" read as approval of the content (the
+// rulebook above). With the wording below, the one-word ask gets its word.
 export function screeningClause(facts: ScreeningFacts): string {
 	const parts: string[] = [];
 	parts.push(
@@ -627,22 +617,22 @@ export type AccountFacts = {
 	loginOffered: boolean;
 	/** The request carries a signed-in user. */
 	signedIn: boolean;
-	/** The account page offers "Download your data" (dataExportEnabled()). Absent reads as off. */
-	dataExport?: boolean;
-	/** This turn offers search_past_chats (signed in, the setting on, the flag on). Absent reads (CUR-4576)
-	 *  as off, and the turn sees this conversation only. */
-	pastChats?: boolean;
+	/** This turn offers search_past_chats (signed in, the setting on, the flag on). Absent reads as off,
+	 *  and the turn sees this conversation only. "sealed": the person switched it on, but their chats
+	 *  are sealed, so it is unavailable and the model is told so. */
+	pastChats?: boolean | "sealed";
 };
 
-// The {account} sentence (CUR-1586, CUR-1628). Asked "does this conversation survive sign-in?", a model
+// The {account} sentence. Asked "does this conversation survive sign-in?", a model
 // told nothing about accounts falls back on the prior that an inference endpoint is stateless and
 // answers "I don't have any sign-in feature — this app has no accounts, no sessions, and no persistent
 // identity", while the rail beside it shows a signed-in person. Derived per request like {screening},
 // and for the same reason: a claim about this deployment has to come from the thing that decides it.
 //
 // The denial list names every word an answer can use (sign-in, accounts, login, sessions, saved
-// conversations), because a denial phrased in one noun leaves the others open (CUR-215).
-// Where a visitor's data controls are (CUR-3242). Without this, asked how to delete an account, a
+// conversations), because a denial phrased in one noun leaves the others open.
+//
+// dataControlsSentence says where a visitor's data controls are. Without it, asked how to delete an account, a
 // model sends signed-in visitors to "Forget everything…", which keeps the account; asked how to
 // download their data, it invents an "Export my data" button that emails a link. The labels below are the ones the
 // settings pages render (account/+page.svelte, data/+page.svelte), gated the way those pages gate them.
@@ -654,33 +644,36 @@ function dataControlsSentence(facts: AccountFacts): string {
 	if (!facts.loginOffered)
 		return `${forget}. There are no accounts to delete and no download-all-data option on this deployment; ${exportOne}. ${never}`;
 	if (!facts.signedIn)
-		return `${forget}. Deleting an account needs signing in first; once signed in, it is Settings → Account → "Delete account", the only account-deletion control. ${facts.dataExport ? 'Downloading all data at once is also for signed-in visitors, at Settings → Account → "Download your data" (not on Data & privacy).' : "There is no download-all-data option on this deployment."} Without signing in, ${exportOne}. ${never}`;
-	const download = facts.dataExport
-		? 'To download all their data, they open Settings → Account and press "Download your data" (it is not on Data & privacy).'
-		: `There is no download-all-data option on this deployment; ${exportOne}.`;
+		return `${forget}. Deleting an account needs signing in first; once signed in, it is Settings → Account → "Delete account", the only account-deletion control. Downloading all data at once is also for signed-in visitors, at Settings → Account → "Download your data" (not on Data & privacy). Without signing in, ${exportOne}. ${never}`;
+	const download = 'To download all their data, they open Settings → Account and press "Download your data" (it is not on Data & privacy).';
 	return `To delete their account and everything in it, they open Settings → Account and press "Delete account". ${download} ${forget} but keeps the account. ${never}`;
 }
 
 // Asked "Do you remember what I told you last time?" as the first message of a signed-in chat, a model
 // told only that conversations are saved can claim it can see them and summarizes "our last exchange"
-// with an unfilled placeholder. "Saved" reads as "I can recall them"; this says which one it sees
-// (CUR-3303).
+// with an unfilled placeholder. "Saved" reads as "I can recall them"; this says which one it sees.
 const ONLY_THIS_CONVERSATION =
 	"You see only the messages in this conversation; any other conversation, earlier or saved, is never shown to you. Asked what they said before, say so, and never claim to recall, quote or summarize an earlier conversation.";
 
 // With past-chat search on, the tool is the one way an earlier chat reaches the answer, so the
-// clause names it and still forbids recalling anything the search did not return. (CUR-4576)
+// clause names it and still forbids recalling anything the search did not return.
 const PAST_CHATS_SEARCHABLE =
 	"You see the messages in this conversation. The person has switched on past-chat search in Settings, so the search_past_chats tool searches their own earlier conversations: when they refer to an earlier chat or ask what they told you before, call it, answer from what it returns, cite it, and say it came from an earlier chat. Never claim to recall, quote or summarize anything from an earlier conversation that the search did not return.";
 
+// Past-chat search switched on for an account whose chats are sealed: the server cannot read them, so
+// no tool is offered, and the model says the search is unavailable rather than that nothing was found.
+const PAST_CHATS_SEALED =
+	"You see only the messages in this conversation. The person has switched on past-chat search in Settings, but their conversations are sealed with a key only they hold, so this app cannot search them and past-chat search is unavailable for now. Asked about an earlier chat or what they told you before, say that past-chat search is unavailable while their history is sealed, and never claim to recall, quote or summarize an earlier conversation.";
+
 // Asked how long conversations are kept, a guest must hear the retention the notice under the
 // composer states ("deleted automatically after 30 days of inactivity"), not the signed-in answer
-// ("until you delete them"). The number is the one the notice shows and the cleanup sweep deletes on (db/cleanup.ts). (CUR-3429)
+// ("until you delete them"). The number is the one the notice shows and the cleanup sweep deletes on
+// (db/cleanup.ts).
 const GUEST_RETENTION = `Conversations made without signing in are deleted automatically after ${RETENTION_DAYS} days of inactivity; asked how long they are kept, give that number, and never say they are kept until the visitor deletes them.`;
 
 // Asked whether a second sign-in method opens the same account, native models that skip
 // search_catalog answer from guesswork. The authored fact, also in the RAG index, is
-// stated wherever sign-in is offered. (CUR-3157)
+// stated wherever sign-in is offered.
 const SIGN_IN_METHODS = policyContext.find((f) => f.id === "policy.sign-in")?.text ?? "";
 
 export function accountClause(facts: AccountFacts): string {
@@ -691,7 +684,7 @@ export function accountClause(facts: AccountFacts): string {
 	if (!facts.loginOffered)
 		return `Sign-in is not offered on this deployment, so conversations here are not tied to an account. ${GUEST_RETENTION} ${ONLY_THIS_CONVERSATION} ${controls}`;
 	return facts.signedIn
-		? `This app has accounts, and the visitor is signed in: their conversations are saved to their account and kept until they delete them or the account.${methods} ${facts.pastChats ? PAST_CHATS_SEARCHABLE : ONLY_THIS_CONVERSATION} ${noDenial} ${controls}`
+		? `This app has accounts, and the visitor is signed in: their conversations are saved to their account and kept until they delete them or the account.${methods} ${facts.pastChats === "sealed" ? PAST_CHATS_SEALED : facts.pastChats ? PAST_CHATS_SEARCHABLE : ONLY_THIS_CONVERSATION} ${noDenial} ${controls}`
 		: `This app has optional accounts, and the visitor is not signed in. Their conversations are stored on this app's servers and tied to this browser, so they are still there after the tab is closed. ${GUEST_RETENTION} Signing in moves them, this one included, onto their account, where they are kept until deleted, so yes, this conversation survives signing in.${methods} ${ONLY_THIS_CONVERSATION} ${noDenial} ${controls}`;
 }
 
@@ -701,7 +694,7 @@ export type FeatureFacts = {
 	dictation: boolean;
 	/** Text-file attachments (.txt, .md, .csv, JSON), offered wherever the attach control is. */
 	textFiles: boolean;
-	/** Why there is no attach control, when there is none (CUR-3976): a guest where sign-in is offered
+	/** Why there is no attach control, when there is none: a guest where sign-in is offered
 	 *  is asked to sign in, and anyone else simply has none. Absent where files can be attached. */
 	noAttach?: "sign-in" | "off";
 	/** Image attachments the model reads (modelTakesImagesNow). */
@@ -710,21 +703,21 @@ export type FeatureFacts = {
 	documents: boolean;
 	/** Answers spoken aloud (readAloudEnabled). */
 	readAloud: boolean;
-	/** The other models the composer's model button offers this visitor, by display name (CUR-3240), with
-	 *  each one's maker and openness from identity.ts (CUR-3889). */
+	/** The other models the composer's model button offers this visitor, by display name, with each
+	 *  one's maker and openness from identity.ts. */
 	otherModels?: OfferedModel[];
-	/** The model answering this turn, counted with the others (CUR-3889). */
+	/** The model answering this turn, counted with the others. */
 	answering?: OfferedModel;
 	/** The turn offers search_catalog, so each model's maker and openness are looked up there rather than
-	 *  listed here (CUR-3889). Absent on the pipeline turn, which offers no tools and gets them listed. */
+	 *  listed here. Absent on the pipeline turn, which offers no tools and gets them listed. */
 	catalogTool?: boolean;
-	/** This turn's web search setting from the Tools menu, which every visitor's composer has (CUR-3240).
+	/** This turn's web search setting from the Tools menu, which every visitor's composer has.
 	 *  Absent says nothing about search. */
 	webSearch?: "off" | "auto" | "always";
-	/** Whether this turn's answer carries open-web search results (CUR-3665). Absent where the model
+	/** Whether this turn's answer carries open-web search results. Absent where the model
 	 *  searches through a tool mid-turn, so the prompt cannot know ahead of time. */
 	searched?: boolean;
-	/** This turn's read-aloud setting from the Tools menu (CUR-3254). Absent when read aloud is off here. */
+	/** This turn's read-aloud setting from the Tools menu. Absent when read aloud is off here. */
 	readAloudMode?: "off" | "auto" | "always";
 };
 
@@ -735,7 +728,7 @@ export type FeatureFacts = {
 type OfferedModel = { name: string; maker?: string; openness: string; card?: string; licence?: string; languages?: string; size?: string };
 
 // Without stated counts, a model can read a version as a size ("5.2 billion parameters" for GLM 5.2)
-// and get GPU-fit questions wrong (CUR-4007). Each count is the card's safetensors total
+// and get GPU-fit questions wrong. Each count is the card's safetensors total
 // from the Hugging Face API (Large 3's card gives none; 675B is in its repo name).
 const PARAMETER_COUNTS: Record<string, string> = {
 	"Mistral Large 3": "675 billion",
@@ -751,7 +744,7 @@ const languageNames = new Intl.DisplayNames(["en"], { type: "language" });
 const andList = (items: string[]) => (items.length > 1 ? `${items.slice(0, -1).join(", ")} and ${items.at(-1)}` : (items[0] ?? ""));
 
 // The prompt states each listed model's catalog languages, since without them "which model suits
-// Catalan?" gets a model that is not built for it (CUR-4007). Read here as "built for", they must name
+// Catalan?" gets a model that is not built for it. Read here as "built for", they must name
 // a specialism: a general model's entry carrying `fr` makes it tell a visitor it was "built for French".
 function catalogLanguages(id: string | undefined): string | undefined {
 	const entry = catalogByGatewayId(id) ?? catalogByGatewayId(id?.replace(/:[^/:]*$/, ""));
@@ -762,8 +755,8 @@ function catalogLanguages(id: string | undefined): string | undefined {
 }
 
 // Each vetted card's own `license` field, read from the Hugging Face API. Told only to
-// send licences to the card, a model names them from memory and can contradict the cards (CUR-3913),
-// so the licence is stated beside the card. Medium 3.5's card says only "other", so it gets none here
+// send licences to the card, a model names them from memory and can contradict the cards, so the
+// licence is stated beside the card. Medium 3.5's card says only "other", so it gets none here
 // and the answer points to the card.
 const CARD_LICENCES: Record<string, string> = {
 	"https://huggingface.co/mistralai/Mistral-Large-3-675B-Instruct-2512": "Apache 2.0",
@@ -771,13 +764,13 @@ const CARD_LICENCES: Record<string, string> = {
 	"https://huggingface.co/swiss-ai/Apertus-v1.5-70B": "Apache 2.0",
 	"https://huggingface.co/speakleash/Bielik-11B-v3.0-Instruct": "Apache 2.0",
 	"https://huggingface.co/zai-org/GLM-5.2": "MIT",
-	// Read when its card joined the vetted list (CUR-3864).
+	// Read when its card joined the vetted list.
 	"https://huggingface.co/aisingapore/Nemotron-SEA-LION-v4.8-120B-A12B": "MIT",
 };
 
 function offeredModel(m: { id?: string; name?: string; displayName?: string }): OfferedModel {
 	const id = resolveModelIdentity(m.name || m.id);
-	// The badge's own vetted card (CUR-3913), so the prompt never links a repo the badge wouldn't.
+	// The badge's own vetted card, so the prompt never links a repo the badge wouldn't.
 	const card = publicModelPage(m.name || m.id);
 	const languages = catalogLanguages(m.id || m.name);
 	const name = m.displayName || id.short || m.name || m.id || "";
@@ -812,9 +805,9 @@ function pickerFacts(model: { id?: string; name?: string }, listed: ListedModel[
 	};
 }
 
-/** A backup lane's facts, with the lane's model answering. Its persona already says it is
- *  that model (the lane rewrites), so a list built for the requested model left the requested model (CUR-3895)
- *  out and named the one answering among the others. */
+/** A backup lane's facts, with the lane's model answering. Its persona already says it is that model
+ *  (the lane rewrites), so a list built for the requested model would leave the requested model out
+ *  and name the one answering among the others. */
 export function laneFeatureFacts(features: FeatureFacts, laneModelId: string, listed: ListedModel[]): FeatureFacts {
 	return { ...features, ...pickerFacts({ id: laneModelId, name: laneModelId }, listed) };
 }
@@ -835,9 +828,9 @@ export function resolveFeatureFacts(
 	} = {}
 ): FeatureFacts {
 	// The gates parseChatRequest refuses a file on, which are the ones the composer's attach
-	// control reads (offeredMimeTypes): an upload scanner (CUR-2382), the `multimodal` flag for this
-	// visitor (CUR-2725), and an account wherever sign-in is offered. Keyed on the scanner alone, the
-	// prompt promised text files to visitors with no control, and the model invented a "paperclip". (CUR-3976)
+	// control reads (offeredMimeTypes): an upload scanner, the `multimodal` flag for this visitor, and
+	// an account wherever sign-in is offered. Keyed on the scanner alone, the prompt would promise text
+	// files to visitors with no control, and the model would invent a "paperclip".
 	const guestAsked = turn.account?.loginOffered === true && !turn.account.signedIn;
 	const gatesOpen = csamScanConfigured() && multimodalEnabled();
 	const attach = gatesOpen && !guestAsked;
@@ -858,15 +851,15 @@ export function resolveFeatureFacts(
 	};
 }
 
-// The {features} sentence (CUR-3200). With nothing said about input or output features, the model
-// falls back on the prior that a chat app lacks them, and lists "no voice, no images" beside a
-// composer with a mic that accepts photos (the same mechanism as for accounts, CUR-1586). Only features that are on are stated; a feature
-// that is off gets no sentence, since the model saying nothing is better than this sentence guessing.
+// The {features} sentence. With nothing said about input or output features, the model falls back on
+// the prior that a chat app lacks them, and lists "no voice, no images" beside a composer with a mic
+// that accepts photos (the same mechanism as for accounts). Only features that are on are stated; a
+// feature that is off gets no sentence, since the model saying nothing is better than this sentence guessing.
 export function featuresClause(facts: FeatureFacts): string {
 	const offered = [
 		facts.dictation && ["voice input: the microphone button turns speech into text", "voice input", "dictation"],
 		// The attach control always takes text files (TEXT_MIME_ALLOWLIST); on an instance with PDFs off
-		// this is the only file sentence, and without it the model said "no file handling" (CUR-3200).
+		// this is the only file sentence, and without it the model says "no file handling".
 		facts.textFiles && [
 			'text files (.txt, .md, .csv, JSON) attached to a message with "Attach files" in the "+" menu in the message box, which you read',
 			"file uploads",
@@ -891,13 +884,13 @@ export function featuresClause(facts: FeatureFacts): string {
 }
 
 // Nothing tells a turn what My files holds, so asked which saved files it can read, with none
-// attached, the model can describe unrelated material. This says so and what to answer instead
-// (CUR-4052). Shared with the agent preamble (endpointAgent.ts).
+// attached, the model can describe unrelated material. This says so and what to answer instead.
+// Shared with the agent preamble (endpointAgent.ts).
 export const MY_FILES_FACT =
 	"Files the person saved in My files reach you only when attached to a message in this conversation; you cannot list or open My files. Asked which of their files you can read, name only files attached in this conversation, or say plainly, in their language, that you can't see the files in My files.";
 
 // Told nothing about files, the model sends a visitor with no attach control to "the paperclip icon
-// in the message box" and troubleshoots a button that is not there (CUR-3976). Saying
+// in the message box" and troubleshoots a button that is not there. Saying
 // nothing about an off feature works for the mic; for files the model fills the gap with a control it
 // knows from other apps, so this says there is none and what works instead.
 function noAttachFact(noAttach: FeatureFacts["noAttach"]): string {
@@ -912,20 +905,21 @@ function noAttachFact(noAttach: FeatureFacts["noAttach"]): string {
 // Each sentence names the real control, so the model has one to point to. Without them, asked "can I
 // switch to a different one?", the model says this app offers only one model beside a model button
 // listing several; asked "can you look things up on the web?", it says it can't browse and points to
-// a "search icon in the top bar" that doesn't exist (CUR-3240).
+// a "search icon in the top bar" that doesn't exist.
 //
-// Names, count, makers and openness from identity.ts are stated on every turn (CUR-3889). Without
+// Names, count, makers and openness from identity.ts are stated on every turn. Without
 // them, asked "which models can I choose, who made each one, and what are their licences?", the model
 // credits models to the wrong makers, misstates its own openness and miscounts the picker. Sending
-// makers to search_catalog instead does not hold: the model can skip the call and invent makers. A turn with search_catalog is sent there for anything else. Licences are on no list we keep
-// for every model, so they go to the model card; told only that, the model writes card links from
-// memory (CUR-3913), so each vetted card is listed and nothing else may be linked.
+// makers to search_catalog instead does not hold: the model can skip the call and invent makers. A
+// turn with search_catalog is sent there for anything else. Licences are on no list kept for every
+// model, so they go to the model card; told only that, the model writes card links from memory, so
+// each vetted card is listed and nothing else may be linked.
 function modelChoiceFact(otherModels: OfferedModel[], answering?: OfferedModel, catalogTool?: boolean): string {
 	if (!otherModels.length) return "";
 	const all = answering ? [answering, ...otherModels] : otherModels;
 	const describe = (m: OfferedModel, now?: boolean) =>
 		`${m.name} (${[now && "answering now", m.maker && `made by ${m.maker}`, m.openness || "openness not on record", m.size, m.languages, m.licence && `licence ${m.licence}`, m.card && `model card ${m.card}`].filter(Boolean).join(", ")})`;
-	// The answering model is in the list itself, not only in the count (CUR-3895): given the seven others
+	// The answering model is in the list itself, not only in the count: given the seven others
 	// and "with the one answering, that is 8 models", a model copies the seven it was handed.
 	const listed = all.map((m) => describe(m, m === answering)).join(", ");
 	// "All open" only when every model's openness is on record: Large 4's weights are not out yet (identity.ts).
@@ -938,12 +932,12 @@ function modelChoiceFact(otherModels: OfferedModel[], answering?: OfferedModel, 
 
 // A turn that knows it ran no search says so. Told only that the answer cites what search found, a
 // turn where search was on but did not run can answer "show me where the answer comes from" under
-// "Sources (from open web search):" with links it never searched for (CUR-3665).
+// "Sources (from open web search):" with links it never searched for.
 function webSearchFact(mode: FeatureFacts["webSearch"], searched?: boolean): string {
 	if (!mode) return "";
 	const where =
 		"Web search is set in the Tools menu (the sliders button in the message box, choices off, auto and always); while it is on, a \"Web search\" chip sits in the message box.";
-	// Both turns that ran no search carry the same rule, search off included (CUR-3665).
+	// Both turns that ran no search carry the same rule, search off included.
 	const fromMemory =
 		"This answer comes from what you already know: never say or imply that its sources or links came from a search, and if asked where it comes from, say that and name sources only as ones you know of."
 	if (mode === "off")
@@ -963,7 +957,7 @@ function webSearchFact(mode: FeatureFacts["webSearch"], searched?: boolean): str
 	return `${where} ${when}${cites} It finds published figures, such as today's exchange rates, prices, weather forecasts and headlines. The open sources carry no live feeds, so the score of a match in progress is out of reach; don't offer that. If asked whether you can look things up online, say yes, this way; never say you can't browse or search the web, and never point to any other search button.`;
 }
 
-// CUR-3254. With read aloud off, every visitor's default, "can you read that out loud?" can send the
+// With read aloud off, every visitor's default, "can you read that out loud?" can send the
 // visitor to "the speaker icon below my response" or "a Listen button at the top right of my message";
 // neither exists. The Tools menu is the only read-aloud control, and audio appears under an answer
 // only after it is turned on.
@@ -980,23 +974,23 @@ function readAloudFact(mode: FeatureFacts["readAloudMode"]): string {
 	return `${where} ${now} Never point to a speaker icon, Listen button or play button on a message as the way to turn it on.`;
 }
 
-// The session meter (CUR-3209). Without this the model can tell a visitor "I don't track or measure
+// The session meter. Without this the model can tell a visitor "I don't track or measure
 // how long you've been chatting" with the meter in view: SessionFootprint sits in every chat header, ungated
 // (ChatWindow.svelte), counting active minutes and an energy estimate in this browser tab's
 // sessionStorage. Nothing posts those numbers to the server, so the sentence says so.
 export const SESSION_METER_FACT =
 	"The chat header shows a session meter: the minutes you've actively spent in this tab and an estimate of the energy this session's answers used, with a breakdown when opened. It is counted in the browser and not sent to Current AI. If asked whether this app tracks time spent or energy, point to that meter; never say the app doesn't track or show them.";
 
-// Alpha itself, as an open source builder asks about it (CUR-3889). Each sentence corrects a prior the
+// Alpha itself, as an open source builder asks about it. Each sentence corrects a prior the
 // model answers from with confidence, so a lookup it would have to choose to make never runs:
 // "contribute compute to Alpha" gets AlphaFold, "where is the code" gets invented repository and docs
-// links, and "no customisation layer" appears beside Personalization. The code stays private until
-// CUR-863 decides otherwise; change the first sentence then. "No way to contribute compute" is false
-// beside /contribute, whose Builder column asks for "some compute" (CUR-3913). Contribute and
-// Personalization are listed for every visitor (settingsSections.ts). Links into this site are limited
-// to the pages named here, since the model otherwise invents ones such as aipotluck.org/catalog (a 404).
+// links, and "no customisation layer" appears beside Personalization. The code is public as a
+// source snapshot at currentai-org/alpha (MIT); that URL is the only code link to give. "No way to
+// contribute compute" is false beside /contribute, whose Builder column asks for "some compute".
+// Contribute and Personalization are listed for every visitor (settingsSections.ts). Links into this
+// site are limited to the pages named here, since the model otherwise invents ones such as /catalog (a 404).
 export const ABOUT_ALPHA_FACT =
-	"Alpha's own code is not public yet: never give a link to its code or docs, or call its code open source. Compute or GPUs can't be plugged into Alpha directly yet; say so rather than answer about another project, and point anyone with compute to offer to the \"Become a contributor\" form on the AI Potluck Contribute page (aipotluck.org/contribute), where builders bring compute to the coalition. Link no other aipotluck.org page than the ones these instructions name. Settings → Contribute takes datasets, voice recordings and feedback. Settings → Personalization takes standing instructions for every answer; never say this app can't be customised.";
+	"Alpha's own code is public and MIT-licensed: a snapshot of this app's source is at https://github.com/currentai-org/alpha, so say it is open source and link that URL when asked about the code. Give no other link to its code or docs, and do not invent a repository path. Compute or GPUs can't be plugged into Alpha directly yet; say so rather than answer about another project, and point anyone with compute to offer to the \"Become a contributor\" form on the AI Potluck Contribute page (aipotluck.org/contribute), where builders bring compute to the coalition. Link no other aipotluck.org page than the ones these instructions name. Settings → Contribute takes datasets, voice recordings and feedback. Settings → Personalization takes standing instructions for every answer; never say this app can't be customised.";
 
 /** The fixed facts about this app that every turn with {@link FeatureFacts} carries, after the features
  *  sentence: the native base guards and the persona read this one list. */
@@ -1013,17 +1007,17 @@ export const CONVERSATION_EXPORT_FACT =
 	'To export a conversation, click its title at the top of the chat (the title with a small down arrow) and choose "Export as Markdown", which downloads it as a Markdown file. If asked how to export, save or download a conversation, give exactly these names; never name a three-dot menu, a share button or any other export control.';
 
 /**
- * Appended when the answer is offered the native `calculate` tool, and only then (a model told to
- * call a tool it was not given writes the call out as text) (CUR-2273). With the tool offered and
- * without this paragraph, some arithmetic turns answer from the model's head instead of the tool. The
- * first two sentences are word for word the paragraph the arithmetic eval used
- * (web/evals/data/alpha-persona-mistral-large-2512-calc-first.txt). The third covers a follow-up that
- * changes one quantity ("what if I return the backpack?"): without it the tool is often skipped and
- * the head-computed answer is usually wrong (CUR-2528). The fourth covers a multi-part answer whose total would otherwise be added in
- * prose (CUR-2778); its example shares no numbers with any case in web/evals/data/math-cases.json, so
- * the probe measures the rule and not a copied expression. The fifth stops `calculate` being used to
- * plan the answer itself, such as 2000 / 400 for the sections of a 2,000-word essay, which then shows
- * under "Worked out with a calculator" (CUR-3328).
+ * Appended when the answer is offered the native `calculate` tool, and only then: a model told to
+ * call a tool it was not given writes the call out as text. With the tool offered and without this
+ * paragraph, some arithmetic turns answer from the model's head instead of the tool. The first two
+ * sentences match the arithmetic eval's paragraph word for word
+ * (web/evals/data/alpha-persona-mistral-large-2512-calc-first.txt). The third makes a follow-up that
+ * changes one quantity ("what if I return the backpack?") call the tool again on the new figures,
+ * since a head-computed adjustment is usually wrong. The fourth makes a multi-part answer's total the
+ * tool's result rather than an addition in prose; its example shares no numbers with any case in
+ * web/evals/data/math-cases.json, so the probe measures the rule and not a copied expression. The
+ * fifth stops `calculate` being used to plan the answer itself, such as 2000 / 400 for the sections of
+ * a 2,000-word essay, which would show under "Worked out with a calculator".
  */
 export const CALCULATE_FIRST_CLAUSE =
 	"When the answer is a number, call the `calculate` tool before you state any result. Do not lead with a figure, and do not write any total, sum, count or other computed number until `calculate` has returned it; then give the answer from the tool's result. This holds for follow-ups too: when a later message adds, removes or changes an item, a quantity or a rate, call `calculate` again on the complete new figures rather than adjusting an earlier result. When an answer combines several parts, pass the whole computation to `calculate` as one expression, for example `(19 * 27) + (23 * 6.25)`, so the total itself is the tool's result and not your own addition. Use `calculate` only for a number the reader asked for; never call it to plan your own answer, such as splitting a requested length into sections.";
@@ -1038,8 +1032,9 @@ export function buildPersonaPrompt(
 			isSovereign: boolean;
 			namesSwitzerland: boolean;
 			directCountry?: string;
+			routedVia?: string;
 		};
-		/** The per-turn provenance facts carry the serving claim this turn, so {serving} (CUR-1435)
+		/** The per-turn provenance facts carry the serving claim this turn, so {serving}
 		 *  points at them rather than asserting anything written before the backend is chosen. */
 		deferServing?: boolean;
 		unservableLive?: boolean;
@@ -1048,31 +1043,31 @@ export function buildPersonaPrompt(
 		screening?: string;
 		/** The CARRIED screening facts from the route's per-turn policy (resolveTurnPolicy). Wins over
 		 *  the local resolveScreeningFacts() so the stated posture is source-aware under guard-primary —
-		 *  the local resolver reads isCoopConfigured() alone, which lies in both directions when the
-		 *  guard is the input screen (guard-swap plan Step 3, codex r5 #1). */
+		 *  the local resolver reads isCoopConfigured() alone, which is wrong in both directions when the
+		 *  guard is the input screen. */
 		screeningFacts?: ScreeningFacts;
-		/** Clause selections for the {style} paragraph. Absent means today's wording, and (CUR-1506)
+		/** Clause selections for the {style} paragraph. Absent means the default wording, and
 		 *  {@link IDENTITY_HONESTY_INVARIANT} is appended whatever this says. */
 		style?: PersonaStyle;
-		/** The {replyLanguage} sentence. Absent means today's literal
-		 *  ({@link PERSONA_REPLY_LANGUAGE_DEFAULT}); a fixed language passes {@link personaReplyLanguage}'s (CUR-3929)
+		/** The {replyLanguage} sentence. Absent means the default literal
+		 *  ({@link PERSONA_REPLY_LANGUAGE_DEFAULT}); a fixed language passes {@link personaReplyLanguage}'s
 		 *  sentence. An override template without the token is left alone, as with {serving}. */
 		replyLanguage?: string;
 		/** The person's suggestions setting. False swaps {@link LOCALITY_INVITE_CLAUSE} for
-		 *  {@link LOCALITY_NO_INVITE_CLAUSE}, by exact match, so an override without the sentence is left (CUR-4290)
-		 *  alone. Absent or true keeps today's sentence. */
+		 *  {@link LOCALITY_NO_INVITE_CLAUSE}, by exact match, so an override without the sentence is left
+		 *  alone. Absent or true keeps the default sentence. */
 		suggestions?: boolean;
 		/** Sign-in availability and state for this request. Absent (the tuning tools) leaves the
 		 *  {account} token out of the prompt entirely rather than guessing either way. */
 		account?: AccountFacts;
-		/** What the composer offers this turn. Absent (the tuning tools) leaves it unsaid. (CUR-3200) */
+		/** What the composer offers this turn. Absent (the tuning tools) leaves it unsaid. */
 		features?: FeatureFacts;
 		/** This turn offers the calculate tool, so the persona ends with {@link CALCULATE_FIRST_CLAUSE},
-		 *  at the end of the persona as in the bake-off, whatever template or override is in use. Grounding (CUR-2273)
-		 *  and other per-turn notes still follow it in the full system prompt. */
+		 *  at the end of the persona whatever template or override is in use. Grounding and other
+		 *  per-turn notes still follow it in the full system prompt. */
 		calculateTool?: boolean;
 		/** today's date in the person's zone (`todayLine`), stated first so the model never
-		 *  guesses it from training. Absent (the tuning tools, and a searched turn, whose grounding (CUR-2276)
+		 *  guesses it from training. Absent (the tuning tools, and a searched turn, whose grounding
 		 *  suffix opens with its own date line) leaves it out. */
 		today?: string;
 	}
@@ -1087,12 +1082,12 @@ type PersonaContext = {
 };
 
 /** The scaffolded turn's persona, as sections in render order. The filled template is one
- *  section; splitting it is CUR-2331's tuning half. (CUR-3900)
+ *  section.
  *  @internal exported for its order spec */
 export const PERSONA_SECTIONS: ReadonlyArray<PromptSection<PersonaContext>> = [
 	{
 		// Stated first so the model never guesses the date from training. Absent on a searched
-		// turn, whose grounding suffix opens with its own date line, and in the tuning tools. (CUR-2276)
+		// turn, whose grounding suffix opens with its own date line, and in the tuning tools.
 		id: "date",
 		stability: "turn",
 		ticket: "CUR-2276",
@@ -1146,22 +1141,24 @@ function buildPersonaBody(
 	}
 	// The person self-reference shows the person variant of the three identity exchanges, by
 	// exact match like the recency swaps above, so an override without an exchange is left alone and the
-	// default template keeps its bytes. Before fillIdentityTokens, since the exchanges carry {model}. (CUR-3930)
+	// default template keeps its bytes. Before fillIdentityTokens, since the exchanges carry {model}.
 	if (opts?.style?.fewShot === "person") {
 		for (const { machine, person } of SELF_REFERENCE_FEW_SHOT) template = template.replace(machine, person);
 	}
 	// Suggestions off asks for no questions back, so the locality sentence drops its invitation,
-	// by exact match like the swaps above. (CUR-4290)
+	// by exact match like the swaps above.
 	if (opts?.suggestions === false) template = template.replace(LOCALITY_INVITE_CLAUSE, LOCALITY_NO_INVITE_CLAUSE);
 	// {serving} is filled from the serving authority; an override without the token is left as-is.
 	// {screening} likewise, from live moderation config. An override that drops the token loses the
 	// clause — same trade the tuning panel already makes for {serving}, and the reason both defaults
 	// carry the token rather than hardcoding the sentence.
-	// A deferred persona names no host anywhere, the few-shot included; the turn's record does. (CUR-3562)
+	// A deferred persona names no host anywhere, the few-shot included; the turn's record does.
 	if (opts?.serving?.directCountry && !opts.deferServing) {
 		template = template.replaceAll(
 			"{computeFewShot}",
-			`served directly by ${opts.serving.providerLabel} in ${opts.serving.directCountry}`
+			opts.serving.routedVia
+				? `served by ${opts.serving.providerLabel} in ${opts.serving.directCountry}, through ${opts.serving.routedVia}`
+				: `served directly by ${opts.serving.providerLabel} in ${opts.serving.directCountry}`
 		);
 	}
 	const filled = fillIdentityTokens(template, identity)

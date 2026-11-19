@@ -1,7 +1,7 @@
-"""Run the agent service under uvicorn, draining running tasks before a stop (CUR-4598).
+"""Run the agent service under uvicorn, draining running tasks before a stop.
 
 `uvicorn app:app` closes its listening socket on the first SIGTERM or SIGINT, and Fly stops the machine
-kill_timeout seconds later, so a deploy would kill every task mid-run. Here the first stop signal starts
+kill_timeout seconds later, so a deploy killed every task mid-run. Here the first stop signal starts
 app.begin_drain instead: new /run calls get a 503 with Retry-After while running tasks keep their event
 streams, downloads and confirms, and uvicorn's own graceful exit starts once they finish (or the drain's
 deadline passes). A second signal, which Fly sends when kill_timeout runs out, cuts the wait short.

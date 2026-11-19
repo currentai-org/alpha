@@ -103,7 +103,7 @@ describe('latchModelLabel — an agent task never borrows the selected model\'s 
 	});
 });
 
-describe('liveActiveLine — a code sandbox waiting for a slot (CUR-4584)', () => {
+describe('liveActiveLine — a code sandbox waiting for a slot', () => {
 	it('says it is waiting for a free sandbox, even after the answer has started streaming', () => {
 		expect(liveActiveLine({ phase: 'waiting-sandbox', answered: false, modelLabel: 'Mistral Large 3' })).toBe(
 			'Waiting for a free sandbox…'
@@ -158,7 +158,7 @@ describe('liveActiveLine — what the pulsing line says', () => {
 		expect(searching).toMatch(/searching the web/i);
 	});
 
-	it('a turn that searches only our documents never says it is searching the web (CUR-2223)', () => {
+	it('a turn that searches only our documents never says it is searching the web', () => {
 		const line = (phase: string) =>
 			liveActiveLine({ phase, answered: false, modelLabel: 'GLM 5.2' });
 		for (const phase of ['screening', 'screening-documents', 'searching-documents']) {
@@ -180,7 +180,7 @@ describe('liveActiveLine — what the pulsing line says', () => {
 		expect(line('searching-documents-web')).toMatch(/our documents/);
 	});
 
-	it('a long paste shows which part the safety screen is on, after the same screening line (CUR-3749)', () => {
+	it('a long paste shows which part the safety screen is on, after the same screening line', () => {
 		const line = (phase: string) =>
 			liveActiveLine({ phase, answered: false, modelLabel: 'GLM 5.2' });
 		expect(line('screening@4/9')).toBe('Checking safety… part 4 of 9');
@@ -219,7 +219,7 @@ describe('liveActiveLine — what the pulsing line says', () => {
 	});
 
 	// The line must not name a model before any was called, and must not stay up through
-	// fixed replies no model writes. (CUR-1579 / CUR-1978)
+	// fixed replies no model writes.
 	it('names no model before the first phase marker, whatever model is selected', () => {
 		expect(liveActiveLine({ answered: false, modelLabel: 'Apertus 70B' })).toBe(PRE_PHASE_LINE);
 		expect(
@@ -228,7 +228,7 @@ describe('liveActiveLine — what the pulsing line says', () => {
 		expect(PRE_PHASE_LINE).not.toMatch(/model|Apertus|GLM/i);
 	});
 
-	it('names no model on a fixed reply, even once its text is streaming (CUR-1579, CUR-1978)', () => {
+	it('names no model on a fixed reply, even once its text is streaming', () => {
 		for (const answered of [false, true]) {
 			for (const phase of [undefined, 'thinking', 'screening']) {
 				expect(
@@ -239,7 +239,7 @@ describe('liveActiveLine — what the pulsing line says', () => {
 		expect(FIXED_REPLY_LINE).not.toMatch(/model|Apertus|GLM|generating|computing/i);
 	});
 
-	it('names the audio wait, not the model, once speech synthesis has started (CUR-2210)', () => {
+	it('names the audio wait, not the model, once speech synthesis has started', () => {
 		for (const answered of [false, true]) {
 			for (const phase of [undefined, 'thinking', 'writing']) {
 				const line = liveActiveLine({
@@ -253,7 +253,7 @@ describe('liveActiveLine — what the pulsing line says', () => {
 		}
 	});
 
-	it('says the model is writing on a read-aloud turn, whose tokens never reach the client (CUR-2210)', () => {
+	it('says the model is writing on a read-aloud turn, whose tokens never reach the client', () => {
 		expect(liveActiveLine({ phase: 'writing', answered: false, modelLabel: 'GLM 5.2' })).toBe(
 			'GLM 5.2 is writing the reply…'
 		);
@@ -281,7 +281,7 @@ describe('liveActiveLine — what the pulsing line says', () => {
 	});
 });
 
-// CUR-1348. The failure this names is drift, not a wrong string: a server that emits
+// The failure this names is drift, not a wrong string: a server that emits
 // `phaseMarker("foo")` with no case in liveActiveLine renders the generic "Working on it…"
 // fallback, which looks like a working spinner and is exactly the uninformative line this whole rail
 // exists to replace. Nothing connects the two files, so the check has to read one against the other.
@@ -319,7 +319,7 @@ describe('every phase the server emits has a label', () => {
 });
 
 // The live log names both models when a backup takes over, so the earlier "<primary> is
-// computing…" reads as the first half of a switch rather than as a claim the badge then contradicts. (CUR-2239)
+// computing…" reads as the first half of a switch rather than as a claim the badge then contradicts.
 describe('failoverLine — both models, and why the switch happened', () => {
 	const from = 'swiss-ai/apertus-v1.5-70b';
 	const to = 'zai-org/GLM-5.3';
@@ -337,7 +337,7 @@ describe('failoverLine — both models, and why the switch happened', () => {
 	});
 
 	// The direct lane's backup arrives as the wire id `mistral-medium-2604`, which once rendered
-	// raw ("mistral medium 2604") beside a properly named primary in the same sentence. (CUR-2516)
+	// raw ("mistral medium 2604") beside a properly named primary in the same sentence.
 	it('names the Mistral Medium backup by its model name, cased like the primary, never by its wire id', () => {
 		expect(
 			failoverLine({ from: 'mistral-large-2512', to: 'mistral-medium-2604', reason: 'unavailable' })
@@ -345,7 +345,7 @@ describe('failoverLine — both models, and why the switch happened', () => {
 	});
 });
 
-describe('elapsedLabel — a step that holds says how long it has run (CUR-1756)', () => {
+describe('elapsedLabel — a step that holds says how long it has run', () => {
 	it('shows nothing for a step that finishes inside five seconds, so an ordinary turn is unchanged', () => {
 		expect(elapsedLabel(0)).toBe('');
 		expect(elapsedLabel(4999)).toBe('');

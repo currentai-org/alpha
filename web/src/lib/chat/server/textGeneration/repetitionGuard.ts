@@ -1,4 +1,4 @@
-// Detect a generation that got stuck echoing the same short clause over and over (CUR-1104).
+// Detect a generation that got stuck echoing the same short clause over and over.
 //
 // The shape: an answer echoes the user's question once, then loops on one 5-8 word clause 2-4 more
 // times with only a leading connector word varying each pass. For example, from Yoruba input:
@@ -29,7 +29,7 @@
 // above repeat a 7-word span 3-4 times with nothing else in between. N=6/K=3 sits below the
 // observed real failures and above ordinary rhetorical repetition; it has not been tuned against a
 // large corpus of legitimate answers, so `repetitionGuardEnabled()` gates it off by default (see
-// below) pending exactly that kind of live verification, same posture as CUR-742/CUR-958.
+// below) until it has been checked against live traffic.
 //
 // ── WHAT THIS DOES NOT CATCH, STATED PLAINLY ─────────────────────────────────────────────────────
 //
@@ -42,9 +42,9 @@ import type { DeclineLanguage } from "$lib/chat/server/declineCopy";
 import { FENCE_RE, INLINE_CODE_RE } from "./degeneration";
 import { flagEnabledOr } from "$lib/chat/server/flags";
 
-/** PostHog flag key. Owner: chat. See CUR-1104. Default off — this REPLACES the live answer text
- *  outright on a hit (unlike degeneration.ts, which only observes), so it ships dark pending a live
- *  verification pass against real traffic, same posture as CUR-742/CUR-958. */
+/** PostHog flag key. Owner: chat. Default off — this REPLACES the live answer text outright on a
+ *  hit (unlike degeneration.ts, which only observes), so it stays off until it has been checked
+ *  against real traffic. */
 export const REPETITION_GUARD_FLAG = "repetition-guard";
 
 export function repetitionGuardEnabled(): boolean {
@@ -66,7 +66,7 @@ export const DEGENERATE_REPETITION_FALLBACK_MESSAGE =
 	"I got stuck repeating myself and couldn't produce a reliable answer here. Could you try " +
 	"rephrasing the question, or asking in a different language?";
 
-/** The same notice in the language the person wrote in (CUR-4052), from the languages a decline is
+/** The same notice in the language the person wrote in, from the languages a decline is
  *  translated into (declineCopy.ts), so a French turn that loops ends in French. */
 const REPETITION_NOTICES: Record<Exclude<DeclineLanguage, "en">, string> = {
 	es: "Me quedé atascado repitiéndome y no pude dar una respuesta fiable. ¿Podrías reformular la pregunta o hacerla en otro idioma?",

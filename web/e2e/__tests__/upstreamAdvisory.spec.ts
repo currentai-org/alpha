@@ -12,7 +12,7 @@ const on = { enabled: true, allModelsBlock: false };
 const chatted = (ids: string) => ({ type: CHAT_MODELS_ANNOTATION, description: ids });
 const unanswered = { type: UPSTREAM_UNANSWERED_ANNOTATION, description: 'notice' };
 
-describe('advisoryReason (SOL-277)', () => {
+describe('advisoryReason', () => {
 	it('blocks every failure when the gallery has not switched it on', () => {
 		expect(
 			advisoryReason([unanswered, chatted('swiss-ai/apertus-v1.5-70b')], {
@@ -70,7 +70,7 @@ describe('advisoryReason (SOL-277)', () => {
 	});
 });
 
-describe('advisoryReason with upstreamDown (SOL-367)', () => {
+describe('advisoryReason with upstreamDown', () => {
 	const ALIA = 'BSC-LT/ALIA-40b-instruct';
 	const harnessPush = { enabled: true, allModelsBlock: true, upstreamDown: new Set([ALIA]) };
 
@@ -108,7 +108,7 @@ describe('advisoryReason with upstreamDown (SOL-367)', () => {
 	});
 });
 
-describe('measuredDefault (SOL-277)', () => {
+describe('measuredDefault', () => {
 	it('counts a test that chatted with a default model as a default answer', () => {
 		expect(measuredDefault([chatted(PICKER.production[0])])).toBe(true);
 	});

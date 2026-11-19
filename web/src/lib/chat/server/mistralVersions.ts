@@ -1,12 +1,13 @@
 // Which dated Mistral model an alias like `mistral-large-latest` names today, read from La Plateforme's
-// own model list (CUR-2928). The staging router asks Mistral for `*-latest` and reports back its own
+// own model list. The staging router asks Mistral for `*-latest` and reports back its own
 // alias, so neither the body nor the headers name the version that answered; this list is the check.
 // The router's `/mistral/v1/models` passthrough serves the same list to chat's own router key, so it is
 // read first and La Plateforme's key is only a fallback: a retired key makes La Plateforme answer 401,
 // which would credit every answer as `*-latest`.
 import { config } from "$lib/chat/server/config";
 import { logger } from "$lib/chat/server/logger";
-import { mistralChatLane, mistralPlateforme } from "$lib/chat/server/mistralKey";
+import { mistralChatLane, mistralPlateforme, onRouterLane } from "$lib/chat/server/mistralKey";
+import { withoutLitellmProvider } from "$lib/chat/server/endpoints/openai/servedModelPeek";
 
 const TTL_MS = 60 * 60 * 1000;
 // The router's list takes 0.9 s to over 20 s to answer, so the read itself is
@@ -22,7 +23,7 @@ const ANSWER_WAIT_MS = 2_000;
  * only while no list has been read in this process; any list read replaces it, so a moved name is
  * still caught as soon as the list is readable. The production router deployment asks for
  * `mistral-medium-3-5`, so without that entry a fresh instance credits its first Medium answers to
- * it (CUR-4652).
+ * it.
  */
 const SNAPSHOT: Readonly<Record<string, readonly string[]>> = {
 	"mistral-medium-latest": ["mistral-medium-2604"],
@@ -53,14 +54,14 @@ function aliasTable(entries: ModelEntry[]): Map<string, Set<string>> {
 /**
  * Where the list can be read: the router's passthrough when chat's own lane is the router, then La
  * Plateforme. A per-ticket preview's lane is La Plateforme on the CI key, so its list comes from there
- * too, and the version check reads the same host its answers came from (CUR-3193).
+ * too, and the version check reads the same host its answers came from.
  */
 function listSources(): { source: string; url: string; apiKey: string }[] {
 	const lane = mistralChatLane();
 	const out: { source: string; url: string; apiKey: string }[] = [];
-	if (lane.keyEnv === "MISTRAL_CHAT_API_KEY") {
+	if (onRouterLane(lane)) {
 		// On an instance whose lane is its own adapter, which forwards chat completions only, the list
-		// comes from the router it forwards to (CUR-3841).
+		// comes from the router it forwards to.
 		const upstream = ((Reflect.get(config, "FOLKWAYS_MISTRAL_UPSTREAM_BASE_URL") as string | undefined) ?? "").trim();
 		const base = lane.baseURL.includes("/folkways-adapter/") && upstream ? upstream : lane.baseURL;
 		const routerURL = base.replace(/\/+$/, "").replace(/\/v1$/, "");
@@ -99,14 +100,14 @@ async function refresh(): Promise<boolean> {
 	// The last table read stays in use; with none, no version is claimed. Either way the next read
 	// waits RETRY_AFTER_FAILURE_MS rather than delaying the next answer too.
 	fetchedAt = Date.now() - TTL_MS + RETRY_AFTER_FAILURE_MS;
-	// Warn, not error: the warm leg's `mistral:versions` probe is what alerts on an unreadable list
-	// (CUR-3842), and an error line here also counted toward axiom-alert's server-errors (CUR-4358).
+	// Warn, not error: the warm leg's `mistral:versions` probe is what alerts on an unreadable list,
+	// and an error line here also counted toward axiom-alert's server-errors.
 	logger.warn({ errors }, "[mistral] model list unreadable; answer versions unverified");
 	return false;
 }
 
 /**
- * Reads the list now, for the warm leg that reports a failed read (CUR-3842). Null where no Mistral
+ * Reads the list now, for the warm leg that reports a failed read. Null where no Mistral
  * lane is configured, so there is nothing to check. A good read also refreshes the table answers use.
  */
 export async function probeMistralModelList(): Promise<boolean | null> {
@@ -115,7 +116,8 @@ export async function probeMistralModelList(): Promise<boolean | null> {
 }
 
 /**
- * Whether `upstream` (the name the router asked Mistral for, e.g. `openai/mistral-large-latest`) is
+ * Whether `upstream` (the name the router asked Mistral for, e.g. `openai/mistral-large-latest` or
+ * `mistral/mistral-medium-3-5`) is
  * today an alias of `pinned` (e.g. `mistral-large-2512`). Undefined when the list could not be read.
  */
 export async function isSameMistralModel(
@@ -129,17 +131,18 @@ export async function isSameMistralModel(
 			await Promise.race([inflight, new Promise((r) => setTimeout(r, ANSWER_WAIT_MS))]);
 		}
 	}
+	const name = withoutLitellmProvider(upstream);
 	if (!table) {
-		const covered = SNAPSHOT[upstream.replace(/^openai\//, "")];
+		const covered = SNAPSHOT[name];
 		return covered ? covered.includes(pinned) : undefined;
 	}
-	const names = table.get(upstream.replace(/^openai\//, ""));
+	const names = table.get(name);
 	return names ? names.has(pinned) : false;
 }
 
 /**
  * Our id for a model whose router name has no dated alias on La Plateforme, mapped to the name the
- * router asks Mistral for (CUR-3027). The staging router serves Large 4 (preview) as
+ * router asks Mistral for. The staging router serves Large 4 (preview) as
  * `mistral-large-2610` and asks for `mistral-large-4` (x-litellm-model-name), while
  * Mistral's own list has no 2610 to look up. The preview's name claims no version, so this pairing is
  * the check.

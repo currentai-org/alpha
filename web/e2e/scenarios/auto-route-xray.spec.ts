@@ -3,6 +3,7 @@
 import { test, expect, type Page } from './helpers/test';
 import type { BrowserContext, Locator } from '@playwright/test';
 import { CHAT_ENTRY, LARGE4_MODEL, chatEntry } from './helpers/chatEntry';
+import { installBusyScopeHeader } from './helpers/faultInjection';
 import { setFlagOverrides } from './helpers/flagOverride';
 import { turnDone } from './helpers/turn';
 import { warmupContext } from './helpers/warmup';
@@ -28,6 +29,16 @@ async function openChat(
 	entry?: string
 ) {
 	await setFlagOverrides(context, baseURL, { 'auto-routing': true });
+	// Auto routes around a model marked busy, and a preview's marks outlast the turns that wrote them:
+	// a preview whose GLM 5.2 was marked busy kept every later run of the Chinese tests below on
+	// Mistral Medium. These tests are about where Auto sends a draft, so they read
+	// a fresh busy scope of their own; auto-skips-busy-model.spec.ts covers the marks themselves.
+	if (process.env.E2E_FAULT_INJECT_TOKEN) {
+		await installBusyScopeHeader(
+			page,
+			`xray-${test.info().testId}-${test.info().retry}`.slice(0, 64)
+		);
+	}
 	await context.addInitScript(
 		([key, value]) => {
 			try {
@@ -43,7 +54,7 @@ async function openChat(
 		await startChattingPastWelcome(welcomeDialog);
 	});
 	// Auto is the subject, so a device on Auto enters on the unpinned /chat: `chatEntry()` under the
-	// gallery's prod profile is a model link, which picks that model (CUR-4021). A picked model keeps
+	// gallery's prod profile is a model link, which picks that model. A picked model keeps
 	// the profile's entry.
 	await page.goto(entry ?? (choice === 'auto' ? CHAT_ENTRY : chatEntry()), { waitUntil: 'commit' });
 	const composer = page.getByLabel('Message AI Potluck');
@@ -76,7 +87,7 @@ async function storedTurn(page: Page, answer: Locator): Promise<Stored | undefin
 }
 
 /**
- *  Auto sends this to GLM 5.2 mid-chat, off Mistral Medium, at every size (routing.spec.ts, CUR-392). GLM rather
+ *  Auto sends this to GLM 5.2 mid-chat, off Mistral Medium, at every size (routing.spec.ts). GLM rather
  *  than SEA-LION v4.8 for Vietnamese: Auto routes around a model its circuit breaker holds busy, and
  *  SEA-LION can be held busy on the preview, so the turn would stay on Medium.
  */
@@ -179,8 +190,8 @@ test(
 		);
 		const firstStored = await storedTurn(page, first);
 
-		// Chinese moves Auto from Mistral Medium to GLM 5.2 (routing.spec.ts, CUR-392);
-		// Catalan stays on Medium since CUR-392. The send awaits the PATCH that switches the conversation. The
+		// Chinese moves Auto from Mistral Medium to GLM 5.2 (routing.spec.ts);
+		// Catalan stays on Medium. The send awaits the PATCH that switches the conversation. The
 		// composer had cleared its draft by then, and Auto's choice with it. Auto decides once the draft has
 		// rested 350 ms, and the pill then reads "Auto · <family>": send after that, as a person would.
 		await composer.fill(CHINESE);
@@ -215,8 +226,8 @@ test(
 // Auto used to send nearly every production turn to Mistral Large 3, which our account may
 // call 30 times a minute, because Medium (2,000 a minute) was barred from Auto. A short everyday
 // question now goes to Medium; Large 4 takes a task Auto is sure is large, and Large 3 is picked by
-// hand only (CUR-392). All three are family "Mistral" and sit in the picker, so the explanation names
-// the model itself (CUR-4354), and the pick is read from it.
+// hand only. All three are family "Mistral" and sit in the picker, so the explanation names
+// the model itself, and the pick is read from it.
 test(
 	'on Auto, a short English question names Mistral Medium, keeping Large 4 for large tasks',
 	{ tag: ['@F2', '@CUR-4035'] },
@@ -381,11 +392,46 @@ test(
 	}
 );
 
+// Polish follows the scores: Mistral Medium 3.5 carries its Artificial Analysis rating of 14
+// against Bielik's hand-set 3, so Auto sends a short Polish draft to Medium, and Bielik is for picking by
+// hand. The family alone can't tell Medium from Large 4, so read the pick's Intelligence meter: 14 is
+// Medium 3.5's rating, 38 Large 4's, 3 Bielik's. Read the same way as Arabic; the draft is never sent.
+test(
+	'on Auto, a short Polish draft names Mistral Medium 3.5, rated 14, not Bielik',
+	{ tag: ['@F2', '@CUR-4294'] },
+	async ({ page, context, baseURL }) => {
+		const composer = await openChat(page, context, baseURL!, 'auto');
+		await composer.fill('Czy możesz mi pomóc z tym? Nie jest to łatwe.');
+		const pill = page.getByRole('button', { name: /^Model: Auto · / }).first();
+		await expect(pill, 'Auto never read the Polish draft').toHaveAccessibleName(
+			/^Model: Auto · Polish\b/,
+			{
+				timeout: 15_000
+			}
+		);
+		await pill.click();
+		await expect(
+			page.locator('[data-how-we-chose] [data-language-preview]'),
+			"Auto's pick for the Polish draft is not Mistral"
+		).toContainText(/Polski\s*Mistral · |Polish\s*Mistral · /, { timeout: 15_000 });
+		const intelligence = page
+			.locator('[data-routing-why]')
+			.getByRole('meter')
+			.filter({ hasText: 'Intelligence' });
+		await expect
+			.poll(async () => Number(await intelligence.getAttribute('aria-valuenow')), {
+				message: "the Polish pick's intelligence rating is not Medium 3.5's 14",
+				timeout: 15_000
+			})
+			.toBe(14);
+	}
+);
+
 // X-ray's stack read the roadmap's statuses as claims about Alpha: "built from 19 open parts"
 // though hosting on La Plateforme is not open, "Public computers: Working" though no model the picker
 // offers runs on them, and "Model chooser: Being built" though Auto chooses the model.
 test(
-	'CUR-4328: X-ray\'s stack claims no "open parts", says public computers are not in use, and lights the model chooser on an Auto answer',
+	'X-ray\'s stack claims no "open parts", says public computers are not in use, and lights the model chooser on an Auto answer',
 	{ tag: ['@F2', '@CUR-4328'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(150_000);

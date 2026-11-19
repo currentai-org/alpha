@@ -10,7 +10,7 @@ function stopAfterArrival(id: string) {
 	hold.stop();
 }
 
-describe("pendingStop (CUR-2971)", () => {
+describe("pendingStop", () => {
 	test("a Stop recorded on the landing page reaches that conversation's page", () => {
 		stopAfterArrival("conv-a");
 		expect(takeStopOnArrival("conv-a")).toBe(true);
@@ -28,7 +28,7 @@ describe("pendingStop (CUR-2971)", () => {
 	});
 });
 
-describe("stopBeforeHandoff (CUR-3890)", () => {
+describe("stopBeforeHandoff", () => {
 	test("a Stop pressed before the conversation exists is recorded once it does", () => {
 		const hold = stopBeforeHandoff();
 		hold.reset();

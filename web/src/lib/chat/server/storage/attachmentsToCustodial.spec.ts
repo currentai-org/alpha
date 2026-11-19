@@ -50,7 +50,7 @@ beforeEach(() => {
 	guestsEnabled.value = true;
 });
 
-describe("storeChatAttachments with custodial-storage-view on: the bucket is the first store (CUR-2183)", () => {
+describe("storeChatAttachments with custodial-storage-view on: the bucket is the first store", () => {
 	it("stores each attachment once under conversations/<conversation>/<sha>/<name> and never writes the files table", async () => {
 		const refs = await storeChatAttachments(signedIn, [attachment("notes.txt"), attachment("plan.csv", "a,b", "text/csv")]);
 		const [hello, ab] = [await sha256("hello"), await sha256("a,b")];
@@ -89,7 +89,7 @@ describe("storeChatAttachments with custodial-storage-view on: the bucket is the
 	});
 });
 
-describe("storeChatAttachments never stalls a turn for the bucket: a failed write goes to the files table (CUR-2183)", () => {
+describe("storeChatAttachments never stalls a turn for the bucket: a failed write goes to the files table", () => {
 	it.each([
 		["Hugging Face throttles the token", () => hubRateLimitedError("https://huggingface.co/api/buckets")],
 		["the Hub answers any other error", () => new Error("bucket down")],
@@ -146,7 +146,7 @@ describe("storeChatAttachments never stalls a turn for the bucket: a failed writ
 	});
 });
 
-describe("a signed-in person's full My files refuses the attachment and never writes the files table (CUR-3235)", () => {
+describe("a signed-in person's full My files refuses the attachment and never writes the files table", () => {
 	it("throws the quota error, so the turn is refused, and leaves the files table alone", async () => {
 		storeChatAttachment.mockRejectedValueOnce(new StorageQuotaExceededError(1, 1));
 		await expect(storeChatAttachments(signedIn, [attachment("a.txt"), attachment("b.txt", "b")])).rejects.toBeInstanceOf(
@@ -164,7 +164,7 @@ describe("a signed-in person's full My files refuses the attachment and never wr
 	});
 });
 
-describe("storeChatAttachments with the bucket not selected: the files table, as before (CUR-2183)", () => {
+describe("storeChatAttachments with the bucket not selected: the files table, as before", () => {
 	it.each([
 		["the flag is off for the account", () => (enabled.value = false), signedIn],
 		["the deployment has no bucket", () => (configured.value = false), signedIn],
@@ -189,7 +189,7 @@ describe("attachmentPath", () => {
 	});
 });
 
-describe("storeChatAttachments with a linked default location (CUR-2930)", () => {
+describe("storeChatAttachments with a linked default location", () => {
 	const linkedLocation = (write: (folder: string, name: string) => Promise<string>) =>
 		({ id: "loc1", kind: "hf-bucket", label: "me/alpha-files", write }) as unknown as StorageLocation;
 

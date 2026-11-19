@@ -5,9 +5,9 @@
 // fetch the model can aim is a channel out of the conversation. One URL per message, which also bounds
 // what a message can cost in scrape credits.
 //
-// The fetch itself runs on Firecrawl's machines, not ours, so a URL naming an internal address can't
-// reach this deployment's network. These checks refuse such URLs anyway rather than hand them to a
-// third party: a raw IP, localhost, an internal-looking host, embedded credentials, or a non-web port. (CUR-1897)
+// The fetch itself runs on Firecrawl's machines, so a URL naming an internal address can't reach
+// this deployment's network. These checks refuse such URLs anyway rather than hand them to a
+// third party: a raw IP, localhost, an internal-looking host, embedded credentials, or a non-web port.
 
 const URL_IN_TEXT = /https?:\/\/[^\s<>"'`]+/i;
 const TRAILING_PUNCTUATION = /[.,;:!?)\]}'"»]+$/;
@@ -42,12 +42,11 @@ export type LinkedPageState =
 	| { kind: "unreadable" }
 	| { kind: "search-off" };
 
-// A note for the person's own turn about the link they pasted (CUR-2032). It goes in the user turn,
+// A note for the person's own turn about the link they pasted. It goes in the user turn,
 // not the system prompt, because a model can under-weight the system role: with the page sitting in
 // the system prompt as source [1], a model that has already said "I can't open links" in this
 // conversation says it again and asks for the text to be pasted, even with the page read and
-// grounded ("I don't have the survey content"). So the note names the
-// source and retires the earlier refusal explicitly. The other two states replace a claim the model
+// grounded. So the note names the source and retires the earlier refusal explicitly. The other two states replace a claim the model
 // otherwise makes on its own, that it can never open links, which is false here and is what the next
 // turn anchors on.
 export function linkedPageNote(state: LinkedPageState): string {

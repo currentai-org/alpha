@@ -1,4 +1,4 @@
-// CUR-2092. Two rules for every call to an Apertus group on the LiteLLM gateway:
+// Two rules for every call to an Apertus group on the LiteLLM gateway:
 //
 //   1. `disable_fallbacks: true`, so the gateway refuses rather than answering as SEA-LION.
 //   2. The answer lane's request, when it carries a non-user role, is pinned to a deployment that
@@ -6,18 +6,18 @@
 //
 // Why: the gateway's `swiss-ai/apertus-v1.5-70b` group pools two deployments (`GET /v1/model/info`),
 // and one of them answers a system or assistant role with `400 Insufficient capacity … All
-// endpoints at capacity`. LiteLLM does not retry a 400 on the other deployment. On the preview
-// upstream key, a role-shaped request to the group with no fallbacks is served only by the
-// role-accepting deployment and gets the other's 400 otherwise; with fallbacks allowed, about half are
-// answered by a different model (SEA-LION). A request pinned to the role-accepting deployment id is
-// served, and a flattened (user role only) one is served by both deployments.
+// endpoints at capacity`. LiteLLM does not retry a 400 on the other deployment. With no fallbacks, a
+// role-shaped request to the group is served only when it lands on the role-accepting deployment and
+// gets the other's 400 otherwise; with fallbacks allowed, it can be answered by a different model
+// (SEA-LION). A request pinned to the role-accepting deployment id is served, and a flattened (user
+// role only) one is served by both deployments.
 //
 // The pin is resolved at runtime from the gateway's own `/v1/model/info`, so an edit to the gateway
 // config moves with it. A pinned response names the deployment id where the group would be, in the
 // `x-litellm-model-group` header and in every chunk; `servedGroupFor` maps it back so the
 // substitution check and the provenance badge see the group they asked for.
 //
-// Which models take the lane is their `strictLane` field in harnessProfiles.ts (CUR-2697).
+// Which models take the lane is their `strictLane` field in harnessProfiles.ts.
 
 import { logger } from "$lib/chat/server/logger";
 
@@ -77,7 +77,7 @@ async function loadModelInfo(
 			caches.set(key, { at: Date.now(), ttl: TTL_MS, entries });
 			return entries;
 		} catch (err) {
-			// Loud, and short-lived: an unreachable model/info means no pin, which is today's behavior.
+			// Loud, and short-lived: an unreachable model/info means no pin, so requests go to the group as-is.
 			logger.warn(
 				{ leg: "strict-lane", baseURL, err: (err as Error).message },
 				"[strict-lane] could not read the gateway's model/info — requests go to the group unpinned"

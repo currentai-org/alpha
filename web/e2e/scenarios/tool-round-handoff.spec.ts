@@ -10,16 +10,16 @@ import { composerHydrated, sendOpensConversation } from './helpers/composer';
 import { freshTestEmail, signInWithEmailOtp } from './helpers/signIn';
 import { startChattingPastWelcome } from './helpers/welcome';
 
-// A tool round after the first goes out after the lane has committed (CUR-2307). When Large 3's account
+// A tool round after the first goes out after the lane has committed. When Large 3's account
 // stays over its cap through that round's same-lane retries, the turn used to end on "is busy right now"
 // (always after a tool call and before any answer text).
-// A backup lane to Mistral Medium continued it until CUR-4383 removed every lane to another model, so
+// A backup lane to Mistral Medium continued it until that change removed every lane to another model, so
 // the turn ends on the busy notice again, naming Large 4, and nothing else answers in its name.
 // `tool_round_rate_limited_sustained` refuses every request after round 1 on the first lane. Signed in
 // and arithmetic for the same reasons as tool-round-retry.spec.ts.
 const LARGE4 = LARGE4_MODEL;
 test(
-	'a Large 4 tool round that stays over-cap ends on the busy notice naming Large 4, never answered by Mistral Medium (CUR-4383)',
+	'a Large 4 tool round that stays over-cap ends on the busy notice naming Large 4, never answered by Mistral Medium',
 	{ tag: ['@F2', '@preview-only', '@CUR-4383'] },
 	async ({ page }) => {
 		test.setTimeout(150_000);

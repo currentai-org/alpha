@@ -6,7 +6,7 @@ import { DEFAULT_SETTINGS } from "$lib/chat/types/Settings";
 import type { User } from "$lib/chat/types/User";
 
 // Every login path that mints a new identity for a previously-anonymous session needs
-// the same re-keying, not a second hand-rolled copy of it. (CUR-849)
+// the same re-keying, not a second hand-rolled copy of it.
 
 /**
  * Re-key an anonymous session's conversations onto the user signing in. Safe on every login, not
@@ -31,11 +31,11 @@ export async function migrateAnonymousConversations(
 	// In the background, because a bucket copy should not hold up sign-in; until it lands, and for any
 	// file it leaves behind, a turn reads the guest copy through formerGuestSessionId.
 	// `skipFileMove` is the `guest_file_move_skipped` fault (preview only), which leaves every file
-	// under guests/ the way a failed or over-quota move does, so a spec can delete what remains (CUR-3292). (CUR-2183)
+	// under guests/ the way a failed or over-quota move does, so a spec can delete what remains.
 	// auth.ts calls this on every request a returning signed-in visitor makes, and the move
 	// lists guests/<session>/ on Hugging Face before it can find nothing there, which spent one call of
 	// the shared storage token per page load, poll and API call. A guest's files sit under its
-	// conversations, so when none was re-keyed there is nothing to move. (CUR-3682)
+	// conversations, so when none was re-keyed there is nothing to move.
 	if (opts.skipFileMove || !matchedCount) return;
 	void runInBackground(
 		moveGuestFilesToUser(previousSessionId, userId.toString()).then((r) => {
@@ -74,7 +74,7 @@ export async function migrateAnonymousSettings(
 		} catch (err) {
 			// Two requests carrying a new user's first session both reach here, and the second
 			// insert hits settings_user_idx. A row for this user now existing means the other request
-			// seeded it, which is the outcome this call wanted; anything else is a real failure. (CUR-2607)
+			// seeded it, which is the outcome this call wanted; anything else is a real failure.
 			if (!(await collections.settings.findOne({ userId }))) throw err;
 		}
 	}

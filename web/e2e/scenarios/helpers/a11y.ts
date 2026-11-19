@@ -1,6 +1,6 @@
 // Wraps @axe-core/playwright so every page-visit spec asserts the same contract instead
 // of hand-rolling one. Scoped to `serious`/`critical` impact only: axe's `minor`/`moderate` findings
-// are real but numerous enough on a first pass to bury the ones worth blocking a merge over; a gate that starts red on day one gets disabled (CUR-1511).
+// are real but numerous enough on a first pass to bury the ones worth blocking a merge over; a gate that starts red on day one gets disabled.
 import type { Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { readFileSync } from 'node:fs';

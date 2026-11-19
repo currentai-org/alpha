@@ -1,13 +1,12 @@
-"""What an answer that made no tool call is: a refusal, a plain answer, or a claim of work nobody did (CUR-4599).
+"""What an answer that made no tool call is: a refusal, a plain answer, or a claim of work nobody did.
 
-A spec-less agentic turn that called no tool is judged by what the reply says, not by that fact alone
-(CUR-766). Retrying it, and putting "no tool call was observed" over it on the chat site, is right when the
-agent narrated a run it never made (CUR-574) or wrote instructions for something it could have done itself
-(CUR-766). It is wrong when the agent said, correctly, that it cannot send an email: re-asking a refusal
-ends the task FAILED and the page doubts an answer that claimed nothing. Only the reply's meaning separates those, so a model
+A spec-less agentic turn that called no tool is not retried on that fact alone, and the chat
+site does not put "no tool call was observed" over it by default. That warning is right when the agent narrated a run it never made or wrote instructions for something it could have done itself. It is wrong when the
+agent said, correctly, that it cannot send an email: re-asking a refusal ends the task FAILED
+and makes the page doubt an answer that claimed nothing. Only the reply's meaning separates those, so a model
 reads it, with the shape forced by a tool call.
 
-Its own module, free of app.py's import-time setup, like auto_review.py."""
+This lives in its own module, free of app.py's import-time setup, like auto_review.py."""
 import json
 
 # The verdicts an answer can get. ACCEPTED ones end the turn on this attempt and tell the site the missing

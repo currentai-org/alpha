@@ -1,9 +1,26 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+const hubList = vi.hoisted(() => ({ calls: [] as Record<string, unknown>[] }));
+vi.mock("@huggingface/hub", async (orig) => {
+	const real = await orig<Record<string, unknown>>();
+	return {
+		...real,
+		listFiles: vi.fn(async function* (params: Record<string, unknown>) {
+			hubList.calls.push(params);
+			yield { type: "directory", path: "docs", size: 0 };
+			yield { type: "file", path: "docs/old.txt", size: 3, uploadedAt: "2026-11-01T10:00:00.000Z" };
+			yield { type: "file", path: "docs/new.txt", size: 5, uploadedAt: "2026-11-18T10:00:00.000Z" };
+			yield { type: "file", path: "docs/undated.txt", size: 1 };
+		}),
+	};
+});
+
 import {
 	assertUnderPrefix,
 	normalizePrefix,
 	parseBucketRepo,
 	PathOutsideLocationError,
+	hfBucketLocation,
 	resolveUnderPrefix,
 } from "./hfBucketLocation";
 
@@ -64,5 +81,25 @@ describe("the prefix wall: a linked location never reads, writes or deletes outs
 		expect(assertUnderPrefix("", "documents/a.txt")).toBe("documents/a.txt");
 		expect(() => assertUnderPrefix("", "../a.txt")).toThrow(PathOutsideLocationError);
 		expect(() => assertUnderPrefix("", "/a.txt")).toThrow(PathOutsideLocationError);
+	});
+});
+
+describe("a linked bucket's listing", () => {
+	it("asks the Hub for each file's upload time and returns it as addedAt, leaving a file without one undated", async () => {
+		const loc = hfBucketLocation({
+			id: "loc1",
+			label: "mine",
+			userId: "u1",
+			repo: "buckets/me/files",
+			prefix: "",
+			token: "hf_example",
+		});
+		const files = await loc.list();
+		expect(hubList.calls[0]?.expand, "the Hub only returns uploadedAt when the listing is expanded").toBe(true);
+		expect(files).toEqual([
+			{ path: "docs/old.txt", size: 3, addedAt: "2026-11-01T10:00:00.000Z" },
+			{ path: "docs/new.txt", size: 5, addedAt: "2026-11-18T10:00:00.000Z" },
+			{ path: "docs/undated.txt", size: 1, addedAt: undefined },
+		]);
 	});
 });

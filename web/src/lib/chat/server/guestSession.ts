@@ -9,7 +9,7 @@
 // conversation or setting; one who has keeps their session through the legacy rule in auth.ts.
 //
 // What this does not stop: a caller who drops the cookie gets a fresh signed one, one request at a
-// time. The per-IP ceiling in rateLimit.ts bounds that; the signature only removes the free version. (CUR-3191)
+// time. The per-IP ceiling in rateLimit.ts bounds that; the signature only removes the free version.
 import { createHmac, hkdfSync, timingSafeEqual } from "node:crypto";
 
 const INFO = "aipotluck/guest-session/v1";

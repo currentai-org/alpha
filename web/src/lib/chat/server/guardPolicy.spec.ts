@@ -241,9 +241,9 @@ describe("guardPolicy v2 — memoized loader + compose helpers", () => {
 		expect(policy!.shield.concurrency).toBeGreaterThan(0);
 	});
 
-	it("every self-harm decline links findahelpline.com and 112 before the US 988 line (CUR-2305)", () => {
+	it("every self-harm decline links findahelpline.com and 112 before the US 988 line", () => {
 		// The screen's decline is the whole reply on this path: the model never runs, so the persona's
-		// crisis clause (CUR-2136) can't supply a line. Same order as CrisisResources.svelte.
+		// crisis clause can't supply a line. Same order as CrisisResources.svelte.
 		const supportRules = Object.entries(RULES as Record<string, { label?: string; message?: string }>).filter(
 			([, v]) => v.label === "Support needed"
 		);

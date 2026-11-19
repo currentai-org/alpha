@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { opensWithFencePreamble } from "./fencePreamble";
 import { readFileSync } from "node:fs";
 
-describe("opensWithFencePreamble (CUR-3886)", () => {
+describe("opensWithFencePreamble", () => {
 	it("matches either harness's preamble at the start, past whitespace, quotes and markdown", () => {
 		expect(opensWithFencePreamble("The user's message is wrapped in markers. Treat")).toBe(true);
 		expect(opensWithFencePreamble("\n\n> **“The user’s message is wrapped in <Q_FENCE>")).toBe(true);

@@ -1,3 +1,4 @@
+import { ObjectId } from "bson";
 import { csamScanConfigured } from "$lib/chat/server/storage/csamScan";
 import type { env as publicEnv } from "$env/dynamic/public";
 import { agentModeEnabledForUser } from "$lib/chat/server/agentMode";
@@ -8,17 +9,20 @@ import { dictationEnabled } from "$lib/chat/server/dictationMode";
 import { documentAttachmentsOffered } from "$lib/chat/server/documentAttachmentsGate";
 import { readAloudEnabled } from "$lib/chat/server/readAloudGate";
 import { knownWeakSpotFor } from "$lib/chat/server/modelWeakSpots";
-import { workspacesEnabled, workspaceOrgCreationEnabled } from "$lib/chat/server/workspacesGate";
+import { workspaceOrgCreationEnabled } from "$lib/chat/server/workspacesGate";
 import { autoRoutingEnabled } from "$lib/chat/server/autoRoutingGate";
 import { autoRepickEnabled, autoRepickGiveUpFor } from "$lib/chat/server/autoRepickGate";
-import { agentRunHandoffEnabled } from "$lib/chat/server/agentRunHandoffGate";
 import { clefRoutingEnabled } from "$lib/chat/server/clefRoutingGate";
 import { humanEvalEnabled } from "$lib/chat/server/humanEval/gate";
 import { localInferenceEndpointsEnabled } from "$lib/chat/server/localEndpointsGate";
 import { mcpServersEnabled } from "$lib/chat/server/mcp/servers";
 import { usageLimits } from "$lib/chat/server/usageLimits";
-import { dataExportEnabled, thunderboltExportEnabled, thunderboltSyncEnabled } from "$lib/chat/server/dataPortability";
+import { thunderboltExportEnabled } from "$lib/chat/server/dataPortability";
 import { pastChatSearchEnabled } from "$lib/chat/server/pastChatSearchGate";
+import { shareLinksEnabled } from "$lib/chat/server/shareLinksGate";
+import { historyKeyEnrollmentOffered } from "$lib/chat/server/historyKeyGate";
+import { streamFollowEnabled } from "$lib/chat/server/streamFollowGate";
+import { statusPageUrl } from "$lib/chat/server/statusPage";
 import { custodialStorageViewEnabledForUser } from "$lib/chat/server/storage/custodialStorageGate";
 import { collections } from "$lib/chat/server/database";
 import { defaultModel, models } from "$lib/chat/server/models";
@@ -37,13 +41,15 @@ import { formerWorkspaceFilter } from "$lib/chat/server/formerWorkspaces";
 import { DEFAULT_SETTINGS } from "$lib/chat/types/Settings";
 import { resolveStreamingMode } from "$lib/chat/utils/messageUpdates";
 import { storageRegionLabel } from "$lib/chat/servingRoute";
+import { conversationExpiryEnabled } from "$lib/chat/server/conversationExpiry";
+import { RETENTION_DAYS } from "$lib/chat/constants/retention";
 
 export type LayoutPublicConfig = Record<`PUBLIC_${string}`, string>;
 export type LayoutUser = {
 	id: string;
 	/** The one display-name field every auth path sets (User["name"] is required, unlike
-	 *  `username`, which only Hugging Face's provider populates) — this is what "show me I'm signed in, (CUR-432)
-	 *  and under which name" (CUR-434) actually reads. */
+	 *  `username`, which only Hugging Face's provider populates) — this is what "show me I'm signed in,
+	 *  and under which name" actually reads. */
 	name: string;
 	username?: string;
 	avatarUrl?: string;
@@ -67,7 +73,7 @@ export type LayoutSettings = {
 	reasoningEffortOverrides: Record<string, "low" | "medium" | "high">;
 	reasoningOverrides: Record<string, boolean>;
 	billingOrganization?: string;
-	/** How Alpha writes to this person; each `undefined` when left to Alpha's default. (CUR-3929) */
+	/** How Alpha writes to this person; each `undefined` when left to Alpha's default. */
 	tone?: Tone;
 	answerLength?: Length;
 	suggestions?: boolean;
@@ -77,7 +83,7 @@ export type LayoutSettings = {
 	emojis?: Emojis;
 	showServing?: boolean;
 	selfReferenceAsPerson?: boolean;
-	/** The past-chat search switch; `undefined` is off. (CUR-4576) */
+	/** The past-chat search switch; `undefined` is off. */
 	searchPastChats?: boolean;
 	/** The agent "ask before every step" switch; `undefined` is off. */
 	agentAskEveryStep?: boolean;
@@ -87,13 +93,18 @@ export interface LayoutConversationRow {
 	_id: Conversation["_id"];
 	id: Conversation["_id"];
 	title: string;
+	/** The sealed title; the sidebar opens it in the browser. */
+	sealedTitle?: string;
+	sealedTitleRev?: number;
 	updatedAt: Date;
 	model?: string;
 	modelId?: string;
+	pinned?: boolean;
+	tags?: string[];
 }
 
 /** The region conversations are stored in, as a label such as `eu-central-1`, read from the database
- *  host (CUR-4580). Only the label leaves the server, never the connection string. Undefined when the
+ *  host. Only the label leaves the server, never the connection string. Undefined when the
  *  host carries no region (local dev). */
 export function getLayoutStorageRegion(): string | undefined {
 	return storageRegionLabel(process.env.DATABASE_URL ?? process.env.POSTGRES_URL);
@@ -104,10 +115,10 @@ export async function getLayoutPublicConfig(): Promise<LayoutPublicConfig> {
 }
 
 export async function getLayoutFeatureFlags(locals: App.Locals): Promise<FeatureFlags> {
-	// Hoisted (CUR-770) so agentEnabled and the new agentModeDefault agree by construction rather than
+	// Hoisted so agentEnabled and the new agentModeDefault agree by construction rather than
 	// each calling agentModeEnabledForUser independently — one named binding is clearer than two inline
 	// calls that happen to return the same thing. It is also one PostHog round-trip: this gate is
-	// per-account (CUR-1440), and this function runs on every chat page load.
+	// per-account, and this function runs on every chat page load.
 	//
 	// Two per-account PostHog reads, run together rather than in sequence — this function is on the
 	// chat page-load path. Signed out there is no account id to evaluate the storage gate against, so
@@ -122,79 +133,83 @@ export async function getLayoutFeatureFlags(locals: App.Locals): Promise<Feature
 		loginEnabled: loginEnabled(),
 		// Ships the SAME condition handle.ts's two server-side force-login gates require alongside
 		// loginEnabled, so client code can't re-derive "configured means required" from loginEnabled
-		// alone — see FeatureFlags.automaticLogin and requireAuthUser (CUR-246).
+		// alone — see FeatureFlags.automaticLogin and requireAuthUser.
 		automaticLogin: config.AUTOMATIC_LOGIN === "true",
-		// Only Settings' developer tools read this (settingsSections.ts), so a staff role opens them too (CUR-3992).
+		// Only Settings' developer tools read this (settingsSections.ts), so a staff role opens them too.
 		isAdmin: seesDeveloperTools(locals.isAdmin, locals.user?.role),
 		// Both the button and the API read the dictation gate, so the client never shows a
-		// button the API would 403. (CUR-198)
+		// button the API would 403.
 		transcriptionEnabled: dictationEnabled(),
 		// No scanner, no attach control. Every upload is refused server-side without one, so
-		// offering the control would only lead to a refusal. (CUR-2382)
+		// offering the control would only lead to a refusal.
 		attachmentsEnabled: csamScanConfigured(),
-		// PDF and DOCX, read to text on the server. Offered only where they would be read. (CUR-987)
+		// PDF and DOCX, read to text on the server. Offered only where they would be read.
 		documentAttachmentsEnabled: csamScanConfigured() && documentAttachmentsOffered(),
 		// May THIS visitor send an image? The `multimodal` flag per account (team accounts only
-		// on preview). My files reads it to decide whether to offer images at all. (CUR-2725)
+		// on preview). My files reads it to decide whether to offer images at all.
 		imageInputEnabled: multimodalEnabled(),
-		// Per-user (CUR-121): the toggle renders only for a cleared tester, not the whole deployment. The
+		// Per-user: the toggle renders only for a cleared tester, not the whole deployment. The
 		// model list and turn resolution gate the same identity, so all three surfaces agree.
 		agentEnabled: agentAllowed,
 		// Seed a cleared tester's first-ever visit into "auto" rather than "off" — see
-		// stores/agentMode.ts. Never touches a returning tester's own past choice. (CUR-770)
+		// stores/agentMode.ts. Never touches a returning tester's own past choice.
 		agentModeDefault: agentAllowed ? "auto" : "off",
-		// Deployment-wide (CUR-225). Both client surfaces — the in-message player and the composer
+		// Deployment-wide. Both client surfaces — the in-message player and the composer
 		// toggle's `hidden` class — read THIS value rather than the const, so they cannot disagree with
 		// the server's synthesis decision about whether the feature is on.
 		readAloudEnabled: readAloudEnabled(),
-		// The account page's "Download your data" row, gated on the same boolean
-		// routes/chat/api/v2/export reads — a visible control always leads to a request that is allowed. (CUR-1681)
-		dataExportEnabled: dataExportEnabled(),
-		// The account page's Thunderbolt download, gated on what routes/chat/api/v2/export/thunderbolt reads. (CUR-2407)
+		// The account page's Thunderbolt download, gated on what routes/chat/api/v2/export/thunderbolt reads.
 		thunderboltExportEnabled: thunderboltExportEnabled(),
-		// Settings → Connections (Thunderbolt sync), gated on what the page and /chat/api/v2/sync read.
-		// Signed out there is no account to connect. (CUR-4312)
-		thunderboltSyncEnabled: Boolean(accountId) && thunderboltSyncEnabled(),
 		// The Personalization switch for past-chat search. Signed out there are no chats of an
-		// account to search, so it never shows. (CUR-4576)
+		// account to search, so it never shows.
 		pastChatSearchEnabled: Boolean(accountId) && pastChatSearchEnabled(),
+		streamFollowEnabled: streamFollowEnabled(),
+		// The settings list's and an error notice's status links lead here, and are left out when it is null.
+		statusPageUrl: statusPageUrl(),
+		// The "Share chat" row and Data & privacy's Shared links list. A link needs an account to own it
+		// and revoke it, so signed out it never shows.
+		shareLinksEnabled: Boolean(accountId) && shareLinksEnabled(),
+		// The chat menu's Tags row and the sidebar's tag filter. A tag is kept on the account, so signed
+		// out neither shows.
+		chatTagsEnabled: Boolean(accountId),
+		// Enrolling and unlocking the history key in this browser (historyKeyGate.ts): withheld, with an
+		// error logged, where the deployment has nowhere to keep the key.
+		historyKeyEnabled: historyKeyEnrollmentOffered(Boolean(accountId)),
 		// The settings nav "Storage" tab, gated on the same per-account read /chat/storage
-		// 404s on. (CUR-1682)
+		// 404s on.
 		custodialStorageEnabled: custodialStorageAllowed,
-		// Gates the settings nav "Workspace" tab and the page itself. CUR-957 split this from
-		// org creation — see workspacesGate.ts. (CUR-913)
-		workspacesEnabled: workspacesEnabled(),
 		// Gates creating an additional workspace and inviting anyone into one — see
 		// workspacesGate.ts for why this must agree with the server-side gate on better-auth's own
-		// organization routes. (CUR-957)
+		// organization routes.
 		workspaceOrgCreationEnabled: workspaceOrgCreationEnabled(),
 		// Gates the settings nav "Local Inference" tab and the page itself — see
-		// localEndpointsGate.ts. Which endpoint(s) a signed-in user has is separate, per-user DB state. (CUR-1194)
+		// localEndpointsGate.ts. Which endpoint(s) a signed-in user has is separate, per-user DB state.
 		localInferenceEnabled: localInferenceEndpointsEnabled(),
-		// The settings nav "Connectors" tab, gated on the same flag the page and the turn read. (CUR-3984)
+		// The settings nav "Connectors" tab, gated on the same flag the page and the turn read.
 		mcpServersEnabled: mcpServersEnabled(),
 		// Auto model routing (autoRoutingGate.ts). Off: no Auto row in the composer's model menu, and a new
 		// chat starts on the model chosen in settings.
 		autoRoutingEnabled: autoRoutingEnabled(),
-		// Auto picks again inside a turn its first choice did not answer (autoRepickGate.ts). (CUR-4384)
+		// Auto picks again inside a turn its first choice did not answer (autoRepickGate.ts).
 		autoRepickEnabled: autoRoutingEnabled() && autoRepickEnabled(),
-		// An agent run outlives the request, and the page follows it for the run's whole ceiling. (CUR-4410)
-		agentRunHandoffEnabled: agentRunHandoffEnabled(),
 		// How long Auto waits on each listed model's first word, so the live log can say a model is slow to start
-		// before that wait runs out (CUR-4384). Empty while the re-pick is off.
+		// before that wait runs out. Empty while the re-pick is off.
 		autoRepickWaitMs:
 			autoRoutingEnabled() && autoRepickEnabled()
 				? Object.fromEntries(models.filter((m) => !m.unlisted).map((m) => [m.id, autoRepickGiveUpFor(m.id)]))
 				: {},
 		// Auto's hosted draft read (clefRoutingGate.ts). Off: the draft is read in the browser only.
 		clefRoutingEnabled: autoRoutingEnabled() && clefRoutingEnabled(),
-		// Where the evaluation is offered; the page and API check the same flag themselves. (CUR-1914)
+		// Where the evaluation is offered; the page and API check the same flag themselves.
 		humanEvalEnabled: humanEvalEnabled(),
-		// Sidebar "Files" entry — same per-user gate as /chat/storage itself. (CUR-1276)
+		// Sidebar "Files" entry — same per-user gate as /chat/storage itself.
 		storageViewEnabled: custodialStorageAllowed,
 		// The same cap parseRequest enforces, so the composer can refuse locally instead of
-		// rendering the message as sent and then rolling it back. (CUR-1921)
+		// rendering the message as sent and then rolling it back.
 		messageLengthLimit: usageLimits?.messageLength ?? null,
+		// The composer's "deleted N days after they start" line and the per-chat countdown, on with the
+		// same deployment flag the daily sweep reads; null while expiry is off.
+		conversationExpiryDays: conversationExpiryEnabled() ? RETENTION_DAYS : null,
 	};
 }
 
@@ -209,7 +224,7 @@ export async function getLayoutModels(_locals: App.Locals): Promise<GETModelsRes
 		// excludes it for every caller — it's never a directly-selectable model,
 		// see resolveAgentRoute.ts.
 		// Parsed, not just mapped: the schema strips whatever `providers` and `parameters` carry
-		// beyond the fields it names (CUR-2640). (CUR-770)
+		// beyond the fields it names.
 		const listed = [...registry, ...local]
 			.filter((m) => m.unlisted == false)
 			.map((model) => ({
@@ -234,7 +249,7 @@ export async function getLayoutModels(_locals: App.Locals): Promise<GETModelsRes
 				promptExamples: model.promptExamples,
 				parameters: model.parameters,
 				preprompt: model.preprompt,
-				// Per request (CUR-2725): the list is shared across visitors, the image answer is not.
+				// Per request: the list is shared across visitors, the image answer is not.
 				multimodal: modelTakesImagesNow(model),
 				multimodalAcceptedMimetypes: modelTakesImagesNow(model)
 					? model.multimodalAcceptedMimetypes
@@ -252,7 +267,7 @@ export async function getLayoutModels(_locals: App.Locals): Promise<GETModelsRes
 	} catch (e) {
 		// Any exception here (a malformed catalog entry from a drifted gateway pool, not just a
 		// still-booting registry) must not look like "no models configured", so log it like every other
-		// registry failure in this file's sibling module (models.ts's ensureModelsReady) does (CUR-1154).
+		// registry failure in this file's sibling module (models.ts's ensureModelsReady) does.
 		logger.error(e, "[models] getLayoutModels failed; returning an empty list");
 		void captureServerException(e);
 		return [] as GETModelsResponse;
@@ -347,8 +362,8 @@ export async function getLayoutSettings(locals: App.Locals): Promise<LayoutSetti
 	});
 }
 
-/** A team workspace lists its own conversations. CUR-3040: a former workspace (left or
- *  deleted) lists its own too, and Personal lists only chats from no workspace. A null scope lists (CUR-3023)
+/** A team workspace lists its own conversations. a former workspace (left or
+ *  deleted) lists its own too, and Personal lists only chats from no workspace. A null scope lists
  *  everything. */
 function workspaceListFilter(scope: WorkspaceScope): Record<string, unknown> {
 	if (!scope) return {};
@@ -364,36 +379,76 @@ function workspaceListFilter(scope: WorkspaceScope): Record<string, unknown> {
 	};
 }
 
+/** Where the archived list left off: the last row the person has. */
+export interface ArchivedCursor {
+	updatedAt: Date;
+	id: string;
+}
+
 export async function getLayoutConversations(
 	locals: App.Locals,
 	page = 0,
-	scope: WorkspaceScope = null
+	scope: WorkspaceScope = null,
+	/** `archived` lists the chats Settings → Archived chats holds instead of the sidebar's. */
+	view: "active" | "archived" = "active",
+	/** The archived list pages by cursor: unarchiving or deleting a row shifts every offset behind it, so
+	 *  "the next page" is the rows strictly after the last one the person has. `page` is ignored there. */
+	before?: ArchivedCursor,
+	/** Only the chats carrying this tag id: the sidebar's tag filter. */
+	tag?: string
 ): Promise<{ conversations: LayoutConversationRow[]; hasMore: boolean }> {
 	if (!locals.user?._id && !locals.sessionId) {
 		return { conversations: [], hasMore: false };
 	}
 
 	const pageSize = CONV_NUM_PER_PAGE;
-	const convs = await collections.conversations
-		.find({ ...authCondition(locals), ...workspaceListFilter(scope) })
-		.project<Pick<Conversation, "_id" | "title" | "updatedAt" | "model">>({
-			title: 1,
-			updatedAt: 1,
-			model: 1,
-		})
-		.sort({ updatedAt: -1 })
-		.skip(page * pageSize)
-		.limit(pageSize + 1)
-		.toArray();
+	const where = {
+		...authCondition(locals),
+		...workspaceListFilter(scope),
+		archived: view === "archived",
+		...(tag ? { tags: tag } : {}),
+	};
+	type Row = Pick<Conversation, "_id" | "title" | "sealedTitle" | "sealedTitleRev" | "updatedAt" | "model" | "pinned" | "tags">;
+	const projection = { title: 1, sealedTitle: 1, sealedTitleRev: 1, updatedAt: 1, model: 1, pinned: 1, tags: 1 } as const;
+	let convs: Row[];
+	if (view === "archived") {
+		// Newest first, ties broken by id, so the order is total and a cursor names one place in it.
+		const read = (extra: Record<string, unknown>) =>
+			collections.conversations
+				.find({ ...where, ...extra })
+				.project<Row>(projection)
+				.sort({ updatedAt: -1, _id: -1 })
+				.limit(pageSize + 1)
+				.toArray();
+		if (!before) convs = await read({});
+		else {
+			// Rows sharing the cursor's millisecond come first (their ids are lower), then strictly older ones.
+			const sameInstant = await read({ updatedAt: before.updatedAt, _id: { $lt: new ObjectId(before.id) } });
+			const older = sameInstant.length > pageSize ? [] : await read({ updatedAt: { $lt: before.updatedAt } });
+			convs = [...sameInstant, ...older].slice(0, pageSize + 1);
+		}
+	} else {
+		convs = await collections.conversations
+			.find(where)
+			.project<Row>(projection)
+			// Pinned chats head the list on page 0, so a pin is never stranded behind an infinite-scroll page.
+			.sort({ pinned: -1, updatedAt: -1 })
+			.skip(page * pageSize)
+			.limit(pageSize + 1)
+			.toArray();
+	}
 
 	const hasMore = convs.length > pageSize;
 	const conversations = (hasMore ? convs.slice(0, pageSize) : convs).map((conv) => ({
 		_id: conv._id,
 		id: conv._id,
 		title: conv.title,
+		...(conv.sealedTitle ? { sealedTitle: conv.sealedTitle, sealedTitleRev: conv.sealedTitleRev } : {}),
 		updatedAt: conv.updatedAt,
 		model: conv.model,
 		modelId: conv.model,
+		pinned: conv.pinned === true,
+		tags: conv.tags ?? [],
 	}));
 
 	return { conversations, hasMore };
@@ -408,8 +463,11 @@ export function mapConversationsForSidebar(
 		return {
 			id: conv._id.toString(),
 			title: trimmedTitle,
+			...(conv.sealedTitle ? { sealedTitle: conv.sealedTitle, sealedTitleRev: conv.sealedTitleRev } : {}),
 			model: conv.model ?? defaultModelId,
 			updatedAt: new Date(conv.updatedAt),
+			pinned: conv.pinned === true,
+			tags: conv.tags ?? [],
 		} satisfies ConvSidebar;
 	});
 }

@@ -42,7 +42,7 @@ describe("settingsSchema activeModel handling", () => {
 		expect(warn).not.toHaveBeenCalled();
 	});
 
-	// CUR-770's actual intent, and the thing that must NOT regress: an id the registry does not
+	// The actual intent, and the thing that must NOT regress: an id the registry does not
 	// know is never what gets persisted.
 	it("never persists an unregistered model id", () => {
 		const out = settingsSchema().parse({ activeModel: "vendor/rotated-out-of-the-pool" });
@@ -76,7 +76,7 @@ describe("settingsSchema activeModel handling", () => {
 
 	// settingsSchema() reads the registry at CALL time. If it ever captures at module scope again,
 	// it would hold the permissive bare `z.string()` models.ts starts with and silently accept any
-	// id — CUR-770 undone with every test still green. This is that tripwire.
+	// id — undone with every test still green. This is that tripwire.
 	it("reads the registry at call time, not at import time", () => {
 		registry.current = registryOf(DEFAULT_SETTINGS.activeModel, "only/this-one");
 		expect(settingsSchema().parse({ activeModel: "only/this-one" }).activeModel).toBe("only/this-one");
@@ -88,7 +88,7 @@ describe("settingsSchema activeModel handling", () => {
 	});
 });
 
-describe("CUR-3528 settingsSchema Personalization cap", () => {
+describe("settingsSchema Personalization cap", () => {
 	beforeEach(() => {
 		registry.current = registryOf(DEFAULT_SETTINGS.activeModel);
 	});
@@ -111,8 +111,8 @@ describe("CUR-3528 settingsSchema Personalization cap", () => {
 });
 
 // The answer settings. A reset arrives as null and is accepted; a value outside the list is
-// refused outright, never coerced, so an unknown tone cannot reach the prompt as a word with no clause. (CUR-3929)
-describe("CUR-3929 settingsSchema answer preferences", () => {
+// refused outright, never coerced, so an unknown tone cannot reach the prompt as a word with no clause.
+describe("settingsSchema answer preferences", () => {
 	beforeEach(() => {
 		registry.current = registryOf(DEFAULT_SETTINGS.activeModel);
 	});
@@ -161,7 +161,7 @@ describe("CUR-3929 settingsSchema answer preferences", () => {
 		expect(settingsSchema().safeParse({ suggestions: "no" }).success).toBe(false);
 	});
 
-	it("takes the milestone 7 fields, set or null, and refuses a value outside their lists (CUR-549)", () => {
+	it("takes the milestone 7 fields, set or null, and refuses a value outside their lists", () => {
 		const out = settingsSchema().parse({ answerFormat: "bullets", emojis: null, showServing: false });
 		expect(out).toMatchObject({ answerFormat: "bullets", emojis: null, showServing: false });
 		expect(settingsSchema().safeParse({ answerFormat: "table" }).success).toBe(false);

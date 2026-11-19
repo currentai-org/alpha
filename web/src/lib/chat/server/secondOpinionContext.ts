@@ -12,26 +12,31 @@ const MAX_CHARS = 1500;
 /**
  * The turns before `parentId` on its branch, oldest first: system messages dropped, the last
  * `MAX_TURNS` kept, each cut to `MAX_CHARS`, and opening on a user turn so roles alternate into the
- * question that follows (CUR-3319).
+ * question that follows.
+ *
+ * `limits` widens the window for a caller reading a whole chat rather than one answer's context:
+ * Continue in a new chat takes more turns, and `throughParent` keeps `parentId` itself.
  */
 export function earlierTurns(
 	conversation: { messages: Message[]; rootMessageId?: Message["id"] },
-	parentId: Message["id"]
+	parentId: Message["id"],
+	limits: { turns?: number; chars?: number; throughParent?: boolean } = {}
 ): EarlierTurn[] {
+	const maxTurns = limits.turns ?? MAX_TURNS;
+	const maxChars = limits.chars ?? MAX_CHARS;
 	let path: Message[];
 	try {
 		path = buildSubtree(conversation, parentId);
 	} catch {
 		return [];
 	}
-	const turns = path
-		.slice(0, -1)
+	const turns = (limits.throughParent ? path : path.slice(0, -1))
 		.filter((m): m is Message & EarlierTurn => (m.from === "user" || m.from === "assistant") && !!m.content?.trim())
 		.map((m) => {
 			const text = m.content.trim();
-			return { from: m.from, content: text.length > MAX_CHARS ? `${text.slice(0, MAX_CHARS)}…` : text };
+			return { from: m.from, content: text.length > maxChars ? `${text.slice(0, maxChars)}…` : text };
 		})
-		.slice(-MAX_TURNS);
+		.slice(-maxTurns);
 	while (turns.length && turns[0].from !== "user") turns.shift();
 	return turns;
 }

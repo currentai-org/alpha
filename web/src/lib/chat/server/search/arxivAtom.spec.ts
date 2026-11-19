@@ -6,7 +6,7 @@ const feed = (...entries: string[]) =>
 	`<?xml version="1.0" encoding="UTF-8"?><feed xmlns="http://www.w3.org/2005/Atom"><title>ArXiv Query</title><id>http://arxiv.org/api/q</id>${entries.join("")}</feed>`;
 
 // The feed is parsed as XML, so an entity, a CDATA block or a nested element in an entry comes
-// out as plain text, and the feed's own <title> and <id> never pass for an entry's. (CUR-4068)
+// out as plain text, and the feed's own <title> and <id> never pass for an entry's.
 describe("parseArxivAtom", () => {
 	it("reads each entry's title, abstract, abs URL and published date", () => {
 		const [c] = parseArxivAtom(

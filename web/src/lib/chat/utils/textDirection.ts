@@ -6,7 +6,7 @@
 // product open with its name often enough to matter. A block reads
 // right to left when right-to-left letters outnumber the rest, so a Latin name inside Arabic stays an
 // embedded run and an English sentence with one Arabic word stays left to right. Inline code is not
-// counted, since it is left-to-right text by nature and says nothing about the prose around it. (CUR-1917)
+// counted, since it is left-to-right text by nature and says nothing about the prose around it.
 
 const RIGHT_TO_LEFT_LETTER =
 	/\p{Script=Arabic}|\p{Script=Hebrew}|\p{Script=Syriac}|\p{Script=Thaana}|\p{Script=Nko}/u;

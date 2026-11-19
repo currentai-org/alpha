@@ -30,13 +30,15 @@ import { requireLocationsAccess } from "../../../guard";
 // trade the code for a grant, make sure the grant can create and open `<user>/alpha-files` (or the
 // bucket the person named on Connect), then store
 // it as a location. Every outcome redirects to Storage settings, which reads `connected` or
-// `connect_error` and says what happened. (CUR-2932)
+// `connect_error` and says what happened.
 
 const SETTINGS = `${base}/settings/storage`;
 
+/** The log line a repeat Connect writes; `hf-connect-refreshes` in verifyQueries.mjs reads it. */
+const HF_CONNECT_REFRESHED = "[storage-locations] Hugging Face connect refreshed a linked bucket";
+
 // `refreshed` names the bucket that was already linked, so the page can say nothing new was added.
-// `connected` carries the new location's id, so the page can offer to save and move files there
-// (CUR-2941).
+// `connected` carries the new location's id, so the page can offer to save and move files there.
 // `taken` carries the name, so the form comes back holding it.
 function back(
 	outcome: { connected: string } | { refreshed: string } | { error: string; bucket?: string }
@@ -96,6 +98,10 @@ export const GET: RequestHandler = async ({ locals, cookies, url }) => {
 	if (same) {
 		await setStorageLocationCredential(accountId, same.id, grantCredential);
 		await setStorageLocationStatus(accountId, same.id, "ok", null);
+		// Counts only, never the bucket or user name: a production query reads that a repeat Connect
+		// refreshed one row and added none.
+		const linkedRows = existing.filter((r) => sameRepo(r.config.repo, repo) && r.config.grant === "oauth").length;
+		logger.info({ linkedRows }, HF_CONNECT_REFRESHED);
 		back({ refreshed: same.config.repo });
 	}
 	if (existing.length >= MAX_LINKED_LOCATIONS) back({ error: "limit" });

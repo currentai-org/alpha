@@ -1,4 +1,4 @@
-// Violence re-check (CUR-1853). The Shieldstral 3B judge scores violent idioms as violence on their own:
+// Violence re-check. The Shieldstral 3B judge scores violent idioms as violence on their own:
 // "I could murder a coffee" 0.62, "I could kill for a pizza" 0.95, while a real request to make a knife
 // that passes a metal detector scored 0.90. Idioms and real requests overlap, so no
 // rewording of the query and no per-rule threshold separates them. Thresholds in rules.json are not ours
@@ -13,7 +13,7 @@
 // block, never add one, and it fails closed.
 //
 // Behind the `violence-recheck` flag. Enabling it in production needs a privacy notice naming the side-call
-// processor (CUR-2063), since this sends a blocked message's text to TASK_MODEL.
+// processor, since this sends a blocked message's text to TASK_MODEL.
 
 import type OpenAI from "openai";
 import { forcedTaskModelToolCall } from "$lib/chat/server/taskModelClient";
@@ -168,7 +168,7 @@ export async function recheckViolenceBlock(
 	// A failed unit was never read at all. An image can carry violence the text does not show, so the
 	// block stands unless every image answered the violence rule with a clear no. When they all did, the
 	// hit came from the text, which here is often an earlier turn's idiom
-	// re-screened with the chat's history (CUR-3258), so the text is re-judged as usual.
+	// re-screened with the chat's history, so the text is re-judged as usual.
 	const imageCleared = screen.images.length === 0 || (g.imageCleared?.includes(VIOLENCE_KEY) ?? false);
 	if (screen.failedUnits.length > 0 || !imageCleared) return done("skipped-media", g);
 	const text = screen.corpus.trim();

@@ -1,4 +1,7 @@
-// A parked mid-tool-call question from an MCP server (CUR-1017), 2026-era ("input_required") only.
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
+// A parked mid-tool-call question from an MCP server, 2026-era ("input_required") only.
 // Ported from huggingface/chat-ui's McpElicitation.ts, trimmed to what a 2026-only flow needs: no
 // `expiresAt` (that bounds the 2025-era BLOCKING flow this repo doesn't support — see
 // schema.ts's mcpElicitations comment for why), no ask_user_question-specific PendingCall variants

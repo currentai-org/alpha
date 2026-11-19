@@ -10,8 +10,7 @@ import './page-transition.css';
  * back or forward swipe the browser has already animated itself.
  *
  * Content pages are the ones with the site's header and footer. The chat app keeps its instant
- * switch, and /alpha ⇄ /alpha/demo keeps its own transition (alpha-landing/demo-transition.ts): the
- * demo is a chat page, so the two never claim the same navigation. A Payload page on the chat
+ * switch. A Payload page on the chat
  * template is only known once it has rendered, so a transition into one is skipped there.
  *
  * The new page's snapshot is taken at the first frame after the swap, so ScrollSmoother, which
@@ -61,5 +60,5 @@ export function usePageTransition(isContentPage: () => boolean) {
 
 /** The routes that are the chat app whatever their data (the root layout's `isChatApp`). */
 function isChatRoute(id: string | null) {
-	return id?.startsWith('/chat') === true || id === '/alpha/demo';
+	return id?.startsWith('/chat') === true;
 }

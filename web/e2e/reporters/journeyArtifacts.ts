@@ -95,7 +95,7 @@ export function videoStartOf(steps: readonly StepLike[]): number | null {
 }
 
 /** Milliseconds into the video at which the test's first page asked for its first document, from the
- *  `first-navigation` annotation helpers/test.ts adds (CUR-2989). Null without that annotation or a
+ *  `first-navigation` annotation helpers/test.ts adds. Null without that annotation or a
  *  page, which leaves the opening blank measured from the first frame as before. */
 export function navigatedAtOf(
 	steps: readonly StepLike[],
@@ -203,7 +203,7 @@ export function stepSpans(
 // ones with journeys, and G1 (the gap map) and W1 (the website) are two more real surfaces with real
 // personas. Enumerating them meant the NEXT letter would be dropped in silence, which is the failure
 // the warning below now names.
-// Exported so taggedOutcomes.ts (CUR-1635) can find the same tests this reporter does, rather than
+// Exported so taggedOutcomes.ts can find the same tests this reporter does, rather than
 // keeping a second copy of the pattern that could drift from this one.
 export const JOURNEY_TAG_RE = /^@([A-Z]\d+)$/;
 
@@ -224,7 +224,7 @@ export const JOURNEYS_DIR = join(process.cwd(), 'test-results', 'journeys');
  *  directly (a throwaway flaky-test experiment, workers:3): attempt 0 always finishes before attempt 1
  *  starts, on a different worker PID, regardless of `workers` — Playwright serializes a test's own
  *  retries by construction, so that was never a real risk. The actual protection against two DIFFERENT
- *  tests colliding on one slug is `recordingSlug` below keying by project as well as title (CUR-1550);
+ *  tests colliding on one slug is `recordingSlug` below keying by project as well as title;
  *  this function alone was never that guarantee. */
 export function testSlug(title: string): string {
 	const slug = title
@@ -239,7 +239,7 @@ export function testSlug(title: string): string {
  *  The project belongs in the key because a journey is walked on more than one viewport and
  *  the same test title then arrives twice. Keyed on title alone the second arrival silently overwrote
  *  the first, so the grader read one recording, could not tell which viewport it was, and a desktop
- *  pass could be replaced by a mobile failure of the same name. That is CUR-1480's defect at a
+ *  pass could be replaced by a mobile failure of the same name. That is the defect at a
  *  different level — there it was sibling tests sharing a journey, here it is one test on two devices.
  *
  *  The project is always in the name, not only when several exist. A name that changes shape
@@ -288,7 +288,7 @@ export default class JourneyArtifactsReporter implements Reporter {
 			return;
 		}
 		// A failed run's video is kept on purpose — a failure is exactly the kind of evidence the
-		// critique pass (CUR-1464's other half) exists to read.
+		// critique pass (the other half) exists to read.
 		const video = result.attachments.find((a) => a.name === 'video' && a.path);
 		if (!video?.path) return; // video disabled, or the test crashed before Playwright wrote one
 
@@ -366,7 +366,7 @@ export default class JourneyArtifactsReporter implements Reporter {
 					startedAt: result.startTime.toISOString(),
 					durationMs: result.duration,
 					// Where each journeyStep() lands in video.webm, so the tour reel cuts one
-					// doc row out of a test rather than playing the whole test, and (CUR-2764) what the
+					// doc row out of a test rather than playing the whole test, and what the
 					// page said at the end of each row. Empty when the test marks no steps.
 					steps: stepSpans(result.steps ?? [], result.attachments ?? []),
 					// When the first page first asked for a document, so the graders count the

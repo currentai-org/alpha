@@ -1,6 +1,6 @@
 import type { PreparedTurnMedia } from "./prepareTurnMedia";
 
-/** The line the turn shows for files it could not read (CUR-3291), or undefined when it read them all. */
+/** The line the turn shows for files it could not read, or undefined when it read them all. */
 export function unreadFilesNotice(unread: PreparedTurnMedia["unreadFiles"]): string | undefined {
 	const names = (reason: "unreadable" | "missing") =>
 		unread.filter((f) => f.reason === reason).map((f) => `"${f.name}"`);

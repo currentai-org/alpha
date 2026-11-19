@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { afterEach, describe, expect, it } from "vitest";
 import { buildHtmlSrcdoc, createFrameLeaveGuard } from "$lib/chat/utils/previewSrcdoc";
 
@@ -24,7 +27,7 @@ function nextMessage(channel: string, timeoutMs = 5000): Promise<PreviewMessage>
 		function onMsg(ev: MessageEvent) {
 			const data = ev.data as Partial<PreviewMessage> | null;
 			if (!data || typeof data !== "object" || data.channel !== channel) return;
-			// The hook reports its own lifecycle (CUR-3527); these tests wait for what comes after it
+			// The hook reports its own lifecycle; these tests wait for what comes after it
 			if (data.type === "chatui.preview.ready" || data.type === "chatui.preview.loaded") return;
 			clearTimeout(timer);
 			window.removeEventListener("message", onMsg);
@@ -51,7 +54,7 @@ function renderPreview(body: string, channel: string): HTMLIFrameElement {
 	return iframe;
 }
 
-describe("artifact policy in a real browser (CUR-3187)", () => {
+describe("artifact policy in a real browser", () => {
 	it("blocks an artifact's fetch to another server, even from a script placed before <head>", async () => {
 		const channel = "test_csp_fetch";
 		const message = nextMessage(channel);
@@ -163,11 +166,11 @@ describe("preview hook script", () => {
 	});
 });
 
-describe("a preview frame that leaves its srcdoc is noticed (CUR-3527)", () => {
+describe("a preview frame that leaves its srcdoc is noticed", () => {
 	// A srcdoc frame inherits the parent's base URL, so these are real http navigations to the test
 	// server; an attacker would name their own host instead. The destination is a static file: a
 	// routed path makes the test server evaluate SvelteKit's SSR modules, which fails in vite's module
-	// runner and times out client tests in later files (CUR-2478).
+	// runner and times out client tests in later files.
 	const NAVIGATE = `location.href = new URL("/robots.txt?left-srcdoc=1", document.baseURI).href;`;
 	const HOOK_TYPES = ["chatui.preview.ready", "chatui.preview.loaded", "chatui.preview.leaving"];
 

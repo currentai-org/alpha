@@ -1,74 +1,76 @@
-# Alpha agent service
+# Public AI Agent Service
 
-The agent service is an HTTP API that runs a [Hermes](https://github.com/NousResearch/hermes-agent)
-agent (Nous Research, MIT) on an open model and drives a multi-step task to completion. It keeps the
-model credential behind a separate gateway, runs each task's work in a sandbox, and checks each
-result against its side effects before it reports success.
+A developer-facing API that runs a [Hermes](https://github.com/NousResearch/hermes-agent) agent
+(Nous Research, MIT) on an open / sovereign model and drives a multi-step task end-to-end — with a
+**credential-split boundary**, an **execution sandbox**, and an **independent-verify + best-of-N**
+layer that catches the model's occasional false "task completed".
 
-The Alpha chat app calls it for agent mode. `web/`'s chat API reaches it at `AGENT_SERVICE_URL` and
-authenticates with `AGENT_SERVICE_TOKEN`. Auth and the safety screen come from the chat app. The
-agent service's own work is running model-driven tool calls and shell commands, metering spend, and
-keeping the model credential away from the agent.
+It's a component of the [Public AI](https://aipotluck.org) stack that builds and deploys separately
+from the web app. It *consumes* the platform's shared auth and moderation rather than rebuilding
+them; its own novel work is the **execution delta** — running model-driven tool calls and shell safely,
+metering spend, and keeping the model credential off the agent.
 
-To set up a local environment, run `make venv && make test`. The test suite is offline and needs no
-network, model or Docker. [CONTRIBUTING.md](CONTRIBUTING.md) covers setup. `config.yaml.example` and
-`compose.yaml` show the configuration.
+> **Local dev:** `make venv && make test` (offline test suite, no network/model/Docker). Setup and the
+> gotchas worth knowing are in `docs/DEV.md`. Streaming/ACP design in
+> `docs/streaming-spec.md`. Which model, hosted where, driven how:
+> `docs/model-tradeoffs.md`.
 
-## Features
+## Why it's interesting
 
-- **Model-boundary gateway** (`api/proxy.py`). The app never holds the real model token. The agent
-  subprocess gets a per-task nonce. The gateway swaps in the real credential on outbound calls,
-  counts model calls against the step cap, sums `usage` tokens against the spend cap, and can fail
-  over across an ordered list of providers.
-- **Fail-closed sandbox.** With the default `AGENT_SANDBOX_BACKEND=e2b`, each conversation's work
-  runs in its own E2B microVM, and a deploy without the E2B config refuses to boot. The host-local
-  runner (`AGENT_SANDBOX_BACKEND=bwrap`, for local stacks) runs under `bwrap` with `$HOME`, the
-  durable store and the app source replaced by empty tmpfs mounts. With `AGENT_SANDBOX_REQUIRED=1`,
-  a broken sandbox refuses to run.
-- **Verified results.** Runs are checked without an LLM against an optional declarative `verify`
-  spec. A result is reported `verified` only when its side effects confirm it. `AGENT_BEST_OF` runs
-  up to N attempts and accepts the first one that verifies, which catches the model's occasional
-  false "task completed" on long dependent chains.
+- **Model-boundary gateway** (`api/proxy.py`) — the app never holds the real model token. The agent
+  subprocess gets a per-task *nonce*; the gateway swaps in the real credential outbound, counts model
+  calls (step cap) and sums `usage` tokens (spend cap), and can fail over across an ordered,
+  sovereign-first list of providers.
+- **Fail-closed sandbox** — by default (`AGENT_SANDBOX_BACKEND=e2b`) each conversation's work runs in its
+  own E2B microVM, and a deploy missing the E2B config refuses to boot. The host-local runner
+  (`AGENT_SANDBOX_BACKEND=bwrap`, for local stacks) executes under `bwrap` with `$HOME`, the durable store,
+  and the app source replaced by empty tmpfs; with `AGENT_SANDBOX_REQUIRED=1` a broken sandbox refuses to
+  run rather than leaking.
+- **Honest results** — runs are verified LLM-free against an optional declarative `verify` spec; a
+  result is reported `verified` only if its side-effects confirm it. `AGENT_BEST_OF` retries up to N
+  self-grounded attempts and accepts the first one that verifies — closing the model's occasional false
+  "task completed" on long dependent chains.
 
-## Architecture
+## Architecture — two planes
 
-The service runs as two planes from one image.
-
-| Plane | File | Holds the token | Role |
+| Plane | File | Holds the token? | Role |
 |------|------|------------------|------|
-| **App** | `api/app.py` | no | `POST /run`, polling, SSE stream, per-user budgets |
-| **Gateway** | `api/proxy.py` | yes | swaps the per-task nonce for the real token, enforces step and spend caps, routes the provider chain and the verifier |
+| **App** | `api/app.py` | no | `POST /run`, polling, SSE stream, per-user budgets — credential-free |
+| **Gateway** | `api/proxy.py` | yes | swaps the per-task nonce for the real token, clamps step/spend caps, routes the provider chain and the verifier |
 
-Other modules: `api/store.py` is the durable SQLite task store and per-user spend ledger.
-`api/acp_remote.py` is the Agent Client Protocol front door for local editors.
+Other surfaces: `api/store.py` (durable sqlite task store + per-user spend ledger),
+`api/acp_remote.py` (Agent Client Protocol front door for local editors).
 
-### Gateway responsibilities
+**Why a separate gateway plane, and whether it still earns its keep.** Three of its four jobs have no
+substitute anywhere else in the system:
 
-- **Step cap.** `hermes -z` has no CLI flag for `max_turns`, and the config value reaches only the
-  TUI and cron paths. The oneshot path the service spawns (`_execute_attempt` in `api/app.py`)
-  therefore has no iteration cap of its own. The gateway counts model calls per nonce
-  (`chat_completions` in `api/proxy.py`) and stops a runaway loop. `AGENT_MAX_STEPS` takes effect
-  only through the gateway.
-- **Spend cap.** The gateway sums streamed `usage` tokens per nonce and rejects calls past
-  `max_tokens` (also in `chat_completions`). The wall-clock limit fires only after the tokens are
-  spent.
-- **Credential boundary.** The deployed transport is ACP (`AGENT_ACP=1`, reported by `/healthz`).
-  A per-call permission gate (`request_permission` in `api/acp_client.py`) pauses edit and delete
-  calls for a human to confirm. The deployed config sets `ACP_PERMISSION_POLICY=confirm`. `--yolo`
-  applies only to the legacy `hermes -z` oneshot fallback, used when `AGENT_ACP` is unset on local
-  and dev paths. On both transports, `_model_env` in `api/app.py` gives the subprocess
-  `HF_TOKEN=<nonce>` and never a real key, so code the agent runs can't read a credential. When the
-  gateway is configured but unreachable, the app fails the task (`_grant_attempt_budget` in
-  `api/app.py`). It never falls back to passing the real token through.
-- **Provider failover.** `MODEL_PROVIDERS` is a one-element chain (`cscs`). Failing over to a host
-  that serves a different model would make the provenance badge wrong, so failover is unused.
+- **It is the only step cap that exists.** Hermes' `max_turns` setting does not reach the `hermes -z`
+  oneshot path (see the comment above `MODEL_PROXY_URL` in `api/app.py`). The gateway counts model calls
+  per nonce and refuses the next one once the cap is reached (`chat_completions` in `api/proxy.py`), and
+  that count is what stops a runaway loop on every transport. Without it `AGENT_MAX_STEPS` would do
+  nothing.
+- **It is the only spend cap.** The gateway sums the streamed `usage` tokens per nonce and refuses
+  further calls past `max_tokens` (`chat_completions` in `api/proxy.py`). The wall clock is the only
+  other bound, and it fires after the money is spent.
+- **It is the credential boundary, and that matters because of what the agent is.** The deployed
+  transport is ACP (`AGENT_ACP=1`), with a per-call permission gate (`request_permission` in
+  `api/acp_client.py`). `ACP_PERMISSION_POLICY` sets what that gate does: `allow`, `deny_writes`,
+  `confirm` or `staged`, and production runs `staged`. The `--yolo` flag belongs to the legacy
+  `hermes -z` oneshot transport, used only when `AGENT_ACP` is unset, which local and development paths
+  still support. On either transport `_model_env` in `api/app.py` hands the subprocess `HF_TOKEN=<nonce>`
+  and never a real key, so nothing the agent runs can read a model credential. When the gateway is
+  configured but cannot grant an attempt its budget, that attempt does not run
+  (`_grant_attempt_budget` in `api/app.py`); the app never falls back to passing the real token through.
 
-### Local passthrough mode
+The fourth job, multi-provider failover, is unused in production: `MODEL_PROVIDERS` is a one-element
+chain (`mistral` in `fly/agent-proxy.toml`). That is deliberate. Failing over to a host that serves a
+different model would make the model a response reports untrue, so a provider outage fails the task
+instead. The nonce, cap and credential layer beneath the router is what the gateway is for.
 
-With `AGENT_MODEL_PROXY_URL` unset, the app calls the model directly and `/healthz` reports
-`secrets_boundary: "OFF(legacy passthrough)"` (`healthz` in `api/app.py`). This mode has no step
-cap and no spend cap, and the agent holds the real key. Use it only for local harness work such as
-`gateway-test.sh`. Never expose it.
+Running without the gateway is supported and reported rather than silent. Leave `AGENT_MODEL_PROXY_URL`
+unset and `/healthz` reports `secrets_boundary: "OFF(legacy passthrough)"`. That path has no step cap
+and no spend cap, and the agent holds the real key. It exists for local harness work, not for anything
+exposed.
 
 ## Quickstart
 
@@ -76,101 +78,102 @@ cap and no spend cap, and the agent holds the real key. Use it only for local ha
 make venv                                          # .venv + dev deps (uv)
 make test                                          # offline suite: pytest + ruff + coverage
 cp config.yaml.example ~/.hermes/config.yaml       # one-time Hermes provider config
-./smoke.sh                                         # MODEL_UPSTREAM_TOKEN from env or a gitignored .env.local
+./smoke.sh                                          # MODEL_UPSTREAM_TOKEN from env or a gitignored .env.local
 ```
+Expect: `PASS: agent counted 3 .py files …`.
 
-The smoke test prints `PASS: agent counted 3 .py files …`.
-
-### Test the gateway
-
+### The gateway interlocks (secrets-at-boundary + step/spend caps)
 ```
-./gateway-test.sh   # starts proxy.py (holds the only real token) and app.py (started without one)
+./gateway-test.sh   # starts proxy.py (holds the ONLY real token) + app.py (started WITHOUT one)
 ```
+A task can only complete if the agent was credentialed via the per-task nonce — that *is* the secrets
+boundary. The test then proves the step cap forces a verified failure. Enable the gateway in `app.py`
+with `AGENT_MODEL_PROXY_URL` + `PROXY_ADMIN_KEY`; per-run `max_steps`/`max_tokens` can only tighten the
+server ceilings. (A gateway, rather than Hermes' own cap, because the `hermes -z` one-shot path doesn't
+enforce config `max_turns` — so the cap, secrets, and spend metering all live at one owned chokepoint.)
 
-A task completes only when the agent was credentialed through the per-task nonce. The test then
-checks that the step cap forces a verified failure. To enable the gateway in `app.py`, set
-`AGENT_MODEL_PROXY_URL` and `PROXY_ADMIN_KEY`. Per-run `max_steps` and `max_tokens` can only lower
-the server ceilings.
+## Testing
 
-## Run the tests
-
-- **`make test`** runs the offline pytest suite with no network or agent. It covers cap clamps,
-  failure detection, concurrency slots, verify-spec validation, secret stripping, the durable store
-  and per-user budgets, the compute-router failover policy, the SSE event stream, the frozen wire
-  contract, and the ACP front-door helpers (secret scrubbing and the bwrap profile). The suite is
-  coverage-gated, and CI runs it on every push.
-- **`make lint`** runs `ruff`.
-- **Live integration scripts** need a funded token and a running model: `gateway-test.sh`,
+- **`make test`** — offline pytest suite (no network/agent): cap clamps, honest-failure detection,
+  concurrency slots, verify-spec validation, secret stripping, the durable store + per-user budgets,
+  the compute-router failover policy, the SSE event stream, the frozen wire contract, and the ACP
+  front-door helpers (secret scrub + bwrap profile). Coverage-gated; CI runs it on every push.
+- **`make lint`** — `ruff`.
+- **Live integration scripts** (need a funded token + a running model): `gateway-test.sh`,
   `sandbox-test.sh`, `hardening-test.sh`, `load-test.sh`, `persistence-test.sh`,
-  `failure-recovery-test.sh`, `long-context-test.sh`, `model-adherence-test.sh` and
-  `multi-toolset-test.sh`. They read the token and venv location from env vars defined in
-  `scripts/testlib.sh`.
+  `failure-recovery-test.sh`, `long-context-test.sh`, `model-adherence-test.sh`,
+  `multi-toolset-test.sh`. They resolve the token + venv from overridable env vars (see
+  `scripts/testlib.sh`).
 
 ## Models
 
-**Default model.** Apertus-1.5-70B on CSCS drives Hermes' multi-turn loop with the `coding` toolset
-and `AGENT_BEST_OF=3`. The released weights are
-[`swiss-ai/Apertus-v1.5-70B`](https://huggingface.co/swiss-ai/Apertus-v1.5-70B) (Apache-2.0). The
-model id on the wire is `apertus-ai/Apertus-v1.5-70B`, the persistent CSCS deployment of 1.5.
+**Production:** the default executor is Mistral Large 4 (`AGENT_MODEL = "mistral-large-2610"` in
+`fly/agent-app.toml`), served through Public AI's inference router as a single-provider chain
+(`MODEL_PROVIDERS = "mistral"` in `fly/agent-proxy.toml`). A task runs on the model the chat names for
+it when `PROVIDER_MISTRAL_MODEL_MAP` lists that model, and is refused when it does not; the default
+applies only when the chat names none. Hermes drives its own multi-turn loop over ACP with the
+`file,terminal,todo,code_execution` toolsets and `AGENT_BEST_OF=3`. On chat turns a separate verifier model,
+set at deploy time through `AGENT_VERIFIER_MODEL`, judges whether the result satisfies the task. The
+proxy config keeps two rollback routes configured: GLM-5.2 through Hugging Face's router, and
+Apertus-1.5-70B served at CSCS.
 
-The coding benchmark has 6 realistic multi-file tasks, each run 3 times and graded by a hidden
-acceptance test. Across two runs of it, 9 to 11 of the 18 attempts verified, and 1 to 2 tasks passed
-all three trials. The bounded smoke fixtures pass 20 of 24. The smoke figure checks the plumbing and
-says nothing about capability.
+**Dev/CI path:** `Qwen/Qwen3-Next-80B-A3B-Instruct` on HF Inference Providers — a cheap MoE that
+passes the adherence suite; 32B and 235B also pass, pick on cost. **A measured caveat:** the cheap 80B
+drops state past ~32k context (long-horizon pass^8 = 4/8) where the 235B holds (8/8) — route long
+tasks to a long-context-verified model.
 
-**Dev and CI model.** `Qwen/Qwen3-Next-80B-A3B-Instruct` on HF Inference Providers is a low-cost MoE
-that passes the adherence suite. The 32B and 235B variants also pass. The 80B model loses state past
-about 32k tokens of context (long-horizon pass^8 = 4/8), where the 235B holds (8/8). Route long tasks
-to a model verified for long context.
+**A caution about the CSCS route:** CSCS's research catalog rotates checkpoints on an hours-to-days
+timescale, so `scripts/dogfood.py` snapshots `/v1/models` before every run and fails loudly if the
+configured id has moved. A 503 `"No provider found for the requested service."` from that endpoint
+means an unrecognized model id, not a bad credential; a bad credential returns 401.
 
-**Model ids on CSCS.** The CSCS research catalog rotates checkpoints within hours to days.
-`scripts/dogfood.py` reads `/v1/models` before every run and fails if the configured id is gone. A
-503 `"No provider found for the requested service."` from that gateway means an unrecognized model
-id. A bad credential returns 401.
+The model × host × controller matrix and the reliability measurements behind these choices are in
+`docs/model-tradeoffs.md`.
 
-## Hermes pin and patches
+The Hermes harness is pinned (so "it works" survives drift): the deploy image clones stock upstream at a
+pinned SHA, then applies everything in `deploy/hermes/` on top, in filename order. This is deliberately
+not a fork — the clone URL still points at stock upstream, each patch stays reviewable in our own code
+review, and an upstream bump that invalidates one fails the **build** rather than drifting quietly.
+`deploy/Dockerfile` also supports building from a fork via `HERMES_GIT_URL`/`HERMES_SHA`; production does
+not use it. Every patch there carries a stated exit condition in the Dockerfile, or the collection
+becomes a fork by accumulation.
 
-The deploy image clones upstream Hermes at a pinned SHA, then applies each patch in `deploy/hermes/`
-in filename order. The clone URL points at upstream, and each patch is reviewed as part of this
-repository. An upstream bump that breaks a patch fails the image build. `deploy/Dockerfile` can also
-build from a fork through `HERMES_GIT_URL` and `HERMES_SHA`. Production doesn't use this. Each patch
-has an exit condition recorded in the Dockerfile. `deploy/hermes/UPSTREAM.md` describes how to bump
-the pin.
+`HERMES_ACP_TOOLSETS` needs no patch at the pinned version: the agent service writes it into each
+attempt's `config.yaml` as `platform_toolsets.acp`, which upstream Hermes reads itself. `/healthz`'s
+`toolsets_effective` reports the toolsets a running deploy actually hands Hermes. `HERMES_LEAN_PROMPT`
+is different: neither upstream Hermes nor the patches in `deploy/hermes/` implement it, and production
+never sets it, so treat anything measured with it as an experiment. The model serving token never lands
+in the image; it is a gateway secret.
 
-The service writes `HERMES_ACP_TOOLSETS` into each attempt's `config.yaml` as
-`platform_toolsets.acp`, which upstream Hermes reads directly. `/healthz` reports the result as
-`toolsets_effective`. Upstream Hermes has no `HERMES_LEAN_PROMPT`, so the service doesn't set it.
-The model serving token is a gateway secret and never enters the image.
-
-### Execute confirmation patch
-
-`deploy/hermes/0002-acp-confirm-execute.patch` makes `terminal`, `process` and `execute_code` calls
-reach `request_permission`. It proposes those tool names from the same code path that edit approval
-uses, and it adds no env var. The patch always applies. `_ALWAYS_CONFIRM_KINDS` in
-`api/acp_client.py` decides whether the resulting `kind="execute"` proposal pauses.
-
-Two upstream Hermes variables interact with it:
-
-- `HERMES_INTERACTIVE=1` is set by `acp_adapter/server.py` for every ACP session. It routes the
-  pattern-matched dangerous-command prompt in `tools.approval.check_dangerous_command` to the
-  interactive callback path. The patch's requester runs alongside that mechanism, so a dangerous
-  terminal command can raise two separate confirms.
-- `HERMES_SESSION_KEY` is set per ACP session in the same block. It scopes per-session caches, such
-  as the interactive sudo-password cache in `tools.terminal_tool`, to one ACP session so they don't
-  carry over between sessions on a reused executor thread. It doesn't affect the confirm gate.
+`deploy/hermes/0002-acp-confirm-execute.patch` introduces no env-var knob of its own — it
+closes the gap where a `terminal`/`process`/`execute_code` call never reached `request_permission` at
+all, by proposing those tool names from the same chokepoint edit approval already uses. It runs
+unconditionally: `api/acp_client.py`'s `_ALWAYS_CONFIRM_KINDS` is what decides whether the resulting
+`kind="execute"` proposal actually pauses. Stock Hermes's own `HERMES_INTERACTIVE=1` (set by
+`acp_adapter/server.py` for the duration of every ACP session, pre-dating this patch) is what already
+routes `tools.approval.check_dangerous_command`'s pattern-matched dangerous-command prompt to the
+interactive/callback path instead of auto-approving — this patch's requester binds beside that
+mechanism, not through it, so a genuinely dangerous terminal command can now surface two separate
+confirms rather than one. Stock Hermes's `HERMES_SESSION_KEY` (also pre-dating this patch, set per ACP
+session in the same `server.py` block) scopes per-session caches — e.g. `tools.terminal_tool`'s
+interactive sudo-password cache — to the ACP session rather than leaking across sessions that land on
+the same reused executor thread; unrelated to the confirm gate itself, named here only because it now
+sits in this patch's own diff context.
 
 ## Deploy
 
-- **`deploy/`** holds the `Dockerfile` (one image, two roles, selected by the start command),
-  `entrypoint.sh` (installs a default-deny egress allowlist, then drops to the unprivileged user),
-  `hermes/` (patches applied to the pinned Hermes), `e2b-template/` (the sandbox image) and
-  `e2b-link/` (a WireGuard link to a self-hosted E2B). See [`deploy/README.md`](deploy/README.md).
-- **`compose.yaml`** runs a local two-plane demo. The proxy holds the token and the app has none.
+- **`deploy/`** — `Dockerfile` (single image, two roles): the Plane A proxy is the only role with upstream
+  egress and the Plane B app is credential-free. `entrypoint.sh` installs default-deny egress so the
+  agent's only outbound is the gateway (the network half of the exfil control). `deploy/aws/` stands the
+  pair up on EC2 beside the E2B hosts.
+- **`fly/`** — the Fly app configs and deploy scripts the hosted service runs on (`fly/deploy.sh`
+  creates and configures an app pair). See
+  `fly/DEPLOY.md`.
 
-## Connect an MCP server
+## Giving agent mode an MCP server
 
-Set `AGENT_MCP_SERVERS` to give the agent's Hermes session an MCP server's tools. This requires the
-ACP transport (`AGENT_ACP=1`, which `compose.yaml` sets).
+Set one env var and the agent's Hermes session gets that server's tools. It needs the ACP
+transport (`AGENT_ACP=1`, already on in `fly/agent-app.toml`).
 
 ```sh
 AGENT_MCP_SERVERS='[{"name": "folkways", "url": "https://folkways.example.org/mcp",
@@ -178,65 +181,57 @@ AGENT_MCP_SERVERS='[{"name": "folkways", "url": "https://folkways.example.org/mc
 FOLKWAYS_MCP_AUTH='Bearer …'     # a secret; the JSON names this var and never holds the value
 ```
 
-- **Fields.** `name` uses lowercase letters, digits, `-` or `_`. `url` must use https. `headers` maps
-  a header name to the env var its value is read from when each task starts. `transport` is
-  optional, and `"http"` (Streamable HTTP) is the only accepted value. The pinned Hermes drops the
-  SSE transport on the ACP path, so an SSE server never connects.
-- **Tool names.** Hermes lists MCP tools by name and description. The model calls them through its
-  `tool_call` bridge (`tools/tool_search.py`) as `mcp__folkways__<tool>`.
-- **Permission policy.** Only tasks whose permission policy resolves to `allow` get the servers.
-  Under `deny_writes`, `confirm`, or `staged` for a new caller, the servers are left off the
-  session, because neither permission gate sees MCP calls.
-- **Egress.** In a deployed container, the agent can reach only the hosts in the nftables allowlist
-  that `deploy/entrypoint.sh` installs at boot. The entrypoint adds each configured MCP host from
-  `AGENT_MCP_SERVERS`, so you don't need to edit `AGENT_EGRESS_ALLOW_HOSTS`. The allowlist is built
-  at boot, so a change takes effect on the next machine restart.
-- **Config errors.** Malformed JSON or any rejected entry disables all MCP servers, logs
-  `mcp.config_invalid`, and reports the reason under `mcp.error` in `/healthz`. Tasks keep running.
+- **Fields.** `name` is lowercase letters, digits, `-` or `_`. `url` must be https. `headers` maps a header
+  name to the env var its value is read from when each task starts. `transport` may be omitted, and
+  `"http"` (Streamable HTTP) is the only accepted value: the pinned Hermes drops the SSE transport on the
+  ACP path, so an SSE server would never connect. Use a Streamable HTTP endpoint.
+- **What the model sees.** Hermes lists MCP tools by name and description and the model calls them through
+  its `tool_call` bridge (`tools/tool_search.py`), as `mcp__folkways__<tool>`.
+- **Who gets it.** Only tasks whose permission policy resolves to `allow`. Under `deny_writes`, `confirm`,
+  or a new caller under `staged`, the servers are left off the session, because neither permission gate
+  ever sees an MCP call.
+- **Egress.** On Fly the agent can reach only the hosts in the nftables allowlist that
+  `deploy/entrypoint.sh` installs at boot. Each configured MCP host is added to it automatically from
+  this same variable, so no separate `AGENT_EGRESS_ALLOW_HOSTS` edit is needed. The allowlist is resolved
+  at boot, so a change to the variable takes effect on the next machine restart.
+- **Bad config.** Malformed JSON or any invalid entry means no MCP servers at all, a
+  `mcp.config_invalid` log line, and the reason under `mcp.error` in `/healthz`. Tasks keep running.
   A server whose header env var is unset is skipped for that task (`mcp.server_skipped`).
 
-### Use a local MCP server
-
-`http://localhost`, `127.0.0.1` and `[::1]` are refused unless you also set
-`AGENT_MCP_ALLOW_LOCALHOST=1`. Never set it on a deploy.
+**Local development against a server on your machine.** `http://localhost`, `127.0.0.1` and `[::1]` are
+refused unless you also set `AGENT_MCP_ALLOW_LOCALHOST=1`. Never set that on a deploy.
 
 ```sh
 AGENT_ACP=1 AGENT_MCP_ALLOW_LOCALHOST=1 \
 AGENT_MCP_SERVERS='[{"name": "folkways", "url": "http://127.0.0.1:8000/mcp"}]' make run
 ```
 
-The Hermes that `make run` launches needs the `mcp` extra, which the image includes:
-`uv pip install --python <hermes venv>/bin/python -e '<hermes checkout>[acp,mcp]'`. Without it,
-Hermes skips every server without logging an error.
+The Hermes that `make run` launches needs the `mcp` extra, as the image has: `uv pip install --python
+<hermes venv>/bin/python -e '<hermes checkout>[acp,mcp]'`. Without it Hermes skips every server quietly.
 
-### Check the MCP config
-
-`curl -s $AGENT_URL/healthz | jq .mcp` returns `servers` (names only, never URLs or header values;
-absent when the variable is unset), `error`, `missing_header_env`, and `active` (false when
-`AGENT_ACP` is off). `scripts/mcp_live_probe.py` runs a real `hermes acp` session against a stub MCP
-server with a scripted model, offline. `api/test_mcp_hermes_live.py` wraps it.
+**Checking it.** `curl -s $AGENT_URL/healthz | jq .mcp` shows `servers` (names only, never URLs or header
+values; the field is absent when the variable is unset), `error`, `missing_header_env`, and `active` (false when `AGENT_ACP` is off).
+`scripts/mcp_live_probe.py` runs a real `hermes acp` session against a stub MCP server with a scripted
+model, offline; `api/test_mcp_hermes_live.py` wraps it.
 
 ## Platform integration
 
-- **Auth.** The chat API sends `Authorization: Bearer <AGENT_SERVICE_TOKEN>` on every call, plus an
-  `X-Agent-Subject` header that names the visitor. The service validates the bearer as an HS256 JWT
-  signed with `WEBUI_SECRET_KEY` (`require_user` in `api/app.py`), so `AGENT_SERVICE_TOKEN` is a JWT
-  minted with that key. The token must carry an `id` or `sub` claim. `exp` is required only with
-  `AGENT_AUTH_REQUIRE_EXP=1`. Without `WEBUI_SECRET_KEY`, the service returns 503. A missing or
-  malformed token gets 401, and a request for another user's task gets 403. OIDC/JWKS isn't
-  implemented: `OIDC_JWKS_URL` is never read, and `require_user` only calls
-  `jwt.decode(..., algorithms=["HS256"])`.
-- **Moderation.** The service calls the chat app's safety screen endpoint
-  (`POST /chat/api/safety/screen`, configured with `SAFETY_SCREEN_URL` and `SAFETY_SCREEN_TOKEN`)
-  before and after each run. It fails closed when the endpoint is configured but unreachable. Coop
-  (`COOP_URL` and `COOP_API_KEY`, the same instance as `web/src/lib/chat/server/moderation.ts`) is
-  review-only. It renders no verdict and receives a `/api/v1/report` submission for human triage
-  each time the screen flags a run.
-- **Dev overrides.** `AGENT_AUTH_DISABLED` and `AGENT_MODERATION_DISABLED` are for local
-  development only. Never set them on a shared deploy.
+To run in production the service plugs into the Public AI platform rather than reimplementing it:
 
-## License and security
+- **Auth** — a shared JWT, `WEBUI_SECRET_KEY` HS256 against the same secret OpenWebUI signs session
+  tokens with (`require_user` in `api/app.py`); the token must carry a user id. Verified: 401 on missing/bad, 200
+  valid, 403 cross-user. An OIDC/JWKS alternative is named in a code comment in `api/app.py` but not
+  implemented — `OIDC_JWKS_URL` is read nowhere, and `require_user` only ever calls
+  `jwt.decode(..., algorithms=["HS256"])`. Don't point a deployment at OIDC on the strength of this doc.
+- **Moderation** — ONE detector: chat's own web screen endpoint (`SAFETY_SCREEN_URL`/`SAFETY_SCREEN_TOKEN`,
+  `POST /chat/api/safety/screen`) called pre/post run, fail-closed when configured-but-unreachable. Coop
+  (`COOP_URL`/`COOP_API_KEY`, same instance as `web/src/lib/chat/server/moderation.ts`) is REVIEW-ONLY here
+  — it renders no verdict, it only receives a hit-only `/api/v1/report` submission for human triage
+  whenever the guard actually fires.
+- Dev-only escape hatches (`AGENT_AUTH_DISABLED`, `AGENT_MODERATION_DISABLED`) fail closed and are
+  never for a shared deploy.
 
-The service is licensed under [MIT](LICENSE). Report vulnerabilities privately as the
-root `SECURITY.md` describes. Dev setup and pull request requirements are in
-[CONTRIBUTING.md](CONTRIBUTING.md).
+## License · Security · Contributing
+
+[MIT](LICENSE) · report vulnerabilities privately per [SECURITY.md](SECURITY.md) · dev setup
+and PR expectations in [CONTRIBUTING.md](CONTRIBUTING.md).

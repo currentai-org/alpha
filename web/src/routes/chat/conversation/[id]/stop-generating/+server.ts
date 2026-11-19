@@ -1,18 +1,33 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { authCondition } from "$lib/chat/server/auth";
 import { collections } from "$lib/chat/server/database";
 import { AbortRegistry } from "$lib/chat/server/abortRegistry";
 import { readGeneration } from "$lib/chat/server/generations";
 import { logger } from "$lib/chat/server/logger";
-import { clampFinishedMessage } from "$lib/chat/server/stopTruncation";
+import { planStopClamp } from "$lib/chat/server/chat/stopClamp";
+import { conversationSealer, SealedHistoryError, sealedHistoryHttpError } from "$lib/chat/server/chat/sealedTurn";
 import { agentModelLaneInput } from "$lib/chat/server/models";
 import { cancelAgentTask } from "$lib/chat/server/endpoints/agent/endpointAgent";
 import { error } from "@sveltejs/kit";
+import { json } from "$lib/chat/server/api/utils/json";
 import { ObjectId } from "bson";
 import { z } from "zod";
+import { MAC_SALT_PATTERN } from "$lib/chat/crypto/sealedShape";
 
 const stopPointSchema = z.object({
 	generationId: z.string().uuid(),
 	seenContentLength: z.number().int().nonnegative(),
+});
+
+// The stopped answer's opened body, sent on a second request when the first one answered
+// `{ sealedClamp }`: the stored answer is sealed and the server cannot cut what it cannot read.
+const openedSchema = z.object({
+	id: z.string().min(1).max(100),
+	rev: z.number().int().nonnegative(),
+	body: z.record(z.string(), z.unknown()),
+	salt: z.optional(z.string().regex(MAC_SALT_PATTERN)),
 });
 
 /**
@@ -38,10 +53,15 @@ export async function POST({ params, locals, request }) {
 	// Parsed leniently: a stop must succeed even with a missing or malformed
 	// body (legacy clients send none).
 	let stopPoint: z.infer<typeof stopPointSchema> | undefined;
+	let opened: z.infer<typeof openedSchema> | undefined;
 	try {
-		stopPoint = stopPointSchema.parse(await request.json());
+		const raw: unknown = await request.json();
+		stopPoint = stopPointSchema.parse(raw);
+		const body = (raw as { opened?: unknown }).opened;
+		if (body !== undefined) opened = openedSchema.parse(body);
 	} catch {
-		stopPoint = undefined;
+		// A malformed body is a stop with no clamp; a malformed `opened` is a stop point with no body.
+		opened = undefined;
 	}
 
 	// Write the marker before aborting the in-process registry so a finalize
@@ -49,7 +69,11 @@ export async function POST({ params, locals, request }) {
 	await collections.abortedGenerations.updateOne(
 		{ conversationId },
 		{
-			$set: { updatedAt: new Date(), ...stopPoint },
+			// The stop point only: the opened body is the person's words and never goes in the marker.
+			$set: {
+				updatedAt: new Date(),
+				...(stopPoint && { generationId: stopPoint.generationId, seenContentLength: stopPoint.seenContentLength }),
+			},
 			$setOnInsert: { createdAt: new Date() },
 		},
 		{ upsert: true }
@@ -57,15 +81,29 @@ export async function POST({ params, locals, request }) {
 
 	AbortRegistry.getInstance().abort(conversationId.toString());
 
+	let clamp: Awaited<ReturnType<typeof clampIfAlreadyFinished>> | undefined;
 	if (stopPoint) {
-		await clampIfAlreadyFinished(conversationId, stopPoint).catch((err) =>
-			logger.warn(err, "[stop] could not apply the stop point to a finished answer")
-		);
+		try {
+			clamp = await clampIfAlreadyFinished(conversationId, stopPoint, opened);
+		} catch (err) {
+			if (err instanceof SealedHistoryError) {
+				// The body sent is not the answer as stored. Nothing was written; the browser can reopen and resend.
+				logger.warn({ event: "stop-clamp-refused", code: err.code, conversationId: params.id }, "[stop] sealed clamp refused");
+				sealedHistoryHttpError(err);
+			}
+			// Loud, and never a plaintext write: the answer stays as stored, past the stop point.
+			logger.error(err, "[stop] could not apply the stop point to a finished answer");
+			clamp = { kind: "failed" };
+		}
 		await closeAgentRun(conversationId, stopPoint.generationId, locals).catch((err) =>
 			logger.warn(err, "[stop] could not cancel the stopped turn's agent task")
 		);
 	}
 
+	if (clamp?.kind === "needs_body") {
+		return json({ sealedClamp: { messageId: clamp.messageId, rev: clamp.rev } });
+	}
+	if (clamp?.kind === "failed") return json({ clamp: "failed" });
 	return new Response();
 }
 
@@ -75,7 +113,7 @@ const SETTLE_POLLS = 12;
 const SETTLE_POLL_MS = 400;
 
 /**
- * Apply the stop point to an answer that had already finished on the server (CUR-2306).
+ * Apply the stop point to an answer that had already finished on the server.
  *
  * The generation's own finalize clamps an aborted run to the stop point. A run that completed
  * before the stop arrived has no abort to unwind, so without this the reload shows the whole
@@ -86,26 +124,38 @@ const SETTLE_POLL_MS = 400;
  */
 async function clampIfAlreadyFinished(
 	conversationId: ObjectId,
-	stopPoint: z.infer<typeof stopPointSchema>
-) {
+	stopPoint: z.infer<typeof stopPointSchema>,
+	opened: z.infer<typeof openedSchema> | undefined
+): Promise<{ kind: "none" | "written" | "failed" } | { kind: "needs_body"; messageId: string; rev: number }> {
 	const generation = await settledGeneration(stopPoint.generationId);
-	if (generation?.status !== "complete" || !generation.messageId) return;
+	if (generation?.status !== "complete" || !generation.messageId) return { kind: "none" };
 
 	const conversation = await collections.conversations.findOne({ _id: conversationId });
 	const message = conversation?.messages.find((m) => m.id === generation.messageId);
-	if (!conversation || !message) return;
-	const clamped = clampFinishedMessage(message, stopPoint.seenContentLength);
-	if (!clamped) return;
+	if (!conversation || !message) return { kind: "none" };
+	// A sealed answer is cut from the body the browser opened and sealed again.
+	const plan = await planStopClamp({
+		message,
+		conversationId: conversationId.toString(),
+		seenContentLength: stopPoint.seenContentLength,
+		opened,
+		sealerFor: () => conversationSealer(conversationId.toString(), conversation),
+	});
+	if (plan.kind !== "write") return plan;
 
-	await collections.conversations.updateOne(
-		{ _id: conversationId },
-		{
+	// Replace by id, and only while the stored answer is the one the plan was made from: a reseal in
+	// between moved its revision, and this write would put an older cut over it.
+	const result = await collections.conversations.modifyOne({ _id: conversationId }, (current) => {
+		const now = current.messages?.find((m) => m.id === message.id);
+		if (!now || now.sealedRev !== message.sealedRev) return null;
+		return {
 			$set: {
-				messages: conversation.messages.map((m) => (m.id === message.id ? { ...m, ...clamped } : m)),
+				messages: current.messages.map((m) => (m.id === message.id ? plan.message : m)),
 				updatedAt: new Date(),
 			},
-		}
-	);
+		};
+	});
+	return { kind: result.modifiedCount ? "written" : "none" };
 }
 
 async function settledGeneration(generationId: string) {
@@ -118,7 +168,7 @@ async function settledGeneration(generationId: string) {
 }
 
 /**
- * Cancel the agent task a stopped turn started, and mark its handle closed (CUR-993).
+ * Cancel the agent task a stopped turn started, and mark its handle closed.
  *
  * @remarks
  * A run outlives its tab, so aborting the turn's stream no longer ends it, and a reload would
@@ -139,7 +189,7 @@ async function closeAgentRun(
 	if (!conversation || !message || !run || run.closed) return;
 
 	// The same input the turn's lane was built from, so the cancel carries the service token and the
-	// visitor's subject (CUR-4602). A bare registry entry fails the schema and no cancel is sent.
+	// visitor's subject. A bare registry entry fails the schema and no cancel is sent.
 	const config = agentModelLaneInput();
 	const startedAt = Date.now();
 	const status = config ? await cancelAgentTask(config, locals, run) : undefined;

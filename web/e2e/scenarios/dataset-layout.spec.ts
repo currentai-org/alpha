@@ -602,12 +602,22 @@ test.describe('dataset layout, phone', { tag: '@G1' }, () => {
 			.getByRole('link', { name: /model components/i });
 		await tab.tap();
 		await expect(tab).toHaveAttribute('aria-current', 'location');
-		await expect(page.locator('html')).not.toHaveClass(/jumping/, { timeout: 3000 });
-		const at = await stuckBar(page);
-		const top = await page
-			.locator('#layer-model_components')
-			.evaluate((el) => el.getBoundingClientRect().top);
-		expect(Math.abs(top - (at.navBottom + at.stuckHeight))).toBeLessThan(4);
+		// jumpTo holds html.jumping until 140 ms pass with no scroll event, so it lasts as long as the
+		// smooth scroll does. On a slow runner that ran past a 3 s cap on PRs whose rerun then passed,
+		// so the wait gets 10 s and the landing is polled until the bar settles.
+		await expect(page.locator('html')).not.toHaveClass(/jumping/, { timeout: 10_000 });
+		await expect
+			.poll(
+				async () => {
+					const at = await stuckBar(page);
+					const top = await page
+						.locator('#layer-model_components')
+						.evaluate((el) => el.getBoundingClientRect().top);
+					return Math.abs(top - (at.navBottom + at.stuckHeight));
+				},
+				{ message: 'the layer did not land right under the stuck tabs' }
+			)
+			.toBeLessThan(4);
 	});
 
 	// The shape is a flex item beside its label, so in a narrow cell it must not shrink.

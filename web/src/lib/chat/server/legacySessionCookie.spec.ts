@@ -13,8 +13,8 @@ function cookieJar(present: Record<string, string>): { cookies: Cookies; deleted
 	return { cookies, deleted };
 }
 
-// production's old session cookies carried Domain=aipotluck.org. A delete without that
-// Domain would clear a different cookie and leave the apex one reaching every subdomain. (CUR-4442)
+// production's old session cookies carried Domain=example.test. A delete without that
+// Domain would clear a different cookie and leave the apex one reaching every subdomain.
 describe("expireLegacySessionCookies", () => {
 	it("expires the old production session cookie on the apex Domain it was set with", () => {
 		const { cookies, deleted } = cookieJar({ "__Secure-better-auth.session_token": "tok.sig" });
@@ -22,7 +22,7 @@ describe("expireLegacySessionCookies", () => {
 		expect(deleted).toEqual([
 			{
 				name: "__Secure-better-auth.session_token",
-				opts: { path: "/", domain: "aipotluck.org", secure: true, httpOnly: true, sameSite: "lax" },
+				opts: { path: "/", domain: "example.test", secure: true, httpOnly: true, sameSite: "lax" },
 			},
 		]);
 	});

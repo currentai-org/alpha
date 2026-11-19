@@ -1,23 +1,26 @@
-// Math routing (CUR-2065, CUR-2198). The arithmetic in an answer never comes from model prose:
+// Math routing. The arithmetic in an answer never comes from model prose:
 //
-//   1. plan       one forced `plan_turn` call on ARITHMETIC_ROUTE_MODEL (GLM) on every turn. Its `math`
-//                 field says whether the latest message asks for a number to be worked out and, if so,
-//                 records the groups as typed lines {factors, label} (turnPlan.ts)
+//   1. plan       one forced `plan_turn` call on ARITHMETIC_ROUTE_MODEL (GLM) on every turn that
+//                 `plansTurnFor` admits. Its `math` field says whether the latest message asks for a
+//                 number to be worked out and, if so, records the groups as typed lines
+//                 {factors, label} (turnPlan.ts)
 //   2. code       sums the lines and renders the rows and total, which stream to the reader first
 //   3. answer     the route model explains in words, told the total and told not to redo it. A model
 //                 that restates a different total under the checked one is the failure this guards.
 //                 Every turn without a ledger stays on the default model
 //
-// The planner replaced a regex floor that decided which turns reached the ledger. On the 61-case bench
-// it triggered on 165/165 maths questions and 0/63 controls; the floor missed follow-ups like "one of
-// them resigned" (CUR-2198). If the call fails or times out, the turn is answered in prose with no
-// code-summed total. A rendered ledger shows its rows and total with no label: "checked by code" vouched
-// for sums whose setup was wrong (CUR-3663), and `stripForgedStamp` removes that label wherever the
-// model copies it from an older answer (CUR-2199).
+// A model plan decides which turns reach the ledger, rather than a pattern match, because a pattern
+// misses follow-ups such as "one of them resigned" that only make sense against earlier turns. If the
+// call fails or times out, the turn is answered in prose with no code-summed total. A rendered ledger
+// shows its rows and total with no label, since a "checked by code" label would vouch for sums whose
+// setup was wrong, and `stripForgedStamp` removes that label wherever the model copies it from an older
+// answer.
 //
-// Behind `math-routing`, off everywhere but preview. Sending visitor text to GLM needs the privacy
-// notice to list that processor first (CUR-2063), so production stays off until that lands.
+// Behind the `math-routing` flag, which is off unless set on. The plan call sends visitor text to the
+// route model's provider, so a deployment that enables it should list that provider as a processor in
+// its privacy notice.
 
+import { APP_USER_AGENT } from "$lib/chat/constants/app";
 import type OpenAI from "openai";
 import { config } from "$lib/chat/server/config";
 import { endpointApiKey } from "$lib/chat/server/endpointKey";
@@ -49,11 +52,11 @@ export const MATH_ROUTING_FLAG = "math-routing";
 export const mathRoutingEnabled = (): boolean => flagEnabledOr(MATH_ROUTING_FLAG, () => false);
 
 /**
- * Whether this turn's model gets a plan call at all (CUR-2282). A model that can call tools answers its
+ * Whether this turn's model gets a plan call at all. A model that can call tools answers its
  * own arithmetic, through the native `calculate` tool when that is on, so routing its math turns to the
  * route model would hand the answer to a different model for no reason. Only a model that cannot call
  * tools, Apertus today, is planned. The agent model declares no tools either, but it computes in its own
- * sandbox, and a ledger would hand its turn to the route model with no agent run (CUR-3884).
+ * sandbox, and a ledger would hand its turn to the route model with no agent run.
  * A tool-calling model whose row sets `calculateOnPlannedMath` is planned too, see
  * {@link plannedMathForcesCalculate}.
  */
@@ -62,7 +65,7 @@ export const plansTurnFor = (model: { id?: string; supportsTools?: boolean }): b
 
 /**
  * Whether a plan that finds math on this model's turn forces its answer to call `calculate`, rather
- * than handing the turn to the route model with a ledger (CUR-4191). Only for a tool-calling model whose
+ * than handing the turn to the route model with a ledger. Only for a tool-calling model whose
  * row asks for it: ALIA, left to choose, tends to work a multiplication out by hand.
  */
 export const plannedMathForcesCalculate = (model: { id?: string; supportsTools?: boolean }): boolean =>
@@ -71,8 +74,8 @@ export const plannedMathForcesCalculate = (model: { id?: string; supportsTools?:
 /**
  * Whether the planner can see what the newest question is about. Its transcript is message text only
  * (`planTranscript`), so a file or a paste chip on the newest user message never reaches it, and a plan
- * made without it stamped a count it never saw: "Total: 1 characters (arithmetic checked by code)" for
- * a 100,000-character paste (CUR-3011). Such a turn goes to the answer model alone, which does see it.
+ * made without it would total a count it never saw, such as one character for a long paste. Such a
+ * turn goes to the answer model alone, which does see it.
  */
 export const plannerSeesTurn = (
 	messages: readonly { from: string; content?: string; files?: readonly unknown[] }[]
@@ -87,8 +90,8 @@ export type PlanCallOutcome = "ok" | "no-call" | "unparsable" | "failed" | "time
 
 type RouteModel = { id: string; endpoints?: unknown[] };
 
-// `modelId` is the id the host knows the model by: the staging router names mistral-medium-2604
-// `mistralai/mistral-medium-3-5` and rejects ours (CUR-3055).
+// `modelId` is the id the host knows the model by, which can differ from ours: a router may name
+// mistral-medium-2604 `mistralai/mistral-medium-3-5` and reject our id.
 function laneFor(model: RouteModel): { baseURL: string; apiKey: string; modelId: string } | null {
 	const ep = model.endpoints?.[0] as { baseURL?: string; apiKeyEnv?: string; modelId?: string } | undefined;
 	const apiKey = endpointApiKey(ep);
@@ -128,9 +131,9 @@ async function forcedToolCall(
 	const name = body.tool.function.name;
 	const billTo = ((Reflect.get(config, "HF_BILL_TO") as string | undefined) ?? "").trim();
 	// GLM reasons before a tool call unless told not to, and these calls need none. Which field turns
-	// reasoning off depends on the provider (thinkFilter.ts): zai-org reads `thinking`
-	// (CUR-2090), while Scaleway reads `reasoning_effort: "none"` (CUR-2104). Built inside the try: a GLM id with no
-	// provider pin throws here (CUR-2112), which fails the plan rather than the turn.
+	// reasoning off depends on the provider (thinkFilter.ts): zai-org reads `thinking`, while Scaleway
+	// reads `reasoning_effort: "none"`. The request is built inside the try because a GLM id with no
+	// provider pin throws here, which fails the plan rather than the turn.
 	try {
 		const reasoningOff = reasoningOffRequest(lane.modelId, lane.baseURL, config.OPENAI_BASE_URL);
 		const client: OpenAI = await createOpenAIClient({
@@ -138,7 +141,7 @@ async function forcedToolCall(
 			apiKey: lane.apiKey,
 			timeout: PLAN_TIMEOUT_MS,
 			defaultHeaders: {
-				"User-Agent": "aipotluck.org",
+				"User-Agent": APP_USER_AGENT,
 				...hfBillToHeader(lane.baseURL, { ownLane: false }, billTo),
 			},
 		});
@@ -268,8 +271,8 @@ function stampTailLength(text: string): number {
 }
 
 /** Removes the "checked by code" stamp from the answer model's own text, streamed and final. The model
- *  copies it from rendered ledgers earlier in the conversation and put it on its own totals on 36 of 45
- *  follow-ups, 9 of them wrong (CUR-2199). Only `ledgerPrefixStream`, which wraps this, adds a real one. */
+ *  copies it from rendered ledgers earlier in the conversation and puts it on its own totals, including
+ *  wrong ones. Only `ledgerPrefixStream`, which wraps this, adds a real one. */
 export async function* stripForgedStamp(source: AsyncIterable<MessageUpdate>): AsyncGenerator<MessageUpdate> {
 	let pending = "";
 	let stripped = 0;
@@ -305,7 +308,7 @@ export async function* stripForgedStamp(source: AsyncIterable<MessageUpdate>): A
 		// two halves separately, each unmatched, and with output screening on the persisted answer is built
 		// from those tokens (screenStream.ts), never from the FinalAnswer text stripped below. A held tail of
 		// bare spaces is no half of a stamp, though, and output screening releases a sentence only at the
-		// space after it: holding that space through a pause keeps the whole sentence off screen (CUR-2697).
+		// space after it: holding that space through a pause keeps the whole sentence off screen.
 		if (/^[ \t]+$/.test(pending)) yield* flush();
 		yield event;
 	}
@@ -314,7 +317,7 @@ export async function* stripForgedStamp(source: AsyncIterable<MessageUpdate>): A
 
 /** Names the route model as the served model on a ledger turn. The HF router reports only the provider
  *  that served, so the turn would persist `model: ""` and the badge would fall back to the conversation's
- *  model, crediting Apertus with words GLM wrote (CUR-2198). The id is the one requested, provider-pinned. */
+ *  model, crediting Apertus with words GLM wrote. The id is the one requested, provider-pinned. */
 export async function* namedServedModel(
 	source: AsyncIterable<MessageUpdate>,
 	modelId: string

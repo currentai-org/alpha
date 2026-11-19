@@ -32,7 +32,7 @@ export { mergeRagEvidence } from "./evidence";
 
 /**
  * Whether maybeRagGrounding will query our document stores for this text, rather than return null
- * at once. The live status line names a document search only when this is true (CUR-2223).
+ * at once. The live status line names a document search only when this is true.
  */
 export function ragWillSearch(query: string | undefined): boolean {
 	return ragEnabled() && (query ?? "").trim().length >= 3;
@@ -48,7 +48,7 @@ export async function maybeRagGrounding(
 	// Optional per-turn timing sink; forwarded to querySyftSources for the federated stage
 	// decomposition (catalogMs/routerMs/pickGateMs/meteredMs) that otherwise hides inside ragMs.
 	spans?: TurnSpans,
-	// The workspace whose own documents this turn may cite besides the site-wide ones. (CUR-4152)
+	// The workspace whose own documents this turn may cite besides the site-wide ones.
 	workspaceId: RagWorkspace = null
 ): Promise<RagContext | null> {
 	const q = (query ?? "").trim();
@@ -72,7 +72,7 @@ export async function maybeRagGrounding(
 	// NOT touch the web-search decision — see ./recency for why that distinction matters.
 	const skipStaleCatalog = isRecencyWindowQuery(q);
 	if (skipStaleCatalog) {
-		// Length only, never the query text (all three logger calls in this file, same fix). (CUR-918)
+		// Length only, never the query text, as in every logger call in this file.
 		logger.info({ qLength: q.length }, "[rag] recency-window query — skipping the offline catalog");
 	}
 
@@ -129,22 +129,22 @@ export async function maybeRagGrounding(
 	// DEGRADES to the cosine/similarity-floored hits unchanged, so grounding never regresses below
 	// today's floor on an infra failure. See rerankRag.ts for the full policy.
 	const { hits: reranked, relevanceVerified } = await rerankRagHits(q, hits);
-	// Relevance and entity attribution are different axes (CUR-43): a hit can be topically relevant
+	// Relevance and entity attribution are different axes: a hit can be topically relevant
 	// (clears rerankRagHits) while being about the wrong entity, which is invisible to a relevance
 	// gate by construction. See entityScopeGuard.ts for the fail-open policy.
 	const ranked = entityScopeGuardEnabled() ? await filterByEntityScope(q, reranked, locals) : reranked;
 	// Best upstream (store-reported) similarity across the merged hits — the calibration signal for the
 	// RAG_RERANK_SKIP_COSINE_BELOW skip-floor (see rerankRagHits): logged on both outcomes below so the
-	// score distribution of kept-0 vs grounded turns is readable straight from prod logs.
+	// score distribution of kept-0 vs grounded turns is readable straight from the logs.
 	const bestScore = hits.reduce((m, h) => Math.max(m, h.score ?? 0), 0);
 	if (ranked.length === 0) {
 		// Reachable on a VERIFIED all-below-floor rerank, on the (opt-in) similarity skip-floor
-		// short-circuit, or on every surviving hit failing entity scope (CUR-43) — either way every
+		// short-circuit, or on every surviving hit failing entity scope — either way every
 		// retrieved source is off-topic or off-entity, so answer ungrounded rather than citing [n] on
 		// chunks the gate wouldn't vouch for (matches the web-search gate).
 		// Log the question's length, never its text — the logs keep full retention with no
 		// purge path. The score fields below make the score distribution of kept-0 vs grounded turns
-		// readable straight from prod logs. (CUR-1721)
+		// readable straight from the logs.
 		logger.info(
 			{ qLength: q.length, retrieved: hits.length, rerankedTo: reranked.length, bestScore },
 			"[rag] no hits survived reranking or entity scoping — answering without RAG grounding"
@@ -163,7 +163,7 @@ export async function maybeRagGrounding(
 			"[rag] relevance gate applied"
 		);
 	}
-	// A kept admin-store chunk brings its whole document, within a per-turn budget. (CUR-4296)
+	// A kept admin-store chunk brings its whole document, within a per-turn budget.
 	const { hits: cited, bodies } = await expandWholeDocuments(ranked, relevanceVerified);
 	return mergeRagEvidence(q, cited, undefined, startAt, relevanceVerified, bodies);
 }

@@ -2,7 +2,7 @@ import { expect, type Locator, type Page } from '@playwright/test';
 
 /**
  * Scrolls to the bottom of the page and waits until `target` (something in the site footer) has held
- * still on screen, clear of the fixed site header, for one poll (CUR-4492).
+ * still on screen, clear of the fixed site header, for one poll.
  *
  * ScrollSmoother lags the footer (`data-smooth-footer`) and glides the page for about a second after
  * a native scroll, so a link's painted position trails its layout box. Playwright's own

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // db-migrate — applies the Drizzle migrations and, unlike `drizzle-kit migrate`, says why when they
-// fail (CUR-1517).
+// fail.
 //
 // `drizzle-kit migrate` 0.31.10 exits 1 on a failed migration and prints only its spinner. The
 // message is not overwritten by the spinner's carriage returns — it is absent. On a forced connection
@@ -15,7 +15,7 @@
 // folder, the same journal and the same __drizzle_migrations table, so either command can follow the
 // other. That is asserted against a real database in scripts/__tests__/dbMigrateParity.spec.ts for
 // the steady state every build after the first is in; the fresh-apply comparison needs CREATE
-// DATABASE and was run by hand against two throwaway databases (CUR-1517). This writes
+// DATABASE and was run by hand against two throwaway databases. This writes
 // schema, and "supposed to share state" is not the standard for that.
 //
 // NEVER PRINTS THE CONNECTION STRING. Build logs are readable by anyone with project access and the
@@ -29,6 +29,13 @@ import { migrationDatabaseUrl } from "./lib/migrationDatabaseUrl.mjs";
 
 const FOLDER = new URL("../drizzle/", import.meta.url).pathname;
 const log = (msg) => console.log(`[db-migrate] ${msg}`);
+
+// A site-only build (APP_SURFACE=site-only, www once chat lives on alpha) serves none of chat, holds
+// no chat database URL and owns no schema: the chat surface's build migrates.
+if (process.env.APP_SURFACE?.trim() === "site-only") {
+	log("skipped: APP_SURFACE=site-only serves no chat, so this build has no chat database to migrate.");
+	process.exit(0);
+}
 
 const { url, from } = migrationDatabaseUrl();
 if (!url) {

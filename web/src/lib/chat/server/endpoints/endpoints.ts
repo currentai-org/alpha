@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { endpointOai } from "./openai/endpointOai";
 import { endpointAgent } from "./agent/endpointAgent";
 
@@ -12,5 +15,5 @@ export const endpoints = {
 };
 
 // The registry's endpoint schema is models.ts's registryEndpointSchema, which holds a key's env var
-// name and never its value (CUR-2640).
+// name and never its value.
 export default endpoints;

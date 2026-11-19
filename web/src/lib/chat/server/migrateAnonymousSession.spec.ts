@@ -30,7 +30,7 @@ beforeEach(() => {
 });
 
 // Two requests carrying a new user's first session both seed defaults, and the second
-// insert hits the unique key on userId. (CUR-2607)
+// insert hits the unique key on userId.
 describe("migrateAnonymousSettings, when a concurrent first-login request seeds the same user", () => {
 	it("resolves when its insert fails and the other request's settings row is there", async () => {
 		settings.insertOne.mockRejectedValueOnce(duplicateKey);
@@ -56,7 +56,7 @@ describe("migrateAnonymousSettings, when a concurrent first-login request seeds 
 });
 
 // The session's attachments follow its conversations, and this is the last place that
-// still knows the session id. (CUR-2183)
+// still knows the session id.
 describe("migrateAnonymousConversations moves the session's attachments to the account", () => {
 	it("hands the session and the account to the move after re-keying the conversations", async () => {
 		const sid = "c".repeat(64);
@@ -68,7 +68,7 @@ describe("migrateAnonymousConversations moves the session's attachments to the a
 	// auth.ts runs this on every request a returning signed-in visitor makes, and the move
 	// lists guests/<session>/ on Hugging Face before finding it empty, one shared-token call per page
 	// load, poll and API call. A guest's files belong to its conversations, so none re-keyed means none
-	// to move. (CUR-3682)
+	// to move.
 	it("makes no Hub call when no conversation was re-keyed, as on a signed-in visitor's every request", async () => {
 		await migrateAnonymousConversations("d".repeat(64), userId);
 		expect(moveGuestFilesToUser).not.toHaveBeenCalled();

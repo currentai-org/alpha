@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // The debug config endpoint answered to locals.isAdmin alone. It now takes the admin role's
-// config:read grant, like every /chat/admin route (CUR-3992). (CUR-1878)
+// config:read grant, like every /chat/admin route.
 
 const cfg: Record<string, string> = {};
 vi.mock("$lib/chat/server/config", () => ({ config: cfg }));
@@ -22,7 +22,7 @@ beforeEach(() => {
 	cfg.OPENAI_BASE_URL = "https://gateway.example";
 });
 
-describe("GET /chat/api/v2/debug/config admin gate (CUR-1878, CUR-3992)", () => {
+describe("GET /chat/api/v2/debug/config admin gate", () => {
 	it("refuses a session carrying only the legacy isAdmin flag (401)", async () => {
 		await expect(call(sessionAdmin)).rejects.toMatchObject({ status: 401 });
 	});

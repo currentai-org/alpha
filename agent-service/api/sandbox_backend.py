@@ -1,7 +1,7 @@
-"""Where a conversation's code runs, behind one interface (CUR-4438, part of CUR-4434).
+"""Where a conversation's code runs, behind one interface.
 
 Today every conversation's code runs as a bubblewrap child of this service, on its kernel and under its uid, and the
-conversation's files are a directory on this machine's disk. CUR-4434 moves each conversation into a sandbox of its
+conversation's files are a directory on this machine's disk. a planned move puts each conversation into a sandbox of its
 own (gVisor on Kubernetes, or a Firecracker VM) whose workspace the platform keeps. The tools chat calls
 (`sandbox_mcp.py`) are written against this interface so that move is a backend swap, not a rewrite:
 
@@ -13,14 +13,14 @@ own (gVisor on Kubernetes, or a Firecracker VM) whose workspace the platform kee
 - `spawn` starts a long process with streamed output, and `attach` reconnects to one still running after this
   service restarts. A backend that cannot reattach raises `CannotAttach`.
 - `open_stdio` starts a process and hands back its stdio as asyncio streams, which is what an ACP session to
-  agent mode's Hermes runs over (`acp_client._acp_run`, CUR-4450).
+  agent mode's Hermes runs over (`acp_client._acp_run`).
 
-`Tier` is the agentic tier the sandbox serves (CUR-4450):
+`Tier` is the agentic tier the sandbox serves:
 it decides the egress policy. Run-code tools get none; agent mode reaches only the model gateway, with the credential
 added outside the sandbox. The model never picks its own tier.
 
 `BwrapBackend` is today's behaviour moved behind the interface, unchanged. Its file operations still run in this
-process, confined by `confine`, because its workspace is a host directory; that is one of the things CUR-4434 ends.
+process, confined by `confine`, because its workspace is a host directory; that is one of the things the planned sandbox move ends.
 """
 
 from __future__ import annotations
@@ -46,7 +46,7 @@ class SandboxBusy(SandboxError):
     """The sandbox host has no room for a new sandbox right now; an existing one still resumes."""
 
 
-# What the person is told while a connect waits for a slot on a full host (CUR-4584). The agent task's status event
+# What the person is told while a connect waits for a slot on a full host. The agent task's status event
 # and the run-code tools' MCP progress both carry it, and chat shows it as the turn's live line.
 SANDBOX_WAIT_TEXT = "Waiting for a free sandbox…"
 
@@ -55,7 +55,7 @@ OnWait = Callable[[str], None]
 
 
 class SandboxAccountLimit(SandboxError):
-    """The account already has its share of live sandboxes; the message says what frees one (CUR-4553)."""
+    """The account already has its share of live sandboxes; the message says what frees one."""
 
 
 class CannotAttach(SandboxError):
@@ -83,7 +83,7 @@ class Handle:
     key: str
     tier: Tier
     ref: object = None  # backend-specific: a host path, a sandbox id, an object name
-    slot: int = 1  # which of a pooled backend's hosts holds it (E2B, CUR-4529); 1 for a backend with one
+    slot: int = 1  # which of a pooled backend's hosts holds it (E2B); 1 for a backend with one
 
 
 @dataclass
@@ -126,7 +126,8 @@ class SandboxBackend(Protocol):
                 cancelled: Callable[[], bool] | None = None) -> Handle: ...
     def find(self, principal: str, conversation: str, tier: Tier) -> Handle | None: ...
     def destroy(self, principal: str, conversation: str) -> int: ...
-    def sweep(self, older_than_secs: float) -> list[str]: ...
+    def sweep(self, older_than_secs: float, *, running_older_than_secs: float | None = None,
+              keep: frozenset[str] = frozenset()) -> list[str]: ...
     def pool_load(self) -> dict[int, int]: ...
     def exec(self, h: Handle, argv: list[str], timeout: float, *, stdin: str | None = None) -> ExecResult: ...
     def read(self, h: Handle, path: str, limit: int) -> bytes: ...
@@ -189,7 +190,8 @@ class BwrapBackend:
     def destroy(self, principal: str, conversation: str) -> int:
         return 0     # the workspace is the session's directory, which its own delete removes
 
-    def sweep(self, older_than_secs: float) -> list[str]:
+    def sweep(self, older_than_secs: float, *, running_older_than_secs: float | None = None,
+              keep: frozenset[str] = frozenset()) -> list[str]:
         return []    # likewise: the session reaper's rmtree is the sweep
 
     def pool_load(self) -> dict[int, int]:

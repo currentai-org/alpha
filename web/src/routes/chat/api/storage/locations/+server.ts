@@ -15,7 +15,7 @@ import { requireLocationsAccess, storageFailure } from "../guard";
 
 // The places this account's files can live. GET lists them (Alpha storage first) with the
 // default marked; POST links a Hugging Face bucket of the person's own with a token they paste.
-// The token is checked against the Hub, sealed (sealedSecret.ts), and never sent back. (CUR-2930)
+// The token is checked against the Hub, sealed (sealedSecret.ts), and never sent back.
 
 const LinkBody = z.object({
 	bucket: z.string().min(1).max(300),

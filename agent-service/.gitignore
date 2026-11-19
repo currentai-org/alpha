@@ -49,6 +49,12 @@ docs/private/
 # local MCP config (per-user, carries tokens) — never commit
 .mcp.json
 
-# CUR-1189: mutmut's own per-run scratch — regenerated every run, never committed
+# mutmut's own per-run scratch — regenerated every run, never committed
 /mutants
 .mutmut-cache
+
+# OpenTofu/Terraform working files under deploy/aws/*; the provider lock file stays tracked
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan

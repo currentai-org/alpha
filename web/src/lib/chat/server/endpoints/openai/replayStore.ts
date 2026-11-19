@@ -1,37 +1,39 @@
-// Where a model replay recording lives, so one run's recording is the next run's hit (SOL-148).
+// Where a model replay recording lives, so one run's recording is the next run's hit.
 //
 // Scoped the way the GitHub Actions cache is: a run reads its own branch's recordings, then develop's,
-// then the cassettes committed with the build, and writes only to its own branch. A PR run then
-// falls back to the newest ok recording any other branch made of the same request (SOL-180): the key
-// is the whole request, so that answer is as good as a live one, and many PR misses are keys another branch has
-// recorded. Develop reads only its own. Another branch's recording is read only when it went to the same upstream host and its answer
-// finished (modelReplay.ts records nothing else), so it is the answer this branch's request would get.
+// then the cassettes committed with the build, and writes only to its own branch. A run then falls
+// back to the newest ok recording any other branch made of the same request: the key is the whole
+// request, so that answer is as good as a live one, and many misses are keys another branch has
+// recorded. Another branch's recording is read only when it went to the same upstream host and its
+// answer finished (modelReplay.ts records nothing else), so it is the answer this branch's request
+// would get.
 // All scopes share a dedicated Neon database, `REPLAY_DATABASE_URL`, set on preview only. A PR
 // preview's own database is deleted with the PR, taking its recordings with it, so a store there
-// almost never hits. Develop's database is kept out of it, so a PR run neither waits on
+// would almost never hit. Develop's database is kept out of it, so a PR run neither waits on
 // develop nor writes into its live data.
 //
 // A store that is unset or unreachable throws, and modelReplay.ts reads that as a miss: live in
-// `new_episodes` mode, a failed turn in `none` mode. So does a call past its deadline (SOL-209): a
-// lookup's median is 8 ms, but one stalled connection holds every lookup on its instance, for longer
-// than any turn lives. A call past its deadline drops the client, so the next opens a
-// fresh connection. An entry nobody has read for PRUNE_AFTER_MS is deleted.
+// `new_episodes` mode, a failed turn in `none` mode. So does a call past its deadline: a lookup
+// normally takes milliseconds, but one stalled connection holds every lookup on its instance, for
+// longer than any turn lives. A call past its deadline drops the client, so the next opens a fresh
+// connection. An entry nobody has read for PRUNE_AFTER_DAYS is deleted.
 
 import postgres from "postgres";
 import { config } from "$lib/chat/server/config";
 import { logger } from "$lib/chat/server/logger";
 import type { Cassette } from "./modelReplay";
+import { gitRef } from "$lib/server/runtimeEnv";
 
 const PRUNE_AFTER_DAYS = 14;
 const PRUNE_EVERY_MS = 60 * 60 * 1000;
-/** Well past a healthy lookup (p99 under 60 ms) and well inside a turn's 8 s hedge. */
+/** Well past a healthy lookup and well inside a turn's 8 s hedge. */
 const LOOKUP_DEADLINE_MS = 3_000;
 /** A record runs after the answer has gone to the visitor, so it can wait longer. */
 const RECORD_DEADLINE_MS = 15_000;
 
 /** This deployment's scope: the branch it was built from. A local dev server is `local`. */
 export function replayScope(env: NodeJS.ProcessEnv = process.env): string {
-	return env.VERCEL_GIT_COMMIT_REF || "local";
+	return gitRef(env) || "local";
 }
 
 /** The scopes a run reads, in order: its own, then develop's. */
@@ -71,7 +73,7 @@ async function store(): Promise<postgres.Sql> {
 	return sql;
 }
 
-/** A recorded 429 is read only until its `refusedUntil`; after that its request misses again. (CUR-3982) */
+/** A recorded 429 is read only until its `refusedUntil`; after that its request misses again. */
 function expired(doc: Cassette, now: number): boolean {
 	return doc.refusedUntil !== undefined && Date.parse(doc.refusedUntil) <= now;
 }
@@ -105,10 +107,10 @@ async function bounded<T>(ms: number, what: string, call: () => Promise<T>): Pro
 /**
  * The recording for `hash`: the first of this run's read scopes, in their order, and failing those, the
  * newest ok recording any other scope made against the same upstream `host`, or else the newest
- * unexpired 429 from that host (CUR-3982), since the host's limit is shared. Every unexpired 429 ranks
- * below every good recording, whatever scope each sits in (CUR-3996). Develop reads other scopes too
- * since SOL-208: its run mocks a miss instead of recording, so the recording a PR made for a changed
- * prompt is the only one develop will have. Null when none has one.
+ * unexpired 429 from that host, since the host's limit is shared. Every unexpired 429 ranks below
+ * every good recording, whatever scope each sits in. Develop reads other scopes too: its run mocks a
+ * miss instead of recording, so the recording a PR made for a changed prompt is the only one develop
+ * will have. Null when none has one.
  */
 export async function lookup(
 	hash: string,

@@ -8,7 +8,7 @@ import type { ConvSidebar } from "$lib/chat/types/ConvSidebar";
 // conversation's OWN model, which layoutData already projects onto every sidebar row — so this is a
 // read of existing data, not a new lookup, and these tests pin that it reads the right thing.
 //
-// `local:{24-hex endpointId}:{servedModelId}` is localModels.ts's own id shape. (CUR-3037)
+// `local:{24-hex endpointId}:{servedModelId}` is localModels.ts's own id shape.
 const LOCAL_MODEL = `local:${"a".repeat(24)}:llama3.2:latest`;
 
 function conv(model?: string): ConvSidebar {

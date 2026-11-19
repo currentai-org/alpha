@@ -17,7 +17,7 @@ beforeEach(() => {
 
 describe("noteOverridden", () => {
 	// THE contract. This whole module is worthless if it chatters: firstKey already warns on every
-	// designed fallback and is unreadable for exactly that reason (CUR-60). Silence
+	// designed fallback and is unreadable for exactly that reason. Silence
 	// when nothing is overridden is what makes the line meaningful when it does appear.
 	it("says NOTHING when the losing key is unset — an unshadowed decision is not news", () => {
 		noteOverridden("rerank.transport", "tei", "RERANK_ENDPOINT_URL", [["RERANK_KIND", undefined]]);

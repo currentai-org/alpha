@@ -267,6 +267,55 @@
       "when": 1792566501328,
       "tag": "0037_sync_oauth_provider",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1793198828278,
+      "tag": "0038_generation_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1793917118332,
+      "tag": "0039_turn_outcomes_failure_layer",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1794005491988,
+      "tag": "0040_conversations_pin_archive",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1794016869124,
+      "tag": "0041_shared_conversations",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1794309356767,
+      "tag": "0042_conversation_tags",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1794346673808,
+      "tag": "0043_drop_cms_cache_invalidations",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1794979893368,
+      "tag": "0044_safety_events_probe",
+      "breakpoints": true
     }
   ]
 }

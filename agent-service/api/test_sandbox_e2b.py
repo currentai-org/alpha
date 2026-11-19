@@ -1,4 +1,4 @@
-"""The parts of the E2B backend that need no live install (CUR-4451). The rest is the contract suite, run with
+"""The parts of the E2B backend that need no live install. The rest is the contract suite, run with
 SANDBOX_CONTRACT_BACKEND=e2b against the bake-off install."""
 
 import pytest
@@ -28,7 +28,7 @@ def test_run_code_sandboxes_reach_nothing_even_with_a_gateway_configured():
 
 
 def test_agent_sandboxes_reach_only_the_gateway_and_carry_no_header_rules():
-    """CUR-4500: Embed does not apply a stored header-rewrite rule, so a rule here only looks like a boundary."""
+    """Embed stores a header-rewrite rule and never applies it, so a rule here only looks like a boundary."""
     net = _backend(gateway_host="gw.example")._network(Tier.AGENT)
     assert net == {"deny_out": ["0.0.0.0/0"], "allow_out": ["gw.example"], "allow_public_traffic": False}
 
@@ -77,7 +77,7 @@ def _info(sid, key, end_offset_s):
 
 
 def test_one_sweep_kills_a_sandbox_unused_past_the_limit_and_keeps_a_recent_one():
-    """CUR-4484. With a 600 s idle timeout and a four-hour limit: paused five hours ago goes, and so does one that
+    """With a 600 s idle timeout and a four-hour limit: paused five hours ago goes, and so does one that
     paused 3 h 55 m ago, since it was last used ten minutes before pausing. Paused ten minutes ago stays, running
     stays, and a sandbox we did not make (no key) is never touched."""
     b = _backend(idle_secs=600)
@@ -97,7 +97,7 @@ def test_destroying_a_conversation_kills_its_sandbox_without_resuming_it():
 
 
 def test_a_full_host_refuses_new_sandboxes_at_once_for_a_cool_off_and_one_success_closes_it(monkeypatch):
-    """CUR-4484. The host's capacity refusal opens the breaker: the next create is refused as busy without asking the
+    """The host's capacity refusal opens the breaker: the next create is refused as busy without asking the
     host. After the cool-off one create is tried, and its success lets the following ones through. A create that
     fails for any other reason leaves the breaker closed."""
     import circuitbreaker
@@ -178,8 +178,8 @@ def _creating_fake(e2b, delay=0.0):
 
 
 def test_parallel_first_calls_on_one_conversation_share_one_sandbox():
-    """CUR-4517: chat runs a turn's tool calls on worker threads. Three first calls at once made three sandboxes and
-    the files written to two of them were never seen again."""
+    """Chat runs a turn's tool calls on worker threads. Concurrent first calls on one conversation
+    share one sandbox, so files written by any of them are seen by the rest."""
     import threading
 
     import e2b
@@ -197,7 +197,7 @@ def test_parallel_first_calls_on_one_conversation_share_one_sandbox():
 
 
 def test_a_sandbox_another_machine_started_first_for_the_conversation_wins_and_ours_is_killed():
-    """CUR-4517: two agent machines can race past each other's locks. Each keeps the earliest-started sandbox."""
+    """Two agent machines can race past each other's locks. Each keeps the earliest-started sandbox."""
     import datetime
     import types
 
@@ -220,7 +220,7 @@ def test_a_sandbox_another_machine_started_first_for_the_conversation_wins_and_o
 
 
 def test_a_failed_check_for_another_machines_sandbox_keeps_ours():
-    """The review on #4133: a listing that fails after a good create must not strand the new sandbox."""
+    """A listing that fails after a good create must not strand the new sandbox."""
     import e2b
     b = _backend()
     b._e2b = fake = _creating_fake(e2b)
@@ -235,7 +235,7 @@ def test_a_failed_check_for_another_machines_sandbox_keeps_ours():
 
 
 def test_a_host_out_of_guest_memory_is_busy_and_opens_the_breaker(monkeypatch):
-    """CUR-4518: Embed refuses a create its hugepage pool can't hold with a 500, which the SDK raises as a plain
+    """Embed refuses a create its hugepage pool can't hold with a 500, which the SDK raises as a plain
     SandboxException. It must read as busy, and the next create must not reach the host."""
     import circuitbreaker
     import e2b
@@ -260,7 +260,7 @@ def test_a_host_out_of_guest_memory_is_busy_and_opens_the_breaker(monkeypatch):
 
 
 def _waiting_backend(monkeypatch, busy_creates, **cfg):
-    """CUR-4584: a backend that waits up to 60 s on a full host, on a fake clock its sleeps move. The host refuses
+    """A backend that waits up to 60 s on a full host, on a fake clock its sleeps move. The host refuses
     the first `busy_creates` creates for capacity (all of them when None), then has room."""
     import circuitbreaker
     import e2b
@@ -287,7 +287,7 @@ def _waiting_backend(monkeypatch, busy_creates, **cfg):
 
 
 def test_a_full_host_that_frees_a_slot_inside_the_wait_gets_the_sandbox_after_one_waiting_status(monkeypatch):
-    """CUR-4584: busy twice, then a free slot. The connect returns a handle, the person was told once, and the
+    """Busy twice, then a free slot. The connect returns a handle, the person was told once, and the
     second and third asks went through the breaker the first refusal opened: a waiting connect re-probes rather
     than being refused by its own breaker until the 30 s cool-off ends."""
     from sandbox_backend import SANDBOX_WAIT_TEXT
@@ -302,8 +302,8 @@ def test_a_full_host_that_frees_a_slot_inside_the_wait_gets_the_sandbox_after_on
     assert events[0][1]["waited_ms"] == 12_500
 
 
-def test_a_host_still_full_past_the_wait_gives_up_with_todays_sentence(monkeypatch):
-    """CUR-4584: busy for the whole minute. Raises SandboxBusy with the sentence the tools already word, after
+def test_a_host_still_full_past_the_wait_gives_up_with_the_busy_sentence(monkeypatch):
+    """Busy for the whole minute. Raises SandboxBusy with the sentence the tools already word, after
     about 60 s, having told the person once, and the waiter asked the host at most once per 5 s pause."""
     from sandbox_backend import SANDBOX_WAIT_TEXT, SandboxBusy
 
@@ -362,7 +362,7 @@ def test_waiters_ask_an_open_breakers_slot_once_per_pause_between_them_and_other
 
 
 def test_any_other_failed_create_is_a_sandbox_error_the_tool_can_word():
-    """CUR-4518: an SDK error that is not capacity still reaches the person as a sentence, and opens nothing."""
+    """An SDK error that is not capacity still reaches the person as a sentence, and opens nothing."""
     import e2b
     b = _backend()
     b._e2b = fake = _creating_fake(e2b)
@@ -415,7 +415,7 @@ def test_the_guest_stdin_is_a_real_stream_writer_that_sends_in_order_before_drai
             sent.append(data)
 
         writer = sandbox_e2b.stdin_writer(send, asyncio.get_running_loop())
-        # acp 0.9.0's ClientSideConnection refuses anything else (CUR-4498).
+        # acp 0.9.0's ClientSideConnection refuses anything else.
         assert isinstance(writer, asyncio.StreamWriter)
         writer.write(b'{"a":1}\n')
         writer.write(b'{"b":2}\n')
@@ -451,8 +451,8 @@ def test_a_guest_gone_mid_write_closes_the_writer_instead_of_hanging_drain():
 
 
 def test_leaving_a_hermes_session_returns_even_when_the_guest_never_takes_the_kill(monkeypatch):
-    """CUR-4535. A guest E2B has paused never answers the kill or the wait, and an unbounded kill held the agent
-    task's slot until the app was redeployed. The connect also restarts the sandbox's pause clock."""
+    """A guest E2B has paused never answers the kill or the wait, so the kill is bounded and
+    cannot hold the agent task's slot indefinitely. The connect also restarts the sandbox's pause clock."""
     import asyncio
     import time
     import types
@@ -497,7 +497,7 @@ def test_leaving_a_hermes_session_returns_even_when_the_guest_never_takes_the_ki
     assert connects == [600]
 
 
-# -- a pool of slots (CUR-4529) -----------------------------------------------------------------------------------
+# -- a pool of slots -----------------------------------------------------------------------------------
 
 
 _RUNNING = pytest.importorskip("e2b.api.client.models.sandbox_state").SandboxState.RUNNING
@@ -766,8 +766,8 @@ def test_sweep_and_destroy_reach_every_slot():
 
 
 def test_with_one_host_every_list_and_kill_is_bounded_so_a_silent_host_cannot_outlast_a_chat_turn():
-    # One slot on the SDK's 60 s default would let a host behind a link that stopped passing packets hold
-    # each run-code call past chat's 45 s turn cap (CUR-4628).
+    # Every list and kill carries an explicit timeout below the SDK's 60 s default, so a host behind a
+    # link that stopped passing packets cannot hold a run-code call past chat's 45 s turn cap.
     from sandbox_backend import key_for
     b, fake = _pool(slots=1)
     key = key_for("alice", "c")
@@ -817,7 +817,7 @@ def test_one_sandbox_that_wont_die_leaves_its_host_up_and_the_rest_of_the_sweep_
     assert b._down_until == {}
 
 
-# -- one account's live sandboxes (CUR-4553) ----------------------------------------------------------------------
+# -- one account's live sandboxes ----------------------------------------------------------------------
 
 
 def test_a_third_conversation_of_one_account_is_refused_while_another_accounts_first_still_runs():
@@ -1045,8 +1045,8 @@ class _BusyPause:
 
 @pytest.mark.parametrize("refusals", [1, 4])
 def test_a_pause_the_host_refuses_as_busy_is_asked_again_until_it_takes(monkeypatch, refusals):
-    """CUR-4503: a host that refuses a task-end pause with a 503 leaves each finished sandbox holding its slot until
-    the idle timeout; a refused pause changes nothing, so asking again is safe."""
+    """A host that refuses a task-end pause as busy (503) would leave each finished sandbox holding its slot
+    until the idle timeout; a refused pause changes nothing, so asking again is safe."""
     import types
 
     import e2b
@@ -1162,3 +1162,40 @@ def test_the_account_cap_refusal_names_the_run_code_window_the_person_actually_w
     fake.add(1, "live1", "k1", owner=owner_for("alice"))
     with pytest.raises(SandboxAccountLimit, match="after 2 minutes"):
         b.connect("alice", "c2", Tier.RUN_CODE)
+
+
+def test_the_sweep_kills_a_running_agent_sandbox_no_task_can_still_hold_and_nothing_else_running():
+    """A running sandbox's last use is `end_at` minus its window. With a 25-minute limit for running ones:
+    an agent sandbox last used 30 minutes ago and still running goes (no task outlives the hard limit, so nothing holds
+    it). One last used 5 minutes ago stays, so does an old one a live task here holds (`keep`), a run-code one, and
+    one with no tier. The four-hour idle rule is unchanged."""
+    import datetime
+    import types
+
+    from e2b.api.client.models.sandbox_state import SandboxState
+    b = _backend(idle_secs=600, run_code_idle_secs=120)
+    now = datetime.datetime.now(datetime.UTC)
+
+    def running(sid, key, tier, last_use_ago, window):
+        meta = {"key": key, **({"tier": tier} if tier else {})}
+        return types.SimpleNamespace(sandbox_id=sid, metadata=meta, state=SandboxState.RUNNING,
+                                     end_at=now - datetime.timedelta(seconds=last_use_ago - window))
+    b._e2b = _FakeE2B([running("stuck", "k-stuck", "agent", 30 * 60, 600),
+                       running("busy", "k-busy", "agent", 5 * 60, 600),
+                       running("held", "k-held", "agent", 30 * 60, 600),
+                       running("rc", "k-rc", "run_code", 30 * 60, 120),
+                       running("untiered", "k-old", None, 30 * 60, 600)])
+    assert b.sweep(4 * 3600, running_older_than_secs=25 * 60, keep=frozenset({"k-held"})) == ["k-stuck"]
+    assert b._e2b.killed == ["stuck"]
+
+
+def test_without_a_running_limit_the_sweep_never_kills_a_running_sandbox():
+    import datetime
+    import types
+
+    from e2b.api.client.models.sandbox_state import SandboxState
+    b = _backend(idle_secs=600)
+    end = datetime.datetime.now(datetime.UTC) - datetime.timedelta(seconds=30 * 60)
+    b._e2b = _FakeE2B([types.SimpleNamespace(sandbox_id="s", metadata={"key": "k", "tier": "agent"},
+                                             state=SandboxState.RUNNING, end_at=end)])
+    assert b.sweep(4 * 3600) == []

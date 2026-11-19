@@ -38,7 +38,7 @@ afterEach(() => {
 });
 
 // llm-stats' release list, verbatim as Firecrawl's search description returned it. A model can read
-// "Anthropic•6d ago" straight into "GPT-6 Luna" and credit OpenAI's model to Anthropic (CUR-2207).
+// "Anthropic•6d ago" straight into "GPT-6 Luna" and credit OpenAI's model to Anthropic.
 const LLM_STATS_DESCRIPTION =
 	"## AI Model Releases [![Anthropic](https://llm-stats.com/_next/image?url=%2Flogos%2Fanthropic-dark.png&w=64&q=75)\\ \\ **Claude Opus 5.5** ReleaseProprietary\\ \\ Anthropic•6d ago](https://llm-stats.com/models/claude-opus-5-5) [![OpenAI](https://llm-stats.com/_next/image?url=%2Flogos%2Fopenai-dark.png&w=64&q=75)\\ \\ **GPT-6 Luna** ReleaseProprietary\\ \\ OpenAI•6d ago](https://llm-stats.com/models/gpt-6-luna)";
 
@@ -159,6 +159,27 @@ describe("numberWebSources + buildWebEvidence — community-first numbering (§5
 	it("is a no-op on an empty hit list", () => {
 		expect(numberWebSources([], 5)).toEqual({ sources: [], evidence: "" });
 	});
+
+	// A source URL is third-party metadata (OpenAlex's is `doi || landing_page_url || …`), and
+	// it becomes a clickable citation, so only http(s) survives numbering.
+	it("drops a source whose URL is not http(s), and numbers the rest without a gap", () => {
+		const { sources, evidence } = numberWebSources(
+			[
+				{ title: "Bad", url: "javascript:alert(1)", snippet: "x", engine: "OpenAlex" },
+				merged[0],
+				{ title: "Tabbed", url: "java\tscript:alert(1)", snippet: "x", engine: "OpenAlex" },
+				{ title: "Doi", url: "doi:10.1000/182", snippet: "x", engine: "OpenAlex" },
+				merged[1],
+			],
+			0
+		);
+		expect(sources.map((s) => [s.n, s.title])).toEqual([
+			[1, "Alpha"],
+			[2, "Beta"],
+		]);
+		expect(evidence).not.toContain("Bad");
+		expect(evidence).not.toContain("Tabbed");
+	});
 });
 
 describe("retrieveWeb vs openSearch — deferred vs immediate numbering (§5.1)", () => {
@@ -201,7 +222,7 @@ describe("retrieveWeb vs openSearch — deferred vs immediate numbering (§5.1)"
 	});
 });
 
-describe("rerankText — populated for metadata-thin engines, never reaches the wire (CUR-78)", () => {
+describe("rerankText — populated for metadata-thin engines, never reaches the wire", () => {
 	const hfPage = (): Resp =>
 		okJson([
 			{
@@ -361,8 +382,8 @@ describe("openSearch per-engine timeout", () => {
 
 	it("clamps perEngineTimeoutMs to the overall timeoutMs for the FAST engines (never schedules a longer per-engine abort for them)", async () => {
 		const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
-		// 9500, not 9000, so it can't be confused with Firecrawl's own independent
-		// DEFAULT_FIRECRAWL_TIMEOUT_MS (see the next two tests — CUR-633).
+		// 9500, not 11000, so it can't be confused with Firecrawl's own independent
+		// DEFAULT_FIRECRAWL_TIMEOUT_MS (see the next two tests).
 		await openSearch("what is a vector database", { perEngineTimeoutMs: 9500, timeoutMs: 60 });
 		const delays = setTimeoutSpy.mock.calls.map((c) => c[1]);
 		expect(delays).not.toContain(9500);
@@ -370,16 +391,16 @@ describe("openSearch per-engine timeout", () => {
 		setTimeoutSpy.mockRestore();
 	});
 
-	it("Firecrawl gets its own longer timeout, independent of timeoutMs/perEngineTimeoutMs (CUR-633)", async () => {
+	it("Firecrawl gets its own longer timeout, independent of timeoutMs/perEngineTimeoutMs", async () => {
 		const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
 		await openSearch("what is a vector database", { perEngineTimeoutMs: 50, timeoutMs: 60 });
 		const delays = setTimeoutSpy.mock.calls.map((c) => c[1]);
 		// DEFAULT_FIRECRAWL_TIMEOUT_MS, scheduled regardless of the tiny master/per-engine caps above.
-		expect(delays).toContain(9000);
+		expect(delays).toContain(11_000);
 		setTimeoutSpy.mockRestore();
 	});
 
-	it("Firecrawl's result survives the master's early abort — the actual CUR-633 regression: a slow-but-within-budget Firecrawl call used to be killed by the fast engines' shared clock", async () => {
+	it("Firecrawl's result survives the master's early abort — the actual regression: a slow-but-within-budget Firecrawl call used to be killed by the fast engines' shared clock", async () => {
 		configValues.FIRECRAWL_API_KEY = "test-key";
 		const delayedRouteFetch = (url: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
 			const u = String(url);
@@ -410,7 +431,7 @@ describe("openSearch per-engine timeout", () => {
 
 		const result = await openSearch("museum hours today", {
 			// Mirrors short fast-engine caps racing against Firecrawl's real multi-second latency
-			// (CUR-633): a master/per-engine budget far shorter than Firecrawl's mocked 150ms delay. The
+			// with a master/per-engine budget far shorter than Firecrawl's mocked 150ms delay. The
 			// master's early abort must not kill this call too.
 			timeoutMs: 50,
 			perEngineTimeoutMs: 50,
@@ -419,7 +440,7 @@ describe("openSearch per-engine timeout", () => {
 		expect(result.sources.some((s) => s.engine === "Firecrawl")).toBe(true);
 	});
 
-	it("a Firecrawl description that arrives as markdown reaches the model as text, one row per company (CUR-2207)", async () => {
+	it("a Firecrawl description that arrives as markdown reaches the model as text, one row per company", async () => {
 		configValues.FIRECRAWL_API_KEY = "test-key";
 		const firecrawlFetch = (url: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
 			if (String(url).includes("api.firecrawl.dev")) {
@@ -443,7 +464,7 @@ describe("openSearch per-engine timeout", () => {
 	});
 });
 
-describe("openSearch — entity-name correction branch (CUR-877)", () => {
+describe("openSearch — entity-name correction branch", () => {
 	const firecrawlResult = (title: string, url: string) =>
 		okJson({ data: { web: [{ url, title, description: `${title} description` }] } });
 
@@ -510,7 +531,7 @@ describe("openSearch — entity-name correction branch (CUR-877)", () => {
 });
 
 // Engines that ran and found nothing are an empty search, and record nothing. Every engine
-// throwing reads the same to the user, so that is the departure. (CUR-68)
+// throwing reads the same to the user, so that is the departure.
 describe("retrieveWeb fail-open departures", () => {
 	const departures = () =>
 		vi
@@ -544,7 +565,7 @@ describe("retrieveWeb fail-open departures", () => {
 
 // retrieveWeb reports where its time went, so the chat route can put the split on the
 // `[retrieval] timing` line. Each engine's time is measured from the fan-out start, so the fan-out as a
-// whole takes as long as its slowest engine. (CUR-2105)
+// whole takes as long as its slowest engine.
 describe("retrieveWeb stage timings", () => {
 	afterEach(() => vi.unstubAllGlobals());
 
@@ -567,7 +588,7 @@ describe("retrieveWeb stage timings", () => {
 		expect(typeof t?.enrichMs).toBe("number");
 	});
 	// A leg that never settles logs nothing from inside, so the caller's deadline reads this to
-	// name the stage and the engines that held it. (CUR-4089)
+	// name the stage and the engines that held it.
 	it("reports the fan-out stage and only the engine still inside its cap while the leg is in flight", async () => {
 		vi.stubGlobal(
 			"fetch",
@@ -586,7 +607,7 @@ describe("retrieveWeb stage timings", () => {
 		vi.stubGlobal(
 			"fetch",
 			vi.fn((url: RequestInfo | URL) => {
-				// Ignores its abort signal entirely, as the OpenAlex call in CUR-4089 did.
+				// Ignores its abort signal entirely, as a hung engine fetch can.
 				if (String(url).includes("export.arxiv.org")) return new Promise<Response>(() => {});
 				return Promise.resolve(okJson({}) as unknown as Response);
 			})
@@ -611,7 +632,7 @@ describe("retrieveWeb stage timings", () => {
 	});
 });
 
-describe("the post-Firecrawl grace window (CUR-2121)", () => {
+describe("the post-Firecrawl grace window", () => {
 	const hangUntilAborted = (init?: RequestInit) =>
 		new Promise<Response>((_resolve, reject) => {
 			const signal = init?.signal;
@@ -661,7 +682,7 @@ describe("the post-Firecrawl grace window (CUR-2121)", () => {
 	// `cutEngines` names arXiv only when the grace timer fired and
 	// aborted it; a broken grace window lets arXiv run to its own cap and log as a failed engine. An
 	// elapsed bound stays for the one thing `cutEngines` can't see, a return that still waits after the
-	// abort, with the cap raised to 3 s so the bound has room under load. (CUR-2756)
+	// abort, with the cap raised to 3 s so the bound has room under load.
 	it("cuts a slow engine with the grace window once Firecrawl returns results, and does not log the cut as a failure", async () => {
 		stubFetch(2);
 		const started = Date.now();
@@ -707,7 +728,7 @@ describe("the post-Firecrawl grace window (CUR-2121)", () => {
 		expect(failureLogs.map((c) => (c[0] as { engine: string }).engine)).toEqual(["arxiv"]);
 	});
 
-	// axiom-alert's search-refusals check counts these by the logged `status` field. (CUR-2597)
+	// A log alert can count refusals by the logged `status` field.
 	it("logs a refusing engine's HTTP status on its engine-failed line", async () => {
 		stubFetch(2);
 		const inner = vi.mocked(fetch).getMockImplementation()!;
@@ -729,6 +750,55 @@ describe("the post-Firecrawl grace window (CUR-2121)", () => {
 		]);
 	});
 
+	it("the engine-failed log line never carries the request URL or the search query", async () => {
+		stubFetch(2);
+		const inner = vi.mocked(fetch).getMockImplementation()!;
+		vi.stubGlobal(
+			"fetch",
+			vi.fn((url: RequestInfo | URL, init?: RequestInit) =>
+				String(url).includes("export.arxiv.org")
+					? Promise.reject(new TypeError("fetch failed: https://api.openalex.org/works?search=secret-query"))
+					: inner(url, init)
+			)
+		);
+		await retrieveWeb("what is a vector database", onlyFirecrawlAndArxiv);
+
+		const failureLogs = vi
+			.mocked(logger.warn)
+			.mock.calls.filter((c) => String(c[1]).includes("engine failed"));
+		expect(failureLogs).toHaveLength(1);
+		// JSON.stringify drops an Error's message, so spell it out: that is the field that carries the URL.
+		const serialized = JSON.stringify(failureLogs[0], (_k, v) =>
+			v instanceof Error ? { name: v.name, message: v.message, stack: v.stack } : v
+		);
+		expect(serialized).not.toContain("secret-query");
+		expect(failureLogs[0][0]).toEqual(expect.objectContaining({ engine: "arxiv", errName: "TypeError" }));
+	});
+
+	it("a refusing engine's logged fields carry no part of the request URL's query string", async () => {
+		stubFetch(2);
+		const inner = vi.mocked(fetch).getMockImplementation()!;
+		vi.stubGlobal(
+			"fetch",
+			vi.fn((url: RequestInfo | URL, init?: RequestInit) =>
+				String(url).includes("export.arxiv.org")
+					? Promise.resolve(new Response("bad", { status: 400 }))
+					: inner(url, init)
+			)
+		);
+		await retrieveWeb("zebrafinch migration secret-query", onlyFirecrawlAndArxiv);
+
+		const failureLogs = vi
+			.mocked(logger.warn)
+			.mock.calls.filter((c) => String(c[1]).includes("engine failed"));
+		expect(failureLogs).toHaveLength(1);
+		const serialized = JSON.stringify(failureLogs[0], (_k, v) =>
+			v instanceof Error ? { name: v.name, message: v.message, stack: v.stack } : v
+		);
+		expect(serialized).not.toMatch(/secret-query|zebrafinch/);
+		expect(failureLogs[0][0]).toEqual(expect.objectContaining({ engine: "arxiv", status: 400 }));
+	});
+
 	it("leaves every engine to its own cap when Firecrawl returns nothing (fail toward waiting, not toward an empty turn)", async () => {
 		stubFetch(0);
 		const started = Date.now();
@@ -740,7 +810,7 @@ describe("the post-Firecrawl grace window (CUR-2121)", () => {
 	});
 });
 
-describe("source-credibility-filter (CUR-2423)", () => {
+describe("source-credibility-filter", () => {
 	const firecrawlHits = [
 		{ url: "https://www.reddit.com/r/energy/comments/1", title: "Is nuclear safe?", description: "a forum thread" },
 		{ url: "https://www.youtube.com/watch?v=1", title: "Kenya GDP explained", description: "a video" },
@@ -777,7 +847,7 @@ describe("source-credibility-filter (CUR-2423)", () => {
 	});
 });
 
-describe("OpenAlex query text — OpenAlex 400s on ? and *, so both are stripped (CUR-3833)", () => {
+describe("OpenAlex query text — OpenAlex 400s on ? and *, so both are stripped", () => {
 	const sentSearch = async (query: string): Promise<string | null | undefined> => {
 		const seen: string[] = [];
 		vi.stubGlobal(
@@ -810,7 +880,7 @@ describe("OpenAlex query text — OpenAlex 400s on ? and *, so both are stripped
 	});
 });
 
-describe("a latest question searches the past year and unfiltered together, recent first; FIRECRAWL_TBS wins (CUR-3932)", () => {
+describe("a latest question searches the past year and unfiltered together, recent first; FIRECRAWL_TBS wins", () => {
 	const firecrawlBodies = (fetchMock: ReturnType<typeof vi.fn>) =>
 		fetchMock.mock.calls
 			.filter((c) => String(c[0]).includes("api.firecrawl.dev/v2/search"))
@@ -873,5 +943,64 @@ describe("a latest question searches the past year and unfiltered together, rece
 		await retrieveWeb("how the ECB sets rates", { ...firecrawlOnly, latest: false });
 		await retrieveWeb("ECB most recent rate decision", { ...firecrawlOnly, latest: true });
 		expect(firecrawlBodies(fetchMock).map((b) => b.tbs)).toEqual(["sbd:1,qdr:m", "sbd:1,qdr:m"]);
+	});
+});
+
+describe("a Firecrawl answer that arrives after the old 9s cap still counts", () => {
+	const hit = { url: "https://example.com/late", title: "Late answer", description: "Arrived after nine seconds." };
+	const onlyFirecrawl = { firecrawl: 3, arxiv: 0, wikipedia: 0, wikinews: 0, openalex: 0, huggingface: 0 };
+
+	// Firecrawl answers `afterMs` into the call, or never if the call is aborted first.
+	const stubFirecrawl = (afterMs: number) =>
+		vi.stubGlobal(
+			"fetch",
+			vi.fn((url: RequestInfo | URL, init?: RequestInit) => {
+				if (!String(url).includes("api.firecrawl.dev")) return Promise.reject(new Error(`unexpected fetch: ${String(url)}`));
+				return new Promise<Response>((resolve, reject) => {
+					const t = setTimeout(
+						() => resolve(okJson({ data: { web: [hit] } }) as unknown as Response),
+						afterMs
+					);
+					init?.signal?.addEventListener(
+						"abort",
+						() => {
+							clearTimeout(t);
+							reject(new DOMException("aborted", "AbortError"));
+						},
+						{ once: true }
+					);
+				});
+			})
+		);
+
+	beforeEach(() => {
+		configValues.FIRECRAWL_API_KEY = "test-key";
+		vi.useFakeTimers();
+		vi.mocked(logger.warn).mockClear();
+	});
+	afterEach(() => vi.useRealTimers());
+
+	it("returns the sources of a Firecrawl call that answers at 10s, past the old 9s cap", async () => {
+		stubFirecrawl(10_000);
+		const pending = retrieveWeb("museum hours today", { ...onlyFirecrawl, preShaped: true });
+		await vi.advanceTimersByTimeAsync(10_500);
+		const r = await pending;
+
+		expect(r.merged.map((c) => c.url), "the 10s Firecrawl answer was dropped: the engine cap cut it").toEqual([
+			hit.url,
+		]);
+	});
+
+	it("still ends a call that never answers at the cap, and logs how long it ran and what it asked for", async () => {
+		stubFirecrawl(60_000);
+		const pending = retrieveWeb("museum hours today", { ...onlyFirecrawl, preShaped: true });
+		await vi.advanceTimersByTimeAsync(11_500);
+		const r = await pending;
+
+		expect(r.merged).toEqual([]);
+		expect(logger.warn).toHaveBeenCalledWith(
+			expect.objectContaining({ errName: "AbortError", elapsedMs: 11_000, shape: "single", limit: 3, tbs: null }),
+			"[search] Firecrawl search call failed"
+		);
 	});
 });

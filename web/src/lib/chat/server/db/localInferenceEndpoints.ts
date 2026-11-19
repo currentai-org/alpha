@@ -50,11 +50,11 @@ export async function getLocalEndpointForUserAndId(
 
 /** Adds a new local endpoint for this user. Callers are responsible for validating/normalizing
  *  `label`/`baseUrl`/`headers` first (see localModels.ts's normalizeLocalBaseUrl and the create
- *  route's zod schema) — this just persists. `headers` defaults to `[]`; CUR-1291 applies whatever's
- *  stored here to every request this endpoint makes (see localModels.ts's headersRecord()).
+ *  route's zod schema) — this just persists. `headers` defaults to `[]`; whatever is
+ *  stored here is sent on every request this endpoint makes (see localModels.ts's headersRecord()).
  *
- *  `kind`/`managedConfig` default to "direct"/null — the original CUR-1194/CUR-1262 shape.
- *  The managed provisioning route (api/v2/user/local-inference-endpoints/managed) is the only (CUR-1266)
+ *  `kind`/`managedConfig` default to "direct"/null, an endpoint whose URL the user typed.
+ *  The managed provisioning route (api/v2/user/local-inference-endpoints/managed) is the only
  *  caller that passes `kind: "managed"` + a real `managedConfig`. */
 export async function createLocalEndpoint(input: {
 	userId: string;

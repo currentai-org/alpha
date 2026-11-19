@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { extractLinkedUrl, linkedPageNote } from "./linkedUrl";
 
-describe("extractLinkedUrl — only a public web URL the person typed is fetchable (CUR-1897)", () => {
+describe("extractLinkedUrl — only a public web URL the person typed is fetchable", () => {
 	it("finds the article link in a summarise request, without trailing punctuation", () => {
 		expect(extractLinkedUrl("Est-ce que tu peux me résumer cet article? https://example.org/insights/an-essay.")).toBe(
 			"https://example.org/insights/an-essay"
@@ -42,9 +42,9 @@ describe("extractLinkedUrl — only a public web URL the person typed is fetchab
 	});
 });
 
-// After one "I can't open links" reply, a turn with the page already fetched and grounded as
-// source [1] still asked for the text to be pasted. The note has to name the source and retire the
-// earlier refusal, and neither fallback state may tell the model links can never be opened. (CUR-2032)
+// After an "I can't open links" reply, a model with the page already fetched and grounded as
+// source [1] can still ask for the text to be pasted. The note has to name the source and retire the
+// earlier refusal, and neither fallback state may tell the model links can never be opened.
 describe("linkedPageNote", () => {
 	it("names the source number the page was grounded as and retires an earlier refusal", () => {
 		const note = linkedPageNote({ kind: "read", n: 3 });

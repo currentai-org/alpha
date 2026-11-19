@@ -90,6 +90,14 @@ describe("sameModelId", () => {
 		expect(sameModelId("openai/swiss-ai/Apertus-v1.5-70B", "swiss-ai/apertus-v1.5-70b")).toBe(true);
 	});
 
+	it("ignores LiteLLM's mistral/ provider prefix, which api-internal reports", () => {
+		expect(sameModelId("mistral/mistral-medium-2604", "mistral-medium-2604")).toBe(true);
+	});
+
+	it("keeps an organisation's own first segment: mistralai/ is part of the id, not a provider prefix", () => {
+		expect(sameModelId("mistralai/mistral-medium-2604", "mistral-medium-2604")).toBe(false);
+	});
+
 	it("tells a different model apart", () => {
 		expect(sameModelId("aisingapore/Qwen-SEA-LION-v4-32B-IT", "swiss-ai/apertus-v1.5-70b")).toBe(false);
 	});

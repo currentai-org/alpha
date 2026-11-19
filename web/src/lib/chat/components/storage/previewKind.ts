@@ -2,7 +2,7 @@
 // application/octet-stream as an attachment (storage/file/+server.ts says why), so the browser is
 // never told a type by us. The bytes are fetched, given a type here, and drawn as an <img> or as
 // text: an <img> runs no script whatever it holds, and text goes in as textContent. SVG and HTML are
-// deliberately absent, since either could run in a context that does. (CUR-3289)
+// deliberately absent, since either could run in a context that does.
 
 const IMAGE_TYPES: Record<string, string> = {
 	png: 'image/png',

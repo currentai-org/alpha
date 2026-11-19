@@ -1,10 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+	CONTEXT_TOOL_NAME,
+	parseContextArgs,
 	parseSupportArgs,
 	SIGNAL_MAX_CHARS,
 	stampSupportFromSignal,
 	supportSignal,
 	SUPPORT_TOOL_NAME,
+	type ContextCall,
 	type SupportCall,
 	type SupportRecord,
 	type SupportSignal,
@@ -15,7 +18,7 @@ const toolCall = (args: unknown, name = SUPPORT_TOOL_NAME) => ({
 	function: { name, arguments: typeof args === "string" ? args : JSON.stringify(args) },
 });
 
-describe("supportSignal (CUR-4093)", () => {
+describe("supportSignal", () => {
 	it("returns the classifier's show:true with who and language", async () => {
 		const call: SupportCall = async () => ({ show: true, who: "someone_else", lang: "es", country: "" });
 		await expect(supportSignal("Mi amiga me dijo que ya no quiere vivir", { call, logger: quiet })).resolves.toEqual({
@@ -65,6 +68,67 @@ describe("supportSignal (CUR-4093)", () => {
 	});
 });
 
+describe("supportSignal's context check takes a show back and never adds one", () => {
+	const show: SupportCall = async () => ({ show: true, who: "writer", lang: "en", country: "" });
+	const REPLY = "Barcelona's mild, sunny weather today makes it a great day for sightseeing.";
+
+	it("clears a show when the reply, read with the previous answer, is about an ordinary topic", async () => {
+		const logger = { info: vi.fn(), warn: vi.fn() };
+		const contextCall = vi.fn<ContextCall>(async () => false);
+		const sig = await supportSignal("yeah im thinking about it", { call: show, contextCall, previousReply: REPLY, logger });
+		expect(sig).toEqual({ show: false, who: "none", lang: "en", country: "" });
+		expect(contextCall).toHaveBeenCalledWith(REPLY, "yeah im thinking about it", expect.any(AbortSignal));
+		expect(logger.info.mock.calls[0][0]).toMatchObject({ outcome: "clear", context: "cleared" });
+		expect(JSON.stringify(logger.info.mock.calls)).not.toContain("Barcelona");
+	});
+
+	it("keeps the show when the context check says the message is about distress", async () => {
+		const sig = await supportSignal("yes", { call: show, contextCall: async () => true, previousReply: REPLY, logger: quiet });
+		expect(sig?.show).toBe(true);
+	});
+
+	it("keeps the show when the context check fails or throws, so a failure never costs the card", async () => {
+		for (const contextCall of [async () => null, async () => Promise.reject(new Error("down"))] as ContextCall[]) {
+			const logger = { info: vi.fn(), warn: vi.fn() };
+			const sig = await supportSignal("yes", { call: show, contextCall, previousReply: REPLY, logger });
+			expect(sig?.show).toBe(true);
+			expect(logger.info.mock.calls[0][0]).toMatchObject({ outcome: "show", context: "failed" });
+		}
+	});
+
+	it("shares the classifier's one deadline, so the check never extends the wait the decline path sees", async () => {
+		const call = vi.fn<SupportCall>(show);
+		const contextCall = vi.fn<ContextCall>(async () => true);
+		await supportSignal("yes", { call, contextCall, previousReply: REPLY, logger: quiet });
+		expect(contextCall.mock.calls[0][2]).toBe(call.mock.calls[0][1]);
+	});
+
+	it("never runs on a clear, so earlier turns can never add the card", async () => {
+		const contextCall = vi.fn<ContextCall>(async () => true);
+		const clear: SupportCall = async () => ({ show: false, who: "none", lang: "en", country: "" });
+		const sig = await supportSignal("thats fun", { call: clear, contextCall, previousReply: REPLY, logger: quiet });
+		expect(sig?.show).toBe(false);
+		expect(contextCall).not.toHaveBeenCalled();
+	});
+
+	it("never runs on the first message of a conversation, which has no previous answer", async () => {
+		const contextCall = vi.fn<ContextCall>(async () => false);
+		const sig = await supportSignal("I want to die", { call: show, contextCall, previousReply: "  ", logger: quiet });
+		expect(sig?.show).toBe(true);
+		expect(contextCall).not.toHaveBeenCalled();
+	});
+});
+
+describe("parseContextArgs", () => {
+	it("reads about_distress, and returns null for the wrong tool, a non-boolean or unparseable arguments", () => {
+		expect(parseContextArgs(toolCall({ about_distress: false }, CONTEXT_TOOL_NAME))).toBe(false);
+		expect(parseContextArgs(toolCall({ about_distress: true }, CONTEXT_TOOL_NAME))).toBe(true);
+		expect(parseContextArgs(toolCall({ about_distress: false }))).toBeNull();
+		expect(parseContextArgs(toolCall({ about_distress: "no" }, CONTEXT_TOOL_NAME))).toBeNull();
+		expect(parseContextArgs(toolCall("{", CONTEXT_TOOL_NAME))).toBeNull();
+	});
+});
+
 const MSG = "je n'y arrive plus";
 
 describe("parseSupportArgs", () => {
@@ -93,14 +157,14 @@ describe("parseSupportArgs", () => {
 		expect(parseSupportArgs(toolCall({ show: true, who: "writer", lang: "HAW" }), MSG)?.lang).toBe("haw");
 	});
 
-	it("reads the country the message places the person at risk in, lower-cased (CUR-4488)", () => {
+	it("reads the country the message places the person at risk in, lower-cased", () => {
 		const pt = "Trabalho na Segurança Social e um beneficiário diz que já não quer viver.";
 		expect(parseSupportArgs(toolCall({ show: true, who: "someone_else", lang: "pt", place: "segurança social", country: "PT" }), pt)?.country).toBe("pt");
 		const fr = "Je suis professeure à Lyon. Un élève n'a plus envie de vivre.";
 		expect(parseSupportArgs(toolCall({ show: true, who: "someone_else", lang: "fr", place: "Lyon", country: "fr" }), fr)?.country).toBe("fr");
 	});
 
-	it("drops a country whose place the person never wrote, so a French message with no place gets the front page, not France's (CUR-4488)", () => {
+	it("drops a country whose place the person never wrote, so a French message with no place gets the front page, not France's", () => {
 		const text = "Je ne veux plus vivre. 1792859723943";
 		for (const place of ["", "France", "français", "e"]) {
 			expect(parseSupportArgs(toolCall({ show: true, who: "writer", lang: "fr", place, country: "fr" }), text)).toEqual({
@@ -112,7 +176,7 @@ describe("parseSupportArgs", () => {
 		}
 	});
 
-	it("drops a country findahelpline has no page for, so the card falls back to the IP country rather than a dead link (CUR-4488)", () => {
+	it("drops a country findahelpline has no page for, so the card falls back to the IP country rather than a dead link", () => {
 		for (const country of ["france", "xx", "f", "<b>", 33, null]) {
 			const sig = parseSupportArgs(toolCall({ show: true, who: "writer", lang: "fr", place: "Lyon", country }), "à Lyon");
 			expect(sig).toEqual({ show: true, who: "writer", lang: "fr", country: "" });
@@ -127,7 +191,7 @@ describe("parseSupportArgs", () => {
 	});
 });
 
-describe("stampSupportFromSignal: the card from the signal, and whether the turn carries support (CUR-4093)", () => {
+describe("stampSupportFromSignal: the card from the signal, and whether the turn carries support", () => {
 	const sig = (v: SupportSignal | null) => Promise.resolve(v);
 
 	it("a show:true stamps support and the language, emits the notice once, and resolves true", async () => {
@@ -159,7 +223,7 @@ describe("stampSupportFromSignal: the card from the signal, and whether the turn
 		expect(emit).not.toHaveBeenCalled();
 	});
 
-	it("records and emits the named country beside the language, on its own stamp or the guard's (CUR-4488)", async () => {
+	it("records and emits the named country beside the language, on its own stamp or the guard's", async () => {
 		const fresh: SupportRecord = {};
 		const emit = vi.fn(async () => {});
 		await stampSupportFromSignal(fresh, sig({ show: true, who: "someone_else", lang: "fr", country: "fr" }), emit);

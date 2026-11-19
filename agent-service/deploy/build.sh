@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Build + validate the agent-service image. Run from a shell WITH docker daemon access (the agent's sandbox
-# couldn't — uid not in the docker group). Usage:
+# Build + validate the agent-service image. Run from a shell WITH docker daemon access. Usage:
 #   deploy/build.sh                      # build with the default (public) HERMES_REF
 #   HERMES_REF="git+https://…@<sha>" deploy/build.sh   # build against your reachable fork
 # A successful run proves: image builds, hermes resolves on PATH, and both app/proxy modules import.
@@ -9,11 +8,9 @@ cd "$(dirname "$0")/.."
 TAG="${TAG:-agent-service:demo}"
 ARGS=()
 [[ -n "${HERMES_REF:-}" ]] && ARGS+=(--build-arg "HERMES_REF=${HERMES_REF}")
-# The Dockerfile has carried ARG GIT_SHA -> ENV AGENT_BUILD_SHA since the start, with a comment saying a
-# deploy that forgets it must look different from one that has it. Nothing ever passed it, so /healthz has
-# reported build:"unknown" on every image ever built — which is exactly the case the comment was written
-# for, and the reason "which commit is running" needed `fly image show` and a guess. `-dirty` when the tree
-# has uncommitted changes: an image built from a working copy is not the commit it names.
+# Pass the commit as GIT_SHA, which the Dockerfile turns into AGENT_BUILD_SHA so /healthz can name the build.
+# Without it /healthz reports build:"unknown". `-dirty` when the tree has uncommitted changes: an image built
+# from a working copy is not the commit it names.
 ARGS+=(--build-arg "GIT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)$(
     git diff --quiet HEAD 2>/dev/null || echo -dirty)")
 

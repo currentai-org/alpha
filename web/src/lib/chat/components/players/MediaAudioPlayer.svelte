@@ -8,11 +8,11 @@
 	// Editorial audio player for an open-component clip (TTS): matches the paper/ink design instead of the
 	// browser's big white native <audio controls>. It renders no <audio> of its own: it drives the clip's
 	// shared element from the playback coordinator, the same one read-aloud's autoplay starts, so the
-	// controls show what is actually sounding (CUR-2299). See audioPlayback.ts for why that element is
+	// controls show what is actually sounding. See audioPlayback.ts for why that element is
 	// off-DOM.
 	//
 	// Reads its state from media EVENTS on that element, never a two-way bind. Autoplay can start the
-	// clip before its metadata loads, so an unknown length shows as a placeholder, never as 0:00 (CUR-2785).
+	// clip before its metadata loads, so an unknown length shows as a placeholder, never as 0:00.
 	interface Props {
 		src: string;
 	}
@@ -24,7 +24,7 @@
 	let paused = $state(true);
 	// The clip is fetched and played from a local blob: URL (see loadAudioClip.ts). `audioEl`
 	// is undefined until that resolves; `loadFailed` covers a non-OK response, a network error, or the
-	// fetch outliving its own timeout. (CUR-851)
+	// fetch outliving its own timeout.
 	let loadFailed = $state(false);
 
 	$effect(() => {

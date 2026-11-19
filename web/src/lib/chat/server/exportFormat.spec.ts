@@ -40,7 +40,7 @@ describe("provenance: an answer's source, in the words the chat shows", () => {
 		expect(line).not.toContain("backup");
 	});
 
-	it("names the host only from the answer's routing record, never a configured one (CUR-3562)", () => {
+	it("names the host only from the answer's routing record, never a configured one", () => {
 		const line = provenanceLine({
 			routerMetadata: { route: "", model: APERTUS, provider: "together", backend: "https://api.infomaniak.com/1/ai" },
 		});
@@ -68,7 +68,7 @@ describe("provenance: an answer's source, in the words the chat shows", () => {
 		expect(line).toContain("(backup — served in place of the primary model)");
 	});
 
-	it("marks a same-maker model that answered after the primary failed as the backup (CUR-2293)", () => {
+	it("marks a same-maker model that answered after the primary failed as the backup", () => {
 		const thinking = "swiss-ai/apertus-v1.5-70b-thinking";
 		const failed = provenanceLine({
 			routerMetadata: { route: "", model: thinking },
@@ -79,7 +79,7 @@ describe("provenance: an answer's source, in the words the chat shows", () => {
 		expect(provenanceLine({ routerMetadata: { route: "", model: thinking } })).not.toContain("backup");
 	});
 
-	it("judges an answer from before a mid-chat model switch against the model it was asked of, so it is not called a backup (CUR-3234)", () => {
+	it("judges an answer from before a mid-chat model switch against the model it was asked of, so it is not called a backup", () => {
 		const large = "mistral-large-2512";
 		// The chat was on Large 3 for this answer, then switched to Apertus.
 		const line = provenanceLine({ requestedModel: large, routerMetadata: { route: "", model: large } }, APERTUS);
@@ -149,7 +149,7 @@ describe("the JSON copy carries named fields, not whole records", () => {
 		expect(answer("https://llm.example.net/tenant/42/v1")?.backend).toBe("llm.example.net");
 	});
 
-	it("names no server for a turn whose record holds only the helpers that ran (CUR-984)", () => {
+	it("names no server for a turn whose record holds only the helpers that ran", () => {
 		const out = exportedConversation(
 			conversation([
 				{ from: "user", content: "hi", ancestors: [], children: ["m2"] },
@@ -164,7 +164,7 @@ describe("the JSON copy carries named fields, not whole records", () => {
 		expect(out.messages[1]).not.toHaveProperty("servedBy");
 	});
 
-	it("marks every answer as AI-generated in IPTC's vocabulary, and never marks what the person wrote (CUR-996)", () => {
+	it("marks every answer as AI-generated in IPTC's vocabulary, and never marks what the person wrote", () => {
 		const out = exportedConversation(
 			conversation([
 				{ from: "user", content: "hi", ancestors: [] },
@@ -227,7 +227,7 @@ describe("the readable copy", () => {
 		expect(md).toContain("## Alpha\n\n391\n\n> from training · no live sources\n> Apertus");
 	});
 
-	it("leaves out an agent's step log and an unclosed reasoning block, as the chat does, and keeps them in the JSON copy (CUR-4359)", () => {
+	it("leaves out an agent's step log and an unclosed reasoning block, as the chat does, and keeps them in the JSON copy", () => {
 		const messages: Partial<Message>[] = [
 			{ id: "u", from: "user", content: "Highest mountain in Africa?", ancestors: [] },
 			{
@@ -247,7 +247,7 @@ describe("the readable copy", () => {
 		expect(exportedConversation(conversation(messages)).messages[1].content).toContain("<think>Working on it");
 	});
 
-	it("keeps every word of a question about the tag, and of an answer that quotes it (CUR-4359)", () => {
+	it("keeps every word of a question about the tag, and of an answer that quotes it", () => {
 		const md = conversationMarkdown(
 			conversation([
 				{ id: "u", from: "user", content: "What does the <think> tag do? Also explain caching.", ancestors: [] },
@@ -263,7 +263,7 @@ describe("the readable copy", () => {
 		expect(md).toContain("Models wrap reasoning in <think> before answering. Caching is separate.");
 	});
 
-	it("names each attached file's path under the message it came with (CUR-4359)", () => {
+	it("names each attached file's path under the message it came with", () => {
 		const md = conversationMarkdown(
 			conversation([
 				{ id: "u", from: "user", content: "What tree is this?", ancestors: [] },
@@ -291,7 +291,7 @@ describe("the readable copy", () => {
 	});
 });
 
-describe("validateExportFile: an import refuses a file it cannot read before writing anything (CUR-4180)", () => {
+describe("validateExportFile: an import refuses a file it cannot read before writing anything", () => {
 	const ACCOUNT = "6ab74dc5692f81f5c1500001";
 	const ours = () => exportEnvelope(ACCOUNT, [exportedConversation(conversation([{ content: "hi" }]))]);
 	const reason = (text: string, account = ACCOUNT) => {

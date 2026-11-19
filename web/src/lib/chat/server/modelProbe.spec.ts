@@ -42,7 +42,7 @@ beforeEach(() => {
 	busy.noteAnswered.mockClear();
 });
 
-describe("probeModel (CUR-4042)", () => {
+describe("probeModel", () => {
 	it("answers ok on the model's first chunk and stops reading there", async () => {
 		const { model } = target(answering(MODEL));
 		const verdict = await probeModel(model);
@@ -90,9 +90,33 @@ describe("probeModel (CUR-4042)", () => {
 			return answering()(p);
 		};
 		const { model } = target(recording);
-		expect(await probeModel(model, { refuse: true })).toMatchObject({ ok: false, reason: "http-429" });
+		expect(await probeModel(model, { refuse: 429 })).toMatchObject({ ok: false, reason: "http-429" });
 		expect(await probeModel(model)).toMatchObject({ ok: true });
 		expect(seen.map((p) => p.rateLimitEveryLane ?? false)).toEqual([true, false]);
+	});
+
+	it("a 402 payment-required answer marks the model down, with the host's own text in the verdict", async () => {
+		const refusing: Endpoint = async () => {
+			throw Object.assign(new Error('402 {"error":"Pay-as-you go is not enabled for provider scaleway yet."}'), {
+				status: 402,
+			});
+		};
+		const { model } = target(refusing);
+		const verdict = await probeAndRecord(model);
+		expect(verdict).toMatchObject({ ok: false, reason: "http-402", upstream: expect.stringContaining("Pay-as-you go") });
+		expect(busy.noteFailed).toHaveBeenCalledWith(MODEL, undefined, { decisive: true });
+	});
+
+	it("asks every lane to throw the host's 402 under the every_lane_payment_required fault, and goes red on it", async () => {
+		const seen: EndpointParameters[] = [];
+		const recording: Endpoint = async (p) => {
+			seen.push(p);
+			if (p.paymentRequiredEveryLane) throw Object.assign(new Error("402"), { status: 402 });
+			return answering()(p);
+		};
+		const { model } = target(recording);
+		expect(await probeModel(model, { refuse: 402 })).toMatchObject({ ok: false, reason: "http-402" });
+		expect(seen[0]).not.toHaveProperty("rateLimitEveryLane");
 	});
 
 	it("gives no verdict on a 400: our request was refused, which says nothing about whether the model answers", async () => {
@@ -100,17 +124,18 @@ describe("probeModel (CUR-4042)", () => {
 		expect(await probeModel(model)).toMatchObject({ ok: null, reason: "http-400" });
 	});
 
-	it("counts gateway timeouts, 5xx, the router's 404, dropped connections and a silent last lane as down, and other 4xx as not", () => {
+	it("counts gateway timeouts, 5xx, the router's 404, a 402 payment refusal, dropped connections and a silent last lane as down, and other 4xx as not", () => {
 		expect(countsAsDown(Object.assign(new Error(), { status: 504 }))).toBe(true);
 		expect(countsAsDown(Object.assign(new Error(), { status: 503 }))).toBe(true);
 		expect(countsAsDown(Object.assign(new Error(), { status: 404 }))).toBe(true);
+		expect(countsAsDown(Object.assign(new Error(), { status: 402 }))).toBe(true);
 		expect(countsAsDown(new Error("fetch failed"))).toBe(true);
 		expect(countsAsDown(new NoFirstChunkError("silent"))).toBe(true);
 		expect(countsAsDown(Object.assign(new Error(), { status: 401 }))).toBe(false);
 		expect(countsAsDown(Object.assign(new Error(), { status: 400 }))).toBe(false);
 	});
 
-	it("goes red on the router's 404 for a model it has no working entry for, so the probe marks it down (CUR-4629)", async () => {
+	it("goes red on the router's 404 for a model it has no working entry for, so the probe marks it down", async () => {
 		const { model } = target(throwing(404));
 		expect(await probeModel(model)).toMatchObject({ ok: false, reason: "http-404" });
 		await probeAndRecord(model);
@@ -118,7 +143,7 @@ describe("probeModel (CUR-4042)", () => {
 	});
 });
 
-describe("probeAndRecord (CUR-4042)", () => {
+describe("probeAndRecord", () => {
 	it("marks the model busy on one failed probe, under the spec's scope when one is given", async () => {
 		const { model } = target(throwing(429));
 		await probeAndRecord(model, { scope: "run-1" });
@@ -141,7 +166,7 @@ describe("probeAndRecord (CUR-4042)", () => {
 	});
 });
 
-describe("dueThisMinute: the probe stagger (CUR-4042)", () => {
+describe("dueThisMinute: the probe stagger", () => {
 	const ids = ["a", "b", "c", "d", "e", "f", "g"];
 	const minutes = (n: number) => Array.from({ length: n }, (_, i) => Date.UTC(2026, 9, 25, 12, i));
 

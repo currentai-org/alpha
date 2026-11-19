@@ -1,6 +1,6 @@
 // e2e-product: @chat
 // e2e-area: @turn
-// The server stored any file type a request sent (CUR-3832). The composer offers images, text, PDF and
+// The server stored any file type a request sent. The composer offers images, text, PDF and
 // Word only, but a script posting a 7z went straight to storage, and nothing scanned it, because the
 // picture check has no way into an archive it does not open. This spec forces the production guest
 // flags on the preview, starts a real chat signed in (guests cannot attach files at all, so a guest's
@@ -47,7 +47,7 @@ test(
 		await page.waitForURL(/\/conversation\/[a-f0-9]+/, { timeout: 30_000 });
 		const convPath = new URL(page.url()).pathname;
 		const answers = page.locator('[data-message-role="assistant"]');
-		// A turn sent while the first is still saving is refused on its own account (CUR-2667).
+		// A turn sent while the first is still saving is refused on its own account.
 		await expect(turnDone(answers.last())).toBeVisible({ timeout: 60_000 });
 
 		// The turn names its parent, as the page's own send does; with none the route cannot place it
@@ -77,7 +77,7 @@ test(
 			answers.last().getByText(REFUSED_LINE),
 			'the answer to a turn with a 7z did not say the file was not added'
 		).toBeVisible();
-		// The sent message keeps the 7z's name as a "Not added" chip, and only there (CUR-3405); it is
+		// The sent message keeps the 7z's name as a "Not added" chip, and only there; it is
 		// never shown, or stored, as an attachment.
 		const sent = page.locator('[data-message-type="user"]').last();
 		await expect(

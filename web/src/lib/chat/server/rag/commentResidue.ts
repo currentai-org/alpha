@@ -1,5 +1,5 @@
 /**
- * Google Docs comment threads left in a document's text (CUR-2634).
+ * Google Docs comment threads left in a document's text.
  *
  * A Docs export with comments included appends each thread as `[a]…`, `[b]…`, and a mention inside
  * a thread reads `@name@domain`. A document ingested that way would serve

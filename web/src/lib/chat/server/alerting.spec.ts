@@ -156,6 +156,15 @@ describe("per-dependency status-page heartbeats", () => {
 		expect(heartbeatCalls()).toHaveLength(keys.length);
 	});
 
+	it("s1:verdict alerts through the webhook on its 3rd failure and pings no heartbeat when healthy, so a healthy S1 cannot hold the Shieldstral component green", async () => {
+		const s1 = { label: "Chat safety judge (Zentropi S1) verdict path", runbook: "runbook line." };
+		await recordProbe("s1:verdict", true, s1);
+		expect(heartbeatCalls()).toHaveLength(0);
+		for (let i = 0; i < 3; i++) await recordProbe("s1:verdict", false, s1);
+		expect(slackCalls()).toHaveLength(1);
+		expect(bodyOf(0)).toContain("Chat safety judge (Zentropi S1) verdict path DOWN");
+	});
+
 	it("does not ping for a probe key with no component (an unmapped key is a no-op, not an error)", async () => {
 		await expect(recordProbe("some:future-probe", true, opts)).resolves.toBeUndefined();
 		expect(heartbeatCalls()).toHaveLength(0);
@@ -177,7 +186,7 @@ describe("per-dependency status-page heartbeats", () => {
 });
 
 // enforceRequestRateLimits 429s over a trip, and a trip must reach a human rather than
-// stay visible only to someone who greps logs. These pin the contract, not just "it compiles". (CUR-1134)
+// stay visible only to someone who greps logs. These pin the contract, not just "it compiles".
 describe("recordRateLimitTrip", () => {
 	const RL_KEY = "chat-rate-limit:session:abuser-1";
 	const rlOpts = { limitName: "per-session/minute", identity: "abuser-1" };
@@ -217,7 +226,7 @@ describe("recordRateLimitTrip", () => {
 
 	// The headline must name the LIMITER that tripped, not hardcode "chat rate limit": a
 	// custodial-storage quota trip has nothing to do with chat, and a wrong name sends whoever is paged
-	// to the wrong runbook. (CUR-1319)
+	// to the wrong runbook.
 	it("headlines with the limiter's own name, not a hardcoded 'chat rate limit' — a non-chat limiter must not read as chat", async () => {
 		const storageKey = "custodial-storage:quota:user-1";
 		const storageOpts = { limitName: "custodial storage quota", identity: "user-1" };
@@ -230,7 +239,7 @@ describe("recordRateLimitTrip", () => {
 // recordRateLimitTrip's own contract is "never resets" — correct for a rate (a rolling
 // window that empties on its own) and wrong for a stock (a state that stays true until something
 // clears it, e.g. a full storage quota). clearRateLimitTrip is the decay a stock-backed trigger
-// needs so a resolved condition doesn't keep re-firing on every subsequent retry. (CUR-1318)
+// needs so a resolved condition doesn't keep re-firing on every subsequent retry.
 describe("clearRateLimitTrip", () => {
 	const QUOTA_KEY = "custodial-storage:quota:user-1";
 	const quotaOpts = { limitName: "custodial storage quota", identity: "user-1" };

@@ -55,7 +55,7 @@ export interface StreamState {
 	/** Timestamp of the last content token, for the inter-token latency metric. */
 	lastTokenTimestamp: Date | undefined;
 	/**
-	 * Timestamp of the last event of ANY kind the reducer processed — CUR-1204. The route's silence
+	 * Timestamp of the last event of ANY kind the reducer processed. The route's silence
 	 * watchdog reads this, not `lastTokenTimestamp`, because a content token is not the only liveness
 	 * signal worth watching: endpointAgent.ts's 4s heartbeat (built for exactly "the agent computes
 	 * silently for many seconds") and the plan/tool_call/tool_result/writePolicy narration all prove the
@@ -70,20 +70,25 @@ export interface StreamState {
 	lastActivityAt: Date | undefined;
 	/**
 	 * The model's last raw chunk, stamped by textGeneration through `onModelOutput` before the honesty
-	 * and screening buffers (CUR-4188). Unlike lastTokenTimestamp it counts output nobody can see yet:
+	 * and screening buffers. Unlike lastTokenTimestamp it counts output nobody can see yet:
 	 * reasoning held until `</think>`, and text a screen is still holding. Read by the total cap's
 	 * still-streaming check; unlike lastActivityAt, a heartbeat never touches it.
 	 */
 	lastModelOutputAt: Date | undefined;
-	/** An AgentConfirm gate is open (CUR-218) with no matching AgentConfirmResult yet — a human is
+	/** An AgentConfirm gate is open with no matching AgentConfirmResult yet — a human is
 	 *  mid-decision on an Allow/Deny card. True from AgentConfirm to AgentConfirmResult; read by the
-	 *  route's silence watchdog (deadlineLadder.isSilentStall, CUR-1085) so a pause a human hasn't
+	 *  route's silence watchdog (deadlineLadder.isSilentStall) so a pause a human hasn't
 	 *  answered yet is never mistaken for a stalled generation. */
 	awaitingConfirmation: boolean;
 	/** A code sandbox is waiting for a slot on a full host. True from the `waiting-sandbox` phase
-	 *  marker to the next phase marker. The route holds the turn's deadline for it, as for an open card: (CUR-4584)
+	 *  marker to the next phase marker. The route holds the turn's deadline for it, as for an open card:
 	 *  agent-service bounds the wait itself, and the deadline's room under MAX_SAFE still caps it. */
 	waitingForSandbox: boolean;
+	/** A native tool round is retrieving. True from a `searching*` phase marker to the next phase
+	 *  marker or the next streamed text. The total cap reads it as progress: a round's searches send the
+	 *  model nothing for seconds, and without it the cap would end a turn mid-search. The silence watchdog does not
+	 *  read it, so a round that truly hangs still ends. */
+	runningTools: boolean;
 }
 
 export function createStreamState(): StreamState {
@@ -97,6 +102,7 @@ export function createStreamState(): StreamState {
 		lastModelOutputAt: undefined,
 		awaitingConfirmation: false,
 		waitingForSandbox: false,
+		runningTools: false,
 	};
 }
 
@@ -128,7 +134,7 @@ export async function applyMessageUpdate(
 ): Promise<MessageUpdate | null> {
 	const { message, initialMessageContent, model, state, metrics } = ctx;
 
-	// Reaching this reducer at all (CUR-1204) — any event type, including one dropped further down for
+	// Reaching this reducer at all — any event type, including one dropped further down for
 	// carrying no visible text — is proof the generation is still alive. Set before any type dispatch or
 	// early return so a RouterMetadata heartbeat, an AgentStep pulse, or a WritePolicy notice counts the
 	// same as a content token for silence-detection purposes.
@@ -137,10 +143,17 @@ export async function applyMessageUpdate(
 	if (event.type === MessageUpdateType.Status && event.status === MessageUpdateStatus.Finished) {
 		state.finishedStatusSent = true;
 	}
-	// Any later phase marker ends the sandbox wait; the wait's own end sends `sandbox-ready`. (CUR-4584)
+	// Any later phase marker ends the sandbox wait; the wait's own end sends `sandbox-ready`.
 	if (event.type === MessageUpdateType.Status && event.message?.startsWith(PHASE_PREFIX)) {
 		state.waitingForSandbox = event.message === phaseMarker(SANDBOX_WAIT_PHASE);
+		state.runningTools = event.message.startsWith(phaseMarker("searching"));
 	}
+	if (
+		(event.type === MessageUpdateType.Stream ||
+			(event.type === MessageUpdateType.Reasoning && event.subtype === MessageReasoningUpdateType.Stream)) &&
+		event.token
+	)
+		state.runningTools = false;
 
 	// Add token to content or skip if empty
 	if (event.type === MessageUpdateType.Stream) {
@@ -204,14 +217,14 @@ export async function applyMessageUpdate(
 		message.mcp = mcpProvenance(event) ?? message.mcp;
 	}
 
-	// Write-permission provenance (CUR-471) — the agent's writes were resolved to deny_writes for this
+	// Write-permission provenance — the agent's writes were resolved to deny_writes for this
 	// caller. Stamp message.writePolicy so the explanation survives reload, mirroring Mcp above. Only a
 	// real restriction ever stamps (writePolicyProvenance returns undefined for policy:"allow").
 	else if (event.type === MessageUpdateType.WritePolicy) {
 		message.writePolicy = writePolicyProvenance(event) ?? message.writePolicy;
 	}
 
-	// Fixed-reply provenance (CUR-1579, CUR-1872) — no model wrote this turn's reply; the server
+	// Fixed-reply provenance — no model wrote this turn's reply; the server
 	// composed it. Stamp message.fixedReply so the receipt still says so after reload. The low-resource
 	// path stamps it directly in the route; the at-capacity notice arrives here from screenStream.
 	else if (event.type === MessageUpdateType.FixedReply) {
@@ -219,18 +232,18 @@ export async function applyMessageUpdate(
 	}
 
 	// Code evaluated a calculate call. Accumulated so every expression stays under the answer
-	// after reload. (CUR-2273)
+	// after reload.
 	else if (event.type === MessageUpdateType.Calculation) {
 		message.calculations = calculationAppended(message.calculations, event);
 	}
 
-	// One call to a configured MCP server. Accumulated so the trace keeps every call after reload. (CUR-3026)
+	// One call to a configured MCP server. Accumulated so the trace keeps every call after reload.
 	else if (event.type === MessageUpdateType.McpCall) {
 		message.mcpCalls = mcpCallAppended(message.mcpCalls, event);
 	}
 
 	// A native turn's tools retrieved sources mid-answer. The scaffolded route stamps these
-	// itself before generation; on a native turn this is the only place they are written. (CUR-2420)
+	// itself before generation; on a native turn this is the only place they are written.
 	else if (event.type === MessageUpdateType.Rag) {
 		message.rag = ragProvenance(event) ?? message.rag;
 	} else if (event.type === MessageUpdateType.WebSearch) {
@@ -241,7 +254,7 @@ export async function applyMessageUpdate(
 	}
 
 	// A native turn's web_search ran and did not finish. The scaffolded route stamps its own;
-	// this is where a native turn's is written, so the note under the answer survives reload. (CUR-4091)
+	// this is where a native turn's is written, so the note under the answer survives reload.
 	else if (event.type === MessageUpdateType.SearchAttempt) {
 		message.searchAttempt = {
 			grounded: false,
@@ -251,7 +264,7 @@ export async function applyMessageUpdate(
 	}
 
 	// A backup lane serving a different model took over from the primary. Stamped so the
-	// receipt keeps the attempt after reload. (CUR-2239)
+	// receipt keeps the attempt after reload.
 	else if (event.type === MessageUpdateType.Failover) {
 		message.failover = {
 			from: event.from,
@@ -262,18 +275,18 @@ export async function applyMessageUpdate(
 	}
 
 	// Files the turn could not read, named before the answer. Stamped so it survives reload. An
-	// upload refusal (CUR-2382) is stamped where it is decided, in the route. (CUR-3291)
+	// upload refusal is stamped where it is decided, in the route.
 	else if (event.type === MessageUpdateType.AttachmentNotice && event.kind === "unread") {
 		message.unreadFilesNotice = event.message;
 	}
 
 	// Older exchanges were left out so the chat fit the model's context. Stamped so the note
-	// under the answer survives reload. (CUR-2893)
+	// under the answer survives reload.
 	else if (event.type === MessageUpdateType.HistoryNotice) {
 		message.historyLeftOut = event.leftOut;
 	}
 
-	// Agent tool-execution provenance (CUR-601) — the agent observed at least one real ACP tool run this
+	// Agent tool-execution provenance — the agent observed at least one real ACP tool run this
 	// turn. Stamp message.agentTools so the grounding classifier can tell it apart from "recall" after
 	// reload, mirroring WritePolicy above. Only a genuinely tool-running turn ever stamps
 	// (agentToolsProvenance returns undefined for an empty toolKinds).
@@ -281,16 +294,20 @@ export async function applyMessageUpdate(
 		message.agentTools = agentToolsProvenance(event) ?? message.agentTools;
 	}
 
-	// The agent-service task this turn submitted, kept so a later visit can re-attach to it. (CUR-993)
+	// The agent-service task this turn submitted, kept so a later visit can re-attach to it.
 	else if (event.type === MessageUpdateType.AgentRun) {
 		message.agentRun = {
 			taskId: event.taskId,
 			...(event.machineId ? { machineId: event.machineId } : {}),
 			...(event.closed ? { closed: true } : {}),
+			// An attach re-emits the handle; a handoff stored at submit is never cleared by one that lacks it.
+			...(event.handoff || (message.agentRun?.taskId === event.taskId && message.agentRun.handoff)
+				? { handoff: true }
+				: {}),
 		};
 	}
 
-	// Unrun-code provenance (CUR-1341) — this turn's answer is predicted, not measured. Stamp
+	// Unrun-code provenance — this turn's answer is predicted, not measured. Stamp
 	// message.unrunCode so the reasoning panel's header still says so after reload, instead of falling
 	// back to "Computed" while the caveat one line below it says nothing ran. Mirrors AgentTools above;
 	// the server emits this only when its own unrun check fired, so there is no empty case to filter.
@@ -298,16 +315,16 @@ export async function applyMessageUpdate(
 		message.unrunCode = unrunCodeProvenance(event) ?? message.unrunCode;
 	}
 
-	// Agent confirmation gate opened (CUR-218) — accumulates, doesn't replace: see agentConfirmOpened.
-	// Also arms the silence-watchdog exemption (CUR-1085): a card with nobody answering yet produces no
+	// Agent confirmation gate opened — accumulates, doesn't replace: see agentConfirmOpened.
+	// Also arms the silence-watchdog exemption: a card with nobody answering yet produces no
 	// tokens, and that silence must not read as a stalled generation.
 	else if (event.type === MessageUpdateType.AgentConfirm) {
 		message.agentConfirmations = agentConfirmOpened(message.agentConfirmations, event);
 		state.awaitingConfirmation = true;
 	}
 
-	// Agent confirmation gate resolved (CUR-218) — fills in the matching open entry in place, and
-	// disarms the CUR-1085 exemption so a genuine post-confirm stall is caught normally again.
+	// Agent confirmation gate resolved — fills in the matching open entry in place, and
+	// disarms the silence-watchdog exemption so a genuine post-confirm stall is caught normally again.
 	else if (event.type === MessageUpdateType.AgentConfirmResult) {
 		message.agentConfirmations = agentConfirmResolved(message.agentConfirmations, event);
 		state.awaitingConfirmation = false;
@@ -315,7 +332,7 @@ export async function applyMessageUpdate(
 
 	// Add file. A re-attached agent turn replays its `done`, so an agent file already on the message is
 	// not added twice; two agent files with the same bytes keep a reference each, told apart by path.
-	// Any other file is appended as before (CUR-4398).
+	// Any other file is always appended.
 	else if (event.type === MessageUpdateType.File) {
 		if (!event.agentPath || !message.files?.some((f) => f.value === event.sha && f.agentPath === event.agentPath)) {
 			message.files = [
@@ -354,8 +371,8 @@ export async function applyMessageUpdate(
 			Boolean(event.answerLanguage)
 		) {
 			// The served backend is persisted so provenance survives reload and the served-lane
-			// assertion has something to read; verifyMethod merges on presence (CUR-756). The live page
-			// merges with the same function, so the badge and the record cannot drift (CUR-2135).
+			// assertion has something to read; verifyMethod merges on presence. The live page
+			// merges with the same function, so the badge and the record cannot drift.
 			message.routerMetadata = mergeRouterMetadata(message.routerMetadata, event);
 		}
 	}

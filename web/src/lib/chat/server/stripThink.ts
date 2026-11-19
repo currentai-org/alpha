@@ -20,7 +20,7 @@ const UNCLOSED_THINK = /<think>[\s\S]*$/i;
  * Exists so a caller can tell three outcomes apart that all reduce to an empty string: the model ran
  * out of budget while still reasoning, the model returned nothing at all, and the call failed. They
  * would otherwise be one silent `null` in the second-opinion panel, where a structural failure
- * looks like slow models (CUR-149).
+ * looks like slow models.
  */
 export function droppedUnclosedThink(raw: string): boolean {
 	if (stripThink(raw).length > 0) return false;

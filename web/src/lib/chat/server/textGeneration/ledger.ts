@@ -1,7 +1,6 @@
 // Math routing's ledger, as data: the typed-lines schema the turn planner's math field is built from
 // (turnPlan.ts), and the code that validates, sums and renders what comes back. Kept free of imports so
-// a script can load the exact schema the app sends (web/scripts/math-trigger-bench.mjs) instead of a
-// copy that drifts from it.
+// a script can load the exact schema the app sends instead of a copy that drifts from it.
 
 const LEDGER_TOOL_NAME = "record_ledger";
 const MAX_LINES = 40;
@@ -20,7 +19,7 @@ export const LEDGER_TOOL = {
 			properties: {
 				// First, so the model decides it before it writes lines. Without it the schema's only
 				// answer is one or more lines, and a summary request that merely contains figures comes
-				// back as a ledger of them (CUR-2161).
+				// back as a ledger of them.
 				asks_for_calculation: {
 					type: "boolean",
 					description:
@@ -85,12 +84,12 @@ export function parseLedgerArgs(raw: string | undefined): Ledger | null {
 	return { lines: out, ...(unit ? { unit } : {}) };
 }
 
-// The rows and total renderLedger wrote before CUR-3663, stamp included, as they come back in an answer
-// persisted then. The stamp is what kept this from matching model prose; a ledger rendered since has no
-// stamp and is read from the message's `mathLedger` field instead (planTranscript).
+// The rows and total an earlier version of renderLedger wrote, stamp included, as they come back in an
+// answer that version persisted. The stamp is what keeps this from matching model prose; a ledger
+// rendered now has no stamp and is read from the message's `mathLedger` field instead (planTranscript).
 export const RENDERED_LEDGER_RE =
 	// The unit runs up to the stamp: renderLedger wrote any unit of up to 24 characters, spaces included
-	// ("intact eggs"), and a one-word match skipped the whole ledger (CUR-2236).
+	// ("intact eggs"), so a match that allowed only one word would skip the whole ledger.
 	/((?:^- [^\n]*: -?[\d.,]+(?: × -?[\d.,]+)* = -?[\d.,]+\n)+)\nTotal: \*\*(-?[\d.,]+)\*\*(?: ([^\n]{1,24}?))? _\(arithmetic checked by code\)_\n*/gm;
 export const RENDERED_ROW_RE = /^- ([^\n]*): (-?[\d.,]+(?: × -?[\d.,]+)*) = -?[\d.,]+$/gm;
 
@@ -105,9 +104,9 @@ export function compactRenderedLedgers(text: string): string {
 	});
 }
 
-/** The label renderLedger no longer puts on a total (CUR-3663): it vouched for sums whose setup was
- *  wrong. Answers persisted earlier still carry it and models copy it from them, so
- *  `stripForgedStamp` removes it from model prose (CUR-2199). */
+/** The label renderLedger no longer puts on a total, because it vouched for sums whose setup was
+ *  wrong. Answers persisted by the earlier version still carry it and models copy it from them, so
+ *  `stripForgedStamp` removes it from model prose. */
 export const LEDGER_STAMP = "_(arithmetic checked by code)_";
 
 function round(n: number): number {
@@ -136,7 +135,7 @@ function isCurrency(unit: string | undefined): boolean {
 	return CURRENCY_SYMBOLS.has(unit) || CURRENCY_CODES.has(unit);
 }
 
-/** A total in money reads in cents, as a receipt shows it: "$59.699875" is what a visitor saw (CUR-2206).
+/** A total in money reads in cents, as a receipt shows it, rather than as "$59.699875".
  *  The rows keep their precision, since they are the working. */
 function fmtTotal(ledger: Ledger): string {
 	const total = ledgerTotal(ledger);
@@ -146,7 +145,7 @@ function fmtTotal(ledger: Ledger): string {
 
 // A clock-time ledger sums to minutes from midnight (the planner's own unit string, from its
 // example in turnPlan.ts), and an answer model that converts that sum back to a time itself gets it
-// wrong (told 780, it can write 12:40 or 10:00 instead of 13:00). Code does the conversion. (CUR-2381)
+// wrong (told 780, it can write 12:40 or 10:00 instead of 13:00). Code does the conversion.
 const CLOCK_UNIT = "minutes from midnight";
 const DAY_MINUTES = 24 * 60;
 

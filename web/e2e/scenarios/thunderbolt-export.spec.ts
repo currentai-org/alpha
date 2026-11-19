@@ -9,7 +9,7 @@ import { installCannedReplies } from './helpers/faultInjection';
 import { startChattingPastWelcome } from './helpers/welcome';
 
 // The account page offers the same conversations as a file Thunderbird's Thunderbolt imports
-// (Settings → Preferences → Data → Import Data) (CUR-2407). Thunderbolt's importer refuses a file whose `format`
+// (Settings → Preferences → Data → Import Data). Thunderbolt's importer refuses a file whose `format`
 // or `schemaVersion` differs, writes rows by id, renders a message from `parts`, and orders a thread by
 // its UUIDv7 ids, so those are what this checks on the file a person actually downloads.
 
@@ -17,7 +17,7 @@ test(
 	'the Thunderbolt row is absent and its route 404s while the thunderbolt-export flag is off',
 	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
-		await setFlagOverrides(context, baseURL!, { 'data-export': true, 'thunderbolt-export': false });
+		await setFlagOverrides(context, baseURL!, { 'thunderbolt-export': false });
 		await signInAsFreshUser(page);
 
 		expect((await page.request.get('/chat/api/v2/export/thunderbolt')).status()).toBe(404);
@@ -42,9 +42,8 @@ test(
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(240_000);
 		await setFlagOverrides(context, baseURL!, {
-			'data-export': true,
 			'thunderbolt-export': true,
-			// The router sends some prompts to the agent; this test is about the download (CUR-2343).
+			// The router sends some prompts to the agent; this test is about the download.
 			'agent-mode': false
 		});
 		await signInAsFreshUser(page);

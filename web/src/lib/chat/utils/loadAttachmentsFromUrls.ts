@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { base } from "$lib/chat/paths";
 import { pickSafeMime } from "$lib/chat/utils/mime";
 
@@ -45,7 +48,7 @@ function extractFilename(url: string, contentDisposition?: string | null): strin
 
 /**
  * Load files from remote URLs via server-side proxy. Takes the list `readLinkPromptRequest` parsed,
- * and only after the visitor confirmed it (linkParams.ts, CUR-2644).
+ * and only after the visitor confirmed it (linkParams.ts).
  */
 export async function loadAttachmentsFromUrls(urls: string[]): Promise<AttachmentLoadResult> {
 

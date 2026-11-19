@@ -1,6 +1,6 @@
 // The open-web engines, the reranker and the embedder send every request through
 // replayAwareFetch, which replays it when the request's context carries a replay mode (its own
-// routing is pinned in openaiClient.spec.ts), so a scenario run never reaches them live. (SOL-262)
+// routing is pinned in openaiClient.spec.ts), so a scenario run never reaches them live.
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const { configValues } = vi.hoisted(() => ({ configValues: {} as Record<string, string> }));
@@ -43,7 +43,7 @@ afterEach(() => {
 	queryEmbedCache.clear();
 });
 
-describe("replayable search and retrieval calls (SOL-262)", () => {
+describe("replayable search and retrieval calls", () => {
 	it("sends Wikipedia, Wikinews, OpenAlex, arXiv and Hugging Face through replayAwareFetch and never calls fetch directly", async () => {
 		const live = stubLiveFetch();
 		await retrieveWeb("benchmark results in a recent research paper", {

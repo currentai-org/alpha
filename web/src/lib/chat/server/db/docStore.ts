@@ -19,6 +19,7 @@
  */
 import {
 	and,
+	arrayContains,
 	asc,
 	desc,
 	eq,
@@ -90,7 +91,7 @@ function fromStorage(value: unknown): unknown {
 }
 
 // ── spec ──────────────────────────────────────────────────────────────────────
-export type ColKind = "text" | "date";
+export type ColKind = "text" | "date" | "bool" | "textArray";
 export interface CollectionSpec {
 	table: PgTable;
 	/** Drizzle property name of the primary-key column. */
@@ -163,6 +164,10 @@ function coerceId(v: unknown): string {
 }
 
 function coerceCol(v: unknown, kind: ColKind): unknown {
+	// A NOT NULL boolean column: a document that never set the flag is false, not null.
+	if (kind === "bool") return v === true;
+	// A NOT NULL text[] column: a document with no list has an empty one.
+	if (kind === "textArray") return Array.isArray(v) ? v.map((x) => String(x)) : [];
 	if (v === null || v === undefined) return null;
 	if (kind === "date") return v instanceof Date ? v : new Date(v as string);
 	return isObjectIdLike(v) ? v.toHexString() : String(v);
@@ -209,6 +214,15 @@ export function docCollection<T = Doc>(spec: CollectionSpec): AdaptedCollection<
 				} else {
 					conds.push(sql`${col(table, "doc")}->>${key} = ${String(val)}`);
 				}
+				continue;
+			}
+			if (kind === "textArray") {
+				// Mongo's reading of `{ tags: "x" }` on an array field: the list contains "x". No other
+				// operator is needed on a list column, so any other is refused rather than misread.
+				if (isOperatorObject(val) || Array.isArray(val)) {
+					throw new Error(`docStore: only a single value is supported as a filter on list column ${key}`);
+				}
+				conds.push(arrayContains(column, [String(val)]));
 				continue;
 			}
 			if (isOperatorObject(val)) {
@@ -274,7 +288,7 @@ export function docCollection<T = Doc>(spec: CollectionSpec): AdaptedCollection<
 
 	/**
 	 * The column values an update writes, with `doc` as one in-place JSONB edit of only the keys the
-	 * update names (CUR-2806). Writing the whole document back instead would make two updates to
+	 * update names. Writing the whole document back instead would make two updates to
 	 * different keys race: each would write the copy it had read, and the later one would undo the
 	 * earlier. A `$set` to undefined drops the key, as writing the whole document back would. Null when
 	 * it changes nothing.
@@ -294,7 +308,7 @@ export function docCollection<T = Doc>(spec: CollectionSpec): AdaptedCollection<
 			if (k === idField || k === "_id") continue;
 			drop.push(k);
 			const c = cols[k];
-			if (c) set[c.prop] = null;
+			if (c) set[c.prop] = c.kind === "bool" ? false : c.kind === "textArray" ? [] : null;
 		}
 		if (drop.length === 0 && Object.keys(patch).length === 0) return null;
 		let doc = sql`coalesce(${col(table, "doc")}, '{}'::jsonb)`;

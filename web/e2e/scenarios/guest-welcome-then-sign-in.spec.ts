@@ -9,10 +9,10 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // A guest who closes the first-run welcome has a settings row under their guest session, and signing in
 // carries that row into the new account (migrateAnonymousSession.ts). One PR run that saved the welcome
 // this way for every test saw the + menu's Attach files open no file picker after sign-in;
-// the cause is not established (CUR-4333). A real visitor takes the
+// the cause is not established. A real visitor takes the
 // same path whenever they close the welcome before signing in, so this pins that it keeps working.
 
-// This test closes the welcome itself, so the fixture must not press past it first (SOL-343).
+// This test closes the welcome itself, so the fixture must not press past it first.
 test.use({ welcome: 'show' });
 
 test.beforeEach(async ({ context, baseURL }) => {

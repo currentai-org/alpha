@@ -1,4 +1,4 @@
-// A model may write a tool call into the answer instead of `tool_calls` (CUR-2777). The stream carries a `{type: "reference", reference_ids: ["web_search"]}` part, then the call's arguments
+// A model may write a tool call into the answer instead of `tool_calls`. The stream carries a `{type: "reference", reference_ids: ["web_search"]}` part, then the call's arguments
 // as ordinary text: `{"query": "…"}`. A citation's id is an integer; a tool's is its name. contentText
 // writes a named reference as OPEN + name + CLOSE, and InlineToolReferenceStrip drops it together with
 // the JSON object that follows, so the visitor never reads call arguments. It also writes the call as
@@ -6,9 +6,9 @@
 // still become `<tool name>{` is held back until it either does or cannot. The call itself is not run:
 // the answer around it has already streamed, and continuing it after a search would write a second one.
 // Each dropped call keeps its arguments, so a round whose only output was the call can still run it
-// (CUR-4495, in openAIChatToTextGenerationStream).
+// (openAIChatToTextGenerationStream does that).
 //
-// A gateway that drops the `reference` part (the staging router does) leaves only the bare arguments:
+// A gateway that drops the `reference` part leaves only the bare arguments:
 // `Santiago{"query": "capital of Chile"}`. So a JSON object outside a code span is held until it closes,
 // and dropped when its keys fit a declared tool's parameters: every key one the tool declares, every key
 // it requires present. Anything else is given back as it was.

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Capture what connectMcp actually constructs/registers, without a real network connection.
@@ -43,7 +46,7 @@ beforeEach(() => {
 	elicitationEnabledMock.mockReturnValue(false);
 });
 
-describe("connectMcp — elicitation capability gating (CUR-1017)", () => {
+describe("connectMcp — elicitation capability gating", () => {
 	it("advertises no elicitation capability, and registers no request handler, when the flag is off", async () => {
 		const { connectMcp } = await import("./client");
 		await connectMcp("https://example.hf.space/mcp");
@@ -80,7 +83,7 @@ describe("connectMcp — elicitation capability gating (CUR-1017)", () => {
 	});
 });
 
-describe("McpConnection.call — input_required detection (CUR-1017)", () => {
+describe("McpConnection.call — input_required detection", () => {
 	it("returns a text result for an ordinary tool call", async () => {
 		callToolMock.mockResolvedValue({ content: [{ type: "text", text: "hello" }] });
 		const { connectMcp } = await import("./client");

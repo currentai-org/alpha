@@ -17,7 +17,7 @@ const NO_SCORES = { version: 1 as const, benchmarks: {}, scores: {} };
 /** Everything live except GLM-5.2. */
 const PROD_SHAPED = ALL_LIVE.filter((id) => id !== 'zai-org/GLM-5.2');
 
-/** The hard draft `e2e/scenarios/auto-route-xray.spec.ts` sends (CUR-4574); keep the two in step. */
+/** The hard draft `e2e/scenarios/auto-route-xray.spec.ts` sends; keep the two in step. */
 const HARD_DRAFT =
 	'Compare the tradeoffs between event sourcing and a plain relational schema for an invoicing system with about two million invoices a year. Explain why each choice affects auditing, corrections and reporting, evaluate which one a small team should pick, and design a migration from the relational schema if they later need event sourcing. What breaks first? What would you measure? How would you roll it back?';
 
@@ -39,12 +39,12 @@ describe('catalog', () => {
 
 	it('credits every inference provider the product names', () => {
 		const providers = new Set(catalog.map((m) => m.provider));
-		for (const id of ['infomaniak', 'nextbit', 'ai-singapore', 'plgrid', 'mistral', 'scaleway']) {
+		for (const id of ['infomaniak', 'nextbit', 'ai-singapore', 'plgrid', 'mistral', 'featherless']) {
 			expect(providers, id).toContain(id);
 		}
 	});
 
-	// CUR-3872. A live model with no host leaves the picker and X-ray with no "where it runs" line.
+	// A live model with no host leaves the picker and X-ray with no "where it runs" line.
 	it('names a known host for every live model, so none ships without a "where it runs" line', () => {
 		for (const m of catalog.filter((m) => m.status === 'live')) {
 			expect(MODEL_HOSTS[m.id], m.id).toBeDefined();
@@ -52,13 +52,13 @@ describe('catalog', () => {
 		}
 	});
 
-	// One answer to "who runs it" (CUR-4587): a model the Hugging Face router pins to one provider takes
+	// One answer to "who runs it": a model the Hugging Face router pins to one provider takes
 	// that provider's org, so re-pinning moves X-ray's line with it, and Apertus 70B names the gateway's
-	// one provider for it (CUR-4403).
+	// one provider for it.
 	it('takes a pinned model\'s host from its Hugging Face provider pin, and names Phoeniqs for Apertus 70B', () => {
 		const glm = catalog.find((m) => m.id === 'glm-5.2')!;
-		expect(HF_PROVIDER_PIN[glm.gatewayId!.toLowerCase()]).toBe('scaleway');
-		expect(MODEL_HOSTS['glm-5.2']).toBe('scaleway');
+		expect(HF_PROVIDER_PIN[glm.gatewayId!.toLowerCase()]).toBe('featherless-ai');
+		expect(MODEL_HOSTS['glm-5.2']).toBe('featherless');
 		expect(MODEL_HOSTS['apertus-70b']).toBe('phoeniqs');
 		expect(orgs[MODEL_HOSTS['apertus-70b']].region).toBe('Switzerland');
 	});
@@ -69,13 +69,13 @@ describe('catalog', () => {
 		expect(catalogByGatewayId(undefined)).toBeUndefined();
 	});
 
-	// CUR-3313. X-ray must not read "Not in Alpha's catalogue yet" for a turn Large 3's backup answered on an event instance.
+	// X-ray must not read "Not in Alpha's catalogue yet" for a turn Large 3's backup answered on an event instance.
 	it("knows the direct lane's backup, so X-ray can name the model that answered in Large 3's place", () => {
 		expect(catalogByGatewayId('mistral-medium-2604')?.name).toBe('Mistral Medium 3.5');
 		expect(catalogByGatewayId('mistral-medium-2604')?.provider).toBe('mistral');
 	});
 
-	// CUR-3313, again on www: Scaleway serves the same weights under its own name.
+	// again on www: Scaleway serves the same weights under its own name.
 	it("names Mistral Medium 3.5 when Scaleway's copy answered under Scaleway's name", () => {
 		expect(catalogByGatewayId('mistral-medium-3.5-128b')?.name).toBe('Mistral Medium 3.5');
 		expect(catalogByGatewayId('mistralai/Mistral-Medium-3.5-128B')?.name).toBe('Mistral Medium 3.5');
@@ -164,7 +164,7 @@ describe('heuristic classifier', () => {
 
 describe('local classifier (franc + the low-resource detector)', () => {
 	it.each([
-		// A Quechua sentence the word lists alone miss (CUR-1841).
+		// A Quechua sentence the word lists alone miss.
 		['Allinllachu? Imaynatam kashanki, yanapawankiman?', 'quz'],
 		['Mikä on Suomen pääkaupunki ja miksi se on juuri siellä, eikä jossain muualla?', 'fin'],
 		['Habari yako rafiki? Naomba msaada kuhusu jinsi ya kupika chakula cha jioni kwa familia yangu.', 'swh']
@@ -214,7 +214,7 @@ describe('benchmarks', () => {
 		for (const id of Object.keys(SHIPPED_BENCHMARKS.models)) expect(ids, id).toContain(id);
 	});
 
-	// Each row says whether a number is an estimate or a measurement. (CUR-4294)
+	// Each row says whether a number is an estimate or a measurement.
 	it('every shipped row says how each number was found and cites a dated source for it (a row with no source fails)', () => {
 		for (const [id, row] of Object.entries(SHIPPED_BENCHMARKS.models)) {
 			expect(row.basis, `${id}.basis`).toBeDefined();
@@ -261,7 +261,7 @@ describe('benchmarks', () => {
 });
 
 describe('router', () => {
-	// CUR-392. Catalan is measured for other models and not for ALIA, so ALIA is held to the lowest
+	// Catalan is measured for other models and not for ALIA, so ALIA is held to the lowest
 	// measured Catalan score, and its hand-set estimate does not count.
 	it('sends a confident Catalan message to Medium, not ALIA, while ALIA is unmeasured in Catalan', () => {
 		const withAlia = [...PICKER.production];
@@ -270,27 +270,46 @@ describe('router', () => {
 		expect(route(analysis('cat-valencia', 'M'), withAlia)?.model.id).not.toBe('alia-40b');
 	});
 
-	// CUR-392. Bielik's measured Polish (0.90) is barely above Apertus's (0.87), the lowest measured, which
-	// unmeasured Medium inherits; Medium's higher intelligence rating then decides.
-	it('sends Polish to Medium while Medium is unmeasured in Polish and Bielik leads the measured by little', () => {
-		expect(route(analysis('pol', 'M'), [...PICKER.production])?.model.id).toBe('mistral-medium');
-		expect(route(analysis('pol', 'M'), [...PICKER.production], { languageScores: NO_SCORES })?.model.id).toBe('bielik-11b');
+	// Polish follows the scores: Medium 3.5 carries its Artificial Analysis rating (14)
+	// against Bielik's hand-set 3, and Bielik's measured Polish (0.90) leads Apertus's (0.87) by little, so
+	// Medium answers a small or medium Polish draft, and on a medium one its rating alone outweighs Bielik's
+	// hand-set Polish lead even with no measured scores loaded. Bielik stays in the picker for anyone who chooses it.
+	it('sends a small or medium Polish draft to Medium 3.5 under Auto, not Bielik', () => {
+		expect(PICKER.production).toContain('speakleash/Bielik-11B-v3.0-Instruct');
+		for (const size of ['S', 'M'] as const) {
+			expect(route(analysis('pol', size), [...PICKER.production])?.model.id, size).toBe('mistral-medium');
+		}
+		expect(route(analysis('pol', 'M'), [...PICKER.production], { languageScores: NO_SCORES })?.model.id).toBe('mistral-medium');
 	});
 
-	// CUR-4035. Medium is open to Auto and Large 3 does not score a full intelligence mark on every draft,
+	// Medium 3.5's rating (14) would outweigh its measured Amharic (0.25 against Apertus 70B's 0.42)
+	// on a short draft. A model measured more than `languageMargin` below the best measured one is out.
+	it('never sends a draft to a model measured more than languageMargin below the best measured, however it rates', () => {
+		for (const size of ['S', 'M'] as const) {
+			const choice = route(analysis('amh', size), [...PICKER.production])!;
+			const picked = choice.scores.find((s) => s.model.id === choice.model.id)!;
+			const best = Math.max(...choice.scores.filter((s) => s.available && s.languageVia === 'measured').map((s) => s.language));
+			expect(choice.model.id, size).not.toBe('mistral-medium');
+			expect(picked.language, size).toBeGreaterThanOrEqual(best - DEFAULT_ROUTING.languageMargin);
+		}
+		// Not even to keep the model that answered last.
+		expect(route(analysis('amh', 'M'), [...PICKER.production], { stickTo: 'mistral-medium' })?.model.id).not.toBe('mistral-medium');
+	});
+
+	// Medium is open to Auto and Large 3 does not score a full intelligence mark on every draft,
 	// so Auto does not send nearly every turn to the model with the lowest request budget.
-	it('sends small and medium English drafts to Medium and a large one to Large 4 (CUR-4574)', () => {
+	it('sends small and medium English drafts to Medium and a large one to Large 4', () => {
 		expect(route(analysis('eng', 'S'), PROD_SHAPED)?.model.id).toBe('mistral-medium');
 		expect(route(analysis('eng', 'M'), PROD_SHAPED)?.model.id).toBe('mistral-medium');
 		expect(route(analysis('fra', 'S'), PROD_SHAPED)?.model.id).toBe('mistral-medium');
 		expect(route(analysis('eng', 'L'), PROD_SHAPED)?.model.id).toBe('mistral-large-4');
-		// GLM 5.2 is stronger still, but Auto picks it for Chinese only (CUR-392).
+		// GLM 5.2 is stronger still, but Auto picks it for Chinese only.
 		expect(route(analysis('eng', 'S'), ALL_LIVE)?.model.id).toBe('mistral-medium');
 	});
 
-	// CUR-4283. v4.8 is the only SEA-LION on any picker, and Auto offers it for Indonesian, Thai and
+	// v4.8 is the only SEA-LION on any picker, and Auto offers it for Indonesian, Thai and
 	// Vietnamese drafts rather than sending them to Mistral. Indonesian is measured for Large 4 and not for
-	// SEA-LION, so a large Indonesian draft goes to Large 4 (CUR-392).
+	// SEA-LION, so a large Indonesian draft goes to Large 4.
 	it('sends an Indonesian, Malay, Thai, Vietnamese or Tagalog draft to SEA-LION v4.8 on every site, but a large Indonesian one to Large 4', () => {
 		for (const site of pickerSites) {
 			for (const lang of ['ind', 'zlm', 'tha', 'vie', 'tgl']) {
@@ -303,7 +322,7 @@ describe('router', () => {
 		}
 	});
 
-	// CUR-4283. v4.8 is rated 13 from its base model, above Medium's 8, so unscoped it took every English
+	// v4.8 is rated 13 from its base model, above Medium's 8, so unscoped it took every English
 	// draft. It may answer only its own languages, and for any other draft its rating rescales no one.
 	it('never auto-routes an English, French, Catalan or Polish draft to SEA-LION v4.8, nor lets its rating move their fit', () => {
 		for (const lang of ['eng', 'fra', 'cat', 'pol', 'deu']) {
@@ -322,7 +341,7 @@ describe('router', () => {
 		for (const [id, value] of Object.entries(without)) expect(withIt[id], id).toBe(value);
 	});
 
-	// CUR-4294, CUR-4574. Large 4 is rated 38, far above every other Auto-eligible model, so unscoped Auto
+	// Large 4 is rated 38, far above every other Auto-eligible model, so unscoped Auto
 	// would send it every draft and Medium would stop being the default. Auto gives it the drafts it reads
 	// as large and nothing else, and on any other draft its rating must not rescale the others' fit either.
 	it('sends Large 4 only a draft read as large, and on any other its rating moves no model’s intelligence fit', () => {
@@ -343,7 +362,7 @@ describe('router', () => {
 		for (const [id, value] of Object.entries(without)) expect(withIt[id], id).toBe(value);
 	});
 
-	// CUR-392. Large 3 is offered by hand only, so while Large 4 is busy a large draft goes to Medium.
+	// Large 3 is offered by hand only, so while Large 4 is busy a large draft goes to Medium.
 	it('sends a large draft to Medium while Large 4 is busy, never to Large 3, and a medium one to Medium either way', () => {
 		const busy = { busy: ['mistral-large-2610'] };
 		expect(route(analysis('eng', 'L'), PROD_SHAPED, busy)?.model.id).toBe('mistral-medium');
@@ -352,7 +371,7 @@ describe('router', () => {
 	});
 
 	// Large 4 is left out so the case stays about Large 3's request budget. At Large 3's measured 150 a minute
-	// (CUR-4574) the cost does not outweigh Large 3's lead on an unsure large draft; it still fades with
+	// the cost does not outweigh Large 3's lead on an unsure large draft; it still fades with
 	// confidence, so a sure one pays less of it.
 	it('Large 3’s capacity cost is higher on an unsure "large" guess than a sure one', () => {
 		const noLarge4 = PROD_SHAPED.filter((id) => id !== 'mistral-large-2610');
@@ -419,7 +438,7 @@ describe('router', () => {
 	});
 
 	it('says a better model Auto skips can be picked by hand when the picker offers it, never "isn’t available in Alpha yet"', () => {
-		// Large 4 is Auto's own pick on a large draft now (CUR-4574), so the case takes GLM, the one served
+		// Large 4 is Auto's own pick on a large draft now, so the case takes GLM, the one served
 		// model Auto never picks, rated a clear step above Medium in English.
 		const table: BenchmarkTable = structuredClone(SHIPPED_BENCHMARKS);
 		delete table.models['mistral-large-4'];
@@ -437,7 +456,7 @@ describe('router', () => {
 		expect(choice.explanation).not.toMatch(/isn’t available in Alpha yet/);
 	});
 
-	// CUR-4574. The draft auto-route-xray.spec.ts sends: the classifier reads it as large, so Auto picks Large 4,
+	// The draft auto-route-xray.spec.ts sends: the classifier reads it as large, so Auto picks Large 4,
 	// and the e2e run then checks the answer on a real preview.
 	it('reads the e2e spec’s hard draft as large and sends it to Large 4', () => {
 		const draft = heuristicClassify(HARD_DRAFT);
@@ -445,7 +464,7 @@ describe('router', () => {
 		expect(route(draft, PROD_SHAPED)?.model.id).toBe('mistral-large-4');
 	});
 
-	// CUR-4574. Medium answering a short question is Auto's choice, so the note must not offer Large 4 for it.
+	// Medium answering a short question is Auto's choice, so the note must not offer Large 4 for it.
 	it('never suggests Large 4 for a draft Auto does not read as large', () => {
 		for (const size of ['S', 'M'] as const) {
 			const choice = route(analysis('eng', size), ['mistral-medium-2604', 'mistral-large-2610'])!;
@@ -455,10 +474,10 @@ describe('router', () => {
 		}
 	});
 
-	// CUR-4035. A Yucatec draft sent the instant it is typed is read by the heuristic as Tagalog (0.45), and
+	// A Yucatec draft sent the instant it is typed is read by the heuristic as Tagalog (0.45), and
 	// Apertus, with a hand-set Tagalog estimate, would outscore both Mistrals. With Apertus off the picker
 	// (WITHDRAWN) that draft goes to a model whose lane is up. That is SEA-LION v4.8, the Tagalog
-	// specialist (CUR-4283): the misread itself is the defect, and neither it nor Medium knows Yucatec.
+	// specialist: the misread itself is the defect, and neither it nor Medium knows Yucatec.
 	it('sends a Yucatec draft the heuristic misreads as Tagalog to a model on the develop picker, never to withdrawn Apertus', () => {
 		const draft = heuristicClassify("Ba'ax ka wa'alik? In k'áat in ts'íibt juntúul carta ti' u láak' in múuch'kabil.");
 		expect(draft.language.value).toBe('tgl');
@@ -468,7 +487,7 @@ describe('router', () => {
 		expect(choice.model.id).toBe('sea-lion-nemotron-120b');
 	});
 
-	// CUR-4043. A model answering 429 is still served, so only a busy mark keeps Auto off it.
+	// A model answering 429 is still served, so only a busy mark keeps Auto off it.
 	it('skips a busy model while another can answer, and names it as the busy better fit', () => {
 		const normal = route(analysis('eng', 'S'), PROD_SHAPED)!;
 		const busyId = normal.model.gatewayId!;
@@ -479,7 +498,7 @@ describe('router', () => {
 		expect(choice.scores.find((s) => s.model.gatewayId === busyId)).toMatchObject({ busy: true, available: false });
 	});
 
-	// CUR-4541. The busy model is also the top scorer, so the "Auto doesn't choose it yet" sentence must
+	// The busy model is also the top scorer, so the "Auto doesn't choose it yet" sentence must
 	// not follow the busy one and contradict it.
 	it('names a busy SEA-LION once, as busy, under a Vietnamese draft, and never says Auto does not choose it', () => {
 		const seaLion = 'aisingapore/Nemotron-SEA-LION-v4.8-120B-A12B';
@@ -514,7 +533,7 @@ describe('router', () => {
 		expect(choice.explanation).not.toMatch(/\//);
 	});
 
-	it('reads as whole sentences: no "answers:" fragment, and no catalog tagline after a reason (CUR-4354)', () => {
+	it('reads as whole sentences: no "answers:" fragment, and no catalog tagline after a reason', () => {
 		for (const [tag, size] of [['eng', 'S'], ['spa', 'S'], ['eng', 'M'], ['eng', 'L']] as const) {
 			const choice = route(analysis(tag, size), PROD_SHAPED)!;
 			expect(choice.explanation).not.toMatch(/answers:/);
@@ -525,28 +544,28 @@ describe('router', () => {
 		expect(route(analysis('eng', 'S'), PROD_SHAPED)!.explanation).toMatch(/\. [A-Z].*? answers because it’s /);
 	});
 
-	it('names the model, not just "Mistral", when another model of its family is on offer (CUR-4354)', () => {
+	it('names the model, not just "Mistral", when another model of its family is on offer', () => {
 		const choice = route(analysis('eng', 'L'), PROD_SHAPED)!;
 		expect(choice.scores.filter((s) => s.available && s.model.family === choice.model.family).length).toBeGreaterThan(1);
 		expect(choice.explanation).toContain(`${choice.model.name} answers because`);
 	});
 
-	// Large 3 is off Auto (CUR-392), so on a short draft Medium is the only Mistral Auto may choose, while
+	// Large 3 is off Auto, so on a short draft Medium is the only Mistral Auto may choose, while
 	// Large 3 and Large 4 still sit in the picker beside it.
-	it('names Medium on a short English draft, though it is the only Mistral Auto may choose there, since the picker offers the others (CUR-4354)', () => {
+	it('names Medium on a short English draft, though it is the only Mistral Auto may choose there, since the picker offers the others', () => {
 		const choice = route(analysis('eng', 'S'), [...PICKER.production])!;
 		expect(choice.model.id).toBe('mistral-medium');
 		expect(choice.scores.filter((s) => s.available && s.model.family === 'Mistral')).toHaveLength(1);
 		expect(choice.explanation).toContain('Mistral Medium 3.5 answers because');
 	});
 
-	it('names only the family when no other model of it is in the picker (CUR-4354)', () => {
+	it('names only the family when no other model of it is in the picker', () => {
 		const choice = route(analysis('eng', 'S'), ['mistral-medium-2604', 'swiss-ai/apertus-v1.5-70b'])!;
 		expect(choice.model.id).toBe('mistral-medium');
 		expect(choice.explanation).toMatch(/\bMistral answers because/);
 	});
 
-	// CUR-392. auto-route-xray.spec.ts moves a chat mid-way from Spanish (Medium) to Chinese, now that
+	// auto-route-xray.spec.ts moves a chat mid-way from Spanish (Medium) to Chinese, now that
 	// Catalan stays on Medium; keep the two in step.
 	it('moves a chat Medium answered to GLM 5.2 for a short Chinese message on develop', () => {
 		const choice = route(analysis('cmn', 'S'), [...PICKER.develop], { stickTo: 'mistral-medium' })!;
@@ -563,7 +582,7 @@ describe('router', () => {
 		expect(scoreModels(analysis('cat', 'M'), APERTUS_ONLY).find((s) => s.model.id === 'alia-40b')?.available).toBe(false);
 	});
 
-	it('never lets Auto pick a model offered for picking by hand, even served and strongest on the task (CUR-1683)', () => {
+	it('never lets Auto pick a model offered for picking by hand, even served and strongest on the task', () => {
 		const served = [...APERTUS_ONLY, 'mistral-large-2512'];
 		for (const tag of ['cmn', 'eng'] as const) {
 			expect(route(analysis(tag, 'L'), served)!.model.id).not.toBe('mistral-large');
@@ -571,7 +590,7 @@ describe('router', () => {
 		expect(scoreModels(analysis('eng', 'L'), served).find((s) => s.model.id === 'mistral-large')?.available).toBe(false);
 	});
 
-	// CUR-392. GLM's measured Chinese (0.92) leads every other Chinese score but SEA-LION's, and SEA-LION
+	// GLM's measured Chinese (0.92) leads every other Chinese score but SEA-LION's, and SEA-LION
 	// is Auto's pick only for Southeast Asian languages.
 	it('sends a Chinese draft of every size to GLM 5.2 on www, and no other language', () => {
 		for (const size of ['S', 'M', 'L'] as const) {
@@ -609,10 +628,10 @@ describe('router', () => {
 
 describe('per-turn switching', () => {
 	it('keeps the model that answered last when another is only marginally better, and says why', () => {
-		// Apertus 70B edges Mistral Medium on a large Amharic question; not by enough to switch mid-chat.
+		// Apertus 70B edges Mistral Medium on a Tagalog question; not by enough to switch mid-chat.
 		const pair = ['swiss-ai/apertus-v1.5-70b', 'mistral-medium-2604'];
-		expect(route(analysis('amh', 'L'), pair)?.model.id).toBe('apertus-70b');
-		const choice = route(analysis('amh', 'L'), pair, { stickTo: 'mistral-medium' })!;
+		expect(route(analysis('tgl', 'M'), pair)?.model.id).toBe('apertus-70b');
+		const choice = route(analysis('tgl', 'M'), pair, { stickTo: 'mistral-medium' })!;
 		expect(choice.model.id).toBe('mistral-medium');
 		expect(choice.keptForContinuity).toBe(true);
 		expect(choice.explanation).toMatch(/answered earlier in this chat/);
@@ -651,7 +670,7 @@ describe('resolveModel', async () => {
 		expect(r.route?.model.id).toBe('sea-lion-nemotron-120b');
 	});
 
-	// The caller must not fall back to its default here, or the answer comes from another model. (CUR-4073)
+	// The caller must not fall back to its default here, or the answer comes from another model.
 	it('an unserved manual pick never resolves to another model: no id, and the pick named as unavailable', () => {
 		const alia = catalog.find((m) => m.id === 'alia-40b')!;
 		expect(resolveModel('alia-40b', 'hola', APERTUS_ONLY)).toEqual({ unavailable: alia.name });
@@ -664,7 +683,7 @@ describe('resolveModel', async () => {
 	});
 
 	// A local model is outside the catalog and is picked by its served id. It must not be named
-	// unavailable, or no message could reach a person's own server (CUR-4073).
+	// unavailable, or no message could reach a person's own server.
 	it('a served local model pick (outside the catalog) resolves to its own id, not unavailable', () => {
 		const local = 'local:318905fb1314687f0e847de7:unsloth/Llama-3.2-3B-Instruct-GGUF:Q4_K_S';
 		expect(resolveModel(local, 'hi', [...APERTUS_ONLY, local])).toEqual({ modelId: local });

@@ -6,7 +6,7 @@ import { answerShapeEntry } from './helpers/chatEntry';
 import { warmupContext } from './helpers/warmup';
 import { startChattingPastWelcome } from './helpers/welcome';
 
-// The scroll-to-bottom button floats over the answer while the reader is scrolled up (CUR-1630). It sat
+// The scroll-to-bottom button floats over the answer while the reader is scrolled up. It sat
 // in the fade above the composer, but the fade is only a quarter opaque at the button's height, so
 // the button hid words that were still readable ("pressed onto [button]").
 // The contract: at the button's height the answer is fully covered, so the button hides nothing a
@@ -77,7 +77,7 @@ test(
 		// Chromium takes that clipped screenshot by resizing the page for a moment, and the recording
 		// keeps the resulting frame (the whole page as a thumbnail in the corner, grey around it) until
 		// something repaints. Ending the test there left the gallery's A5 clip on a grey screen that
-		// read as a crash (CUR-2452). Pressing the button does what a reader would next, and repaints.
+		// read as a crash. Pressing the button does what a reader would next, and repaints.
 		await button.click();
 		await expect(button, 'the button stayed up after jumping to the bottom').toBeHidden();
 	}

@@ -1,7 +1,7 @@
 /**
  * eventWindow.ts against the real message_events table. The unit spec beside the module
  * mocks the collection, so only this file shows the filters it builds actually select the rows a
- * limit means to count: the right key, unexpired only, and nothing from a neighbouring key. (CUR-2120)
+ * limit means to count: the right key, unexpired only, and nothing from a neighbouring key.
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { collections } from "$lib/chat/server/database";
@@ -53,7 +53,7 @@ describe("eventWindow against Postgres", () => {
 		await expect(countLiveEvents({ type: TYPE, ipHash: "b" }, "spec")).resolves.toBe(1);
 	});
 
-	it("records several rows in one write, each counting against the key, as a turn's screening charge does (CUR-3532)", async () => {
+	it("records several rows in one write, each counting against the key, as a turn's screening charge does", async () => {
 		await recordEvents({ type: TYPE, userId: "u", ipHash: "ip" }, 8, 60_000, "spec");
 		await recordEvents({ type: TYPE, userId: "u", ipHash: "ip" }, 0, 60_000, "spec");
 		await expect(countLiveEvents({ type: TYPE, userId: "u" }, "spec")).resolves.toBe(8);

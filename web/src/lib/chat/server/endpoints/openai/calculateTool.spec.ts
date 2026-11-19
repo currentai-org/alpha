@@ -2,7 +2,7 @@
 // tool-call assembly in openAIChatToTextGenerationStream, the loop in calculateTool.ts and the wire body
 // in endpointOai.ts are all under test together. What reaches the model on the second request is the
 // contract: if code's result stops going back as the tool message, the answer is the model's own
-// arithmetic again, and the first describe below goes red. (CUR-2273)
+// arithmetic again, and the first describe below goes red.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const warn = vi.fn();
@@ -11,10 +11,8 @@ vi.mock("$lib/chat/server/logger", () => ({
 	logger: { warn, info, error: vi.fn(), debug: vi.fn(), trace: vi.fn(), fatal: vi.fn() },
 }));
 
-let calculateFlagOn = false;
 vi.mock("$lib/chat/server/flags", () => ({
-	flagEnabledOr: (key: string, fallback: () => boolean) =>
-		key === "native-calculate-tool" ? calculateFlagOn : fallback(),
+	flagEnabledOr: (_key: string, fallback: () => boolean) => fallback(),
 	ensureFlagsPolled: async () => {},
 	flagsDebugState: () => ({ polledOk: true, lastRefreshAt: 0, size: 1 }),
 }));
@@ -109,6 +107,7 @@ async function runTurn(
 		rateLimitToolRound?: boolean;
 		messages?: unknown[];
 		nativeTools?: unknown;
+		generateSettings?: { max_tokens?: number };
 	} = {}
 ) {
 	const endpoint = await endpointOai({
@@ -141,14 +140,13 @@ const messagesOf = (body: Record<string, unknown>) => body.messages as WireMessa
 beforeEach(() => {
 	warn.mockClear();
 	info.mockClear();
-	calculateFlagOn = true;
 });
 afterEach(() => {
 	vi.unstubAllGlobals();
 });
 
-// With tool_choice auto, a model can work a large product out by hand instead of calling calculate
-// (CUR-4191). A planned math turn forces the call on the first request only, so the model still answers.
+// With tool_choice auto, a model can work a large product out by hand instead of calling calculate.
+// A planned math turn forces the call on the first request only, so the model still answers.
 describe("calculateFirst: a planned math turn forces calculate on the first request, then lets the model answer", () => {
 	it("sends tool_choice calculate first and auto after the result, and answers from code's result", async () => {
 		const sent = stubResponses([toolCallBody("4827 * 3916"), answerBody("4827 × 3916 = 18,902,532.")]);
@@ -241,7 +239,7 @@ describe("a calculate call: code evaluates it and the model continues from code'
 		expect(final).toBe("Let me work that out. It is 4.");
 	});
 
-	// Text, then a tool call, then more text must not run together (CUR-4086): "…para essa mudança." then
+	// Text, then a tool call, then more text must not run together: "…para essa mudança." then
 	// "Confirmação: …" read as "mudança.Confirmação".
 	const sayThenCall = (text: string) =>
 		sse([
@@ -270,7 +268,7 @@ describe("a calculate call: code evaluates it and the model continues from code'
 		expect(final).toBe("Let me check. It is 4.");
 	});
 
-	// A model that reasons, calls calculate, then answers (CUR-3748): the round that ended in the call
+	// A model that reasons, calls calculate, then answers: the round that ended in the call
 	// opens a <think> block that must be closed, or the answer reads "<think>…Let's call calculate.42".
 	it("closes the reasoning a round streamed before its tool call, so the answer after it stays the answer", async () => {
 		const reasonThenCall = sse([
@@ -327,22 +325,63 @@ describe("a malformed expression returns an error to the model and never ends th
 			"179.97"
 		);
 	});
+
+	it("returns a whole number past twelve digits exactly, not rounded", () => {
+		expect(runCalculate({ id: "a", name: "calculate", arguments: '{"expression":"2^43"}' }).result).toBe(
+			"8796093022208"
+		);
+		expect(
+			runCalculate({ id: "a", name: "calculate", arguments: '{"expression":"1234567890123 + 1"}' }).result
+		).toBe("1234567890124");
+	});
+
+	it("returns an integer product past 2^53 exactly, and a rounded value past 10^12 says it is rounded", () => {
+		const run = (expression: string) =>
+			runCalculate({ id: "a", name: "calculate", arguments: JSON.stringify({ expression }) }).result;
+		expect(run("987654321 × 123456789")).toBe("121932631112635269");
+		expect(run("2^53 + 1 - 2^53")).toBe("1");
+		expect(run("987654321.5 * 123456789")).toBe("about 1.21932631174e+17 (rounded to 12 significant digits)");
+		expect(run("10^20 / 3")).toMatch(/^about .* \(rounded to 12 significant digits\)$/);
+	});
 });
 
-// A date written with hyphens is subtraction to mathjs: `2026-10-28 - 2026-10-26` evaluates to -74 and
-// `(2026-10-28) - (2026-10-26)` to -2, neither of them a day count.
-describe("a date sent to calculate is refused with an error that says what to use instead, never a number", () => {
+// One year-first date minus another is counted as days, exactly. mathjs would read
+// `2026-12-21 - 2026-11-14` as subtraction of six numbers, so the count is done on the calendar instead.
+describe("one year-first date minus another comes back as the exact number of days between them", () => {
 	const calc = (expression: string) =>
 		runCalculate({ id: "a", name: "calculate", arguments: JSON.stringify({ expression }) });
 
 	it.each([
-		"2026-10-28 - 2026-10-26",
-		"(2026-10-28) - (2026-10-26)",
-		"2026/10/28 - 2026/10/26",
+		["2026-12-21 - 2026-11-14", "37 days"],
+		["2026-12-21 - 2026-11-13", "38 days"],
+		["(2026-10-28) - (2026-10-26)", "2 days"],
+		["2026/10/28 - 2026/10/27", "1 day"],
+		["2026.03.01 - 2026.02.28", "1 day"],
+		["2028-03-01 - 2028-02-28", "2 days"],
+		["2027-01-01 - 2026-12-31", "1 day"],
+		["2026-11-14 - 2026-12-21", "-37 days"],
+		["2026-03-29 - 2026-03-28", "1 day"],
+	])("%s = %s", (expression, days) => {
+		const out = calc(expression);
+		expect(out.error).toBeUndefined();
+		expect(out.result).toBe(days);
+	});
+});
+
+// A date written with hyphens is subtraction to mathjs: `2026-10-28 - 2026-10-26` evaluates to -74 and
+// `(2026-10-28) - (2026-10-26)` to -2, neither of them a day count.
+describe("any other date sent to calculate is refused with an error that says what to use instead, never a number", () => {
+	const calc = (expression: string) =>
+		runCalculate({ id: "a", name: "calculate", arguments: JSON.stringify({ expression }) });
+
+	it.each([
 		"28/10/2026 - 26/10/2026",
 		"10-28-2026 - 10-26-2026",
 		"28.10.2026 - 26.10.2026",
 		"2026-1-5 + 30",
+		"2026-10-28 + 3",
+		"2026-10-28 - 2026-10-26 + 1",
+		"2026-02-30 - 2026-02-01",
 	])("refuses %s with no result", (expression) => {
 		const out = calc(expression);
 		expect(out.result).toBeUndefined();
@@ -350,9 +389,10 @@ describe("a date sent to calculate is refused with an error that says what to us
 	});
 
 	it("names the date it saw, why the result would be wrong, and the two ways to count days instead", () => {
-		const { error } = calc("2026-10-28 - 2026-10-26");
+		const { error } = calc("2026-10-28 + 3");
 		expect(error).toContain('"2026-10-28"');
 		expect(error).toContain("2026 - 10 - 28");
+		expect(error).toMatch(/year-first date minus the other/);
 		expect(error).toMatch(/code-running tool/);
 		expect(error).toContain("28 - 26");
 	});
@@ -361,7 +401,7 @@ describe("a date sent to calculate is refused with an error that says what to us
 		const content = (await CALCULATE_KIT.run({
 			id: "a",
 			name: "calculate",
-			arguments: JSON.stringify({ expression: "(2026-10-28) - (2026-10-26)" }),
+			arguments: JSON.stringify({ expression: "(2026-10-28) + 3" }),
 		})).content;
 		expect(content).toMatch(/^error: "2026-10-28" is a date/);
 	});
@@ -375,7 +415,7 @@ describe("a date sent to calculate is refused with an error that says what to us
 	});
 });
 
-// A model can write an arrival time as "23:35 + 1:05" (CUR-3860). Refused, its retry comes back as 1480
+// A model can write an arrival time as "23:35 + 1:05". Refused, its retry comes back as 1480
 // minutes, which a reader cannot match to the "12:40 AM" the answer states.
 describe("clock times: H:MM terms added and subtracted, answered as a time a reader can match", () => {
 	const calc = (expression: string) =>
@@ -425,7 +465,7 @@ function stubReplies(replies: Array<{ body: string; status?: number; headers?: R
 const OVER_CAP = JSON.stringify({ message: "Requests rate limit exceeded" });
 
 // A round after the first goes out once the lane has committed, so withFailover never sees
-// its error; a 429 on round 2 must not end the turn on the busy notice. (CUR-2432)
+// its error; a 429 on round 2 must not end the turn on the busy notice.
 describe("a later round refused as over-cap is sent again on the same lane", () => {
 	it("retries a round-2 429 after the wait the host named, and the turn answers", async () => {
 		const sent = stubReplies([
@@ -444,9 +484,8 @@ describe("a later round refused as over-cap is sent again on the same lane", () 
 		);
 	});
 
-	// retry-after-ms, because customFetch's own cooldown retry (gatewayRetryDelayMs) still reads a bare
-	// retry-after and waits up to 6s without knowing the deadline; folding that layer into this policy
-	// is a later step of CUR-2432's audit.
+	// retry-after-ms, because customFetch's own cooldown retry (gatewayRetryDelayMs) reads a bare
+	// retry-after and waits up to 6s without knowing the deadline.
 	it("ends the turn on the 429 at once when the named wait cannot fit before the turn's deadline", async () => {
 		const sent = stubReplies([
 			{ body: toolCallBody("3 * 14 * 18") },
@@ -512,7 +551,7 @@ describe("the round cap: after the last tool round the model must answer without
 		expect(final).toBe("Done.");
 	});
 
-	// Under tool_choice "none" a model can keep searching in its text until max_tokens (CUR-4552).
+	// Under tool_choice "none" a model can keep searching in its text until max_tokens.
 	it("ends only the none round's request on the closing message, and never carries it into the history", async () => {
 		const sent = stubResponses([
 			toolCallBody("1 + 1", "r1"),
@@ -527,7 +566,20 @@ describe("the round cap: after the last tool round the model must answer without
 		expect(messagesOf(sent[3]).filter(closing)).toHaveLength(1);
 	});
 
-	it("a kit that carries its own maxRounds (the sandbox's 6, CUR-4239) gets that many rounds, not 3", async () => {
+	// A closing round capped at the 4,096 answer reserve can run out while Large 4 is still
+	// reasoning; the answer round needs the reasoning allowance most.
+	it("the closing none round sends the same max_tokens as the tool rounds", async () => {
+		const sent = stubResponses([
+			toolCallBody("1 + 1", "r1"),
+			toolCallBody("2 + 2", "r2"),
+			toolCallBody("3 + 3", "r3"),
+			answerBody("Done."),
+		]);
+		await runTurn({ calculateTool: true, generateSettings: { max_tokens: 16_384 } });
+		expect(sent.map((b) => b.max_tokens)).toEqual([16_384, 16_384, 16_384, 16_384]);
+	});
+
+	it("a kit that carries its own maxRounds (the sandbox's 6 ) gets that many rounds, not 3", async () => {
 		const sent = stubResponses([
 			...[1, 2, 3, 4, 5, 6].map((n) => toolCallBody(`${n} + ${n}`, `r${n}`)),
 			answerBody("Done."),
@@ -556,10 +608,10 @@ describe("the round cap: after the last tool round the model must answer without
 });
 
 // A model can answer the tool_choice "none" round after three calculate rounds with
-// `calculate{"expression": …}` typed as text and nothing else (CUR-4495). The strip must not leave the
+// `calculate{"expression": …}` typed as text and nothing else. The strip must not leave the
 // round with no visible text, or the turn reads "couldn't answer" though code could evaluate the call.
 describe("a round after the cap that only calls the tool still ends on an answer carrying the total, never an empty one", () => {
-	// Without min() the cap is applied by hand, as the model did (CUR-4490).
+	// Without min() the cap is applied by hand, as a model does.
 	const CAP = "1150 + 2 * 42";
 	const inlineCall = answerBody(`calculate{"expression": "${CAP}"}`);
 	const capped = [toolCallBody("1840 * 0.65", "r1"), toolCallBody("1150 + 84", "r2"), toolCallBody("1196 + 84", "r3")];
@@ -641,7 +693,7 @@ describe("a sequential kit runs a round's calls in the order the model gave them
 	});
 });
 
-describe("a call that waits for a free sandbox shows so while it runs (CUR-4584)", () => {
+describe("a call that waits for a free sandbox shows so while it runs", () => {
 	it("yields the kit's waiting frame before the call returns, then the ready frame, then the answer", async () => {
 		const { toolFrames } = await import("../toolFrames");
 		const frames = toolFrames();
@@ -715,16 +767,11 @@ describe("no tool is offered unless the turn asks for it", () => {
 		expect(sent[0]).not.toHaveProperty("tools");
 	});
 
-	it("is not offered with the flag off, even to a model that supports tools", () => {
-		calculateFlagOn = false;
-		expect(calculateToolOffered({ id: MODEL, supportsTools: true })).toBe(false);
-	});
-
-	it("is offered with the flag on to a model whose config sets supportsTools", () => {
+	it("is offered to a model whose config sets supportsTools", () => {
 		expect(calculateToolOffered({ id: MODEL, supportsTools: true })).toBe(true);
 	});
 
-	it("is not offered, and says so loudly, with the flag on and a model without tool support", () => {
+	it("is not offered, and says so loudly, to a model without tool support", () => {
 		expect(calculateToolOffered({ id: "swiss-ai/apertus-v1.5-70b", supportsTools: false })).toBe(false);
 		expect(warn).toHaveBeenCalledWith(
 			expect.objectContaining({ model: "swiss-ai/apertus-v1.5-70b" }),
@@ -756,7 +803,7 @@ describe("the tool and its persona paragraph are withheld where the answer canno
 	});
 });
 
-describe("a follow-up sees the calculate calls earlier answers made (CUR-1202)", () => {
+describe("a follow-up sees the calculate calls earlier answers made", () => {
 	const history = [
 		{ from: "user", content: "5 full-time students and 4 at half time: how many full-time equivalents?" },
 		{
@@ -810,7 +857,7 @@ describe("a follow-up sees the calculate calls earlier answers made (CUR-1202)",
 	});
 });
 
-describe("a tool round's log splits the search from the next request (CUR-4282)", () => {
+describe("a tool round's log splits the search from the next request", () => {
 	it("logs searchMs and nextRequestMs beside ms, with searchMs no larger than ms on a slow search", async () => {
 		const def = { type: "function" as const, function: { name: "web_search", description: "search", parameters: {} } };
 		const call = { id: "s1", index: 0, type: "function", function: { name: "web_search", arguments: "{}" } };
@@ -836,7 +883,7 @@ describe("a tool round's log splits the search from the next request (CUR-4282)"
 	});
 });
 
-// A round-2 request can accept the connection and send nothing (CUR-4372); the turn then ends on the
+// A round-2 request can accept the connection and send nothing; the turn then ends on the
 // 45 s cap, and a line must say which round, lane or wait. withToolLoop is driven directly here, so the
 // request can hang exactly that way: it settles only when its own signal is cut.
 describe("a later round's request that never reaches its headers", () => {
@@ -964,5 +1011,253 @@ describe("a later round's request that never reaches its headers", () => {
 		await expect(drain(gen as AsyncGenerator<Out, void, void>)).rejects.toMatchObject({ status: 400 });
 		expect(sends).toBe(3);
 		expect(warn).toHaveBeenCalledWith(expect.objectContaining({ round: 1, status: 400, hedged: 1 }), "[web] round request failed");
+	});
+
+	it("logs the host's error text on a failed round, cut to 300 characters, and never the visitor's message", async () => {
+		const { withToolLoop } = await import("./calculateTool");
+		const secret = "my private question about my landlord";
+		const hostText = `402 {"error":"Pay-as-you go is not enabled for provider scaleway yet."} ${"x".repeat(400)}`;
+		let sends = 0;
+		const gen = await withToolLoop({
+			messages: [{ role: "user", content: secret }],
+			attempt: async () => {
+				sends++;
+				if (sends === 1) return toolCallRound();
+				throw Object.assign(new Error(hostText), { status: 402 });
+			},
+			kit,
+			retry: {},
+		} as Parameters<typeof withToolLoop>[0]);
+		await expect(drain(gen as AsyncGenerator<Out, void, void>)).rejects.toMatchObject({ status: 402 });
+		const failed = warn.mock.calls.find((c) => c[1] === "[web] round request failed")?.[0] as { upstream?: string; status?: number };
+		expect(failed).toMatchObject({ status: 402, upstream: expect.stringContaining("Pay-as-you go is not enabled for provider scaleway") });
+		expect(failed.upstream!.length).toBeLessThanOrEqual(301);
+		expect(JSON.stringify(failed)).not.toContain(secret);
+	});
+});
+
+// Large 4 can keep calling web_search until the turn's ceiling, so the person would wait ~155 s for
+// an error. Past `answerBy` the next round is the closing one, whatever round it is.
+describe("a tool loop past its answer-by time", () => {
+	type Out = { token: { id: number; text: string; logprob: number; special: boolean }; generated_text: string | null; details: null; toolCalls?: unknown[] };
+	const kit = {
+		label: "web",
+		definitions: [{ type: "function" as const, function: { name: "web_search", description: "search", parameters: {} } }],
+		run: async () => ({ content: "results" }),
+	};
+	async function* toolCallRound(): AsyncGenerator<Out, void, void> {
+		yield { token: { id: 0, text: "", logprob: 0, special: true }, generated_text: null, details: null, toolCalls: [{ id: "s1", name: "web_search", arguments: "{}" }] };
+	}
+	async function* answer(text: string): AsyncGenerator<Out, void, void> {
+		yield { token: { id: 1, text, logprob: 0, special: false }, generated_text: null, details: null };
+		yield { token: { id: -1, text: "", logprob: 0, special: true }, generated_text: text, details: null };
+	}
+
+	it("asks round 2 to answer without tools, ending on the closing message, when round 1 finished after answerBy", async () => {
+		const { withToolLoop } = await import("./calculateTool");
+		let clock = 0;
+		const sent: { choice: unknown; last: unknown }[] = [];
+		const gen = await withToolLoop({
+			messages: [{ role: "user", content: "q" }],
+			attempt: (m, c) => {
+				sent.push({ choice: c, last: m[m.length - 1] });
+				clock = 100_000;
+				return Promise.resolve(sent.length === 1 ? toolCallRound() : answer("the answer"));
+			},
+			kit,
+			now: () => clock,
+			retry: { answerBy: 90_000, hedgeAfterMs: null },
+		} as Parameters<typeof withToolLoop>[0]);
+		let final: string | null = null;
+		for await (const o of gen as AsyncGenerator<Out, void, void>) if (o.generated_text) final = o.generated_text;
+
+		expect(sent.map((s) => s.choice)).toEqual(["auto", "none"]);
+		expect(sent[1].last).toEqual(expect.objectContaining({ role: "user", content: expect.stringContaining("Answer the question now") }));
+		expect(final).toBe("the answer");
+		expect(info).toHaveBeenCalledWith(expect.objectContaining({ round: 1 }), "[web] tool loop out of time; asking for the answer now");
+	});
+
+	it("keeps offering tools on round 2 while answerBy is still ahead", async () => {
+		const { withToolLoop } = await import("./calculateTool");
+		const choices: unknown[] = [];
+		const gen = await withToolLoop({
+			messages: [{ role: "user", content: "q" }],
+			attempt: (_m, c) => {
+				choices.push(c);
+				return Promise.resolve(choices.length === 1 ? toolCallRound() : answer("the answer"));
+			},
+			kit,
+			now: () => 1_000,
+			retry: { answerBy: 90_000, hedgeAfterMs: null },
+		} as Parameters<typeof withToolLoop>[0]);
+		for await (const _ of gen as AsyncGenerator<Out, void, void>) void _;
+
+		expect(choices).toEqual(["auto", "auto"]);
+	});
+
+	it("ends on the text so far when the out-of-time round calls a tool anyway after writing", async () => {
+		const { withToolLoop } = await import("./calculateTool");
+		let n = 0;
+		async function* writesThenCalls(): AsyncGenerator<Out, void, void> {
+			yield { token: { id: 1, text: "Partial answer.", logprob: 0, special: false }, generated_text: null, details: null };
+			yield { token: { id: 0, text: "", logprob: 0, special: true }, generated_text: null, details: null, toolCalls: [{ id: "s2", name: "web_search", arguments: "{}" }] };
+		}
+		const gen = await withToolLoop({
+			messages: [{ role: "user", content: "q" }],
+			attempt: () => Promise.resolve(n++ === 0 ? toolCallRound() : writesThenCalls()),
+			kit,
+			now: () => 100_000,
+			retry: { answerBy: 90_000, hedgeAfterMs: null },
+		} as Parameters<typeof withToolLoop>[0]);
+		let final: string | null = null;
+		for await (const o of gen as AsyncGenerator<Out, void, void>) if (o.generated_text) final = o.generated_text;
+
+		expect(n).toBe(2);
+		expect(final).toBe("Partial answer.");
+	});
+});
+
+describe("a round forced to search holds its text, so the reader never sees an answer and then the searched one", () => {
+	type Out = { token: { id: number; text: string; logprob: number; special: boolean }; generated_text: string | null; details: null; toolCalls?: unknown[] };
+	const kit = {
+		label: "web",
+		firstRoundTool: "web_search",
+		definitions: [{ type: "function" as const, function: { name: "web_search", description: "search", parameters: {} } }],
+		run: async () => ({ content: "results" }),
+	};
+	const tok = (text: string): Out => ({ token: { id: 1, text, logprob: 0, special: false }, generated_text: null, details: null });
+	const call: Out = { token: { id: 0, text: "", logprob: 0, special: true }, generated_text: null, details: null, toolCalls: [{ id: "s1", name: "web_search", arguments: "{}" }] };
+	async function* answersThenCalls(text: string): AsyncGenerator<Out, void, void> {
+		yield tok(text);
+		yield call;
+	}
+	async function* answer(text: string): AsyncGenerator<Out, void, void> {
+		yield tok(text);
+		yield { token: { id: -1, text: "", logprob: 0, special: true }, generated_text: text, details: null };
+	}
+	async function run(rounds: (() => AsyncGenerator<Out, void, void>)[], now: () => number = () => 0) {
+		const { withToolLoop } = await import("./calculateTool");
+		let n = 0;
+		const gen = await withToolLoop({
+			messages: [{ role: "user", content: "q" }],
+			attempt: () => Promise.resolve(rounds[n++]()),
+			kit,
+			now,
+			retry: { hedgeAfterMs: null },
+		} as Parameters<typeof withToolLoop>[0]);
+		let shown = "";
+		let final: string | null = null;
+		for await (const o of gen as AsyncGenerator<Out, void, void>) {
+			if (o.generated_text) final = o.generated_text;
+			else if (!o.token.special) shown += o.token.text;
+		}
+		return { shown, final };
+	}
+
+	it("drops what the forced round wrote before its call: shown and stored hold only the searched answer", async () => {
+		const { shown, final } = await run([() => answersThenCalls("Unsearched answer."), () => answer("Searched answer [1].")]);
+		expect(shown).toBe("Searched answer [1].");
+		expect(final).toBe("Searched answer [1].");
+	});
+
+	it("streams the forced round's text when the model answers without calling the tool", async () => {
+		const { shown, final } = await run([() => answer("Answered without searching.")]);
+		expect(shown).toBe("Answered without searching.");
+		expect(final).toBe("Answered without searching.");
+	});
+
+	it("releases the held text once it passes the character bound, so a runaway round still streams and is kept", async () => {
+		// One past calculateTool.ts FORCED_ROUND_HOLD_CHARS.
+		const long = "x".repeat(1_501);
+		const { shown, final } = await run([() => answersThenCalls(long), () => answer(" then searched.")]);
+		expect(shown.startsWith(long)).toBe(true);
+		expect(final).toBe(`${long} then searched.`);
+	});
+
+	it("releases the held text once the hold passes its time bound", async () => {
+		let clock = 0;
+		async function* slowRound(): AsyncGenerator<Out, void, void> {
+			yield tok("Slow ");
+			clock = 4_001; // one past calculateTool.ts FORCED_ROUND_HOLD_MS
+			yield tok("text.");
+			yield call;
+		}
+		const { shown } = await run([slowRound, () => answer(" Searched.")], () => clock);
+		expect(shown).toBe("Slow text. Searched.");
+	});
+
+	// Medium 3.5 forced to web_search can loop on its answer and end the stream on finish_reason
+	// "error", which LiteLLM raises as an APIConnectionError, before any text is shown.
+	async function* loopsThenErrors(): AsyncGenerator<Out, void, void> {
+		yield tok("The Aare. **Final answer: Aare** ");
+		throw new Error("litellm.APIConnectionError: openai raised a streaming error - finish_reason: error");
+	}
+
+	it("asks a forced round that fails before any text again with tool_choice auto, and the turn answers", async () => {
+		const { withToolLoop } = await import("./calculateTool");
+		const choices: unknown[] = [];
+		const rounds = [loopsThenErrors, () => answer("The Aare flows through Bern.")];
+		const gen = await withToolLoop({
+			messages: [{ role: "user", content: "q" }],
+			attempt: (_m: unknown, choice: unknown) => {
+				choices.push(choice);
+				return Promise.resolve(rounds[choices.length - 1]());
+			},
+			kit,
+			now: () => 0,
+			retry: { hedgeAfterMs: null },
+		} as Parameters<typeof withToolLoop>[0]);
+		let shown = "";
+		let final: string | null = null;
+		for await (const o of gen as AsyncGenerator<Out, void, void>) {
+			if (o.generated_text) final = o.generated_text;
+			else if (!o.token.special) shown += o.token.text;
+		}
+		expect(choices).toEqual([{ type: "function", function: { name: "web_search" } }, "auto"]);
+		expect(shown).toBe("The Aare flows through Bern.");
+		expect(final).toBe("The Aare flows through Bern.");
+	});
+
+	it("still fails the turn when the unforced retry fails too: one retry, never a loop", async () => {
+		const { withToolLoop } = await import("./calculateTool");
+		let n = 0;
+		const gen = await withToolLoop({
+			messages: [{ role: "user", content: "q" }],
+			attempt: () => {
+				n++;
+				return Promise.resolve(loopsThenErrors());
+			},
+			kit,
+			now: () => 0,
+			retry: { hedgeAfterMs: null },
+		} as Parameters<typeof withToolLoop>[0]);
+		await expect(async () => {
+			for await (const _ of gen as AsyncGenerator<Out, void, void>) void _;
+		}).rejects.toThrow(/finish_reason: error/);
+		expect(n).toBe(2);
+	});
+
+	it("does not retry once the forced round's text was released to the reader", async () => {
+		const { withToolLoop } = await import("./calculateTool");
+		let n = 0;
+		const long = "x".repeat(1_501);
+		async function* releasedThenErrors(): AsyncGenerator<Out, void, void> {
+			yield tok(long);
+			throw new Error("finish_reason: error");
+		}
+		const gen = await withToolLoop({
+			messages: [{ role: "user", content: "q" }],
+			attempt: () => {
+				n++;
+				return Promise.resolve(releasedThenErrors());
+			},
+			kit,
+			now: () => 0,
+			retry: { hedgeAfterMs: null },
+		} as Parameters<typeof withToolLoop>[0]);
+		await expect(async () => {
+			for await (const _ of gen as AsyncGenerator<Out, void, void>) void _;
+		}).rejects.toThrow(/finish_reason: error/);
+		expect(n).toBe(1);
 	});
 });

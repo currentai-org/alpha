@@ -1,7 +1,7 @@
 // e2e-product: @site
 import { test, expect } from './helpers/test';
 
-// The Quotes block shows each author's avatar on its own, square, with no frame around it (CUR-2990).
+// The Quotes block shows each author's avatar on its own, square, with no frame around it.
 // Only the home page carries a Quotes block, and not in every environment's content: where it has
 // none, the test records that nothing was checked rather than passing on an assertion it never made.
 

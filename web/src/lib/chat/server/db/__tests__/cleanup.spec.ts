@@ -1,8 +1,7 @@
 /**
- * The retention note tells every guest their chats are deleted after 30 days, and nothing
- * checked that the nightly sweep does it. These tests run cleanupExpired() against the real
- * conversations table at a fixed `now`. They stop short of the cron route, whose second half sweeps
- * guest files in object storage. (CUR-2796)
+ * The retention note tells every guest their chats are deleted after 30 days. These tests check that
+ * the nightly sweep does it, running cleanupExpired() against the real conversations table at a fixed
+ * `now`. They stop short of the cron route, whose second half sweeps guest files in object storage.
  */
 import { describe, expect, it, afterEach } from "vitest";
 import { inArray } from "drizzle-orm";
@@ -31,7 +30,7 @@ async function stillThere(ids: string[]): Promise<string[]> {
 	return rows.map((r) => r.id).sort();
 }
 
-describe.sequential("cleanupExpired: guest conversation retention (CUR-2796)", () => {
+describe.sequential("cleanupExpired: guest conversation retention", () => {
 	afterEach(async () => {
 		await cleanupTestData();
 	});
@@ -66,7 +65,7 @@ describe.sequential("cleanupExpired: guest conversation retention (CUR-2796)", (
 const DAY_MS = 24 * 60 * 60 * 1000;
 type SafetyKind = (typeof schema.safetyEvents.kind.enumValues)[number];
 
-describe.sequential("cleanupExpired: safety record retention (CUR-4428)", () => {
+describe.sequential("cleanupExpired: safety record retention", () => {
 	const seeded: string[] = [];
 
 	afterEach(async () => {

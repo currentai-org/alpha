@@ -4,13 +4,13 @@
 //
 // Citation numbers are one namespace for the whole turn, the way the UI reads them: each search starts
 // numbering after every source already returned, and each result carries the turn's full set so far.
-// Searches are serialized for that reason; calculate is pure and runs alongside. (CUR-2420)
+// Searches are serialized for that reason; calculate is pure and runs alongside.
 
 import type { NativeToolKit, NativeToolResult, StreamedToolCall } from "../endpoints/types";
 import { CALCULATE_KIT, CALCULATE_COUNTS_DEFINITIONS } from "../endpoints/openai/calculateTool";
-import { DATETIME_TOOL, runDatetime } from "./datetimeTool";
+import { DATETIME_TOOL, runDatetime, zonesNamedIn } from "./datetimeTool";
 import { WEB_SEARCH_TOOL } from "../search/toolSearch";
-import { runWebSearch, type WebSearchFailure } from "../search/runSearch";
+import { runWebRetrieval, type WebSearchFailure } from "../search/runSearch";
 import { asksForTheLatest } from "$lib/chat/search/recency";
 import { maybeRagGrounding } from "../rag";
 import { searchPastChats } from "../rag/pastChats";
@@ -21,7 +21,14 @@ import { searchTodayLine } from "./searchGrounding";
 import { queryLanguageMismatch, rewriteQueryNote, type LanguageRead } from "../search/queryLanguage";
 import { readMessageLanguage } from "../declineCopy";
 import { logger } from "../logger";
+import type { RewriteTurn } from "../search/queryRewrite";
 import type { Message } from "$lib/chat/types/Message";
+
+/** The id of the web_search call the server makes itself before round 1. Mistral's API takes only
+ * nine characters from a-z, A-Z and 0-9, and refuses a streamed turn whose history holds any other id. */
+const PRE_SEARCH_CALL_ID = "presearch";
+/** runWebRetrieval refuses a query over this many characters. */
+const PRE_SEARCH_MAX_CHARS = 400;
 
 const SEARCH_CATALOG_TOOL = {
 	type: "function",
@@ -42,7 +49,7 @@ const SEARCH_CATALOG_TOOL = {
 
 // Offered only to a signed-in person who switched past-chat search on (pastChatSearchGate.ts).
 // Its sources join the catalog's in the turn's `rag` stamp, numbered in the same namespace, and the note
-// under the answer reads them from there. (CUR-4576)
+// under the answer reads them from there.
 const SEARCH_PAST_CHATS_TOOL = {
 	type: "function",
 	function: {
@@ -63,9 +70,9 @@ const SEARCH_PAST_CHATS_TOOL = {
 const NO_PAST_CHAT =
 	"No earlier chat of theirs matched. Say that you found nothing about it in their earlier chats, and do not guess what they said.";
 
-// The link the person pasted, opened the way the scaffolded path opens it (CUR-1897). No URL
-// argument: linkedUrl.ts allows a fetch only of a URL the person typed in this message, never one the
-// model writes, so the tool can open that one link and nothing else. (CUR-2734)
+// The link the person pasted, opened the way the scaffolded path opens it. No URL argument:
+// linkedUrl.ts allows a fetch only of a URL the person typed in this message, never one the model
+// writes, so the tool can open that one link and nothing else.
 const READ_PAGE_TOOL = {
 	type: "function",
 	function: {
@@ -98,17 +105,22 @@ function queryOf(call: StreamedToolCall): string {
 }
 
 const NOTHING = "No sources found. Answer from what you know and say that nothing was found.";
-// The search ran and did not finish, which is not the same as finding nothing. (CUR-4091)
+// The web search finished and nothing cleared the relevance bar. The visitor sees a note saying so under
+// the answer, and the model's own words are the first place they read it, so it is told to open with it.
+const WEB_NOTHING =
+	"The web search found no relevant sources. Begin your answer by saying that the search found nothing, then answer from what you know.";
+// The search ran and did not finish, which is not the same as finding nothing.
 const SEARCH_UNFINISHED =
 	"The web search did not finish, so no web results came back. Answer from what you know and say that the search did not finish.";
-// The scaffolded turn grounds a pasted-link turn on the page alone once it is read (CUR-2032,
-// the route's `webSearchCtx` swap), so a search after a read adds nothing here either. (CUR-2697)
+// The scaffolded turn grounds a pasted-link turn on the page alone once it is read (the route's
+// `webSearchCtx` swap), so a search after a read adds nothing here either.
 const LINKED_PAGE_ONLY =
 	"The page linked in this message has been read and is this turn's source. Answer from it; no search was run.";
 
 /**
  * Appended to every tool result that returns sources. The system prompt asks for inline [n] citations
- * too, but a probe (CUR-2420) found some models skip them on web-sourced turns; the reminder sits where the model reads the sources.
+ * too, but some models skip them on web-sourced turns, so the reminder sits where the model reads the
+ * sources.
  */
 function citeNote(sources: ReadonlyArray<{ n: number }>): string {
 	if (!sources.length) return "";
@@ -122,43 +134,47 @@ export function nativeToolKit(opts: {
 	locals: App.Locals | undefined;
 	/** false withholds web_search (the composer's search is off). */
 	web: boolean;
-	/** true forces the first round to call web_search (the composer's search is "always"). */
-	forceWeb?: boolean;
-	/** The question asks for a live value no source here carries (isUnservableLiveQuery), so (CUR-2697)
+	/** The person's own message, searched by the server before round 1 (the composer's search
+	 *  is "always", or the embedding gate said search), so the first request carries the numbered sources
+	 *  and goes out on "auto". No tool_choice names web_search: a provider may ignore a forced one
+	 *  or refuse it beside thinking. Withheld by `web: false`, `liveUnservable`
+	 *  and a pasted link, which the first round reads instead. */
+	preSearch?: { query: string; history?: RewriteTurn[] };
+	/** The person's typed message. A web result gives the clock in each place it names. */
+	asked?: string;
+	/** The question asks for a live value no source here carries (isUnservableLiveQuery), so
 	 *  web_search is withheld the way the scaffolded turn skips its search. read_page is unaffected. */
 	liveUnservable?: boolean;
 	/** Test seam for the two retrieval engines. */
 	engines?: {
-		web: typeof runWebSearch;
+		web: typeof runWebRetrieval;
 		catalog: typeof maybeRagGrounding;
 		pastChats?: typeof searchPastChats;
 	};
-	/** The signed-in owner whose earlier chats search_past_chats reads, and the chat this turn (CUR-4576)
-	 *  is in, which it leaves out. Absent: the tool is not offered. */
+	/** The signed-in owner whose earlier chats search_past_chats reads, and the chat this turn is in,
+	 *  which it leaves out. Absent: the tool is not offered. */
 	pastChats?: { userId: string; currentConversationId: string };
 	/** The fetchable link in the person's latest message (extractLinkedUrl). With `web`, the first round
 	 *  opens it. */
 	linkedUrl?: string;
 	/** Test seam for the page reader. */
 	readPage?: typeof fetchLinkedPage;
-	/** How many numbered sources the person pasted (visitorSources.ts); ours are numbered after them
-	 *  (CUR-3844). */
+	/** How many numbered sources the person pasted (visitorSources.ts); ours are numbered after them. */
 	visitorSourceCount?: number;
 	/** The person's message asks for the latest of something (asksForTheLatest), so its search also looks
-	 *  at the past year, the way the scaffolded turn's does (CUR-3932). */
+	 *  at the past year, the way the scaffolded turn's does. */
 	latest?: boolean;
-	/** calculate asks for each group's count before the expression (harnessProfiles `calculateCounts`,
-	 *  CUR-4015). */
+	/** calculate asks for each group's count before the expression (harnessProfiles `calculateCounts`). */
 	calculateCounts?: boolean;
 	/** The `web_search_hangs` fault (preview only): every web search hangs until its deadline. */
 	hangWeb?: boolean;
 	/** The person's message language (639-3), set when `search-query-language` is on: the first query
-	 *  written in another non-English language is sent back for a rewrite (CUR-4376). */
+	 *  written in another non-English language is sent back for a rewrite. */
 	askedLanguage?: string;
 	/** Test seam for reading the query's language. */
 	readLanguage?: LanguageRead;
 }): NativeToolKit & { grounding(): NativeGrounding } {
-	const web = opts.engines?.web ?? runWebSearch;
+	const web = opts.engines?.web ?? runWebRetrieval;
 	const readLanguage = opts.readLanguage ?? readMessageLanguage;
 	// Once per turn, so a model that keeps its language still gets a search rather than a loop.
 	let languageSentBack = false;
@@ -183,61 +199,92 @@ export function nativeToolKit(opts: {
 
 	// The scaffolded path's grounding gate (route, `groundedWeb`): results the reranker did not vet are
 	// never evidence. With a reranker configured an unvetted search already comes back empty; this covers
-	// a deploy with none, where every result arrives unvetted (CUR-2697).
-	const vettedWeb = async (query: string) => {
-		// The model's own query can drop the "latest" the person asked for, so either counts. (CUR-3932)
+	// a deploy with none, where every result arrives unvetted.
+	const vettedWeb = async (query: string, shape?: { preShaped: boolean; history?: RewriteTurn[] }) => {
+		// The model's own query can drop the "latest" the person asked for, so either counts.
 		const latest = !!opts.latest || asksForTheLatest(query);
 		let failed: WebSearchFailure | undefined;
 		const r = await web(query, {
 			locals: opts.locals,
-			preShaped: true,
-			startAt: numbered,
+			// The model's own query is already shaped; the person's message is not, so it is distilled and
+			// its follow-up references resolved the way the scaffolded turn does.
+			preShaped: shape?.preShaped ?? true,
+			...(shape?.history?.length ? { history: shape.history } : {}),
 			ctx: { recency: latest, latest },
 			hang: opts.hangWeb,
 			onFailed: (why) => (failed = why),
 		});
 		// The native path writes no `[retrieval] timing` line, so this line logs per-engine time
 		// and failures for turns that search through this tool. `webMs` keeps that line's field names, so the
-		// same Axiom queries read both. (CUR-4282)
+		// same log queries read both.
 		logger.info(
-			{ webMs: r?.timings, sources: r?.sources.length ?? 0, verified: Boolean(r?.relevanceVerified), failed },
+			{ webMs: r?.timings, sources: r?.merged.length ?? 0, verified: Boolean(r?.relevanceVerified), failed },
 			"[native] web_search timing"
 		);
 		return { r: r?.relevanceVerified ? r : undefined, failed };
 	};
 
-	const searchWeb = (query: string) =>
-		serial(async (): Promise<NativeToolResult> => {
-			if (pageRead) return { content: LINKED_PAGE_ONLY };
-			const asked = await queryLanguageMismatch(opts.askedLanguage, query, readLanguage);
-			if (asked) {
-				// Language tags only: the query carries the person's words.
-				logger.info(
-					{ asked, written: await readLanguage(query), resent: languageSentBack },
-					languageSentBack
-						? "[search] query still not in the person's language; searched as written"
-						: "[search] query sent back for a rewrite in the person's language"
-				);
-				if (!languageSentBack) {
-					languageSentBack = true;
-					return { content: rewriteQueryNote(asked) };
-				}
+	// The language check and the retrieval, with no numbering, so they can run beside the round's other
+	// searches. `note` is a reply that ends the call without searching.
+	const fetchWeb = async (
+		query: string
+	): Promise<{ note: string } | Awaited<ReturnType<typeof vettedWeb>>> => {
+		const asked = await queryLanguageMismatch(opts.askedLanguage, query, readLanguage);
+		if (asked) {
+			// Language tags only: the query carries the person's words.
+			logger.info(
+				{ asked, written: await readLanguage(query), resent: languageSentBack },
+				languageSentBack
+					? "[search] query still not in the person's language; searched as written"
+					: "[search] query sent back for a rewrite in the person's language"
+			);
+			if (!languageSentBack) {
+				languageSentBack = true;
+				return { note: rewriteQueryNote(asked) };
 			}
-			const { r, failed } = await vettedWeb(query);
+		}
+		return vettedWeb(query);
+	};
+
+	const searchWeb = (query: string, ownMessage = false) => {
+		// Mistral Large 4 can ask for several searches in one round, and run one after another they can
+		// outlast the turn's time cap. So the retrieval starts now and only the numbering waits its turn.
+		// The server's own search is the person's message, in their language by construction, so it skips
+		// the language check.
+		const fetched = pageRead
+			? undefined
+			: ownMessage
+				? vettedWeb(query, { preShaped: false, history: opts.preSearch?.history })
+				: fetchWeb(query);
+		fetched?.catch(() => undefined);
+		return serial(async (): Promise<NativeToolResult> => {
+			if (pageRead || !fetched) return { content: LINKED_PAGE_ONLY };
+			const got = await fetched;
+			if ("note" in got) return { content: got.note };
+			const { r, failed } = got;
 			if (failed) return { content: SEARCH_UNFINISHED, searchFailed: failed };
-			if (!r?.sources.length) return { content: NOTHING };
-			numbered += r.sources.length;
-			evidence.push(r.evidence);
+			if (!r?.merged.length) return { content: WEB_NOTHING, searchEmpty: true };
+			const numberedWeb = numberWebSources(r.merged, numbered, r.credibility);
+			numbered += numberedWeb.sources.length;
+			evidence.push(numberedWeb.evidence);
 			webStamp = {
 				query: webStamp ? `${webStamp.query}; ${r.query}` : r.query,
-				sources: [...(webStamp?.sources ?? []), ...r.sources],
+				sources: [...(webStamp?.sources ?? []), ...numberedWeb.sources],
 				asOf: r.asOf,
 			};
 			// Asked today's date, a model can search and read it off a stale cached world-clock
-			// snippet, so the date goes where the model reads the sources' dates. (CUR-4163)
-			const today = `\n\n${searchTodayLine({ zone: opts.locals?.timezone })}`;
-			return { content: r.evidence + citeNote(r.sources) + today, webSearch: webStamp, rag: ragStamp };
+			// snippet, so the date goes where the model reads the sources' dates.
+			// Asked the time in another place, a model given only the UTC clock can get the offset wrong by
+			// hours, so each place the question or the search names gets its clock read here.
+			const places = zonesNamedIn(`${opts.asked ?? ""}\n${query}`);
+			const today = `\n\n${searchTodayLine({ zone: opts.locals?.timezone, places })}`;
+			return {
+				content: numberedWeb.evidence + citeNote(numberedWeb.sources) + today,
+				webSearch: webStamp,
+				rag: ragStamp,
+			};
 		});
+	};
 
 	const readLinkedPage = (url: string) =>
 		serial(async (): Promise<NativeToolResult> => {
@@ -304,6 +351,12 @@ export function nativeToolKit(opts: {
 			};
 		});
 
+	const preSearchQuery = opts.preSearch?.query.trim().slice(0, PRE_SEARCH_MAX_CHARS);
+	const preSearchCalls: StreamedToolCall[] | undefined =
+		offerSearch && !linkedUrl && preSearchQuery
+			? [{ id: PRE_SEARCH_CALL_ID, name: WEB_SEARCH_TOOL.function.name, arguments: JSON.stringify({ query: preSearchQuery }) }]
+			: undefined;
+
 	const definitions: NativeToolKit["definitions"] = [
 		...(offerSearch ? [WEB_SEARCH_TOOL as unknown as NativeToolKit["definitions"][number]] : []),
 		...(linkedUrl ? [READ_PAGE_TOOL as unknown as NativeToolKit["definitions"][number]] : []),
@@ -321,12 +374,10 @@ export function nativeToolKit(opts: {
 			sources: [...(webStamp?.sources ?? []), ...(ragStamp?.sources ?? [])],
 			calculated,
 		}),
-		// A pasted link is what the person asked about, so it is read first, ahead of a forced search.
-		firstRoundTool: linkedUrl
-			? READ_PAGE_TOOL.function.name
-			: offerSearch && opts.forceWeb
-				? WEB_SEARCH_TOOL.function.name
-				: undefined,
+		// A pasted link is what the person asked about, so the first round must call read_page, and the
+		// server runs no search of its own before it.
+		firstRoundTool: linkedUrl ? READ_PAGE_TOOL.function.name : undefined,
+		firstRoundCalls: preSearchCalls,
 		retrievalOf: (calls) => {
 			const names = new Set(calls.map((c) => c.name));
 			const webCall =
@@ -344,7 +395,7 @@ export function nativeToolKit(opts: {
 		run: async (call) => {
 			if (call.name === WEB_SEARCH_TOOL.function.name && offerSearch) {
 				const q = queryOf(call);
-				return q ? searchWeb(q) : { content: "web_search needs a non-empty query." };
+				return q ? searchWeb(q, call.id === PRE_SEARCH_CALL_ID) : { content: "web_search needs a non-empty query." };
 			}
 			if (call.name === READ_PAGE_TOOL.function.name && linkedUrl) return readLinkedPage(linkedUrl);
 			if (call.name === SEARCH_CATALOG_TOOL.function.name) {

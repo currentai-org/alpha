@@ -88,7 +88,7 @@ export function isRecencyQueryDenoised(text: string): boolean {
 // election?" asked in 2026 wants 2024's pages. RECENCY_RE still counts years toward searching at all.
 const BARE_YEAR_RE = /\b(202[4-9]|203\d)\b/g;
 
-/** The person wants the latest of something, so the web search also looks at the past year. (CUR-3932)
+/** The person wants the latest of something, so the web search also looks at the past year.
  *  isRecencyQueryDenoised with bare years ignored. */
 export function asksForTheLatest(text: string): boolean {
 	return isRecencyQueryDenoised((text ?? "").replace(BARE_YEAR_RE, " "));
@@ -103,8 +103,8 @@ export function asksForTheLatest(text: string): boolean {
 // false positive costs an honest ungrounded answer (the persona then says "I don't have live X"), and L3
 // backstops any false negative. Client-safe (no server deps).
 //
-// Prices, exchange rates, weather for a named place and headlines are deliberately NOT on this list
-// (CUR-2424): Firecrawl's SERP snippets carry today's figure for those (an exchange rate, a gold
+// Prices, exchange rates, weather for a named place and headlines are deliberately NOT on this list:
+// Firecrawl's SERP snippets carry today's figure for those (an exchange rate, a gold
 // price, a stock quote, a dated forecast), so vetoing them would send a person asking for today's
 // euro-to-dirham rate elsewhere instead of searching. A live score is the one class those same
 // searches cannot answer: they return team pages and the previous match.

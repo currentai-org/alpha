@@ -3,7 +3,7 @@
 import { test } from './helpers/test';
 import { personaTurns, resolvePersonaLane, runPersona } from './helpers/personaDriver';
 
-// The third persona (CUR-2676). See persona-chaos-monkey.spec.ts for the shared reasoning.
+// The third persona. See persona-chaos-monkey.spec.ts for the shared reasoning.
 //
 // SIGNED OUT, unlike the other five, because a first visit is signed out. Every other persona starts
 // from a fresh account; this one is the only check that the front door still makes sense to someone

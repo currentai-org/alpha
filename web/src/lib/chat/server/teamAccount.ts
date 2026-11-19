@@ -1,4 +1,4 @@
-// Who counts as a team account, and the staff tier that buys on every per-account usage limit (CUR-4620).
+// Who counts as a team account, and the staff tier that buys on every per-account usage limit.
 //
 // A team account is a VERIFIED email on one of TEAM_DOMAINS. The PostHog release conditions that stage
 // a flag to "team accounts only" match the same domains (docs/guides/feature-flags.md), and
@@ -39,6 +39,9 @@ export const STAFF_TIER = {
 	/** Stored conversations, 10x USAGE_LIMITS.conversations (100). A teammate who has tested for weeks
 	 *  is past 100, and a full account refuses every new chat until some are deleted. */
 	conversations: 1000,
+	/** Chat turns per 24 hours, 10x a visitor's CHAT_TURNS_PER_DAY (web/config/chatTurns.ts). A
+	 *  teammate testing all day sends a few hundred; a runaway script still stops. */
+	chatTurnsPerDay: 2000,
 } as const;
 
 type MaybeUser = { email?: string; emailVerified?: boolean } | null | undefined;

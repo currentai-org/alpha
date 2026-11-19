@@ -1,14 +1,14 @@
 /**
- * The model registry names provider keys by env var and never holds their values (CUR-2640).
+ * The model registry names provider keys by env var and never holds their values.
  *
  * The registry is long-lived and serialized wherever a model object goes: a route sent it with
- * `endpoints[].apiKey` set (CUR-2643). Here every keyed lane the registry builds is
+ * `endpoints[].apiKey` set. Here every keyed lane the registry builds is
  * configured at once (gateway, catalog backup, HF pinned picker lane, Mistral direct with its backup,
  * Mistral side calls, compare panel, agent), the real registry boots, and its serialization is checked
  * for every key value. The lane builds are then checked to send the same key each lane sent before.
  *
  * Idioms mirror models.sideCall.spec.ts: `config` is a Proxy over a mutable object, `$app/environment`
- * says `building: true` so the module-eval boot is skipped, and bootModels() runs against a stubbed
+ * says `building: true` so the module-eval boot is skipped, and bootModels runs against a stubbed
  * live catalog.
  */
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
@@ -117,7 +117,7 @@ beforeEach(() => {
 		COMPARE_PANEL: PANELIST,
 		AGENT_SERVICE_URL: "https://agent.test",
 	});
-	for (const flag of ["model-picker", "side-call-own-lane", "agent-mode"])
+	for (const flag of ["side-call-own-lane", "agent-mode"])
 		H.flagsOn.add(flag);
 	vi.stubEnv("CI_HERMETIC", "true");
 	vi.stubGlobal(
@@ -142,7 +142,7 @@ const boot = async () => {
 	return mod;
 };
 
-describe("model registry keys (CUR-2640)", () => {
+describe("model registry keys", () => {
 	it("model registry objects carry no provider key values, only env var names", async () => {
 		const mod = await boot();
 		const ids = mod.models.map((m) => m.id);
@@ -175,7 +175,7 @@ describe("model registry keys (CUR-2640)", () => {
 		};
 
 		// Primary on the gateway: no key of its own, so endpointOai's default (OPENAI_API_KEY) applies.
-		// Then the same model on the backup host with that host's key, and no other model (CUR-3936).
+		// Then the same model on the backup host with that host's key, and no other model.
 		expect(await keysFor(CHAT_MODEL)).toEqual([
 			[BASE, undefined],
 			[FALLBACK_BASE, KEYS.FALLBACK_API_KEY],
@@ -188,7 +188,7 @@ describe("model registry keys (CUR-2640)", () => {
 	});
 
 	// Stop must not build the cancel from the bare registry entry, which has no `model` and no
-	// key: the schema would throw before any DELETE went out, and the task would run on and save its file. (CUR-4602)
+	// key: the schema would throw before any DELETE went out, and the task would run on and save its file.
 	it("Stop's cancel reaches agent-service with the token and visitor subject the turn's own submit sends", async () => {
 		const mod = await boot();
 		const { cancelAgentTask, agentServiceHeaders } = await import("./endpoints/agent/endpointAgent");
@@ -230,7 +230,7 @@ describe("model registry keys (CUR-2640)", () => {
 		expect(H.builds.map((b) => b.apiKey)).toEqual([undefined, undefined]);
 	});
 
-	it("drops a backup lane that names another model, so a picked model is answered only by itself (CUR-3936)", async () => {
+	it("drops a backup lane that names another model, so a picked model is answered only by itself", async () => {
 		H.cfg.FALLBACK_MODEL_ID = "aisingapore/Gemma-SEA-LION-v4-27B-IT";
 		const mod = await boot();
 		const asks = (id: string) =>
@@ -248,7 +248,7 @@ describe("model registry keys (CUR-2640)", () => {
 		type AgentEndpoint = Extract<Endpoint, { type: "agent" }>;
 		const key: string = KEYS.OPENAI_API_KEY;
 		// The openai lane allows only the local endpoint's fixed placeholder (localModels.ts).
-		// @ts-expect-error a provider key value has no place on a registry endpoint (CUR-2640)
+		// @ts-expect-error a provider key value has no place on a registry endpoint
 		const openaiKey: OpenAIEndpoint["apiKey"] = key;
 		const agentHasNoKey: "apiKey" extends keyof AgentEndpoint ? false : true = true;
 		expect([openaiKey, agentHasNoKey]).toEqual([key, true]);

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { vi } from "vitest";
 import dotenv from "dotenv";
 import { resolve } from "path";
@@ -42,6 +45,11 @@ for (const [key, value] of Object.entries(envVars)) {
 	}
 }
 
+// The unit suites run with PostHog unset and assert the hosted fallbacks; without this the self-host
+// flag defaults (src/lib/chat/server/flags.ts) would answer instead. A spec that mocks `config` itself
+// does not read this, and sets ALPHA_EDITION on its own mock when it needs to.
+privateEnv.ALPHA_EDITION ||= "hosted";
+
 vi.mock("$env/dynamic/public", () => ({
 	env: publicEnv,
 }));
@@ -61,8 +69,8 @@ vi.mock("$env/dynamic/private", () => ({
  * worker's `process.stderr` is relayed through the main thread, which is the one that is stuck. A
  * pause that does not land means the thread is blocked in native code, and it says that instead.
  *
- * The heartbeat timer comes from `node:timers`, never the global, so a spec's `vi.useFakeTimers()` does not stop the
- * heartbeat and read as a stall. (SOL-205)
+ * The heartbeat timer comes from `node:timers`, never the global, so a spec's `vi.useFakeTimers` does not stop the
+ * heartbeat and read as a stall.
  */
 const WATCHER = `
 const { parentPort, workerData } = require("node:worker_threads");

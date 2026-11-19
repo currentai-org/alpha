@@ -1,7 +1,12 @@
+<!--
+SPDX-FileCopyrightText: 2018- The Hugging Face team
+SPDX-License-Identifier: Apache-2.0
+Modified by Current AI from huggingface/chat-ui.
+-->
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages.js';
 	// Styled from design-system.md directly (--ap-* tokens), matching account/+page.svelte and
-	// the (nav)/+layout.svelte shell (CUR-595).
+	// the (nav)/+layout.svelte shell.
 	import { page } from "$app/state";
 	import { base } from "$lib/chat/paths";
 
@@ -133,7 +138,7 @@
 					{model.description}
 				</p>
 			{/if}
-			<!-- CUR-3911: a model's measured weak spot, as one quiet line here and never on
+			<!-- a model's measured weak spot, as one quiet line here and never on
 			     the picker row. The words are modelWeakSpots.ts's; a model with none shows nothing. -->
 			{#if knownWeakSpot}
 				<p data-known-weak-spot class="mt-2 flex items-start gap-1.5 type-caption text-fg-2">
@@ -167,7 +172,7 @@
 				}}
 			>
 				<RiChatNewLine class="size-3.5" />
-				<!-- CUR-1772: "New chat" named the consequence, not the commit. This is the ONLY control
+				<!-- "New chat" named the consequence, not the commit. This is the ONLY control
 				     that writes `activeModel`, and a person arrives here from the model picker believing
 				     they already chose — the picker's own row click navigates rather than selects. A
 				     label naming a different action would leave no step in that chain saying "this is how you

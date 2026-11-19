@@ -1,5 +1,5 @@
 /**
- * Stop pressed on the chat landing page before the new conversation's page has taken over (CUR-2971).
+ * Stop pressed on the chat landing page before the new conversation's page has taken over.
  *
  * The landing page sends a first message by creating a conversation and navigating to it; the
  * conversation page then sends the turn. A Stop in that window has no handler to reach, and the full

@@ -98,7 +98,7 @@ describe("rerankRagHits — enabled / verified / degrade policy", () => {
 		// A thrown reranker must NOT reject the promise (that would break maybeRagGrounding's fail-open) —
 		// it degrades to the cosine/similarity-floored hits unchanged.
 		expect(res).toEqual({ hits: [A, B], relevanceVerified: false });
-		// The throw is a departure from "the wrapper returns without throwing". (CUR-68)
+		// The throw is a departure from "the wrapper returns without throwing".
 		expect(vi.mocked(failOpenDeparture)).toHaveBeenCalledWith("rag-rerank", "threw", { hits: 2 });
 	});
 

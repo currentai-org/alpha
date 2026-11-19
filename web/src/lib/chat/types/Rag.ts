@@ -15,7 +15,7 @@ export type RagEngine =
 	| "SyftHub"
 	| "SyftHub:EPFL"
 	| "SyftHub:Vault"
-	/** A passage from one of the signed-in person's own earlier chats (rag/pastChats.ts). (CUR-4576) */
+	/** A passage from one of the signed-in person's own earlier chats (rag/pastChats.ts). */
 	| "PastChat";
 
 /** A single retrieved, citable snippet. */

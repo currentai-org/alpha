@@ -11,9 +11,10 @@ import {
 	mapConversationsForSidebar,
 	getLayoutPublicConfig,
 } from "./layoutData";
+import { CONV_NUM_PER_PAGE } from "$lib/chat/constants/pagination";
 import { dictationEnabled } from "./dictationMode";
 import { csamScanConfigured } from "./storage/csamScan";
-import { dataExportEnabled, thunderboltExportEnabled } from "./dataPortability";
+import { thunderboltExportEnabled } from "./dataPortability";
 import { custodialStorageViewEnabledForUser } from "./storage/custodialStorageGate";
 import { getDb } from "./db/client";
 import { localInferenceEndpoints } from "./db/schema";
@@ -28,7 +29,7 @@ vi.mock("$lib/chat/server/localEndpointFetch", async (importOriginal) => ({
 	localEndpointFetch: (url: string | URL | Request, init?: RequestInit) => fetch(url, init),
 }));
 
-// The local-inference gate is a PostHog flag since CUR-3175; the wiring tests below drive it directly.
+// The local-inference gate is a PostHog flag; the wiring tests below drive it directly.
 const gateMock = vi.hoisted(() => ({ enabled: true }));
 vi.mock("$lib/chat/server/localEndpointsGate", () => ({
 	localInferenceEndpointsEnabled: () => gateMock.enabled,
@@ -74,15 +75,14 @@ describe("layoutData", () => {
 		expect(typeof config).toBe("object");
 	});
 
-	// CUR-1681/CUR-1682. Both flags drive a visible control — the account page's "Download your data"
-	// row and the settings nav's "Storage" tab — and both controls lead somewhere that refuses the
+	// Both flags drive a visible control — the account page's Thunderbolt row and
+	// the settings nav's "Storage" tab — and both controls lead somewhere that refuses the
 	// request when its own gate says no. So the contract is not "these fields exist": it is that each
 	// one equals the gate the destination itself reads. A hardcoded, inverted or stale value here puts
 	// a control in front of a person that 403s or 404s when they press it.
 	it("never offers export or storage more widely than the gate the destination itself reads", async () => {
 		const { locals } = await createTestUser();
 		const flags = await getLayoutFeatureFlags(locals);
-		expect(flags.dataExportEnabled).toBe(dataExportEnabled());
 		expect(flags.thunderboltExportEnabled).toBe(thunderboltExportEnabled());
 		expect(flags.custodialStorageEnabled).toBe(
 			await custodialStorageViewEnabledForUser(locals.user!._id.toString())
@@ -101,7 +101,7 @@ describe("layoutData", () => {
 		const flags = await getLayoutFeatureFlags(locals);
 		expect(flags.isAdmin).toBe(true);
 		// The deploy env under test is neither preview nor production, so the per-user agent gate is
-		// closed; the deploy env decides it (CUR-1278).
+		// closed; the deploy env decides it.
 		expect(flags.agentEnabled).toBe(false);
 		expect(flags).toHaveProperty("loginEnabled");
 		expect(flags).toHaveProperty("agentEnabled");
@@ -109,9 +109,9 @@ describe("layoutData", () => {
 
 	// agentModeDefault mirrors agentEnabled — "off" for anyone the per-user gate closes for,
 	// since there's nothing to default a hidden toggle to. The "auto" case is just deployEnv() ===
-	// preview/production (CUR-771) — covered directly by
+	// preview/production — covered directly by
 	// agentMode.spec.ts's agentModeEnabledForUser tests rather than duplicated here, since this field
-	// is a thin derivation of that same function. (CUR-770)
+	// is a thin derivation of that same function.
 	it("getLayoutFeatureFlags.agentModeDefault is off when the per-user gate is closed", async () => {
 		const locals = createTestLocals();
 		const flags = await getLayoutFeatureFlags(locals);
@@ -120,7 +120,7 @@ describe("layoutData", () => {
 
 	// The agent model is registered `unlisted: true` — this is the general filter that excludes
 	// it (models.ts), so proving no unlisted model ever survives here holds regardless of whether this
-	// test run's environment happens to have the agent registered at all. (CUR-770)
+	// test run's environment happens to have the agent registered at all.
 	it("getLayoutModels never returns an unlisted model, for any locals", async () => {
 		const locals = createTestLocals();
 		const result = await getLayoutModels(locals);
@@ -201,7 +201,7 @@ describe("layoutData", () => {
 	// transcriptionEnabled delegates to the same gate as /chat/api/transcribe, because raw
 	// TRANSCRIPTION_MODEL presence could disagree with it (env var set + flag off would show the button
 	// and the API would 403). Pinning delegation here — the full flag×config
-	// behavior matrix is covered in dictationMode.spec.ts. (CUR-198)
+	// behavior matrix is covered in dictationMode.spec.ts.
 	it("getLayoutFeatureFlags.transcriptionEnabled delegates to dictationEnabled(), not raw env presence", async () => {
 		const locals = createTestLocals();
 		const flags = await getLayoutFeatureFlags(locals);
@@ -209,10 +209,30 @@ describe("layoutData", () => {
 	});
 
 	// The composer's attach control and My files' drop zone read this flag, and the server
-	// refuses every upload when csamScanConfigured() is false, so the two must be the same read. (CUR-2382)
+	// refuses every upload when csamScanConfigured is false, so the two must be the same read.
 	it("getLayoutFeatureFlags.attachmentsEnabled is csamScanConfigured(), so no control is offered that the server would refuse", async () => {
 		const flags = await getLayoutFeatureFlags(createTestLocals());
 		expect(flags.attachmentsEnabled).toBe(csamScanConfigured());
+	});
+
+	// The settings list's and a failed turn's status links read this, so they lead where the banner's
+	// /api/status reads, and nowhere on a self-host with no STATUS_PAGE_URL.
+	it("getLayoutFeatureFlags.statusPageUrl is the deployment's own status page, null on a self-host that names none", async () => {
+		const saved = { e: process.env.ALPHA_EDITION, u: process.env.STATUS_PAGE_URL };
+		try {
+			delete process.env.STATUS_PAGE_URL;
+			process.env.ALPHA_EDITION = "hosted";
+			expect((await getLayoutFeatureFlags(createTestLocals())).statusPageUrl).toBe("https://status.example.test");
+			process.env.ALPHA_EDITION = "selfhost";
+			expect((await getLayoutFeatureFlags(createTestLocals())).statusPageUrl).toBeNull();
+			process.env.STATUS_PAGE_URL = "https://status.example.org";
+			expect((await getLayoutFeatureFlags(createTestLocals())).statusPageUrl).toBe("https://status.example.org");
+		} finally {
+			for (const [k, v] of [["ALPHA_EDITION", saved.e], ["STATUS_PAGE_URL", saved.u]] as const) {
+				if (v === undefined) delete process.env[k];
+				else process.env[k] = v;
+			}
+		}
 	});
 
 	it("getLayoutUser maps logged-in user", async () => {
@@ -250,6 +270,62 @@ describe("layoutData", () => {
 		expect(sidebar[0].title).toBe("Hello");
 		expect(sidebar[0].id).toBe(conversations[0]._id.toString());
 		expect(sidebar[0].updatedAt).toBeInstanceOf(Date);
+	});
+
+	it("getLayoutConversations lists a pinned chat first and keeps an archived chat out of the list", async () => {
+		const locals = createTestLocals({ sessionId: "guest-session-pin" });
+		await createTestConversation(locals, { title: "newest", updatedAt: new Date("2026-03-01") });
+		const pinned = await createTestConversation(locals, {
+			title: "pinned old",
+			updatedAt: new Date("2026-01-01"),
+			pinned: true,
+		});
+		await createTestConversation(locals, { title: "archived", archived: true });
+
+		const { conversations } = await getLayoutConversations(locals, 0);
+		expect(conversations.map((c) => c.title)).toEqual(["pinned old", "newest"]);
+		expect(conversations[0]._id.toString()).toBe(pinned._id.toString());
+		expect(conversations[0].pinned).toBe(true);
+
+		const archived = await getLayoutConversations(locals, 0, null, "archived");
+		expect(archived.conversations.map((c) => c.title)).toEqual(["archived"]);
+	});
+
+	it("pages the archived list by cursor, so unarchiving a row between pages skips none", async () => {
+		const locals = createTestLocals({ sessionId: "guest-session-archived-cursor" });
+		const total = CONV_NUM_PER_PAGE * 2 + 5;
+		// Two chats share one instant, straddling the first page boundary, to pin the tie-break on id.
+		const tie = new Date("2026-02-01T00:00:00.000Z");
+		for (let i = 0; i < total; i++) {
+			const atBoundary = i === CONV_NUM_PER_PAGE - 1 || i === CONV_NUM_PER_PAGE;
+			await createTestConversation(locals, {
+				title: `a${i}`,
+				archived: true,
+				updatedAt: atBoundary ? tie : new Date(Date.UTC(2026, 0, 1) + (total - i) * 60_000),
+			});
+		}
+		const all = await getLayoutConversations(locals, 0, null, "archived");
+		expect(all.hasMore).toBe(true);
+		const first = all.conversations;
+		const last = first[first.length - 1];
+		const cursor = { updatedAt: new Date(last.updatedAt), id: last._id.toString() };
+
+		// The server list shortens by one before the next page is asked for.
+		await collections.conversations.updateOne({ _id: first[0]._id }, { $set: { archived: false } });
+
+		const seen = new Set(first.map((c) => c._id.toString()));
+		let next = await getLayoutConversations(locals, 0, null, "archived", cursor);
+		for (;;) {
+			for (const c of next.conversations) seen.add(c._id.toString());
+			if (!next.hasMore) break;
+			const l = next.conversations[next.conversations.length - 1];
+			next = await getLayoutConversations(locals, 0, null, "archived", {
+				updatedAt: new Date(l.updatedAt),
+				id: l._id.toString(),
+			});
+		}
+		// Every archived chat is seen exactly once across the pages, including the unarchived one from page 0.
+		expect(seen.size).toBe(total);
 	});
 
 	it("mapConversationsForSidebar falls back to default model id", () => {

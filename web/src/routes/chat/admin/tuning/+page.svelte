@@ -1,6 +1,7 @@
 <!-- Admin tuning panel (session-admin): overrides of the persona, grounding and decoding, stored in the
      database over the code defaults ($lib/chat/server/tuning.ts). -->
 <script lang="ts">
+	import { downloadBlob } from "$lib/chat/utils/downloadBlob";
 	import { enhance } from "$app/forms";
 	import { base } from "$lib/chat/paths";
 	import type { PageData, ActionData } from "./$types";
@@ -64,13 +65,10 @@
 
 	// Manual off-DB backup: download the current saved tuning (incl. history) as JSON.
 	function exportJson() {
-		const blob = new Blob([JSON.stringify(data.current, null, 2)], { type: "application/json" });
-		const url = URL.createObjectURL(blob);
-		const a = document.createElement("a");
-		a.href = url;
-		a.download = `tuning-backup-${(data.current.editedAt ?? "current").replace(/[:.]/g, "-")}.json`;
-		a.click();
-		URL.revokeObjectURL(url);
+		downloadBlob(
+			new Blob([JSON.stringify(data.current, null, 2)], { type: "application/json" }),
+			`tuning-backup-${(data.current.editedAt ?? "current").replace(/[:.]/g, "-")}.json`
+		);
 	}
 
 	const fmtWhen = (iso?: string) => (iso ? iso.replace("T", " ").slice(0, 16) + " UTC" : "unknown");

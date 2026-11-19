@@ -165,7 +165,7 @@ describe("finalizeMarkdown — a bare number with a period is text, not an empty
 });
 
 // A model that brackets a drafted letter in --- rules puts the closing one straight under
-// the signature, and CommonMark reads every line above it as one setext heading. (CUR-3662)
+// the signature, and CommonMark reads every line above it as one setext heading.
 describe("finalizeMarkdown — a multi-line setext heading is a paragraph and a rule", () => {
 	const render = (md: string) => marked.parse(finalizeMarkdown(md)) as string;
 

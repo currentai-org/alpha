@@ -88,7 +88,7 @@
 		// above, open upward instead, the panel's bottom on the trigger's top, so it stays attached.
 		// Capping the height at the space below would leave a trigger near the foot of the viewport (the
 		// account page's "Delete account") a few pixels of height and a scrollbar, so a person could confirm
-		// a deletion without reading it (CUR-1990).
+		// a deletion without reading it.
 		const below = vh - rect.bottom - MARGIN;
 		const above = rect.top - MARGIN;
 		// The panel's own border adds to its content, so the natural height includes it; otherwise the

@@ -17,7 +17,7 @@
 	 *
 	 * States the current associations plainly, straight from `routing/catalog.ts` (`MODEL_HOSTS`,
 	 * `DATA_HOME`) — edit them there, not here. A model with no host listed omits that row. An answer
-	 * names a host only from its routing record (`ran`), and says when none was recorded (CUR-3562).
+	 * names a host only from its routing record (`ran`), and says when none was recorded.
 	 */
 	let {
 		model,
@@ -28,9 +28,9 @@
 	}: {
 		model?: CatalogModel;
 		mode?: 'forecast' | 'answer';
-		/** Where this answer actually ran, from its routing record (`ranOn`); answer mode only (CUR-2921). */
+		/** Where this answer actually ran, from its routing record (`ranOn`); answer mode only. */
 		ran?: { label: string; org?: Org };
-		/** A signed-in account's conversations carry no expiry, so it is not told the guest clock (CUR-1731). */
+		/** A signed-in account's conversations carry no expiry, so it is not told the guest clock. */
 		signedIn?: boolean;
 		/** A hosted classifier that reads the draft before it is sent (Auto with `clef-routing` on). */
 		draftReadBy?: string;
@@ -56,7 +56,7 @@
 	const hostSentence = $derived(
 		around(
 			// The catalogue's planned host, before sending only: an answer names a host from its own
-			// routing record (CUR-3562), above.
+			// routing record, above.
 			host?.region
 				? m.message_runsOnIn({ host: '{host}', region: host.region })
 				: m.message_runsOn({ host: '{host}' }),
@@ -113,7 +113,7 @@
 			</div>
 		</div>
 	{:else if mode === 'answer'}
-		<!-- CUR-3562: an answer names a host only from its own routing record. The catalogue's host is
+		<!-- an answer names a host only from its own routing record. The catalogue's host is
 		     where the model is planned to run, and a direct lane or a fallback can serve it elsewhere. -->
 		<div class="flex gap-3" data-ran-on="not-recorded">
 			<RiServerLine aria-hidden="true" class="mt-0.5 size-4 shrink-0 text-fg-2" />

@@ -1,6 +1,6 @@
 // e2e-product: @chat
 // e2e-area: @agent
-// One chat turn that needs the web and then code gets both (CUR-4232). With `one-chat-sandbox` on, a native
+// One chat turn that needs the web and then code gets both. With `one-chat-sandbox` on, a native
 // turn on Large 3 has the conversation's sandbox (agent-service's /mcp/, no network) beside web search,
 // so a question about an event's place and date plus the days until it starts searches, then counts in run_code,
 // with no confirmation card. With the flag off the same turn offers no sandbox tool.
@@ -18,8 +18,11 @@ import { turnDone } from './helpers/turn';
 import { openStepByStep } from './helpers/xray';
 import { startChattingPastWelcome } from './helpers/welcome';
 
+// count to a fixed date, never to today. Asked "how many days from today", the answer went
+// negative once MozFest had started (28 October 2026), and a model then says it already happened
+// rather than counting, so the test went red on the calendar alone.
 const PROMPT =
-	'Where and when is MozFest 2026? Then work out exactly how many days from today until it starts, using code to count.';
+	'Where and when is MozFest 2026? Then work out exactly how many days there are from its first day until 1 January 2027, using code to count.';
 
 async function openComposer(page: Page): Promise<void> {
 	const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });
@@ -48,19 +51,8 @@ async function ask(page: Page): Promise<{ answer: string; trace: string }> {
 	return { answer, trace };
 }
 
-/** Days from today to 28 October 2026, in both the runner's UTC day and Pacific's, since the prompt's
- *  date line follows the visitor's time zone and the two differ for part of every day. */
-function expectedDays(): number[] {
-	const start = Date.UTC(2026, 9, 28);
-	const dayIn = (tz: string) => {
-		const [y, mo, d] = new Intl.DateTimeFormat('en-CA', { timeZone: tz })
-			.format(new Date())
-			.split('-')
-			.map(Number);
-		return Math.round((start - Date.UTC(y, mo - 1, d)) / 86_400_000);
-	};
-	return [...new Set([dayIn('UTC'), dayIn('America/Los_Angeles')])];
-}
+/** From MozFest 2026's first day, 28 October, to 1 January 2027. */
+const EXPECTED_DAYS = (Date.UTC(2027, 0, 1) - Date.UTC(2026, 9, 28)) / 86_400_000;
 
 test(
 	'with one-chat-sandbox on, a question needing the web and code searches, then runs code, in one turn with no card',
@@ -82,11 +74,9 @@ test(
 		);
 		expect(trace, 'the trace does not show what the code printed').toContain('stdout:');
 		expect(answer, 'the answer does not name where MozFest is').toMatch(/Barcelona/i);
-		const days = expectedDays();
-		expect(
-			days.some((n) => new RegExp(`\\b${n}\\s*days?\\b`, 'i').test(answer)),
-			`the answer does not give ${days.join(' or ')} days`
-		).toBe(true);
+		expect(answer, `the answer does not give ${EXPECTED_DAYS} days`).toMatch(
+			new RegExp(`\\b${EXPECTED_DAYS}\\s*days?\\b`, 'i')
+		);
 	}
 );
 

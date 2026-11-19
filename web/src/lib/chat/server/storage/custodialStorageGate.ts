@@ -1,17 +1,18 @@
 import { deployEnv } from "$lib/chat/server/deployEnv";
 import { flagEnabledForUser, flagEnabledOr } from "$lib/chat/server/flags";
+import { custodialBackendChosen } from "./custodialBackend";
 
-// CUR-899 built the custodial storage server module; CUR-1276 builds its front door. This gate is
-// what stands in front of both.
+// This gate stands in front of the custodial storage server module and of the /chat/storage routes
+// that expose it.
 //
 // WHY THIS IS PER-USER AND ASYNC
 //
 // `flagEnabledOr` is the DEPLOYMENT-level primitive: sync, off one fixed distinctId and a polled
 // snapshot. That is the wrong shape for this feature: a surface that writes real files into a bucket
 // held by ONE shared credential should reach named testers first, not every visitor on an
-// environment at once (CUR-1276).
+// environment at once.
 //
-// So this gate uses `flagEnabledForUser` (flags.ts, CUR-121): a live per-person evaluation whose answer
+// So this gate uses `flagEnabledForUser` (flags.ts): a live per-person evaluation whose answer
 // is decided by the account id, with the release condition set in PostHog's own flag UI rather than
 // in code. Nothing here needs to change to add or remove a tester.
 //
@@ -20,7 +21,7 @@ import { flagEnabledForUser, flagEnabledOr } from "$lib/chat/server/flags";
 // `accountId` must be `locals.user._id` — the 24-hex account id, never anything the client supplies.
 // It is the hash input PostHog decides the answer from, so an id built from a visitor-supplied
 // string makes the flag answer a question about a CLAIM rather than about a PERSON. flags.ts keeps a
-// note on this so a per-person gate is not built on a visitor-supplied id (CUR-1278).
+// note on this so a per-person gate is not built on a visitor-supplied id.
 //
 // WHY IT FAILS CLOSED
 //
@@ -44,27 +45,33 @@ export const CUSTODIAL_STORAGE_VIEW_FLAG = "custodial-storage-view";
  * a hot path; every caller here is already doing bucket I/O and a network round-trip is in the noise.
  *
  * @param accountId `locals.user._id` as a string. Never a client-supplied value.
- * @returns `true` only when PostHog said so. An unevaluable flag is `false`, not "probably fine".
+ * @returns `true` only when this deployment has a bucket and PostHog said so. An unevaluable flag is
+ * `false`, not "probably fine".
  */
 export async function custodialStorageViewEnabledForUser(accountId: string): Promise<boolean> {
+	// No store on this deployment (HF_BUCKETS_REPO unset off production, or a self-host's backend
+	// misconfigured) is no surface, whatever the flag says; the backend logs why once.
+	if (!custodialBackendChosen()) return false;
 	// `?? "unknown"` because deployEnv() is nullable and personProperties is not: an unconfigured
 	// environment must still evaluate, against a property value that plainly reads as "we could not
 	// tell" rather than silently matching a real env name in some release condition.
-	const enabled = await flagEnabledForUser(CUSTODIAL_STORAGE_VIEW_FLAG, accountId, {
-		env: deployEnv() ?? "unknown",
-	});
-	return enabled === true;
+	return flagEnabledForUser(
+		CUSTODIAL_STORAGE_VIEW_FLAG,
+		accountId,
+		{ env: deployEnv() ?? "unknown" },
+		() => false
+	);
 }
 
 /**
- * Is a guest's chat attachment kept in the bucket (CUR-2183)? The same flag, read at deployment level
+ * Is a guest's chat attachment kept in the bucket? The same flag, read at deployment level
  * rather than per person: a guest's id is a hash of a cookie the visitor holds, the client-held
- * value the section above rules out as a per-person hash input. On in preview and off in production
- * for an anonymous visitor today. Off until the first flag poll succeeds; after that, an unreachable PostHog
+ * value the section above rules out as a per-person hash input. Off until the first flag poll succeeds; after that, an unreachable PostHog
  * keeps the last value read. Because this reads the deployment-level value, a production condition
  * that enables the flag for everyone also keeps every guest's attachments; one scoped to accounts
  * does not.
  */
 export function custodialStorageForGuestsEnabled(): boolean {
+	if (!custodialBackendChosen()) return false;
 	return flagEnabledOr(CUSTODIAL_STORAGE_VIEW_FLAG, () => false);
 }

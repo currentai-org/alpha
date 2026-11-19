@@ -75,7 +75,7 @@ describe("deadline ladder ordering", () => {
 
 	// A local (LAN/self-hosted) model's cold-start load time has nothing to do with the
 	// primary gateway's own measured latency, so it gets the SAME longer ceiling agent turns already
-	// use — not a fresh, unvetted number of its own. (CUR-1194)
+	// use — not a fresh, unvetted number of its own.
 	test("the local-model default equals the agent default — the safe ceiling, not a new number", () => {
 		expect(DEFAULT_LOCAL_GENERATION_TIMEOUT_MS).toBe(DEFAULT_AGENT_GENERATION_TIMEOUT_MS);
 		expect(DEFAULT_LOCAL_GENERATION_TIMEOUT_MS).toBe(MAX_SAFE_GENERATION_TIMEOUT_MS);
@@ -133,7 +133,7 @@ describe("deadline ladder ordering", () => {
 		// If these ever converge, the split has silently collapsed back to one number and whichever
 		// way it collapsed is a regression: at the agent's value a hung ordinary turn holds a spinner
 		// ~3x longer for no gain, and at the ordinary value agent work that is already finished and
-		// verified is killed (CUR-144).
+		// verified is killed.
 		expect(DEFAULT_GENERATION_TIMEOUT_MS).toBeLessThan(DEFAULT_AGENT_GENERATION_TIMEOUT_MS);
 	});
 
@@ -227,8 +227,8 @@ describe("resolveGenerationTimeoutMs", () => {
 
 // A turn was killed by the silence watchdog while its agent-confirm card was still open —
 // nobody had answered yet, which produces exactly the zero-token silence this watchdog exists to catch,
-// for a reason that isn't a hang. isSilentStall is the guard; these pin its two failure directions. (CUR-1085)
-describe("isSilentStall (CUR-1085)", () => {
+// for a reason that isn't a hang. isSilentStall is the guard; these pin its two failure directions.
+describe("isSilentStall", () => {
 	const silenceTimeoutMs = 45_000;
 
 	test("a real stall past the threshold fires, same as before this ticket", () => {
@@ -279,7 +279,7 @@ describe("isSilentStall (CUR-1085)", () => {
 });
 
 // The generation clock starts when the input screen ends, so the screen's time is a new
-// spend inside the invocation. It must come out of MAX_SAFE, or both invariants above break. (CUR-3749)
+// spend inside the invocation. It must come out of MAX_SAFE, or both invariants above break.
 describe("screenAllowanceMs: the input screen's time never pushes a turn past MAX_SAFE", () => {
 	test("screen plus generation stays inside MAX_SAFE for every watchdog the ladder allows", () => {
 		for (let gen = 1_000; gen <= MAX_SAFE_GENERATION_TIMEOUT_MS; gen += 1_000) {
@@ -310,7 +310,7 @@ describe("screenDeadlineCapMs: a turn whose clock won't wait for the screen keep
 	});
 });
 
-describe("isStillStreaming: only a turn with a recent token gets the CUR-4009 extension", () => {
+describe("isStillStreaming: only a turn with a recent token gets the extension", () => {
 	test("a token 3s ago is still streaming", () => {
 		expect(isStillStreaming({ now: 50_000, lastTokenAt: 47_000 })).toBe(true);
 	});
@@ -320,7 +320,7 @@ describe("isStillStreaming: only a turn with a recent token gets the CUR-4009 ex
 	test("no token at all (still waiting on the first) is not streaming", () => {
 		expect(isStillStreaming({ now: 50_000, lastTokenAt: undefined })).toBe(false);
 	});
-	// A model can hold 37 s of output with no visible token yet (CUR-4188).
+	// A model can hold 37 s of output with no visible token yet.
 	test("held model output 1s ago with no visible token yet still counts as streaming", () => {
 		expect(isStillStreaming({ now: 45_000, lastTokenAt: undefined, lastModelOutputAt: 44_000 })).toBe(true);
 	});
@@ -335,7 +335,7 @@ describe("isStillStreaming: only a turn with a recent token gets the CUR-4009 ex
 	});
 });
 
-describe("withModelFloor (CUR-4403)", () => {
+describe("withModelFloor", () => {
 	const fleet = resolveGenerationTimeoutMs(undefined, DEFAULT_GENERATION_TIMEOUT_MS);
 
 	test("keeps the fleet value byte for byte for a model with no floor of its own", () => {

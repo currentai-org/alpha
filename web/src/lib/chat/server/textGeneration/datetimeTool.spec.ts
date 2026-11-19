@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nextWeekendLine, runDatetime, todayLine } from "./datetimeTool";
+import { nextWeekendLine, placeClocksLine, runDatetime, todayLine, zonesNamedIn } from "./datetimeTool";
 import { nativeToolKit } from "./nativeTools";
 
 // 2026-10-01 is a Thursday. 22:30 UTC is already Friday in Tokyo and still Thursday in New York.
@@ -10,7 +10,7 @@ const call = (args: object | string) => ({
 	arguments: typeof args === "string" ? args : JSON.stringify(args),
 });
 
-describe("current_datetime (CUR-2276)", () => {
+describe("current_datetime", () => {
 	it("reads the clock in the user's zone when the model names none", () => {
 		expect(runDatetime(call({}), "Europe/Zurich", NOW).content).toBe(
 			"Friday 2026-10-02 00:30 in Europe/Zurich (UTC+02:00). UTC now: 2026-10-01T22:30Z. The next Saturday after today is Saturday, 3 October 2026, and the next Sunday after today is Sunday, 4 October 2026."
@@ -53,7 +53,7 @@ describe("current_datetime (CUR-2276)", () => {
 	});
 });
 
-describe("current_datetime's day count (CUR-2276)", () => {
+describe("current_datetime's day count", () => {
 	// A model that sums month lengths itself can say 69 days from 16 October to Christmas; 70 is right.
 	const OCT16 = new Date("2026-10-16T14:26:00Z");
 
@@ -86,7 +86,7 @@ describe("current_datetime's day count (CUR-2276)", () => {
 	});
 });
 
-describe("current_datetime's weekend (CUR-4164)", () => {
+describe("current_datetime's weekend", () => {
 	// 01:35 UTC on 18 October is Sunday in Auckland and still Saturday the 17th in Los Angeles.
 	const SUNDAY_AUCKLAND = new Date("2026-10-18T01:35:00Z");
 
@@ -114,7 +114,7 @@ describe("current_datetime's weekend (CUR-4164)", () => {
 	});
 });
 
-describe("the prompt's date line (CUR-2276)", () => {
+describe("the prompt's date line", () => {
 	it("names the weekday and date in the visitor's zone, which can be a day ahead of UTC", () => {
 		expect(todayLine("Asia/Tokyo", NOW)).toBe("Friday, 2 October 2026 (Asia/Tokyo)");
 		expect(todayLine("America/New_York", NOW)).toBe("Thursday, 1 October 2026 (America/New_York)");
@@ -131,5 +131,40 @@ describe("the prompt's date line (CUR-2276)", () => {
 	it("falls back to UTC, and says so, for a missing or made-up zone", () => {
 		expect(todayLine(undefined, NOW)).toBe("Thursday, 1 October 2026 (UTC)");
 		expect(todayLine("Mars/Olympus", NOW)).toBe("Thursday, 1 October 2026 (UTC)");
+	});
+});
+
+// Given only the UTC clock, a model can get the offset arithmetic wrong when asked for the time in
+// another city, so the server supplies each named city's clock.
+describe("zonesNamedIn and placeClocksLine — the clock for each place a question names", () => {
+	it("finds each named city's IANA zone in the order named, multi-word names included", () => {
+		expect(zonesNamedIn("I'm in Honolulu. What day and time is it in Auckland right now?")).toEqual([
+			"Pacific/Honolulu",
+			"Pacific/Auckland",
+		]);
+		expect(zonesNamedIn("Is it morning in New York or in Los Angeles?")).toEqual([
+			"America/New_York",
+			"America/Los_Angeles",
+		]);
+		expect(zonesNamedIn("What time is it in Auckland's harbour?")).toEqual(["Pacific/Auckland"]);
+	});
+
+	it("returns no zone (the model's own UTC arithmetic stays the fallback) when no city is named or it is not written as a name", () => {
+		expect(zonesNamedIn("What is today's date?")).toEqual([]);
+		expect(zonesNamedIn("what time is it in new york")).toEqual([]);
+		expect(zonesNamedIn("Center the title, then Wake me at six")).toEqual([]);
+		// A city inside a longer name, a holiday, a person's name: none is a place asked about.
+		expect(zonesNamedIn("What time is it in New Jersey?")).toEqual([]);
+		expect(zonesNamedIn("How many days until Christmas in London?")).toEqual(["Europe/London"]);
+		expect(zonesNamedIn("Is Easter late this year? Ask Casey Davis or Regina.")).toEqual([]);
+		expect(zonesNamedIn("Tickets for Tokyo Tower")).toEqual([]);
+		expect(zonesNamedIn(undefined)).toEqual([]);
+	});
+
+	it("names each place's own weekday, date, clock and offset, read for that zone, not the person's", () => {
+		const line = placeClocksLine(["Pacific/Auckland"], new Date("2026-11-07T07:15:00Z"));
+		expect(line).toContain("Saturday 2026-11-07 20:15 in Pacific/Auckland (UTC+13:00), which is 8:15 pm there");
+		expect(placeClocksLine([], NOW)).toBe("");
+		expect(placeClocksLine(["Mars/Olympus"], NOW)).toBe("");
 	});
 });

@@ -1,11 +1,11 @@
-// This module is what makes assertOwnership live-reachable (CUR-899), so these tests focus on the
+// This module is what makes assertOwnership live-reachable, so these tests focus on the
 // ownership boundary actually holding, not just the happy path. @huggingface/hub is mocked;
 // custodialBucket.ts's real path/ownership logic is not.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-/** Real PDFs (CUR-987): a PDF is now opened and its pictures scanned, so a stub byte string named
+/** Real PDFs: the upload path opens a PDF and scans its pictures, so a stub byte string named
  *  .pdf is refused as unreadable. Synthetic files from fixtures/embedded-images. */
 const pdfFixture = (name: string) =>
 	new Blob([readFileSync(fileURLToPath(new URL(`../fixtures/embedded-images/${name}`, import.meta.url)))]);
@@ -27,16 +27,16 @@ vi.mock("@huggingface/hub", async (importOriginal) => ({
 
 // Mocked here (not the real DB-backed module) so these tests assert the call site, matching
 // alerting.spec.ts's own thorough coverage of recordRateLimitTrip's actual fire/debounce logic rather
-// than duplicating it — same posture as rateLimit.spec.ts for CUR-1134. (CUR-1135)
+// than duplicating it, the same posture as chat/rateLimit.spec.ts.
 const { recordRateLimitTrip, clearRateLimitTrip, recordCsamMatch } = vi.hoisted(() => ({
 	recordRateLimitTrip: vi.fn((_key: string, _opts: { limitName: string; identity: string }) => Promise.resolve()),
 	// Same posture as recordRateLimitTrip above — asserts the call site, not
-	// clearRateLimitTrip's own decay logic, which alerting.spec.ts covers directly. (CUR-1318)
+	// clearRateLimitTrip's own decay logic, which alerting.spec.ts covers directly.
 	clearRateLimitTrip: vi.fn((_key: string) => Promise.resolve()),
-	// Same posture again — asserts the call site, not recordCsamMatch's own alert formatting. (CUR-1136)
+	// Same posture again — asserts the call site, not recordCsamMatch's own alert formatting.
 	recordCsamMatch: vi.fn((_identity: string, _details: unknown) => Promise.resolve()),
 }));
-// The wipe destroys the owner's key under the Postgres advisory lock (CUR-4117); this spec has no
+// The wipe destroys the owner's key under the Postgres advisory lock; this spec has no
 // database, and advisoryLock.spec.ts covers the lock itself.
 vi.mock("$lib/chat/server/db/advisoryLock", () => ({ withAdvisoryLock: <T>(_name: string, fn: () => Promise<T>) => fn() }));
 vi.mock("$lib/chat/server/alerting", () => ({
@@ -52,7 +52,7 @@ vi.mock("$lib/chat/server/moderation", () => ({ reportCsamMatchToCoop, reportHit
 
 // The Shieldstral child-safety screen, stubbed so these tests assert the call site and what
 // a refusal does to storage. uploadImageGuard.spec.ts covers the screen itself. The error classes stay
-// real, because custodialStorage branches on `instanceof`. (CUR-3201)
+// real, because custodialStorage branches on `instanceof`.
 const { screenStoredImages } = vi.hoisted(() => ({
 	screenStoredImages: vi.fn((_images: Uint8Array[]) => Promise.resolve()),
 }));
@@ -63,7 +63,7 @@ vi.mock("./uploadImageGuard", async () => {
 
 // scanCsamHash is mocked per-test to control skipped/clean/match/unreachable without a real
 // HMA instance; HmaUnreachableError stays the REAL class (vi.importActual) because these tests assert
-// `instanceof` against it. (CUR-1136)
+// `instanceof` against it.
 const scanCsamHash = vi.fn();
 const scanner = { configured: true };
 vi.mock("./csamScan", async () => {
@@ -85,11 +85,12 @@ async function* asyncGen<T>(items: T[]): AsyncGenerator<T> {
 }
 
 beforeEach(() => {
-	// The module keeps each owner's quota listing for a minute, so each test imports it fresh. (CUR-3682)
+	// The module keeps each owner's quota listing for a minute, so each test imports it fresh.
 	vi.resetModules();
 	for (const k of Object.keys(cfg)) delete cfg[k];
+	cfg.CUSTODIAL_STORAGE_BACKEND = "hf";
 	cfg.HF_BUCKETS_TOKEN = "hf_test_token";
-	// Named explicitly: an unset bucket is refused off production (CUR-4114), tested on its own below.
+	// Named explicitly: an unset bucket is refused off production, tested on its own below.
 	cfg.HF_BUCKETS_REPO = REPO;
 	listFiles.mockReset();
 	uploadFile.mockReset();
@@ -116,7 +117,7 @@ describe("bucketAccessToken — fails loud, not open", () => {
 	});
 });
 
-// Preview holds its files in its own bucket under its own token, so the bucket is config. (CUR-1288)
+// Preview holds its files in its own bucket under its own token, so the bucket is config.
 describe("custodialBucketRepo — the configured bucket, or production's, never a guess", () => {
 	it("uses production's bucket when HF_BUCKETS_REPO is unset on a production deployment", async () => {
 		delete cfg.HF_BUCKETS_REPO;
@@ -129,7 +130,7 @@ describe("custodialBucketRepo — the configured bucket, or production's, never 
 	});
 
 	// A deployment with no HF_BUCKETS_REPO must not read production's bucket. Only production
-	// may fall back; every other deployment, and one that declares no environment, refuses by name. (CUR-4114)
+	// may fall back; every other deployment, and one that declares no environment, refuses by name.
 	it.each([
 		["a preview", "preview"],
 		["a development", "development"],
@@ -205,7 +206,7 @@ describe("listCustodialFiles", () => {
 		expect(result).toEqual([{ type: "file", path: `users/${ME}/documents/a.pdf`, size: 1, uploadedAt: "t" }]);
 	});
 
-	it("throws rather than return an entry belonging to a different user, even if the underlying query somehow scoped wrong (CUR-928 is what this actually depends on)", async () => {
+	it("throws rather than return an entry belonging to a different user, even if the underlying query somehow scoped wrong ( is what this actually depends on)", async () => {
 		listFiles.mockReturnValue(
 			asyncGen([{ type: "file", path: `users/${OTHER}/documents/a.pdf`, size: 1, uploadedAt: "t" }])
 		);
@@ -222,7 +223,7 @@ describe("listCustodialFiles", () => {
 
 describe("uploadCustodialFile", () => {
 	it("resolves the path under the caller's own folder and uploads there", async () => {
-		// The upload path now lists the caller's files to measure the quota before writing. (CUR-1129)
+		// The upload path lists the caller's files to measure the quota before writing.
 		listFiles.mockReturnValue(asyncGen([]));
 		const { uploadCustodialFile } = await import("./custodialStorage");
 		const blob = pdfFixture("text-only.pdf");
@@ -248,8 +249,8 @@ describe("uploadCustodialFile", () => {
 
 // Listing the owner's whole tree to measure the quota on every upload would spend a call on
 // the shared storage token each time. A listing is reused for a minute, kept current with this
-// instance's own writes and deletes, and a refusal is always made on a fresh one. (CUR-3682)
-describe("upload quota — reuses a recent listing instead of listing on every upload (CUR-3682)", () => {
+// instance's own writes and deletes, and a refusal is always made on a fresh one.
+describe("upload quota — reuses a recent listing instead of listing on every upload", () => {
 	const stored = (rel: string, size: number) => ({ type: "file", path: `users/${ME}/${rel}`, size, uploadedAt: "t" });
 
 	const many = (n: number) => Array.from({ length: n }, (_, i) => stored(`documents/f${i}.txt`, 1));
@@ -323,9 +324,9 @@ describe("upload quota — reuses a recent listing instead of listing on every u
 
 // PDQ hash-match prewiring. scanCsamHash itself is mocked (see top of file) — these tests
 // cover uploadCustodialFile's reaction to each CsamScanResult, not HMA's own hashing/matching, which
-// csamScan.spec.ts and a live probe against web/hma/ cover separately. (CUR-1136)
-describe("uploadCustodialFile — CSAM scan (CUR-1136, fail closed per CUR-2382)", () => {
-	it("refuses an image from an account the multimodal flag does not select, before scanning or storing it (CUR-2725)", async () => {
+// csamScan.spec.ts and a live probe against web/hma/ cover separately.
+describe("uploadCustodialFile — CSAM scan ( fail closed per )", () => {
+	it("refuses an image from an account the multimodal flag does not select, before scanning or storing it", async () => {
 		listFiles.mockReturnValue(asyncGen([]));
 		const { uploadCustodialFile, ImageInputNotAllowedError } = await import("./custodialStorage");
 		// Named like a text file: the refusal reads the bytes, so a renamed image is still refused.
@@ -336,7 +337,7 @@ describe("uploadCustodialFile — CSAM scan (CUR-1136, fail closed per CUR-2382)
 		expect(uploadFile).not.toHaveBeenCalled();
 	});
 
-	it("still stores a non-image for that account, and an image when the flag selects it (CUR-2725)", async () => {
+	it("still stores a non-image for that account, and an image when the flag selects it", async () => {
 		listFiles.mockReturnValue(asyncGen([]));
 		const { uploadCustodialFile } = await import("./custodialStorage");
 		await uploadCustodialFile(ME, "documents/report.pdf", pdfFixture("text-only.pdf"), { imagesAllowed: false });
@@ -345,7 +346,7 @@ describe("uploadCustodialFile — CSAM scan (CUR-1136, fail closed per CUR-2382)
 		expect(uploadFile).toHaveBeenCalledTimes(2);
 	});
 
-	it("refuses every file, even a text one, and writes nothing when no scanner is configured (CUR-2382 fail closed)", async () => {
+	it("refuses every file, even a text one, and writes nothing when no scanner is configured ( fail closed)", async () => {
 		scanner.configured = false;
 		listFiles.mockReturnValue(asyncGen([]));
 		const { uploadCustodialFile } = await import("./custodialStorage");
@@ -357,7 +358,7 @@ describe("uploadCustodialFile — CSAM scan (CUR-1136, fail closed per CUR-2382)
 		expect(scanCsamHash).not.toHaveBeenCalled();
 	});
 
-	it("sends a photo to the scanner, and a PDF by each picture inside it, never skipping one (CUR-987)", async () => {
+	it("sends a photo to the scanner, and a PDF by each picture inside it, never skipping one", async () => {
 		scanCsamHash.mockResolvedValue({ status: "clean" });
 		listFiles.mockReturnValue(asyncGen([]));
 		const { uploadCustodialFile } = await import("./custodialStorage");
@@ -374,7 +375,7 @@ describe("uploadCustodialFile — CSAM scan (CUR-1136, fail closed per CUR-2382)
 		expect(uploadFile).toHaveBeenCalledTimes(3);
 	});
 
-	it("refuses an iPhone HEIC as an unsupported type, never as a scanner outage, without calling the scanner or writing (CUR-4665)", async () => {
+	it("refuses an iPhone HEIC as an unsupported type, never as a scanner outage, without calling the scanner or writing", async () => {
 		// The scanner answers HTTP 500 to these bytes, which read as "try again in a minute" forever.
 		listFiles.mockReturnValue(asyncGen([]));
 		const { uploadCustodialFile, UnsupportedFileTypeError } = await import("./custodialStorage");
@@ -385,7 +386,7 @@ describe("uploadCustodialFile — CSAM scan (CUR-1136, fail closed per CUR-2382)
 		expect(uploadFile).not.toHaveBeenCalled();
 	});
 
-	it("refuses a PDF unopened for an account document-attachments does not select, and writes nothing (CUR-987)", async () => {
+	it("refuses a PDF unopened for an account document-attachments does not select, and writes nothing", async () => {
 		listFiles.mockReturnValue(asyncGen([]));
 		const { uploadCustodialFile, DocumentInputNotAllowedError } = await import("./custodialStorage");
 		await expect(
@@ -395,7 +396,7 @@ describe("uploadCustodialFile — CSAM scan (CUR-1136, fail closed per CUR-2382)
 		expect(uploadFile).not.toHaveBeenCalled();
 	});
 
-	it("refuses a PDF whose picture cannot be decoded, and writes nothing (CUR-987, fail closed)", async () => {
+	it("refuses a PDF whose picture cannot be decoded, and writes nothing ( fail closed)", async () => {
 		scanCsamHash.mockResolvedValue({ status: "clean" });
 		listFiles.mockReturnValue(asyncGen([]));
 		const { uploadCustodialFile } = await import("./custodialStorage");
@@ -445,7 +446,7 @@ describe("uploadCustodialFile — CSAM scan (CUR-1136, fail closed per CUR-2382)
 		expect(listFiles).not.toHaveBeenCalled();
 	});
 
-	it("match: files a Coop report against the quarantined copy, as chat's upload guard does (CUR-2382)", async () => {
+	it("match: files a Coop report against the quarantined copy, as chat's upload guard does", async () => {
 		scanCsamHash.mockResolvedValue({
 			status: "match",
 			bankName: "JUPITER_TEST_BANK",
@@ -465,7 +466,7 @@ describe("uploadCustodialFile — CSAM scan (CUR-1136, fail closed per CUR-2382)
 		});
 	});
 
-	it("scanner-down fault: refuses an image as unreachable and writes nothing, without calling HMA (CUR-2382)", async () => {
+	it("scanner-down fault: refuses an image as unreachable and writes nothing, without calling HMA", async () => {
 		const { HmaUnreachableError } = await import("./csamScan");
 		const { uploadCustodialFile } = await import("./custodialStorage");
 		await expect(
@@ -476,7 +477,7 @@ describe("uploadCustodialFile — CSAM scan (CUR-1136, fail closed per CUR-2382)
 		expect(reportCsamMatchToCoop).not.toHaveBeenCalled();
 	});
 
-	it("sends a photo to the scanner, and a PDF by each picture inside it, never skipping one (CUR-987)", async () => {
+	it("sends a photo to the scanner, and a PDF by each picture inside it, never skipping one", async () => {
 		scanCsamHash.mockResolvedValue({ status: "clean" });
 		listFiles.mockReturnValue(asyncGen([]));
 		const { uploadCustodialFile } = await import("./custodialStorage");
@@ -505,7 +506,7 @@ describe("uploadCustodialFile — CSAM scan (CUR-1136, fail closed per CUR-2382)
 	});
 });
 
-describe("listCustodialFiles — quarantine exclusion (CUR-1136)", () => {
+describe("listCustodialFiles — quarantine exclusion", () => {
 	it("never returns an entry under the caller's own quarantine/ folder", async () => {
 		listFiles.mockReturnValue(
 			asyncGen([
@@ -521,8 +522,8 @@ describe("listCustodialFiles — quarantine exclusion (CUR-1136)", () => {
 
 // A quarantine path is deterministic and guessable by the very person it's
 // meant to stop (their own filename, at an upload time they know) — listing exclusion alone doesn't
-// block a direct download/delete call against a guessed or previously-seen quarantine path. (CUR-1136)
-describe("downloadCustodialFile / deleteCustodialFile — cannot reach the caller's own quarantine/ (CUR-1136)", () => {
+// block a direct download/delete call against a guessed or previously-seen quarantine path.
+describe("downloadCustodialFile / deleteCustodialFile — cannot reach the caller's own quarantine/", () => {
 	it("refuses to download the caller's own quarantined path, without calling downloadFile", async () => {
 		const { downloadCustodialFile } = await import("./custodialStorage");
 		await expect(downloadCustodialFile(ME, `users/${ME}/quarantine/1700000000000-bad.png`)).rejects.toThrow(
@@ -541,8 +542,8 @@ describe("downloadCustodialFile / deleteCustodialFile — cannot reach the calle
 });
 
 // The same refusal must hold when a `..` segment walks back into quarantine/. The ownership
-// check normalizes, so the quarantine check has to as well, or the pair disagree about the path. (CUR-3180)
-describe("downloadCustodialFile / deleteCustodialFile — a dot segment cannot walk into quarantine/ (CUR-3180)", () => {
+// check normalizes, so the quarantine check has to as well, or the pair disagree about the path.
+describe("downloadCustodialFile / deleteCustodialFile — a dot segment cannot walk into quarantine/", () => {
 	const WALKED = `users/${ME}/documents/../quarantine/1700000000000-bad.png`;
 
 	it("refuses to download a path that resolves into the caller's quarantine/ through `..`, without calling downloadFile", async () => {
@@ -558,9 +559,9 @@ describe("downloadCustodialFile / deleteCustodialFile — a dot segment cannot w
 	});
 });
 
-// CUR-3180 review: the library refuses every form a URL parser would resolve differently, so a
+// The library refuses every form a URL parser would resolve differently, so a
 // caller other than the route gets the same protection. posix.normalize sees none of these.
-describe("downloadCustodialFile / deleteCustodialFile — encoded dot segments and backslashes are refused (CUR-3180)", () => {
+describe("downloadCustodialFile / deleteCustodialFile — encoded dot segments and backslashes are refused", () => {
 	const FORMS = [
 		`users/${ME}/x/%2e%2e/quarantine/1700000000000-bad.png`,
 		`users/${ME}/x/.%2e/quarantine/1700000000000-bad.png`,
@@ -616,7 +617,7 @@ describe("downloadCustodialFile / deleteCustodialFile — re-verify ownership of
 });
 
 // The recordings sit at the bucket root beside users/, read with no
-// session. The guarantee is that this reader cannot be walked into a person's folder. (CUR-2183)
+// session. The guarantee is that this reader cannot be walked into a person's folder.
 describe("readJourneyRecording — reads journey-gallery/ and nothing else", () => {
 	it("reads a recording under journey-gallery/", async () => {
 		downloadFile.mockResolvedValue(new Blob(["webm"]));
@@ -651,9 +652,9 @@ describe("readJourneyRecording — reads journey-gallery/ and nothing else", () 
 // The limits. Named for the CONTRACT rather than the behaviour, per this repo's rule —
 // "refuses" and "does not reach the bucket" are the guarantees; "returns" would pass forever while
 // guaranteeing nothing. Every one of these asserts the hub was NOT called, because a limit that
-// rejects after the write has already landed is not a limit. (CUR-1129)
+// rejects after the write has already landed is not a limit.
 // A guest's attachments live under guests/<sessionId>/, written with the same shared token
-// as everyone's files. These hold the line between a guest and every other owner. (CUR-2183)
+// as everyone's files. These hold the line between a guest and every other owner.
 describe("storeChatAttachment for a guest — writes only under its own guests/<sessionId>/", () => {
 	const SID = "a".repeat(64);
 	const OTHER_SID = "b".repeat(64);
@@ -713,7 +714,7 @@ describe("storeChatAttachment for a guest — writes only under its own guests/<
 	});
 });
 
-// On sign-in a guest's files move to the account, copy first and delete second. (CUR-2183)
+// On sign-in a guest's files move to the account, copy first and delete second.
 describe("moveGuestFilesToUser — copies to users/<id>/ at the same path, then deletes the guest copy", () => {
 	const SID = "c".repeat(64);
 	const guestFile = (rel: string) => ({ type: "file", path: `guests/${SID}/${rel}`, size: 5, uploadedAt: "t" });
@@ -800,7 +801,7 @@ describe("moveGuestFilesToUser — copies to users/<id>/ at the same path, then 
 	});
 });
 
-// Each guest file expires 30 days after its own upload, never by conversation activity. (CUR-2183)
+// Each guest file expires 30 days after its own upload, never by conversation activity.
 describe("sweepExpiredGuestFiles — deletes guest files past retention by their own upload time", () => {
 	const DAY = 24 * 60 * 60 * 1000;
 	const NOW = new Date("2026-10-31T00:00:00Z");
@@ -845,6 +846,27 @@ describe("sweepExpiredGuestFiles — deletes guest files past retention by their
 		expect(await sweepExpiredGuestFiles(30 * DAY, NOW)).toEqual({ deleted: 0, failed: 0, undated: 1 });
 		expect(deleteFile).not.toHaveBeenCalled();
 	});
+	// Conversation expiry sweeps signed-in people's My files on the same rule.
+	it("with root users, deletes a My files file uploaded more than 30 days ago, keeps a younger one, and keeps quarantine", async () => {
+		listFiles.mockReturnValue(
+			asyncGen([
+				entry("documents/old.pdf", "2026-09-30T00:00:00Z", `users/${ME}`),
+				entry("documents/new.pdf", "2026-10-30T00:00:00Z", `users/${ME}`),
+				entry("quarantine/1-x.png", "2020-01-01T00:00:00Z", `users/${ME}`),
+			])
+		);
+		const { sweepExpiredGuestFiles } = await import("./custodialStorage");
+		expect(await sweepExpiredGuestFiles(30 * DAY, NOW, "users")).toEqual({ deleted: 1, failed: 0, undated: 0 });
+		expect(deleteFile).toHaveBeenCalledOnce();
+		expect(deleteFile).toHaveBeenCalledWith(expect.objectContaining({ path: `users/${ME}/documents/old.pdf` }));
+	});
+
+	it("with root users, never deletes a guest's file, whatever the listing returns", async () => {
+		listFiles.mockReturnValue(asyncGen([entry("conversations/c/s/old.txt", "2020-01-01T00:00:00Z")]));
+		const { sweepExpiredGuestFiles } = await import("./custodialStorage");
+		expect(await sweepExpiredGuestFiles(30 * DAY, NOW, "users")).toEqual({ deleted: 0, failed: 0, undated: 0 });
+		expect(deleteFile).not.toHaveBeenCalled();
+	});
 });
 
 describe("upload limits — refuse, and refuse BEFORE the bucket is touched", () => {
@@ -860,14 +882,14 @@ describe("upload limits — refuse, and refuse BEFORE the bucket is touched", ()
 		expect(listFiles).not.toHaveBeenCalled();
 	});
 
-	it("holds a chunked upload to the ceiling it names, refusing a byte past it before the bucket (CUR-1780)", async () => {
+	it("holds a chunked upload to the ceiling it names, refusing a byte past it before the bucket", async () => {
 		const { uploadCustodialFile } = await import("./custodialStorage");
 		const big = new Blob(["x".repeat(6_000_001)], { type: "text/plain" });
 		await expect(uploadCustodialFile(ME, "a.txt", big, { maxBytes: 6_000_000 })).rejects.toThrow(/file is \d+ bytes/);
 		expect(uploadFile).not.toHaveBeenCalled();
 	});
 
-	it("lets a chunked upload past the one-request cap when its ceiling allows it (CUR-1780)", async () => {
+	it("lets a chunked upload past the one-request cap when its ceiling allows it", async () => {
 		const { CUSTODIAL_MAX_BYTES_PER_FILE, CUSTODIAL_MAX_BYTES_PER_CHUNKED_FILE } = await import(
 			"$lib/chat/constants/custodialUpload"
 		);
@@ -913,7 +935,7 @@ describe("upload limits — refuse, and refuse BEFORE the bucket is touched", ()
 
 	// A successful upload is proof the caller is CURRENTLY under quota — clear any prior
 	// quota trip here, since (unlike the rate-limit callers) nothing about the quota condition
-	// itself decays with time. (CUR-1318)
+	// itself decays with time.
 	it("clears a prior quota trip on every successful upload, so a stale trip can't keep re-firing", async () => {
 		listFiles.mockReturnValue(asyncGen([]));
 		await expect(upload(10)).resolves.toBeUndefined();
@@ -922,7 +944,7 @@ describe("upload limits — refuse, and refuse BEFORE the bucket is touched", ()
 
 	// Passing the quota check only proves the caller was under quota at
 	// read time, not that anything actually resolved — a write that then fails must NOT clear the
-	// trip, or a person who keeps failing (never succeeding) would look "recovered". (CUR-1318)
+	// trip, or a person who keeps failing (never succeeding) would look "recovered".
 	it("does NOT clear the quota trip when the upload itself fails after passing the quota check", async () => {
 		listFiles.mockReturnValue(asyncGen([]));
 		uploadFile.mockRejectedValueOnce(new Error("bucket write failed"));
@@ -998,8 +1020,8 @@ describe("quota under concurrency — the race the listing cannot see", () => {
 
 // A bare 4xx (or, for download/delete, silence) must raise an alert — pin
 // the call site directly, not just that recordRateLimitTrip itself fires and debounces correctly
-// (alerting.spec.ts already covers that in full). (CUR-1135)
-describe("CUR-1135 velocity alerting", () => {
+// (alerting.spec.ts already covers that in full).
+describe("velocity alerting", () => {
 	it("alerts AND still throws when the hourly upload rate limit trips", async () => {
 		vi.resetModules();
 		const { uploadCustodialFile } = await import("./custodialStorage");
@@ -1148,7 +1170,7 @@ describe("wipeCustodialFiles — account deletion reaches the bucket, and fails 
 	});
 });
 
-describe("storeChatAttachment — a chat attachment's only copy (CUR-2183)", () => {
+describe("storeChatAttachment — a chat attachment's only copy", () => {
 	const SHA = "a".repeat(64);
 	const rel = `conversations/c1/${SHA}/notes.txt`;
 	const pasteRel = `conversations/c1/pastes/${SHA}/Pasted Content`;
@@ -1223,7 +1245,7 @@ describe("storeChatAttachment — a chat attachment's only copy (CUR-2183)", () 
 	});
 });
 
-describe("the child-safety screen on stored pictures (CUR-3201)", () => {
+describe("the child-safety screen on stored pictures", () => {
 	it("refuses a My files image the screen blocks, and stores nothing at the caller's path", async () => {
 		const { ImageScreenBlockedError } = await import("./uploadImageGuard");
 		const hits = [{ key: "chat-block-child-sexual-content", action: "block" as const, tier: "child" as const }];
@@ -1286,7 +1308,7 @@ describe("the child-safety screen on stored pictures (CUR-3201)", () => {
 	});
 });
 
-describe("transientHubError — only a busy or failing Hub earns a retry (CUR-3291)", () => {
+describe("transientHubError — only a busy or failing Hub earns a retry", () => {
 	it("retries a 429, a 5xx and a request that never landed, and nothing else", async () => {
 		const { HubApiError } = await import("@huggingface/hub");
 		const { transientHubError } = await import("./custodialStorage");
@@ -1296,5 +1318,48 @@ describe("transientHubError — only a busy or failing Hub earns a retry (CUR-32
 		expect(transientHubError(new HubApiError("u", 403))).toBe(false);
 		expect(transientHubError(new HubApiError("u", 404))).toBe(false);
 		expect(transientHubError(new Error("UnknownLocationError"))).toBe(false);
+	});
+});
+
+// HF_BUCKETS_REPO unset is no custodial storage at all, except on production: the surface is off, account
+// deletion and export see "no storage" rather than a failure, and nothing reaches production's bucket.
+describe("custodialStorageConfigured — no bucket off production means custodial storage is unavailable", () => {
+	it("is configured on a production deployment with HF_BUCKETS_REPO unset, as production always was", async () => {
+		delete cfg.HF_BUCKETS_REPO;
+		vi.stubEnv("DEPLOY_ENV", "production");
+		const { custodialStorageConfigured } = await import("./custodialStorage");
+		expect(custodialStorageConfigured()).toBe(true);
+		vi.unstubAllEnvs();
+	});
+
+	it.each([
+		["a preview", "preview"],
+		["a development", "development"],
+		["an undeclared", ""],
+	])("is not configured on %s deployment with HF_BUCKETS_REPO unset, even with HF_BUCKETS_TOKEN set", async (_l, env) => {
+		delete cfg.HF_BUCKETS_REPO;
+		vi.stubEnv("DEPLOY_ENV", env);
+		vi.stubEnv("VERCEL_ENV", "");
+		const { custodialStorageConfigured } = await import("./custodialStorage");
+		expect(custodialStorageConfigured()).toBe(false);
+		vi.unstubAllEnvs();
+	});
+
+	it("is configured off production when HF_BUCKETS_REPO names a bucket", async () => {
+		vi.stubEnv("DEPLOY_ENV", "");
+		vi.stubEnv("VERCEL_ENV", "");
+		const { custodialStorageConfigured } = await import("./custodialStorage");
+		expect(custodialStorageConfigured()).toBe(true);
+		vi.unstubAllEnvs();
+	});
+
+	it("account deletion reports no storage (undefined, not zero) and lists nothing when the bucket is unset off production", async () => {
+		delete cfg.HF_BUCKETS_REPO;
+		vi.stubEnv("DEPLOY_ENV", "preview");
+		listFiles.mockReturnValue(asyncGen([]));
+		const { wipeCustodialFiles } = await import("./custodialStorage");
+		expect(await wipeCustodialFiles(ME)).toBeUndefined();
+		expect(listFiles).not.toHaveBeenCalled();
+		vi.unstubAllEnvs();
 	});
 });

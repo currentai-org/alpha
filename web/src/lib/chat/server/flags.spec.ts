@@ -154,7 +154,7 @@ describe("refreshFlags — credential and configuration failures must be loud", 
 	});
 
 	// The snapshot poll carries the deployment env as a person-property so a flag can register a feature
-	// on preview only (CUR-121). Without it, an `env == "preview"` targeting group never matches the
+	// on preview only. Without it, an `env == "preview"` targeting group never matches the
 	// server distinctId and the agent model never registers on develop.
 	it("polls with the deployment env as a person-property", async () => {
 		configured();
@@ -169,7 +169,7 @@ describe("refreshFlags — credential and configuration failures must be loud", 
 	});
 
 	// Local dev deliberately sets DEPLOY_ENV=development so every `env == "preview"` flag is
-	// testable on a laptop without a second targeting condition per flag. (CUR-885)
+	// testable on a laptop without a second targeting condition per flag.
 	it("queries PostHog as preview when DEPLOY_ENV is explicitly development", async () => {
 		configured();
 		vi.stubEnv("DEPLOY_ENV", "development");
@@ -198,7 +198,7 @@ describe("refreshFlags — credential and configuration failures must be loud", 
 		vi.unstubAllEnvs();
 	});
 
-	// An event instance shares www's flags (CUR-3156), and a flag tells them apart by
+	// An event instance shares www's flags, and a flag tells them apart by
 	// this property. Unset INSTANCE must read as www, so www's own evaluations are unchanged.
 	it("polls with instance www when INSTANCE is unset, so www's conditions keep matching", async () => {
 		configured();
@@ -240,7 +240,8 @@ describe("refreshFlags — credential and configuration failures must be loud", 
 });
 
 describe("flagEnabledOr — computed fallback for gates that aren't boolean env vars", () => {
-	it("uses the computed fallback when PostHog has never been polled", async () => {
+	it("uses the computed fallback when PostHog is configured but has never been polled", async () => {
+		configured();
 		const { flagEnabledOr } = await import("./flags");
 		expect(flagEnabledOr("agent-mode", () => true)).toBe(true);
 		expect(flagEnabledOr("agent-mode", () => false)).toBe(false);
@@ -280,17 +281,51 @@ describe("flagEnabledOr — computed fallback for gates that aren't boolean env 
 // The distinct id here is an ACCOUNT id (24 hex, the shape `locals.user._id` carries) because
 // that is the hash input PostHog decides the answer from. An id built from a string the visitor typed
 // would make the flag answer a question about a claim rather than about a person. The id below is
-// invented. (CUR-1278)
+// invented.
 const ACCOUNT_ID = "aaaaaaaaaaaaaaaaaaaaaaaa";
 
-describe("flagEnabledForUser — per-user evaluation (CUR-121)", () => {
-	it("returns undefined (not false) when PostHog is unconfigured — caller decides the fallback", async () => {
-		// no PUBLIC_POSTHOG_KEY → getClient() returns undefined, so the flag was NOT evaluated.
+describe("flagEnabledForUser — per-user evaluation", () => {
+	it("answers an unregistered key with the caller's fallback when PostHog is unconfigured (no client), whichever way it points", async () => {
+		// no PUBLIC_POSTHOG_KEY → no client, so the flag was NOT evaluated. A registered key reads its
+		// self-host default here instead (flagsSelfHost.spec.ts); an unregistered one has none.
 		const { flagEnabledForUser } = await import("./flags");
-		await expect(
-			flagEnabledForUser("agent-mode", ACCOUNT_ID, { is_internal_test: true })
-		).resolves.toBeUndefined();
+		await expect(flagEnabledForUser("unregistered-key", ACCOUNT_ID, { is_internal_test: true }, () => true)).resolves.toBe(true);
+		await expect(flagEnabledForUser("unregistered-key", ACCOUNT_ID, { is_internal_test: true }, () => false)).resolves.toBe(false);
 		expect(getFeatureFlag).not.toHaveBeenCalled();
+	});
+
+	it("is off with no client when the caller passes no fallback — the pre-hook behaviour, unchanged", async () => {
+		const { flagEnabledForUser } = await import("./flags");
+		await expect(flagEnabledForUser("unregistered-key", ACCOUNT_ID, {})).resolves.toBe(false);
+	});
+
+	it("lets a client's answer win over the fallback, in both directions", async () => {
+		configured();
+		const { flagEnabledForUser } = await import("./flags");
+		getFeatureFlag.mockResolvedValue(false);
+		await expect(flagEnabledForUser("k", ACCOUNT_ID, {}, () => true), "PostHog said off").resolves.toBe(false);
+		getFeatureFlag.mockResolvedValue(true);
+		await expect(flagEnabledForUser("k", ACCOUNT_ID, {}, () => false), "PostHog said on").resolves.toBe(true);
+	});
+
+	it("evaluates the fallback only when PostHog could not answer", async () => {
+		configured();
+		getFeatureFlag.mockResolvedValue(true);
+		const fallback = vi.fn(() => false);
+		const { flagEnabledForUser } = await import("./flags");
+		await flagEnabledForUser("k", ACCOUNT_ID, {}, fallback);
+		expect(fallback).not.toHaveBeenCalled();
+	});
+
+	// flagEnabledOr reads the request's accountFlags map; this path never has, and adding the fallback
+	// does not change that. A map entry must not stand in for PostHog's live per-person answer.
+	it("does not read the request's account-flag map: with no client, the fallback answers, not accountFlags", async () => {
+		const { flagEnabledForUser } = await import("./flags");
+		const { runWithRequestContext } = await import("./requestContext");
+		const result = await runWithRequestContext(() => flagEnabledForUser("k", ACCOUNT_ID, {}, () => false), {
+			accountFlags: new Map([["k", true]]),
+		});
+		expect(result).toBe(false);
 	});
 
 	it("forwards personProperties and disables event capture — must never emit $feature_flag_called", async () => {
@@ -309,30 +344,30 @@ describe("flagEnabledForUser — per-user evaluation (CUR-121)", () => {
 		});
 	});
 
-	it("coerces the value, and maps an unknown flag to undefined — never a silent false", async () => {
+	it("coerces the value, and maps an unknown flag to the fallback — never a silent false", async () => {
 		configured();
 		const { flagEnabledForUser } = await import("./flags");
 		getFeatureFlag.mockResolvedValue(false);
-		await expect(flagEnabledForUser("k", "d", {})).resolves.toBe(false);
+		await expect(flagEnabledForUser("k", "d", {}, () => true)).resolves.toBe(false);
 		getFeatureFlag.mockResolvedValue("true"); // string variant coerces
-		await expect(flagEnabledForUser("k", "d", {})).resolves.toBe(true);
+		await expect(flagEnabledForUser("k", "d", {}, () => false)).resolves.toBe(true);
 		getFeatureFlag.mockResolvedValue(undefined); // flag not created / not evaluated
-		await expect(flagEnabledForUser("k", "d", {})).resolves.toBeUndefined();
+		await expect(flagEnabledForUser("k", "d", {}, () => true)).resolves.toBe(true);
 	});
 
-	it("returns undefined (never throws) when the read fails", async () => {
+	it("answers with the fallback (never throws) when the read fails", async () => {
 		configured();
 		getFeatureFlag.mockRejectedValue(new Error("boom"));
 		const { flagEnabledForUser } = await import("./flags");
-		await expect(flagEnabledForUser("k", "d", {})).resolves.toBeUndefined();
+		await expect(flagEnabledForUser("k", "d", {}, () => true)).resolves.toBe(true);
 	});
 });
 
 // `flagEnabledForTester` was removed along with the `?ph_test=<name>` identity it read.
 // Named for what must stay gone rather than for what it does, because the failure this guards is
 // someone rebuilding it: the mechanism had no callers, and it fed PostHog a distinct id assembled
-// from a string the visitor typed. See the note in flags.ts for what to build instead. (CUR-1278)
-describe("the self-declared tester path stays removed (CUR-1278)", () => {
+// from a string the visitor typed. See the note in flags.ts for what to build instead.
+describe("the self-declared tester path stays removed", () => {
 	it("exports no tester-scoped evaluator", async () => {
 		const mod = await import("./flags");
 		expect(Object.keys(mod)).not.toContain("flagEnabledForTester");
@@ -431,7 +466,7 @@ describe("refreshFlags — a registered flag key missing from PostHog must be na
 	});
 });
 
-// CUR-853/958: a cold instance's snapshot is empty until SOMETHING calls refreshFlags — the warm cron
+// a cold instance's snapshot is empty until SOMETHING calls refreshFlags — the warm cron
 // never runs at all on preview (modelGates.ts's own header comment), so a flag-gated turn served by a
 // never-warmed instance silently read every flag as OFF. ensureFlagsPolled blocks the first read on one
 // poll instead.
@@ -469,7 +504,7 @@ describe("ensureFlagsPolled — the cold-instance gap", () => {
 	});
 
 	// Preview has no cron, so a warm instance's only chance to see a flag created or flipped
-	// after its first poll is this path. (CUR-2610)
+	// after its first poll is this path.
 	it("refreshes a snapshot older than the cron interval in the background, without the request waiting on it", async () => {
 		configured();
 		getAllFlags.mockResolvedValue({ "arithmetic-guard": false });
@@ -525,8 +560,8 @@ describe("ensureFlagsPolled — the cold-instance gap", () => {
 // The local fuzzing harness forces a flag's value for its own Playwright/Stagehand session
 // via a `fuzz_override` cookie parsed into the request context (see requestContext.ts, hooks/handle.ts).
 // The one invariant that actually matters: this can NEVER take effect in production, however the env
-// var or the request context are set. (CUR-1044)
-describe("fuzz override (CUR-1044) — local-only, never reachable in production", () => {
+// var or the request context are set.
+describe("fuzz override — local-only, never reachable in production", () => {
 	it("is inert in production even with the opt-in env var and a matching override set", async () => {
 		configured();
 		cfg.FUZZ_OVERRIDE_ENABLED = "true";
@@ -542,7 +577,7 @@ describe("fuzz override (CUR-1044) — local-only, never reachable in production
 		vi.unstubAllEnvs();
 	});
 
-	it("is inert on a deployment that declares no environment, even with the opt-in env var set (CUR-1881)", async () => {
+	it("is inert on a deployment that declares no environment, even with the opt-in env var set", async () => {
 		configured();
 		cfg.FUZZ_OVERRIDE_ENABLED = "true";
 		vi.stubEnv("DEPLOY_ENV", "");
@@ -587,8 +622,8 @@ describe("fuzz override (CUR-1044) — local-only, never reachable in production
 
 	// agentModeEnabled() reads AGENT_MODE_FLAG through flagEnabledOr, which has the override;
 	// agentModeEnabledForUser() reads AGENT_MODE_ACCESS_FLAG through flagEnabledForUser, which must have
-	// it too, or an override request clears the first agent-mode gate and is refused at the second
-	// (CUR-1664). Asserting on getFeatureFlag rather than only on the
+	// it too, or an override request clears the first agent-mode gate and is refused at the second.
+	// Asserting on getFeatureFlag rather than only on the
 	// return value: the contract is that the override SHORT-CIRCUITS, so a version that happened to
 	// return true because PostHog also said true would not satisfy this.
 	it("reaches the per-user path, so the second agent-mode gate can be exercised too", async () => {
@@ -599,7 +634,7 @@ describe("fuzz override (CUR-1044) — local-only, never reachable in production
 		const { flagEnabledForUser } = await import("./flags");
 		const { runWithRequestContext } = await import("./requestContext");
 		const result = await runWithRequestContext(
-			() => flagEnabledForUser("agent-mode-access", ACCOUNT_ID, {}),
+			() => flagEnabledForUser("agent-mode-access", ACCOUNT_ID, {}, () => false),
 			{ fuzzOverride: { "agent-mode-access": true } }
 		);
 		expect(
@@ -610,6 +645,23 @@ describe("fuzz override (CUR-1044) — local-only, never reachable in production
 			getFeatureFlag,
 			"the override did not short-circuit: PostHog was consulted anyway, so this passes only when PostHog happens to agree"
 		).not.toHaveBeenCalled();
+		vi.unstubAllEnvs();
+	});
+
+	// The harness usually runs with no PostHog client, which is exactly when the fallback answers. The
+	// override must still come first, or a run forcing a flag off gets the code default instead.
+	it("wins over the caller's fallback on the per-user path when there is no client", async () => {
+		cfg.FUZZ_OVERRIDE_ENABLED = "true"; // no PUBLIC_POSTHOG_KEY: no client
+		vi.stubEnv("DEPLOY_ENV", "preview");
+		const fallback = vi.fn(() => true);
+		const { flagEnabledForUser } = await import("./flags");
+		const { runWithRequestContext } = await import("./requestContext");
+		const result = await runWithRequestContext(
+			() => flagEnabledForUser("agent-mode-access", ACCOUNT_ID, {}, fallback),
+			{ fuzzOverride: { "agent-mode-access": false } }
+		);
+		expect(result, "the fallback answered over the override").toBe(false);
+		expect(fallback).not.toHaveBeenCalled();
 		vi.unstubAllEnvs();
 	});
 
@@ -634,8 +686,8 @@ describe("fuzz override (CUR-1044) — local-only, never reachable in production
 });
 
 // Preview has FUZZ_OVERRIDE_ENABLED on for the scenario suite, so the deployment-level gate alone
-// would let any anonymous visitor force a flag. A hosted request has to carry the key (CUR-3516).
-describe("fuzz override key (CUR-3516) — a hosted preview honours the cookie only from the harness", () => {
+// would let any anonymous visitor force a flag. A hosted request has to carry the key.
+describe("fuzz override key — a hosted preview honours the cookie only from the harness", () => {
 	async function authorized(env: string | undefined, key: string | undefined) {
 		cfg.FUZZ_OVERRIDE_ENABLED = "true";
 		cfg.E2E_OTP_BYPASS_TOKEN = "harness-secret";
@@ -674,13 +726,13 @@ describe("fuzz override key (CUR-3516) — a hosted preview honours the cookie o
 		expect(await authorized("development", undefined)).toBe(true);
 	});
 
-	it("refuses a deployment that declares no environment, key or not (CUR-1881)", async () => {
+	it("refuses a deployment that declares no environment, key or not", async () => {
 		expect(await authorized(undefined, undefined)).toBe(false);
 		expect(await authorized(undefined, "harness-secret")).toBe(false);
 	});
 });
 
-describe("per-account rollout values (CUR-2463)", () => {
+describe("per-account rollout values", () => {
 	const ACCOUNT = "0123456789abcdef01234567";
 
 	it("evaluates with the account id as distinct id and env, account id, signed_in and email as properties", async () => {
@@ -711,7 +763,7 @@ describe("per-account rollout values (CUR-2463)", () => {
 		vi.unstubAllEnvs();
 	});
 
-	// The sign-in hint for a guest is asked of PostHog for the guest, not a stand-in account. (CUR-3015)
+	// The sign-in hint for a guest is asked of PostHog for the guest, not a stand-in account.
 	it("a guest's sign-in answer is evaluated for its own hashed id, signed in, with an empty email and account id", async () => {
 		configured();
 		getAllFlags.mockResolvedValue({ multimodal: true });
@@ -763,15 +815,15 @@ describe("per-account rollout values (CUR-2463)", () => {
 
 	it("a deployment-scoped flag ignores the account's answer (the model registry is shared)", async () => {
 		configured();
-		getAllFlags.mockResolvedValueOnce({ "model-picker": false });
-		getAllFlags.mockResolvedValueOnce({ "model-picker": true });
+		getAllFlags.mockResolvedValueOnce({ "router-alias": false });
+		getAllFlags.mockResolvedValueOnce({ "router-alias": true });
 		const { refreshFlags, accountFlagValues, flagEnabledOr } = await import("./flags");
 		const { runWithRequestContext, updateRequestContext } = await import("./requestContext");
 		await refreshFlags();
 		const accountFlags = await accountFlagValues(ACCOUNT, "a@example.org");
 		const result = runWithRequestContext(() => {
 			updateRequestContext({ accountFlags });
-			return flagEnabledOr("model-picker", () => false);
+			return flagEnabledOr("router-alias", () => false);
 		});
 		expect(result).toBe(false);
 	});
@@ -821,10 +873,10 @@ describe("per-account rollout values (CUR-2463)", () => {
 
 });
 
-// Preview offers images to team accounts only, so `multimodal` must read the account's own answer
-// (CUR-2725). Scoped per deployment, a team account would get the guests' "off" and no photo would
+// Preview offers images to team accounts only, so `multimodal` must read the account's own answer.
+// Scoped per deployment, a team account would get the guests' "off" and no photo would
 // reach the model.
-describe("multimodal is answered per account (CUR-2725)", () => {
+describe("multimodal is answered per account", () => {
 	const ACCOUNT = "aaaaaaaaaaaaaaaaaaaaaaaa";
 
 	it("gives a signed-in account the flag selects images, while a guest gets the deployment's off", async () => {
@@ -845,9 +897,9 @@ describe("multimodal is answered per account (CUR-2725)", () => {
 	});
 });
 
-// Remote evaluation bills every getAllFlags, per instance and per account (CUR-2897), which adds up
+// Remote evaluation bills every getAllFlags, per instance and per account, which adds up
 // across PR previews' scenario runs.
-describe("local evaluation (CUR-2897) — a secret key makes every read in-process", () => {
+describe("local evaluation — a secret key makes every read in-process", () => {
 	const ACCOUNT = "0123456789abcdef01234567";
 	const withSecret = () => {
 		configured();
@@ -857,12 +909,12 @@ describe("local evaluation (CUR-2897) — a secret key makes every read in-proce
 	it("builds the client with the secret and a definitions poll no faster than the snapshot age", async () => {
 		withSecret();
 		getAllFlags.mockResolvedValue({ "some-flag": true });
-		const { refreshFlags, FLAG_SNAPSHOT_MAX_AGE_MS } = await import("./flags");
+		const { refreshFlags, FLAG_DEFINITIONS_POLL_MS } = await import("./flags");
 		await refreshFlags();
 		expect(constructed).toHaveLength(1);
 		expect(constructed[0]).toMatchObject({
 			secretKey: "phs_test",
-			featureFlagsPollingInterval: FLAG_SNAPSHOT_MAX_AGE_MS,
+			featureFlagsPollingInterval: FLAG_DEFINITIONS_POLL_MS,
 		});
 		expect(constructed[0]).not.toHaveProperty("flagDefinitionCacheProvider");
 	});
@@ -938,7 +990,7 @@ describe("local evaluation (CUR-2897) — a secret key makes every read in-proce
 			expect(flagEnabled("compare-panel", "COMPARE_PANEL_ENABLED")).toBe(true);
 		});
 
-		// A registry built from those fallbacks waits on whenFlagsPolled to rebuild (CUR-4194), so an
+		// A registry built from those fallbacks waits on whenFlagsPolled to rebuild, so an
 		// empty poll must leave the waiter queued and the first poll with flags must run it.
 		it("whenFlagsPolled runs its callback on the first poll that returns flags, not on an empty one", async () => {
 			withSecret();
@@ -958,11 +1010,11 @@ describe("local evaluation (CUR-2897) — a secret key makes every read in-proce
 			expect(whenFlagsPolled(vi.fn()), "after a good poll there is nothing to wait for").toBe(false);
 		});
 
-		it("a per-user read settles as unanswered", async () => {
+		it("a per-user read settles as unanswered, on the caller's fallback", async () => {
 			withSecret();
 			hungUntilLoaded();
 			const { flagEnabledForUser } = await import("./flags");
-			await expect(flagEnabledForUser("agent-mode", ACCOUNT, { email: "a@example.org" })).resolves.toBeUndefined();
+			await expect(flagEnabledForUser("agent-mode", ACCOUNT, { email: "a@example.org" }, () => true)).resolves.toBe(true);
 			expect(getFeatureFlag).not.toHaveBeenCalled();
 		});
 	});
@@ -982,7 +1034,7 @@ describe("local evaluation (CUR-2897) — a secret key makes every read in-proce
 	});
 
 	// Develop and production bake too, as a seed. The client starts loaded from the build, so a
-	// cold instance never reads code fallbacks, and every load after the first fetches live. (CUR-4199)
+	// cold instance never reads code fallbacks, and every load after the first fetches live.
 	it("a seeded build serves its bake for the client's first load only, then fetches live on every load after", async () => {
 		withSecret();
 		baked.data = { flags: [{ key: "some-flag" }], groupTypeMapping: {}, cohorts: {}, mode: "seed" };
@@ -1008,6 +1060,34 @@ describe("local evaluation (CUR-2897) — a secret key makes every read in-proce
 		expect(waitForLocalEvaluationReady).toHaveBeenCalled();
 		expect(reloadFeatureFlags).toHaveBeenCalledTimes(1);
 		expect(infoMock).toHaveBeenCalledWith(expect.objectContaining({ mode: "local-seeded" }), "[flags] PostHog client ready");
+	});
+
+	it("a seeded client on a bake older than the poll interval still fetches live, since the seed may predate a flip", async () => {
+		withSecret();
+		const old = new Date(Date.now() - 6 * 60_000).toISOString();
+		baked.data = { flags: [{ key: "some-flag" }], groupTypeMapping: {}, cohorts: {}, mode: "seed", bakedAt: old };
+		getAllFlags.mockResolvedValue({ "some-flag": true });
+		const { refreshFlags } = await import("./flags");
+		await refreshFlags();
+		await Promise.all(held);
+		expect(reloadFeatureFlags).toHaveBeenCalledTimes(1);
+	});
+
+	it("a seeded client on a bake younger than the poll interval skips the live fetch, since the seed is current", async () => {
+		withSecret();
+		const fresh = new Date(Date.now() - 60_000).toISOString();
+		baked.data = { flags: [{ key: "some-flag" }], groupTypeMapping: {}, cohorts: {}, mode: "seed", bakedAt: fresh };
+		getAllFlags.mockResolvedValue({ "some-flag": true });
+		const { refreshFlags } = await import("./flags");
+		await refreshFlags();
+		expect(held).toHaveLength(0);
+		expect(reloadFeatureFlags).not.toHaveBeenCalled();
+	});
+
+	it("the definitions poll is longer than the snapshot staleness bound, so cheap re-evaluation stays at a minute", async () => {
+		const { FLAG_DEFINITIONS_POLL_MS, FLAG_SNAPSHOT_MAX_AGE_MS } = await import("./flags");
+		expect(FLAG_SNAPSHOT_MAX_AGE_MS).toBe(60_000);
+		expect(FLAG_DEFINITIONS_POLL_MS).toBeGreaterThan(FLAG_SNAPSHOT_MAX_AGE_MS);
 	});
 
 	it("a PR preview's frozen bake starts no live fetch", async () => {
@@ -1115,8 +1195,8 @@ describe("local evaluation (CUR-2897) — a secret key makes every read in-proce
 });
 
 // team-only release conditions match `email` against the team domains, so an address the
-// provider never verified must not reach PostHog, or claiming a team domain would unlock team flags. (CUR-3182)
-describe("flagEmail — only a verified address reaches a flag evaluation (CUR-3182)", () => {
+// provider never verified must not reach PostHog, or claiming a team domain would unlock team flags.
+describe("flagEmail — only a verified address reaches a flag evaluation", () => {
 	const ACCOUNT = "0123456789abcdef01234567";
 
 	it("an unverified email on a team domain sends PostHog no email, so team-only flags stay off for it", async () => {
@@ -1126,7 +1206,7 @@ describe("flagEmail — only a verified address reaches a flag evaluation (CUR-3
 		const { flagEmail } = await import("./flagEmail");
 		await accountFlagValues(ACCOUNT, flagEmail({ email: "someone@currentai.org", emailVerified: false }));
 		const [, options] = getAllFlags.mock.calls[0];
-		// "" rather than absent, so local evaluation stays conclusive (CUR-2897); either way no address.
+		// "" rather than absent, so local evaluation stays conclusive; either way no address.
 		expect(options.personProperties.email ?? "").toBe("");
 	});
 

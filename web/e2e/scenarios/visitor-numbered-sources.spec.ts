@@ -7,7 +7,7 @@ import { warmupContext } from './helpers/warmup';
 import { startChattingPastWelcome } from './helpers/welcome';
 
 // A visitor who pastes their own numbered sources, "[1] …" and "[2] …", and asks for a cited
-// answer expects the answer's [1] and [2] to mean those (CUR-3844). With search off, the no-source guard deleted
+// answer expects the answer's [1] and [2] to mean those. With search off, the no-source guard deleted
 // them as fabricated; with search on, our results took [1] and [2] and the visitor's markers linked to
 // web pages they never gave. The server now numbers its sources after the visitor's and the renderer
 // shows the visitor's markers as plain text.

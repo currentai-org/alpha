@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { assistHostLabel } from "./assistHost";
 import type { AssistedBy } from "$lib/chat/types/Message";
 
-describe("assistHostLabel — where a helper model ran, readable (CUR-984)", () => {
+describe("assistHostLabel — where a helper model ran, readable", () => {
 	it("names a dedicated Inference Endpoint by kind and region, never by its random host id", () => {
 		const label = assistHostLabel({
 			backend: "qq3dg9pgwfj93bbm.eu-west-1.aws.endpoints.huggingface.cloud",
@@ -11,7 +11,7 @@ describe("assistHostLabel — where a helper model ran, readable (CUR-984)", () 
 		expect(label).not.toContain("qq3dg9pgwfj93bbm");
 	});
 
-	it("names an endpoint on HF's region-free host the same way, never by its id (CUR-2524)", () => {
+	it("names an endpoint on HF's region-free host the same way, never by its id", () => {
 		const label = assistHostLabel({ backend: "6abe43bafcf6e676f4ecc8c9.endpoints.huggingface.cloud" });
 		expect(label).toBe("a Hugging Face Inference Endpoint");
 		expect(label).not.toContain("6abe43bafcf6e676f4ecc8c9");
@@ -28,12 +28,12 @@ describe("assistHostLabel — where a helper model ran, readable (CUR-984)", () 
 		);
 	});
 
-	it("names the HF router's provider as it names itself, never by its id (CUR-4192)", () => {
+	it("names the HF router's provider as it names itself, never by its id", () => {
 		expect(assistHostLabel({ provider: "featherless-ai" })).toBe("Featherless AI via Hugging Face");
 		expect(assistHostLabel({ provider: "some-new-provider" })).toBe("some-new-provider via Hugging Face");
 	});
 
-	it("names a host recorded as a base URL by its institution, never as the URL (CUR-4192)", () => {
+	it("names a host recorded as a base URL by its institution, never as the URL", () => {
 		const label = assistHostLabel({ backend: "https://llmlab.plgrid.pl/api/v1" });
 		expect(label).toBe("PLGrid (Poland)");
 		expect(label).not.toContain("://");
@@ -50,11 +50,11 @@ describe("assistHostLabel — where a helper model ran, readable (CUR-984)", () 
 		expect(assistHostLabel(title)).toBe("Mistral AI");
 	});
 
-	it("names our own model router without its internal hostname (CUR-3941)", () => {
+	it("names our own model router without its internal hostname", () => {
 		const mathRoute: AssistedBy = {
 			role: "math-route",
 			model: "mistral-medium-2604",
-			backend: "router.stg.aipotluck.org",
+			backend: "router.stg.example.test",
 		};
 		expect(assistHostLabel(mathRoute)).toBe("Alpha's model router");
 	});
@@ -63,7 +63,7 @@ describe("assistHostLabel — where a helper model ran, readable (CUR-984)", () 
 		expect(assistHostLabel({ backend: "llm.example.org" })).toBe("llm.example.org");
 	});
 
-	it("names only the recorded host, never the catalogue's planned host for the model (CUR-3563)", () => {
+	it("names only the recorded host, never the catalogue's planned host for the model", () => {
 		// A Mistral model the catalogue hosts at Mistral AI, recorded on another host: the record wins.
 		const proxied: AssistedBy = { role: "title", model: "mistral-medium-2604", backend: "proxy.example.org" };
 		expect(assistHostLabel(proxied)).toBe("proxy.example.org");

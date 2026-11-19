@@ -6,7 +6,7 @@ import { journeyStep } from './helpers/journeyStep';
 import { installCannedReplies } from './helpers/faultInjection';
 import { setFlagOverrides } from './helpers/flagOverride';
 
-// This spec is about the first-run welcome, so it meets the welcome itself rather than through the shared handler (SOL-343).
+// This spec is about the first-run welcome, so it meets the welcome itself rather than through the shared handler.
 test.use({ welcome: 'show' });
 
 // F3 ("What people see and use when they open Alpha").
@@ -22,7 +22,7 @@ test.use({ welcome: 'show' });
 //
 // WHAT IS ASSERTED AS PRESENT RATHER THAN AS A VALUE. The empty state names the model (or says Auto
 // picks one per message), says X-ray on
-// each answer shows where it ran (it names no host before a turn, CUR-2364), and states the retention
+// each answer shows where it ran (it names no host before a turn), and states the retention
 // rule. The model and retention copy differ by deployment, so the spec checks the page says these
 // things at all, before the visitor has typed anything, which is the ordering that makes it an
 // honesty claim.
@@ -58,7 +58,7 @@ test(
 				'the welcome is effectively empty, so it costs a visitor a dismissal and tells them nothing'
 			).toBeGreaterThan(80);
 
-			// The credits row names only makers whose models this deployment serves (CUR-2565): production
+			// The credits row names only makers whose models this deployment serves: production
 			// serves Apertus alone, so a BSC credit there names a part no visitor can use.
 			const servedIds: string[] = await page.evaluate(async () => {
 				const res = await fetch('/chat/api/v2/models');
@@ -95,7 +95,7 @@ test(
 
 			// A language promise ("picks an open model built for it") is Auto routing, so the welcome may make
 			// it only where Auto is offered. The model pill names "How Alpha chooses" exactly when the
-			// `auto-routing` flag is on (CUR-2565). The welcome leaves the features to the guided tour
+			// `auto-routing` flag is on. The welcome leaves the features to the guided tour
 			// and makes no such promise, so only the "never where Auto is off" half is asserted.
 			const pillLabel =
 				(await page
@@ -104,7 +104,7 @@ test(
 					.getAttribute('aria-label', { timeout: 30_000 })) ?? '';
 			const autoOffered = pillLabel.includes('How Alpha chooses');
 			// Offered is not chosen: a model link (`chatEntry()` under the gallery's prod profile) picks its
-			// model, and the pill then names it instead of Auto (CUR-4021).
+			// model, and the pill then names it instead of Auto.
 			const autoChosen = autoOffered && /^Model: Auto\b/.test(pillLabel);
 			if (!autoOffered)
 				expect(
@@ -125,7 +125,7 @@ test(
 			expect(
 				servingLine,
 				'the empty state does not say where to see where each answer ran, which is the sovereignty claim this product leads with'
-				// CUR-2364: before a turn, a host is a forecast that pooling and fallbacks make wrong, so the
+				// before a turn, a host is a forecast that pooling and fallbacks make wrong, so the
 				// line points at X-ray's "Where it ran", read from each answer's routing record
 				// (xray-where-it-ran.spec.ts checks that half).
 			).toMatch(/x-ray on each answer shows (where it ran|which one ran, and where)/);
@@ -150,6 +150,11 @@ test(
 				page.getByRole('link', { name: 'Data & privacy' }),
 				'nothing on the first screen leads to deleting everything, so leaving requires finding a settings page a first-time visitor has no reason to open'
 			).toBeVisible({ timeout: 15_000 });
+			// Chat links to its own settings page on the host it is served from, with no help from the website.
+			await expect(
+				page.getByRole('link', { name: 'Data & privacy' }),
+				'the link leaves the deployment the visitor is on, so their guest session is not the one it opens'
+			).toHaveAttribute('href', /^\/(chat\/)?settings\/data$/);
 		});
 		await page.keyboard.press('Escape');
 
@@ -165,7 +170,7 @@ test(
 test(
 	'every control around the composer is named, and the x-ray view is offered by name',
 	// @F6 too: f6-where-alpha-runs.md's step 4 is finding the x-ray control, and its grader only
-	// receives footage from tests carrying its own tag (CUR-2245).
+	// receives footage from tests carrying its own tag.
 	{ tag: ['@F3', '@F6'] },
 	async ({ page }) => {
 		const welcome = page.getByRole('dialog', { name: 'Welcome to Alpha' });
@@ -214,7 +219,7 @@ test(
 // visitor would follow: "Try Alpha" straight into chat, since the home page does not route through the
 // /alpha landing. Found by where it leads rather than by its wording, which is CMS copy
 // editors change, and followed into a new tab when the CMS sets one. Done means reachable from
-// `/` through the UI (the merge bar for user-visible changes); the "one product" ask is CUR-972.
+// `/` through the UI (the merge bar for user-visible changes); the "one product" ask is.
 // Preview-only: on www a page load of /chat 308s to alpha.aipotluck.org.
 test(
 	'a first-time visitor gets from the home page into Alpha and a message they send is answered',
@@ -279,11 +284,11 @@ test(
 	}
 );
 
-// The empty screen's line names the picked model (CUR-2364). A host clause would be a forecast from
+// The empty screen's line names the picked model. A host clause would be a forecast from
 // config that pooling and fallbacks can make wrong, so the line names no host for any pick and points
 // at X-ray, which says where each answer ran from its own record. The pick here is made in the
-// composer (CUR-967 asks for choosing the model from the chat).
-// The rendered line must not run words together, as "Apertus1.570B" does on a recording frame (CUR-3045); it must
+// composer (asks for choosing the model from the chat).
+// The rendered line must not run words together, as "Apertus1.570B" does on a recording frame; it must
 // carry the picker's name with its spaces, followed by the full stop that ends it.
 test(
 	'the empty screen names the picked model and no forecast host, and changes when the pick does',
@@ -291,14 +296,14 @@ test(
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(90_000);
 		// The pick is walked on the plain list production shows; with Auto on the list sits one level
-		// down, in a submenu (CUR-3923).
+		// down, in a submenu.
 		await setFlagOverrides(context, baseURL!, { 'auto-routing': false });
 		const welcome = page.getByRole('dialog', { name: 'Welcome to Alpha' });
 		await page.addLocatorHandler(welcome, async () => {
 			await welcome.getByRole('button', { name: /start chatting/i }).click();
 		});
 		// /chat, never chatEntry(): with SCENARIO_MODEL set that is /chat/models/<id>, and the test below
-		// covers picking on a model's own page (CUR-3295). This spec walks every pick from /chat.
+		// covers picking on a model's own page. This spec walks every pick from /chat.
 		await page.goto(CHAT_ENTRY, { waitUntil: 'commit' });
 		await page.getByLabel('Message AI Potluck').click({ timeout: 30_000 });
 
@@ -340,7 +345,7 @@ test(
 		});
 		test.info().annotations.push({ type: 'serving lines', description: JSON.stringify(lines) });
 
-		// No pick names a host before its first answer (CUR-2364); each points at X-ray instead.
+		// No pick names a host before its first answer; each points at X-ray instead.
 		for (const [id, line] of Object.entries(lines)) {
 			expect(line, `${id}'s empty screen forecasts a host`).not.toMatch(/\bserved\b/i);
 			expect(line, `${id}'s empty screen does not point at X-ray`).toContain(
@@ -352,7 +357,7 @@ test(
 
 // A model's own page (/chat/models/<id>, from the models list or a shared link) must not keep its
 // model from the URL for good: a pick in the composer has to relabel the picker, the empty screen's
-// line and the new chat. The URL's model is only the starting pick (CUR-3295).
+// line and the new chat. The URL's model is only the starting pick.
 test(
 	"on a model's own page, a pick in the composer moves the empty screen and the chat to the picked model",
 	{ tag: ['@F3', '@preview-only', '@CUR-3295'] },
@@ -402,7 +407,7 @@ test(
 		);
 
 		// The turn is credited to the picked model either way: a badge on its answer, or, when that model
-		// is out of capacity (CUR-3982), the busy or timed-out notice
+		// is out of capacity, the busy or timed-out notice
 		// that names it. Either is the honest outcome; what this test guards is which model gets named.
 		const badge = page.getByRole('button', { name: /^How this answer was made — / }).last();
 		const busy = page.getByRole('main').getByRole('alert').last();

@@ -33,7 +33,7 @@ const LOOKUP_LEAD =
 //
 // A self-description is NOT framing and stays in the query. "I'm a tenant in England and my landlord
 // wants to evict me. What are my rights?" must not distill to "What are my rights", which a search engine
-// answers with US know-your-rights pages (CUR-2423). "I'm a …", "I work in …" and "As a …,"
+// answers with US know-your-rights pages. "I'm a …", "I work in …" and "As a …,"
 // name who is asking and where, which is what a rights, rules or procedures question turns on.
 const FRAMING =
 	/\b(i\s+(need|want|'?d\s+like|would\s+like|am\s+looking)\s+(to\s+(know|find|understand|see)\s+)?(the|a|an|out\s+about)?\s*|can\s+you\s+(help\s+me\s+)?(understand|tell\s+me|explain|figure\s+out)\s+)/gi;

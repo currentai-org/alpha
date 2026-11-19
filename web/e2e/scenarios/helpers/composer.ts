@@ -7,7 +7,7 @@ import { expect, type Page, type Response } from '@playwright/test';
 //
 // A spec that goes to a chat page with `waitUntil: 'commit'` and presses Enter at once may press it
 // on the server-rendered box before any keydown handler exists, which would drop the send. That is
-// the leading guess for tool-round-retry.spec.ts timing out on /conversation/<id> (CUR-3345), not
+// the leading guess for tool-round-retry.spec.ts timing out on /conversation/<id>, not
 // an established cause; `sendOpensConversation` below reports enough to settle it next time.
 const composerIsHydrated = () => {
 	const box = document.querySelector('textarea[aria-label="Message AI Potluck"]');

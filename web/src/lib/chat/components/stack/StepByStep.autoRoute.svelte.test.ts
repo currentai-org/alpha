@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { Message } from '$lib/chat/types/Message';
 
 // An answer sent with the picker on Auto says so in X-ray, so a visitor can tell Alpha chose the
-// model for them, and why (CUR-3944).
+// model for them, and why.
 const answer = (autoRoute?: Message['autoRoute']): Message =>
 	({
 		id: 'm1',

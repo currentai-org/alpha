@@ -1,6 +1,6 @@
 // A person removed from a team, or whose team workspace was deleted, keeps that team's old chats
-// (a conversation is never workspace property, CUR-736). They sit together under one
-// "Former: <name>" entry, read-only (CUR-3040).
+// (a conversation is never workspace property). They sit together under one
+// "Former: <name>" entry, read-only.
 //
 // A left workspace still has its organization row, so its chats keep organization_id and its name
 // comes from a join. A deleted workspace takes its row with it and the foreign key nulls

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Local dogfood entrypoint — drive the real agent service end-to-end against a real upstream.
-# Thin wrapper over scripts/dogfood.py.
+# Step 1 of docs/agent-frontends.md. Thin wrapper over scripts/dogfood.py.
 #
 #   scripts/dogfood.sh apertus15               # the shipped default (Apertus-1.5-70B on CSCS, best-of-3)
 #   scripts/dogfood.sh mistral                 # Mistral-Small-4-119B, the prior default — comparison baseline

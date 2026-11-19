@@ -3,7 +3,6 @@
 	import AlphaFeatures from './ClassicFeatures.svelte';
 	import AlphaHeroBackdrop from './ClassicHeroBackdrop.svelte';
 	import AlphaSectionNav from '../../AlphaSectionNav.svelte';
-	import AlphaDemoShell from '../../AlphaDemoShell.svelte';
 	import { getAlphaLandingContent } from '../../content.svelte';
 	const readContent = getAlphaLandingContent();
 	const hero = $derived(readContent().hero);
@@ -43,17 +42,10 @@
 					</p>
 					<div class="mt-8 flex flex-wrap items-center justify-center gap-3">
 						<!-- eslint-disable svelte/no-navigation-without-resolve -- /chat is the CMS chat page, not a typed file route -->
-						<Button href={hero.ctaHref}>{hero.cta}</Button>
-						<Button href="/alpha/demo?look=classic" variant="light" data-hero-try-demo
-							>{hero.demoCta}</Button
-						>
+						<Button href={hero.ctaHref} data-hero-cta>{hero.cta}</Button>
 						<!-- eslint-enable svelte/no-navigation-without-resolve -->
 					</div>
 				</header>
-
-				<div class="relative w-full">
-					<AlphaDemoShell frame="soft" />
-				</div>
 			</div>
 		</div>
 	</section>

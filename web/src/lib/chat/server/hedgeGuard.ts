@@ -113,7 +113,7 @@ export const joinKeptSentences = (kept: string[]): string =>
 
 /** True when the text carries a letter or digit in ANY script once `[n]` citation markers are removed.
  *  Unicode-aware on purpose: an ASCII-only `[A-Za-z0-9]` test reads a whole Arabic, Chinese or Greek
- *  answer as empty and swaps the grounded-hedge replacement in over it (CUR-4356). */
+ *  answer as empty and swaps the grounded-hedge replacement in over it. */
 export const hasSubstantiveText = (text: string): boolean =>
 	/[\p{L}\p{N}]/u.test(text.replace(/\[\d+\]/g, ""));
 
@@ -181,7 +181,7 @@ export type CitableSource = { n: number; title: string };
  *  DESCRIBE, DON'T ASSERT — the copy must not open "I found sources relevant to this question", because
  *  relevance is the one thing this path cannot know. It fires precisely when the model looked at these
  *  sources and declined to answer from them, which is the strongest available evidence they were NOT
- *  relevant; that sentence over a YouTube link would be wrong (CUR-148). A guard whose whole job is to
+ *  relevant; that sentence over a YouTube link would be wrong. A guard whose whole job is to
  *  stop unbacked claims must not make one in its own replacement text. Any future wording here states
  *  what happened (retrieved, didn't answer) and never characterises the sources. */
 export function buildGroundedHedgeReplacement(sources: CitableSource[], language?: string): string {
@@ -199,7 +199,7 @@ export function buildGroundedHedgeReplacement(sources: CitableSource[], language
 
 type HedgeCopy = { some: (list: string) => string; none: string; separator: string };
 
-/** The replacement in the language the person wrote in (CUR-4339), keyed by 639-3 base tag. Same facts in
+/** The replacement in the language the person wrote in, keyed by 639-3 base tag. Same facts in
  *  each: retrieved, didn't answer, and the source list or that there is none. The Amharic and Arabic
  *  lines want a native speaker's review; until then they are checked only by blind back-translation
  *  from three models. The Amharic `none` line is two sentences so each reads on its own. */

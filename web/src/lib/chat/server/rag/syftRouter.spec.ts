@@ -103,7 +103,7 @@ describe("routeEndpoints — config + request shape", () => {
 		expect(body.model).toBe("model-a:publicai"); // provider-pinned via resolveProviderModelId
 		expect(body.response_format).toEqual({ type: "json_object" });
 		expect(body.stream).toBe(false);
-		expect((init.headers as Record<string, string>)["User-Agent"]).toBe("aipotluck.org");
+		expect((init.headers as Record<string, string>)["User-Agent"]).toBe("example.test");
 		// Server-side call → must bill to a configured org or the HF router 403s the routing call.
 		expect((init.headers as Record<string, string>)["X-HF-Bill-To"]).toBe("current-ai-official");
 		// Catalog serialized as JSON Lines (one object per line), not dash-delimited prose.

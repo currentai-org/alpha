@@ -14,9 +14,9 @@ export const SEARCH_ENGINES = [
 	"OpenAlex",
 	"arXiv",
 	"Hugging Face",
-	// A page the person linked, read from this deployment when Firecrawl could not read it. (CUR-2152)
+	// A page the person linked, read from this deployment when Firecrawl could not read it.
 	"Direct",
-	// Mistral's own web search connector, offered to a native turn beside ours. (CUR-2420)
+	// Mistral's own web search connector, offered to a native turn beside ours.
 	"Mistral",
 ] as const;
 export type SearchEngine = (typeof SEARCH_ENGINES)[number];

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages.js';
-	// Adapted from the "Local Inference Settings Tab" design (CUR-1194, CUR-1262). Styled from
+	// Adapted from the "Local Inference Settings Tab" design. Styled from
 	// design-system.md directly (--ap-* tokens), matching account/+page.svelte and application/+page.svelte
 	// rather than the mockup's own hardcoded hex values. Same busy/actionError idiom as
 	// account/+page.svelte (one key at a time — "add", or "remove:<id>" — plus one shared error banner)
@@ -37,13 +37,13 @@
 		headers: { name: string; value: string }[];
 		createdAt: string;
 		// Absent on rows created before this column existed (superjson won't backfill a
-		// default), so treat undefined the same as "direct" everywhere it's read below. (CUR-1266)
+		// default), so treat undefined the same as "direct" everywhere it's read below.
 		kind?: "direct" | "managed";
 	};
 	// Shown exactly once, right after provisioning — the tunnel secret is never returned
-	// again by any GET, matching the "reveal-once" credential hygiene this feature needs. (CUR-1266)
+	// again by any GET, matching the "reveal-once" credential hygiene this feature needs.
 	type ManagedInstallArgs = { tunnelId: string; tunnelSecret: string; tunnelEndpoint: string };
-	// CUR-1291 (design: "Local Inference Settings Tab", Advanced Options revision): one custom HTTP
+	// (design: "Local Inference Settings Tab", Advanced Options revision): one custom HTTP
 	// header to send with every request to a server being added. Persisted alongside the server on
 	// create (api/v2/user/local-inference-endpoints, schema.ts's `headers` jsonb column) and applied
 	// to every request this endpoint makes — discovery, prewarm, and generation alike (see
@@ -63,13 +63,13 @@
 	//
 	// The fixed names are a contract owned by the GUI repo: .github/latest-download-names.txt there.
 	// Every guiFile() suffix below must be on that list, or its link 404s. To add, drop or rename a
-	// download, follow docs/guides/local-client-downloads.md: the GUI repo changes first. (CUR-4416)
+	// download, follow docs/guides/local-client-downloads.md: the GUI repo changes first.
 	const GUI_LATEST = "https://github.com/currentai-org/aipotluck-local-client-gui/releases/latest/download";
 	const guiFile = (suffix: string) => `${GUI_LATEST}/aipotluck-local-client-gui_${suffix}`;
 
 	// The install step is per-platform now. Two pickers — which machine, then how it is
 	// delivered — because the answer to the second differs by the first: a phone has no terminal, and
-	// a desktop can take either. (CUR-3168)
+	// a desktop can take either.
 	type Platform = "linux" | "macos" | "windows" | "ios" | "android";
 	type Delivery = "cli" | "gui";
 
@@ -142,21 +142,21 @@
 	let refreshing = $state(false);
 
 	// Managed (tunnel) servers — a separate small form (label only, no URL: Pangolin
-	// assigns the hostname), and the one-time install payload shown right after pairing. (CUR-1266)
+	// assigns the hostname), and the one-time install payload shown right after pairing.
 	// suggested, not required — a name is only a label in a list, so any answer is right,
 	// which is exactly why people stall on the field. Re-rolled after each pair rather than cleared,
-	// so the next one is also a thing to accept rather than a thing to invent. (CUR-3168)
+	// so the next one is also a thing to accept rather than a thing to invent.
 	let managedName = $state(randomServerName());
 	let managedInstallArgs = $state<ManagedInstallArgs | null>(null);
 	// The manual pair form (name, Pair, the one-time credentials) is folded away by default;
-	// installing the client, which pairs itself, is the path the card leads with. (CUR-1324)
+	// installing the client, which pairs itself, is the path the card leads with.
 	let manualPairOpen = $state(false);
-	// Which build the install step is describing. CUR-1324: the app is the default now that
+	// Which build the install step is describing. the app is the default now that
 	// it ships for every desktop platform, as the design always wanted; the command line stays one tab
 	// away.
 	//
 	// Delivery is forced to GUI on a phone, but kept as its own state so switching back to a desktop
-	// restores the pick rather than silently leaving them somewhere they did not choose. (CUR-3168)
+	// restores the pick rather than silently leaving them somewhere they did not choose.
 	let platform = $state<Platform>("linux");
 	let delivery = $state<Delivery>("gui");
 	const guiOnly = $derived(GUI_ONLY.includes(platform));
@@ -169,7 +169,7 @@
 		const name = PLATFORMS.find((o) => o.id === platform)?.label ?? platform;
 		return effectiveDelivery === "cli" ? m.local_noCliBuild({ platform: name }) : m.local_noAppBuild({ platform: name });
 	});
-	// id -> online, or `undefined` before the first poll resolves (CUR-1267). A separate map from
+	// id -> online, or `undefined` before the first poll resolves. A separate map from
 	// `servers` itself since status is polled independently of the row list. Every server gets a
 	// status icon, direct and managed alike -- direct just has one check (is the server up);
 	// managed has two (is the tunnel up, then is the server behind it up), see the status API route.
@@ -297,7 +297,7 @@
 		try {
 			// The advanced-options headers are shared by both add forms now, so a managed
 			// pair carries them too. The server merges them UNDER Pangolin's own access-token headers,
-			// which must win — see the managed route. (CUR-3168)
+			// which must win — see the managed route.
 			const customHeaders = headers.map(({ name, value }) => ({ name, value }));
 			const result = handleResponse(await client.user["local-inference-endpoints"].managed.post({
 				label: trimmedName,
@@ -328,7 +328,7 @@
 	// Poll every row's status while this tab is mounted, direct and managed alike.
 	// A plain interval, not an SSE stream — nothing here needs sub-second latency, and this is a
 	// settings page a user only has open occasionally, unlike BackgroundGenerationPoller.svelte's
-	// always-mounted case. (CUR-1266/CUR-1267)
+	// always-mounted case.
 	const STATUS_POLL_INTERVAL_MS = 10_000;
 	let statusTimer: ReturnType<typeof setInterval> | undefined;
 
@@ -366,7 +366,7 @@
 		if (modelsChanged) await safeInvalidate("app:models");
 	}
 
-	// Manual stopgap for CUR-1266's polling-only status: force an out-of-cycle status poll (rather
+	// Manual stopgap for the polling-only status: force an out-of-cycle status poll (rather
 	// than waiting up to STATUS_POLL_INTERVAL_MS for a device that just came online to flip green),
 	// then requery the model list the same way add/remove/pair already do -- covers "a server just
 	// connected and I want its models to show up now" without a real connect/disconnect callback from
@@ -408,7 +408,7 @@
 		</p>
 	{/if}
 
-	<!-- Add a managed server (CUR-1266). CUR-1324: the client pairs itself now (CUR-4110's one-click
+	<!-- Add a managed server. the client pairs itself now (the one-click
 	     login, from the CLI or the app), so installing it is the main path and comes first, always
 	     shown. Naming a server here and copying its credentials across is the manual fallback, folded
 	     away below. -->
@@ -635,7 +635,7 @@
 		</div>
 	</section>
 
-	<!-- Advanced options, shared by both add forms (CUR-3168). Lives in its own card because it
+	<!-- Advanced options, shared by both add forms. Lives in its own card because it
 	     is no longer the manual form's own disclosure: anything set here rides along with whichever
 	     server is added next, managed or manual. -->
 	<section class="flex flex-col gap-2">

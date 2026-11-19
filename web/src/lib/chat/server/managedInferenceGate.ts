@@ -1,12 +1,12 @@
 /**
  * Managed (tunnel-provisioned) local-inference endpoints, gated separately from the base local
- * (LAN/self-hosted) feature (localEndpointsGate.ts) — its own PostHog flag since CUR-3175, declared
+ * (LAN/self-hosted) feature (localEndpointsGate.ts) — its own PostHog flag, declared
  * in the registry as a subset of `local-inference` rather than left as a relationship the prose only
- * implies (CUR-1085 is what that costs when it drifts). Deliberately NOT
- * `localInferenceEndpointsEnabled() && <pangolin config>` collapsed into one question: managed endpoints need a whole separate piece of
+ * implies (that change is what that costs when it drifts). Deliberately NOT
+ * `localInferenceEndpointsEnabled && <pangolin config>` collapsed into one question: managed endpoints need a whole separate piece of
  * infra (Pangolin, see pangolin/README.md) that the base feature never did, and keeping this a
- * second, independently-named gate is what let CUR-771 catch registration/access drift for
- * agent-mode (agentMode.ts's `agentModeEnabled()` vs `agentModeEnabledForUser()`) — the same
+ * second, independently-named gate is what let catch registration/access drift for
+ * agent-mode (agentMode.ts's `agentModeEnabled` vs `agentModeEnabledForUser`) — the same
  * precedent applies here: a future reason to turn managed off while direct stays on (or vice versa)
  * should be a one-line change to THIS function, not an unpicking of a shared one.
  */

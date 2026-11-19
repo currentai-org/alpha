@@ -12,7 +12,7 @@ import {
 
 const ORIGIN = 'https://preview.example';
 
-describe('footprints (SOL-245)', () => {
+describe('footprints', () => {
 	it('folds ids to :id and drops the query, so every conversation reads as one route', () => {
 		expect(
 			footprintLine('post', `${ORIGIN}/chat/conversation/6ac45983846e0f13154081cc?x=1`, ORIGIN)
@@ -69,7 +69,7 @@ describe('footprints (SOL-245)', () => {
 	});
 });
 
-describe('turn recording (SOL-265)', () => {
+describe('turn recording', () => {
 	const pad = ' '.repeat(16);
 	const stream = (...updates: object[]) =>
 		updates.map((u) => JSON.stringify(u) + '\n' + pad).join('');

@@ -1,4 +1,4 @@
-// Writes the sandbox's seccomp program (raw BPF, what `bwrap --seccomp FD` reads) to argv[1] (CUR-4478).
+// Writes the sandbox's seccomp program (raw BPF, what `bwrap --seccomp FD` reads) to argv[1].
 //
 // Default allow, with EPERM for the syscalls unprivileged kernel exploits start from and that nothing a
 // person's code or the agent needs: io_uring, bpf, perf_event_open, userfaultfd, the key store, every

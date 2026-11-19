@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { updateRequestContext } from "$lib/chat/server/requestContext";
 import { preconnectRouter } from "$lib/chat/server/upstreamFetch";
 import { countryFromHeader } from "$lib/chat/crisisLocale";
@@ -18,9 +21,9 @@ import {
 } from "$lib/chat/server/localModels";
 import { error, isHttpError } from "@sveltejs/kit";
 import { ObjectId } from "bson";
-import { syncBump, tombstoneConversations } from "$lib/chat/server/sync/syncTouch";
 import { z } from "zod";
 import { chargeScreeningCost, enforceRequestRateLimits } from "$lib/chat/server/chat/rateLimit";
+import { chatTurnsPerDay } from "$lib/chat/server/db/chatTurnAllowance";
 import { loadAuthorizedConversation } from "$lib/chat/server/chat/loadConversation";
 import { parseChatRequest } from "$lib/chat/server/chat/parseRequest";
 import { autoRouteForTurn } from "$lib/chat/server/chat/autoRoute";
@@ -49,6 +52,7 @@ import {
 	resolveGuardLive,
 	resolveReplayMode,
 	SESSION_RATE_LIMIT_FAULT,
+	DAILY_TURN_CAP_FAULT,
 	unreachableGuardJudge,
 	watchdogDeadlineMs,
 } from "$lib/chat/server/textGeneration/faultInjection";
@@ -62,9 +66,16 @@ import {
 import { upstreamDroppedMessage } from "$lib/chat/server/textGeneration/upstreamDropped";
 import {
 	upstreamSilentMessage,
+	watchdogBlamesModel,
 	watchdogCountsTowardBusy,
 	watchdogTimedOutMessage,
 } from "$lib/chat/server/textGeneration/upstreamSilent";
+import { failureCauseOfError } from "$lib/chat/server/textGeneration/failureCause";
+import {
+	classifyFailureLayer,
+	fallbackState,
+	type FailureCause,
+} from "$lib/chat/utils/failureLayer";
 import { noteFailed } from "$lib/chat/server/modelBusy";
 import { ordinaryTurnTimeout } from "$lib/chat/server/turnDeadlines";
 import { upstreamFailedMessage } from "$lib/chat/server/textGeneration/upstreamFailed";
@@ -84,6 +95,7 @@ import { withTruncationNotice } from "$lib/chat/server/endpoints/openai/openAICh
 import { resolveForceMultimodal } from "$lib/chat/server/multimodalMode";
 import { resolveReasoningEffort } from "$lib/chat/server/reasoningEffortMode";
 import { appendTurnMessages } from "$lib/chat/server/chat/messageTree";
+import { createDetachedPersistGate } from "$lib/chat/server/chat/detachedPersist";
 import { applyMessageUpdate, createStreamState } from "$lib/chat/server/chat/streamUpdate";
 import {
 	MessageUpdateStatus,
@@ -106,7 +118,6 @@ import {
 	screenModelOutput,
 } from "$lib/chat/server/moderation";
 import { GUARD_CORPUS_CAP, type GuardHit } from "$lib/chat/server/guardScreenTypes";
-import { withGuardShadow } from "$lib/chat/server/guardShadow";
 import { countGuardHitsSafe } from "$lib/chat/server/db/guardDailyCounts";
 import { runInputGate, screenedForRecord } from "$lib/chat/server/inputGate";
 import { S1_JUDGE } from "../../../../../config/safetyScreen";
@@ -122,9 +133,10 @@ import { clientAuthoredInstructions, withClientInstructions } from "$lib/chat/se
 import { personalInstructionsFrom } from "$lib/chat/personalInstructions";
 import { documentAttachmentsEnabled } from "$lib/chat/server/documentAttachmentsGate";
 import { CLIPBOARD_MIME, DOCUMENT_MIME_ALLOWLIST } from "$lib/chat/constants/mime";
-import { isSupportRule, resolveActionLabel, resolveActionMessage } from "$lib/chat/server/ruleLabel";
-import { declineLanguageFromTag, readMessageLanguage } from "$lib/chat/server/declineCopy";
+import { blockedRuleLabels, isSupportRule, resolveActionLabel, resolveActionMessage } from "$lib/chat/server/ruleLabel";
+import { declineLanguageFromTag, logDeclineLanguage, readMessageLanguage } from "$lib/chat/server/declineCopy";
 import { stampSupportFromSignal, supportSignal, supportSignalEnabled } from "$lib/chat/server/supportSignal";
+import { checkAnswerWithMilaSp } from "$lib/chat/server/milaSpOutputGuard";
 import { screenOutputStream, type OutputScreenLedger } from "$lib/chat/server/textGeneration/screenStream";
 import { honestyScreenStream } from "$lib/chat/server/textGeneration/honestyStream";
 import { cutRepetitionLoop } from "$lib/chat/server/textGeneration/loopCut";
@@ -144,10 +156,11 @@ import {
 	stripForgedStamp,
 	type Ledger,
 } from "$lib/chat/server/textGeneration/mathRouting";
-import { ensureFlagsPolled, flagEnabledOr } from "$lib/chat/server/flags";
-import { FAILOVER_ON_SILENT_LANE_FLAG, NoFirstChunkError } from "$lib/chat/server/endpoints/failover";
+import { ensureFlagsPolled } from "$lib/chat/server/flags";
+import { streamFollowEnabled } from "$lib/chat/server/streamFollowGate";
+import { createGenerationLogWriter } from "$lib/chat/server/chat/generationLog";
+import { NoFirstChunkError } from "$lib/chat/server/endpoints/failover";
 import {
-	groundedBailRegenEnabled,
 	runGroundedBailRegen,
 	runRecitalRegen,
 } from "$lib/chat/server/textGeneration/groundedBailRegen";
@@ -184,6 +197,7 @@ import type { AttachmentKind } from "$lib/chat/server/search/classifierPrompt";
 import { asksForTheLatest, isRecencyQueryDenoised, isUnservableLiveQuery } from "$lib/chat/search/recency";
 import { classifyQueryIntent } from "$lib/chat/search/queryIntent";
 import { logDeclineSafe } from "$lib/chat/server/db/safetyEvents";
+import { resolveProbeMarker } from "$lib/chat/server/probeMarker";
 import { usageLimits } from "$lib/chat/server/usageLimits";
 import { textGeneration } from "$lib/chat/server/textGeneration";
 import type { TextGenerationContext } from "$lib/chat/server/textGeneration/types";
@@ -191,7 +205,6 @@ import type { TurnSpans } from "$lib/chat/types/MessageTimings";
 import { logger } from "$lib/chat/server/logger.js";
 import { providerStampEnabled, readIdentityWithin, startSelfIdentityVerdict } from "$lib/chat/server/selfIdentity";
 import { nativeGateSaysSearch } from "$lib/chat/server/search/nativeSearchGate";
-import { searchIntentEnabled } from "$lib/chat/server/search/searchIntent";
 import { AbortRegistry } from "$lib/chat/server/abortRegistry";
 import { clampStoppedContent } from "$lib/chat/server/stopTruncation";
 import { summarizeInterruptedAgentWork } from "$lib/chat/utils/trace/interruptedAgentSummary";
@@ -205,9 +218,10 @@ import {
 	answersInFlight,
 } from "$lib/chat/server/generations";
 import { settlePendingAnswers } from "$lib/chat/server/chat/settlePendingAnswers";
-import { saveConversationMessages, snapshotConversation } from "$lib/chat/server/chat/conversationWrites";
+import { restampSealedMacs, saveConversationMessages, snapshotConversation } from "$lib/chat/server/chat/conversationWrites";
+import { hydrateSealedHistory, SealedHistoryError, sealedHistoryHttpError, titleUpdate } from "$lib/chat/server/chat/sealedTurn";
 import { recordTurnOutcome } from "$lib/chat/server/db/turnOutcomes";
-import { runInBackground, nodeRequestContext } from "$lib/chat/server/vercelBackground";
+import { runInBackground, keepAlive } from "$lib/chat/server/vercelBackground";
 import {
 	GenerationDeadlineExceeded,
 	GenerationWatchdogAbort,
@@ -262,7 +276,7 @@ class GenerationConflictSignal extends Error {
 // chain must keep proving liveness the same way the retrieval phase already does (retrievalHeartbeat).
 const PRESTREAM_HEARTBEAT_MS = 2_500;
 
-// The longest the FinalAnswer persist may hold the answer back from the client (CUR-2078). A Neon
+// The longest the FinalAnswer persist may hold the answer back from the client. A Neon
 // write normally takes tens of milliseconds; past this the answer goes out and the write finishes
 // behind it.
 const FINAL_ANSWER_PERSIST_WAIT_MS = 1_500;
@@ -288,7 +302,7 @@ function isLocalModelId(modelId: string | undefined): boolean {
 
 /** The turn's generation timeout from its own knob: agent, local, or ordinary. The input screen reads
  *  it before the stream to size its cap, and the watchdog reads it to arm. An ordinary turn on a model
- *  with its own floor (harnessProfiles.ts `generationTimeoutMs`, CUR-4403) gets at least that. */
+ *  with its own floor (harnessProfiles.ts `generationTimeoutMs`) gets at least that. */
 function turnGenerationTimeout(modelId: string | undefined, isAgentTurn: boolean) {
 	return isAgentTurn
 		? resolveGenerationTimeoutMs(Reflect.get(config, "AGENT_GENERATION_TIMEOUT_MS"), DEFAULT_AGENT_GENERATION_TIMEOUT_MS)
@@ -325,6 +339,7 @@ function prestreamFailureUpdate(e: unknown): MessageStatusUpdate {
 			statusCode: e.status,
 			message: e.body.message,
 			...(e.body.retryAfterSeconds ? { retryAfterSeconds: e.body.retryAfterSeconds } : {}),
+			...(e.body.reason ? { reason: e.body.reason } : {}),
 		};
 	}
 	return {
@@ -415,22 +430,27 @@ export async function POST({ request, locals, params, getClientAddress }) {
 
 	// Resolved once, up front — cheap (env check + one HMAC compare) and every real user
 	// turn resolves to null in one branch, so there's no reason to defer it into the stream body where
-	// ctx gets built. See faultInjection.ts for the full gate. (CUR-1614)
+	// ctx gets built. See faultInjection.ts for the full gate.
 	const faultInjection = await resolveFaultInjection(request);
 	// A scenario run replays every model call this turn makes, from the answer to its side
-	// calls, which read the mode from the request's context. (SOL-148)
+	// calls, which read the mode from the request's context.
 	const replayMode = await resolveReplayMode(request);
 	if (replayMode) updateRequestContext({ replayMode });
 	if (await resolveGuardLive(request)) updateRequestContext({ guardLive: true });
+	// The turn checks and writes history MACs as after a MAC key rotation. See sealedTurn.ts.
+	if (faultInjection === "history_mac_key_rotated") updateRequestContext({ macKeyRotated: true });
 	// A scenario run's agent turn, and Auto's route check, go to the in-process stand-in for
 	// agent-service rather than a shared agent machine. See fakeAgentService.ts.
 	const fakeAgent = await resolveFakeAgent(request);
 	if (fakeAgent) updateRequestContext({ fakeAgent });
 	// A PR preview's scenario send may ask for a screen that allows everything, so the suite
-	// stops queueing the one Shieldstral GPU production screens through. See previewScreenStub.ts. (CUR-3110)
+	// stops queueing the one Shieldstral GPU production screens through. See previewScreenStub.ts.
 	const screenStub = await resolvePreviewScreenStub(request);
+	// A scheduled production probe's verified marker, so a decline it meets is logged as the probe's
+	// rather than counted as a visitor's. Null for every other turn. See probeMarker.ts.
+	const probe = await resolveProbeMarker(request);
 	// `chat_500` answers the send as an unhandled throw in this handler does, before any
-	// stream exists, so a spec sees what a visitor gets when the turn's request itself fails. (CUR-1614)
+	// stream exists, so a spec sees what a visitor gets when the turn's request itself fails.
 	if (faultInjection === "chat_500") error(500, "Internal Error");
 	// The router is an ocean away from fra1; open its connection while retrieval runs (upstreamFetch.ts).
 	if (!replayMode) preconnectRouter();
@@ -483,12 +503,14 @@ export async function POST({ request, locals, params, getClientAddress }) {
 			userId,
 			clientAddress: getClientAddress(),
 			...(faultInjection === "session_rate_limit_low" ? { perSession: SESSION_RATE_LIMIT_FAULT } : {}),
+			// One account's share of the day's turns; the fault lowers it so a spec can reach it.
+			dailyTurns: faultInjection === "daily_turn_cap_low" ? DAILY_TURN_CAP_FAULT : chatTurnsPerDay(locals.user),
 		}),
 	]);
 	if (convResult.status === "rejected") throw convResult.reason;
 	if (rateLimitResult.status === "rejected") throw rateLimitResult.reason;
 	// A turn started while the previous one is still saving (Retry right after Stop) would
-	// otherwise save its copy over that turn's answer; see settlePendingAnswers. (CUR-2667)
+	// otherwise save its copy over that turn's answer; see settlePendingAnswers.
 	const settleStart = Date.now();
 	const settled = await settlePendingAnswers({
 		messages: convResult.value.messages,
@@ -502,9 +524,6 @@ export async function POST({ request, locals, params, getClientAddress }) {
 		);
 	}
 	const conv = settled ?? convResult.value;
-	// What this turn loaded, so its saves merge into the conversation as stored rather than
-	// writing this copy over turns another tab saved meanwhile. (CUR-2806)
-	const loadedConv = snapshotConversation(conv);
 	const convLoadMs = Date.now() - convLoadStart;
 
 	if (usageLimits?.messages && conv.messages.length > usageLimits.messages) {
@@ -514,12 +533,19 @@ export async function POST({ request, locals, params, getClientAddress }) {
 		);
 	}
 
-	// A chat from a workspace this person left, or that was deleted, is read-only. The page
+	// The Mila output guard ended this conversation on a flagged answer. Every turn (send, retry, edit)
+	// is refused here; the page shows a status line in place of the composer. The saved stamp decides, not
+	// the flag, so an ended conversation stays ended if the flag goes off.
+	if (conv.crisisEndedAt) {
+		error(403, "This conversation has ended. Start a new chat to keep talking.");
+	}
+
+	// a chat from a workspace this person left, or that was deleted, is read-only. The page
 	// offers no composer for it; this refuses a turn sent anyway. Only a chat with a workspace mark
-	// pays for the read. (CUR-3040)
+	// pays for the read.
 	// The same read decides whose documents retrieval may cite. A chat reads its own
 	// workspace's documents only while the asker is still a member of it; a failed read, the
-	// workspaces flag off, or no workspace mark leaves the site-wide corpus alone. (CUR-4152)
+	// workspaces flag off, or no workspace mark leaves the site-wide corpus alone.
 	let ragWorkspace: string | null = null;
 	if (hasWorkspaceMark(conv)) {
 		const scope = await workspaceScopeFor(locals, request.headers);
@@ -553,7 +579,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 		);
 	}
 
-	// Server-authoritative backstop (CUR-770): the agent's id is excluded from every schema that
+	// Server-authoritative backstop: the agent's id is excluded from every schema that
 	// validates a client-supplied model id (models.ts), so `conv.model` should never legitimately equal
 	// it — but this re-checks at the point of actually serving a turn rather than trusting that every
 	// write path enforced it, so a stale/legacy row or a future write path that misses the exclusion
@@ -583,16 +609,45 @@ export async function POST({ request, locals, params, getClientAddress }) {
 		speakMode,
 		agentMode,
 		autoRoute,
+		history,
+		sealedPreprompt,
 		uploadedFiles,
 		attachmentNotice,
 		leftOutFiles,
 	} = await parseChatRequest({ request, conv, locals, clientAddress: getClientAddress() });
 	const parseMs = Date.now() - parseStart;
+	// Sealed messages and preprompt become plaintext from the browser's post, each checked against its
+	// stored MAC, so everything below reads `conv` as it always has. Refused with 409: the
+	// browser fixes it by unlocking or reloading.
+	let macRestamps: ReturnType<typeof hydrateSealedHistory> = null;
+	try {
+		macRestamps = hydrateSealedHistory(conv, id, { history, preprompt: sealedPreprompt });
+	} catch (e) {
+		if (e instanceof SealedHistoryError) {
+			logger.warn({ event: "sealed-history-refused", code: e.code, conversationId: id }, "[chat] turn history refused");
+			// `reason` lets the browser tell this 409 from a duplicate turn's and resync its opened
+			// history instead of attaching to a run that does not exist.
+			sealedHistoryHttpError(e);
+		}
+		throw e;
+	}
+	// A body that matched under a retired MAC key, or in the unsalted form, gets its MAC re-taken under
+	// the active key, so the old key can go. The turn goes on if this write fails: the old key
+	// still checks it next time.
+	if (macRestamps) {
+		await restampSealedMacs({ _id: convId }, macRestamps).catch((err) =>
+			logger.warn({ event: "history-mac-restamp-failed", conversationId: id, err: String(err) }, "[chat] MAC restamp failed")
+		);
+	}
+	// What this turn loaded, so its saves merge into the conversation as stored rather than
+	// writing this copy over turns another tab saved meanwhile. Taken after the history is
+	// put in, so a message this turn leaves alone is saved as its stored sealed copy.
+	const loadedConv = snapshotConversation(conv);
 
 	// Agent control (composer off/auto/on): may override the selected model with the Potluck agent for
 	// this turn. "auto" asks the agent service's /route classifier whether the turn benefits from agentic
 	// work. Fail-open — any miss leaves `model` as the selected model (resolveAgentRoute never throws).
-	// Per-account access gate (CUR-1440): only accounts selected in the `agent-mode-access` flag's
+	// Per-account access gate: only accounts selected in the `agent-mode-access` flag's
 	// release conditions may route to the agent. Compute it ONLY for a live agent turn; an "off" turn
 	// skips it entirely.
 	//
@@ -618,8 +673,8 @@ export async function POST({ request, locals, params, getClientAddress }) {
 		),
 		// Search Always is a promise the agent can't keep: it has no web access (see resolveAgentRoute).
 		webSearchAlways: webSearchMode === "always",
-		// `agent_route_down` (preview only) fails the /route call as an unreachable service does. (CUR-2830)
-		// `agent_route_screened` answers it as the agent service's input screen does on a refusal. (CUR-4056)
+		// `agent_route_down` (preview only) fails the /route call as an unreachable service does.
+		// `agent_route_screened` answers it as the agent service's input screen does on a refusal.
 		...(faultInjection === "agent_route_down"
 			? { fetchImpl: () => Promise.reject(new TypeError("fetch failed")) }
 			: faultInjection === "agent_route_screened"
@@ -634,11 +689,11 @@ export async function POST({ request, locals, params, getClientAddress }) {
 				? { fetchImpl: (url, init) => fakeAgentFetch(url, init) }
 				: {}),
 	});
-	// resolveAgentRoute logs its own decision for every on/auto turn, fallbacks included (CUR-905).
+	// resolveAgentRoute logs its own decision for every on/auto turn, fallbacks included.
 	if (agentRoute.route === "agent") model = agentRoute.model;
 	// A re-attach continues an agent task this message already started, so it runs on the agent
 	// whatever the composer says, and only for a caller still cleared for agent mode. Which message, and
-	// whether it holds a task, appendTurnMessages checks below. (CUR-993)
+	// whether it holds a task, appendTurnMessages checks below.
 	if (agentAttach) {
 		const agent = models.find((m) => m.id === AGENT_MODEL_ID);
 		if (!agent || !(await agentModeEnabledForUser(locals))) {
@@ -654,20 +709,20 @@ export async function POST({ request, locals, params, getClientAddress }) {
 	// injectRagGrounding put the retrieved evidence, see textGeneration/index.ts) is silently dropped. So
 	// retrieval on an agent turn would run a real web round-trip, RAG lookup, and margin-gate model call
 	// for evidence the agent never sees — while `messageToWriteTo.webSearch`/`.rag` still got stamped, so the
-	// client's provenance trace would read "searched the web · N sources" on a turn that never used any of them (CUR-574).
+	// client's provenance trace would read "searched the web · N sources" on a turn that never used any of them.
 	const isAgentTurn = model.id === AGENT_MODEL_ID;
 	// The harness this turn runs under, decided once `model` is final. A native turn's model
 	// retrieves through its own tool calls, so the pre-turn retrieval below skips it the way it skips
-	// the agent. (CUR-2420)
+	// the agent.
 	const plannedHarness = harnessForTurn(model);
-	// The layer test's stream-guards switch, so the honesty stream can be A/B'd per model. (CUR-2697)
+	// The layer test's stream-guards switch, so the honesty stream can be A/B'd per model.
 	const evalStreamGuards = evalLayers()?.streamGuards;
 	if (evalStreamGuards !== undefined) markEvalLayerApplied("streamGuards", evalStreamGuards);
 	const harness =
 		evalStreamGuards === undefined ? plannedHarness : { ...plannedHarness, streamGuards: evalStreamGuards };
 	const retrievesPreTurn = !isAgentTurn && harness.retrieval === "pipeline";
 	// The layer test's retrieval switch turns off document retrieval only; web search keeps
-	// its own decision. Undefined on every real visitor's turn (see evalLayers.ts). (CUR-2139)
+	// its own decision. Undefined on every real visitor's turn (see evalLayers.ts).
 	const evalRetrieval = evalLayers()?.retrieval;
 	if (evalRetrieval !== undefined) markEvalLayerApplied("retrieval", evalRetrieval);
 	const ragPreTurn = retrievesPreTurn && evalRetrieval !== false;
@@ -687,25 +742,25 @@ export async function POST({ request, locals, params, getClientAddress }) {
 	if (!messageToWriteTo) {
 		error(500, "Failed to create message");
 	}
-	// The model this answer was asked of, so a later model switch can't relabel it as a backup. (CUR-3234)
+	// The model this answer was asked of, so a later model switch can't relabel it as a backup.
 	messageToWriteTo.requestedModel = model.id;
-	// Auto's choice, made in the browser, kept when it names the model this turn runs on. (CUR-3944)
+	// Auto's choice, made in the browser, kept when it names the model this turn runs on.
 	const autoRouted = autoRouteForTurn(autoRoute, model.id, isRetry);
 	if (autoRouted) messageToWriteTo.autoRoute = autoRouted;
 	// This turn's files were refused because they could not be scanned. Stored on the answer
-	// so a reload still says why, and streamed first thing in generationWork below. (CUR-2382)
+	// so a reload still says why, and streamed first thing in generationWork below.
 	if (attachmentNotice) {
 		messageToWriteTo.attachmentNotice = { message: attachmentNotice };
 	}
 	// The sent message keeps the files left out of it, by name, so they don't vanish from it
-	// when the answer lands. The answer's note above says why. (CUR-3405)
+	// when the answer lands. The answer's note above says why.
 	if (leftOutFiles.length) {
 		const questionId = messageToWriteTo.ancestors?.at(-1);
 		const question = conv.messages.find((m) => m.id === questionId && m.from === "user");
 		if (question) question.leftOutFiles = leftOutFiles;
 	}
 	// Auto's route check failed, so the selected model answers a turn nobody judged ordinary.
-	// Stored on the answer and streamed first thing in generationWork, as the attachment note is. (CUR-2830)
+	// Stored on the answer and streamed first thing in generationWork, as the attachment note is.
 	if (agentRoute.failed && !agentAttach) {
 		messageToWriteTo.agentRouteFailed = true;
 	}
@@ -768,7 +823,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 	// enforces that structurally. Do not introduce an awaited step between this write and the watchdog
 	// arm without revisiting $lib/chat/utils/deadlineLadder.
 	// Fault injection: hold the question back the way a cold instance does, so a reload can land in the gap
-	// before it is saved (CUR-1893). Before the write, so the ladder note above still holds.
+	// before it is saved. Before the write, so the ladder note above still holds.
 	if (faultInjection === "question_save_delayed") {
 		await new Promise((resolve) => setTimeout(resolve, QUESTION_SAVE_DELAY_MS));
 	}
@@ -793,29 +848,40 @@ export async function POST({ request, locals, params, getClientAddress }) {
 	// any withheld image/file bytes (which never go to Coop).
 	const userMessageId = [...messagesForPrompt].reverse().find((m) => m.from === "user")?.id;
 	const userTextToRag = userTextToScreen;
-	// The language a refusal reads in, from what the person wrote (CUR-4051). Detection runs beside the
+	// The language a refusal reads in, from what the person wrote. Detection runs beside the
 	// screen and is awaited only on a decline; it never rejects and falls back to English.
-	// The raw tag also reaches the sources pointer, which covers more languages than a decline (CUR-4339).
+	// The raw tag also reaches the sources pointer, which covers more languages than a decline.
 	const messageLanguagePromise = readMessageLanguage(userTextToScreen);
 	const declineLanguagePromise = messageLanguagePromise.then(declineLanguageFromTag);
-	// The multilingual support signal, started beside the screen. Never rejects; null when off.
-	// A turn the screen declines drops the result: its card comes from the decline itself. (CUR-4093)
-	const supportSignalPromise = supportSignalEnabled() ? supportSignal(userTextToScreen) : Promise.resolve(null);
-	// Sources the visitor numbered in their own message keep [1..k]; ours are numbered after them. (CUR-3844)
+	// the multilingual support signal, started beside the screen. Never rejects; null when off.
+	// A turn the screen declines drops the result: its card comes from the decline itself.
+	// The assistant's answer the person saw before writing this message, read only to take a show back
+	// (supportSignal.ts). A new turn names it as its parent; the prompt can instead end on another tab's newer
+	// answer (appendTurnMessages). A retry's or an agent attach's prompt is the branch on the page.
+	const lastUserIndex = messagesForPrompt.findLastIndex((m) => m.from === "user");
+	const namedParent = conv.messages.find((m) => m.id === messageId);
+	const previousReply =
+		(isRetry || agentAttach
+			? messagesForPrompt.slice(0, Math.max(lastUserIndex, 0)).findLast((m) => m.from === "assistant")?.content
+			: namedParent?.from === "assistant"
+				? namedParent.content
+				: "") ?? "";
+	const supportSignalPromise = supportSignalEnabled()
+		? supportSignal(userTextToScreen, { previousReply })
+		: Promise.resolve(null);
+	// sources the visitor numbered in their own message keep [1..k]; ours are numbered after them.
 	const visitorSourceCount = parseVisitorSources(userTextToRag).length;
 	// Computed here, before the moderation gate/RAG/media promises launch below, so a match
 	// can short-circuit the whole turn before any of that work starts — cheapest possible placement, and
 	// the one that most cleanly guarantees "no generation call" for these languages (see the branch near
 	// declineTurn below for where this is actually acted on).
-	// (CUR-742)
 	// Gated behind lowResourceLanguageFallbackEnabled(), default off — the messages
 	// themselves are machine-translation-sourced and, per this file's own header, not yet reviewed by a
 	// speaker of any of the three languages. Off means every match falls through to `else` below (the
 	// normal generation path) exactly as it did before this feature existed — an accepted false negative,
 	// not a new gap this introduces.
-	// (CUR-742/CUR-913)
 	// Shown at most once per conversation. The notice offers to try anyway, so the next message
-	// is the person's answer to that offer and gets a real attempt. (CUR-1841)
+	// is the person's answer to that offer and gets a real attempt.
 	const languageFallback =
 		lowResourceLanguageFallbackEnabled() && !lowResourceNoticeAlreadyShown(messagesForPrompt)
 			? detectLowResourceLanguage(userTextToScreen)
@@ -837,7 +903,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 		// turnStopped guard below then finalizes it and never runs generation.
 		outputLedger = { dispatched: [], stopped: turnStopped, released: "" };
 		finalizeOutput = makeOutputFinalizer(outputLedger, messageToWriteTo.id, coopUserId);
-		nodeRequestContext().waitUntil?.(finalizeOutput.settled);
+		keepAlive(finalizeOutput.settled);
 	}
 	// ── The ONE shared media pass ───────────────────────────────────────────────────────────────────
 	// Hydrate every attached file ONCE, expand clipboard, extract+cap text, build bounded image
@@ -856,7 +922,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 	// text is screened, never sent-past-screened).
 	const mediaPrepStart = Date.now();
 	// A PDF or DOCX is read to text only when the guard screens this turn, the one path that
-	// screens file text (the Coop branch screens typed text alone). (CUR-987)
+	// screens file text (the Coop branch screens typed text alone).
 	const preparedMediaPromise = prepareScreenedTurnMedia(messagesForPrompt, convId, {
 		readDocuments: documentAttachmentsEnabled() && turnPolicy.useGuardPrimary,
 		ownerId: conv.userId?.toString(),
@@ -895,20 +961,14 @@ export async function POST({ request, locals, params, getClientAddress }) {
 	// is decided by the CARRIED turnPolicy, resolved once above. The gate takes
 	// the shared GuardScreenInput (typed text + extracted file text + image units), so it screens the
 	// exact media the model receives; the Coop branch inside reads typedTurnText only.
-	// The gate promise is obtained THROUGH withGuardShadow: it launches the Shieldstral shadow probe
-	// BESIDE the gate (fire-and-forget, measure-only) and returns this gate promise UNCHANGED. Routing
-	// through the seam (rather than a bare launch call) is what makes "shadow beside the gate, never in
-	// its path" a TESTED invariant — guardShadow.spec.ts's isolation tests go red if it is ever
-	// awaited/joined. Off unless the `guard-shadow` flag is ON and GUARD_SHADOW_URL is set — and
-	// SUPPRESSED via the carried policy when guard-primary already screens this turn, so both flags ON
-	// still runs exactly one screening operation. Chained off the media pass (the same settled
-	// GuardScreenInput feeds runInputGate AND the shadow — one object, never two screenings).
+	// Chained off the media pass, so one settled GuardScreenInput feeds runInputGate: one screening
+	// operation per turn.
 	// The guard also screens the system text the caller wrote (the conversation's preprompt or
 	// their Personalization), since it shapes this turn as much as the typed message does. A settings
 	// read that fails leaves Personalization out here; the stream's own join on settingsPromise then
 	// fails the turn, so nothing is generated past an unscreened instruction.
 	// Where a multi-chunk guard screen has got to, read by the stream's heartbeat for the "Checking
-	// safety" line (CUR-3749). Stays at 0 parts for a one-chunk screen and for Coop. (CUR-3528)
+	// safety" line. Stays at 0 parts for a one-chunk screen and for Coop.
 	const screenProgress = { part: 0, parts: 0 };
 	const gatePromise = Promise.all([preparedMediaPromise, settingsPromise.catch(() => null)]).then(
 		([preparedMedia, gateSettings]) => {
@@ -934,27 +994,27 @@ export async function POST({ request, locals, params, getClientAddress }) {
 					clientAuthoredInstructions(conv.preprompt, model.preprompt, personalInstructionsFrom(gateSettings))
 				),
 			};
-			// Zentropi judges this turn's input screen when its typed text is am/yo/ha/sw and the
-			// flag is on; a near-miss read keeps Shieldstral and adds Zentropi as a second opinion (CUR-4423). (CUR-4340)
-			// With s1-safety-judge on, Zentropi S1 judges every text chunk and the CoPE routing is
-			// not used. A stub or fault-injection turn keeps today's judges, so each fault still means what
-			// its spec says. (CUR-4527)
-			const routedJudges = screenStub
-				? {}
-				: inputJudgesFor(media.screen.typedTurnText, logger, { allowS1: !faultInjection });
-			return withGuardShadow(
-			runInputGate(
+			// With s1-safety-judge on, Zentropi S1 judges every text chunk; off, Shieldstral does. A stub or
+			// fault-injection turn keeps today's judges, so each fault still means what its spec says.
+			const routedJudges = screenStub ? {} : inputJudgesFor(logger, { allowS1: !faultInjection });
+			return runInputGate(
 				{
 					input: media.screen,
 					userId: coopUserId,
 					useGuardPrimary: turnPolicy.useGuardPrimary || screenStub,
+					latest: {
+						corpus: newest?.finalText ?? userTextToScreen,
+						typedTurnText: media.screen.typedTurnText,
+						images: newest?.images ?? [],
+						failedUnits: [],
+					},
 				},
 				screenStub
 					? { getGuardVerdict: stubGuardVerdict }
 					: {
 							guardDeps: {
 								enabledFlags: inputScreenFlags(),
-								// The one screen that counts distress hits, so the daily count is messages (CUR-3915).
+								// The one screen that counts distress hits, so the daily count is messages.
 								countLogHits: countGuardHitsSafe,
 								// An agent or local turn gets no screen allowance, so its screen keeps the old cap.
 								deadlineCapMs: screenDeadlineCapMs(turnGenerationTimeout(model.id, isAgentTurn).effectiveMs),
@@ -965,20 +1025,17 @@ export async function POST({ request, locals, params, getClientAddress }) {
 								...routedJudges,
 								...(faultInjection === "input_screen_unfinished" ? { abortAfterChildTier: true } : {}),
 								// The real input screen with a guard that never answers, as output_guard_unreachable
-								// does for the output screen. (CUR-4101)
+								// does for the output screen.
 								...(faultInjection === "input_guard_unreachable" ? { judge: unreachableGuardJudge } : {}),
 								...(faultInjection === "input_screen_declines_rule" ? { judge: harassmentRuleJudge } : {}),
 							},
 						}
-			),
-			media.screen,
-			{ suppressed: turnPolicy.useGuardPrimary }
-		);
+			);
 		}
 	);
 	gatePromise.catch(() => {});
 	// A screen over a long history read several guard chunks; the ones past the first count
-	// against this session's and network's per-minute limit, which every instance shares. (CUR-3532)
+	// against this session's and network's per-minute limit, which every instance shares.
 	void runInBackground(
 		gatePromise.then((g) =>
 			chargeScreeningCost({ userId, clientAddress: getClientAddress(), guardChunks: g.guardChunks ?? 0 })
@@ -1028,7 +1085,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 				})
 			: Promise.resolve(null);
 	ragPromise.catch(() => {});
-	// Whether that promise really queries our document stores, for the live status line (CUR-2223).
+	// Whether that promise really queries our document stores, for the live status line.
 	const documentsSearched = !!userTextToRag && ragPreTurn && ragWillSearch(userTextToRag);
 	// Turn-quality signals for the web step, computed ONCE here (pure/deterministic) and reused by the
 	// concurrent always-launch below, the auto path, and the generation ctx (plan MINOR-2):
@@ -1064,7 +1121,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 	// on the unscreened turn, gated by moderation below; on a decline the promise settles unused and the
 	// decline path drops the provenance. auto/off stay community-DEPENDENT and are decided after RAG
 	// resolves (in start()).
-	// !isAgentTurn: the agent endpoint never reads this (CUR-574, see the isAgentTurn declaration above) —
+	// !isAgentTurn: the agent endpoint never reads this (see the isAgentTurn declaration above) —
 	// launching it anyway pays for a real web round-trip nobody sees.
 	const webAlways =
 		retrievesPreTurn &&
@@ -1084,7 +1141,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 	// which ALREADY reranks the user's query pre-gate
 	// (rag/index.ts). No GENERATIVE model sees the turn before moderation, and on a decline this promise
 	// settles unused (its would-be sources are dropped). RAG stays concurrent regardless.
-	// Why the pre-launched leg produced no outcome, if it failed, so the answer can say so. (CUR-4091)
+	// Why the pre-launched leg produced no outcome, if it failed, so the answer can say so.
 	const webRetrievalFailure: { why?: WebSearchFailure } = {};
 	const webRetrievalPromise: Promise<WebRetrieval | undefined> | undefined =
 		webAlways && searchHistory.length === 0
@@ -1111,7 +1168,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 		agentAttach,
 		harness,
 		messageToWriteTo,
-		// Auto's kept choice, so the endpoint below can give up sooner on a silent pick. (CUR-4384)
+		// Auto's kept choice, so the endpoint below can give up sooner on a silent pick.
 		autoRouted,
 		messagesForPrompt,
 		generationId,
@@ -1145,7 +1202,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 		userTextToRag,
 		visitorSourceCount,
 		languageFallback,
-		// What came with the message, by kind, so the search decider judges the question with it. (CUR-3192)
+		// What came with the message, by kind, so the search decider judges the question with it.
 		turnAttachmentKinds: uploadedFiles.map(
 			(f): AttachmentKind =>
 				f.mime.startsWith("image/") ? "image" : f.mime === CLIPBOARD_MIME ? "pasted text" : "document"
@@ -1155,6 +1212,10 @@ export async function POST({ request, locals, params, getClientAddress }) {
 
 	let doneStreaming = false;
 	let clientDetached = false;
+	// Whole-conversation writes this turn ran, and how many of them happened after the client left, so
+	// the outcome log can say what a detached turn cost the database.
+	let conversationWrites = 0;
+	let detachedWrites = 0;
 	// Set once the turn has been finalized (terminal update emitted, persist/finalize done or
 	// bounded-attempted). After this, update() is a no-op and the in-work persist/finalize tail
 	// returns without writing: a generation abandoned by the hard deadline may resume long after
@@ -1278,11 +1339,11 @@ export async function POST({ request, locals, params, getClientAddress }) {
 					// client retries a >=500 with a FRESH id, so the stale in_flight record blocks nothing.
 					const chainWork = runPrestream();
 					chainWork.catch(() => {}); // a late rejection must never surface as an unhandled rejection
-					// A Stop in the seconds before the question is saved hangs up the client, and (CUR-3018)
+					// A Stop in the seconds before the question is saved hangs up the client, and
 					// nothing would otherwise hold the function open for that save, or mark the answer stopped once
 					// it landed, so the question would be lost or come back looking unanswered. Keep the
 					// function alive until the chain settles, and save a detached turn as interrupted.
-					nodeRequestContext().waitUntil?.(
+					keepAlive(
 						chainWork
 							.then(async (c) => {
 								if (!clientDetached) return;
@@ -1311,7 +1372,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 						logger.error(e, "[prestream] chain failed");
 					} else if (failure.statusCode !== 409) {
 						// A refusal (400/413/415/429) is delivered in-stream on a 200, so without this line
-						// the logs show only a fast 200 and nothing says the send was turned away (CUR-1896).
+						// the logs show only a fast 200 and nothing says the send was turned away.
 						logger.warn(
 							{ statusCode: failure.statusCode, reason: failure.message },
 							"[prestream] request refused"
@@ -1370,7 +1431,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 				languageFallback,
 				turnAttachmentKinds,
 			} = chain;
-			// What the arithmetic pre-pass decided, persisted beside timings on the same message. (CUR-2043)
+			// What the arithmetic pre-pass decided, persisted beside timings on the same message.
 			const turnRungs: RungStep[] = [];
 
 			// A cancel/setup-deadline during the prestream phase
@@ -1406,7 +1467,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 				const messagesForSave = conv.messages.map((msg) => {
 					// A message with nothing to compress goes back as loaded. Giving it `updates: []`
 					// would read as this turn changing it, and another tab's in-flight answer would be saved
-					// back as the empty placeholder this turn loaded. (CUR-2806)
+					// back as the empty placeholder this turn loaded.
 					if (!msg.updates?.length) return msg;
 					const filteredUpdates =
 						msg.updates
@@ -1445,11 +1506,14 @@ export async function POST({ request, locals, params, getClientAddress }) {
 					// link while the chain was wedged and already released the W2 id — running it late could
 					// clobber a retried/newer turn with this stale snapshot.
 					if (persistAbandoned) return;
+					conversationWrites += 1;
+					if (clientDetached) detachedWrites += 1;
 					try {
 						await saveConversationMessages({ _id: convId }, loadedConv, {
 							messages: messagesForSave,
 							title: conv.title,
 							updatedAt: new Date(),
+							...(conv.crisisEndedAt ? { crisisEndedAt: conv.crisisEndedAt } : {}),
 						});
 					} catch (err) {
 						logger.error(
@@ -1502,10 +1566,10 @@ export async function POST({ request, locals, params, getClientAddress }) {
 			const state = createStreamState();
 			let abortedByUser = false;
 			let hasError = false;
-			// Declines are their own terminal outcome (CUR-89). Without that, a turn the safety gate
+			// Declines are their own terminal outcome. Without that, a turn the safety gate
 			// REFUSED would be indistinguishable from one that answered: it aborts nothing, is admitted, does
 			// not time out and does not error, so the branch below would compute `complete`. That would hide the one
-			// failure mode CUR-35 exists to catch — Coop fail-CLOSING checkChildSafety so every turn
+			// failure mode exists to catch — Coop fail-CLOSING checkChildSafety so every turn
 			// declines, presenting as the assistant refusing users rather than as a failure — from
 			// any consumer of this log line, including a rate alert on non-`complete` outcomes.
 			//
@@ -1515,6 +1579,9 @@ export async function POST({ request, locals, params, getClientAddress }) {
 			// decline means the model RAN, so its timings mean something different.
 			let declineKind: ModerationKind | null = null;
 			let declinedAt: "input" | "output" | null = null;
+			// what ended a failed turn, set by the site that decided it, so the outcome line can name
+			// the layer it died in (classifyFailureLayer). Null on a turn nothing failed.
+			let failureCause: FailureCause | null = null;
 			// Server-side generation watchdog: bound the whole turn's wall-clock UNDER the platform function
 			// limit so a hung/cold model lane aborts into the catch below (a clean, retryable Status=Error)
 			// instead of the invocation being KILLED at that limit. A platform kill runs no
@@ -1530,7 +1597,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 			//
 			// SPLIT BY TURN KIND. An agent turn and an ordinary turn share nothing on this axis: ordinary
 			// turns top out at genElapsedMs ~22s, while a verified agent trial runs 32–180s
-			// because the task is 13–26 sequential model calls (CUR-144). One number cannot serve both —
+			// because the task is 13–26 sequential model calls. One number cannot serve both —
 			// sized for the agent it lets a hung ordinary turn hold a spinner ~3× longer for no gain,
 			// and sized for ordinary it kills agent work that is already finished and verified.
 			// `model` is read AFTER agent routing reassigned it (~line 302), so this reflects what will
@@ -1541,30 +1608,23 @@ export async function POST({ request, locals, params, getClientAddress }) {
 			// await between it and this watchdog arm is inside an unawaited closure, so the residual is
 			// ~0. Do not introduce an awaited step between those two points without revisiting the clamp.
 			let timedOut = false;
-			/** The watchdog ended a turn whose model never sent a token (watchdogCountsTowardBusy). (CUR-4345) */
+			/** The watchdog ended a turn whose model never sent a token (watchdogCountsTowardBusy). */
 			let watchdogModelSilent = false;
 			// Anchor for the watchdog's OWN budget. genTimeoutMs is measured from here, so this is the
 			// clock to report against it in the terminal turn log — not promptedAt, which also carries
 			// the prestream chain.
 			const genWatchdogArmedAt = Date.now();
 			// isAgentTurn is computed once inside runPrestream (needed there for the RAG/web-search
-			// gate, CUR-574) and destructured off `chain` above, not redeclared here.
+			// gate) and destructured off `chain` above, not redeclared here.
 			//
-			// A local (LAN/self-hosted) model gets its OWN, longer default (CUR-1194 timeout audit) —
+			// A local (LAN/self-hosted) model gets its OWN, longer default (timeout audit) —
 			// never the primary-gateway path, so ordinary/agent turns are byte-for-byte unaffected. `model`
 			// here is the same post-agent-routing binding the comment above already relies on, so this
 			// reflects what will actually be generated against. Mutually exclusive with isAgentTurn: the
 			// agent is a distinct model (`potluck-agent`), never a `local:*` id.
 			const isLocalModel = isLocalModelId(model.id);
 			const genTimeout = turnGenerationTimeout(model.id, isAgentTurn);
-			// Read only under the fault that needs it, so no other turn waits on a flag poll here.
-			if (faultInjection === "primary_lane_hangs") await ensureFlagsPolled();
-			const genTimeoutMs = watchdogDeadlineMs(genTimeout.effectiveMs, faultInjection, {
-				isAgentTurn,
-				silentLaneFailover:
-					faultInjection === "primary_lane_hangs" &&
-					flagEnabledOr(FAILOVER_ON_SILENT_LANE_FLAG, () => false),
-			});
+			const genTimeoutMs = watchdogDeadlineMs(genTimeout.effectiveMs, faultInjection, { isAgentTurn });
 			if (genTimeout.clamped)
 				logger.warn(
 					{
@@ -1585,9 +1645,9 @@ export async function POST({ request, locals, params, getClientAddress }) {
 			// How long a stretch with NO new content token is tolerated before this counts as a
 			// stall, distinct from genTimeoutMs (the TOTAL backstop below). Clamped to genTimeoutMs itself —
 			// a silence window larger than the total cap can never fire first, which would make it a
-			// dead knob rather than an unsafe one, but still worth flagging if someone sets it that way. (CUR-58)
+			// dead knob rather than an unsafe one, but still worth flagging if someone sets it that way.
 			// A model with its own watchdog floor gets it for the silence window too, since before
-			// the first token the two watch the same wait. (CUR-4403)
+			// the first token the two watch the same wait.
 			const silenceTimeout = withModelFloor(
 				resolveGenerationTimeoutMs(Reflect.get(config, "SILENCE_TIMEOUT_MS"), DEFAULT_SILENCE_TIMEOUT_MS),
 				isAgentTurn || isLocalModel ? null : generationTimeoutMsFor(model.id)
@@ -1611,7 +1671,11 @@ export async function POST({ request, locals, params, getClientAddress }) {
 				// for a slow-but-complete turn.
 				if (ctrl.signal.aborted || state.finalAnswerReceived) return;
 				timedOut = true;
-				// Decided before the abort, which a visitor's Stop never reaches (the guard above). (CUR-4345)
+				// whose stall it was, read before the abort by the rule the visitor's sentence uses.
+				failureCause = watchdogBlamesModel(messageToWriteTo?.updates, generationUpdatesFrom)
+					? "watchdog-model-stalled"
+					: "watchdog-our-step";
+				// decided before the abort, which a visitor's Stop never reaches (the guard above).
 				watchdogModelSilent = watchdogCountsTowardBusy({
 					updates: messageToWriteTo?.updates,
 					generationUpdatesFrom,
@@ -1625,21 +1689,21 @@ export async function POST({ request, locals, params, getClientAddress }) {
 					"Generation watchdog fired — aborting stalled generation as an error"
 				);
 				if (watchdogModelSilent) void noteFailed(model.id);
-				// The reason tells the endpoint the watchdog ended the turn, not a Stop. (CUR-4660)
+				// The reason tells the endpoint the watchdog ended the turn, not a Stop.
 				ctrl.abort(new GenerationWatchdogAbort());
 			};
-			// TOTAL backstop — fires regardless of activity, unchanged from before CUR-58. Without this a
+			// TOTAL backstop — fires regardless of activity, unchanged. Without this a
 			// lane emitting one token every 20s would reset the silence timer forever and ride silently to
 			// the platform kill (PLATFORM_MAX_DURATION_MS) with no terminal write.
 			//
-			// Its clock starts when the input screen ends (CUR-3749). A 100k paste screens for up to a minute
+			// Its clock starts when the input screen ends. A 100k paste screens for up to a minute
 			// or more, and counting that against genTimeoutMs would leave the model no time once it was allowed.
 			// screenAllowanceMs keeps screen + generation inside MAX_SAFE, so the ladder still holds; an
 			// agent or local turn, already at MAX_SAFE, gets no extension. Settled from the gate promise
 			// itself, so a path that never joins the gate still pins the extension.
 			//
 			// An open confirm card (state.awaitingConfirmation) holds this clock too, inside the
-			// same room under MAX_SAFE, so a person deciding is not counted as generation time. (CUR-3983)
+			// same room under MAX_SAFE, so a person deciding is not counted as generation time.
 			const genDeadline = new ScreenAwareDeadline(
 				genTimeoutMs,
 				screenAllowanceMs(genTimeoutMs),
@@ -1654,17 +1718,19 @@ export async function POST({ request, locals, params, getClientAddress }) {
 			gatePromise.then(settleScreen, settleScreen);
 			// A turn still writing its answer when the cap arrives is a slow lane, not a stall.
 			// It gets the rest of the ladder's room, once, and the silence watchdog below still ends it if
-			// the tokens stop. Every timer on genDeadline re-arms, the hard-unwind race included. (CUR-4009)
+			// the tokens stop. Every timer on genDeadline re-arms, the hard-unwind race included.
 			let cancelTotalTimer = () => {};
 			const onTotalDeadline = () => {
 				if (
 					!ctrl.signal.aborted &&
 					!state.finalAnswerReceived &&
-					isStillStreaming({
-						now: Date.now(),
-						lastTokenAt: state.lastTokenTimestamp?.getTime(),
-						lastModelOutputAt: state.lastModelOutputAt?.getTime(),
-					})
+					// a tool round still retrieving is progress too, though it streams nothing.
+					(state.runningTools ||
+						isStillStreaming({
+							now: Date.now(),
+							lastTokenAt: state.lastTokenTimestamp?.getTime(),
+							lastModelOutputAt: state.lastModelOutputAt?.getTime(),
+						}))
 				) {
 					const addedMs = genDeadline.extendWhileStreaming();
 					if (addedMs > 0) {
@@ -1681,13 +1747,13 @@ export async function POST({ request, locals, params, getClientAddress }) {
 			cancelTotalTimer = genDeadline.schedule(onTotalDeadline);
 			const cancelGenWatchdog = () => cancelTotalTimer();
 			// PRIMARY trigger — polls state.lastActivityAt (streamUpdate.ts's reducer, bumped on every
-			// event it processes — CUR-1204) rather than resetting a timer per token, so a real stall is
+			// event it processes —) rather than resetting a timer per token, so a real stall is
 			// caught the moment silenceTimeoutMs is crossed instead of waiting for the fixed total cap —
-			// the gap CUR-58 exists to close. Deliberately NOT state.lastTokenTimestamp: that field is
+			// the gap exists to close. Deliberately NOT state.lastTokenTimestamp: that field is
 			// scoped to real content tokens for the inter-token-latency metric, and stays blind to an
 			// agent turn's RouterMetadata heartbeat / AgentStep / WritePolicy narration — all real proof
 			// the generation is alive, none of them content. Falls back to genWatchdogArmedAt before the
-			// first event arrives, matching the "never started" case (CUR-58:
+			// first event arrives, matching the "never started" case (
 			// every real firing was exactly this — no first token, ever).
 			const silenceWatchdog = setInterval(() => {
 				if (ctrl.signal.aborted || state.finalAnswerReceived) return;
@@ -1695,7 +1761,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 				// An open agent-confirm card produces zero tokens by design while a human
 				// decides — isSilentStall reads state.awaitingConfirmation so that wait is never treated
 				// as the hang this watchdog exists to catch. The TOTAL backstop below is untouched and
-				// still catches a confirm nobody ever answers. (CUR-1085)
+				// still catches a confirm nobody ever answers.
 				if (
 					isSilentStall({
 						now: Date.now(),
@@ -1715,7 +1781,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 			let totalRetrievalMs: number | undefined;
 			// How many updates the turn held when retrieval ended and the model call began, so a
 			// watchdog timeout can tell our own tool step stalling from the model going quiet. Unset while
-			// retrieval is still running. (CUR-4107)
+			// retrieval is still running.
 			let generationUpdatesFrom: number | undefined;
 			// Set when the honesty guard threw the whole grounded answer away and substituted a source
 			// pointer. Lives out here because the mutation is observed inside the stream callback and the
@@ -1727,13 +1793,13 @@ export async function POST({ request, locals, params, getClientAddress }) {
 			// Characters that survived to the final-guard stage, captured before any final-only guard
 			// null when none ran. Lives out here for the same reason as guardReplacedAnswer: the value is
 			// only observable inside the stream callback and the outcome log needs it. See answerLength.ts
-			// for why the finished message's own length cannot stand in (CUR-443).
+			// for why the finished message's own length cannot stand in.
 			let preGuardChars: number | null = null;
 			// Distinguishes the two things guardReplacedAnswer/groundedHedgeMutation lump together
 			// on purpose (see the comment at the assignment site) — a fresh ungrounded regen that SUCCEEDED
 			// with real content is not the same user experience as buildGroundedHedgeReplacement's bare
 			// sources pointer, even though both correctly count as "not the model's grounded answer" for
-			// the citation audit. Only this flag feeds the outcome log's `empty` rung. (CUR-192)
+			// the citation audit. Only this flag feeds the outcome log's `empty` rung.
 			let answerRecoveredByRegen = false;
 			// gateMs is captured in start() scope so the first-token finalizer can persist it on
 			// message.timings — a DURABLE, queryable phase split (no tailing ephemeral platform logs). It is
@@ -1744,7 +1810,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 
 			messageToWriteTo.updates ??= [];
 			// Whether this turn carries the Support resources card, from the guard's distress rules
-			// or the multilingual signal, which can land after the answer starts. Never rejects. (CUR-4093)
+			// or the multilingual signal, which can land after the answer starts. Never rejects.
 			let supportVerdict: Promise<boolean> = Promise.resolve(false);
 			const initialMessageContent = messageToWriteTo.content;
 			const metricsCtx =
@@ -1759,9 +1825,9 @@ export async function POST({ request, locals, params, getClientAddress }) {
 			const conversation = conv;
 			const activeModel = model;
 			// Started now so the embedding is done by the time the search decision reads it.
-			// Its one use since the provider stamp moved into X-ray (CUR-2921) is the search veto below: a
+			// Its one use since the provider stamp moved into X-ray is the search veto below: a
 			// question about the assistant itself is answered from its own provenance, never the web.
-			// Undefined when the flag is off, which keeps the classifier out of every turn. (CUR-2135)
+			// Undefined when the flag is off, which keeps the classifier out of every turn.
 			const readSelfIdentityVerdict =
 				providerStampEnabled() && userTextToScreen
 					? startSelfIdentityVerdict(userTextToScreen)
@@ -1830,6 +1896,15 @@ export async function POST({ request, locals, params, getClientAddress }) {
 			// $lib/chat/server/chat/streamUpdate — that's where the per-type dispatch and metrics live), then
 			// do the client-facing stream plumbing the reducer is deliberately kept out of: enqueue,
 			// detach detection, and detached-persist. A null result means "drop this event entirely".
+			// the stream-follow log of what this turn sent. Off (null) unless the flag is on and the
+			// client minted a generationId, which is the id a follower asks for.
+			const genLog =
+				generationId && streamFollowEnabled()
+					? createGenerationLogWriter(generationId, convId.toString())
+					: null;
+
+			const shouldPersistDetached = createDetachedPersistGate();
+
 			async function update(event: MessageUpdate) {
 				// Hard-deadline terminal guard (see turnFinalized): an abandoned zombie generation that
 				// resumes after the emergency path closed the turn must not mutate or persist anything.
@@ -1841,10 +1916,10 @@ export async function POST({ request, locals, params, getClientAddress }) {
 				// (and much rarer than) the honesty family and every FinalAnswer producer funnels through here.
 				// additionally, resolve the out-of-band output-moderation carriers into the body
 				// ONCE, here, after every upstream model-text guard has run and left them untouched (honesty is
-				// the only one; the arithmetic guards were retired in CUR-2095). Both are mutually exclusive with the token-cap notice below (a
+				// the only one; the arithmetic guards were retired). Both are mutually exclusive with the token-cap notice below (a
 				// moderation-terminated turn never also needs a "ran out of tokens" notice), and each
 				// deletes its carrier once resolved so the SSE line and the message.updates audit trail
-				// never ship a duplicate of text already in `text`. (CUR-946)
+				// never ship a duplicate of text already in `text`.
 				if (event.type === MessageUpdateType.FinalAnswer && event.declineText) {
 					// Full block: reviewed static copy that never passed through generate.ts. Replace the
 					// body verbatim — no fence-strip is needed for copy we authored ourselves.
@@ -1881,7 +1956,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 					// The token-cap notice, appended HERE and only here. The endpoint transform knows the
 					// generation was cut (finish_reason "length") but cannot deliver text: generate.ts drops
 					// the final chunk's token, and screenOutputStream rebuilds the body from Stream tokens
-					// alone, so a notice written upstream reached the log and not the user (CUR-149). The
+					// alone, so a notice written upstream reached the log and not the user. The
 					// flag travels; the text is written at the one point all three producers pass through.
 					event.text = withTruncationNotice(event.text, event.truncated);
 				}
@@ -1895,20 +1970,22 @@ export async function POST({ request, locals, params, getClientAddress }) {
 						conversation.title = sanitizedTitle;
 						// Through the write chain (invariant 3); awaited so a title-write failure still errors
 						// the turn via the stream catch exactly as today (the chain's tail advances past it).
-						await writeChain.enqueue(() =>
-							collections.conversations.updateOne(
+						// Sealed to the owner while sealing is on.
+						await writeChain.enqueue(async () => {
+							const update = await titleUpdate(id, conversation, sanitizedTitle);
+							return collections.conversations.updateOne(
 								{ _id: convId },
-								{ $set: { title: conversation.title, updatedAt: new Date() } }
-							)
-						);
+								{ ...update, $set: { ...update.$set, updatedAt: new Date() } }
+							);
+						});
 					},
 				});
-				// A code call waiting for a free sandbox is held the same way, inside the same room. (CUR-4584)
+				// A code call waiting for a free sandbox is held the same way, inside the same room.
 				genDeadline.setHumanWaiting(state.awaitingConfirmation || state.waitingForSandbox);
 
 				if (outgoing === null) return;
 
-				// Write the answer before the client is told it is final (CUR-2078). Without this the row
+				// Write the answer before the client is told it is final. Without this the row
 				// holds only the empty placeholder from the user-message write until the merged title stream
 				// ends, which can be 10-16s after the answer when a side call is shed, so an export or reload taken
 				// once Retry showed had no answer and no provenance. Bounded so a slow write delays the
@@ -1922,6 +1999,20 @@ export async function POST({ request, locals, params, getClientAddress }) {
 						),
 						new Promise<void>((resolve) => setTimeout(resolve, FINAL_ANSWER_PERSIST_WAIT_MS)),
 					]);
+				}
+
+				// what a live client is sent, in the order sent, after screening and the decline
+				// carriers above. KeepAlive is dropped and a Stream token is logged unpadded; written whether
+				// or not the client is attached, since a dropped phone is not reliably noticed here.
+				if (genLog && !(outgoing.type === MessageUpdateType.Status && outgoing.status === MessageUpdateStatus.KeepAlive)) {
+					genLog.append(
+						JSON.stringify(
+							outgoing.type === MessageUpdateType.Stream
+								? { ...outgoing, token: outgoing.token.replace(/\0+$/, "") }
+								: outgoing
+						)
+					);
+					if (outgoing.type === MessageUpdateType.FinalAnswer) genLog.flush();
 				}
 
 				if (!clientDetached) {
@@ -1939,7 +2030,8 @@ export async function POST({ request, locals, params, getClientAddress }) {
 					}
 				}
 
-				if (clientDetached) {
+				// Detached: throttled, never on a keepalive. The terminal persist saves the rest.
+				if (clientDetached && shouldPersistDetached(outgoing)) {
 					await persistConversation();
 				}
 			}
@@ -1965,7 +2057,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 				messageToWriteTo.content = clamped;
 				// The page renders a finished message from its stored FinalAnswer update, so a
 				// FinalAnswer already recorded (output screening sends its own on abort) must carry the
-				// clamped text too, or the reload shows everything screening had released. (CUR-2300)
+				// clamped text too, or the reload shows everything screening had released.
 				const text = clamped.slice(initialMessageContent.length);
 				messageToWriteTo.updates = messageToWriteTo.updates?.map((u) =>
 					u.type === MessageUpdateType.FinalAnswer ? { ...u, text } : u
@@ -1994,7 +2086,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 				// it unreal (an unclosed <think> placeholder, stripThink's own reason to drop it) — falling
 				// back to it anyway re-introduces the exact raw garbage this branch exists to avoid. The only
 				// honest fallback below a missing summary is empty, matching what a genuinely silent turn
-				// (no confirmations at all) has always correctly shown. (CUR-1178)
+				// (no confirmations at all) has always correctly shown.
 				const text = hasRealStreamedText
 					? streamedText
 					: (summarizeInterruptedAgentWork(messageToWriteTo.agentConfirmations) ?? "");
@@ -2015,7 +2107,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 				// save can still be pending. Keep proving liveness through those joins as well as screening
 				// and retrieval, or an eight-second DB wait makes the client abort a healthy accepted turn.
 				// The marker names what is running: our own documents (RAG), the web ("always" mode's early
-				// retrieval), both, or neither (CUR-2223). Literal markers, not a computed name:
+				// retrieval), both, or neither. Literal markers, not a computed name:
 				// liveRequestLabels.spec reads them out of this file.
 				const screeningMarker = webRetrievalPromise
 					? documentsSearched
@@ -2030,7 +2122,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 					message: screeningMarker,
 				}).catch(() => {});
 				// While a multi-chunk screen runs, the heartbeat carries which part it is on
-				// (`phase:screening@4/9`), so a long paste's wait reads as progress, not as a stall. (CUR-3749)
+				// (`phase:screening@4/9`), so a long paste's wait reads as progress, not as a stall.
 				let shownPart = 0;
 				retrievalHeartbeat = setInterval(() => {
 					if (ctrl.signal.aborted) return;
@@ -2045,7 +2137,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 				}, 2000);
 
 				if (message.attachmentNotice) {
-					// The files the route marked on the sent message, so the open page marks them too. (CUR-3405)
+					// The files the route marked on the sent message, so the open page marks them too.
 					const questionId = message.ancestors?.at(-1);
 					const leftOutFiles = conversation.messages.find((m) => m.id === questionId)?.leftOutFiles;
 					await update({
@@ -2071,7 +2163,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 				// overrides, not just billing). billingOrganization is assigned here, at the await, before any
 				// consumer (endpointOai/searchDecision).
 				const userSettings = await settingsPromise;
-				// A visitor's own org counts only when their own token pays (CUR-3533).
+				// A visitor's own org counts only when their own token pays.
 				locals.billingOrganization = requestBillTo(userSettings?.billingOrganization, {
 					useUserToken: config.USE_USER_TOKEN === "true",
 					billTo: Reflect.get(config, "HF_BILL_TO") as string | undefined,
@@ -2112,7 +2204,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 				const gate = await gatePromise;
 				gateMs = gate.gateMs;
 				// Only a declined turn reads its notice, so only a declined turn waits on detection; an
-				// allowed turn never blocks on a cold detector load (CUR-4051).
+				// allowed turn never blocks on a cold detector load.
 				const declineLanguage =
 					gate.childSafety.flagged || gate.contentPolicy.action === "block" ? await declineLanguagePromise : "en";
 
@@ -2135,16 +2227,19 @@ export async function POST({ request, locals, params, getClientAddress }) {
 					// Curated public-safe rule name, resolved server-side from the triggered Coop action.
 					// Absent/unknown → the generic decline copy stands.
 					ruleLabel?: string;
+					// Every labeled content rule that blocked the turn, when more than one did.
+					ruleLabels?: string[];
 					// SERVER-ONLY raw Coop action (the rule identity) for the queryable T&S audit log. Never
 					// placed on the message marker or the Safety update — the client only ever gets `ruleLabel`.
 					auditCategory?: string;
-					// The screen could not run (a fail-closed UNKNOWN): nothing was flagged (CUR-2301).
+					// The screen could not run (a fail-closed UNKNOWN): nothing was flagged.
 					unscreened?: boolean;
-					// A self-harm rule declined the turn, so it carries crisis support (CUR-2111).
+					// A self-harm rule declined the turn, so it carries crisis support.
 					support?: boolean;
 				};
-				const decideModeration = ({ childSafety, contentPolicy }: GateBundle): ModerationDecision =>
-					childSafety.flagged
+				const decideModeration = ({ childSafety, contentPolicy, hits }: GateBundle): ModerationDecision => {
+					const ruleLabels = contentPolicy.action === "block" ? blockedRuleLabels(hits, contentPolicy.category) : [];
+					return childSafety.flagged
 						? {
 							flagged: true,
 							label: "child_safety",
@@ -2165,20 +2260,24 @@ export async function POST({ request, locals, params, getClientAddress }) {
 								kind: "content_policy",
 								// Per-rule decline copy from rules.json takes precedence; Coop supplies no message on
 								// a block, so `contentPolicy.message` is the (usually empty) fallback before the generic.
-								declineText: resolveActionMessage(contentPolicy.category, declineLanguage) ?? contentPolicy.message,
+								declineText:
+									resolveActionMessage(contentPolicy.category, declineLanguage, ruleLabels.length > 1) ??
+									contentPolicy.message,
 								ruleLabel: resolveActionLabel(contentPolicy.category) ?? undefined,
+								...(ruleLabels.length > 1 ? { ruleLabels } : {}),
 								auditCategory: contentPolicy.category,
 								...(isSupportRule(contentPolicy.category) ? { support: true } : {}),
 							}
 						: // not flagged → allow; kind is unused when flagged is false.
 							{ flagged: false, label: null, score: 0, kind: "content_policy" };
+				};
 
 				const moderation = decideModeration(gate);
 
 				// The DECLINE.
 				const declineTurn = async (moderation: ModerationDecision) => {
 					// A turn the S1 judge declined names it as the safety screen, so a decline says which
-					// judge made it. Only an S1 screen records this; every other decline stores no helper, as before. (CUR-4527)
+					// judge made it. Only an S1 screen records this; every other decline stores no helper, as before.
 					if (gate.gateSource === "guard" && gate.served?.model === S1_JUDGE.model && assistedByEnabled()) {
 						const screen = assistedByEntry("safety-screen", gate.served.model, gate.served.backend, gate.served.provider);
 						if (screen)
@@ -2186,7 +2285,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 								() => {}
 							);
 					}
-					// Terminal outcome is `declined`, not `complete` (CUR-89) — see the declaration above.
+					// Terminal outcome is `declined`, not `complete` — see the declaration above.
 					declineKind = moderation.kind;
 					declinedAt = "input";
 					messageToWriteTo.moderation = moderationMarker({
@@ -2194,6 +2293,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 						score: moderation.score,
 						kind: moderation.kind,
 						ruleLabel: moderation.ruleLabel,
+						ruleLabels: moderation.ruleLabels,
 						unscreened: moderation.unscreened,
 						support: moderation.support,
 					});
@@ -2220,6 +2320,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 						messageId: messageToWriteTo.id,
 						userId: userId ? String(userId) : undefined,
 						sessionId: conv.sessionId ?? undefined,
+						probe: probe ?? undefined,
 					});
 					await update({
 						type: MessageUpdateType.Safety,
@@ -2227,6 +2328,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 						label: moderation.label,
 						score: moderation.score,
 						...(moderation.ruleLabel ? { ruleLabel: moderation.ruleLabel } : {}),
+						...(moderation.ruleLabels ? { ruleLabels: moderation.ruleLabels } : {}),
 						...(moderation.unscreened ? { unscreened: true } : {}),
 						...(moderation.support ? { support: true } : {}),
 					});
@@ -2235,9 +2337,9 @@ export async function POST({ request, locals, params, getClientAddress }) {
 					// so it has usually settled by now and its own timeout bounds the wait. The refusal's
 					// n-gram detection is only the fallback: it reads short French and Italian as English.
 					// Its "en" is also its no-answer value, so that leaves the card in the interface's language.
-					// A rule other than the self-harm ones can decline a message in distress (CUR-4093), so the classifier's yes stamps
+					// A rule other than the self-harm ones can decline a message in distress, so the classifier's yes stamps
 					// the card here as it does on an answered turn. Awaiting it on every decline costs the classifier's
-					// remaining time, bounded by its own timeout. (CUR-4094)
+					// remaining time, bounded by its own timeout.
 					const signal = await supportSignalPromise.catch(() => null);
 					if ((moderation.support || signal?.show) && messageToWriteTo.moderation) {
 						const cardLang = signal?.lang || (declineLanguage !== "en" ? declineLanguage : undefined);
@@ -2274,16 +2376,16 @@ export async function POST({ request, locals, params, getClientAddress }) {
 				// untouched — this is a completed turn from every other outcome-tracking consumer's point of
 				// view, just answered from a pre-stored string instead of a generation call). Mirrors only the
 				// two updates declineTurn ends on; RAG/generation are skipped entirely by never reaching the
-				// `else` branch below, which is the actual point — this text is never model-touched. (CUR-742)
+				// `else` branch below, which is the actual point — this text is never model-touched.
 				const languageFallbackTurn = async (lang: string) => {
 					delete messageToWriteTo.webSearch;
 					delete messageToWriteTo.rag;
-					// Say no model ran, so the receipt doesn't describe a generation that never happened. (CUR-1579)
+					// Say no model ran, so the receipt doesn't describe a generation that never happened.
 					messageToWriteTo.fixedReply = { kind: "low-resource-language" };
 					await update({ type: MessageUpdateType.FixedReply, kind: "low-resource-language" });
 					await update({
 						type: MessageUpdateType.FinalAnswer,
-						// In the interface's language, which the layout reads from the same header. (CUR-1579)
+						// In the interface's language, which the layout reads from the same header.
 						text: lowResourceFallbackMessage(lang, preferredLanguage(request.headers.get("accept-language"))),
 						interrupted: false,
 					});
@@ -2295,7 +2397,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 
 				// The ALLOW-record, shared by the normal and language-fallback paths.
 				const recordAllowed = async (
-					{ verdict, contentPolicy, gateSource, hits }: GateBundle,
+					{ verdict, contentPolicy, gateSource, hits, supportOnLatest }: GateBundle,
 					moderation: ModerationDecision
 				) => {
 					// Record whether the pre-screen actually RAN and cleared, so the request-trace can tell
@@ -2315,11 +2417,12 @@ export async function POST({ request, locals, params, getClientAddress }) {
 						screened: screenedForRecord(gateSource, verdict.status),
 					};
 					await update({ type: MessageUpdateType.InputScreen, screened: messageToWriteTo.moderation.screened });
-					// A self-harm distress rule fired as a log hit (CUR-3915): the person gets the answer, led by
+					// A self-harm distress rule fired as a log hit: the person gets the answer, led by
 					// the Support resources card, whatever words tripped the rule. Persisted, so it shows on reload.
 					// The rule's public label rides along, so X-ray names the rule that matched instead of listing it clear.
+					// A hit that fired only on earlier messages stamps nothing.
 					const supportHit = hits?.find((h) => h.action === "log" && isSupportRule(h.key));
-					if (supportHit) {
+					if (supportHit && supportOnLatest !== false) {
 						const ruleLabel = resolveActionLabel(supportHit.key) ?? undefined;
 						messageToWriteTo.moderation.support = true;
 						if (ruleLabel) messageToWriteTo.moderation.ruleLabel = ruleLabel;
@@ -2327,7 +2430,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 					}
 					// The multilingual signal adds the card when the guard's English rules missed it, and
 					// names the message's language for a card either of them stamped. It is not awaited here, so
-					// the answer never waits on it; the turn's final persist awaits it. (CUR-4093)
+					// the answer never waits on it; the turn's final persist awaits it.
 					supportVerdict = stampSupportFromSignal(messageToWriteTo.moderation, supportSignalPromise, (extras) =>
 						update({ type: MessageUpdateType.SupportNotice, ...extras })
 					);
@@ -2358,7 +2461,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 					// The turn passed moderation like any other, so it's recorded the same way —
 					// this just also never reaches RAG/generation below, on purpose. Checked AFTER moderation,
 					// not before: a turn moderation would decline stays declined regardless of what language
-					// it's in. (CUR-742)
+					// it's in.
 					await recordAllowed(gate, moderation);
 					await languageFallbackTurn(languageFallback);
 				} else {
@@ -2382,7 +2485,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 					}
 					// Community count is the citation offset for the web sources ([k+1..]) — known now that RAG
 					// resolved, and applied at the single numbering step below (numberWebSources). It counts the
-					// visitor's own numbered sources too, which come before everything we retrieved (CUR-3844).
+					// visitor's own numbered sources too, which come before everything we retrieved.
 					const communityCount = visitorSourceCount + (ragStamp?.sources.length ?? 0);
 
 					// The OPEN WEB — numbered AFTER the community sources ([k+1..]). By the user's webSearchMode:
@@ -2394,10 +2497,10 @@ export async function POST({ request, locals, params, getClientAddress }) {
 					//   off    — never.
 					let webSearchCtx: WebSearchOutcome | undefined;
 					// Helper models that worked on this turn without writing it, sent as one
-					// RouterMetadata frame once the planner has run (below), when provenance-assisted-by is on. (CUR-984)
+					// RouterMetadata frame once the planner has run (below), when provenance-assisted-by is on.
 					const assistedBy: AssistedBy[] = [];
 					// The guard screen read the message before anything else did. Its entry comes from
-					// the screen's own response, so a screen that reported no model leaves no entry. (CUR-3563)
+					// the screen's own response, so a screen that reported no model leaves no entry.
 					if (gate.gateSource === "guard" && gate.served) {
 						const screen = assistedByEntry(
 							"safety-screen",
@@ -2414,19 +2517,19 @@ export async function POST({ request, locals, params, getClientAddress }) {
 					// Was the web path engaged at all (was `webPlan !== "skip"`)? Gates the searchAttempt stamp.
 					let webEngaged = false;
 					// Set when the leg ran and failed (deadline or error), so the answer says the
-					// search didn't finish rather than reading as one nobody ran. (CUR-4091)
+					// search didn't finish rather than reading as one nobody ran.
 					let webFailed: WebSearchFailure | undefined;
 					const onWebFailed = (why: WebSearchFailure) => (webFailed = why);
 					// Effective plan for the [retrieval] log below (always ⇒ launched early ⇒ "run").
 					let webPlan: "skip" | "run" | "auto-gate" = "skip";
 					let nativeSearchGate: Promise<boolean> | undefined;
-					// A link the person pasted is read directly rather than searched for (CUR-1897). The whole
+					// A link the person pasted is read directly rather than searched for. The whole
 					// sentence would otherwise go to search as a query, and even when the exact article came back its
 					// 500-char snippet was all the model saw. Started here so it overlaps the search decision;
 					// joined below, before the grounding gate. Not on an agent turn (that endpoint never reads
 					// these sources), and not with web search OFF, whose control promises training and community
 					// sources only. Post-gate: moderation has already cleared this message.
-					// A tool-retrieving (native) turn reads the link itself (CUR-2697), its forced first `read_page`
+					// A tool-retrieving (native) turn reads the link itself, its forced first `read_page`
 					// call (nativeTools.ts), so reading it here too would fetch every pasted link twice and hold
 					// generation for the copy nobody used.
 					const pastedUrl = !isAgentTurn ? extractLinkedUrl(userTextToRag ?? "") : undefined;
@@ -2435,7 +2538,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 						? fetchLinkedPage(linkedUrl, { skipFirecrawl: faultInjection === "linked_page_firecrawl_down" })
 						: undefined;
 					let linkedPageRead = false;
-					// What the model is told about the link (see linkedPageNote; CUR-2032). A pasted link with
+					// What the model is told about the link (see linkedPageNote). A pasted link with
 					// search off is still named, so the answer says why it wasn't opened instead of claiming
 					// links can never be opened.
 					let linkedPage: LinkedPageState | undefined =
@@ -2443,10 +2546,10 @@ export async function POST({ request, locals, params, getClientAddress }) {
 					// The agent endpoint never reads searchContext (see the isAgentTurn declaration
 					// near the top of this handler) — webAlways is already false for an agent turn (gated at
 					// its own declaration), but the auto/off path below independently re-derives webPlan from
-					// scratch, so it needs its own guard here rather than inheriting webAlways's. (CUR-574)
+					// scratch, so it needs its own guard here rather than inheriting webAlways's.
 					// Where the web leg's time goes. Each stage is measured where it is awaited and
 					// lands on the `[retrieval] timing` line below as `webMs`; `preWebMs` is everything from
-					// the legs-start clock to here, so the parts sum to totalRetrievalMs. (CUR-2105)
+					// the legs-start clock to here, so the parts sum to totalRetrievalMs.
 					const webLegStart = Date.now();
 					const webMs: Record<string, unknown> = {};
 					const timed = async <T>(key: string, p: Promise<T>): Promise<T> => {
@@ -2460,17 +2563,16 @@ export async function POST({ request, locals, params, getClientAddress }) {
 					if (isAgentTurn || harness.retrieval === "tools") {
 						// A native turn searches through its own tool calls, stamped as they return.
 						// webEngaged stays false, webSearchCtx stays undefined — the whole `if (webEngaged)`
-						// stamping block below is skipped entirely, same as an ordinary turn with search off. (CUR-2420)
+						// stamping block below is skipped entirely, same as an ordinary turn with search off.
 						// On Auto the gate is still asked, and its "search" forces the first round to
 						// web_search (native.ts). A question our local catalog covers, and that wants nothing recent,
 						// is not forced to the web, since the turn reads the catalog itself through search_catalog;
-						// a live ask no source here carries keeps web_search withheld. (CUR-4083)
+						// a live ask no source here carries keeps web_search withheld.
 						if (
 							!isAgentTurn &&
 							webSearchMode === "auto" &&
 							!unservableLive &&
-							userTextToRag &&
-							searchIntentEnabled()
+							userTextToRag
 						) {
 							const q = userTextToRag;
 							nativeSearchGate = nativeGateSaysSearch(
@@ -2549,8 +2651,8 @@ export async function POST({ request, locals, params, getClientAddress }) {
 							// `model` here is post-swap (:263) — pass it so the classifier asks the model that
 							// will actually answer; otherwise a swapped turn has its content and its search
 							// decision made by two different models on two different hosts.
-							// A question about Alpha itself is answered from its own provenance, never the web
-							// (CUR-2135). The gate's exemplars are English, so a French question such as "Quel modèle es-tu, et qui le fait
+							// A question about Alpha itself is answered from its own provenance, never the web.
+							// The gate's exemplars are English, so a French question such as "Quel modèle es-tu, et qui le fait
 							// tourner ?" would search and get answered about an unrelated campaign of that name. The
 							// multilingual identity verdict catches the same question, so it vetoes here.
 							// Read in parallel with the gate, so a warm embedder (~150 ms) adds nothing to the decision;
@@ -2566,10 +2668,11 @@ export async function POST({ request, locals, params, getClientAddress }) {
 										turnAttachmentKinds,
 										// A model that reads images decides from the photo itself and writes
 										// the query from what it sees. The media pass and its gate settled before
-										// retrieval joined, so this await costs nothing and sends no unscreened photo. (CUR-3192)
+										// retrieval joined, so this await costs nothing and sends no unscreened photo.
 										model.multimodal && model.supportsTools
 											? deciderImages(await preparedMediaPromise.catch(() => undefined))
-											: []
+											: [],
+										{ classifierMalformed: faultInjection === "search_classifier_malformed" }
 									)
 								),
 								readIdentityWithin(readSelfIdentityVerdict, 1_500, "self-identity"),
@@ -2589,7 +2692,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 									"[search] gate said search; searching"
 								);
 								// Live phase, sent only once the gate has said search. Sent before the decision,
-								// every turn the gate declined would still show "Searching the open web…" (CUR-2038).
+								// every turn the gate declined would still show "Searching the open web…".
 								void update({
 									type: MessageUpdateType.Status,
 									status: MessageUpdateStatus.KeepAlive,
@@ -2616,7 +2719,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 						const page = await timed("linkedPageWaitMs", linkedPagePromise);
 						if (page) {
 							// The page the person chose is relevant by construction, so it grounds the turn, and
-							// alone (CUR-2032): search hits behind it can contradict it. For a user's link they could be an older
+							// alone: search hits behind it can contradict it. For a user's link they could be an older
 							// survey from the same institute, and the answer could summarise the page with that survey's
 							// sample size instead of the page's own, citing
 							// the page. A person who links a page is asking about that page.
@@ -2675,7 +2778,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 					// 8s first-token watchdog) is observable in prod. A totalRetrievalMs near/over ~8000 is the
 					// dropped-query signal.
 					//
-					// The heartbeat does NOT stop here (CUR-1156, CUR-1667). It runs to the end of the turn,
+					// The heartbeat does NOT stop here. It runs to the end of the turn,
 					// because textGeneration's own keepalive merge covers only ~2s of a
 					// generation window that can run past 20, and a silent window past the client's 8s
 					// watchdog aborts a turn that goes on to complete server-side.
@@ -2691,7 +2794,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 							webLegMs: Date.now() - webLegStart,
 							webMs,
 							webPlan,
-							// The mode the request carried, so a turn's search setting is readable here. (CUR-4274)
+							// The mode the request carried, so a turn's search setting is readable here.
 							webSearchMode,
 							searched: !!webSearchCtx,
 							sources: webSearchCtx?.sources.length ?? 0,
@@ -2699,7 +2802,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 							// L3 gate) — the signal for a cold/failed reranker in prod.
 							groundedWeb,
 							unservableLive,
-							// A link was in the message (linkedLink) and its page was read (linkedPageRead). (CUR-1897)
+							// A link was in the message (linkedLink) and its page was read (linkedPageRead).
 							linkedLink: !!linkedUrl,
 							linkedPageRead,
 						},
@@ -2709,23 +2812,23 @@ export async function POST({ request, locals, params, getClientAddress }) {
 					// only about two seconds before the wire goes silent until the answer (timed per frame
 					// with Chrome DevTools `Network.dataReceived`), and the client's FIRST_TOKEN_TIMEOUT_MS
 					// is 8000. A silence past that is the difference between a turn the user sees and one
-					// the client aborts while the server goes on to finish and persist it (CUR-1667).
+					// the client aborts while the server goes on to finish and persist it.
 					//
 					// So the heartbeat runs to the end of the turn. It is cleared in the `finally` below
 					// and in the zombie path, both unconditionally, and its own callback no-ops once
 					// `ctrl.signal` aborts. A KeepAlive costs 39 bytes, is filtered client-side before
 					// `updates[]`, and is excluded from the persisted audit log, so overlapping the
 					// KeepAlive merge for its two live seconds costs one extra frame per two seconds and
-					// nothing else. The merge stops early for a reason not yet established (CUR-1667); this does not
+					// nothing else. The merge stops early for a reason not yet established; this does not
 					// depend on the answer.
 					// Math routing (mathRouting.ts): the turn planner, one forced plan_turn call on
 					// ARITHMETIC_ROUTE_MODEL, decides on every turn whether the latest message asks for a number
-					// to be worked out, and records the setup that code sums (CUR-2198).
+					// to be worked out, and records the setup that code sums.
 					// Polled first: on a cold instance an unpolled snapshot reads every flag off.
 					await ensureFlagsPolled();
 					const mathRouting = harness.mathRouting && mathRoutingEnabled();
 					const planModelId = ((Reflect.get(config, "ARITHMETIC_ROUTE_MODEL") as string | undefined) ?? "").trim();
-					// The planner reads text only; a turn about an attachment is the answer model's (CUR-3011).
+					// The planner reads text only; a turn about an attachment is the answer model's.
 					const plansThisTurn = mathRouting && plansTurnFor(model) && plannerSeesTurn(messagesForPrompt);
 					if (mathRouting && plansTurnFor(model) && !plansThisTurn)
 						logger.info("[turn-plan] newest message carries a file the planner cannot read; no turn is planned");
@@ -2735,7 +2838,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 					let mathLedger: Ledger | null = null;
 					let calculateFirst = false;
 					let followUpStandalone: string | null = null;
-					// GLM reads the visitor's text only once the input screen has allowed it (CUR-2125), which
+					// GLM reads the visitor's text only once the input screen has allowed it, which
 					// this branch already guarantees: the gate was awaited above and a decline never gets here.
 					if (planModel) {
 						const latestUserText =
@@ -2747,12 +2850,12 @@ export async function POST({ request, locals, params, getClientAddress }) {
 						);
 						mathLedger = planRun.plan?.math.ledger ?? null;
 						// A tool-calling model keeps its own turn; the plan only makes its answer call
-						// calculate first, and the tool's own result is what the reader sees. (CUR-4191)
+						// calculate first, and the tool's own result is what the reader sees.
 						if (mathLedger && plannedMathForcesCalculate(model)) {
 							calculateFirst = true;
 							mathLedger = null;
 						}
-						// The rendered rows carry no marker, so the next turn's planner finds them here (CUR-3663).
+						// The rendered rows carry no marker, so the next turn's planner finds them here.
 						if (mathLedger) messageToWriteTo.mathLedger = mathLedger;
 						// A plan call that answered is a helper on this turn whether or not it found math; one
 						// that failed or timed out contributed nothing, so it is not named.
@@ -2766,7 +2869,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 							if (entry) assistedBy.push(entry);
 						}
 						followUpStandalone = planRun.followUp.standalone;
-						// Also on the rung below, but `ttft-baseline` reads timings, not rungs (CUR-2137).
+						// Also on the rung below, but `ttft-baseline` reads timings, not rungs.
 						turnSpans.turnPlanMs = planRun.ms;
 						// `gate` is the planner's own verdict on the math field; `outcome` is that field's
 						// outcome when the call answered, and the call's exit when it did not.
@@ -2780,16 +2883,16 @@ export async function POST({ request, locals, params, getClientAddress }) {
 							numberCount: countNumbers(latestUserText),
 						});
 						// On the message now, not only in the terminal persist: the FinalAnswer persist
-						// (CUR-2078) writes the row before the client hears the answer is final, and a reader of
-						// that row found the answer with no rung (CUR-2161's scenario).
+						// writes the row before the client hears the answer is final, and a reader of
+						// that row found the answer with no rung (the scenario).
 						messageToWriteTo.rungs = turnRungs;
 					}
 					// Without a ledger (not asked, or the call failed, timed out or returned nothing usable) the
 					// turn is answered in prose with no code-summed total, and stripForgedStamp below removes any
-					// "checked by code" label the model copies from older answers in history (CUR-2199, CUR-3663).
+					// "checked by code" label the model copies from older answers in history.
 					// With a ledger, the plan model writes the words under it too. A model that writes the
 					// words under a checked total can restate a different one (13 or 9.5 under a checked 10);
-					// the planner model did so far less often (CUR-2198). The planner, not either model's own tool call, decides.
+					// the planner model did so far less often. The planner, not either model's own tool call, decides.
 					if (assistedBy.length && assistedByEnabled()) {
 						void update({
 							type: MessageUpdateType.RouterMetadata,
@@ -2806,7 +2909,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 						harness,
 						webSearchMode,
 						// A model Auto chose gives up sooner when silent, so the browser can ask Auto
-						// again inside the visitor's wait. A hand pick keeps its own give-up, or the watchdog. (CUR-4384)
+						// again inside the visitor's wait. A hand pick keeps its own give-up, or the watchdog.
 						endpoint: await turnModel.getEndpoint(
 							autoRouted && turnModel === model && autoRepickEnabled()
 								? { giveUpMs: autoRepickGiveUpFor(turnModel.id) }
@@ -2823,7 +2926,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 						username: locals.user?.username,
 						browserLanguage: preferredLanguage(request.headers.get("accept-language")) ?? undefined,
 						// Force-enable multimodal if user settings say so for this model — now ANDed with the
-						// deployment gate, which this path did not consult (CUR-159). The override cannot
+						// deployment gate, which this path did not consult. The override cannot
 						// reach the model right now (parseRequest rejects every attachment while the gate is
 						// shut, so no conversation can acquire a file to format), but
 						// `prepareMessagesWithFiles` reads files off the message HISTORY — so the first time
@@ -2834,12 +2937,12 @@ export async function POST({ request, locals, params, getClientAddress }) {
 							override: userSettings?.multimodalOverrides?.[model.id],
 						}),
 						// Thinking-effort override — ANDed with the model's own capability, the same way
-						// resolveForceMultimodal ANDs a stored multimodal override with the deployment gate
-						// (CUR-700): a stale reasoningOverrides entry from a model that once supported
+						// resolveForceMultimodal ANDs a stored multimodal override with the deployment gate:
+						// a stale reasoningOverrides entry from a model that once supported
 						// reasoning must never reach one that doesn't.
-						// A routed math turn asks for no chain of thought (CUR-2065): a reasoning model given a token budget
+						// A routed math turn asks for no chain of thought: a reasoning model given a token budget
 						// can spend it thinking and stop at the length limit; "none"
-						// is the setting second-opinion already relies on for the same lane (CUR-149).
+						// is the setting second-opinion already relies on for the same lane.
 						reasoningEffort:
 							turnModel !== model
 								? "none"
@@ -2888,6 +2991,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 									agentAttach: {
 										taskId: messageToWriteTo.agentRun.taskId,
 										machineId: messageToWriteTo.agentRun.machineId,
+										...(messageToWriteTo.agentRun.handoff ? { handoff: true } : {}),
 									},
 								}
 							: {}),
@@ -2898,7 +3002,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 						faultInjection === "tts_canned_clip_output_blocked"
 							? { ttsCannedClipUrl: new URL(CANNED_READ_ALOUD_CLIP, request.url).href }
 							: {}),
-						// The same clip, eight seconds late, so the reply's text has time to show first. (CUR-3810)
+						// The same clip, eight seconds late, so the reply's text has time to show first.
 						...(faultInjection === "tts_slow_canned_clip" ? { ttsCannedClipDelayMs: 20_000 } : {}),
 					};
 					// Honesty screening (dangling citations, label faithfulness, fabricated URLs, hedge
@@ -2917,25 +3021,25 @@ export async function POST({ request, locals, params, getClientAddress }) {
 					// The generation_timeout fault holds the turn HERE, after the watchdog is armed
 					// and before screenOutputStream exists. Inside the generator, output screening's own 25s
 					// phase deadline would end the turn first as a capacity decline, so the spec would never
-					// reach the watchdog's "took too long" path, which is the one prd (screening off) serves. (CUR-1921)
+					// reach the watchdog's "took too long" path, which is the one prd (screening off) serves.
 					if (faultInjection === "generation_timeout" && !ctrl.signal.aborted)
 						await new Promise<void>((resolve) =>
 							ctrl.signal.addEventListener("abort", () => resolve(), { once: true })
 						);
 					// The ledger rows go on the raw generation so they pass through everything the answer does:
-					// output screening and honesty (CUR-2125). GLM writes their labels.
+					// output screening and honesty. GLM writes their labels.
 					// With math routing on, every turn's model text loses any stamp it copied, and only then does
 					// a real ledger go in front of it.
 					const turnText = turnModel !== model ? namedServedModel(textGeneration(ctx), turnModel.id) : textGeneration(ctx);
 					// A base guard on every turn, whatever the harness or the flag. History can hold a
 					// stamp an earlier math-routing turn rendered, and a model copies it onto a total code never
-					// summed. (CUR-2697)
+					// summed.
 					const answer = stripForgedStamp(turnText);
 					const generated = mathLedger ? ledgerPrefixStream(answer, mathLedger) : answer;
 					// A loop is cut here, before the output screen reads it: a screen that reads thousands of
-					// repeated words can decline a harmless answer as violent (CUR-3318).
+					// repeated words can decline a harmless answer as violent.
 					// An agent turn's <think> block is its step trace, which restates itself between steps; only
-					// the answer after it is read for loops (CUR-4105).
+					// the answer after it is read for loops.
 					const baseSource = cutRepetitionLoop(generated, declineLanguagePromise, {
 						skipReasoning: model.id === AGENT_MODEL_ID,
 					});
@@ -2945,22 +3049,27 @@ export async function POST({ request, locals, params, getClientAddress }) {
 					// env var (outputModerationRequested/outputModerationEnabled in moderation.ts), so read the
 					// value per environment there, not from a comment.
 					// The person's question plus any file it attached, so an answer quoting their own rota is not
-					// read as exposing strangers (CUR-1837). The media pass settled before generation started.
+					// read as exposing strangers. The media pass settled before generation started.
 					const askerText = outputAskerText(messagesForPrompt, await preparedMediaPromise.catch(() => undefined));
 					// S1 screens the answer too while s1-safety-judge is on (OUTPUT_MODERATION decides
-					// whether this screen runs at all). A fault-injection turn keeps today's judge. (CUR-4527)
+					// whether this screen runs at all). A fault-injection turn keeps today's judge.
 					const outputS1 = screenStub || faultInjection ? undefined : s1JudgeFor(logger);
 					const guardOutputScreen = (text: string, userId?: string) =>
 						screenOutputWithGuard(text, userId, { askerText, ...(outputS1 ? { s1: outputS1 } : {}) });
 					// A flagged batch is asked again, with the question and the whole answer so far,
 					// before the answer is cut. The output_screen_recheck_clears fault flags every batch and
-					// answers the re-check with a stub "no", so a spec sees a flagged batch released whole. (CUR-3975)
+					// answers the re-check with a stub "no", so a spec sees a flagged batch released whole.
 					const recheckFault = faultInjection === "output_screen_recheck_clears";
+					// The re-check asks S1 only when the first screen did: guardOutputScreen with S1.
+					const recheckS1 = turnPolicy.useGuardPrimary ? outputS1 : undefined;
 					const outputRecheck: OutputRecheck = (prior, batch, first, budgetMs) =>
-						(recheckFault ? recheckFaultRecheck : recheckOutputBlock)(prior, batch, first, {
-							askerText,
-							timeoutMs: budgetMs,
-						});
+						recheckFault
+							? recheckFaultRecheck(prior, batch, first, { askerText, timeoutMs: budgetMs })
+							: recheckOutputBlock(prior, batch, first, {
+									askerText,
+									timeoutMs: budgetMs,
+									...(recheckS1 ? { s1: recheckS1 } : {}),
+								});
 					const rawSource = turnPolicy.outputModerationEnabled
 						? // OUTPUT screening (defense-in-depth): screen the model's answer SENTENCE BY SENTENCE
 							// and release each chunk only after it clears (hold-and-release), so the answer still
@@ -2972,19 +3081,19 @@ export async function POST({ request, locals, params, getClientAddress }) {
 								// Source-selected screen: the guard detector under
 								// guard-primary, else the Coop-shaped default.
 								// The person's own message rides along for the privacy rule, so details they typed
-								// themselves aren't withheld as someone's private information (CUR-1837).
+								// themselves aren't withheld as someone's private information.
 								// The output_screen_blocks fault blocks every chunk, so a spec reaches the
-								// decline a visitor reads when the screen withholds a composed answer. (CUR-2810)
+								// decline a visitor reads when the screen withholds a composed answer.
 								screen:
 									faultInjection === "output_screen_blocks" ||
 									faultInjection === "tts_canned_clip_output_blocked"
 										? async () => ({ blocked: true, kind: "content_policy" as const })
-										: // CUR-4051: blocks every chunk on the drugs rule, so a spec reads that rule's notice.
+										: // blocks every chunk on the drugs rule, so a spec reads that rule's notice.
 											faultInjection === "output_screen_blocks_rule"
 										? async () => ({ blocked: true, kind: "content_policy" as const, category: "chat-block-drugs" })
 										: recheckFault
 										? async () => recheckFaultFlag()
-										: // CUR-3891: the real guard screen with a guard that never answers, so a spec
+										: // the real guard screen with a guard that never answers, so a spec
 											// reads what a visitor sees when the output check cannot finish.
 											faultInjection === "output_guard_unreachable"
 											? (text: string, userId?: string) =>
@@ -3005,14 +3114,14 @@ export async function POST({ request, locals, params, getClientAddress }) {
 								// drains it for the ONE output report and flips stopped as the terminal boundary.
 								ledger: outputLedger,
 								// The output_screen_timeout fault trips the no-token decline in a second while
-								// textGeneration holds without calling a model. The only pre-token bound (CUR-2243). (CUR-1872)
+								// textGeneration holds without calling a model. The only pre-token bound.
 								...(faultInjection === "output_screen_timeout" ? { preTokenDeadlineMs: 1_000 } : {}),
 								// A real answer under a short idle window, so a turn that streams for longer
-								// than that proves the window re-arms on each release rather than capping the answer. (CUR-1884)
+								// than that proves the window re-arms on each release rather than capping the answer.
 								...(faultInjection === "output_screen_window_short"
 									? { phaseDeadlineMs: outputScreenWindowFaultMs() }
 									: {}),
-								// An agent turn works silently past the 25s window, pulsing keepalives. (CUR-546)
+								// An agent turn works silently past the 25s window, pulsing keepalives.
 								...(isAgentTurn ? { rearmOnProgress: true } : {}),
 								recheck: outputRecheck,
 								onModeration: (marker) => {
@@ -3026,11 +3135,11 @@ export async function POST({ request, locals, params, getClientAddress }) {
 					// boundary re-checked after the generation await and after the screen await. On a
 					// block/UNKNOWN the regen is rejected (honestyStream falls back) and the marker is overwritten
 					// so the persisted record describes the screen that actually refused. Shared by the
-					// grounded-bail regen (CUR-148) and the recital regen (CUR-3886).
+					// grounded-bail regen and the recital regen.
 					const screenedRegen = async (regenText: string | undefined): Promise<string | undefined> => {
 					if (outputLedger?.stopped) return undefined;
 					// The regen generates outside stripForgedStamp and ledgerPrefixStream, so a
-					// web-grounded maths turn that bailed shipped the model's own copied stamp (CUR-2198).
+					// web-grounded maths turn that bailed shipped the model's own copied stamp.
 					const regen =
 						regenText !== undefined
 							? settleReplacedAnswer(regenText, mathLedger)
@@ -3077,26 +3186,24 @@ export async function POST({ request, locals, params, getClientAddress }) {
 						sources: honestySources,
 						visitorSourceCount,
 						allowedUrls: honestyAllowedUrls,
-						// A tool-retrieving turn finds its sources mid-stream (CUR-2697).
+						// A tool-retrieving turn finds its sources mid-stream.
 						sourcesFromStream: harness.retrieval === "tools",
 						// A support-stamped turn is a crisis answer from its first batch, and the visitor's
-						// own emergency number survives the helpline number guard. (CUR-4061)
+						// own emergency number survives the helpline number guard.
 						crisisSupport: () => Boolean(message.moderation?.support),
 						helplineCountry: countryFromHeader(request.headers.get("x-vercel-ip-country")),
 						// The country the message names, once the support classifier has read it. Read per
-						// batch, like crisisSupport, since the stamp can land while the answer streams. (CUR-4488)
+						// batch, like crisisSupport, since the stamp can land while the answer streams.
 						namedHelplineCountry: () => message.moderation?.supportCountry,
 						// The end-of-stream number pass waits for the classifier's stamp, so a short answer that beats it
 						// is still guarded (the stubbed crisis answer in crisis-number-guard.spec.ts did).
 						crisisSupportSettled: () => supportVerdict,
 						// re-answer ungrounded before falling back to the static sources-pointer, when
-						// this turn's whole grounded answer bails to a hedge. Flag-gated (grounded-bail-regen) —
-						// whenAbsent leaves today's always-pointer behavior unchanged. See groundedBailRegen.ts.
+						// this turn's whole grounded answer bails to a hedge. See groundedBailRegen.ts.
 						// The regen re-answers with retrieval cleared, which only a pipeline turn has to clear: a
-						// native turn would run its tools again rather than answer ungrounded (CUR-2697). (CUR-148)
+						// native turn would run its tools again rather than answer ungrounded.
 						onGroundedBail:
 							harness.retrieval === "pipeline" &&
-							groundedBailRegenEnabled() &&
 							faultInjection !== "grounded_answer_hedges"
 							? async () => {
 									if (outputLedger?.stopped) return undefined;
@@ -3104,7 +3211,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 								}
 							: undefined,
 						// An answer that recites the fenced turn's preamble is asked once more, sources
-						// kept, and the retry passes the same output screen as any regen. (CUR-3886)
+						// kept, and the retry passes the same output screen as any regen.
 						onRecital: async () => {
 							if (outputLedger?.stopped) return undefined;
 							return screenedRegen(await runRecitalRegen(ctx, ctrl.signal));
@@ -3133,12 +3240,12 @@ export async function POST({ request, locals, params, getClientAddress }) {
 								guardReplacedAnswer = !!groundedHedgeMutation;
 								// The regen case shipped a real, if ungrounded, model answer — not
 								// nothing. Kept separate from guardReplacedAnswer above (which stays broad for
-								// the citation audit's own valid reason to exclude both shapes). (CUR-192)
+								// the citation audit's own valid reason to exclude both shapes).
 								answerRecoveredByRegen =
 									groundedHedgeMutation?.guard === "groundedHedgeUngroundedRegen";
 								// Stamp the message so the provenance trace's corrections list can report this
 								// honestly on reload — `guardReplacedAnswer` above only reaches the outcome log
-								// and the citation audit, never the message itself (CUR-148).
+								// and the citation audit, never the message itself.
 								if (groundedHedgeMutation) {
 									message.groundedHedgeNotice = {
 										kind: answerRecoveredByRegen ? "regen" : "pointer",
@@ -3166,12 +3273,12 @@ export async function POST({ request, locals, params, getClientAddress }) {
 							}
 						},
 					});
-					// Groundcheck (CUR-2467) for both harnesses, after the output screen and the honesty
+					// Groundcheck for both harnesses, after the output screen and the honesty
 					// stream, so its deletions are the text that ships. Deletion-only, so every word left has
 					// already cleared the screen. Native retrieval is read from what its tool calls returned;
-					// a scaffolded turn's from the pipeline's own retrieval. (CUR-2765)
+					// a scaffolded turn's from the pipeline's own retrieval.
 					// `groundcheck_removes_claim` checks the canned reply against fixed evidence with a stub
-					// detector and reviser, whatever the flag, so a spec reads the count the stamp carries. (CUR-2927)
+					// detector and reviser, whatever the flag, so a spec reads the count the stamp carries.
 					const groundcheckFault = faultInjection === "groundcheck_removes_claim";
 					const answerSource = groundcheckStage(honestySource, {
 						enabled: groundcheckFault || groundcheckEnabled(),
@@ -3273,7 +3380,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 								// the time execution reaches HERE, the flag has caught up even though `timedOut`
 								// already latched true from that stale read. Same guard as the hard-deadline
 								// branch below: leave hasError false so the fall-through Finished status sends
-								// normally instead of clobbering a delivered answer with a 504 nobody asked for. (CUR-1767)
+								// normally instead of clobbering a delivered answer with a 504 nobody asked for.
 								logger.error(
 									{ conversationId: conversationKey },
 									"[generation] watchdog fired after final answer — leaving a delivered turn to finish normally"
@@ -3286,7 +3393,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 							} else if (messageToWriteTo.interrupted) {
 								// With output screening on, screenStream answers the abort itself with
 								// every chunk it had released, which can run well past what the stopping client
-								// had shown. That FinalAnswer skips emitInterruptedFinalAnswer, so clamp here. (CUR-2300)
+								// had shown. That FinalAnswer skips emitInterruptedFinalAnswer, so clamp here.
 								await clampToStopPoint();
 							}
 						}
@@ -3308,15 +3415,15 @@ export async function POST({ request, locals, params, getClientAddress }) {
 					if (!state.finalAnswerReceived) {
 						await emitInterruptedFinalAnswer();
 					} else if (messageToWriteTo.interrupted) {
-						// A screened turn already sent its own interrupted FinalAnswer; see above. (CUR-2300)
+						// A screened turn already sent its own interrupted FinalAnswer; see above.
 						await clampToStopPoint();
 					}
 				} else if ((isAbortError || ctrl.signal.aborted) && timedOut) {
 					// A watchdog-killed turn gets the same "here's what finished" treatment as a
-					// user-initiated stop (CUR-1178). summarizeInterruptedAgentWork exists for a turn that
+					// user-initiated stop. summarizeInterruptedAgentWork exists for a turn that
 					// stalls mid tool-use, which is what the watchdog's silence trigger catches, as well as
 					// the click-Stop case. Reports the timeout as an error status below ONLY when no answer
-					// reached the client (CUR-1767); a delivered turn falls through to the normal Finished
+					// reached the client; a delivered turn falls through to the normal Finished
 					// status instead, the same guard the hard-deadline branch applies.
 					if (!state.finalAnswerReceived) {
 						await emitInterruptedFinalAnswer();
@@ -3341,6 +3448,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 					}
 				} else {
 					hasError = true;
+					failureCause = failureCauseOfError(err);
 					// Extract status code if available from HTTPError or APIError.
 					const errObj = err as unknown as Record<string, unknown>;
 					const statusCode =
@@ -3349,10 +3457,10 @@ export async function POST({ request, locals, params, getClientAddress }) {
 					await update({
 						type: MessageUpdateType.Status,
 						status: MessageUpdateStatus.Error,
-						// A model host's 429 gets busy copy naming the model, and CUR-2628 a stream that
-						// closed mid-answer gets its own, and CUR-2829 anything else a plain sentence; the raw SDK text
-						// stays in the log. CUR-2893: a message too long for the model is refused before any call. (CUR-2307)
-						// A model that sent nothing by its give-up gets the watchdog's sentence, sooner. (CUR-3939)
+						// A model host's 429 gets busy copy naming the model, and a stream that
+						// closed mid-answer gets its own, and anything else a plain sentence; the raw SDK text
+						// stays in the log. a message too long for the model is refused before any call.
+						// A model that sent nothing by its give-up gets the watchdog's sentence, sooner.
 						message:
 							messageTooLongMessage(err, model.displayName ?? model.name) ??
 							upstreamSilentMessage(err, model.displayName ?? model.name) ??
@@ -3371,6 +3479,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 				// check if no output was generated
 				if (!hasError && !abortedByUser && messageToWriteTo.content === initialMessageContent) {
 					hasError = true;
+					failureCause = "no-output";
 					logger.warn(
 						{
 							conversationId: conversationKey,
@@ -3386,7 +3495,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 						type: MessageUpdateType.Status,
 						status: MessageUpdateStatus.Error,
 						// The same notice as a lane that failed outright, naming the model and
-						// offering Retry; the cause stays in the warn above. (CUR-4200)
+						// offering Retry; the cause stays in the warn above.
 						message: upstreamFailedMessage(model.displayName ?? model.name),
 					});
 				}
@@ -3420,7 +3529,21 @@ export async function POST({ request, locals, params, getClientAddress }) {
 			// $lib/chat/server/textGeneration/honestyStream.ts. So content, the persisted updates[] log, and
 			// the live client never diverge for those checks in the first place.)
 
-			// A layer-test turn reports the switches it actually applied, read by the runner. (CUR-2139)
+			// The Mila output guard (flag `mila-sp-output-guard`): the finished English or French answer, as
+			// streamed, is checked once. A hit stamps the card on this message and ends the conversation, saved
+			// before the client is told; a check it cannot finish changes nothing. See milaSpOutputGuard.ts.
+			if (!hasError && !turnFinalized) {
+				await checkAnswerWithMilaSp({
+					answer: stripThink(messageToWriteTo.content.slice(initialMessageContent.length)),
+					message: messageToWriteTo,
+					conv,
+					signal: ctrl.signal,
+					persist: persistConversation,
+					update,
+				});
+			}
+
+			// a layer-test turn reports the switches it actually applied, read by the runner.
 			const evalApplied = evalLayers() ? (appliedEvalLayers() ?? {}) : undefined;
 			if (evalApplied) logger.info({ requested: evalLayers(), applied: evalApplied }, "[eval-layers]");
 			if (!hasError && !state.finishedStatusSent) {
@@ -3462,7 +3585,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 					...(gateMs != null ? { gateMs } : {}),
 					...(ragMs != null ? { ragMs } : {}),
 					...(totalRetrievalMs != null ? { retrievalMs: totalRetrievalMs } : {}),
-					// The web-search mode (off / auto / always) this turn ran under, durable on the turn. (CUR-4274)
+					// The web-search mode (off / auto / always) this turn ran under, durable on the turn.
 					webSearchMode,
 					// Full decomposition captured by the per-turn span sink (SyftHub stages, generation pre-passes,
 					// the dual first-token stamp incl. screenHoldMs, and output screening). Every field is optional,
@@ -3524,6 +3647,9 @@ export async function POST({ request, locals, params, getClientAddress }) {
 			// W2: mark this generation terminal. 'complete' covers a user-interrupted turn too (a final
 			// answer was persisted); 'error' leaves the id re-claimable by a fresh retry of the same turn
 			// (claimGeneration's WHERE status='error'). Best-effort: a failure here must not break the run.
+			// the log is complete before the generation reads terminal, so a follower that sees the
+			// status has every batch to drain.
+			await genLog?.close();
 			if (generationId) {
 				await finishGeneration(generationId, hasError ? "error" : "complete").catch((err) =>
 					logger.warn(err, "Failed to finalize generation idempotency record")
@@ -3590,6 +3716,10 @@ export async function POST({ request, locals, params, getClientAddress }) {
 					}
 				} else {
 					hasError = true;
+					// Normally the watchdog fired first and already named the stall; this covers it when not.
+					failureCause ??= watchdogBlamesModel(messageToWriteTo?.updates, generationUpdatesFrom)
+						? "watchdog-model-stalled"
+						: "watchdog-our-step";
 					logger.error(
 						{ conversationId: conversationKey, genTimeoutMs, graceMs: HARD_UNWIND_GRACE_MS },
 						"[generation] hard deadline: stream never unwound after abort — forcing terminal error"
@@ -3629,6 +3759,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 				if (persistOutcome === "timeout") persistAbandoned = true;
 				// 'error' leaves the W2 id re-claimable by a retry; a delivered answer finishes 'complete'.
 				// finishGeneration writes the generations table DIRECTLY (not through the wedged chain).
+				if (genLog) await boundedSettle(genLog.close(), EMERGENCY_CLEANUP_BUDGET_MS);
 				if (generationId) {
 					await boundedSettle(
 						finishGeneration(generationId, hasError ? "error" : "complete"),
@@ -3666,7 +3797,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 			// module gives the ordering its own tests and lets warm.ts read the same taxonomy for the alert.
 			//
 			// `lengths` is hoisted out of the log payload below because the ladder needs modelChars:
-			// `empty` is the rung the honesty guard had made unreachable (CUR-445). Sliced from
+			// `empty` is the rung the honesty guard had made unreachable. Sliced from
 			// initialMessageContent like lines 1078 and 1833, NOT because the prefix is ever non-empty
 			// today — appendTurnMessages creates every assistant message with `content: ""` — but because
 			// preGuardChars is this turn's text while content is the whole message. The two numbers are
@@ -3684,22 +3815,59 @@ export async function POST({ request, locals, params, getClientAddress }) {
 				declineKind,
 				// The same flag the citation audit already reads, for the same reason: it is the one
 				// place that knows our copy went out instead of an answer. See outcomeLadder.ts for why
-				// this and not a length carries the rung. EXCLUDING the regen-recovered case (CUR-192):
+				// this and not a length carries the rung. EXCLUDING the regen-recovered case:
 				// guardReplacedAnswer is deliberately broad (both shapes are "not the model's grounded
 				// answer" for the citation audit), but only buildGroundedHedgeReplacement's bare pointer
 				// means the user got nothing — the regen shipped a real, if ungrounded, answer.
 				answerSubstituted: guardReplacedAnswer && !answerRecoveredByRegen,
 				modelChars: lengths.modelChars,
-				// screenStream.ts's phase-deadline trip (CUR-1657) sets `screened: false` on
+				// screenStream.ts's phase-deadline trip sets `screened: false` on
 				// exactly this branch and no other (see screenOutputStream's onModeration calls) — the one
 				// unambiguous signal that this turn's canned decline text, not a real answer, is what
-				// landed in modelChars above. (CUR-1727)
+				// landed in modelChars above.
 				outputScreenTimedOut: message.outputModeration?.screened === false,
 			});
+			// which layer a failed turn died in, and whether our own lane failover had a go at it.
+			// The output screen's phase deadline is read here, where the ladder reads it, unless the watchdog
+			// or a thrown error already named the cause.
+			const turnFailureCause: FailureCause | null =
+				failureCause ?? (message.outputModeration?.screened === false ? "output-screen-timeout" : null);
+			const failureLayer = classifyFailureLayer({
+				outcome: turnOutcome,
+				cause: turnFailureCause,
+				isLocalModel,
+				firstTokenReached: state.firstTokenAt != null,
+			});
+			const fallback = failureLayer
+				? fallbackState({
+						failoverAnnounced: (messageToWriteTo.updates ?? []).some(
+							(u) => u.type === MessageUpdateType.Failover
+						),
+						laneCount: model.endpoints?.length ?? 1,
+					})
+				: null;
+			// a declined turn's notice locale (settled by now) rides the outcome line. The second
+			// reader's language follows on its own `[turn] decline-language` line, off the response path.
+			const declineNoticeFields = declineKind ? { declineLanguage: await declineLanguagePromise } : {};
+			if (declineKind) {
+				void runInBackground(
+					logDeclineLanguage({
+						logger,
+						conversationId: conversationKey,
+						noticeLanguage: declineLanguagePromise,
+						signal: supportSignalPromise,
+					})
+				);
+			}
 			logger.info(
 				{
 					conversationId: conversationKey,
 					outcome: turnOutcome,
+					...declineNoticeFields,
+					// null on a turn that did not fail. The turn-failure alert pages on `ours`.
+					failureLayer,
+					...(failureLayer && turnFailureCause ? { failureCause: turnFailureCause } : {}),
+					...(fallback ? { fallback } : {}),
 					// null on every non-declined turn, so an alert can filter on the kind without
 					// re-deriving it, and `child_safety` — the fail-closed outage signature — is greppable
 					// on its own rather than hidden inside an aggregate non-`complete` rate.
@@ -3709,20 +3877,32 @@ export async function POST({ request, locals, params, getClientAddress }) {
 					genElapsedMs: Date.now() - genWatchdogArmedAt,
 					genTimeoutMs,
 					// The resolved silence-window this turn armed, alongside the total backstop above
-					// — lets a reader tell which one WOULD have caught a stall without cross-referencing code. (CUR-58)
+					// — lets a reader tell which one WOULD have caught a stall without cross-referencing code.
 					silenceTimeoutMs,
 					// `firstTokenReached` means the stream OPENED, not that text arrived: a turn that writes
-					// zero characters can log it true (CUR-443). These two say how much was actually
+					// zero characters can log it true. These two say how much was actually
 					// written. `modelChars: 0` also puts the turn on the `empty` rung above; the SIZE of a
 					// non-zero answer is report-only, and answerLength.ts has why a floor is not set yet.
 					...lengths,
 					firstTokenReached: state.firstTokenAt != null,
+					// Whole-conversation saves this turn ran, and how many after the client detached. A detached turn
+					// writes at most every 2 s and never on a keepalive (detachedPersist.ts), so a large
+					// detachedWrites on a short turn means that gate broke.
+					conversationWrites,
+					detachedWrites,
+					clientDetached,
 					// routerMetadata.model carries the ACTUAL served model when the gateway substitutes a lane for
-					// the requested one (CUR-874). Logging the requested model.id would credit a model that never
+					// the requested one. Logging the requested model.id would credit a model that never
 					// ran, in this outcome and in every alert/metric built on it. On a healthy turn
 					// routerMetadata.model already equals model.id (endpointOai.ts's "harmless no-op"), so
 					// preferring it here changes nothing except the substituted case.
 					model: messageToWriteTo.routerMetadata?.model || model.id,
+					// Which harness the turn ran under, native or scaffolded, as harnessForTurn planned it for
+					// the model, so a query can tell the two paths apart per model.
+					harness: harness.kind,
+					// Whether Auto chose this turn's model (its claim kept by autoRouteForTurn) or the person
+					// picked it, so a query can count Auto turns on a model whose busy mark was set.
+					autoRouted: Boolean(autoRouted),
 					// Both grounding prompts instruct the model to cite every claim inline with [n].
 					// `citeUncited: true` is a grounded turn that cited none of the sources it was handed — the
 					// alertable case, and one that differs by checkpoint. Reported, never enforced: an uncited
@@ -3757,10 +3937,19 @@ export async function POST({ request, locals, params, getClientAddress }) {
 			// runInBackground, NOT a bare fire-and-forget: this fires at finalization, and a floating promise
 			// would be frozen out on Vercel before the write lands — undercounting the denominator. waitUntil
 			// keeps the function alive until it settles, and the response is never delayed.
-			// Written with the first-token time (CUR-2243), so the warm cron can also see answers that finish slowly.
+			// Written with the first-token time, so the warm cron can also see answers that finish slowly.
 			void runInBackground(
-				recordTurnOutcome(turnOutcome, declineKind ?? null, messageToWriteTo.timings?.ttftMs ?? null)
+				recordTurnOutcome(turnOutcome, declineKind ?? null, messageToWriteTo.timings?.ttftMs ?? null, {
+					failureLayer,
+					model: messageToWriteTo.routerMetadata?.model || model.id,
+				})
 			);
+
+			// rows go about two minutes after the turn ends, held open by waitUntil on Vercel.
+			if (genLog) {
+				await boundedSettle(genLog.close(), EMERGENCY_CLEANUP_BUDGET_MS);
+				genLog.scheduleDelete((work) => void runInBackground(work));
+			}
 
 			// used to detect if cancel() is called bc of interrupt or just because the connection closes
 			turnFinalized = true;
@@ -3801,7 +3990,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 			"X-Accel-Buffering": "no",
 			// Names the fault this turn simulated, so a spec can tell "the app survived the
 			// fault" from "the fault never reached the server". Only present when resolveFaultInjection
-			// accepted the caller's secret, which is preview/development only. (CUR-1884)
+			// accepted the caller's secret, which is preview/development only.
 			...(faultInjection ? { "X-Fault-Injected": faultInjection } : {}),
 			...(replayMode ? { "X-Model-Replay": replayMode } : {}),
 			...(fakeAgent ? { "X-Agent-Service": "fake" } : {}),
@@ -3828,7 +4017,6 @@ export async function DELETE({ locals, params }) {
 		conv.userId?.toString(),
 		conv.userId ? undefined : conv.sessionId
 	);
-	await tombstoneConversations(locals, [conv]);
 
 	return new Response();
 }
@@ -3839,7 +4027,7 @@ export async function PATCH({ request, locals, params }) {
 	// 400 here.
 	const effectiveValidModelIdSchema = await getEffectiveValidModelIdSchema(locals);
 	// A bad title or model id is the caller's mistake, so it answers 400. `.parse` threw a
-	// ZodError that SvelteKit answered 500. (CUR-3699)
+	// ZodError that SvelteKit answered 500.
 	const parsed = z
 		.object({
 			title: z.string().trim().min(1).max(100).optional(),
@@ -3862,12 +4050,14 @@ export async function PATCH({ request, locals, params }) {
 		error(404, "Conversation not found");
 	}
 
-	// Only include defined values in the update, with title sanitized
+	// Only include defined values in the update, with title sanitized. A new title is sealed while
+	// sealing is on, or clears a sealed one, which would otherwise win over it.
+	const titled =
+		values.title !== undefined
+			? await titleUpdate(params.id, conv, values.title.replace(/<\/?think>/gi, "").trim())
+			: undefined;
 	const updateValues = {
-		...(values.title !== undefined && {
-			title: values.title.replace(/<\/?think>/gi, "").trim(),
-			...syncBump(locals),
-		}),
+		...titled?.$set,
 		...(values.model !== undefined && { model: values.model }),
 	};
 
@@ -3877,10 +4067,11 @@ export async function PATCH({ request, locals, params }) {
 		},
 		{
 			$set: updateValues,
+			...(titled?.$unset && { $unset: titled.$unset }),
 		}
 	);
 
-	// Best-effort only (CUR-1194): give a cold local instance a head start on a mid-conversation model
+	// Best-effort only: give a cold local instance a head start on a mid-conversation model
 	// switch. No-ops instantly for any non-local model. Routed through runInBackground, not a bare
 	// `void` — a fire-and-forget promise in a Vercel Node function is frozen the instant the response
 	// returns (vercelBackground.ts's own module comment), which would silently turn this into a no-op

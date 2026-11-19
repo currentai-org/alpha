@@ -2,15 +2,15 @@ import { writable } from "svelte/store";
 import { admitAttachments, type AttachmentRoom } from "$lib/chat/constants/uploadLimits";
 
 /**
- * The composer's files with `incoming` added, keeping only what fits the per-message limit
- * (CUR-2631). A refusal goes to the chat's error banner with the same sentence the server sends, so a
+ * The composer's files with `incoming` added, keeping only what fits the per-message limit.
+ * A refusal goes to the chat's error banner with the same sentence the server sends, so a
  * file the server would refuse never sits in the composer looking accepted.
  *
- * Pass `incoming` through `shrinkImages` first (CUR-2633), and read the composer's files only after
+ * Pass `incoming` through `shrinkImages` first, and read the composer's files only after
  * that await, so two quick adds can't overwrite each other:
  * `const ready = await shrinkImages(picked); files = addAttachments(files, ready);`
  *
- * `rooms` come from `fetchAttachmentRooms` (CUR-3235): My files' headroom and the 24-hour allowance. A
+ * `rooms` come from `fetchAttachmentRooms`: My files' headroom and the 24-hour allowance. A
  * file that won't fit one is refused the same way, with that room's line.
  */
 export function addAttachments(files: File[], incoming: File[], rooms?: readonly AttachmentRoom[]): File[] {
@@ -23,7 +23,7 @@ export function addAttachments(files: File[], incoming: File[], rooms?: readonly
 	return [...files, ...admitted];
 }
 
-/** How much of the 24-hour allowance is left, once it is close to spent, for the line under (CUR-3235)
+/** How much of the 24-hour allowance is left, once it is close to spent, for the line under
  *  the composer's files. Set by every add; the composer clears it when its files are sent or removed. */
 export const attachmentWarning = writable<string | undefined>(undefined);
 

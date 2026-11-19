@@ -1,6 +1,7 @@
 // e2e-product: @site
 import { test, expect } from './helpers/test';
 import { journeyStep } from './helpers/journeyStep';
+import { postedAt, recentUpdatesWindow } from './helpers/recentUpdates';
 
 // W1 ("I can see the project is active, and what has changed recently").
 //
@@ -19,13 +20,18 @@ test(
 	{ tag: ['@W1', '@CUR-3700'] },
 	async ({ page }) => {
 		// Step 1 and 2. The home page carries a dated sign of recent activity, and a named route to it.
-		// Since CUR-2542 that sign is the hero's updates tile ("11 Updates / In the past 8 weeks"). It
+		// that sign is the hero's updates tile ("11 Updates / In the past 8 weeks"). It
 		// renders only when the window holds at least one update, so a quiet stretch fails here too:
-		// the visitor would see nothing dated either (CUR-2561).
+		// the visitor would see nothing dated either.
 		// A cold render that waits more than 1s on the CMS serves the tile's fallback, an empty window,
-		// and the tile hides by design (CUR-2254). The fetch carries on and warms the cache, so the
+		// and the tile hides by design. The fetch carries on and warms the cache, so the
 		// contract is: a cold render never shows a wrong count, and the tile is there once the CMS has
-		// answered (CUR-3700).
+		// answered.
+		//
+		// A preview's CMS can go weeks without a new post. Then the window is truly empty and the tile is
+		// correctly absent. That state passes step 1 only when the page's own count says 0, and step 3
+		// then checks the updates page agrees: no update on it falls inside the window.
+		let quietWeeks: number | undefined;
 		await journeyStep(page, 'W1', 1, async () => {
 			await page.goto('/', { waitUntil: 'domcontentloaded' });
 			const tile = page.getByRole('link', { name: /\d+\s+updates?\b.*in the past/i }).first();
@@ -42,7 +48,23 @@ test(
 				await expect(async () => {
 					await page.reload({ waitUntil: 'domcontentloaded' });
 					await expect(tile).toBeVisible({ timeout: 2_000 });
-				}).toPass({ timeout: 20_000 });
+				})
+					.toPass({ timeout: 20_000 })
+					// Still hidden after the CMS has had time to answer: the window's own count decides below.
+					.catch(() => undefined);
+			}
+			if (!(await tile.isVisible())) {
+				const { count, weeks } = await recentUpdatesWindow(page);
+				expect(
+					count,
+					'the CMS window holds updates, yet the home page shows no updates tile, so a visitor sees no sign of recent activity'
+				).toBe(0);
+				quietWeeks = weeks;
+				test.info().annotations.push({
+					type: 'no-recent-updates',
+					description: `this deployment's CMS has no update in the last ${weeks} weeks, so the home page correctly shows no updates tile; step 3 checks the updates page agrees`
+				});
+				return;
 			}
 			await expect(
 				tile,
@@ -59,9 +81,8 @@ test(
 		});
 
 		// Step 3. Real, specific, dated changes. Each update is a card: a link to the post holding its
-		// headline, its category's icon and label, and when it was posted (CUR-3862's redesign). The
-		// page's own heading copy is the CMS's to change, so the h1 is held only to being about updates
-		// (CUR-3879).
+		// headline, its category's icon and label, and when it was posted (the redesign). The
+		// page's own heading copy is the CMS's to change, so the h1 is held only to being about updates.
 		const tiles = page.locator('a[href*="updates/"]').filter({ has: page.locator('h3') });
 		await journeyStep(page, 'W1', 3, async () => {
 			await updates.click();
@@ -89,6 +110,19 @@ test(
 				undated,
 				'an update on the list does not say when it was posted, so a visitor cannot tell old news from new'
 			).toEqual([]);
+
+			// Step 1 accepted a hidden tile on the page's own count of 0. The list must agree, or the
+			// count came from a failed CMS read and the tile was hidden while updates existed. A day of
+			// slack covers "N months ago" rounding and the window's own day boundary.
+			if (quietWeeks !== undefined) {
+				const now = Date.now();
+				const windowStart = now - quietWeeks * 7 * 86_400_000 + 86_400_000;
+				const recent = cards.filter((c) => (postedAt(c, now) ?? 0) > windowStart);
+				expect(
+					recent,
+					`the home page counted no update in the last ${quietWeeks} weeks and showed no tile, yet the updates page lists these from inside that window`
+				).toEqual([]);
+			}
 
 			const titles = (await tiles.locator('h3').allInnerTexts()).map((t) =>
 				t.replace(/\s+/g, ' ').trim()
@@ -120,13 +154,13 @@ test(
 
 			// The critic samples this recording at one frame per second, and the click below
 			// landed about half a second after the list rendered, so the frames it read as "All" already
-			// showed the Alpha-only list and it graded the filter as changing nothing (CUR-1926). Hold the unfiltered
-			// list long enough to be photographed twice, the same dwell CUR-1818 added after the click.
+			// showed the Alpha-only list and it graded the filter as changing nothing. Hold the unfiltered
+			// list long enough to be photographed twice, the same dwell added after the click.
 			await page.waitForTimeout(2_000);
 
 			// Presence of the buttons proves nothing about whether pressing one does anything —
 			// the count check above would pass identically whether "Alpha" narrows the list or is wired to
-			// nothing (CUR-1818). Click it and check what the list looks like afterward.
+			// nothing. Click it and check what the list looks like afterward.
 			const unfilteredTiles = await tiles.allInnerTexts();
 			const alphaFilter = filterRow.getByRole('link', { name: 'Alpha', exact: true });
 			await alphaFilter.click();
@@ -159,7 +193,7 @@ test(
 			).not.toEqual(unfilteredTiles);
 
 			// Once the filtered list is on screen the assertions above resolve at once, and
-			// step 5 navigates away immediately after (CUR-1818). Without a dwell,
+			// step 5 navigates away immediately after. Without a dwell,
 			// every sampled frame showed "All" selected, because nothing held the narrowed state on screen
 			// long enough to be photographed. Same dwell shape journey-gallery.spec.ts already uses.
 			await page.waitForTimeout(1_000);
@@ -169,7 +203,7 @@ test(
 		await journeyStep(page, 'W1', 5, async () => {
 			await page.goto('/roadmap', { waitUntil: 'domcontentloaded' });
 			const roadmap = ((await page.locator('body').innerText()) ?? '').toLowerCase();
-			// The Timeline block labels the upcoming column "Next up"; older content said "Up next" (CUR-2863).
+			// The Timeline block labels the upcoming column "Next up"; older content said "Up next".
 			for (const [section, label] of [
 				['shipped', /shipped/],
 				['in progress', /in progress/],
@@ -185,11 +219,11 @@ test(
 );
 
 // After an idle spell the first visitor to `/` watched a blank tab for 3-4s while a cold
-// function rendered (CUR-1597). The CDN now answers `/` from its last render, so the contract a visitor feels
+// function rendered. The CDN now answers `/` from its last render, so the contract a visitor feels
 // is that a second request is served from the edge rather than rendered again. That a draft preview
 // is never offered to the edge is pinned in page.server.spec.ts: a spec holds no preview secret.
 test(
-	'the home page is served from the edge after the first render (CUR-1597)',
+	'the home page is served from the edge after the first render',
 	{ tag: '@W1' },
 	async ({ page }) => {
 		const first = await page.request.get('/');

@@ -13,11 +13,11 @@
 //   "tool"      — real OpenAI tool-calling: searchDecision.decideSearchViaTool offers
 //                 the model the web_search tool ($lib/chat/server/search/toolSearch.ts),
 //                 and the model decides whether to search and writes the query.
-//   "margin"    — the EMBEDDING gate (searchIntent.ts, behind search-intent-embedding-gate): cosine
+//   "margin"    — the EMBEDDING gate (searchIntent.ts): cosine
 //                 distance to labelled fresh vs evergreen exemplars, no completions call at all.
-//                 Unlike model/tool no regex is consulted at all (CUR-2109). When the gate gives no
+//                 Unlike model/tool no regex is consulted at all. When the gate gives no
 //                 verdict the turn searches, and every such turn is a logged
-//                 `failopen: search-decision` departure (CUR-2108). The name "margin" is
+//                 `failopen: search-decision` departure. The name "margin" is
 //                 inherited from an earlier gate that read a yes/no classifier's first-token
 //                 LOGPROB margin; its eval parser lives in evals/search-decision/margin.ts, and
 //                 evals/search-decision/FINDINGS.md holds that gate's measurements, which do not
@@ -88,12 +88,12 @@ export function shouldRunSearch(opts: {
 	// that's deliberately NOT OR'd into margin below). Checked first for model/tool/heuristic: an
 	// explicit ask should never be swallowed by a classifier that only saw a decontextualized
 	// follow-up ("why not look online to find out?" carries no topic on its own). Margin ignores it:
-	// the embedding gate matches those phrasings against its exemplars itself (CUR-2109).
+	// the embedding gate matches those phrasings against its exemplars itself.
 	explicitLookupHit?: boolean;
 }): boolean {
 	const strategy = opts.strategy ?? SEARCH_TRIGGER_STRATEGY;
 	if (strategy === "margin") {
-		// The embedding gate is the only decider; neither regex is consulted (CUR-2109). On the holdout
+		// The embedding gate is the only decider; neither regex is consulted. On the holdout
 		// the gate alone gets every bucket the regexes cover, explicit asks included, and the recency
 		// regex adds false positives on coding questions it has no vocabulary for.
 		// No verdict means SEARCH: Alpha is reported to search too little, so a missed search costs more
@@ -104,7 +104,7 @@ export function shouldRunSearch(opts: {
 	if (usesModelClassifier(strategy)) {
 		// The classifier read the whole question, so its verdict stands; the recency regex decides only
 		// when there is none. OR'd ahead of a "no", a bare "now" in "does the chat I'm having now carry
-		// over at sign-in?" would send an app question to the web (CUR-2372).
+		// over at sign-in?" would send an app question to the web.
 		const verdict = opts.classifierOk !== false && opts.classifierHit !== undefined;
 		return verdict ? !!opts.classifierHit : opts.heuristicHit;
 	}

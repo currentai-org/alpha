@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import ChatMessage from "./ChatMessage.harness.svelte";
 import { render, cleanup } from "vitest-browser-svelte";
 import { page } from "vitest/browser";
@@ -12,10 +15,10 @@ import {
 import { plainTextOf } from "$lib/chat/utils/copyText";
 
 // A generation the watchdog kills (genTimeoutMs, ~45s) sends an empty `finalAnswer` and a real
-// `status:error` update over the wire, possibly with zero tokens streamed (CUR-1748). Neither
+// `status:error` update over the wire, possibly with zero tokens streamed. Neither
 // `showsEmptyAnswerNotice` nor `showsInterruptedNotice` renders for that case (both explicitly
 // exclude `status === 'error'`), so without the error notice the message bubble stays permanently
-// blank in the transcript, the "reads as a bug" shape ChatMessage.svelte's CUR-113 comment warns
+// blank in the transcript, the "reads as a bug" shape ChatMessage.svelte's comment warns
 // about for the empty-answer case.
 const baseMessage: Message = {
 	from: "assistant",
@@ -23,7 +26,7 @@ const baseMessage: Message = {
 	content: "",
 };
 
-describe("ChatMessage — error notice (CUR-1748)", () => {
+describe("ChatMessage — error notice", () => {
 	afterEach(() => {
 		cleanup();
 	});
@@ -91,8 +94,8 @@ describe("ChatMessage — error notice (CUR-1748)", () => {
 
 // `loading` is the page's flag for whichever turn is live, and ChatWindow passes it to every
 // message. An earlier, finished answer must not read it as its own: it would lose its receipt the moment a
-// follow-up is sent and look as if it were being regenerated. (CUR-1978)
-describe("ChatMessage — receipt of an earlier answer while a newer turn streams (CUR-1978)", () => {
+// follow-up is sent and look as if it were being regenerated.
+describe("ChatMessage — receipt of an earlier answer while a newer turn streams", () => {
 	afterEach(() => {
 		cleanup();
 	});
@@ -172,8 +175,8 @@ describe("ChatMessage — switching away from a failed retry", () => {
 });
 
 // The low-resource notice ends "I can still try if you want", and Retry only regenerates the
-// same notice. The button sends the visitor's yes, which the server reads as "answer anyway". (CUR-1841)
-describe("ChatMessage — try anyway under the low-resource notice (CUR-1841)", () => {
+// same notice. The button sends the visitor's yes, which the server reads as "answer anyway".
+describe("ChatMessage — try anyway under the low-resource notice", () => {
 	afterEach(() => {
 		cleanup();
 	});
@@ -232,8 +235,8 @@ describe("ChatMessage — try anyway under the low-resource notice (CUR-1841)", 
 
 // The copy handler must not build text/plain from textContent, which keeps the screen-reader
 // label and the "?" marker (pasting "Cl@ve(unverified link)?") and adds no block breaks (running a
-// heading into the paragraph after it). (CUR-2421)
-describe("ChatMessage — copying a selection (CUR-2421)", () => {
+// heading into the paragraph after it).
+describe("ChatMessage — copying a selection", () => {
 	afterEach(() => {
 		cleanup();
 	});
@@ -290,7 +293,7 @@ describe("ChatMessage — copying a selection (CUR-2421)", () => {
 	});
 });
 
-describe("plainTextOf (CUR-2421)", () => {
+describe("plainTextOf", () => {
 	const html = (markup: string) => {
 		const div = document.createElement("div");
 		div.innerHTML = markup;
@@ -303,7 +306,7 @@ describe("plainTextOf (CUR-2421)", () => {
 	});
 
 	// The break before a block trims the next text's leading spaces, which inside <pre> is
-	// the first line's indentation. (CUR-2911)
+	// the first line's indentation.
 	it("keeps the first line's indentation in a <pre> that follows a paragraph", () => {
 		const root = html("<p>Inside the loop:</p>\n<pre><code>    return 1\n</code></pre>");
 		expect(plainTextOf(root)).toBe("Inside the loop:\n\n    return 1\n");
@@ -315,7 +318,7 @@ describe("plainTextOf (CUR-2421)", () => {
 	});
 });
 
-describe("ChatMessage — a turn stopped before any text (CUR-2824)", () => {
+describe("ChatMessage — a turn stopped before any text", () => {
 	afterEach(() => {
 		cleanup();
 	});
@@ -434,8 +437,8 @@ describe("ChatMessage — one Retry per turn when a notice carries it", () => {
 
 // When the input screen doesn't finish, the decline tells the visitor to send it again, but the
 // only way to do that was the footer's unlabelled icon, so they retyped the question and found the photo
-// again. The decline carries a labelled Retry that regenerates the stored turn, photo included. (CUR-3739)
-describe("ChatMessage — a could-not-check decline offers a labelled Retry (CUR-3739)", () => {
+// again. The decline carries a labelled Retry that regenerates the stored turn, photo included.
+describe("ChatMessage — a could-not-check decline offers a labelled Retry", () => {
 	afterEach(() => {
 		cleanup();
 	});
@@ -483,8 +486,8 @@ describe("ChatMessage — a could-not-check decline offers a labelled Retry (CUR
 });
 
 // Every policy decline offers a review, child-safety included, since a false positive there
-// needs a person most of all. (CUR-3902)
-describe("ChatMessage — challenging a decline (CUR-3902)", () => {
+// needs a person most of all.
+describe("ChatMessage — challenging a decline", () => {
 	afterEach(() => {
 		cleanup();
 	});
@@ -514,8 +517,8 @@ describe("ChatMessage — challenging a decline (CUR-3902)", () => {
 });
 
 // The server holds ALIA's untagged reasoning back until its bare `</think>`, so the turn
-// would show no text and no reasoning panel meanwhile. The held-reasoning status opens the panel. (CUR-3942)
-describe("ChatMessage — reasoning held back by the server (CUR-3942)", () => {
+// would show no text and no reasoning panel meanwhile. The held-reasoning status opens the panel.
+describe("ChatMessage — reasoning held back by the server", () => {
 	afterEach(() => {
 		cleanup();
 	});
@@ -550,8 +553,8 @@ describe("ChatMessage — reasoning held back by the server (CUR-3942)", () => {
 });
 
 // The route check failed and the selected model answered. The note is the answer's own field,
-// so a reload shows it; the turn handler's half (streamed, then stored) is server.turn.spec.ts's. (CUR-2830)
-describe("ChatMessage — agent-unreachable note (CUR-2830)", () => {
+// so a reload shows it; the turn handler's half (streamed, then stored) is server.turn.spec.ts's.
+describe("ChatMessage — agent-unreachable note", () => {
 	afterEach(() => {
 		cleanup();
 	});
@@ -575,8 +578,8 @@ describe("ChatMessage — agent-unreachable note (CUR-2830)", () => {
 });
 
 // On a phone Edit and Copy always show (no hover), so they sit below the bubble and must not be
-// pinned up into it, over its bottom edge. (CUR-4264)
-describe("ChatMessage — Edit and Copy under a sent message (CUR-4264)", () => {
+// pinned up into it, over its bottom edge.
+describe("ChatMessage — Edit and Copy under a sent message", () => {
 	afterEach(() => {
 		cleanup();
 	});
@@ -600,5 +603,50 @@ describe("ChatMessage — Edit and Copy under a sent message (CUR-4264)", () => 
 				`${name} starts ${bubble.bottom - button.top}px inside the bubble`
 			).toBeGreaterThanOrEqual(bubble.bottom);
 		}
+	});
+});
+
+// A search that finished with nothing worth citing leaves an answer from the model alone, and the
+// visitor is told so under it. A search that did not finish has its own note; a grounded turn has neither.
+describe("ChatMessage — search found nothing notice", () => {
+	afterEach(() => {
+		cleanup();
+	});
+	const answered: Message = { ...baseMessage, content: "From what I know, it is open daily." };
+	const emptyNote = "Web search found nothing, so this answer is from the model alone";
+
+	it("says the search found nothing when it ran and grounded nothing", async () => {
+		await render(ChatMessage, {
+			message: { ...answered, searchAttempt: { grounded: false, searched: true } },
+			loading: false,
+		});
+		await expect.element(page.getByText(emptyNote)).toBeInTheDocument();
+	});
+
+	it("says nothing about a search the gate declined to run", async () => {
+		await render(ChatMessage, {
+			message: { ...answered, searchAttempt: { grounded: false, searched: false } },
+			loading: false,
+		});
+		await expect.element(page.getByText(emptyNote)).not.toBeInTheDocument();
+	});
+
+	it("leaves a search that did not finish to its own note", async () => {
+		await render(ChatMessage, {
+			message: { ...answered, searchAttempt: { grounded: false, searched: true, failed: "timeout" } },
+			loading: false,
+		});
+		await expect.element(page.getByText(emptyNote)).not.toBeInTheDocument();
+		await expect
+			.element(page.getByText("Web search didn’t finish"))
+			.toBeInTheDocument();
+	});
+
+	it("shows no note while the answer is still streaming", async () => {
+		await render(ChatMessage, {
+			message: { ...answered, searchAttempt: { grounded: false, searched: true } },
+			loading: true,
+		});
+		await expect.element(page.getByText(emptyNote)).not.toBeInTheDocument();
 	});
 });

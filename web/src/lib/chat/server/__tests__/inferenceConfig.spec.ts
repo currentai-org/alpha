@@ -10,7 +10,7 @@ import {
 	type InferenceConfigInput,
 } from "../../../../../config/inference";
 
-// Production's shape (CUR-2293): the gateway serves the default chat model, and the
+// Production's shape: the gateway serves the default chat model, and the
 // backup lane asks the HF router for FALLBACK_MODEL_ID.
 function prodShape(fallbackUpstream: string): InferenceConfigInput {
 	return {
@@ -29,12 +29,12 @@ function prodShape(fallbackUpstream: string): InferenceConfigInput {
 	};
 }
 
-// What `router.huggingface.co/v1/models` lists for these families (CUR-2293).
+// What `router.huggingface.co/v1/models` lists for these families.
 const hfServed = new Set(["swiss-ai/Apertus-8B-Instruct-2509", "zai-org/GLM-5.3", "zai-org/GLM-5.2"]);
 const gatewayServed = new Set(["swiss-ai/apertus-v1.5-70b"]);
 
 describe("inference config", () => {
-	it("reports the fallback role when HF does not list prd's old FALLBACK_MODEL_ID (the CUR-2293 case)", () => {
+	it("reports the fallback role when HF does not list prd's old FALLBACK_MODEL_ID (the case)", () => {
 		const cfg = buildInferenceConfig(prodShape("swiss-ai/Apertus-v1.5-70B"));
 		expect(unservedRoles(cfg, new Map([["gateway", gatewayServed], ["hf", hfServed]]))).toEqual([
 			{ role: "fallback", model: "backup", provider: "hf", upstream: "swiss-ai/Apertus-v1.5-70B", reason: "absent" },
@@ -103,7 +103,7 @@ describe("inference config", () => {
 		expect(inferenceEnvironment(undefined)).toBe("develop");
 	});
 
-	it("reports each picker entry its provider does not list, like any other role (CUR-3484)", () => {
+	it("reports each picker entry its provider does not list, like any other role", () => {
 		const input = prodShape("zai-org/GLM-5.3");
 		input.model_list.push({ model_name: "gone-model", litellm_params: { model: "gone-model", provider: "gateway" } });
 		input.roles.picker = ["swiss-ai/apertus-v1.5-70b", "gone-model"];
@@ -118,7 +118,7 @@ describe("picker lists", () => {
 		expect(pickerSite("preview", "www")).toBe("develop");
 		expect(pickerSite(undefined, "www")).toBe("develop");
 		expect(pickerSite("production", "www")).toBe("production");
-		expect(pickerSite("production", "mozfest")).toBe("mozfest");
+		expect(pickerSite("production", "lugano")).toBe("lugano");
 	});
 
 	it("throws for an event instance with no list of its own rather than handing it www's", () => {

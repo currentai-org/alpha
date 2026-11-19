@@ -1,7 +1,7 @@
 /**
  * Every turn's system prompt names today's date in the person's own zone, searched or not, so
  * "what's today?" never leaves the model guessing from training. Drives the real textGeneration with the
- * edge stubs cannedReply.turn.spec.ts uses, and reads the preprompt `generate` receives. (CUR-2276)
+ * edge stubs cannedReply.turn.spec.ts uses, and reads the preprompt `generate` receives.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ObjectId } from "bson";
@@ -75,7 +75,7 @@ async function preprompt(modelId: string, timezone: string): Promise<string> {
 	return state.preprompts[0] ?? "";
 }
 
-describe("an unsearched turn's system prompt names today in the person's zone (CUR-2276)", () => {
+describe("an unsearched turn's system prompt names today in the person's zone", () => {
 	// 22:30 UTC on Thursday 1 October is already Friday 2 October in Tokyo.
 	beforeEach(() => {
 		vi.useFakeTimers({ toFake: ["Date"] });

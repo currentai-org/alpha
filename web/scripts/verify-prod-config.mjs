@@ -20,9 +20,9 @@
 //
 //   1. WHICH strategy is served — read from the layout payload, no auth needed.
 //   2. Whether margin's gate is actually the one deciding — only when margin is the expectation.
-//      The classify route reports `decider` and `fallback` (CUR-2108). With the embedding gate
+//      The classify route reports `decider` and `fallback`. With the embedding gate
 //      flagged off or failing, shouldRunSearch searches every such turn (triggerStrategy.ts,
-//      CUR-2109), so the gate reads as configured-on while deciding nothing. Assertion 1
+//), so the gate reads as configured-on while deciding nothing. Assertion 1
 //      alone would report green through that.
 //
 // Usage:  node scripts/verify-prod-config.mjs --env production [--base URL] [--chat-path /chat|/] [--expect margin]
@@ -44,7 +44,7 @@ const CLASSIFY_PROBE = "latest AI news today";
 // `die` is the single exit path for both a genuine config-drift finding (servedStrategy
 // mismatch, a margin decider check that failed) and the probe simply not reaching one (network
 // error, non-2xx, the SvelteKit payload shape having moved, no expectations for --env). `kind: "drift"` marks the genuine-finding call sites
-// only; its absence is what the alert step reads as "the probe itself failed" (CUR-1427).
+// only; its absence is what the alert step reads as "the probe itself failed".
 const GH_OUTPUT = process.env.GITHUB_OUTPUT;
 const die = (msg, kind) => {
 	console.error(`✖ prod-config FAILED [${ENV}]: ${msg}`);
@@ -70,7 +70,7 @@ if (!expected) {
 const BASE = (arg("base", expected.baseUrl) ?? "").replace(/\/+$/, "");
 if (!BASE) die(`no --base given and no baseUrl committed for "${ENV}"`);
 // Where chat's pages live on BASE: "" on a chat-surface host, which serves chat at its root (alpha,
-// CUR-4448), "/chat" on a site-surface one (develop, a preview). The env block's `chatPath` says which;
+//), "/chat" on a site-surface one (develop, a preview). The env block's `chatPath` says which;
 // `--chat-path` overrides it for a --base of the other kind, and "/" there means the root. The API keeps
 // its /chat/api prefix on both, so only the page payload below reads this.
 const CHAT_PATH = arg("chat-path", expected.chatPath ?? "/chat").replace(/\/+$/, "");
@@ -158,7 +158,7 @@ console.log(`✓ ${BASE} serves searchTriggerStrategy="${servedStrategy}", isAdm
 
 // ── 2. Is the margin strategy's gate actually the one deciding? ─────────────────────────────────
 //
-// Only meaningful under margin. Its gate is the embedding gate now (CUR-2108; the logprob gate it
+// Only meaningful under margin. Its gate is the embedding gate now (the logprob gate it
 // replaced is deleted), and the failure this leg names is the regex deciding in the gate's place —
 // the flag off, the embedder uncalibrated, or the embedding call failing — while config says margin.
 //
@@ -173,7 +173,7 @@ if (expectedStrategy !== "margin") {
 
 // No cookie needed: requireAuth establishes the session server-side without one echoed back, and
 // classify answers an uncredentialed GET ({"shouldSearch":true,"ok":true} on the develop preview,
-// CUR-2108). Harvesting Set-Cookie from GET /chat/ cannot work: it 308-redirects to /chat, and
+//). Harvesting Set-Cookie from GET /chat/ cannot work: it 308-redirects to /chat, and
 // handle.ts:231-234 only calls refreshSessionCookie on POST or login paths, so no GET of any chat
 // URL sets a cookie. A hard failure on a missing cookie would fail every prod deploy, and
 // deploy-prod.sh would read that as a bad deployment and revert it.
@@ -181,7 +181,7 @@ const classifyUrl = `${BASE}/chat/api/search/classify?q=${encodeURIComponent(CLA
 const clsRes = await fetchOrDie(classifyUrl, {}, "the classify endpoint");
 const cls = await clsRes.json();
 
-// `decider` is on every response since CUR-2108. Its ABSENCE means a deployment older than that;
+// `decider` is on every response. Its ABSENCE means a deployment older than that;
 // a value other than "embedding" means margin is not what is deciding; `fallback` means the gate ran
 // and gave no verdict, so the turn searched regardless.
 if (!("decider" in cls)) {
@@ -195,7 +195,7 @@ if (cls.decider !== "embedding" || cls.fallback) {
 	die(
 		`classify returned decider=${JSON.stringify(cls.decider)} fallback=${JSON.stringify(cls.fallback)} —\n` +
 			`   the embedding gate is not deciding, so every automatic turn searches while\n` +
-			`   config claims margin. "embedding-gate-off" means the search-intent-embedding-gate flag is off.`,
+			`   config claims margin.`,
 		"drift"
 	);
 }

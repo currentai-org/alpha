@@ -3,7 +3,7 @@ import { randomServerName } from "./randomServerName";
 
 // The managed-server form opens with one of these already in the field. It is a label a
 // person has to recognise in a list later, so the properties worth pinning are about readability,
-// not randomness. (CUR-3168)
+// not randomness.
 describe("randomServerName", () => {
 	it("reads as two capitalised words", () => {
 		expect(randomServerName()).toMatch(/^[A-Z][a-z]+ [A-Z][a-z]+$/);

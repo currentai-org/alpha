@@ -1,9 +1,9 @@
 import type { Page } from '@playwright/test';
 
 // Install the fault-injection header pair on exactly the chat send request, so a spec can
-// prove it goes red for the failure it's named after (CUR-1614) — see
+// prove it goes red for the failure it's named after — see
 // $lib/chat/server/textGeneration/faultInjection.ts for the server-side gate and the full fault
-// vocabulary (`no_assistant_reply`, `generation_timeout`, `title_latency_10s`, `primary_lane_down`, `primary_lane_hangs`, `output_screen_timeout`, `output_screen_window_short`, `tts_canned_clip`, `tts_slow_canned_clip`, `tts_canned_clip_output_blocked`, `output_guard_unreachable`, `input_guard_unreachable`, `output_screen_recheck_clears`, `tts_space_down`, `lane_rate_limited`, `lane_not_found`, `primary_lane_rate_limited`, `tool_round_rate_limited`, `tool_round_rate_limited_sustained`, `chat_500`, `stream_truncates_midway`, `provenance_header_stripped`, `question_save_delayed`, `wrong_model_served`, `latency_30s`, `canned_reply`, `answer_recites_preamble`, `caret_cited_reply`, `crisis_line_reply`, `model_replay` and `mcp_stub_server` are wired to a real simulation today).
+// vocabulary (`no_assistant_reply`, `generation_timeout`, `title_latency_10s`, `primary_lane_down`, `primary_lane_hangs`, `output_screen_timeout`, `output_screen_window_short`, `tts_canned_clip`, `tts_slow_canned_clip`, `tts_canned_clip_output_blocked`, `output_guard_unreachable`, `input_guard_unreachable`, `output_screen_recheck_clears`, `tts_space_down`, `lane_rate_limited`, `lane_not_found`, `primary_lane_rate_limited`, `primary_stream_errors_once`, `tool_round_rate_limited`, `tool_round_rate_limited_sustained`, `chat_500`, `stream_truncates_midway`, `provenance_header_stripped`, `question_save_delayed`, `wrong_model_served`, `latency_30s`, `canned_reply`, `answer_recites_preamble`, `caret_cited_reply`, `crisis_line_reply`, `model_replay` and `mcp_stub_server` are wired to a real simulation today).
 //
 // Scoped via page.route() rather than Playwright's global `use.extraHTTPHeaders`, same reason
 // signIn.ts's installOtpBypassHeader is: a header sent on every request forces a CORS preflight on
@@ -14,79 +14,90 @@ import type { Page } from '@playwright/test';
 // so the route (src/routes/chat/conversation/[id]/+server.ts) is still found if chat's base moves.
 const CONVERSATION_SEND_PATH = /\/conversation\/[a-f0-9]+$/;
 /** `POST /chat/conversation`, the request that makes a new chat, for a fault its route reads
- *  (`conversation_limit_reached`, CUR-2875). */
+ *  (`conversation_limit_reached`). */
 export const CONVERSATION_CREATE_PATH = /\/conversation$/;
 
-/** Every fault the server simulates, as a list a model's tool schema can offer (the cold walk's
- *  force_fault, SOL-164). */
-export const FAULT_INJECTION_NAMES = [
-	'no_assistant_reply',
-	'generation_timeout',
-	'title_latency_10s',
-	'provenance_header_stripped',
-	'stream_truncates_midway',
-	'chat_500',
-	'latency_30s',
-	'wrong_model_served',
-	'primary_lane_down',
-	'primary_lane_hangs',
-	'every_lane_hangs',
-	'every_lane_rate_limited',
-	'output_screen_timeout',
-	'output_screen_window_short',
-	'tts_canned_clip',
-	'tts_slow_canned_clip',
-	'tts_space_down',
-	'lane_rate_limited',
-	'lane_not_found',
-	'lane_server_error',
-	'primary_lane_rate_limited',
-	'tool_round_rate_limited',
-	'tool_round_rate_limited_sustained',
-	'gap_map_db_down',
-	'csam_scanner_down',
-	'guest_file_move_skipped',
-	'question_save_delayed',
-	'agent_turn_deadline_20s',
-	'output_screen_blocks',
-	'output_screen_blocks_rule',
-	'tts_canned_clip_output_blocked',
-	'output_guard_unreachable',
-	'input_guard_unreachable',
-	'input_screen_declines_rule',
-	'output_screen_recheck_clears',
-	'session_rate_limit_low',
-	'answer_holds_midway',
-	'storage_listing_down',
-	'storage_hub_rate_limited',
-	'storage_hub_read_rate_limited',
-	'storage_quota_full',
-	'conversation_limit_reached',
-	'canned_reply',
-	'answer_recites_preamble',
-	'caret_cited_reply',
-	'grounded_answer_hedges',
-	'crisis_line_reply',
-	'crisis_number_reply',
-	'emergency_number_reply',
-	'answer_loops',
-	'model_replay',
-	'model_replay_none',
-	'mcp_stub_server',
-	'sandbox_host_full',
-	'input_screen_unfinished',
-	'agent_route_down',
-	'agent_route_screened',
-	'groundcheck_removes_claim',
-	'answer_streams_past_cap',
-	'coop_report_rate_limited',
-	'web_search_hangs',
-	'status_page_degraded',
-	'pangolin_stub',
-	'sandbox_stub'
-] as const;
-
-export type FaultInjectionName = (typeof FAULT_INJECTION_NAMES)[number];
+/** Every fault the server simulates. */
+export type FaultInjectionName =
+	| 'no_assistant_reply'
+	| 'generation_timeout'
+	| 'title_latency_10s'
+	| 'provenance_header_stripped'
+	| 'provenance_host_stripped'
+	| 'stream_truncates_midway'
+	| 'chat_500'
+	| 'latency_30s'
+	| 'wrong_model_served'
+	| 'primary_lane_down'
+	| 'primary_lane_hangs'
+	| 'every_lane_hangs'
+	| 'every_lane_rate_limited'
+	| 'every_lane_payment_required'
+	| 'output_screen_timeout'
+	| 'output_screen_window_short'
+	| 'search_classifier_malformed'
+	| 'tts_canned_clip'
+	| 'tts_slow_canned_clip'
+	| 'tts_space_down'
+	| 'lane_rate_limited'
+	| 'lane_not_found'
+	| 'lane_server_error'
+	| 'primary_lane_rate_limited'
+	| 'primary_stream_errors_once'
+	| 'tool_round_rate_limited'
+	| 'tool_round_rate_limited_sustained'
+	| 'gap_map_db_down'
+	| 'block_fixtures'
+	| 'home_cards_promo_pair'
+	| 'csam_scanner_down'
+	| 'csam_scanner_blip'
+	| 'guest_file_move_skipped'
+	| 'question_save_delayed'
+	| 'agent_turn_deadline_20s'
+	| 'output_screen_blocks'
+	| 'output_screen_blocks_rule'
+	| 'tts_canned_clip_output_blocked'
+	| 'output_guard_unreachable'
+	| 'input_guard_unreachable'
+	| 'input_screen_declines_rule'
+	| 'output_screen_recheck_clears'
+	| 'session_rate_limit_low'
+	| 'daily_turn_cap_low'
+	| 'answer_holds_midway'
+	| 'storage_listing_down'
+	| 'storage_hub_rate_limited'
+	| 'storage_hub_read_rate_limited'
+	| 'storage_quota_full'
+	| 'conversation_limit_reached'
+	| 'canned_reply'
+	| 'answer_recites_preamble'
+	| 'caret_cited_reply'
+	| 'grounded_answer_hedges'
+	| 'crisis_line_reply'
+	| 'crisis_number_reply'
+	| 'emergency_number_reply'
+	| 'html_page_reply'
+	| 'mila_sp_unsafe_reply'
+	| 'answer_loops'
+	| 'model_replay'
+	| 'model_replay_none'
+	| 'mcp_stub_server'
+	| 'mcp_stub_server_swapped'
+	| 'sandbox_host_full'
+	| 'input_screen_unfinished'
+	| 'agent_route_down'
+	| 'agent_route_screened'
+	| 'groundcheck_removes_claim'
+	| 'answer_streams_past_cap'
+	| 'answer_streams_slowly'
+	| 'coop_report_rate_limited'
+	| 'web_search_hangs'
+	| 'status_page_degraded'
+	| 'pangolin_stub'
+	| 'sandbox_stub'
+	| 'sandbox_call_hangs'
+	| 'panelist_never_answers'
+	| 'history_mac_key_rotated';
 
 /** The header pair that asks the server for `fault`. Both install helpers below send it, and so does
  *  a spec whose own route handler sends the request (`route.fetch`): Playwright runs the newest
@@ -137,7 +148,7 @@ export async function installFaultInjectionHeader(
 }
 
 /** The same header pair on one page navigation (a GET of `path`) rather than on the chat send: for
- *  a fault a page's server load reads, such as `gap_map_db_down` (CUR-2304). Throws on a missing
+ *  a fault a page's server load reads, such as `gap_map_db_down`. Throws on a missing
  *  token for the reason installFaultInjectionHeader does. */
 export async function installPageFaultHeader(
 	page: Page,
@@ -158,10 +169,10 @@ export async function installPageFaultHeader(
 }
 
 /**
- * The journey gallery's recordings are the demo reels (CUR-2954), so a canned answer there puts "This
+ * The journey gallery's recordings are the demo reels, so a canned answer there puts "This
  * is a canned reply" on screen as Alpha's answer. journey-gallery.yml sets this and canned replies
  * stand down, leaving the turn to the replay store, whose answers are a real model's, recorded.
- * Replay and the Stop hold stay armed (SOL-287), so the gallery calls no live model on a turn.
+ * Replay and the Stop hold stay armed, so the gallery calls no live model on a turn.
  */
 function noCannedReplies(): boolean {
 	return process.env.SCENARIO_NO_CANNED_REPLIES === '1';
@@ -204,7 +215,7 @@ export async function installModelReplay(page: Page): Promise<boolean> {
  * from the replay store, which hands over the whole answer in milliseconds, so Stop was gone before
  * the click on most runs. This holds the turn after one sentence (`answer_holds_midway`, 20s) so
  * Stop is certainly there. It stands down where there is no token (a run against production), since
- * a live answer streams slowly enough (CUR-4027). Returns the fault's disarm, or null where it stood down.
+ * a live answer streams slowly enough. Returns the fault's disarm, or null where it stood down.
  */
 export async function holdAnswerForStop(page: Page): Promise<{ disarm: () => void } | null> {
 	const armed = Boolean(process.env.E2E_FAULT_INJECT_TOKEN);
@@ -212,15 +223,17 @@ export async function holdAnswerForStop(page: Page): Promise<{ disarm: () => voi
 }
 
 /** Send this page's document loads with a busy-mark scope, so the chat shell reads the marks
- *  `runModelProbe` wrote under it and no one else's. Only document requests and the open tab's re-read
- *  of the marks (`/chat/api/busy`, CUR-4629) carry it. */
+ *  `runModelProbe` wrote under it and no one else's. Only document requests, their client-side
+ *  `__data.json` reloads and the open tab's re-read of the marks (`/chat/api/busy`) carry it. */
 export async function installBusyScopeHeader(page: Page, scope: string): Promise<void> {
 	const { 'x-e2e-fault-inject-token': token } = faultInjectionHeaders('canned_reply');
 	const base = process.env.SCENARIO_BASE_URL;
 	await page.route(
 		(url) => !base || url.origin === new URL(base).origin,
 		(route) => {
-			const busyRead = new URL(route.request().url()).pathname.endsWith('/api/busy');
+			// The shell's marks also arrive in `__data.json` when a client-side navigation reloads its data.
+			const path = new URL(route.request().url()).pathname;
+			const busyRead = path.endsWith('/api/busy') || path.endsWith('/__data.json');
 			if (route.request().resourceType() !== 'document' && !busyRead) return route.continue();
 			return route.continue({
 				headers: {
@@ -241,7 +254,17 @@ type ProbeVerdict =
  *  under `scope`. `refuse` makes every lane of the model answer 429 (`every_lane_rate_limited`). */
 export async function runModelProbe(
 	page: Page,
-	{ model, scope, refuse }: { model: string; scope: string; refuse: boolean }
+	{
+		model,
+		scope,
+		refuse,
+		fault = 'every_lane_rate_limited'
+	}: {
+		model: string;
+		scope: string;
+		refuse: boolean;
+		fault?: 'every_lane_rate_limited' | 'every_lane_payment_required';
+	}
 ): Promise<ProbeVerdict> {
 	const { 'x-e2e-fault-inject-token': token } = faultInjectionHeaders('every_lane_rate_limited');
 	const res = await page.request.get('/chat/api/warm', {
@@ -249,7 +272,7 @@ export async function runModelProbe(
 			'x-e2e-fault-inject-token': token,
 			'x-e2e-busy-scope': scope,
 			'x-e2e-probe-model': model,
-			...(refuse ? { 'x-e2e-fault-inject': 'every_lane_rate_limited' } : {})
+			...(refuse ? { 'x-e2e-fault-inject': fault } : {})
 		},
 		timeout: 90_000
 	});

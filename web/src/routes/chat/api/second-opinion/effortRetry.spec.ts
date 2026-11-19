@@ -67,7 +67,7 @@ async function askPanel(): Promise<Record<string, unknown>[]> {
 		.map((l) => JSON.parse(l));
 }
 
-describe("POST /chat/api/second-opinion — a lane that refuses reasoning_effort none (CUR-4601)", () => {
+describe("POST /chat/api/second-opinion — a lane that refuses reasoning_effort none", () => {
 	it(
 		"asks a panelist refused with a 400 once more without reasoning_effort, and counts its take; one refused again stays failed with its status",
 		async () => {

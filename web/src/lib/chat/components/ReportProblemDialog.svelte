@@ -64,13 +64,15 @@
 
 	// Exactly what gets attached — shown to the person before they send, never more.
 	const context = $derived.by(() => {
-		if (typeof window === 'undefined') return [] as [string, string][];
+		if (typeof window === 'undefined') return [] as [string, string, string][];
+		// The first item is the English name staff read in the sent text; the second is what the
+		// visitor reads in their language.
 		return [
-			['Page', page.url.pathname],
-			['Browser', navigator.userAgent],
-			['Screen', `${window.innerWidth}×${window.innerHeight}`],
-			['Time', new Date().toISOString()]
-		] as [string, string][];
+			['Page', m.report_contextPage(), page.url.pathname],
+			['Browser', m.report_contextBrowser(), navigator.userAgent],
+			['Screen', m.report_contextScreen(), `${window.innerWidth}×${window.innerHeight}`],
+			['Time', m.report_contextTime(), new Date().toISOString()]
+		] as [string, string, string][];
 	});
 
 	function reset() {
@@ -90,7 +92,7 @@
 		busy = true;
 		failed = false;
 		const text = detail.trim();
-		const attached = includeContext ? `\n\n—\n${context.map(([k, v]) => `${k}: ${v}`).join('\n')}` : '';
+		const attached = includeContext ? `\n\n—\n${context.map(([k, , v]) => `${k}: ${v}`).join('\n')}` : '';
 		try {
 			const res = await fetch(`${base}/api/report`, {
 				method: 'POST',
@@ -180,9 +182,9 @@
 					</label>
 					{#if includeContext}
 						<dl class="flex flex-col gap-0.5 type-caption" data-report-context>
-							{#each context as [k, v] (k)}
+							{#each context as [k, name, v] (k)}
 								<div class="flex gap-3">
-									<dt class="w-14 shrink-0 text-fg-3">{k}</dt>
+									<dt class="w-24 shrink-0 text-fg-3">{name}</dt>
 									<dd class="min-w-0 truncate text-fg-2" title={v}>{v}</dd>
 								</div>
 							{/each}
@@ -191,7 +193,7 @@
 				</div>
 			{/if}
 
-			<!-- CUR-3399: filled in, the form is taller than a laptop window. In the dialog, the error and
+			<!-- filled in, the form is taller than a laptop window. In the dialog, the error and
 			     the buttons stay pinned to its bottom edge while the form scrolls above them. -->
 			<div
 				class={[

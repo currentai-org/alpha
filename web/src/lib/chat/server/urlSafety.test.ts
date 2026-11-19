@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { describe, it, expect } from "vitest";
 import { isValidUrl, isValidUrlStrict, ssrfSafeFetch, ssrfStrictFetch } from "./urlSafety";
 
@@ -43,7 +46,7 @@ describe("isValidUrl", () => {
 		expect(isValidUrl("ftp://example.com")).toBe(false);
 	});
 
-	// Ported from upstream chat-ui 837daec (CUR-2117).
+	// Ported from upstream chat-ui 837daec.
 	it("rejects IPv4-mapped IPv6 addresses in either textual form", () => {
 		expect(isValidUrl("https://[::ffff:127.0.0.1]")).toBe(false);
 		expect(isValidUrl("https://[::ffff:7f00:1]")).toBe(false);
@@ -74,7 +77,7 @@ describe("isValidUrl", () => {
 	});
 });
 
-describe("ssrfSafeFetch / ssrfStrictFetch reject unsafe IP literals before connecting (CUR-2117)", () => {
+describe("ssrfSafeFetch / ssrfStrictFetch reject unsafe IP literals before connecting", () => {
 	// undici only calls the agent's `lookup` hook for hosts needing DNS, so an IP literal would reach
 	// the network with no check unless the host is validated up front. Port 9 (discard) is never
 	// contacted: each of these must throw before a socket opens.
@@ -145,7 +148,7 @@ describe("isValidUrlStrict (admin URL ingest — stricter than isValidUrl)", () 
 	});
 });
 
-describe("special-use IPv4 and IPv4 carried inside IPv6 are refused (CUR-3526)", () => {
+describe("special-use IPv4 and IPv4 carried inside IPv6 are refused", () => {
 	it("refuses IPv4 special-use, multicast and reserved ranges", () => {
 		for (const ip of ["192.0.0.1", "198.18.0.1", "198.19.255.254", "224.0.0.1", "239.255.255.250", "240.0.0.1", "255.255.255.255"]) {
 			expect(isValidUrl(`https://${ip}`), ip).toBe(false);

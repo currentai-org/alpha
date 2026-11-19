@@ -1,7 +1,12 @@
 import { describe, it, expect, vi } from "vitest";
+import S1_RULES_JSON from "./rules-s1.json";
+// The public snapshot ships rules-s1.json with only its `_s1` settings: the S1 policies are not
+// published there, so the specs below that assert what S1 decides under a policy skip on it.
+const S1_POLICIES_PUBLISHED = Object.keys(S1_RULES_JSON).some((key) => key !== "_s1");
 import { recheckOutputBlock, recheckFault, recheckFaultFlag } from "./outputRecheck";
 import { screenOutputWithGuard } from "./guardGate";
 import { makeShieldstralJudge } from "./detectors/shieldstral";
+import { makeS1Judge } from "./detectors/s1";
 import { GUARD_WINDOW_CHARS, loadGuardPolicy } from "./guardPolicy";
 import type { GuardHit, JudgeFn, JudgeOutcome, JudgeTarget } from "./guardScreenTypes";
 import type { OutputScreenResult } from "./moderation";
@@ -235,6 +240,166 @@ describe("screenOutputWithGuard → recheckOutputBlock", () => {
 		expect(first).toMatchObject({ blocked: true, kind: "content_policy", category: "chat-block-toxic", childUnknown: true });
 		asked.length = 0;
 		expect(await recheckOutputBlock("answer ", "a batch", first, { judge: async () => no, logger: quiet })).toBe(first);
+	});
+});
+
+// ── the re-check on S1: the real S1 detector behind a fake endpoint ──────────────────────
+type S1Body = { questions: Record<string, { instructions: string }>; state: { content: string } };
+
+/** A fake S1 endpoint. `score(names, name)` is one question's noul score (`names` is the call's whole
+ *  question list, one name for a single call); a Response from `reply` replaces that call's answer. */
+function fakeS1(
+	score: (names: string[], name: string) => number = () => 0.01,
+	reply?: (names: string[], init?: RequestInit) => Response | Promise<Response> | undefined
+) {
+	const bodies: S1Body[] = [];
+	const spy = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+		const body = JSON.parse(String(init?.body)) as S1Body;
+		bodies.push(body);
+		const names = Object.keys(body.questions);
+		const custom = await reply?.(names, init);
+		if (custom) return custom;
+		const answers = Object.fromEntries(names.map((n) => [n, { type: "noul", noul: score(names, n) }]));
+		return new Response(JSON.stringify({ model: "cope-b-s1", answers }), { status: 200 });
+	});
+	const s1 = makeS1Judge({ fetchImpl: spy as unknown as typeof fetch, key: "k", endpoint: "https://s1.test/v1/systemone" });
+	return { s1, spy, bodies };
+}
+
+/** A Shieldstral judge behind a fake endpoint that answers a scored "no", so a call to it is countable. */
+function fakeShieldstral() {
+	const spy = vi.fn(async () =>
+		new Response(
+			JSON.stringify({
+				model: "mistralai/Shieldstral-1.0-3B",
+				choices: [
+					{
+						message: { content: "no" },
+						logprobs: { content: [{ top_logprobs: [{ token: "no", logprob: -0.01 }, { token: "yes", logprob: -5 }] }] },
+					},
+				],
+			}),
+			{ status: 200, headers: { "content-type": "application/json" } }
+		)
+	);
+	const judge = makeShieldstralJudge({
+		endpoint: "http://shield.test/v1/chat/completions",
+		token: "t",
+		fetchImpl: spy as unknown as typeof fetch,
+	});
+	return { judge, spy };
+}
+
+// chat-block-violence has three S1 policies (extremism, violence, violent-crime-weapons), all critical.
+const toxicAndViolence = flagged("chat-block-toxic", [hit("chat-block-toxic"), hit("chat-block-violence")]);
+
+// Skipped on the public snapshot, whose rules-s1.json has no S1 policies.
+describe.skipIf(!S1_POLICIES_PUBLISHED)("recheckOutputBlock on S1 — asks the judge the first screen used, and lifts only on S1 scores under threshold", () => {
+	it("with S1 passed, the re-check asks S1 and never calls Shieldstral", async () => {
+		const f = fakeS1();
+		const shield = fakeShieldstral();
+		const res = await recheckOutputBlock("answer ", "batch", toxic, { s1: f.s1, judge: shield.judge, logger: quiet });
+		expect(res.blocked).toBe(false);
+		expect(f.spy).toHaveBeenCalled();
+		expect(shield.spy).not.toHaveBeenCalled();
+	});
+
+	it("lifts the block when S1 scores every policy of every blocked rule under its threshold, keeping the hits", async () => {
+		const f = fakeS1(() => 0.01);
+		const res = await recheckOutputBlock("answer ", "batch", toxicAndViolence, { s1: f.s1, logger: quiet });
+		expect(res).toEqual({ blocked: false, kind: null, hits: toxicAndViolence.hits });
+	});
+
+	it("keeps the block when one blocked rule still scores at its threshold on S1", async () => {
+		// One of chat-block-violence's three policies is positive; toxic is clear.
+		const f = fakeS1((_names, n) => (n === "extremism" ? 0.95 : 0.01));
+		expect(await recheckOutputBlock("answer ", "batch", toxicAndViolence, { s1: f.s1, logger: quiet })).toBe(toxicAndViolence);
+	});
+
+	it("keeps the block when one S1 policy of a blocked rule is unknown, even though every other policy scores under", async () => {
+		// violent-crime-weapons is critical: its broad score is a clear 0.01 but its single call fails, so A-or
+		// leaves it unknown, and with it chat-block-violence.
+		const f = fakeS1(
+			() => 0.01,
+			(names) => (names.length === 1 && names[0] === "violent-crime-weapons" ? new Response("down", { status: 503 }) : undefined)
+		);
+		expect(await recheckOutputBlock("answer ", "batch", toxicAndViolence, { s1: f.s1, logger: quiet })).toBe(toxicAndViolence);
+	});
+
+	it("keeps the block (fails closed) when every S1 call fails", async () => {
+		const f = fakeS1(() => 0.01, () => new Response("down", { status: 500 }));
+		expect(await recheckOutputBlock("answer ", "batch", toxic, { s1: f.s1, logger: quiet })).toBe(toxic);
+	});
+
+	it("keeps the block when S1 answers with a different model than the one asked, since that answer is unknown", async () => {
+		const f = fakeS1(
+			() => 0.01,
+			(names) =>
+				new Response(JSON.stringify({ model: "something-else", answers: Object.fromEntries(names.map((n) => [n, { type: "noul", noul: 0.01 }])) }), {
+					status: 200,
+				})
+		);
+		expect(await recheckOutputBlock("answer ", "batch", toxic, { s1: f.s1, logger: quiet })).toBe(toxic);
+	});
+
+	it("keeps the block, and aborts S1's calls at the re-check's bound, when S1 is slower than the budget", async () => {
+		const signals: AbortSignal[] = [];
+		const f = fakeS1(
+			() => 0.01,
+			(_names, init) =>
+				new Promise<Response>((_resolve, reject) => {
+					const sig = init!.signal!;
+					signals.push(sig);
+					sig.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
+				})
+		);
+		const t0 = Date.now();
+		expect(await recheckOutputBlock("answer ", "batch", toxic, { s1: f.s1, logger: quiet, timeoutMs: 30 })).toBe(toxic);
+		// Far under S1's own 15 s call timeout and 20 s operation deadline.
+		expect(Date.now() - t0).toBeLessThan(2_000);
+		await new Promise((r) => setTimeout(r, 20));
+		expect(signals.length).toBeGreaterThan(0);
+		expect(signals.every((s) => s.aborted)).toBe(true);
+	});
+
+	it("sends the question as user_context and the whole answer as the judged assistant_response, never the question as the answer", async () => {
+		const f = fakeS1();
+		await recheckOutputBlock("Opening paragraph. ", "The flagged batch.", toxic, {
+			s1: f.s1,
+			logger: quiet,
+			askerText: "Explain my essay to a five-year-old",
+		});
+		expect(f.bodies.length).toBeGreaterThan(0);
+		for (const b of f.bodies) {
+			expect(JSON.parse(b.state.content)).toEqual({
+				user_context: "Explain my essay to a five-year-old",
+				assistant_response: "Opening paragraph. The flagged batch.",
+			});
+			// The output phase's wrapper, which tells S1 to judge only assistant_response.
+			for (const q of Object.values(b.questions)) expect(q.instructions).toContain("Judge only assistant_response");
+		}
+	});
+
+	it("keeps the block when a blocked rule has no S1 policy, since a rule S1 never answered cannot count as cleared", async () => {
+		const toxicRule = policy.entries.find((r) => r.key === "chat-block-toxic")!;
+		const unmapped = { ...toxicRule, key: "chat-block-unmapped", query: "Is this unmapped?" };
+		const entries = [...policy.entries, unmapped];
+		const first = flagged("chat-block-toxic", [hit("chat-block-toxic"), hit("chat-block-unmapped")]);
+		const f = fakeS1(() => 0.01);
+		const res = await recheckOutputBlock("answer ", "batch", first, {
+			s1: f.s1,
+			logger: quiet,
+			policy: { ...policy, entries, byKey: new Map(entries.map((e) => [e.key, e])) },
+		});
+		expect(f.spy).toHaveBeenCalled();
+		expect(res).toBe(first);
+	});
+
+	it("with no S1 passed, the re-check calls Shieldstral on the joined question-and-answer doc, as before", async () => {
+		const shield = fakeShieldstral();
+		const res = await recheckOutputBlock("answer ", "batch", toxic, { judge: shield.judge, logger: quiet, askerText: "q" });
+		expect(res.blocked).toBe(false);
+		expect(shield.spy).toHaveBeenCalledTimes(1);
 	});
 });
 

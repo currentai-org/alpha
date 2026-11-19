@@ -13,6 +13,7 @@ export const CSP_REPORT_GROUP = 'posthog';
  */
 export function cspReportEndpoint(env) {
 	if (!env.PUBLIC_POSTHOG_KEY) return undefined;
-	const host = env.PUBLIC_POSTHOG_HOST || 'https://us.i.posthog.com';
+	// Unset means the same-origin /rs proxy, which every deployment serves.
+	const host = env.PUBLIC_POSTHOG_HOST || '/rs';
 	return `${host}/report/?token=${encodeURIComponent(env.PUBLIC_POSTHOG_KEY)}`;
 }

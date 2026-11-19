@@ -16,7 +16,7 @@ const openGuardrails = [
 	{ title: 'OpenGuardrails', link: '/product/openguardrails' }
 ];
 
-describe('collapseSources (CUR-888)', () => {
+describe('collapseSources', () => {
 	it('lists a page once however many of its chunks were sources', () => {
 		const { entries, display } = collapseSources(openGuardrails);
 		expect(entries.map((e) => e.link)).toEqual(['/product/openguardrails', '/org/openguardrails']);
@@ -47,7 +47,7 @@ describe('collapseSources (CUR-888)', () => {
 	});
 });
 
-describe('collapseMarkerRun (CUR-888)', () => {
+describe('collapseMarkerRun', () => {
 	const { display } = collapseSources(openGuardrails);
 
 	it('writes [1][2] over two pieces of one page as [1], never [1][1]', () => {
@@ -68,7 +68,7 @@ describe('collapseMarkerRun (CUR-888)', () => {
 	});
 });
 
-describe('collapseCitations (CUR-888)', () => {
+describe('collapseCitations', () => {
 	// RAG numbered first, the web continuing after it, as the server assigns them.
 	const message = {
 		rag: {
@@ -107,7 +107,7 @@ describe('collapseCitations (CUR-888)', () => {
 	});
 });
 
-describe('inline citation markers over collapsed sources (CUR-888)', () => {
+describe('inline citation markers over collapsed sources', () => {
 	// Through the real renderer, so the rewrite is checked where the reader sees it.
 	const render = (md: string, sources: { title: string; link: string }[]) => {
 		const text = processTokensSync(md, sources).find((t) => t.type === 'text');
@@ -133,7 +133,7 @@ describe('inline citation markers over collapsed sources (CUR-888)', () => {
 	});
 });
 
-describe('cited pages are numbered first (CUR-3933)', () => {
+describe('cited pages are numbered first', () => {
 	// Seven pages read, the answer cited the third and fourth.
 	const seven = Array.from({ length: 7 }, (_, i) => ({
 		title: `Page ${i + 1}`,
@@ -222,7 +222,7 @@ describe('cited pages are numbered first (CUR-3933)', () => {
 	});
 });
 
-describe('citationOrder reads every shape the renderer links (CUR-3933)', () => {
+describe('citationOrder reads every shape the renderer links', () => {
 	it('orders caret, group, range and bold-wrapped citations by first appearance', () => {
 		expect(citationOrder('Tokyo^3,2^. More [^4^] and [1]-5.')).toEqual([3, 2, 4, 1, 5]);
 		expect(citationOrder('Both [2, 3]. Again **[3][2]**.')).toEqual([2, 3]);

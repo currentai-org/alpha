@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // /api/search/classify reaches a real model call (decideWebSearch's deciders) behind only
-// requireAuth — the same gap CUR-832 already fixed on its three
+// requireAuth — the same gap that change already fixed on its three
 // siblings (/api/search, /api/second-opinion, /api/transcribe). These tests prove the SAME limiter now
-// gates this route too, keyed the same way, before the decision runs. (CUR-926)
+// gates this route too, keyed the same way, before the decision runs.
 
 const DEFAULT_MODEL = { id: "swiss-ai/apertus-v1.5-70b", name: "swiss-ai/apertus-v1.5-70b" };
 vi.mock("$lib/chat/server/models", () => ({
@@ -48,7 +48,7 @@ beforeEach(() => {
 	decideMock.mockClear();
 });
 
-describe("GET /chat/api/search/classify — rate limiting (CUR-926)", () => {
+describe("GET /chat/api/search/classify — rate limiting", () => {
 	it("keys the limiter on the session id and the real client address, gating before the model call", async () => {
 		locals.sessionId = "sess-1";
 		await call();

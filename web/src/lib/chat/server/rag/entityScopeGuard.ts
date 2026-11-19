@@ -1,7 +1,7 @@
 // A RAG hit can clear the cross-encoder relevance gate (rerankRag.ts) while still being about the
 // wrong entity: a safety question about Anthropic and OpenAI is topically near our own "safety
 // screen" taxonomy chunk, so the reranker correctly calls it relevant — the failure is entity
-// attribution, not relevance, and a relevance gate structurally cannot see it (CUR-43). This is a
+// attribution, not relevance, and a relevance gate structurally cannot see it. This is a
 // named RAG failure mode ("deceptive grounding": arXiv 2607.09349) — a response
 // can pass faithfulness and citation checks while attributing real evidence to the wrong subject,
 // because neither check asks "is this passage about the entity the question names."
@@ -40,13 +40,22 @@ export function entityScopeGuardEnabled(): boolean {
 
 const CLASSIFY_TIMEOUT_MS = 4000;
 
+/** HTTP statuses a host sends when it refuses a call it may take a moment later. */
+const REFUSED_STATUSES = new Set([429, 503]);
+/** Base pause before the one retry of a refused call; the actual pause adds up to as much again. */
+const RETRY_PAUSE_MS = 250;
+/** The least time a retry needs left before the deadline to be worth sending. */
+const MIN_RETRY_MS = 1000;
+
 // "Who runs Current AI?" retrieves "AI Potluck" — the chunk that literally says "from
 // Current AI, a nonprofit coalition" — at a cosine rank comfortably inside the top-K, so retrieval
 // is not where the risk lies. A single classifyEntityMatch call (one 3-token generation, no retry)
 // judging that ONE passage against a brief, indirect self-reference question would decide alone
 // whether the only relevant hit survives, and one ambiguous call would zero it out. Sampling more
-// than once and requiring agreement before dropping avoids that: a genuine collider (CUR-43) is
-// unambiguous and gets "no" from every sample, so this costs nothing on that side. (CUR-600)
+// than once and requiring agreement before dropping avoids that: a genuine wrong-entity hit is
+// unambiguous and gets "no" from every sample, so this costs nothing on that side.
+// Temperature 0 does not make the samples agree: across repeated collision-probe runs some hits
+// split 2-1, so a single sample would flip those verdicts.
 const CLASSIFY_SAMPLES = 3;
 
 const PREPROMPT = `You judge whether a retrieved passage actually discusses the specific entity or subject a question names, or is only topically related to a DIFFERENT entity.
@@ -54,27 +63,30 @@ const PREPROMPT = `You judge whether a retrieved passage actually discusses the 
 Answer with exactly one word: yes or no.
 
 - "yes" if the passage is about the entity/subject the question names. This includes questions about us (AI Potluck / Current AI) when the passage describes us.
-- "no" if the passage covers the same general topic area but is about a different specific entity than the one the question names — for example the question names an external company and the passage describes our own catalog, taxonomy, or a different company instead.`;
+- "no" if the passage covers the same general topic area but is about a different specific entity than the one the question names — for example the question names an external company and the passage describes our own catalog, taxonomy, or a different company instead.
 
-// Pinned to the second-opinion model (GLM-5.2 on the HF router) rather than whatever the
-// default endpoint serves. Following the serving model would change how many colliders this guard
-// catches whenever the lane moves, with nothing re-measuring it (CUR-1120). The SECOND_OPINION_* lane is registered as a model only when its base
-// URL and key are both set (maybeAddCompareModels in models.ts), so "registered" is the check. (CUR-1439)
+Judge only which entity the passage is about, never whether it answers the question. A passage about the named entity is "yes" even when it lacks the specific fact asked for (who runs it, who founded it, how it is funded).`;
+
+// Pinned to ENTITY_SCOPE_MODEL (config/inference.ts) rather than whatever the default endpoint
+// serves. Following the serving model would change how many colliders this guard
+// catches whenever the lane moves, with nothing re-measuring it. ENTITY_SCOPE_MODEL is registered as
+// a model only when the compare lane's base URL and key are both set (maybeAddCompareModels in
+// models.ts), so "registered" is the check.
 let warnedUnpinned = false;
 
-/** The model id this guard pins to, or undefined when the second-opinion lane isn't registered.
+/** The model id this guard pins to, or undefined when ENTITY_SCOPE_MODEL isn't registered.
  *  Undefined falls back to the default endpoint and logs an error once per process: the guard still
  *  runs, but on a model nobody has measured it against. */
 function entityScopeModelId(): string | undefined {
-	const id = ((Reflect.get(config, "SECOND_OPINION_MODEL") as string | undefined) ?? "").trim();
+	const id = ((Reflect.get(config, "ENTITY_SCOPE_MODEL") as string | undefined) ?? "").trim();
 	if (id && models.some((m) => m.id === id)) {
 		return id;
 	}
 	if (!warnedUnpinned) {
 		warnedUnpinned = true;
 		logger.error(
-			{ secondOpinionModelSet: Boolean(id) },
-			"[rag] entity-scope classifier is NOT pinned: SECOND_OPINION_* lane unregistered, falling back to the default endpoint (CUR-1439)"
+			{ entityScopeModelSet: Boolean(id) },
+			"[rag] entity-scope classifier is NOT pinned: ENTITY_SCOPE_MODEL unregistered, falling back to the default endpoint (CUR-1439)"
 		);
 	}
 	return undefined;
@@ -95,13 +107,13 @@ export function parseEntityMatchVerdict(raw: string | undefined): "yes" | "no" |
  *  rerankRag.ts's own principle of judging what the model will actually see. Never throws: an
  *  error or empty/short query resolves to true (keep), the fail-open direction this guard commits to.
  *
- *  `locals` must be the real per-request App.Locals, not undefined (CUR-1120): this call goes
+ *  `locals` must be the real per-request App.Locals, not undefined: this call goes
  *  through generateFromDefaultEndpoint -> endpointOai.ts, which reads locals?.billingOrganization to
  *  set X-HF-Bill-To. The served token's Inference-Providers permission is org-scoped, so an unbilled
  *  call resolves on the personal-user HF scope and 403s ("insufficient permissions ... on behalf of
  *  user ...") — same mechanism classifySearchNeed threads locals through for
  *  (searchDecision.ts). A 403 here doesn't surface as an error to the
- *  user: it's caught below and treated as fail-open, so the practical effect is CUR-43's colliders
+ *  user: it's caught below and treated as fail-open, so the practical effect is wrong-entity hits
  *  silently grounding again every time the classifier 403s. */
 export async function classifyEntityMatch(
 	query: string,
@@ -115,38 +127,55 @@ export async function classifyEntityMatch(
 	const modelId = entityScopeModelId();
 	try {
 		// generateFromDefaultEndpoint never throws: a failed call comes back as "", which parses as
-		// unparseable and keeps the hit. onFailure is the only way to tell that apart (CUR-2123).
-		let failed: { kind: "ceiling" | "error"; status?: number } | undefined;
-		const raw = await getReturnFromGenerator(
-			generateFromDefaultEndpoint({
-				messages: [
-					{
-						from: "user",
-						content: `Passage:\nTitle: ${hit.title}\n${hit.snippet}\n\nQuestion: "${q}"`,
-					},
-				],
-				preprompt: PREPROMPT,
-				generateSettings: { max_tokens: 3, temperature: 0 },
-				...(modelId
-					? {
-							modelId,
-							// GLM thinks by default and a 3-token budget spent thinking leaves no verdict,
-							// which parses as unparseable and fails open. Which field turns reasoning off
-							// depends on the provider (Scaleway reads reasoning_effort and not
-							// thinking; novita and zai-org the reverse), so this asks for "off" and lets
-							// reasoningOffRequest (thinkFilter.ts) send the field the verified profile names.
-							disableThinking: true,
-							// Opt out of the OPENAI_PROVIDER pin, which names a provider that doesn't host
-							// GLM — same reason second-opinion/+server.ts passes it.
-							provider: "auto",
-						}
-					: {}),
-				// Cancel the request at our own deadline instead of abandoning it (CUR-1655).
-				timeoutMs: CLASSIFY_TIMEOUT_MS,
-				onFailure: (kind, status) => (failed = { kind, status }),
-				locals,
-			})
-		);
+		// unparseable and keeps the hit. onFailure is the only way to tell that apart.
+		const ask = async (timeoutMs: number) => {
+			let failed: { kind: "ceiling" | "error"; status?: number } | undefined;
+			const raw = await getReturnFromGenerator(
+				generateFromDefaultEndpoint({
+					messages: [
+						{
+							from: "user",
+							content: `Passage:\nTitle: ${hit.title}\n${hit.snippet}\n\nQuestion: "${q}"`,
+						},
+					],
+					preprompt: PREPROMPT,
+					generateSettings: { max_tokens: 3, temperature: 0 },
+					...(modelId
+						? {
+								modelId,
+								// A model that thinks by default spends a 3-token budget thinking and leaves no
+								// verdict, which parses as unparseable and fails open. Which field turns reasoning
+								// off depends on the host, so this asks for "off" and lets reasoningOffRequest
+								// (thinkFilter.ts) send the field the verified profile names.
+								disableThinking: true,
+								// Opt out of the OPENAI_PROVIDER pin, which names a provider that doesn't host
+								// this model — same reason second-opinion/+server.ts passes it. A lane with its
+								// own wire id (the Mistral side-call lane) ignores it.
+								provider: "auto",
+							}
+						: {}),
+					// The gateway caches identical requests, so without this the CLASSIFY_SAMPLES samples
+					// return one cached answer and the vote is a single check.
+					skipGatewayCache: true,
+					// Cancel the request at our own deadline instead of abandoning it.
+					timeoutMs,
+					onFailure: (kind, status) => (failed = { kind, status }),
+					locals,
+				})
+			);
+			return { raw, failed };
+		};
+		// A host that refuses the call (a 503 or 429 when several samples land on it at once) is asked
+		// once more after a short, jittered pause, inside the same deadline, so a burst of refusals
+		// does not leave the hit unchecked. Any other failure, or too little time left,
+		// keeps the hit as before.
+		const started = Date.now();
+		let { raw, failed } = await ask(CLASSIFY_TIMEOUT_MS);
+		if (failed?.kind === "error" && failed.status !== undefined && REFUSED_STATUSES.has(failed.status)) {
+			await new Promise((resolve) => setTimeout(resolve, RETRY_PAUSE_MS + Math.random() * RETRY_PAUSE_MS));
+			const left = CLASSIFY_TIMEOUT_MS - (Date.now() - started);
+			if (left >= MIN_RETRY_MS) ({ raw, failed } = await ask(left));
+		}
 		if (failed) {
 			failOpenDeparture("entity-scope", failed.kind, { status: failed.status, modelId });
 			return true;
@@ -166,7 +195,7 @@ export async function classifyEntityMatch(
 }
 
 /** Samples classifyEntityMatch CLASSIFY_SAMPLES times for one hit and keeps it unless a strict
- *  majority of the samples independently say "no" — see the CUR-600 comment above CLASSIFY_SAMPLES
+ *  majority of the samples independently say "no" — see the comment above CLASSIFY_SAMPLES
  *  for why a single sample isn't enough. Each sample keeps its own fail-open timeout, so an infra
  *  failure still only ever pushes toward "keep", matching classifyEntityMatch's own contract. */
 async function keepsHitOnEntityScope(

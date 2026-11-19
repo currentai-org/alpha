@@ -20,7 +20,7 @@ function busySeconds(res: APIResponse): number | null {
  * Fails this test at once, naming the cause, when Hugging Face is throttling the shared storage token.
  * Called before a toPass poll that reads the bucket, which would otherwise time out as a wrong answer.
  */
-export async function failIfStorageThrottled(page: Page): Promise<void> {
+export async function failIfStorageThrottled(page: Pick<Page, 'request'>): Promise<void> {
 	const seconds = busySeconds(await page.request.get(STORAGE_LIST));
 	expect(
 		seconds,

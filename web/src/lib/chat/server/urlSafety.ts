@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { Address4, Address6 } from "ip-address";
 import { isIP } from "node:net";
 import dns from "node:dns";
@@ -10,7 +13,7 @@ const UNSAFE_IPV4_SUBNETS = [
 	"169.254.0.0/16",
 	"172.16.0.0/12",
 	"192.168.0.0/16",
-	// Special-use space (CUR-3526): IETF protocol assignments, the benchmarking range some clouds hand
+	// Special-use space: IETF protocol assignments, the benchmarking range some clouds hand
 	// out internally, multicast, and the reserved block up to and including broadcast.
 	"192.0.0.0/24",
 	"198.18.0.0/15",
@@ -26,7 +29,7 @@ const MAPPED_V4_SUBNET = new Address6("::ffff:0:0/96");
 
 // Unique local addresses (fc00::/7) are the IPv6 counterpart of the private IPv4 ranges, and
 // isLoopback()/isLinkLocal() do not cover them. Unlike 10.0.0.0/8, nothing we run depends on reaching
-// one, so the default mode blocks them too (upstream chat-ui 837daec, CUR-2117).
+// one, so the default mode blocks them too (upstream chat-ui 837daec).
 const IPV6_ULA = new Address6("fc00::/7");
 
 /** IPv6 literals arrive from `URL.hostname` bracketed; `isIP` only accepts them bare. */
@@ -34,7 +37,7 @@ function stripBrackets(hostname: string): string {
 	return hostname.replace(/^\[|]$/g, "");
 }
 
-// IPv6 prefixes that carry an IPv4 address inside them (CUR-3526): NAT64 puts it in the last 32 bits,
+// IPv6 prefixes that carry an IPv4 address inside them: NAT64 puts it in the last 32 bits,
 // 6to4 in the 32 bits after the 2002::/16 prefix. A gateway on either path delivers to that IPv4, so
 // it is checked exactly as the mapped form is.
 const NAT64_SUBNET = new Address6("64:ff9b::/96");
@@ -226,7 +229,7 @@ const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
  * Reject a URL whose host is an unsafe IP literal before connecting. The agents' `lookup` hook only
  * runs for hosts undici resolves through DNS, so a raw IP literal would otherwise reach the network
  * with no check at all. Today's callers validate first; this keeps the fetch safe on its own
- * (upstream chat-ui 837daec, CUR-2117).
+ * (upstream chat-ui 837daec).
  */
 function assertSafeUrlHost(urlString: string, unsafe: (ip: string) => boolean): void {
 	const host = stripBrackets(new URL(urlString).hostname.toLowerCase());

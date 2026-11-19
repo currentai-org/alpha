@@ -74,7 +74,7 @@ test(
 // The server's refusal of an edit used to close the box and put the text in the main composer. The
 // turn's POST is answered with a 429 in the browser, since reaching the real cap would take thousands
 // of turns; the client's handling of that answer is what is under test. The body is the server's own
-// shape for the daily cap, which names no wait. A per-minute refusal carries one since CUR-3410, and
+// shape for the daily cap, which names no wait. A per-minute refusal carries one, and
 // the box then shows the countdown in place of the reason (the test below).
 test(
 	"an edit the server refuses reopens its edit box with the text and the server's reason",
@@ -116,11 +116,11 @@ test(
 	}
 );
 
-// Our own message limit says how long its window has left (CUR-3216), and the composer holds
+// Our own message limit says how long its window has left, and the composer holds
 // Send for that long. The edit box kept its Send live beside "wait a minute", so a press only met the
 // same refusal and, being recorded, pushed the window further out.
 test(
-	'an edit refused by our message limit holds the edit box Send and counts the wait down (CUR-3410)',
+	'an edit refused by our message limit holds the edit box Send and counts the wait down',
 	{ tag: ['@C2', '@CUR-3410'] },
 	async ({ page }) => {
 		test.setTimeout(150_000);
@@ -156,5 +156,5 @@ test(
 	}
 );
 
-// CUR-3410, the server half (the 429 carries the wait into the stream) is a route test now:
-// server.prestream.spec.ts, "a message-limit refusal streams Status=Error 429 …" (SOL-195).
+// the server half (the 429 carries the wait into the stream) is a route test now:
+// server.prestream.spec.ts, "a message-limit refusal streams Status=Error 429 …".

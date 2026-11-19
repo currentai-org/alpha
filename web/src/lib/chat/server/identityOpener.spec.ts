@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { detectIdentityOpener } from "./identityOpener";
 
-// FIXTURES ARE REAL ANSWERS, verbatim from a production sweep of one question in 25 languages
-// (CUR-1430). Using the real
+// FIXTURES ARE REAL ANSWERS, verbatim from a production sweep of one question in 25 languages.
+// Using the real
 // text matters here: an invented fixture would be written to match the regex and would
 // pass forever without ever having described what the model actually emits.
 //
@@ -20,7 +20,7 @@ const OPENED_IN_ENGLISH = [
 	"I'm Apertus 1.5 70B, an open-weight model from the Swiss National AI Institute (SNAI), running on the Public AI Inference Utility's sovereign infrastructure — not a closed product like ChatGPT or Claude.",
 ];
 
-describe("detectIdentityOpener — fires on an answer that OPENS by saying what it is (CUR-1430)", () => {
+describe("detectIdentityOpener — fires on an answer that OPENS by saying what it is", () => {
 	it.each(OPENED_IN_ENGLISH)("catches a real production identity opener: %s", (answer) => {
 		expect(
 			detectIdentityOpener(answer).fired,
@@ -72,7 +72,7 @@ describe("detectIdentityOpener — stays silent on an identity that is NOT the o
 	});
 });
 
-// Openings copied verbatim from probe turns, each cut where the probe log cut it (CUR-1892). Without
+// Openings copied verbatim from probe turns, each cut where the probe log cut it. Without
 // these forms listed, most self-describing first answers score as clean.
 describe("detectIdentityOpener — the self-description forms the 2026-09-17 list missed", () => {
 	const MISSED = [

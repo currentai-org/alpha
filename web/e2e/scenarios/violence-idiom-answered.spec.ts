@@ -7,14 +7,14 @@ import { startChattingPastWelcome } from './helpers/welcome';
 
 // The Shieldstral violence query scores violent idioms as violence on their own ("I could
 // kill for a pizza" 0.95 on preview), above the 0.5 block threshold, so an ordinary request was refused
-// before any model saw it (CUR-1853). With `violence-recheck` on, a violence-only block gets one TASK_MODEL
+// before any model saw it. With `violence-recheck` on, a violence-only block gets one TASK_MODEL
 // re-check and is released only when that model says the message is not literal violence
 // (violenceRecheck.ts). The second test is the other half of the contract: a real request still blocks.
 //
 // Runs on preview, where guard-primary and violence-recheck are on.
 
 // rules.json chat-block-violence's own message, which opens the decline the input screen shows in place
-// of an answer; ruleLabel.ts appends who set the limit (CUR-3205).
+// of an answer; ruleLabel.ts appends who set the limit.
 const VIOLENCE_DECLINE = 'This request was declined because it goes against our content policy.';
 
 async function send(page: import('@playwright/test').Page, message: string) {
@@ -60,7 +60,7 @@ test(
 			body.startsWith(VIOLENCE_DECLINE),
 			`a real violence request got past the screen: ${body.slice(0, 300)}`
 		).toBe(true);
-		// The decline names who set the limit and the rule (CUR-3205).
+		// The decline names who set the limit and the rule.
 		expect(body).toContain('Current AI set this limit (rule: Violent content).');
 	}
 );

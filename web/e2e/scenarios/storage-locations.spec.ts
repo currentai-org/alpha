@@ -8,11 +8,11 @@ import { answerShapeEntry } from './helpers/chatEntry';
 import { turnDone } from './helpers/turn';
 import { startChattingPastWelcome } from './helpers/welcome';
 
-// Storage locations (CUR-2930). A person links a Hugging Face bucket of their own under Settings →
+// Storage locations. A person links a Hugging Face bucket of their own under Settings →
 // Storage, chooses where new files go there (Alpha storage, the linked bucket, "Last used" or ask
-// every time), and browses either place from the location tabs on the Files page (CUR-4363).
+// every time), and browses either place from the location tabs on the Files page.
 // With Alpha storage the only place there is no choice to make, so the picker appears only
-// once a bucket is linked (CUR-3077).
+// once a bucket is linked.
 //
 // The first three tests need no Hugging Face token: they walk the surface from /chat, and pin the
 // refusals (a bad token, a location id that is not yours).
@@ -24,7 +24,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 const LINKED_BUCKET = 'current-ai-official/e2e-linked';
 
 // Settings → Storage holds the storage settings (usage, locations, linking a bucket, where
-// files are kept) (CUR-4363); the files, the location tabs and the uploader are on the rail's Files page.
+// files are kept); the files, the location tabs and the uploader are on the rail's Files page.
 async function openStorageSettings(page: Page): Promise<void> {
 	await page.goto('/chat', { waitUntil: 'commit' });
 	await page.goto('/chat/settings/storage', { waitUntil: 'commit' });
@@ -43,7 +43,7 @@ async function openFilesFromSettings(page: Page): Promise<void> {
 	});
 }
 
-/** The storage location tabs on the Files page (CUR-4363). */
+/** The storage location tabs on the Files page. */
 const locationTabs = (page: Page) => page.getByRole('tablist', { name: 'Storage location' });
 
 /** Links the e2e bucket under a fresh folder, and returns its row and location id. */
@@ -54,7 +54,8 @@ async function linkTestBucket(page: Page, token: string) {
 	await form.getByLabel('Folder (optional)').fill(folder);
 	await form.getByLabel('Access token').fill(token);
 	await form.getByRole('button', { name: 'Link bucket' }).click();
-	const row = page.locator('[data-testid=storage-location]').filter({ hasText: 'e2e-linked' });
+	// The folder is unique per call, so a test that links several still finds this one row.
+	const row = page.locator('[data-testid=storage-location]').filter({ hasText: folder });
 	await expect(row, 'the linked bucket is not listed').toBeVisible({ timeout: 30_000 });
 	const locationId = await row.getAttribute('data-location-id');
 	return { folder, row, locationId: locationId! };
@@ -98,7 +99,7 @@ test(
 			.click({ timeout: 30_000 });
 		await expect(page.getByTestId('storage-locations')).toBeVisible({ timeout: 30_000 });
 
-		// With Alpha storage the only place, it is a plain line (CUR-3077): no picker, no "Ask every
+		// With Alpha storage the only place, it is a plain line: no picker, no "Ask every
 		// time", no "Last used".
 		const card = page.getByTestId('storage-locations');
 		const alpha = card.locator('[data-testid=storage-location][data-location-id=alpha]');
@@ -109,7 +110,7 @@ test(
 		await expect(card).not.toContainText('Last used');
 
 		// The settings page is the settings, in headed sections and in this order, with the
-		// bucket form in plain view and no file list or uploader (CUR-4363); the files are one link away.
+		// bucket form in plain view and no file list or uploader; the files are one link away.
 		await expect(
 			page.getByTestId('storage-settings').getByRole('heading', { level: 2 })
 		).toHaveText([
@@ -209,7 +210,7 @@ test(
 		expect(def.status(), 'making a foreign location id the default').toBe(404);
 		const unlink = await page.request.delete(`/chat/api/storage/locations/${foreign}`);
 		expect(unlink.status(), 'unlinking a foreign location id').toBe(404);
-		// Neither end of a transfer may be someone else's location (CUR-2931).
+		// Neither end of a transfer may be someone else's location.
 		for (const [from, to] of [
 			['alpha', foreign],
 			[foreign, 'alpha']
@@ -276,7 +277,7 @@ test(
 					'an upload naming no location went somewhere anyway'
 				).toBe(409);
 
-				// Files are added on the Files page (CUR-4363).
+				// Files are added on the Files page.
 				await openFilesFromSettings(page);
 				const name = 'asked-first.txt';
 				await page
@@ -397,7 +398,7 @@ test(
 			expect((await saved).ok(), 'making the linked bucket the default was not saved').toBe(true);
 			await openFilesFromSettings(page);
 			// The Files page opens on the default, so the linked bucket's tab is the selected one, and the
-			// open tab is where a dropped file goes (CUR-4363).
+			// open tab is where a dropped file goes.
 			await expect(locationTabs(page).getByRole('tab', { selected: true })).toContainText(
 				'e2e-linked',
 				{ timeout: 30_000 }
@@ -435,7 +436,7 @@ test(
 			await page.getByRole('link', { name: 'Manage storage' }).click();
 			await expect(page.getByTestId('storage-locations')).toBeVisible({ timeout: 30_000 });
 			await row.getByRole('button', { name: /Unlink/ }).click();
-			// The confirm says the files stay and how to remove Alpha's token on Hugging Face (CUR-2932).
+			// The confirm says the files stay and how to remove Alpha's token on Hugging Face.
 			await expect(page.getByTestId('storage-unlink-note')).toContainText(
 				'The files stay in your bucket'
 			);
@@ -443,7 +444,7 @@ test(
 			await row.getByRole('button', { name: 'Unlink', exact: true }).click();
 			await expect(row).toHaveCount(0, { timeout: 30_000 });
 			unlinked = true;
-			// Unlinking left Alpha storage the only place, so it is a plain line with no picker (CUR-3077).
+			// Unlinking left Alpha storage the only place, so it is a plain line with no picker.
 			await expect(
 				page.locator('[data-testid=storage-location][data-location-id=alpha]')
 			).toContainText('Alpha storage');
@@ -477,7 +478,7 @@ test(
 		await flagsOn(context, baseURL!);
 		await signInAsFreshUser(page);
 
-		// Data & privacy says where files live, and once a bucket is linked that is two places (CUR-3386).
+		// Data & privacy says where files live, and once a bucket is linked that is two places.
 		await page.goto('/chat/settings/data', { waitUntil: 'commit' });
 		const filesHome = page.getByTestId('data-home-files');
 		await expect(filesHome).toContainText('in storage held by Current AI', { timeout: 30_000 });
@@ -522,7 +523,7 @@ test(
 );
 
 // Delete account forgets the link but never the bucket, which is the person's own, and Hugging
-// Face has no endpoint for Alpha to drop its own access (CUR-2932). So the confirm names the bucket as staying, the
+// Face has no endpoint for Alpha to drop its own access. So the confirm names the bucket as staying, the
 // done panel says where to remove Alpha's access, and with nothing linked neither line appears.
 test(
 	'Delete account names my linked bucket as staying and says where to remove Alpha’s access, and says neither with no bucket linked',
@@ -718,7 +719,7 @@ test(
 
 			await journeyStep(page, 'A3', 25, async () => {
 				await openFilesFromSettings(page);
-				// Two places are two tabs, Alpha storage selected (CUR-4363); ArrowRight from it opens the
+				// Two places are two tabs, Alpha storage selected; ArrowRight from it opens the
 				// bucket's tab. Then add a file to the bucket from its own view.
 				const tabs = locationTabs(page);
 				await expect(tabs.getByRole('tab')).toHaveCount(2);
@@ -779,6 +780,66 @@ test(
 			).toBe(locationId);
 		} finally {
 			for (const name of [first, second, third])
+				await deleteBucketFile(token!, `${folder}/documents/${name}`);
+			await page.request.delete(`/chat/api/storage/locations/${locationId}`);
+		}
+	}
+);
+
+test(
+	'a linked bucket’s tab lists the file added last first, not in the order the bucket returned them',
+	{ tag: ['@preview-only', '@A3', '@CUR-5170', '@CUR-4355', '@linked-bucket'] },
+	async ({ page, context, baseURL }) => {
+		test.setTimeout(180_000);
+		const token = process.env.E2E_LINKED_BUCKET_TOKEN;
+		expect(token, 'this test needs E2E_LINKED_BUCKET_TOKEN, scoped to e2e-linked').toBeTruthy();
+		await flagsOn(context, baseURL!);
+		await signInAsFreshUser(page);
+		await openStorageSettings(page);
+
+		const { folder, locationId } = await linkTestBucket(page, token!);
+		// "aaa" sorts before "zzz" by name, so a list in name order would put the older file first and
+		// the newer one last: only the upload time puts "aaa" on top.
+		const older = 'order-zzz-first-added.txt';
+		const newer = 'order-aaa-last-added.txt';
+		try {
+			await openFilesFromSettings(page);
+			const tabs = locationTabs(page);
+			await tabs.getByRole('tab', { name: /e2e-linked/ }).click();
+			await expect(tabs.getByRole('tab', { selected: true })).toContainText('e2e-linked');
+
+			for (const [i, name] of [older, newer].entries()) {
+				if (i > 0) await page.waitForTimeout(2_000);
+				const up = page.waitForResponse(
+					(r) => r.request().method() === 'POST' && r.url().endsWith('/chat/api/storage')
+				);
+				await page
+					.locator('input[type=file]')
+					.first()
+					.setInputFiles({ name, mimeType: 'text/plain', buffer: Buffer.from(`${name}\n`) });
+				expect(((await (await up).json()) as { location: string }).location).toBe(locationId);
+				await expect(page.getByRole('button', { name: `Delete ${name}` })).toBeVisible({
+					timeout: 30_000
+				});
+			}
+
+			// Back through the UI and into the bucket's tab, so the rows come from the bucket's own listing.
+			await page.getByRole('link', { name: 'Manage storage' }).click();
+			await expect(page.getByTestId('storage-locations')).toBeVisible({ timeout: 30_000 });
+			await openFilesFromSettings(page);
+			await locationTabs(page)
+				.getByRole('tab', { name: /e2e-linked/ })
+				.click();
+			const rows = page.locator('[data-file-row]');
+			await expect(rows, 'the bucket tab does not list both files').toHaveCount(2, {
+				timeout: 30_000
+			});
+			await expect(rows.nth(0), 'the file added last is not first in the bucket tab').toContainText(
+				newer
+			);
+			await expect(rows.nth(1)).toContainText(older);
+		} finally {
+			for (const name of [older, newer])
 				await deleteBucketFile(token!, `${folder}/documents/${name}`);
 			await page.request.delete(`/chat/api/storage/locations/${locationId}`);
 		}
@@ -898,7 +959,7 @@ test(
 );
 
 // Linking a place of your own is when copying there makes sense, so the card offers it at
-// that moment (CUR-2941): save new files there (on by default) and copy what is already in Alpha storage (off
+// that moment: save new files there (on by default) and copy what is already in Alpha storage (off
 // by default). Copy only: old chats read their attachments from Alpha storage, so its copies stay.
 async function linkedWithTwoAlphaFiles(
 	page: Page,
@@ -1068,6 +1129,73 @@ test(
 			for (const p of [taken, renamed, `${folder}/documents/${names[1]}`])
 				await deleteBucketFile(token!, p);
 			await page.request.delete(`/chat/api/storage/locations/${locationId}`);
+		}
+	}
+);
+
+// with more places linked than fit on one line, the location tabs wrap. Before the fix the
+// strip scrolled sideways inside itself, hid the later places behind that scrollbar and cut the last
+// visible label mid-word. Four folders of the e2e bucket plus Alpha storage make five tabs.
+test(
+	'with four places linked, Your files shows every location tab whole, with no sideways scroll in the tab strip',
+	{ tag: ['@preview-only', '@A3', '@CUR-4436', '@linked-bucket'] },
+	async ({ page, context, baseURL }) => {
+		test.setTimeout(180_000);
+		const token = process.env.E2E_LINKED_BUCKET_TOKEN;
+		expect(token, 'this test needs E2E_LINKED_BUCKET_TOKEN, scoped to e2e-linked').toBeTruthy();
+		await flagsOn(context, baseURL!);
+		await signInAsFreshUser(page);
+		await openStorageSettings(page);
+
+		const linked: string[] = [];
+		try {
+			for (let i = 0; i < 4; i++) {
+				const { locationId } = await linkTestBucket(page, token!);
+				linked.push(locationId);
+				// The form clears after a link; wait for it before the next one.
+				await expect(page.getByTestId('link-bucket-form').getByLabel('Bucket')).toHaveValue('');
+			}
+			await openFilesFromSettings(page);
+
+			{
+				const tabs = locationTabs(page).getByRole('tab');
+				await expect(tabs, `the strip does not offer all five places`).toHaveCount(5, {
+					timeout: 30_000
+				});
+				const strip = await page.getByTestId('location-tabs').evaluate((el) => {
+					const box = el.getBoundingClientRect();
+					return {
+						overflow: el.scrollWidth - el.clientWidth,
+						tabs: [...el.querySelectorAll('[role="tab"]')].map((tab) => {
+							const r = tab.getBoundingClientRect();
+							const label = tab.querySelector('span')!;
+							return {
+								text: tab.textContent!.trim(),
+								inside: r.left >= box.left - 0.5 && r.right <= box.right + 0.5,
+								// A label longer than its own 16rem cap ends in an ellipsis by design; one cut
+								// short of that cap was squeezed by the strip.
+								labelCut:
+									label.scrollWidth > label.clientWidth + 1 &&
+									label.clientWidth <
+										16 * parseFloat(getComputedStyle(document.documentElement).fontSize) - 1
+							};
+						})
+					};
+				});
+				expect(strip.overflow, `the tab strip scrolls sideways`).toBeLessThanOrEqual(0);
+				for (const tab of strip.tabs) {
+					expect(tab.inside, `"${tab.text}" sits outside the strip`).toBe(true);
+					expect(tab.labelCut, `"${tab.text}" is cut off short of its own width cap`).toBe(false);
+				}
+				expect(
+					await page.evaluate(
+						() => document.documentElement.scrollWidth - document.documentElement.clientWidth
+					),
+					`Your files scrolls sideways`
+				).toBeLessThanOrEqual(0);
+			}
+		} finally {
+			for (const id of linked) await page.request.delete(`/chat/api/storage/locations/${id}`);
 		}
 	}
 );

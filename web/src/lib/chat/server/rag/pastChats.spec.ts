@@ -1,5 +1,5 @@
 // The ranking half of past-chat search, which never touches the database. Every chat here is
-// written for the test; none comes from a real conversation. (CUR-4576)
+// written for the test; none comes from a real conversation.
 import { describe, expect, it, vi } from "vitest";
 import { rankPastChats, searchPastChats } from "./pastChats";
 import type { PastChat } from "../db/pastChats";
@@ -17,7 +17,7 @@ const CHATS: PastChat[] = [
 	chat("c-soup", "Soup", ["user", "A recipe for leek soup, please."], ["assistant", "Sweat the leeks in butter."]),
 ];
 
-describe("rankPastChats (CUR-4576)", () => {
+describe("rankPastChats", () => {
 	it("puts the chat that holds the asked-about word first, naming who wrote the passage", () => {
 		const hits = rankPastChats("what is my dog called", CHATS);
 		expect(hits[0]).toMatchObject({ conversationId: "c-dog", from: "user" });
@@ -49,7 +49,7 @@ describe("rankPastChats (CUR-4576)", () => {
 	});
 });
 
-describe("searchPastChats (CUR-4576)", () => {
+describe("searchPastChats", () => {
 	it("gives a guest nothing and never reads the database for one", async () => {
 		const read = vi.fn(async () => CHATS);
 		expect(await searchPastChats("dog", { userId: undefined }, 0, read)).toBeNull();

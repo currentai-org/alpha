@@ -163,12 +163,12 @@ describe("conversationToMarkdown", () => {
 describe("exportFilename", () => {
 	it("slugifies the title with a date prefix/suffix", () => {
 		expect(exportFilename("EU AI Act: Status!", fixedDate)).toBe(
-			"aipotluck.org-eu-ai-act-status-2026-06-20.md"
+			"example.test-eu-ai-act-status-2026-06-20.md"
 		);
 	});
 	it("falls back for an empty/untitled conversation", () => {
-		expect(exportFilename("", fixedDate)).toBe("aipotluck.org-conversation-2026-06-20.md");
-		expect(exportFilename(undefined, fixedDate)).toBe("aipotluck.org-conversation-2026-06-20.md");
+		expect(exportFilename("", fixedDate)).toBe("example.test-conversation-2026-06-20.md");
+		expect(exportFilename(undefined, fixedDate)).toBe("example.test-conversation-2026-06-20.md");
 	});
 	it("caps very long titles", () => {
 		const name = exportFilename("a".repeat(200), fixedDate);

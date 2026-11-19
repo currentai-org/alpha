@@ -1,5 +1,5 @@
 // Which paths in the one web/ app belong to chat, which to the site, and where each product imports the
-// other (CUR-2458). Two readers:
+// other. Two readers:
 //
 // - `scripts/lib/e2eRunScope.mjs` scopes a PR's scenario run to @chat specs, @site specs, or both.
 // - `scripts/check-product-boundary.mjs` fails a cross-product import that SITE_IMPORTS_OF_CHAT or
@@ -17,15 +17,16 @@ export const CHAT = [
 	/^web\/src\/lib\/potluck-run\//,
 	// Chat's OpenAI-compatible adapter for preview inference: an API, no page, and every import it
 	// makes is chat server code.
-	/^web\/src\/routes\/folkways-adapter\//,
-	// The OAuth discovery document for chat's sync clients (CUR-4312): RFC 8414 puts it at the origin
-	// root, outside /chat, but it describes only chat's auth server and imports only chat code.
-	/^web\/src\/routes\/\.well-known\/oauth-authorization-server\//
+	/^web\/src\/routes\/folkways-adapter\//
 ];
 
 export const SITE = [
 	/^web\/src\/lib\/(alpha-landing|gapmap|payload|roadmap|data|lexical)\//,
 	/^web\/src\/lib\/server\/gapMap\//,
+	// The website's own side of the seams in $lib/website*.ts (the site chrome and its layout data), and
+	// the seam only the /alpha landing imports.
+	/^web\/src\/lib\/website\//,
+	/^web\/src\/lib\/website(Alpha|Links)\.ts$/,
 	// Site page components and the header and footer. The chat app renders neither the site header nor
 	// the footer (`isChatApp` in routes/+layout.svelte), and no chat file imports these; the import check
 	// below fails one that starts to. error-card, seo and ui stay shared: chat imports them.
@@ -37,7 +38,41 @@ export const SITE = [
 	/^payload\//
 ];
 
-// Every chat module a non-chat file under web/src imports, keyed by the importing file. Two jobs:
+// The app shell: the hooks and app types, of which one SvelteKit app has exactly one. Chat keeps it
+// when it moves to the public repo, so its chat imports are not crossings. Every site page still runs
+// through it today. The site gets its own minimal hooks (CSP, locale, CMS and alias redirects, error
+// reporting) when it becomes its own app. Until then the shell reaches site code only through the
+// $lib/website* seams, which tolerate the site's absence; the check fails a direct site import here.
+// Shell files match neither CHAT nor SITE, so a change to one runs both products' specs.
+export const SHELL = [/^web\/src\/hooks(\.server)?\.ts$/, /^web\/src\/app\.d\.ts$/];
+
+// The chat modules the shell imports, keyed by shell file. www runs each of them on every request, so a
+// change to one runs the site's specs too (pathProducts reads this). Same rules as the maps below: an
+// unlisted import fails, and so does a listed one the file no longer makes.
+export const SHELL_IMPORTS_OF_CHAT = {
+	'web/src/app.d.ts': ['$lib/chat/types/User'],
+	'web/src/hooks.server.ts': [
+		'$lib/chat/paths',
+		'$lib/chat/server/cmsPublish',
+		'$lib/chat/server/db/client',
+		'$lib/chat/server/env/validate',
+		'$lib/chat/server/errorTracking',
+		'$lib/chat/server/flags',
+		'$lib/chat/server/guestHandoff',
+		'$lib/chat/server/guestHandoffPage',
+		'$lib/chat/server/hooks/error',
+		'$lib/chat/server/hooks/fetch',
+		'$lib/chat/server/hooks/handle',
+		'$lib/chat/server/hooks/init',
+		'$lib/chat/server/legacySessionCookie',
+		'$lib/chat/server/logger',
+		'$lib/chat/wwwChatRedirect'
+	],
+	'web/src/hooks.ts': ['$lib/chat/utils/PublicConfig.svelte']
+};
+
+// Every chat module a site or shared file under web/src imports (the shell aside), keyed by the
+// importing file. Two jobs:
 //
 // 1. The import check fails any site → chat import not listed here, so a new edge is a deliberate edit
 //    to this file, reviewed in its PR, not something that accumulates unseen.
@@ -50,136 +85,94 @@ export const SITE = [
 //
 // Test files (*.spec.ts) are not listed: they import what they test and ship nothing. Generated from
 // the tree once; edit by hand from here on.
-export const SITE_IMPORTS_OF_CHAT = {
-	'web/src/lib/alpha-landing/looks/bold/BoldClosing.svelte': [
-		'$lib/chat/components/PotluckMark.svelte'
+export const SITE_IMPORTS_OF_CHAT = {};
+
+// Site modules that a shared seam ($lib/website.ts, website.server.ts, websiteChrome.ts, websiteSeo.ts)
+// loads through `import.meta.glob`, keyed by the seam. Chat reaches the website only through these
+// seams, so that a build without the website (the public snapshot) still compiles: a glob that matches
+// no file is an empty object, not an error. The import check reads the glob literals, so this list stays
+// the true map, and the scope rule treats each target as one a chat page can break, as it did when chat
+// imported them directly. Exact glob paths, extension included.
+export const SEAM_LOADS_OF_SITE = {
+	'web/src/lib/website.ts': ['$lib/gapmap/entityUrl.ts'],
+	'web/src/lib/website.server.ts': [
+		'$lib/payload/cached-client.ts',
+		'$lib/payload/client.ts',
+		'$lib/payload/alpha-landing.ts',
+		'$lib/payload/preview.server.ts',
+		'$lib/roadmap/roadmapPublic.generated.ts',
+		'$lib/payload/redirects-cached.ts',
+		'$lib/payload/log.ts',
+		'$lib/payload/hostServices.ts',
+		'$lib/payload/invalidationKeys.ts',
+		'$lib/website/layoutData.ts'
 	],
-	'web/src/lib/alpha-landing/looks/bold/BoldFeatures.svelte': [
-		'$lib/chat/components/bentos/DataBento.svelte',
-		'$lib/chat/components/bentos/FootprintBento.svelte',
-		'$lib/chat/components/bentos/InstructionsBento.svelte',
-		'$lib/chat/components/bentos/LanguageBento.svelte',
-		'$lib/chat/components/bentos/ModelBento.svelte',
-		'$lib/chat/components/bentos/ThemeBento.svelte',
-		'$lib/chat/components/bentos/XRayBento.svelte'
-	],
-	'web/src/lib/alpha-landing/looks/bold/BoldLook.svelte': [
-		'$lib/chat/components/PotluckMark.svelte'
-	],
-	'web/src/lib/alpha-landing/looks/classic/ClassicFeatures.svelte': [
-		'$lib/chat/components/bentos/DataBento.svelte',
-		'$lib/chat/components/bentos/FootprintBento.svelte',
-		'$lib/chat/components/bentos/InstructionsBento.svelte',
-		'$lib/chat/components/bentos/LanguageBento.svelte',
-		'$lib/chat/components/bentos/ModelBento.svelte',
-		'$lib/chat/components/bentos/ThemeBento.svelte',
-		'$lib/chat/components/bentos/XRayBento.svelte'
-	],
-	'web/src/lib/alpha-landing/looks/handover/HandoverFeatures.svelte': [
-		'$lib/chat/components/bentos/DataBento.svelte',
-		'$lib/chat/components/bentos/FootprintBento.svelte',
-		'$lib/chat/components/bentos/InstructionsBento.svelte',
-		'$lib/chat/components/bentos/LanguageBento.svelte',
-		'$lib/chat/components/bentos/ModelBento.svelte',
-		'$lib/chat/components/bentos/ThemeBento.svelte',
-		'$lib/chat/components/bentos/XRayBento.svelte'
-	],
-	'web/src/app.d.ts': ['$lib/chat/types/User'],
-	'web/src/lib/analytics.ts': ['$lib/chat/paths'],
-	'web/src/hooks.server.ts': [
-		'$lib/chat/paths',
-		'$lib/chat/server/db/client',
-		'$lib/chat/server/env/validate',
-		'$lib/chat/server/errorTracking',
-		'$lib/chat/server/guestHandoff',
-		'$lib/chat/server/hooks/error',
-		'$lib/chat/server/hooks/fetch',
-		'$lib/chat/server/hooks/handle',
-		'$lib/chat/server/hooks/init',
-		'$lib/chat/server/legacySessionCookie',
-		'$lib/chat/server/logger',
-		'$lib/chat/wwwChatRedirect'
-	],
-	'web/src/hooks.ts': ['$lib/chat/utils/PublicConfig.svelte'],
-	'web/src/lib/alpha-landing/AlphaDemoClient.svelte': [
-		'$lib/chat/components/ChatShell.svelte',
-		'$lib/chat/components/chat/ChatWindow.svelte',
-		'$lib/chat/stores/stack',
-		'$lib/chat/types/EmbeddedIntent',
-		'$lib/chat/types/Message'
-	],
-	'web/src/lib/alpha-landing/AlphaDemoSignUp.svelte': [
-		'$lib/chat/components/SignInHero.svelte',
-		'$lib/chat/paths'
-	],
-	'web/src/lib/alpha-landing/copy.ts': [
-		'$lib/chat/constants/retention',
-		'$lib/chat/contribute',
-		'$lib/chat/paths',
-		'$lib/chat/routing/catalog'
-	],
-	'web/src/lib/alpha-landing/demo-api-interceptor.ts': [
-		'$lib/chat/demoApiFetch',
-		'$lib/chat/paths',
-		'$lib/chat/types/WipeSummary'
-	],
-	'web/src/lib/alpha-landing/demo-conversation.ts': [
-		'$lib/chat/contribute',
-		'$lib/chat/paths',
-		'$lib/chat/routing/catalog',
-		'$lib/chat/types/Message',
-		'$lib/chat/types/MessageTimings',
-		'$lib/chat/types/MessageUpdate',
-		'$lib/chat/types/Rag',
-		'$lib/chat/types/Search',
-		'$lib/chat/utils/energyEstimate'
-	],
-	'web/src/lib/alpha-landing/demo-models.ts': [
-		'$lib/chat/routing/catalog',
-		'$lib/chat/routing/wwwPicker',
-		'$lib/chat/server/api/types',
-		'$lib/chat/types/Model'
-	],
-	'web/src/lib/alpha-landing/demo-page-data.ts': [
-		'$lib/chat/chromeCopy',
-		'$lib/chat/constants/starterShelf',
-		'$lib/chat/search/triggerStrategy',
-		'$lib/chat/server/chatShellData',
-		'$lib/chat/servingProvenance',
-		'$lib/chat/types/ConvSidebar',
-		'$lib/chat/utils/starterRotation'
-	],
-	'web/src/lib/alpha-landing/demo-sidebar.ts': ['$lib/chat/types/ConvSidebar'],
-	'web/src/lib/payload/links.ts': ['$lib/chat/paths'],
-	'web/src/lib/payload/paintDeadline.ts': ['$lib/chat/server/flags'],
-	'web/src/lib/payload/preview.server.ts': ['$lib/chat/server/crypto'],
-	'web/src/lib/server/devOnlyRoute.ts': ['$lib/chat/server/deployEnv'],
-	'web/src/lib/server/gapMap/pageRead.ts': ['$lib/chat/server/textGeneration/faultInjection'],
-	'web/src/lib/server/gapMap/stackXRay.ts': [
-		'$lib/chat/components/stack/provenanceProducts.generated'
-	],
-	'web/src/routes/alpha/demo/+page.svelte': ['$lib/chat/components/PotluckMark.svelte'],
-	'web/src/routes/api/cms/invalidate/+server.ts': [
-		'$lib/chat/server/api/utils/json',
-		'$lib/chat/server/crypto',
-		'$lib/chat/server/logger',
-		'$lib/chat/server/rag/policyPageSync',
-		'$lib/chat/server/vercelBackground'
-	],
-	'web/src/routes/api/data-freshness/+server.ts': ['$lib/chat/server/api/utils/json']
+	'web/src/lib/websiteChrome.ts': ['$lib/website/SiteChrome.svelte']
 };
 
 // The reverse direction: every site module a chat file imports, keyed by the importing chat file. A
 // change to one of these site modules can break a chat page, so it scopes to both products. Same rules
 // as above: direct imports only, test files left out.
-export const CHAT_IMPORTS_OF_SITE = {
-	'web/src/lib/chat/components/ChatBackdrop.svelte': ['$lib/alpha-landing/alpha-potluck-field'],
-	'web/src/lib/chat/components/ChatShell.svelte': ['$lib/alpha-landing/demo-sidebar'],
-	'web/src/lib/chat/components/bentos/XRayBento.svelte': ['$lib/alpha-landing/demo-conversation'],
-	'web/src/lib/potluck-run/pieceFaces.ts': ['$lib/alpha-landing/canvas-shapes'],
-	'web/src/lib/potluck-run/engine.ts': [
-		'$lib/alpha-landing/alpha-potluck-field',
-		'$lib/alpha-landing/canvas-shapes'
-	],
-	'web/src/lib/chat/server/rag/policyPageSync.ts': ['$lib/lexical/types'],
+export const CHAT_IMPORTS_OF_SITE = {};
+
+// Every module outside chat and site code that chat reaches, directly or through other such modules,
+// keyed by repo-relative path (paraglide's generated messages count as one module). Chat moves to the
+// public alpha repo and takes these with it, so each one says what happens to it there:
+//
+// - `moves`: it is chat's, and goes with chat. `siteImporters` is how many site files still import it:
+//   each of those needs its own copy or a direct library call before the site can stand alone. The
+//   check fails when the count changes, so a new site import goes red, and a PR that removes one
+//   lowers the number, which only ever falls.
+// - `split`: each product keeps its own copy (the message catalogs, locale routing, the error card), so
+//   the site may go on importing it.
+// - `seam`: chat's way into the website (website.ts, website.server.ts, websiteSeo.ts). It goes with
+//   chat and returns "no website" when the site's files are absent.
+//
+// A module chat starts to reach fails the check until it is listed, so a new shared dependency is a
+// reviewed edit, and a listed module chat no longer reaches fails as stale. Test files are not walked.
+export const SHARED_REACHED_BY_CHAT = {
+	// Reached through the app shell (SHELL): the request plumbing both products' hooks need (content
+	// negotiation, CDN cache headers, the CSP report endpoint, locale, the expired-preview page) and the
+	// gap map types app.d.ts declares for site pages. Each app keeps its own copy at the split.
+	'web/src/lib/acceptNegotiation.ts': { disposition: 'split' },
+	'web/src/lib/analytics.ts': { disposition: 'moves', siteImporters: 9 },
+	'web/src/lib/cache/cdn.ts': { disposition: 'split' },
+	'web/src/lib/canvas-shapes.ts': { disposition: 'split' },
+	'web/src/lib/components/error-card/error-card.svelte': { disposition: 'split' },
+	'web/src/lib/components/ui/banner/banner.svelte': { disposition: 'moves', siteImporters: 0 },
+	'web/src/lib/components/ui/banner/index.ts': { disposition: 'moves', siteImporters: 0 },
+	'web/src/lib/cspReportEndpoint.js': { disposition: 'split' },
+	'web/src/lib/deployment.ts': { disposition: 'moves', siteImporters: 3 },
+	'web/src/lib/favicon.ts': { disposition: 'moves', siteImporters: 1 },
+	'web/src/lib/i18n/client.svelte.ts': { disposition: 'split' },
+	'web/src/lib/i18n/copyEdit/CopyEditLayer.svelte': { disposition: 'split' },
+	'web/src/lib/i18n/copyEdit/CopyEditPanel.svelte': { disposition: 'split' },
+	'web/src/lib/i18n/copyEdit/catalogs.ts': { disposition: 'split' },
+	'web/src/lib/i18n/copyEdit/editsFile.ts': { disposition: 'split' },
+	'web/src/lib/i18n/copyEdit/entry.svelte.ts': { disposition: 'split' },
+	'web/src/lib/i18n/copyEdit/fileSave.ts': { disposition: 'split' },
+	'web/src/lib/i18n/copyEdit/markers.ts': { disposition: 'split' },
+	'web/src/lib/i18n/copyEdit/state.svelte.ts': { disposition: 'split' },
+	'web/src/lib/i18n/locales.ts': { disposition: 'split' },
+	'web/src/lib/i18n/routing.ts': { disposition: 'split' },
+	'web/src/lib/i18n/server.ts': { disposition: 'split' },
+	'web/src/lib/paraglide': { disposition: 'split' },
+	'web/src/lib/posthogUpstream.js': { disposition: 'moves', siteImporters: 1 },
+	'web/src/lib/server/expiredPreview.ts': { disposition: 'split' },
+	'web/src/lib/server/runtimeEnv.js': { disposition: 'moves', siteImporters: 1 },
+	'web/src/lib/surface.ts': { disposition: 'moves', siteImporters: 2 },
+	'web/src/lib/types/category.ts': { disposition: 'split' },
+	'web/src/lib/types/scores.ts': { disposition: 'split' },
+	'web/src/lib/utils.ts': { disposition: 'split' },
+	'web/src/lib/website.server.ts': { disposition: 'seam' },
+	'web/src/lib/website.ts': { disposition: 'seam' },
+	'web/src/lib/websiteSeo.ts': { disposition: 'seam' }
+};
+
+// Site modules that a file in SHARED_REACHED_BY_CHAT imports by name, keyed by the importing file. Each
+// one is site code chat carries with it into the public repo. Same rules as the maps above: an unlisted
+// edge fails, and so does a listed one the file no longer makes. The goal is an empty map.
+export const SHARED_IMPORTS_OF_SITE = {
+	// A type-only import, erased from the build, that the type check in the public repo still needs.
+	'web/src/lib/website.server.ts': ['$lib/alpha-landing/content']
 };

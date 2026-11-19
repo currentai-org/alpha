@@ -14,13 +14,13 @@ import { postSlackWebhook } from "../../../../scripts/lib/slackWebhook.mjs";
 
 // Consecutive UNHEALTHY probes before firing — a single blip / cold-start never reaches it; sustained
 // failure does. With the ~3-min Coop probe throttle (warm.ts), 3 ⇒ ~6–9 min to fire.
-const FIRE_THRESHOLD = 3;
+export const FIRE_THRESHOLD = 3;
 // Don't re-notify an ONGOING outage more often than this.
 const REALERT_MS = 30 * 60_000;
 // Consecutive rate-limit TRIPS (not probes) before firing. Higher than FIRE_THRESHOLD —
 // these are discrete per-request events, not spaced-out health checks, so a legitimate retry burst
 // (a flaky connection, a person mashing send) shouldn't page anyone. 5 back-to-back trips from the
-// SAME identity is past what normal use produces. (CUR-1134)
+// SAME identity is past what normal use produces.
 const TRIP_FIRE_THRESHOLD = 5;
 
 type ProbeOpts = {
@@ -46,7 +46,7 @@ type AlertVals = {
 
 /** POST {"text": …} to the alert webhook. No-op (info log) when unset. Never throws. A delivered
  *  alert logs its key and never its text, which can name a person, so a later check can confirm the
- *  page went out (CUR-4165). */
+ *  page went out. */
 async function postSlack(key: string, text: string): Promise<void> {
 	const url = firstKey(["SLACK_ALERT_WEBHOOK"], "slackAlertWebhook", { allowEmpty: true });
 	if (!url) {
@@ -71,7 +71,7 @@ async function upsert(key: string, vals: AlertVals): Promise<void> {
 		.onConflictDoUpdate({ target: alertState.key, set: vals });
 }
 
-// ── Per-dependency heartbeats → public status page (CUR-102) ─────────────────────────────────────
+// ── Per-dependency heartbeats → public status page ─────────────────────────────────────
 // The status page reports our EXTERNAL dependencies, and this is where that signal comes from. Same
 // inversion as the cron's own dead-man's switch: Better Stack expects to HEAR from us, so we ping ONLY
 // on a healthy probe and a failing dependency goes red by SILENCE. Withholding a ping is the signal.
@@ -97,13 +97,16 @@ export const HEARTBEAT_ENV_BY_KEY: Record<string, string> = {
 	"db:warm": "BETTERSTACK_HB_DB_URL",
 	"catalog:warm": "BETTERSTACK_HB_CATALOG_URL",
 	// "Safety filtering" component. coop:verdict is the pre-Shieldstral sync-detector probe, still
-	// pinged when guard-primary is off; guard:verdict is its replacement (CUR-1041) — Shieldstral going
+	// pinged when guard-primary is off; guard:verdict is its replacement — Shieldstral going
 	// primary silences coop:verdict entirely (see warm.ts), so without this entry the heartbeat this
 	// component depends on goes silent forever the moment guard-primary flips on, and the public status
 	// page reds a dependency that's actually healthy. Same env var: it's still the same status-page
 	// component, just a different upstream detector serving it.
 	"coop:verdict": "BETTERSTACK_HB_COOP_URL",
 	"guard:verdict": "BETTERSTACK_HB_COOP_URL",
+	// s1:verdict (the S1 judge, warm.ts) is absent on purpose: it alerts through the webhook only. A
+	// heartbeat reds by silence, so sharing this one with guard:verdict would hold the component green
+	// while either detector is down, as long as the other one answers.
 	"moderation:failclosed": "BETTERSTACK_HB_DECLINES_URL",
 };
 
@@ -199,13 +202,13 @@ export async function recordProbe(key: string, healthy: boolean, opts: ProbeOpts
  * (TRIP_FIRE_THRESHOLD) and never resets on a "healthy" call: nothing about a rate limiter has a
  * natural "back to healthy" moment, so the row just stops updating once the offender stops tripping it,
  * and a NEW debounce window opens automatically after REALERT_MS if they resume. Fire-and-forget from
- * the caller (never awaited) — enforcing a 429 must not wait on this. Best-effort, never throws. (CUR-1134)
+ * the caller (never awaited) — enforcing a 429 must not wait on this. Best-effort, never throws.
  */
 export async function recordRateLimitTrip(
 	key: string,
 	opts: { limitName: string; identity: string }
 ): Promise<void> {
-	// Every trip is a security event, whether or not it is enough to page anyone. (CUR-4143)
+	// Every trip is a security event, whether or not it is enough to page anyone.
 	securityLogger.warn({ event: "rate-limit-trip", key, limitName: opts.limitName }, "[security] rate-limit trip");
 	try {
 		const db = getDb();
@@ -252,7 +255,7 @@ export async function recordRateLimitTrip(
  * someone who is comfortably under quota (the overwhelmingly common case) would spam a
  * "custodial storage quota recovered" line that nobody asked for and reads as noise. This only
  * matters — and only writes anything — when a trip was actually in flight. Best-effort, never
- * throws, never awaited by callers (same fire-and-forget posture as recordRateLimitTrip). (CUR-1318)
+ * throws, never awaited by callers (same fire-and-forget posture as recordRateLimitTrip).
  */
 export async function clearRateLimitTrip(key: string): Promise<void> {
 	try {
@@ -278,13 +281,13 @@ export async function clearRateLimitTrip(key: string): Promise<void> {
  * recordRateLimitTrip's debounce (repeated identical alerts are the correct behavior here; the
  * failure mode a debounce exists to prevent, a noisy repeat offender, is not the risk a single
  * confirmed match carries). Fire-and-forget from the caller, best-effort, never throws — same posture
- * as every other function in this file. (CUR-1136)
+ * as every other function in this file.
  */
 export async function recordCsamMatch(
 	identity: string,
 	details: { bankName: string; bankContentId: number; distance: string },
 	// The custodial-storage caller quarantines the file; the chat-message upload guard
-	// refuses the request outright and never writes anything — the alert text needs to say which. (CUR-986)
+	// refuses the request outright and never writes anything — the alert text needs to say which.
 	disposition: "quarantined" | "refused" = "quarantined"
 ): Promise<void> {
 	try {

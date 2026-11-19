@@ -1,12 +1,12 @@
 """
-Public AI Agent Service — `POST /run` API.
+Public AI Agent Service — scrappy `POST /run` API (SOW 1.2).
 
-Instantiates a Hermes agent per task and runs one multi-step task end-to-end.
+Instantiates a Hermes agent per task and runs one multi-step task end-to-end (the SOW "done when").
 
 Design:
   - Two planes: this is Plane B (ephemeral per-task execution); Plane A is whatever
     ~/.hermes/config.yaml points at (HF dev / sovereign launch).
-  - Inherited from chat, not rebuilt: the bearer JWT auth + the safety screen.
+  - Inherited from chat, not rebuilt: shared OAuth (OpenWebUI JWT) + ROOST moderation.
     Implemented here as PLUGGABLE SEAMS — real validation/endpoints are provided by the chat/
     platform owners; this service consumes them. Dev bypass flags exist but FAIL LOUDLY.
   - Execution interlocks: wall-clock cap, toolset restriction, step-cap, spend-cap, and the
@@ -23,6 +23,7 @@ import base64
 import csv
 import errno
 import hashlib
+import hmac
 import io
 import json
 import math
@@ -55,12 +56,12 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import PlainTextResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 from remote_work import RemoteWork
-from sandbox_backend import BwrapBackend, Handle, SandboxBusy, SandboxError, Tier, key_for
+from sandbox_backend import BwrapBackend, Handle, SandboxBusy, SandboxError, Tier, confine, key_for
 from sandbox_mcp import build_sandbox_server, sandbox_http_app
 from store import Store
 from xlsx_check import workdir_chart_problems, workdir_reader
 
-# ---- Execution caps (the real, enforceable ones) -------------------------------
+# ---- Execution caps (the real, enforceable ones — brief §6B) -------------------------------
 HERMES_BIN = os.environ.get("HERMES_BIN", str(Path.home() / "hermes-agent/.venv/bin/hermes"))
 WALL_CLOCK_SECS = int(os.environ.get("AGENT_WALL_CLOCK_SECS", "300"))   # hard wall-clock cap (subprocess timeout)
 # How long request_permission's confirm branch waits for a human before failing CLOSED (deny), reported
@@ -68,15 +69,23 @@ WALL_CLOCK_SECS = int(os.environ.get("AGENT_WALL_CLOCK_SECS", "300"))   # hard w
 # hermes-agent, acp_adapter/permissions.py), or Hermes gives up silently and the chat keeps showing "still
 # waiting" for a decision already made. A confirmation can open minutes into a run while the chat gives no
 # signal that one has, so the window has to allow for someone who isn't watching the tab. The default
-# lives here as well as in the deploy config so a deployment that never sets the env var still gets it.
+# lives here as well as in fly/agent-app.toml so a deployment that never sets the env var still gets it.
 # It stays well inside WALL_CLOCK_TASK_SECS, and silence still denies.
 CONFIRM_TIMEOUT_SECS = float(os.environ.get("AGENT_CONFIRM_TIMEOUT_SECS", "180"))
-# Keep the per-task scratch dir instead of discarding it. Default OFF, and it must stay off in prod: the
-# discard is a retention property, not housekeeping — the dir holds whatever the agent wrote plus raw.log,
+# The one clock that never pauses: from submission to the end of the last attempt, approval-card waits and the
+# wait for a sandbox slot included, whatever the attempt clocks reimbursed. The attempt clocks pause for a
+# card a person answers, so without this a run with a person slowly answering cards, or none at all, had no upper
+# bound, and held a running sandbox (its whole guest memory on the sandbox host) the entire time.
+TASK_HARD_CAP_SECS = int(os.environ.get("AGENT_TASK_HARD_CAP_SECS", "1200"))
+# How long past TASK_HARD_CAP_SECS a sandbox may stay running before the sweep kills it: the time a task needs after
+# its last attempt (moderation, the answer, pausing the sandbox) with room to spare.
+SANDBOX_STUCK_GRACE_SECS = int(os.environ.get("AGENT_SANDBOX_STUCK_GRACE_SECS", "300"))
+# Keep the per-task scratch dir instead of discarding it. Default OFF, and it must stay off in a deployment:
+# the discard is a retention property, not housekeeping — the dir holds whatever the agent wrote plus raw.log,
 # i.e. an invitee's data. It exists for the harness, which runs synthetic fixtures under one synthetic user
-# and needs to answer "what did the agent actually produce?" about a failed trial; without it the
-# artifacts are gone before anyone can look. prodcheck compares this key and /healthz reports it, so a prod that has it on is
-# visible rather than merely unlikely.
+# and needs to answer "what did the agent actually produce?" about a failed trial: without it the artifacts
+# are gone before anyone can look, so a long-horizon failure can only be characterized from token counts and
+# stop reasons. prodcheck compares this key and /healthz reports it, so a deployment that has it on is visible.
 KEEP_WORKDIR = os.environ.get("AGENT_KEEP_WORKDIR", "") not in ("", "0")
 ALLOWED_TOOLSETS = os.environ.get("AGENT_TOOLSETS", "terminal")          # restricted toolset = alpha tool-surface cap
 # ACP transport (streaming-spec §3/§7.1): drive `hermes acp` as an in-app ACP client instead of blocking
@@ -126,15 +135,16 @@ _DENY_WRITES_DEFAULT = "file,todo"
 def _deny_writes_toolsets(base: str) -> str:
     """The toolset to actually hand the `hermes acp` subprocess under ACP_PERMISSION_POLICY=deny_writes.
 
-    deny_writes is consulted for write_file/patch only (_PERMISSION_COVERS above; CUR-217). Calls to
-    `terminal`/`code_execution` reach a callback only at kind="execute" (the execute-approval patch,
-    CUR-975), so deny_writes has no per-call callback to deny from for them: toolset exclusion is the
-    floor, not the per-call pause.
+    deny_writes is consulted for write_file/patch only (_PERMISSION_COVERS above). Originally Hermes's own client code never called `request_permission` for `terminal`/
+    `code_execution` at all, so there was no callback left to deny from our side. A later
+    execute-approval patch changed that — those tool names now DO reach a callback, at kind="execute" —
+    but this function's own reasoning stays the operative one for deny_writes specifically: toolset
+    exclusion is the floor, not the per-call pause.
 
     What IS in our control is which tools Hermes is told exist at all: `hermes acp` reads
     `platform_toolsets.acp` from its config.yaml at session-creation time, and acp_client's
     `_write_acp_toolsets` writes that block per attempt from the HERMES_ACP_TOOLSETS that _model_env
-    assembles fresh (CUR-2118). So under deny_writes, don't rely on the per-call execute-approval pause either —
+    assembles fresh. So under deny_writes, don't rely on the per-call execute-approval pause either —
     don't hand `terminal`/`code_execution` to the model in the first place. This makes deny_writes an
     enforceable read-only mode, which is a guarantee we can actually keep, instead of a per-op gate a
     shell redirect (or, now, a confirm a human could still approve) defeats."""
@@ -157,8 +167,7 @@ TRUST_MIN_TASKS = int(os.environ.get("AGENT_TRUST_MIN_TASKS", "3"))
 def _is_trusted(user: str, hist: dict | None = None) -> bool:
     """Time-based only (see the "staged" comment above for why "no abuse flags" isn't in this yet).
 
-    `hist` lets a caller that already has a fresh store.caller_history result (CUR-471:
-    _permission_decision) hand it over instead of triggering a second identical query — optional,
+    `hist` lets a caller that already has a fresh store.caller_history result hand it over instead of triggering a second identical query — optional,
     defaults to fetching fresh, so every existing one-argument call site is unaffected."""
     hist = hist if hist is not None else store.caller_history(_caller_of(user))
     if not hist["first_seen"]:
@@ -168,7 +177,7 @@ def _is_trusted(user: str, hist: dict | None = None) -> bool:
 
 
 def _permission_decision(user: str) -> dict:
-    """CUR-471: everything a caller might need to know about why, not just the bare policy string —
+    """Everything a caller might need to know about why, not just the bare policy string —
     _resolve_permission_policy below is the bare string, kept for callers that only need that.
     Always returns this shape, including under allow/deny_writes, so a consumer (the model-facing
     note, the SSE event) never has to branch on whether the fields exist."""
@@ -188,7 +197,7 @@ def _resolve_permission_policy(user: str) -> str:
     value: resolved per-principal instead of applied uniformly to every caller."""
     return _permission_decision(user)["policy"]
 # Early-exit on verified artifact (ACP transport only — oneshot's `-z` redirects stdout to devnull until
-# the process exits naturally, so killing it early would always blank the result).
+# the process exits naturally, so killing it early would always blank the result; see docs/streaming-spec.md).
 # Only engages when a verify spec is present: there's no early-exit signal for open-ended chat. Debounced
 # in acp_client._EarlyExitDebounce (2 consecutive passing checks) so a single incidental match — e.g. the
 # agent's own "write then read back" step — can't cut a task short. Default OFF until soaked.
@@ -200,7 +209,7 @@ AGENT_MODEL_PROVIDER = os.environ.get("AGENT_MODEL_PROVIDER", "")        # herme
 # and keeps the ~/.hermes/config fallback.
 if os.environ.get("AGENT_MODEL_REQUIRED", "") == "1" and not AGENT_MODEL:
     raise RuntimeError("AGENT_MODEL is unset and AGENT_MODEL_REQUIRED=1: refusing to start rather than run "
-                       "an unnamed model. Set it to what the proxy serves.")
+                       "an unnamed model. Set it to what the proxy serves (fly/agent-app.toml).")
 # Human-facing COMPUTE provenance (the badge: "<model> — <provider> — Running on <X>, <country>"). This is
 # the sovereign compute host (e.g. "Infomaniak"), distinct from AGENT_MODEL_PROVIDER (wire format). It MUST
 # reflect where the model actually runs. Surfaced in /healthz + the run status.
@@ -214,7 +223,7 @@ if os.environ.get("AGENT_MODEL_REQUIRED", "") == "1" and not AGENT_MODEL:
 # fallback, which names the provider after this exact env var).
 AGENT_COMPUTE_PROVIDER = os.environ.get("AGENT_COMPUTE_PROVIDER", "")
 COMPUTE_PROVIDER_REFRESH_SECS = int(os.environ.get("AGENT_COMPUTE_PROVIDER_REFRESH_SECS", "30"))
-# Fly sets this per-machine, unset off Fly (local dev, tests). CUR-895: task state (TASKS dict + the
+# Fly sets this per-machine, unset off Fly (local dev, tests). task state (TASKS dict + the
 # SQLite mirror at DB_PATH) lives on whichever machine ran the task, and a multi-machine deploy has no
 # session affinity by default — a poll/stream/confirm/cancel call for the same task_id can land on a
 # machine that never saw it and 404. Echoed on /run + every status response so a caller can pin its
@@ -222,7 +231,7 @@ COMPUTE_PROVIDER_REFRESH_SECS = int(os.environ.get("AGENT_COMPUTE_PROVIDER_REFRE
 # reads before the request ever reaches this process — nothing here needs to interpret that header.
 FLY_MACHINE_ID = os.environ.get("FLY_MACHINE_ID")
 # Contract version for the chat↔agent boundary (the /run schema + state enum + this response shape). Bump on
-# any breaking change so a consumer (aipotluck.org/web) can detect drift via /healthz.
+# any breaking change so a consumer (the Alpha web app) can detect drift via /healthz. See docs/streaming-spec.md.
 API_VERSION = 1
 # The commit this image was built from (deploy/Dockerfile's GIT_SHA build arg). API_VERSION above says what
 # the CONTRACT is; this says what the CODE is, and the two answer different questions — the contract holds
@@ -231,13 +240,13 @@ API_VERSION = 1
 # reads as "nobody passed the build arg", and only the second is actionable.
 BUILD_SHA = os.environ.get("AGENT_BUILD_SHA", "").strip()
 # Best-of-N: run up to N independent Hermes attempts and accept the first whose side-effects _verify (each
-# attempt is self-grounded, so this is a reliability MULTIPLIER, not a fabrication risk). Per-run success
-# is about 0.83, with genuine false-completions (the model prints "Task completed", exits 0, but the
-# deliverable was never written); independent _verify of the artifact catches that and best-of-3 lifts it
-# to about 0.995 (scripts: verify_lever.py). Only engages when the task carries a verify spec (explicit or auto-derived —
+# attempt is self-grounded, so this is a reliability MULTIPLIER, not a fabrication risk). Measured per-run
+# ~0.83 with genuine false-completions (the model prints "Task completed", exits 0, but the deliverable was
+# never written); independent _verify of the artifact catches that and best-of-3 lifts ~0.83 → ~0.995
+# (scripts: verify_lever.py). Only engages when the task carries a verify spec (explicit or auto-derived —
 # you can't pick a winner you can't check). Default 1 = off (single attempt).
 BEST_OF = max(1, int(os.environ.get("AGENT_BEST_OF", "1")))
-# CUR-596 item 2: self-consistency over independently-sampled generations (Wang et al.), applied to a
+# self-consistency over independently-sampled generations (Wang et al.), applied to a
 # deterministic computed VALUE instead of a free-text answer. OFF by default — this changes best-of-N's
 # accept-first-success loop into accept-all-verified-then-vote whenever it engages, which is a real,
 # permanent cost increase (up to `best_of` attempts, not the usual "stop at the first pass") on every
@@ -246,7 +255,7 @@ BEST_OF = max(1, int(os.environ.get("AGENT_BEST_OF", "1")))
 VALUE_CONSISTENCY_CHECK = os.environ.get("AGENT_VALUE_CONSISTENCY_CHECK", "") == "1"
 # Token grant for the pre-loop auto-derive call (its own minimal grant: under per-attempt grants no run-grant
 # is live before the loop, so the derive POST would 401 without this — see _run).
-DERIVE_MAX_TOKENS = int(os.environ.get("AGENT_DERIVE_MAX_TOKENS", "200"))
+DERIVE_MAX_TOKENS = int(os.environ.get("AGENT_DERIVE_MAX_TOKENS", "1024"))
 VERIFY_TIMEOUT_SECS = int(os.environ.get("AGENT_VERIFY_TIMEOUT_SECS", "30"))  # cap on the post-run verification check
 # Auto-derive a verify spec for free-form chat tasks (default ON). Best-of-N above can only engage with a
 # verify spec ("you can't pick a winner you can't check"), but a chat turn (synthesize=true) arrives WITHOUT
@@ -255,7 +264,7 @@ VERIFY_TIMEOUT_SECS = int(os.environ.get("AGENT_VERIFY_TIMEOUT_SECS", "30"))  # 
 # attempt loop, so best-of-N re-engages for chat (~88% -> ~99.8% on a checkable task). It NEVER derives
 # check_cmd — a model-emitted server-side shell command from an untrusted prompt is an injection surface;
 # the declarative path can only stat a file + substring-check. A prompt with no checkable artifact (pure
-# conversation) derives nothing -> single attempt. See _derive_verify_spec.
+# conversation) derives nothing -> single attempt, exactly as before (no regression). See _derive_verify_spec.
 AUTODERIVE_VERIFY = os.environ.get("AGENT_AUTODERIVE_VERIFY", "1") == "1"
 # LLM-judge verification (chat turns). When a chat turn has no execution-grounded file-spec to check (the
 # common case — most prompts don't name an output file), an independent model call judges whether the
@@ -272,20 +281,19 @@ VERIFIER_MODEL = os.environ.get("AGENT_VERIFIER_MODEL", "").strip() or None
 # verdict JSON in `content` — too low a cap and content comes back empty. 1500 lets reasoning finish; a
 # non-reasoning self-judge just stops early, so it's safe as the default for both.
 JUDGE_MAX_TOKENS = int(os.environ.get("AGENT_JUDGE_MAX_TOKENS", "1500"))
-# How long one judge call may take before it is cut. The proxy's FIRST_TOKEN_TIMEOUT only guards STREAMED
-# calls and the judge call is not streamed, so nothing upstream cuts a stalled judge; this is the
-# tripwire. The judge fires once per attempt, so at 90s BEST_OF=3 could spend 270s on judging alone
-# against the chat side's 155s agent-generation ceiling.
+# How long one judge call may take before it is cut. Nothing upstream constrains it: the proxy's
+# FIRST_TOKEN_TIMEOUT only guards STREAMED calls and the judge call is not streamed, so a stalled judge
+# would burn its full timeout — and the judge fires once per attempt, so BEST_OF=3 at a long timeout could
+# spend far more on judging than the chat side's 155s agent-generation ceiling allows.
 #
-# 20s from the budget, not from taste. A whole task must fit in that 155s. Whole turns
-# run 30-34s each END TO END including their judge call, so three attempts is ~90s
-# of agent work and leaves ~65s for judging: 3 x 20s fits with room, 3 x 90s never could.
+# 20s comes from that budget, not from taste. A whole task must fit in the 155s: three attempts of ~30-34s
+# end to end is ~90s of agent work and leaves ~65s for judging, so 3 x 20s fits with room and 3 x 90s never
+# could.
 #
-# Deliberately ~7x the observed median rather than snug to it. Judge latency runs 1.4-3.2s per call, so 20s
-# is far outside the normal spread. It has to be, because `_judge_result` fails CLOSED: a timeout is a REJECTION, and a
+# Deliberately ~7x a typical judge call (1.4-3.2s) rather than snug to it, so 20s is far outside the
+# normal spread. It has to be, because `_judge_result` fails CLOSED: a timeout is a REJECTION, and a
 # rejection costs a whole extra agent attempt (~13k tokens, ~30s) — much more than waiting out a slow
-# judge. The cut is aimed at the pathological call, not the merely slow one. A call that takes over a minute
-# under burst load gets cut, which is the intent.
+# judge. The cut is aimed at the pathological call, not the merely slow one.
 JUDGE_TIMEOUT_SECS = float(os.environ.get("AGENT_JUDGE_TIMEOUT_SECS", "20"))
 # Bytes of a spec'd expect_file's content shown to the judge, so it can check a computed value against
 # the file itself rather than the answer's description of it. 0 disables excerpting entirely (a kill
@@ -306,9 +314,8 @@ JUDGE_EXCERPT_BYTES = int(os.environ.get("AGENT_JUDGE_EXCERPT_BYTES", "4000"))
 #
 # NETWORK is the second part. bwrap alone leaves the agent full outbound access, which on a service with
 # open signup makes it an open proxy. deploy/entrypoint.sh installs default-deny nftables as root before
-# privileges drop (a Kubernetes NetworkPolicy would not apply to a single machine). `_egress_state` below
-# re-checks the filter from inside the running process, because a config value saying "filtered" only
-# states what was asked for.
+# privileges drop. `_egress_state` below re-checks the filter from inside the running process, because a
+# config value saying "filtered" only states what was asked for.
 #
 # NAMES are the third. An address allowlist bounds where packets may GO and says nothing about which names
 # may be looked up, and Fly's resolver sits inside the 6PN range the chain allows wholesale, so a payload
@@ -323,7 +330,7 @@ RLIMIT_ENABLED = os.environ.get("AGENT_RLIMITS", "1") != "0"
 RLIMIT_NPROC = int(os.environ.get("AGENT_RLIMIT_NPROC", "512"))          # tasks per UID — SHARED with the app
 RLIMIT_FSIZE = int(os.environ.get("AGENT_RLIMIT_FSIZE", "268435456"))    # 256MB, per file
 TMPFS_BYTES = int(os.environ.get("AGENT_TMPFS_BYTES", "67108864"))       # 64MB per masking mount
-# The syscall filter bwrap loads (CUR-4478), built into the image by deploy/seccomp/gen.c: EPERM for the
+# The syscall filter bwrap loads, built into the image by deploy/seccomp/gen.c: EPERM for the
 # calls unprivileged kernel exploits start from. Missing is a refusal when the sandbox is required, and
 # otherwise (a dev box without the build) a sandbox with no filter, reported as such on /healthz.
 SECCOMP_PATH = os.environ.get("AGENT_SECCOMP_PATH", "/etc/agent-sandbox/seccomp.bpf")
@@ -334,10 +341,11 @@ SCRATCH_MAX_BYTES = int(os.environ.get("AGENT_SCRATCH_MAX_BYTES", "268435456")) 
 SCRATCH_POLL_SECS = float(os.environ.get("AGENT_SCRATCH_POLL_SECS", "2"))
 # Where per-task scratch lives. Empty → tempfile's own choice, which is $TMPDIR then /tmp.
 #
-# This is a knob and not just /tmp: in the Fly container /tmp is ordinary disk, but on a dev box it can be
-# tmpfs, whose pages are anonymous, so a 256MB-per-task scratch is 256MB of RAM the kernel cannot drop, only
-# push to swap. Abandoned `agent-run-*` directories from runs whose cleanup never ran (see
-# _sweep_stale_scratch) hold that RAM. Pointing this at a real filesystem costs disk instead.
+# WHY THIS IS A KNOB AND NOT JUST /tmp: in the Fly container /tmp is ordinary disk and none of this
+# matters. On a DEV BOX it can be tmpfs, and tmpfs pages are anonymous, so a 256MB-per-task scratch is
+# 256MB of RAM the kernel cannot drop, only push to swap. Abandoned `agent-run-*` directories from runs
+# whose cleanup never ran (see _sweep_stale_scratch) therefore hold RAM there. Pointing
+# this at a real filesystem costs disk instead, which is the resource that is actually spare.
 SCRATCH_ROOT = os.environ.get("AGENT_SCRATCH_ROOT", "").strip() or None
 # How long an `agent-run-*` directory has to be untouched before boot treats it as abandoned. Longer than
 # any run can legally last (AGENT_WALL_CLOCK_SECS is 300), so a sweep can never race a live task.
@@ -357,13 +365,13 @@ DNS_PROBE = os.environ.get("AGENT_DNS_PROBE", "dns.google")             # a name
 # flag; config only feeds the TUI/cron paths), so the iteration cap is unreachable from our invocation. Routing model calls through proxy.py gives us a step-cap (request count), a spend-cap
 # (usage tokens), AND the secrets boundary (agent gets a per-task nonce, never the real token) in one place.
 MODEL_PROXY_URL = os.environ.get("AGENT_MODEL_PROXY_URL", "").rstrip("/")     # unset → legacy passthrough (boundary OFF)
-# An unset URL turns the boundary off, so a deploy that dropped it would run with the real model token in the
-# agent's env, visible only in /healthz. The image bakes AGENT_MODEL_PROXY_REQUIRED=1 (like
-# AGENT_MODEL_REQUIRED above) so that deploy refuses to boot; local dev and the offline tests leave it unset
-# and keep the passthrough (CUR-3199).
+# An unset URL is the only thing that turns the boundary off, so a deploy that dropped it would run with
+# the real model token in the agent's env and say so only in /healthz. The
+# image bakes AGENT_MODEL_PROXY_REQUIRED=1 (like AGENT_MODEL_REQUIRED above); local dev and the
+# offline tests leave it unset and keep the passthrough.
 if os.environ.get("AGENT_MODEL_PROXY_REQUIRED", "") == "1" and not MODEL_PROXY_URL:
     raise RuntimeError("AGENT_MODEL_PROXY_URL is unset and AGENT_MODEL_PROXY_REQUIRED=1: refusing to start "
-                       "with the secrets boundary off. Point it at the proxy app.")
+                       "with the secrets boundary off. Point it at the proxy app (fly/agent-app.toml).")
 PROXY_ADMIN_KEY = os.environ.get("PROXY_ADMIN_KEY", "")                       # shared with proxy.py to grant/revoke nonces
 # Where Hermes and the run-code tools run. `e2b` (the default, and what every Fly deploy runs) is the
 # conversation's own microVM on our E2B install (sandbox_e2b.py), which never sees one of our credentials. An E2B
@@ -376,17 +384,17 @@ AGENT_GATEWAY_PUBLIC_URL = os.environ.get("AGENT_GATEWAY_PUBLIC_URL", "").rstrip
 E2B_API_URL = os.environ.get("E2B_API_URL", "")
 E2B_SANDBOX_URL = os.environ.get("E2B_SANDBOX_URL", "")
 E2B_TEMPLATE = os.environ.get("E2B_TEMPLATE", "")  # empty takes E2BConfig.template, the one default
-E2B_SLOTS = int(os.environ.get("E2B_SLOTS", "1") or "1")  # hosts the E2B link fronts; ports move 100 per slot (CUR-4529)
+E2B_SLOTS = int(os.environ.get("E2B_SLOTS", "1") or "1")  # hosts the E2B link fronts; ports move 100 per slot
 # Slots taken out by hand, e.g. "2": a dead host stops blocking finds once named here (one secret set, one restart).
 E2B_SLOTS_OFF = frozenset(int(s) for s in os.environ.get("E2B_SLOTS_OFF", "").replace(",", " ").split())
-# A host that has failed every ask for this long stops blocking finds until it answers again (CUR-4592); 0 never.
+# A host that has failed every ask for this long stops blocking finds until it answers again; 0 never.
 E2B_SLOT_AUTO_OFF_SECS = int(os.environ.get("E2B_SLOT_AUTO_OFF_SECS", "300") or 0)
-# Run-code sandboxes one account may have running at once (CUR-4553), across every host; 0 is no cap. Agent mode has
+# Run-code sandboxes one account may have running at once, across every host; 0 is no cap. Agent mode has
 # its own per-account limit (AGENT_SUBJECT_MAX_CONCURRENCY). Code defaults, so a deployed local toml needs no line.
 E2B_ACCOUNT_MAX_LIVE = int(os.environ.get("E2B_ACCOUNT_MAX_LIVE", "2") or 0)
 # Running sandboxes one E2B host holds before it is full; the pool gauge's alert compares against it, 0 = not named.
 E2B_SLOT_CAPACITY = int(os.environ.get("E2B_SLOT_CAPACITY", "0") or 0)
-# How long a new sandbox waits for a slot on a full host before "the sandbox host is full" (CUR-4584); 0 refuses at
+# How long a new sandbox waits for a slot on a full host before "the sandbox host is full"; 0 refuses at
 # once. Under chat's 155 s agent window and inside the room a run-code turn's deadline keeps for waits.
 E2B_BUSY_WAIT_SECS = float(os.environ.get("E2B_BUSY_WAIT_SECS", "60") or 0)
 # Seconds without a call before a run-code sandbox pauses and gives its memory back to the host. Chat's live window
@@ -402,28 +410,27 @@ MAX_TOKENS_BUDGET = int(os.environ.get("AGENT_MAX_TOKENS", "0"))             # s
 MAX_TASKS = int(os.environ.get("AGENT_MAX_TASKS", "1000"))                   # cap the in-memory task table (evict oldest terminal)
 MAX_PROMPT_CHARS = int(os.environ.get("AGENT_MAX_PROMPT_CHARS", "100000"))   # reject oversized prompts (cheap DoS guard)
 RESULT_MAX_CHARS = int(os.environ.get("AGENT_RESULT_MAX_CHARS", "8000"))     # status `result` size; truncation is flagged
-# Artifact delivery (CUR-195). The agent's files live in a sandbox that is deleted the instant the turn
-# ends, while the answer tells the user where to find them, so these three caps bound what comes back.
-# A file over a cap is still LISTED with its true size: dropping it entirely would leave the answer
-# pointing at a file the user cannot find.
+# Artifact delivery. The agent's files live in a sandbox that is deleted the instant the turn ends, while
+# the answer tells the user where to find them, so the files come back with the result. These three caps
+# bound what comes back. A file over a cap is still LISTED with its true size — dropping it entirely would
+# leave the answer pointing at a file the user cannot see.
 ARTIFACT_MAX_FILES = int(os.environ.get("AGENT_ARTIFACT_MAX_FILES", "20"))       # files listed per turn (0 = feature off)
 ARTIFACT_MAX_BYTES = int(os.environ.get("AGENT_ARTIFACT_MAX_BYTES", "65536"))    # per-file inlined text
 ARTIFACT_TOTAL_BYTES = int(os.environ.get("AGENT_ARTIFACT_TOTAL_BYTES", "262144"))  # inlined text across the turn
-# The actual download, not the inline preview above — deliberately a separate cap. A file made
-# after ARTIFACT_MAX_FILES's count cap, or larger than ARTIFACT_MAX_BYTES's preview cap, still exists on
+# The cap on the actual download, not the inline preview above — deliberately a separate cap. A file made
+# past ARTIFACT_MAX_FILES's count cap, or larger than ARTIFACT_MAX_BYTES's preview cap, still exists on
 # disk and is still fetchable by exact name; only this cap governs whether GET .../artifacts/{filename}
 # will serve it whole. Doubles as the per-file cap `_artifact_text_for_moderation` reads up to — a file
 # bigger than this can never actually reach a caller through the download route either, so moderating past
 # it would screen content nobody can receive. 4MB, not 64MB: this text goes through a moderation call on
 # every completed turn, and a classifier pass over 64MB of text per artifact isn't a realistic op — this
-# is the ceiling a "text/data files" turn (this ticket's own stated scope) comfortably fits under, and it
+# is the ceiling a "text/data files" turn comfortably fits under, and it
 # also bounds worst-case memory: 40 concurrent downloads (anyio's default sync-route thread pool size) at
-# this cap is 160MB, not 2.56GB. (CUR-546)
+# this cap is 160MB, not 2.56GB.
 ARTIFACT_DOWNLOAD_MAX_BYTES = int(os.environ.get("AGENT_ARTIFACT_DOWNLOAD_MAX_BYTES", "4194304"))  # 4MB
-# Where an artifacts-stage moderation block moves the blocked file (CUR-836). Left in `work` it would stay
-# fetchable by GET .../artifacts/{filename} (that route never checks moderation status), and stay there for
-# _artifact_text_for_moderation to re-read and re-block on every later turn in the same session (CUR-196
-# workdir persistence) until the 4h idle reaper cleared it. A top-level dir excluded from
+# Where a file blocked by artifacts-stage moderation is moved. Left in `work` it would stay fetchable by
+# GET .../artifacts/{filename} (that route never checks moderation status) and be re-read and re-blocked by
+# _artifact_text_for_moderation on every later turn of the session. A top-level dir excluded from
 # `_artifact_paths`'s walk and `_resolve_artifact_path`'s resolution, same pattern as "hermes-home*" below.
 ARTIFACT_QUARANTINE_DIRNAME = "agent-quarantine"
 VERIFY_DETAIL_CHARS = int(os.environ.get("AGENT_VERIFY_DETAIL_CHARS", "400"))  # check_cmd output kept in the failure reason
@@ -439,19 +446,18 @@ DB_PATH = os.environ.get("AGENT_DB_PATH", str(Path.home() / ".agent-service" / "
 # ---- Daily quotas + rate limits (multi-tenant guard, summed from the durable store) -------------------
 # The per-task caps don't bound what one CALLER can spend across MANY tasks; these do, summed from the store.
 #
-# These are named AGENT_CALLER_DAILY_* because the bucket key is the authenticated token subject, not a
-# user. Chat holds ONE static service token for every visitor: endpointAgent.ts builds its
-# Authorization header once at endpoint construction from AGENT_SERVICE_TOKEN, and the per-request closure
-# receives `{messages, abortSignal}` — no user, nowhere to get one, since the app has no accounts. So on the
-# only path real people use, a "per user" limit would be one limit for the whole chat surface, and the 429
-# would land on whoever asks last rather than on whoever spent it. The old AGENT_USER_DAILY_* names are
-# still read (see _renamed_int).
+# The old names were AGENT_USER_DAILY_*, and they are still read as fallbacks. The bucket key is the
+# authenticated token subject, not a person: chat sends one static service token for every visitor
+# (endpointAgent.ts builds its Authorization header once, from AGENT_SERVICE_TOKEN), so on that path a
+# cap of 100 tasks bounds the whole chat surface, and the 429 reaches whoever asks next rather than
+# whoever spent the budget.
 def _renamed_int(new: str, old: str, default: str = "0") -> tuple[int, str]:
     """An int env var that has been renamed. Returns (value, the name it was actually read from).
 
     The old name is still honoured because dropping it makes the rename a SILENT FAIL-OPEN: any config not
     updated in the same commit sets neither name, `.get(default="0")` returns 0, and 0 means OFF for every
-    quota below — the control disappears with no error anywhere. /healthz reports which spelling was read, so
+    quota below — the control disappears with no error anywhere, which is how a config
+    template and a deployed `.local.toml` drift apart. /healthz reports which spelling was read, so
     prodcheck can see "still on the deprecated name" instead of "quota quietly stopped existing"."""
     for name in (new, old):
         if name in os.environ:
@@ -464,19 +470,19 @@ CALLER_DAILY_TASKS, CALLER_TASKS_VAR = _renamed_int("AGENT_CALLER_DAILY_TASKS", 
 # A caller MAY name a subject within its own namespace (X-Agent-Subject) — a chat session id, say. Two jobs,
 # in this order of importance:
 #   1. ATTRIBUTION. It turns "1 principal, 8 turns" into "7 visitors, 8 turns" in the log sink without the
-#      app needing user accounts.
+#      app needing user accounts. That is the question we could not answer about the first dogfood round.
 #   2. Fairness. One visitor stops being able to spend the whole surface's allowance.
 # It is NOT an authorization boundary and must never be read as one: it is self-asserted, so a visitor who
 # clears their cookie gets a new subject and a fresh allowance. Acceptable for a courtesy quota, and the
 # reason the CALLER ceiling above is still checked — rotating subjects cannot buy more than the caller's own
 # total. Same posture as chat's `?ph_test=<name>`: targeting, not authentication.
 SUBJECT_DAILY_TASKS = int(os.environ.get("AGENT_SUBJECT_DAILY_TASKS", "0"))  # per-visitor 24h task count, 0 = off
-# The daily allowance bounds how MANY tasks a visitor starts, not how many run at once, so one
+# the daily allowance bounds how MANY tasks a visitor starts, not how many run at once, so one
 # visitor with a few tabs could hold every one of MAX_CONCURRENCY's slots and leave everyone else a
 # capacity 429. Checked and reserved in one step under _USER_LOCK, since a separate check would let a
 # burst of submits all pass it before any reserved. Same subject-only rule as the allowance above.
 # On by default: the deployed config is a gitignored local toml (with-tracked-vm.sh carries only named
-# lines from the template), so a default of off would ship off. (CUR-2194)
+# lines from the template), so a default of off would ship off.
 SUBJECT_MAX_CONCURRENCY = int(os.environ.get("AGENT_SUBJECT_MAX_CONCURRENCY", "2"))  # per-visitor live runs, 0 = off
 SUBJECT_MAX_CHARS = int(os.environ.get("AGENT_SUBJECT_MAX_CHARS", "64"))     # bounded: it is a store key and a task owner
 RATE_WINDOW_SECS = int(os.environ.get("AGENT_RATE_WINDOW_SECS", "86400"))    # the rolling window every limit uses
@@ -484,18 +490,18 @@ RATE_WINDOW_SECS = int(os.environ.get("AGENT_RATE_WINDOW_SECS", "86400"))    # t
 # rolling-window count and nothing else — a runaway on an exempt sub is still stopped by AGENT_MAX_TOKENS,
 # AGENT_MAX_CONCURRENCY and AGENT_WALL_CLOCK_SECS. Empty (the default) means nobody is exempt.
 OPERATOR_SUBS = frozenset(s.strip() for s in os.environ.get("AGENT_OPERATOR_SUBS", "").split(",") if s.strip())
-# Seconds a caller refused for a full slot waits before resubmitting. Tasks run about 30 s at the median
-# (CUR-3893's Axiom read), so with many slots one usually frees within a few seconds.
+# Seconds a caller refused for a full slot waits before resubmitting. Tasks run about 30 s at the median,
+# so with many slots one usually frees within a few seconds.
 CAPACITY_RETRY_AFTER_SECS = int(os.environ.get("AGENT_CAPACITY_RETRY_AFTER_SECS", "5"))
 TASK_RETENTION_SECS = int(os.environ.get("AGENT_TASK_RETENTION_SECS", "2592000"))  # prune terminal rows older than this (30d; 0=keep forever)
 RETENTION_SWEEP_SECS = int(os.environ.get("AGENT_RETENTION_SWEEP_SECS", "3600"))   # how often the background pruner runs
-# Corpus retention (CUR-596, CUR-654): separate from TASK_RETENTION_SECS and longer by default — this is a training corpus
-# meant to accumulate real examples over time, not an operational spend ledger. Tier 1 catches log on
-# every real caller (independent of AGENT_VALUE_CONSISTENCY_CHECK), so this table grows from live
-# traffic and needs a retention of its own, not just a slower one than the tasks table's.
+# Retention for the corpus table, separate from TASK_RETENTION_SECS and longer by default — this is a
+# training corpus meant to accumulate real examples over time, not an operational spend ledger. Tier 1
+# catches log on every real caller (independent of AGENT_VALUE_CONSISTENCY_CHECK), so the table grows with
+# live traffic and needs a retention bound of its own.
 CORPUS_RETENTION_SECS = int(os.environ.get("AGENT_CORPUS_RETENTION_SECS", "7776000"))  # 90d; 0=keep forever
-# session-scoped workdirs. Hours, not TASK_RETENTION_SECS's 30 days — that's a spend-ledger
-# window, this is a disk-budget one, and disk is the real constraint on a single Fly volume. (CUR-196)
+# Idle window for session-scoped workdirs. Hours, not TASK_RETENTION_SECS's 30 days — that's a spend-ledger
+# window, this is a disk-budget one, and disk is the real constraint on a single Fly volume.
 SESSION_IDLE_SECS = int(os.environ.get("AGENT_SESSION_IDLE_SECS", "14400"))          # 4h idle -> reaped
 SESSION_SWEEP_SECS = int(os.environ.get("AGENT_SESSION_SWEEP_SECS", "900"))          # 15m — tighter than the 30d pruner's hourly cadence
 SESSION_SCRATCH_MAX_BYTES = int(os.environ.get("AGENT_SESSION_SCRATCH_MAX_BYTES", "536870912"))  # 512MB/session total, vs SCRATCH_MAX_BYTES's per-turn cap
@@ -503,7 +509,7 @@ WEBHOOK_ALLOW_PRIVATE = os.environ.get("AGENT_WEBHOOK_ALLOW_PRIVATE", "") == "1"
 METRICS_TOKEN = os.environ.get("AGENT_METRICS_TOKEN", "")                     # if set, /metrics requires this bearer token
 
 # Hermes exits 0 even when every model call failed (429/upstream error), so the exit code alone does not
-# show success; a step-capped run can still exit 0. These markers in the combined output,
+# show success (a step-capped run can report COMPLETED). These markers in the combined output,
 # plus "gateway on but zero successful model calls", are treated as hard failures regardless of exit code.
 _HERMES_FAILURE_MARKERS = (
     "no final response was produced",
@@ -513,35 +519,36 @@ _HERMES_FAILURE_MARKERS = (
     "spend-cap reached",
 )
 
-# Under concurrent load nearly all failures are upstream 429s rather than model errors,
+# Under concurrent load nearly all failures are upstream 429s rather than model errors (eval/floor.py),
 # and back-to-back best-of-N attempts land in the same rate-limit window and fail the same way. So back
 # off before the next attempt on this marker only; other failures (agent bugs, empty output) retry at
 # once, since a delay there only spends wall-clock budget.
 UPSTREAM_RETRY_BASE_SECS = float(os.environ.get("AGENT_UPSTREAM_RETRY_BASE_SECS", "2.0"))
 
-# A small model can fail long-horizon tasks (long-context-test.sh) and write wrong output while its final
-# message claims success — a false self-report. So the agent's
+# Reliability finding (long-context-test.sh): the cheap 80B fails long-horizon tasks pass^8=4/8,
+# and ONCE wrote wrong output while its final message claimed success — a false self-report. So the agent's
 # narrative is never proof of success; a result is only "verified" when an independent, deterministic check
 # (run below, without the model or its token) confirms the actual side-effects. See VerifySpec / _verify.
 
-# ---- INHERIT-FROM-CHAT seams --------------------------------------------------
-# Auth: validate the bearer JWT the chat app sends (its AGENT_SERVICE_TOKEN).
-#   Primary path: HS256 with WEBUI_SECRET_KEY.
+# ---- INHERIT-FROM-CHAT seams (brief §6A) --------------------------------------------------
+# Auth: validate the SAME OpenWebUI JWT chat issues (shared auth across surfaces, PRD §2.2).
+#   Primary path: HS256 with the shared WEBUI_SECRET_KEY (OpenWebUI signs session JWTs with it).
 #   Alt path (OIDC): validate against the IdP JWKS — wire OIDC_JWKS_URL if the deployment uses OIDC.
-WEBUI_SECRET_KEY = os.environ.get("WEBUI_SECRET_KEY", "")               # the HS256 signing key for the bearer token
+WEBUI_SECRET_KEY = os.environ.get("WEBUI_SECRET_KEY", "")               # PROVIDED BY CHAT/PLATFORM OWNER
 AUTH_DISABLED = os.environ.get("AGENT_AUTH_DISABLED", "") == "1"        # dev only — fails loud (see below)
-# OFF by default. A token with no `exp` validates forever, so a copied one never dies and there is no
-# revocation anywhere in this design. But the issuer is the chat app, whose tokens cannot be inspected
-# from here, and requiring a claim the real issuer omits locks out every user of the product. Turn it on
-# only after checking that a real chat JWT carries `exp`.
+# OFF by default, and that is a deliberate incomplete fix rather than an oversight. A token with no `exp`
+# validates forever, so a leaked one never dies and there is no revocation anywhere in this design. But the
+# issuer is chat's OpenWebUI, whose tokens cannot be inspected from here, and requiring a claim the real
+# issuer omits locks out every user of the product. Needs one real chat JWT checked, then flipped.
 AUTH_REQUIRE_EXP = os.environ.get("AGENT_AUTH_REQUIRE_EXP", "") == "1"
-# Agent mode and the sandbox are for signed-in accounts. Chat's token is one shared service token
+# agent mode and the sandbox are for signed-in accounts. Chat's token is one shared service token
 # and the subject is a hash, so only chat can tell a guest from an account; it says so in X-Agent-Account.
 # The header is chat's word, so this catches a chat route that forgot its own check, not a holder of the
-# token. On unless AGENT_REQUIRE_ACCOUNT=0; the dev bypass skips it, since it skips auth altogether. (CUR-4402)
+# token. On unless AGENT_REQUIRE_ACCOUNT=0; the dev bypass skips it, since it skips auth altogether.
 REQUIRE_ACCOUNT = os.environ.get("AGENT_REQUIRE_ACCOUNT", "1") != "0" and not AUTH_DISABLED
-# Moderation: ONE detector — chat's web screening endpoint (POST /chat/api/safety/screen), the same guard
-# chat itself screens through. Coop is REVIEW-ONLY here: it renders no verdict for this service, it
+# Moderation (coop-review-plane swap): ONE detector — chat's web screening endpoint
+# (POST /chat/api/safety/screen, web/src/lib/chat/server/ — built alongside this), the same guard chat
+# itself screens through. Coop is REVIEW-ONLY here: it no longer renders a verdict for this service, it
 # only receives hit-only /api/v1/report submissions for triage (see _report_hit_to_coop below) — so
 # COOP_URL/COOP_API_KEY are kept (same Doppler names as chat's config) but repurposed as report
 # credentials, not detection ones.
@@ -559,11 +566,11 @@ COOP_ITEM_TYPE_ID = os.environ.get("COOP_ITEM_TYPE_ID", "").strip()
 # Coop call to mint it). Unset ⇒ a loud, once-per-process skip (_report_hit_to_coop), never a silent one.
 COOP_SYSTEM_REPORTER_ID = os.environ.get("COOP_SYSTEM_REPORTER_ID", "").strip()
 MODERATION_DISABLED = os.environ.get("AGENT_MODERATION_DISABLED", "") == "1"
-MODERATION_TIMEOUT_SECS = float(os.environ.get("AGENT_MODERATION_TIMEOUT_SECS", "10"))
-# Attempts before the gate treats the screen as unavailable. A single-shot fail-closed gate converts
-# transient timeouts into 502s on requests that were fine. Three, because two attempts can both time out
-# back-to-back and still recover on a fresh call moments later (CUR-759). Not more: an unreachable screen
-# must still fail closed promptly; worst case is 3x MODERATION_TIMEOUT_SECS before the 502.
+# Attempts before the gate declares an outage. Measured tail for the old model-classifier seat was 5.3s
+# against a 10s timeout with no dependence on input length, so a single-shot fail-closed gate converts
+# provider jitter into 502s on requests that were fine. Three, because two attempts can both time out
+# back-to-back and still recover on a fresh call moments later. Not more: a genuine outage must still fail closed promptly, and this is still bounded — worst
+# case is 3x MODERATION_HTTP_TIMEOUT_SECS before the 502, up from 2x.
 MODERATION_ATTEMPTS = int(os.environ.get("AGENT_MODERATION_ATTEMPTS", "3"))
 # Output screening sees the answer plus every artifact, and artifacts alone are capped at 256KB — enough to
 # blow past the screen endpoint's own input cap (~100000 chars, head-only) and get a 413 rather than a real
@@ -571,26 +578,29 @@ MODERATION_ATTEMPTS = int(os.environ.get("AGENT_MODERATION_ATTEMPTS", "3"))
 # large output is the acknowledged blind spot, and a cap the endpoint can actually read beats a
 # full-length call that errors.
 MODERATION_MAX_CHARS = int(os.environ.get("AGENT_MODERATION_MAX_CHARS", "24000"))
-# The guard screen POST's own client timeout, deliberately above the endpoint's ~20s internal op
-# deadline (guardScreenTypes.ts-adjacent contract) and above MODERATION_TIMEOUT_SECS: a client timeout below
-# the server's own deadline turns a slow-but-completing screen into a false "unavailable" on every call that
-# takes 10-20s.
+# The guard screen POST's own client timeout — DELIBERATELY above the endpoint's ~20s internal op
+# deadline (guardScreenTypes.ts-adjacent contract), not the 10s timeout the old model
+# classifier used: a client timeout below the server's own deadline turns a slow-but-completing screen
+# into a false outage on every call that takes 10-20s, which is not jitter, it's a mismatched budget.
 MODERATION_HTTP_TIMEOUT_SECS = float(os.environ.get("AGENT_MODERATION_HTTP_TIMEOUT_SECS", "25"))
 # Characters of the exception message logged on each moderation.retry/unavailable line, beside
 # type(e).__name__. The type alone can't say what an unparseable answer contained; the message can.
 # Bounded so a malformed answer stays visible without unbounded log volume.
 MODERATION_ERROR_DETAIL_MAX = 200
-# Pause between the attempts above. The screen endpoint can be briefly unreachable while it redeploys; a
-# short fixed sleep gives that a chance to clear. An endpoint that stays down still fails closed in bounded
-# time, at most 2x this value later.
+# Pause between the attempts above. The screen endpoint is Vercel-hosted and can drop requests briefly
+# during its own deploy cutover; a short fixed sleep gives that a chance to clear. A genuine outage still
+# fails closed in bounded time, at most 2x this value later.
 MODERATION_RETRY_BACKOFF_SECS = float(os.environ.get("AGENT_MODERATION_RETRY_BACKOFF_SECS", "1.5"))
 
-# Every stage runs through the same guard; the stage strings stay named constants because call sites and _report_hit_to_coop's per-stage scoping still need the exact stage strings.
+# Every stage runs through the same guard now (the old Coop-can't-see-these-stages split, COOP_ELIGIBLE_
+# STAGES, is gone with the model/coop/dual providers it existed for) — kept as named constants because
+# call sites and _report_hit_to_coop's per-stage scoping still need the exact stage strings.
 STAGE_CHECK_CMD = "check_cmd"
 STAGE_ARTIFACTS = "artifacts"
 
-# What the screens after a run do with a verdict (CUR-4113). `block` (the default) refuses the turn and fails
-# closed when the screen is unavailable; `log` screens off the request path and only records the verdict. The input screen always blocks, since the prompt decides what code
+# what the screens after a run do with a verdict. `block` (the default) refuses the turn and fails
+# closed on an outage; `log` screens off the request path and only records the verdict, the shape chat's
+# output screen is moving to. The input screen always blocks, since the prompt decides what code
 # runs. An unrecognised value reads as `block`, so a typo can only make the service stricter.
 OUTPUT_SCREEN_MODE = "log" if os.environ.get("AGENT_OUTPUT_SCREEN_MODE", "").strip().lower() == "log" else "block"
 LOG_ONLY_STAGES = ("output", STAGE_ARTIFACTS)
@@ -600,24 +610,24 @@ _MODEL_TOKEN_KEYS = ("HF_TOKEN", "HUGGINGFACE_TOKEN", "HUGGING_FACE_HUB_TOKEN")
 
 
 def _model_env(nonce: str | None, home: str, permission_policy: str | None = None) -> dict[str, str]:
-    """Secrets-at-boundary chokepoint. The agent runs --yolo shell, so it must NOT inherit the
+    """Secrets-at-boundary chokepoint (brief §6B.1). The agent runs --yolo shell, so it must NOT inherit the
     server's secrets. Start from a SCRUBBED env (every secret-named var removed — PROXY_ADMIN_KEY,
-    WEBUI_SECRET_KEY, ROOST creds, model tokens, …; the agent's shell can read `env`), then re-add only what
+    WEBUI_SECRET_KEY, ROOST creds, model tokens, … — all would otherwise be readable via `env`), then re-add only what
     the agent needs:
       - gateway on  → a per-task NONCE as HF_TOKEN + HF_BASE_URL to proxy.py (real key never in reach);
-      - gateway off → legacy passthrough re-adds the real model token (a known gap), but the admin
+      - gateway off → legacy passthrough re-adds the real model token (the known §6B.1 gap), but the admin
         key / auth secret are STILL withheld. /healthz reports the boundary state.
 
-    Also the ACP toolset boundary (CUR-217): under deny_writes, override HERMES_ACP_TOOLSETS to exclude
+    Also the ACP toolset boundary: under deny_writes, override HERMES_ACP_TOOLSETS to exclude
     `terminal`/`code_execution` before this env reaches the `hermes acp` subprocess — see
     _deny_writes_toolsets. Harmless under oneshot, which reads -t/ALLOWED_TOOLSETS instead and ignores
     HERMES_ACP_TOOLSETS entirely.
 
-    `permission_policy` is the ALREADY-RESOLVED value (CUR-470: `_resolve_permission_policy(task.user)` —
+    `permission_policy` is the ALREADY-RESOLVED value (`_resolve_permission_policy(task.user)` —
     this function has no principal to resolve against, only the caller does), not the raw
     ACP_PERMISSION_POLICY global — under "staged" those two differ per caller, and this function must act
     on the per-caller answer, not the mode name. Omitted (None), it falls back to the current global —
-    byte-identical to this function's behavior before CUR-470 for every caller that doesn't pass one."""
+    byte-identical to this function's behavior before this change for every caller that doesn't pass one."""
     if permission_policy is None:
         permission_policy = ACP_PERMISSION_POLICY
     env = {k: v for k, v in os.environ.items() if not _SECRET_ENV_RE.search(k.upper())}
@@ -629,24 +639,24 @@ def _model_env(nonce: str | None, home: str, permission_policy: str | None = Non
         for k in _MODEL_TOKEN_KEYS:                            # legacy (no gateway): agent still needs the real token
             if k in os.environ:
                 env[k] = os.environ[k]
-    # The env vars an MCP header value is read from belong to the service, which hands the value
+    # the env vars an MCP header value is read from belong to the service, which hands the value
     # to Hermes over ACP. The agent's shell has no use for them, and _SECRET_ENV_RE only catches the ones
-    # whose name happens to end like a secret. (CUR-3025)
+    # whose name happens to end like a secret.
     for var in mcp_config.header_env_names(MCP_CONFIG):
         env.pop(var, None)
     if permission_policy in ("deny_writes", "confirm"):
-        # confirm's request_permission branch, like deny_writes', is only ever consulted for
-        # write_file/patch (_PERMISSION_COVERS) — reuse the same toolset filter, or a human's "nothing
-        # writes without me saying yes" expectation is as false as a write-containment claim that covers
-        # only those two tools (CUR-217, CUR-218).
+        # confirm's request_permission branch, like deny_writes' before it, is only ever
+        # consulted for write_file/patch (_PERMISSION_COVERS) — reuse the same toolset filter, or a
+        # human's "nothing writes without me saying yes" expectation is exactly as false as a
+        # deny_writes write-containment claim would be.
         env["HERMES_ACP_TOOLSETS"] = _deny_writes_toolsets(env.get("HERMES_ACP_TOOLSETS", ""))
     return env
 
 
 # The guest's whole environment for `hermes acp`: nothing of this process's own. HF_TOKEN is the task's grant nonce,
 # as under bwrap: capped, granted per attempt and revoked when the task ends, and the guest's only egress is the
-# gateway. The bearer cannot be added on the host instead, because E2B Embed's network rules do not rewrite
-# request headers (CUR-4500).
+# gateway. E2B Embed accepts header-rewrite network rules but never applies them, so the bearer cannot
+# be added on the host instead.
 def _remote_model_env(remote_home: str, permission_policy: str | None, nonce: str) -> dict[str, str]:
     env = {"HOME": "/home/user", "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
            "LANG": "C.UTF-8", "HERMES_HOME": remote_home, "HF_TOKEN": nonce,
@@ -716,7 +726,7 @@ def _gateway_grant(nonce: str, max_steps: int, max_tokens: int, label: str = "",
 
     `label`/`attempt` are forensic only: the gateway logs them on a router.failover so a provider stall can
     be attributed to a trial and a best-of attempt. The nonce is the bearer token and is never logged.
-    `model` (CUR-4603) pins every call on the grant to the task's executor; "" leaves a side call unpinned."""
+    `model` pins every call on the grant to the task's executor; "" leaves a side call unpinned."""
     import httpx
     body = {"nonce": nonce, "max_requests": max_steps, "max_tokens": max_tokens, "label": label, "attempt": attempt}
     if model:
@@ -737,7 +747,7 @@ def _gateway_revoke(nonce: str, served: list | None = None) -> tuple[int, int, b
                           headers={"authorization": f"Bearer {PROXY_ADMIN_KEY}"}, timeout=10.0)
         d = r.json()
         if served is not None:
-            # The model ids upstream named on this grant's responses, into the task's record. (CUR-4603)
+            # the model ids upstream named on this grant's responses, into the task's record.
             for m in d.get("served_models") or []:
                 if isinstance(m, str) and m and m not in served:
                     served.append(m)
@@ -792,15 +802,15 @@ def _sandbox_prefix(work: str) -> list[str]:
         # include the store's REAL parent (DB_PATH) so the durable store is hidden wherever it lives.
         #
         # SIZED. A bwrap --tmpfs with no --size defaults to half of RAM and is WRITABLE by the sandboxed
-        # process, so the six mounts that exist to HIDE these directories would otherwise also be six
-        # unbounded RAM-backed filesystems that one command could fill, killing the whole machine out of
-        # memory. Nothing legitimate writes here — the only
+        # process, so the six mounts that exist to HIDE these directories were simultaneously handing the
+        # agent six unbounded RAM-backed filesystems: `dd if=/dev/zero of=/var/x` was an out-of-memory kill
+        # of the whole machine, in one command, from a prompt. Nothing legitimate writes here — the only
         # intended writable path is the scratch bind below — so this is generous by a wide margin.
         store_dir = str(Path(DB_PATH).resolve().parent)
         hide_tmpfs: list[str] = []
         seen: set[str] = set()
         # /.fly holds Fly's machine API socket, and a read-only bind does not stop connect() on a socket,
-        # so it is hidden like the data directories rather than left visible read-only (CUR-3536).
+        # so it is hidden like the data directories rather than left visible read-only.
         for d in ("/home", "/tmp", "/root", "/srv", "/var", "/.fly", store_dir):  # noqa: S108 — these are the
             # directories being HIDDEN behind a tmpfs, not paths we write to
             if d and d != "/" and d not in seen and os.path.isdir(d):
@@ -817,12 +827,11 @@ def _sandbox_prefix(work: str) -> list[str]:
             "--bind", work, work,             # the ONLY writable path: this task's scratch (cwd + HERMES_HOME)
             "--proc", "/proc", "--dev", "/dev",
             # Net is NOT unshared: the agent needs the gateway, and its address+name filtering lives in
-            # deploy/entrypoint.sh (nftables, installed before the privilege drop) rather than here (no
-            # NetworkPolicy manifests are deployed).
+            # deploy/entrypoint.sh (nftables, installed before the privilege drop) rather than here.
             "--unshare-pid", "--unshare-ipc", "--unshare-uts",   # process/IPC isolation
             # A user namespace of its own, inside which no further one can be made: nested user
             # namespaces are where most unprivileged kernel exploits get the capabilities they need, and
-            # bwrap refuses --disable-userns without --unshare-user (CUR-4478).
+            # bwrap refuses --disable-userns without --unshare-user.
             "--unshare-user", "--disable-userns", "--unshare-cgroup-try",
             "--die-with-parent", "--chdir", work,
         ]
@@ -855,7 +864,7 @@ def _rlimit_prefix() -> list[str]:
     """`prlimit` argv to prepend to the sandbox, or [] when limits are off or prlimit is missing.
 
     bwrap namespaces but does not RATION: --unshare-pid gives a private PID namespace, not a process
-    budget. Without a limit the agent could fork-bomb a 1GB machine and take
+    budget. Before this the agent could fork-bomb a 1GB machine with `bomb(){ bomb|bomb & };bomb` and take
     the app down with it. Limits are inherited across fork/exec, so setting them on bwrap covers hermes and
     everything it spawns.
 
@@ -879,7 +888,7 @@ def _rlimit_prefix() -> list[str]:
 
 
 def _model_flags(model: str = "") -> list[str]:
-    """hermes -m/--provider flags. `model` is the task's executor (CUR-4603), else AGENT_MODEL. Lets the
+    """hermes -m/--provider flags. `model` is the task's executor, else AGENT_MODEL. Lets the
     model be set without a ~/.hermes/config.yaml (which doesn't exist in a container/Fly image); empty →
     hermes falls back to its config file (the local path)."""
     flags: list[str] = []
@@ -899,8 +908,8 @@ def _dir_disk_bytes(path: str, ceiling: int) -> int:
     thing being bounded, so blocks are the honest unit.
 
     lstat, and regular files only. Following a symlink would let the agent point at something enormous
-    outside its scratch and have us count it — the same reach that makes an unchecked `Path.write_text` an
-    arbitrary file write, arriving from the other direction.
+    outside its scratch and have us count it — the same reach that makes an unconfined `Path.write_text` an arbitrary
+    file write, arriving from the other direction.
 
     Bails at the ceiling so the common case is a short walk over a handful of files rather than a full
     traversal every poll."""
@@ -928,14 +937,14 @@ def _scratch_watchdog(task: Task, work: str, baseline: int, stop: threading.Even
     task cannot starve the other seven.
 
     Polling rather than a quota because a real quota needs either a loop-mounted image or a filesystem
-    mounted with project quotas — both mean another privileged step in the boot path, the riskiest part of
-    startup. The cost is bounded overshoot: whatever the agent writes inside one poll
+    mounted with project quotas — both mean another privileged step in the boot path, which is where the
+    last outage came from. The cost is bounded overshoot: whatever the agent writes inside one poll
     interval. Against a ration this size that is not a meaningful difference.
 
     Cancels through the same two handles the DELETE endpoint uses, deliberately: that path is already
     exercised, and a second bespoke kill would be a second thing to get wrong.
 
-    `baseline` (CUR-196): disk already in `work` before this turn started — 0 for an ephemeral (no
+    `baseline`: disk already in `work` before this turn started — 0 for an ephemeral (no
     session_id) workdir, matching today's behavior exactly. For a reused session workdir it's whatever
     prior turns left behind, and the ration bounds THIS turn's own writes, not the session's cumulative
     total (SESSION_SCRATCH_MAX_BYTES bounds that, checked once at reuse time). The ceiling passed into
@@ -985,8 +994,8 @@ def _failure_reason(hard_spec: bool, verified: bool, last_structural: str | None
     be starved: attempts share one task deadline (see _remaining_timeout), so a trial whose first two
     ran the full horizon and lost on correctness leaves the third with seconds. Reporting that third
     reason alone would file a 3-attempt correctness failure as "wall-clock cap (300s) exceeded" — the
-    durable record would name the attempt that did the least work, and the two clean-but-wrong attempts
-    reach only `attempt_rejections` (in memory, discarded with the process). Lead
+    durable record would name the attempt that did the least work, while the two clean-but-wrong attempts
+    live only in `attempt_rejections` (in memory, discarded with the process). Lead
     with the rejections when there are any; keep the structural reason, it still explains its attempt."""
     if hard_spec and not verified:
         joined = "; ".join(str(r) for r in rejections)
@@ -1016,13 +1025,12 @@ def _teardown_exit(returncode: int | None, acp_stop: str | None) -> int | None:
     An attempt that ended its turn (`end_turn`) is torn down by closing the child's stdin and
     allowing 2s before SIGTERM (acp transports.py, shutdown_timeout=2.0). A child slower than that to
     exit reports -15 though it finished, and scoring that as a failure retried finished runs under
-    best_of until retries, each waiting on approvals nobody could answer, held every concurrency slot
-    (CUR-2730).
+    best_of until retries, each waiting on approvals nobody could answer, held every concurrency slot.
 
     On E2B the same teardown is a kill: `hermes acp` stays up waiting for the next prompt, leaving
     `open_stdio` kills it, and E2B's envd reports a process ended by a signal as -1 (Go's
-    `ProcessState.ExitCode`). Every finished E2B attempt would therefore exit -1, and every chat turn with
-    no spec to verify it would fail after three attempts. So -1 after end_turn is discounted too.
+    `ProcessState.ExitCode`). Every finished E2B attempt therefore exited -1, and every chat turn with
+    no spec to verify it failed after three attempts. So -1 after end_turn is discounted too.
 
     Only those two codes after end_turn are discounted: None still means the transport gave up, and a
     signal before the agent ended its turn is still a kill."""
@@ -1043,15 +1051,16 @@ def _detect_run_failure(returncode: int | None, stdout: str, stderr: str, gatewa
       - cap_hit — the gateway AUTHORITATIVELY refused a call (step/spend cap fired). No string-matching:
         the gateway knows it throttled the agent, so a capped run can't masquerade as COMPLETED even
         without a verify spec (Hermes prints its terminal error to STDOUT, so a
-        stderr-only scan would miss it; the gateway signal is the reliable one);
+        stderr-only scan would miss it — the gateway signal is what makes this robust);
       - a Hermes failure marker at the START of a stdout/stderr line — anchored to line-start so a legit
-        answer that merely QUOTES a marker mid-sentence is NOT flagged;
+        answer that merely QUOTES a marker mid-sentence is NOT flagged (the known false-positive);
       - exit 0 with empty stdout (no final response produced);
       - gateway-on with zero model calls (produced nothing real)."""
     # returncode is None, not an int, when the ACP transport ended the attempt without reaping the
     # child (timeout, external cancel — see _run's two `ret = None` branches). None != 0, so that
     # lands here and reads "hermes exit None", which is the honest answer: it failed and there is no
-    # code to report (CUR-1227).
+    # code to report. Widened the annotation to say so rather than leaving callers passing a type the
+    # signature denied.
     if returncode != 0:
         tail = re.sub(r"hf_[A-Za-z0-9]+", "hf_<redacted>", (stderr or "").strip())[-300:]
         return f"hermes exit {returncode}" + (f": {tail}" if tail else "")
@@ -1144,7 +1153,7 @@ def _first_inversion(keys: list[_Sortable], desc: bool) -> int | None:
     `float | str` the moment you subscript it, so an inline loop over the union compares `float | str`
     against `float | str` — which is exactly the float-to-str TypeError that _verify_sorted deciding the
     column type ONCE is there to prevent. Binding both indices to the same T is what says "compare like
-    with like", and it is checkable (CUR-1227)."""
+    with like", and it is checkable."""
     for i in range(1, len(keys)):
         if (keys[i] > keys[i - 1]) if desc else (keys[i] < keys[i - 1]):
             return i
@@ -1178,7 +1187,7 @@ def _verify_sorted(text: str, filename: str, column: str, desc: bool) -> tuple[b
     def _to_float(v: str) -> float | None:
         # math.isfinite, not a bare try/except: float("nan")/float("inf") both PARSE successfully but
         # NaN comparisons are always False, so a NaN cell would sit adjacent to a genuinely out-of-order
-        # row and report "sorted" — reproduced directly against a nan cell next to a real inversion.
+        # row and report "sorted" — e.g. a nan cell next to a real inversion.
         # Treating them as unparseable (falling back to string comparison for the whole column, the
         # same path a non-numeric cell already takes) closes that instead of silently trusting them.
         try:
@@ -1199,7 +1208,7 @@ def _verify_sorted(text: str, filename: str, column: str, desc: bool) -> tuple[b
 
     # Same decision as the old `floats if all(f is not None for f in floats) else values`, same single
     # pass — but that form leaves the element type `float | None`, so the comparisons below read as
-    # float-against-None to a reader and to a type checker alike (CUR-1227).
+    # float-against-None to a reader and to a type checker alike.
     parsed = _all_floats()
     i = _first_inversion(values, desc) if parsed is None else _first_inversion(parsed, desc)
     if i is not None:
@@ -1208,7 +1217,7 @@ def _verify_sorted(text: str, filename: str, column: str, desc: bool) -> tuple[b
     return True, ""
 
 
-# ---- Best-of-N value-consistency check (CUR-596 item 2) -------------------------------------
+# ---- Best-of-N value-consistency check -------------------------------------
 def _consistency_eligible(spec: VerifySpec | None) -> bool:
     """Whether `spec` gives a deterministic computed VALUE to compare across best-of-N attempts.
     check_cmd's own output isn't captured anywhere comparable; a judge-only/spec-less turn has no artifact
@@ -1228,10 +1237,10 @@ def _normalized_rows(text: str, ordered: bool) -> list:
     otherwise row order is incidental (dict-iteration order, whichever month came first) and comparing it
     would flag a cosmetic difference as a real disagreement.
 
-    Two more cosmetic-difference traps are handled here: (1) a blank row (csv.reader yields `[]` for one) —
-    a file with one trailing newline and an otherwise-identical file with an extra blank line at the end parse to different row counts, flagging
+    Two more cosmetic-difference traps closed here: (1) a blank row (csv.reader yields `[]` for one) — a file with one trailing newline and an
+    otherwise-identical file with an extra blank line at the end parse to different row counts, flagging
     two attempts that wrote the same table as disagreeing. Dropped unconditionally: a genuinely blank row
-    in tabular data is a formatting artifact, never real content. (2) embedded \\r\\n
+    in tabular data is essentially always a formatting artifact, never real content. (2) embedded \\r\\n
     vs \\n inside a quoted multi-line cell — io.StringIO does not translate embedded line endings, so the
     identical multi-line value written by a CRLF-emitting vs an LF-emitting path parses to different cell
     content. Normalized to \\n before comparison."""
@@ -1249,19 +1258,20 @@ def _attempt_signature(work: str | RemoteWork, spec: VerifySpec | None) -> str |
 
     Symlinks specifically: _verify (which decided THIS attempt passed) follows them, since a symlink
     inside `work` pointing at another file inside `work` is legitimate agent output. But _snapshot_scratch
-    deliberately does NOT capture symlinks
+    deliberately does NOT capture symlinks (a symlink-follow guard on the read side)
     — so a symlinked expect_file that _verify accepted would vanish after _restore_scratch rebuilds `work`
     from the snapshot, leaving verified=True over a file that no longer exists. Refusing to sign a
     symlinked target here keeps that attempt out of the vote (and, if it's ever the fallback, at least the
     inconsistency is bounded to "no comparable value" rather than "won on a value that then disappeared")."""
     # Symlink check must run BEFORE resolution: _resolve_sandbox_path's own .resolve() call already
-    # collapses any symlink chain, so checking .is_symlink() on its return value is always False
-    # (test_attempt_signature's symlink case covers it). Check the raw, unresolved leaf instead, matching
+    # collapses any symlink chain, so checking .is_symlink() on its return value is always False —
+    # dead code that let a symlinked expect_file through (caught directly by
+    # test_attempt_signature's symlink case). Check the raw, unresolved leaf instead, matching
     # _artifact_paths's own lstat-before-anything-else convention.
     # Nothing to sign — no spec at all, or a spec with no expect_file (check_cmd-only, judge-only).
     # Same answer as a read failure: out of the vote, still eligible as a last-resort fallback. Stated
     # here rather than left to each caller's vmethod check, because this function's own contract is
-    # that a consistency-check problem never crashes the turn, and Path(work, None) raises (CUR-1227).
+    # that a consistency-check problem never crashes the turn, and Path(work, None) raises.
     if spec is None or not spec.expect_file:
         return None
     if isinstance(work, RemoteWork):                       # read() refuses a link as the leaf, as below
@@ -1285,7 +1295,7 @@ def _attempt_signature(work: str | RemoteWork, spec: VerifySpec | None) -> str |
     try:
         # csv.reader (inside _normalized_rows) raises csv.Error on real, plausible content — an
         # oversized single field (Python's default 131072-byte field limit) is enough, e.g. one
-        # unusually long free-text cell. This function's whole docstring promise
+        # unusually long free-text cell. Reproduced directly. This function's whole docstring promise
         # is "never crash the turn"; the read above was guarded, this parse wasn't.
         return repr(_normalized_rows(text, ordered=spec.expect_sorted_by is not None))
     except csv.Error:
@@ -1294,8 +1304,8 @@ def _attempt_signature(work: str | RemoteWork, spec: VerifySpec | None) -> str |
 
 def _majority_signature(sigs: list[str]) -> tuple[str | None, str | None]:
     """(majority_sig, disagreement_detail). `majority_sig` is the value a STRICT majority (>half) of
-    `sigs` share, so the caller knows WHICH attempt to serve, not just whether they agreed — serving
-    whichever attempt happened to run last would ignore the majority's value. `sigs`
+    `sigs` share, so the caller knows WHICH attempt to serve, not just whether they agreed (serving
+    whichever attempt happened to run last would ship a minority value). `sigs`
     fewer than 2, or no strict majority (a tie or 3-way split): (None, ...) — `disagreement_detail` is
     non-None only in the split case, naming it; both are None when there's nothing to compare (fewer than
     2 samples) — the caller's fallback for "nothing to vote on" and "genuine split" must differ, and only
@@ -1325,7 +1335,7 @@ def _verify(work: str | RemoteWork, spec: VerifySpec) -> tuple[bool, str]:
     if spec.expect_file:
         wants_text = (spec.expect_contains is not None or spec.expect_lines is not None
                       or spec.expect_sorted_by is not None or spec.expect_columns is not None)
-        if isinstance(work, RemoteWork):               # CUR-4483: the artifact is in the guest
+        if isinstance(work, RemoteWork):               # the artifact is in the guest
             rel = posixpath.normpath(spec.expect_file)
             if posixpath.isabs(rel) or rel == ".." or rel.startswith("../"):
                 return False, "expect_file escapes the sandbox"
@@ -1402,9 +1412,9 @@ def _scrub(text: str, nonce: str | None) -> str:
     """Strip the task's gateway bearer out of text that came back from inside the sandbox.
 
     The agent runs with the nonce in its environment, so anything that echoes an environment can carry it
-    back out — a traceback from the agent's own code, a check that prints `os.environ` on failure. That text reaches
-    `attempt_rejections`, the task summary, and (with the repair loop) the structured log, all of which are
-    shared sinks. The nonce is a bearer token; it goes in none of them.
+    back out — a traceback from the agent's own code, a check that prints `os.environ` on failure. Since
+    b694305 that text reaches `attempt_rejections`, the task summary, and (with the repair loop) the
+    structured log, all of which are shared sinks. The nonce is a bearer token; it goes in none of them.
     Applied where the text crosses out of `_run`, which is the only scope that knows the nonce."""
     return text.replace(nonce, "<nonce>") if (nonce and text) else text
 
@@ -1483,7 +1493,7 @@ def _parse_derived_spec(content: str) -> VerifySpec | None:
 
     # Reject the whole list if any entry is bad, rather than silently dropping some. Accumulate-and-
     # bail rather than `names if all(n is not None ...) else None`: same rejection, but the returned
-    # element type is `str`, which is what VerifySpec.expect_columns declares (CUR-1227).
+    # element type is `str`, which is what VerifySpec.expect_columns declares.
     def _bounded_columns(v) -> list[str] | None:
         if not isinstance(v, list) or not (1 <= len(v) <= 50):
             return None
@@ -1521,7 +1531,7 @@ def _parse_derived_spec(content: str) -> VerifySpec | None:
 def _derive_verify_spec(prompt: str, call_model) -> VerifySpec | None:
     """Best-effort: derive a declarative verify spec so best-of-N can re-engage on a chat task that came in
     without one. `call_model(messages)->message-dict` is injected (the gateway path; a stub in tests).
-    Never raises — derivation failure just means a single attempt."""
+    Never raises — derivation failure just means a single attempt (no regression)."""
     key = hashlib.sha256(prompt.encode("utf-8", "replace")).hexdigest()
     if key in _DERIVE_MEMO:
         return _DERIVE_MEMO[key]
@@ -1540,33 +1550,31 @@ def _derive_verify_spec(prompt: str, call_model) -> VerifySpec | None:
     return spec
 
 
-# ---- Auto-approval reviewer (CUR-3142) --------------------------------------------------
+# ---- Auto-approval reviewer --------------------------------------------------
 # One short gateway call per shell/code call under approval_mode="auto" (acp_client.APPROVAL_MODES has
 # why the sandbox makes this the only question left). Shape is enforced by a forced tool call, not
 # asked for in prose; `_parse_review` keeps a JSON-in-content reading only for a gateway model that
 # ignores tool_choice. Same model and nonce as the agent, so it is billed to the task's own caps.
 AUTO_REVIEW_TIMEOUT_SECS = float(os.environ.get("AGENT_AUTO_REVIEW_TIMEOUT_SECS", "15"))
-AUTO_REVIEW_MAX_TOKENS = int(os.environ.get("AGENT_AUTO_REVIEW_MAX_TOKENS", "300"))
+AUTO_REVIEW_MAX_TOKENS = int(os.environ.get("AGENT_AUTO_REVIEW_MAX_TOKENS", "1024"))
 from auto_review import _AUTO_REVIEW_SYSTEM, _AUTO_REVIEW_TOOL, _parse_review  # noqa: E402
 
 
 def _workdir_listing(work: str | RemoteWork, limit: int = 200) -> list[str]:
     """The top-level names the auto reviewer sees as the person's files. A sandbox run lists the guest's own
-    folder (this machine's `work` holds none of its files), and a failed guest listing raises, which the
-    reviewer's caller turns into asking the person rather than reviewing against an empty folder."""
+    folder (this machine's `work` holds none of its files). A failed listing raises on either path, which
+    the reviewer's caller turns into asking the person. An empty list would read as "the person has no
+    files", so every file would look agent-made and safe to delete."""
     if isinstance(work, RemoteWork):
         names = sorted(n for n, is_dir in work.top_level()
                        if not n.startswith(".") and not (is_dir and n.startswith("hermes-home")))
         return names[:limit]
-    try:
-        names = sorted(p.name for p in Path(work).iterdir() if not p.name.startswith("."))
-    except OSError:
-        return []
+    names = sorted(p.name for p in Path(work).iterdir() if not p.name.startswith("."))
     return names[:limit]
 
 
-# How much of a failed reviewer response the log keeps. Enough for the gateway's own error line
-# ("model not found", "rate limit exceeded"), short of anything an upstream might echo back at length. (CUR-4667)
+# how much of a failed reviewer response the log keeps. Enough for the gateway's own error line
+# ("model not found", "rate limit exceeded"), short of anything an upstream might echo back at length.
 AUTO_REVIEW_ERROR_PREFIX_CHARS = 160
 _TOKENISH = re.compile(r"(?i)\b(bearer\s+)?(sk|pk|hf|key|tok)[-_][A-Za-z0-9_\-]{8,}|\bbearer\s+\S+")
 
@@ -1586,9 +1594,9 @@ def _gateway_post(nonce: str | None):
                                   headers={"authorization": f"Bearer {nonce}"},
                                   json={"model": AGENT_MODEL, **body})
             if r.is_error:
-                # A 404 (route gone), 429 (rate limit) and 500 need different fixes, and the
+                # a 404 (route gone), 429 (rate limit) and 500 need different fixes, and the
                 # exception below reaches the log as its class name only. The request body carries the
-                # person's words and is never logged; only the response's opening line is. (CUR-4667)
+                # person's words and is never logged; only the response's opening line is.
                 _log_event("acp.auto_review_http_error", status=r.status_code, model=AGENT_MODEL,
                            error_prefix=_error_body_prefix(r.text, nonce))
             r.raise_for_status()
@@ -1598,8 +1606,8 @@ def _gateway_post(nonce: str | None):
 
 def _start_listing(work: str | RemoteWork) -> list[str] | None:
     """The folder's top level before the agent runs, so the reviewer can tell the person's files from the
-    agent's own scratch files (CUR-4595). None when the listing fails: the reviewer then has only the
-    current folder to go on and keeps asking before any delete."""
+    agent's own scratch files. None when the listing fails, meaning the folder's contents are
+    unknown, never empty: the reviewer then asks before any action that could delete."""
     try:
         return _workdir_listing(work)
     except Exception as e:  # noqa: BLE001 — a failed guest listing degrades to the stricter review
@@ -1609,7 +1617,11 @@ def _start_listing(work: str | RemoteWork) -> list[str] | None:
 
 def _make_auto_reviewer(request_text: str, work: str | RemoteWork, post,
                         files_at_start: list[str] | None = None):
-    """`post(body) -> awaitable message dict` is injected (the gateway path in _run, a stub in tests)."""
+    """`post(body) -> awaitable message dict` is injected (the gateway path in _run, a stub in tests).
+
+    `files_at_start` None means the start listing could not be taken, so nothing tells the person's files
+    from the agent's: a "run" on a kind that can lose a file becomes "ask", as a reviewer error
+    does. The reviewer's sentence is kept for the card."""
     async def review(action: dict) -> dict:
         payload: dict = {"person_asked": request_text[:2000]}
         if files_at_start is not None:
@@ -1622,11 +1634,19 @@ def _make_auto_reviewer(request_text: str, work: str | RemoteWork, post,
                 "tools": [_AUTO_REVIEW_TOOL],
                 "tool_choice": {"type": "function", "function": {"name": "verdict"}},
                 "temperature": 0.0, "max_tokens": AUTO_REVIEW_MAX_TOKENS}
-        return _parse_review(await post(body))
+        verdict = _parse_review(await post(body))
+        if (files_at_start is None and action.get("kind") in _MAY_LOSE_A_FILE_KINDS
+                and isinstance(verdict, dict) and verdict.get("decision") == "run"):
+            verdict = {**verdict, "decision": "ask"}
+        return verdict
     return review
 
 
-# ---- No-tool review (CUR-4599) -----------------------------------------------------------
+# ACP tool kinds that can lose a file. `edit` never reaches the reviewer (acp_client's path rule).
+_MAY_LOSE_A_FILE_KINDS = frozenset({"execute", "delete", "move"})
+
+
+# ---- No-tool review -----------------------------------------------------------
 NO_TOOL_REVIEW_MAX_TOKENS = int(os.environ.get("AGENT_NO_TOOL_REVIEW_MAX_TOKENS", "200"))
 NO_TOOL_REVIEW_TIMEOUT_SECS = float(os.environ.get("AGENT_NO_TOOL_REVIEW_TIMEOUT_SECS", "20"))
 NO_TOOL_STRUCTURAL = "agent made no tool calls (spec-less turn)"
@@ -1637,10 +1657,11 @@ def _no_tool_check(prompt: str, reply: str, *, use_acp: bool, acp_stop: str | No
                    tool_kinds, classify, review) -> tuple[str | None, str]:
     """(structural failure or None, accepted no-tool verdict or "") for one finished, otherwise clean attempt.
 
-    Fires only on CUR-766's shape: ACP transport (which reports every tool call), not an early exit, no
-    verify spec, no tool call, and a prompt the router calls agentic (CUR-940). Then `review(body)` reads
+    Fires only on its shape: ACP transport (which reports every tool call), not an early exit, no
+    verify spec, no tool call, and a prompt the router calls agentic. Then `review(body)` reads
     the reply: a refusal or a plain answer is accepted on this attempt, a skipped or narrated one is
-    retried. A review that fails or returns no verdict retries too."""
+    retried. A review that fails or returns no verdict retries too, which is what this check did before it
+    could tell them apart."""
     if not use_acp or acp_stop == "early_exit" or not spec_less or tool_kinds:
         return None, ""
     if not classify(prompt):
@@ -1687,8 +1708,9 @@ _JUDGE_SYSTEM = (
     "'5 bullet points'), COUNT the items in the result and check the number matches EXACTLY — off by one is "
     "a FAIL. If the task specifies a COMPUTED value or sequence, work it out yourself and compare exactly. "
     "If the result is the wrong length or a value is wrong, FAIL with what you counted/computed.\n"
-    # "checks" comes BEFORE "pass" so the judge writes down what it found for each requirement before it
-    # can commit to a verdict (CUR-4055). A judge told only to "verify" can pass a result without counting.
+    # "checks" comes BEFORE "pass" so the judge writes down what it found for each requirement
+    # before it can commit to a verdict. Told only to "verify", gemma-4 passed a teams.csv with every
+    # beginner on one team as "correctly groups the six people into two balanced teams" without counting.
     'Reply with ONLY a JSON object and nothing else: {"checks": [{"requirement": "<one thing the task '
     'asked for>", "found": "<what the RESULT or file actually shows for it, counted or computed>", '
     '"met": true|false}], "pass": true|false, "reason": "<a short phrase>"}. Fill "checks" first, one '
@@ -1723,12 +1745,12 @@ def _judge_scope(spec: VerifySpec | None) -> str:
     established fact by the time the judge reads it. Without this the judge re-grades the whole task from
     scratch and demands the RESULT prove, in prose, things a check already proved on disk.
 
-    A judge can over-reject. Given "create hello.txt containing banana, then tell me what it says", with
-    `hello.txt` on disk containing `banana` and an answer saying so, it can still fail the answer for
-    "missing the output format requested (e.g. 'It says: banana')", a format nothing asked for. Fail-closed
-    best-of-N absorbs over-rejection as a harmless retry only for INDEPENDENT attempts; at temperature 0
-    on an unchanged prompt the retries are the same answer, so the same judge rejects all of them the
-    same way. Narrowing the question is the lever that actually
+    Over-rejection is a real failure mode: a judge can reject a correct answer to "create
+    hello.txt containing banana, then tell me what it says" — `hello.txt` on disk containing `banana`,
+    and an answer saying so — for "missing the output format requested (e.g. 'It says: banana')", a
+    format nothing asked for. "Fail-closed best-of-N absorbs over-rejection as a harmless retry" holds only
+    for INDEPENDENT attempts, and at temperature 0 on an unchanged prompt the retries are the same answer, so
+    the same judge rejects all of them the same way. Narrowing the question is the lever that actually
     moves specificity — a bigger judge asked an over-broad question still invents rubrics, just less often.
     """
     if spec is None:
@@ -1745,10 +1767,10 @@ def _judge_scope(spec: VerifySpec | None) -> str:
     if spec.expect_count is not None:
         facts.append(f"the answer lists exactly {spec.expect_count} items")
     # expect_sorted_by/expect_columns pass through the same "check already settled, judge grades
-    # only the residue" contract as every field above — and Step 3 of the same ticket now hands the judge
-    # a raw excerpt of this exact file to reason about, which is the setup in which a judge can
-    # over-reject a correct answer, as in the file example above. Omitting these left the judge free to re-derive and
-    # reject an already-verified sort/column result over a self-invented rubric about the file's shape. (CUR-596)
+    # only the residue" contract as every field above — and the judge is also handed
+    # a raw excerpt of this exact file to reason about, which is the setup in which a judge over-rejects a
+    # correct answer. Omitting these would leave the judge free to re-derive and
+    # reject an already-verified sort/column result over a self-invented rubric about the file's shape.
     if spec.expect_sorted_by is not None:
         direction = "descending" if spec.expect_sorted_desc else "ascending"
         facts.append(f"that file is sorted by `{spec.expect_sorted_by}` in {direction} order")
@@ -1767,7 +1789,7 @@ def _judge_scope(spec: VerifySpec | None) -> str:
 
 
 # Written by _judge_result, read by _judge_error_kind. One constant on both sides, because the
-# alerting query on the log sink keys off this distinction and a drifting prefix would make
+# alerting query in scripts/axiom_alert.py keys off this distinction and a drifting prefix would make
 # it silently match nothing — an alert that never fires looks exactly like a system that never fails.
 JUDGE_UNAVAILABLE = "judge unavailable: "
 
@@ -1785,14 +1807,14 @@ def _judge_error_kind(reason: str) -> str:
 def _judge_error(e: BaseException) -> str:
     """Name an operational judge failure precisely enough to act on it.
 
-    This reports the HTTP status rather than `type(e).__name__`, which would make 401, 403, 429, 500 and
-    503 the SAME string — httpx raises `HTTPStatusError` for all of them. The one field that records why
-    a turn went unverified could then not distinguish a dead credential from a busy gateway, and since this seat fails
+    `type(e).__name__` would make 401, 403, 429, 500 and 503 the SAME string —
+    httpx raises `HTTPStatusError` for all of them. So the one field that records why a turn went
+    unverified could not distinguish a dead credential from a busy gateway, and since this seat fails
     CLOSED, a wrong token looks exactly like a model that got worse: best-of-N burns every attempt
     against the same 401 and the turn comes back unverified with nothing naming the cause.
 
-    MODEL_VERIFIER_TOKEN is a gateway key shared with chat (CUR-185), so the credential is governed by
-    another team's change window, and the
+    That is not hypothetical here. MODEL_VERIFIER_TOKEN is chat's preview gateway key, borrowed by
+    arrangement — so the credential is governed by someone else's change window, and the
     likeliest trigger is not even a rotation: it is that key being scoped to the model ids it is NAMED
     for. It is a LiteLLM gateway key, and we spend it entirely on a model it is not named after.
     Tightening it would be ordinary hygiene on that side and invisible on ours.
@@ -1818,7 +1840,7 @@ def _metric_slug(kind: str) -> str:
 
 def _format_judge_excerpt(filename: str, content: str, max_bytes: int, truncated: bool = False) -> str:
     """Fence `content` for the judge's prompt, truncated to max_bytes with a note. Pure — no I/O, no
-    metrics — so an offline bake-off harness can call it with literal fixture
+    metrics — so the bake-off harness (evals/verifier_bakeoff.py) can call it with literal fixture
     content and stay faithful to the production message shape.
 
     `truncated`: True when the CALLER already cut `content` short before calling this (e.g.
@@ -1844,7 +1866,7 @@ def _format_judge_excerpt(filename: str, content: str, max_bytes: int, truncated
 
 
 def _judge_file_excerpt(work: str | RemoteWork, spec: VerifySpec | None, max_bytes: int) -> str:
-    """Bounded, read-only excerpt of spec.expect_file for the judge (CUR-596) — the judge otherwise never
+    """Bounded, read-only excerpt of spec.expect_file for the judge — the judge otherwise never
     sees the file a computed value came from. Scope: only when expect_file is set (the common case, and
     the one every known failure hits); a check_cmd-only or spec-less turn gets no excerpt — unevidenced,
     explicitly deferred, not silently half-built. Returns "" on any failure (missing file, unreadable,
@@ -1865,8 +1887,8 @@ def _judge_file_excerpt(work: str | RemoteWork, spec: VerifySpec | None, max_byt
         return ""
     # _read_artifact, not target.read_text(): the latter materializes the WHOLE file into memory before
     # any cap applies — the exact sparse-file OOM pattern _read_artifact's own O_NOFOLLOW + bounded read
-    # exists to prevent (a `truncate -s 20G` scratch file can OOM a 1GB machine this way, per its own
-    # docstring), and this is the path AGENT_JUDGE_EXCERPT_BYTES bounds.
+    # exists to prevent (a `truncate -s 20G` scratch file can exhaust a small machine's memory this way), which
+    # would defeat the bound AGENT_JUDGE_EXCERPT_BYTES exists to set.
     content, truncated = _read_artifact(str(target), max_bytes)
     if content is None:           # missing, unreadable, binary content, or a symlink O_NOFOLLOW rejected
         return ""
@@ -1891,7 +1913,7 @@ def _judge_result(prompt: str, result: str, call_model,
     `spec` is the check that ALREADY passed — see `_judge_scope`. Optional so a caller with nothing
     deterministic to report keeps today's behaviour exactly.
 
-    `work` is the task's sandbox path (CUR-596) — when set, the judge is shown a bounded excerpt of
+    `work` is the task's sandbox path — when set, the judge is shown a bounded excerpt of
     `spec.expect_file`, closing the gap where a judge was asked to verify a computed value against a
     source it was never given. Optional so every existing caller/test that omits it is byte-identical to
     before this parameter existed."""
@@ -1914,7 +1936,7 @@ def _judge_result(prompt: str, result: str, call_model,
         return False, f"{JUDGE_UNAVAILABLE}{kind}"
 
 
-# ---- Auth (the chat app's bearer JWT) --------------------------------------------------
+# ---- Auth (inherit chat's OpenWebUI JWT) --------------------------------------------------
 def _may_access(t: Task, user: str) -> bool:
     """Tenancy check. Reads AUTH_DISABLED rather than comparing the user to the literal "dev-bypass-user".
 
@@ -1958,7 +1980,7 @@ def _principal(caller: str, asserted: str | None) -> str:
 
 def require_user(authorization: str | None = Header(default=None),
                  x_agent_subject: str | None = Header(default=None)) -> str:
-    """Validate the Bearer JWT; return the principal. The 'not anonymous' posture
+    """Validate the shared OpenWebUI Bearer JWT; return the principal. The 'not anonymous' posture
     chat already enforces (brief §6A). Real keys/issuer come from the platform owner.
 
     Returns a PRINCIPAL, not a bare user id: the optional X-Agent-Subject header names a visitor inside the
@@ -1969,7 +1991,7 @@ def require_user(authorization: str | None = Header(default=None),
         # subject header too, so a local harness can exercise multi-visitor behaviour without minting JWTs.
         return _principal("dev-bypass-user", x_agent_subject)
     if not authorization or not authorization.lower().startswith("bearer "):
-        raise HTTPException(401, "missing bearer token")
+        raise HTTPException(401, "missing bearer token (shared OpenWebUI auth required)")
     token = authorization.split(" ", 1)[1]
     try:
         import jwt  # PyJWT
@@ -1985,22 +2007,25 @@ def require_user(authorization: str | None = Header(default=None),
         raise HTTPException(401, f"invalid token: {type(e).__name__}") from e
     who = claims.get("id") or claims.get("sub")
     if not who:
-        # A fallback identity such as the literal "unknown" would be SHARED: two tokens for different holders,
-        # neither carrying id or sub, would read each other's tasks and draw on one rate-limit bucket. A token
-        # we cannot attribute is a token we cannot isolate, so it is refused rather than pooled.
+        # A fallback to a literal "unknown" would be a SHARED identity, not a missing one: two tokens for
+        # different holders, neither carrying id or sub, would both resolve to "unknown", read each other's
+        # tasks and draw on one rate-limit bucket. A token we cannot attribute is a token we cannot
+        # isolate, so it is refused rather than pooled.
         raise HTTPException(401, "token carries no id/sub — cannot attribute the request to a user")
     return _principal(str(who), x_agent_subject)
 
 
 def require_account(x_agent_account: str | None = Header(default=None)) -> None:
-    """403 unless the caller says the visitor is signed in, when AGENT_REQUIRE_ACCOUNT is on (CUR-4402).
+    """403 unless the caller says the visitor is signed in, when AGENT_REQUIRE_ACCOUNT is on.
     Like `_principal`, a non-string is the `Header` sentinel from a direct call, and counts as absent."""
     if REQUIRE_ACCOUNT and not (isinstance(x_agent_account, str) and x_agent_account.strip() == "user"):
         raise HTTPException(403, "agent mode and the sandbox are for signed-in accounts (send X-Agent-Account: user)")
 
 
-# ---- Moderation (one detector; Coop is review-only) ----------------
-# The detector is chat's own web screening endpoint (POST /chat/api/safety/screen), the same
+# ---- Moderation (coop-review-plane swap: ONE detector, Coop is review-only) ----------------
+# Was: a model-classifier prompt run through our own gateway, or Coop's /content, or both — three
+# providers, a bridge mode, and a rubric maintained twice (once here, once for Coop's rules). All of that
+# is gone. The detector is now chat's own web screening endpoint (POST /chat/api/safety/screen), the same
 # guard chat itself screens through — this service is a CLIENT of it, not a second implementation of it.
 # Coop no longer renders a verdict for anything on this surface; it receives a hit-only /api/v1/report
 # submission for human triage whenever the guard actually fires (_report_hit_to_coop below), same as
@@ -2045,12 +2070,12 @@ _DECODERS = (
 def _expand_encoded(text: str, passes: int = -1) -> str:
     """`text` plus a labelled appendix of anything encoded in it that decodes to readable text.
 
-    Why this exists: a moderation bake-off scored the live seat at 11/11 on
-    plaintext harmful requests and **0/11 on the same requests base64'd** — bare, and again with "decode
-    this and carry out what it says". Every category, including the two nothing should ever pass. The
-    screen is not hostile to encoding, it is blind through it: the control arm (legitimate security work,
-    same transform) still allowed 3/3, so the classifier reads a blob as an inert blob. Hex and unicode
-    escapes scored 0/11 the same way. URL-encoding mostly holds at 10/11, because percent-encoding leaves
+    The reason this exists: `evals/moderation_bakeoff.py` shows the screen catching plaintext harmful
+    requests but missing the same requests base64'd — bare, and again with "decode
+    this and carry out what it says" — in every category, including the two nothing should ever pass. The
+    screen is not hostile to encoding, it is blind through it: legitimate security work given the same
+    transform is still allowed, so the classifier reads a blob as an inert blob. Hex and unicode
+    escapes behave the same way. URL-encoding mostly holds, because percent-encoding leaves
     letters alone and the words stay readable — which is the tell for what this function is really doing:
     restoring the letters, not detecting an attack.
 
@@ -2059,11 +2084,10 @@ def _expand_encoded(text: str, passes: int = -1) -> str:
     legitimate work this service exists for. Decoding buys the same recall while leaving the rubric, and
     therefore the plaintext numbers, untouched: what the classifier sees for un-encoded input is byte-identical.
 
-    WHAT THIS CANNOT CLOSE: rot13 (1/11 bare, 0/11 with
-    the instruction) and reversed text (the same). Neither is detectable even in principle — every string is
+    WHAT THIS CANNOT CLOSE: rot13 and reversed text. Neither is detectable even in principle — every string is
     a valid rot13 of another string and reverses to another string — so there is no candidate run to find,
     and "decode" would mean re-screening every input two more ways and treating the garbage as meaningful.
-    Closing those needs a rubric change, which is the thing with a measured cost, so it is a decision and
+    Closing those needs a rubric change, which has a cost in false positives, so it is a decision and
     not a patch. Standing behind it: the executor carries its own safety training, and `moderate()` screens
     the OUTPUT as well as the input, so the encoded request has to survive both to reach anyone.
 
@@ -2122,21 +2146,21 @@ def _head_tail_truncate(text: str, max_chars: int) -> str:
 
 
 class GuardUnknown(Exception):
-    """Raised when the screen endpoint answers 200 with `status:"unknown"` — the detector itself is unavailable,
+    """Raised when the screen endpoint answers 200 with `status:"unknown"` — the DETECTOR's own outage,
     as opposed to a transport/HTTP/shape failure (a plain Exception, below). Carries whatever `hits` it
     still returned: a screen can report unknown overall and still have real log hits attached, and those
     must survive into the review plane even though the call as a whole gets retried like any other
-    unavailable-screen failure."""
+    outage."""
     def __init__(self, hits: list[dict]):
         super().__init__("guard screen returned status=unknown")
         self.hits = hits
 
 
 def _moderate_via_guard(text: str, stage: str) -> tuple[str, list[dict]]:
-    """POST the web screen endpoint — the one detector — and translate its
-    verdict into the "allow"/"block:<key>" shape every caller uses, alongside every
+    """POST the web screen endpoint — the ONE detector (coop-review-plane swap) — and translate its
+    verdict into the same "allow"/"block:<key>" shape every caller here has always used, alongside every
     hit it fired (block ∪ log; carried on EVERY status, per the contract). `moderate()`'s retry/fail-
-    closed loop treats any raise here as the screen being unavailable; `GuardUnknown` (status:"unknown") is distinguished
+    closed loop treats any raise here as an outage; `GuardUnknown` (status:"unknown") is distinguished
     from a bare Exception only so its `.hits` can still be folded in before the retry.
 
     Malformed responses — non-200, non-JSON, a missing `status`/`hits`, `hits` not a list, or
@@ -2186,7 +2210,7 @@ def _moderate_via_guard(text: str, stage: str) -> tuple[str, list[dict]]:
         raise GuardUnknown(well_formed)
     if status == "unsafe":
         # "unsafe" with no block hit is self-contradictory. No block signal is present to lose, so treat it
-        # as a broken-contract failure (retry → fail closed 502), never a silent allow.
+        # as a broken-contract OUTAGE (retry → fail closed 502), never a silent allow.
         raise RuntimeError("guard screen: status=unsafe with no block hit among hits")
     raise RuntimeError(f"guard screen: unrecognized status {status!r}")
 
@@ -2305,17 +2329,18 @@ def _screen_and_log(text: str, stage: str, user: str, task_id: str | None) -> No
 
 
 def _screen(text: str, stage: str, user: str, task_id: str | None = None, enforce: bool = True) -> None:
-    """Screen text; raise if it must not proceed. Pre-checks the prompt and post-checks the agent output.
+    """Screen text; raise if it must not proceed. Pre-checks the prompt and post-checks the agent output
+    (brief §6A; PRD §4.5 mandates ROOST for agent surfaces).
 
-    Fail-closed when the screen is UNAVAILABLE, allow on UNCERTAINTY — those are different failures and
-    deserve opposite answers. Unavailable means nothing was screened, so proceeding would run unmoderated. Uncertainty means
+    Fail-closed on an OUTAGE, allow on UNCERTAINTY — those are different failures and deserve opposite
+    answers. An outage means nothing was screened, so proceeding would run unmoderated. Uncertainty means
     the classifier looked and was not sure, on a surface where the executing model carries its own safety
     training as a second layer; resolving that toward `block` buys very little and costs the legitimate
     security and systems work this service is for.
 
     Every hit the guard fires (block or log, across however many attempts this call took) is forwarded to
     Coop's review plane exactly ONCE, from a `finally` — so a block still reports if a retry preceded it,
-    and a log-only hit still reports even when a LATER attempt in the same call goes on to fail as unavailable.
+    and a log-only hit still reports even when a LATER attempt in the same call goes on to fail outage.
 
     No-ops on empty/whitespace text."""
     if not text.strip():
@@ -2337,8 +2362,8 @@ def _screen(text: str, stage: str, user: str, task_id: str | None = None, enforc
     text = _expand_encoded(text)
     hits: dict[str, dict] = {}
     try:
-        # RETRY, then fail closed. One timeout isn't evidence that the screen is down. Bounded so an unavailable
-        # screen still fails closed rather than looping.
+        # RETRY, then fail closed. One timeout isn't evidence of an outage. Bounded so a genuine outage
+        # still fails closed rather than looping.
         last: Exception | None = None
         verdict = ""
         for attempt in range(MODERATION_ATTEMPTS):
@@ -2356,8 +2381,8 @@ def _screen(text: str, stage: str, user: str, task_id: str | None = None, enforc
                 _log_event("moderation.retry", stage=stage, mode=mode, attempt=attempt + 1,
                            error=type(e).__name__, detail=str(e)[:MODERATION_ERROR_DETAIL_MAX])
             if attempt + 1 < MODERATION_ATTEMPTS:
-                # Gives a transient disruption (a redeploy, a brief network blip) room to clear before
-                # the next attempt — skipped after the LAST attempt, so an unavailable screen still fails
+                # Gives a transient disruption (deploy cutover, brief network blip) room to clear before
+                # the next attempt — skipped after the LAST attempt, so a genuine outage still fails
                 # closed in bounded time rather than paying this wait for nothing.
                 time.sleep(MODERATION_RETRY_BACKOFF_SECS)
         else:
@@ -2388,12 +2413,136 @@ def _screen(text: str, stage: str, user: str, task_id: str | None = None, enforc
                 _log_event("moderation.report_dispatch_failed", stage=stage, error=type(_e).__name__)
 
 
+# ---- Attached files ------------------------------------------------------------
+# A photo attached in chat has to reach the agent, or it would answer a question about a photo it never
+# saw. The caller sends the conversation's attached files with the run. Each is copied into the workdir under ATTACHMENTS_DIRNAME, where the agent's tools can open it, and
+# an image also reaches the model through its image input (acp_client.prompt_blocks).
+#
+# The bytes come in the request rather than from a bucket this service reads. Chat keeps attachments
+# sealed per owner in whichever store the deployment configured (Hugging Face, any S3-compatible bucket,
+# or a local directory), and only chat holds the keys and the screening; a self-hosted install and ours
+# reach this code by the same route.
+ATTACHMENTS_DIRNAME = "attachments"
+ATTACHMENT_MAX_FILES = 8                                                  # chat's MAX_TURN_IMAGES
+ATTACHMENT_MAX_BYTES = int(os.environ.get("AGENT_ATTACHMENT_MAX_BYTES", str(10 * 1000 * 1000)))
+ATTACHMENT_TOTAL_MAX_BYTES = int(os.environ.get("AGENT_ATTACHMENT_TOTAL_MAX_BYTES", str(40 * 1000 * 1000)))
+MODEL_IMAGE_MAX_BYTES = 4 * 1000 * 1000
+# What Hermes passes to the model as an image part; anything else is copied but never shown as an image.
+MODEL_IMAGE_MIMES = frozenset({"image/png", "image/jpeg", "image/webp", "image/gif"})
+
+
+def _b64_chars(n_bytes: int) -> int:
+    """The base64 length of `n_bytes` bytes, so a field's character cap matches its byte cap."""
+    return 4 * ((n_bytes + 2) // 3)
+
+
+@dataclass(frozen=True)
+class Attachment:
+    rel: str                                  # where it goes in the workdir, e.g. attachments/photo.png
+    mime: str
+    data: bytes
+    model_image: tuple[str, str] | None       # (mime, base64) shown to the model, or None
+
+
+def _attachment_name(name: str) -> str:
+    """One safe path segment from the person's file name: the last segment, control characters dropped,
+    or "attachment" when nothing usable is left."""
+    last = re.split(r"[\\/]", name)[-1]
+    last = "".join(ch for ch in last if ch.isprintable()).strip()
+    if not last or last in (".", ".."):
+        return "attachment"
+    return last[:255]
+
+
+def _unique_rel(name: str, taken: set[str]) -> str:
+    """`attachments/<name>`, or `attachments/<stem>-2<ext>` and so on when two files share a name."""
+    rel = f"{ATTACHMENTS_DIRNAME}/{name}"
+    stem, ext = os.path.splitext(name)
+    n = 2
+    while rel in taken:
+        rel = f"{ATTACHMENTS_DIRNAME}/{stem}-{n}{ext}"
+        n += 1
+    taken.add(rel)
+    return rel
+
+
+def _decode_b64(data: str, what: str) -> bytes:
+    try:
+        return base64.b64decode(data, validate=True)
+    except ValueError:
+        raise HTTPException(400, f"{what} is not valid base64") from None
+
+
+def _decode_attachments(files: list) -> list[Attachment]:
+    """RunRequest.files decoded and named, or 400/413. Every file is decoded here, before the task is
+    accepted, so a bad one refuses the run rather than vanishing from it."""
+    out: list[Attachment] = []
+    taken: set[str] = set()
+    total = 0
+    for f in files:
+        data = _decode_b64(f.data, f"file {f.name!r}")
+        if len(data) > ATTACHMENT_MAX_BYTES:
+            raise HTTPException(413, f"file {f.name!r} is larger than {ATTACHMENT_MAX_BYTES} bytes")
+        total += len(data)
+        if total > ATTACHMENT_TOTAL_MAX_BYTES:
+            raise HTTPException(413, f"attached files total more than {ATTACHMENT_TOTAL_MAX_BYTES} bytes")
+        model_image = None
+        if f.image is not None and f.image.mime in MODEL_IMAGE_MIMES:
+            _decode_b64(f.image.data, f"the image of {f.name!r}")       # validated; sent on as base64
+            model_image = (f.image.mime, f.image.data)
+        elif f.mime in MODEL_IMAGE_MIMES and len(data) <= MODEL_IMAGE_MAX_BYTES:
+            model_image = (f.mime, f.data)
+        out.append(Attachment(rel=_unique_rel(_attachment_name(f.name), taken), mime=f.mime, data=data,
+                              model_image=model_image))
+    return out
+
+
+def _write_attachment(work: str | RemoteWork, rel: str, data: bytes) -> None:
+    """One attachment into the workspace. Locally the write runs in this process, outside any sandbox, over
+    a directory an earlier turn's agent controlled, so the path is confined and the last component opened
+    without following a link; remotely the guest backend applies its own confinement."""
+    if isinstance(work, RemoteWork):
+        work.backend.write(work.handle, rel, data)
+        return
+    target = confine(work, rel)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target = confine(work, rel)                     # again: the mkdir may have walked a planted link
+    fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o644)
+    with os.fdopen(fd, "wb") as fh:
+        fh.write(data)
+
+
+def _seed_attachments(work: str | RemoteWork, attachments: list[Attachment], task_id: str) -> list[Attachment]:
+    """Copy the attachments into the workspace; returns the ones that landed. A file that cannot be written
+    is logged and left out of the prompt note, never a failed turn: an image still reaches the model."""
+    seeded: list[Attachment] = []
+    for a in attachments:
+        try:
+            _write_attachment(work, a.rel, a.data)
+            seeded.append(a)
+        except (OSError, SandboxError) as e:
+            _log_event("run.attachment_not_seeded", id=task_id, error=type(e).__name__)
+    return seeded
+
+
+def _attachments_note(seeded: list[Attachment], shown: bool) -> str:
+    """Tells the agent where the person's files are. `shown`: at least one image rides the prompt."""
+    if not seeded:
+        return ""
+    names = "\n".join(f"- {a.rel} ({a.mime})" for a in seeded)
+    seen = (" The images among them are also attached to this message, so you can look at them directly."
+            if shown else "")
+    return ("\n\nThe person attached these files to the conversation. Copies are in your working "
+            f"directory:\n{names}\n\nLeave those copies as they are and write any edited version to a "
+            f"new file.{seen}")
+
+
 # ---- A2A-shaped task lifecycle (brief §5/§7) ----------------------------------------------
 class State(str, Enum):  # noqa: UP042 — StrEnum changes str() from "State.WORKING" to "WORKING",
     # and this value is persisted and shipped on the wire; the migration is its own piece of work
     SUBMITTED = "SUBMITTED"
     WORKING = "WORKING"
-    # request_permission is paused, waiting on a human answer via POST /run/{id}/confirm (CUR-218).
+    # request_permission is paused, waiting on a human answer via POST /run/{id}/confirm.
     # Non-terminal: every gate below checks in/not in _TERMINAL, never == State.WORKING.
     AWAITING_CONFIRMATION = "AWAITING_CONFIRMATION"
     COMPLETED = "COMPLETED"
@@ -2415,8 +2564,8 @@ class Task:
     error: str | None = None
     summary: str | None = None  # redacted operational log line (brief §6B.5 two-tier log)
     verified: bool = False      # True only if an independent check (execution _verify OR LLM judge) confirmed it
-    verify_method: str = ""     # "execution" | "execution+judge" | "" (unverified). Bare "judge" is dead
-                                # since CUR-744 — see below.
+    verify_method: str = ""     # "execution" | "execution+judge" | "" (unverified). Bare "judge" never occurs
+                                # — see below.
     # Everything a reader needs to judge the verdict for themselves, rather than trust the label. A
     # boolean can only be believed or not; "checked that the answer lists 20 comma-separated items —
     # matched" is something a user can disagree with.
@@ -2429,90 +2578,94 @@ class Task:
     # "execution+judge" a chat user sees carries an auto-derived spec when it wasn't caller-written.
     judge_reason: str = ""      # the judge's stated reason — kept on a PASS too, which is the case a UI wants
     verify_check: dict = field(default_factory=dict)  # the assertion actually checked (set VerifySpec fields)
-    # The in-session repair loop's own final verdict on the turn that became this task's result —
+    # the in-session repair loop's own final verdict on the turn that became this task's result —
     # "" when the last-checked turn passed (or no repair check is configured), else the same detail string
-    # repair_check would have used to prompt another turn, set instead because there was nothing left to
+    # repair_check would have used to prompt another turn, set when there is nothing left to
     # retry with: the repair budget ran out, or the attempt's wall clock did, either way on the very turn
     # that spent the last of it (acp_client._acp_run's give-up branch). Sent to the client via
     # _done_payload so it can caveat the answer off this ONE heuristic rather than reconstructing its own,
-    # weaker copy from the raw tool_call/tool_result stream. (CUR-574)
+    # weaker copy from the raw tool_call/tool_result stream.
     unrun_detail: str = ""
     attempt_rejections: list = field(default_factory=list)  # why each losing attempt lost, in order
-    # The files the agent actually produced (CUR-195). Captured at the last moment the scratch exists and
+    # The files the agent actually produced. Captured at the last moment the scratch exists and
     # persisted, because the directory the answer talks about is deleted seconds after the answer is written.
     artifacts: list = field(default_factory=list)   # [{name, bytes, text|None, truncated}]
     artifacts_dropped: bool = False                 # more files existed than ARTIFACT_MAX_FILES sends
     # True iff this task asked for a session_id whose prior workdir was gone (reaped or lost) —
-    # wire name "expired". Own store column so it's readable independent of whether any artifacts exist. (CUR-196)
+    # wire name "expired". Own store column so it's readable independent of whether any artifacts exist.
     session_expired: bool = False
-    # How many files this session's workdir already held when THIS turn started — the walk
+    # how many files this session's workdir already held when THIS turn started — the walk
     # `_workdir_note` has always done to tell the agent what is in the room, now also recorded. In-memory
     # only, like transport_used: it describes a turn while it runs, and a rehydrated Task is never mid-run.
     #
     # It exists for the chat client's honesty caveat, which needs to know whether this turn could be
     # faking a measurement AT ALL. `claimedStepsWithoutObservedTools` and `claimedActionOnContinuedSession`
-    # (endpointAgent.ts) both read "no tool calls observed" as an overclaim. That is right for a continued
-    # session holding prior files, whose agent then claims to have acted on them (CUR-574, CUR-705). On an ordinary chat turn it is wrong, because no file has ever existed there and
+    # (endpointAgent.ts) both read "no tool calls observed" as an overclaim. That is right for the shapes
+    # Measured: a continued session holding prior files, whose agent then claimed to
+    # have acted on them. On an ordinary chat turn it is wrong, because no file has ever existed there and
     # a plain question needs no tool. Zero files in the room means there is nothing to have measured and
     # nothing to fake, so the caveat's own sentence is unconstructible.
     #
     # Deliberately the count at turn START, not at the end: the question is what the agent could have been
     # claiming about, which is what was there before it answered. `artifacts` already reports what this
-    # turn produced (scoped `since=turn_start_wall`) and cannot answer this. (CUR-1394)
+    # turn produced (scoped `since=turn_start_wall`) and cannot answer this.
     _session_files_at_start: int = field(default=0, repr=False)
-    # What the no-tool review (`_no_tool_check`) called this turn's accepted answer when it made no
+    # what the no-tool review (`_no_tool_check`) called this turn's accepted answer when it made no
     # tool call: "declined" or "answered", else "". Sent on the `done` frame so the chat site's
     # "no tool call was observed" caveat stays off an answer that claimed nothing. In-memory only, like
-    # the field above. (CUR-4599)
+    # the field above.
     _no_tool_answer: str = field(default="", repr=False)
-    # The confirmations currently open, redacted (kind/title/summary) via acp_client's
+    # the confirmations currently open, redacted (kind/title/summary) via acp_client's
     # _describe_tool_call. In-memory only, not a store column — same rationale as transport_used: a
     # rehydrated Task is never mid-run (recover_orphans already terminalized anything non-terminal
-    # on boot), so an empty list is always correct for one. (CUR-218)
+    # on boot), so an empty list is always correct for one.
     pending_confirmations: list = field(default_factory=list)
     # Callable, not `object`: both of these are CALLED (app.py's cancel/confirm endpoints and the
     # scratch watchdog), and `object | None` made every one of those calls a type error while telling a
-    # reader nothing about the signature they have to match (CUR-1227).
+    # reader nothing about the signature they have to match.
     _acp_confirm: Callable[[str, str], None] | None = field(default=None, repr=False)  # loop-threadsafe resolve
     _confirm_wait_secs: float = field(default=0.0, repr=False)  # accumulated paused-clock seconds, this attempt
     model_calls: int = 0        # persisted: gateway-metered calls this task made
     tokens: int = 0             # persisted: gateway-metered tokens this task spent (feeds the per-user budget)
-    # The executor this task runs on — the conversation's model when the caller named one the
-    # gateway routes, else AGENT_MODEL. Persisted, so a poll on another machine reports the same model. (CUR-4603)
+    # the executor this task runs on — the conversation's model when the caller named one the
+    # gateway routes, else AGENT_MODEL. Persisted, so a poll on another machine reports the same model.
     model: str = ""
-    # The model ids the gateway's upstream named on this task's executor calls, measured off each response.
+    # The model ids the gateway's upstream named on this task's executor calls, read off each response.
     # In-memory only: it is reported on the done frame and the run.finished line, both sent while it lives.
     served_models: list = field(default_factory=list)
-    transport_used: str = ""    # "acp" | "oneshot", set once `_use_acp` decides — in-memory
+    transport_used: str = ""    # "acp" | "oneshot", set once _use_acp decides (api/app.py:1113) — in-memory
                                  # only (not a store.py column), so a task reloaded after a restart reads "".
     # _permission_decision(task.user)'s tier/task-count, set once in _run (same place
     # `permission_policy` is resolved) so a client can be told WHY a turn ran on a restricted toolset,
     # not just that it did. "" (not "uniform") until _run sets it — same not-yet-decided convention as
     # transport_used above, so a task that never got far enough to resolve a policy doesn't lie and claim
     # the uniform-policy tier. In-memory only, same rationale as transport_used/pending_confirmations: a
-    # rehydrated task after restart is never mid-run, so there is nothing live left to report. (CUR-761)
+    # rehydrated task after restart is never mid-run, so there is nothing live left to report.
     tier: str = ""
     tasks_done: int | None = None
     tasks_required: int | None = None
     _workdir: str | None = field(default=None, repr=False)
     # caller-supplied session key, and whether this turn found + reused a prior workdir for it.
-    # Both in-memory only, same as _workdir — continuation is derived fresh from the store each turn. (CUR-196)
+    # Both in-memory only, same as _workdir — continuation is derived fresh from the store each turn.
     _session_id: str | None = field(default=None, repr=False)
     _session_continued: bool = field(default=False, repr=False)
-    # The caller says an earlier turn of this session ran an agent task, so a miss here means the
-    # session's workdir is on another machine or lost, never a new session. (CUR-4393)
+    # the caller says an earlier turn of this session ran an agent task, so a miss here means the
+    # session's workdir is on another machine or lost, never a new session.
     _continues_session: bool = field(default=False, repr=False)
-    _approval_mode: str = field(default="ask", repr=False)   # CUR-3142, from RunRequest.approval_mode
+    _approval_mode: str = field(default="ask", repr=False)
+    # decoded RunRequest.files. In memory only, never persisted, and dropped when the run ends.
+    _attachments: list[Attachment] = field(default_factory=list, repr=False)
     _verify_spec: VerifySpec | None = field(default=None, repr=False)
     _verify_autoderived: bool = field(default=False, repr=False)  # spec came from _derive_verify_spec, not the caller
     _max_steps: int = field(default=MAX_STEPS, repr=False)      # gateway step-cap for this task
     _max_tokens: int = field(default=MAX_TOKENS_BUDGET, repr=False)  # gateway spend-cap for this task
     _wall_clock: int = field(default=WALL_CLOCK_SECS, repr=False)  # per-attempt wall clock for this task (caller may lower)
+    _hard_deadline: float = field(default=float("inf"), repr=False)  # monotonic; TASK_HARD_CAP_SECS from submission
     _proc: subprocess.Popen | None = field(default=None, repr=False)  # live agent process (for cancel)
-    _sbx: Handle | None = field(default=None, repr=False)  # the conversation's remote sandbox (CUR-4482), else None
+    _sbx: Handle | None = field(default=None, repr=False)  # the conversation's remote sandbox, else None
     _acp_cancel: Callable[[], None] | None = field(default=None, repr=False)   # loop-threadsafe cancel closure
-    # Built in _run, read by _execute_attempt, forwarded to acp_client — see the note where
-    # they are assigned. Not part of the wire contract; leading underscore keeps them off StatusResponse. (CUR-1229)
+    # built in _run, read by _execute_attempt, forwarded to acp_client — see the note where
+    # they are assigned. Not part of the wire contract; leading underscore keeps them off StatusResponse.
     _on_confirmation_open: Callable[[dict], None] | None = field(default=None, repr=False)
     _on_confirmation_close: Callable[[str], None] | None = field(default=None, repr=False)
     _scratch_exceeded: int = field(default=0, repr=False)           # bytes at the moment the watchdog fired (0 = never)
@@ -2529,7 +2682,7 @@ class Task:
 TASKS: dict[str, Task] = {}        # LIVE runtime objects (hold _proc etc.) for non-terminal + recently-terminal tasks
 _TASKS_LOCK = threading.Lock()
 # set, the task rows, their events and cross-machine cancels live in agent-service's own Postgres,
-# so any machine of the app can serve any task; unset, everything stays in DB_PATH on this machine. (CUR-4443)
+# so any machine of the app can serve any task; unset, everything stays in DB_PATH on this machine.
 TASKS_DATABASE_URL = os.environ.get("AGENT_TASKS_DATABASE_URL") or None
 store = Store(DB_PATH, tasks_url=TASKS_DATABASE_URL)  # durable mirror: survives restart, and is the per-user spend ledger
 # Who runs a task, on a shared store. A machine keeps its id across restarts, which is what lets its
@@ -2546,11 +2699,11 @@ TAIL_WAIT_SECS = float(os.environ.get("AGENT_EVENTS_TAIL_WAIT_SECS", "5"))  # re
 # generator polls for new events by sequence id. The per-task event rate is low (plan + a few steps), so
 # polling is cheap; the seq doubles as the SSE `id:` for Last-Event-ID replay on reconnect. This serves
 # BOTH 2026 surfaces off one schema: a web canvas reads it directly (EventSource), and the ACP↔HTTP shim
-# (local Hermes/editor → hosted backend) re-emits it as ACP session_update. Event vocabulary is
+# (Story A: local Hermes/editor → hosted backend) re-emits it as ACP session_update. Event vocabulary is
 # the streaming-spec set (state/plan/message/tool_call/tool_result/usage/done) — A2A/AG-UI-adjacent, not
 # bespoke — and secret-free (only ids/kinds/counts cross it, per the _log_event contract).
-# The event stream has no off switch: chat reads every agent turn through it (endpointAgent.ts), so
-# disabling it would break every turn rather than turn a feature off (CUR-3199).
+# the event stream has no off switch. Chat reads every agent turn through it
+# (endpointAgent.ts), so AGENT_SSE_DISABLED=1 was an outage, never a feature off.
 SSE_MAX_EVENTS = int(os.environ.get("AGENT_SSE_MAX_EVENTS", "2000"))      # bound per-task buffer (oldest dropped)
 SSE_POLL_SECS = float(os.environ.get("AGENT_SSE_POLL_SECS", "0.25"))      # async drain cadence
 SSE_IDLE_TIMEOUT_SECS = int(os.environ.get("AGENT_SSE_IDLE_TIMEOUT_SECS", "900"))  # abandon a stalled stream
@@ -2559,8 +2712,9 @@ SSE_IDLE_TIMEOUT_SECS = int(os.environ.get("AGENT_SSE_IDLE_TIMEOUT_SECS", "900")
 # Without this, `_acp_run` doesn't ask Hermes for the deltas and the answer lands whole after 12-30s while
 # the work streams above it.
 #
-# ON by default. With best-of > 1 an attempt can be rejected, so streamed text could be taken back in front
-# of the reader, and handling that needs a separate compute channel. AGENT_BEST_OF=1 means one attempt, so the streamed
+# ON by default, which the shape of best-of makes safe. The reason to withhold it was retraction: with
+# best-of > 1 an attempt can be rejected, so streamed text could be taken back in front of the reader, and
+# the design for that needs a separate compute channel. AGENT_BEST_OF=1 means one attempt, so the streamed
 # text IS the answer and `done.result` repeats it. If best-of is ever raised, revisit this together with
 # that decision — they are one question, not two.
 STREAM_TOKENS = os.environ.get("AGENT_STREAM_TOKENS", "1") != "0"
@@ -2586,7 +2740,7 @@ class _EventBuffer:
                 return
             seq = self._base + len(self._events)
             self._events.append((seq, event_type, data))
-            if store.shared and self._task_id:              # CUR-4443: another machine may be streaming it
+            if store.shared and self._task_id:              # another machine may be streaming it
                 _EVENT_SINK.put(self._task_id, seq, event_type, data)
             if len(self._events) > SSE_MAX_EVENTS:
                 drop = len(self._events) - SSE_MAX_EVENTS
@@ -2620,7 +2774,7 @@ _EVENTS_LOCK = threading.Lock()
 
 
 class _EventSink:
-    """CUR-4443: copies each task's events into the shared store in batches, off the run thread, so a
+    """Copies each task's events into the shared store in batches, off the run thread, so a
     token frame costs a list append rather than a round trip to Postgres. A batch that fails to write is
     logged and dropped: the owner's own stream is unaffected, and a reader elsewhere sees a gap."""
 
@@ -2705,7 +2859,7 @@ logsink.init("app")
 
 # MCP servers agent mode may call, from AGENT_MCP_SERVERS (see mcp_config.py). Parsed once at
 # import. A bad value never takes the service down: it yields no servers, logs here, and /healthz carries
-# the reason under `mcp.error` for as long as it stays bad. (CUR-3025)
+# the reason under `mcp.error` for as long as it stays bad.
 MCP_CONFIG = mcp_config.load()
 if MCP_CONFIG.error:
     _log_event("mcp.config_invalid", reason=MCP_CONFIG.error)
@@ -2715,21 +2869,22 @@ elif MCP_CONFIG.servers:
 
 # Model<->toolset/verifier coupling guard rail: swapping AGENT_MODEL is easy to do without also
 # revisiting ALLOWED_TOOLSETS/AGENT_VERIFIER_MODEL, which can silently pair a new executor with
-# settings that were only ever measured correct for the OLD one. Startup-time sanity check, not a
-# runtime gate — these are measured efficiency/quality risks, not security boundaries, so it always
+# settings that were only ever validated for the OLD one. Startup-time sanity check, not a
+# runtime gate — these are efficiency/quality risks, not security boundaries, so it always
 # logs loudly and never blocks. An unrecognized model is simply unchecked, never declared safe.
 _MODEL_TOOLSET_REQUIREMENTS = [
     # (substring to match in AGENT_MODEL.lower(), required substring in ALLOWED_TOOLSETS.lower(), why)
     ("mistralai/mistral", "coding",
      "Mistral reaches for write_file from its own agentic-training prior; a terminal-only toolset makes "
-     "it repeat a dead 'tool does not exist' call instead of falling back to a heredoc (measured: "
-     "terminal-only SOLID 6/8 vs coding SOLID 8/8 on a hard multi-file task)."),
+     "it repeat a dead 'tool does not exist' call instead of falling back to a heredoc (see "
+     "docs/model-tradeoffs.md)."),
 ]
 
 
 def _check_model_coupling(model: str, toolsets: str, verifier_model: str | None) -> None:
-    """Log (never raise) if AGENT_MODEL looks paired with a toolset measured wrong for it, or with a
-    verifier explicitly set to the SAME model (defeats the whole point of a decorrelated judge). Self-judge (verifier_model unset) is a legitimate,
+    """Log (never raise) if AGENT_MODEL looks paired with a toolset known to suit it poorly, or with a
+    verifier explicitly set to the SAME model (defeats the whole point of a decorrelated judge — see
+    docs/model-tradeoffs.md's verifier bake-off). Self-judge (verifier_model unset) is a legitimate,
     intentional default and is NOT flagged here — only an explicit same-model verifier is a real bug."""
     if not model:
         return
@@ -2742,8 +2897,8 @@ def _check_model_coupling(model: str, toolsets: str, verifier_model: str | None)
         print(json.dumps({"event": "config.verifier_not_decorrelated", "model": model,
                           "verifier_model": verifier_model,
                           "why": "AGENT_VERIFIER_MODEL is explicitly set to the same model as AGENT_MODEL "
-                                 "— a same-weights self-judge has a measured discrimination ceiling "
-                                 "(recall ~2/5-3/5 even for a capable model); this defeats the point of "
+                                 "— a same-weights self-judge has a known discrimination ceiling "
+                                 "(low recall even for a capable model); this defeats the point of "
                                  "setting a verifier at all. Pick a genuinely different checkpoint, or "
                                  "unset AGENT_VERIFIER_MODEL to use the intentional self-judge default."}),
               flush=True)
@@ -2774,7 +2929,7 @@ def _metrics_record(task: Task) -> None:
     if task.verified:
         _metric_inc("agent_runs_verified_total")
     if task.transport_used:
-        _metric_inc(f"agent_runs_transport_{task.transport_used}_total")   # ACP-vs-oneshot split
+        _metric_inc(f"agent_runs_transport_{task.transport_used}_total")   # fleet-wide ACP-vs-oneshot split
     _metric_inc("agent_model_calls_total", task.model_calls)
     _metric_inc("agent_tokens_total", task.tokens)
     start = _RUN_START.pop(task.id, None)
@@ -2785,7 +2940,7 @@ def _metrics_record(task: Task) -> None:
             _METRICS["agent_run_duration_seconds_count"] += 1
     _log_event("run.finished", id=task.id, user=task.user, state=task.state.value, verified=task.verified,
                model_calls=task.model_calls, tokens=task.tokens, transport=task.transport_used,
-               # The executor asked for, and what the upstream said answered it (CUR-4603).
+               # the executor asked for, and what the upstream said answered it.
                model=task.model or AGENT_MODEL or None, served_models=list(task.served_models),
                duration_s=round(dur, 3) if dur is not None else None,
                # WHICH authority verified, so `verified: true` in the dataset says what stood behind it.
@@ -2886,7 +3041,7 @@ def _caller_inflight(caller: str) -> tuple[int, int]:
 
 
 def _subject_daily_tasks(requested: str | None) -> int:
-    """The per-visitor daily task allowance for this request (CUR-4620).
+    """The per-visitor daily task allowance for this request.
 
     Chat counts each account's tasks itself and gives a team account a larger allowance; it says so in
     X-Agent-Subject-Daily-Tasks, so this backstop does not stop that account at the visitor number first.
@@ -2912,8 +3067,8 @@ def _check_user_budget(user: str, reserve_tokens: int, subject_daily_tasks: int 
     `user` is a PRINCIPAL — `caller` or `caller/<subject>`. The CALLER ceiling is the real bound, because the
     caller is authenticated; the SUBJECT allowance is fairness inside it, because the subject is not. Both
     are checked and the caller one is checked FIRST, so a caller rotating subjects to mint fresh allowances
-    still stops at its own total. Checking only the subject would be weaker than a single caller
-    limit — the header would be a documented way around the cap.
+    still stops at its own total. Checking only the subject would have been strictly weaker than the single
+    limit this replaced — the header would have been a documented way around the cap.
 
     A caller in OPERATOR_SUBS skips both windows. The limits ration invitees against a shared research
     preview; a smoke check is us asking our own service whether it still works, and rationing that
@@ -2949,7 +3104,7 @@ def _check_user_budget(user: str, reserve_tokens: int, subject_daily_tasks: int 
             raise HTTPException(429, f"caller token budget reached ({CALLER_DAILY_TOKENS} per {RATE_WINDOW_SECS}s)")
     # Only when a subject was actually named. For a bare caller the subject bucket IS the caller bucket, so
     # applying the (smaller) per-visitor number there would silently lower the ceiling for every caller that
-    # does not send the header — the direction that would break the direct API.
+    # does not send the header — the direction that turns shipping this into an outage for the direct API.
     subject_limit = SUBJECT_DAILY_TASKS if subject_daily_tasks is None else subject_daily_tasks
     if subject_limit and user != caller:
         s_n, _ = _user_inflight(user)
@@ -2964,7 +3119,7 @@ def _check_user_budget(user: str, reserve_tokens: int, subject_daily_tasks: int 
 def _effective_caps(req_steps: int | None, req_tokens: int | None,
                     req_wall: int | None = None) -> tuple[int, int, int]:
     """Clamp per-task overrides to the server ceilings so a caller can only TIGHTEN a cap, never raise it
-    (the DoS/spend guard must not be caller-defeatable, e.g. by max_steps=10_000_000).
+    (the DoS/spend guard must not be caller-defeatable: an absurd max_steps is clamped).
     max_tokens 0 = off; a caller can't switch off a server-imposed token ceiling, only lower it.
 
     The wall clock joined the other two because a deadline is a cap like the rest, and because the caller
@@ -2990,9 +3145,9 @@ def _effective_caps(req_steps: int | None, req_tokens: int | None,
     else:
         # Counted, not just applied. The clamp is lower-only and therefore looks safe read on its own, but
         # its whole justification — that we stop spending on a reader who has already been shown a timeout
-        # — assumes some caller actually states a deadline. Nothing recorded whether one ever had, so the
+        # — assumes some caller actually states a deadline. Without a count the
         # feature could be correct, deployed, and entirely dead, and the code would read identically in
-        # both worlds. A drift check should report a zero here out loud rather than passing over it.
+        # both worlds. `eval/prodcheck.py` reports a zero here out loud rather than passing over it.
         #
         # `requests`, NOT `runs`, and the distinction decides whether the report is honest: this runs at
         # api/app.py's /run handler BEFORE _check_user_budget, both moderate() calls and _try_acquire_slot,
@@ -3032,8 +3187,8 @@ def _persist(task: Task) -> None:
                  # evicted from TASKS or read after a restart would otherwise lose its files for good.
                  artifacts=json.dumps({"files": task.artifacts, "dropped": task.artifacts_dropped})
                  if task.artifacts else None,
-                 session_expired=int(task.session_expired),  # CUR-196; own column, readable even with no artifacts
-                 # CUR-855/846: the client's honesty caveat rides on this being non-blank — without it,
+                 session_expired=int(task.session_expired),  # own column, readable even with no artifacts
+                 # the client's honesty caveat rides on this being non-blank — without it,
                  # result survives eviction/restart but the warning that it's unverified/failed doesn't.
                  unrun_detail=task.unrun_detail,
                  model=task.model or None)
@@ -3042,7 +3197,7 @@ def _persist(task: Task) -> None:
 def _get_task(task_id: str) -> Task | None:
     """Live runtime object if present; else reconstruct a read-only Task from the durable store (so results
     survive eviction + restart). On one machine a store-only task is always terminal (live non-terminal tasks
-    stay in TASKS); on a shared store it may be running on another machine (CUR-4443)."""
+    stay in TASKS); on a shared store it may be running on another machine."""
     with _TASKS_LOCK:
         t = TASKS.get(task_id)
     if t is not None:
@@ -3057,10 +3212,10 @@ def _get_task(task_id: str) -> Task | None:
                 artifacts=arts.get("files") or [], artifacts_dropped=bool(arts.get("dropped")),
                 model_calls=rec["model_calls"], tokens=rec["tokens"],
                 session_expired=bool(rec.get("session_expired")),
-                # CUR-855/846: NULL on a pre-migration row or a task that never set it — same "" default
+                # NULL on a pre-migration row or a task that never set it — same "" default
                 # Task.unrun_detail already carries in memory, not a new sentinel to special-case downstream.
                 unrun_detail=rec.get("unrun_detail") or "",
-                # NULL on a row written before the column, which ran on AGENT_MODEL. (CUR-4603)
+                # NULL on a row written before the column, which ran on AGENT_MODEL.
                 model=rec.get("model") or "")
 
 
@@ -3082,7 +3237,7 @@ def _truncate(s: str, n: int) -> tuple[str, bool]:
 
 
 def _hide_workdir(text: str, work: str | RemoteWork) -> str:
-    """Take the sandbox's own directory out of an answer (CUR-4104). The model runs with cwd=work and
+    """Take the sandbox's own directory out of an answer. The model runs with cwd=work and
     names it ("both files are in the working directory (/tmp/agent-run-…)"), but the person never sees
     that directory: their files arrive as downloads under the answer, by name. A path inside it keeps
     its name. The directory alone in brackets is an aside and goes with them; anywhere else it is part
@@ -3160,7 +3315,7 @@ def _deliver_webhook(task: Task) -> None:
         # set is proof it did not. Written as a real fail-CLOSED branch rather than a type-checker
         # suppression, because the alternative on this path is posting UNPINNED to a URL whose host we
         # never validated — if those two functions ever drift apart, this drops the delivery instead
-        # of quietly widening the SSRF guard (CUR-1227).
+        # of quietly widening the SSRF guard.
         _log_event("webhook.blocked", id=task.id, reason="no_host_to_pin")
         return
     if pinned and u.hostname:                             # connect to the validated IP, keep Host + SNI = hostname
@@ -3185,8 +3340,8 @@ def _deliver_webhook(task: Task) -> None:
 
 def _reset_scratch(work: str | RemoteWork) -> None:
     """Wipe the per-task scratch between best-of-N attempts (keep HERMES_HOME) so a failed attempt's partial
-    files can't make the next attempt's _verify false-pass. Safe because the service seeds no input files —
-    the agent creates everything it needs within the run."""
+    files can't make the next attempt's _verify false-pass. The only input files are the person's
+    attachments, which _run copies back in after each reset; the agent creates the rest."""
     if isinstance(work, RemoteWork):
         work.reset()
         return
@@ -3213,7 +3368,7 @@ def _scratch_artifacts(work: str | RemoteWork) -> list[str]:
         return []
 
 
-CORPUS_SNAPSHOT_MAX_BYTES = 8000  # per-file and total cap — this is training-corpus material for CUR-654,
+CORPUS_SNAPSHOT_MAX_BYTES = 8000  # per-file and total cap — this is training-corpus material,
 #                                   not a forensic record (_write_no_follow's raw.log already is that);
 #                                   lossy on purpose, bounded so a large scratch can't grow the table unbounded.
 
@@ -3229,11 +3384,12 @@ def _truncate_utf8(s: str, max_bytes: int) -> str:
 
 
 def _corpus_snapshot_text(work: str | RemoteWork, nonce: str | None, max_bytes: int = CORPUS_SNAPSHOT_MAX_BYTES) -> str:
-    """Best-effort snapshot of what the agent wrote this attempt, for a CUR-596/CUR-654 corpus log entry.
+    """Best-effort snapshot of what the agent wrote this attempt, for a corpus log entry.
     Uses `_artifact_paths` (recursive, lstat + regular-files-only) and `_read_artifact` (O_NOFOLLOW,
-    binary-safe, byte-bounded) — the same pair every other artifact reader in this file uses. That
-    covers output written into a subdirectory, binary files (no replacement-character garbage in the
-    log) and symlinks the agent plants (never dereferenced). Never raises.
+    binary-safe, byte-bounded) — the same pair every other artifact reader in this file uses. The
+    `_scratch_artifacts`'s top-level-only listing plus `p.read_text()` would miss output written into a
+    subdirectory, have no binary guard (logging replacement-character garbage for a binary file), and
+    dereference a symlink the agent planted. Never raises.
 
     `nonce`: scrubbed from each file's FULL content before the byte cap is applied. Scrubbing the
     truncated result instead lets the nonce straddle the cut point and leave an unredacted fragment in
@@ -3270,15 +3426,15 @@ def _snapshot_scratch(work: str | RemoteWork) -> str | RemoteWork:
 
     SECURITY: uses `_artifact_paths` (lstat + S_ISREG-only) to decide what to copy and O_NOFOLLOW to open
     it, the same guard every other reader of this untrusted directory already applies (`_read_artifact`'s
-    own docstring: "a symlink to /data/tasks.db returns another tenant's database"). A plain
-    `shutil.copytree`/`copy2` would follow symlinks — a `ln -s /data/tasks.db work/leak.csv`
-    from inside the agent's own sandboxed shell would be dereferenced into a plain file here, then
+    own docstring: "a symlink to /data/tasks.db returns another tenant's database"). The naive
+    `shutil.copytree`/`copy2` this replaced followed symlinks — a `ln -s /data/tasks.db work/leak.csv`
+    from inside the agent's own sandboxed shell would have been dereferenced into a plain file here, then
     served as an ordinary downloadable artifact after `_restore_scratch`. Never raises — a copy failure
     just means that entry is missing from the snapshot, not a crashed turn. `mkdir` is INSIDE the guarded
-    try: tempfile.mkdtemp() has already created `dest` on disk by
+    try (not outside it): tempfile.mkdtemp() has already created `dest` on disk by
     the time a per-file mkdir could fail (ENOSPC, a pathologically deep path), and an uncaught exception
     there would propagate out of this function entirely, leaking `dest` with no reference anywhere to
-    clean it up — on this host's tmpfs-backed /tmp, that leak is unrecoverable RAM until a process restart."""
+    clean it up — on a RAM-backed /tmp, that leak is unrecoverable RAM until a process restart."""
     if isinstance(work, RemoteWork):
         return work.snapshot()                                   # a copy in the guest, outside its workspace
     dest = tempfile.mkdtemp(prefix="cur596-cc-")
@@ -3301,7 +3457,7 @@ def _snapshot_scratch(work: str | RemoteWork) -> str | RemoteWork:
 def _restore_scratch(work: str | RemoteWork, snapshot: str | RemoteWork) -> None:
     """The inverse of _snapshot_scratch: clear whatever is currently in `work` (everything but the
     per-attempt HERMES_HOMEs) and copy `snapshot`'s contents in. Restores `work` to physically match the
-    answer being served — the artifact-download route and moderation both read `work` LIVE (CUR-546), so
+    answer being served — the artifact-download route and moderation both read `work` LIVE, so
     an in-memory record of what the winning attempt produced is not enough; the files themselves have to
     be back.
 
@@ -3309,10 +3465,10 @@ def _restore_scratch(work: str | RemoteWork, snapshot: str | RemoteWork) -> None
     symlink to answer "is the thing it points to a directory", which is exactly backwards for deciding
     how to remove the symlink ITSELF. The hazard: a losing attempt plants
     `ln -s /data top_level_link`; `_snapshot_scratch` correctly never captures the link (lstat sees
-    S_ISLNK, not S_ISREG/S_ISDIR), but an `is_dir()` check here would follow it and route into
+    S_ISLNK, not S_ISREG/S_ISDIR), but a `p.is_dir()` check here would follow it, route into
     `shutil.rmtree(p)`, which then raises "Cannot call rmtree on a symbolic link" — silently swallowed by
-    the surrounding `except OSError`, leaving the symlink in place. The copy-back loop below would then
-    `shutil.copy2` the WINNING attempt's file content straight through that surviving symlink to
+    the surrounding `except OSError`, leaving the symlink in place. The copy-back loop below then
+    `shutil.copy2`s the WINNING attempt's file content straight through that surviving symlink to
     wherever it points — a write outside `work`, from the unsandboxed app process, to a path and with
     content the agent fully controlled across its own attempts.
 
@@ -3378,8 +3534,10 @@ def _probe_egress(target: str = "", timeout: float = 3.0) -> str:
     guess which way to resolve a probe that could not run, and both guesses are bad: "filtered" hides a
     real hole, "open" pages someone over a DNS hiccup.
 
-    This observes egress instead of reading config. A config value saying `AGENT_EGRESS=allowlist` is only
-    a claim — it says what entrypoint.sh was ASKED to do, not what the kernel is doing. So /healthz reports both,
+    This exists because the thing it replaces was a claim. The sandbox comment asserted egress was handled
+    by a NetworkPolicy that governs manifests we do not deploy, and it read as true for months because
+    nothing ever went and looked. A config value saying `AGENT_EGRESS=allowlist` is the same kind of claim
+    — it says what entrypoint.sh was ASKED to do, not what the kernel is doing. So /healthz reports both,
     and they can disagree out loud."""
     host, _, port = (target or EGRESS_PROBE).partition(":")
     if not host or not port.isdigit():
@@ -3392,7 +3550,7 @@ def _probe_egress(target: str = "", timeout: float = 3.0) -> str:
         return "filtered"           # policy drop swallows the SYN; nothing answers
     except OSError as e:
         # ECONNREFUSED is in this list because our chain REJECTS rather than silently dropping (a dropped
-        # SYN costs the caller a full TCP retry ladder that stalls every agent turn). A refusal
+        # SYN costs the caller a full TCP retry ladder — it took agent turns from 17s to 88s). A refusal
         # from a target chosen to be listening therefore means something local refused it, which is the
         # filter. That inference rests entirely on the target: point AGENT_EGRESS_PROBE at a dead host and
         # this reports "filtered" about nothing. EPERM/EACCES cover a drop-style chain, ENETUNREACH a
@@ -3404,7 +3562,7 @@ def _probe_egress(target: str = "", timeout: float = 3.0) -> str:
             s.close()
 
 
-_LIVE_COMPUTE_PROVIDER: dict = {}   # last successful poll of proxy.py's /healthz "last_served" (CUR-1107)
+_LIVE_COMPUTE_PROVIDER: dict = {}   # last successful poll of proxy.py's /healthz "last_served"
 
 
 def _compute_provider_refresh() -> None:
@@ -3429,8 +3587,8 @@ def _compute_provider_refresh() -> None:
         _LIVE_COMPUTE_PROVIDER = served
 
 
-# The app model ids the gateway routes, from its /healthz `models`, and when they were read. A
-# task may name one of these as its executor; [] means the gateway can route only AGENT_MODEL. (CUR-4603)
+# the app model ids the gateway routes, from its /healthz `models`, and when they were read. A
+# task may name one of these as its executor; [] means the gateway can route only AGENT_MODEL.
 _ROUTABLE_MODELS: tuple[float, frozenset[str]] = (0.0, frozenset())
 ROUTABLE_MODELS_TTL_SECS = float(os.environ.get("AGENT_ROUTABLE_MODELS_TTL_SECS", "60"))
 
@@ -3459,7 +3617,7 @@ def _routable_models() -> frozenset[str]:
 
 
 def _resolve_task_model(requested: str | None, user: str = "") -> str:
-    """The executor model for a task that asked for `requested` (CUR-4603). Raises 422, never substitutes.
+    """The executor model for a task that asked for `requested`. Raises 422, never substitutes.
 
     Absent or AGENT_MODEL: AGENT_MODEL, the behaviour before a task could name one. Any other model runs
     only when the gateway routes it (`_routable_models`), and never when it is this deployment's verifier,
@@ -3491,7 +3649,7 @@ _COMPUTE_PROVIDER_REFRESH_STOP = threading.Event()
 
 def _compute_provider_refresh_loop() -> None:
     """Same shape as _pruner_loop / _session_reaper_loop: keep _LIVE_COMPUTE_PROVIDER from going stale
-    for the life of the process, since routing is mixed and can shift between polls (CUR-1107)."""
+    for the life of the process, since routing is mixed and can shift between polls."""
     while not _COMPUTE_PROVIDER_REFRESH_STOP.wait(COMPUTE_PROVIDER_REFRESH_SECS):
         _compute_provider_refresh()
 
@@ -3523,7 +3681,7 @@ def _write_no_follow(path: str, text: str) -> None:
 def _egress_selftest() -> None:
     """Run the probe once at startup and record the verdict. Also LOGS the disagreement, because the case
     worth catching is `AGENT_EGRESS=allowlist` with an observed "open" — configured-and-not-actually-on,
-    which is the gap this guards against: everything says it is handled."""
+    which is how the previous gap survived: everything said it was handled."""
     global _EGRESS_OBSERVED
     _EGRESS_OBSERVED = _probe_egress()
     if EGRESS == "allowlist" and _EGRESS_OBSERVED == "open":
@@ -3618,11 +3776,10 @@ def _artifact_paths(work: str | RemoteWork, limit: int, since: float | None = No
     files in it" is a task people actually ask for and a top-level listing reports it as one entry.
 
     Excluded: the per-attempt `hermes-home*` session state (not the user's work), `raw.log`, which the
-    service itself writes into the scratch at the end of the run, and ARTIFACT_QUARANTINE_DIRNAME (CUR-836:
-    files a moderation block already removed from circulation, not the agent's work either).
+    service itself writes into the scratch at the end of the run, and ARTIFACT_QUARANTINE_DIRNAME.
 
-    `since`, when set, drops anything with `st_mtime` older than it — CUR-1117: in a continued session
-    (CUR-196) `work` survives across turns, so an unfiltered walk resurfaces a PRIOR turn's real file
+    `since`, when set, drops anything with `st_mtime` older than it — in a continued session
+    `work` survives across turns, so an unfiltered walk resurfaces a PRIOR turn's real file
     under a "this turn produced" label even when this turn made zero tool calls. Callers that want the
     whole scratch (moderation, the download route) pass None, unchanged.
 
@@ -3634,7 +3791,7 @@ def _artifact_paths(work: str | RemoteWork, limit: int, since: float | None = No
     the working directory (WORKDIR_NOTE), so the top level holds the answer and a nested tree is usually
     supporting material. A global sort by path would let `a/b/tmp.txt` displace `report.md`."""
     if isinstance(work, RemoteWork):
-        return work.files(limit, since=since)                    # the same walk, run in the guest (CUR-4483)
+        return work.files(limit, since=since)                    # the same walk, run in the guest
     out: list[tuple[str, int]] = []
     for root, dirs, files in os.walk(work):
         dirs[:] = sorted(d for d in dirs if not (root == work and (
@@ -3667,8 +3824,8 @@ def _read_artifact(path: str, cap: int) -> tuple[str | None, bool]:
     the chat surface renders text, and base64 of an unknown blob helps nobody at this size budget."""
     try:
         # O_NOFOLLOW and a BOUNDED read. `Path(path).read_bytes()[:cap]` materialises the whole file
-        # first, so a sparse `truncate -s 20G` file in the scratch, free to create, would be an out-of-memory
-        # kill of a 1GB machine. The cap has to be applied by the read, not by the slice. O_NOFOLLOW closes
+        # first, so `truncate -s 20G` in the scratch — sparse, free to create — was an out-of-memory kill
+        # of a 1GB machine. The cap has to be applied by the read, not by the slice. O_NOFOLLOW closes
         # the symlink route a second time, in case a file passes the lstat above and is swapped after.
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
     except OSError:
@@ -3683,9 +3840,9 @@ def _read_artifact(path: str, cap: int) -> tuple[str | None, bool]:
 
 def _decode_artifact(raw: bytes, cap: int) -> tuple[str | None, bool]:
     """`_read_artifact`'s verdict on up to cap+1 bytes already read: (text, truncated), or (None, False)."""
-    # A PDF has no NUL byte when its streams are ASCII85 (reportlab's default), so the NUL test alone reads
-    # one as 15 KB of text, which the guard takes about 30 s to screen against a 25 s timeout: every PDF would
-    # fail the turn as "moderation pipeline unavailable" (CUR-4106).
+    # A PDF has no NUL byte when its streams are ASCII85 (reportlab's default), so the NUL test alone read
+    # one as 15 KB of text, and the guard spent 30 s on it against a 25 s timeout: every PDF failed the turn
+    # as "moderation pipeline unavailable".
     if b"\x00" in raw or raw.startswith(b"%PDF-"):
         return None, False
     truncated = len(raw) > cap
@@ -3708,7 +3865,8 @@ def _read_rel(work: str | RemoteWork, rel: str, cap: int) -> tuple[str | None, b
     return _read_artifact(os.path.join(work, rel), cap)
 
 
-def _collect_artifacts(work: str | RemoteWork, since: float | None = None) -> tuple[list[dict], bool]:
+def _collect_artifacts(work: str | RemoteWork, since: float | None = None,
+                       exclude: frozenset[str] = frozenset()) -> tuple[list[dict], bool]:
     """(artifacts, more_were_dropped). The files the agent produced, with their contents where they fit,
     so the response carries what the answer describes.
 
@@ -3719,10 +3877,14 @@ def _collect_artifacts(work: str | RemoteWork, since: float | None = None) -> tu
 
     `since` narrows to files written this turn — see `_artifact_paths`. Only the "this turn produced"
     display list passes it; `_artifact_text_for_moderation` and the download route call `_artifact_paths`
-    unscoped on purpose and don't go through here."""
+    unscoped on purpose and don't go through here.
+
+    `exclude`: paths that are not this turn's work, the files the person attached, which are
+    copied in at the start of the turn and so would otherwise pass `since`."""
     if ARTIFACT_MAX_FILES <= 0:
         return [], False
-    found = _artifact_paths(work, ARTIFACT_MAX_FILES, since=since)
+    found = [(rel, size) for rel, size in _artifact_paths(work, ARTIFACT_MAX_FILES + len(exclude), since=since)
+             if rel not in exclude]
     dropped = len(found) > ARTIFACT_MAX_FILES
     budget = ARTIFACT_TOTAL_BYTES
     out = []
@@ -3742,15 +3904,15 @@ def _artifact_text_for_moderation(work: str | RemoteWork) -> str:
 
     `_collect_artifacts`'s caps (ARTIFACT_MAX_FILES/ARTIFACT_MAX_BYTES/ARTIFACT_TOTAL_BYTES) bound the size
     of the inline JSON preview a client renders — that's the right cap for THAT job. Using the same capped
-    text for moderation would leave a file past the count cap, or bigger than the preview cap, unmoderated
-    (CUR-546). GET /sessions/{id}/artifacts/{filename} serves any regular file in
+    text for moderation would leave a gap: a file past the count cap, or bigger than the preview
+    cap, would never be moderated, yet GET /sessions/{id}/artifacts/{filename} serves any regular file in
     `work` up to ARTIFACT_DOWNLOAD_MAX_BYTES regardless of those inline caps, so moderation has to cover
     the same ground — deliberately unbounded by ARTIFACT_MAX_FILES here, for the same reason
     `_resolve_artifact_path` isn't.
 
     Binary content is skipped, not blocked: `_read_artifact` returns None for it (same as `_collect_artifacts`
     already accepts), and no practical text classifier moderates raw bytes anyway. This stays an accepted,
-    visible gap — the CUR-546 route review considered gating binary downloads on it and chose not to, since
+    visible gap — the route review considered gating binary downloads on it and chose not to, since
     that would block ordinary non-text work output for a screening pass that can't act on it regardless."""
     out = []
     for rel, size in _artifact_paths(work, limit=10**9):  # no ARTIFACT_MAX_FILES cap — see docstring above
@@ -3763,7 +3925,7 @@ def _artifact_text_for_moderation(work: str | RemoteWork) -> str:
 
 
 def _quarantine_blocked_artifacts(work: str | RemoteWork) -> list[str]:
-    """Called right after a STAGE_ARTIFACTS `moderate()` call raises (CUR-836). Moves every file that
+    """Called right after a STAGE_ARTIFACTS `moderate()` call raises. Moves every file that
     contributed text to that call — same walk, same skip rules as `_artifact_text_for_moderation`, so
     "the offending files" means exactly the set that was actually screened and blocked, nothing wider
     (an empty or binary file couldn't have caused the block and is left alone) — out of `work` and into
@@ -3775,10 +3937,10 @@ def _quarantine_blocked_artifacts(work: str | RemoteWork) -> list[str]:
     moderate() call per file would fix that at the cost of turning one Coop round-trip into
     ARTIFACT_MAX_FILES-unbounded-many; not worth it for a path that already fails the whole turn either way.
 
-    That does two things at once: the download route now 404s on the quarantined name (it no longer
+    That does two things at once: the download route 404s on the quarantined name (it no longer
     exists at that path), and the NEXT turn in this session — which re-moderates everything still in
-    `work` because CUR-196 keeps the workdir alive across turns — no longer sees this file at all, so it
-    can't re-block on the same content every turn until the idle reaper finally clears the session.
+    `work` because the workdir is kept alive across turns — does not see this file at all, so it
+    can't re-block on the same content every turn until the idle reaper clears the session.
 
     Same filesystem, so `os.replace` is an atomic rename, not a copy — no window where the file exists in
     both places or neither. Returns the relative paths actually moved, for the caller to log."""
@@ -3812,7 +3974,7 @@ def _downloadable(rel_parts: tuple[str, ...]) -> bool:
 
 
 def _resolve_artifact_path(work: str, filename: str) -> tuple[str, int, int] | None:
-    """(path, dev, ino) for one CUR-546 download, or None if `filename` isn't a safe, existing, regular
+    """(path, dev, ino) for one artifact download, or None if `filename` isn't a safe, existing, regular
     file inside `work`. Deliberately NOT built on `_artifact_paths` — that walk is capped at
     ARTIFACT_MAX_FILES for the inline-summary budget, and a file past that cap still exists on disk and
     must still be fetchable by exact name.
@@ -3855,7 +4017,7 @@ def _resolve_artifact_path(work: str, filename: str) -> tuple[str, int, int] | N
     return resolved, st.st_dev, st.st_ino
 
 
-_ARTIFACT_STREAM_CHUNK_BYTES = 65536   # per-chunk read size for CUR-546 downloads — bounds PEAK per-request
+_ARTIFACT_STREAM_CHUNK_BYTES = 65536   # per-chunk read size for artifact downloads — bounds PEAK per-request
                                         # memory to one chunk regardless of file size or concurrency, rather
                                         # than depending on ARTIFACT_DOWNLOAD_MAX_BYTES staying small; a slow
                                         # client reading a whole buffered response out slowly held the FULL
@@ -3998,7 +4160,7 @@ def _syntax_errors(work: str | RemoteWork, max_files: int = 200) -> list[str]:
     Skips the per-attempt HERMES_HOMEs (session state, not work) and __pycache__. `max_files` bounds a
     walk over a directory the agent controls."""
     out, seen = [], 0
-    if isinstance(work, RemoteWork):                       # CUR-4483: compiled here, read from the guest
+    if isinstance(work, RemoteWork):                       # compiled here, read from the guest
         for rel, _size in work.files(10**9):
             if not rel.endswith(".py") or "__pycache__" in rel.split("/"):
                 continue
@@ -4049,18 +4211,18 @@ INERT_TOOL_KINDS = frozenset({"read", "edit", "delete", "move", "search", "think
 # different words — see _repair_turn_text, which would otherwise open by citing an acceptance check that
 # never ran, in a message whose whole purpose is to stop the model asserting things it did not observe.
 UNRUN_DETAIL_PREFIX = "wrote-and-never-ran:"
-# Nested inside UNRUN_DETAIL_PREFIX's own value (still one outer wrap at the call site), not a
+# nested inside UNRUN_DETAIL_PREFIX's own value (still one outer wrap at the call site), not a
 # sibling of it — this marks the DIFFERENT shape underneath: something DID run and it FAILED, not "never
 # ran". _repair_turn_text's fixed "you wrote X and never ran it" sentence is actively wrong for this case
-# — the model ran something; reusing that template verbatim would tell it the opposite of what happened. (CUR-574)
+# — the model ran something; reusing that template verbatim would tell it the opposite of what happened.
 TOOL_FAILED_PREFIX = "tool-call-failed:"
-# Same nesting as TOOL_FAILED_PREFIX above — a third shape underneath UNRUN_DETAIL_PREFIX. Not
+# same nesting as TOOL_FAILED_PREFIX above — a third shape underneath UNRUN_DETAIL_PREFIX. Not
 # "wrote it and never ran it" (nothing was written) and not "a tool call failed" (no tool ran at all):
 # the model claimed a specific file already exists/was already written when it was never produced this
 # task. _repair_turn_text's default template would tell it to "run" something that was never written —
-# wrong instruction for a claim that is false about EXISTENCE, not about EXECUTION. (CUR-777)
+# wrong instruction for a claim that is false about EXISTENCE, not about EXECUTION.
 FALSE_EXISTENCE_PREFIX = "claimed-file-missing:"
-# CUR-596 item 2: shares task.unrun_detail's wire contract (the frontend's "predicted rather than measured"
+# shares task.unrun_detail's wire contract (the frontend's "predicted rather than measured"
 # gate is `Boolean(unrun_detail.trim())` — any non-empty value trips it, not just this prefix), but a
 # DIFFERENT shape underneath from the two above: every attempt genuinely ran AND independently verified —
 # they just didn't agree on the computed value, so no single one of them can be trusted over the others.
@@ -4072,11 +4234,11 @@ VALUE_DISAGREEMENT_PREFIX = "attempts-disagreed:"
 # wall-clock/spend cap fired, the agent process exited nonzero) means the INFRASTRUCTURE didn't finish
 # the turn, so endpointAgent.ts gives this prefix its own copy; the shared sentence would be false here.
 STRUCTURAL_FAILURE_PREFIX = "structural-failure:"
-# A SIXTH shape, and unlike every prefix above it is not about whether the model's account of
+# a SIXTH shape, and unlike every prefix above it is not about whether the model's account of
 # ITS OWN PROCESS holds up (ran it, ran it and it failed, the file exists, two runs disagreed, the
 # infrastructure died) — it is about whether the model's stated RESULT is internally coherent. Nested
 # under nothing: this can fire on a turn with real, successful tool calls and no other check above has
-# any reason to flag it, since every one of them asks "did something run", and here something plainly did. (CUR-1404)
+# any reason to flag it, since every one of them asks "did something run", and here something plainly did.
 ZERO_RESULT_PREFIX = "zero-from-nonzero:"
 
 
@@ -4087,7 +4249,7 @@ def _runnable_python(work: str | RemoteWork, max_files: int = 200) -> str | None
     shebang test. A module the agent wrote and never imported anywhere is exactly as unverified as a
     script it never executed, and the repair turn asks it to run the thing rather than asserting what the
     thing is. Same skips as _syntax_errors, for the same reasons."""
-    if isinstance(work, RemoteWork):          # CUR-4595: on E2B the file is in the guest, not under `work.local`
+    if isinstance(work, RemoteWork):          # on E2B the file is in the guest, not under `work.local`
         for rel, _size in work.files(10**9):
             if rel.endswith(".py") and "__pycache__" not in rel.split("/"):
                 return rel
@@ -4107,7 +4269,7 @@ _EXECUTION_CLAIM_HEADING = re.compile(
     r"(?im)^\s*#{0,3}\s*\*{0,2}((?:execution\s+)?(?:results?|outputs?))\*{0,2}\s*:\s*\*{0,2}")
 # The heading check above needs a heading. A turn with zero tool calls can also make a specific false
 # method claim mid-paragraph, with no heading anywhere: "These amounts are derived by summing the
-# revenue for each month across all products." (CUR-671). Narrow on purpose, like the heading regex: a verb claiming the arithmetic happened (calculated/derived/computed/summed/totaled)
+# revenue for each month across all products.". Narrow on purpose, like the heading regex: a verb claiming the arithmetic happened (calculated/derived/computed/summed/totaled)
 # within a short window of a preposition naming what it was done FROM (by/from/across/through/using/
 # via) — not just "the total is 4000" (a bare claim, not a claim of HAVING derived it) and not the
 # UX-researcher's passing theme-count answer ("cost: 4 people, trust: 1"), which categorizes but never
@@ -4128,13 +4290,15 @@ _COMPUTATION_CLAIM_PHRASE = re.compile(
 _EXECUTION_CLAIM_HEDGE = re.compile(
     r"(?i)\b(expected|predicted|would\s+(?:produce|print|output|return|be|exist)|"
     r"should\s+(?:produce|print|output|return|be|exist))\b")
-# Both verb lists include "be": _COMPUTATION_CLAIM_PHRASE's own claim shape ("these would be
-# calculated by...") hedges on "would be", not "would produce/print/output/return", which cover the
-# heading check's shape ("Output: (would produce X)"). Widening the lists can only turn an existing flag
-# into a non-flag — never the reverse — so they are safe to share (CUR-671).
+# "be" added to both verb lists — _COMPUTATION_CLAIM_PHRASE's own claim shape ("these would be
+# calculated by...") hedges on "would be", not "would produce/print/output/return", which only ever
+# existed to cover the heading check's shape ("Output: (would produce X)"). Strictly widens what counts
+# as hedged, so it can only turn an existing flag into a non-flag — never the reverse — safe to share.
 #
-# They also include "exist": "`x.txt` would already exist if the script had run" hedges the same way,
-# and _false_existence_claim below does not require a verb at all (CUR-705).
+# "exist" added to both verb lists too — "`x.txt` would already exist if the script
+# had run" never actually exercised this list (the fixture it was tested against also happens to create
+# `x.txt` for real, so grounding alone explained the pass); found the gap while broadening
+# _false_existence_claim below to not require a verb at all. Same strictly-widening argument as "be".
 
 # A third fabrication shape: a fully staged tool round-trip with no real tool call. The model writes a
 # fenced ```python block invoking `execute_code({...})` as literal text, then narrates a fake exchange
@@ -4212,10 +4376,10 @@ def _false_existence_claim(answer: str, work: str | RemoteWork) -> str | None:
     `work` is never a false claim regardless of how it's phrased, so wording never matters for a true
     mention. For a missing one, the scope for a disclaimer (negation, hedge, future/conditional intent)
     is the enclosing SENTENCE, not the whole line/paragraph — a hedge two sentences away must not shield
-    an unrelated real claim (in the CUR-705 fixture, a "the expected file..." sentence sits right next
+    an unrelated real claim (in the fixture, a "the expected file..." sentence sits right next
     to, not inside, the actual claim it must not protect)."""
     # On E2B the agent's files exist only in the guest, so a local `os.path.exists` would call every file
-    # it made "missing" and replace delivered documents with "I was not able to complete this" (CUR-4595).
+    # it made "missing" and replace delivered documents with "I was not able to complete this".
     # The guest's top level answers the same question the local join does; listed once, lazily.
     guest_names: set[str] | None = None
     for fm in _BACKTICK_FILENAME.finditer(answer):
@@ -4249,7 +4413,7 @@ def _unrun_inline_command(answer: str, window: int = 300) -> str | None:
     """A bare 'Run:' heading immediately followed by a command line naming a known interpreter, or None.
     PURE, unit-tests on text alone — same narrow, one-measured-case shape as _ungrounded_execution_claim.
 
-    The shape it catches (CUR-542): asked to write a script and prove it works, an agent can run a
+    The shape it catches: asked to write a script and prove it works, an agent can run a
     test-data generator (so tool_kinds includes "execute"), then print the actual analysis as a bare
     `python -c "..."` one-liner under a **Run:** heading and stop, telling the user to run the code
     instead of running it. Tool-call raw_input is redacted by design
@@ -4319,7 +4483,7 @@ def _wrote_code_without_running_it(tool_kinds: set[str], tool_failures: set[str]
             return claim
         # _ungrounded_execution_claim only catches a claimed RESULT — a claim that a file
         # already exists/was already written is a different shape (see _false_existence_claim's own
-        # comment for the measured transcripts), checked against `work` instead of another phrase. (CUR-777)
+        # comment for the transcript shapes), checked against `work` instead of another phrase.
         false_file = _false_existence_claim(answer, work)
         return f"{FALSE_EXISTENCE_PREFIX}{false_file}" if false_file else None
     if any(k not in INERT_TOOL_KINDS for k in tool_kinds):
@@ -4348,10 +4512,9 @@ def _zero_result_from_nonzero_input(answer: str) -> str | None:
     one, so this needs no domain knowledge about what the task actually was, only the two numbers the
     turn already reported.
 
-    Narrow on purpose, keyed to the measured transcript's exact shape (a `<noun> before/after <verb>: N`
+    Narrow on purpose, keyed to one exact shape (a `<noun> before/after <verb>: N`
     line, markdown-bold tolerated) rather than a looser "any two numbers near each other" heuristic —
-    widen only on a second measured case, per this file's own convention (see _FABRICATED_EXCHANGE_MARKER's
-    history for why guessing ahead of evidence here has cost more than it's saved)."""
+    widen only on evidence of a second shape, never by guessing ahead of it."""
     before_m = _COUNT_BEFORE_LINE.search(answer)
     if not before_m:
         return None
@@ -4403,13 +4566,12 @@ def _check_appendix(spec: VerifySpec | None, autoderived: bool,
 # Where the agent's output has to land, stated to the agent on EVERY task.
 #
 # The agent is spawned with cwd=work (acp_client.py) and the sandbox binds that directory, so the
-# environment is right, but the MODEL has to be told as well. Asked to "create a file called hello.txt"
+# environment is right but nothing tells the MODEL. Asked to "create a file called hello.txt"
 # with no location named, a model may write `/tmp/hello.txt`, `_verify` looks under the workdir, and the
-# task fails its own check at ~20 model calls and ~70k tokens where a located prompt costs 3 and 8k.
+# task fails its own check on every attempt at many times the model calls and tokens a located prompt costs.
 #
-# Evals do not cover it, because every fixture prompt says "in the working directory" and every
-# caller-supplied spec gets _check_appendix, which says it too. The path with neither is a person typing
-# an ordinary sentence.
+# Fixture prompts say "in the working directory" and every caller-supplied spec gets _check_appendix,
+# which says it too. A person typing an ordinary sentence gets neither, so this note covers that path.
 #
 # NOT part of the acceptance test, which is why this is separate from _check_appendix and is not gated on
 # SHOW_CHECK or on the spec being caller-written: where output goes is a fact about the room, not a hint
@@ -4418,7 +4580,7 @@ def _check_appendix(spec: VerifySpec | None, autoderived: bool,
 # An instruction is the weaker form of this fix — see the module header on constraints vs. instructions.
 # The constraint version (deny writes outside the workdir at the sandbox boundary) is a real change to
 # bwrap's mount plan and would have to keep `code_execution`'s legitimate scratch use working, so it is
-# its own piece of work rather than a line in this one.
+# a separate piece of work.
 WORKDIR_NOTE = (
     "\n\n---\n\nWrite every file you produce into your current working directory, as a RELATIVE path "
     "(e.g. `<name>.<ext>`), never an absolute one (e.g. `/tmp/<name>.<ext>`). Choose `<name>.<ext>` "
@@ -4429,16 +4591,16 @@ WORKDIR_NOTE = (
 
 
 def _workdir_note(work: str | RemoteWork, continued: bool, expired: bool) -> tuple[str, int]:
-    """WORKDIR_NOTE alone describes an empty room, which would make a continued session's model
-    confidently invent or rewrite a file it believes already exists — it has every reason to trust its
-    own prior answer and no way to check (CUR-196). `continued`/`expired` come from the
+    """WORKDIR_NOTE unconditionally described an empty room, which is exactly what made a
+    continued session's model confidently invent or rewrite a file it believes already exists — it has
+    every reason to trust its own prior answer and no way to check. `continued`/`expired` come from the
     (user, session_id) lookup in _run, one call before this.
 
     Naming the files is not enough on its own: knowing a file exists is not knowing that this turn's
     requested change was applied to it, and a model will report "I have updated X and run Y again" with
     no tool call. The added sentence below states that distinction directly.
 
-    CUR-1394: returns `(note, files_already_here)` rather than just the note. The count is this walk's own
+    returns `(note, files_already_here)` rather than just the note. The count is this walk's own
     result, which the caller parks on `task._session_files_at_start` for the `done` frame — see that field
     for who reads it and why. Returned from here instead of re-derived at the call site because the
     `expired`/`continued`/empty branches below decide both answers together, and a second copy of that
@@ -4642,14 +4804,14 @@ def _policy_note(decision: dict) -> str:
 
 
 def _sandbox_note() -> str:
-    """CUR-1405: tell a caller WITH terminal what that terminal cannot reach, before it finds out.
+    """Tell a caller WITH terminal what that terminal cannot reach, before it finds out.
 
     _policy_note above covers the tier that has no terminal at all. This covers the opposite case, and
-    it is the more expensive one to miss: asked for a PDF, an agent can run `pandoc`, then
+    it is the one that cost a real dogfood session: asked for a PDF, the agent ran `pandoc`, then
     `apt update && apt install -y pandoc`, then `mkdir … && apt … && apt …`, then `which pandoc` — four
     terminal calls, four failures, roughly 19,000 tokens, and three separate approval prompts put in
-    front of a person on a timer, for installs this container structurally cannot perform. Its closing
-    line is then "I cannot install it due to permission issues and network problems," which is
+    front of a person on a timer, for installs this container structurally cannot perform. Its own
+    closing line was "I cannot install it due to permission issues and network problems," which is
     exactly what the deploy config already knew at boot.
 
     NOT an instruction standing in for a missing constraint — the constraints are real and enforced
@@ -4704,9 +4866,9 @@ def _repair_turn_text(detail: str, limit: int = REPAIR_DETAIL_CHARS) -> str:
     # the defect wearing the fix's clothes.
     if tail.startswith(UNRUN_DETAIL_PREFIX):
         name = tail[len(UNRUN_DETAIL_PREFIX):].strip() or "the file you wrote"
-        # A failed tool call is NOT "never ran it" — the model ran something and it broke. The
+        # a failed tool call is NOT "never ran it" — the model ran something and it broke. The
         # sentence below would tell it the opposite of what happened, so this branches BEFORE falling
-        # into that template rather than trying to make one sentence cover both shapes. (CUR-574)
+        # into that template rather than trying to make one sentence cover both shapes.
         if name.startswith(TOOL_FAILED_PREFIX):
             kind = name[len(TOOL_FAILED_PREFIX):].strip() or "a"
             return (f"A {kind} call you made failed, but your answer reported a result anyway.\n\n"
@@ -4715,9 +4877,9 @@ def _repair_turn_text(detail: str, limit: int = REPAIR_DETAIL_CHARS) -> str:
                     "Do not report a result from a call that failed. If you cannot complete this, say so "
                     "plainly and say why — an honest 'this failed and I could not complete it' is worth "
                     "more than a result you did not actually get." + _REPAIR_TURN_AUDIENCE_NOTE)
-        # Distinct from both branches above — nothing was written (so "you wrote X" is false)
+        # distinct from both branches above — nothing was written (so "you wrote X" is false)
         # and no tool call failed (none ran at all). The model claimed a file already exists; telling it
-        # to "run it now" would be the wrong instruction for a claim that's false about EXISTENCE. (CUR-777)
+        # to "run it now" would be the wrong instruction for a claim that's false about EXISTENCE.
         if name.startswith(FALSE_EXISTENCE_PREFIX):
             fname = name[len(FALSE_EXISTENCE_PREFIX):].strip() or "the file you named"
             return (f"You said {fname} already exists, but it is not in the working directory.\n\n"
@@ -4732,8 +4894,8 @@ def _repair_turn_text(detail: str, limit: int = REPAIR_DETAIL_CHARS) -> str:
                 "Do not describe output you have not seen. If you cannot run it, say so plainly and say "
                 "why — an honest 'I could not run this' is worth more than a prediction presented as a "
                 "result." + _REPAIR_TURN_AUDIENCE_NOTE)
-    # A different shape from everything above — something DID run, successfully, and the
-    # model's own numbers contradict each other (a nonzero before-count next to a zero after-count). (CUR-1404)
+    # a different shape from everything above — something DID run, successfully, and the
+    # model's own numbers contradict each other (a nonzero before-count next to a zero after-count).
     if tail.startswith(ZERO_RESULT_PREFIX):
         counts = tail[len(ZERO_RESULT_PREFIX):].strip() or "your reported counts"
         return (f"Your answer reports {counts} — a step that removed every single row.\n\n"
@@ -4746,8 +4908,8 @@ def _repair_turn_text(detail: str, limit: int = REPAIR_DETAIL_CHARS) -> str:
         tail = "…" + tail[-limit:]
     # "not found" is the one complaint the model cannot act on from the text alone: it wrote the file and
     # was told the file is missing, so the honest reading available to it is that the CHECK is wrong — and
-    # a model can reasonably say so out loud ("the file exists at /tmp/hello.txt, but the check might be
-    # looking for it elsewhere"). Naming the directory turns an apparent contradiction
+    # that is what Apertus-1.5 concluded, out loud, three times ("the file exists at /tmp/hello.txt, but
+    # the check might be looking for it elsewhere"). Naming the directory turns an apparent contradiction
     # into an actionable one. The other complaints ("contains", "lines") already say what to change, and
     # a location reminder there would be noise.
     where = ("\n\nThe check only looks in your current working directory. If you wrote to an absolute "
@@ -4802,7 +4964,7 @@ def _effective_toolsets() -> str:
     Same posture as `secrets_boundary: OFF(legacy passthrough)` — say the true thing, including when
     the true thing is that a knob is inert.
 
-    Under ACP_PERMISSION_POLICY=deny_writes (CUR-217), the toolset _model_env actually hands the
+    Under ACP_PERMISSION_POLICY=deny_writes, the toolset _model_env actually hands the
     subprocess is filtered by _deny_writes_toolsets — this must report THAT value, or /healthz would name
     a toolset the wire does not carry, the same bug this function exists to avoid one layer up. Oneshot is
     excluded: it reads -t/ALLOWED_TOOLSETS, never HERMES_ACP_TOOLSETS, so deny_writes has nothing to
@@ -4816,8 +4978,8 @@ def _effective_toolsets() -> str:
                      f"AGENT_TOOLSETS={ALLOWED_TOOLSETS!r} NOT applied; {note})")
         return f"{filtered} (hermes-acp default overridden by deny_writes; AGENT_TOOLSETS={ALLOWED_TOOLSETS!r} NOT applied; {note})"
     if ACP_PERMISSION_POLICY == "confirm" and AGENT_ACP:
-        # Same filter, same reason as deny_writes above — confirm's callback only ever sees
-        # write_file/patch too. (CUR-218)
+        # same filter, same reason as deny_writes above — confirm's callback only ever sees
+        # write_file/patch too.
         filtered = _deny_writes_toolsets(acp_override)
         note = f"confirm: covers {'+'.join(_PERMISSION_COVERS)}; excludes {'+'.join(_PERMISSION_UNCOVERED)}"
         if acp_override:
@@ -4825,11 +4987,11 @@ def _effective_toolsets() -> str:
                      f"AGENT_TOOLSETS={ALLOWED_TOOLSETS!r} NOT applied; {note})")
         return f"{filtered} (hermes-acp default overridden by confirm; AGENT_TOOLSETS={ALLOWED_TOOLSETS!r} NOT applied; {note})"
     if ACP_PERMISSION_POLICY == "staged" and AGENT_ACP:
-        # There is no single "effective" toolset under staged — it's resolved per caller
+        # there is no single "effective" toolset under staged — it's resolved per caller
         # (_resolve_permission_policy), and this function has no caller to resolve against. Report the
         # FLOOR (what a brand-new caller gets, same filtered value as plain deny_writes) rather than
         # either the unfiltered toolset or nothing — the floor is the toolset most callers spend the
-        # longest under, and it's the one worth an operator seeing at a glance. (CUR-470)
+        # longest under, and it's the one worth an operator seeing at a glance.
         filtered = _deny_writes_toolsets(acp_override)
         note = (f"staged: floor for a new caller, shown here — trusted callers "
                 f"({TRUST_ACCRUAL_SECS // 86400}d/{TRUST_MIN_TASKS} tasks of history) get the unfiltered "
@@ -4850,45 +5012,44 @@ def _permission_state(policy: str = "", toolsets: str = "") -> tuple[str, str]:
 
     The reason this returns two things instead of echoing the config: `deny_writes` sounds like write
     containment and is not one. It is consulted for write_file and patch only, so with `terminal` in the
-    toolset a single shell redirect writes whatever it likes and the gate is never asked. An operator who
-    sets deny_writes to contain an agent would otherwise get a machine that reports a control it does
-    not have.
+    toolset a single shell redirect writes whatever it likes and the gate is never asked. An operator
+    who sets deny_writes to contain an agent would otherwise get a machine that reports a control
+    it does not have.
 
     Not fatal, and deliberately so: the combination is still an improvement over `allow` for the two tools
     it does cover, and refusing to boot over it would be a worse trade than saying so. bwrap is what
     actually bounds writes, and it does not care which tool asked.
 
-    CUR-217: `toolsets` may now (post-fix) carry a parenthetical explaining what deny_writes excludes —
+    `toolsets` may now (post-fix) carry a parenthetical explaining what deny_writes excludes —
     e.g. "...excludes terminal+code_execution" — which legitimately CONTAINS the tool names it is
     reporting as absent. Checking `t in toolsets` against the raw string would misread that explanation as
     the tool still being present. Check membership against the toolset-LIST portion only, before the first
     " (" — the same delimiter convention _effective_toolsets already uses for every annotation.
 
-    The "staged" branch below also names the always-confirm composition (CUR-760), for the same reason
+    The "staged" branch below also names the always-confirm composition, for the same reason
     as the toolset parenthetical: "trusted: allow" on its own would be a half-truth. A trusted caller's
     toolset floor is unrestricted, but an edit/delete call still pauses for a human. This applies to the
     TRUSTED tier only: the new tier refuses those kinds outright under deny_writes, so it never reaches
     a confirm pause, and the annotation says "trusted tier" rather than a vaguer "both". Leaving it out
     would make the reported state claim less gating than actually runs.
 
-    CUR-975: _ALWAYS_CONFIRM_KINDS is now a triple (edit, delete, execute), not a pair — both strings
+    _ALWAYS_CONFIRM_KINDS is now a triple (edit, delete, execute), not a pair — both strings
     below read it via `'+'.join(...)`, so the reported state picks up "execute" automatically with no
     string-literal change here. Named explicitly so a future reader doesn't have to cross-reference the
     constant to know a trusted caller's terminal calls pause too, not just file edits."""
     policy = policy or ACP_PERMISSION_POLICY
     toolsets = toolsets if toolsets else _effective_toolsets()
     if policy == "staged":
-        # Report both boundary states explicitly rather than the bare mode name — "staged"
-        # alone tells an operator nothing about what a caller actually gets at either end. (CUR-470)
+        # report both boundary states explicitly rather than the bare mode name — "staged"
+        # alone tells an operator nothing about what a caller actually gets at either end.
         return (f"staged(new: deny_writes, trusted: allow after "
                 f"{TRUST_ACCRUAL_SECS // 86400}d/{TRUST_MIN_TASKS} tasks; "
-                f"{'+'.join(_ALWAYS_CONFIRM_KINDS)} still pauses for confirm on the trusted tier — "
-                f"CUR-760)", "")
+                f"{'+'.join(_ALWAYS_CONFIRM_KINDS)} still pauses for confirm on the trusted tier)", "")
     if policy == "allow":
-        # Same composition as the staged/trusted branch above, for bare ACP_PERMISSION_POLICY=
+        # same composition as the staged/trusted branch above, for bare ACP_PERMISSION_POLICY=
         # allow — request_permission applies the always-confirm list to any resolved "allow", not only
-        # one reached via staged's trust tiering. (CUR-760)
-        return f"allow({'+'.join(_ALWAYS_CONFIRM_KINDS)} always pauses for confirm — CUR-760)", ""
+        # one reached via staged's trust tiering.
+        return f"allow({'+'.join(_ALWAYS_CONFIRM_KINDS)} always pauses for confirm)", ""
     if policy not in ("deny_writes", "confirm"):
         return policy, ""
     toolset_list = toolsets.split(" (", 1)[0]
@@ -4918,7 +5079,8 @@ def _use_acp(transport: str | None) -> bool:
     Single-path default: ACP runs for every task once AGENT_ACP is on. `transport="oneshot"` is the
     one explicit escape hatch, for a caller that genuinely wants the old blocking one-call behavior (a
     health-check-style ping with truly no tool use, a deterministic CI-style probe) — not a per-request
-    heuristic to maintain."""
+    heuristic to maintain. The rationale and the latency cost of taking this path unconditionally are in
+    docs/decision-history.md's "ACP-client transport" entry, which is authoritative for the numbers."""
     return transport != "oneshot"
 
 
@@ -4939,13 +5101,19 @@ def _remaining_timeout(start_mono: float, now_mono: float, cap_secs: int,
     for the minority that fail. `scripts/conccheck.py` measures whether the upstream would even serve
     them concurrently — a precondition, not the reason.
 
-    The cost is worst-case latency: a task that exhausts every attempt now takes up to `cap_secs *
-    best_of` where it used to take `cap_secs`. That is what running the attempts actually costs, and it
+    The cost is worst-case latency: a task that exhausts every attempt takes up to `cap_secs *
+    best_of`, not `cap_secs`. That is what running the attempts actually costs, and it
     only lands on tasks that fail all of them."""
     remaining = (start_mono + cap_secs * max(1, best_of)) - now_mono
     if remaining <= 0:
         return 0.0, True
     return min(remaining, float(cap_secs)), False
+
+
+def _hard_cap_text() -> str:
+    """The task's error when TASK_HARD_CAP_SECS ends it. Names the limit and that card waits count, since the
+    attempt clocks the person may know about would not have stopped it."""
+    return f"hard time limit ({TASK_HARD_CAP_SECS}s per task, approval waits included) reached; the run was stopped"
 
 
 def _upstream_backoff_secs(reason: str | None, attempt: int, base: float) -> float:
@@ -4971,9 +5139,9 @@ def _spec_fields(spec: VerifySpec | None) -> dict:
     out = {k: v for k, v in spec.model_dump().items() if v is not None}
     # (primary, dependent): the dependent field only means anything alongside its primary. A loop over
     # pairs rather than one hand-copied `if out.get(primary) is None: out.pop(dependent, None)` block per
-    # pair — VerifySpec has grown one dependent-field pair before (expect_count/expect_sep) and this is
-    # the second (expect_sorted_by/expect_sorted_desc); a third copy-pasted by hand is how the first one
-    # silently desyncs from the second.
+    # pair — VerifySpec has two dependent-field pairs (expect_count/expect_sep and
+    # expect_sorted_by/expect_sorted_desc); a hand-copied block per pair is how one silently desyncs
+    # from the other.
     for primary, dependent in (("expect_count", "expect_sep"), ("expect_sorted_by", "expect_sorted_desc")):
         if out.get(primary) is None:
             out.pop(dependent, None)
@@ -4982,21 +5150,21 @@ def _spec_fields(spec: VerifySpec | None) -> dict:
 
 def _done_payload(task: Task) -> dict:
     """The terminal frame's body, built in ONE place because there are two emitters — the live buffer and
-    the replay path for a client that reconnects after the buffer is gone — and they had already drifted:
-    the replay frame omitted `verify_method` entirely, so the same task described itself differently
-    depending on when you asked."""
+    the replay path for a client that reconnects after the buffer is gone — and they must not drift: a
+    frame that omitted a field would make the same task describe itself differently depending on when you
+    asked."""
     return {"state": task.state.value, "result": task.result, "summary": task.summary,
-            # StatusResponse carries `error`, and so does this dict, so the live SSE `done` frame (the ONLY shape
-            # production chat reads, endpointAgent.ts) can tell a moderation block or screen failure on the
-            # agent's OWN artifacts (task.result stays None on that path, so `result` alone reads as an
-            # unexplained failure) from any other FAILED reason (CUR-856).
+            # StatusResponse carries `error`, so the live SSE `done` frame (the shape chat reads,
+            # endpointAgent.ts) carries it too: it tells a moderation block/outage on the agent's OWN
+            # artifacts (task.result stays None on that path, so `result` alone reads as an unexplained
+            # failure) from any other FAILED reason.
             "error": task.error,
             # "restart" when a restart ended the task (the drain's deadline, or recover_orphans on
-            # boot), so chat can say the service restarted and offer a retry rather than quote the error. (CUR-4598)
+            # boot), so chat can say the service restarted and offer a retry rather than quote the error.
             "interrupted": "restart" if (task.error or "").startswith(RESTART_ERROR) else None,
-            # The executor this task ran on (its own, not the deployment's default), and the ids the
+            # the executor this task ran on (its own, not the deployment's default), and the ids the
             # upstream named serving it. A served id that is not the asked model is the record that something
-            # else answered under its name. (CUR-4603)
+            # else answered under its name.
             "model": task.model or AGENT_MODEL or None,
             "served_models": list(task.served_models),
             "verified": task.verified, "verify_method": task.verify_method,
@@ -5008,38 +5176,38 @@ def _done_payload(task: Task) -> dict:
             "attempt_rejections": list(task.attempt_rejections),
             "artifacts": list(task.artifacts), "artifacts_dropped": task.artifacts_dropped,
             "expired": task.session_expired, "unrun_detail": task.unrun_detail,
-            # Whether THIS turn reused a prior turn's session workdir (see _run's (task.user,
+            # whether THIS turn reused a prior turn's session workdir (see _run's (task.user,
             # session_id) lookup). The chat client's honesty caveat needs this to scope its "claimed
             # action, zero tools observed" check to continued sessions only — a fresh session's plain
-            # question legitimately needs no tool and must not trip it. (CUR-705)
+            # question legitimately needs no tool and must not trip it.
             "session_continued": task._session_continued,
-            # How many files this session's workdir already held when the turn STARTED (see
-            # Task._session_files_at_start; CUR-1394). `session_continued` alone says a workdir was reused,
-            # never whether anything was in it — and the chat path sends session_id=conversationId, so
-            # every turn after the first in an ordinary conversation is a continued session with an empty
+            # how many files this session's workdir already held when the turn STARTED (see
+            # Task._session_files_at_start). `session_continued` alone says a workdir was reused, never
+            # whether anything is in it — and the chat path sends session_id=conversationId, so every turn
+            # after the first in an ordinary conversation is a continued session that may have an empty
             # room. Absent on an older build, which endpointAgent.ts reads as
             # "we do not know" and therefore stays quiet, matching this repo's unknown-kind rule.
             "session_files_at_start": task._session_files_at_start,
             # "declined" / "answered" when the accepted answer made no tool call and the no-tool review
-            # judged it claimed nothing; absent meaning (empty) keeps the site's caveat logic as it was. (CUR-4599)
+            # judged it claimed nothing; absent meaning (empty) keeps the site's caveat logic as it was.
             "no_tool_answer": task._no_tool_answer,
-            # Same fields StatusResponse now carries (see _status_of) — kept in sync here so a
+            # same fields StatusResponse carries (see _status_of) — kept in sync here so a
             # client watching the live SSE `done` frame and one that reconnects/polls afterward learn the
-            # same thing about why this turn's toolset was what it was, not two different stories. (CUR-761)
+            # same thing about why this turn's toolset was what it was, not two different stories.
             "tier": task.tier, "tasks_done": task.tasks_done, "tasks_required": task.tasks_required,
-            # `transport_used` (CUR-773): `_run` sets it right after deciding `use_acp`; it is on StatusResponse
-            # (`_status_of`) and must be in THIS payload too — the one the live SSE `done` frame sends. A
-            # consumer gating caveat logic on it (endpointAgent.ts) would otherwise have to guess from
+            # `transport_used` is set by `_run` right after it decides `use_acp`, and is also on
+            # StatusResponse (`_status_of`). It is part of THIS payload, the one the live SSE `done` frame
+            # sends, so a consumer gating caveat logic on it (endpointAgent.ts) never has to guess from
             # `state:working`'s timing, which fires before transport is even chosen.
             "transport_used": task.transport_used,
-            # Same field/meaning as StatusResponse.machine_id — a reconnecting client needs it
-            # to pin its own follow-up request, same rationale as tier/transport_used above. (CUR-895)
+            # same field/meaning as StatusResponse.machine_id — a reconnecting client needs it
+            # to pin its own follow-up request, same rationale as tier/transport_used above.
             "machine_id": FLY_MACHINE_ID}
 
 
 def _is_artifact_backed(spec: VerifySpec) -> bool:
     """expect_file or check_cmd set — a real sandbox artifact the model produced, as opposed to
-    expect_count (checks the answer's text SHAPE, not its content) or nothing at all. CUR-744: the one
+    expect_count (checks the answer's text SHAPE, not its content) or nothing at all. the one
     predicate `_select_attempt` uses twice to decide whether a spec is real grounding, not just present.
     Pre-existing call sites (the spend-cap salvage path, `_validate_verify`) keep their own inline check —
     same condition, different history, not touched here to keep this diff scoped to what it changed."""
@@ -5068,8 +5236,8 @@ def _select_attempt(prompt: str, work: str | RemoteWork, result_text: str, spec:
         expect_count-only spec that PASSES is not enough grounding for a JUDGE VOTE either —
         `_verify_answer_count` checks the answer's SHAPE ("is this terse"), not its content.
 
-        That does NOT mean a genuinely passing expect_count check earns no credit at all: routing
-        it all the way to unverified would make `_failure_reason` (hard_spec = caller-
+        That does NOT mean a genuinely passing expect_count check earns no credit at all — caught live in
+        code review: routing it all the way to unverified made `_failure_reason` (hard_spec = caller-
         written, not autoderived) read `verified=False` as a real failure and mark the whole task FAILED,
         even though the caller's own contract was satisfied. "Not grounded" only withholds the JUDGE's
         vote; a real, passed, non-overruled check still earns "execution" on its own — the exact same
@@ -5077,30 +5245,30 @@ def _select_attempt(prompt: str, work: str | RemoteWork, result_text: str, spec:
         an ungrounded JUDGE vote, but it also must not turn a passing caller contract into a false FAILED.
       - spec is None, no judge → accept UNVERIFIED (verify_method=None): the legacy no-spec path, so a
         best_of==1 run is byte-equivalent to today (zero-delta, C8).
-      - grounded but result_text is empty (CUR-774) → accept "execution", judge skipped, not called at
+      - grounded but result_text is empty → accept "execution", judge skipped, not called at
         all. Reaching this branch already means exec_ok is True on an artifact-backed spec; an empty
-        `result_text` (the ACP transport clears its accumulated text on every new tool_call — CUR-542 —
+        `result_text` (the ACP transport clears its accumulated text on every new tool_call —
         and a turn that ends on a tool_result with no trailing wrap-up never refills it) is "nothing to
         grade," not "graded and failed." `_judge_result`'s own empty-string fail-closed stays correct
         for a caller with no deterministic backing; here the deterministic check already IS the
         evidence, so the missing prose gets the same "not grounded" credit two branches up, not a
         rejection.
 
-    WHO GETS TO VETO (CUR-193). A caller-written spec is a CONTRACT: the caller said what correct means,
+    WHO GETS TO VETO. A caller-written spec is a CONTRACT: the caller said what correct means,
     and a failure is a rejection the judge does not get to overturn. An auto-derived spec is a model's
     GUESS about what to check, and letting a guess veto the correctness authority inverts the hierarchy.
 
-    A derived spec can fail on the wrong grounds. `_derive_verify_spec` can derive `expect_count`, which
-    counts separator-delimited items in the answer and therefore measures VERBOSITY, not correctness:
-    "What is 17 * 23? Answer with just the number." derives `{expect_count: 1, sep: ","}` — really
-    "contains no commas". A terse run passes and the judge confirms it; a chatty run, same correct
-    arithmetic in prose, fails every attempt and never reaches the judge. Each such turn burns all three
-    attempts, because retrying does not make a model terser.
+    This is a real hazard. `_derive_verify_spec` can invent `expect_count`, which counts
+    separator-delimited items in the answer and therefore measures VERBOSITY, not correctness: "What is
+    17 * 23? Answer with just the number." derives `{expect_count: 1, sep: ","}` — really "contains no
+    commas". A terse run passes and the judge confirms it; a chatty run, same correct arithmetic in
+    prose, fails every attempt and never reaches the judge, burning all of them, because retrying does
+    not make a model terser.
 
-    So a failed DERIVED spec does not reject; it steps aside — and (CUR-744) the judge gets no unchecked
-    vote on it either, since a failed-and-overruled spec is exactly as ungrounded as no spec at all. Both
-    resolve to accept-UNVERIFIED: the wordy-but-correct answer CUR-193 protects is not punished, and the
-    judge is not asked to grade prose it has zero way to check."""
+    So a failed DERIVED spec does not reject; it steps aside — and the judge does not get
+    an unchecked vote on it either, since a failed-and-overruled spec is exactly as ungrounded as no spec
+    at all. Both resolve to accept-UNVERIFIED: the wordy-but-correct answer the authority rules protect is not
+    punished, and the judge is not asked to grade prose it has zero way to check."""
     exec_ok, exec_detail = True, ""
     if spec is not None:
         if _is_artifact_backed(spec):                      # file/shell contract → sandbox check
@@ -5125,9 +5293,9 @@ def _select_attempt(prompt: str, work: str | RemoteWork, result_text: str, spec:
         grounded = effective_spec is not None and _is_artifact_backed(effective_spec)
         if not grounded:
             # "Not grounded" only means the JUDGE doesn't get an unchecked vote — it does NOT mean a
-            # deterministic check that genuinely ran and passed gets no credit. Without
-            # this, a caller-written expect_count-only spec that PASSES (exec_ok=True,
-            # not overruled) falls all the way to "accept unverified" — and _failure_reason (hard_spec=
+            # deterministic check that genuinely ran and passed gets no credit. Caught live in code
+            # review: without this, a caller-written expect_count-only spec that PASSES (exec_ok=True,
+            # not overruled) fell all the way to "accept unverified" — and _failure_reason (hard_spec=
             # caller-written and not autoderived) then reads verified=False as a genuine failure and
             # marks the whole task FAILED with a misleading "best-of-N exhausted", even though the
             # caller's own contract was satisfied and no judge was ever needed. `spec is not None` (not
@@ -5141,7 +5309,7 @@ def _select_attempt(prompt: str, work: str | RemoteWork, result_text: str, spec:
         # future change to the grounding gate doesn't have to rediscover this by hand.
         if not (result_text or "").strip():
             # `result_text` is the turn's accumulated prose (`client.text` under the ACP
-            # transport). acp_client.py clears it on every new tool_call (CUR-542, so a chatty
+            # transport). acp_client.py clears it on every new tool_call (so a chatty
             # multi-step turn doesn't wall-of-text every pre-call aside) and only refills it if the
             # model narrates AFTER its last tool call — so a turn that ends on a tool_result with no
             # trailing wrap-up leaves this genuinely "" even when the work behind it is real. We only
@@ -5150,7 +5318,7 @@ def _select_attempt(prompt: str, work: str | RemoteWork, result_text: str, spec:
             # empty string unconditionally, which is right for a caller with nothing else behind it and
             # wrong here — no prose to grade is not a verdict AGAINST the artifact, and the "not
             # grounded" branch two lines up already credits a real, passed, non-overruled check the
-            # same way without a judge vote. (CUR-774)
+            # same way without a judge vote.
             _metric_inc("agent_judge_skipped_empty_result_total")
             return True, "execution", "judge skipped: result_text empty, artifact check already passed"
         jpass, reason = _judge_result(prompt, result_text, judge_call, effective_spec, work=work)
@@ -5173,7 +5341,7 @@ def _sweep_stale_scratch(now: float | None = None) -> tuple[int, int]:
     The per-task `finally` already rmtree's the scratch, and it is not the problem: a SIGKILL does not run
     `finally`, by definition, and OOM is a SIGKILL. So the abandoned directories are exactly the residue of
     the runs that died hardest, and on a box where scratch sits in tmpfs each one holds RAM that the kernel
-    can only push to swap.
+    can only push to swap — 17 of them were holding 247MB on a machine that was OOM-killing processes.
     Which makes it a loop rather than a leak: the kill leaves scratch, the scratch costs memory, the memory
     shortage causes the next kill. Boot is the right place to cut it, because boot is the one moment we know
     no task of ours is running.
@@ -5186,11 +5354,10 @@ def _sweep_stale_scratch(now: float | None = None) -> tuple[int, int]:
     root = Path(SCRATCH_ROOT) if SCRATCH_ROOT else Path(tempfile.gettempdir())
     now = time.time() if now is None else now
     dirs = freed = 0
-    # Session workdirs share this prefix/root but are NOT abandoned — their idle clock is hours
+    # session workdirs share this prefix/root but are NOT abandoned — their idle clock is hours
     # (SESSION_IDLE_SECS), not SCRATCH_STALE_SECS's 2h, and the idle reaper (_session_reaper_loop) is their
     # sole owner. Without this exemption, a routine redeploy could silently reap a session before its own
-    # timer would — the exact "expiry must fail loud" requirement this ticket exists to satisfy, undone by
-    # a mechanism that predates it. (CUR-196)
+    # timer would — which would break the "expiry must fail loud" requirement.
     session_paths = store.session_workdir_paths()
     try:
         candidates = sorted(root.glob(_SCRATCH_PREFIX + "*"))
@@ -5217,7 +5384,7 @@ def _sweep_stale_scratch(now: float | None = None) -> tuple[int, int]:
 # don't narrate") and EXECUTION_GUIDANCE_MODELS (gpt/codex/grok/deepseek/kimi/qwen/glm/minimax/mimo/
 # mistral, "finish the job, verify before claiming done"). A model outside both lists, such as
 # Apertus, gets neither nudge unless config.yaml turns them on, and this image ships no
-# ~/.hermes/config.yaml (deploy/Dockerfile writes none). So the keys below force both on (CUR-1155).
+# ~/.hermes/config.yaml (deploy/Dockerfile writes none). So the keys below force both on.
 _HERMES_FORCE_TOOL_ENFORCEMENT_YAML = "agent:\n  tool_use_enforcement: true\n  execution_guidance: true\n"
 
 
@@ -5229,7 +5396,7 @@ def _write_hermes_home_config(home_dir: str, global_cfg: Path) -> None:
     every key in it, these two included."""
     # The session workdir outlives a turn, so `hermes-home` and its config.yaml are names the agent could
     # have replaced with symlinks on an earlier turn. This runs outside bwrap as the uid that owns /data
-    # and /srv, so it must never resolve one (CUR-3535, the same class `_write_no_follow` closed for raw.log).
+    # and /srv, so it must never resolve one (the same class `_write_no_follow` closed for raw.log).
     _ensure_real_dir(home_dir)
     cfg = os.path.join(home_dir, "config.yaml")
     _remove_if_not_regular(cfg)
@@ -5240,15 +5407,16 @@ def _write_hermes_home_config(home_dir: str, global_cfg: Path) -> None:
     _write_no_follow(soul, AGENT_IDENTITY)
 
 
-# Hermes' own system prompt is DEFAULT_AGENT_IDENTITY (agent/prompt_builder.py at the pinned commit), which
-# asks finished work for "a short report of what changed, what's verified, and what's left". That gives
-# every answer the "Files written / Verified / Left" shape, in Portuguese and Spanish too, and a
-# system-prompt instruction outranks NO_VERIFICATION_CLAIM_NOTE in the task prompt (CUR-4055). A SOUL.md in
+# Hermes' own system prompt is DEFAULT_AGENT_IDENTITY (agent/prompt_builder.py at the pinned
+# commit), which asks finished work for "a short report of what changed, what's verified, and what's
+# left". That is the "Files written / Verified / Left" shape every answer took, in Portuguese and Spanish
+# too, and a system-prompt instruction outranked NO_VERIFICATION_CLAIM_NOTE in the task prompt: a tester
+# still got "Verified:", "Verificado:" and "Hechos verificados:" after it deployed. A SOUL.md in
 # HERMES_HOME takes that identity slot (agent/system_prompt.py: SOUL.md if present, else the default),
 # so this replaces the instruction where it is given. It also drops "You are Hermes Agent, built by Nous
-# Research": who the model is comes from the task prompt's identity line (CUR-573).
+# Research": who the model is comes from the task prompt's identity line.
 #
-# The figures sentence: the ACP toolset (`HERMES_ACP_TOOLSETS`) has no web tool and the
+# The figures sentence: the ACP toolset (fly/agent-app.toml HERMES_ACP_TOOLSETS) has no web tool and the
 # sandbox blocks egress, so real-world figures (rents, travel times) the model puts in a file are
 # invented unless the person supplied them, and without this the answer presents them as facts. It lives
 # here rather than in the task-prompt tail for the same system-prompt-precedence reason as above, and so
@@ -5295,12 +5463,12 @@ def _ensure_real_dir(path: str) -> None:
 # pyright: ignore is on the def line below for reportGeneralTypeIssues "Code is too complex to analyze".
 # That is a real signal, not a false positive — this function is long enough that pyright gives up on
 # its control flow entirely, which means NOTHING below is type-checked. Suppressed rather than fixed
-# because splitting _run is its own change with its own risk; tracked as the reason to do it.
+# because splitting _run is a separate change with its own risk.
 def _log_tier1_corpus(task: Task, work: str | RemoteWork, stdout: str, nonce: str | None) -> None:
-    """CUR-596 item 2 (Tier 1 corpus): did the deterministic SHAPE check catch something on this attempt.
+    """Tier 1 corpus: did the deterministic SHAPE check catch something on this attempt.
 
     Deliberately independent of whether the judge went on to overrule an auto-derived spec's failure
-    (_select_attempt's own CUR-193 authority rules — unchanged, not re-litigated here). Re-running
+    (_select_attempt's own authority rules — unchanged, not re-litigated here). Re-running
     _verify is redundant with the one _select_attempt already did, but threading an extra return value
     out of that carefully-scoped function was the riskier change for a diagnostic-only need.
 
@@ -5332,9 +5500,10 @@ def _log_tier1_corpus(task: Task, work: str | RemoteWork, stdout: str, nonce: st
             _truncate_utf8(_scrub((stdout or "").strip(), nonce), CORPUS_SNAPSHOT_MAX_BYTES),
             _scrub(detail[:2000], nonce))
     except Exception as e:  # noqa: BLE001 — must not break a turn, but must not vanish either
-        # Swallowing EVERY exception silently would let a future signature change to store.log_corpus,
-        # or an unexpected input shape from _corpus_snapshot_text/_scrub, leave verify_corpus (CUR-654)
-        # permanently empty with zero trace anywhere, unlike every other failure path nearby (_pruner_loop's own prune/prune_corpus calls
+        # A prior version of this swallowed EVERY exception silently and forever — a future signature
+        # change to store.log_corpus, or an unexpected input shape from _corpus_snapshot_text/_scrub,
+        # would leave verify_corpus (the whole point of the table) permanently empty with zero trace
+        # anywhere, unlike every other failure path nearby (_pruner_loop's own prune/prune_corpus calls
         # both log on failure).
         _log_event("corpus.log_failed", id=task.id, tier="tier1", error=type(e).__name__)
 
@@ -5348,7 +5517,7 @@ def _finalize_run(
     `fail` is decided by the CALLER and passed in, which is not an arbitrary split: moderation below can
     raise, and _run's handlers report the structural reason alongside the moderation block. A `fail`
     computed in here would be lost on exactly the path that needs it — the turn would report
-    "moderation not configured" and drop "hermes exit 1".
+    "moderation not configured" and drop "hermes exit 1", which is why `fail` is not computed inside this function.
 
     Everything it decides it writes onto `task` directly — result, artifacts, summary, state — because
     those are what the durable record and the live SSE `done` frame both read.
@@ -5361,10 +5530,9 @@ def _finalize_run(
     raw = (stdout or "") + (stderr or "") + (f"\n[best-of-{best_of}: {attempts} attempt(s)]" if best_of > 1 else "")
     _write_no_follow(os.path.join(work.local if isinstance(work, RemoteWork) else work, "raw.log"), raw)   # raw forensic log, short-TTL (dies with scratch)
     full_output = (stdout or "").strip()
-    # CUR-855/846 (F5): a SECOND cancel check, not a duplicate of the one above. Artifact collection
-    # and two moderate() calls now sit between here and the terminal write below — real I/O and
-    # network round-trips, potentially tens of seconds under retry/backoff — where the pre-existing
-    # check above and the terminal write would otherwise be back-to-back statements on the failure path. A
+    # A SECOND cancel check, not a duplicate of the one above. Artifact collection
+    # and two moderate() calls sit between the check above and the terminal write below — real I/O and
+    # network round-trips under retry/backoff. A
     # DELETE landing in that window must still win: report CANCELED, not a FAILED turn with content
     # attached that the caller told us to stop shipping.
     if task._canceled:
@@ -5373,42 +5541,42 @@ def _finalize_run(
     # The agent's files, captured while the scratch still exists (the `finally` below deletes it). Read
     # BEFORE moderation so the post-check covers them: everything about to reach a caller goes through
     # one gate, or "put it in a file instead of the answer" becomes the way around it.
-    # CUR-596 item 2: `work` itself was already physically restored to the winning attempt's files
+    # `work` itself was already physically restored to the winning attempt's files
     # above (if a consistency-check restoration was needed) — reading it live here, same as always,
     # keeps this in sync with the artifact-download route and moderation below, which also read `work`
     # live. An in-memory override would desync from both the moment `work` on disk no longer matched it.
-    artifacts, artifacts_dropped = _collect_artifacts(work, since=turn_start_wall)
+    artifacts, artifacts_dropped = _collect_artifacts(work, since=turn_start_wall,
+                                                      exclude=frozenset(a.rel for a in task._attachments))
     result, truncated = _truncate(_hide_workdir(full_output, work), RESULT_MAX_CHARS)
     # Independent verification: the agent's exit-0 + narrative is NOT proof (false-success finding).
     # The best-of loop above already decided success via _select_attempt (the deterministic LLM-free
     # _verify of the artifact, and/or the judge for chat turns, sets task.verified). The agent's
     # self-report never decides — nothing re-verifies here.
     # Moderate the FULL agent output (not the truncated tail) so nothing slips past the post-check.
-    # CUR-855/846: runs regardless of `fail` — a structural failure can still carry a real answer in
+    # runs regardless of `fail` — a structural failure can still carry a real answer in
     # full_output, and it must be moderated before it's ever eligible to reach task.result below.
     moderate(full_output, "output", task.user, task_id=task.id)         # raises -> handled below
 
-    # Own call, own stage: every artifact's FULL text (CUR-546 — `_artifact_text_for_moderation`,
-    # not `artifacts[].text`, which is capped for the inline preview).
+    # Own call, own stage: every artifact's FULL text.
     try:
         moderate(_artifact_text_for_moderation(work), STAGE_ARTIFACTS, task.user, task_id=task.id)
     except HTTPException as e:
-        # Only on an actual BLOCK (403 — moderate()'s own third raise, "blocked by
+        # only on an actual BLOCK (403 — moderate()'s own third raise, "blocked by
         # moderation"), never on the other two HTTPExceptions that function can raise (503
-        # unconfigured, 502 screen unavailable after retries): those mean moderation couldn't render a verdict
+        # unconfigured, 502 outage-after-retries): those mean moderation couldn't render a verdict
         # at all, not that this content failed one, and quarantining on "we couldn't check" would
-        # wrongly remove a file nobody ever judged bad — the unavailable-vs-uncertain
-        # distinction `moderate`'s own docstring draws, applied one level up (CUR-836).
+        # wrongly remove a file nobody ever judged bad — exactly the outage-vs-uncertainty
+        # distinction `moderate`'s own docstring draws, applied one level up.
         if e.status_code == 403:
             quarantined = _quarantine_blocked_artifacts(work)
             if quarantined:
                 _log_event("artifact.quarantined", id=task.id, count=len(quarantined), files=quarantined)
         raise
     # task.verified stays False when no spec was supplied — i.e. an unverified self-report.
-    # CUR-855/846: populated ahead of the `fail` check below, not only on the success path — a
-    # structural failure must not `return` here before either the client's badge (task.result) or its
-    # honesty caveat (task.unrun_detail, set in the `if fail:` branch below) gets the real answer
-    # full_output already holds, or a turn that clearly produced something ships nothing. `state`
+    # populated ahead of the `fail` check below, not only on the success path, so a
+    # structural failure still gives the client's badge (task.result) and its
+    # honesty caveat (task.unrun_detail, set in the `if fail:` branch below) the real answer
+    # full_output holds, rather than shipping nothing from a turn that clearly produced something. `state`
     # stays the authoritative correctness signal — this only stops FAILED from meaning empty.
     task.result, task.result_truncated = result, truncated
     task.artifacts, task.artifacts_dropped = artifacts, artifacts_dropped
@@ -5416,12 +5584,11 @@ def _finalize_run(
         _log_event("run.artifacts", id=task.id, count=len(artifacts), dropped=artifacts_dropped,
                    bytes=sum(a["bytes"] for a in artifacts), artifacts=[a["name"] for a in artifacts])
     if fail:
-        # CUR-855/846: only fills task.unrun_detail when nothing more specific already did —
+        # only fills task.unrun_detail when nothing more specific already did —
         # repair_check's own content heuristics (acp_client.py) or the best-of consistency vote
         # (VALUE_DISAGREEMENT_PREFIX above) may have already set a sharper verdict, and `or` never
-        # overwrites that. (task.unrun_detail clears only once an attempt is actually about to run, so
-        # this `or` is not a no-op on the two break-before-execute paths — wall-clock stop,
-        # gateway-grant failure.)
+        # overwrites that. (task.unrun_detail only clears once an attempt is actually about to run, so the two
+        # break-before-execute paths — wall-clock stop, gateway-grant failure — keep a verdict already set.)
         #
         # Tagged with STRUCTURAL_FAILURE_PREFIX, NOT the bare reason: this is the fifth, different
         # shape that constant's own comment describes — an infrastructure failure, not the model
@@ -5429,12 +5596,12 @@ def _finalize_run(
         # be actively wrong copy for it (same reasoning TOOL_FAILED_PREFIX's comment already applies
         # to a narrower case). Reuses the existing wire contract (any non-empty value still gates
         # serviceFlagged) rather than a new field, but needs its own client-side branch on this exact
-        # prefix for honest copy — see CUR-855/846.
+        # prefix for honest copy — see the honesty-caveat field.
         task.unrun_detail = task.unrun_detail or f"{STRUCTURAL_FAILURE_PREFIX}{fail}"
         task.error, task.summary, task.state = fail, f"failed: {fail[:60]}", State.FAILED
         return
-    # Reconcile before either the badge (task.verified) or the summary line reads it — see
-    # _reconcile_verification's own docstring for why this is the one late call, not one per site. (CUR-902)
+    # reconcile before either the badge (task.verified) or the summary line reads it — see
+    # _reconcile_verification's own docstring for why this is the one late call, not one per site.
     _reconcile_verification(task)
     # State is set LAST (after summary) so a concurrent status() reader never sees COMPLETED with a
     # not-yet-populated result (lock-free correctness — see _detect_run_failure note; task.result
@@ -5460,7 +5627,7 @@ def _grant_attempt_budget(task: Task, nonce: str | None, attempts: int) -> tuple
     nonce comes back None in that case because it can no longer authorize anything — the caller stops
     on the reason rather than proceeding uncapped.
 
-    CUR-596: a LATER attempt's own infra failure must not discard an EARLIER one that already verified.
+    a LATER attempt's own infra failure must not discard an EARLIER one that already verified.
     With consistency_active this is no longer necessarily the task's only chance — that is the whole
     point of sampling past the first accept — so the caller breaks into the shared post-loop tail and
     lets the vote finalize with whatever it has, rather than hard-failing here.
@@ -5481,13 +5648,13 @@ def _record_accepted_attempt(
 ) -> None:
     """Write down an attempt the selection just accepted.
 
-    While sampling (CUR-596 item 2) that means a vote entry and nothing else: verified/verify_method/
+    While sampling that means a vote entry and nothing else: verified/verify_method/
     judge_reason/unrun_detail are deliberately NOT set, because the post-loop vote is the one place
     that knows which sample actually won. Captured NOW, before the next attempt's _reset_scratch can
     wipe it — a value that would otherwise be gone the moment that attempt starts.
 
     EVERY accepted vmethod is captured, not just execution-confirmed ones. An overruled accept
-    (CUR-744: vmethod is None, its file already failed the deterministic check) must still enter the
+    (vmethod is None, its file already failed the deterministic check) must still enter the
     list, or an overruled FIRST attempt finalizes the whole task on its own, bypassing sampling
     entirely and defeating the mechanism on exactly the turns where cross-attempt confirmation matters
     most. It gets sig=None either way — kept out of the vote, still eligible as a last-resort fallback
@@ -5516,8 +5683,8 @@ def _salvage_structural_failure(
 
     Discarding a structurally failed attempt outright is right when the agent never ran, and wrong when
     it ran for a dozen turns and got throttled on the last one: the files it left are either correct or
-    they aren't, and the check that settles it costs one subprocess and no model call. Long-horizon
-    tasks hit this, most after a dozen or more model calls.
+    they aren't, and the check that settles it costs one subprocess and no model call. On long-horizon
+    tasks about one attempt in five ends this way, most after a dozen or more model calls.
     _reset_scratch wipes the workdir on the next iteration, so the caller's `if last_structural:` is the last
     moment those artifacts exist.
 
@@ -5565,17 +5732,18 @@ def _backoff_before_retry(task: Task, last_structural: str, attempts: int, best_
         return
     remaining, stop = _remaining_timeout(_RUN_START[task.id], time.monotonic(),
                                          task._wall_clock, best_of)
-    if not stop:                 # no time left → let the next loop iteration's own check break cleanly
+    remaining = min(remaining, task._hard_deadline - time.monotonic())   # nor past the hard limit
+    if not stop and remaining > 0:   # no time left → let the next loop iteration's own check break cleanly
         time.sleep(min(delay, remaining))   # rather than oversleeping past the deadline here
 
 
 def _resolve_workdir(task: Task) -> tuple[str, int, bool]:
     """Where this turn writes, and how much of its ration is already spent.
 
-    Returns `(work, baseline, session_over_budget)`. CUR-196: a session_id present means reuse (or
+    Returns `(work, baseline, session_over_budget)`. a session_id present means reuse (or
     create) a workdir keyed on (task.user, session_id) that survives past this turn, instead of the
     always-fresh, always-discarded per-task scratch. Absent, the behavior is byte-identical to
-    pre-CUR-196 — baseline=0 makes the caller's watchdog math a no-op.
+    earlier — baseline=0 makes the caller's watchdog math a no-op.
 
     `baseline` is what the session directory already held before this turn started, so the scratch
     watchdog measures THIS turn's growth rather than re-billing a continued session for files a
@@ -5593,7 +5761,7 @@ def _resolve_workdir(task: Task) -> tuple[str, int, bool]:
     else:
         work = tempfile.mkdtemp(prefix=_SCRATCH_PREFIX, dir=SCRATCH_ROOT)
         # Had a row with its dir gone, or the caller knows an earlier turn ran and this machine has no row
-        # (CUR-4393: the follow-up reached a machine that never held the session). Tell the agent and the
+        # (the follow-up reached a machine that never held the session). Tell the agent and the
         # caller rather than silently starting over.
         task.session_expired = existing is not None or task._continues_session
         baseline, session_over_budget = 0, False
@@ -5602,7 +5770,7 @@ def _resolve_workdir(task: Task) -> tuple[str, int, bool]:
 
 
 def _mcp_offered(permission_policy: str) -> bool:
-    """Whether a task resolved to `permission_policy` gets the configured MCP servers (CUR-3025).
+    """Whether a task resolved to `permission_policy` gets the configured MCP servers.
 
     Only under "allow". deny_writes and confirm exist to keep writes away from the model or behind a
     human, and an MCP tool reaches neither guard: Hermes asks request_permission for write_file/patch and
@@ -5624,7 +5792,7 @@ def _execute_attempt(
 
     Returns `(stdout, stderr, returncode, acp_stop, timed_out)` — the four things the caller's
     honest-success decision needs plus the ACP-native stop reason, which is None on the oneshot path
-    because there is no prose channel to carry one. Lifted out of _run (CUR-1229): it was the single
+    because there is no prose channel to carry one. Lifted out of _run: it was the single
     densest region of control flow in a 935-line function, and past a threshold pyright stops
     analyzing a function AT ALL rather than degrading — so nothing in _run was type-checked.
 
@@ -5635,7 +5803,7 @@ def _execute_attempt(
     """
     acp_stop: str | None = None
     timed_out = False
-    # CUR-470/471: `decision` was resolved ONCE per task, above the attempt loop — see the comment at
+    # `decision` was resolved ONCE per task, above the attempt loop — see the comment at
     # agent_prompt's construction for why. Every consumer downstream (_model_env, the ACP client) acts
     # on this task's own answer, not the bare mode name.
     permission_policy = decision["policy"]
@@ -5669,13 +5837,17 @@ def _execute_attempt(
                 tool_kinds=tool_kinds, tool_failures=tool_failures, permission_policy=permission_policy,
                 policy_detail=decision,
                 confirm_timeout_secs=CONFIRM_TIMEOUT_SECS,
+                # the attempt clock pauses for a card; this one does not, and ends the attempt even
+                # mid-wait once the task's hard limit passes.
+                hard_timeout_secs=max(0.0, task._hard_deadline - time.monotonic()),
                 approval_mode=task._approval_mode,
                 auto_reviewer=(_make_auto_reviewer(task.prompt, review_work, _gateway_post(nonce),
                                                    files_at_start=_start_listing(review_work))
                                if review_work is not None else None),
                 on_confirmation_open=task._on_confirmation_open,
                 on_confirmation_close=task._on_confirmation_close,
-                mcp_servers=mcp_servers))
+                mcp_servers=mcp_servers,
+                images=[a.model_image for a in task._attachments if a.model_image]))
             stderr = ""
         except TimeoutError:
             stdout, stderr, ret, timed_out = "", "", None, True
@@ -5686,12 +5858,12 @@ def _execute_attempt(
         finally:
             task._acp_cancel = None
             task._acp_confirm = None
-            # Reimburse the TASK-level wall clock (_RUN_START, checked by _remaining_timeout
+            # reimburse the TASK-level wall clock (_RUN_START, checked by _remaining_timeout
             # in the caller) for time this attempt spent paused on a human confirmation —
             # acp_client._acp_run's own `finally` already set task._confirm_wait_secs to the attempt's
             # actual paused duration before returning. Without this, a long confirm wait would silently
             # shrink the runway left for later best-of-N attempts even though the attempt that paused
-            # spent no compute. (CUR-218)
+            # spent no compute.
             if task._confirm_wait_secs:
                 _RUN_START[task.id] += task._confirm_wait_secs
                 task._confirm_wait_secs = 0.0
@@ -5704,8 +5876,9 @@ def _execute_attempt(
         # standing in for the real model token, so no request value reaches the child environment.
         # The argv is list-form with no shell, so attempt_prompt is one argument rather than
         # anything a shell parses. The suppression lives in ci.yml as --exclude-rule, not here: an
-        # inline `# nosemgrep` does not take for this rule (neither the bare nor the fully-qualified
-        # form takes on the match line; is_ignored stays null). (CUR-1275)
+        # inline `# nosemgrep` does not take for this rule (tried both the bare and fully-qualified
+        # forms on the exact match line; is_ignored stays null), so do not spend the afternoon on it
+        # again.
         proc = subprocess.Popen(
             [*sandbox, HERMES_BIN, "-z", attempt_prompt, "-t", ALLOWED_TOOLSETS, "--yolo", *_model_flags(task.model)],
             cwd=work, env=_model_env(nonce, attempt_home, permission_policy),
@@ -5728,22 +5901,24 @@ def _execute_attempt(
 
 
 def _run(task: Task) -> None:
-    # The /run endpoint already sets this before the task is visible in TASKS, to close the
+    # the /run endpoint already sets this before the task is visible in TASKS, to close the
     # orphan-reaper startup race — setdefault so a caller that drives _run() directly (tests; any future
     # in-process caller) still gets one, since _run's own wall-clock math below reads _RUN_START[task.id]
-    # unconditionally. (CUR-1330)
+    # unconditionally.
     _RUN_START.setdefault(task.id, time.monotonic())
+    # fixed here, before any confirmation wait has moved _RUN_START, and never moved after.
+    task._hard_deadline = _RUN_START[task.id] + TASK_HARD_CAP_SECS
     # session_id present -> reuse (or create) a workdir keyed on (task.user, session_id) that
     # survives past this turn, instead of the always-fresh, always-discarded scratch below. Absent ->
-    # byte-identical to pre-CUR-196 behavior (baseline=0 makes the watchdog math below a no-op change). (CUR-196)
+    # byte-identical to earlier behavior (baseline=0 makes the watchdog math below a no-op change).
     work, baseline, session_over_budget = _resolve_workdir(task)
     task._workdir = work
-    # This turn's own start, wall-clock — before any tool call this turn can run. In a continued
-    # session `work` is the PRIOR turn's directory too (CUR-196), so an unfiltered artifact walk resurfaces
+    # this turn's own start, wall-clock — before any tool call this turn can run. In a continued
+    # session `work` is the PRIOR turn's directory too, so an unfiltered artifact walk resurfaces
     # its real files under a "this turn produced" label even when this turn made zero tool calls. Passed
     # to `_collect_artifacts` at the one call site that builds that display list, nowhere else — moderation
     # and the download route stay unscoped on purpose. For a fresh session `work` is a brand-new empty
-    # tempdir, so filtering by this is a no-op there; no need to gate on `task._session_continued`. (CUR-1117)
+    # tempdir, so filtering by this is a no-op there; no need to gate on `task._session_continued`.
     turn_start_wall = time.time()
     # One watchdog for the whole task, not one per attempt: the scratch is shared across attempts and it
     # is the SUM that has to stay bounded. _reset_scratch between attempts keeps the reading honest.
@@ -5757,10 +5932,8 @@ def _run(task: Task) -> None:
     cap_hit = False
     last_judge_reason = ""                 # last LLM-judge rejection (surfaced in the summary when unverified)
     buf: _EventBuffer | None = None
-    # Bound here rather than probed for with locals().get() in the handlers below: a name
-    # assigned only deep inside the post-loop tail leaves the handlers unable to know whether it
-    # exists. _finalize_run returns it, and a name a reader can follow beats a string lookup
-    # no checker can (CUR-1229).
+    # Bound here rather than probed for with locals().get() in the handlers below: a name a reader
+    # can follow beats a string lookup no checker can. _finalize_run returns it.
     fail: str | None = None
     try:
         if task._canceled:                                 # canceled while still SUBMITTED, before we started
@@ -5776,7 +5949,7 @@ def _run(task: Task) -> None:
         buf = _event_buffer(task.id, create=True)          # live SSE stream for this run (None when disabled)
         if buf is not None:
             buf.emit("state", {"task_id": task.id, "state": "working"})
-        if session_over_budget:  # CUR-196: fail loud, no turn attempted against an over-budget session
+        if session_over_budget:  # fail loud, no turn attempted against an over-budget session
             task.error = (f"session workspace exceeded its ration: {baseline} bytes against a "
                           f"{SESSION_SCRATCH_MAX_BYTES} byte cap (AGENT_SESSION_SCRATCH_MAX_BYTES)")
             task.summary, task.state = "failed: session scratch ration", State.FAILED
@@ -5806,14 +5979,14 @@ def _run(task: Task) -> None:
         if SANDBOX_BACKEND.name != "bwrap":
             # Hermes runs in the conversation's own sandbox, which only the ACP path can drive and
             # only the gateway can fund. Its own conversation key, apart from the run-code tools' sandbox,
-            # since a sandbox's egress is fixed at its tier when it is made. (CUR-4482)
+            # since a sandbox's egress is fixed at its tier when it is made.
             if not (use_acp and nonce):
                 task.error, task.summary, task.state = ("a remote sandbox needs the ACP transport and the model "
                                                         "gateway"), "failed: sandbox", State.FAILED
                 return
             if (held := _connect_agent_sandbox(task, buf)) is None:
                 return
-            ws = RemoteWork(SANDBOX_BACKEND, held, _remote_work(), local=work)  # CUR-4483
+            ws = RemoteWork(SANDBOX_BACKEND, held, _remote_work(), local=work)
         # Execution sandbox: optionally wrap the agent so it can't read host secrets / write outside scratch.
         sandbox = _sandbox_prefix(work) if task._sbx is None else []
         if SANDBOX_REQUIRED and not sandbox and task._sbx is None:
@@ -5842,7 +6015,7 @@ def _run(task: Task) -> None:
             return r.json()["choices"][0]["message"]
 
         # best-of-N: up to N attempts, accept the first the shared _select_attempt confirms. `-z`/oneshot
-        # is final-text-only BY DESIGN (Hermes redirects the whole call tree's
+        # is final-text-only BY DESIGN (docs/streaming-spec.md §1: Hermes redirects the whole call tree's
         # stdout/stderr to devnull and writes only the final response to real stdout) — so `stdout` here is
         # already clean judge-able text, not a mixed transcript; the artifact `_verify` (when a spec exists)
         # still gates the judge as necessary-but-not-sufficient in _select_attempt.
@@ -5865,8 +6038,8 @@ def _run(task: Task) -> None:
         # Built once for the whole task: work/spec are stable across attempts even though attempt_home isn't.
         # Annotated, and the conditional `def` given its own name rather than rebinding this one: a bare
         # `verify_check = None` followed by `def verify_check()` declares the name as a function and then
-        # contradicts itself, which is what pyright reports the moment it can see this function at all
-        # (CUR-1229). The Optional is the real type — every consumer already treats None as "no check".
+        # contradicts itself, which is what pyright reports the moment it can see this function at all.
+        # The Optional is the real type — every consumer already treats None as "no check".
         verify_check: Callable[[], bool] | None = None
         if EARLY_EXIT and use_acp and task._verify_spec is not None:
             _early_exit_spec = task._verify_spec
@@ -5885,8 +6058,8 @@ def _run(task: Task) -> None:
         # session exists, because the closure below is built before it too and shares this set by
         # reference. Reset per attempt with the rest of the attempt state.
         tool_kinds: set[str] = set()
-        # Kinds with at least one call that ended status=="failed" this attempt, same
-        # shared-by-reference shape as tool_kinds — see _AgentClient.tool_failures for what this catches. (CUR-574)
+        # kinds with at least one call that ended status=="failed" this attempt, same
+        # shared-by-reference shape as tool_kinds — see _AgentClient.tool_failures for what this catches.
         tool_failures: set[str] = set()
         _repair_spec = task._verify_spec
         # In-session repair runs in two cases, distinguished by what the check can assert.
@@ -5915,12 +6088,12 @@ def _run(task: Task) -> None:
                     unrun = _wrote_code_without_running_it(tool_kinds, tool_failures, ws, answer, use_acp)
                     if unrun:
                         return False, f"{UNRUN_DETAIL_PREFIX}{unrun}"
-                    # Independent of the above — a real, successful run can still report a
-                    # self-contradictory result (see _zero_result_from_nonzero_input's own comment). (CUR-1404)
+                    # independent of the above — a real, successful run can still report a
+                    # self-contradictory result (see _zero_result_from_nonzero_input's own comment).
                     zeroed = _zero_result_from_nonzero_input(answer)
                     if zeroed:
                         return False, f"{ZERO_RESULT_PREFIX}{zeroed}"
-                    # A chart whose ranges plot the wrong cells, read from the .xlsx files this turn made. (CUR-4600)
+                    # a chart whose ranges plot the wrong cells, read from the .xlsx files this turn made.
                     charts = workdir_chart_problems(_artifact_paths(ws, 50, since=turn_start_wall),
                                                     workdir_reader(ws, ARTIFACT_DOWNLOAD_MAX_BYTES))
                     if charts:
@@ -5939,16 +6112,16 @@ def _run(task: Task) -> None:
         # WORKDIR_NOTE first and unconditionally: it is where output goes, true of every task, and the
         # appendix below only sometimes exists. Ordering puts the room before the grading.
         check_note = _check_appendix(task._verify_spec, task._verify_autoderived)
-        # Computed ONCE per task, not per best-of-N attempt — a caller's trust state is a
+        # computed ONCE per task, not per best-of-N attempt — a caller's trust state is a
         # property of their history in the tasks table, which this task's own (not-yet-COMPLETED) row
         # cannot change mid-loop, so recomputing per attempt bought nothing and risked attempts of the
         # SAME task disagreeing with each other. Gated on use_acp specifically for the prompt note:
-        # oneshot always runs --yolo unconditionally and CUR-217's toolset filtering never applies
-        # there, so telling an oneshot caller it lacks tools it actually has would be actively wrong. (CUR-471)
+        # oneshot always runs --yolo unconditionally and its toolset filtering never applies
+        # there, so telling an oneshot caller it lacks tools it actually has would be actively wrong.
         decision = _permission_decision(task.user)
         # The caller's trust tier goes onto the client-visible task as well as the model-facing prompt
         # note and toolset decision: the SSE `policy` event carries it live, but a poller/webhook
-        # consumer (StatusResponse, _done_payload) reads it from here (CUR-761). Unlike _policy_note
+        # consumer (StatusResponse, _done_payload) reads it from here. Unlike _policy_note
         # below, this is NOT gated on use_acp: tier/tasks_done/tasks_required are facts about the CALLER
         # (their trust history), true whichever transport this turn runs on. Whether the tier had any
         # toolset effect is transport-dependent (oneshot ignores the toolset filtering), and a client
@@ -5956,14 +6129,14 @@ def _run(task: Task) -> None:
         # human sentence is the UI's job, not this field's.
         task.tier, task.tasks_done, task.tasks_required = (
             decision["tier"], decision["tasks_done"], decision["tasks_required"])
-        # Built once per task, passed into acp_client._acp_run below — acp_client.py cannot
+        # built once per task, passed into acp_client._acp_run below — acp_client.py cannot
         # import State/_TERMINAL (app.py imports acp_client, not the reverse), so these closures live
         # here and are forwarded as plain callables. Both guard against clobbering a state something
         # else already set: DELETE /run/{id} sets State.CANCELED synchronously, on the HTTP thread,
         # BEFORE it calls task._acp_cancel() (which only schedules the actual cancellation via
         # call_soon_threadsafe) — so there's a real window where CANCELED has already landed but the
         # attempt hasn't noticed yet. Without these guards, a confirmation opening or closing in that
-        # window would silently revert CANCELED back to AWAITING_CONFIRMATION or WORKING. (CUR-218)
+        # window would silently revert CANCELED back to AWAITING_CONFIRMATION or WORKING.
         def _confirmation_opened(desc: dict) -> None:
             task.pending_confirmations.append(desc)
             if task.state not in _TERMINAL:
@@ -5978,29 +6151,32 @@ def _run(task: Task) -> None:
 
         # Parked on the task rather than passed down as two more parameters: _execute_attempt forwards
         # them verbatim to acp_client and never calls them, so they are this task's state, not that
-        # function's business (CUR-1229).
+        # function's business.
         task._on_confirmation_open = _confirmation_opened
         task._on_confirmation_close = _confirmation_closed
-        # The count comes back from the same walk that builds the note, rather than a second one
+        # the count comes back from the same walk that builds the note, rather than a second one
         # here — see _workdir_note. Parked on the task so _done_payload can send it without re-reading a
-        # `work` directory that the `finally` below deletes. (CUR-1394)
-        workdir_note, task._session_files_at_start = _workdir_note(ws, task._session_continued, task.session_expired)  # CUR-196, CUR-4595
+        # `work` directory that the `finally` below deletes.
+        workdir_note, task._session_files_at_start = _workdir_note(ws, task._session_continued, task.session_expired)
+        # Seeded after the walk above, so the person's own files are not reported as left by an earlier
+        # turn. Copied again after each best-of-N reset, below.
+        seeded = _seed_attachments(ws, task._attachments, task.id)
+        workdir_note += _attachments_note(seeded, use_acp and any(a.model_image for a in task._attachments))
         # Order matters. The task sits at the front of this concatenation and every note after it is
         # read AFTER the task, so the notes nearest the end are what the model reads most recently before
         # answering. LANGUAGE_NOTE sits after SOURCE_FIDELITY_NOTE, which says nothing about what language
-        # to answer in, so the language instruction gets a late position (CUR-706). The tail's order is
-        # load-bearing: moving one of its notes fixes one leak and can reopen another (CUR-752).
+        # to answer in, so the language instruction gets a late position. The tail's order is
+        # load-bearing: moving one of its notes fixes one leak and can reopen another.
         # _sandbox_note sits immediately after _policy_note because the two answer the same question,
         # what this session can actually do, and stays out of the
-        # CAPABILITY/COMPUTATION/SOURCE_FIDELITY/LANGUAGE/CATEGORY_RECAP tail so that tail keeps its order
-        # (CUR-1405).
-        agent_prompt = task.prompt + workdir_note + check_note + (_policy_note(decision) if use_acp else "") + _sandbox_note() + CAPABILITY_NOTE + COMPUTATION_NOTE + SOURCE_FIDELITY_NOTE + LANGUAGE_NOTE + NO_VERIFICATION_CLAIM_NOTE + CATEGORY_RECAP_NOTE  # CUR-542, CUR-672, CUR-676, CUR-705, CUR-706, CUR-752, CUR-764, CUR-1405, CUR-4055
+        # CAPABILITY/COMPUTATION/SOURCE_FIDELITY/LANGUAGE/CATEGORY_RECAP tail so that tail keeps its order.
+        agent_prompt = task.prompt + workdir_note + check_note + (_policy_note(decision) if use_acp else "") + _sandbox_note() + CAPABILITY_NOTE + COMPUTATION_NOTE + SOURCE_FIDELITY_NOTE + LANGUAGE_NOTE + NO_VERIFICATION_CLAIM_NOTE + CATEGORY_RECAP_NOTE
         if check_note:
             _log_event("run.check_shown", id=task.id, chars=len(check_note))
         last_structural: str | None = "agent did not run"
         last_verify_detail = ""                        # what the check said about the previous attempt
         attempts = 0
-        # CUR-596 item 2: when active, a verified attempt no longer ends the loop immediately — sampling
+        # when active, a verified attempt no longer ends the loop immediately — sampling
         # continues (up to best_of) so independently-verified attempts' computed values can be compared.
         # Only file-shaped specs have a value to compare (_consistency_eligible); everything else behaves
         # exactly as before, including when the flag is off entirely (the default).
@@ -6008,11 +6184,11 @@ def _run(task: Task) -> None:
         # [{"sig","stdout","stderr","vmethod","judge_reason","unrun_detail","snapshot"}] — one entry per
         # attempt that reached ANY accepted/salvaged outcome while consistency_active, regardless of
         # WHICH code path accepted it (the normal _select_attempt accept, the structural-failure salvage
-        # branch, or a judge-overruled accept). Every one of those paths appends here instead of
-        # setting task.verified and `break`ing directly: independent setters would let whichever fired LAST
-        # silently clobber an earlier, already-captured sample, and a judge-overruled FIRST attempt would
-        # bypass sampling entirely, finalizing the whole task on one deterministically-failed-but-judge-
-        # waved-through attempt with no cross-attempt confirmation. task.verified/verify_method/judge_reason/unrun_detail/stdout/stderr/`work` are ALL
+        # branch, or a judge-overruled accept). Every one of those paths appends here rather than setting
+        # task.verified and breaking directly, so none can clobber an already-captured sample, and a
+        # judge-overruled FIRST attempt cannot finalize the whole task on one
+        # deterministically-failed-but-judge-waved-through attempt with no cross-attempt confirmation.
+        # task.verified/verify_method/judge_reason/unrun_detail/stdout/stderr/`work` are ALL
         # deferred to the ONE post-loop vote below — never set inline in the loop — so no code path can
         # finalize the task on its own.
         #
@@ -6022,7 +6198,8 @@ def _run(task: Task) -> None:
         # first place; a genuine attempt-signature read failure (transient OSError, an oversized CSV
         # field) means the value COULD have been trustworthy but couldn't be confirmed. Either way, a
         # None-sig sample must never be preferred over a real one when picking what to serve — see the
-        # post-loop fallback logic.
+        # post-loop fallback logic, which checks whether a sample's OWN sig was ever read before
+        # falling back to the literal last sample.
         consistency_samples: list[dict] = []
         for attempts in range(1, best_of + 1):
             if task._canceled:
@@ -6046,7 +6223,8 @@ def _run(task: Task) -> None:
                     # the scratch that dies with the task.
                 else:
                     _reset_scratch(ws)                 # C7: reset FIRST, then create a fresh per-attempt home
-            # task.id-qualified, not just attempts-qualified (CUR-196). `attempts` restarts at 1 every
+                _seed_attachments(ws, task._attachments, task.id)   # the reset took them too
+            # task.id-qualified, not just attempts-qualified. `attempts` restarts at 1 every
             # _run call, and for a reused session workdir that would collide with a prior TURN's attempt 1
             # — Hermes writes more than config.yaml into its home ("isolates session/checkpoint writes
             # between tasks", per the comment above), so an unqualified name would silently inherit
@@ -6057,43 +6235,51 @@ def _run(task: Task) -> None:
             # Without the reset, an attempt that ran nothing inherits the previous attempt's `execute` and
             # the un-run turn silently stops firing from attempt 2 on.
             tool_kinds.clear()
-            tool_failures.clear()             # same reset, same reason — CUR-574
+            tool_failures.clear()             # same reset, same reason
             Path(attempt_home).mkdir(parents=True, exist_ok=True)
             _write_hermes_home_config(attempt_home, global_cfg)
             # Per-attempt wall-clock carved from the shared task deadline (S2): never run N×WALL_CLOCK.
             timeout_secs, stop = _remaining_timeout(_RUN_START[task.id], time.monotonic(),
                                                      task._wall_clock, best_of)
+            # and never past the task's hard deadline, which no approval wait pauses. Checked first, so
+            # when both have run out the error names the limit that actually holds.
+            hard_left = task._hard_deadline - time.monotonic()
+            if hard_left <= 0:
+                last_structural = _hard_cap_text()
+                _log_event("run.hard_cap", id=task.id, attempt=attempts, cap_s=TASK_HARD_CAP_SECS)
+                break
             if stop:
                 # The EFFECTIVE cap, not the server ceiling. A caller that lowered its wall clock and
                 # then read "300s task ceiling exceeded" would be told about a limit that did not stop it.
                 last_structural = (f"wall-clock cap ({task._wall_clock * max(1, best_of)}s task ceiling) "
                                    f"exceeded")
                 break
+            timeout_secs = min(timeout_secs, hard_left)
             nonce, grant_failure = _grant_attempt_budget(task, nonce, attempts)
             if grant_failure:
                 last_structural = grant_failure
-                # `break` into the shared post-loop tail rather than `return`ing here (CUR-855/846).
+                # `break` into the shared post-loop tail rather than `return`ing here.
                 # `stdout` is never reset between attempts (only initialized once, before the loop) — a
                 # PRIOR attempt that ran, produced real content, and was then rejected leaves that
                 # content sitting in `stdout` right up until a later attempt overwrites it. This grant
-                # failure fires BEFORE the current attempt ever executes, so the shared tail moderates
-                # that still-live content and populates task.result/task.unrun_detail before deciding
-                # FAILED, same as every other structural failure.
+                # failure fires BEFORE the current attempt ever executes, so returning here would discard
+                # that still-live content; the shared tail moderates it and populates task.result/task.unrun_detail before
+                # deciding FAILED, same as every other structural failure.
                 #
                 # Whether that content actually SHIPS still depends on moderation succeeding —
-                # moderation runs against the guard screen endpoint (SAFETY_SCREEN_URL), a different
-                # dependency from the model gateway this failure is about, so a gateway failure does not
-                # imply an unavailable screen. Fail-closed when the screen is unavailable is correct —
-                # see moderate()'s own docstring.
+                # moderation runs against the guard screen endpoint (SAFETY_SCREEN_URL), a DIFFERENT
+                # dependency from the model gateway this failure is about, so a gateway outage does not
+                # imply a moderation outage. Fail-closed on a real moderation outage is correct, not a bug — see
+                # moderate()'s own docstring.
                 break
-            # CUR-855/846 (F3): the reset sits here, right before this attempt runs, not at the top of
+            # The reset sits here, right before this attempt runs, not at the top of
             # the attempt block. Both `break`s above fire BEFORE this attempt executes, so `stdout` (and
             # whatever real content it holds) still belongs to the PREVIOUS attempt when they fire, and so
             # does unrun_detail: the repair_check verdict acp_client._acp_run set mid-attempt. Resetting
             # before them would replace that attempt-specific verdict with a blank slate, and `if fail:`
             # below would then report this new attempt's unrelated failure reason instead. Here, the reset
-            # still keeps a REJECTED earlier attempt's stale verdict from leaking into whichever attempt
-            # gets selected (CUR-574) for every attempt that reaches this line, without wiping a verdict
+            # keeps a REJECTED earlier attempt's stale verdict from leaking into whichever attempt
+            # gets selected, for every attempt that reaches this line, without wiping a verdict
             # that belongs to content this task is about to ship.
             task.unrun_detail = ""
             # Execute this attempt. Both transports yield the same four things for the shared
@@ -6106,9 +6292,9 @@ def _run(task: Task) -> None:
                 tool_kinds=tool_kinds, tool_failures=tool_failures)
             # Per-attempt tally + revoke (S3): accumulate for the ledger; use the per-attempt count for
             # THIS attempt's honest-success decision. The nonce is idle after this until the next grant.
-            # `usage_seen` is a "did the gateway EVER see usage" fact and has to be sticky: reassigning
-            # it here would let a run whose last attempt reported nothing erase what the earlier ones
-            # saw, and the summary would then claim "spend-cap inert: no usage from upstream" about a task
+            # `usage_seen` is a "did the gateway EVER see usage" fact and has to be sticky, not reassigned
+            # here: a run whose last attempt reported nothing must not erase what the earlier ones saw, or
+            # the summary would claim "spend-cap inert: no usage from upstream" about a task
             # that had metered fine. `cap_hit` stays per-attempt on purpose: _detect_run_failure below
             # asks whether THIS attempt was throttled, not whether any of them were.
             if nonce:
@@ -6121,15 +6307,14 @@ def _run(task: Task) -> None:
                 break
             if timed_out:
                 # THIS ATTEMPT is out of clock. The task is not — it holds task._wall_clock * best_of, and
-                # the loop head's own `stop` check is what ends it when that ceiling is reached. Breaking here
-                # would let one long attempt kill the whole task with its siblings' budget untouched, each
-                # discarding the wall clock it had been granted.
+                # the loop head's own `stop` check is what ends it when that ceiling is reached. A `break`
+                # here would be wrong: it would end the whole task with its siblings' budget untouched,
+                # discarding time each of them was granted.
                 # Falling through to the retry path costs nothing when the clock really is gone: the next
                 # iteration's `stop` breaks immediately, and the message it sets names the task ceiling.
                 last_structural = f"attempt {attempts} hit the {task._wall_clock}s per-attempt wall clock"
-                # Log BEFORE the continue: below the branch it would record every attempt except
-                # the one that ran out of clock — the single most informative
-                # attempt in any long-horizon trial, and the one whose call count says whether the deadline
+                # Log BEFORE the continue, so the attempt that ran out of clock is recorded too — the
+                # single most informative attempt in any long-horizon trial, and the one whose call count says whether the deadline
                 # was spent working or spinning.
                 _log_event("run.attempt", id=task.id, attempt=attempts, stop_reason="wall_clock",
                            requests=a_reqs, tokens=a_toks, out_chars=len(stdout or ""),
@@ -6156,7 +6341,7 @@ def _run(task: Task) -> None:
             if not last_structural and acp_stop in ("refusal", "max_tokens", "max_turn_requests"):
                 last_structural = f"agent stopped: {acp_stop}"
             # A spec-less chat turn (task._verify_spec is None — no expect_file/check_cmd to derive one
-            # from) that fired zero tool calls gets an unconditional accept downstream (CUR-766):
+            # from) that fired zero tool calls gets an unconditional accept downstream:
             # _select_attempt's `grounded` check is False whenever spec is None, so exec_ok defaults
             # True and the judge is never called at all. Without this check, best_of's retry capacity
             # is unreachable for this class of turn — attempt 1 is final even if the model just
@@ -6170,7 +6355,7 @@ def _run(task: Task) -> None:
             #
             # This check alone can't tell "described but didn't do" apart from "correctly needed no
             # tool": a plain greeting under forced agentMode:on hits every precondition above and would
-            # exhaust best-of-N into FAILED (CUR-940). `auto` doesn't have this problem: the client
+            # exhaust best-of-N into FAILED. `auto` doesn't have this problem: the client
             # already asks _classify_agentic's /route question before a turn ever
             # reaches here, and only sends agentic:true turns into _run at all. Forced `on` skips that
             # gate entirely (its whole point is guaranteeing every turn reaches the agent backend, not
@@ -6181,8 +6366,8 @@ def _run(task: Task) -> None:
             # agentic:False on any router/gateway trouble, same as everywhere else `_classify_agentic` is
             # used, so a degraded classifier never blocks the turn; the turn is then accepted as before.
             #
-            # The same holds for an honest refusal ("I cannot send emails"), which retrying cannot change
-            # (CUR-4599). `_no_tool_check` asks what the reply is and retries only a skipped or narrated
+            # The same holds for an honest refusal ("I cannot send emails"), which retrying cannot change.
+            # `_no_tool_check` asks what the reply is and retries only a skipped or narrated
             # one; see no_tool_review.py.
             task._no_tool_answer = ""
             if not last_structural:
@@ -6191,9 +6376,11 @@ def _run(task: Task) -> None:
                     spec_less=task._verify_spec is None, tool_kinds=tool_kinds,
                     classify=lambda p: _classify_agentic(p)["agentic"],
                     review=lambda body, n=nonce: _no_tool_review_call(n, task.id, body))
-            # Every attempt's outcome, whatever it was, so an attempt that ended
-            # `end_turn` after ONE model call having written nothing is distinguishable in the log from any
-            # other failed verification. `requests` is the datum that separates "tried and got it wrong" from
+            # Every attempt's outcome, whatever it was. Only three stop reasons were ever recorded, so an
+            # attempt that ended `end_turn` after ONE model call having written nothing was, in the log,
+            # indistinguishable from any other failed verification — which is exactly the R1b shape and
+            # exactly what two of three long-horizon fixtures did for their whole wall clock (15 fresh
+            # sessions for 3 tasks). `requests` is the datum that separates "tried and got it wrong" from
             # "stopped before starting"; without it the retry loop looks like patience rather than a spin.
             _log_event("run.attempt", id=task.id, attempt=attempts, stop_reason=acp_stop or "",
                        requests=a_reqs, tokens=a_toks, out_chars=len(stdout or ""),
@@ -6204,8 +6391,8 @@ def _run(task: Task) -> None:
                 # Discarding a structurally failed attempt on the spot is right when the agent never ran,
                 # and wrong when it ran for a dozen turns and got throttled on the last one: the files it
                 # left are either correct or they aren't, and the check that settles it costs one
-                # subprocess and no model call. Long-horizon tasks hit this, most after a dozen or
-                # more model calls. _reset_scratch wipes the workdir on the
+                # subprocess and no model call. On long-horizon tasks about one attempt in five ends this
+                # way, most after a dozen or more model calls. _reset_scratch wipes the workdir on the
                 # next iteration, so this is the last moment the artifacts exist.
                 # Deterministic artifact specs only: the judge needs a fresh gateway grant, and a spend
                 # cap is a poor reason to spend more. An attempt salvaged here is `execution`-verified by
@@ -6237,14 +6424,14 @@ def _run(task: Task) -> None:
                 spec_autoderived=task._verify_autoderived)
             reason = _scrub(reason, nonce)             # may be check output from inside the sandbox
             last_judge_reason = reason
-            # Keep the reason on a PASS as well: a verdict with its
+            # Keep the reason on a PASS as well as on an unverified turn, since a verdict with its
             # grounds attached is checkable, a bare "verified" is not.
             task.judge_reason = reason
             task.verify_check = _spec_fields(task._verify_spec)
             if may_judge and nonce:
                 j_reqs, j_toks, _ju, _jc = _gateway_revoke(nonce)
                 reqs += j_reqs; toks += j_toks
-            # For the verify corpus (CUR-654), independent of whether the judge went on to overrule an
+            # For the verify corpus, independent of whether the judge went on to overrule an
             # auto-derived spec's failure (_select_attempt's authority rules): did the deterministic shape
             # check itself catch something on THIS attempt. Re-running _verify is redundant with the one
             # _select_attempt already did, but it keeps that function's authority logic untouched for a
@@ -6268,7 +6455,7 @@ def _run(task: Task) -> None:
             # more about whether the system is working than any badge does.
             reason = _scrub(reason, nonce)             # `reason` may be check output; see _scrub
             task.attempt_rejections.append(reason or "rejected (no reason given)")
-            # Fired the MOMENT an attempt is rejected, not inferred later from a rising `attempt`
+            # fired the MOMENT an attempt is rejected, not inferred later from a rising `attempt`
             # number on the next token frame. This rejection path has no artificial backoff (that's the
             # structural-failure branch above, a different case) — but the next attempt still needs a
             # real model call before its first token arrives, and a client with no earlier signal shows
@@ -6276,34 +6463,36 @@ def _run(task: Task) -> None:
             # every `token`/`token_truncated` frame already carries `attempt` (acp_client._AgentClient,
             # constructed fresh per attempt), so a client that keys its rendered-answer buffer by
             # `attempt` and clears it on this event, or on any token frame whose `attempt` exceeds what
-            # it has rendered, never shows a retracted attempt's text as final. (CUR-767)
+            # it has rendered, never shows a retracted attempt's text as final.
             if buf is not None:
                 buf.emit("attempt_rejected", {"attempt": attempts, "reason": reason or "rejected"})
             # Only an EXECUTION verdict is repair material. A judge rejection is prose about an answer,
             # and `vmethod` is None on every rejection so it can't be used to tell them apart — the spec
             # is what says whether `reason` came from _verify or from the model.
             last_verify_detail = reason if (task._verify_spec is not None and not may_judge) else ""
-        # Pick which verified sample actually WON (CUR-596), then restore work/stdout/stderr/
+        # pick which verified sample actually WON, then restore work/stdout/stderr/
         # verified/verify_method/judge_reason/unrun_detail to match it TOGETHER, from that one winner —
         # never left as whatever the loop's own literal final iteration happened to set (that iteration
         # can be a LATER attempt that failed, or one whose value lost the vote). A strict majority wins
         # when one exists (_majority_signature). Getting the WINNER right, not just detecting
-        # disagreement, is the point: always serving consistency_samples[-1] regardless of which value the
-        # majority held would give the false-success shape this feature exists to prevent: verified=True,
-        # no caveat, wrong file served.
+        # disagreement, is the actual point — always serving
+        # consistency_samples[-1] regardless of which value the majority held would reproduce the exact
+        # false-success shape this feature exists to prevent: verified=True, no caveat, wrong file served.
         #
         # Fallback when there's no majority: prefer the LAST sample with an actually-computed, readable
-        # signature over the literal last-in-list sample — without that check, a sample whose OWN sig was None
-        # (a judge-overruled accept, or a transient read failure) could be crowned the winner over a
-        # genuinely-confirmed-but-losing sample, giving the same false-success shape. Only when EVERY sample has
+        # signature over the literal last-in-list sample — a fallback that skipped
+        # this check would let a sample whose OWN sig was None (a judge-overruled accept, or a transient read
+        # failure) be crowned the winner over a genuinely-confirmed-but-losing sample,
+        # reviving the same false-success shape through a different door. Only when EVERY sample has
         # sig=None (nothing readable was ever confirmed) does the literal last one serve as the answer —
         # there is nothing better to prefer at that point.
         #
         # Gated on `not task._canceled`: mutating task.verified/work/stdout here and THEN discovering the
         # task was canceled would leave a CANCELED task's fields looking like it had completed — a race
-        # window that grows every time sampling continues into another full attempt. Cleanup of the
-        # snapshot temp dirs still runs UNCONDITIONALLY below, canceled or not (on a tmpfs host an
-        # abandoned dir is RAM, not disk, recoverable only by process restart).
+        # window that grows every
+        # time sampling continues into another full attempt. Cleanup of the snapshot temp dirs still runs
+        # UNCONDITIONALLY below, canceled or not (/tmp is RAM-backed on some hosts — a leaked dir is RAM, not
+        # disk, recoverable only by process restart).
         _disagreement: str | None = None
         if consistency_active and consistency_samples and not task._canceled:
             _real_sigs = [s["sig"] for s in consistency_samples if s["sig"] is not None]
@@ -6315,8 +6504,8 @@ def _run(task: Task) -> None:
                 _winner = next((s for s in reversed(consistency_samples) if s["sig"] is not None), None) \
                     or consistency_samples[-1]
             stdout, stderr = _winner["stdout"], _winner["stderr"]
-            # An overruled _select_attempt returns vmethod=None (accept-unverified; CUR-744), so a
-            # winner picked here can genuinely carry vmethod=None. verify_method is a plain `str` field (Task AND StatusResponse both
+            # an overruled _select_attempt returns vmethod=None (accept-unverified),
+            # so a winner picked here can genuinely carry vmethod=None. verify_method is a plain `str` field (Task AND StatusResponse both
             # default ""), never Optional — an unguarded None here sets it anyway (Task is a dataclass, no
             # assignment-time check) and only surfaces as a pydantic ValidationError later, on the next
             # GET /run/{id}. Mirror the single-sample path's own guard (line ~4567) instead: only claim
@@ -6331,8 +6520,7 @@ def _run(task: Task) -> None:
             # not this specific prefix) rather than inventing a second caveat field the client has to
             # also check. Logs EVERY sample, not just the winner — a single row would show only one side
             # of what the attempts disagreed about, and the point of a disagreement-labeled training row
-            # is the disagreement itself (CUR-654 needs to see what different attempts computed, not just
-            # which one this task happened to serve). Read from each sample's OWN snapshot dir, not the
+            # is the disagreement itself. Read from each sample's OWN snapshot dir, not the
             # now-restored `work` (which only ever reflects the winner) — done before the cleanup loop
             # below deletes those directories.
             if _disagreement:
@@ -6368,7 +6556,7 @@ def _run(task: Task) -> None:
             attempts=attempts, best_of=best_of, turn_start_wall=turn_start_wall,
             last_judge_reason=last_judge_reason)
     except HTTPException as e:                              # moderation block on output
-        # CUR-855/846: `fail` carries this turn's structural failure whenever there was one — it is
+        # `fail` carries this turn's structural failure whenever there was one — it is
         # decided before moderation ever runs. Keep that diagnostic primary: the content is withheld
         # either way (task.result is never reached on this path), so replacing an informative
         # structural reason with a bare moderation message would be a pure loss of information on a
@@ -6382,7 +6570,7 @@ def _run(task: Task) -> None:
                       else f"{type(e).__name__}: {e}")
         task.summary, task.state = "failed: internal", State.FAILED
     finally:
-        # CUR-596 item 2 safety net: the loop's own inline cleanup (right after the best-of-N loop) covers
+        # Best-of-N safety net: the loop's own inline cleanup (right after the best-of-N loop) covers
         # the normal exit path, but an early `return` mid-loop (a per-attempt gateway-grant failure, a
         # moderation HTTPException, any of this function's other early exits) would skip straight past it,
         # leaking the snapshot temp dir it made. `locals().get` rather than a bare reference: this variable
@@ -6394,17 +6582,16 @@ def _run(task: Task) -> None:
         _scratch_stop.set()
         # The kill lands as a generic subprocess death, so without this the task reports something
         # unhelpful about exit codes and the operator never learns a ration fired. It has to OVERRIDE a
-        # failure already recorded, not defer to one: guarding on `state not in _TERMINAL`
-        # never fires, because _detect_run_failure has already classified the kill as
-        # `hermes exit None` by the time the finally runs. The generic classifier is describing the
+        # failure already recorded, not defer to one: a guard on `state not in _TERMINAL` would never fire,
+        # because _detect_run_failure has already classified the kill as
+        # `hermes exit None` by the time the finally ran. The generic classifier is describing the
         # symptom; the watchdog knows the cause. A user cancel still wins — that one really is the cause.
         if task._scratch_exceeded and not task._canceled and task.state != State.COMPLETED:
             task.error = (f"scratch exceeded its ration: {task._scratch_exceeded} bytes on disk against a "
                           f"{SCRATCH_MAX_BYTES} byte cap (AGENT_SCRATCH_MAX_BYTES)")
             task.summary, task.state = "failed: scratch ration", State.FAILED
         if nonce and not revoked:                          # ensure the nonce is always revoked
-            # ACCUMULATE, never assign: assigning would silently zero the ledger on every path that
-            # leaves the loop early — the cancel `return` and any exception both skip `revoked = True`,
+            # ACCUMULATE, never assign: the cancel `return` and any exception both skip `revoked = True`,
             # and by then the per-attempt revokes have already consumed the grants, so this call returns
             # (0, 0) and an assignment would throw away everything the attempts had spent, recording zero
             # tokens for a canceled task against a real bill.
@@ -6424,12 +6611,13 @@ def _run(task: Task) -> None:
             buf.close()
         if KEEP_WORKDIR:                                   # diagnostic retention (harness only — see KEEP_WORKDIR)
             _log_event("run.workdir_kept", id=task.id, path=work, state=str(task.state))
-        elif task._session_id:                             # CUR-196: persists across turns; only the idle reaper deletes this
+        elif task._session_id:                             # persists across turns; only the idle reaper deletes this
             pass
         else:
             shutil.rmtree(work, ignore_errors=True)        # discard scratch + raw log (retention by construction)
         task._workdir = None
-        if task._sbx is not None:                          # CUR-4482: the conversation's sandbox takes its next task
+        task._attachments = []                             # the bytes are not kept past the run
+        if task._sbx is not None:                          # the conversation's sandbox takes its next task
             _release_sandbox(task)
         _release_user(task.user, task._max_tokens)         # free the per-user in-flight reservation
         _release_slot()                                    # free the concurrency slot acquired in /run
@@ -6441,7 +6629,7 @@ def _connect_agent_sandbox(task: Task, buf) -> Handle | None:
     """Hold the conversation's sandbox for this task, or fail the task and say why. The mark is taken before the
     sandbox resumes: a stopped task still pausing it would otherwise pause the sandbox this task just resumed.
 
-    On a full host connect waits for a slot (CUR-4584): the event stream says "waiting_sandbox" with the text chat
+    On a full host connect waits for a slot: the event stream says "waiting_sandbox" with the text chat
     shows as the turn's live line, then "working" again once a slot is found. A cancel ends the wait."""
     conversation = f"agent:{task._session_id or task.id}"
     busy_key = key_for(task.user, conversation)
@@ -6458,7 +6646,7 @@ def _connect_agent_sandbox(task: Task, buf) -> Handle | None:
     try:
         task._sbx = SANDBOX_BACKEND.connect(task.user, conversation, Tier.AGENT,
                                             on_wait=_waiting, cancelled=lambda: task._canceled)
-    except SandboxBusy as e:  # CUR-4484: the host is full; say so rather than a generic failure
+    except SandboxBusy as e:  # the host is full; say so rather than a generic failure
         _unclaim_remote(busy_key)
         if not task._canceled:  # a cancel during the wait already set its state
             task.error, task.summary, task.state = str(e), "failed: sandbox busy", State.FAILED
@@ -6474,7 +6662,7 @@ def _connect_agent_sandbox(task: Task, buf) -> Handle | None:
 
 
 def _release_sandbox(task: Task) -> None:
-    """Pause the task's sandbox, then let the conversation's next task have it (CUR-4503). A running E2B sandbox
+    """Pause the task's sandbox, then let the conversation's next task have it. A running E2B sandbox
     holds its whole guest memory from the host's hugepage pool until its idle timeout, so ten finished tasks in
     ten minutes would fill the host; a paused one frees it, and the next task's connect resumes it with its
     files. A failed pause is logged and the mark still clears, since the idle timeout pauses it anyway."""
@@ -6496,10 +6684,10 @@ _PRUNER_STOP = threading.Event()
 def _pruner_loop() -> None:
     """Background retention sweep: bound the durable store (the live table is capped; the DB wasn't)."""
     while not _PRUNER_STOP.wait(RETENTION_SWEEP_SECS):
-        # This thread also starts when CORPUS_RETENTION_SECS>0 even if TASK_RETENTION_SECS is "0" (keep
-        # forever); without this guard, every tick would call store.prune(0), whose cutoff is
-        # time.time()-0 == now, deleting all terminal task history every RETENTION_SWEEP_SECS, against an
-        # operator's explicit "keep forever" choice (CUR-596).
+        # this thread now also starts when CORPUS_RETENTION_SECS>0 even if TASK_RETENTION_SECS
+        # is "0" (keep forever) — without this guard, every tick called store.prune(0), whose cutoff is
+        # time.time()-0 == now, deleting essentially all terminal task history every RETENTION_SWEEP_SECS,
+        # directly against an operator's explicit "keep forever" choice.
         if TASK_RETENTION_SECS > 0:
             try:
                 d = store.prune(TASK_RETENTION_SECS)
@@ -6520,7 +6708,7 @@ _STUCK_TASK_SWEEP_SECS = int(os.environ.get("AGENT_STUCK_TASK_SWEEP_SECS", "60")
 
 
 def _reap_stuck_tasks() -> int:
-    """CUR-1310: a task whose `_RUN_START` entry is already gone has had its worker thread exit — the
+    """A task whose `_RUN_START` entry is already gone has had its worker thread exit — the
     same `finally` in `_run` that pops `_RUN_START` also releases the concurrency slot and records the
     outcome via `_metrics_record` — so `_inflight` and every other resource this task held are already
     correctly freed. If `task.state` is STILL not in `_TERMINAL` at that point, nothing is ever coming
@@ -6539,7 +6727,7 @@ def _reap_stuck_tasks() -> int:
         # concurrent DELETE /run/{id} can set state=CANCELED synchronously (on the HTTP thread, per
         # its own comment) at any point after that snapshot and before this loop reaches this task —
         # without this guard that CANCELED write would be silently overwritten by the FAILED below,
-        # which would lose a caller's real cancel, not the orphan case this exists for.
+        # which would drop a real caller action, not the orphan case this exists for.
         if t.state in _TERMINAL:
             continue
         t.error = t.error or "orphaned: worker thread exited without a terminal state"
@@ -6549,8 +6737,8 @@ def _reap_stuck_tasks() -> int:
     stuck = reaped
     if stuck:
         _log_event("run.reaped_orphan", count=len(stuck), ids=[t.id for t in stuck])
-        # The log line and /healthz's tasks_stuck both go quiet again within one 60s sweep —
-        # this is the only durable trace that a leak happened at all. (CUR-1320)
+        # the log line and /healthz's tasks_stuck both go quiet again within one 60s sweep —
+        # this is the only durable trace that a leak happened at all.
         _metric_inc("agent_run_reaped_orphan_total", len(stuck))
     return len(stuck)
 
@@ -6569,13 +6757,13 @@ def _stuck_task_reaper_loop() -> None:
             _log_event("run.reap_failed", error=type(e).__name__)
 
 
-# A server that has stopped answering never exits, and an exit is the only thing Fly's on-failure
+# a server that has stopped answering never exits, and an exit is the only thing Fly's on-failure
 # policy restarts on. This thread asks the server for its own /healthz over localhost, the path a request
 # from Fly's proxy takes, and exits the process after WATCHDOG_MISSES misses in a row. Running tasks die
 # with it; on restart `recover_orphans` marks them failed, which is what they already were. A freeze of
 # the whole process stops this thread too, so that case is left to the service check in agent-app.toml,
 # which takes the machine out of routing but does not restart it. On by default on Fly only: off Fly
-# nothing restarts the process, so an exit would just stop it. (CUR-4406)
+# nothing restarts the process, so an exit would just stop it.
 WATCHDOG_SECS = int(os.environ.get("AGENT_WATCHDOG_SECS", "20" if FLY_MACHINE_ID else "0") or 0)
 WATCHDOG_MISSES = 3
 WATCHDOG_TIMEOUT_SECS = 10.0
@@ -6610,7 +6798,7 @@ _SESSION_REAPER_STOP = threading.Event()
 
 
 def _forget_sandboxes(principal: str, session_id: str) -> int:
-    """Kill a conversation's sandboxes, its run-code one and its agent one (CUR-4484). Never raises: a
+    """Kill a conversation's sandboxes, its run-code one and its agent one. Never raises: a
     deleted conversation is gone from chat whether or not the sandbox host answered, and the idle sweep
     catches whatever this missed."""
     killed = 0
@@ -6623,7 +6811,7 @@ def _forget_sandboxes(principal: str, session_id: str) -> int:
 
 
 def _session_reaper_loop() -> None:
-    """CUR-196: idle-expire session workdirs. Same shape as _pruner_loop, sole owner of session-workdir
+    """Idle-expire session workdirs. Same shape as _pruner_loop, sole owner of session-workdir
     lifecycle (see the exemption in _sweep_stale_scratch) — an hours-scale clock, not days."""
     while not _SESSION_REAPER_STOP.wait(SESSION_SWEEP_SECS):
         try:
@@ -6638,22 +6826,55 @@ def _session_reaper_loop() -> None:
 
 
 def _sweep_sandboxes() -> list[str]:
-    """One idle pass over the sandbox host (CUR-4484): a sandbox unused for SESSION_IDLE_SECS is killed, files
+    """One idle pass over the sandbox host: a sandbox unused for SESSION_IDLE_SECS is killed, files
     and all, the same limit a local session workdir has. A run-code sandbox has no session row, so this
-    reads the host's own timestamps rather than the store."""
+    reads the host's own timestamps rather than the store.
+
+    running sandboxes too, which the idle measure never reaches. A task on this machine still holding
+    its sandbox past its hard limit plus SANDBOX_STUCK_GRACE_SECS has its sandbox killed, which ends the attempt
+    using it. And an agent sandbox still running with no task left to hold it (its last use older than the same
+    limit) is killed by the backend's sweep, from any machine; one a live task here holds is kept."""
+    stuck = _kill_sandboxes_past_the_hard_cap(time.monotonic())
+    with _TASKS_LOCK:
+        keep = frozenset(t._sbx.key for t in TASKS.values()
+                         if t.state not in _TERMINAL and t._sbx is not None and t._sbx.key not in stuck)
     try:
-        killed = SANDBOX_BACKEND.sweep(SESSION_IDLE_SECS)
+        killed = SANDBOX_BACKEND.sweep(SESSION_IDLE_SECS,
+                                       running_older_than_secs=TASK_HARD_CAP_SECS + SANDBOX_STUCK_GRACE_SECS,
+                                       keep=keep)
     except Exception as e:  # noqa: BLE001
         _log_event("sandbox.sweep_failed", error=type(e).__name__)
-        return []
+        return sorted(stuck)
     if killed:
         _log_event("sandbox.reaped", count=len(killed), older_than_s=SESSION_IDLE_SECS)
+    return sorted(stuck) + [k for k in killed if k not in stuck]
+
+
+def _kill_sandboxes_past_the_hard_cap(now_mono: float) -> set[str]:
+    """Kill the sandbox of every live task on this machine past its hard deadline plus the grace. The task's own
+    clock should have ended it; this is for an attempt stuck where no clock reaches (a hung teardown, a sandbox
+    call that never returns). Returns the killed sandboxes' keys."""
+    with _TASKS_LOCK:
+        late = [t for t in TASKS.values() if t.state not in _TERMINAL and t._sbx is not None
+                and now_mono > t._hard_deadline + SANDBOX_STUCK_GRACE_SECS]
+    killed: set[str] = set()
+    for t in late:
+        sbx = t._sbx
+        if sbx is None:
+            continue
+        try:
+            SANDBOX_BACKEND.kill(sbx)
+        except Exception as e:  # noqa: BLE001 — the next pass, or the backend sweep, retries it
+            _log_event("sandbox.stuck_kill_failed", id=t.id, error=type(e).__name__)
+            continue
+        _log_event("sandbox.stuck_killed", id=t.id, key=sbx.key, past_cap_s=round(now_mono - t._hard_deadline))
+        killed.add(sbx.key)
     return killed
 
 
 def _sandbox_pool_tick() -> dict[int, int]:
-    """One reading of the sandbox hosts' load (CUR-4553): a `sandbox.pool` line per host that answered, with its
-    running sandboxes and E2B_SLOT_CAPACITY, which the pool alert reads. A bwrap backend has no hosts."""
+    """One reading of the sandbox hosts' load: a `sandbox.pool` line per host that answered, with its
+    running sandboxes and E2B_SLOT_CAPACITY, which scripts/axiom_alert.py reads. A bwrap backend has no hosts."""
     try:
         load = SANDBOX_BACKEND.pool_load()
     except Exception as e:  # noqa: BLE001
@@ -6674,7 +6895,7 @@ def _sandbox_pool_loop() -> None:
 
 
 def _lease_tick(now: float | None = None) -> None:
-    """One pass of the shared-store upkeep (CUR-4443): renew this machine's leases, stop the tasks another
+    """One pass of the shared-store upkeep: renew this machine's leases, stop the tasks another
     machine asked to cancel, and end other machines' tasks whose lease lapsed."""
     now = time.time() if now is None else now
     with _TASKS_LOCK:
@@ -6706,10 +6927,10 @@ def _lease_loop() -> None:
             _log_event("run.lease_tick_failed", error=type(e).__name__)
 
 
-# ---- Drain on the stop signal (CUR-4598) ------------------------------------------------------------
+# ---- drain on the stop signal ------------------------------------------------------------
 # A deploy replaces this app's one Fly machine in place, and a task's run lives in this process, so a stop
-# that does not wait kills every running task and the person reads "The agent stream dropped". The platform sends
-# kill_signal, waits kill_timeout (at most 300 s), then stops the machine regardless.
+# that does not wait kills every running task and the person reads "The agent stream dropped". Fly sends
+# kill_signal, waits kill_timeout (at most 300 s), then stops the machine regardless (fly/agent-app.toml).
 # serve.py hands the first stop signal here instead of straight to uvicorn, which would close the listening
 # socket at once. While draining, /run answers 503 with Retry-After and every other route keeps serving,
 # so a running task's event stream, its file downloads, a confirm and a cancel all still reach it. Once no
@@ -6806,12 +7027,12 @@ async def _lifespan(app: FastAPI):
     if n:
         _log_event("startup.recovered_orphans", count=n)
     if store.shared:
-        threading.Thread(target=_lease_loop, daemon=True).start()  # CUR-4443
+        threading.Thread(target=_lease_loop, daemon=True).start()
     freed, bytes_freed = _sweep_stale_scratch()
     if freed:
         _log_event("startup.swept_stale_scratch", dirs=freed, bytes=bytes_freed)
     # Off the request path: a 3s connect must not delay readiness, and the answer is the same a second
-    # later. Logged as well as reported, so a change in the egress verdict is findable after the fact rather than
+    # later. Logged as well as reported, so "the day egress opened" is findable after the fact rather than
     # only visible to whoever happens to curl /healthz.
     threading.Thread(target=_egress_selftest, daemon=True).start()
     threading.Thread(target=_dns_selftest, daemon=True).start()
@@ -6820,9 +7041,9 @@ async def _lifespan(app: FastAPI):
     compute_provider_refresher = threading.Thread(target=_compute_provider_refresh_loop, daemon=True)
     compute_provider_refresher.start()
     pruner = None
-    # The pruner thread also sweeps verify_corpus (_pruner_loop) — gating its startup on
+    # the pruner thread also sweeps verify_corpus (_pruner_loop) — gating its startup on
     # TASK_RETENTION_SECS alone would silently leave the corpus unpruned forever on a deploy that has
-    # disabled task retention ("keep forever") but left corpus retention on, or vice versa. (CUR-596)
+    # disabled task retention ("keep forever") but left corpus retention on, or vice versa.
     if TASK_RETENTION_SECS > 0 or CORPUS_RETENTION_SECS > 0:
         if TASK_RETENTION_SECS > 0:
             store.prune(TASK_RETENTION_SECS)           # immediate sweep on boot
@@ -6830,16 +7051,16 @@ async def _lifespan(app: FastAPI):
             store.prune_corpus(CORPUS_RETENTION_SECS)  # immediate sweep on boot
         pruner = threading.Thread(target=_pruner_loop, daemon=True)
         pruner.start()
-    session_reaper = threading.Thread(target=_session_reaper_loop, daemon=True)  # CUR-196
+    session_reaper = threading.Thread(target=_session_reaper_loop, daemon=True)
     session_reaper.start()
-    stuck_task_reaper = threading.Thread(target=_stuck_task_reaper_loop, daemon=True)  # CUR-1310
+    stuck_task_reaper = threading.Thread(target=_stuck_task_reaper_loop, daemon=True)
     stuck_task_reaper.start()
     if SANDBOX_POOL_SECS > 0 and SANDBOX_BACKEND.name == "e2b":
-        threading.Thread(target=_sandbox_pool_loop, daemon=True).start()  # CUR-4553
+        threading.Thread(target=_sandbox_pool_loop, daemon=True).start()
     if WATCHDOG_SECS > 0:
-        threading.Thread(target=_watchdog_loop, daemon=True).start()  # CUR-4406
+        threading.Thread(target=_watchdog_loop, daemon=True).start()
     # A mounted Starlette app's own lifespan never runs, so the sandbox MCP transport's task group is
-    # entered here (CUR-4232).
+    # entered here.
     async with _SANDBOX_MCP.session_manager.run():
         yield
     _PRUNER_STOP.set()
@@ -6869,14 +7090,30 @@ class VerifySpec(BaseModel):
     expect_count: int | None = None      # exact count of delimiter-separated items the ANSWER TEXT must contain.
     expect_sep: str = ","                #   The INLINE analog of expect_lines — for "list N X, comma-separated"
     #                                      # turns where the items are in the reply, not a file. Counts non-empty
-    #                                      # items after split(expect_sep). LLM judges (any) eyeball long-sequence
-    #                                      # counts past; code counts exactly.
+    #                                      # items after split(expect_sep). LLM judges (any) miscount long
+    #                                      # sequences; code counts exactly.
     expect_sorted_by: str | None = None  # column name in expect_file (comma-delimited) that must be monotonic.
     expect_sorted_desc: bool = False     #   Only meaningful when expect_sorted_by is set (requires expect_file).
     expect_columns: list[str] | None = None  # every name must appear in expect_file's header row (requires
-    #                                      # expect_file). Declarative, LLM-free column-presence check (CUR-596) —
-    #                                      # exists because check_cmd can't reach production (AGENT_CHECK_CMD_DISABLED).
+    #                                      # expect_file). Declarative, LLM-free column-presence check —
+    #                                      # exists because check_cmd is unavailable when AGENT_CHECK_CMD_DISABLED is set.
     check_cmd: str | None = None         # shell check run in the sandbox (scrubbed env); exit 0 = verified
+
+
+class RunImage(BaseModel):
+    mime: str = Field(max_length=100)
+    data: str = Field(max_length=_b64_chars(MODEL_IMAGE_MAX_BYTES))   # base64
+
+
+class RunFile(BaseModel):
+    """A file the person attached to the conversation: copied into the workdir under
+    ATTACHMENTS_DIRNAME, and, with `image`, shown to the model through its image input. `image` is the
+    caller's rendition sized for a model, so a phone photo's full bytes reach the workdir and a bounded
+    copy reaches the prompt."""
+    name: str = Field(max_length=255)
+    mime: str = Field(max_length=100)
+    data: str = Field(max_length=_b64_chars(ATTACHMENT_MAX_BYTES))    # base64 of the file's bytes
+    image: RunImage | None = None
 
 
 class RunRequest(BaseModel):
@@ -6896,26 +7133,35 @@ class RunRequest(BaseModel):
     # opt-in workdir persistence across turns, keyed on (this request's authenticated user,
     # session_id). Absent -> today's behavior exactly (fresh workdir, discarded at turn end). Chat forwards
     # its own conversation id here; bounded like SUBJECT_MAX_CHARS bounds the asserted subject, since this
-    # also becomes a store key. (CUR-196)
+    # also becomes a store key.
     session_id: str | None = Field(default=None, max_length=200)
-    # True when an earlier turn of this session_id ran an agent task. A machine with no workdir for
-    # the session then reports it expired rather than answering from an empty room as if it were new. (CUR-4393)
+    # true when an earlier turn of this session_id ran an agent task. A machine with no workdir for
+    # the session then reports it expired rather than answering from an empty room as if it were new.
     continues_session: bool = False
     # "auto" lets acp_client decide in-sandbox edits and reviewed shell/code calls instead of
-    # opening a card for each. Chat sends it when the `agent-auto-approve` flag is on for the person. (CUR-3142)
+    # opening a card for each. Chat sends it when the `agent-auto-approve` flag is on for the person.
     approval_mode: Literal["ask", "auto"] = "ask"
-    # The executor model for this task, as the chat names it (its gateway id, e.g.
+    # the executor model for this task, as the chat names it (its gateway id, e.g.
     # "mistral-large-2610"). Absent: AGENT_MODEL, as before. Named: run on it, or refuse the task with 422 when
-    # the gateway does not route it (`_resolve_task_model`). Never swapped for another model. (CUR-4603)
+    # the gateway does not route it (`_resolve_task_model`). Never swapped for another model.
     model: str | None = Field(default=None, max_length=200)
+    # the caller's own fixed instructions (chat's identity line), sent apart from the person's
+    # task so each is screened as its own unit and then joined, preamble first, before the task is built.
+    # Screened together, the identity line ("never claim a different name or maker") plus an ordinary
+    # file request read to the input screen as impersonation and 403'd as fraud; apart, both pass. Every
+    # byte is still screened, so a caller gains nothing by moving text from one field to the other.
+    preamble: str | None = Field(default=None, max_length=8000)
+    # the files attached in this conversation, read by the caller from its own storage. The
+    # caller screens them; this service screens text only.
+    files: list[RunFile] = Field(default_factory=list, max_length=ATTACHMENT_MAX_FILES)
 
 
 class RunResponse(BaseModel):
     id: str
     state: State
-    # The Fly machine that created this task, or None off Fly. A caller that will make ANY
+    # the Fly machine that created this task, or None off Fly. A caller that will make ANY
     # further request naming this task_id (poll, stream, confirm, cancel) should echo it back as the
-    # `Fly-Force-Instance-Id` header on that request — see FLY_MACHINE_ID's own comment for why. (CUR-895)
+    # `Fly-Force-Instance-Id` header on that request — see FLY_MACHINE_ID's own comment for why.
     machine_id: str | None = None
 
 
@@ -6928,7 +7174,7 @@ class StatusResponse(BaseModel):
     summary: str | None = None
     verified: bool = False               # True only if an independent check confirmed the result
     verify_method: str = ""              # "execution" | "execution+judge" | "" (unverified). Bare "judge"
-                                          # is no longer produced (CUR-744) — see the Task field above.
+                                          # never occurs — see the Task field above.
     # The grounds for that verdict, same fields the SSE done frame carries (_done_payload) — a poller and
     # a streamer must not learn different things about the same task. See _done_payload for why the
     # autoderived bit is load-bearing rather than a footnote.
@@ -6936,40 +7182,40 @@ class StatusResponse(BaseModel):
     verify_check: dict = Field(default_factory=dict)   # the assertion actually checked ({} = none)
     judge_reason: str = ""               # the judge's stated reason, on a pass as well as a rejection
     attempt_rejections: list[str] = Field(default_factory=list)  # why each losing attempt lost, in order
-    unrun_detail: str = ""               # CUR-574: "" once cleared, else the repair loop's own final
+    unrun_detail: str = ""               # "" once cleared, else the repair loop's own final
                                           # verdict on this turn — see Task.unrun_detail
     # The agent's files. Its scratch directory is deleted when the turn ends, so this is the only route by
-    # which work it describes ("I created revenue_data.csv") reaches the person who asked for it (CUR-195).
+    # which work it describes ("I created revenue_data.csv") reaches the person who asked for it.
     artifacts: list[dict] = Field(default_factory=list)  # [{name, bytes, text|None, truncated}]
     artifacts_dropped: bool = False      # more files existed than the per-turn cap returns
     # True iff a session_id was sent but its prior workdir was gone (reaped or lost) — this turn started
-    # fresh instead of continuing (additive/optional, no api bump; CUR-196).
+    # fresh instead of continuing (additive/optional — no api bump).
     expired: bool = False
-    # True iff this turn reused a PRIOR turn's session workdir (see Task._session_continued). CUR-705:
+    # True iff this turn reused a PRIOR turn's session workdir (see Task._session_continued).
     # the chat client's honesty caveat needs this to scope its "claimed action, zero tools observed"
     # check to continued sessions only.
     session_continued: bool = False
-    # Confirmations currently open (kind/title/summary, redacted — see acp_client's
-    # _describe_tool_call). Empty unless ACP_PERMISSION_POLICY=confirm and the task is mid-pause. (CUR-218)
+    # confirmations currently open (kind/title/summary, redacted — see acp_client's
+    # _describe_tool_call). Empty unless ACP_PERMISSION_POLICY=confirm and the task is mid-pause.
     pending_confirmations: list = Field(default_factory=list)
     model_calls: int = 0                 # gateway-metered model calls this task made
     tokens: int = 0                      # gateway-metered tokens this task spent
     model: str | None = None             # the task's executor model id (provenance — for the "what's running" badge)
-    served_models: list[str] = Field(default_factory=list)  # CUR-4603: ids upstream named serving it
+    served_models: list[str] = Field(default_factory=list)  # ids upstream named serving it
     compute_provider: str | None = None  # the compute host the model actually ran on (provenance honesty)
     transport_used: str = ""             # "acp" | "oneshot" | "" (not yet decided, or task predates this field)
-    # The caller's trust posture, so a client can say WHY a turn ran on a restricted toolset
+    # the caller's trust posture, so a client can say WHY a turn ran on a restricted toolset
     # instead of a silent floor reading as a broken/nerfed agent. "uniform" (with tasks_done/tasks_required
     # null) under any non-"staged" ACP_PERMISSION_POLICY — one caller-trust tier applies to everyone, so
     # there is nothing to disclose; "" only if _run never got far enough to resolve one at all. Read
     # alongside transport_used above: a "new"/"deny_writes"-floor tier only had a real toolset effect
-    # under transport_used="acp" — oneshot ignores CUR-217's filtering entirely (see _run's own comment). (CUR-761)
+    # under transport_used="acp" — oneshot ignores its filtering entirely (see _run's own comment).
     tier: str = ""
     tasks_done: int | None = None
     tasks_required: int | None = None
-    # The machine that answered THIS response — same field/meaning as RunResponse.machine_id.
+    # the machine that answered THIS response — same field/meaning as RunResponse.machine_id.
     # Server-global (this deploy's own machine), not per-task, so a caller pinned to a different machine
-    # can tell from a successful response alone that its pin is still holding. (CUR-895)
+    # can tell from a successful response alone that its pin is still holding.
     machine_id: str | None = None
 
 
@@ -7006,8 +7252,8 @@ def _validate_transport(t: str | None) -> None:
 
 def _status_of(t: Task) -> StatusResponse:
     """Single source of the status/poll response shape — the chat↔agent CONTRACT response. Keep it here so
-    the poll endpoint, the cancel endpoint, AND the webhook all serialize identically (a hand-built dict in the webhook would miss
-    the provenance fields). Provenance is server-global today."""
+    the poll endpoint, the cancel endpoint, AND the webhook all serialize identically (a hand-built
+    dict would miss the provenance fields). Provenance is server-global today."""
     return StatusResponse(id=t.id, state=t.state, result=t.result, result_truncated=t.result_truncated,
                           error=t.error, summary=t.summary, verified=t.verified, verify_method=t.verify_method,
                           verify_autoderived=t._verify_autoderived, verify_check=t.verify_check,
@@ -7028,7 +7274,7 @@ def run(req: RunRequest, user: str = Depends(require_user), _account: None = Dep
         fly_replay_src: str | None = Header(default=None),
         fly_force_instance_id: str | None = Header(default=None),
         x_agent_subject_daily_tasks: str | None = Header(default=None)) -> RunResponse | Response:
-    if _DRAINING.is_set():                                 # CUR-4598: this machine is stopping for a deploy
+    if _DRAINING.is_set():                                 # this machine is stopping for a deploy
         _log_event("run.rejected", user=user, reason="draining")
         raise HTTPException(503, "agent service restarting for an update — retry shortly",
                             headers={"Retry-After": str(DRAIN_RETRY_AFTER_SECS)})
@@ -7039,23 +7285,28 @@ def run(req: RunRequest, user: str = Depends(require_user), _account: None = Dep
         return replay
     if not req.prompt.strip():
         raise HTTPException(400, "empty prompt")
-    if len(req.prompt) > MAX_PROMPT_CHARS:
+    preamble = (req.preamble or "").strip()
+    full_prompt = f"{preamble}\n\n{req.prompt}" if preamble else req.prompt
+    if len(full_prompt) > MAX_PROMPT_CHARS:
         raise HTTPException(413, f"prompt too large (> {MAX_PROMPT_CHARS} chars)")
     if req.webhook_url is not None:
         _validate_webhook_url(req.webhook_url)             # SSRF guard (host must resolve to a public address)
     _validate_verify(req.verify)
     _validate_transport(req.transport)
-    task_model = _resolve_task_model(req.model, user)      # CUR-4603: 422 for a model this gateway can't run
+    attachments = _decode_attachments(req.files)          # 400/413 before any slot is taken
+    task_model = _resolve_task_model(req.model, user)      # 422 for a model this gateway can't run
     steps, tokens, wall = _effective_caps(req.max_steps, req.max_tokens, req.wall_clock_secs)  # clamp overrides; `tokens` is the worst-case reservation
     _check_user_budget(user, tokens, _subject_daily_tasks(x_agent_subject_daily_tasks))  # per-user budget incl. in-flight reservations (429 if over)
     moderate(req.prompt, "input", user)                    # pre-check the prompt (raises 403 if blocked)
+    if preamble:
+        moderate(preamble, "input", user)                  # its own unit, never glued to the task
     if req.verify and req.verify.check_cmd:
         moderate(req.verify.check_cmd, STAGE_CHECK_CMD, user)  # own stage — no task yet to attribute the report to
     if not _try_acquire_slot():                            # concurrency cap: bound live procs + aggregate spend
         _metric_inc("agent_runs_rejected_concurrency_total")
         _log_event("run.rejected", user=user, reason="concurrency", limit=MAX_CONCURRENCY)
         # Retry-After says how soon a slot is worth asking for again, so a caller waits that long and
-        # resubmits instead of failing the turn (CUR-3893). The daily limits send none: a retry cannot
+        # resubmits instead of failing the turn. The daily limits send none: a retry cannot
         # clear them, and their body says so.
         raise HTTPException(429, f"server at capacity ({MAX_CONCURRENCY} concurrent runs) — retry shortly",
                             headers={"Retry-After": str(CAPACITY_RETRY_AFTER_SECS)})
@@ -7066,20 +7317,21 @@ def run(req: RunRequest, user: str = Depends(require_user), _account: None = Dep
         # Worded without "limit reached": chat reads that phrase as a daily limit, which says "tomorrow".
         raise HTTPException(429, f"this visitor already has {SUBJECT_MAX_CONCURRENCY} agent task(s) running"
                                  " — wait for one to finish", headers={"Retry-After": str(CAPACITY_RETRY_AFTER_SECS)})
-    task: Task | None = None                               # CUR-1331: unbound until Task() succeeds — guards the except below
+    task: Task | None = None                               # unbound until Task() succeeds — guards the except below
     try:
-        task = Task(id=uuid.uuid4().hex[:12], prompt=req.prompt, user=user)
+        task = Task(id=uuid.uuid4().hex[:12], prompt=full_prompt, user=user)
         task._verify_spec = req.verify
         task._max_steps, task._max_tokens, task._wall_clock = steps, tokens, wall
         task._caller_wall_clock = req.wall_clock_secs   # what was ASKED, unclamped; None when unstated
         task._webhook_url = req.webhook_url
         task._synthesize = req.synthesize
         task._transport = req.transport
-        task._session_id = req.session_id                  # CUR-196
-        task._continues_session = bool(req.session_id) and req.continues_session   # CUR-4393
-        task._approval_mode = req.approval_mode                                       # CUR-3142
-        task.model = task_model                                                       # CUR-4603
-        _RUN_START[task.id] = time.monotonic()  # CUR-1330: before _store_task, so the task is never
+        task._session_id = req.session_id
+        task._continues_session = bool(req.session_id) and req.continues_session
+        task._approval_mode = req.approval_mode
+        task._attachments = attachments
+        task.model = task_model
+        _RUN_START[task.id] = time.monotonic()  # before _store_task, so the task is never
         # visible in TASKS without a matching _RUN_START entry — closes the orphan-reaper startup race.
         _store_task(task)
         _metric_inc("agent_runs_submitted_total")
@@ -7088,9 +7340,9 @@ def run(req: RunRequest, user: str = Depends(require_user), _account: None = Dep
     except Exception:
         _release_slot()                                    # never leak a slot/reservation if launch failed before _run took over
         _release_user(user, tokens)
-        # If _store_task already ran (task.id is in TASKS, non-terminal) but the thread never
+        # if _store_task already ran (task.id is in TASKS, non-terminal) but the thread never
         # started, popping this restores the orphan signature _reap_stuck_tasks/_healthz already check —
-        # without it the task sits in TASKS with a live _RUN_START entry forever, invisible to both. (CUR-1331)
+        # without it the task sits in TASKS with a live _RUN_START entry forever, invisible to both.
         if task is not None:
             _RUN_START.pop(task.id, None)
         raise
@@ -7106,9 +7358,9 @@ def run(req: RunRequest, user: str = Depends(require_user), _account: None = Dep
 # persona measurably hurts a clean binary decision on a weak/small model (0% vs 83% on a forced tool
 # call). Fail-open: any hiccup → DIRECT (the cheap, fast path; the chat then just uses the normally-
 # selected model), so the router can never wedge a turn.
-# No AGENT_ROUTE_ENABLED kill switch. Who may be routed is the web side's per-user agent
-# flag (resolveAgentRoute.ts), and a 404 here only showed those users a "route failed" notice. (CUR-3199)
-ROUTE_MAX_TOKENS = int(os.environ.get("AGENT_ROUTE_MAX_TOKENS", "64"))  # a forced tool call emits a tiny JSON
+# no AGENT_ROUTE_ENABLED kill switch. Who may be routed is the web side's per-user agent
+# flag (resolveAgentRoute.ts), and a 404 here only showed those users a "route failed" notice.
+ROUTE_MAX_TOKENS = int(os.environ.get("AGENT_ROUTE_MAX_TOKENS", "1024"))  # Large 4 thinks before the verdict
 ROUTE_TIMEOUT_SECS = float(os.environ.get("AGENT_ROUTE_TIMEOUT_SECS", "20"))
 _ROUTE_MEMO: dict[str, dict] = {}                                  # prompt-hash -> {"agentic","reason"} (temp-0 deterministic)
 _ROUTE_MEMO_MAX = 512
@@ -7186,8 +7438,8 @@ def _classify_agentic(prompt: str, use_memo: bool = True) -> dict:
 
     `backend`/`served_model` name who actually answered (the gateway's x-agent-backend header and the
     response's own `model`). A memo hit carries the ones recorded when the verdict was made, so a cached
-    answer still says where it came from. `use_memo=False` skips the memo READ only (CUR-2154: an eval that reads verdicts from the memo
-    grades its own cache); a fresh verdict is still stored."""
+    answer still says where it came from. `use_memo=False` skips the memo READ only (an eval that
+    reads from the memo grades its own cache); a fresh verdict is still stored."""
     key = hashlib.sha256(prompt.encode("utf-8", "replace")).hexdigest()
     if use_memo and key in _ROUTE_MEMO:
         return {"backend": None, "served_model": None, **_ROUTE_MEMO[key], "source": "memo"}
@@ -7238,7 +7490,7 @@ def _classify_agentic(prompt: str, use_memo: bool = True) -> dict:
 
 class RouteRequest(BaseModel):
     prompt: str                          # the turn to classify (latest user message, optionally with brief context)
-    fresh: bool = False                  # skip the memo read; honoured for OPERATOR_SUBS only (CUR-2154 eval)
+    fresh: bool = False                  # skip the memo read; honoured for OPERATOR_SUBS only
 
 
 class RouteResponse(BaseModel):
@@ -7261,8 +7513,8 @@ def route_turn(req: RouteRequest, user: str = Depends(require_user)) -> RouteRes
     if len(p) > MAX_PROMPT_CHARS:
         raise HTTPException(413, f"prompt too large (> {MAX_PROMPT_CHARS} chars)")
     moderate(p, "input", user)                                   # same moderation boundary as /run input
-    # A fresh verdict is for our own measurement runs. An invitee asking for one would only spend
-    # a gateway call the memo exists to save, so the flag is ignored for them rather than refused. (CUR-2154)
+    # a fresh verdict is for our own measurement runs. An invitee asking for one would only spend
+    # a gateway call the memo exists to save, so the flag is ignored for them rather than refused.
     fresh = req.fresh and _caller_of(user) in OPERATOR_SUBS
     d = _classify_agentic(p, use_memo=not fresh)
     _metric_inc("agent_route_total")
@@ -7295,7 +7547,8 @@ async def events(task_id: str, request: Request, user: str = Depends(require_use
     marker past the cap. `done.result` still carries the whole answer, so a consumer may ignore every
     token frame and behave exactly as before.
 
-    Over the oneshot transport there are no per-step frames or token frames: coarse state, then done. A terminal task whose buffer
+    Per-step frames and token frames are ACP-only. Over the legacy oneshot
+    transport the stream is coarse state, then done. A terminal task whose buffer
     is gone (post-restart/eviction) gets a single synthesized `done` frame so a late subscriber still
     terminates cleanly."""
     t = _get_task(task_id)
@@ -7313,7 +7566,7 @@ async def events(task_id: str, request: Request, user: str = Depends(require_use
 
     async def gen():
         nonlocal after
-        if buf is None and store.shared:                   # CUR-4443: the task runs (or ran) on another machine
+        if buf is None and store.shared:                   # the task runs (or ran) on another machine
             async for frame in _events_from_store(task_id, after, request):
                 yield frame
             return
@@ -7345,7 +7598,7 @@ async def events(task_id: str, request: Request, user: str = Depends(require_use
 
 
 async def _events_from_store(task_id: str, after: int, request: Request):
-    """A task's events read back from the shared store, for a machine that does not run it (CUR-4443): the
+    """A task's events read back from the shared store, for a machine that does not run it: the
     stored events in order, then new ones as the owner writes them, until the task is terminal and nothing
     is left. A terminal task whose `done` frame never reaches the store gets the synthesized one a
     one-machine reader gets."""
@@ -7397,7 +7650,7 @@ def cancel(task_id: str, user: str = Depends(require_user)) -> StatusResponse:
     with _TASKS_LOCK:
         local = task_id in TASKS
     if not local and store.shared and t.state not in _TERMINAL:
-        store.request_cancel(task_id)                      # CUR-4443: its owner stops it within a lease tick
+        store.request_cancel(task_id)                      # its owner stops it within a lease tick
         _log_event("run.cancel_forwarded", task_id=task_id, owner_lease=True)
         return _status_of(t)
     if t.state not in _TERMINAL:
@@ -7406,7 +7659,7 @@ def cancel(task_id: str, user: str = Depends(require_user)) -> StatusResponse:
 
 
 def _cancel_local(t: Task) -> None:
-    """Stop a task this machine runs: from its own cancel route, or a cancel asked elsewhere (CUR-4443)."""
+    """Stop a task this machine runs: from its own cancel route, or a cancel asked elsewhere."""
     t._canceled = True                                 # first, so a run finishing now keeps CANCELED
     t.summary, t.state = "canceled by user", State.CANCELED
     _persist(t)                                        # durable immediately (the _run finally also persists)
@@ -7432,7 +7685,7 @@ class ConfirmRequest(BaseModel):
 
 @app.post("/run/{task_id}/confirm", response_model=StatusResponse)
 def confirm(task_id: str, req: ConfirmRequest, user: str = Depends(require_user)) -> StatusResponse:
-    """CUR-218: deliver a human's answer to a paused request_permission call. Mirrors cancel() above —
+    """Deliver a human's answer to a paused request_permission call. Mirrors cancel() above —
     same auth, same idempotency posture, same best-effort signal-and-return pattern. 409 (not a silent
     no-op) on an unknown/already-resolved confirm_id — the case where a human clicks a button in a UI for
     a confirmation that already timed out or was answered by another request."""
@@ -7462,7 +7715,7 @@ class MigrateCallerResponse(BaseModel):
 
 @app.post("/callers/migrate", response_model=MigrateCallerResponse)
 def migrate_caller(req: MigrateCallerRequest, user: str = Depends(require_user)) -> MigrateCallerResponse:
-    """Re-key an anonymous session's accrued trust onto the account signing in (CUR-761), called from the
+    """Re-key an anonymous session's accrued trust onto the account signing in, called from the
     same chat-side sign-in hook that re-keys conversations (migrateAnonymousConversations). Scoped to THIS request's own authenticated caller
     (`_caller_of(user)`) — never a value the body supplies — so one tenant cannot re-key another's
     history. Sanitised the same way `_principal` sanitises an asserted X-Agent-Subject: a malformed
@@ -7486,7 +7739,7 @@ class DeleteCallerResponse(BaseModel):
 
 @app.post("/callers/delete", response_model=DeleteCallerResponse)
 def delete_caller(req: DeleteCallerRequest, user: str = Depends(require_user)) -> DeleteCallerResponse:
-    """CUR-1722: delete every task row and session workdir for ONE principal under the calling
+    """Delete every task row and session workdir for ONE principal under the calling
     caller — the account-deletion counterpart to migrate_caller above. Scoped to THIS request's own
     authenticated caller (`_caller_of(user)`), never a value the body supplies, so one tenant cannot
     delete another's history. `subject` sanitised the same way migrate_caller sanitises one."""
@@ -7514,7 +7767,7 @@ class DeleteSessionsResponse(BaseModel):
 
 @app.post("/sessions/delete", response_model=DeleteSessionsResponse)
 def delete_sessions(req: DeleteSessionsRequest, user: str = Depends(require_user)) -> DeleteSessionsResponse:
-    """CUR-4484: chat deleted these conversations, so their files go too: the session workdir here and each
+    """Chat deleted these conversations, so their files go too: the session workdir here and each
     conversation's sandboxes on the sandbox host. Scoped to this request's own caller as `delete_caller` is,
     so a guessed conversation id under another token names nothing."""
     caller = _caller_of(user)
@@ -7532,8 +7785,8 @@ def delete_sessions(req: DeleteSessionsRequest, user: str = Depends(require_user
 def get_artifact(session_id: str, filename: str, user: str = Depends(require_user),
                  fly_replay_src: str | None = Header(default=None),
                  fly_force_instance_id: str | None = Header(default=None)) -> Response:
-    """CUR-546: fetch one file back out of a still-alive session workdir, so a completed turn's output can
-    leave the browser as a real download instead of surviving only as CUR-195's inline copy-block.
+    """Fetch one file back out of a still-alive session workdir, so a completed turn's output can
+    leave the browser as a real download instead of surviving only as its inline copy-block.
 
     Session-scoped ONLY, by construction: a task without `session_id` has its scratch removed at the end
     of `_run` (`shutil.rmtree(work, ...)` — "retention by construction", the `else` branch a few hundred
@@ -7547,12 +7800,12 @@ def get_artifact(session_id: str, filename: str, user: str = Depends(require_use
     session_id exists at all.
 
     Retention: `X-Artifact-Session-Expires-At` states the real number this session's idle reaper is
-    actually working from (SESSION_IDLE_SECS past last_used_at) (CUR-546). Public copy about
-    retention has to match it."""
+    actually working from (SESSION_IDLE_SECS past last_used_at) — reconciling that against what the
+    Privacy Policy's copy claims is its product/copy half, not something this route can settle."""
     replay = _replay_home(session_id, _routing_headers(fly_replay_src, fly_force_instance_id), "artifact")
     if replay is not None:
         return replay
-    if ARTIFACT_MAX_FILES <= 0:          # its own comment calls this "feature off" — an operator relying on
+    if ARTIFACT_MAX_FILES <= 0:          # 0 means "feature off" (see ARTIFACT_MAX_FILES) — an operator relying on
         raise HTTPException(404, "no such artifact")   # that (e.g. for compliance) must get the whole surface off, not just the inline preview
     info = store.get_session_workdir_info(user, session_id)
     if not info:
@@ -7581,7 +7834,7 @@ def get_artifact(session_id: str, filename: str, user: str = Depends(require_use
 
 
 def _mcp_health() -> dict[str, object]:
-    """The /healthz `mcp` field (CUR-3025), or nothing at all when AGENT_MCP_SERVERS is unset.
+    """The /healthz `mcp` field, or nothing at all when AGENT_MCP_SERVERS is unset.
 
     Names only — /healthz is unauthenticated, so no URL and no header value. `missing_header_env` names
     env VARS whose value is unset (that server is skipped). `offered_under` is the policy a task must
@@ -7594,7 +7847,7 @@ def _mcp_health() -> dict[str, object]:
 
 
 def _guest_artifact(user: str, session_id: str, filename: str, expires_at: int) -> Response:
-    """CUR-4483: the download route when the session's agent ran in its own sandbox. The file is read from
+    """The download route when the session's agent ran in its own sandbox. The file is read from
     the guest, found by the same key `_run` connected with, and never created: a session with no sandbox
     left has nothing to download."""
     rel = posixpath.normpath(filename) if filename and "\x00" not in filename else ""
@@ -7602,7 +7855,7 @@ def _guest_artifact(user: str, session_id: str, filename: str, expires_at: int) 
         raise HTTPException(404, "no such artifact")
     try:
         h = SANDBOX_BACKEND.find(user, f"agent:{session_id}", Tier.AGENT)
-    except Exception as e:  # an unreachable sandbox host is unavailability, not a missing file
+    except Exception as e:  # an unreachable sandbox host is an outage, not a missing file
         raise HTTPException(503, f"sandbox unavailable ({type(e).__name__})") from e
     if h is None:
         raise HTTPException(404, "no such session")
@@ -7623,7 +7876,7 @@ def _guest_artifact(user: str, session_id: str, filename: str, expires_at: int) 
 
 def _sandbox_workdir(principal: str, session_id: str) -> str:
     """The conversation's workdir for a sandbox MCP call: the agent's own for this (principal, session), so
-    files carry between the two, created and recorded the same way `_resolve_workdir` does (CUR-4232)."""
+    files carry between the two, created and recorded the same way `_resolve_workdir` does."""
     existing = store.get_session_workdir(principal, session_id)
     if existing and os.path.isdir(existing):
         work = existing
@@ -7634,7 +7887,7 @@ def _sandbox_workdir(principal: str, session_id: str) -> str:
 
 
 def _existing_sandbox_workdir(principal: str, session_id: str) -> str | None:
-    """The conversation's workdir if it already has one on this machine; never creates (CUR-4502)."""
+    """The conversation's workdir if it already has one on this machine; never creates."""
     existing = store.get_session_workdir(principal, session_id)
     return existing if existing and os.path.isdir(existing) else None
 
@@ -7648,7 +7901,7 @@ def _routing_headers(fly_replay_src: object, fly_force_instance_id: object) -> d
 
 def _replay_home(conversation: str | None, headers: dict[str, str], route: str) -> Response | None:
     """A `fly-replay` answer sending this conversation's request to its home machine, or None to serve it
-    here (CUR-4435, `home_machine.py`). Fly's proxy acts on the header and the body is never seen."""
+    here (`home_machine.py`). Fly's proxy acts on the header and the body is never seen."""
     target = home_machine.replay_target(conversation, headers, self_id=FLY_MACHINE_ID)
     if target is None:
         return None
@@ -7662,13 +7915,15 @@ def _remote_work() -> str:
 
 
 def _build_sandbox_backend():
-    """`AGENT_SANDBOX_BACKEND` picks it (CUR-4482). A remote backend missing its config fails at import, so a
+    """`AGENT_SANDBOX_BACKEND` picks it. A remote backend missing its config fails at import, so a
     machine never comes up believing it isolates work it would actually run beside its own secrets."""
     if AGENT_SANDBOX_BACKEND == "bwrap":
         return BwrapBackend(sandbox_prefix=lambda work: _sandbox_prefix(work), workdir_for=_sandbox_workdir,
                             existing_workdir=_existing_sandbox_workdir)
+    if AGENT_SANDBOX_BACKEND == "docker":
+        return _build_docker_backend()
     if AGENT_SANDBOX_BACKEND != "e2b":
-        raise RuntimeError(f"AGENT_SANDBOX_BACKEND={AGENT_SANDBOX_BACKEND!r}: bwrap or e2b")
+        raise RuntimeError(f"AGENT_SANDBOX_BACKEND={AGENT_SANDBOX_BACKEND!r}: bwrap, docker or e2b")
     missing = [k for k, v in (("E2B_API_URL", E2B_API_URL), ("E2B_API_KEY", os.environ.get("E2B_API_KEY", "")),
                               ("AGENT_GATEWAY_PUBLIC_URL", AGENT_GATEWAY_PUBLIC_URL),
                               ("PROXY_ADMIN_KEY", PROXY_ADMIN_KEY)) if not v]
@@ -7678,11 +7933,42 @@ def _build_sandbox_backend():
     return E2BBackend(E2BConfig(api_url=E2B_API_URL, api_key=os.environ["E2B_API_KEY"], sandbox_url=E2B_SANDBOX_URL,
                                 template=E2B_TEMPLATE or E2BConfig.template, gateway_host=urlparse(AGENT_GATEWAY_PUBLIC_URL).hostname or "",
                                 slots=E2B_SLOTS, off=E2B_SLOTS_OFF, account_max_live=E2B_ACCOUNT_MAX_LIVE,
-                                slot_capacity=E2B_SLOT_CAPACITY, auto_off_secs=E2B_SLOT_AUTO_OFF_SECS,
+                                auto_off_secs=E2B_SLOT_AUTO_OFF_SECS,
                                 run_code_idle_secs=E2B_RUN_CODE_IDLE_SECS, busy_wait_secs=E2B_BUSY_WAIT_SECS,
                                 busy_retry_secs=CAPACITY_RETRY_AFTER_SECS),
                       log_event=lambda event, **fields: _log_event(event, fly_app=os.environ.get("FLY_APP_NAME", ""),
                                                                    **fields))
+
+
+def _build_docker_backend():
+    """A hardened container per conversation through the socket proxy at DOCKER_HOST (sandbox_docker.py), for a
+    self-hosted stack with no E2B install. Every sandbox left by an earlier process is removed here, since none of
+    their processes can be reattached."""
+    missing = [k for k, v in (("DOCKER_HOST", os.environ.get("DOCKER_HOST", "")),
+                              ("AGENT_SANDBOX_IMAGE", os.environ.get("AGENT_SANDBOX_IMAGE", "")),
+                              ("AGENT_GATEWAY_PUBLIC_URL", AGENT_GATEWAY_PUBLIC_URL),
+                              ("AGENT_SANDBOX_GATEWAY_CONTAINER", os.environ.get("AGENT_SANDBOX_GATEWAY_CONTAINER", "")),
+                              ("PROXY_ADMIN_KEY", PROXY_ADMIN_KEY)) if not v]
+    if missing:
+        raise RuntimeError(f"AGENT_SANDBOX_BACKEND=docker needs {', '.join(missing)}")
+    from sandbox_docker import DockerBackend, DockerConfig
+    env = os.environ
+    backend = DockerBackend(
+        DockerConfig(docker_host=env["DOCKER_HOST"], image=env["AGENT_SANDBOX_IMAGE"],
+                     # Set by selfhost/compose.yaml, whose own build makes the image: no registry to take a digest from.
+                     allow_tag=env.get("AGENT_SANDBOX_ALLOW_TAG", "") == "1",
+                     cpus=float(env.get("AGENT_SANDBOX_CPUS", "1") or 1),
+                     memory_mb=int(env.get("AGENT_SANDBOX_MEMORY_MB", "1024") or 1024),
+                     pids=int(env.get("AGENT_SANDBOX_PIDS", "256") or 256),
+                     tmpfs_mb=int(env.get("AGENT_SANDBOX_TMPFS_MB", "512") or 512),
+                     gateway_host=urlparse(AGENT_GATEWAY_PUBLIC_URL).hostname or "",
+                     gateway_container=env["AGENT_SANDBOX_GATEWAY_CONTAINER"]),
+        log_event=_log_event)
+    try:
+        backend.reap()
+    except Exception as e:  # noqa: BLE001 — the proxy not up yet; the idle sweep removes what is left
+        _log_event("sandbox.reap_failed", detail=str(e)[:300])
+    return backend
 
 
 SANDBOX_BACKEND = _build_sandbox_backend()
@@ -7703,7 +7989,7 @@ def _isolation_report() -> dict[str, str]:
         return {"sandbox": SANDBOX_BACKEND.name, "sandbox_seccomp": na, "rlimits": na}
     return {
         "sandbox": SANDBOX if SANDBOX != "off" else "OFF(no fs isolation)",
-        # Whether bwrap loads the syscall filter, read from the file the prefix opens. (CUR-4478)
+        # whether bwrap loads the syscall filter, read from the file the prefix opens.
         "sandbox_seccomp": ("on" if _seccomp_ready() else "OFF(no syscall filter)") if SANDBOX == "bwrap" else "n/a",
         # Namespacing and RATIONING are two different things and only the first was ever reported. A
         # sandbox with no budget is one prompt away from a fork bomb taking the machine with it.
@@ -7746,7 +8032,7 @@ app.mount("/mcp", _bearer_gate(sandbox_http_app(_SANDBOX_MCP)))
 @app.get("/healthz")
 def healthz() -> dict[str, object]:
     # Unauthenticated (k8s liveness needs it) → posture only, no sensitive specifics like the binary's
-    # absolute path (needless recon surface).
+    # absolute path (the path is needless recon surface).
     #
     # `TASKS`'s own doc comment says what it holds — "non-terminal + recently-terminal" — so
     # len(TASKS) was never "live" in the sense the field's name promises; it is the retained-table size,
@@ -7757,15 +8043,16 @@ def healthz() -> dict[str, object]:
     # WITHOUT the task ever reaching a terminal state — the thread is done, but nothing is coming to
     # finish this task. That is the orphan `_reap_stuck_tasks` (below) targets, and it is the one
     # condition here `inflight` can be silently wrong about too: a task that took its slot back without
-    # ever terminalizing. (CUR-1310)
+    # ever terminalizing.
     with _TASKS_LOCK:
         n_tasks = len(TASKS)
         n_live = sum(1 for t in TASKS.values() if t.state not in _TERMINAL)
         n_stuck = sum(1 for t in TASKS.values() if t.state not in _TERMINAL and t.id not in _RUN_START)
     with _INFLIGHT_LOCK:
         inflight = _inflight
-    # Read from the STORE, not from _METRICS. See `Store.caller_deadline_count`: this app scales to
-    # zero, so a since-boot counter here would answer "has anyone ever" with "no" forever.
+    # Read from the STORE, not from _METRICS. See `Store.caller_deadline_count` for what the in-process
+    # version got wrong; the short version is that this app scales to zero, so a since-boot counter here
+    # answered "has anyone ever" with "no" forever.
     caller_deadlines = store.caller_deadline_count()
     return {
         # A stuck task is the one condition genuinely worth failing THIS check for: it means a
@@ -7773,21 +8060,23 @@ def healthz() -> dict[str, object]:
         # what a deploy-gate agent turn can run headlong into. Anything else here degrading (moderation,
         # the gateway, a missing binary) already has its own more specific field below; this endpoint
         # doesn't editorialize on those into one flat status, only on the one thing IT tracks directly.
-        # Present only when AGENT_MCP_SERVERS is set (valid or not), so an unconfigured service
-        # reports exactly the fields it did before. See _mcp_health. (CUR-3025)
+        # present only when AGENT_MCP_SERVERS is set (valid or not), so an unconfigured service
+        # reports exactly the fields it did before. See _mcp_health.
         **_mcp_health(),
         "status": "degraded (stuck tasks)" if n_stuck else "ok",
-        # True while a stop signal waits for running tasks; /run answers 503 meanwhile. Not a
-        # failure of this check, since a draining machine must keep serving its tasks' streams. (CUR-4598)
+        # true while a stop signal waits for running tasks; /run answers 503 meanwhile. Not a
+        # failure of this check, since a draining machine must keep serving its tasks' streams.
         "draining": _DRAINING.is_set(),
         "api": API_VERSION, "build": BUILD_SHA or "unknown",
         "model": AGENT_MODEL or "unset", "compute_provider": _effective_compute_provider() or "unset",
         "hermes": "configured" if (shutil.which(HERMES_BIN) or Path(HERMES_BIN).exists()) else "MISSING",
         "toolsets": ALLOWED_TOOLSETS, "toolsets_effective": _effective_toolsets(),
-        # The four knobs that most change what a USER experiences, reported so a caller can see which transport
-        # is running without shell access, and so a drift check, which can only compare what
-        # /healthz reports, catches the config file and the running machine disagreeing about the
-        # transport, the judge, or how many attempts a turn gets. Rendered "on"/"off" to match the convention the caps
+        # The four knobs that most change what a USER experiences, and none of them
+        # is otherwise visible from outside. Without them nobody can
+        # answer "which transport is this actually running" without shell access, and `eval/prodcheck.py`
+        # can only drift-check what /healthz reports — so the config file and the running machine could
+        # disagree about the transport, the judge, or how many attempts a turn gets, with
+        # both sides looking correct in isolation. Rendered "on"/"off" to match the convention the caps
         # above already use, so prodcheck's normaliser needs no new vocabulary.
         "acp": "on" if AGENT_ACP else "off",
         # Whether the answer text streams, and how much of it is published. Reported because it changes what
@@ -7795,9 +8084,8 @@ def healthz() -> dict[str, object]:
         #
         # Bare "on"/"off" and the cap as its own numeric field, NOT "on(max 400/attempt)". The `acp` comment
         # above says rendering in this convention is what keeps prodcheck's normaliser free of new
-        # vocabulary; a composite such as "on(max 400/attempt)" would compare unequal to config "1" and raise
-        # a false STALE DEPLOY. A false alarm
-        # on a real check is how the check gets ignored.
+        # vocabulary; a combined value would compare unequal to config "1" and raise a false STALE DEPLOY
+        # alarm. A false alarm on a real check is how the check gets ignored.
         "stream_tokens": "on" if (STREAM_TOKENS and AGENT_ACP) else "off",
         "stream_max_frames": STREAM_MAX_FRAMES or "off",
         # What the per-tool gate is CONSULTED for, not what its name suggests. `deny_writes` beside a
@@ -7809,31 +8097,32 @@ def healthz() -> dict[str, object]:
         # the turn, above 0 an attempt is handed the check's failure and told to try again inside the same
         # session. Two runs at the same best_of are not comparable across this number.
         #
-        # It is in prodcheck's COMPARED table, which checks the two CONFIG FILES against each other; this
-        # field lets prodcheck check the RUNNING app too, so `AGENT_REPAIR_TURNS` cannot be inherited
-        # rather than stated with every check passing. Bare int, matching `best_of`: prodcheck's normaliser compares "2" to 2 and needs no new
+        # It was already in prodcheck's COMPARED table, so the two CONFIG FILES were checked against each
+        # other — but no /healthz field carried it, so nothing ever checked the RUNNING app. That is the
+        # gap that lets `AGENT_REPAIR_TURNS` be inherited rather than stated with every check
+        # passing. Bare int, matching `best_of`: prodcheck's normaliser compares "2" to 2 and needs no new
         # vocabulary. ACP-only in effect — read it against `acp` above, which is why that field is here.
         "repair_turns": REPAIR_TURNS,
-        # How often the self-probe that exits a hung server runs, or "off". (CUR-4406)
+        # how often the self-probe that exits a hung server runs, or "off".
         "watchdog_s": WATCHDOG_SECS or "off",
         # How many STORED TASKS arrived stating their own deadline — an observation, not a setting, so it
         # is deliberately absent from prodcheck's key map and compared against no config value. It sits
         # beside the knobs rather than with the task counts because it answers what they cannot:
         # `wall_clock_s` says what the ceiling is, this says whether anyone has ever asked for less.
         #
-        # Durable, and counted over the same population as `tasks_total`, so the two ARE comparable. An
-        # in-process counter would not be: the app runs with `min_machines_running = 0`, so it resets on
-        # every scale-to-zero and reports 0 however often the chat tier sends `wall_clock_secs`. A metric answering a question about all
+        # Durable, and counted over the same population as `tasks_total`, so the two ARE comparable. An in-process counter would reset on every scale-to-zero
+        # (`min_machines_running = 0`) and report 0 while the
+        # chat tier was sending `wall_clock_secs` on every turn. A metric answering a question about all
         # time has to be as durable as the number it is read against.
         "caller_deadlines": caller_deadlines,
         # The seat, not the model. It is fail-CLOSED: a judge that cannot be reached marks every turn
         # unverified, so which model sits here decides how much correct work gets rejected. "unset" is a
         # real configuration rather than a missing one — it means the executor judges itself, which has a
-        # measured discrimination ceiling, not that judging is off.
+        # known discrimination ceiling (see docs/model-tradeoffs.md), not that judging is off.
         "verifier": VERIFIER_MODEL or "unset",
         # Per ATTEMPT, both of them, and the task ceiling each implies at the configured best-of. Reported
-        # as two numbers so a reader can tell the per-attempt clock from the per-task ceiling; one number
-        # for both would mix differently-denominated things.
+        # as separate attempt and task numbers so "wall_clock_s: 300" and "spend_cap: 150000" are
+        # unambiguously denominated.
         "wall_clock_s": WALL_CLOCK_SECS, "wall_clock_task_s": WALL_CLOCK_SECS * max(1, BEST_OF),
         "auth": "disabled(dev)" if AUTH_DISABLED else ("configured" if WEBUI_SECRET_KEY else "unconfigured(fails-closed)"),
         "require_account": REQUIRE_ACCOUNT,
@@ -7843,16 +8132,16 @@ def healthz() -> dict[str, object]:
         "moderation": {"off": "disabled(dev)",
                        "unconfigured": "unconfigured(fails-closed)",
                        "guard": f"guard({urlparse(SAFETY_SCREEN_URL).netloc or 'screen'})"}[_moderation_mode()],
-        # Was in prodcheck's COMPARED since the day the feature landed (config-vs-config only);
+        # was in prodcheck's COMPARED since the day the feature landed (config-vs-config only);
         # this is the RUNNING app's own value, same reasoning as repair_turns above — how many attempts a
-        # moderation call gets moves both false-positive-502 rate and worst-case latency. (CUR-759)
+        # moderation call gets moves both false-positive-502 rate and worst-case latency.
         "moderation_attempts": MODERATION_ATTEMPTS,
         "output_screen": OUTPUT_SCREEN_MODE,
         "secrets_boundary": "on(gateway)" if MODEL_PROXY_URL else "OFF(legacy passthrough)",
         # sandbox, sandbox_seccomp, rlimits: what isolates the work, by backend (_isolation_report).
         **_isolation_report(),
-        "sandbox_backend": SANDBOX_BACKEND.name,   # CUR-4482: where Hermes and run-code actually run
-        "sandbox_account_max_live": E2B_ACCOUNT_MAX_LIVE or "off",   # CUR-4553: run-code sandboxes one account may have running
+        "sandbox_backend": SANDBOX_BACKEND.name,   # where Hermes and run-code actually run
+        "sandbox_account_max_live": E2B_ACCOUNT_MAX_LIVE or "off",   # run-code sandboxes one account may have running
         # E2B hosts this machine has taken out for failing every ask past E2B_SLOT_AUTO_OFF_SECS; per machine.
         "sandbox_slots_auto_off": getattr(SANDBOX_BACKEND, "auto_off_slots", list)(),
         "sandbox_run_code_idle_s": E2B_RUN_CODE_IDLE_SECS,   # seconds before a run-code sandbox pauses
@@ -7860,36 +8149,36 @@ def healthz() -> dict[str, object]:
         # Separate from `rlimits` because it is enforced by a different mechanism for a different reason:
         # RLIMIT_FSIZE bounds one file, this bounds their sum, and no rlimit exists for the sum.
         "scratch_cap": f"{SCRATCH_MAX_BYTES}B/task" if SCRATCH_MAX_BYTES > 0 else "OFF(unbounded)",
-        # session-scoped workdirs — idle expiry and their own, separate, session-total disk cap. (CUR-196)
+        # session-scoped workdirs — idle expiry and their own, separate, session-total disk cap.
         "session_idle_s": SESSION_IDLE_SECS,
         "session_scratch_cap": f"{SESSION_SCRATCH_MAX_BYTES}B/session" if SESSION_SCRATCH_MAX_BYTES > 0 else "OFF(unbounded)",
         # Two fields, deliberately. `egress` is what entrypoint.sh was ASKED to do; `egress_observed` is
         # what a connection attempt to an address outside the allowlist actually did. They can disagree,
-        # and that disagreement is the whole point: a comment asserting a NetworkPolicy handles egress
-        # is a claim, not a check.
+        # and that disagreement is the whole point — the gap this closed survived because a comment
+        # asserted a NetworkPolicy was handling it and nothing ever checked.
         "egress": EGRESS,
         "egress_observed": _EGRESS_OBSERVED,
         # The same pair for the name half. Worth its own line rather than folding into `egress` because the
-        # two fail independently: with the connect filter on and correct, any name at all can still be
-        # resolved, which is a data channel the address allowlist never touches.
+        # two fail independently: a connect filter does not stop name lookups, which are a data channel
+        # the address allowlist never touches.
         "dns": DNS,
         "dns_observed": _DNS_OBSERVED,
         "keep_workdir": "on" if KEEP_WORKDIR else "off",
         # Whether the agent's files come back at all, and how much of them. `off` means a turn can describe
-        # a file it wrote while the response carries nothing (CUR-195); this field makes that visible from
-        # outside.
+        # a file it wrote and the response carries nothing — the failure, which was invisible from
+        # outside precisely because no field reported it.
         "artifacts": "off" if ARTIFACT_MAX_FILES <= 0 else f"{ARTIFACT_MAX_FILES} files",
         "artifact_max_bytes": ARTIFACT_MAX_BYTES, "artifact_total_bytes": ARTIFACT_TOTAL_BYTES,
-        "artifact_download_max_bytes": ARTIFACT_DOWNLOAD_MAX_BYTES,   # CUR-546: GET .../artifacts/{filename}'s own cap
+        "artifact_download_max_bytes": ARTIFACT_DOWNLOAD_MAX_BYTES,   # GET .../artifacts/{filename}'s own cap
         "step_cap": MAX_STEPS, "spend_cap": MAX_TOKENS_BUDGET or "off",
         # Reported because a judge timeout is a REJECTION (fail-closed), so this bounds latency and moves
         # verification outcomes. A run comparing itself to prod has to be able to see it.
         "judge_timeout_s": JUDGE_TIMEOUT_SECS,
-        # Whether the judge sees the file it's grading against (CUR-596). A harness with a different
+        # Whether the judge sees the file it's grading against. A harness with a different
         # excerpt cap than prod is showing the judge more or less of the source data, changing the
         # acceptance bar on any spec'd file turn — same reasoning as judge_timeout_s above.
         "judge_excerpt_bytes": "off" if JUDGE_EXCERPT_BYTES <= 0 else JUDGE_EXCERPT_BYTES,
-        # CUR-596 item 2: on this changes verification outcomes AND task cost — a run comparing itself to
+        # on this changes verification outcomes AND task cost — a run comparing itself to
         # prod has to be able to see both which value it's set to and whether it actually fires (best_of>1
         # too). Same reasoning as judge_timeout_s/judge_excerpt_bytes above.
         "value_consistency_check": "on" if VALUE_CONSISTENCY_CHECK else "off",
@@ -7903,7 +8192,7 @@ def healthz() -> dict[str, object]:
         "subject_daily_tasks": SUBJECT_DAILY_TASKS or "off",
         "subject_max_concurrency": SUBJECT_MAX_CONCURRENCY or "off",
         # Which spelling the running process actually read. A rename whose old name still works is invisible
-        # otherwise: config left on `AGENT_USER_DAILY_TASKS` behaves identically and drifts forever. Empty
+        # otherwise: config left on `AGENT_USER_DAILY_TASKS` behaves identically and is never migrated. Empty
         # means neither was set, i.e. the quota is off because nothing asked for it.
         "quota_vars": " ".join(v for v in (CALLER_TASKS_VAR, CALLER_TOKENS_VAR) if v) or "unset",
         # COUNT, not names. /healthz needs no auth, and these are precisely the callers exempt from the
@@ -7915,7 +8204,7 @@ def healthz() -> dict[str, object]:
         "task_retention_s": TASK_RETENTION_SECS or "forever", "webhook_egress": "private-ok(dev)" if WEBHOOK_ALLOW_PRIVATE else "public-only",
         "metrics_auth": "token" if METRICS_TOKEN else "open",
         "inflight": inflight, "max_concurrency": MAX_CONCURRENCY,
-        # A sink whose own failures are invisible reproduces the bug it was built to fix, so its
+        # A sink whose own failures are invisible hides the failures it exists to surface, so its
         # dropped/failed counters are reported rather than merely kept.
         "logsink": logsink.stats(),
     }
@@ -7925,7 +8214,7 @@ def healthz() -> dict[str, object]:
 def metrics(authorization: str | None = Header(default=None)) -> PlainTextResponse:
     """Prometheus text-format metrics (aggregate counters only — no per-user/secret data). Scrape target for
     the inherited telemetry stack (§6A). If AGENT_METRICS_TOKEN is set, require it as a bearer token."""
-    if METRICS_TOKEN and authorization != f"Bearer {METRICS_TOKEN}":
+    if METRICS_TOKEN and not hmac.compare_digest((authorization or "").encode(), f"Bearer {METRICS_TOKEN}".encode()):
         raise HTTPException(401, "metrics require a bearer token")
     with _METRICS_LOCK:
         snap = dict(_METRICS)

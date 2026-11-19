@@ -24,7 +24,7 @@ beforeEach(() => {
 	warnMock.mockReset();
 });
 
-describe("dictationEnabled — the flag is the gate, TRANSCRIPTION_MODEL is config (CUR-198)", () => {
+describe("dictationEnabled — the flag is the gate, TRANSCRIPTION_MODEL is config", () => {
 	it("is ON when the flag says on and a transcription model is configured", async () => {
 		cfg.TRANSCRIPTION_MODEL = "openai/whisper-large-v3-turbo";
 		flagEnabledOrMock.mockReturnValue(true);

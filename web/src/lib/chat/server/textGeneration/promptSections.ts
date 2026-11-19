@@ -1,7 +1,6 @@
 // A system prompt is a list of named sections rendered in order. Changing what a model is told
 // means editing one of them; each also records how often its text changes. The native turn
-// and the base guards render from here (CUR-3899), and the date renders last (CUR-3918); the
-// harness-profile rows follow in a later PR. (CUR-3892)
+// and the base guards render from here, and the date renders last.
 
 import { resolveModelIdentity } from "$lib/chat/identity";
 import {
@@ -36,18 +35,18 @@ interface BaseGuardContext {
 	features?: FeatureFacts;
 	/** The route's carried screening posture; live config when absent, as the persona reads it. */
 	screeningFacts?: ScreeningFacts;
-	/** The person's answer preferences, resolved per turn. Absent, or the defaults, renders (CUR-3929)
+	/** The person's answer preferences, resolved per turn. Absent, or the defaults, renders
 	 *  no `answer-style` or `answer-shape` section, which keeps every default snapshot byte-identical. */
 	answer?: AnswerPreferences;
 }
 
-/** The clauses every model's system prompt keeps (CUR-2697's base guards): who it is, today's date,
+/** The clauses every model's system prompt keeps (the base guards): who it is, today's date,
  *  identity honesty and the account lock, crisis, rights and investment care, the screening posture
  *  and the account facts. */
 const BASE_GUARD_SECTIONS: ReadonlyArray<PromptSection<BaseGuardContext>> = [
 	{
 		// The operator, in the persona template's words: asked "who runs this?", a model with no statement
-		// about who runs the app names its host and never Current AI (CUR-3200).
+		// about who runs the app names its host and never Current AI.
 		id: "identity",
 		stability: "turn",
 		ticket: "CUR-3200",
@@ -63,7 +62,7 @@ const BASE_GUARD_SECTIONS: ReadonlyArray<PromptSection<BaseGuardContext>> = [
 	{ id: "investment-risk", stability: "static", ticket: "CUR-2553", render: () => INVESTMENT_RISK_CLAUSE },
 	{
 		// The persona's {screening} sentences: without them a model asked "is my message screened?"
-		// answers from its prior about chat apps (CUR-215).
+		// answers from its prior about chat apps.
 		id: "screening",
 		stability: "deployment",
 		ticket: "CUR-215",
@@ -88,8 +87,8 @@ const BASE_GUARD_SECTIONS: ReadonlyArray<PromptSection<BaseGuardContext>> = [
 	},
 ];
 
-// So the model never guesses the date from training. Last since CUR-3918, so the prompt is
-// identical across days and time zones up to here. (CUR-2276)
+// So the model never guesses the date from training. It renders last, so the prompt is
+// identical across days and time zones up to here.
 const DATE_SECTION: PromptSection<BaseGuardContext> = {
 	id: "date",
 	stability: "turn",
@@ -101,7 +100,7 @@ export interface GuardsOnlyContext extends BaseGuardContext {
 	calculateTool?: boolean;
 }
 
-/** CUR-2331's `persona: false` arm: the base guards, and the calculate clause when the turn offers it. */
+/** The `persona: false` arm: the base guards, and the calculate clause when the turn offers it. */
 export const GUARDS_ONLY_SECTIONS: ReadonlyArray<PromptSection<GuardsOnlyContext>> = [
 	...BASE_GUARD_SECTIONS,
 	{
@@ -118,18 +117,18 @@ export interface NativeContext extends BaseGuardContext {
 	web: boolean;
 	/** The person's latest message carries a link that this turn will not open, because search is off. */
 	linkOffBySearch?: boolean;
-	/** The question asks for a live value no source here carries; the scaffolded persona's (CUR-2697)
+	/** The question asks for a live value no source here carries; the scaffolded persona's
 	 *  recency clause (persona.ts) stands in for the search line, and web_search is withheld. */
 	unservableLive?: boolean;
-	/** This turn's provenance facts (provenanceFacts.ts), when `provenance-facts-per-turn` is on. (CUR-2135) */
+	/** This turn's provenance facts (provenanceFacts.ts), when `provenance-facts-per-turn` is on. */
 	provenanceFacts?: string;
 	/** The persona's serving sentence, for a turn without provenance facts. */
 	serving?: string;
-	/** How many numbered sources the person pasted this turn (visitorSources.ts, CUR-3844). */
+	/** How many numbered sources the person pasted this turn (visitorSources.ts). */
 	visitorSourceCount?: number;
-	/** The person's latest message carries a photo this model reads (CUR-3192). */
+	/** The person's latest message carries a photo this model reads. */
 	photoAttached?: boolean;
-	/** A message in the conversation carries an attached document (CUR-4102). */
+	/** A message in the conversation carries an attached document. */
 	documentAttached?: boolean;
 }
 
@@ -158,9 +157,9 @@ export const NATIVE_SECTIONS: ReadonlyArray<PromptSection<NativeContext>> = [
 				: "For current or external facts, call web_search.",
 	},
 	{
-		// CUR-3192 for the native turn: the scaffolded turn's search decider gets this rule with the photo,
-		// and a native model decides for itself, so it gets the same rule. Without it a model can search the
-		// web for the logo it was just shown (CUR-4015).
+		// The scaffolded turn's search decider gets this rule with the photo, and a native model decides
+		// for itself, so it gets the same rule. Without it a model can search the web for the logo it was
+		// just shown.
 		id: "photo-search",
 		stability: "turn",
 		ticket: "CUR-4015",
@@ -169,7 +168,7 @@ export const NATIVE_SECTIONS: ReadonlyArray<PromptSection<NativeContext>> = [
 	},
 	{
 		// The scaffolded turn carries this note beside the fence (hardenLastUserTurn); a native
-		// turn never runs that, so without this section the note reached no turn with search on. (CUR-4102)
+		// turn never runs that, so this section carries the note there.
 		id: "attached-document",
 		stability: "turn",
 		ticket: "CUR-4102",
@@ -212,11 +211,11 @@ export const NATIVE_SECTIONS: ReadonlyArray<PromptSection<NativeContext>> = [
 		when: ({ visitorSourceCount }) => !!visitorSourcesNote(visitorSourceCount ?? 0),
 		render: ({ visitorSourceCount }) => visitorSourcesNote(visitorSourceCount ?? 0) ?? "",
 	},
-	// The scaffolded turn's clause, a base guard since a pasted notice reaches either harness. (CUR-962)
+	// The scaffolded turn's clause, kept here too since a pasted notice reaches either harness.
 	{ id: "source-fidelity", stability: "static", ticket: "CUR-962", render: () => SOURCE_FIDELITY_CLAUSE },
 	{
 		// Without either, the model answers "where do you run?" from nothing; with only "AI Potluck's chat",
-		// a model says "AI Potluck's infrastructure" (CUR-2135).
+		// a model says "AI Potluck's infrastructure".
 		id: "serving",
 		stability: "turn",
 		ticket: "CUR-2135",

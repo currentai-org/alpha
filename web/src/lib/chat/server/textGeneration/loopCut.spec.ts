@@ -3,6 +3,7 @@ import { MessageUpdateType, type MessageUpdate } from "$lib/chat/types/MessageUp
 
 vi.mock("$lib/chat/server/flags", () => ({ flagEnabledOr: (_key: string, fallback: () => boolean) => fallback() }));
 
+import { logger } from "$lib/chat/server/logger.js";
 import { WINDOW_WORDS, createLoopCounter, cutRepetitionLoop, type LoopCutOptions } from "./loopCut";
 import { DEGENERATE_REPETITION_FALLBACK_MESSAGE, repetitionNotice } from "./repetitionGuard";
 import { DECLINE_LANGUAGES, type DeclineLanguage } from "$lib/chat/server/declineCopy";
@@ -32,7 +33,7 @@ async function run(tokens: string[], language?: Promise<DeclineLanguage>, option
 	return { out, final: final && "text" in final ? final.text : undefined, pulled, returned };
 }
 
-describe("cutRepetitionLoop stops a looping answer while it streams (CUR-3318)", () => {
+describe("cutRepetitionLoop stops a looping answer while it streams", () => {
 	it("stops reading the model within one window of the loop starting and ends with the fixed notice", async () => {
 		const loop = Array.from({ length: 2000 }, () => "No crushing. No smashing. No breaking. ");
 		const { final, pulled, returned } = await run(["The room closes at 19:40. ", ...loop]);
@@ -57,7 +58,7 @@ describe("cutRepetitionLoop stops a looping answer while it streams (CUR-3318)",
 	});
 });
 
-describe("cutRepetitionLoop leaves repetition a person asked for (CUR-3318, CUR-1104 Observed 6)", () => {
+describe("cutRepetitionLoop leaves repetition a person asked for ( Observed 6)", () => {
 	it("keeps three bullets that each open with the same title", () => {
 		const bullet = "- Things Fall Apart by Chinua Achebe is a novel about change.\n";
 		expect(countAll([bullet.repeat(3)])).toBeNull();
@@ -92,7 +93,7 @@ describe("cutRepetitionLoop leaves repetition a person asked for (CUR-3318, CUR-
 	});
 
 	// The agent's trace ends with its summary and the answer after </think> is that summary
-	// again, so a correct answer with files must not end in the loop notice. (CUR-4105)
+	// again, so a correct answer with files must not end in the loop notice.
 	const summary =
 		"**Files written:**\n- `monthly_totals_with_pct_change.csv`: monthly totals with a percentage change column, amounts rounded to 2 decimals.\n" +
 		"- `annual_report_summary.txt`: a 5-line summary for the annual report.\n" +
@@ -121,7 +122,7 @@ describe("cutRepetitionLoop leaves repetition a person asked for (CUR-3318, CUR-
 	});
 });
 
-describe("the loop notice reads in the language the person wrote in (CUR-4052)", () => {
+describe("the loop notice reads in the language the person wrote in", () => {
 	const loop = Array.from({ length: 200 }, () => "Je ne peux pas lire. Je ne peux pas lire. ");
 
 	it("ends a French turn's looping answer with the French notice, not the English one", async () => {
@@ -144,9 +145,9 @@ describe("the loop notice reads in the language the person wrote in (CUR-4052)",
 });
 
 // An agent narrates between its own file checks in near-identical sentences. A cut that
-// fires inside <think>, before </think>, loses the answer and the file, and the page shows "No answer
-// was produced". (CUR-4105)
-describe("an agent turn's step trace is not read for loops (CUR-4105)", () => {
+// fires inside <think>, before </think>, would lose the answer and the file, and the page would show
+// "No answer was produced".
+describe("an agent turn's step trace is not read for loops", () => {
 	const restate =
 		"Created `hong_kong_neighbourhoods.xlsx` with a table comparing the 5 neighbourhoods on rent (HKD), commute to Central (minutes), and feel, plus a bar chart of the rents. All rent and commute figures are illustrative estimates, marked as such in the file.\n\n" +
 		"`hong_kong_neighbourhoods.xlsx` is in your working directory. It contains a table comparing Kennedy Town, Sai Ying Pun, Tai Koo, Sha Tin, and Discovery Bay on typical 2-bedroom rent (HKD), commute to Central (minutes), and feel, plus a bar chart of the rents. All rent and commute figures are illustrative estimates, marked as such in the file.\n\n" +
@@ -175,4 +176,30 @@ describe("an agent turn's step trace is not read for loops (CUR-4105)", () => {
 		expect(notice).toBeGreaterThan(final!.lastIndexOf("</think>"));
 		expect(final!.lastIndexOf("</think>")).toBeGreaterThan(-1);
 	});
+});
+
+describe("the [loop-cut] log line keeps answer text out of every deployment's logs (an answer can quote the visitor)", () => {
+	const loop = Array.from({ length: 400 }, () => "my secret question again. ");
+	const cutLine = async () => {
+		const warn = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
+		try {
+			await run(["Here goes. ", ...loop]);
+			const call = warn.mock.calls.find((c) => String(c[1]).startsWith("[loop-cut]"));
+			expect(call, "no [loop-cut] line was logged").toBeDefined();
+			return call![0] as Record<string, unknown>;
+		} finally {
+			warn.mockRestore();
+			vi.unstubAllEnvs();
+		}
+	};
+
+	for (const env of ["production", "preview"]) {
+		it(`on ${env} logs the span's length and no text (CUR-5006)`, async () => {
+			vi.stubEnv("DEPLOY_ENV", env);
+			const fields = await cutLine();
+			expect(fields.span).toBeUndefined();
+			expect(fields.spanChars).toBeGreaterThan(0);
+			expect(JSON.stringify(fields)).not.toContain("secret");
+		});
+	}
 });

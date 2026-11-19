@@ -3,7 +3,7 @@ import { render } from 'vitest-browser-svelte';
 import { describe, expect, it } from 'vitest';
 
 // A refused `calculate` call followed by an evaluated retry (as "11:35 pm + 1 hour 5 minutes" can
-// produce) must not leave "could not be worked out" under a stated arrival time. (CUR-3860)
+// produce) must not leave "could not be worked out" under a stated arrival time.
 const refused = {
 	expression: '11:35 + 1 hour 5 minutes',
 	error: 'could not evaluate this; use only numbers, + - * /, and parentheses'

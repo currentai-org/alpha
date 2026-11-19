@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2018- The Hugging Face team
+SPDX-License-Identifier: Apache-2.0
+Modified by Current AI from huggingface/chat-ui.
+-->
 <script lang="ts">
 	import { page } from '$app/state';
 	import { base } from '$lib/chat/paths';
@@ -6,7 +11,7 @@
 
 <ErrorCard />
 {#if page.status === 404}
-	<!-- CUR-681: a short, crawlable recovery path — not just a status code — so an agent
+	<!-- a short, crawlable recovery path — not just a status code — so an agent
 	     that landed on a dead link can find its way back rather than dead-ending here. -->
 	<div class="flex items-center justify-center bg-surface-1 pb-4">
 		<p class="max-w-sm pb-2 text-center type-caption text-fg-2">

@@ -1,5 +1,5 @@
 /**
- * The email a flag evaluation may see for this person: theirs only once it is verified (CUR-3182).
+ * The email a flag evaluation may see for this person: theirs only once it is verified.
  *
  * @remarks
  * Team-only release conditions match `email` against the team domains, so the address works as a

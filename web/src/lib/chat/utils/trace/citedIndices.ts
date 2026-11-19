@@ -20,12 +20,12 @@ export function extractCitedIndices(text: string): Set<number> {
 }
 
 // "Qatar \[1,3,4\]." escapes the brackets, and "\[" opens display math, so the markers showed as a dim
-// monospace line. Unescaped, the inline pass links them (CUR-3551).
+// monospace line. Unescaped, the inline pass links them.
 const ESCAPED_CITATION = /\\\[(\d+(?:\s*,\s*\d+)*)\\\]/g;
-// Some models cite in Pandoc's caret shapes, "Tokyo^1,2^" and "[^1^]", which marked prints as text (CUR-3551).
+// Some models cite in Pandoc's caret shapes, "Tokyo^1,2^" and "[^1^]", which marked prints as text.
 const CARET_CITATION = /\[\^(\d+(?:\s*[,\-–]\s*\d+)*)\^\]|\^(\d+(?:\s*[,\-–]\s*\d+)*)\^/g;
 // A range of sources, "Tokyo[1]-4." or "[1-4]", at the end of a clause; mid-sentence a bracketed
-// range is more often an interval in prose. The inline pass links "[1]" and printed "-4" (CUR-3551).
+// range is more often an interval in prose. The inline pass links "[1]" and printed "-4".
 const CITATION_RANGE =
 	/\[(\d+)\]\s*[-–]\s*(\d+)(?=\s*(?:[.,;:!?)]|$))|\[(\d+)\s*[-–]\s*(\d+)\](?=\s*(?:[.,;:!?)]|$))/g;
 // Longer than this, a "range" is a number, not a run of sources.
@@ -39,7 +39,7 @@ function expandCitationRange(match: string, ...groups: (string | undefined)[]): 
 
 /**
  * Rewrites every citation shape an answer uses (escaped, caret, range) as plain "[n]" or "[n,m]" markers.
- * The renderer links what this returns, and `citationOrder` ranks it, so the two cannot disagree (CUR-3933).
+ * The renderer links what this returns, and `citationOrder` ranks it, so the two cannot disagree.
  */
 export function bracketCitations(text: string): string {
 	return text
@@ -52,7 +52,7 @@ export function bracketCitations(text: string): string {
 const ANY_MARKER = /\[(\d+(?:\s*,\s*\d+)*)\](?![(:])/g;
 
 /**
- * The source numbers an answer cites, in the order it first cites each (CUR-3933). Reads the caret, group
+ * The source numbers an answer cites, in the order it first cites each. Reads the caret, group
  * and range shapes too, since the renderer links all of them (marked.ts), and the page numbers its
  * citations by this order.
  */

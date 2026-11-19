@@ -5,7 +5,7 @@
 	// A file the server left out of a sent message (scanner down, a type or document not
 	// accepted, a file it could not check). It stays in the message, marked not added, so it doesn't
 	// vanish when the answer lands; the answer's note says why. Only its name was kept, so there is
-	// nothing to open. (CUR-3405)
+	// nothing to open.
 	interface Props {
 		name: string;
 		mime: string;

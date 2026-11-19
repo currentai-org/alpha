@@ -12,7 +12,7 @@ const card = (journey: string, state: JourneyState, statuses: string[] = ["passe
 	),
 });
 
-describe("sortFailuresFirst (CUR-3076)", () => {
+describe("sortFailuresFirst", () => {
 	it("puts findings, flaky and partly graded journeys ahead of clean ones, and no-doc journeys last", () => {
 		const order = sortFailuresFirst([
 			card("A1", "clean"),
@@ -48,7 +48,7 @@ describe("journeyGroup", () => {
 	});
 });
 
-describe("runVerdict (CUR-3076)", () => {
+describe("runVerdict", () => {
 	it("asks for a look when a journey has findings, naming the count", () => {
 		expect(runVerdict([card("A1", "findings"), card("A2", "clean")])).toEqual({
 			tone: "attention",

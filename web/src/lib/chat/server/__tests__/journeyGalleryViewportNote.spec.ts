@@ -2,8 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { viewportNote } from "../journeyGallery";
 
-// CUR-1554 is a reminder to turn mobile recording back on once A1–A4 and A8 are polished on
-// desktop, and this sentence is the only thing that will deliver it. Mobile is off by default now
+// Mobile recording is off by default
 // (playwright.config.ts gates the project on JOURNEY_MOBILE_VIEWPORT), so the page shows no mobile
 // cards — and no mobile cards is exactly what "mobile ran and recorded nothing" looks like too.
 // The run states what it was CONFIGURED for and this turns that into the line a reviewer reads first.

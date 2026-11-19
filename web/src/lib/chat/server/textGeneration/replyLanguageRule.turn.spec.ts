@@ -1,12 +1,12 @@
 /**
- * The reply-language sentence in the fenced user turn (CUR-1430) can send Mistral Large 3 into
+ * The reply-language sentence in the fenced user turn can send Mistral Large 3 into
  * French on an English question, so a Large 3 turn goes out without it. Apertus is where the sentence
  * helps, and it must not change at all.
  *
  * This drives the real textGenerationWithoutTitle and captures the messages handed to `generate`, which
  * is the turn the model actually receives. "Before" is the same run with the per-model check forced
- * open, which is exactly the behaviour before this change, so the comparison is between two real
- * prompts rather than against a stored copy of one. (CUR-2294)
+ * open, so every model gets the sentence, and the comparison is between two real prompts rather than
+ * against a stored copy of one.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ObjectId } from "bson";
@@ -97,7 +97,7 @@ beforeEach(() => {
 	behaveAsBefore = false;
 });
 
-describe("the reply-language sentence follows the model it misfires on (CUR-2294)", () => {
+describe("the reply-language sentence follows the model it misfires on", () => {
 	it("an Apertus turn reaches the model byte for byte as it did before, with the sentence", async () => {
 		for (const text of ["Who are you?", "Qui es-tu ?"]) {
 			const { before, after } = await beforeAndAfter(APERTUS, text);

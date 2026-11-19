@@ -1,37 +1,39 @@
 import { APP_SURFACE, type AppSurface } from "../../surface";
 import { CHAT_HOST } from "../paths";
 import { DEFAULT_INSTANCE, deploymentInstance } from "./instance";
+import { deployEnvName, type RuntimeEnv } from "$lib/server/runtimeEnv";
 
 /**
- * Production serves chat on two hosts side by side, www.aipotluck.org/chat and
- * alpha.aipotluck.org/chat (chat's own host since CUR-4439), from the same deployment. Sign-in has to answer on whichever one the
+ * A split installation's production serves chat on two hosts side by side, the site host's /chat and
+ * CHAT_HOST's /chat (src/lib/deployment.ts), from the same deployment. Sign-in has to answer on whichever one the
  * visitor used: an OAuth redirect_uri naming the other host drops them there after the provider round
  * trip, and a passkey assertion from the other host fails its origin check.
  *
  * Every other deployment keeps its single PUBLIC_ORIGIN. alpha. is a production host only, and its
  * OAuth callbacks are registered on the production Google and GitHub clients only. An event instance
- * (CUR-3156) is production too, but alpha. is an alias of www, never of it, so it keeps its own origin.
+ * is production too, but alpha. is an alias of www, never of it, so it keeps its own origin.
  *
- * chat.aipotluck.org, the chat host before alpha, 308s every path to alpha before sign-in runs, so
- * it needs no entry here.
+ * A chat alias host 308s every path to CHAT_HOST before sign-in runs, so it needs no entry here. An
+ * installation with no CHAT_HOST keeps its single PUBLIC_ORIGIN everywhere.
  *
- * A chat-surface build (APP_SURFACE=chat, CUR-4448) is chat's own deployment, so its PUBLIC_ORIGIN is
+ * A chat-surface build (APP_SURFACE=chat) is chat's own deployment, so its PUBLIC_ORIGIN is
  * the auth origin and nothing is added: it may serve alpha. itself, or a host of its own.
  *
  * Pure and free of config imports, so the CIMD route can read the same list without loading
- * betterAuth.ts, and a test can exercise it without a live environment. (CUR-1067)
+ * betterAuth.ts, and a test can exercise it without a live environment.
  */
 /** The origins sign-in answers on, PUBLIC_ORIGIN first. Empty when PUBLIC_ORIGIN is unset (local dev). */
 export function authOrigins(
 	publicOrigin: string | undefined,
-	env: { VERCEL_ENV?: string; INSTANCE?: string },
+	env: RuntimeEnv,
 	surface: AppSurface = APP_SURFACE
 ): string[] {
 	if (!publicOrigin) return [];
 	const origins = [new URL(publicOrigin).origin];
+	if (!CHAT_HOST) return origins;
 	const chatOrigin = `https://${CHAT_HOST}`;
 	const servesChatHost =
-		surface === "site" && env.VERCEL_ENV === "production" && deploymentInstance(env) === DEFAULT_INSTANCE;
+		surface === "site" && deployEnvName(env) === "production" && deploymentInstance(env) === DEFAULT_INSTANCE;
 	if (servesChatHost && !origins.includes(chatOrigin)) origins.push(chatOrigin);
 	return origins;
 }
@@ -52,7 +54,7 @@ export type DynamicAuthBaseURL = {
  */
 export function authBaseURL(
 	publicOrigin: string | undefined,
-	env: { VERCEL_ENV?: string; INSTANCE?: string },
+	env: RuntimeEnv,
 	surface: AppSurface = APP_SURFACE
 ): string | DynamicAuthBaseURL | undefined {
 	const origins = authOrigins(publicOrigin, env, surface);

@@ -7,7 +7,7 @@
  * persist, `saveTitle`, and `persistConversation` on every terminal path (client-detach, abort, error,
  * finally) — MUST flow through ONE chain so they land strictly in order, never concurrently.
  *
- * The pre-stream overlap (§A) makes this load-bearing: the user-msg persist no longer blocks the handler
+ * The pre-stream overlap makes this load-bearing: the user-msg persist does not block the handler
  * (it overlaps retrieval), so without the chain a slow user-msg write could still be in flight when the
  * terminal persist fires — the exact concurrent-updateOne race the chain forecloses.
  */

@@ -6,8 +6,10 @@
 // blobs, or internal metadata. The serializer is pure + DOM-free (unit-testable); only
 // `downloadConversationMarkdown` touches the DOM.
 
+import { DEPLOYMENT } from "$lib/deployment";
 import type { Message } from "$lib/chat/types/Message";
 import { formatRagEngine } from "$lib/chat/utils/formatRagEngine";
+import { downloadBlob } from "./downloadBlob";
 
 export interface ExportableConversation {
 	title?: string;
@@ -36,7 +38,7 @@ export function conversationToMarkdown(conv: ExportableConversation): string {
 		`title: ${yaml(title)}`,
 		...(conv.model ? [`model: ${yaml(conv.model)}`] : []),
 		`exported: ${date}`,
-		"source: AI Potluck (aipotluck.org)",
+		`source: ${DEPLOYMENT.sourceName}`,
 		"---",
 		"",
 		`# ${title}`,
@@ -95,7 +97,7 @@ export function exportFilename(title: string | undefined, date = new Date()): st
 			.replace(/[^a-z0-9]+/g, "-")
 			.replace(/^-+|-+$/g, "")
 			.slice(0, 60) || "conversation";
-	return `aipotluck.org-${slug}-${ymd(date)}.md`;
+	return `${DEPLOYMENT.apexDomain ?? "alpha"}-${slug}-${ymd(date)}.md`;
 }
 
 /**
@@ -105,13 +107,5 @@ export function exportFilename(title: string | undefined, date = new Date()): st
 export function downloadConversationMarkdown(conv: ExportableConversation): void {
 	if (typeof document === "undefined") return;
 	const md = conversationToMarkdown(conv);
-	const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
-	const url = URL.createObjectURL(blob);
-	const a = document.createElement("a");
-	a.href = url;
-	a.download = exportFilename(conv.title, conv.exportedAt);
-	document.body.appendChild(a);
-	a.click();
-	a.remove();
-	URL.revokeObjectURL(url);
+	downloadBlob(new Blob([md], { type: "text/markdown;charset=utf-8" }), exportFilename(conv.title, conv.exportedAt));
 }

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import type { Conversation } from "$lib/chat/types/Conversation";
 import type { Message } from "$lib/chat/types/Message";
 import { v4 } from "uuid";

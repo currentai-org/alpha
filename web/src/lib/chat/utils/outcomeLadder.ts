@@ -13,14 +13,14 @@
  *   declined   a policy refusal that SUCCEEDED at what it set out to do. Below the four failures
  *              because a turn that declined and then broke should report the break, which is the
  *              more actionable signal. Above `complete` because a refused user did not get an
- *              answer, and calling that complete hides a run of refusals (CUR-35).
+ *              answer, and calling that complete hides a run of refusals.
  *   empty      the pipeline worked and the user got no answer out of it. Below `declined` on that
  *              same reading — a decline is an intended outcome, an empty answer is not one at all.
  *   complete
  *
- * WHY `empty` EXISTS (CUR-445). On a grounded turn where no substance survives, the honesty guard
+ * WHY `empty` EXISTS. On a grounded turn where no substance survives, the honesty guard
  * throws the answer away and substitutes a sources pointer — a few hundred characters of OUR copy,
- * which is right for the user (CUR-113: a truthful pointer beats a blank bubble) and wrong for
+ * which is right for the user (a truthful pointer beats a blank bubble) and wrong for
  * every reader downstream. The route's own empty-output check compares the finished message
  * against what it started as, so the substitution makes it unreachable, and without this rung the
  * turn reports `complete` (for example `beforeChars: 0, afterChars: 256`, then `outcome: complete,
@@ -59,10 +59,10 @@ export interface TurnOutcomeInputs {
 	/** The generation watchdog fired. */
 	timedOut: boolean;
 	/**
-	 * The output-screen PHASE deadline fired (screenStream.ts's PHASE_DEADLINE_MS, CUR-1657) — a
+	 * The output-screen PHASE deadline fired (screenStream.ts's PHASE_DEADLINE_MS) — a
 	 * narrower, separate watchdog from `timedOut` above, but the same rung: the phase never finished
 	 * verifying, so nothing here should read as `complete`. Read off `message.outputModeration?.screened
-	 * === false`, the one marker screenStream.ts sets only on this trip (CUR-1727). A zero-token phase
+	 * === false`, the one marker screenStream.ts sets only on this trip. A zero-token phase
 	 * timeout writes its own decline text into the message, which would give
 	 * `modelChars > 0` and fall through this ladder to `complete` — the app's own canned copy counted as
 	 * a successful answer.
@@ -103,7 +103,7 @@ export function classifyTurnOutcome(t: TurnOutcomeInputs): TurnOutcome {
 }
 
 /**
- * What the sustained-failure alert counts as a failure (CUR-89, consumed by warm.ts).
+ * What the sustained-failure alert counts as a failure (consumed by warm.ts).
  *
  * Lives HERE, beside the ladder that produces the values, because the two are one taxonomy and
  * were two hand-maintained lists in two files — the shape that drops a new value from one of them

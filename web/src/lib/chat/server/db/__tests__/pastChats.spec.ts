@@ -1,7 +1,7 @@
 /**
- * past-chat search reads one account's own chats and nothing else. These run against the
+ * Past-chat search reads one account's own chats and nothing else. These run against the
  * real Postgres schema, because the owner filter and the message projection are SQL over the stored
- * document. Every chat here is written by the test. (CUR-4576)
+ * document. Every chat here is written by the test.
  */
 import { describe, expect, it, afterEach } from "vitest";
 import { readPastChats } from "$lib/chat/server/db/pastChats";
@@ -18,7 +18,7 @@ const msg = (from: "user" | "assistant" | "system", content: string, extra: Reco
 
 afterEach(cleanupTestData);
 
-describe("past-chat search tenant scoping (CUR-4576)", () => {
+describe("past-chat search tenant scoping", () => {
 	it("never returns another account's chat or a guest's chat, even when it matches the query best", async () => {
 		const alice = await createTestUser();
 		const bob = await createTestUser();

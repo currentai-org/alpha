@@ -2,7 +2,7 @@
 import { test, expect } from './helpers/test';
 
 // Every design-system Tooltip gave its trigger aria-describedby="", so a screen reader
-// heard none of the hover text a sighted user saw (CUR-2378). bits-ui 2.19.0 put the content's id on nothing:
+// heard none of the hover text a sighted user saw. bits-ui 2.19.0 put the content's id on nothing:
 // the popper layer took `id` out of the props and never handed it to the element it rendered, so
 // the trigger's aria-describedby pointed at an element with an empty id. 2.19.3 passes it through.
 //

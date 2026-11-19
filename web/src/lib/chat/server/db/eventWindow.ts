@@ -10,7 +10,7 @@
  *
  * Every function here FAILS OPEN and logs under the caller's label: a database error makes a count
  * read as `null` and a write a no-op. Each caller decides what `null` means. The chat daily cap in
- * chat/rateLimit.ts refuses on it (CUR-3191); every other caller allows the request. (CUR-2120)
+ * chat/rateLimit.ts refuses on it; every other caller allows the request.
  */
 import { collections } from "$lib/chat/server/database";
 import { logger } from "$lib/chat/server/logger.js";
@@ -60,6 +60,20 @@ export async function secondsUntilRoom(key: EventKey, max: number, label: string
 	}
 }
 
+/** A daily allowance's verdict for this key: `{ ok: true }` while it has fewer than `max` live rows (or
+ *  the count failed, so every allowance built on it fails open); otherwise how many seconds until the
+ *  oldest counted row stops counting, `null` when that could not be read. Shared by the agent-task and
+ *  chat-turn allowances. */
+export async function allowanceRoom(
+	key: EventKey,
+	max: number,
+	label: string
+): Promise<{ ok: true } | { ok: false; retryAfterSecs: number | null }> {
+	const used = await countLiveEvents(key, label);
+	if (used === null || used < max) return { ok: true };
+	return { ok: false, retryAfterSecs: await secondsUntilRoom(key, max, label) };
+}
+
 /** True while the key has fewer than `max` unexpired rows, and on a failed count. */
 export async function underEventLimit(key: EventKey, max: number, label: string): Promise<boolean> {
 	const recent = await countLiveEvents(key, label);
@@ -69,10 +83,11 @@ export async function underEventLimit(key: EventKey, max: number, label: string)
 /** Record one event that counts against `key` for `windowMs`. Never throws. */
 export async function recordEvent(key: EventKey, windowMs: number, label: string): Promise<void> {
 	try {
+		const createdAt = new Date();
 		await collections.messageEvents.insertOne({
 			...key,
-			createdAt: new Date(),
-			expiresAt: new Date(Date.now() + windowMs),
+			createdAt,
+			expiresAt: new Date(createdAt.getTime() + windowMs),
 		});
 	} catch (e) {
 		logger.warn(e, `[${label}] failed to record event — continuing`);

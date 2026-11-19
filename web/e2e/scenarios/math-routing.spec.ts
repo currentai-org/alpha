@@ -7,21 +7,21 @@ import { turnDone } from './helpers/turn';
 import { warmupContext } from './helpers/warmup';
 import { startChattingPastWelcome } from './helpers/welcome';
 
-// Math routing (CUR-2065, CUR-2198). With `math-routing` on, the turn planner (one forced plan_turn call
+// Math routing. With `math-routing` on, the turn planner (one forced plan_turn call
 // on ARITHMETIC_ROUTE_MODEL) decides on every turn whether the latest message asks for a number to be
 // worked out and records the setup; code sums it and shows rows plus a "Total: N (arithmetic checked by
-// code)" line, and the chat's model writes the words. Only a model that cannot call tools is planned
-// (CUR-2282), since a tool-capable one calls `calculate` itself, so every spec here starts on the first
+// code)" line, and the chat's model writes the words. Only a model that cannot call tools is planned,
+// since a tool-capable one calls `calculate` itself, so every spec here starts on the first
 // listed model without tools rather than the target's default. Every planned turn persists a `math-route` rung
 // whose outcome is "ok" only when the math field produced a ledger (conversation/[id]/+server.ts), so each
-// turn asserts the checked line with the right number AND that the planner produced it (CUR-2149). When
-// the plan misses, the turn must carry no checked line at all (CUR-2134), and the answer model's own copy
-// of the stamp is removed on every turn, so a turn shows at most the one stamp code wrote (CUR-2199). A
+// turn asserts the checked line with the right number AND that the planner produced it. When
+// the plan misses, the turn must carry no checked line at all, and the answer model's own copy
+// of the stamp is removed on every turn, so a turn shows at most the one stamp code wrote. A
 // miss the lane caused gets one regenerate before it fails; one our prompt or schema caused fails at once
 // (see ledgerTurn).
 //
-// Three turns, because follow-ups are where the old guard lost the base case (CUR-2011) and the regex
-// floor that preceded the planner missed turns with no digits and no question (CUR-2198): turn 3, "A
+// Three turns, because follow-ups are where the old guard lost the base case and the regex
+// floor that preceded the planner missed turns with no digits and no question: turn 3, "A
 // full-time colleague resigned as well.", only reaches the ledger if the planner reads the conversation,
 // and only comes out at 9 if the ledger is rebuilt from all of it.
 //
@@ -84,7 +84,7 @@ test(
 			let outcome = await storedOutcome(id);
 			const laneMiss = (o: string | undefined) => o === 'timeout' || o === 'failed';
 			if (laneMiss(outcome)) {
-				// With no ledger (CUR-2134), nothing on the turn may claim code checked the arithmetic, and
+				// With no ledger, nothing on the turn may claim code checked the arithmetic, and
 				// no calc fence may stand in for one.
 				const missed = await message.innerText();
 				expect(
@@ -117,7 +117,7 @@ test(
 				`turn ${turn}: the math-route rung reads "${outcome}". "ok" means the planner built a ledger; "not-asked" means it read the turn as no calculation; "invalid", "missing", "unparsable" or "no-call" means our prompt or tool schema got no usable plan; undefined means the turn was never planned`
 			).toBe('ok');
 			const text = await message.innerText();
-			// The code-rendered ledger carries no "checked by code" label, and CUR-2199 removes any
+			// The code-rendered ledger carries no "checked by code" label, and that change removes any
 			// the answer model copies from an older answer, so none may remain.
 			expect(
 				text,
@@ -231,7 +231,7 @@ test(
 	}
 );
 
-// A money total reads in cents (CUR-2206). Without that, this question
+// A money total reads in cents. Without that, this question
 // gets "Total: 59.699875 USD (arithmetic checked by code)" and "Your total is $59.699875" in the
 // prose, which repeats the note's "the total is exactly" figure. The rows keep their precision, since
 // they are the working; the total and the prose do not. The rung is read so that a ledger the lane

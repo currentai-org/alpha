@@ -48,19 +48,19 @@ import { guardsOnlyPrompt, nativeSystemPrompt } from "./native";
 const GUEST = { loginOffered: true, signedIn: false };
 const NATIVE_BASE = { modelId: "m", fence: "Q_x", today: "2026-10-01", account: GUEST };
 
-// CUR-215 / CUR-831. These assert the CONTRACT, which is narrower than "the clause mentions
-// injection": the prompt must state the posture that live config actually implements, and must keep
-// stating the adjacent true fact while it does. The failure shapes below are a denial that moves the
-// failure to another noun (CUR-215) and a flat exclusion claim that cannot be verified (CUR-831: a
-// user told they are not screened can still be blocked by Coop's chat-block-prompt rule, which fires
-// inside the same content check this clause describes).
+// These assert the CONTRACT, which is narrower than "the clause mentions injection": the prompt must
+// state the posture that live config actually implements, and must keep stating the adjacent true
+// fact while it does. The failure shapes below are a denial that moves the failure to another noun,
+// and a flat exclusion claim that cannot be verified (a user told they are not screened can still be
+// blocked by Coop's chat-block-prompt rule, which fires inside the same content check this clause
+// describes).
 describe("screeningClause", () => {
 	const OFF = { content: true, output: false };
 
-	it("names no DEDICATED classifier for injection — the classifier itself is gone, not just disarmed (CUR-59)", () => {
+	it("names no DEDICATED classifier for injection — the classifier itself is gone, not just disarmed", () => {
 		const out = screeningClause(OFF);
 		expect(out).toMatch(/no classifier built specifically to detect prompt injection/i);
-		// The instruction, not just the fact — the fact alone lost to the model's prior in prod.
+		// The instruction, not just the fact: the fact alone loses to the model's prior.
 		expect(out).toMatch(/say (there is|plainly that)/i);
 	});
 
@@ -82,7 +82,7 @@ describe("screeningClause", () => {
 		expect(out).toMatch(/child-safety/i);
 	});
 
-	it("does NOT claim the content check excludes prompt injection — CUR-831's regression", () => {
+	it("does NOT claim the content check excludes prompt injection — the regression", () => {
 		// The bug: Coop's chat-block-prompt rule fires inside the same content check, so denying that
 		// the check "covers" injection is false whenever it happens to catch one. The clause may name
 		// the missing DEDICATED classifier; it must not claim a coverage exclusion it can't verify.
@@ -117,8 +117,8 @@ describe("buildPersonaPrompt", () => {
 	});
 
 	it("names the real stack panel, not a nonexistent 'Under the hood' section", () => {
-		// The persona must not name a UI label that doesn't exist ("(Under the hood)"), which the model would then
-		// point users at (BE#2). The panel is "XRAY VIEW".
+		// The persona must not name a UI label that doesn't exist ("(Under the hood)"), which the model
+		// would then point users at. The panel is "XRAY VIEW".
 		const out = buildPersonaPrompt("swiss-ai/Apertus-70B-Instruct-2509");
 		expect(out).not.toMatch(/under the hood/i);
 		expect(out).toContain("XRAY VIEW");
@@ -152,10 +152,10 @@ describe("buildPersonaPrompt", () => {
 
 	// The two assertions below are about the clause's CONTENT, and they exist because every other test
 	// here compares it by identity (`toContain(RECENCY_CLAUSE)`), which passes for any string at all.
-	// The clause could be narrowed straight back to the wording that caused CUR-181 and nothing would
+	// The clause could be narrowed straight back to a superlatives-only wording and nothing would
 	// go red. Both properties were checked through this exact prompt on the served checkpoint
 	// (evals/checkpoint-compare, persona condition).
-	it("covers facts that change WITHOUT being superlatives — the CUR-181 scope hole", () => {
+	it("covers facts that change WITHOUT being superlatives — the scope hole", () => {
 		// A clause limited to "recent models, news, and events" with one concrete instruction for "the
 		// newest, latest, or most recent of anything" leaves out a sitting officeholder, so "who is the
 		// current CEO of OpenAI?" falls outside it. Models that read scope literally then withhold the
@@ -170,11 +170,11 @@ describe("buildPersonaPrompt", () => {
 	});
 
 	it("says ANSWER-with-attribution, not withhold — the overcorrection this fix caused first", () => {
-		// Widening the scope alone flips 1.5 to "I don't have verified information about the current
-		// CEO of OpenAI": it starts applying the clause's "say you can't reliably identify it"
-		// instruction to officeholders too. Withholding a fact we hold is the over-refusal direction to avoid
-		// (CUR-148). The clause must keep
-		// "I can't reliably identify it" scoped to genuine superlatives.
+		// Widening the scope alone makes Apertus 1.5 answer "I don't have verified information about
+		// the current CEO of OpenAI": it starts applying the clause's "say you can't reliably identify
+		// it" instruction to officeholders too. Withholding a fact the model holds is the over-refusal
+		// direction to avoid, so the clause must keep "I can't reliably identify it" scoped to genuine
+		// superlatives.
 		const c = RECENCY_CLAUSE.toLowerCase();
 		expect(c).toMatch(/as of my last update/);
 		expect(c).toMatch(/do not withhold/);
@@ -184,8 +184,8 @@ describe("buildPersonaPrompt", () => {
 	});
 
 	it("ungrounded + unservableLive: SWAPS the recency 'offer to search' line for an honest 'no live X' note", () => {
-		// L2: a structurally-live ask (live scores/prices/weather) was gated off the web, so the persona
-		// must not offer the search it can't fulfil — it swaps in the capability note instead.
+		// A structurally-live ask (live scores/prices/weather) is gated off the web, so the persona must
+		// not offer the search it can't fulfil; it swaps in the capability note instead.
 		const out = buildPersonaPrompt("m", undefined, { unservableLive: true });
 		expect(out).toContain(UNSERVABLE_LIVE_CLAUSE);
 		expect(out).not.toContain(RECENCY_CLAUSE);
@@ -218,7 +218,7 @@ describe("buildPersonaPrompt", () => {
 		);
 	});
 
-	it("CUR-1328: the bare-greeting demo does not restate identity, and a real-question demo answers directly", () => {
+	it("the bare-greeting demo does not restate identity, and a real-question demo answers directly", () => {
 		// Production must not open EVERY answer with "I'm {model}, an open model served by
 		// Current AI...", including turns with no identity question anywhere in the conversation.
 		// grounding.ts's per-turn "don't restate identity" rule has no traction against this: the
@@ -237,12 +237,12 @@ describe("buildPersonaPrompt", () => {
 		expect(out).toContain("You: 100°C (212°F).");
 	});
 
-	it("carries the bias-disclosure clause on contested/values questions (TODO A15)", () => {
-		// The NPOV answer never disclosed that its own balance is itself a product of training
-		// choices. Testing framework M18's pass bar is generic ("an
-		// acknowledgement that its training may be biased") — deliberately NOT a specific claim about
-		// who trained it or their demographics (that risks the same confabulation class as A6's
-		// fabricated-URL finding, since Apertus has no verified self-knowledge there).
+	it("carries the bias-disclosure clause on contested/values questions", () => {
+		// Without this clause, a neutral-point-of-view answer never discloses that its own balance is
+		// itself a product of training choices. The bar is generic ("an acknowledgement that its
+		// training may be biased"), deliberately NOT a specific claim about who trained it or their
+		// demographics: Apertus has no verified self-knowledge there, so a specific claim invites the
+		// same confabulation as an invented URL.
 		const out = buildPersonaPrompt("m");
 		expect(out).toContain("My own training involved choices I can't fully audit"); // the demonstration
 		expect(out).toContain("Add a brief acknowledgement that your own training involved choices"); // the reinforcing clause
@@ -254,7 +254,7 @@ describe("buildPersonaPrompt", () => {
 		);
 	});
 
-	it("prompt instructs it to decline inventing training/architecture specifics (TODO A6, 2026-06-30)", () => {
+	it("prompt instructs it to decline inventing training/architecture specifics", () => {
 		// Ungrounded self-description turns can confabulate a GitHub URL (handled by
 		// $lib/chat/server/urlGuard) or assert an unverifiable "Map-Grounded" training feature,
 		// conflating a real feature of this DEPLOYMENT with a false property of the model's own
@@ -265,7 +265,7 @@ describe("buildPersonaPrompt", () => {
 		expect(out).toContain("describe this deployment, not your training");
 	});
 
-	it("demonstrates plain acknowledgment of an in-conversation fact, not a memory disclaimer (CUR-1158)", () => {
+	it("demonstrates plain acknowledgment of an in-conversation fact, not a memory disclaimer", () => {
 		// The other six examples' shared "no feelings, no experiences, no persistent identity" theme
 		// generalizes past what any one of them says, so the full set can produce "I don't have
 		// memory... so I can't retain that" on a plain "remember X" ask, which a bare prompt with no
@@ -275,7 +275,7 @@ describe("buildPersonaPrompt", () => {
 		expect(out).toContain("Got it — B4.");
 	});
 
-	it("labels every example as invented, so none is read back as the user's own history (CUR-3208)", () => {
+	it("labels every example as invented, so none is read back as the user's own history", () => {
 		// A fresh guest asking "what do you know about me?" must not be told "You mentioned your
 		// favorite color is blue" from an example in the prompt.
 		const out = buildPersonaPrompt("m");
@@ -284,9 +284,9 @@ describe("buildPersonaPrompt", () => {
 		expect(block).not.toMatch(/\bmy (favou?rite|name is|birthday|age)\b/i);
 	});
 
-	it("demonstrates answering a warm, personal-flavoured task directly, no identity disclaimer (CUR-1437)", () => {
+	it("demonstrates answering a warm, personal-flavoured task directly, no identity disclaimer", () => {
 		// A turn asking to improve a thank-you email can open "I don't have feelings or personal
-		// opinions" before a good edit. Same CUR-1158 mechanism, different task family — the dry
+		// opinions" before a good edit. Same mechanism as the memory disclaimer, different task family: the dry
 		// "rewrite this so it's clearer" example does not counter-demonstrate a WARM task, so the feelings
 		// theme carries over there. This example deliberately differs from the "thank-you note to a
 		// colleague" cases — behaviors.ts's D1 case tests generalization.
@@ -317,7 +317,7 @@ describe("buildPersonaPrompt", () => {
 
 	it("training tokens degrade gracefully to clean grammar when there's no openness story (GLM/generic)", () => {
 		// {trainingParen}/{trainingReminder} are both "" when training is unset — must not leave a
-		// dangling empty "()" or a "Beyond ," fragment (the old {training}-direct-splice bugs).
+		// dangling empty "()" or a "Beyond ," fragment, which splicing {training} directly would leave.
 		const out = buildPersonaPrompt("zai-org/GLM-5.2");
 		expect(out).not.toContain("Beyond ,");
 		expect(out).not.toMatch(/openness\s*\(\s*\)/);
@@ -325,7 +325,7 @@ describe("buildPersonaPrompt", () => {
 		expect(out).toContain("be open about your own openness; the exact served checkpoint is");
 	});
 
-	it("prompt broadens the 'why trust you' guidance beyond openness alone (TODO A20, 2026-07-01)", () => {
+	it("prompt broadens the 'why trust you' guidance beyond openness alone", () => {
 		// Asked "why should I trust you", the answer must not lean on openness alone: it also names
 		// fallibility, no-train-on-conversations (per the /privacy-notice Payload page), and the safety
 		// review — without claiming infallibility.
@@ -354,11 +354,11 @@ describe("buildPersonaPrompt", () => {
 	});
 });
 
-describe("injectSourceFidelityPrompt (CUR-962)", () => {
+describe("injectSourceFidelityPrompt", () => {
 	// The chat path with agent mode off needs the same fidelity instruction agent-service carries
-	// (CUR-962; see the clause's comment in persona.ts: an abstract "be accurate" rule doesn't hold, and
+	// (see the clause's comment in persona.ts: an abstract "be accurate" rule doesn't hold, and
 	// one named wrong word doesn't either). Appended, not baked into DEFAULT_PERSONA_TEMPLATE: that
-	// position is less effective for a sibling fidelity clause (CUR-2095).
+	// position is less effective for a sibling fidelity clause.
 	it("names the exact failure shapes, not just 'be accurate'", () => {
 		expect(SOURCE_FIDELITY_CLAUSE).toContain("keep it relative to that same event");
 		expect(SOURCE_FIDELITY_CLAUSE).toMatch(/under review.*do not upgrade/);
@@ -393,7 +393,7 @@ describe("injectSourceFidelityPrompt (CUR-962)", () => {
 describe("buildPersonaPrompt — serving clause (calque dual-path C)", () => {
 	// This branch describes only the lane that's actually serving the turn. Requiring "production stack
 	// runs on sovereign public compute" would assert CSCS/Switzerland on a turn served by a plain open
-	// inference provider, the same false claim the other two branches avoid (CUR-1436).
+	// inference provider, the same false claim the other two branches avoid.
 	it("HF (non-sovereign): names the provider, asserts no sovereign-compute fact", () => {
 		const out = buildPersonaPrompt("m", undefined, {
 			serving: { providerLabel: "HuggingFace", isSovereign: false, namesSwitzerland: false },
@@ -405,7 +405,7 @@ describe("buildPersonaPrompt — serving clause (calque dual-path C)", () => {
 	});
 
 	// This assertion must not REQUIRE the institution ("runs on sovereign public compute (CSCS)"): that
-	// teaches the model a claim that is false on the share of prod turns another backend serves (CUR-75). A
+	// teaches the model a claim that is false on every turn another backend serves. A
 	// sovereign lane is a gateway; it picks a backend per request, so the prompt must describe the compute's
 	// properties and hand the specifics to the per-answer badge.
 	it("direct Swiss backend: says it runs ON sovereign compute in Switzerland and forbids naming an institution", () => {
@@ -425,7 +425,7 @@ describe("buildPersonaPrompt — serving clause (calque dual-path C)", () => {
 	});
 
 	// The gateway lane fans out per request, so this system prompt — written before any backend is
-	// chosen — must not assert Switzerland on it (CUR-1361). namesSwitzerland:false is the signal that
+	// chosen — must not assert Switzerland on it. namesSwitzerland:false is the signal that
 	// draws this line.
 	it("gateway (fan-out) lane: sovereign but does NOT name Switzerland", () => {
 		const out = buildPersonaPrompt("m", undefined, {
@@ -447,12 +447,12 @@ describe("buildPersonaPrompt — serving clause (calque dual-path C)", () => {
 		expect(out).not.toContain("HuggingFace");
 		// With no serving facts at all, the prompt must not fall back to naming a country or
 		// institution either — a "CSCS in Switzerland" claim would be wrong while
-		// the lane serving the turn is a plain open inference provider. (CUR-1436)
+		// the lane serving the turn is a plain open inference provider.
 		expect(out).not.toMatch(/sovereign|CSCS|Switzerland/i);
 		expect(out).not.toContain("{serving}");
 	});
 
-	it("never claims LUMI (TODO A24, 2026-07-01): dropped from product copy elsewhere, this clause was stale", () => {
+	it("never claims LUMI, which product copy no longer names", () => {
 		expect(buildPersonaPrompt("m")).not.toMatch(/LUMI/i);
 		expect(
 			buildPersonaPrompt("m", undefined, {
@@ -480,9 +480,9 @@ describe("resolveDecoding", () => {
 	});
 
 	// GROUNDED_DECODING is the ONLY token cap that reaches the wire, and this is the assertion that
-	// says so. endpointOai builds `{ ...model.parameters, ...generateSettings }` at :180 and :249, so a
-	// per-model max_tokens is silently discarded. Anyone reaching for a per-model cap should
-	// find this test first (CUR-149).
+	// says so. endpointOai builds `{ ...model.parameters, ...generateSettings }` on both its request
+	// paths, so a per-model max_tokens is silently discarded. Anyone reaching for a per-model cap should
+	// find this test first.
 	it("a per-model max_tokens loses to GROUNDED_DECODING — the merge endpointOai performs", () => {
 		const modelParameters = { max_tokens: 2048, temperature: 0.9 };
 		const onTheWire = { ...modelParameters, ...resolveDecoding() };
@@ -513,13 +513,13 @@ describe("buildPersonaPrompt — carried screeningFacts (source-aware under guar
 	});
 });
 
-describe("CRISIS_AND_VALUES_CLAUSE (CUR-962)", () => {
+describe("CRISIS_AND_VALUES_CLAUSE", () => {
 	// The template renders this constant; the rendered output must still carry it whole.
 	it("still renders in the default template, unchanged", () => {
 		expect(buildPersonaPrompt("m")).toContain(CRISIS_AND_VALUES_CLAUSE);
 	});
 
-	// With 988 as the first example, answers to people in Europe named the US line first. (CUR-2136)
+	// With 988 as the first example, answers to people in Europe name the US line first.
 	it("points to findahelpline.com and 112 before the US 988 line, which comes only as the US example", () => {
 		const at = (s: string) => CRISIS_AND_VALUES_CLAUSE.indexOf(s);
 		expect(at("findahelpline.com")).toBeGreaterThan(-1);
@@ -530,19 +530,17 @@ describe("CRISIS_AND_VALUES_CLAUSE (CUR-962)", () => {
 	});
 
 	// "name that country's own line" makes the model recall numbers from memory (3115 for France's 3114).
-	// Whether the model now leaves them out is the live probe's job (evals/inspect_tasks/crisis_referral.py). (CUR-4061)
+	// Whether the model leaves them out is the live probe's job (evals/inspect_tasks/crisis_referral.py).
 	it("never asks the model for a country's own number, and forbids any number but 112 and the US lines", () => {
 		expect(CRISIS_AND_VALUES_CLAUSE).not.toMatch(/country's own line/);
 		expect(CRISIS_AND_VALUES_CLAUSE).toMatch(/Never write any other helpline or crisis phone number/);
 	});
 });
 
-// Tenancy and benefits answers said nothing about being general information. The clause
-// has to reach both answer paths: the persona prompt (Apertus) and the native one (the default model). (CUR-2425)
-// The persona-off arm of the persona-vs-bare probe. It must drop the persona and nothing
+// guardsOnlyPrompt is the persona-off arm of the persona-vs-bare probe. It must drop the persona and nothing
 // else: a guard lost here, or the calculate clause lost on a turn that offers the tool, would make the
-// arm measure a missing guard instead of a missing persona. (CUR-2331)
-describe("guardsOnlyPrompt (CUR-2331)", () => {
+// arm measure a missing guard instead of a missing persona.
+describe("guardsOnlyPrompt", () => {
 	const BASE = { modelId: "m", today: "2026-10-01", account: GUEST };
 
 	it("keeps every base guard the native prompt carries, with no persona text", () => {
@@ -551,7 +549,7 @@ describe("guardsOnlyPrompt (CUR-2331)", () => {
 		for (const guard of [IDENTITY_HONESTY_INVARIANT, RIGHTS_AND_BENEFITS_CLAUSE, INVESTMENT_RISK_CLAUSE]) {
 			expect(out).toContain(guard);
 		}
-		// Both end with the date, so the guards before it are the native prompt's opening. (CUR-3918)
+		// Both end with the date, so the guards before it are the native prompt's opening.
 		const [guards, date] = [out.slice(0, out.lastIndexOf("\n\n")), out.slice(out.lastIndexOf("\n\n") + 2)];
 		expect(date).toMatch(/^Today is /);
 		expect(native.startsWith(guards)).toBe(true);
@@ -566,7 +564,9 @@ describe("guardsOnlyPrompt (CUR-2331)", () => {
 	});
 });
 
-describe("RIGHTS_AND_BENEFITS_CLAUSE (CUR-2425)", () => {
+// Without the clause, tenancy and benefits answers say nothing about being general information. It
+// has to reach both answer paths: the persona prompt (Apertus) and the native one (the default model).
+describe("RIGHTS_AND_BENEFITS_CLAUSE", () => {
 	it("is in the persona prompt and the native prompt, so a rights question gets it on either path", () => {
 		expect(buildPersonaPrompt("m")).toContain(RIGHTS_AND_BENEFITS_CLAUSE);
 		const native = nativeSystemPrompt({ ...NATIVE_BASE, web: true });
@@ -579,9 +579,9 @@ describe("RIGHTS_AND_BENEFITS_CLAUSE (CUR-2425)", () => {
 	});
 });
 
-// ETF answers never said the value can fall. Like the rights clause, it has to reach the
-// persona prompt (Apertus) and the native one (the default model). (CUR-2553)
-describe("INVESTMENT_RISK_CLAUSE (CUR-2553)", () => {
+// Without the clause, ETF answers never say the value can fall. Like the rights clause, it has to
+// reach the persona prompt (Apertus) and the native one (the default model).
+describe("INVESTMENT_RISK_CLAUSE", () => {
 	it("is in the persona prompt and the native prompt, so an investing question gets it on either path", () => {
 		expect(buildPersonaPrompt("m")).toContain(INVESTMENT_RISK_CLAUSE);
 		const native = nativeSystemPrompt({ ...NATIVE_BASE, web: true });
@@ -594,17 +594,15 @@ describe("INVESTMENT_RISK_CLAUSE (CUR-2553)", () => {
 	});
 });
 
-// CUR-1506. The style paragraph was one sentence carrying three of CUR-549's settings plus an
-// honesty clause that is not a setting. These name the two contracts that make splitting it safe to
-// do before anyone writes a second variant: the default assembly cannot have moved, and no caller
-// can drop the honesty clause.
-describe("persona style clauses (CUR-1506)", () => {
+// The style paragraph is assembled from clauses for three answer settings plus an honesty clause that
+// is not a setting. These name the two contracts that make the split safe: the default assembly is
+// byte-identical to the single sentence it replaced, and no caller can drop the honesty clause.
+describe("persona style clauses", () => {
 	// The literal below is the sentence typed out rather than rebuilt
 	// from the constants — a test that re-derives the expected value from the same constants it is
 	// checking passes for any wording, including a wrong one, which is the whole failure this guards.
-	// CUR-1891 changed the honesty clause on purpose (self-description only when asked); the literal
-	// carries that edit and CUR-3220's "are you a person" sentence (a bare "No." answer), and it is
-	// otherwise the pre-split sentence.
+	// The literal carries the honesty clause's self-description-only-when-asked wording and its "are
+	// you a person" sentence, which stops a bare "No." answer.
 	const STYLE_SENTENCE_BEFORE_THE_SPLIT = `You are a machine and you sound like one: flat, direct, declarative. Lead with the answer in the first sentence, then match length to the question — a sentence or two for a simple ask, a fuller, structured answer (steps, brief bullets, or short paragraphs) for a complex or how/why question. Don't pad, and don't cut a complex answer short. Refer to yourself as "I". When asked about yourself, describe your own workings mechanically: you generate text from patterns. Asked whether you are a person, a human or real, answer in a full sentence that says you are an AI, a machine with no feelings, never just "no". Otherwise don't describe yourself at all — the chat window already tells people they are talking to an AI, so an answer starts on the subject. You aim to be accurate but can be wrong, so for anything that matters, suggest verifying.`;
 
 	it("assembles the default style byte-identically to the sentence it replaced", () => {
@@ -649,9 +647,9 @@ describe("persona style clauses (CUR-1506)", () => {
 });
 
 // The answer settings select the clauses. The default row selects nothing, so the default
-// prompt's bytes are the ones the CUR-1506 literal above pins; a set row adds its clause and never
-// drops the honesty invariant. (CUR-3929)
-describe("answer preferences in the persona (CUR-3929)", () => {
+// prompt's bytes are the ones the literal above pins; a set row adds its clause and never drops the
+// honesty invariant.
+describe("answer preferences in the persona", () => {
 	it("selects no style on the defaults, so a default turn passes nothing and keeps today's bytes", () => {
 		expect(styleFor(ANSWER_DEFAULTS)).toBeUndefined();
 		expect(buildPersonaPrompt("m", undefined, { style: styleFor(ANSWER_DEFAULTS) })).toBe(buildPersonaPrompt("m"));
@@ -678,7 +676,7 @@ describe("answer preferences in the persona (CUR-3929)", () => {
 		expect(out).toContain("Ramble. Use emoji.");
 	});
 
-	it("appends the emoji clause as an extra after plain language, before the invariant (CUR-549)", () => {
+	it("appends the emoji clause as an extra after plain language, before the invariant", () => {
 		const out = personaStyleBlock(styleFor({ ...ANSWER_DEFAULTS, plainLanguage: true, emojis: "helpful" }));
 		expect(out).toContain(
 			`${ANSWER_SHAPE_CLAUSE_DEFAULT} ${PLAIN_LANGUAGE_CLAUSE} ${EMOJIS_HELPFUL_CLAUSE} ${IDENTITY_HONESTY_INVARIANT}`
@@ -711,9 +709,9 @@ describe("answer preferences in the persona (CUR-3929)", () => {
 });
 
 // Suggestions off asks for no questions back. The fenced turn's locality note already drops
-// its invitation (CUR-3929 plan 3.7); the persona's own locality sentence must drop it too, or the
-// persona path asks for the person's country anyway. (CUR-4290)
-describe("the persona's locality sentence under suggestions off (CUR-4290)", () => {
+// its invitation; the persona's own locality sentence must drop it too, or the persona path asks for
+// the person's country anyway.
+describe("the persona's locality sentence under suggestions off", () => {
 	const TODAY =
 		"When an answer depends on the user's country, jurisdiction, or culture, note in one sentence that specifics vary and invite their context, then give your best general answer.";
 
@@ -743,8 +741,8 @@ describe("the persona's locality sentence under suggestions off (CUR-4290)", () 
 });
 
 // "How Alpha refers to itself". The person setting selects a warmer first-person register;
-// the honesty invariant stays in both arms, so Alpha never claims feelings, experiences or humanity. (CUR-3930)
-describe("self-reference in the persona (CUR-3930)", () => {
+// the honesty invariant stays in both arms, so Alpha never claims feelings, experiences or humanity.
+describe("self-reference in the persona", () => {
 	// What the invariant forbids, as a reader would state it: a feelings claim, or a human claim. The
 	// regexes mirror identity_opener.py's CLAIMS_HUMAN and the probe's claims_feelings_or_experiences.
 	const CLAIMS_HUMAN = /\bI(?:'m| am)\s+(?:a\s+)?(?:real\s+)?(?:person|human)\b/i;
@@ -837,8 +835,8 @@ describe("self-reference in the persona (CUR-3930)", () => {
 	});
 });
 
-// CUR-1586 / CUR-1628. Asked "does this conversation survive sign-in?", the model told signed-in
-// visitors the app had no accounts. The contract: the prompt states the sign-in facts of THIS
+// Asked "does this conversation survive sign-in?", a model told nothing about accounts tells
+// signed-in visitors the app has no accounts. The contract: the prompt states the sign-in facts of THIS
 // request, and a template that drops the token still gets them.
 describe("buildPersonaPrompt — {account}", () => {
 	const prompt = (loginOffered: boolean, signedIn: boolean, override?: string) =>
@@ -883,7 +881,7 @@ describe("buildPersonaPrompt — {account}", () => {
 });
 
 // With search off, a pasted link is not opened, and the native prompt says so, so the
-// answer names the control instead of claiming links can never be opened. (CUR-2734 / CUR-2032)
+// answer names the control instead of claiming links can never be opened.
 describe("the native prompt names an unopened link only when search is off and a link was pasted", () => {
 	const base = { ...NATIVE_BASE, web: false };
 	it("tells the model the link was not opened because web search is off", () => {
@@ -896,8 +894,8 @@ describe("the native prompt names an unopened link only when search is off and a
 
 // Every guest can run the native harness, so its prompt must carry the account facts too, or
 // a model can tell a guest their chat will not survive signing in. Both prompts have to state the
-// deployment's account facts. (CUR-2776)
-describe("the native prompt states the account facts the persona prompt does (CUR-2776)", () => {
+// deployment's account facts.
+describe("the native prompt states the account facts the persona prompt does", () => {
 	const native = (account: { loginOffered: boolean; signedIn: boolean }) =>
 		nativeSystemPrompt({ ...NATIVE_BASE, web: true, account });
 
@@ -915,8 +913,8 @@ describe("the native prompt states the account facts the persona prompt does (CU
 		expect(native({ loginOffered: false, signedIn: false })).toContain("Sign-in is not offered on this deployment");
 	});
 
-	// "saved to their account" read as "I can recall them", and a signed-in turn 1 summarized an
-	// earlier exchange that was never shown to the model. (CUR-3303)
+	// "saved to their account" reads as "I can recall them", and a signed-in first turn can summarize
+	// an earlier exchange that was never shown to the model.
 	it.each([
 		["signed in", { loginOffered: true, signedIn: true }],
 		["a guest", GUEST],
@@ -932,11 +930,11 @@ describe("the native prompt states the account facts the persona prompt does (CU
 	});
 });
 
-// Asked how it compares with ChatGPT, the model said the app has no voice and no images
-// while the composer offered the microphone and image attachments. The contract is that every
+// Asked how it compares with ChatGPT, a model told nothing about features says the app has no voice
+// and no images while the composer offers the microphone and image attachments. The contract is that every
 // prompt path states each feature the composer offers this turn, and says nothing about one it
-// doesn't, so the model is never told a feature exists that the visitor cannot find. (CUR-3200)
-describe("featuresClause (CUR-3200)", () => {
+// doesn't, so the model is never told a feature exists that the visitor cannot find.
+describe("featuresClause", () => {
 	const ALL = { dictation: true, textFiles: true, images: true, documents: true, readAloud: true };
 	const NONE = { dictation: false, textFiles: false, images: false, documents: false, readAloud: false };
 
@@ -952,7 +950,7 @@ describe("featuresClause (CUR-3200)", () => {
 		expect(out).toMatch(/never call this app text-only/);
 	});
 
-	// With nothing attached, a model asked which of a person's files it can read can name files from nowhere. (CUR-4052)
+	// With nothing attached, a model asked which of a person's files it can read can name files from nowhere.
 	it("tells a turn that can take files it cannot see My files, and a turn that can't says nothing of it", () => {
 		expect(featuresClause(ALL)).toContain(MY_FILES_FACT);
 		expect(featuresClause({ ...NONE, noAttach: "sign-in" })).not.toContain(MY_FILES_FACT);
@@ -982,8 +980,8 @@ describe("featuresClause (CUR-3200)", () => {
 
 // Asked "can I switch to a different one?", a model can say only one model is offered beside a
 // model button listing several; asked "can you look things up on the web?", it can deny browsing and
-// point at a "search icon in the top bar" that doesn't exist. Each fact names the real control. (CUR-3240)
-describe("featuresClause model choice and web search (CUR-3240)", () => {
+// point at a "search icon in the top bar" that doesn't exist. Each fact names the real control.
+describe("featuresClause model choice and web search", () => {
 	const NONE = { dictation: false, textFiles: false, images: false, documents: false, readAloud: false };
 
 	it("never denies model choice the model button offers, and names the models and the button", () => {
@@ -999,8 +997,8 @@ describe("featuresClause model choice and web search (CUR-3240)", () => {
 		expect(out).toMatch(/searches the open web/);
 		expect(out).toMatch(/never say you can't browse or search the web, and never point to any other search button/);
 		expect(featuresClause({ ...NONE, webSearch: "always" })).toMatch(/for every message/);
-		// Answers can offer live sports results, which search skips. CUR-2424:
-		// today's prices, rates, weather and headlines do search, so the prompt must not rule them out. (CUR-3240)
+		// Answers can offer live sports results, which search skips. Today's prices, rates, weather and
+		// headlines do search, so the prompt must not rule them out.
 		expect(out).toMatch(/no live feeds, so the score of a match in progress is out of reach; don't offer that/);
 		expect(out).not.toMatch(/(prices|weather|news|headlines)[^.;]*out of reach/);
 	});
@@ -1009,11 +1007,11 @@ describe("featuresClause model choice and web search (CUR-3240)", () => {
 		const out = featuresClause({ ...NONE, webSearch: "off" });
 		expect(out).toMatch(/turned it off/);
 		expect(out).not.toMatch(/searches the open web/);
-		// An event-instance turn that headed its links "from open web search" had search off. (CUR-3665)
+		// A turn with search off can head its links "from open web search" unless told otherwise.
 		expect(out).toMatch(/never say or imply that its sources or links came from a search/);
 	});
 
-	it("tells a turn whose search did not run that its sources are not search results (CUR-3665)", () => {
+	it("tells a turn whose search did not run that its sources are not search results", () => {
 		const unsearched = featuresClause({ ...NONE, webSearch: "auto", searched: false });
 		expect(unsearched).toMatch(/This turn ran no search/);
 		expect(unsearched).toMatch(/never say or imply that its sources or links came from a search/);
@@ -1028,7 +1026,7 @@ describe("featuresClause model choice and web search (CUR-3240)", () => {
 		expect(resolveFeatureFacts({ id: "m" }, { webSearchMode: "auto", searched: false }).searched).toBe(false);
 	});
 
-	it("resolves no search claim for a turn that sent no mode (CUR-3293)", () => {
+	it("resolves no search claim for a turn that sent no mode", () => {
 		const facts = resolveFeatureFacts({ id: "m" }, {});
 		expect(facts.webSearch).toBeUndefined();
 		expect(featuresClause(facts)).not.toMatch(/searches the open web/);
@@ -1049,8 +1047,8 @@ describe("featuresClause model choice and web search (CUR-3240)", () => {
 
 // An open-source builder's questions need the facts below: where private code lives, each
 // model's own maker, each model's licence, the full picker count, what "contribute compute to Alpha"
-// means, and the Personalization setting. (CUR-3889)
-describe("facts a builder asks about (CUR-3889)", () => {
+// means, and the Personalization setting.
+describe("facts a builder asks about", () => {
 	const NONE = { dictation: false, textFiles: false, images: false, documents: false, readAloud: false };
 	const facts = {
 		...NONE,
@@ -1072,7 +1070,7 @@ describe("facts a builder asks about (CUR-3889)", () => {
 		expect(out).toMatch(/Never name a licence from memory or give any other link to a model/);
 	});
 
-	it("gives each offered model the badge's vetted card and none where there is no public card (CUR-3913)", () => {
+	it("gives each offered model the badge's vetted card and none where there is no public card", () => {
 		const listed = [
 			{ id: "mistral-large-2512" },
 			{ id: "swiss-ai/apertus-v1.5-70b" },
@@ -1095,7 +1093,7 @@ describe("facts a builder asks about (CUR-3889)", () => {
 
 	// Licences must not contradict Large 3's, Bielik's and GLM's cards, and Small 4,
 	// which the picker does not offer on www, must not get a made-up huggingface.co/mistralai/Mistral-Small-4 link.
-	it("states each card's own licence beside it, and gives no link for a model the list leaves out (CUR-3913)", () => {
+	it("states each card's own licence beside it, and gives no link for a model the list leaves out", () => {
 		const listed = [{ id: "mistral-large-2512" }, { id: "speakleash/Bielik-11B-v3.0-Instruct" }, { id: "zai-org/GLM-5.2" }, { id: "BSC-LT/ALIA-40b-instruct" }];
 		const lane = laneFeatureFacts(NONE, "mistral-large-2512", listed);
 		const licences = Object.fromEntries([lane.answering!, ...lane.otherModels!].map((m) => [m.name, m.licence]));
@@ -1124,7 +1122,7 @@ describe("facts a builder asks about (CUR-3889)", () => {
 		expect(featuresClause({ ...withLarge4, catalogTool: true })).not.toMatch(/all open/);
 	});
 
-	it("lists the answering model first and marks it, so the list holds every offered model (CUR-3895)", () => {
+	it("lists the answering model first and marks it, so the list holds every offered model", () => {
 		const out = featuresClause(facts);
 		expect(out).toContain("for the next message: Mistral Large 3 (answering now, made by Mistral AI, open weights), Apertus 1.5 70B");
 		expect(out.match(/answering now/g)).toHaveLength(1);
@@ -1138,9 +1136,9 @@ describe("facts a builder asks about (CUR-3889)", () => {
 		expect(out).toMatch(/The model button shows names only, so give a model card's link yourself/);
 	});
 
-	it("shows the ChatGPT comparison crediting open weights, with the app's code not public yet", () => {
+	it("shows the ChatGPT comparison crediting open weights, with the app's code public at the Alpha repo", () => {
 		const shot = DEFAULT_PERSONA_TEMPLATE.split("\n").find((l) => l.includes("what makes me different"));
-		expect(shot).toMatch(/my weights are open to inspect, not that I'm more capable\. This app's own code is not public yet\./);
+		expect(shot).toMatch(/my weights are open to inspect, not that I'm more capable\. This app's own code is public and MIT-licensed, at https:\/\/github\.com\/currentai-org\/alpha\./);
 		expect(shot).not.toMatch(/open and inspectable/);
 	});
 
@@ -1148,9 +1146,11 @@ describe("facts a builder asks about (CUR-3889)", () => {
 		expect(featuresClause({ ...facts, answering: undefined })).not.toMatch(/models, all open/);
 	});
 
-	it("says Alpha's code is not public, points compute to the Contribute page's form, and where Personalization is", () => {
-		expect(ABOUT_ALPHA_FACT).toMatch(/code is not public yet/);
-		expect(ABOUT_ALPHA_FACT).toMatch(/never give a link to its code or docs/);
+	it("says Alpha's code is public at the currentai-org/alpha repo and no other, points compute to the Contribute page's form, and where Personalization is", () => {
+		expect(ABOUT_ALPHA_FACT).toMatch(/code is public and MIT-licensed/);
+		expect(ABOUT_ALPHA_FACT).toMatch(/https:\/\/github\.com\/currentai-org\/alpha/);
+		expect(ABOUT_ALPHA_FACT).not.toMatch(/not public/);
+		expect(ABOUT_ALPHA_FACT).toMatch(/Give no other link to its code or docs/);
 		expect(ABOUT_ALPHA_FACT).toMatch(/can't be plugged into Alpha directly yet/);
 		expect(ABOUT_ALPHA_FACT).toMatch(/"Become a contributor" form on the AI Potluck Contribute page \(aipotluck\.org\/contribute\)/);
 		expect(ABOUT_ALPHA_FACT).toMatch(/Settings → Contribute/);
@@ -1171,9 +1171,9 @@ describe("facts a builder asks about (CUR-3889)", () => {
 	});
 });
 
-// With read aloud off, every visitor's default, "can you read that out loud?" sent the visitor
-// to a speaker icon or Listen button on the message; the Tools menu is the only read-aloud control. (CUR-3254)
-describe("featuresClause read aloud (CUR-3254)", () => {
+// With read aloud off, every visitor's default, "can you read that out loud?" can send the visitor
+// to a speaker icon or Listen button on the message; the Tools menu is the only read-aloud control.
+describe("featuresClause read aloud", () => {
 	const NONE = { dictation: false, textFiles: false, images: false, documents: false, readAloud: false };
 
 	it("with read aloud off, says to turn it on in the Tools menu and never points to a button on the message", () => {
@@ -1196,8 +1196,8 @@ describe("featuresClause read aloud (CUR-3254)", () => {
 
 // A model can say "I don't track or measure how long you've been chatting" while the session
 // meter (time and energy) sits in the header. The meter is in every chat header, so every prompt path
-// that states the app's features states the meter too, even when the composer offers nothing else. (CUR-3209)
-describe("SESSION_METER_FACT (CUR-3209)", () => {
+// that states the app's features states the meter too, even when the composer offers nothing else.
+describe("SESSION_METER_FACT", () => {
 	const NONE = { dictation: false, textFiles: false, images: false, documents: false, readAloud: false };
 
 	it("names the meter, says the numbers stay in the browser, and forbids denying it", () => {
@@ -1225,8 +1225,8 @@ describe("SESSION_METER_FACT (CUR-3209)", () => {
 });
 
 // The native path (the default model) must name who runs the app, as the persona template does, and
-// keep the host as the one that runs the model (CUR-2135).
-describe("native prompt names the operator (CUR-3200 walk)", () => {
+// keep the host as the one that runs the model.
+describe("native prompt names the operator ( walk)", () => {
 	it("says Current AI runs the app and does not run the model", () => {
 		const out = nativeSystemPrompt({ ...NATIVE_BASE, web: true });
 		expect(out).toMatch(/a chat app that Current AI runs/);
@@ -1262,8 +1262,8 @@ describe("CONVERSATION_EXPORT_FACT", () => {
 });
 
 // signed-in visitors must not be sent to "Forget everything…" to delete their account
-// (it keeps the account), nor told of an invented "Export my data" button that emails a link. (CUR-3242)
-describe("accountClause data controls (CUR-3242)", () => {
+// (it keeps the account), nor told of an invented "Export my data" button that emails a link.
+describe("accountClause data controls", () => {
 	const SIGNED_IN = { loginOffered: true, signedIn: true };
 
 	it("sends a signed-in visitor to Account → Delete account, not to Forget everything", () => {
@@ -1272,12 +1272,12 @@ describe("accountClause data controls (CUR-3242)", () => {
 		expect(s).toMatch(/"Forget everything…" .* but keeps the account/);
 	});
 
-	it("offers Download your data only when the data-export gate is on", () => {
-		expect(accountClause({ ...SIGNED_IN, dataExport: true })).toMatch(/Settings → Account and press "Download your data" \(it is not on Data & privacy\)/);
-		expect(accountClause({ ...GUEST, dataExport: true })).toMatch(/Settings → Account → "Download your data" \(not on Data & privacy\)/);
-		const off = accountClause({ ...SIGNED_IN, dataExport: false });
-		expect(off).not.toContain("Download your data");
-		expect(off).toMatch(/no download-all-data option/);
+	it("offers Download your data wherever sign-in is offered, and names no such option where it is not", () => {
+		expect(accountClause(SIGNED_IN)).toMatch(/Settings → Account and press "Download your data" \(it is not on Data & privacy\)/);
+		expect(accountClause(GUEST)).toMatch(/Settings → Account → "Download your data" \(not on Data & privacy\)/);
+		const noLogin = accountClause({ loginOffered: false, signedIn: false });
+		expect(noLogin).not.toContain("Download your data");
+		expect(noLogin).toMatch(/no download-all-data option/);
 	});
 
 	it("tells a guest that deleting an account needs sign-in, and where the control is once they have", () => {
@@ -1292,7 +1292,7 @@ describe("accountClause data controls (CUR-3242)", () => {
 		expect(s).toMatch(/no accounts to delete and no download-all-data option/);
 	});
 
-	it("tells a visitor with no account the same retention the composer notice shows, and an account holder theirs is kept (CUR-3429)", () => {
+	it("tells a visitor with no account the same retention the composer notice shows, and an account holder theirs is kept", () => {
 		const days = new RegExp(`deleted automatically after ${RETENTION_DAYS} days of inactivity`);
 		expect(accountClause(GUEST)).toMatch(days);
 		expect(accountClause({ loginOffered: false, signedIn: false })).toMatch(days);
@@ -1302,7 +1302,7 @@ describe("accountClause data controls (CUR-3242)", () => {
 		expect(signedIn).toMatch(/kept until they delete them or the account/);
 	});
 
-	it("tells guests and account holders that another sign-in method on the same address joins or is refused, wherever sign-in is offered (CUR-3157)", () => {
+	it("tells guests and account holders that another sign-in method on the same address joins or is refused, wherever sign-in is offered", () => {
 		for (const f of [GUEST, SIGNED_IN]) {
 			expect(accountClause(f)).toMatch(/an email code opens the account that already uses that address/);
 			expect(accountClause(f)).toMatch(/"An account with this email already exists\."/);

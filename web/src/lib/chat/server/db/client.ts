@@ -32,7 +32,7 @@ function databaseUrl(): string {
 	// a second name.
 	const url = process.env.DATABASE_URL ?? process.env.POSTGRES_URL;
 	if (!url) throw new Error(
-			"DATABASE_URL (or POSTGRES_URL) is not set. In a worktree, run scripts/local/worktree-setup.sh; for tests, `docker start aipotluck-dev-pg`."
+			"DATABASE_URL (or POSTGRES_URL) is not set. Set it in web/.env.local or the environment; `pnpm db:start` runs a local Postgres for it."
 		);
 	return url;
 }
@@ -42,7 +42,7 @@ type Db = ReturnType<typeof drizzle<typeof schema>>;
 // The transaction `withTransaction` opened, if this call runs inside one. Every query in
 // that scope has to go through it. A query that asked the pool instead would run outside the
 // transaction, and with `PG_POOL_MAX` at 1 (its default when unset) it would wait forever on the
-// connection the transaction itself is holding. (CUR-769)
+// connection the transaction itself is holding.
 const txScope = new AsyncLocalStorage<Db>();
 
 export function getDb(): Db {

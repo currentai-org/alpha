@@ -16,7 +16,7 @@ import {
 	storablePhoto,
 } from "./shrinkImage";
 
-describe("shrinkImage (CUR-2633)", () => {
+describe("shrinkImage", () => {
 	it("leaves a photo at or under the threshold unshrunk, so a small image is sent byte for byte", async () => {
 		const small = new File([new Uint8Array(1000)], "small.jpg", { type: "image/jpeg" });
 		expect(shouldShrink(small)).toBe(false);
@@ -49,7 +49,7 @@ describe("shrinkImage (CUR-2633)", () => {
 	});
 });
 
-describe("preparingPhotos (CUR-2905)", () => {
+describe("preparingPhotos", () => {
 	it("counts each photo being shrunk while shrinkImages runs, ignores files it won't shrink, and returns to 0", async () => {
 		const big = new File([new Uint8Array(SHRINK_ABOVE_BYTES + 1)], "IMG_1.jpg", { type: "image/jpeg" });
 		const small = new File([new Uint8Array(10)], "note.png", { type: "image/png" });
@@ -61,7 +61,7 @@ describe("preparingPhotos (CUR-2905)", () => {
 	});
 });
 
-describe("convertImages (CUR-3073: an iPhone HEIC, an AVIF or a BMP is redrawn as a JPEG before the type check)", () => {
+describe("convertImages ( an iPhone HEIC, an AVIF or a BMP is redrawn as a JPEG before the type check)", () => {
 	afterEach(() => {
 		vi.unstubAllGlobals();
 	});
@@ -115,6 +115,29 @@ describe("convertImages (CUR-3073: an iPhone HEIC, an AVIF or a BMP is redrawn a
 		expect(converted.type).toBe("image/jpeg");
 	});
 
+	it("redraws a photo through an <img> when createImageBitmap rejects it, and still refuses one neither decodes", async () => {
+		stubBrowser(() => false);
+		const decodable = new Set(["blue.avif"]);
+		vi.stubGlobal(
+			"Image",
+			class {
+				src = "";
+				naturalWidth = 200;
+				naturalHeight = 120;
+				async decode() {
+					if (!decodable.has(this.src)) throw new DOMException("The source image cannot be decoded.", "EncodingError");
+				}
+			},
+		);
+		vi.stubGlobal("URL", { createObjectURL: (file: File) => file.name, revokeObjectURL() {} });
+		const avif = new File([new Uint8Array(50)], "blue.avif", { type: "image/avif" });
+		const heic = new File([new Uint8Array(50)], "IMG_0001.heic", { type: "image/heic" });
+		const [converted, kept] = await convertImages([avif, heic], true);
+		expect(converted.name).toBe("blue.jpg");
+		expect(converted.type).toBe("image/jpeg");
+		expect(kept).toBe(heic);
+	});
+
 	it("returns a HEIC this browser can't decode as it was, so the type check refuses it by name", async () => {
 		stubBrowser((file) => !file.name.endsWith(".heic"));
 		const heic = new File([new Uint8Array(50)], "IMG_0001.heic", { type: "image/heic" });
@@ -122,7 +145,7 @@ describe("convertImages (CUR-3073: an iPhone HEIC, an AVIF or a BMP is redrawn a
 		expect(kept).toBe(heic);
 	});
 
-	it("storablePhoto: My files sends an iPhone HEIC as a .jpg JPEG, since the scanner cannot hash a HEIC (CUR-4665)", async () => {
+	it("storablePhoto: My files sends an iPhone HEIC as a .jpg JPEG, since the scanner cannot hash a HEIC", async () => {
 		stubBrowser(() => true);
 		const heic = new File([new Uint8Array(50)], "IMG_0001.HEIC", { type: "image/heic" });
 		const stored = await storablePhoto(heic);
@@ -130,7 +153,7 @@ describe("convertImages (CUR-3073: an iPhone HEIC, an AVIF or a BMP is redrawn a
 		expect(stored.type).toBe("image/jpeg");
 	});
 
-	it("storablePhoto: leaves every type the scanner reads untouched, and a HEIC this browser can't decode as it was (CUR-4665)", async () => {
+	it("storablePhoto: leaves every type the scanner reads untouched, and a HEIC this browser can't decode as it was", async () => {
 		stubBrowser((file) => !file.name.endsWith(".heic"));
 		const avif = new File([new Uint8Array(50)], "blue.avif", { type: "image/avif" });
 		const jpeg = new File([new Uint8Array(50)], "cat.jpg", { type: "image/jpeg" });
@@ -147,7 +170,7 @@ describe("convertImages (CUR-3073: an iPhone HEIC, an AVIF or a BMP is redrawn a
 		expect(kept).toBe(avif);
 	});
 
-	it("shrinks a large photo to the smaller redraw, and keeps the original when the redraw comes out larger (CUR-2633)", async () => {
+	it("shrinks a large photo to the smaller redraw, and keeps the original when the redraw comes out larger", async () => {
 		const big = new File([new Uint8Array(SHRINK_ABOVE_BYTES + 1)], "IMG_1.png", { type: "image/png" });
 		stubBrowser(() => true);
 		const shrunk = await shrinkImage(big);
@@ -168,7 +191,7 @@ describe("convertImages (CUR-3073: an iPhone HEIC, an AVIF or a BMP is redrawn a
 	});
 });
 
-describe("photosReady (CUR-3197)", () => {
+describe("photosReady", () => {
 	afterEach(() => {
 		preparingPhotos.set(0);
 		checkingRoom.set(0);
@@ -190,7 +213,7 @@ describe("photosReady (CUR-3197)", () => {
 		expect(done).toBe(true);
 	});
 
-	it("keeps waiting after the shrink ends while My files' headroom is still being read (CUR-3235 regressed CUR-3197)", async () => {
+	it("keeps waiting after the shrink ends while My files' headroom is still being read ( regressed )", async () => {
 		checkingRoom.set(1);
 		preparingPhotos.set(1);
 		let done = false;
@@ -205,7 +228,7 @@ describe("photosReady (CUR-3197)", () => {
 	});
 });
 
-describe("chat_photo_prepared (CUR-2633: real photo sizes, before and after the shrink)", () => {
+describe("chat_photo_prepared ( real photo sizes, before and after the shrink)", () => {
 	afterEach(() => {
 		vi.doUnmock("$lib/analytics");
 		vi.resetModules();

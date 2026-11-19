@@ -2,7 +2,7 @@
 // host (our own limiter refuses before the stream opens, upstreamBusy.ts), so the model is busy for this
 // person now, before the server's three-in-a-row mark catches up. The mark lasts ten minutes and lives
 // only for the page, so a reload starts from the server's view. The server's own mark (modelBusy.ts) holds
-// until the model answers a turn or the warm cron's probe. (CUR-4043)
+// until the model answers a turn or the warm cron's probe.
 
 import { on } from 'svelte/events';
 import { writable } from 'svelte/store';
@@ -29,7 +29,7 @@ export const busyHere = { subscribe: marks.subscribe };
 // The server's marks as this tab last read them from `/chat/api/busy`. The layout data
 // (`page.data.busyModels`) holds them only as of the page load, and the chat layout never reloads on its
 // own, so a tab left open keeps routing to a model that became unavailable after the page loaded, and around one that
-// has since recovered. Null until the first read lands, when the layout's copy is still the newest. (CUR-4629)
+// has since recovered. Null until the first read lands, when the layout's copy is still the newest.
 const serverMarks = writable<string[] | null>(null);
 export const serverBusy = { subscribe: serverMarks.subscribe };
 

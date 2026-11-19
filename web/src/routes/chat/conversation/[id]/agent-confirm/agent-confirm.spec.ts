@@ -1,6 +1,6 @@
 /**
- * CUR-779 DoD line 2: the client has to tell a flag-disabled confirm apart from an ownership
- * mismatch, a dead task, and a plain send failure — which means this route has to tag each of
+ * DoD line 2: the client has to tell an ownership mismatch apart from a dead task, an
+ * unreachable service and a plain send failure — which means this route has to tag each of
  * those with a distinct `reason` rather than just a `message` (message text is for a human reading
  * a stack trace, not for a client to switch on). This locks in that every branch actually carries
  * the reason AgentConfirmPrompt.svelte's SEND_ERROR_COPY map depends on.
@@ -8,11 +8,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { ObjectId } from "bson";
 import { POST } from "./+server";
-
-const agentConfirmUiEnabled = vi.fn(() => true);
-vi.mock("$lib/chat/server/agentConfirmUi", () => ({
-	agentConfirmUiEnabled: () => agentConfirmUiEnabled(),
-}));
 
 const agentServiceUrl = vi.fn(() => "http://agent.test");
 vi.mock("$lib/chat/server/agentMode", () => ({
@@ -55,18 +50,7 @@ async function reasonOf(p: Promise<Response>): Promise<{ status: number; reason?
 describe.sequential("POST /conversation/[id]/agent-confirm — reason tagging", () => {
 	beforeEach(() => {
 		vi.unstubAllGlobals();
-		agentConfirmUiEnabled.mockReturnValue(true);
 		agentServiceUrl.mockReturnValue("http://agent.test");
-	});
-
-	it("flag off → 403, reason=flag_disabled, before any upstream call", async () => {
-		agentConfirmUiEnabled.mockReturnValue(false);
-		const fetchMock = vi.fn();
-		vi.stubGlobal("fetch", fetchMock);
-		const { status, reason } = await reasonOf(postConfirm(200));
-		expect(status).toBe(403);
-		expect(reason).toBe("flag_disabled");
-		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
 	it("AGENT_SERVICE_URL unset → 404, reason=service_unreachable", async () => {

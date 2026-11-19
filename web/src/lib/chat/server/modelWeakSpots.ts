@@ -1,10 +1,10 @@
 // Plain sentences for each picker model with a weak spot on the product's own chat path that the
-// harness does not fix (CUR-970). The picker decides whether and how to show it (CUR-420 Q1); this
+// harness does not fix. The picker decides whether and how to show it (Q1); this
 // module only carries the words, so a model that gets fixed loses its entry here and nowhere else.
 // Keys are lower-case wire ids, like modelProfiles.ts.
 // Each entry is a message with a {model} slot, filled with the catalog's name, so the line names the
 // model the way the composer's picker does ("ALIA 40B is easier to talk into…"). The words live in
-// messages/*.json, so the line is in the request's language (CUR-4262).
+// messages/*.json, so the line is in the request's language.
 
 import { catalogByGatewayId } from '$lib/chat/routing/catalog';
 import { m } from '$lib/paraglide/messages.js';
@@ -39,10 +39,10 @@ const ANSWER_SETTING_LABEL: Readonly<Record<AnswerSetting, () => string>> = {
 
 /**
  * The answer settings each picker model does not reliably follow, from the probe in evals/inspect_tasks/
- * answer_preferences.py (k=5, CUR-4289): the set arm kept the promise in fewer than the probe's pass
+ * answer_preferences.py (k=5): the set arm kept the promise in fewer than the probe's pass
  * mark. A miss that only the effect rule saw, where the default answer already met the promise, is not
- * listed (Mistral Large 3, bullets: 9 of 10 kept). Mistral Medium 3.5, the default, passes them
- * (CUR-4287, CUR-4288). Not measured: ALIA 40B's other seven settings, Large 4's plain language,
+ * listed (Mistral Large 3, bullets: 9 of 10 kept). Mistral Medium 3.5, the default, passes them.
+ * Not measured: ALIA 40B's other seven settings, Large 4's plain language,
  * Bielik's formal tone.
  *
  * - mistral-large-2610: suggestions off, 6 of 10.

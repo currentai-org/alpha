@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { resolveReasoningEffort } from "./reasoningEffortMode";
 
-describe("resolveReasoningEffort — a stored override cannot outrank the model's own capability (CUR-700)", () => {
+describe("resolveReasoningEffort — a stored override cannot outrank the model's own capability", () => {
 	it("THE HOLE THIS CLOSES: a stale/leftover override of true does not reach a non-reasoning model", () => {
 		expect(
 			resolveReasoningEffort({ supportsReasoning: false, override: true, effort: "high" })

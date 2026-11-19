@@ -1,4 +1,4 @@
-// Every preview and develop deployment shares one Hugging Face storage token, capped at 3,000 Hub calls (CUR-3681)
+// Every preview and develop deployment shares one Hugging Face storage token, capped at 3,000 Hub calls
 // per 5 minutes. A storage poll left on toPass's default intervals retries about once a second, so a
 // 30 s wait spends about 30 listings or uploads, and a poll that got a busy answer spends the most.
 // Spec polls made most of preview's storage calls in the worst throttle hour.

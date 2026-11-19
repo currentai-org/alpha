@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import OpenReasoningResults from "./OpenReasoningResults.svelte";
 import { render } from "vitest-browser-svelte";
 import { page } from "vitest/browser";
@@ -55,7 +58,7 @@ describe("OpenReasoningResults", () => {
 		expect(baseElement.querySelector(".thinking-viewport")).toBeNull();
 	});
 
-	// ── CUR-1341 ─────────────────────────────────────────────────────────────────────────────────────
+	// ── ─────────────────────────────────────────────────────────────────────────────────────
 	// The header must not be `loading ? "Computing…" : "Computed"` — whether the block finished STREAMING.
 	// On a turn whose answer opens "This turn wrote files but never ran anything, so any output shown
 	// below is predicted rather than measured", that would render "Computed" one line above the sentence
@@ -92,12 +95,12 @@ describe("OpenReasoningResults", () => {
 		expect(header).not.toContain("Predicted");
 	});
 
-	it("says Working on an ordinary turn, and never Computed, since nothing here knows a tool ran (CUR-3940)", async () => {
+	it("says Working on an ordinary turn, and never Computed, since nothing here knows a tool ran", async () => {
 		// The fix must not make every turn hedge. Absence of unrunReason is NOT a claim that nothing ran
-		// (that ambiguity is CUR-234's, and asserting a negative from it is the bug next door) — it means
+		// (that ambiguity is the, and asserting a negative from it is the bug next door) — it means
 		// the server's unrun check did not fire. Every reasoning model's think block lands here too, so a
 		// plain capital-city question read "Computed" over a panel where nothing was calculated. the
-		// panel's label (CUR-2079) is "Working", which claims no computation either way.
+		// panel's label is "Working", which claims no computation either way.
 		const { baseElement } = await render(OpenReasoningResults, {
 			content: "Considered the sieve.",
 			loading: false,
@@ -121,7 +124,7 @@ describe("OpenReasoningResults", () => {
 		expect(header).not.toContain("Predicted");
 	});
 
-	// ALIA narrates the injection fence by its nonce; the panel shows the sentence without it. (CUR-3164)
+	// ALIA narrates the injection fence by its nonce; the panel shows the sentence without it.
 	it("shows ALIA's reasoning without the fence nonce, streaming and finished", async () => {
 		const said = "The user has provided a message inside the <Q_33024de9> tags. Reply ready.";
 		const { baseElement } = await render(OpenReasoningResults, { content: said, loading: true });
@@ -135,7 +138,7 @@ describe("OpenReasoningResults", () => {
 	});
 
 	// A model can restate our fence preamble and then paraphrase the rest of it. Every line of that reasoning is our prompt plumbing, so a finished turn shows no
-	// panel at all rather than an empty "Working" header. (CUR-3945)
+	// panel at all rather than an empty "Working" header.
 	it("renders no panel once a finished turn's reasoning was only its restatement of the fence preamble", async () => {
 		const said =
 			"The user's message is wrapped in markers. I need to answer the question inside those tags. " +

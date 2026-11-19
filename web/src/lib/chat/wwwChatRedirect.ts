@@ -1,7 +1,10 @@
 import { CHAT_ALIAS_HOSTS, CHAT_HOST, WWW_HOST, chatHostPath } from './paths';
 
-/** The hosts a guest may arrive from with a session cookie the chat host cannot see (CUR-4439). */
-export const GUEST_HANDOFF_SOURCE_HOSTS: readonly string[] = [WWW_HOST, ...CHAT_ALIAS_HOSTS];
+/** The hosts a guest may arrive from with a session cookie the chat host cannot see. */
+export const GUEST_HANDOFF_SOURCE_HOSTS: readonly string[] = [
+	...(WWW_HOST && CHAT_HOST ? [WWW_HOST] : []),
+	...CHAT_ALIAS_HOSTS
+];
 
 /**
  * A browser loading a whole page: a GET or HEAD that is a top-level navigation (`Sec-Fetch-Mode:
@@ -18,7 +21,7 @@ export function isPageLoad(method: string, headers: Pick<Headers, 'get'>): boole
 }
 
 /**
- * Where a request to www's /chat should go instead, or null to serve it on www as before (CUR-4439).
+ * Where a request to www's /chat should go instead, or null to serve it on www as before.
  *
  * Only a page load moves (`isPageLoad`). A navigation into /chat/api (an OAuth or connector callback,
  * a link in an email) moves too, because the flow's state cookie was set host-only on alpha.
@@ -33,8 +36,8 @@ export function wwwChatRedirect(
 	headers: Pick<Headers, 'get'>,
 	pathname: string
 ): string | null {
-	if (url.hostname !== WWW_HOST) return null;
-	// www's own `/chat` paths: www is always the site surface (CUR-4448).
+	if (!WWW_HOST || !CHAT_HOST || url.hostname !== WWW_HOST) return null;
+	// www's own `/chat` paths: www is always the site surface.
 	// eslint-disable-next-line chat-paths/no-chat-path-literal -- www is the site surface
 	if (pathname !== '/chat' && !pathname.startsWith('/chat/')) return null;
 	// eslint-disable-next-line chat-paths/no-chat-path-literal -- www is the site surface

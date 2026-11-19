@@ -172,7 +172,7 @@
 		<div class="mx-auto mt-20 max-w-sm">
 			<a href="{base}/admin" class="text-xs text-[var(--ap-ink-2)] hover:underline">← Admin</a>
 			<h1 class="mt-1 mb-5 font-serif text-2xl">RAG admin</h1>
-			<StaffSignIn signedIn={data.signedIn} />
+			<StaffSignIn signedIn={data.signedIn} role={data.role} panel="RAG" />
 		</div>
 	{:else}
 		<header class="mb-6">

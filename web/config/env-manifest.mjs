@@ -11,6 +11,14 @@
 //   secret: a credential (auto-set from the name); the gate checks presence, never the value.
 //   pub:    client-exposed (PUBLIC_ prefix). Derived, listed for clarity.
 //   desc:   one-line note (why it matters / what breaks without it).
+//   bootReq: narrows WHERE a `req` key is fatal at server boot; the deploy gate and .env.example still
+//            read `req` alone. Unset means every boot. "site-deployment" means only a build of the site
+//            surface (APP_SURFACE unset or `site`) running as a declared production or preview
+//            deployment. "production" means any build, on any surface, whose declared
+//            environment is production. See bootRequiredKeys below.
+//   site:   the site itself reads it (CMS pages, the gap map, links). A `site-only` build (www once chat
+//            lives on alpha) boots on these alone: its boot checks no key without `site`, so
+//            chat's keys can leave that deployment's env.
 //
 // ── INFERENCE TOPOLOGY (roles × endpoints × tokens × models) ─────────────────────────────────────
 // Inference here is a MATRIX, not one provider/model. Each leg below has its OWN base-URL, token, and
@@ -31,16 +39,16 @@
 //                       (Shieldstral-1.0-3B, the SYNC input gate — every message reaches it, and it is
 //                       what declines a turn. The var name is historical.)
 //   Moderation (Coop)   COOP_URL | COOP_API_KEY | —   (separate service, NOT an OpenAI-compatible LLM leg.
-//                       HIT-ONLY (CUR-942): Coop receives a /report when the screen above flags
+//                       HIT-ONLY: Coop receives a /report when the screen above flags
 //                       something, NOT every turn — guardGate.ts:7, moderation.ts:216.)
 // The primary leg's endpoint and key differ between deployments, so read the live value rather than
-//   trusting a note (including this one). Every lane is served by the LiteLLM gateway
+//   trusting a note (including this one). Every lane is served by the LiteLLM
 //   gateway, with dev and prod on separate credentials. MODEL_ALLOWLIST names
 //   Apertus 1.5, and every eval, spec and turn resolves the same id from it.
 //   ⚠️ A direct CSCS lane and the gateway CASE their model ids differently — CSCS
 //      `apertus-ai/Apertus-v1.5-70B`, gateway `swiss-ai/apertus-v1.5-70b` — and selectAllowedModels
 //      matches ids EXACTLY (modelsCatalog.ts:29). A retyped id matches nothing, buildModels() throws,
-//      and the deployment is hard-down (CUR-139). Copy ids from a live /v1/models response, never
+//      and the deployment is hard-down. Copy ids from a live /v1/models response, never
 //      from another config.
 //   ⚠️ /v1/models is scoped PER CREDENTIAL. "The gateway doesn't have model X" is a claim about the
 //      key unless two keys were compared.
@@ -57,6 +65,12 @@
 // messageUpdates.ts) therefore fires and retries on Preview but never on Production.
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
 export const ENV_MANIFEST = {
+	ADMIN_CLI_LOGIN: {},
+	ADMIN_TOKEN: { secret: true },
+	// brute-force lockout for the admin CLI-token check (validate-token/+server.ts, adminTokenRate.ts) —
+	// unset -> the sized default is correct.
+	ADMIN_TOKEN_MAX_FAILS: {},
+	ADMIN_TOKEN_WINDOW_MIN: {},
 	AGENT_GENERATION_TIMEOUT_MS: {
 		desc: "Watchdog for an agent-mode turn, in ms. Default 155000, which is also the ceiling: a larger value is clamped (see deadlineLadder.ts). Needs a redeploy to change.",
 	},
@@ -103,6 +117,17 @@ export const ENV_MANIFEST = {
 	ALLOW_INSECURE_COOKIES: {
 		desc: "\"true\" sends session cookies without the Secure attribute. For local HTTP only.",
 	},
+	ALPHA_EDITION: {
+		req: true,
+		bootReq: "production",
+		desc: "Production must set it to \"hosted\": a production deployment without it refuses to boot, because a process with no PUBLIC_POSTHOG_KEY would otherwise read each flag's self-host default. \"hosted\" keeps those defaults off in a process that has no PUBLIC_POSTHOG_KEY on purpose (the unit suites). A self-host sets \"selfhost\": the self-host compose stack does, and it is what lets a self-host in production mode run without Coop (moderation.ts), keep its own MODEL_ALLOWLIST and role models (committedConfigEnv in config/inference.ts), honour CSAM_SCAN=off, and skip our status page and Hugging Face's embedder. A preview or local process leaves it unset, and then a process with no PUBLIC_POSTHOG_KEY reads each flag's self-host default.",
+	},
+	ALPHA_FLAGS: {
+		desc: "Self-hosted only (read when PUBLIC_POSTHOG_KEY is unset). Comma-separated flag overrides: \"+key\" turns a flag on, \"-key\" turns it off, on top of each key's self-host default in flagKeys.ts. Ignored when PostHog is configured.",
+	},
+	ALPHA_OPEN_SIGNUP: {
+		desc: "Self-host with no mailer only. Unset, the first email-and-password account succeeds and password sign-up closes after it, as Open WebUI does; \"true\" keeps sign-up open to anyone who reaches the stack. A hosted deployment, or a self-host with a mailer, ignores it.",
+	},
 	APP_BASE: {
 		desc: "Kept from upstream chat-ui. Nothing in the app reads it; scripts/updateLocalEnv.ts only lists it.",
 	},
@@ -112,8 +137,8 @@ export const ENV_MANIFEST = {
 	AUTOMATIC_LOGIN: {
 		desc: "\"true\" makes sign-in mandatory.",
 	},
-	// Better Auth's session/cookie signing key (CUR-434). Not req:true: that would hard-crash local dev
-	// boot for anyone without it in their personal Doppler config. warn:true instead, because the
+	// Better Auth's session/cookie signing key. Not req:true: that would hard-crash local dev
+	// boot for anyone without it in their local env. warn:true instead, because the
 	// better-auth-signin flag gates only the /chat/login redirect, not the /chat/api/auth/* routes,
 	// which are always mounted and reachable directly. An unset or rotated value in prd/preview must
 	// be loud, not silent.
@@ -122,14 +147,14 @@ export const ENV_MANIFEST = {
 		warn: true,
 		desc: "Signing secret for sessions. Set it in every shared environment: the auth routes are mounted whatever the sign-in flag says, and a missing or rotated value signs everyone out.",
 	},
-	// External dead-man's switch for the warm cron (CUR-102). Better Stack alerts when pings STOP, so
+	// External dead-man's switch for the warm cron. Better Stack alerts when pings STOP, so
 	// this is the check-on-the-checker that survives us being down. PROD ONLY — sharing one heartbeat
 	// with preview would let preview hold it green while prod is dead.
 	BETTERSTACK_HEARTBEAT_URL: {
 		secret: true,
 		desc: "Uptime heartbeat URL pinged by the warm-up job, so an outside monitor alerts when the pings stop. Production only: a preview sharing it could keep it green while production is down.",
 	},
-	// Per-dependency heartbeats behind the PUBLIC status page's four capability components (CUR-102).
+	// Per-dependency heartbeats behind the PUBLIC status page's four capability components.
 	// recordProbe pings these ONLY on a healthy probe, so a failing dependency reds by silence. PROD ONLY
 	// for the same reason as the switch above. Grace period must be >= FIRE_THRESHOLD × slowest probe
 	// interval, or a throttled-but-healthy probe reds a component — see alerting.ts.
@@ -167,12 +192,23 @@ export const ENV_MANIFEST = {
 	CSAM_SCAN_BASE_URL: {
 		desc: "Base URL of the known-CSAM hash check (an HMA instance) run on every chat and My files upload. Uploads fail closed on it: unset, no attach control is offered and any upload is refused; if the check cannot be reached, the file is refused and the turn's text is still answered; a match refuses the upload, alerts and reports to Coop. Local stack: web/hma/.",
 	},
+	CSAM_SCAN: {
+		desc: "Self-host only. \"off\" turns the CSAM hash check off, so uploads are stored unscanned (each logs a warning) and the operator owns detecting and reporting CSAM. Honoured only when ALPHA_EDITION is set and is not \"hosted\"; a hosted deployment ignores it, logs an error once and keeps refusing.",
+	},
 	CSAM_SCAN_TOKEN: {
 		secret: true,
 		desc: "Bearer token for the proxy in front of the hash check. A wrong or missing token looks the same as a scanner that cannot be reached, so uploads are refused. Not needed for the local web/hma/ stack.",
 	},
 	CHALLENGE_REDERIVE_ENABLED: {
 		desc: "\"true\" makes the model re-derive an answer the user challenges instead of conceding. Default off.",
+	},
+	CI_LINEAR_CLIENT_ID: {
+		secret: true,
+		desc: "CI only: client id of the issue-tracker app that CI jobs mint a short-lived token from. Without it they fall back to TRIG_LINEAR_API_KEY. The app does not read it.",
+	},
+	CI_LINEAR_CLIENT_SECRET: {
+		secret: true,
+		desc: "CI only: client secret paired with CI_LINEAR_CLIENT_ID. The app does not read it.",
 	},
 	CI_HERMETIC: {
 		desc: "Test only: \"true\" skips the live model catalog at boot and stops stateful Vitest at the first failure. Set by the pnpm test:ci scripts.",
@@ -205,12 +241,22 @@ export const ENV_MANIFEST = {
 		secret: true,
 		desc: "Shared secret the CMS sends in the x-cms-revalidate-secret header when it asks the app to drop cached pages. Must match the CMS's own CMS_REVALIDATE_SECRET.",
 	},
+	CDN_CACHE_TAG_HEADER: {
+		desc: "Self-hosting behind your own CDN: the tag header it purges by (cache-tag, surrogate-key or edge-cache-tag). CMS pages then carry it beside Vercel-Cache-Tag (CUR-4834). Unset on Vercel.",
+	},
+	CDN_PURGE_TOKEN: {
+		secret: true,
+		desc: "Bearer token sent with the CDN_PURGE_URL request, if your CDN wants one (CUR-4834).",
+	},
+	CDN_PURGE_URL: {
+		desc: 'Self-hosting behind your own CDN: an https endpoint a CMS publish POSTs {"tags":["cms-page"]} to, the shape Cloudflare purge-by-tag takes (CUR-4834). Unset on Vercel, which purges its own edge.',
+	},
 	COMPARE_PANEL: {
 		desc: "Comma-separated second-opinion models, in fan-out order. Off a Vercel deployment only; on Vercel, config/inference.ts decides.",
 	},
 	// Unset turns off the "Get involved" per-IP daily cap, the DB-backed target-email
 	// OTP/invite caps and the (ip, target) source-pair cap. Three anti-abuse controls going dark on one
-	// missing var is why this is warn:true rather than a bare secret entry. (CUR-920)
+	// missing var is why this is warn:true rather than a bare secret entry.
 	CONTRIBUTION_IP_PEPPER: {
 		secret: true,
 		warn: true,
@@ -281,13 +327,13 @@ export const ENV_MANIFEST = {
 	COUPLE_SESSION_WITH_COOKIE_NAME: {
 		desc: "Ties the session to another cookie, as in upstream chat-ui.",
 	},
-	// Vercel cron auth for /chat/api/cleanup (nightly TTL GC). The route refuses when this is unset in
-	// prod (an unauthenticated row-deleting endpoint is an abuse vector), so unset means the cleanup
-	// cron gets a 401 every night and TTL garbage collection never runs. `warn` so boot says so.
+	// Scheduler auth for /chat/api/cleanup (nightly TTL GC) and /chat/api/probes (the every-minute probes
+	// job). Both refuse when this is unset outside `vite dev`, so unset means the cleanup never runs, the
+	// probes never alert, and the uptime heartbeat goes quiet. `warn` so boot says so.
 	CRON_SECRET: {
 		warn: true,
 		secret: true,
-		desc: "Bearer token the scheduled cleanup and warm-up jobs present. In production the cleanup route refuses every call while it is unset, so expired rows are never deleted.",
+		desc: "Bearer token the scheduled cleanup and probes jobs present. Outside local dev both routes refuse every call while it is unset, so expired rows are never deleted and the probes never alert.",
 	},
 	CUSTODIAL_MASTER_ACTIVE: {
 		desc: "Which key id in CUSTODIAL_MASTER_IDENTITIES or CUSTODIAL_MASTER_KMS_KEYS new stored files are encrypted to; /chat/healthcheck reports it as x-custodial-master-kid.",
@@ -297,13 +343,42 @@ export const ENV_MANIFEST = {
 		desc: "JSON map of key id to age identity ({\"<kid>\": \"AGE-SECRET-KEY-PQ-1...\"}) that opens owners' keys in custodial storage. One per deployment, never shared between preview and production. Unset, sealed files cannot be opened; plaintext files still read.",
 	},
 	CUSTODIAL_MASTER_KMS_KEYS: {
-		desc: "JSON map of key id to AWS KMS key ARN ({\"<kid>\": \"arn:aws:kms:...\"}), used in place of CUSTODIAL_MASTER_IDENTITIES so the deployment holds no key that opens files. Key ids share one namespace with the age identities.",
+		desc: "JSON map of key id to AWS KMS key ARN ({\"<kid>\": \"arn:aws:kms:...\"}), used in place of CUSTODIAL_MASTER_IDENTITIES so the deployment holds no key that opens files. Key ids share one namespace with the age identities, and CUSTODIAL_MASTER_ACTIVE may name either. Credentials come from CUSTODIAL_KMS_ROLE_ARN on Vercel, else the AWS SDK's default chain (task role, AWS_ROLE_ARN web identity, AWS_PROFILE, or AWS_ACCESS_KEY_ID).",
 	},
 	CUSTODIAL_KMS_ROLE_ARN: {
-		desc: "AWS role a Vercel deployment assumes with its own OIDC token to call CUSTODIAL_MASTER_KMS_KEYS, so no AWS secret sits in env. Unset, the AWS SDK's default credential chain applies.",
+		desc: "AWS role a Vercel deployment assumes with its own OIDC token to call CUSTODIAL_MASTER_KMS_KEYS, so no AWS secret sits in env. Read on Vercel only: unset there, or on any other host whatever its value, credentials come from the AWS SDK's default chain.",
 	},
 	CUSTODIAL_SEAL_WRITES: {
 		desc: "\"true\" encrypts every file written to custodial storage to its owner's key. Needs CUSTODIAL_MASTER_ACTIVE; without it every write fails. Turning it off leaves sealed files readable.",
+	},
+	CONVERSATION_HISTORY_MAC_KEY: {
+		secret: true,
+		desc: "Server secret (32+ random bytes, strict hex or base64) for the HMAC-SHA-256 each sealed message carries, held as key id k0. A turn's history from the browser must match it, so a forged earlier message is refused. A value that is not strict hex or base64 is rejected and logged. To rotate, add the new key to CONVERSATION_HISTORY_MAC_KEYS and name it in CONVERSATION_HISTORY_MAC_KEY_ACTIVE, keeping this one until no MAC on k0 is left.",
+	},
+	CONVERSATION_HISTORY_MAC_KEYS: {
+		secret: true,
+		desc: "JSON map of key id to history MAC key ({\"<kid>\": \"<hex or base64>\"}) for rotation (CUR-4983). Every listed key checks a MAC that names it; a turn that passes re-takes its MACs under the active key, so an old key can be dropped once its chats have been used. A k0 here replaces CONVERSATION_HISTORY_MAC_KEY.",
+	},
+	CONVERSATION_HISTORY_MAC_KEY_ACTIVE: {
+		desc: "The key id new history MACs are taken under. Unset: the only key, or k0 when there are several. A kid with no key stops sealing writes, which fail rather than land in plaintext.",
+	},
+	CUSTODIAL_STORAGE_BACKEND: {
+		desc: "Self-hosting: where people's files are kept (CUR-4872). Required: unset is a configuration error and storage stays unavailable. hf is the Hugging Face bucket in HF_BUCKETS_REPO; s3 is any S3-compatible bucket (CUSTODIAL_S3_*); local is a directory on the server (CUSTODIAL_LOCAL_DIR). Files are stored as written unless CUSTODIAL_SEAL_WRITES=true, which seals each to its owner before any backend sees it. Any other value leaves storage unavailable and logs why.",
+	},
+	CUSTODIAL_S3_BUCKET: {
+		desc: "The bucket CUSTODIAL_STORAGE_BACKEND=s3 stores into. Credentials come from the AWS SDK's default chain (AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, AWS_PROFILE, a task or instance role), so none is named here (CUR-4835).",
+	},
+	CUSTODIAL_S3_ENDPOINT: {
+		desc: "The S3-compatible server's URL (MinIO, Garage, Ceph, R2...). Unset → AWS S3 in CUSTODIAL_S3_REGION.",
+	},
+	CUSTODIAL_S3_REGION: {
+		desc: "The S3 region. Unset → the AWS SDK's own (AWS_REGION). Most S3-compatible servers accept any value, such as us-east-1.",
+	},
+	CUSTODIAL_S3_FORCE_PATH_STYLE: {
+		desc: "\"true\" addresses the bucket by path (endpoint/bucket/key) rather than by host. Defaults on when CUSTODIAL_S3_ENDPOINT is set (MinIO and most S3-compatible servers need it); \"false\" turns it off there.",
+	},
+	CUSTODIAL_LOCAL_DIR: {
+		desc: "The absolute directory CUSTODIAL_STORAGE_BACKEND=local keeps files in. Back it up with the database: it holds every person's sealed files and their key objects.",
 	},
 	DATABASE_URL: {
 		req: true,
@@ -312,7 +387,29 @@ export const ENV_MANIFEST = {
 	},
 	DEPLOY_ENV: {
 		warn: true,
+		site: true,
 		desc: "Which environment this deployment is: production, preview or development. Falls back to VERCEL_ENV. Feature flags and model lists depend on it: on a host without VERCEL_ENV, leaving it unset makes every environment-scoped flag evaluate off.",
+	},
+	// Host-neutral plan, sub-issue 1: the deployment's identity under names of our own. Each is read only
+	// through src/lib/server/runtimeEnv.js, which falls back to the Vercel variable named in its desc, so
+	// all five stay unset on Vercel and no env store changes until the host move sets them.
+	GIT_REF: {
+		desc: "The git branch this deployment was built from (runtimeEnv.js gitRef()). Unset on Vercel, which supplies VERCEL_GIT_COMMIT_REF instead and that is the fallback. Decides the Mistral key lane, the passkey RP ID on develop, the per-PR preview checks and the replay scope, so a host that serves previews must set it.",
+	},
+	GIT_SHA: {
+		desc: "The commit this deployment was built from (runtimeEnv.js gitSha()). Unset on Vercel, which supplies VERCEL_GIT_COMMIT_SHA instead and that is the fallback. Read at build time for PUBLIC_COMMIT_SHA (svelte.config.js, which then asks git) and the PostHog source-map release, and at runtime for log lines and the journeys page.",
+	},
+	DEPLOYMENT_URL: {
+		desc: "This deployment's own hostname, no scheme (runtimeEnv.js deploymentUrl()). Unset on Vercel, which supplies VERCEL_URL instead and that is the fallback. A per-PR preview's passkey RP ID is this host.",
+	},
+	POSTHOG_INGEST_HOST: {
+		desc: "Absolute https origin of this deployment's PostHog (CUR-4833): where the /rs proxy forwards and where the server-side flag and error clients send when PUBLIC_POSTHOG_HOST is relative. Unset means https://us.i.posthog.com. PostHog Cloud's assets host is derived (us. -> us-assets.); a self-hosted PostHog serves both from this origin. The EU move is CUR-439.",
+	},
+	PRODUCTION_URL: {
+		desc: "The project's production hostname, no scheme (runtimeEnv.js productionUrl()), read at BUILD time by vite.config.ts for the canonical origin of prerendered pages. Unset on Vercel, which supplies VERCEL_PROJECT_PRODUCTION_URL instead and that is the fallback.",
+	},
+	REGION: {
+		desc: "The region this server runs in (runtimeEnv.js region()), shown as the app hop of a turn's serving route. Unset on Vercel, which supplies VERCEL_REGION instead and that is the fallback. Not FUNCTION_REGION, which picks the region at build time.",
 	},
 	INSTANCE: {
 		desc: "Name of this production instance, when one codebase serves several sites (for example an event site). Unset is the main site. Sets the session cookie name, passkey RP ID and the instance property on flag evaluations. Must be a lowercase label; anything else fails boot.",
@@ -321,7 +418,10 @@ export const ENV_MANIFEST = {
 		desc: "Which app this build serves, read at build time. Unset or \"site\": the site at / and chat under /chat. \"chat\": chat at the root of its host, with the reserved /chat paths served in place. Any other value fails the build.",
 	},
 	FUNCTION_REGION: {
-		desc: "Vercel function regions, comma-separated (for example fra1), read at build time. Unset, Vercel's default (iad1). Put functions in the same region as DATABASE_URL.",
+		desc: "Vercel function regions, comma-separated (for example fra1), read at build time. Unset, the region beside the Neon host in DATABASE_URL (src/lib/functionRegion.js), or Vercel's default (iad1) when the URL names no mapped Neon region.",
+	},
+	MILA_SP_ENDPOINT_URL: {
+		desc: "Base URL of the Mila suicide-prevention classifier (TEI, `POST /tokenize` and `/predict`) that the `mila-sp-output-guard` flag turns on (detectors/milaSp.ts). Optional on Current AI's deployments: with DEPLOY_ENV (or VERCEL_ENV) production or preview and this unset, the endpoint is the committed `deployed_api_base` in web/config/safetyScreen.ts. Anywhere else (local dev, CI, a self-host) it is the only address: unset means the classifier is not configured, and flag on logs an error and checks nothing, even with HF_TOKEN set. Set, it wins on every deployment.",
 	},
 	MISTRAL_MODELS: {
 		desc: "Comma-separated Mistral model ids served by MISTRAL_BASE_URL, added to the catalog before MODEL_ALLOWLIST applies. Each has only its own host as a lane, with no backup.",
@@ -343,6 +443,10 @@ export const ENV_MANIFEST = {
 	MISTRAL_CHAT_API_KEY: {
 		secret: true,
 		desc: "Key for MISTRAL_CHAT_BASE_URL.",
+	},
+	MISTRAL_CHAT_CI_API_KEY: {
+		secret: true,
+		desc: "A second key for MISTRAL_CHAT_BASE_URL. Set, preview builds of feature branches call the router with it instead of MISTRAL_CHAT_API_KEY, so the router's usage shows CI's share; same Mistral account and limit.",
 	},
 	MISTRAL_CHAT_MODEL_MAP: {
 		desc: "Comma-separated ours=theirs pairs for MISTRAL_MODELS ids that MISTRAL_CHAT_BASE_URL names differently, for example mistral-large-2512=mistralai/mistral-large-2512.",
@@ -369,12 +473,8 @@ export const ENV_MANIFEST = {
 	ENABLE_CONFIG_MANAGER: {
 		desc: "\"true\" lets admins override configuration at run time.",
 	},
-	ENABLE_DATA_EXPORT: {
-		desc: "Not read. A feature flag decides whether data export is on.",
-	},
-	ENV_EXTRACT_SECRET: {
-		secret: true,
-		desc: "Bearer secret for GET /chat/admin/env-extract, the encrypted configuration export. Leave unset; the route refuses every call without it. At least 32 characters when set. Arming or disarming it needs a redeploy.",
+	ENTITY_SCOPE_MODEL: {
+		desc: "The RAG entity-scope guard's model (CUR-4816). models.ts registers it like any side-call model: on the Mistral side-call lane when MISTRAL_MODELS lists it and side-call-own-lane is on (CUR-5024), otherwise on the compare endpoint (SECOND_OPINION_BASE_URL/API_KEY); unregistered, the guard falls back to the default endpoint and logs an error. On a Vercel deployment config.ts serves ROLE_MODELS in config/inference.ts and ignores this var (CUR-2277); it decides only off Vercel (local dev, CI, evals).",
 	},
 	EXPOSE_API: {
 		desc: "Deprecated upstream chat-ui setting. Setting it only logs a deprecation warning.",
@@ -396,6 +496,22 @@ export const ENV_MANIFEST = {
 	},
 	FIRECRAWL_TBS: {
 		desc: "Time filter applied to every Firecrawl search.",
+	},
+	FIRECRAWL_BASE_URL: {
+		desc: "Base URL of a self-hosted Firecrawl, which serves the same v2 API (Firecrawl is AGPL). Unset, search and scrape go to https://api.firecrawl.dev.",
+	},
+	READ_ALOUD_BASE_URL: {
+		desc: "Base URL of an OpenAI-compatible speech API for read-aloud, ending in /v1; Alpha posts to <base>/audio/speech. Unset, the Hugging Face router route, which uses HF_TOKEN. With this set, read-aloud needs no Hugging Face credential.",
+	},
+	READ_ALOUD_API_KEY: {
+		secret: true,
+		desc: "Bearer key for READ_ALOUD_BASE_URL. Unset, no Authorization header is sent, for a keyless speech server. Ignored while READ_ALOUD_BASE_URL is unset.",
+	},
+	READ_ALOUD_MODEL: {
+		desc: "Model name sent to READ_ALOUD_BASE_URL's speech server. Unset, hexgrad/Kokoro-82M. Ignored while READ_ALOUD_BASE_URL is unset.",
+	},
+	READ_ALOUD_VOICE: {
+		desc: "Voice name sent to READ_ALOUD_BASE_URL's speech server, for every language. Unset, the Kokoro voice for the clip's language. Ignored while READ_ALOUD_BASE_URL is unset.",
 	},
 	// Folkways adapter (src/routes/folkways-adapter) — community behavior control plane. Read only
 	// by that route; unset → localhost dev defaults (see the adapter's README).
@@ -425,7 +541,7 @@ export const ENV_MANIFEST = {
 	FOLKWAYS_MODE: {
 		desc: "Folkways adapter mode. \"observe\" reports prompts and content-free traces and passes requests through unchanged; anything else takes the resolve and rewrite path.",
 	},
-	// Upstream of the adapter's Mistral route; unset -> https://api.mistral.ai/v1. (CUR-3186)
+	// Upstream of the adapter's Mistral route; unset -> https://api.mistral.ai/v1.
 	FOLKWAYS_MISTRAL_UPSTREAM_BASE_URL: {
 		desc: "Upstream for the folkways adapter's Mistral route. Default https://api.mistral.ai/v1.",
 	},
@@ -452,13 +568,14 @@ export const ENV_MANIFEST = {
 	},
 	GAP_MAP_DATABASE_URL: {
 		warn: true,
+		site: true,
 		secret: true,
 		desc: "Postgres URL of the gap map database (pooled endpoint). Unset, the map, the org and product pages, the sitemap and /api/data-freshness fail.",
 	},
 	GENERATION_TIMEOUT_MS: {
 		desc: "Watchdog for an ordinary turn, in ms. Default 45000. Agent turns use AGENT_GENERATION_TIMEOUT_MS. Capped at 155000. Needs a redeploy to change.",
 	},
-	// GitHub sign-in (CUR-434/CUR-482) — same optional posture as Google below: unset
+	// GitHub sign-in — same optional posture as Google below: unset
 	// means GitHub is simply absent from the sign-in screen, not a failure.
 	GITHUB_CLIENT_ID: {
 		desc: "GitHub OAuth app client id. Set, sign-in offers GitHub; unset, GitHub is absent from the sign-in screen.",
@@ -470,7 +587,7 @@ export const ENV_MANIFEST = {
 	GLOBAL_DAILY_REQUEST_CAP: {
 		desc: "Requests per day across the site. Unset or 0, no cap.",
 	},
-	// Google sign-in (CUR-434/CUR-482) — optional: unset means Google is simply absent from the
+	// Google sign-in — optional: unset means Google is simply absent from the
 	// sign-in screen rather than a failure, same posture as OPENID_CLIENT_ID/loginEnabled below.
 	GROUNDCHECK_TOKEN: {
 		secret: true,
@@ -494,7 +611,12 @@ export const ENV_MANIFEST = {
 		desc: "A result's minimum score as a fraction of the top score. Default 0.25.",
 	},
 	GUARD_SHADOW_URL: {
-		desc: "OpenAI-compatible base URL of the input guard model, which screens every message before the model sees it and declines turns. A failed guard call fails closed and declines the turn. It also feeds the measure-only guard-shadow check. Every message's full text is sent here.",
+		desc: "OpenAI-compatible base URL of the Shieldstral guard endpoint. detectors/shieldstral.ts:30 — the SYNC INPUT GATE (guardGate.ts:1, Shieldstral-1.0-3B). Every turn passes through it before reaching the model and it is what DECLINES a turn; guardPrimaryConfigured() derives entirely from this var being set. An UNKNOWN from this endpoint — non-2xx, garbled body, network error, op-deadline — fails CLOSED and labels the turn child_safety with generic child copy. So pointing this var at the wrong host does not degrade a log line; it declines real people's messages. Token and bill-to reuse HF_TOKEN||OPENAI_API_KEY and HF_BILL_TO; model + timeout are fixed constants. The name is historical: it predates the Shieldstral guard (detectors/shieldstral.ts:27). Privacy note: this endpoint receives the full text of every message, so name it in your deployment's privacy notice.",
+	},
+	GUEST_HANDOFF_SECRET: {
+		site: true,
+		secret: true,
+		desc: "Key that seals a guest's session when www hands it to alpha (guestHandoffPage.ts). Set the same value on www and alpha. Unset, BETTER_AUTH_SECRET seals it, and with neither a guest arriving from www starts a new session on alpha.",
 	},
 	HF_BASE_URL: {
 		desc: "Hugging Face router base URL, used for the backup lane and for models pinned to one Hugging Face provider.",
@@ -503,7 +625,7 @@ export const ENV_MANIFEST = {
 		desc: "Hugging Face organisation billed for router calls.",
 	},
 	HF_BUCKETS_REPO: {
-		desc: "Hugging Face bucket for custodial file storage, as buckets/<owner>/<name>. Unset, the production bucket named in code. Each non-production environment sets its own, paired with an HF_BUCKETS_TOKEN scoped to it. A malformed value throws on first use.",
+		desc: "The custodial storage bucket, as buckets/<owner>/<name>. Unset on a production deployment (DEPLOY_ENV or VERCEL_ENV production) → buckets/current-ai-official/custodial-storage-eu (production's, EU region). Unset anywhere else (preview, local dev, CI, a self-host) → custodial storage is unavailable: the surface is off whatever its flag says, one error is logged, and a direct storage call throws CustodialBucketUnsetError (storage/custodialBucketRepo.ts). Preview sets its own, paired with a HF_BUCKETS_TOKEN scoped to that bucket only, so preview never reads or writes production files (CUR-1288). A malformed value throws on first storage call; it never falls back.",
 	},
 	HF_BUCKETS_TOKEN: {
 		secret: true,
@@ -526,7 +648,7 @@ export const ENV_MANIFEST = {
 	},
 	HF_TOKEN: {
 		secret: true,
-		desc: "Hugging Face token for the backup lane, the input guard (with OPENAI_API_KEY as its fallback) and other Hugging Face calls. With the zentropi-african-routing flag on it also authenticates the CoPE-B judge, which then receives the screened text of turns detected as Amharic, Yoruba, Hausa or Kiswahili.",
+		desc: "Hugging Face token. Among its readers: the Shieldstral guard (detectors/shieldstral.ts, with OPENAI_API_KEY as the fallback). With the `mila-sp-output-guard` flag on, the Mila suicide-prevention classifier on our own Inference Endpoint (detectors/milaSp.ts; threshold and 2 s budget in web/config/safetyScreen.ts, address in MILA_SP_ENDPOINT_URL or, on production and preview, that file) reads it too; flag on with this unset logs an error and checks nothing. Privacy note: with that flag on, the text of every finished English or French answer goes to that endpoint, never the user's own messages.",
 	},
 	LLM_ROUTER_DEFAULT_ROUTE: {
 		desc: "chat-ui router: name of the default route. Default \"default\".",
@@ -598,13 +720,31 @@ export const ENV_MANIFEST = {
 	MULTIMODAL_ENABLED: {
 		desc: "\"true\" declares that the deployment can serve images and audio. Image input also needs its feature flag.",
 	},
+	OAUTH_CLIENT_ID: { desc: "Open WebUI's name for OIDC_CLIENT_ID, read when that is unset (CUR-4858)." },
+	OAUTH_CLIENT_SECRET: { secret: true, desc: "Open WebUI's name for OIDC_CLIENT_SECRET (CUR-4858)." },
+	OAUTH_PROVIDER_NAME: { desc: "Open WebUI's name for OIDC_PROVIDER_NAME (CUR-4858)." },
+	OAUTH_SCOPES: { desc: "Open WebUI's name for OIDC_SCOPES (CUR-4858)." },
+	OIDC_CLIENT_ID: { desc: "Self-hosting: the client id of your organisation's OIDC login (CUR-4858)." },
+	OIDC_CLIENT_SECRET: { secret: true, desc: "Self-hosting: the client secret paired with OIDC_CLIENT_ID (CUR-4858)." },
+	OIDC_ISSUER: {
+		desc: "Self-hosting: your organisation's OpenID Connect issuer (Keycloak, Authentik, Cognito, Entra...), https, discovered at /.well-known/openid-configuration. With OIDC_CLIENT_ID and OIDC_CLIENT_SECRET it adds a sign-in button; an unreachable issuer drops only that button (CUR-4858). OPENID_PROVIDER_URL is read in its place beside OAUTH_CLIENT_ID, as Open WebUI names it.",
+	},
+	OIDC_PROVIDER_NAME: { desc: "Self-hosting: the name on your organisation's sign-in button. Default SSO (CUR-4858)." },
+	OIDC_SCOPES: { desc: "Self-hosting: the scopes your organisation's sign-in asks for, space-separated. Default openid email profile (CUR-4858)." },
 	OLD_MODELS: {
 		desc: "Kept from upstream chat-ui (retired model ids). Nothing reads it; retired ids are listed in code.",
+	},
+	OPENAI_API_BASE_URLS: {
+		desc: "Open WebUI's name for the model endpoint: ';'-separated base URLs. Read only while OPENAI_BASE_URL is unset; Alpha serves one endpoint, so the first is used and the rest are logged as ignored. Keys pair with URLs by position in OPENAI_API_KEYS.",
 	},
 	OPENAI_API_KEY: {
 		req: true,
 		secret: true,
 		desc: "Key for OPENAI_BASE_URL.",
+	},
+	OPENAI_API_KEYS: {
+		secret: true,
+		desc: "Open WebUI's name for the model endpoint's keys: ';'-separated, one per OPENAI_API_BASE_URLS entry (an empty entry is a keyless endpoint). Falls back to OPENAI_API_KEY; with fewer keys than URLs the missing ones are empty, and extra keys are dropped, as Open WebUI does.",
 	},
 	OPENAI_BASE_URL: {
 		req: true,
@@ -630,7 +770,7 @@ export const ENV_MANIFEST = {
 		desc: "Claim to read the user's display name from.",
 	},
 	OPENID_PROVIDER_URL: {
-		desc: "OpenID Connect issuer URL.",
+		desc: "The Hugging Face sign-in's issuer. Beside OAUTH_CLIENT_ID it is instead Open WebUI's name for OIDC_ISSUER, the organisation sign-in's discovery URL (CUR-4858).",
 	},
 	OPENID_RESOURCE: {
 		desc: "Resource indicator sent with the OpenID Connect request.",
@@ -642,7 +782,7 @@ export const ENV_MANIFEST = {
 		desc: "Clock tolerance for token checks.",
 	},
 	// Optional knobs for the daily sign-in code caps (db/signInCodeRate.ts). Unset -> 10 codes
-	// per address per 24h, and 1000/24h site-wide to addresses with no account, a circuit breaker. (CUR-4172)
+	// per address per 24h, and 1000/24h site-wide to addresses with no account, a circuit breaker.
 	OTP_ADDRESS_MAX_PER_DAY: {
 		desc: "Sign-in codes one email address can receive per day. Default 10.",
 	},
@@ -695,6 +835,10 @@ export const ENV_MANIFEST = {
 		secret: true,
 		desc: "PostHog project secret (phs_...) that lets the server evaluate feature flags locally; scripts/bake-flag-definitions.mjs also reads it at build time. Never a personal phx_ key. Unset, flags are evaluated remotely, which works and costs requests.",
 	},
+	PROBE_MARKER_TOKEN: {
+		secret: true,
+		desc: "Shared secret the scheduled production probes send as x-probe-token. A probe turn a screen declines then writes its safety_events row with the probe's name in safety_events.probe, so counts of real declines can leave it out. Unset, no row is marked and probe declines count as real ones.",
+	},
 	PUBLIC_APPLE_APP_ID: {
 		desc: "Apple app id for the smart app banner.",
 	},
@@ -706,7 +850,9 @@ export const ENV_MANIFEST = {
 	},
 	PUBLIC_CMS_PAYLOAD_URL: {
 		req: true,
-		desc: "Origin of the Payload CMS deployment. Public on purpose: every CMS read is public, and the browser resolves relative media URLs against it. Server-side page reads use it too.",
+		site: true,
+		bootReq: "site-deployment",
+		desc: "Origin of the Payload CMS deployment. Public on purpose: every CMS read is public, and the browser resolves relative media URLs against it. Server-side page reads use it too. Required at boot only on the site surface of a production or preview deployment (`bootReq`); the chat surface and local dev boot without it, and the CMS is then left out of the CSP.",
 	},
 	PUBLIC_COMMIT_SHA: {
 		desc: "Commit shown in the app. Set at build time from git when unset.",
@@ -734,6 +880,7 @@ export const ENV_MANIFEST = {
 	},
 	PUBLIC_ORIGIN: {
 		req: true,
+		site: true,
 		desc: "Origin the app is served from, for example http://localhost:5173. Sign-in builds its callback URLs and passkey RP ID from it.",
 	},
 	PUBLIC_PLAUSIBLE_SCRIPT_URL: {
@@ -848,6 +995,13 @@ export const ENV_MANIFEST = {
 		warn: true,
 		desc: "Resend key for sign-in code emails. Unset, codes are logged instead of sent and sign-in still works.",
 	},
+	SMTP_URL: {
+		secret: true,
+		desc: "SMTP server for sign-in code and invitation emails, as smtp(s)://user:pass@host:port. Used only when RESEND_API_KEY is unset (a self-hosted Alpha's own mail).",
+	},
+	SMTP_FROM: {
+		desc: "Sender for SMTP_URL, e.g. \"Alpha <noreply@example.com>\". Unset, noreply at PUBLIC_ORIGIN's host.",
+	},
 	RERANK_BASE_URL: {
 		desc: "Reranker endpoint for web search (cohere transport). Falls back to OPENAI_BASE_URL.",
 	},
@@ -897,7 +1051,7 @@ export const ENV_MANIFEST = {
 		desc: "Display name of the first second-opinion model.",
 	},
 	SECOND_OPINION_MODEL: {
-		desc: "First second-opinion model, also used by the retrieval entity-scope guard. Off a Vercel deployment only; on Vercel, config/inference.ts decides.",
+		desc: "The sequential panel's first seat. On a Vercel deployment config.ts serves ROLE_MODELS in config/inference.ts and ignores this var (CUR-2277); it decides only off Vercel (local dev, CI, evals).",
 	},
 	SEMANTIC_HEDGE_ENABLED: {
 		desc: "\"false\" turns off the embedding check for hedged or evasive answers on grounded turns. Default on. Without it, the regex hedge check still runs.",
@@ -905,12 +1059,18 @@ export const ENV_MANIFEST = {
 	SEMANTIC_HEDGE_THRESHOLD: {
 		desc: "Similarity a sentence must reach to count as a hedge or denial. Default 0.4.",
 	},
+	SHUTDOWN_TIMEOUT: {
+		desc: "adapter-node only (self-hosted container): seconds to wait for open requests, chat streams included, after SIGTERM, and then again for background work (gracefulShutdown.ts). Default 30. Set the orchestrator's stop grace period to at least twice this. Unused on Vercel.",
+	},
 	SILENCE_TIMEOUT_MS: {
 		desc: "How long a turn may go without a new token before it counts as stalled, in ms. Default 45000. Capped at that turn's own generation timeout. Needs a redeploy to change.",
 	},
 	SOVEREIGN_HOSTS: {
 		warn: true,
 		desc: "Comma-separated host=label pairs naming model hosts the UI may describe as sovereign.",
+	},
+	STATUS_PAGE_URL: {
+		desc: "The Better Stack status page the chat's incident banner reads (its /index.json) and links to. Unset, a hosted or local process uses the deployment file's statusPageUrl (none by default), and a self-host (ALPHA_EDITION=selfhost) has no status page and shows no banner.",
 	},
 	SYFTHUB_API_TOKEN: {
 		secret: true,
@@ -994,7 +1154,7 @@ export const ENV_MANIFEST = {
 	},
 	TRIG_LINEAR_API_KEY: {
 		secret: true,
-		desc: "CI only: Linear key for the scheduled ticket workflows (trig-sweep.yml and others). The app does not read it.",
+		desc: "CI only: issue-tracker key for the CI job that syncs feature-flag state to tracker labels. Other CI jobs mint a token from CI_LINEAR_CLIENT_ID/_SECRET and fall back to this one. The app does not read it.",
 	},
 	TRIG_POSTHOG_API_KEY: {
 		secret: true,
@@ -1030,29 +1190,32 @@ export const ENV_MANIFEST = {
 	},
 	VERCEL_AUTOMATION_BYPASS_SECRET: {
 		secret: true,
-		desc: "Vercel's deployment-protection bypass token, so the every-minute warm-up job (and scripts/warm-cache.mjs) can reach a protected deployment. Ours despite the VERCEL_ prefix: config/platform-noise.mjs exempts it.",
+		desc: "Vercel's Protection Bypass for Automation token (Project Settings → Deployment Protection). Set by the deployment, not by Vercel: without it, platform SSO answers the every-minute warm cron with 401 before the app runs, and the `db` warm leg stops keeping the database connection open during quiet hours (warm.ts). Also read directly by scripts/warm-cache.mjs. Exempt from the `^VERCEL_` platform-noise denylist in config/platform-noise.mjs, so `env-audit --prod` still lists it.",
 	},
 	WARM_THROTTLE_MS: {
 		desc: "Test only: overrides every warm-up check's throttle window. Leave unset in every deployment; a large value suppresses health checks. A non-numeric or non-positive value is ignored.",
 	},
 	// Optional deploy knob for the per-inviting-user workspace-invite counter
 	// (db/workspaceInviteRate.ts). Unset -> 20/24h, the default is correct with no committed
-	// .env entry. (CUR-912)
+	// .env entry.
 	WORKSPACE_INVITE_MAX_PER_DAY: {
 		desc: "Workspace invites one account can send per day. Default 20.",
 	},
 	// Optional knob for an account under a week old (db/workspaceInviteRate.ts). Unset -> 5/24h,
-	// capped at WORKSPACE_INVITE_MAX_PER_DAY, so a few fresh accounts can't spend the site-wide ceiling. (CUR-4168)
+	// capped at WORKSPACE_INVITE_MAX_PER_DAY, so a few fresh accounts can't spend the site-wide ceiling.
 	WORKSPACE_INVITE_NEW_ACCOUNT_MAX_PER_DAY: {
 		desc: "Workspace invites an account under a week old can send per day. Default 5, capped at WORKSPACE_INVITE_MAX_PER_DAY.",
 	},
 	// Optional knob for the site-wide workspace-invite ceiling (db/workspaceInviteRate.ts).
-	// Unset -> 500/24h, a circuit breaker well above real use (CUR-4172). (CUR-3194)
+	// Unset -> 500/24h, a circuit breaker well above real use.
 	WORKSPACE_INVITE_SITE_MAX_PER_DAY: {
 		desc: "Workspace invites per day across the site. Default 500.",
 	},
 	WORLD_MODEL_PREPASS: {
 		desc: "\"true\" turns on an experimental world-model verification pass before answering. Default off.",
+	},
+	ZENTROPI_S1_ENDPOINT_URL: {
+		desc: "Base URL of the Zentropi S1 judge (`POST /v1/systemone`) that the `s1-safety-judge` flag turns on (detectors/s1.ts). Optional on Current AI's deployments: with DEPLOY_ENV (or VERCEL_ENV) production or preview and this unset, the endpoint is the committed `deployed_api_base` in web/config/safetyScreen.ts. Anywhere else (local dev, CI, a self-host) it is the only address: unset means the judge is not configured, and flag on logs an error and fails every turn closed, as it always has with HF_TOKEN unset. Set, it wins on every deployment.",
 	},
 };
 
@@ -1060,6 +1223,36 @@ const KEYS = Object.keys(ENV_MANIFEST).sort();
 export const allKeys = () => KEYS.slice();
 export const requiredKeys = () => KEYS.filter((k) => ENV_MANIFEST[k].req);
 export const warnKeys = () => KEYS.filter((k) => ENV_MANIFEST[k].warn);
+
+// The `req` keys whose absence must stop THIS server booting. `surface` is the build's APP_SURFACE
+// ("site" | "chat"), `deployEnv` the declared deployment environment (deployEnv.ts; null when nothing
+// declares one). A key without `bootReq` is fatal everywhere, exactly as `requiredKeys()`.
+//
+// "site-deployment" exists for PUBLIC_CMS_PAYLOAD_URL: only the site's CMS-backed pages need it, so a
+// chat-surface build (alpha) and an undeclared or development environment (local dev, the public
+// snapshot, which ships without the CMS) degrade instead of refusing to boot. Production and preview
+// stay fatal because those are the deployments we operate that serve the CMS pages, and there a
+// missing origin is a misconfiguration, not a choice.
+//
+// A `site-only` build serves no chat, so only the keys marked `site` are checked there at all.
+const onSurface = (surface) => (k) => surface !== "site-only" || !!ENV_MANIFEST[k].site;
+export const bootRequiredKeys = ({ surface, deployEnv }) =>
+	requiredKeys().filter(onSurface(surface)).filter((k) => {
+		const scope = ENV_MANIFEST[k].bootReq;
+		if (scope === undefined) return true;
+		if (scope === "site-deployment")
+			return (
+				(surface === "site" || surface === "site-only") &&
+				(deployEnv === "production" || deployEnv === "preview")
+			);
+		if (scope === "production") return deployEnv === "production";
+		// An unknown scope is a typo in this file; fail closed (fatal) rather than waive the key.
+		return true;
+	});
+// The `req` keys this surface reads at all: every one, except on `site-only` (see above).
+export const surfaceRequiredKeys = ({ surface }) => requiredKeys().filter(onSurface(surface));
+// The `warn` keys this server's boot logs as missing: every one, except on `site-only` (see above).
+export const bootWarnKeys = ({ surface }) => warnKeys().filter(onSurface(surface));
 export const isSecret = (k) =>
 	!!ENV_MANIFEST[k]?.secret ||
 	/(PASSWORD|SECRET|TOKEN|_KEY$|API_KEY|PEPPER|CREDENTIAL|PRIVATE)/i.test(k);

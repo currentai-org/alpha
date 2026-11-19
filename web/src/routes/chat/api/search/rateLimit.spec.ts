@@ -30,8 +30,8 @@ beforeEach(() => {
 // (GET and POST both, inside openSearch), and requireAuth alone never metered either — a guest cookie
 // could loop this route with zero counter. These tests prove the SAME limiter the chat turn uses now
 // gates both handlers, keyed the same way (session id, real client address), and gates BEFORE the
-// model spend rather than after it. (CUR-832)
-describe("GET /chat/api/search — rate limiting (CUR-832)", () => {
+// model spend rather than after it.
+describe("GET /chat/api/search — rate limiting", () => {
 	it("keys the limiter on the session id and the real client address", async () => {
 		const { GET } = await import("./+server");
 		await GET({
@@ -56,7 +56,7 @@ describe("GET /chat/api/search — rate limiting (CUR-832)", () => {
 	});
 });
 
-describe("POST /chat/api/search — rate limiting (CUR-832)", () => {
+describe("POST /chat/api/search — rate limiting", () => {
 	it("gates BEFORE contextualizeQuery's rewrite call when history is present", async () => {
 		rateLimitMock.mockRejectedValue(Object.assign(new Error("rate limited"), { status: 429 }));
 		const { POST } = await import("./+server");

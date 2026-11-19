@@ -20,7 +20,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // mode, component-level only, no real SvelteKit router) is positioned to catch a route-tree-
 // crossing crash like this — this scenario is.
 //
-// The entry is /chat on every target now (helpers/chatEntry.ts, CUR-2195); /alpha/chat 308s there.
+// The entry is /chat on every target now (helpers/chatEntry.ts); /alpha/chat 308s there.
 // The name still says /alpha/chat, the path this spec opened when it was written. That is
 // deliberate: `e2e-scope-classify.mjs` compares test() names as strings, so a rename is
 // indistinguishable from a deletion to it and fails the isolation check. The gate is right to be
@@ -150,13 +150,13 @@ test(
 	}
 );
 
-// F2's second half (CUR-1616). The card a non-engineer reads on the journey
+// F2's second half. The card a non-engineer reads on the journey
 // gallery is headed "Alpha answers reliably, and users can always see which model answered", and
 // until this test existed the suite under it asserted neither: the welcome dialog is hidden, the
 // console is clean, and the page contains the sentence the test itself typed into the composer and
 // the client echoed back optimistically. All three hold while every request 500s, because the user's
 // own bubble renders locally either way — and all three held through a stall where six of twenty
-// turns never answered at all (CUR-1600).
+// turns never answered at all.
 //
 // Kept as its own test rather than folded into the one above, deliberately. A client-router crash
 // crossing into /chat/conversation/[id] and a serving lane that accepts a turn and produces nothing
@@ -194,8 +194,8 @@ test(
 
 		// While the turn ran, the live line named a model; once it finished, the badge named one. Both
 		// read resolveModelIdentity(...).short, so they can only disagree if one of them stops reading
-		// it — and a "7B" or "700B" read off a recording was that suspicion, never a measurement
-		// (CUR-1826, CUR-1956). This rides the same turn, so it costs no model call. What the badge
+		// it — and a "7B" or "700B" read off a recording was that suspicion, never a measurement.
+		// This rides the same turn, so it costs no model call. What the badge
 		// says is correct is F6's claim (where-alpha-runs.spec.ts); this only says the two agree.
 		const badgeTitle = await assistantMessage
 			.locator('[data-provenance="line"]')
@@ -226,9 +226,9 @@ test(
 // have to go red for the failure the card is named after: a turn the lane accepts and answers with
 // nothing. `no_assistant_reply` makes the server yield no content after the turn starts. The turn
 // used to stay open, so the assertion that fired was "the answer never finished within 45s", the
-// CUR-1600 stall shape. Develop now ends that turn with
-// "No output was generated." as an alert inside the bubble, so the notice check fires in seconds
-// (CUR-2757). The error must come from one of the reply assertions, so a navigation or
+// stall shape. Develop now ends that turn with
+// "No output was generated." as an alert inside the bubble, so the notice check fires in seconds.
+// The error must come from one of the reply assertions, so a navigation or
 // sign-in failure cannot pass for the proof.
 // Preview-only: the fault switch is never armed on production.
 test(
@@ -335,7 +335,7 @@ async function expectAnAnswerWithWords(page: Page) {
 
 	// CopyToClipBoardBtn is the app's own "this answer is finished" signal — ChatMessage.svelte
 	// gates it on `!isLast || !loading`, so waiting here waits on the app's own completion state
-	// rather than on a proxy for it. 45s matches the A2 and F6 journeys; CUR-1600's stall fires its
+	// rather than on a proxy for it. 45s matches the A2 and F6 journeys; the stall fires its
 	// hard unwind at ~63s, so a turn caught by that lands red here rather than timing out the suite.
 	// A turn that ends on a notice and no copy button would otherwise sit out the full 45s
 	// before the notice check below reads it, so stop at whichever shows first.
@@ -369,7 +369,7 @@ async function expectAnAnswerWithWords(page: Page) {
 	);
 
 	// The assertion the card's own title rests on. A finished turn whose body is empty is the exact
-	// state CUR-1600 produced and the one the three assertions above this test could not see: the
+	// state produced and the one the three assertions above this test could not see: the
 	// page is healthy, the console is clean, the conversation exists, and there is nothing in it.
 	const reply = (await assistantMessage.innerText()).trim();
 	expect(
@@ -459,7 +459,7 @@ async function recordLiveModelLabels(page: import('@playwright/test').Page) {
 	});
 }
 
-// Step 4 (CUR-1686). Preview-only claim: conversation-titles is at 100% on env=preview and has NO
+// Step 4. Preview-only claim: conversation-titles is at 100% on env=preview and has NO
 // production group. So on a preview the only passing source is `model`, and
 // `titling-disabled` passes (annotated) only against production.
 //
@@ -495,7 +495,7 @@ async function sideRailNamesConversation(
 		await route.continue();
 	});
 
-	// With the rail open from the start, as in the gallery recording that caught CUR-2379. A collapsed
+	// With the rail open from the start, as in the gallery recording that caught. A collapsed
 	// rail never runs its infinite scroll, and that is the path that left the rail on a stale copy.
 	const openSidebarFirst = page.getByRole('button', { name: 'Open sidebar' });
 	if (await openSidebarFirst.isVisible()) await openSidebarFirst.click();
@@ -518,17 +518,17 @@ async function sideRailNamesConversation(
 	// (`textGeneration/index.ts` merges the two streams), so it usually lands before the answer
 	// finishes, and can lag it by a few seconds when it doesn't.
 	//
-	// WAIT ON THE SOURCE, NOT ON THE TEXT (CUR-1819).
+	// WAIT ON THE SOURCE, NOT ON THE TEXT.
 	//
 	// `generateTitle` returns the first five words down FOUR paths — the `conversation-titles` flag off, a
-	// reply `looksLikeTitle` rejected (CUR-593), a thrown call, and a call still in flight — so asserting
+	// reply `looksLikeTitle` rejected, a thrown call, and a call still in flight — so asserting
 	// `not.toHaveText(firstFiveWords)` cannot tell them apart, and two of the four are correct product
 	// behaviour. A longer wait cannot fix a question that was never about waiting.
 	//
 	// `data-title-source` carries which path ran. It is set from the Title message update while this
 	// page watches the turn, so it is present here and absent on a fresh load — the server persists
 	// the text and not the provenance. The post-turn sidebar refresh must not erase it, or this step
-	// stays red while the rail shows a real model title (CUR-1971).
+	// stays red while the rail shows a real model title.
 	const railLink = page.locator(`a[href$="/conversation/${conversationId}"]`).first();
 	const fallbackFirstFiveWords = sentText.split(/\s+/).slice(0, 5).join(' ');
 
@@ -576,7 +576,7 @@ async function sideRailNamesConversation(
 	//                           test still counts its expect()s, and this suite excludes by tag at
 	//                           the runner instead.
 	//   reply-not-title-shaped  the model answered the question instead of naming it and the product
-	//                           deliberately showed the prompt instead (CUR-593). Correct behaviour,
+	//                           deliberately showed the prompt instead. Correct behaviour,
 	//                           so this passes on production — annotated, because a deployment where
 	//                           it happens every run is a model-obedience problem worth seeing on the
 	//                           board. On a preview it fails: the prompt is fixed and titling runs at
@@ -609,7 +609,7 @@ async function sideRailNamesConversation(
 
 	// On a preview the step only passes on a model-generated title. The prompt is fixed and titling
 	// runs at temperature 0, so a reply that is not title-shaped here is a regression in the titling
-	// prompt or the model, not the everyday CUR-593 fallback.
+	// prompt or the model, not the everyday fallback.
 	expect(
 		againstProduction || source === 'model',
 		`the rail's title came from "${source}", not from the model, on a preview where titling is on`
@@ -646,9 +646,9 @@ test(
 	async ({ page, context, baseURL }) => sideRailNamesConversation({ page, context, baseURL }, true)
 );
 
-// Step 5 (CUR-1686). Single-turn, deliberately: this is the claim reaching the board, not a re-run of
+// Step 5. Single-turn, deliberately: this is the claim reaching the board, not a re-run of
 // the grader. web/scripts/arithmetic-turn-probe.mjs already does the hard multi-turn cross-anchoring
-// work for CUR-853/958 with independently-derived expected values — this step reuses its turn-1
+// work with independently-derived expected values — this step reuses its turn-1
 // prompt verbatim rather than deriving a new one, since turn 1 is also the only turn that probe's own
 // gate scores (later turns inherit an anchor and can fail for reasons unrelated to this diff).
 // arithmetic-guard is at 100% on both env=preview and env=production.
@@ -673,7 +673,7 @@ test(
 			await page.waitForURL(/\/(alpha\/)?chat\/conversation\/[a-f0-9]+/, { timeout: 30_000 });
 
 			const assistantMessage = page.locator('[data-message-role="assistant"]').last();
-			// Retry, not the copy button: a calc block's own copy button shows before the turn ends (CUR-2133).
+			// Retry, not the copy button: a calc block's own copy button shows before the turn ends.
 			await expect(
 				turnDone(assistantMessage),
 				'the answer never finished within 45s, so the number below was never checkable' +
@@ -681,11 +681,11 @@ test(
 			).toBeVisible({ timeout: 45_000 });
 
 			const reply = await assistantMessage.innerText();
-			// The confident-wrong shape first (CUR-2134): a bold "Total:" line, the shape the code-rendered
+			// The confident-wrong shape first: a bold "Total:" line, the shape the code-rendered
 			// ledger takes, that is not the right one. `/10\.5/` below passes it whenever the prose also
 			// says 10.5, and the total line is the number a reader trusts.
 			// A worked line ("Total: 9 + 1.5 = 10.5 FTEs") states its result last, so read the line's final
-			// number; its first is an addend (CUR-3345).
+			// number; its first is an addend.
 			const totals = [...reply.matchAll(/^Total:[^\n]*/gm)]
 				.map((m) => m[0].match(/-?\d+(?:[.,]\d+)*/g)?.at(-1))
 				.filter((v): v is string => v !== undefined);
@@ -710,7 +710,7 @@ test(
 	'during the pre-stream phase of a turn, Stop shows and a second message cannot be sent or lost',
 	{ tag: '@F2' },
 	async ({ page }) => {
-		// Sends a real turn and waits up to 90s for it, after up to 60s of setup (CUR-1633's budget check).
+		// Sends a real turn and waits up to 90s for it, after up to 60s of setup (the budget check).
 		test.setTimeout(180_000);
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });
 		await page.addLocatorHandler(welcomeDialog, async () => {
@@ -818,15 +818,15 @@ test(
 test.describe('own-message actions on a touch phone', () => {
 	test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 	// Vercel injects its feedback toolbar into previews, and at phone width it sits over the send button
-	// and intercepts the tap (production never shows it). Same opt-out as e2e/visual (CUR-2132).
+	// and intercepts the tap (production never shows it). Same opt-out as e2e/visual.
 	test.beforeEach(async ({ page, baseURL }) => {
 		await skipVercelToolbar(page, baseURL!);
 	});
 	test(
-		'on a touch phone, Edit and Copy under your own message are showing, sit clear of the bubble, and Edit opens a labelled box @CUR-4264',
+		'on a touch phone, Edit and Copy under your own message are showing, sit clear of the bubble, and Edit opens a labelled box',
 		{ tag: '@F2' },
 		async ({ page }) => {
-			// Sends a real turn and waits up to 90s for it, after up to 60s of setup (CUR-1633's budget check).
+			// Sends a real turn and waits up to 90s for it, after up to 60s of setup (the budget check).
 			test.setTimeout(180_000);
 			const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });
 			await page.addLocatorHandler(welcomeDialog, async () => {
@@ -974,12 +974,12 @@ test(
 );
 
 // A timed-out turn said so three times. The failed bubble's own notice ("The request took
-// too long…" with a Retry, CUR-1748), a toast repeating it, and a compose-area Retry above a disabled
+// too long…" with a Retry), a toast repeating it, and a compose-area Retry above a disabled
 // composer reading "Sorry, something went wrong" — two messages and two Retries for one failure.
 // The `generation_timeout` fault holds the turn open until the route's real watchdog fires, so this
 // is the production timeout path rather than a mocked stream. Preview-only: the fault switch is
-// never armed on production (faultInjection.ts). The fault shortens the watchdog from 45s to 15s
-// (CUR-2757); the abort path is the same at either length.
+// never armed on production (faultInjection.ts). The fault shortens the watchdog from 45s to 15s;
+// the abort path is the same at either length.
 test(
 	'a timed-out turn shows one error, in the turn itself, with one Retry',
 	{ tag: ['@F2', '@C3', '@preview-only'] },
@@ -1047,7 +1047,7 @@ test(
 // After a failed turn the composer used to lock until Retry, so someone whose question
 // could not be answered could only send the same question again. Two failures differ in what the
 // server kept. `no_assistant_reply` saves the question and then answers nothing, as www did for the
-// capped benefit sum (CUR-4490): the failed turn stays, with its one Retry (CUR-1921). `chat_500`
+// capped benefit sum: the failed turn stays, with its one Retry. `chat_500`
 // fails before the question is saved, so the page's copy is the only one: the new question goes in
 // its place. Questions carry `data-message-type="user"`; only answers carry `data-message-role`.
 for (const { fault: faultName, kept } of [
@@ -1130,7 +1130,7 @@ for (const { fault: faultName, kept } of [
 // (it did). The page is sampled every frame for when the answer's text last
 // changed and when the rail first records a title source. Copy and Stop can't be the signal: both
 // follow `loading`, which clears at the answer's FinalAnswer, and under the regression that FinalAnswer
-// is itself held back until the title (the next test pins `loading` to FinalAnswer, CUR-2089).
+// is itself held back until the title (the next test pins `loading` to FinalAnswer).
 test(
 	'a new conversation shows its whole answer before its title arrives',
 	{ tag: ['@F2', '@preview-only'] },
@@ -1187,7 +1187,7 @@ test(
 			'the title arrived before the answer finished rendering, so the answer waited on its title'
 		).toBe(finalAnswer);
 		// The fault holds the title 10s past the model finishing, but output screening runs after that and
-		// before the visitor sees the answer; a saturated guard (CUR-3749) spent 6s of the 10 there. 2s still
+		// before the visitor sees the answer; a saturated guard spent 6s of the 10 there. 2s still
 		// keeps a same-moment release (gap near 0) out.
 		expect(
 			seen.gapMs,
@@ -1415,10 +1415,10 @@ test(
 
 // The refusal used to read only "Message too long.", so a person could see they were refused
 // but not how much to cut. It now names the message's length, the limit and the difference, and says
-// the text was kept. Preview's cap is 12,000 characters (see the CUR-1896 test above), so the expected
+// the text was kept. Preview's cap is 12,000 characters (see the test above), so the expected
 // numbers come from the typed text's own length, not from anything the page reports.
 test(
-	'CUR-3695: an over-long message is refused with its length, the limit and how much to cut',
+	'an over-long message is refused with its length, the limit and how much to cut',
 	{ tag: ['@F2', '@C3', '@preview-only', '@CUR-3695'] },
 	async ({ page }) => {
 		test.setTimeout(90_000);
@@ -1456,7 +1456,7 @@ test(
 // refusal; under the cap again it is ready. Opacity is read from the page, since a dimmed control that
 // still looks the same in a recording is the defect.
 test(
-	'CUR-2703: Send looks blocked while the message is over the length limit, and a click still says why',
+	'Send looks blocked while the message is over the length limit, and a click still says why',
 	{ tag: ['@F2', '@C3', '@preview-only', '@CUR-2703'] },
 	async ({ page }) => {
 		test.setTimeout(90_000);
@@ -1515,7 +1515,7 @@ async function expectToastPlacement(page: Page, width: number, height: number, p
 	await composer.click({ timeout: 30_000 });
 	await composer.fill(`Can you summarise this? ${'lorem ipsum '.repeat(1_050)}`);
 	// A phone's Enter adds a line rather than sending (isVirtualKeyboard), so a phone taps Send, which
-	// stays clickable over the cap so the tap lands on the refusal (CUR-2703). force: Playwright treats its
+	// stays clickable over the cap so the tap lands on the refusal. force: Playwright treats its
 	// aria-disabled as not actionable, and a person's tap is what this checks.
 	if (phone) await page.getByRole('button', { name: 'Send message' }).click({ force: true });
 	else await composer.press('Enter');
@@ -1622,7 +1622,7 @@ async function expectTheWaitIsCounted(reply: Locator) {
 		.toBeGreaterThanOrEqual(firstCount + 2);
 }
 
-// CUR-1614 `latency_30s`: an answer that is slow but alive. The turn waits 30s with keepalives flowing,
+// `latency_30s`: an answer that is slow but alive. The turn waits 30s with keepalives flowing,
 // then streams a fixed reply (LATENCY_FAULT_REPLY in textGeneration/index.ts), so the wait is the only
 // variable. The visitor must see the wait counted, then the reply, as an ordinary finished answer with
 // no error. Preview-only: the fault switch is never armed on production.

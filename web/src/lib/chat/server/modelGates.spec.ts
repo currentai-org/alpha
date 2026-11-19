@@ -8,12 +8,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 //    been turned on then reports as off, and "the flag is off" and "the flag was never read" are the
 //    same observable. So the order is asserted directly, not assumed from the shape of the code.
 //
-// 2. OFF IS ONE MODEL, NOT ZERO. `offeredModels` narrows the allowlisted set; with the picker off it
-//    must keep exactly the first entry. Returning [] would take the registry to empty, which
-//    publishRegistry rejects and which would 500 every route — a fail-open gate's opposite number, and
-//    just as much a reason to say what the number is rather than that it is "narrowed".
+// 2. A FLAG ON WITH ITS CONFIG MISSING WITHHOLDS THE SURFACE, LOUDLY (routerAliasEnabled below).
 //
-// Both gates fall back OFF, so the tests below leave a key unanswered where the fallback is what is
+// Every gate falls back OFF, so the tests below leave a key unanswered where the fallback is what is
 // under test — the mock delegates to the caller's thunk exactly as flagEnabledOr does.
 
 const h = vi.hoisted(() => ({
@@ -41,7 +38,7 @@ vi.mock("$lib/chat/server/flags", () => ({
 		h.calls.push("refreshFlags");
 	}),
 	// Honours the request's override cookie and account answers first, as the real flagEnabledOr does,
-	// so a build inside a request can be checked for ignoring them (CUR-3701).
+	// so a build inside a request can be checked for ignoring them.
 	flagEnabledOr: vi.fn((key: string, fallback: () => boolean) => {
 		h.calls.push(`read:${key}`);
 		const ctx = getRequestContext();
@@ -71,10 +68,7 @@ import { getRequestContext, runWithRequestContext, updateRequestContext } from "
 import { refreshFlags } from "./flags";
 import {
 	REGISTRY_POLL_CAP_MS,
-	MODEL_PICKER_FLAG,
 	ROUTER_ALIAS_FLAG,
-	modelPickerEnabled,
-	offeredModels,
 	onRegistryPollLanded,
 	resolveRegistryGates,
 	routerAliasEnabled,
@@ -86,7 +80,7 @@ import { DEPLOYMENT_SCOPED_FLAG_KEYS } from "./flagKeys";
 // through the mocked `config`/`flags` modules above — this file didn't need to touch either var before
 // that change, so without an explicit save/restore the `agent: false` assertions below would only hold
 // by accident of whatever the test runner's ambient environment happens to be. Force non-preview by
-// default; the one test that wants agent:true sets VERCEL_ENV itself. (CUR-770)
+// default; the one test that wants agent:true sets VERCEL_ENV itself.
 const savedDeployEnv = process.env.DEPLOY_ENV;
 const savedVercelEnv = process.env.VERCEL_ENV;
 
@@ -108,7 +102,7 @@ afterEach(() => {
 
 // The registry is built once and shared by every visitor after, so each flag it reads must be
 // marked deployment-scoped, or flagEnabledOr would hand it the answer of whichever account's request
-// happened to build it. Read off the gates actually called, on preview where agent-mode is read too. (CUR-2463)
+// happened to build it. Read off the gates actually called, on preview where agent-mode is read too.
 describe("resolveRegistryGates — every flag it reads is deployment-scoped", () => {
 	it("reads no flag that a signed-in account's own answer could change", async () => {
 		process.env.VERCEL_ENV = "preview";
@@ -136,7 +130,7 @@ describe("resolveRegistryGates — a poll that never settles cannot hold a cold 
 		await vi.advanceTimersByTimeAsync(REGISTRY_POLL_CAP_MS - 1);
 		expect(gates, "answered before the cap: the poll was not awaited at all").toBeUndefined();
 		await vi.advanceTimersByTimeAsync(1);
-		expect(gates).toMatchObject({ picker: false, routerAlias: false, agent: false });
+		expect(gates).toMatchObject({ routerAlias: false, agent: false });
 	});
 
 	// The registry built from those fallbacks keeps them, and previews get no warm cron to re-check, so
@@ -163,7 +157,7 @@ describe("resolveRegistryGates — a poll that never settles cannot hold a cold 
 
 	// Vercel freezes an instance between invocations, and a frozen instance keeps one model until a
 	// later request thaws it, so the build must hold the instance open until the
-	// late poll lands and the rebuild it starts has finished, not just until the cap (CUR-4194).
+	// late poll lands and the rebuild it starts has finished, not just until the cap.
 	it("keeps the instance awake past the cap until the late poll lands and its rebuild finishes", async () => {
 		for (const fn of h.waiters.splice(0)) await fn();
 		h.polled = false;
@@ -208,27 +202,25 @@ describe("resolveRegistryGates — the poll happens before any gate is read", ()
 				"its fallback and a flag that is ON would report as off."
 		).toBe("refreshFlags");
 		// agent isn't in this list because THIS test's env is development, and agentModeEnabled()
-		// short-circuits on deployEnv() before it reads anything (CUR-770's check, still there). On
-		// preview or production it does read `agent-mode` (CUR-1440) and does appear — asserted below.
+		// short-circuits on deployEnv before it reads anything (the check, still there). On
+		// preview or production it does read `agent-mode` and does appear — asserted below.
 		expect(h.calls.slice(1)).toEqual([
-			`read:${MODEL_PICKER_FLAG}`,
 			`read:${ROUTER_ALIAS_FLAG}`,
 			"read:side-call-own-lane",
 		]);
 	});
 
-	it("answers all three gates off when PostHog defines none of them and the env isn't preview", async () => {
+	it("answers every gate off when PostHog defines none of them and the env isn't preview", async () => {
 		const gates = await resolveRegistryGates();
-		expect(gates).toEqual({ picker: false, routerAlias: false, agent: false, sideCallLane: false });
+		expect(gates).toEqual({ routerAlias: false, agent: false, sideCallLane: false });
 	});
 
 	it("carries each flag's answer through to its own field", async () => {
 		h.env.LLM_ROUTER_ROUTES_PATH = "/policy/routes.json";
-		h.answers.set(MODEL_PICKER_FLAG, true);
 		h.answers.set(ROUTER_ALIAS_FLAG, true);
 
 		const gates = await resolveRegistryGates();
-		expect(gates).toEqual({ picker: true, routerAlias: true, agent: false, sideCallLane: false });
+		expect(gates).toEqual({ routerAlias: true, agent: false, sideCallLane: false });
 	});
 
 	it("answers agent:true on preview with the flag on and a service URL configured", async () => {
@@ -238,12 +230,12 @@ describe("resolveRegistryGates — the poll happens before any gate is read", ()
 
 		const gates = await resolveRegistryGates();
 		expect(gates.agent).toBe(true);
-		// The read has to happen AFTER the poll, same as the other two. Before CUR-1440 the agent gate
+		// The read has to happen AFTER the poll, same as the other two. the agent gate
 		// took no part in the snapshot, so nothing here could have caught it being read too early.
 		expect(h.calls.indexOf(`read:${AGENT_MODE_FLAG}`)).toBeGreaterThan(h.calls.indexOf("refreshFlags"));
 	});
 
-	it("ignores the building request's override cookie and account answers, since every visitor shares the result (CUR-3701)", async () => {
+	it("ignores the building request's override cookie and account answers, since every visitor shares the result", async () => {
 		process.env.VERCEL_ENV = "preview";
 		h.env.AGENT_SERVICE_URL = "https://agent.test";
 		h.answers.set(AGENT_MODE_FLAG, true);
@@ -286,42 +278,6 @@ describe("resolveRegistryGates — the poll happens before any gate is read", ()
 			"an absent flag has to fall back OFF. A cold instance and a deleted flag are the same " +
 				"observable here, and the safe answer for both is to withhold the surface."
 		).toBe(false);
-	});
-});
-
-describe("offeredModels — with the picker off the registry keeps ONE model, not none", () => {
-	const catalog = ["a", "b", "c"];
-
-	it("keeps the first entry alone when the picker is off, whatever the allowlist admitted", () => {
-		expect(
-			offeredModels(catalog, false),
-			"an empty result takes the registry to zero models, which publishRegistry rejects and which " +
-				"500s every route"
-		).toEqual(["a"]);
-	});
-
-	it("keeps every entry, in order, when the picker is on", () => {
-		expect(offeredModels(catalog, true)).toEqual(["a", "b", "c"]);
-	});
-
-	it("does not invent a model when the allowlist admitted nothing", () => {
-		expect(offeredModels([], false)).toEqual([]);
-	});
-
-	it("leaves models[0] — and therefore defaultModel — untouched by a flag flip", () => {
-		expect(offeredModels(catalog, false)[0]).toBe(offeredModels(catalog, true)[0]);
-	});
-});
-
-describe("modelPickerEnabled — MODEL_ALLOWLIST is config, this is the switch", () => {
-	it("is off when PostHog does not define the key", () => {
-		expect(modelPickerEnabled()).toBe(false);
-	});
-
-	it("is on when the flag is on, without touching MODEL_ALLOWLIST", () => {
-		h.env.MODEL_ALLOWLIST = "swiss-ai/apertus-v1.5-70b";
-		h.answers.set(MODEL_PICKER_FLAG, true);
-		expect(modelPickerEnabled()).toBe(true);
 	});
 });
 

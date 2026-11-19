@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages.js';
-	// CUR-1276, from files-components.jsx's LoadingList. Three inert placeholder rows — flat and
+	// from files-components.jsx's LoadingList. Three inert placeholder rows — flat and
 	// still, no shimmer or entrance animation, matching the rest of this design system.
 	const widths = [70, 48, 60];
 </script>

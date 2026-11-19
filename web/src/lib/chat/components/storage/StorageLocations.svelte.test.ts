@@ -36,7 +36,7 @@ async function outcomeAt(query: string): Promise<string> {
 	return find()?.textContent ?? '';
 }
 
-describe('StorageLocations connect outcome (CUR-3326)', () => {
+describe('StorageLocations connect outcome', () => {
 	it('names the bucket as already linked after a Connect that only refreshed it, rather than reporting a new connection', async () => {
 		const text = await outcomeAt('connected=refreshed&bucket=someone%2Falpha-files');
 		expect(text).toContain('someone/alpha-files was already linked');
@@ -49,7 +49,7 @@ describe('StorageLocations connect outcome (CUR-3326)', () => {
 	});
 });
 
-describe('StorageLocations offer after a connect (CUR-2941)', () => {
+describe('StorageLocations offer after a connect', () => {
 	it('offers to save new files in the bucket just connected, on by default, with moving existing files left off', async () => {
 		appState.page.url = new URL('https://alpha.test/chat/settings/storage?connected=1&location=loc-1');
 		const { baseElement } = await render(StorageLocations, { locations, onChanged: () => {} });

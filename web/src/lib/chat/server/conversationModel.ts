@@ -3,7 +3,7 @@
 // A conversation persists `doc.model` as the model id that was current when it was created, and the
 // registry only ever contains what MODEL_ALLOWLIST names TODAY. Every allowlist change therefore
 // strands the conversations created before it: those on `swiss-ai/Apertus-70B-Instruct-2509` were left
-// behind by an earlier allowlist change, and CUR-243's collapse onto `swiss-ai/apertus-v1.5-70b` would
+// behind by an earlier allowlist change, and the collapse onto `swiss-ai/apertus-v1.5-70b` would
 // strand those on `swiss-ai/apertus-70b-instruct` the same way.
 //
 // Answering that with `error(410, "Model not available anymore")` would disagree with the CLIENT:

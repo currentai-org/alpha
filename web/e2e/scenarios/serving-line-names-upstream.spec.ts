@@ -2,26 +2,26 @@
 // e2e-area: @provenance
 import { test, expect } from './helpers/test';
 
-// This spec is about the first-run welcome, so it meets the welcome itself rather than through the shared handler (SOL-343).
+// This spec is about the first-run welcome, so it meets the welcome itself rather than through the shared handler.
 test.use({ welcome: 'show' });
 
 // An instance that reaches inference through its own Folkways adapter (a demo instance, and every
 // preview) has a base URL on its own host. The serving line named that host, so such an instance's welcome
 // read "served via <its own host>" and a preview's read "served via a preview environment",
 // when the adapter forwards every request unchanged to its upstream. The line has to name where the
-// answer is computed, never the app that relayed it (CUR-3573). A Mistral lane that reaches its model through a
+// answer is computed, never the app that relayed it. A Mistral lane that reaches its model through a
 // staging router must not print that router's hostname the same way, so no aipotluck.org host may appear at all.
 const OWN_HOST =
 	/served via (?:a preview environment|[\w.-]*aipotluck\.org|[\w-]+\.vercel\.app)|folkways-adapter/i;
 
-test('neither the welcome nor the deployment’s serving line names this instance’s own host (CUR-3573)', async ({
+test('neither the welcome nor the deployment’s serving line names this instance’s own host', async ({
 	page
 }) => {
 	const res = await page.goto('/chat', { waitUntil: 'domcontentloaded' });
 	expect(res?.status(), '/chat did not load').toBe(200);
 
 	const body = page.locator('body');
-	// The welcome names no host before a turn (CUR-2364), so it is read only for a leak; the shell
+	// The welcome names no host before a turn, so it is read only for a leak; the shell
 	// data below still carries the deployment's serving line, which the footprint panel reads.
 	// With Auto on and left on Auto, it names no model either: Auto picks one per message.
 	await expect(body, 'the empty state carried no serving line').toContainText(
@@ -47,14 +47,15 @@ test('neither the welcome nor the deployment’s serving line names this instanc
 		`the deployment's serving line names the relaying instance: "${tailLeak}"`
 	).toBeUndefined();
 
-	// The staging router hands every Mistral model to La Plateforme, and the line said "served
-	// via a staging router, hosted on public compute" over a Mistral answer computed in France (SOL-288).
+	// Every route a Mistral model takes ends in France, at La Plateforme or (on the Public AI router)
+	// Scaleway. The line once said "hosted on public compute", and after the router move
+	// "sovereign infrastructure", over answers a company computed in France.
 	if (/"mistral-(?:medium|large)-\d+"/.test(firstChunk)) {
-		expect(firstChunk, 'a Mistral default does not name Mistral in France').toContain(
-			"Mistral AI's La Plateforme in France"
+		expect(firstChunk, 'a Mistral default does not name Mistral in France').toMatch(
+			/Mistral AI(?:'s La Plateforme| or Scaleway) in France/
 		);
-		expect(firstChunk, 'a Mistral default still claims public compute').not.toMatch(
-			/hosted on public compute/
+		expect(firstChunk, 'a Mistral default still claims public or sovereign compute').not.toMatch(
+			/hosted on public compute|sovereign infrastructure/
 		);
 	} else {
 		test.info().annotations.push({

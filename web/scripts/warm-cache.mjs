@@ -22,13 +22,14 @@
  * VERCEL_AUTOMATION_BYPASS_SECRET (Project Settings → Deployment Protection → Protection Bypass for
  * Automation; configured for this project) — sent as x-vercel-protection-bypass
  * on every request:
- *   BASE=https://develop.aipotluck.org VERCEL_AUTOMATION_BYPASS_SECRET=... node scripts/warm-cache.mjs
+ *   BASE=https://<preview-host> VERCEL_AUTOMATION_BYPASS_SECRET=... node scripts/warm-cache.mjs
  * Hot-on-deploy: run as a predeploy step against a running instance, commit the artifact.
  */
 import { writeFileSync, readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { previewBypassSecret } from "../src/lib/server/runtimeEnv.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
@@ -101,7 +102,7 @@ function capture(res) {
 // here — pairing it with the bypass header on EVERY request (not just once) makes Vercel issue an
 // endless "set cookie, redirect back to the same URL" loop (curl -L loops until it hits its redirect
 // cap). The bypass header alone is sufficient per-request; no cookie round-trip needed.
-const BYPASS = (process.env.VERCEL_AUTOMATION_BYPASS_SECRET ?? "").trim();
+const BYPASS = (previewBypassSecret() ?? "").trim();
 const H = (extra = {}) => ({
 	...(cookie ? { cookie } : {}),
 	...(BYPASS ? { "x-vercel-protection-bypass": BYPASS } : {}),

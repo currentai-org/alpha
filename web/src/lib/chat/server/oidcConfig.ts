@@ -1,5 +1,5 @@
 /**
- * Hugging Face OIDC config parsing — split out of auth.ts (CUR-434) so betterAuth.ts (which reuses these
+ * Hugging Face OIDC config parsing — split out of auth.ts so betterAuth.ts (which reuses these
  * same values for its Hugging Face genericOAuth provider) can import them without creating a circular
  * dependency: auth.ts's authenticateRequest now imports the Better Auth instance from betterAuth.ts, so
  * betterAuth.ts can no longer import anything from auth.ts itself. This file has no dependency on
@@ -45,7 +45,7 @@ export const OIDConfig = z
 	})
 	.parse(JSON5.parse(config.OPENID_CONFIG || "{}"));
 
-/** PostHog flag key (CUR-246). Owner: chat. Release condition: env exact preview — so develop's
+/** PostHog flag key. Owner: chat. Release condition: env exact preview — so develop's
  *  preview deployment carries real sign-in while prod stays on today's env-presence behavior until
  *  someone flips it there deliberately. */
 export const ACCOUNTS_FLAG = "accounts";
@@ -57,11 +57,10 @@ export const ACCOUNTS_FLAG = "accounts";
  * `handle.ts` has TWO gates keyed on this alone: a redirect that catches almost every path, and a
  * 401 on every non-GET. So enabling sign-in without also narrowing both gates to
  * `AUTOMATIC_LOGIN === "true"` freezes anonymous use, which contradicts the product's own copy ("No
- * account needed"). That narrowing is ported into handle.ts in the SAME change as this flag
- * (CUR-246).
+ * account needed"). That narrowing is ported into handle.ts in the SAME change as this flag.
  *
  * The three v6-migration fixes below are in auth.ts. They are unreachable while this is
- * false, and each hides the next when it isn't (CUR-230 has the ordered chain).
+ * false, and each hides the next when it isn't (that change has the ordered chain).
  *
  * Fallback (flag never polled, or PostHog hasn't defined this key yet) is today's behavior —
  * env-presence — not OFF, because the HF-only flow already reads live in production and a cold-start

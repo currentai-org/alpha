@@ -21,7 +21,7 @@ import { backendHost, laneVendor } from '../../src/lib/chat/servingProvenance';
 // says so explicitly so a green here is never read as a green on the host migration.
 //
 // The status-page half needs no generation, so keeping it in its own test leaves a real verdict on
-// a day when turns are stalling (CUR-1600). Folded into one test, the whole journey would go
+// a day when turns are stalling. Folded into one test, the whole journey would go
 // unmeasurable whenever the serving lane hangs.
 
 test(
@@ -48,7 +48,7 @@ test(
 );
 
 test(
-	'an answer accounts for where it came from, and any provenance it does show never dresses a guess as a reading, reading the same live as after a reload, with X-ray opening below the answer footer (CUR-3963, CUR-3951)',
+	'an answer accounts for where it came from, and any provenance it does show never dresses a guess as a reading, reading the same live as after a reload, with X-ray opening below the answer footer and no stack card cut by the top of the stack list',
 	{ tag: '@F6' },
 	async ({ page }) => {
 		// The welcome dialog can mount at any point after first paint and makes the rest of the page
@@ -59,7 +59,7 @@ test(
 			await startChattingPastWelcome(welcomeDialog);
 		});
 
-		// The answer's model bytes come from a committed recording (SOL-92); the routing record, the
+		// The answer's model bytes come from a committed recording; the routing record, the
 		// badge and every check below run for real on them. With no recording for this request the turn
 		// is live and recorded for `pnpm replay:harvest`.
 		test.info().annotations.push({
@@ -78,7 +78,7 @@ test(
 			await composer.fill('Name the capital of Japan in one sentence.');
 
 			// The first answer's "Energy this session" bloom used to render INSTEAD of the session
-			// bar for three seconds, so a control in that bar vanished after every first answer (CUR-1826). "Forget
+			// bar for three seconds, so a control in that bar vanished after every first answer. "Forget
 			// everything" now lives in Settings; the bar's own control is the session footprint. Watch every render
 			// from here on and note any moment the button is not showing, plus when the bloom comes and goes,
 			// so the check below can wait for the bloom to finish instead of sleeping. Installed before
@@ -116,14 +116,14 @@ test(
 			//
 			// The message names the stall rather than the badge, because a turn that never completed says
 			// nothing about provenance and a reader who sees "no provenance line" would chase the wrong
-			// defect (CUR-1600).
+			// defect.
 			await expect(
 				assistantMessage.getByRole('button', { name: 'Copy to clipboard', exact: true }),
 				'no completed answer arrived within 45s, so nothing below about provenance was exercised — this is a statement about the serving lane, not about whether the badge is honest' +
 					warmupContext()
 			).toBeVisible({ timeout: 45_000 });
 
-			// CUR-1826, read once the bloom has run its course. A bloom that never showed is not this
+			// read once the bloom has run its course. A bloom that never showed is not this
 			// defect, so the wait is bounded and the verdict below only reads the button.
 			await page
 				.waitForFunction(
@@ -144,7 +144,7 @@ test(
 
 			// STEP 1-3, PARAMETERIZED BY ENVIRONMENT RATHER THAN INTERSECTED ACROSS THEM.
 			//
-			// Preview never receives the gateway's provenance headers (CUR-1606), so a single clause cannot hold in
+			// Preview never receives the gateway's provenance headers, so a single clause cannot hold in
 			// both environments. Weakening it until it passed in both would leave a test that cannot go red for a
 			// provenance defect, in a file whose whole subject is provenance. Each environment gets its own assertion.
 			//
@@ -155,7 +155,7 @@ test(
 			return await expectAnAccountOfWhereItCameFrom(assistantMessage);
 		});
 
-		// The first web-grounded answer carries an "open gap → get involved" invitation (CUR-1873). It is
+		// The first web-grounded answer carries an "open gap → get involved" invitation. It is
 		// not a fact about this answer, so it must not read as part of the provenance readout it sits
 		// under: it is its own note, holds no provenance line, and its sentence ends before the call to
 		// action rather than running into it ("…search index get involved →"); the action is "Help build it". Whether the line shows at
@@ -184,7 +184,7 @@ test(
 
 		if ((await provenance.count()) > 0) {
 			// The naming branch. Reached wherever the lane reports provenance — production today, and
-			// preview the day CUR-1606 lands, with no edit here.
+			// preview the day that change lands, with no edit here.
 			const badge = provenance.first();
 			const line = (await badge.innerText()).trim();
 			expect(
@@ -202,7 +202,7 @@ test(
 			// STEP 3. `measured` separates a per-request report from a fallback guess: the live dot renders
 			// on `!traced && measured`, the model name becomes a link to the open weights on
 			// `modelCardUrl && measured`. A link without a dot means unmeasured data is wearing the styling
-			// of a verified reading — CUR-113 exactly, a wrong backend carrying the confidence of a right
+			// of a verified reading — exactly, a wrong backend carrying the confidence of a right
 			// one, live for fifteen days.
 			if ((await badge.getByRole('link').count()) > 0) {
 				await expect(
@@ -214,12 +214,12 @@ test(
 			// STEP 2. The weights are one step from the answer: its footer's "How this was made" opens
 			// X-ray, whose model row links the model card (`huggingface.co/<org>/<repo>`). A maker link
 			// (`huggingface.co/<org>`) alone would pass "has a link" with no way to the weights, which is
-			// what happened on Mistral Large 3 until CUR-2283 (CUR-2291). The live page and a reload read
+			// what happened on Mistral Large 3. The live page and a reload read
 			// routerMetadata by different paths, so both are checked.
 			const modelCard = /^https:\/\/huggingface\.co\/[\w.-]+\/[\w.-]+$/;
 			// The input screen's verdict reached only the database, so X-ray on the live page said
 			// "No safety check was recorded" for an answer whose status line had just read "Checking
-			// safety…", and a reload said it was checked (CUR-3963). Each read keeps X-ray's safety line to compare.
+			// safety…", and a reload said it was checked. Each read keeps X-ray's safety line to compare.
 			const safetyLines: Record<string, string> = {};
 			const cardLinks = async (where: string) => {
 				await page
@@ -233,9 +233,9 @@ test(
 				).trim();
 				await page.getByRole('tab', { name: 'The stack' }).click();
 				await expectRouteMatchesRecord(where);
-				// A stack card cut by the list's top edge (CUR-4123). Measured, not asserted, until the numbers
-				// say whether the app's reveal scroll or this spec's own click (Playwright scrolls a target into
-				// view first) leaves the list there. Read the `stack-top-edge` annotation and log line.
+				// A stack card cut by the list's top edge reads as a broken panel. Asserted after the
+				// app's own reveal scroll settles; after the spec opens the model row it is only logged, since
+				// that cut comes from Playwright scrolling its click target into view, not from the app.
 				const topEdge = (moment: string) =>
 					page
 						.locator('[data-stack-list]')
@@ -250,12 +250,16 @@ test(
 									const r = li.getBoundingClientRect();
 									return `${li.getAttribute('data-product-id')}@${Math.round(r.top - edge)}..${Math.round(r.bottom - edge)}`;
 								});
-							return `top ${list.scrollTop}/${list.scrollHeight - list.clientHeight}, view ${list.clientHeight}, cut [${cut.join(' ')}]`;
+							return {
+								cut,
+								summary: `top ${list.scrollTop}/${list.scrollHeight - list.clientHeight}, view ${list.clientHeight}, cut [${cut.join(' ')}]`
+							};
 						})
-						.then((m) => {
-							const description = `${where} ${moment}: ${m}`;
+						.then(({ cut, summary }) => {
+							const description = `${where} ${moment}: ${summary}`;
 							test.info().annotations.push({ type: 'stack-top-edge', description });
 							console.log(`[stack-top-edge] ${description}`);
+							return cut;
 						});
 				// The reveal scrolls the list smoothly, so measure once two reads 250 ms apart agree.
 				const scrollTop = () => page.locator('[data-stack-list]').evaluate((l) => l.scrollTop);
@@ -269,7 +273,12 @@ test(
 						{ message: `${where}: the stack list never stopped scrolling`, timeout: 10_000 }
 					)
 					.toBe(true);
-				await topEdge('after the reveal');
+				await expect
+					.poll(() => topEdge('after the reveal'), {
+						message: `${where}: X-ray's stack list opens on a card cut by its top edge, so the panel reads as broken (CUR-4123)`,
+						timeout: 5_000
+					})
+					.toEqual([]);
 				const row = page.locator('li[data-product-id="foundation-model"]');
 				const header = row.getByRole('button').first();
 				if ((await header.getAttribute('aria-expanded')) !== 'true') await header.click();
@@ -284,7 +293,7 @@ test(
 				).toHaveLength(1);
 
 				// X-ray is opened to check the answer's footer against it, so the footer stays above
-				// the panel once it has opened (CUR-3951). Polled, since the panel eases open.
+				// the panel once it has opened. Polled, since the panel eases open.
 				const panel = page.locator('[data-accessory-panel="xray"]');
 				if (await panel.isVisible()) {
 					await expect
@@ -308,7 +317,7 @@ test(
 						.toBeGreaterThanOrEqual(0);
 				}
 
-				// A link has to look like one before anyone hovers it (CUR-2325): a dotted underline in the
+				// A link has to look like one before anyone hovers it: a dotted underline in the
 				// same grey as the text around it reads as plain text. At rest means the pointer is off it.
 				await page.mouse.move(0, 0);
 				const rest = await row.evaluate((el) => {
@@ -338,7 +347,7 @@ test(
 				).not.toBe(rest!.around);
 			};
 			// "Where your last message went" names exactly the hosts and region the turn persisted,
-			// read back from the conversation API, so the hop list can't show a place the record doesn't hold (CUR-4580).
+			// read back from the conversation API, so the hop list can't show a place the record doesn't hold.
 			const expectRouteMatchesRecord = async (where: string) => {
 				const conversationId = page.url().match(/\/conversation\/([a-f0-9]+)/)?.[1];
 				const stored = await page.request.get(`/chat/api/v2/conversations/${conversationId}`);
@@ -399,7 +408,7 @@ test(
 			});
 			await page.keyboard.press('Escape');
 
-			// CUR-2325's link-at-rest check runs inside cardLinks, on X-ray's model row.
+			// The link-at-rest check runs inside cardLinks, on X-ray's model row.
 			await page.reload({ waitUntil: 'commit' });
 			await expect(provenance.first()).toBeVisible({ timeout: 30_000 });
 			await cardLinks('after reload');
@@ -410,7 +419,7 @@ test(
 			).toBe(safetyLines['after reload']);
 
 			// The recording has to end on the conversation, and the conversation has to be
-			// there (CUR-2376). A reloaded thread that comes back empty is the failure a person would stop the demo
+			// there. A reloaded thread that comes back empty is the failure a person would stop the demo
 			// for, and ending on X-ray (or mid-reload) left the gallery unable to tell that apart from a
 			// working page. The recording trails the page by 1.8s locally and 3s or more on the gallery
 			// runner, so a test that ends inside that window loses its last screens. Close X-ray the way a
@@ -451,7 +460,7 @@ async function expectAnAccountOfWhereItCameFrom(assistantMessage: Locator) {
 }
 
 // The failure F6 is named after is silence, an answer that shows neither a model nor the
-// admission that none was reported (CUR-1614). No server fault produces that (stripping the provenance header
+// admission that none was reported. No server fault produces that (stripping the provenance header
 // correctly lands on the admission), so the injury hides both readouts with a style tag, the way a
 // broken render would. A style rather than removing nodes, because Svelte re-renders them.
 test(
@@ -504,9 +513,9 @@ async function silenceTheProvenanceReadout(page: Page) {
 	});
 }
 
-// CUR-1614 `wrong_model_served`: the first lane's body names SEA-LION while its headers still name
+// `wrong_model_served`: the first lane's body names SEA-LION while its headers still name
 // Apertus, the swap that put SEA-LION answers under the Apertus badge in September (servedModelPeek.ts).
-// Pinned to Apertus because that is the lane it happened on. Since CUR-3936 a picked model is answered
+// Pinned to Apertus because that is the lane it happened on. a picked model is answered
 // by itself or not at all; only Mistral Large 3 may fall back, and only to Medium. So the gateway check
 // sheds the swap (endpointOai.ts, a 503 once retries run out) and the one passing outcome is the error
 // notice: no failover, no served model recorded, and none of SEA-LION's answer on screen. A SEA-LION
@@ -609,7 +618,7 @@ test(
 		await composer.press('Enter');
 
 		// The footer took the catalog's org name ("Swiss AI Initiative") while X-ray took the
-		// model card's ("Swiss National AI Institute"), so one answer credited two different bodies (CUR-1873).
+		// model card's ("Swiss National AI Institute"), so one answer credited two different bodies.
 		const reply = page.locator('[data-message-role="assistant"]').last();
 		const footer = reply.getByRole('button', { name: /How this answer was made/ });
 		await expect(

@@ -1,5 +1,5 @@
-// The website pieces the /alpha landing can use (live preview, rich text, the Handover look):
-// undefined for each one that is not in the build.
+// The website pieces the /alpha landing can use (live preview, rich text, the Handover look, chat
+// links): undefined for each component that is not in the build.
 import type { Component } from 'svelte';
 
 type AnyComponent = Component<Record<string, unknown>>;
@@ -31,3 +31,6 @@ export const LexicalRenderer = component(
 		eager: true
 	})
 );
+
+/** A code-owned `/chat…` link; see websiteLinks.ts. */
+export { chatLinkHref } from './websiteLinks';

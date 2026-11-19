@@ -1,7 +1,6 @@
 /* One content page to another (page-transition.ts): the old page fades out quickly while the new one
    fades in and rises a little into place. The header is its own group, so it holds still and only
-   cross-fades where the two pages give it different tones. Scoped to the class, so /alpha ⇄
-   /alpha/demo keeps its own timing (alpha-landing/demo-transition.css). */
+   cross-fades where the two pages give it different tones. */
 html.page-transition [data-site-header] {
 	view-transition-name: site-header;
 }

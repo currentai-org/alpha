@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { collections } from "$lib/chat/server/database";
 import { ObjectId } from "bson";
 import { authCondition } from "$lib/chat/server/auth";
@@ -24,7 +27,7 @@ export async function resolveConversation(id: string, locals: App.Locals) {
 	});
 
 	if (!conversation) {
-		// findOne rather than a countDocuments existence check (CUR-1315), so a denial (below) can log the
+		// findOne rather than a countDocuments existence check, so a denial (below) can log the
 		// ACTUAL identity mismatch, not just "cookie was present". Without the owner's sessionId, a 403 after a
 		// 200 on the same resource from the same apparent client cannot be told apart as a cookie-value
 		// change or a read consistency issue.
@@ -45,7 +48,7 @@ export async function resolveConversation(id: string, locals: App.Locals) {
 			);
 		}
 
-		// The same 404 either way. A 403 here told any caller which ids belong to someone. (CUR-3523)
+		// The same 404 either way. A 403 here would tell any caller which ids belong to someone.
 		error(404, "Conversation not found.");
 	}
 

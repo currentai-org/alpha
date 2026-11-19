@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 // Settings → Connectors exists only where the `mcp-servers` flag is on for the account, the
 // same read the turn makes, and lists what a turn would offer: each server, its tools, which ones can
-// change something, and the person's saved choice for each. (CUR-3984)
+// change something, and the person's saved choice for each.
 const flag = vi.hoisted(() => ({ on: false }));
 vi.mock("$lib/chat/server/flags", () => ({
 	flagEnabledOr: (key: string, fallback: () => boolean) => (key === "mcp-servers" ? flag.on : fallback()),
@@ -19,7 +19,7 @@ vi.mock("$lib/chat/server/textGeneration/faultInjection", () => ({
 	resolveFaultInjection: async () => "mcp_stub_server",
 }));
 
-// A person's own servers. The store is faked; its userId scoping is in the query itself. (CUR-4016)
+// A person's own servers. The store is faked; its userId scoping is in the query itself.
 const store = vi.hoisted(() => ({
 	rows: [] as { id: string; userId: string; name: string; url: string; credential: string | null; createdAt: Date }[],
 	created: [] as { userId: string; name: string; url: string; credential: string | null }[],
@@ -53,7 +53,7 @@ afterEach(() => {
 	findOne.mockClear();
 });
 
-describe("Settings → Connectors load (CUR-3984)", () => {
+describe("Settings → Connectors load", () => {
 	it("is a 404 with mcp-servers off, and reads no settings", async () => {
 		flag.on = false;
 		await expect(load(event())).rejects.toMatchObject({ status: 404 });
@@ -89,7 +89,7 @@ const post = (locals: object, fields: Record<string, string>) => {
 	} as unknown as ActionEvent;
 };
 
-describe("adding and removing a server of your own (CUR-4016)", () => {
+describe("adding and removing a server of your own", () => {
 	afterEach(() => {
 		store.rows = [];
 		store.created = [];

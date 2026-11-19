@@ -1,6 +1,6 @@
 // e2e-product: @chat
 // e2e-area: @turn
-// Journey C3 (docs/journeys/c3-when-a-reply-cant-come.md), row 9 (CUR-2805): the visitor's own
+// Journey C3 (docs/journeys/c3-when-a-reply-cant-come.md), row 9: the visitor's own
 // connection drops while an answer is streaming. Every other C3 row injects its failure on the server,
 // so the browser stays online; this one takes the browser offline mid-answer, then brings it back.
 // Preview-only like the rest of C3. `answer_holds_midway` streams one sentence and holds the turn open,

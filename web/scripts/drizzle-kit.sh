@@ -1,6 +1,6 @@
 #!/bin/sh
 # drizzle-kit with Maglev and concurrent Sparkplug off. Every db:* script that runs drizzle-kit goes
-# through here (CUR-2010).
+# through here.
 #
 # On Node 24, drizzle-kit can print its last line and then never exit. It loads drizzle.config.ts
 # through tsx, and on a cold tsx cache, which every CI run and every fresh worktree has, tsx compiles

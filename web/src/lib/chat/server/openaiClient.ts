@@ -8,7 +8,7 @@ import { upstreamFetch } from "$lib/chat/server/upstreamFetch";
  * The ONLY sanctioned constructor for the OpenAI SDK client. Do NOT `new OpenAI(...)` anywhere
  * else — `scripts/verify-openai-retries.mjs` is the deterministic gate that fails the build if you do.
  *
- * WHY THIS EXISTS (CUR-65). The SDK default is `maxRetries: 2`, which retries 429/5xx with backoff.
+ * WHY THIS EXISTS. The SDK default is `maxRetries: 2`, which retries 429/5xx with backoff.
  * Under sustained upstream rate-limiting those retries multiply the call count
  * AND hold the invocation open on backoff waits: a retry storm that pins CPU and ends in 504s. A cap
  * pasted by hand at each call site is one chance to forget per site, and a new site added anywhere
@@ -22,7 +22,7 @@ import { upstreamFetch } from "$lib/chat/server/upstreamFetch";
  * Async + an internal dynamic `import("openai")` preserves the lazy-load every call site already
  * used, keeping the SDK off the cold-start critical path.
  *
- * WHY `timeout` IS REQUIRED (CUR-1069, CUR-1345). The SDK default is ten minutes, which is longer
+ * WHY `timeout` IS REQUIRED. The SDK default is ten minutes, which is longer
  * than this platform will even run a function for (PLATFORM_MAX_DURATION_MS is 300s), so in practice
  * an omitted `timeout` means no timeout at all. A blocking pre-pass on the turn's critical path (a
  * search or arithmetic classifier) can have a `catch` that fails open correctly and never runs,
@@ -49,7 +49,7 @@ export async function createOpenAIClient(
 /**
  * A scenario run's SDK calls (search classifier, turn planner, task-model tool calls, MCP
  * router) replay like its answer does. Outside such a request this is plain `fetch`. A caller that
- * passes its own `fetch` (endpointOai.ts) handles replay there. (SOL-148)
+ * passes its own `fetch` (endpointOai.ts) handles replay there.
  */
 export async function replayAwareFetch(
 	url: string | URL | Request,

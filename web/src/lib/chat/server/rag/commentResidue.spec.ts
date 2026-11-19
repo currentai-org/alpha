@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { commentResidueReason } from "./commentResidue";
 
-// The shape a Google Docs export with comments produces, with made-up names (CUR-2634).
+// The shape a Google Docs export with comments produces, with made-up names.
 const DOCS_EXPORT_TAIL =
 	"[a]I think these policies came from a partner's draft. One total reaction Sam reacted with 👍 " +
 	"[b]Added a disclosure line. @alex@example.org a topic for our next call. [c]like what?";
 
-describe("commentResidueReason (CUR-2634)", () => {
+describe("commentResidueReason", () => {
 	it("refuses text ending in Docs comment threads, naming the fix", () => {
 		expect(commentResidueReason(`Trust & Safety\n\nOur policies apply to every chat.\n\n${DOCS_EXPORT_TAIL}`)).toMatch(
 			/Google Docs comment threads .* Export the document without comments/

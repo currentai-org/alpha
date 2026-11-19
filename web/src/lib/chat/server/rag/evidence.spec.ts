@@ -134,13 +134,13 @@ describe("mergeRagEvidence — generic SyftHub label", () => {
 const CATALOG_ENTRY_NOTE =
 	"(Catalog entry about another project listed in the AI Potluck catalog. It describes that project, never this app or its own tools.)";
 
-describe("mergeRagEvidence — catalog entries are framed as other projects (CUR-3304)", () => {
+describe("mergeRagEvidence — catalog entries are framed as other projects", () => {
 	it("marks a catalog product or org page as describing another project, never this app", () => {
 		const ctx = mergeRagEvidence(
 			"can you search the web?",
 			[
 				hit({ title: "OpenAI Web Search", snippet: "Searches the web.", url: "/product/openai-web-search" }),
-				hit({ title: "Mozilla", url: "https://www.aipotluck.org/org/mozilla" }),
+				hit({ title: "Mozilla", url: "https://www.example.test/org/mozilla" }),
 			],
 			undefined
 		);

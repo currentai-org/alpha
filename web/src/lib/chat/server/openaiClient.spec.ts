@@ -1,5 +1,5 @@
 // SDK-built clients (search classifier, planner, task-model calls) replay like the answer does
-// when the request's context carries a replay mode, and are untouched otherwise. (SOL-148)
+// when the request's context carries a replay mode, and are untouched otherwise.
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const replayOrRecord = vi.fn(async () => new Response("replayed"));
@@ -14,7 +14,7 @@ afterEach(() => {
 	replayOrRecord.mockClear();
 });
 
-describe("replayAwareFetch (SOL-148)", () => {
+describe("replayAwareFetch", () => {
 	it("goes straight to fetch when the request asked for no replay", async () => {
 		const live = vi.fn(async () => new Response("live"));
 		vi.stubGlobal("fetch", live);
@@ -40,7 +40,7 @@ describe("replayAwareFetch (SOL-148)", () => {
 		);
 	});
 
-	it("passes a caller's liveOnMiss through to replayOrRecord (SOL-262)", async () => {
+	it("passes a caller's liveOnMiss through to replayOrRecord", async () => {
 		vi.stubGlobal("fetch", vi.fn());
 		await runWithRequestContext(async () => {
 			updateRequestContext({ replayMode: "mock" });

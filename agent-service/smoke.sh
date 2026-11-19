@@ -2,10 +2,11 @@
 # Reproducible smoke test for the Public AI agent service.
 # Asserts: a Hermes agent completes a multi-step tool task with a REAL file side-effect
 # through the dev transport (HF Inference Providers). This is the green baseline that
-# proves the loop works end-to-end.
+# proves the loop works end-to-end — the SOW 1.2 "done when" in miniature.
 #
 # Deterministic by construction: runs against a fixed 3-file fixture, asserts the agent
-# writes exactly "3". (Counting a whole repo incl. .venv is not reproducible.)
+# writes exactly "3". (The earlier ad-hoc run gave 5050 because it counted the whole repo
+# incl. .venv — non-reproducible. This is.)
 #
 # Usage:  ./smoke.sh        (MODEL_UPSTREAM_TOKEN from env — run via `doppler run` if not already set)
 # Exit 0 = pass, non-zero = fail.

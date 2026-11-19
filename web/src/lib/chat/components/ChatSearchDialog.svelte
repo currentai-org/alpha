@@ -1,24 +1,27 @@
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages.js';
-	import type { EmbeddedIntent } from '$lib/chat/types/EmbeddedIntent';
 	import { goto } from '$app/navigation';
 	import { base } from '$lib/chat/paths';
-	import { Dialog, Input, Kbd, Button, Sheet, useCompact } from '@aipotluck/alpha-ds';
+	import { Badge, Dialog, Input, Kbd, Button, Sheet, useCompact } from '@aipotluck/alpha-ds';
 	import RiSearchLine from '~icons/ri/search-line';
 	import RiChat3Line from '~icons/ri/chat-3-line';
 	import RiChatNewLine from '~icons/ri/chat-new-line';
 	import RiSparkling2Line from '~icons/ri/sparkling-2-line';
 	import RiCloseCircleFill from '~icons/ri/close-circle-fill';
 	import RiInboxLine from '~icons/ri/inbox-line';
+	import { shownTitle } from '$lib/chat/crypto/shownTitle.svelte';
+	import { historyKeyring } from '$lib/chat/crypto/historyKeyring.svelte';
+	import { loadSealedTitles, matchSealedTitles, type OpenedTitle } from '$lib/chat/utils/sealedSearch';
 	import type { ConvSidebar } from '$lib/chat/types/ConvSidebar';
+	import { parseTagQuery } from '$lib/chat/utils/chatTags';
 
-	type SearchConv = ConvSidebar & { snippet?: string };
+	type SearchConv = ConvSidebar & { snippet?: string; archived?: boolean };
 
 	/**
 	 * "Search chats": find a past conversation by its title or by something said in it, or start a new
 	 * one — in plain words, with results grouped by when they happened and the matching words
 	 * highlighted. Titles already loaded in the sidebar filter instantly; the whole history, messages
-	 * included, comes from the server a moment later (CUR-2630). If that request fails, the loaded
+	 * included, comes from the server a moment later. If that request fails, the loaded
 	 * titles are all it shows, and it says so. Opens from the sidebar or ⌘K.
 	 *
 	 * Typing something that isn't a past chat offers "Ask Alpha: …", which starts a new chat with that
@@ -26,14 +29,10 @@
 	 */
 	let {
 		open = $bindable(false),
-		conversations,
-		embeddedDemo = false,
-		onEmbeddedNavigate
+		conversations
 	}: {
 		open?: boolean;
 		conversations: ConvSidebar[];
-		embeddedDemo?: boolean;
-		onEmbeddedNavigate?: (intent?: EmbeddedIntent) => void;
 	} = $props();
 
 	const phone = useCompact();
@@ -42,6 +41,8 @@
 	let inputEl = $state<HTMLInputElement | null>(null);
 
 	const q = $derived(query.trim().toLowerCase());
+	// `tag:grant` narrows to chats with that tag; the rest of the query matches titles.
+	const parsed = $derived(parseTagQuery(q));
 
 	// The server's answer for the query it was asked, so a late reply for an older query is ignored.
 	let remote = $state<{ q: string; hits: SearchConv[] } | null>(null);
@@ -52,12 +53,12 @@
 		remote = null;
 		remoteFailed = false;
 		searching = false;
-		if (embeddedDemo || asked.length < 2) return;
+		if (asked.length < 2) return;
 		searching = true;
 		const ctrl = new AbortController();
 		const timer = setTimeout(async () => {
 			try {
-				// The query goes in the body: request logs keep the URL (CUR-4546).
+				// The query goes in the body: request logs keep the URL.
 				const res = await fetch(`${base}/api/conversations/search`, {
 					method: 'POST',
 					headers: { 'content-type': 'application/json' },
@@ -66,7 +67,7 @@
 				});
 				if (!res.ok) throw new Error(String(res.status));
 				const body = (await res.json()) as {
-					conversations: { id: string; title: string; updatedAt: string; model?: string; snippet?: string }[];
+					conversations: { id: string; title: string; updatedAt: string; model?: string; snippet?: string; archived?: boolean }[];
 				};
 				remote = {
 					q: asked,
@@ -84,15 +85,54 @@
 		};
 	});
 
+	// The server cannot match a sealed title, so the browser opens the owner's sealed titles once per
+	// open of the dialog and matches them as the person types. A chat outside the sidebar's
+	// loaded pages, or archived, is found this way too.
+	let sealedTitles = $state<OpenedTitle[]>([]);
+	$effect(() => {
+		if (!open) return;
+		const identity = historyKeyring.identity;
+		const epoch = historyKeyring.epoch;
+		if (!identity) {
+			sealedTitles = [];
+			return;
+		}
+		let cancelled = false;
+		loadSealedTitles(`${base}/api/conversations/search/sealed`, identity, epoch)
+			.then((rows) => {
+				if (!cancelled) sealedTitles = rows;
+			})
+			.catch((e) => console.error('[history-key] could not list sealed titles for search', e));
+		return () => {
+			cancelled = true;
+		};
+	});
+
+	/** `list` with each sealed title match it lacks, newest first when any was added. */
+	function withSealed(list: SearchConv[]): SearchConv[] {
+		const extra = matchSealedTitles(sealedTitles, parsed.text, parsed.tags).filter(
+			(h) => !list.some((c) => String(c.id) === h.id)
+		);
+		if (!extra.length) return list;
+		return [...list, ...extra].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+	}
+
 	const matches = $derived.by((): SearchConv[] => {
 		if (!q) return conversations.slice(0, 50);
-		const local: SearchConv[] = conversations.filter((c) => c.title.toLowerCase().includes(q));
-		if (remote?.q !== q) return local.slice(0, 50);
+		const local: SearchConv[] = conversations.filter(
+			(c) => parsed.tags.every((t) => (c.tags ?? []).includes(t)) && shownTitle(c).toLowerCase().includes(parsed.text)
+		);
+		if (remote?.q !== q) return withSealed(local).slice(0, 50);
 		// The server searched every chat. A loaded title it didn't return, such as a chat made after
 		// the request went out, still shows.
-		const hits = remote.hits;
+		// The server's hit carries the stored title only; a sealed one takes its row's sealed title, so
+		// shownTitle opens it as the sidebar does.
+		const hits = remote.hits.map((h) => {
+			const row = conversations.find((c) => String(c.id) === String(h.id));
+			return row?.sealedTitle ? { ...h, sealedTitle: row.sealedTitle, sealedTitleRev: row.sealedTitleRev } : h;
+		});
 		const fresh = local.filter((c) => !hits.some((h) => String(h.id) === String(c.id)));
-		return [...hits, ...fresh]
+		return withSealed([...hits, ...fresh])
 			.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
 			.slice(0, 50);
 	});
@@ -145,22 +185,15 @@
 
 	/** Split text around the query for highlighting (case-insensitive, first match). */
 	function parts(title: string): [string, string, string] {
-		if (!q) return [title, '', ''];
-		const i = title.toLowerCase().indexOf(q);
+		const text = parsed.text;
+		if (!text) return [title, '', ''];
+		const i = title.toLowerCase().indexOf(text);
 		if (i < 0) return [title, '', ''];
-		return [title.slice(0, i), title.slice(i, i + q.length), title.slice(i + q.length)];
+		return [title.slice(0, i), title.slice(i, i + text.length), title.slice(i + text.length)];
 	}
 
 	function run(row: Row) {
 		open = false;
-		if (embeddedDemo) {
-			onEmbeddedNavigate?.(
-				row.kind === 'chat'
-					? { kind: 'conversation', id: String(row.conv.id) }
-					: { kind: 'new-chat', prompt: row.kind === 'ask' ? row.label : undefined }
-			);
-			return;
-		}
 		if (row.kind === 'chat') goto(`${base}/conversation/${row.conv.id}`);
 		else if (row.kind === 'ask') goto(`${base}/?prompt=${encodeURIComponent(row.label)}`);
 		else goto(`${base}/`);
@@ -210,10 +243,10 @@
 	>
 		{#if row.kind === 'chat'}
 			<RiChat3Line class="size-4 shrink-0 text-fg-3" aria-hidden="true" />
-			{@const [a, m, b] = parts(row.conv.title)}
+			{@const [a, hit, b] = parts(shownTitle(row.conv))}
 			<span class="flex min-w-0 flex-1 flex-col">
 				<span class="truncate type-body text-fg-1"
-					>{a}{#if m}<mark class="bg-accent-1/25 text-fg-1 rounded-sharp">{m}</mark>{/if}{b}</span
+					>{a}{#if hit}<mark class="bg-accent-1/25 text-fg-1 rounded-sharp">{hit}</mark>{/if}{b}</span
 				>
 				{#if row.conv.snippet}
 					{@const [sa, sm, sb] = parts(row.conv.snippet)}
@@ -222,6 +255,9 @@
 					>
 				{/if}
 			</span>
+			{#if row.conv.archived}
+				<span data-search-archived><Badge>{m.product_archived()}</Badge></span>
+			{/if}
 			<span class="shrink-0 type-caption text-fg-3">{when(row.conv.updatedAt)}</span>
 		{:else if row.kind === 'ask'}
 			<span class="grid size-7 shrink-0 place-items-center bg-accent-1/15 text-accent-1-text rounded-pill">

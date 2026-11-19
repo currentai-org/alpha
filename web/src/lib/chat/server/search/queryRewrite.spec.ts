@@ -33,8 +33,8 @@ describe("needsContextualization", () => {
 	// likely to be rewritten and the contract is what has to survive that.
 
 	it("flags a bare reply or topicless imperative — searching it verbatim can only retrieve on the wrong sense", () => {
-		// Each of these retrieved a real, confidently-wrong sense in production: an affirmative matched
-		// a band, a product-shaped imperative matched a product review, a repeat-request matched a song.
+		// Searched verbatim, each of these retrieves a real, confidently-wrong sense: an affirmative
+		// matches a band, a product-shaped imperative a product review, a repeat-request a song.
 		expect(needsContextualization("yes")).toBe(true);
 		expect(needsContextualization("ok")).toBe(true);
 		expect(needsContextualization("try now")).toBe(true);
@@ -121,7 +121,7 @@ describe("contextualizeQuery bounds its model call", () => {
 	});
 
 	it(
-		"falls back to the raw query when the rewrite never answers, instead of hanging the turn (CUR-1655)",
+		"falls back to the raw query when the rewrite never answers, instead of hanging the turn",
 		async () => {
 			// Without a bound, a rewrite that never answers would hold the turn until the 45s watchdog.
 			// The contract is that the caller returns the raw query on its own.
@@ -145,7 +145,7 @@ describe("contextualizeQuery bounds its model call", () => {
 	);
 });
 
-describe("contextualizeQuery reports where the rewrite ran, from the call's own record (CUR-3563)", () => {
+describe("contextualizeQuery reports where the rewrite ran, from the call's own record", () => {
 	afterEach(() => {
 		vi.doUnmock("$lib/chat/server/generateFromDefaultEndpoint");
 	});

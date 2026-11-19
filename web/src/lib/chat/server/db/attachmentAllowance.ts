@@ -5,13 +5,13 @@
  * when the bucket refuses or stalls. The composer reads what is left when a file is attached
  * (`GET /chat/api/attachment-allowance`), and parseRequest checks again at send.
  *
- * Counting always runs; REFUSING is behind the `attachment-allowance` flag (CUR-3600), so a wrong number
+ * Counting always runs; REFUSING is behind the `attachment-allowance` flag, so a wrong number
  * can be relaxed in PostHog without a deploy. With the flag off, a file past the allowance is logged as
- * `would refuse` and stored, which is the measurement the production decision is made from.
+ * `would refuse` and stored, which shows what the limit would refuse before it is switched on.
  *
  * FAILS OPEN, like the other `message_events` limits: a database error reads as no count, and the
  * turn goes on. The files table lives in that same database, so a failure that hides the count also
- * stops the writes it would have bounded. (CUR-3235)
+ * stops the writes it would have bounded.
  */
 import { collections } from "$lib/chat/server/database";
 import { logger } from "$lib/chat/server/logger.js";

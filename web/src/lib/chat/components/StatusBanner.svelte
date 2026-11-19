@@ -5,16 +5,22 @@
 	import { m } from '$lib/paraglide/messages.js';
 	import RiArrowUpRight from '~icons/ri/arrow-right-up-line';
 
-	// While status.aipotluck.org reports a problem, say so above the chat and link there, so a
+	// While the installation's status page reports a problem, say so above the chat and link there, so a
 	// visitor whose answers are failing learns it is us and not them. Silent when the status page reads
-	// operational or cannot be read. Dismissing hides it for this page view only, like MaintenanceBanner. (CUR-4062)
+	// operational or cannot be read. Dismissing hides it for this page view only, like MaintenanceBanner.
+	// The page comes from the server: STATUS_PAGE_URL, or none on a self-host without it.
 	let pageState = $state<string | null>(null);
+	let pageUrl = $state<string | null>(null);
 	let dismissed = $state(false);
 
 	onMount(async () => {
 		try {
 			const res = await fetch(`${base}/api/status`);
-			if (res.ok) pageState = ((await res.json()) as { state: string | null }).state;
+			if (res.ok) {
+				const body = (await res.json()) as { state: string | null; url?: string | null };
+				pageState = body.state;
+				pageUrl = body.url ?? null;
+			}
 		} catch {
 			// No banner is the right answer when we cannot tell.
 		}
@@ -29,10 +35,10 @@
 	);
 </script>
 
-{#if message && !dismissed}
+{#if message && pageUrl && !dismissed}
 	<Banner dismissible ondismiss={() => (dismissed = true)} data-status-banner={pageState}>
 		{message}<a
-			href="https://status.aipotluck.org"
+			href={pageUrl}
 			target="_blank"
 			rel="noreferrer"
 			class="ml-3 inline-flex items-center gap-0.5 underline underline-offset-2"

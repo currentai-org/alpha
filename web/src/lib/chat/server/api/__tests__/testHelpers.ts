@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { ObjectId } from "bson";
 import { collections } from "$lib/chat/server/database";
 import { getDb } from "$lib/chat/server/db/client";
@@ -75,7 +78,7 @@ export async function createTestConversation(
 	};
 
 	// conversations.user_id references users.id. A signed-in caller always has that row in
-	// production (auth.ts mints it at sign-in); a test that builds bare locals gets a minimal one here. (CUR-769)
+	// production (auth.ts mints it at sign-in); a test that builds bare locals gets a minimal one here.
 	if (conv.userId) {
 		await getDb()
 			.insert(authSchema.users)
@@ -106,7 +109,7 @@ export async function cleanupTestData() {
 	await db.delete(authSchema.verification);
 	await collections.conversations.deleteMany({});
 	await collections.abortedGenerations.deleteMany({});
-	// conversations, sessions and settings reference users.id, so `users` goes last. (CUR-769)
+	// conversations, sessions and settings reference users.id, so `users` goes last.
 	await collections.sessions.deleteMany({});
 	await collections.settings.deleteMany({});
 	await collections.users.deleteMany({});

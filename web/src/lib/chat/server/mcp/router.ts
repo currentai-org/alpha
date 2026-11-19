@@ -1,5 +1,6 @@
 // The configured MCP servers' router lane, and the read-aloud intent test. Read-aloud speaks
-// through Kokoro (`readAloudClip` in ./index.ts, CUR-3989).
+// through Kokoro (`readAloudClip` in ./index.ts).
+import { APP_USER_AGENT } from "$lib/chat/constants/app";
 import { config } from "$lib/chat/server/config";
 import { createOpenAIClient } from "$lib/chat/server/openaiClient";
 import { defaultModel } from "$lib/chat/server/models";
@@ -20,7 +21,7 @@ export function isReadAloudIntent(text: string): boolean {
 }
 
 /** The router's lane: dedicated MCP_ROUTER_* first, then the chat lane, host, key and wire id resolved
- *  together. Shared with the configured servers' router loop (CUR-3026). */
+ *  together. Shared with the configured servers' router loop. */
 export async function routerLane(): Promise<{
 	client: Awaited<ReturnType<typeof createOpenAIClient>>;
 	model: string;
@@ -39,9 +40,9 @@ export async function routerLane(): Promise<{
 		apiKey,
 		// A router call blocks the turn the same way the arithmetic classifier does, and
 		// carries the same fail-open `catch` that a hang walks straight past. Same 8s as the other two
-		// classifier lanes (searchDecision.ts, forcedToolCallLane.ts) against the same gateway. (CUR-1345)
+		// classifier lanes (searchDecision.ts, forcedToolCallLane.ts) against the same gateway.
 		timeout: 8_000,
-		defaultHeaders: { "User-Agent": "aipotluck.org" },
+		defaultHeaders: { "User-Agent": APP_USER_AGENT },
 	});
 	return { client, model };
 }

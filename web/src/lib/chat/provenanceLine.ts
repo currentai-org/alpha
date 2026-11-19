@@ -7,9 +7,9 @@ import { backendOrg, type Org } from "./routing/catalog";
 import { backendDisplay, backendHost } from "./servingProvenance";
 
 /**
- * Where THIS answer ran, from its routing record (CUR-2921): the backend host's catalogue organisation
- * (`BACKEND_HOSTS`, CUR-4587) when there is one, else the provider the router reported. Undefined when
- * the record names neither, and the caller then says so (CUR-3562). The catalogue's planned host is a
+ * Where THIS answer ran, from its routing record: the backend host's catalogue organisation
+ * (`BACKEND_HOSTS`) when there is one, else the provider the router reported. Undefined when
+ * the record names neither, and the caller then says so. The catalogue's planned host is a
  * forecast, and a direct lane or a fallback can serve the turn somewhere else.
  */
 export function ranOn(backend?: string, provider?: string): { label: string; org?: Org } | undefined {
@@ -19,7 +19,7 @@ export function ranOn(backend?: string, provider?: string): { label: string; org
 	return via ? { label: via } : undefined;
 }
 
-/** "" | "execution" | "judge" | "execution+judge" from agent-service (CUR-756). CUR-4055: these name
+/** "" | "execution" | "judge" | "execution+judge" from agent-service. these name
  *  the checks the pipeline RAN, not a verdict that the answer is right. An auto-derived check only ever
  *  confirms the file exists and has the asked-for shape — it cannot read whether the content is what the
  *  task wanted — so the word "verified" overclaimed. The footer now describes the process and leaves the

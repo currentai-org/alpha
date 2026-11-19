@@ -5,7 +5,7 @@
 export const SHARE_TITLE = "AI Potluck";
 
 // Appended after the app name on social cards and the browser tab → "AI Potluck — public, open,
-// not-for-profit AI" (CUR-4325). Matches the landing headline (copy_landingHeadline).
+// not-for-profit AI". Matches the landing headline (copy_landingHeadline).
 export const SHARE_TAGLINE = "public, open, not-for-profit AI";
 
 // Used for the native share sheet's text AND the og/twitter:description, so a shared link

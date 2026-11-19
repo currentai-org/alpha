@@ -8,7 +8,7 @@ import { holdForRecording } from './helpers/recording';
 import { installCannedReplies } from './helpers/faultInjection';
 import { startChattingPastWelcome } from './helpers/welcome';
 
-// A3 row 20 (CUR-2799): Forget everything in one tab while a second tab still shows the chat. The
+// A3 row 20: Forget everything in one tab while a second tab still shows the chat. The
 // second tab's composer is live, so a send from it could bring the wiped conversation back. The send
 // route loads the conversation before anything else and answers 404 when it is gone
 // (`conversation/[id]/+server.ts` → `loadConversation`). This walks it: the stale tab's send is
@@ -58,7 +58,7 @@ test(
 		await page.waitForURL(/\/chat\/conversation\/[a-f0-9]+/, { timeout: 30_000 });
 		const conversationUrl = page.url();
 		const id = new URL(conversationUrl).pathname.split('/').pop()!;
-		// Nothing may still be streaming when the wipe runs (data-portability.spec.ts, CUR-1638).
+		// Nothing may still be streaming when the wipe runs (data-portability.spec.ts).
 		await expect(
 			page
 				.locator('[data-message-role="assistant"]')

@@ -8,8 +8,8 @@ import { ALPHA_LOCATION_ID } from "$lib/chat/server/storage/locations/types";
 import { requireLocationsAccess } from "../../guard";
 
 // Where new files go, the way a browser sets its download folder. "alpha" is Alpha storage,
-// "ask" asks on every upload, "last" (CUR-3077) is wherever the last upload went and is stored as no
-// choice at all, and anything else must be one of this account's own linked locations. (CUR-2930)
+// "ask" asks on every upload, "last" is wherever the last upload went and is stored as no
+// choice at all, and anything else must be one of this account's own linked locations.
 const Body = z.object({ location: z.string().min(1).max(64) });
 
 export const PUT: RequestHandler = async ({ locals, request }) => {

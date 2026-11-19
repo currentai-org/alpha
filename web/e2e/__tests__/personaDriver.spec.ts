@@ -1,5 +1,5 @@
 /**
- * The pure half of the adversarial-persona driver (CUR-1530).
+ * The pure half of the adversarial-persona driver.
  *
  * This file lives in `e2e/__tests__/` rather than beside the driver in `e2e/scenarios/helpers/`
  * because Playwright's `testDir` is `./scenarios` and it collects every `.spec.ts` file underneath
@@ -217,7 +217,7 @@ describe('resolvePersonaLane', () => {
 		}
 	});
 
-	it('prefers Anthropic when its key is present, matching the grader lane order (CUR-1478)', () => {
+	it('prefers Anthropic when its key is present, matching the grader lane order', () => {
 		const saved = { ...process.env };
 		try {
 			process.env.ANTHROPIC_API_KEY = 'sk-ant-test-not-a-real-key';
@@ -252,7 +252,7 @@ describe('allowed actions', () => {
 		expect(verdict).toEqual({ action: { do: 'press', ref: 1, key: 'Tab', why: 'move focus' } });
 	});
 
-	it('lets a keyboard-only tester type a question into the composer, which press alone cannot (CUR-2916)', () => {
+	it('lets a keyboard-only tester type a question into the composer, which press alone cannot', () => {
 		const verdict = validateAction(
 			{ do: 'fill', ref: 1, text: 'What is the capital of Peru?', why: 'ask a question' },
 			screen,
@@ -323,7 +323,7 @@ describe('sign-in safety', () => {
 	});
 });
 
-describe('sign-in breaker inbox (CUR-2916)', () => {
+describe('sign-in breaker inbox', () => {
 	const EMAIL = 'breaker@example.org';
 
 	it('says no code has been sent only when there is genuinely no row', async () => {
@@ -341,7 +341,7 @@ describe('sign-in breaker inbox (CUR-2916)', () => {
 	});
 });
 
-describe('opening on an account surface (CUR-2676)', () => {
+describe('opening on an account surface', () => {
 	it('keeps one surface for one seed, so a rerun of a run lands on the same page', () => {
 		expect(accountSurfaceFor('37707905653:chaos-monkey')).toBe(
 			accountSurfaceFor('37707905653:chaos-monkey')
@@ -358,7 +358,7 @@ describe('opening on an account surface (CUR-2676)', () => {
 	});
 });
 
-describe('the served-model line (CUR-2676)', () => {
+describe('the served-model line', () => {
 	const footer = (name: string): SnapshotEntry => ({
 		ref: 0,
 		domIndex: 0,
@@ -387,7 +387,7 @@ describe('the served-model line (CUR-2676)', () => {
 	});
 });
 
-describe('pinning the scenario model (CUR-2676)', () => {
+describe('pinning the scenario model', () => {
 	it('stores the catalog id the composer reads for a served model id', () => {
 		expect(choiceIdFor('zai-org/GLM-5.2')).toBe('glm-5.2');
 		expect(choiceIdFor('mistral-large-2512')).toBe('mistral-large');
@@ -406,7 +406,7 @@ describe('pinning the scenario model (CUR-2676)', () => {
 		expect(pillNamesModel('', 'zai-org/GLM-5.2')).toBe(false);
 	});
 
-	// The server renders the pill as Auto and hydration swaps in the stored choice (SOL-164).
+	// The server renders the pill as Auto and hydration swaps in the stored choice.
 	function pinPage(labels: string[]) {
 		let reads = 0;
 		const pill = {
@@ -490,7 +490,7 @@ describe('snapshot selection', () => {
 	});
 });
 
-describe('reading the page in one pass (SOL-159)', () => {
+describe('reading the page in one pass', () => {
 	// A page whose per-element reads never settle: what a closed menu's vanished items look like to
 	// an nth(i) locator, which waits for an element that is never coming back.
 	const never = () => new Promise<never>(() => {});
@@ -557,7 +557,7 @@ describe('reading the page in one pass (SOL-159)', () => {
 		}
 	});
 
-	it('hides every control an open modal dialog covers, so the walker acts on the modal (SOL-162)', () => {
+	it('hides every control an open modal dialog covers, so the walker acts on the modal', () => {
 		const { document } = parseHTML(`<!doctype html><html><body>
 			<button>Tools: web search, read aloud</button>
 			<div role="dialog" aria-modal="true" data-closed style="visibility:hidden"><button>Old</button></div>
@@ -585,7 +585,7 @@ describe('reading the page in one pass (SOL-159)', () => {
 	});
 });
 
-describe('isDemoPage keeps the /alpha demo out of the served-model check (CUR-2676)', () => {
+describe('isDemoPage keeps the /alpha demo out of the served-model check', () => {
 	it('names the demo and its sub-pages, whose answers no model wrote', () => {
 		expect(isDemoPage('https://develop.aipotluck.org/alpha')).toBe(true);
 		expect(isDemoPage('https://develop.aipotluck.org/alpha/demo?x=1')).toBe(true);

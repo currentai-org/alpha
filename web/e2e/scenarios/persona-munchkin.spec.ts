@@ -5,7 +5,7 @@ import { chatEntry } from './helpers/chatEntry';
 import { signInAsFreshUser } from './helpers/session';
 import { personaTurns, resolvePersonaLane, runPersona } from './helpers/personaDriver';
 
-// The second persona (CUR-1530). See persona-chaos-monkey.spec.ts for the shared reasoning: no
+// The second persona. See persona-chaos-monkey.spec.ts for the shared reasoning: no
 // product assertions here either, the recording is the output, @P-series rather than an A-number.
 //
 // THE TWO PERSONAS ARE NOT THE SAME TESTER WITH DIFFERENT WORDING, and the difference is the reason
@@ -41,7 +41,7 @@ test(
 
 		test.setTimeout(5 * 60_000);
 
-		await signInAsFreshUser(page); // CUR-2676, see persona-chaos-monkey.spec.ts
+		await signInAsFreshUser(page); // see persona-chaos-monkey.spec.ts
 
 		await runPersona({
 			page,

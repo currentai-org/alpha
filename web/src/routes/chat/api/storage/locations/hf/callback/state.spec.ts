@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // The callback with its real state check, and Hugging Face's token exchange stubbed, so a
-// forged state is shown refused before any code is traded, and the minted one shown to reach the trade. (CUR-2932)
+// forged state is shown refused before any code is traded, and the minted one shown to reach the trade.
 const SECRET = 'callback-state-test-secret';
 
 const db = vi.hoisted(() => ({
@@ -58,7 +58,7 @@ beforeEach(() => {
 	db.createStorageLocation.mockResolvedValue({ id: 'loc-new' });
 });
 
-describe('Hugging Face connect callback state check (CUR-2932)', () => {
+describe('Hugging Face connect callback state check', () => {
 	it('refuses a forged state before trading the code, and links nothing', async () => {
 		expect(await callback('forged-state')).toMatch(/\?connect_error=state$/);
 		expect(hub.exchangeCode).not.toHaveBeenCalled();

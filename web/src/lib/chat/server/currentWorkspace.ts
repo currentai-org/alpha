@@ -3,18 +3,17 @@
 // menu reads it from here.
 //
 // The session's activeOrganizationId alone can name a workspace the person has since left or that
-// was deleted under them (CUR-2835), so the name is read through their own membership row: no row,
+// was deleted under them, so the name is read through their own membership row: no row,
 // no workspace shown.
-// (CUR-553)
-// The same read scopes the conversation list. Each workspace lists its own conversations. (CUR-3023)
+// The same read scopes the conversation list. Each workspace lists its own conversations.
 // Chats from a workspace the person left, or that was deleted, list under that former
-// workspace (formerWorkspaces.ts); Personal lists the rest. (CUR-3040)
-import { eq } from "drizzle-orm";
+// workspace (formerWorkspaces.ts); Personal lists the rest.
+import { and, eq } from "drizzle-orm";
 import { getAuth } from "$lib/chat/server/betterAuth";
 import { getDb } from "$lib/chat/server/db/client";
 import { member, organization } from "$lib/chat/server/db/schema";
 import { logger } from "$lib/chat/server/logger";
-import { workspaceOrgCreationEnabled, workspacesEnabled } from "$lib/chat/server/workspacesGate";
+import { workspaceOrgCreationEnabled } from "$lib/chat/server/workspacesGate";
 import { pendingInvitationsFor, type PendingInvitation } from "$lib/chat/server/pendingInvitations";
 import {
 	FORMER_WORKSPACE_COOKIE,
@@ -29,13 +28,13 @@ type CurrentWorkspace = { id: string; name: string } | null;
 export type WorkspaceScope = {
 	current: CurrentWorkspace;
 	memberOrgIds: string[];
-	/** Every workspace the person belongs to, for the account menu's switcher (CUR-3097). */
+	/** Every workspace the person belongs to, for the account menu's switcher. */
 	workspaces: { id: string; name: string }[];
-	/** Workspaces the person has chats from but no longer belongs to (CUR-3040). */
+	/** Workspaces the person has chats from but no longer belongs to. */
 	former: FormerWorkspace[];
 	/** The former workspace being looked at, only while no team workspace is current. */
 	viewingFormer: FormerWorkspace | null;
-	/** Invitations waiting on this person, for the account menu and Settings (CUR-4167). */
+	/** Invitations waiting on this person, for the account menu and Settings. */
 	invitations: PendingInvitation[];
 } | null;
 
@@ -43,7 +42,7 @@ export async function workspaceScopeFor(
 	locals: App.Locals,
 	headers: Headers | undefined
 ): Promise<WorkspaceScope> {
-	if (!workspacesEnabled() || !locals.user || !headers) return null;
+	if (!locals.user || !headers) return null;
 	const started = Date.now();
 	try {
 		const session = await getAuth().api.getSession({ headers });
@@ -76,6 +75,26 @@ export async function workspaceScopeFor(
 		logger.warn({ err, ms: Date.now() - started }, "[currentWorkspace] read failed; showing none");
 		return null;
 	}
+}
+
+/** The workspace id a new row should be attributed to: the session's active workspace, but only
+ *  while the person still has a membership in an organization that exists. A pointer at a deleted or
+ *  left workspace gives undefined (Personal), because writing it fails the organization foreign key
+ *  and the request with it. */
+export async function activeWorkspaceIdFor(
+	locals: App.Locals,
+	headers: Headers
+): Promise<string | undefined> {
+	if (!locals.user) return undefined;
+	const session = await getAuth().api.getSession({ headers });
+	const activeId = session?.session.activeOrganizationId;
+	if (!session || !activeId) return undefined;
+	const rows = await getDb()
+		.select({ id: organization.id })
+		.from(member)
+		.innerJoin(organization, eq(member.organizationId, organization.id))
+		.where(and(eq(member.userId, session.user.id), eq(member.organizationId, activeId)));
+	return rows[0]?.id;
 }
 
 function cookieValue(headers: Headers, name: string): string | undefined {

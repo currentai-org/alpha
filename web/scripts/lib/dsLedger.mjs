@@ -23,7 +23,7 @@ import { foldLedger } from "../../../packages/alpha-ds/src/version/ledger.ts";
 
 export const WEB = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const ROOT = resolve(WEB, "..");
-// The design system is the workspace package @aipotluck/alpha-ds; its lint rules stay in web/. (CUR-4479)
+// The design system is the workspace package @aipotluck/alpha-ds; its lint rules stay in web/.
 const DS_PATH = "packages/alpha-ds/src/";
 export const DS = join(ROOT, DS_PATH);
 export const CHANGELOG_DIR = join(DS, "changelog");

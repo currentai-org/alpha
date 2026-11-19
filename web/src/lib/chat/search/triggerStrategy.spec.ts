@@ -28,7 +28,7 @@ describe("usesModelClassifier", () => {
 		// "tool" degrades to the classifier until tool-calling is wired.
 		expect(usesModelClassifier("tool")).toBe(true);
 	});
-	// Omitted: margin is the production strategy (CUR-147), and this gate is
+	// Omitted: margin is the production strategy, and this gate is
 	// what decides whether its classifier is called at all. False here means the round-trip never
 	// happens and every turn silently falls to the recency regex.
 	it("is true for margin — the classifier round-trip is the whole gate", () => {
@@ -45,7 +45,7 @@ describe("shouldRunSearch — signal composition", () => {
 	});
 
 	// "does the chat I'm having now carry over at sign-in?" matches the regex's bare "now",
-	// and the classifier, which reads the whole question, says no and wins. (CUR-2372)
+	// and the classifier, which reads the whole question, says no and wins.
 	it("under model and tool, a classifier no is not overridden by a recency-regex hit", () => {
 		for (const strategy of ["model", "tool"] as const) {
 			expect(
@@ -81,7 +81,7 @@ describe("shouldRunSearch — signal composition", () => {
 		);
 	});
 
-	// "margin" — the embedding gate is the ONLY decider (CUR-2109). Neither regex is consulted: the
+	// "margin" — the embedding gate is the ONLY decider. Neither regex is consulted: the
 	// gate alone covers every holdout bucket they cover, explicit asks included. When the gate gives no
 	// verdict (classifierOk === false) the turn SEARCHES, because a missed search costs more than an
 	// extra one; the caller logs each such turn as a departure.

@@ -15,13 +15,13 @@ beforeEach(() => {
 	flagEnabledForUser.mockImplementation(teamOnPreview);
 });
 
-describe("storageLocationsEnabledForUser (CUR-3050)", () => {
+describe("storageLocationsEnabledForUser", () => {
 	it("sends the account's email to PostHog, so a team account on preview gets the flag", async () => {
 		expect(await storageLocationsEnabledForUser("acct-1", "someone@currentai.org")).toBe(true);
 		expect(flagEnabledForUser).toHaveBeenCalledWith(STORAGE_LOCATIONS_FLAG, "acct-1", {
 			env: "preview",
 			email: "someone@currentai.org",
-		});
+		}, expect.any(Function));
 	});
 
 	it("stays off for an email outside the team domains", async () => {
@@ -33,8 +33,11 @@ describe("storageLocationsEnabledForUser (CUR-3050)", () => {
 		expect(flagEnabledForUser.mock.calls[0][2]).not.toHaveProperty("email");
 	});
 
-	it("treats an unevaluable flag as off", async () => {
-		flagEnabledForUser.mockResolvedValueOnce(undefined);
+	it("is off when PostHog cannot answer: the code default it passes is off", async () => {
+		flagEnabledForUser.mockImplementationOnce(async (_k: string, _id: string, _p: unknown, fallback?: () => boolean) => {
+			if (!fallback) throw new Error("storageLocationsEnabledForUser passed no code default");
+			return fallback();
+		});
 		expect(await storageLocationsEnabledForUser("acct-4", "someone@currentai.org")).toBe(false);
 	});
 });

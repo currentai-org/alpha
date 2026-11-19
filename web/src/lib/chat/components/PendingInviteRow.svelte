@@ -1,5 +1,5 @@
 <script lang="ts" module>
-	/** Longest workspace name shown in an invite row. Another account chose it, so it's capped (CUR-4167). */
+	/** Longest workspace name shown in an invite row. Another account chose it, so it's capped. */
 	export const INVITE_NAME_MAX = 60;
 
 	/** The name as one line of at most INVITE_NAME_MAX characters, cut with an ellipsis. */
@@ -11,7 +11,7 @@
 
 <script lang="ts">
 	// One pending invitation, as the account menu and Settings → Workspace show it. Both
-	// strings come from other people's input, so they are text interpolation only, never markup. (CUR-4167)
+	// strings come from other people's input, so they are text interpolation only, never markup.
 	import { m } from '$lib/paraglide/messages.js';
 
 	let { workspaceName, inviterEmail }: { workspaceName: string; inviterEmail: string } = $props();

@@ -1,53 +1,43 @@
-# The /alpha demo
+# The /alpha landing page
 
-The demo on `/alpha` (an inert preview) and `/alpha/demo` (full screen, "Try the demo") runs the chat
-app's own `ChatShell` and `ChatWindow` on sample data, so it has no separate copy of the UI. Keep two
-things in sync with the app: the data the demo is fed, and what the sample conversations say about
-how Alpha works.
+`/alpha` is Alpha's product page: a hero, the feature sections and the FAQ, in three visual
+directions ("looks", `looks/looks.ts`; Bold is the default). Editorial copy comes from the Payload
+`alpha-landing` global (`content.ts` holds the English bootstrap/outage defaults).
 
-## Data sources
+## Its one way in is the real chat
 
-| What                                                                                           | Where                                                                      | Read by                                                                           |
-| ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| The payload `/chat`'s layout load returns (copy, serving line, prompt examples, feature gates) | `demo-page-data.ts`, delivered as `page.data` by `routes/alpha/+layout.ts` | Chat components that read `page.data` (greeting, retention badge, notices)        |
-| The same payload plus the sample sidebar                                                       | `demo-shell-data.ts`                                                       | `ChatShell` (`bind:data`)                                                         |
-| Messages, served models, the conversation's model                                              | `demo-conversation.ts`, `demo-models.ts`                                   | `ChatWindow` props (`AlphaDemoClient.svelte`)                                     |
-| API calls the app makes on its own                                                             | `demo-api-interceptor.ts`                                                  | Fetches under `/chat/api/v2`                                                      |
-| Clicks that need the full app                                                                  | `EmbeddedIntent` → `onEmbeddedNavigate`                                    | Settings, accounts, the routing lab, Contribute: a quiet note, never a navigation |
+The hero's main button (`hero.ctaHref`, resolved through `chatLinkHref`; tagged `data-hero-cta` in the
+Bold and Classic looks, which specs drive) opens the
+real chat: on the site host of a split installation that is the chat host (`chatHost` in the
+deployment file, `src/lib/deployment.ts`), elsewhere `/chat`. A guest can chat there
+without signing in and sees only their own conversations.
 
-Sending a message is the one action that asks for sign-up.
+## The demo is retired
 
-## Checks that keep the demo in sync
+`/alpha` used to embed the chat app on sample data, and "Try the demo" opened it full screen at
+`/alpha/demo`. Visitors read its sidebar of made-up chats in five languages as other people's
+conversations, and its sign-up wall on send as a login requirement, so it was removed:
 
-- **`DemoShellData` is typed from `loadChatShellData`.** When you add a field to that loader,
-  `pnpm check` fails in `demo-page-data.ts` until the demo supplies it. Gates that need a backend
-  stay off in the demo.
-- **`demo.spec.ts`** pins the payload (production's serving line and retention note, the shared starter
-  pool). It also checks that every sample answer names a model the demo serves, that no answer cites a
-  source it doesn't carry, and that each recorded model is the one Auto would pick for its question
-  (staying on the last model mid-chat). A router or benchmark change that contradicts a sample fails
-  this spec.
-- Models come from `routing/catalog.ts` and links from `chat/contribute.ts`, so a rename or a moved page
-  fails at import instead of going stale.
+- `/alpha/demo` now answers a 308 to the real chat (`routes/alpha/demo/+server.ts`), so old links and
+  bookmarks land there too.
+- `e2e/scenarios/alpha-demo-retired.spec.ts` pins both: no demo, no sample chats and no demo link on
+  `/alpha`, and the main button reaching an empty guest chat.
 
-## Update the demo when the app changes
+Don't bring a demo back without solving what sank this one: a preview of the app has to read as a
+preview, and never as someone else's history.
 
-| App change                                      | Update                                                                                            |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| A new payload field or feature gate             | `demo-page-data.ts`. Turn the gate on only if it needs no backend                                 |
-| Routing, benchmarks or the classifier           | The "How Alpha picks a model" thread, `demo.spec.ts` and `docs/guides/auto-model-routing.md`      |
-| A new answer-level feature or message field     | Add it to a sample turn (`extra`) so it shows                                                     |
-| A link from a chat component to a full-app page | Intercept it with `embeddedDemo` and an `EmbeddedIntent`, or it takes the visitor out of the demo |
-| A new endpoint the app calls on its own         | `demo-api-interceptor.ts`                                                                         |
-| Copy about how Alpha works                      | `copy.ts` (the language feature, the FAQ) and the sample threads                                  |
+## Feature pictures
 
-## Behavior notes
+The feature cards (`bentos/`) are the site's own code: the page imports nothing from chat, so it can
+stay behind when chat moves to its own repo. Theme and Instructions run live. Language, Data,
+Footprint, Model and X-ray show a picture of the feature in Alpha (`PictureBento.svelte`). The heading and line of copy above each picture stay live text.
 
-- The demo runs on the same origin as the app and shares its localStorage keys
-  (`alpha:model-choice`, `alpha:dismissed-language-gaps`, `alpha:mode`, `alpha:theme`). A model
-  picked in the demo is the model the app opens with.
-- The dark stage around `/alpha/demo` is a plain token scope. It has no `ThemeProvider`, so the
-  light app inside it never sits under a `.dark` ancestor, which legacy `dark:` classes would match.
-- Copy edited in the admin CMS doesn't reach the demo. The demo shows each string's default.
-- The demo leaves out the sidebar's "Get involved" card (`NavMenu` skips it), settings, dictation,
-  agent mode and read-aloud.
+Each picture is `static/alpha-features/<name>.<locale>.webp`, one per locale, at twice its CSS size
+(`bentos/pictures.ts` lists the sizes). They were captured from the chat components the cards used to
+run, which are gone now. To update one, screenshot the same feature in Alpha in each locale at 2x, crop
+it to the card's scene, and save it under the same name; `bentos/pictures.spec.ts` fails while a
+locale is missing.
+
+The facts the landing states about Alpha (guest retention, where chats are stored, who runs Apertus)
+are in `chatFacts.ts`, and `chatFacts.spec.ts` checks each against chat's source. The Potluck mark is
+the site's `/favicon.svg`, drawn as a mask (`PotluckGlyph.svelte`).

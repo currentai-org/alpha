@@ -1,5 +1,5 @@
 // A person's own MCP servers, added in Settings → Connectors. The token is sealed at rest,
-// rides only to the server's own origin, and a server is offered only on its owner's turn. (CUR-4016)
+// rides only to the server's own origin, and a server is offered only on its owner's turn.
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("$lib/chat/server/logger", () => ({
@@ -36,7 +36,7 @@ const input = (over: Partial<{ name: string; url: string; token: string }> = {})
 	...over,
 });
 
-describe("checkNewServer refuses what a turn could not safely use (CUR-4016)", () => {
+describe("checkNewServer refuses what a turn could not safely use", () => {
 	it("accepts a public https server, lower-cases its name, and keeps an empty token as none", () => {
 		expect(checkNewServer(input(), [], 0)).toEqual({ ok: true, name: "notes", url: "https://notes.example.com/mcp", token: null });
 	});
@@ -61,7 +61,7 @@ describe("checkNewServer refuses what a turn could not safely use (CUR-4016)", (
 	});
 });
 
-describe("the token is sealed at rest and sent only to the server's origin (CUR-4016)", () => {
+describe("the token is sealed at rest and sent only to the server's origin", () => {
 	it("stores no readable copy of the token", () => {
 		const sealed = sealServerToken(TOKEN, SECRET);
 		expect(sealed).not.toContain(TOKEN);
@@ -104,7 +104,7 @@ describe("the token is sealed at rest and sent only to the server's origin (CUR-
 	});
 });
 
-describe("a person's servers reach only their own turn (CUR-4016)", () => {
+describe("a person's servers reach only their own turn", () => {
 	it("reads the signed-in account's rows and no one else's", async () => {
 		const list = vi.fn(async (userId: string) => [row({ userId })]);
 		const servers = await userMcpServersFor({ user: { _id: { toString: () => "u1" } } } as App.Locals, null, list);
@@ -127,7 +127,7 @@ describe("a person's servers reach only their own turn (CUR-4016)", () => {
 	});
 });
 
-describe("serversForRequest puts own servers beside the operator's (CUR-4016)", () => {
+describe("serversForRequest puts own servers beside the operator's", () => {
 	it("adds them after the configured ones, and drops one whose name an operator server holds", () => {
 		cfg.MCP_SERVERS = JSON.stringify([{ name: "notes", url: "https://ops.example.com/mcp" }]);
 		const own = userServerConfigs([row(), row({ id: "r2", name: "wiki", url: "https://wiki.example.com/mcp" })], { secret: SECRET });

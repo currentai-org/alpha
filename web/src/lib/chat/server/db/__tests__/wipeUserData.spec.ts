@@ -23,12 +23,19 @@ vi.mock("$lib/chat/server/db/ipHash", () => ({
 }));
 
 // Only the bucket delete is stubbed, so the account-wipe test below can see which guest
-// folders the wipe reaches; the rest of the storage module stays real. (CUR-3292)
+// folders the wipe reaches; the rest of the storage module stays real.
 const { deleteCustodialFolders } = vi.hoisted(() => ({ deleteCustodialFolders: vi.fn(async () => 0) }));
 vi.mock("$lib/chat/server/storage/custodialStorage", async (importOriginal) => ({
 	...(await importOriginal<typeof import("$lib/chat/server/storage/custodialStorage")>()),
 	deleteCustodialFolders,
 }));
+
+// agent-service's delete calls, recorded rather than sent; deleteAgentServiceData.spec.ts owns the request.
+const { deleteAgentSessions, deleteAgentServiceData } = vi.hoisted(() => ({
+	deleteAgentSessions: vi.fn(async (_visitor: string | undefined, _ids: string[]) => 0 as number | undefined),
+	deleteAgentServiceData: vi.fn(async (_visitor: string | undefined) => undefined as number | undefined),
+}));
+vi.mock("$lib/chat/server/deleteAgentServiceData", () => ({ deleteAgentSessions, deleteAgentServiceData }));
 
 import { collections } from "$lib/chat/server/database";
 import { getDb } from "$lib/chat/server/db/client";
@@ -37,6 +44,7 @@ import { newId } from "$lib/chat/server/db/ids";
 import { hashIp } from "$lib/chat/server/db/ipHash";
 import { saveReport } from "$lib/chat/server/db/reports";
 import { wipeUserData } from "$lib/chat/server/db/wipeUserData";
+import { setConversationTags } from "$lib/chat/server/db/conversationTags";
 import {
 	createTestLocals,
 	createTestConversation,
@@ -128,7 +136,7 @@ describe.sequential("wipeUserData", () => {
 	});
 
 	// The account wipe deletes these rows before the shadow `users` row. The foreign keys make
-	// any other order, or a row naming an account that does not exist, an error instead of an orphan. (CUR-769)
+	// any other order, or a row naming an account that does not exist, an error instead of an orphan.
 	it("refuses a settings or conversation row naming a user that does not exist, and a users delete that would orphan one", async () => {
 		const ghost = newId();
 		await expect(
@@ -185,7 +193,7 @@ describe.sequential("wipeUserData", () => {
 			expect(await countContributions(sessionId)).toBe(0);
 
 			// ...except the safety report, which survives with nothing pointing back to the person: the
-			// done screen says so in as many words (CUR-2726).
+			// done screen says so in as many words.
 			expect(await reportIdentity(report.id)).toEqual({
 				conversationId: null,
 				userId: null,
@@ -286,10 +294,25 @@ describe.sequential("wipeUserData", () => {
 		expect(await countContributions(theirs)).toBe(1);
 	});
 
+	it("asks agent-service to kill the sandbox of every conversation an account delete removes, under the account's id", async () => {
+		deleteAgentSessions.mockClear();
+		const { user, locals } = await createTestUser();
+		const ranCode = (await createTestConversation(locals, { title: "ran code" }))._id.toString();
+		const alsoRanCode = (await createTestConversation(locals, { title: "ran code too" }))._id.toString();
+
+		await wipeUserData({ userId: user._id.toString(), sessionId: locals.sessionId, deleteAccount: true });
+
+		expect(deleteAgentSessions).toHaveBeenCalledTimes(1);
+		const [visitor, ids] = deleteAgentSessions.mock.calls[0]!;
+		expect(visitor).toBe(user._id.toString());
+		expect([...ids].sort()).toEqual([ranCode, alsoRanCode].sort());
+		expect(await collections.conversations.countDocuments({ _id: new ObjectId(ranCode) })).toBe(0);
+	});
+
 	// "Forget everything" and "Delete account" are separate actions. A signed-in wipe that does
 	// not ask for the account clears the data and leaves the person signed in: shadow row, Better Auth
-	// user, linked provider and the session row carrying their userId all survive. (CUR-1420)
-	it("deletes the guest folder each moved conversation started in, on an account wipe (CUR-3292)", async () => {
+	// user, linked provider and the session row carrying their userId all survive.
+	it("deletes the guest folder each moved conversation started in, on an account wipe", async () => {
 		deleteCustodialFolders.mockClear();
 		const { user, locals } = await createTestUser();
 		const former = "c".repeat(64);
@@ -299,6 +322,27 @@ describe.sequential("wipeUserData", () => {
 
 		expect(deleteCustodialFolders).toHaveBeenCalledWith(former, "conversations", [moved], "guests");
 		expect(await collections.conversations.countDocuments({ _id: new ObjectId(moved) })).toBe(0);
+	});
+
+	it("Forget everything leaves no chat tag rows for the account, and a stranger keeps theirs", async () => {
+		const me = await createTestUser();
+		const them = await createTestUser();
+		const userId = me.locals.user!._id.toString();
+		const theirId = them.locals.user!._id.toString();
+		const mine = await createTestConversation(me.locals);
+		await setConversationTags(userId, { _id: mine._id, userId: me.locals.user!._id }, ["Grant", "teaching"]);
+		const theirs = await createTestConversation(them.locals);
+		await setConversationTags(theirId, { _id: theirs._id, userId: them.locals.user!._id }, ["grant"]);
+		const rows = (id: string) =>
+			getDb().select({ id: schema.conversationTags.id }).from(schema.conversationTags).where(eq(schema.conversationTags.userId, id));
+		expect(await rows(userId)).toHaveLength(2);
+
+		const summary = await wipeUserData({ userId });
+
+		expect(summary.tags).toBe(2);
+		expect(summary.accountDeleted).toBe(false);
+		expect(await rows(userId)).toEqual([]);
+		expect(await rows(theirId)).toEqual([{ id: "grant" }]);
 	});
 
 	it("keeps the account and the signed-in session when the wipe does not ask to delete the account", async () => {
@@ -343,7 +387,7 @@ describe.sequential("wipeUserData", () => {
 	// never touch — Better Auth's own user.id (stored on the shadow row as betterAuthUserId, since it
 	// can't be recovered from _id, a one-way hash of it) and the raw Hugging Face user id (token_caches).
 	// Real DB round-trip rather than a mock, on purpose: this is exactly the class of bug — the right
-	// mock, the wrong key — a mocked test would not have caught. (CUR-434)
+	// mock, the wrong key — a mocked test would not have caught.
 	it("deletes the shadow row and every linked Better Auth / bearer-token row on an account wipe", async () => {
 		const shadowId = newId();
 		const betterAuthUserId = `ba_${newId()}`;
@@ -391,7 +435,7 @@ describe.sequential("wipeUserData", () => {
 			.insert(schema.tokenCaches)
 			.values({ id: newId(), tokenHash: "hash1", userId: hfUserId, doc: {} });
 		// Keyed on the shadow row's userId, not email — the same identity space every other per-user
-		// table here uses (CUR-1194).
+		// table here uses.
 		await getDb()
 			.insert(schema.localInferenceEndpoints)
 			.values({ id: newId(), userId: shadowId, label: "local", baseUrl: "http://localhost:11434/v1" });
@@ -430,7 +474,7 @@ describe.sequential("wipeUserData", () => {
 	});
 
 	// A legacy `sessions` row naming the account must not survive the wipe: its foreign key would then
-	// refuse the shadow delete after the Better Auth user is already gone (CUR-2925).
+	// refuse the shadow delete after the Better Auth user is already gone.
 	async function seedAccount(email: string) {
 		const shadowId = newId();
 		const betterAuthUserId = `ba_${newId()}`;

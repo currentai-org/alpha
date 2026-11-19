@@ -2,7 +2,7 @@
 // space-to-underscore `result.error` codes from api/routes/callback.mjs — the vocabulary a failed OAuth
 // callback can land on this app with, whether the failure came from the explicit "link a provider"
 // flow (account settings) or a fresh sign-in that collided with an existing account (login page,
-// CUR-850). One mapping shared by both surfaces so the codes can't drift into two different readings
+//). One mapping shared by both surfaces so the codes can't drift into two different readings
 // of the same failure.
 
 /** Maps a Better Auth OAuth-callback error code to copy a person can act on. Unlisted codes still show
@@ -21,7 +21,7 @@ export function friendlyAuthErrorMessage(code: string): string {
 		case "account_already_linked_to_different_user":
 			return "That provider account is already linked to a different account.";
 		// disableImplicitLinking turns a same-email cross-provider sign-in into an explicit refusal
-		// instead of a silent merge (CUR-850); this is what that refusal looks like from here.
+		// instead of a silent merge; this is what that refusal looks like from here.
 		// Deliberately doesn't name which provider the existing account uses; the client only has the
 		// error code, not that account's identity.
 		case "account_not_linked":
@@ -34,7 +34,7 @@ export function friendlyAuthErrorMessage(code: string): string {
 			return "That took a little too long and the link expired. Try again.";
 		// The person backed out of the provider's consent screen. The provider sends
 		// `error=access_denied` and Better Auth forwards it here unchanged. Nothing changed, so the copy
-		// says that, on the sign-in page and the link flow alike. (CUR-2793)
+		// says that, on the sign-in page and the link flow alike.
 		case "access_denied":
 			return "You cancelled at the provider, so nothing changed. Try again when you're ready.";
 		default:
@@ -49,7 +49,7 @@ export type PasskeyError = { code?: string; message?: string };
 // cancelled": the browser's NotAllowedError (no passkey on this device, the dialog dismissed, or its
 // timeout), each SimpleWebAuthn `ERROR_*` code, and a verify call that threw. That message does not say what to do instead, so those
 // failures get copy that names the other ways in, built from the providers this deployment offers.
-// An error from the options request is the server's own and keeps its message. (CUR-2924)
+// An error from the options request is the server's own and keeps its message.
 export function friendlyPasskeyError(error: PasskeyError, providers: string[]): string {
 	const code = error.code ?? "";
 	if (code === "AUTH_CANCELLED" || code.startsWith("ERROR_")) {

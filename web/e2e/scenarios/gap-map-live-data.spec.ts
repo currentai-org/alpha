@@ -3,7 +3,7 @@ import { test, expect, type APIRequestContext } from './helpers/test';
 import postgres from 'postgres';
 import { installPageFaultHeader } from './helpers/faultInjection';
 
-// G1, the gap map served from the os-ai-map database (CUR-1901). The map, the entity pages, the
+// G1, the gap map served from the os-ai-map database. The map, the entity pages, the
 // alias redirects and the freshness probe all read the database now, so each is driven here
 // against a real deployment rather than asserted from a unit test around it.
 //
@@ -53,7 +53,7 @@ test.describe('gap map served from the database', { tag: '@G1' }, () => {
 		await expect(page.getByRole('heading', { level: 1 })).toContainText('Meta');
 	});
 
-	// os-ai-map holds one axis open on Llama (CUR-2355), publishing basis
+	// os-ai-map holds one axis open on Llama, publishing basis
 	// `partial`. A product re-checked this week must never read as the commit-date fallback, whether
 	// the hold is still open ("Verified …, except …") or has since settled ("Verified …").
 	test('a product re-observed this week reads as verified, never as "last edited, not re-checked"', async ({
@@ -66,7 +66,7 @@ test.describe('gap map served from the database', { tag: '@G1' }, () => {
 		await expect(line).not.toContainText('last edited');
 	});
 
-	// A database over its plan quota must not turn every product and org page into a 500 (CUR-2304).
+	// A database over its plan quota must not turn every product and org page into a 500.
 	// The `gap_map_db_down` fault fails the read on this one request, and the page must still render
 	// from the committed snapshot. `no-store` is the proof the fault reached the server and the
 	// snapshot answered: a database render is sent with an hour of CDN caching. The query string
@@ -90,7 +90,7 @@ test.describe('gap map served from the database', { tag: '@G1' }, () => {
 
 	// The three tests below only make requests. They take `request` rather than `page.request` so no
 	// page opens: a page records a video, and a page that never navigates records a blank tab the
-	// journey gallery would show as a white tile (CUR-1623).
+	// journey gallery would show as a white tile.
 	test('a retired product slug lands on its live slug in one 308, on both prefixes', async ({
 		request
 	}) => {

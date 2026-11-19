@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { error } from "@sveltejs/kit";
 import { json } from "$lib/chat/server/api/utils/json";
 import { VOICE_RECORDING_MAX_BYTES, voiceRecordingTooLargeMessage } from "$lib/chat/constants/uploadLimits";
@@ -25,7 +28,7 @@ const ALLOWED_CONTENT_TYPES = [
 ];
 
 export async function POST({ request, locals, getClientAddress }) {
-	// Independent of `multimodal` (CUR-198): dictation only ever produces text, which goes through
+	// Independent of `multimodal`: dictation only ever produces text, which goes through
 	// the same moderation any typed message does. See dictationMode.ts.
 	if (!dictationEnabled()) {
 		throw error(403, "Dictation is disabled.");
@@ -72,7 +75,7 @@ export async function POST({ request, locals, getClientAddress }) {
 
 	// A Whisper call per upload, unmetered before this — this route has no requireAuth
 	// call (dictation never required sign-in), but `locals.sessionId` is populated for every
-	// visitor regardless, so the same limiter applies with no auth change needed. (CUR-832)
+	// visitor regardless, so the same limiter applies with no auth change needed.
 	await enforceRequestRateLimits({
 		userId: locals.user?._id ?? locals.sessionId,
 		clientAddress: getClientAddress(),
@@ -90,7 +93,7 @@ export async function POST({ request, locals, getClientAddress }) {
 		const apiUrl = `${baseUrl}/${transcriptionModel}`;
 
 		// Each attempt aborts at ATTEMPT_MS and a stall is retried once, so a hung upstream
-		// costs 30s instead of a minute. The body is an ArrayBuffer, so it can be sent twice. (CUR-2328)
+		// costs 30s instead of a minute. The body is an ArrayBuffer, so it can be sent twice.
 		const { response, attempts } = await fetchWithStallRetry((signal) =>
 			fetch(apiUrl, {
 				method: "POST",
@@ -116,7 +119,7 @@ export async function POST({ request, locals, getClientAddress }) {
 			);
 			// The upstream body stays in the log above. It can name the HF user who owns our
 			// token (the 403 noted at the top of this handler), and an upstream 429 would reach the
-			// client's rate-limit branch, which prints the message. So the browser gets a fixed 502. (CUR-3522)
+			// client's rate-limit branch, which prints the message. So the browser gets a fixed 502.
 			throw error(502, `Transcription failed (upstream ${response.status}). Please try again.`);
 		}
 

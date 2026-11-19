@@ -13,7 +13,7 @@ import {
 // off/auto/always shape (see $lib/chat/stores/speakMode):
 //   off    — Never search the web. The answer comes from training + community/RAG only, and an
 //            "I can't be sure this is current" hedge is then CORRECT.
-//   auto   — THE DEFAULT (CUR-2030). Check community/RAG first; the open web runs ONLY when community
+//   auto   — THE DEFAULT. Check community/RAG first; the open web runs ONLY when community
 //            is insufficient AND the per-turn margin gate says the turn needs current info, or when the
 //            person pasted a link. Community first, web as a fallback.
 //   always — the open web ALWAYS runs (honors an explicit user choice), in addition to community.
@@ -23,7 +23,7 @@ import {
 // handler runs RAG before deciding the web step — see conversation/[id]/+server.ts); this store just
 // carries the user's per-device preference up with the turn. Lightweight client-only preference in
 // localStorage, like the old boolean webSearchAllowed it replaces.
-// Which stored keys mean what, and the default, live in webSearchModeDefault.ts (CUR-2030).
+// Which stored keys mean what, and the default, live in webSearchModeDefault.ts.
 export type { WebSearchMode } from "./webSearchModeDefault";
 
 function initial(): WebSearchMode {

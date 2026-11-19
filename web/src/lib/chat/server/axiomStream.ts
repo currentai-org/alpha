@@ -37,7 +37,7 @@ export interface AxiomStreamOptions {
 	url?: string;
 	/** The dataset's edge deployment URL (AXIOM_INGEST_URL), e.g. https://eu-central-1.aws.edge.axiom.co.
 	 *  api.axiom.co refuses ingest into a dataset outside the org's default (US) edge with a 400, so a
-	 *  dataset on another edge is written through that edge's own ingest path (CUR-646). */
+	 *  dataset on another edge is written through that edge's own ingest path. */
 	edgeUrl?: string;
 	/** Injected so the spec does not have to reach for global fetch. */
 	fetchImpl?: typeof fetch;

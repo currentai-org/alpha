@@ -14,7 +14,7 @@ vi.mock("$lib/chat/server/logger.js", () => ({
 
 import { agentTaskRoom, agentTasksPerDay, recordAgentTask, agentTasksUsedText } from "./agentTaskAllowance";
 
-// The limit the ticket promises: 25 tasks per account in any 24 hours.
+// The promised limit: 25 tasks per account in any 24 hours.
 const PER_DAY = 25;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const account = { user: { _id: "user-1" }, sessionId: "sess-1" } as unknown as App.Locals;
@@ -25,7 +25,7 @@ beforeEach(() => {
 	find.mockReset();
 });
 
-describe("agentTaskRoom (CUR-4401)", () => {
+describe("agentTaskRoom", () => {
 	it("allows the 25th task of the day, keyed on the account rather than the session", async () => {
 		countDocuments.mockResolvedValue(PER_DAY - 1);
 		await expect(agentTaskRoom(account)).resolves.toEqual({ ok: true });
@@ -57,7 +57,7 @@ describe("agentTaskRoom (CUR-4401)", () => {
 	});
 });
 
-describe("the staff tier on agent tasks (CUR-4620)", () => {
+describe("the staff tier on agent tasks", () => {
 	const team = { user: { _id: "user-t", email: "someone@currentai.org", emailVerified: true }, sessionId: "sess-t" } as unknown as App.Locals;
 	const stranger = { user: { _id: "user-s", email: "stranger@example.com", emailVerified: true }, sessionId: "sess-s" } as unknown as App.Locals;
 	const unverified = { user: { _id: "user-u", email: "someone@currentai.org", emailVerified: false }, sessionId: "sess-u" } as unknown as App.Locals;
@@ -91,7 +91,7 @@ describe("the staff tier on agent tasks (CUR-4620)", () => {
 	});
 });
 
-describe("recordAgentTask (CUR-4401)", () => {
+describe("recordAgentTask", () => {
 	it("writes one row that stops counting after 24 hours", async () => {
 		const before = Date.now();
 		await recordAgentTask(account);

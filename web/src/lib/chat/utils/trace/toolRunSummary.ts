@@ -1,5 +1,5 @@
 // Adapted from NousResearch/hermes-agent's summarizeToolRun (apps/desktop/src/components/
-// assistant-ui/tool/run-summary.ts, MIT, Copyright Nous Research 2025) — CUR-775. Kept: the
+// assistant-ui/tool/run-summary.ts, MIT, Copyright Nous Research 2025) —. Kept: the
 // RunCategory/CATEGORY_ORDER/CATEGORY_COPY table shape (fixed clause order + noun singular/plural +
 // past-tense verb) that makes the line deterministic. Dropped: toolTarget()/summarizeShellCommand()
 // and live/pending present-tense narration — both need per-call args (a file path, a command line) or

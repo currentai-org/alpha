@@ -32,7 +32,7 @@ describe.skipIf(!LIVE)("web-search engine contracts (live)", () => {
 		u.searchParams.set("per-page", "5");
 		u.searchParams.set("mailto", "contact@aipotluck.org"); // polite pool, same as openSearch.ts
 		// OpenAlex answers 429 or 503 intermittently, which fails the night with
-		// the contract intact. Same one retry arXiv gets below. (CUR-2759)
+		// the contract intact. Same one retry arXiv gets below.
 		const res = await fetchRetryOnce(() => fetch(u, { signal: AbortSignal.timeout(TIMEOUT) }), {
 			retryableStatuses: [429, 503],
 			delayMs: 5_000,
@@ -64,7 +64,7 @@ describe.skipIf(!LIVE)("web-search engine contracts (live)", () => {
 		u.searchParams.set("max_results", "5");
 		// A 429 here is arXiv's rate limit, not a broken contract — this suite's own three
 		// other tests hit public/free APIs too, and a shared IP running them back-to-back nightly can
-		// trip one. Retried once with a real gap before this hard-fails. (CUR-1303)
+		// trip one. Retried once with a real gap before this hard-fails.
 		const res = await fetchRetryOnce(() => fetch(u, { signal: AbortSignal.timeout(TIMEOUT) }), {
 			retryableStatuses: [429],
 			delayMs: 5_000,
@@ -93,8 +93,8 @@ describe.skipIf(!LIVE)("web-search engine contracts (live)", () => {
 	// The query differs here: HF's /api/models `search` is a SUBSTRING match over
 	// model ids, not a natural-language search — "open source language model" returns 0 results while
 	// "llama" returns 5. That is a relevance property of the engine, not a contract break, so this test
-	// uses a term-shaped query to check the SHAPE. Whether we should be sending prose to this engine at
-	// all is a separate question (CUR-71).
+	// uses a term-shaped query to check the SHAPE. Whether to send prose to this engine at
+	// all is a separate question.
 	it("HuggingFace /api/models still returns a bare array with id", async () => {
 		const u = new URL("https://huggingface.co/api/models");
 		u.searchParams.set("search", "llama");

@@ -3,9 +3,9 @@
  * numbers decide and no hand-set estimate does. These run on the shipped tables as they are.
  *
  * Apertus 70B (0.566 raw) leads Medium (0.441) by a wide gap. Large 4's 0.71 is provisional, from 41
- * questions (CUR-392), and Auto gives Large 4 large drafts only. At 900 questions one standard error is
+ * questions, and Auto gives Large 4 large drafts only. At 900 questions one standard error is
  * about 0.017 raw, 0.022 once rescaled above chance, so the contract is a pick within that margin of the
- * best measured score among the models Auto may pick for the draft. (CUR-4078)
+ * best measured score among the models Auto may pick for the draft.
  */
 import { describe, expect, it } from 'vitest';
 import { catalog } from './catalog';

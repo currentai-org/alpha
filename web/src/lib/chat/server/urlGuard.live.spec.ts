@@ -82,7 +82,7 @@ const SAMPLES = 3;
 
 async function ask(prompt: string): Promise<string> {
 	// A 504 from the gateway is transient, not a broken contract — retried once before
-	// this hard-fails, same as judgeBehaviors.live.spec.ts's own ask(). (CUR-1303)
+	// this hard-fails, same as judgeBehaviors.live.spec.ts's own ask.
 	const r = await fetchRetryOnce(
 		() =>
 			fetch(`${BASE}/chat/completions`, {

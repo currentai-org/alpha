@@ -8,6 +8,7 @@ vi.mock("./env", async (orig) => {
 		...actual,
 		embeddingBillTo: vi.fn(() => ""),
 		multilingualEmbeddingEndpointUrl: vi.fn(() => ""),
+		embeddingBaseUrl: vi.fn(actual.embeddingBaseUrl),
 	};
 });
 
@@ -15,7 +16,7 @@ vi.mock("$lib/chat/server/failOpen", () => ({ failOpenDeparture: vi.fn() }));
 
 import { embedText, embedTexts } from "./embed";
 import { failOpenDeparture } from "$lib/chat/server/failOpen";
-import { embeddingBillTo, MULTILINGUAL_EMBEDDING_MODEL, multilingualEmbeddingEndpointUrl } from "./env";
+import { embeddingBaseUrl, embeddingBillTo, MULTILINGUAL_EMBEDDING_MODEL, multilingualEmbeddingEndpointUrl } from "./env";
 import { queryEmbedCache } from "./embedCache";
 
 describe("embedText — X-HF-Bill-To billing header", () => {
@@ -65,7 +66,7 @@ describe("embedText — X-HF-Bill-To billing header", () => {
 	});
 });
 
-// An empty query returning null is the design; a configured endpoint failing is a departure. (CUR-68)
+// An empty query returning null is the design; a configured endpoint failing is a departure.
 describe("embedText fail-open departures", () => {
 	beforeEach(() => {
 		queryEmbedCache.clear();
@@ -96,8 +97,8 @@ describe("embedText fail-open departures", () => {
 	});
 });
 
-// A shared serverless queue for the identity model can take 7–21 s a call, hence a warm endpoint
-// of its own (CUR-2135).
+// A shared serverless queue for the identity model can take several seconds a call, hence a warm
+// endpoint of its own.
 describe("embedText — the multilingual model's own warm endpoint", () => {
 	beforeEach(() => {
 		queryEmbedCache.clear();
@@ -157,5 +158,33 @@ describe("embedTexts — batches a dedicated endpoint will accept", () => {
 				: new Response(JSON.stringify(inputs.map(() => [1])), { status: 200 });
 		});
 		expect(await embedTexts(Array.from({ length: 40 }, (_, i) => `t${i}`))).toBeNull();
+	});
+});
+
+// A self-host with no embedder named (embeddingBaseUrl() empty) makes no request at all.
+describe("embedText / embedTexts with no embedding base", () => {
+	beforeEach(() => {
+		queryEmbedCache.clear();
+		vi.spyOn(globalThis, "fetch").mockImplementation(
+			async () => new Response(JSON.stringify([0.1, 0.2, 0.3]), { status: 200 })
+		);
+		vi.mocked(embeddingBaseUrl).mockReturnValue("");
+	});
+	afterEach(() => {
+		vi.mocked(embeddingBaseUrl).mockReset();
+		vi.restoreAllMocks();
+	});
+
+	it("returns null and sends nothing, for one text and for a batch", async () => {
+		expect(await embedText("hello there")).toBeNull();
+		expect(await embedTexts(["a", "b"])).toBeNull();
+		expect(globalThis.fetch).not.toHaveBeenCalled();
+	});
+
+	it("still uses a dedicated endpoint when one is named", async () => {
+		vi.mocked(multilingualEmbeddingEndpointUrl).mockReturnValue("http://embedder:8080");
+		await embedText("qui t'a créé ?", 1000, MULTILINGUAL_EMBEDDING_MODEL);
+		expect(String(vi.mocked(globalThis.fetch).mock.calls[0][0])).toBe("http://embedder:8080");
+		vi.mocked(multilingualEmbeddingEndpointUrl).mockReturnValue("");
 	});
 });

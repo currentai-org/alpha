@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // The route decides whose chats are searched. searchConversations.spec.ts checks the query
-// against Postgres; this checks the scope the route hands it, which nothing else did (SOL-195). (CUR-2630)
+// against Postgres; this checks the scope the route hands it, which nothing else did.
 const searchConversations = vi.fn(async (_owner: unknown, _q: string) => [] as unknown[]);
 vi.mock("$lib/chat/server/db/searchConversations", () => ({
 	searchConversations: (owner: unknown, q: string) => searchConversations(owner, q),

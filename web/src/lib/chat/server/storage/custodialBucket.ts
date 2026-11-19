@@ -1,4 +1,4 @@
-// The custodial-storage layout (CUR-412): a top-level users/ folder, one folder per person, with
+// The custodial-storage layout: a top-level users/ folder, one folder per person, with
 // subfolders inside for conversations, documents and whatever else we keep. A users/<id>/ layout is
 // organisation, not access control. One shared enterprise credential holds everyone's files, so every
 // read/write needs its own server-side check that the requesting session owns that id, independent of
@@ -56,7 +56,7 @@ function assertSafeUserId(userId: string): void {
 }
 
 /**
- * The two top-level folders an owner's files can live under (CUR-2183): `users/<id>/` for a
+ * The two top-level folders an owner's files can live under: `users/<id>/` for a
  * signed-in person, `guests/<sessionId>/` for a visitor's chat attachments. A guest's session id is
  * the sha256 hex of their anonymous cookie, which already fits SAFE_USER_ID.
  */
@@ -77,9 +77,9 @@ export const CUSTODIAL_SUBFOLDERS = ["conversations", "documents"] as const;
 export type CustodialSubfolder = (typeof CUSTODIAL_SUBFOLDERS)[number];
 
 // A CSAM-matched upload is quarantined here instead of its normal subfolder — excluded from
-// listCustodialFiles's walk the same way agent-service's ARTIFACT_QUARANTINE_DIRNAME (CUR-836) is
+// listCustodialFiles's walk the same way agent-service's ARTIFACT_QUARANTINE_DIRNAME is
 // excluded from that codebase's own artifact listing. Not one of CUSTODIAL_SUBFOLDERS: nothing should
-// ever resolve a user-facing upload path into this folder by name collision. (CUR-1136)
+// ever resolve a user-facing upload path into this folder by name collision.
 export const CUSTODIAL_QUARANTINE_DIRNAME = "quarantine";
 
 /**
@@ -120,7 +120,7 @@ export function custodialFilePath(
  * THE per-request check, independent of how `bucketPath` was built. Re-derives ownership from the
  * path's OWN `users/<id>/` segment and compares it to the session's user id — call this at every
  * real read/write boundary (not just when a path was built through resolveUserPath above), since the
- * ticket's own constraint is that the layout is organisation, not access control, and a caller that
+ * layout is organisation, not access control, and a caller that
  * skipped resolveUserPath is exactly the gap this exists to close.
  */
 export function assertOwnership(sessionUserId: string, bucketPath: string): void {
@@ -133,7 +133,7 @@ export function assertOwnership(sessionUserId: string, bucketPath: string): void
  * collapses a dot segment written as `.`, `..`, `%2e`, `%2e%2e`, `.%2e` or `%2e.` (any case), and
  * treats `\` as `/`. posix.normalize sees none of the encoded forms and treats `\` as an ordinary
  * character, so each of them could pass a prefix check here and land somewhere else in the bucket.
- * No path the listing returns contains any of them, so they are refused rather than resolved. (CUR-3180)
+ * No path the listing returns contains any of them, so they are refused rather than resolved.
  */
 export function hasAmbiguousSegment(bucketPath: string): boolean {
 	// A URL parser strips tab, LF and CR before resolving dot segments, so `.<TAB>.` reaches the
@@ -149,11 +149,11 @@ export function hasAmbiguousSegment(bucketPath: string): boolean {
 export function assertOwnerOwnership(root: StorageRoot, sessionUserId: string, bucketPath: string): void {
 	assertSafeUserId(sessionUserId);
 	// Every caller gets this, so a path the bucket's URL would resolve differently never
-	// reaches the prefix checks below (or assertNotQuarantined after them). (CUR-3180)
+	// reaches the prefix checks below (or assertNotQuarantined after them).
 	if (hasAmbiguousSegment(bucketPath)) {
 		throw new OwnershipMismatchError(sessionUserId, bucketPath);
 	}
-	// Normalize FIRST (CUR-928): a raw regex match against bucketPath as given captures whatever
+	// Normalize FIRST: a raw regex match against bucketPath as given captures whatever
 	// segment happens to sit right after "users/", even when a `..` later in the same string walks
 	// the path into a different user's folder — exactly the gap resolveUserPath's own normalize-then-
 	// verify approach above exists to close, but assertOwnership must re-derive it independently since

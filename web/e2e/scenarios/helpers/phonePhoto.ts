@@ -1,6 +1,6 @@
 import sharp from 'sharp';
 
-// A phone-size photo (CUR-2633): 4032×3024, the same blue circle on JPEG-hostile noise, saved at
+// A phone-size photo: 4032×3024, the same blue circle on JPEG-hostile noise, saved at
 // quality 92 so it comes to 6.2 MB, the size of a full-resolution photo from a recent phone. That is
 // over chat's 3 MB per message and over Vercel's 4.5 MB request cap, so it only gets through if the
 // browser shrinks it. The noise is seeded, so every run sends the same bytes.

@@ -6,7 +6,7 @@ import { createOpenAIClient } from "$lib/chat/server/openaiClient";
 // This is the shape the whole product rests on: the main turn (LiteLLM → Apertus), the second-opinion
 // panel, the search-decision classifiers and the query rewriter all parse `choices[0].delta.content`
 // out of SSE frames terminated by `data: [DONE]`. Other specs cover it only incidentally, in that a
-// TOTAL break would fail them (CUR-81). A renamed or
+// TOTAL break would fail them. A renamed or
 // restructured delta would not error; it would stream zero visible tokens, which is precisely the
 // "200 with an empty stream" failure the synthetic turn was built to catch, one layer down.
 //
@@ -28,7 +28,7 @@ const KEY = process.env.SECOND_OPINION_API_KEY || process.env.HF_TOKEN || "";
 // Recorded as fast in second-opinion/+server.ts; deliberately NOT the configured panel model. This is
 // hfJudgeClient.ts's DEFAULT_JUDGE_MODEL, which answers "ok" on the gateway with the X-HF-Bill-To header
 // this file already sends below. A model deprovisioned from the gateway fails every live run
-// identically and buries real vendor-health signal (CUR-519).
+// identically and buries real vendor-health signal.
 const MODEL = process.env.OPENAI_WIRE_MODEL || "Qwen/Qwen2.5-72B-Instruct";
 // The configured panel/aggregator model, pinned only for the merged-usage case at the bottom.
 const PANEL_MODEL = process.env.SECOND_OPINION_MODEL || "zai-org/GLM-5.2-FP8";
@@ -92,7 +92,7 @@ describe.skipIf(!ready)("OpenAI-compatible streaming wire contract (live)", () =
 				// of the `stream_options.include_usage` convention, and a backend may send it in addition
 				// to merging usage into the finish_reason chunk (one GLM-5.2 sample did both, two usage
 				// frames in one stream). Asserting a delta on EVERY frame made this red against exactly
-				// the streams CUR-153 is about. Skip them; `choiceFrames` below keeps the contract armed.
+				// the streams that change is about. Skip them; `choiceFrames` below keeps the contract armed.
 				if (!choice) continue;
 				choiceFrames++;
 				// The exact access path every consumer uses, on the frames that claim to carry a choice.
@@ -120,7 +120,7 @@ describe.skipIf(!ready)("OpenAI-compatible streaming wire contract (live)", () =
 		// The message distinguishes the two ways that happens, because they have different owners: a
 		// stream carrying NEITHER is a wire/backend problem, while a stream carrying only reasoning is
 		// the model spending its whole budget thinking — which empties a second-opinion panelist via
-		// stripThink and is a token-budget question, not a wire one (CUR-149).
+		// stripThink and is a token-budget question, not a wire one.
 		expect(
 			text.trim().length,
 			reasoning.trim().length > 0
@@ -184,7 +184,7 @@ describe.skipIf(!ready)("OpenAI-compatible streaming wire contract (live)", () =
 				model: PANEL_MODEL,
 				messages: [{ role: "user", content: "Name one Swiss city." }],
 				// GLM-5.2 is a reasoning model and its thinking length varies per call: at 512 a run can
-				// spend all 512 on reasoning and end on finish_reason "length" with no content (CUR-2611).
+				// spend all 512 on reasoning and end on finish_reason "length" with no content.
 				// This case is about where usage sits, so give the model room to finish.
 				max_tokens: 4096,
 				stream: true,
@@ -230,7 +230,7 @@ describe.skipIf(!ready)("OpenAI-compatible streaming wire contract (live)", () =
 		expect(sawFinishReason, "no finish_reason in the stream — nothing would ever be marked final").toBe(
 			true
 		);
-		// A reasoning-only stream that ran out of tokens is a budget problem, not CUR-153's dropped frame,
+		// A reasoning-only stream that ran out of tokens is a budget problem, not the dropped frame,
 		// so it gets its own message rather than reading as a wire defect.
 		expect(
 			text.trim().length,
@@ -264,7 +264,7 @@ describe.skipIf(!ready)("OpenAI-compatible streaming wire contract (live)", () =
 		const client = await createOpenAIClient({
 			baseURL: BASE,
 			apiKey: KEY,
-			// Required since CUR-1345, and the value is part of what this spec asserts: a live gateway that
+			// Required, and the value is part of what this spec asserts: a live gateway that
 			// hangs must fail this test rather than hold it open until the runner's own timeout, which
 			// reports as a flaky suite instead of a broken wire.
 			timeout: 30_000,

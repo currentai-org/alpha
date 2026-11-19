@@ -1,4 +1,4 @@
-"""A task whose Hermes ran in its sandbox gets the same artifacts, verdicts and resets as one that ran here (CUR-4483).
+"""A task whose Hermes ran in its sandbox gets the same artifacts, verdicts and resets as one that ran here.
 
 Each test builds one workspace tree twice, reads one copy through app.py's local readers and the other through
 `RemoteWork`, and asserts the answers match. The fake backend runs the guest's shell commands on this machine,
@@ -43,7 +43,7 @@ def _tree(root: Path) -> None:
     (root / "reports" / "b.txt").write_text("b\n")
     (root / "reports" / "q1" / "a.txt").write_text("a\n")
     (root / "blob.bin").write_bytes(b"\x00\x01\x02binary")
-    (root / "tab\tname.txt").write_text("a tab in the name\n")          # review on #4094: dropped by a tab split
+    (root / "tab\tname.txt").write_text("a tab in the name\n")          # dropped by a tab split
     (root / "new\nline.txt").write_text("a newline in the name\n")
     (root / "raw.log").write_text("service log\n")
     (root / app.ARTIFACT_QUARANTINE_DIRNAME).mkdir()
@@ -247,7 +247,7 @@ def test_a_guest_clock_behind_ours_still_keeps_this_turns_files_and_drops_last_t
 
 
 def test_a_file_read_that_fails_in_the_guest_fails_moderation_closed(pair):
-    """A per-file read that fails must not read as "not a file", or moderation skips its text."""
+    """a per-file read that failed read as "not a file", so moderation skipped its text."""
     _local, guest, _ws = pair
     ws = RemoteWork(_Failing("base64"), Handle("k", Tier.AGENT), str(guest))  # pyright: ignore[reportArgumentType]
     with pytest.raises(remote_work.SandboxError, match="reading"):
@@ -288,7 +288,7 @@ class _Pausing:
 
 @pytest.mark.parametrize("fail", [False, True])
 def test_a_finished_tasks_sandbox_is_paused_before_its_conversation_is_freed(monkeypatch, fail):
-    """CUR-4503: a running E2B sandbox holds 1 GiB of the host's pool until it idles, so ten finished tasks filled
+    """A running E2B sandbox holds 1 GiB of the host's pool until it idles, so finished tasks would fill
     the host; the task's end pauses it, and a failed pause still frees the conversation for its next task."""
     backend = _Pausing(fail)
     monkeypatch.setattr(app, "SANDBOX_BACKEND", backend)
@@ -343,8 +343,8 @@ def test_a_guest_listing_that_fails_raises_so_the_reviewer_asks_rather_than_seei
 
 
 def test_a_file_the_agent_made_in_the_guest_is_never_called_missing(tmp_path):
-    """CUR-4595: a task that delivers a .docx/.xlsx must not be answered "I was not able to complete
-    this"; the existence check looks in the guest, not this machine's empty scratch."""
+    """A delivered .docx/.xlsx is never answered "I was not able to complete this": the existence check looks in
+    the guest's folder, not in this machine's empty scratch."""
     guest, scratch = tmp_path / "guest", tmp_path / "scratch"
     guest.mkdir()
     scratch.mkdir()
@@ -374,8 +374,8 @@ def test_the_unrun_script_check_finds_python_in_the_guest(tmp_path):
 
 
 def test_a_continued_session_on_e2b_is_told_the_files_its_guest_already_holds(tmp_path):
-    """CUR-4595: the note lists the guest's files, not this machine's empty scratch, so a follow-up turn
-    is not told an empty room and does not answer "the file does not exist" about a file made the turn before."""
+    """The note listed this machine's empty scratch, so a follow-up turn was told an empty room and
+    answered "the file does not exist" about a file it had made the turn before."""
     guest, scratch = tmp_path / "guest", tmp_path / "scratch"
     guest.mkdir()
     scratch.mkdir()

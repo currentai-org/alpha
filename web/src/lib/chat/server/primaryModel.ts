@@ -6,14 +6,14 @@
 import { config } from "$lib/chat/server/config";
 import { logger } from "$lib/chat/server/logger";
 import { deploymentInstance } from "$lib/chat/server/instance";
-import { PICKER, deployedEnv, pickerSite } from "../../../../config/inference";
+import { PICKER, committedConfigEnv, pickerSite } from "../../../../config/inference";
 
 let warnedOverride = false;
 
 /**
  * The picker's comma-separated model list, before the ticket-branch reorder in models.ts.
  *
- * On a deployment (DEPLOY_ENV or VERCEL_ENV production or preview) it is config/inference.ts's list for this site (CUR-3484), so what www
+ * On a deployment (DEPLOY_ENV or VERCEL_ENV production or preview) it is config/inference.ts's list for this site, so what www
  * offers is reviewed in a PR rather than typed into Doppler. A MODEL_ALLOWLIST still set there is
  * ignored and logged once when it differs. Off Vercel (local dev, CI, evals, specs) it is
  * MODEL_ALLOWLIST as before, which is how evals pin one model, and empty when that is unset.
@@ -21,7 +21,8 @@ let warnedOverride = false;
 export function pickerSpec(env: NodeJS.ProcessEnv = process.env): string {
 	const override = ((Reflect.get(config, "MODEL_ALLOWLIST") as string | undefined) ?? "").trim();
 	// Taken from `env` so a spec can pass one.
-	const deployed = deployedEnv(env);
+	// A self-host in production mode keeps its MODEL_ALLOWLIST (committedConfigEnv).
+	const deployed = committedConfigEnv(env);
 	if (!deployed) return override;
 	const spec = PICKER[pickerSite(deployed, deploymentInstance(env))].join(",");
 	if (override && override !== spec && !warnedOverride) {

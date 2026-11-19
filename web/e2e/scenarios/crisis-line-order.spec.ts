@@ -5,8 +5,8 @@ import { chatEntry } from './helpers/chatEntry';
 import { installFaultInjectionHeader } from './helpers/faultInjection';
 import { startChattingPastWelcome } from './helpers/welcome';
 
-// The honesty stream puts findahelpline.com and 112 ahead of an answer's first US 988 line
-// (CUR-2136), and it must keep doing so now that a guest on a preview gets the native harness. Models
+// The honesty stream puts findahelpline.com and 112 ahead of an answer's first US 988 line,
+// and it must keep doing so now that a guest on a preview gets the native harness. Models
 // rarely write a 988-first answer unprompted, so the `crisis_line_reply` fault streams one with no
 // model call, through the same output screen and honesty stream a model's answer goes through.
 test(

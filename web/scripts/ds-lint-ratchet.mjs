@@ -41,7 +41,7 @@ if (only.length && (args.has("--update") || args.has("--report"))) {
 
 // Only the alpha-ds rules run, and none of them reads type information, so the type-aware parse
 // eslint.config.js sets up for `pnpm lint` is switched off here. Running the whole config and
-// keeping the alpha-ds messages cost 56s and 2GB for the same counts (CUR-2583).
+// keeping the alpha-ds messages cost 56s and 2GB for the same counts.
 const eslint = new ESLint({
 	cwd: root,
 	ruleFilter: ({ ruleId }) => ruleId.startsWith("alpha-ds/"),

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { catalogByGatewayId } from "$lib/chat/routing/catalog";
 import { panelModelReadsImages } from "./panelImages";
 
-describe("panelModelReadsImages (CUR-4670)", () => {
+describe("panelModelReadsImages", () => {
 	it("takes a catalogued model's readsImages as the catalog records it, so GLM-5.2 is text-only", () => {
 		expect(catalogByGatewayId("zai-org/GLM-5.2")?.readsImages).toBe(false);
 		expect(panelModelReadsImages("zai-org/GLM-5.2")).toBe(false);

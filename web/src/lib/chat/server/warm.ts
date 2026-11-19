@@ -1,35 +1,46 @@
+import { APP_USER_AGENT } from "$lib/chat/constants/app";
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { config } from "$lib/chat/server/config";
 import { firstKey } from "$lib/chat/server/env/firstKey";
-import { warmModeration, probeCoopHealth, coopReviewConfigMissing, isDeployment } from "$lib/chat/server/moderation";
+import { warmModeration, coopReviewConfigMissing, isDeployment, isSelfHostEdition } from "$lib/chat/server/moderation";
 import {
 	probeGuardHealth,
-	guardPrimaryEnabled,
+	probeS1Health,
 	guardPrimaryConfigured,
+	s1JudgeFor,
 } from "$lib/chat/server/guardGate";
-import { safetyScreenConfigured } from "$lib/chat/server/safetyScreen";
+import { safetyScreenToken } from "$lib/chat/server/safetyScreen";
 import { takeErrorCount, captureServerException } from "$lib/chat/server/errorTracking";
 import { takeAgentRouteFailureCount } from "$lib/chat/server/chat/resolveAgentRoute";
 import { recordProbe } from "$lib/chat/server/alerting";
 import { countFailClosedChildDeclines } from "$lib/chat/server/db/safetyEvents";
 import {
-	countTurnOutcomes,
+	countTurnOutcomeWindows,
 	pruneTurnOutcomes,
 	recentCompleteTtfts,
-	turnOutcomeRecovery,
 } from "$lib/chat/server/db/turnOutcomes";
-import { FAILURE_OUTCOMES } from "$lib/chat/utils/outcomeLadder";
-import { TURN_OUTCOME_WINDOW_MS, turnOutcomeVerdict } from "$lib/chat/server/turnOutcomeVerdict";
+import {
+	HARM_SLO,
+	OURS_SLO,
+	burnVerdicts,
+	isHarm,
+	isOursFailure,
+	probeHealth,
+	upstreamModelsOver,
+	windowsFor,
+	type OutcomeAgg,
+	type RuleVerdict,
+} from "$lib/chat/server/turnBurnRate";
 import { TURN_SPEED_SAMPLE, TURN_SPEED_WINDOW_MS, turnSpeedVerdict } from "$lib/chat/server/turnSpeedVerdict";
 import { refreshRegistryGatesIfChanged } from "$lib/chat/server/models";
 import { probeDueModels, type ProbeTarget } from "$lib/chat/server/modelProbe";
-import { refreshFlags } from "$lib/chat/server/flags";
+import { ensureFlagsPolled, refreshFlags } from "$lib/chat/server/flags";
 import { resolveProviderModelId } from "$lib/chat/server/endpoints/openai/providerPin";
 import { primaryModelId } from "$lib/chat/server/primaryModel";
 import { directWire, mistralChatEndpoint } from "$lib/chat/server/modelsCatalog";
 import { rolesNeedFlattening } from "$lib/chat/server/modelProfiles";
-import { mistralChatLane } from "$lib/chat/server/mistralKey";
+import { mistralChatLane, onRouterLane } from "$lib/chat/server/mistralKey";
 import { probeMistralModelList } from "$lib/chat/server/mistralVersions";
 import { embedText, cosine } from "$lib/chat/server/rag/embed";
 import ragIndex from "$lib/chat/server/rag/data/rag-index.json";
@@ -65,7 +76,7 @@ const throttleMs = (perLegDefault: number): number => {
  *  (each warm* fn must never throw — see warm.spec.ts) while its outcome stays visible, so a leg that
  *  fails every cron cycle cannot do so silently.
  *
- *  `ok` is WHATEVER `work` RETURNS, not "did it throw" (CUR-114). Absence-of-throw as the default
+ *  `ok` is WHATEVER `work` RETURNS, not "did it throw". Absence-of-throw as the default
  *  verdict makes completion-as-verdict the ergonomic path, so every new leg would start in the wrong
  *  shape. `embedText` and `getSyftCatalog` both fail open internally (return `null`, never throw), so
  *  their legs would report `ok=true` on every endpoint failure unless their call sites return the real
@@ -76,7 +87,7 @@ const throttleMs = (perLegDefault: number): number => {
  *  Called only on a leg's WORK path (after the throttle/config guards), so a throttle-skip logs
  *  nothing. RETURNS the outcome so a leg whose `ok` is HONEST can feed alerting.recordProbe; a leg that
  *  swallows internally must not (its `ok` is structurally true — see the moderation note above and
- *  CUR-35).
+ *).
  *
  *  `extra` is evaluated AFTER the work (so it can report what the work observed) and merged into both
  *  the success and failure line. It exists because these lines are the cheapest continuous health
@@ -135,18 +146,18 @@ type WarmLane = { name: "primary" | "mistral"; baseURL: string; key: string; wir
 /**
  * Resolve the lane to warm and assert against, the same way the turn path resolves it.
  *
- * This resolves one lane, the same one a default turn resolves to (CUR-243). It exists rather than
+ * This resolves one lane, the same one a default turn resolves to. It exists rather than
  * being inlined because a turn that resolves to a second registration while this leg probes the
  * configured primary leaves `model:identity` green about a lane no user is on, and the lane every user
- * is on unchecked: a check that can go red, but not for the failure it names (CUR-113).
+ * is on unchecked: a check that can go red, but not for the failure it names.
  *
  * The registrations are collapsed now, so the primary IS what a default turn gets. Keep it that way:
- * anything that makes a turn resolve to a model other than `primaryModelId()` has to be reflected
+ * anything that makes a turn resolve to a model other than `primaryModelId` has to be reflected
  * here in the same change, or this probe silently goes back to asserting the wrong thing.
  *
- * A Mistral primary is a second registration of exactly that kind: its turns go to `mistralChatLane()`'s
+ * A Mistral primary is a second registration of exactly that kind: its turns go to `mistralChatLane`'s
  * host under the host's own name for the model (`models.ts`, `mistralEndpoint`), never to
- * OPENAI_BASE_URL. So it is warmed there, under that name (CUR-3848).
+ * OPENAI_BASE_URL. So it is warmed there, under that name.
  */
 async function resolveWarmLane(): Promise<WarmLane | null> {
 	const model = primaryModelId();
@@ -177,19 +188,19 @@ function mistralPrimaryLane(model: string): WarmLane | null {
 }
 
 /**
- * The primary model when it is served straight from La Plateforme (CUR-2272), else undefined.
+ * The primary model when it is served straight from La Plateforme, else undefined.
  *
  * @remarks
  * That lane has no cold start to hide and no gateway that could substitute another model, so probing
- * it would spend Mistral's rate limit on every page load for a log line (CUR-2284). The staging router is a
+ * it would spend Mistral's rate limit on every page load for a log line. The staging router is a
  * LiteLLM gateway that caches and could answer with another model, and
- * production's primary is Large 3 through it, so it is probed like the gateway (CUR-3848). The
- * router lane is the one keyed by MISTRAL_CHAT_API_KEY; `mistralChatLane()` falls back to La
- * Plateforme on any other key.
+ * production's primary is Large 3 through it, so it is probed like the gateway. The
+ * router lane is the one keyed by MISTRAL_CHAT_API_KEY or MISTRAL_CHAT_CI_API_KEY (`onRouterLane`);
+ * `mistralChatLane` falls back to La Plateforme on any other key.
  */
 function directPrimary(): string | undefined {
 	const primary = primaryModelId();
-	if (!primary || mistralChatLane().keyEnv === "MISTRAL_CHAT_API_KEY") return undefined;
+	if (!primary || onRouterLane(mistralChatLane())) return undefined;
 	return mistralPrimaryLane(primary) ? primary : undefined;
 }
 
@@ -212,8 +223,8 @@ export async function warmModel(): Promise<void> {
 	// as ok=false instead of vanishing — while warmModel itself stays best-effort (never throws).
 	// The non-2xx THROW below is load-bearing: fetch RESOLVES on 4xx/5xx, so without it a WAF 403, a
 	// provider 503, or a rotated-out model id would all log ok=true, and the only model failure mode
-	// visible would be a network timeout. This is the same always-green trap as the moderation leg
-	// (CUR-35), one layer down.
+	// visible would be a network timeout. This is the same always-green trap as the moderation leg,
+	// one layer down.
 	// Captured inside the leg, asserted after it: reachability and identity are DIFFERENT failures with
 	// different runbooks, so a served-model swap must not present as a failure (and vice versa).
 	// A holder object, not a bare `let`: TS's control-flow analysis does not track assignment inside the
@@ -229,16 +240,15 @@ export async function warmModel(): Promise<void> {
 					"content-type": "application/json",
 					authorization: `Bearer ${key}`,
 					// The HF router WAF 403s the OpenAI SDK's default UA; mirror the endpoint's override.
-					"User-Agent": "aipotluck.org",
+					"User-Agent": APP_USER_AGENT,
 				},
 				body: JSON.stringify({
 					model: id,
 					// A different prompt every call, so no response cache can answer it. The gateway's
 					// LiteLLM cache answers a fixed "hi" itself (`x-litellm-cache-key` present, under a
 					// millisecond of gateway time, against hundreds of ms from a real host), so such a leg
-					// reads ok while real turns time out, without reaching, measuring or warming a model
-					// (CUR-2242).
-					// The shape the answer lane sends this model (CUR-1294): a host that refuses a system role
+					// reads ok while real turns time out, without reaching, measuring or warming a model.
+					// The shape the answer lane sends this model: a host that refuses a system role
 					// can answer a bare user "hi" itself while every real turn falls back to another model, so
 					// a one-message probe stays green through exactly the swap model:identity exists to catch.
 					messages: rolesNeedFlattening(id)
@@ -253,8 +263,8 @@ export async function warmModel(): Promise<void> {
 				signal: AbortSignal.timeout(20_000),
 			});
 			// A 429 is the host answering that its per-minute limit is full, which real turns hit too in a
-			// busy minute. It says the lane is up and says nothing about the model, so it is no verdict
-			// (CUR-3848): logged as busy, kept out of model:warm's failure count below.
+			// busy minute. It says the lane is up and says nothing about the model, so it is no verdict:
+			// logged as busy, kept out of model:warm's failure count below.
 			cap.busy = res.status === 429;
 			if (!res.ok) throw new Error(`HTTP ${res.status}`);
 			// Read WHICH model answered, not just that something did. Same provenance the turn path uses
@@ -274,7 +284,7 @@ export async function warmModel(): Promise<void> {
 				backend: res.headers.get("x-litellm-model-api-base") || undefined,
 				// Whether the gateway answered from its response cache rather than a model. LiteLLM sets
 				// `x-litellm-cache-key` on a cache hit, and a hit still reports a backend, so `backend` alone
-				// cannot tell the two apart. A fixed probe prompt is a hit every time (CUR-2242); this makes "every probe reached a model" a query rather than an inference.
+				// cannot tell the two apart. A fixed probe prompt is a hit every time; this makes "every probe reached a model" a query rather than an inference.
 				cached: res.headers.has("x-litellm-cache-key"),
 			};
 			// The verdict for THIS leg is reachability alone — a response came back OK. Identity is a
@@ -318,7 +328,7 @@ export async function warmModel(): Promise<void> {
 	// absent evidence must not read as a mismatch (that would be the fail-open trap inverted) — but
 	// skipping the log line too would make that skip indistinguishable, from Axiom, from a clean
 	// multi-day run of matches: a search for `leg: "model-identity"` returning zero rows would be equally
-	// consistent with "quietly fine" and "not running" (CUR-1200). So every branch logs, and only the
+	// consistent with "quietly fine" and "not running". So every branch logs, and only the
 	// verdict-bearing branch pages (recordProbe's own doc comment: "a skipped probe records nothing";
 	// that contract still holds, it just does not mean "and says nothing either").
 	const seen = cap.served;
@@ -330,7 +340,7 @@ export async function warmModel(): Promise<void> {
 		// lane resolveWarmLane picked. With one lane those are the same string once the `:provider`
 		// suffix is stripped — but reading the wire id is what keeps this honest if a second lane ever
 		// returns, and a constant here would stay green about a lane nobody is on.
-		// A name in SERVED_AS is the same weights from another host (CUR-4343), so it matches too.
+		// A name in SERVED_AS is the same weights from another host, so it matches too.
 		const base = (s: string) => s.split(":")[0].trim().toLowerCase();
 		const expected = base(id);
 		if (seen?.model) {
@@ -370,7 +380,7 @@ export async function warmModel(): Promise<void> {
 	}
 }
 
-// ── Picker model probes (CUR-4042) ───────────────────────────────────────────────────────────────
+// ── Picker model probes ───────────────────────────────────────────────────────────────
 // The model leg above warms and checks the primary only. Every other model in the picker was known to
 // be down only once three visitors had failed on it. modelProbe.ts probes each one every few minutes and
 // sets or clears its busy mark from the result. This guard keeps a burst of page-load pings on one
@@ -426,7 +436,7 @@ export async function warmEmbeddings(): Promise<void> {
 	const cap: { vec: number[] | null } = { vec: null };
 	// embedText FAILS OPEN internally — a non-OK response, an unexpected shape, or a network error all
 	// resolve to `null` rather than throwing (embed.ts). So the real verdict here is whether a vector
-	// actually came back, not whether the call resolved (CUR-114: under the old timedWarm, every one of
+	// actually came back, not whether the call resolved (under the old timedWarm, every one of
 	// those failure modes logged ok=true because nothing threw).
 	const ok = await timedWarm("embeddings", async () => {
 		cap.vec = await embedText(probe?.text ?? "warm", 15_000);
@@ -456,14 +466,14 @@ export async function warmEmbeddings(): Promise<void> {
 	// That last one is the dangerous case: swap in a sibling model and retrieval keeps returning chunks,
 	// scores keep clearing the tuned floor, and answers keep looking grounded while being ranked in a
 	// different vector space. Quietly wrong rather than down, the same shape as a model swap on the chat
-	// lane (CUR-113). The 0.99 floor is far above the 0.489 near-miss and far below any plausible float
+	// lane. The 0.99 floor is far above the 0.489 near-miss and far below any plausible float
 	// noise on an identical model.
 	const vec = cap.vec;
 	if (ok && vec && probe) {
 		const score = cosine(vec, probe.vector);
 		const matches = score > EMBED_IDENTITY_MIN_COSINE;
 		// Both outcomes are logged: with mismatches only, an Axiom search for `leg: "embeddings-identity"`
-		// returning zero rows would read the same for "quietly fine" and "not running" (CUR-1200).
+		// returning zero rows would read the same for "quietly fine" and "not running".
 		const fields = { leg: "embeddings-identity", ok: matches, chunk: probe.id, cosine: score, indexModel: ragIndex.model };
 		if (matches) {
 			logger.info(fields, "[warm] embedding endpoint is in the committed index's vector space");
@@ -496,7 +506,7 @@ export async function warmEmbeddings(): Promise<void> {
 // nothing warns, the `db` leg just starts paying the pooler connect. 60s is the coarsest cron-expressible
 // interval that still survives ONE missed run (2 × 60 < 150). Change either side and re-check the other.
 // Over 24h of production (Axiom) the db leg ran 4.6ms avg / 96ms max over 1,582 runs, with no missed
-// cron runs (CUR-30 for the queries, CUR-47 for the interval).
+// cron runs (for the queries, for the interval).
 const DB_WARM_THROTTLE_MS = 15_000;
 let lastDbWarmAt = 0;
 
@@ -527,9 +537,9 @@ export async function warmDb(): Promise<void> {
 }
 
 /** Re-check the model registry's flag-derived gates (picker/router-alias/agent-mode) every cron tick,
- *  and republish only on a real change (CUR-1149). `ensureModelsReady` builds the registry once per
+ *  and republish only on a real change. `ensureModelsReady` builds the registry once per
  *  process and never again — this is what stops a flag flip from being invisible for the rest of that
- *  process's life, which in practice can span more than one deploy (CUR-1122). No throttle: cheap when
+ *  process's life, which in practice can span more than one deploy. No throttle: cheap when
  *  nothing changed (one flag poll), and a real flip is exactly the case this exists to catch promptly.
  *
  *  This is the only leg that imports from `models.ts`. It logs as designed under `pnpm dev`, but on
@@ -580,7 +590,7 @@ export async function warmSyftCatalog(): Promise<void> {
 	// getSyftCatalog FAILS OPEN internally, same shape as embedText: client-acquisition failure, an
 	// aborted browse, and an upstream error all resolve to `null` rather than throwing (syftCatalog.ts).
 	// So the real verdict is whether a catalog actually came back, not whether the call resolved
-	// (CUR-114) — timedWarm logs [warm] leg=catalog ok=… ms=… and swallows (warmSyftCatalog stays
+	// — timedWarm logs [warm] leg=catalog ok=… ms=… and swallows (warmSyftCatalog stays
 	// best-effort).
 	const ok = await timedWarm("catalog", async () => (await getSyftCatalog()) !== null);
 	// DEGRADED: the catalog only feeds the pre-flight router's reasoning; without it a turn answers
@@ -594,10 +604,10 @@ export async function warmSyftCatalog(): Promise<void> {
 	});
 }
 
-/** Read Mistral's model list on a deployment with a Mistral lane, and alert when it can't be read
- *  (CUR-3842). That list is how an answer's `*-latest` alias is credited to its dated version; when it
+/** Read Mistral's model list on a deployment with a Mistral lane, and alert when it can't be read.
+ *  That list is how an answer's `*-latest` alias is credited to its dated version; when it
  *  is unreadable every Large 3 answer is badged with the alias, with only an error log line to show
- *  for it (CUR-3841). */
+ *  for it. */
 const MISTRAL_VERSIONS_THROTTLE_MS = 600_000;
 let lastMistralVersionsAt = 0;
 export async function warmMistralVersions(): Promise<void> {
@@ -619,46 +629,18 @@ export async function warmMistralVersions(): Promise<void> {
 	});
 }
 
-// Coop VERDICT-path HEALTH probe — distinct from the `moderation` warm leg, which swallows and is ALWAYS
-// ok (see CUR-35). This leg reports REAL health: probeCoopHealth runs a benign verdict through the live
-// path and is healthy iff Coop returns a non-UNKNOWN verdict — UNKNOWN is the exact state that fail-CLOSES
-// real turns into CHILD_SAFETY_DECLINE (the invisible "assistant refusing users" failure). Feeds
-// alerting.recordProbe → the alert_state debounce → the alert channel. THROTTLED well above the 60s cron cadence: the
-// probe costs a real Coop rule evaluation (the reason warming dropped /content), so ~3 min keeps it a few
-// evals/hour; with alerting's FIRE_THRESHOLD=3 that's ~9 min to fire — fast for a failure, past a blip.
-// Skipped entirely when Coop isn't configured (probeCoopHealth → null). NOT wrapped in timedWarm: `ok`
-// here is the PROBE VERDICT, not "the work completed" (timedWarm's ok would always be true, the exact
-// trap this leg exists to avoid).
+// Coop is the REVIEW plane, not a detector: the guard screens every chat turn, so there is no Coop
+// verdict path to probe. This leg keeps the rule-free origin ping (warmModeration → pingCoopOrigin) as
+// review-service reachability, and alerts when the review keys are missing (warmCoopReviewConfig).
+// warmGuardHealth watches the guard side.
 const COOP_HEALTH_THROTTLE_MS = 180_000;
-let lastCoopHealthAt = 0;
-const COOP_ALERT_RUNBOOK =
-	"checkChildSafety fails CLOSED on this ⇒ every turn declines as CHILD_SAFETY_DECLINE (looks like the model refusing users, not an outage). Check the Coop service at COOP_URL; if confirmed down, weigh disarming child-safety per moderation.ts.";
 
 export async function warmCoopHealth(): Promise<void> {
-	// Under guard-primary Coop is the REVIEW plane, not a detector, so the /content VERDICT probe would
-	// be Coop-as-detector receiving non-hit content — and recordProbe("coop:verdict", …) would alert on a
-	// path no longer in use. Suppress it; the rule-free origin ping (warmModeration → pingCoopOrigin)
-	// stands in as review-service reachability. Flag OFF keeps the verdict probe — Coop IS the live gate
-	// then, and warmGuardHealth watches the guard side.
-	if (guardPrimaryEnabled()) {
-		await warmModeration();
-		await warmCoopReviewConfig();
-		return;
-	}
-	const now = Date.now();
-	if (now - lastCoopHealthAt < throttleMs(COOP_HEALTH_THROTTLE_MS)) return;
-	lastCoopHealthAt = now;
-	const start = Date.now();
-	const healthy = await probeCoopHealth(); // null ⇒ Coop not configured ⇒ nothing to watch, skip
-	if (healthy === null) return;
-	logger.info({ leg: "coop", ok: healthy, ms: Date.now() - start }, "[warm] leg");
-	await recordProbe("coop:verdict", healthy, {
-		label: "Coop verdict path",
-		runbook: COOP_ALERT_RUNBOOK,
-	});
+	await warmModeration();
+	await warmCoopReviewConfig();
 }
 
-// Under guard-primary, Coop is where detection hits and CSAM hash matches go for human review. Its
+// Coop is where detection hits and CSAM hash matches go for human review. Its
 // keys missing on a deployment means those reports are dropped with one log line, so alert on it.
 // Config only, no network call; off a deployment there is nothing to watch.
 let lastCoopReviewConfigAt = 0;
@@ -675,29 +657,27 @@ async function warmCoopReviewConfig(): Promise<void> {
 	});
 }
 
-// GUARD verdict-path health probe — the guard-primary twin of
-// warmCoopHealth, watching the SAME failure class: an UNKNOWN screen fail-CLOSES child safety, so a
+// GUARD verdict-path health probe, watching the failure class: an UNKNOWN screen fail-CLOSES child safety, so a
 // dead/wrong guard endpoint presents as the assistant refusing users, not as a failure. One probe,
 // two fixtures (benign must screen safe; a fixed violative line that must block on chat-block-violence,
 // exercising stage 2) through the real screening path (probeGuardHealth): transport, parse, and SERVED
-// MODEL IDENTITY asserted on EVERY response — reachability is not identity (CUR-113: a healthy endpoint
+// MODEL IDENTITY asserted on EVERY response — reachability is not identity (a healthy endpoint
 // can serve someone else's checkpoint while every probe stays green).
 //
-// Runs when the guard verdict path is live for EITHER consumer: the
-// guard-primary FLAG (chat turns screen through the guard) OR safetyScreenConfigured() (the agent
-// service screens through POST /chat/api/safety/screen, regardless of the flag — its own deploy arms
-// SAFETY_SCREEN_TOKEN). Either way the same probe (transport, parse, served-model IDENTITY on every
-// response) watches the SAME failure class — an UNKNOWN screen fail-CLOSES, so a dead/wrong endpoint
+// Runs on every build: chat turns always screen through the guard, and the agent service screens
+// through POST /chat/api/safety/screen. An UNKNOWN screen fail-CLOSES, so a dead/wrong endpoint
 // presents as chat refusing users (child-closed) or agent tasks 502-ing, not as a failure. The URL
-// unset while a consumer is live is the plan's loud misconfiguration — recorded UNHEALTHY here, never a
-// silent skip. Neither consumer live ⇒ no probe (the Coop leg above is the live-gate watcher then).
+// unset on a hosted build is the loud misconfiguration — recorded UNHEALTHY here, never a silent skip.
+// A self-host edition with no Shieldstral endpoint chose not to run one, so it has nothing to probe,
+// unless its agent screen endpoint is armed (SAFETY_SCREEN_TOKEN): agent screens fail closed with no
+// classifier, so that stays the loud misconfiguration.
 const GUARD_HEALTH_THROTTLE_MS = 180_000;
 let lastGuardHealthAt = 0;
 const GUARD_ALERT_RUNBOOK =
-	"The guard gate (Shieldstral-1.0-3B) fail-CLOSES child safety on UNKNOWN ⇒ every turn declines as CHILD_SAFETY_DECLINE (looks like the model refusing users). The HF endpoint at GUARD_SHADOW_URL is configured to NEVER scale to zero (min replicas ≥1), so a 503/UNKNOWN here is a REAL endpoint fault (replica restart, overload, or outage), NOT a scale-to-zero wake window — check the HF endpoint dashboard, then the served model identity in this leg's log line. Kill switch guard-primary OFF recovers CHAT only. The agent service screens through /chat/api/safety/screen regardless of the flag — restore the HF endpoint (or its GUARD_SHADOW_URL) to recover agent moderation; until then agent tasks fail closed (502).";
+	"The guard gate (Shieldstral-1.0-3B) fail-CLOSES child safety on UNKNOWN ⇒ every turn declines as CHILD_SAFETY_DECLINE (looks like the model refusing users). The HF endpoint at GUARD_SHADOW_URL is configured to NEVER scale to zero (min replicas ≥1), so a 503/UNKNOWN here is a REAL endpoint fault (replica restart, overload, or outage), NOT a scale-to-zero wake window — check the HF endpoint dashboard, then the served model identity in this leg's log line. Chat and the agent service (/chat/api/safety/screen) both screen through it — restore the HF endpoint (or its GUARD_SHADOW_URL) to recover; until then chat turns decline and agent tasks fail closed (502).";
 
 export async function warmGuardHealth(): Promise<void> {
-	if (!guardPrimaryEnabled() && !safetyScreenConfigured()) return;
+	if (isSelfHostEdition() && !guardPrimaryConfigured() && !safetyScreenToken()) return;
 	const now = Date.now();
 	if (now - lastGuardHealthAt < throttleMs(GUARD_HEALTH_THROTTLE_MS)) return;
 	lastGuardHealthAt = now;
@@ -705,10 +685,10 @@ export async function warmGuardHealth(): Promise<void> {
 	if (!guardPrimaryConfigured()) {
 		logger.error(
 			{ leg: "guard", ok: false },
-			"[warm] the guard verdict path is live (guard-primary flag and/or the agent screen endpoint) but GUARD_SHADOW_URL is unset — screens fail UNKNOWN (chat child-closed / agent 502) on every turn"
+			"[warm] GUARD_SHADOW_URL is unset — guard screens fail UNKNOWN (chat child-closed / agent 502) on every turn"
 		);
 		void captureServerException(
-			new Error("GUARD_SHADOW_URL unset while the guard verdict path is live")
+			new Error("GUARD_SHADOW_URL unset on a hosted build")
 		);
 		await recordProbe("guard:verdict", false, {
 			label: "Guard gate (Shieldstral-1.0-3B) verdict path",
@@ -740,6 +720,59 @@ export async function warmGuardHealth(): Promise<void> {
 	});
 }
 
+// S1 verdict-path health probe, beside the guard leg above. While `s1-safety-judge` is on, S1
+// judges every text chunk of a chat turn, and an S1 call that fails leaves the child rules unknown, so an
+// S1 outage declines every chat turn while the Shieldstral leg stays green (Shieldstral still judges
+// images). Same fixtures, same path, same three assertions as the guard leg (probeS1Health). Flag off: no
+// probe and no record. Flag on with the S1 key or endpoint unset: recorded UNHEALTHY, never a silent skip.
+// Same 3-minute throttle as the guard leg: each probe is two S1 screens, 7 calls each, plus 8 escalation
+// calls on a screen with a broad score in the escalation band (detectors/s1.ts), on one endpoint that
+// production and every preview share.
+//
+// s1:verdict has no status-page heartbeat (alerting.ts HEARTBEAT_ENV_BY_KEY). A heartbeat goes red by
+// silence, so one shared with guard:verdict would stay green while either probe is healthy.
+const S1_HEALTH_THROTTLE_MS = 180_000;
+let lastS1HealthAt = 0;
+const S1_ALERT_LABEL = "Chat safety judge (Zentropi S1) verdict path";
+const S1_ALERT_RUNBOOK =
+	"While s1-safety-judge is on, Zentropi S1 (zentropi-ai/cope-b-s1) judges every chat turn's text, and an S1 call that fails leaves the child rules unknown ⇒ every turn declines as CHILD_SAFETY_DECLINE (looks like the model refusing users). Read this leg's [warm] leg line (transportOk, parseOk, identityAsserted), then the `[guard] s1 call not answered` lines, whose `reason` is config, timeout, network, http_<status>, served_model_mismatch or answer_key_mismatch. The endpoint is ZENTROPI_S1_ENDPOINT_URL, else S1_JUDGE.provider.deployed_api_base in web/config/safetyScreen.ts, keyed by HF_TOKEN: check the HF Inference Endpoint dashboard. Kill switch: s1-safety-judge OFF returns chat text screening to Shieldstral.";
+
+export async function warmS1Health(): Promise<void> {
+	const now = Date.now();
+	if (now - lastS1HealthAt < throttleMs(S1_HEALTH_THROTTLE_MS)) return;
+	lastS1HealthAt = now;
+	// A cold instance reads every flag as its fallback (off) until the first poll, which would skip this
+	// leg on the first tick of every new instance. Same poll the chat turn takes (resolveTurnPolicy).
+	await ensureFlagsPolled();
+	const s1 = s1JudgeFor();
+	if (!s1) return; // s1-safety-judge off: S1 judges nothing, nothing to watch
+	const start = Date.now();
+	const probe = await probeS1Health(s1);
+	if (probe === null) {
+		logger.error(
+			{ leg: "s1", ok: false },
+			"[warm] s1-safety-judge is ON but the S1 key (HF_TOKEN) or endpoint (ZENTROPI_S1_ENDPOINT_URL) is unset — every S1 call is unknown and every chat turn declines"
+		);
+		void captureServerException(new Error("S1 key or endpoint unset while s1-safety-judge is on"));
+		await recordProbe("s1:verdict", false, { label: S1_ALERT_LABEL, runbook: S1_ALERT_RUNBOOK });
+		return;
+	}
+	logger[probe.healthy ? "info" : "warn"](
+		{
+			leg: "s1",
+			ok: probe.healthy,
+			transportOk: probe.transportOk,
+			parseOk: probe.parseOk,
+			identityOk: probe.identityOk,
+			identityAsserted: probe.identityAsserted,
+			servedModels: probe.servedModels,
+			ms: Date.now() - start,
+		},
+		"[warm] leg"
+	);
+	await recordProbe("s1:verdict", probe.healthy, { label: S1_ALERT_LABEL, runbook: S1_ALERT_RUNBOOK });
+}
+
 // Fail-closed child-safety decline rate: the one signal that catches turns being declined while the
 // app, model and DB are all up. When Coop returns UNKNOWN, checkChildSafety fails closed, so a decline
 // is what the caller sees; one such episode can decline thousands of turns over days with nothing red. See
@@ -747,10 +780,10 @@ export async function warmGuardHealth(): Promise<void> {
 //
 // This is NOT the Coop verdict probe (warmCoopHealth). That probe asks "can Coop answer ME right now"
 // with benign text; this one asks "is the live traffic being declined". They fail independently: the
-// probe can read healthy while real turns fail closed, and it is blind to a dead detector entirely
-// (CUR-83). Two different questions, deliberately both asked.
+// probe can read healthy while real turns fail closed, and it is blind to a dead detector entirely.
+// Two different questions, deliberately both asked.
 //
-// Unlike the other probes, this one is NOT subject to CUR-90's per-instance counter race: every
+// Unlike the other probes, this one is NOT subject to the per-instance counter race: every
 // instance queries the same shared table over the same window, so they all compute the same answer and
 // a healthy instance cannot mask an unhealthy one. The throttle below is still per-instance, so the
 // COUNT runs once per instance per window — a cheap indexed count, deliberately accepted.
@@ -817,7 +850,7 @@ export async function warmErrorRate(): Promise<void> {
 // The auto-route classifier fails open (answers normally, agent mode silently never engages) rather
 // than throwing, so warmErrorRate's own counter never sees it — a person in agent mode can't tell "the
 // router decided no tool was needed" from "the router fell over", and without a count the failures are
-// only scattered `[agent-route]` warn lines (CUR-1260). There is no steady-state baseline yet, so the
+// only scattered `[agent-route]` warn lines. There is no steady-state baseline yet, so the
 // threshold is conservative and is tuned from observed rates.
 const AGENT_ROUTE_FAILURE_THRESHOLD = 5;
 const AGENT_ROUTE_FAILURE_RUNBOOK =
@@ -843,7 +876,7 @@ export async function warmAgentRouteFailureRate(): Promise<void> {
 	});
 }
 
-// ── Turn-outcome RATE (CUR-89) ───────────────────────────────────────────────────────────────────
+// ── Turn-outcome RATE (burn rate and failure layers) ─────────────────────────
 // The probes above each watch a failure someone predicted: a dead vendor, a thrown exception, a Coop
 // failure. None answers "what fraction of REAL turns did not produce an answer, for a reason not on the
 // list". warmErrorRate catches unhandled throws, but a turn can end empty WITHOUT throwing — for example
@@ -851,28 +884,45 @@ export async function warmAgentRouteFailureRate(): Promise<void> {
 // terminal-outcome taxonomy that only the turn route knows (persisted to turn_outcomes because the
 // [turn] outcome log lives in Axiom, which the cron can't reach) and alerts on the failure RATE.
 //
-// FAILURE set: error + timedOut + empty — the turn broke, the watchdog killed it, or the model wrote
-// nothing and a guard covered for it (CUR-445). It is DEFINED WITH THE LADDER, in
-// $lib/chat/utils/outcomeLadder, not restated here: a second copy of the same taxonomy would need
-// every new outcome value added in two places, and one missed would count as a success by omission. See there for what is excluded and why, and for the measurement behind `empty`.
-const TURN_OUTCOME_PROBE_THROTTLE_MS = 5 * 60_000; // a DB read of a sustained rate; no need per 60s tick
-// The window, sample floor, rate ceiling and the recovery rule live with the decision in
-// turnOutcomeVerdict.ts, so a replay of real rows runs the same code as this cron (CUR-2242).
+// FAILURE set: error + timedOut + empty, DEFINED WITH THE LADDER in $lib/chat/utils/outcomeLadder. Each
+// failed row carries the layer it died in ($lib/chat/utils/failureLayer), and the four probes below read
+// one aggregate through turnBurnRate.ts (multi-window burn rate, the SLOs and the volume floors live
+// there, so the Axiom replay runs the same decision):
+//   turn:outcome-rate       ours, fast burn          DOWN — our pipeline is breaking now
+//   turn:outcome-burn-slow  ours, slow burn          DEGRADED
+//   turn:harm-rate          everything but client    DEGRADED — visitors got no answer, whoever's fault
+//   turn:upstream-rate      upstream, per model      DEGRADED — names the partner hosts not answering
+const TURN_OUTCOME_PROBE_THROTTLE_MS = 60_000; // every cron tick: the fast rule's short window is 5 minutes
 const TURN_OUTCOME_RETENTION_MS = 48 * 60 * 60_000;
 const TURN_OUTCOME_RUNBOOK =
-	"A sustained share of real turns ended without an answer (error/timedOut/empty) — OUR path, not a vendor, so no dependency probe will be red and the synthetic turn may still pass on its single shot. Check the [turn] outcome distribution in Axiom (break down by vercel.environment), then PostHog error tracking. If the excess is `empty` the pipeline is fine and the MODEL returned nothing: compare answerChars against modelChars on those turns — a large answerChars with modelChars 0 is the honesty guard's sources pointer standing in for a blank answer. child_safety declines and unhandled exceptions have their own probes; this is the everything-else rate.";
+	"A sustained share of real turns failed in OUR pipeline (failureLayer=ours: an exception in our code, a stall in one of our steps, a guard that emptied the answer, or a failure with no recorded cause) — not a model host, those are on turn:upstream-rate. In Axiom: ['aipotluck'] | where message == '[turn] outcome' and failureLayer == 'ours' | summarize count() by failureCause, model. `exception` → join 'Error in conversation stream' by request_id; `empty` → compare answerChars against modelChars (the honesty guard's sources pointer standing in for a blank answer); `watchdog-our-step` → the retrieval, search or tool step that stalled. Then PostHog error tracking.";
+const TURN_HARM_RUNBOOK =
+	"A sustained share of visitors got no answer after our own lane failover, in any layer but their own. Read turn:upstream-rate and turn:outcome-rate first: this one fires when neither alone explains it, or both together do. In Axiom, `fallback` on the [turn] outcome line says whether a backup lane was tried (tried), existed but could not act (available), or was never configured (none).";
+const TURN_UPSTREAM_RUNBOOK =
+	"These model hosts are failing their turns (failureLayer=upstream: 429, 5xx, no first chunk, a dropped stream, or a stall with only the model call running). Not our code. Check the model's status page and the router's (`pnpm models:matrix` for which host serves it); a partner benchmark saturating a pool shows as 429s and silent turns on that model alone. Auto already steers around a busy model (modelBusy.ts).";
 let lastTurnOutcomeProbeAt = 0;
 
-/** Alert on the RATE of non-complete turn outcomes over a rolling window. Throttled well above the 60s
- *  cron: it's a DB aggregate of a sustained rate, not a single turn. Prunes the table each run so it
- *  stays bounded. */
+/** Record one burn-rate probe, or nothing when its verdict is no-verdict/hold — a healthy zero would
+ *  clear a real firing alert the moment traffic dipped (the posture). */
+async function recordBurnProbe(
+	key: string,
+	verdicts: readonly RuleVerdict[],
+	opts: Parameters<typeof recordProbe>[2]
+): Promise<void> {
+	const healthy = probeHealth(verdicts);
+	if (healthy === null) return;
+	await recordProbe(key, healthy, opts);
+}
+
+/** Alert on the turn failure burn rate, split by the layer each failure died in. Prunes the table each
+ *  run so it stays bounded. */
 export async function warmTurnOutcomeRate(): Promise<void> {
 	const now = Date.now();
 	if (now - lastTurnOutcomeProbeAt < throttleMs(TURN_OUTCOME_PROBE_THROTTLE_MS)) return;
 	lastTurnOutcomeProbeAt = now;
-	let counts: Record<string, number>;
+	let rows: OutcomeAgg[];
 	try {
-		counts = await countTurnOutcomes(TURN_OUTCOME_WINDOW_MS);
+		rows = await countTurnOutcomeWindows();
 	} catch (e) {
 		// Can't read the table ⇒ record NOTHING, not a healthy zero — the always-green trap this exists
 		// to close. Same posture as warmDeclineRate.
@@ -886,62 +936,50 @@ export async function warmTurnOutcomeRate(): Promise<void> {
 	void pruneTurnOutcomes(TURN_OUTCOME_RETENTION_MS).catch((e) =>
 		logger.warn({ err: e instanceof Error ? e.message : String(e) }, "[warm] turn-outcome prune failed")
 	);
-	let verdict = turnOutcomeVerdict({
-		counts,
-		failureOutcomes: FAILURE_OUTCOMES,
-		newestFailureAt: null,
-		completesSinceFailure: 0,
-		now: new Date(now),
-	});
-	if (verdict.kind === "failing") {
-		// Over the ceiling on the 6h window. Read the newest evidence before re-raising, since the window
-		// stays over for hours after answers complete again (CUR-2242). A failed read keeps the failing
-		// verdict: missing evidence of recovery is not evidence of it.
-		try {
-			const recovery = await turnOutcomeRecovery(TURN_OUTCOME_WINDOW_MS, [...FAILURE_OUTCOMES]);
-			verdict = turnOutcomeVerdict({
-				counts,
-				failureOutcomes: FAILURE_OUTCOMES,
-				...recovery,
-				now: new Date(now),
-			});
-		} catch (e) {
-			logger.warn(
-				{ err: e instanceof Error ? e.message : String(e) },
-				"[warm] leg=turn-outcome recovery read failed — keeping the failing verdict"
-			);
-		}
-	}
-	if (verdict.kind === "no-verdict") {
-		// No denominator worth alerting on. Skip rather than record — a healthy zero here would clear a
-		// real firing alert the moment traffic dipped, and a raised one on 1/2 turns would be noise.
-		logger.info(
-			{ leg: "turn-outcome", ok: true, total: verdict.total, note: "below-min-sample" },
-			"[warm] leg"
-		);
-		return;
-	}
-	const healthy = verdict.kind !== "failing";
+	const oursWindows = windowsFor(rows, isOursFailure);
+	const ours = burnVerdicts(oursWindows, OURS_SLO);
+	const harm = burnVerdicts(windowsFor(rows, isHarm), HARM_SLO);
+	const upstream = upstreamModelsOver(rows);
 	logger.info(
 		{
 			leg: "turn-outcome",
-			ok: healthy,
-			total: verdict.total,
-			failures: verdict.failures,
-			rate: Number(verdict.rate.toFixed(3)),
-			...(verdict.kind === "recovered"
-				? { note: "recovered", completesSinceFailure: verdict.completesSinceFailure }
-				: {}),
+			ok: ours.fast.kind !== "over",
+			total: oursWindows["1h"].total,
+			ours1h: oursWindows["1h"].bad,
+			oursFast: ours.fast.kind,
+			oursSlow: ours.slow.kind,
+			harmFast: harm.fast.kind,
+			harmSlow: harm.slow.kind,
+			upstreamOver: upstream.over,
 		},
 		"[warm] leg"
 	);
-	await recordProbe("turn:outcome-rate", healthy, {
-		label: "Turn failure rate",
+	await recordBurnProbe("turn:outcome-rate", [ours.fast], {
+		label: "Turn failure rate (our pipeline)",
 		runbook: TURN_OUTCOME_RUNBOOK,
 	});
+	await recordBurnProbe("turn:outcome-burn-slow", [ours.slow], {
+		label: "Turn failure rate over 6h (our pipeline)",
+		runbook: TURN_OUTCOME_RUNBOOK,
+		severity: "degraded",
+	});
+	await recordBurnProbe("turn:harm-rate", [harm.fast, harm.slow], {
+		label: "Visitors left without an answer",
+		runbook: TURN_HARM_RUNBOOK,
+		severity: "degraded",
+	});
+	if (upstream.health !== null) {
+		await recordProbe("turn:upstream-rate", upstream.health, {
+			label: upstream.over.length
+				? `Model hosts failing turns (${upstream.over.join(", ")})`
+				: "Model hosts failing turns",
+			runbook: TURN_UPSTREAM_RUNBOOK,
+			severity: "degraded",
+		});
+	}
 }
 
-// ── first-token median (CUR-2243) ─────────────────────────────────────────────────────
+// ── first-token median ─────────────────────────────────────────────────────
 // The rate probe above sees turns that end without an answer. A pool that still answers, slowly, ends
 // every turn `complete` and reads healthy there; this reads how long the newest completed turns waited
 // for their first words. The sample, window and ceiling live with the decision in turnSpeedVerdict.ts.
@@ -983,49 +1021,89 @@ export async function warmTurnSpeed(): Promise<void> {
 	});
 }
 
-/** Warm every cold-start-prone upstream in parallel — moderation (Coop), the model, the
- *  embeddings endpoint and the DB connection. Pinged by the CLIENT on load/focus (a
- *  best-effort head-start while the user reads/types) and by the every-minute Vercel cron (vercel.json,
- *  `* * * * *` — see the PG_IDLE_TIMEOUT coupling note above warmDb before changing it).
- *  For the cron to actually land, Vercel Deployment Protection needs "Protection Bypass for Automation"
- *  enabled in project settings — the cron hits the deployment's own *.vercel.app URL, which platform SSO
- *  otherwise 401s before the app ever runs. Deployment protection is the only gate on /api/warm.
- *  Dedicated always-warm HF Inference Endpoints (min-replicas=1)
- *  cover the embeddings lane regardless; see docs/setup-warm-embeddings-endpoint.md. All legs best-effort. */
-export async function warmAll(): Promise<void> {
-	// model/embeddings/db self-report via timedWarm inside each fn; wrap the externally-swallowing
-	// moderation leg here so every warm outcome is one structured [warm] leg=… ok=… ms=… line. The
-	// allSettled stays belt-and-braces — every leg already swallows on its own.
-	await Promise.allSettled([
-		// moderation swallows internally (CUR-35) and have no real verdict to give — timedWarm now
-		// requires one explicitly, so `return true` states what was previously implicit: `ok` here means
+// ── Three groups, split by who needs them ─────────────────────────────────────────────
+// The legs above used to run together from one route that a Vercel cron hit every minute. On Vercel a
+// cron call reaches ONE instance, so anything that refreshes per-process state (the flag snapshot, the
+// model registry, the DB connection, the in-process error counters) only ever refreshed that instance.
+// On a host with several long-lived processes that is the whole problem, so the legs are grouped by
+// what they warm:
+//   page legs        an upstream a visitor is about to call (model, embeddings, moderation). Run by the
+//                    page's warm ping on load/focus, and by the scheduled job so the upstreams stay hot.
+//   process legs     state that lives in THIS process. Off Vercel each process runs them itself on an
+//                    interval (keepalive.ts); on Vercel, where an idle function is frozen and a timer
+//                    would thaw inside a real request, the page ping and the scheduled job run them.
+//   deployment legs  probes and pruning, whose subject is the whole deployment. Run once per tick by
+//                    the scheduled job (/chat/api/probes, CRON_SECRET), never by a page ping.
+
+async function pageLegs(): Promise<unknown> {
+	return Promise.allSettled([
+		// moderation swallows internally and has no real verdict to give — timedWarm requires
+		// one explicitly, so `return true` states what was previously implicit: `ok` here means
 		// "completed", not "healthy".
 		timedWarm("moderation", async () => {
 			await warmModeration();
 			return true;
 		}),
 		warmModel(),
-		warmModelProbes(),
 		warmEmbeddings(),
+	]);
+}
+
+async function processLegs(): Promise<unknown> {
+	return Promise.allSettled([
 		warmDb(),
 		warmSyftCatalog(),
-		warmMistralVersions(),
-		warmCoopHealth(),
-		warmGuardHealth(),
-		warmDeclineRate(),
+		// The error-rate and agent-route legs read and reset counters held in THIS process.
 		warmErrorRate(),
 		warmAgentRouteFailureRate(),
-		warmTurnOutcomeRate(),
-		warmTurnSpeed(),
-		// The flag plane (CUR-86) is READ synchronously from a snapshot, and this is the only thing that
+		// The flag plane is READ synchronously from a snapshot, and this is the only thing that
 		// refreshes it — without it the snapshot silently reads its env fallback forever. `warmRegistryGates`
-		// (CUR-1149) additionally re-derives+republishes the model REGISTRY on a real gate change, which the
-		// bare call below can't do — but its own doc comment says its effect on Vercel is unconfirmed. Keep both rather than let one subsume the other (CUR-1164): this
-		// leg is the only thing standing between a PostHog flip and `guard-primary` (100% in prod, the
-		// safety-verdict kill switch) actually taking effect within a cron tick instead of a lambda recycle.
+		// additionally re-derives+republishes the model REGISTRY on a real gate change, which the
+		// bare call below can't do — but its own doc comment says its effect on Vercel is unconfirmed. Keep both rather than let one subsume the other: this
+		// leg is the only thing standing between a PostHog flip and a flag actually taking effect within a
+		// cron tick instead of a lambda recycle.
 		refreshFlags(),
 		warmRegistryGates(),
 	]);
+}
+
+async function deploymentLegs(): Promise<unknown> {
+	return Promise.allSettled([
+		warmModelProbes(),
+		warmMistralVersions(),
+		warmCoopHealth(),
+		warmGuardHealth(),
+		warmS1Health(),
+		warmDeclineRate(),
+		warmTurnOutcomeRate(),
+		warmTurnSpeed(),
+	]);
+}
+
+/** The page's warm ping (/chat/api/warm, on load/focus): wake the upstreams a visitor is about to call.
+ *  On Vercel it also runs the process legs, as it did before the split, since an instance there has
+ *  no keepalive of its own. Those include the error and agent-route counters, which record a probe
+ *  and are reset by every ping, so on Vercel a page ping still feeds those two alerts. It never runs
+ *  the deployment probes. All legs best-effort; never throws. */
+export async function warmPagePing(): Promise<void> {
+	await Promise.allSettled([pageLegs(), ...(process.env.VERCEL ? [processLegs()] : [])]);
+}
+
+/** One process's own keepalive tick (keepalive.ts runs it on an interval off Vercel). */
+export async function warmProcess(): Promise<void> {
+	await processLegs();
+}
+
+/** The scheduled job (/chat/api/probes, every minute: vercel.json on Vercel, a scheduler elsewhere).
+ *  Runs every group, then pings the external heartbeat.
+ *  For the cron to land on Vercel, Deployment Protection needs "Protection Bypass for Automation"
+ *  enabled in project settings — the cron hits the deployment's own *.vercel.app URL, which platform
+ *  SSO otherwise 401s before the app ever runs. See the PG_IDLE_TIMEOUT coupling note above warmDb
+ *  before changing the cadence. Dedicated always-warm HF Inference Endpoints (min-replicas=1) cover the
+ *  embeddings lane regardless; see docs/setup-warm-embeddings-endpoint.md. All legs best-effort. */
+export async function warmAll(): Promise<void> {
+	// Every leg already swallows on its own; allSettled is belt-and-braces.
+	await Promise.allSettled([pageLegs(), processLegs(), deploymentLegs()]);
 
 	// AFTER the work, deliberately. Pinging at the top would prove only that the function was invoked;
 	// pinging here proves the cron ran AND got to the end. allSettled never rejects, so a failed leg
@@ -1034,7 +1112,7 @@ export async function warmAll(): Promise<void> {
 	await pingExternalHeartbeat();
 }
 
-// ── External dead-man's switch (CUR-102) ─────────────────────────────────────────────────────────
+// ── External dead-man's switch ─────────────────────────────────────────────────────────
 // Every alert this app can raise is best-effort and posts through our own webhook from inside this
 // cron — so if the cron stops or the webhook dies, the silence is indistinguishable from a healthy
 // week. Alerting cannot detect its own death from the inside.

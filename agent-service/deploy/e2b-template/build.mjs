@@ -1,4 +1,4 @@
-// Build the `hermes` template on our E2B install from ./Dockerfile (CUR-4482). Run on the E2B host, in the
+// Build the `hermes` template on our E2B install from ./Dockerfile. Run on the E2B host, in the
 // node-e2b image Embed ships, the way its own base-template service runs: build-on-host.sh does both.
 import { Template } from 'e2b'
 import { readFileSync } from 'node:fs'
@@ -15,7 +15,7 @@ const started = Date.now()
 const template = Template({ fileContextPath: here }).fromDockerfile(readFileSync(`${here}/Dockerfile`, 'utf8'))
 await Template.build(template, alias, {
   cpuCount: 2,
-  // A running sandbox reserves its whole guest memory from the host's hugepage pool (CUR-4496), so this size
+  // A running sandbox reserves its whole guest memory from the host's hugepage pool, so this size
   // divides the pool. An agent turn peaked under the 985 MB the bwrap machine had (api/app.py, _rlimit_prefix).
   memoryMB: 1024,
   onBuildLogs: (entry) => console.log(String(entry)),

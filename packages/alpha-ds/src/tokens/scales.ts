@@ -4,7 +4,7 @@
  * SOURCE OF TRUTH. Edit here, then run `pnpm ds:tokens` to regenerate `generated/tokens.css`
  * and `generated/tokens.json`. `tokens.spec.ts` fails if the checked-in output drifts.
  *
- * Values follow the CF Alpha spec (`src/lib/chat/design-system.md`, CUR-509): three radius
+ * Values follow the Alpha design spec (`src/lib/chat/design-system.md`): three radius
  * tiers, a six-step type scale, three typefaces with one job each. Brutalism lives here as
  * much as in colour: sharp by default, hard 1px rules, no soft elevation, fast linear motion.
  *

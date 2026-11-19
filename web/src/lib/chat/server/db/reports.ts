@@ -57,7 +57,7 @@ export async function listReports(limit = 200): Promise<ReportRow[]> {
 }
 
 /** The ids of the reports filed against one conversation, oldest first. A reviewer opening the
- *  conversation cites these as the reason for the read (CUR-4385). */
+ *  conversation cites these as the reason for the read. */
 export async function reportIdsForConversation(conversationId: string): Promise<string[]> {
 	const db = getDb();
 	const rows = await db
@@ -79,7 +79,7 @@ export type OwnReport = Pick<
 >;
 
 /**
- * The reports this visitor sent, newest first (CUR-3903). A signed-in user gets the rows carrying
+ * The reports this visitor sent, newest first. A signed-in user gets the rows carrying
  * their user id. A guest gets their session's rows that carry no user id, so a session that later
  * signed in never shows a guest the reports filed under the account.
  */

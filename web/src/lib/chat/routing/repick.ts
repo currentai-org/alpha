@@ -7,7 +7,7 @@ export function catalogName(id: string): string {
 	return catalog.find((model) => model.id === id)?.name ?? id;
 }
 
-/** What the conversation page knows about a turn that just failed (CUR-4384). */
+/** What the conversation page knows about a turn that just failed. */
 export interface FailedTurn {
 	/** The `auto-repick` flag, as the layout data shipped it. */
 	enabled: boolean;
@@ -25,7 +25,7 @@ export interface FailedTurn {
 
 /**
  * Whether a failed turn says its model answered nobody: its host refused (429), has no working entry for
- * it (404, CUR-4629), failed on its side (5xx), or the model
+ * it (404), failed on its side (5xx), or the model
  * sent nothing before its give-up. The tab marks such a model busy (busyHere.ts), so Auto's next choice,
  * this turn's re-pick included, goes elsewhere. A 400 or 401 is about our request and counts for none.
  * @internal exported for its unit tests
@@ -40,7 +40,7 @@ export function modelAnsweredNobody(statusCode: number | undefined, modelSilent:
  * Whether a failed turn marks the model the conversation is on busy in this tab (busyHere.ts), which
  * then shows the composer's "unavailable right now" notice for it. Only a failure of that model does
  * (modelAnsweredNobody). A turn the agent served (`route` "agent", from the turn's router metadata)
- * never does (CUR-4661): agent-service ran it, so the route's watchdog ending a run whose approval
+ * never does: agent-service ran it, so the route's watchdog ending a run whose approval
  * nobody answered, or a stall in the agent's own steps, says nothing about the chosen model, which was
  * never called. The server's own mark already leaves agent turns out (watchdogCountsTowardBusy).
  */
@@ -76,11 +76,11 @@ export function repickedNote(failedFrom: string, next: AutoRouteNote): AutoRoute
 }
 
 /**
- * The live log's line while Auto waits on its choice's first word (CUR-4384): shown once the model has
+ * The live log's line while Auto waits on its choice's first word: shown once the model has
  * used half of its wait, so a visitor knows before the give-up that Auto will ask another model.
  * Undefined before then, once the model has started (answer text, a provenance frame naming it, or a
  * search with sources; after that the silent give-up no longer applies, so the line's promise would not
- * hold, CUR-4629), or for any answer but the one Auto is waiting on.
+ * hold), or for any answer but the one Auto is waiting on.
  */
 export function slowToStartLine(input: {
 	wait: { answerId: string; model: string; waitMs: number } | null;

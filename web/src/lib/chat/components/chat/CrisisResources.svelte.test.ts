@@ -7,7 +7,7 @@ vi.mock('$app/state', () => appState);
 import CrisisResources from './CrisisResources.svelte';
 
 // The card reads in the language the
-// support classifier returns, when the catalogs carry it, and in English for one they don't. (CUR-4094)
+// support classifier returns, when the catalogs carry it, and in English for one they don't.
 const INTRO = {
 	en: "If things feel overwhelming, you don't have to face it alone.",
 	de: 'Wenn dir alles zu viel wird, musst du das nicht allein durchstehen.',
@@ -52,7 +52,7 @@ describe('the support card', () => {
 	});
 });
 
-// Catalan, Italian and Portuguese come from the card-only table, not a UI catalog. (CUR-4103)
+// Catalan, Italian and Portuguese come from the card-only table, not a UI catalog.
 describe('the support card in a language only the card carries', () => {
 	it('reads in Catalan, with lang="ca" on its root and the country named in Catalan', async () => {
 		const note = await card('ca', 'es');
@@ -75,7 +75,7 @@ describe('the support card in a language only the card carries', () => {
 });
 
 // The country the
-// message names wins over the IP country (a question about France from a connection in Taiwan); with none named, the IP country stands. (CUR-4488)
+// message names wins over the IP country (a question about France from a connection in Taiwan); with none named, the IP country stands.
 describe('the support card follows the country the message names', () => {
 	it('shows France, not the Taiwan IP country, when the classifier read France from the message', async () => {
 		appState.page.data.visitorCountry = 'TW';

@@ -9,14 +9,14 @@ import { startChattingPastWelcome } from './helpers/welcome';
 import { scrollFooterToRest } from './helpers/footer';
 
 // A3 ("My data stays mine, and I can take it with me") has no filmed journey at all.
-// Its claim (CUR-643): anonymous visitors see a warning that their conversation is deleted after 30 days
+// Its claim: anonymous visitors see a warning that their conversation is deleted after 30 days
 // idle, instead of losing it with no notice.
 // The harder A3 surfaces — data export, custodial storage view — are auth-gated and
 // read false in production right now, so they need `setFlagOverrides` and an `@preview-only` tag;
 // this one needs neither. It fires for any anonymous visitor with a conversation, on any
 // deployment, which is why it is the first A3 spec rather than one of those.
 //
-// GuestRetentionNotice.svelte is a quiet inline note (CUR-1429), not a
+// GuestRetentionNotice.svelte is a quiet inline note, not a
 // full-width amber banner with a "sign in to keep it" link:
 // that banner oversold sign-in as the remedy and overstated a normal privacy default as a
 // fault. This spec asserts the note exists and names the retention window — not the banner
@@ -66,7 +66,7 @@ test(
 // The sibling test above proves the guest line renders; this proves the SAME clock does
 // not follow a signed-in account onto the empty state it lands on first. Without this, a notice
 // shown to everybody satisfies the guest test exactly as well as one gated correctly — the guest
-// test alone cannot tell the two apart, so the gate needs its own test (CUR-1731).
+// test alone cannot tell the two apart, so the gate needs its own test.
 test(
 	'a signed-in account does not see the guest 30-day retention line on the empty state',
 	{ tag: '@A3' },
@@ -90,7 +90,7 @@ test(
 // The notice is CMS copy; this pins only the two sentences that say what deletion reaches, the
 // Account Settings route and the anonymous-history attach that deleting the account cannot undo.
 // Two known contradictions in the notice are filed, not asserted: "we do not store your messages"
-// beside 30-day guest retention (CUR-2064), and the gateway's unbounded log of prompts (CUR-2185).
+// beside 30-day guest retention, and the gateway's unbounded log of prompts.
 test(
 	'a guest reaches the privacy notice from Data & privacy, reads what deletion reaches, and finds the trust page',
 	{ tag: '@A3' },
@@ -118,7 +118,7 @@ test(
 			).toBeVisible();
 
 			// A reader scrolls to the footer and clicks once it stops moving; Playwright's own scroll
-			// lands the lagged footer under the fixed header (CUR-4492).
+			// lands the lagged footer under the fixed header.
 			const trustLink = page.locator('footer').getByRole('link', { name: 'Trust and Safety' });
 			await scrollFooterToRest(page, trustLink);
 			await trustLink.click();

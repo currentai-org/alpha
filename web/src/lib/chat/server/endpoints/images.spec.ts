@@ -50,7 +50,7 @@ describe("convertImage", () => {
 	// AVIF is an HEIF-family container, so sharp reads its own AVIF output back as format "heif".
 	// Worth knowing rather than smoothing over: images.ts blocklists image/heic and image/heif on
 	// INPUT for licence reasons (images.ts:110), so an AVIF this code emits would be refused if a
-	// user ever handed it back. Not in scope to change here, but it is a real round-trip asymmetry.
+	// user ever handed it back, a round-trip asymmetry.
 	const readsBackAs: Record<string, string> = { avif: "heif" };
 
 	it.each(["png", "jpeg", "webp", "avif", "tiff", "gif"])(
@@ -169,7 +169,7 @@ describe("makeImageProcessor", () => {
 		expect(meta.width).toBe(64);
 	}, 30_000);
 
-	it("refuses SVG content declared as image/png, so an upload never reaches the SVG decoder (CUR-4037)", async () => {
+	it("refuses SVG content declared as image/png, so an upload never reaches the SVG decoder", async () => {
 		const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="2" height="2"><rect width="2" height="2" fill="red"/></svg>`;
 		await expect(makeImageProcessor(opts)(asFile(Buffer.from(svg), PNG))).rejects.toThrow(
 			/unsupported image format/i

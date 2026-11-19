@@ -6,7 +6,7 @@
 	import type { RagSource } from '$lib/chat/types/Rag';
 
 	// This answer searched the person's own earlier chats (search_past_chats). The note names
-	// each chat it read, one link per chat, so the person can see where an answer about the past came from. (CUR-4576)
+	// each chat it read, one link per chat, so the person can see where an answer about the past came from.
 	let { sources }: { sources: ReadonlyArray<Pick<RagSource, 'title' | 'url'>> } = $props();
 
 	const chats = $derived(

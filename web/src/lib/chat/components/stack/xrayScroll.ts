@@ -8,12 +8,12 @@ export interface Edges {
 const START_SLACK_PX = 1;
 
 /**
- * How far the thread scrolls so an answer's footer stays readable above the X-ray panel as it opens
- * (CUR-3951). The panel takes height from the thread, which would slide the footer, the line X-ray is
+ * How far the thread scrolls so an answer's footer stays readable above the X-ray panel as it opens.
+ * The panel takes height from the thread, which would slide the footer, the line X-ray is
  * there to be checked against, under the panel's top edge. `clearance` keeps the footer out of the
  * thread's bottom fade. Never scrolls up: an answer already above that line stays where it is. Never
  * scrolls an answer's start out of view either, when it is in view: on a short window the answer's text
- * outranks its footer (CUR-3934).
+ * outranks its footer.
  */
 export function answerFooterDelta(view: Edges, answer: Edges, clearance: number): number {
 	const toFooter = answer.bottom - (view.bottom - clearance);
@@ -30,7 +30,7 @@ export function answerFooterDelta(view: Edges, answer: Edges, clearance: number)
 
 /**
  * How many pixels the panel's body gives back so an answer's start and its footer both fit above the
- * panel (CUR-3951). `answerFooterDelta` stops at the answer's start on a short window, which would
+ * panel. `answerFooterDelta` stops at the answer's start on a short window, which would
  * leave the footer under the panel's edge with only the answer's first line above it. Shrinking the
  * body by the shortfall hands that height back to the thread. Never below `minBody`, so the panel stays
  * usable, and nothing when the answer's start has already scrolled away (a long answer read from its

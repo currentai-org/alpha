@@ -34,7 +34,7 @@ const flags = (over: Partial<ToolFlags> = {}): ToolFlags => ({
 	...over
 });
 
-describe('read-aloud has ONE gate (CUR-225): the readAloudEnabled flag', () => {
+describe('read-aloud has ONE gate: the readAloudEnabled flag', () => {
 	it('offers the read-aloud tool when the flag is on', () => {
 		const ids = composerTools(flags({ readAloudEnabled: true }), bindings().b).map((t) => t.id);
 		expect(ids).toContain('readAloud');
@@ -50,7 +50,7 @@ describe('read-aloud has ONE gate (CUR-225): the readAloudEnabled flag', () => {
 	});
 });
 
-describe('reasoning effort (CUR-680): offered only when the per-model override is on, and writes the bound value', () => {
+describe('reasoning effort: offered only when the per-model override is on, and writes the bound value', () => {
 	it('is absent without the override', () => {
 		expect(composerTools(flags(), bindings().b).map((t) => t.id)).not.toContain('reasoning');
 	});
@@ -93,7 +93,7 @@ describe('chips show exactly the tools that are on', () => {
 	});
 });
 
-describe('offeredMimeTypes (CUR-2382)', () => {
+describe('offeredMimeTypes', () => {
 	it('offers no file type at all when no CSAM scanner is configured, so the composer shows no attach control', () => {
 		expect(offeredMimeTypes({ attachmentsEnabled: false, uploadsEnabled: true, modelIsMultimodal: true })).toEqual([]);
 	});
@@ -124,7 +124,7 @@ describe('offeredMimeTypes (CUR-2382)', () => {
 		expect(offered.filter((t) => t.startsWith('image/'))).toEqual(['image/webp']);
 	});
 
-	it("narrows a model's image/* to what a browser draws, so a TIFF is never offered (CUR-3051)", () => {
+	it("narrows a model's image/* to what a browser draws, so a TIFF is never offered", () => {
 		const offered = offeredMimeTypes({
 			attachmentsEnabled: true,
 			uploadsEnabled: true,
@@ -136,7 +136,7 @@ describe('offeredMimeTypes (CUR-2382)', () => {
 		expect(mimeOffered(offered, 'image/tiff')).toBe(false);
 	});
 
-	it('offers PDF and DOCX only where the server reads them (CUR-987), and never without a scanner', () => {
+	it('offers PDF and DOCX only where the server reads them, and never without a scanner', () => {
 		const pdf = 'application/pdf';
 		expect(offeredMimeTypes({ attachmentsEnabled: true, uploadsEnabled: true, modelIsMultimodal: false })).not.toContain(pdf);
 		expect(
@@ -148,7 +148,7 @@ describe('offeredMimeTypes (CUR-2382)', () => {
 	});
 });
 
-describe('refusedPasteMessage (CUR-2949: a refused paste never vanishes silently)', () => {
+describe('refusedPasteMessage ( a refused paste never vanishes silently)', () => {
 	const photo = { type: 'image/png', name: 'image.png' };
 	const guest = { imageInputEnabled: false, imageInputOnSignIn: false, signedIn: false, loginEnabled: true };
 
@@ -213,14 +213,14 @@ describe('refusedPasteMessage (CUR-2949: a refused paste never vanishes silently
 		).toBe("Photos can't be attached here yet.");
 	});
 
-	it('names a refused TIFF by its type where photos are offered, never "photos can\'t be attached" (CUR-3051)', () => {
+	it('names a refused TIFF by its type where photos are offered, never "photos can\'t be attached"', () => {
 		const tiff = { type: 'image/tiff', name: 'scan.tiff' };
 		expect(refusedPasteMessage([tiff], { ...guest, signedIn: true, imageInputEnabled: true, imagesOffered: true })).toBe(
 			"This file type can't be attached here: TIFF file. Photos attach as JPEG, PNG, WebP or GIF."
 		);
 	});
 
-	it('names the photo types that attach when a HEIC arrives with no type at all (CUR-3073)', () => {
+	it('names the photo types that attach when a HEIC arrives with no type at all', () => {
 		const heic = { type: '', name: 'IMG_0001.HEIC' };
 		expect(refusedPasteMessage([heic], { ...guest, signedIn: true, imageInputEnabled: true, imagesOffered: true })).toBe(
 			"This file type can't be attached here: HEIC file. Photos attach as JPEG, PNG, WebP or GIF."
@@ -251,7 +251,7 @@ describe('refusedPasteMessage (CUR-2949: a refused paste never vanishes silently
 	});
 });
 
-describe('photosOnSignIn (CUR-3015: PostHog is asked once per guest who tries, never per page load)', () => {
+describe('photosOnSignIn ( PostHog is asked once per guest who tries, never per page load)', () => {
 	// A fresh module per test, so each starts with nothing remembered.
 	let photosOnSignIn: typeof import('./composerTools').photosOnSignIn;
 	beforeEach(async () => {
@@ -278,7 +278,7 @@ describe('photosOnSignIn (CUR-3015: PostHog is asked once per guest who tries, n
 	});
 });
 
-describe('a tool chip says the mode it is in (CUR-3570)', () => {
+describe('a tool chip says the mode it is in', () => {
 	it('reads Auto and Always differently, so the composer tells them apart without the menu', () => {
 		const { state, b } = bindings({ readAloud: 'auto' });
 		const readAloud = composerTools(flags({ readAloudEnabled: true }), b).find((t) => t.id === 'readAloud')!;
@@ -297,8 +297,8 @@ describe('a tool chip says the mode it is in (CUR-3570)', () => {
 });
 
 // The Tools menu says what auto does and why someone would turn web search off. ChatInput prints each
-// option's description under its label (SOL-206). (CUR-2030)
-describe('the web search options say what auto does and why to turn it off (CUR-2030)', () => {
+// option's description under its label.
+describe('the web search options say what auto does and why to turn it off', () => {
 	const option = (value: string) =>
 		composerTools(flags(), bindings().b)
 			.find((t) => t.id === 'webSearch')!

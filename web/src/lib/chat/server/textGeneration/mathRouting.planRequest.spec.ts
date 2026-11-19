@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// The turn planner's forced plan_turn call (CUR-2198). It turns GLM's reasoning off the same way every
-// other GLM side call does: `reasoning_effort: "none"` alone is ignored by zai-org, which reasoned ~180
-// chars before every call (CUR-2090). This file mocks the client so the request body itself is what gets
+// The turn planner's forced plan_turn call. It turns GLM's reasoning off the same way every other GLM
+// side call does, since zai-org ignores `reasoning_effort: "none"` alone and reasons before every call.
+// This file mocks the client so the request body itself is what gets
 // asserted.
 const sent: Record<string, unknown>[] = [];
 const logged: Record<string, unknown>[] = [];
@@ -43,7 +43,7 @@ vi.mock("$lib/chat/server/openaiClient", () => ({
 		},
 	}),
 }));
-// The plan model's endpoint names its key's env var; laneFor reads the value (CUR-2640).
+// The plan model's endpoint names its key's env var; laneFor reads the value.
 vi.mock("$lib/chat/server/config", async (importOriginal) => {
 	const real = await importOriginal<typeof import("$lib/chat/server/config")>();
 	const config = new Proxy(real.config, {
@@ -67,7 +67,7 @@ const { followUpNote, planTurn, renderLedger } = await import("./mathRouting");
 const HF = "https://router.huggingface.co/v1";
 const ask = [{ from: "user", content: "3 notebooks at 4.50 and a pen for 2, what do I spend?" }];
 
-describe("the plan call turns reasoning off with the shared field and provider pin (CUR-2090)", () => {
+describe("the plan call turns reasoning off with the shared field and provider pin", () => {
 	beforeEach(() => {
 		sent.length = 0;
 		logged.length = 0;
@@ -81,7 +81,7 @@ describe("the plan call turns reasoning off with the shared field and provider p
 		expect(sent[0].reasoning_effort).toBeUndefined();
 	});
 
-	it("sends the id the host knows the model by, not ours, when the endpoint names one (CUR-3055)", async () => {
+	it("sends the id the host knows the model by, not ours, when the endpoint names one", async () => {
 		toolArgs = undefined;
 		await planTurn(ask, {
 			id: "mistral-medium-2604",
@@ -91,7 +91,7 @@ describe("the plan call turns reasoning off with the shared field and provider p
 		expect(sent[0].model).toBe("mistralai/mistral-medium-3-5");
 	});
 
-	it("fails the plan, sending nothing, for a GLM id with no provider pin (CUR-2112)", async () => {
+	it("fails the plan, sending nothing, for a GLM id with no provider pin", async () => {
 		const run = await planTurn(ask, { id: "zai-org/GLM-5.3", endpoints: [{ baseURL: HF, apiKeyEnv: "PLAN_LANE_KEY" }] });
 		expect(sent).toHaveLength(0);
 		expect(run.outcome).toBe("failed");
@@ -106,7 +106,7 @@ describe("the plan call turns reasoning off with the shared field and provider p
 	});
 });
 
-describe("each field of the plan is judged on its own (CUR-2198, CUR-2161)", () => {
+describe("each field of the plan is judged on its own", () => {
 	const glm = { id: "zai-org/GLM-5.2-FP8", endpoints: [{ baseURL: HF, apiKeyEnv: "PLAN_LANE_KEY" }] };
 	const agenda = [
 		{
@@ -186,7 +186,7 @@ describe("each field of the plan is judged on its own (CUR-2198, CUR-2161)", () 
 	});
 });
 
-describe("the follow-up read is its own call beside plan_turn (CUR-1957)", () => {
+describe("the follow-up read is its own call beside plan_turn", () => {
 	const glm = { id: "zai-org/GLM-5.2-FP8", endpoints: [{ baseURL: HF, apiKeyEnv: "PLAN_LANE_KEY" }] };
 	const notAsked = JSON.stringify({ math: { asks_for_calculation: false, lines: [] } });
 	const laptops = [
@@ -274,7 +274,7 @@ describe("the follow-up read is its own call beside plan_turn (CUR-1957)", () =>
 	});
 });
 
-describe("an earlier rendered ledger goes back to the planner as its own plan_turn call (CUR-2198)", () => {
+describe("an earlier rendered ledger goes back to the planner as its own plan_turn call", () => {
 	const glm = { id: "zai-org/GLM-5.2-FP8", endpoints: [{ baseURL: HF, apiKeyEnv: "PLAN_LANE_KEY" }] };
 
 	it("sends the rows as a tool call and the total as its result, not as prose to copy", async () => {

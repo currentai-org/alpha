@@ -1,5 +1,5 @@
 // guardScreenTypes — the ONE screen-input contract shared by the primary gate (guardGate), the
-// shadow (guardShadow), the health probe, and the media preparer (prepareTurnMedia). A tiny leaf
+// health probe, and the media preparer (prepareTurnMedia). A tiny leaf
 // module so prepareTurnMedia and guardGate can both import it without a cycle.
 // (Shieldstral swap plan — docs/plans/shieldstral-detection-swap.md, "API change" section.)
 
@@ -7,6 +7,20 @@
 /** The whole-corpus screen cap — Coop /content parity, no widening. Typed text reserves its length
  *  out of this first; clipboard + rendered file segments truncate into the remainder. */
 export const GUARD_CORPUS_CAP = 100_000;
+/** With `guard-history-cap` on, the most the input screen reads per turn: the newest user message
+ *  whole, plus the end of the earlier ones up to this total. An earlier message passed the
+ *  screen on its own turn; re-reading a long chat's whole history cost ~15 s a turn. */
+export const SCREEN_HISTORY_CAP = 4_000;
+
+/** The screen corpus under the history cap: `texts` are the user messages' finalTexts in prompt
+ *  order. The newest is always kept whole; a newest of `cap` chars or more is returned alone. Earlier
+ *  texts are joined as the uncapped corpus joins them, and only their end is kept. */
+export function capScreenHistory(texts: string[], cap = SCREEN_HISTORY_CAP): string {
+	const newest = texts.at(-1) ?? "";
+	const room = cap - newest.length - "\n\n".length;
+	if (texts.length < 2 || room <= 0) return newest;
+	return `${texts.slice(0, -1).join("\n\n").slice(-room)}\n\n${newest}`;
+}
 /** Newest-first cap on retained image OCCURRENCES per turn — excluded from BOTH the screen and the
  *  model payload beyond it (never screened-less-than-sent). */
 export const MAX_TURN_IMAGES = 8;
@@ -19,6 +33,8 @@ export const IMAGE_CAPTION_CAP = 4_000;
 export type PreparedImage = {
 	sha: string;
 	mime: string;
+	/** The name the person gave the file; the agent's workdir copy is named by it. */
+	name?: string;
 	/** Hydrated source bytes — what the endpoint's own image processor consumes. */
 	source: Buffer;
 	/** Bounded screening rendition (sharp fit-inside 1024×1024 JPEG), base64 — what the guard sees. */
@@ -43,6 +59,10 @@ export type FailedUnit = {
  *  (sync and async planes): file/history bytes never go to the vendor (plan r3 #3). */
 export type GuardScreenInput = {
 	corpus: string;
+	/** Set only when `guard-history-cap` cut the history out of `corpus`: the whole history, as the
+	 *  uncapped corpus would read. The gate re-screens it before a content block stands, so the cap
+	 *  never declines a follow-up the whole history would pass. */
+	historyCorpus?: string;
 	typedTurnText: string;
 	images: PreparedImage[];
 	failedUnits: FailedUnit[];
@@ -91,7 +111,7 @@ export type ShieldAnswer =
 
 /** One judge call's outcome: the answer plus the transport/identity signals the probe asserts on. */
 /** Where one judge call ran, read from its own response: the model the body reports, the URL the
- *  request ended at, and the HF router's provider header when it went through the router (CUR-3563). */
+ *  request ended at, and the HF router's provider header when it went through the router. */
 export type ServedCall = { model: string; backend?: string; provider?: string };
 
 export type JudgeOutcome = {

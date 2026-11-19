@@ -1,4 +1,4 @@
-// Usage tiers for the conversation's sandbox (CUR-4578). Every signed-in account can run code from its
+// Usage tiers for the conversation's sandbox. Every signed-in account can run code from its
 // first message; the tier decides how much. Two limits, both read from `config/sandboxTiers.ts`:
 //
 //   live    conversations holding a running sandbox at once. A sandbox pauses after the idle window
@@ -18,7 +18,7 @@
 // leaves the account on the first tier, and a failed read of recent runs lets the call through.
 // agent-service still refuses a third live sandbox for any account (`E2B_ACCOUNT_MAX_LIVE`).
 //
-// A team account (teamAccount.ts, CUR-4620) starts on the highest tier and is never held on the first:
+// A team account (teamAccount.ts) starts on the highest tier and is never held on the first:
 // staff test the safety screen on purpose, so a decline on their account says nothing about abuse.
 // The highest tier is still a daily cap, and agent-service's live ceiling applies as to anyone.
 //
@@ -42,7 +42,7 @@ const TEST_POOL_KEY = "sandbox-pool:e2e-accounts";
 
 type TierStanding = { tier: SandboxTier; index: number; next?: SandboxTier; held: boolean };
 
-/** A team account's standing: the highest tier, whatever its history (CUR-4620).
+/** A team account's standing: the highest tier, whatever its history.
  *  @internal exported for sandboxAllowance.spec */
 export function staffStanding(cfg: SandboxTierConfig = SANDBOX_TIERS): TierStanding {
 	const index = cfg.tiers.length - 1;
@@ -156,7 +156,7 @@ const UNAVAILABLE_TEXT =
 // The shapes agent-service and the MCP SDK give a sandbox that did not start or resume: SandboxBusy,
 // SandboxError's host and start texts (sandbox_e2b.py), the 503 `sandbox unavailable`, Embed's
 // "cannot map" capacity text, and the SDK's bare "Error executing tool" for an exception agent-service
-// did not wrap, which is what a failed resume of a paused sandbox gives today (CUR-4565, CUR-4518).
+// did not wrap, which is what a failed resume of a paused sandbox gives.
 // A refusal about the person's own input (a path outside the workspace) matches none of them.
 const UNAVAILABLE_SHAPES =
 	/host is full|can't be reached right now|could not be started|sandbox unavailable|cannot map|Error executing tool/i;

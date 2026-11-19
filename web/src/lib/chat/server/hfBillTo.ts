@@ -1,5 +1,5 @@
 /**
- * The one rule for sending `X-HF-Bill-To` on a chat-model call (CUR-1877).
+ * The one rule for sending `X-HF-Bill-To` on a chat-model call.
  *
  * The header is an HF Inference-Providers concept: the HF router reads it to bill an org instead of
  * the token's user, and 403s an org-scoped token without it. No other host reads it. The LiteLLM
@@ -28,7 +28,7 @@ export function hfBillToHeader(
 }
 
 /**
- * The org a chat turn bills on the HF router (CUR-3533). A visitor's own `billingOrganization`
+ * The org a chat turn bills on the HF router. A visitor's own `billingOrganization`
  * setting counts only under `USE_USER_TOKEN`, where their own HF token pays; while our server token
  * pays, it bills `HF_BILL_TO` and nothing a visitor typed.
  */

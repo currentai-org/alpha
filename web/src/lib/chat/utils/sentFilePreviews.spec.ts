@@ -13,7 +13,7 @@ async function serverKey(b64: string): Promise<string> {
 	return sha256(await file.text());
 }
 
-describe("sentFilePreviews (CUR-2761)", () => {
+describe("sentFilePreviews", () => {
 	it("finds a sent image under the hash the server stores it as, invalid UTF-8 included", async () => {
 		await rememberSentFile("image/jpeg", base64);
 		expect(sentFilePreview(await serverKey(base64))).toBe(`data:image/jpeg;base64,${base64}`);

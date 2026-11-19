@@ -1,7 +1,7 @@
-"""The .xlsx chart check (CUR-4600): it names the two broken shapes develop's agent shipped, and passes correct charts.
+"""The .xlsx chart check: it names the two broken chart shapes an agent can produce, and passes correct charts.
 
-The broken fixture is the file develop's agent delivered for the neighbourhood prompt (values B1:B5, header
-included). The other workbooks are built here with openpyxl, the library the agent itself writes them with.
+The broken fixture is a neighbourhood chart whose values are B1:B5, header
+included. The other workbooks are built here with openpyxl, the library the agent itself writes them with.
 """
 import io
 from pathlib import Path
@@ -63,7 +63,7 @@ def test_a_range_running_past_the_data_into_empty_rows_is_named():
 
 
 def test_values_pointed_at_the_label_column_are_named_as_text_not_as_a_header_shift():
-    """The agent can point values at the label column: values A2:A5, the neighbourhood names."""
+    """Values A2:A5 point at the neighbourhood names, the label column."""
     wb, ws = _book()
     ws.add_chart(_bar(ws, Reference(ws, min_col=1, min_row=2, max_row=5),
                       Reference(ws, min_col=1, min_row=2, max_row=5)), "D2")

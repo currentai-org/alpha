@@ -5,7 +5,7 @@ const hf = (base: string) => "X-HF-Bill-To" in hfBillToHeader(base, { ownLane: f
 
 const global = { ownLane: false };
 
-describe("hfBillToHeader (CUR-1877)", () => {
+describe("hfBillToHeader", () => {
 	it("sends the org only to the HF router", () => {
 		expect(hfBillToHeader("https://router.huggingface.co/v1", global, "org")).toEqual({
 			"X-HF-Bill-To": "org",
@@ -43,7 +43,7 @@ describe("hfBillToHeader (CUR-1877)", () => {
 	});
 });
 
-describe("requestBillTo (CUR-3533)", () => {
+describe("requestBillTo", () => {
 	it("ignores a visitor's org setting while the server token pays, and bills HF_BILL_TO", () => {
 		expect(requestBillTo("someone-elses-org", { useUserToken: false, billTo: "ours" })).toBe("ours");
 		expect(requestBillTo("someone-elses-org", { useUserToken: false, billTo: undefined })).toBe(

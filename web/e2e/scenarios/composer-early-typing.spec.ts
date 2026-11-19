@@ -5,7 +5,7 @@ import { test, expect } from './helpers/test';
 import { signInAsFreshUser } from './helpers/session';
 import { composerHydrated, sendOpensConversation } from './helpers/composer';
 
-// This spec is about the first-run welcome, so it meets the welcome itself rather than through the shared handler (SOL-343).
+// This spec is about the first-run welcome, so it meets the welcome itself rather than through the shared handler.
 test.use({ welcome: 'show' });
 
 // The reports were reloads by a visitor who had already closed "Welcome to Alpha". A fresh account

@@ -1,10 +1,10 @@
 #!/bin/sh
-# Default-deny egress, then drop to the unprivileged app user (CUR-207).
+# Default-deny egress, then drop to the unprivileged app user.
 #
 # WHY THIS FILE EXISTS. The agent's toolset carries `terminal` and `code_execution`, and the bwrap profile
-# (api/app.py) unshares pid/ipc/uts but NOT net — its comment defers network policy to the orchestrator, which is not present on a single machine. Without this file, a
-# process inside the sandbox reaches https://example.com and gets a 200. aipotluck.org is open signup, so
-# that is an open HTTP proxy with a web form in front of it, billed to us and attributed to our egress IP.
+# (api/app.py) unshares pid/ipc/uts but NOT net. Without this file, a process inside the sandbox can reach
+# any public site. A deployment with open signup would then be an open HTTP proxy with a web form in front
+# of it, billed to its operator and attributed to its egress IP.
 #
 # The control is a destination allowlist rather than a per-process one because the service's own outbound
 # needs are tiny and stable — the model gateway over 6PN, and the Axiom log sink — so the agent and the app
@@ -14,14 +14,14 @@
 # TWO ALLOWLISTS, ONE LIST. The connect filter (nftables, below) says which ADDRESSES may be dialled. The
 # name filter (AGENT_DNS, below) says which NAMES may be turned into addresses. They are generated from the
 # same resolution pass on purpose: a name the service can resolve but not connect to is a dead end, and a
-# name it can connect to but not resolve is a dead end too. Keeping one table behind both is what stops
-# them drifting apart.
+# name it can connect to but not resolve is an outage. Keeping one table behind both is what stops them
+# drifting apart.
 #
 # ROOT IS ONLY FOR THIS SCRIPT. Installing packet filters needs NET_ADMIN; running the agent as root would
 # break bwrap, which uses the unprivileged user-namespace path in a container (see deploy/Dockerfile). So
-# the rules go in as root and the last line drops to $RUN_UID before anything else starts. Root staying
-# behind matters twice over now: RLIMIT_NPROC does not apply to uid 0, and the DNS exemption below is
-# written in terms of uid 0, so both controls are only real because the app is not root.
+# the rules go in as root and the last line drops to $RUN_UID before anything else starts. Leaving root
+# behind matters twice: RLIMIT_NPROC does not apply to uid 0, and the DNS exemption below is written in
+# terms of uid 0, so both controls hold only because the app is not root.
 set -eu
 
 RUN_UID="${AGENT_RUN_UID:-10001}"
@@ -38,28 +38,26 @@ HOSTS_FILE="${AGENT_HOSTS_FILE:-/etc/hosts}"
 DNS_MARK_A='#agent-dns-begin'
 DNS_MARK_B='#agent-dns-end'
 # Public hostnames the SERVICE needs, resolved once at boot into an nft set. The model gateway is NOT
-# listed here — it isn't a public hostname, and allow_addrs() below pins its 6PN address separately
-# (CUR-1179), fed by the same resolve_all()/managed_names() pass as everything else in this file.
+# listed here — it isn't a public hostname, and allow_addrs() below pins its 6PN address separately, fed
+# by the same resolve_all()/managed_names() pass as everything else in this file.
 #
 # huggingface.co IS DELIBERATELY ABSENT. The agent's HF client fetches tokenizer and config metadata from
-# the hub even though HF_BASE_URL redirects model calls to our gateway. What matters is this chain's
-# refusal MODE, not this list's contents: a dropped SYN costs the caller a full TCP retry ladder (a turn
-# takes several times longer) and the `reject` ending the chain returns immediately. The hub's
-# addresses are rotating Cloudflare edge addresses shared with a large slice of the web, and boot-time
-# resolution disagrees with what the agent actually dials, so pinning them would be unreliable as well as
-# wider. The tokenizer fetch is refused at no measurable cost. Do not re-add it to fix a slow turn; check
-# the refusal mode first.
+# the hub even though HF_BASE_URL redirects model calls to our gateway; that fetch is refused, and the
+# `reject` ending the chain makes the refusal immediate, so it costs the turn nothing. The hub sits on
+# rotating CDN edge addresses shared with a large slice of the web, and boot-time resolution does not
+# match what the agent dials, so pinning them would be unreliable as well as wider. Do not add it to fix
+# a slow turn; check that the chain still ends in `reject` first.
 #
 # AND THIS DEFAULT MUST NEVER BE WIDER THAN WHAT WE DEPLOY. Every surface sets AGENT_EGRESS_ALLOW_HOSTS
-# explicitly, so nothing reaches this fallback, and an unreachable default can drift unnoticed. It is not
-# harmless: it is what the NEXT surface inherits, and it would hand that surface more egress than anything
-# we currently run, silently. Pinned by test_the_fallback_allowlist_is_never_wider_than_what_ships.
+# explicitly, so nothing reaches this fallback, and that is how a default drifts unnoticed. An unreachable
+# default is not harmless: it is what the NEXT surface inherits, and it would silently hand that surface
+# more egress than anything we run. test_the_fallback_allowlist_is_never_wider_than_what_ships pins it.
 ALLOW_HOSTS="${AGENT_EGRESS_ALLOW_HOSTS:-api.axiom.co}"
 
 fail() {
     echo "{\"event\":\"egress.failed\",\"reason\":\"$1\"}" >&2
     # Fail CLOSED by default when the operator asked for filtering. A container that silently starts with
-    # open egress after being told to filter is the exact shape of failure this whole change is about:
+    # open egress after being told to filter is the exact failure this file exists to prevent:
     # the config says protected, the machine is not, and nothing reports the difference.
     [ "$REQUIRED" = "1" ] && exit 1
     echo '{"event":"egress.degraded","note":"continuing UNFILTERED — set AGENT_EGRESS_REQUIRED=1 to refuse"}' >&2
@@ -82,7 +80,7 @@ url_host() {
                              -e 's|:[0-9]*$||' -e 's|^\[||' -e 's|\]$||'
 }
 
-# Hosts of the MCP servers agent mode is configured to call (CUR-3025), from AGENT_MCP_SERVERS, through the
+# Hosts of the MCP servers agent mode is configured to call, from AGENT_MCP_SERVERS, through the
 # same parser the app validates it with (api/mcp_config.py), so a server the app refuses never gets an
 # egress hole and one it accepts is never left without one. Unset prints nothing. A config error prints
 # nothing on stdout and says why on stderr; it never fails the boot, since `|| true` keeps `set -e` out of it.
@@ -96,7 +94,7 @@ mcp_hosts() {
 allow_names() { { printf '%s\n' "$ALLOW_HOSTS" | tr ',' '\n'; mcp_hosts; } | sed '/^[[:space:]]*$/d' | sort -u; }
 
 # Internal hosts the service dials by URL and pins by address, the way the gateway is: never names in the
-# public allowlist. The E2B link (CUR-4482) joins only when a deploy selects that backend, so a bwrap deploy
+# public allowlist. The E2B link joins only when a deploy selects that backend, so a bwrap deploy
 # gains no reach into another app on the org's private network.
 pinned_hosts() {
     [ -n "${AGENT_MODEL_PROXY_URL:-}" ] && url_host "$AGENT_MODEL_PROXY_URL"
@@ -107,7 +105,7 @@ pinned_hosts() {
 }
 
 # Every name the service resolves. The model gateway rides this same resolution pass — allow_addrs()
-# below pulls its address out of the same $DNS_CACHE this function fills (CUR-1179) — so its hosts
+# below pulls its address out of the same $DNS_CACHE this function fills — so its hosts
 # entry and its nft pin come from one pass, never two that could disagree.
 # COOP_URL is different: it's coop.publicai.co, a real external host, so unlike the gateway it also
 # needs an actual entry in ALLOW_HOSTS (the CONNECT allowlist), not just here. This loop only makes a
@@ -128,10 +126,9 @@ addrs_of() {
     awk -F'\t' -v h="$2" '$2 == h { print $1 }' "$1" 2>/dev/null || true
 }
 
-# The addresses behind the CONNECT allowlist, deduped — the nft sets' contents. The model gateway
-# joins this set too (CUR-1179), pinned by address instead of a wholesale accept on all of Fly's 6PN
-# range: resolve_all() refreshes the gateway's address on the same DNS_REFRESH timer as every
-# public host below.
+# The addresses behind the CONNECT allowlist, deduped — the nft sets' contents. The model gateway joins
+# this set too, as a pinned address rather than an accept on all of Fly's 6PN range; resolve_all()
+# refreshes its address on the same DNS_REFRESH timer as every public host below.
 allow_addrs() {
     { for h in $(allow_names); do addrs_of "$DNS_CACHE" "$h"; done
       for h in $(pinned_hosts); do addrs_of "$DNS_CACHE" "$h"; done
@@ -156,7 +153,8 @@ resolve_all() {
         [ -z "$got" ] && got="$(getent ahosts "$h" 2>/dev/null | awk '{print $1}' | sort -u)"
         # CARRY FORWARD on failure, never delete. This table feeds both /etc/hosts and the connect filter,
         # so a name dropping out on one flaky lookup would take the gateway or the log sink down until the
-        # next refresh, which is worse than a stale address. A CDN that genuinely moves is picked up on the next successful pass.
+        # next refresh — a self-inflicted outage caused by a transient, which is strictly worse than a
+        # stale address. A CDN that genuinely moves is picked up on the next successful pass.
         [ -z "$got" ] && got="$(addrs_of "$DNS_CACHE" "$h")"
         for a in $got; do printf '%s\t%s\n' "$a" "$h" >> "$tmp"; done
     done
@@ -176,17 +174,16 @@ apply_hosts() {
       echo "$DNS_MARK_B"
     } > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
 
-    # Nothing changed — the overwhelmingly common case on a refresh tick. Skipping the write is not an
+    # Nothing changed — the usual case on a refresh tick. Skipping the write is not an
     # optimisation, it is what keeps the in-place path below almost never used.
     if cmp -s "$tmp" "$HOSTS_FILE"; then rm -f "$tmp"; return 0; fi
 
     # Prefer the atomic rename: a getaddrinfo racing it sees the old file or the new one, never a partial.
-    # But /etc/hosts is very often a BIND-MOUNTED FILE — it is under Docker — and you cannot rename over a mount point: the
-    # rename fails with "Device or resource busy" and, with AGENT_DNS_REQUIRED=1, the container would refuse
-    # to start at all.
-    # So fall back to writing through the mount. That gives up atomicity for a sub-millisecond window on a
-    # file under a kilobyte, which is why the no-change check above matters: it makes the window rare
-    # rather than every-60-seconds.
+    # But /etc/hosts is often a BIND-MOUNTED FILE (it is under Docker), and you cannot rename over a mount
+    # point: the rename fails with "Device or resource busy", and with AGENT_DNS_REQUIRED=1 the container
+    # would refuse to start. So fall back to writing through the mount. That gives up atomicity for a
+    # sub-millisecond window on a file under a kilobyte, which is why the no-change check above matters: it
+    # makes the window rare rather than every-60-seconds.
     if mv "$tmp" "$HOSTS_FILE" 2>/dev/null; then
         HOSTS_WRITE=rename
         return 0
@@ -205,8 +202,8 @@ install_dns() {
     [ "$(id -u)" = "0" ] || { dns_fail "not root (uid $(id -u)) — cannot manage $HOSTS_FILE"; return; }
     apply_hosts || { dns_fail "could not write $HOSTS_FILE"; return; }
     # The gateway is the one name whose loss means the service cannot do its job at all, so it is the one
-    # name worth refusing to boot over. The rest warn: a DNS blip on the log sink should not take us down,
-    # and a quiet log sink is already what the log-sink alert watches for.
+    # name worth refusing to boot over. The rest warn: Axiom having a DNS blip should not take us down,
+    # and a quiet log sink is already what scripts/axiom_alert.py watches for.
     for u in "${AGENT_MODEL_PROXY_URL:-}"; do
         [ -n "$u" ] || continue
         h="$(url_host "$u")"
@@ -220,8 +217,9 @@ install_dns() {
 }
 
 # Rendering is split from installing on purpose. A ruleset nft REJECTS means no filter at all while the
-# config still says there is one — the most dangerous way for this file to fail. Rendering needs no root and no kernel, so every combination
-# of allowlist and DNS setting can be handed to `nft -c` from a test instead of from a deploy.
+# config still says there is one — the most dangerous way for this file to fail. Rendering needs no root
+# and no kernel, so every combination of allowlist and DNS setting can be handed to `nft -c` from a test
+# instead of from a deploy.
 render_rules() {
     out="${1:-/tmp/egress.nft}"
     v4=""; v6=""
@@ -235,8 +233,8 @@ render_rules() {
     # Build the elements clause as its own variable. The obvious `${v4:+elements = { ... }}` is WRONG and
     # fails only in production: the shell ends the expansion at the first unmatched `}`, so the trailing
     # brace is literal, and when the set is EMPTY it survives as a stray `}` that breaks the whole ruleset.
-    # A host can return IPv6 locally and none from the deployed machine, so a hand test can pass while the
-    # deploy fails.
+    # A host can resolve to IPv6 on a laptop and to no IPv6 on the deployed machine, so a hand test can
+    # pass while the deploy breaks.
     a4=""; a6=""
     [ -n "$v4" ] && a4="elements = { ${v4%,} }"
     [ -n "$v6" ] && a6="elements = { ${v6%,} }"
@@ -260,9 +258,8 @@ table inet egress {
         type filter hook output priority filter; policy drop;
         # DNS FIRST, ahead of the conntrack accept below. Fly's recursive resolver lives at fdaa::3, inside
         # Fly's internal 6PN range, so without these rules the sandbox could resolve any name at all —
-        # which is a working exfiltration channel: an arbitrary label looked up from uid 10001 comes back
-        # NXDOMAIN from Google's own nameservers, so attacker-chosen bytes leave this host and reach a
-        # third party.
+        # which is a working exfiltration channel: an arbitrary label looked up from uid 10001 is forwarded
+        # to the authoritative nameservers, so attacker-chosen bytes leave this host and reach a third party.
         # The same query path returns \`TXT _apps.internal\`, which is a directory of every app in the org,
         # most of them nothing to do with this service.
         #
@@ -278,18 +275,16 @@ $dns_rules
         ct state established,related accept
         oif lo accept
         # Neighbour discovery. Without this the machine cannot resolve its own next hop and IPv6 dies
-        # intermittently — a filter without this rule drops a steady stream of ICMPv6 type 135 to
-        # ff02::1:ff00:1, which is hard to connect to "the network went strange later".
-        # ND is link-local by construction, so it carries no egress reach.
+        # intermittently: dropped ICMPv6 neighbour solicitations (type 135 to ff02::1:ff00:1) surface only
+        # later, as a network that has gone strange. ND is link-local by construction, so it carries no
+        # egress reach.
         meta l4proto ipv6-icmp accept
         ip6 daddr ff02::/16 accept
-        # A wholesale \`ip6 daddr fdaa::/16 accept\` would reach every other app
-        # in the org over Fly's internal network, so the model gateway (also on 6PN) is pinned like the
-        # public hosts below: allow_addrs() resolves it on the same refresh timer as everything else, so
-        # the gateway's address is in @allow6 below.
-        # Residual: a gateway-machine recreation can leave its address briefly stale, bounded to one
-        # DNS_REFRESH cycle (default 60s) until the next resolve. Root's own :53 access (the DNS rules
-        # above) is a separate, destination-unrestricted rule. (CUR-1179)
+        # There is deliberately no wholesale \`ip6 daddr fdaa::/16 accept\`: that would reach every other
+        # app in the org over Fly's internal network. The model gateway, also on 6PN, is pinned like the
+        # public hosts: allow_addrs() resolves it on the same refresh timer, so its address is in @allow6
+        # below. A recreated gateway machine can leave that address stale for at most one DNS_REFRESH
+        # cycle (default 60s). Root's own :53 access (the DNS rules above) is a separate rule.
         ip daddr @allow4 accept
         ip6 daddr @allow6 accept
         # A bare counted rule, so \`nft list table inet egress\` shows how much was refused rather than
@@ -297,11 +292,11 @@ $dns_rules
         # build rejects both, and a rejected ruleset means NO filter at all, the most dangerous way for
         # this to fail.
         counter
-        # REJECT, not the chain's silent drop policy: a dropped SYN makes the client wait out its full retry
-        # ladder. The agent's HF client reaches huggingface.co for tokenizer metadata, and with a drop each
-        # turn takes several times longer. A refusal is exactly as closed and returns instantly.
-        # Chasing those CDN addresses into the allowlist is the wrong fix twice over — they rotate, and
-        # boot-time resolution disagrees with what the agent actually dials.
+        # REJECT, not the chain's silent drop policy. A dropped SYN makes the client wait out its full TCP
+        # retry ladder, so a refused fetch (the agent's HF client reaching huggingface.co for tokenizer
+        # metadata, for one) would add many seconds to a turn. A refusal is exactly as closed and returns
+        # instantly. Adding those CDN addresses to the allowlist is the wrong fix: they rotate, and
+        # boot-time resolution does not match what the agent dials.
         reject
     }
 }
@@ -321,9 +316,9 @@ install_rules() {
 
 refresh_loop() {
     # Re-resolve on a timer, as root, and push the result to BOTH consumers. This is what makes a name
-    # allowlist safe to run: /etc/hosts is now the only resolver the app has, so a pinned address that goes
-    # stale leaves the service with no recovery short of a redeploy. It also keeps the nft sets current:
-    # resolved once at boot, a CDN rotation would silently cut off the log sink.
+    # allowlist safe to run: /etc/hosts is the only resolver the app has, so a pinned address that goes
+    # stale would be an outage with no recovery short of a redeploy. Refreshing the nft sets too means a
+    # CDN rotation cannot silently cut off the log sink.
     prev="$(allow_addrs)"
     while :; do
         sleep "$DNS_REFRESH"
@@ -354,14 +349,13 @@ refresh_loop() {
 
 # The gateway can legitimately have ZERO running machines for a short window right after its OWN
 # redeploy: Fly scales it to zero when idle, and a rolling update briefly has neither the old nor the new
-# machine fully "started" (CUR-1203). resolve_all() tries the lookup exactly once, so landing in that
-# window fails install_dns()'s gateway-host check and dns_fail() (DNS_REQUIRED=1) exits 1. Fly's container
-# restart loop exhausts its retry budget in well under a minute (each restart is a 1-2 s reboot), before a
-# gateway redeploy (about 90 s end to end) finishes, and the machine then stays down until someone starts
-# it by hand. The bound below (6 tries, 15 s apart) covers that 90 s.
+# machine fully "started". resolve_all() tries the lookup exactly once, so landing in that window fails
+# install_dns()'s gateway-host check and dns_fail() (DNS_REQUIRED=1) exits 1. Fly's container restart
+# loop burns through its whole retry budget faster than a gateway redeploy finishes, and the machine then
+# stays down until someone starts it by hand.
 #
-# So the resolution is retried HERE, bounded, instead of relying on the whole-container restart loop to
-# outlast it. Same shape as scripts/jelastic/lib.sh and api/proxy.py use for the same "this is probably
+# Retry the resolution HERE, bounded, instead of relying on the whole-container restart loop to outlast
+# it. Same shape as scripts/jelastic/lib.sh and api/proxy.py use for the same "this is probably
 # transient" case.
 BOOT_DNS_RETRY_MAX="${AGENT_DNS_BOOT_RETRY_MAX:-6}"
 BOOT_DNS_RETRY_DELAY_S="${AGENT_DNS_BOOT_RETRY_DELAY_S:-15}"
@@ -398,7 +392,7 @@ fi
 [ "$EGRESS" = "allowlist" ] && install_rules
 [ "$DNS" = "hosts" ] && refresh_loop &
 
-# The app's machine list, for routing each conversation to its home machine (api/home_machine.py, CUR-4435).
+# The app's machine list, for routing each conversation to its home machine (api/home_machine.py).
 # The list comes from Fly's internal DNS, which the egress filter keeps from the app's uid, so root writes the
 # list and the server only reads it. Off Fly the writer exits without a file and every request is served where
 # it lands.
@@ -409,13 +403,13 @@ if [ "$(id -u)" = "0" ] && [ -n "${FLY_APP_NAME:-}" ] && [ -f /srv/api/home_mach
     ( while sleep "$MACHINES_REFRESH"; do python3 /srv/api/home_machine.py --write "$MACHINES_FILE" || true; done ) &
 fi
 
-# Say who we are and what the data volume looks like, ALWAYS, before handing off. A sqlite "attempt to
-# write a readonly database" is otherwise untestable after the fact, because nothing records the uid the
-# server actually started under or the ownership it saw. One line here makes it a fact.
+# Say who we are and what the data volume looks like, ALWAYS, before handing off. A permissions failure
+# on the volume (sqlite's "attempt to write a readonly database") cannot be explained after the fact
+# unless the uid the server started under and the ownership it saw were recorded at boot.
 DB_DIR="$(dirname "${AGENT_DB_PATH:-/data/tasks.db}")"
-# Fly sets the volume mount point's ownership from the image's declared USER. The image declares `root` so
-# we can install packet filters, so /data arrives owned by 0:0, and the dropped server would hit "attempt
-# to write a readonly database" on the first PRAGMA.
+# Fly sets the volume mount point's ownership from the image's declared USER. This image declares `root`
+# so it can install packet filters, which means /data arrives owned by 0:0, and the server, running as
+# 10001 after the drop, would fail on its first write with "attempt to write a readonly database".
 # Handing the volume to the uid that will actually use it is this script's job — it is the only moment in
 # the container's life that is both root and after the mount.
 if [ "$(id -u)" = "0" ] && [ "$RUN_UID" != "0" ] && [ -d "$DB_DIR" ]; then
@@ -428,9 +422,9 @@ echo "{\"event\":\"boot.identity\",\"uid_now\":\"$(id -u)\",\"will_drop_to\":\"$
 # leave Fly's stop signal going to the wrong process.
 if [ "$(id -u)" = "0" ] && [ "$RUN_UID" != "0" ]; then
     # setpriv preserves the environment, so without this the server runs as 10001 while HOME still points
-    # at /root — a directory that uid cannot write. Nothing on the startup path needs it today (the agent
-    # gets a per-task HERMES_HOME), which is exactly why it would sit here until some library decided to
-    # cache something under ~ and failed somewhere unrelated.
+    # at /root — a directory that uid cannot write. Nothing on the startup path needs it (the agent gets a
+    # per-task HERMES_HOME), which is why a wrong HOME would go unnoticed until some library cached
+    # something under ~ and failed somewhere unrelated.
     export HOME="${AGENT_RUN_HOME:-/home/agent}"
     exec setpriv --reuid="$RUN_UID" --regid="$RUN_UID" --clear-groups "$@"
 fi

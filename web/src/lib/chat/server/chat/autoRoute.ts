@@ -3,11 +3,11 @@ import type { ChatRequestPayload } from "./requestSchema";
 import type { Message } from "$lib/chat/types/Message";
 
 /**
- * Auto's choice for this turn as the answer stores it (CUR-3944), or undefined. Auto decides in the
+ * Auto's choice for this turn as the answer stores it, or undefined. Auto decides in the
  * browser, so the server keeps the claim only when the catalog model it names is the model this turn
  * actually runs on: a stale or mismatched claim would put "Auto chose X" over an answer Y wrote.
  * A retry re-runs an earlier question, which Auto did not judge again, so it records nothing, unless
- * it is Auto's re-pick of a question its first choice did not answer (CUR-4384), which Auto did judge
+ * it is Auto's re-pick of a question its first choice did not answer, which Auto did judge
  * again and which names a different model from the one it replaces.
  */
 export function autoRouteForTurn(

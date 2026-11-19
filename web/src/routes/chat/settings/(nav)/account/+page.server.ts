@@ -3,9 +3,9 @@
  * button for a provider that's actually reachable. Same computation as login/+page.server.ts
  * (Google/GitHub are each independently optional via betterAuth.ts; Hugging Face is always
  * configured) — kept in this file rather than shared, since the two loads differ in every other
- * respect (login redirects a signed-in visitor away; this route is signed-in-only content) (CUR-580).
+ * respect (login redirects a signed-in visitor away; this route is signed-in-only content).
  *
- * Signed-in-only is enforced here, on the server. The client-side requireAuthUser() in +page.svelte
+ * Signed-in-only is enforced here, on the server. The client-side requireAuthUser in +page.svelte
  * gates on `automaticLogin` (site-wide FORCED sign-in) and does nothing when login is merely offered,
  * not mandatory, so a signed-out visitor would get "Unauthorized"-shaped error panels instead of a
  * redirect. This mirrors login/+page.server.ts's own event.locals.user check, inverted, and runs
@@ -13,7 +13,7 @@
  */
 import type { PageServerLoad } from "./$types";
 import { config } from "$lib/chat/server/config";
-import { dataExportEnabled, nextExportAt, thunderboltExportEnabled } from "$lib/chat/server/dataPortability";
+import { nextExportAt, thunderboltExportEnabled } from "$lib/chat/server/dataPortability";
 import { requireSignedInPage } from "$lib/chat/server/signedInPage";
 import { getAuth } from "$lib/chat/server/betterAuth";
 
@@ -33,22 +33,24 @@ export const load: PageServerLoad = async (event) => {
 	const user = requireSignedInPage(event);
 
 	// Read here, so the HTML arrives with the content in it instead of a skeleton while four
-	// browser calls run after hydration (CUR-2710). A call that fails here comes back as
+	// browser calls run after hydration. A call that fails here comes back as
 	// `ok: false`, and the page fetches that section from the browser instead.
 	const headers = event.request.headers;
 	const api = getAuth().api;
-	const [accounts, passkeys, sessions, session, next, nextThunderbolt] = await Promise.all([
+	const [accounts, passkeys, sessions, session, next, nextThunderbolt, nextOpenWebUi] = await Promise.all([
 		settle(() => api.listUserAccounts({ headers })),
 		settle(() => api.listPasskeys({ headers })),
 		settle(() => api.listSessions({ headers })),
 		settle(() => api.getSession({ headers })),
 		// The export row says when the next export is possible instead of linking to the route's bare
-		// 429 page (one export an hour). Only read when export is on for this deployment.
-		dataExportEnabled() ? nextExportAt(user._id) : Promise.resolve(null),
-		// The same for the Thunderbolt file (CUR-2407), whose own window is ten minutes.
+		// 429 page (one export an hour).
+		nextExportAt(user._id),
+		// The same for the Thunderbolt file, whose own window is ten minutes.
 		thunderboltExportEnabled()
 			? nextExportAt(user._id, new Date(), "export-thunderbolt")
 			: Promise.resolve(null),
+		// The same for the Open WebUI file, whose own window is ten minutes.
+		nextExportAt(user._id, new Date(), "export-open-webui"),
 	]);
 
 	return {
@@ -58,6 +60,7 @@ export const load: PageServerLoad = async (event) => {
 		},
 		nextExportAt: next ? next.toISOString() : null,
 		nextThunderboltExportAt: nextThunderbolt ? nextThunderbolt.toISOString() : null,
+		nextOpenWebUiExportAt: nextOpenWebUi ? nextOpenWebUi.toISOString() : null,
 		initial: { accounts, passkeys, sessions, session },
 	};
 };

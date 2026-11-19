@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import type { Handle, RequestEvent } from "@sveltejs/kit";
 import { error } from "@sveltejs/kit";
 import { collections } from "$lib/chat/server/database";
@@ -28,19 +31,21 @@ import {
 	accountRolloutProbeEnabled,
 } from "$lib/chat/server/accountRolloutProbe";
 import { EVAL_LAYERS_COOKIE, parseEvalLayers } from "$lib/chat/server/evalLayers";
-import { applySyncCors, isSyncCorsPath, syncPreflight } from "$lib/chat/server/sync/syncCors";
-import { isSyncClientOrigin } from "../../../../../config/thunderbolt";
+import { installReplayBypassGuard } from "$lib/chat/server/replayBypass";
+
+// Every raw model call in a scenario request that skips the replay store logs `[replay] bypass`.
+installReplayBypassGuard();
 
 type HandleInput = Parameters<Handle>[0];
 
-// An instance's first chat request can spend over a second before its session resolves
-// (CUR-2843). This times the three awaits ahead of that point once per instance, as a
+// An instance's first chat request can spend over a second before its session resolves.
+// This times the three awaits ahead of that point once per instance, as a
 // `leg: 'boot'` line beside hooks.server.ts's own stages. Each `*DoneMs` counts from the request
 // reaching this handle, so the gaps between them are the stages.
 let firstChatRequestTimed = false;
 
 /** Where an unauthenticated forced-login redirect sends someone: the sign-in chooser at `/login`
- *  (CUR-434). chat-ui's own Hugging Face redirect is gone (CUR-1961). */
+ *  (upstream chat-ui redirected straight to Hugging Face; this app does not). */
 async function redirectUnauthenticated(event: RequestEvent): Promise<Response> {
 	return new Response(null, {
 		status: 302,
@@ -55,7 +60,7 @@ export async function handleRequest({ event, resolve }: HandleInput): Promise<Re
 	// Run the entire request handling within the request context
 	return runWithRequestContext(
 		async () => {
-			// The chat route this request resolves to. On the chat surface (CUR-4448) one route answers at
+			// The chat route this request resolves to. On the chat surface one route answers at
 			// both `/x` and, for reserved paths, `/chat/x`, so every path check below reads this rather
 			// than the raw URL; on the site surface it IS the raw URL.
 			const routePath = chatRoutePath(event.url.pathname);
@@ -77,11 +82,13 @@ export async function handleRequest({ event, resolve }: HandleInput): Promise<Re
 				return resolve(event);
 			}
 
-			// A registered sync client's preflight, answered here because no route handles
-			// OPTIONS. Nothing below (models, config, auth) has any bearing on it. (CUR-4312)
-			const syncCors = isSyncCorsPath(routePath);
-			if (syncCors && event.request.method === "OPTIONS") {
-				return syncPreflight(event.request.headers.get("origin"));
+			// A scenario request's replay mode reaches every route, not only the ones that read it
+			// themselves: a model-calling route added later replays from its first run, instead of going live
+			// on every run until someone notices. Null, and nothing set, without the fault-inject token.
+			// Loaded only for a request that names the token, so the hook's boot graph stays as it was.
+			if (event.request.headers.has("x-e2e-fault-inject-token")) {
+				const { adoptReplayMode } = await import("$lib/chat/server/textGeneration/faultInjection");
+				await adoptReplayMode(event.request);
 			}
 
 			// Gate requests on the model registry — a no-op once built. When the load-time build failed
@@ -111,6 +118,7 @@ export async function handleRequest({ event, resolve }: HandleInput): Promise<Re
 					p.endsWith("/metrics") ||
 					p.endsWith("/api/cleanup") ||
 					p.endsWith("/api/contribute") ||
+					p.endsWith("/api/cms/invalidate") ||
 					p.endsWith("/api/v2/public-config") ||
 					p.includes("/.well-known/") ||
 					p.startsWith(`${CHAT_ROUTE_ROOT}/admin`);
@@ -166,23 +174,23 @@ export async function handleRequest({ event, resolve }: HandleInput): Promise<Re
 
 			// Reject URI paths with invalid percent-encoding (e.g. overlong UTF-8 like %c0%af used by
 			// path-traversal scanners) before any auth logic. SvelteKit only turns these into a 400 inside
-			// resolve(); a redirect thrown by the login branch below would reach them first. Ported from
-			// upstream chat-ui 72976c3 (CUR-2117).
+			// resolve(); a redirect thrown by the login branch below would reach them first. Upstream
+			// chat-ui does the same.
 			try {
 				decodeURIComponent(event.url.pathname);
 			} catch {
 				return errorResponse(400, "Malformed URI");
 			}
 
-			// CUR-1044 local fuzzing-harness flag override. `fuzz_override` is a plain, unsigned
+			// The local fuzzing harness's flag override. `fuzz_override` is a plain, unsigned
 			// `key:true,key2:false` cookie the harness sets on its own Playwright/Stagehand context — never
 			// read at all unless fuzzOverrideEnabled() is true, which is itself hard-gated off in
 			// production in flags.ts. Parsed into the request context (not `locals`) because flags.ts's
 			// deployment-level reads (flagEnabledOr) are synchronous with no request parameter to thread
 			// this through otherwise. Parsed BEFORE authenticateRequest, so an override reaches every
-			// flag read on the request, the sign-in decision included (CUR-2451).
+			// flag read on the request, the sign-in decision included.
 			// On a hosted preview the request must also prove it is the harness.
-			// The deployment check comes first so production never reads the key cookie at all. (CUR-3516)
+			// The deployment check comes first so production never reads the key cookie at all.
 			if (fuzzOverrideEnabled() && (await fuzzOverrideAuthorized(event.cookies.get(FUZZ_OVERRIDE_KEY_COOKIE)))) {
 				const raw = event.cookies.get("fuzz_override");
 				if (raw) {
@@ -193,7 +201,7 @@ export async function handleRequest({ event, resolve }: HandleInput): Promise<Re
 					}
 					updateRequestContext({ fuzzOverride: parsed });
 				}
-				// The layer test's switches, behind the same gate. (CUR-2139)
+				// The layer test's switches, behind the same gate.
 				const layers = parseEvalLayers(event.cookies.get(EVAL_LAYERS_COOKIE));
 				if (layers) updateRequestContext({ evalLayers: layers });
 			}
@@ -214,16 +222,15 @@ export async function handleRequest({ event, resolve }: HandleInput): Promise<Re
 			}
 
 			event.locals.sessionId = auth.sessionId;
-			event.locals.sync = auth.sync;
 			event.locals.guestSessionMinted = Boolean(auth.mintedSession) && !auth.user;
 
-			// No tester cookie is set here from `?ph_test=<name>` (CUR-1278): flags evaluate server-side
+			// No tester cookie is set here from `?ph_test=<name>`: flags evaluate server-side
 			// against the real distinct id, with person-selection in the flag's own release conditions (see
 			// the note in flags.ts). A name the visitor types is not an identity. `?ph_test=1` and
 			// `?ph_test=<label>` still work: analytics.ts reads the query string directly, client-side, to
 			// mark internal traffic.
 
-			// Accounts are ADDITIVE, not required (CUR-246). The `else` branch below would redirect
+			// Accounts are ADDITIVE, not required. The `else` branch below would redirect
 			// everything outside a short allowlist even with AUTOMATIC_LOGIN off, so merely having an OAuth
 			// client configured (loginEnabled()) would make the app login-REQUIRED, contradicting "No account
 			// needed". Gating the whole thing on AUTOMATIC_LOGIN === "true" makes the variable mean what its
@@ -232,12 +239,11 @@ export async function handleRequest({ event, resolve }: HandleInput): Promise<Re
 				loginEnabled() &&
 				config.AUTOMATIC_LOGIN === "true" &&
 				!auth.user &&
-				!auth.sync &&
 				!routePath.startsWith(`${CHAT_ROUTE_ROOT}/.well-known/`)
 			) {
 				// Always redirect to the OAuth flow — except on the pages that would become unreachable
 				// if we did. Admin panels self-gate (adminAuth password / Bearer export); Better Auth's
-				// own routes (CUR-434) need the exemption too, or a real browser GET back from Hugging
+				// own routes need the exemption too, or a real browser GET back from Hugging
 				// Face's OAuth callback redirect-loops into this branch before Better Auth's own
 				// catch-all ever handles it.
 				if (
@@ -261,13 +267,15 @@ export async function handleRequest({ event, resolve }: HandleInput): Promise<Re
 			}
 
 			// This account's own flag answers, ahead of the deployment snapshot. The id is the
-			// authenticated account's, never anything the request carries (flags.ts, CUR-1278). (CUR-2463)
+			// authenticated account's, never anything the request carries (see flags.ts).
 			if (auth.user?._id) {
 				const accountFlags = await accountFlagValues(auth.user._id.toString(), flagEmail(auth.user));
 				if (accountFlags) updateRequestContext({ accountFlags });
 			}
 
-			// Admin comes only from the account's stored isAdmin flag, which the resolver reads.
+			// Trust the resolver's isAdmin — it already ORs user.isAdmin, the same-instance
+			// in-memory grant, AND the durable ADMIN_PROOF_COOKIE (instance-independent). Recomputing
+			// from adminTokenManager alone here would drop the cookie grant on serverless.
 			event.locals.isAdmin = auth.isAdmin;
 
 			// CSRF protection
@@ -292,10 +300,7 @@ export async function handleRequest({ event, resolve }: HandleInput): Promise<Re
 						...(config.PUBLIC_ORIGIN ? [new URL(config.PUBLIC_ORIGIN).host] : []),
 					];
 
-					// The sync client's token exchange and revoke are form posts from its own
-					// origin. They carry no cookie, so there is no ambient session for a forged post to use. (CUR-4312)
-					const syncClientPost = syncCors && isSyncClientOrigin(origin);
-					if (!syncClientPost && !validOrigins.includes(new URL(origin).host)) {
+					if (!validOrigins.includes(new URL(origin).host)) {
 						return errorResponse(403, "Invalid referer for POST request");
 					}
 				}
@@ -316,18 +321,16 @@ export async function handleRequest({ event, resolve }: HandleInput): Promise<Re
 			// condition: that branch also extends the session's expiry, which a session created
 			// milliseconds ago does not need, and the two have different reasons to run.
 			//
-			// Except on api/fetch-url (CUR-3191): that route refuses a request that just minted, so it
-			// answers with no Set-Cookie and its responses never carry a session. (CUR-1645)
-			if (auth.mintedSession && !auth.sync && routePath !== `${CHAT_ROUTE_ROOT}/api/fetch-url`) {
+			// Except on api/fetch-url: that route refuses a request that just minted, so it answers with no
+			// Set-Cookie and its responses never carry a session.
+			if (auth.mintedSession && routePath !== `${CHAT_ROUTE_ROOT}/api/fetch-url`) {
 				refreshSessionCookie(event.cookies, auth.secretSessionId);
 			}
 
-			// A sync request (CUR-4312) has no browser session to extend.
 			if (
-				!auth.sync &&
-				(event.request.method === "POST" ||
-					routePath.startsWith(`${CHAT_ROUTE_ROOT}/login`) ||
-					routePath.startsWith(`${CHAT_ROUTE_ROOT}/login/callback`))
+				event.request.method === "POST" ||
+				routePath.startsWith(`${CHAT_ROUTE_ROOT}/login`) ||
+				routePath.startsWith(`${CHAT_ROUTE_ROOT}/login/callback`)
 			) {
 				// if the request is a POST request or login-related we refresh the cookie
 				refreshSessionCookie(event.cookies, auth.secretSessionId);
@@ -338,11 +341,10 @@ export async function handleRequest({ event, resolve }: HandleInput): Promise<Re
 				);
 			}
 
-			// CUR-246 (porting spike/cur-230-everything-on 61141b4d): the SECOND login gate, and the one
-			// the redirect above was hiding — this 401s every non-GET from a signed-out visitor (create a
-			// conversation, send a message, change a setting), so enabling sign-in without narrowing this
-			// one too froze the app read-only even after gate 1 was fixed. Gated on AUTOMATIC_LOGIN for
-			// the same reason as gate 1: anonymous is the product here, not a fallback.
+			// The SECOND login gate: this 401s every non-GET from a signed-out visitor (create a
+			// conversation, send a message, change a setting). Ungated, it would leave a signed-out visitor
+			// with a read-only app whenever sign-in is configured. It is gated on AUTOMATIC_LOGIN for the
+			// same reason as the redirect above: anonymous use is the product here, not a fallback.
 			if (
 				loginEnabled() &&
 				config.AUTOMATIC_LOGIN === "true" &&
@@ -350,7 +352,7 @@ export async function handleRequest({ event, resolve }: HandleInput): Promise<Re
 				!routePath.startsWith(`${CHAT_ROUTE_ROOT}/login`) &&
 				!routePath.startsWith(`${CHAT_ROUTE_ROOT}/admin`) &&
 				!routePath.startsWith(`${CHAT_ROUTE_ROOT}/settings`) &&
-				// Better Auth's own sign-in surface (CUR-434) is POST-heavy by nature — email-OTP
+				// Better Auth's own sign-in surface is POST-heavy by nature — email-OTP
 				// submission, passkey registration/authentication, the social-provider callback — and
 				// every one of those happens BEFORE event.locals.user exists. This exemption stays
 				// UNCONDITIONAL (not just under AUTOMATIC_LOGIN) because a visitor has to be able to
@@ -382,7 +384,7 @@ export async function handleRequest({ event, resolve }: HandleInput): Promise<Re
 			updateRequestContext({ statusCode: response.status });
 
 			// measure-only, see accountRolloutProbe.ts. A response whose headers are immutable
-			// (a fetched redirect) just goes without it. (CUR-2463)
+			// (a fetched redirect) just goes without it.
 			if (accountRolloutProbeEnabled()) {
 				try {
 					response.headers.set(ACCOUNT_ROLLOUT_PROBE_HEADER, "on");
@@ -404,7 +406,7 @@ export async function handleRequest({ event, resolve }: HandleInput): Promise<Re
 
 			// Settings pages render on the server, and the HTML carries the visitor's session and
 			// settings, so no shared cache may keep it. Set here once for the group rather than in each
-			// page's load, where a second `setHeaders` of the same header throws. (CUR-908)
+			// page's load, where a second `setHeaders` of the same header throws.
 			if (routePath.startsWith(`${CHAT_ROUTE_ROOT}/settings`)) {
 				response.headers.set("Cache-Control", "private, no-store");
 			}
@@ -414,9 +416,9 @@ export async function handleRequest({ event, resolve }: HandleInput): Promise<Re
 				const requestOrigin = event.request.headers.get("origin");
 
 				// Compare requestOrigin against the request's own host as well as config.PUBLIC_ORIGIN's
-				// static origin (CUR-1172). PUBLIC_ORIGIN is one value synced to every preview deployment, so a
+				// static origin. PUBLIC_ORIGIN is one value synced to every preview deployment, so a
 				// same-origin caller on an ephemeral per-PR preview would otherwise get a CORS header naming
-				// develop.aipotluck.org instead of its own host. Same trusted-origin shape as the CSRF check
+				// another host instead of its own. Same trusted-origin shape as the CSRF check
 				// above.
 				const validOrigins = [
 					new URL(event.request.url).origin,
@@ -435,10 +437,6 @@ export async function handleRequest({ event, resolve }: HandleInput): Promise<Re
 			}
 
 			logger.info(hubCallSummary(), "Request completed");
-
-			// The registered client's origin by name on the sync and token paths, in place of
-			// the same-origin answer above. (CUR-4312)
-			if (syncCors) return applySyncCors(response, event.request.headers.get("origin"));
 
 			return response;
 		},

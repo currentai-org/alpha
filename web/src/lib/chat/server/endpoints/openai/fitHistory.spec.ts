@@ -72,8 +72,8 @@ describe("fitHistory", () => {
 		expect(cjk).toBe(8 + 300);
 	});
 
-	// Apertus counts this size of English document as 20,548 tokens, and it answers
-	// on a 32000-token lane. A refusal here would turn away a working request.
+	// Apertus tokenizes an English document this size to about 20,500 tokens, so it fits a
+	// 32000-token lane. A refusal here would turn away a working request.
 	it("sends a full 100,000-byte English document on a 32000-token lane, refusing nothing", () => {
 		const doc: Msg = { role: "user", content: "It is a truth universally acknowledged. ".repeat(2_500) };
 		const msgs: Msg[] = [system, user("q1"), assistant("a1"), doc];

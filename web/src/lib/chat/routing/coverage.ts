@@ -3,9 +3,9 @@
  * draft in that language, split at the router's dependable line (`weakSupport`, the same threshold that
  * raises the language-gap pill) into languages handled well and languages still being learned.
  *
- * The pick is `route()`'s own, so the panel can never name a model Auto would not send that draft to:
+ * The pick is `route`'s own, so the panel can never name a model Auto would not send that draft to:
  * a model scoped to its own languages or to large tasks, or one that is busy, is out here exactly as it
- * is there (CUR-4692).
+ * is there.
  */
 import type { CatalogModel } from './catalog';
 import type { DraftAnalysis } from './classifier';

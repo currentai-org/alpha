@@ -1,10 +1,13 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { parseExternalUrl } from "$lib/chat/utils/externalLink";
 import { sanitizeUrlParam } from "$lib/chat/utils/urlParams";
 
 /**
  * What a deep link into `/chat` or `/chat/models/<id>` asked for. Read once on mount and held in
  * memory: the URL is stripped of these params as soon as they are read, so a reload or Back cannot
- * replay them. Ported from upstream chat-ui 5418e752 (CUR-2644).
+ * replay them. Ported from upstream chat-ui 5418e752.
  */
 export interface LinkPromptRequest {
 	/** Text from `q` or `prompt`; `q` wins when both are present. */

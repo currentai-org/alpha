@@ -1,6 +1,6 @@
 <script lang="ts">
-	import type { EmbeddedIntent } from '$lib/chat/types/EmbeddedIntent';
 	import { base } from '$lib/chat/paths';
+	import { accountInitials } from '$lib/chat/accountInitials';
 	import { page } from '$app/state';
 	import { dev } from '$app/environment';
 	import { goto, invalidate } from '$app/navigation';
@@ -42,13 +42,9 @@
 	 * title menu; the GDPR wipe ("Forget everything") is a page, Settings → Data & privacy.
 	 */
 	let {
-		embeddedDemo = false,
-		onEmbeddedNavigate,
 		onlogout,
 		loggingOut = false
 	}: {
-		embeddedDemo?: boolean;
-		onEmbeddedNavigate?: (intent?: EmbeddedIntent) => void;
 		onlogout?: () => void;
 		loggingOut?: boolean;
 	} = $props();
@@ -56,31 +52,24 @@
 	const languageLabel = $derived(interfaceLanguages.find((l) => l.value === page.data.locale)?.label ?? 'English');
 	const theme = getThemeContext();
 	const user = $derived(page.data.user as { name?: string } | undefined);
-	// The /alpha demo has no account: it says so, rather than posing as a guest session.
-	const displayName = $derived(user?.name ?? (embeddedDemo ? m.product_demo() : m.product_guest()));
-	const initials = $derived(
-		displayName
-			.split(/\s+/)
-			.map((w) => w[0])
-			.join('')
-			.slice(0, 2) || 'G'
-	);
+	const displayName = $derived(user?.name ?? m.product_guest());
+	const initials = $derived(accountInitials(displayName));
 
 	// With workspaces on, the row's second line says which workspace new conversations count
-	// toward; with none active it is the personal one (CUR-1114's name for it). (CUR-3014)
+	// toward; with none active it is the personal one (the name for it).
 	const currentWorkspace = $derived(page.data.currentWorkspace as { id: string; name: string } | null | undefined);
-	// Clears the "landed in Personal" line whenever a team workspace is current (CUR-3089).
+	// Clears the "landed in Personal" line whenever a team workspace is current.
 	$effect(() => {
 		if (currentWorkspace) keepLandedNotice('');
 	});
 	// A former workspace (left, or deleted) being looked at fills the list with its chats while
-	// no team workspace is current, so the row names it rather than saying Personal over them. (CUR-3040)
+	// no team workspace is current, so the row names it rather than saying Personal over them.
 	const viewingFormer = $derived(page.data.viewingFormer as { id: string; name: string } | null | undefined);
 	const workspaceLabel = $derived(
 		currentWorkspace?.name ??
 			(viewingFormer ? m.workspace_formerItem({ name: viewingFormer.name }) : m.product_personalWorkspace())
 	);
-	// An invitation waiting on this address, so a signed-in invitee sees it without the email. (CUR-4167)
+	// An invitation waiting on this address, so a signed-in invitee sees it without the email.
 	const invitations = $derived(
 		(page.data.pendingInvitations as { id: string; workspaceName: string; inviterEmail: string }[] | undefined) ?? []
 	);
@@ -90,17 +79,11 @@
 			: m.product_invitationsWaiting({ count: String(invitations.length) })
 	);
 	const accountStatus = $derived(
-		!user
-			? m.product_notSignedIn()
-			: page.data.workspacesEnabled
-				? invitations.length > 0
-					? invitationLabel
-					: workspaceLabel
-				: m.product_signedIn()
+		!user ? m.product_notSignedIn() : invitations.length > 0 ? invitationLabel : workspaceLabel
 	);
 
 	// Switch workspace from here, the way Claude.ai's account menu does, instead of a trip to
-	// Settings → Workspace (CUR-3097). Personal is pinned first and is the session with no active
+	// Settings → Workspace. Personal is pinned first and is the session with no active
 	// workspace, so choosing it unsets the active one.
 	const PERSONAL = 'personal';
 	const FORMER = 'former:';
@@ -115,7 +98,7 @@
 	let switchingTo = $state<string | null>(null);
 	let switchError = $state('');
 	// The group writes its check on click, before the server answers, so a refused switch
-	// puts it back on the workspace the person is still in. (CUR-3407)
+	// puts it back on the workspace the person is still in.
 	let checkedWorkspace = $derived(shownWorkspace);
 	// The former-workspace pick is a cookie apart from the session's active workspace, so a switch
 	// sets or clears it too; otherwise Personal keeps listing the former workspace's chats.
@@ -129,7 +112,7 @@
 	}
 	async function switchWorkspace(value: string) {
 		// Rows stay enabled while a switch runs (greying every row reads as a frozen menu), so a
-		// second click is undone here. (CUR-4237)
+		// second click is undone here.
 		if (switchingTo) {
 			checkedWorkspace = switchingTo;
 			return;
@@ -158,7 +141,7 @@
 			}
 			// The shell load re-reads the session, so the row's name and the conversation list follow.
 			await invalidate('app:workspace');
-			// Then get out of the way of the list that just changed (CUR-3174). The items keep
+			// Then get out of the way of the list that just changed. The items keep
 			// closeOnSelect={false} so a failed switch stays open with its reason above.
 			menuOpen = false;
 		} catch {
@@ -171,7 +154,7 @@
 	}
 
 	// General feedback ("I liked this", "I wish it did that") goes to a Tally form the team
-	// owns, apart from "Report a problem", which is for things that are broken or wrong. (CUR-2890)
+	// owns, apart from "Report a problem", which is for things that are broken or wrong.
 	const FEEDBACK_FORM_URL = 'https://tally.so/r/QKg85X';
 
 	let reportOpen = $state(false);
@@ -199,9 +182,9 @@
 	}
 
 	// "Log in" carries the current path as `next` so signing in returns the person to where they were
-	// (CUR-1673) — pathname only, since a query can hold `?model=`/`?token=` the entry acts on, and
+	// — pathname only, since a query can hold `?model=`/`?token=` the entry acts on, and
 	// login/+page.server.ts's safeNext() is the one authority on which values are usable. On the login
-	// page itself it keeps the page's own `next` rather than pointing sign-in back at itself (CUR-1859).
+	// page itself it keeps the page's own `next` rather than pointing sign-in back at itself.
 	const loginHref = $derived.by(() => {
 		const loginPath = `${base}/login`;
 		if (page.url.pathname.replace(/\/$/, '') === loginPath) {
@@ -210,12 +193,6 @@
 		}
 		return `${loginPath}?next=${encodeURIComponent(page.url.pathname)}`;
 	});
-
-	function intercept(e: MouseEvent) {
-		if (!embeddedDemo) return;
-		e.preventDefault();
-		onEmbeddedNavigate?.({ kind: 'app' });
-	}
 
 	const modeLabel: Record<ColorMode, string> = $derived({ light: m.product_light(), dark: m.product_dark(), system: m.product_system() });
 
@@ -227,7 +204,7 @@
 	const currentThemeLabel = $derived(themeList.find((t) => t.id === theme?.theme)?.label ?? 'Alpha');
 </script>
 
-<!-- CUR-4237: the clicked workspace row says it heard the click, as Settings → Workspace does. Top level,
+<!-- the clicked workspace row says it heard the click, as Settings → Workspace does. Top level,
      since a snippet inside Menu.Popup would be passed to it as a prop. -->
 {#snippet switching(value: string)}
 	{#if switchingTo === value}
@@ -252,8 +229,8 @@
 			     confirmation a screen-reader user gets that sign-in took. -->
 			<Sidebar.Item
 				tall
-				label={user ? m.product_accountSignedIn({ name: displayName }) : embeddedDemo ? m.product_accountDemo() : m.product_accountGuest()}
-				aria-label={user ? m.product_accountSignedIn({ name: displayName }) : embeddedDemo ? m.product_accountDemo() : m.product_accountGuest()}
+				label={user ? m.product_accountSignedIn({ name: displayName }) : m.product_accountGuest()}
+				aria-label={user ? m.product_accountSignedIn({ name: displayName }) : m.product_accountGuest()}
 				triggerProps={{ ...props, 'data-account-trigger': '' }}
 			>
 				{#snippet leading()}
@@ -264,13 +241,7 @@
 				{/snippet}
 				<span class="flex min-w-0 flex-col py-0.5 leading-tight">
 					<span class="truncate text-fg-1">{displayName}</span>
-					{#if embeddedDemo && !user}
-						<span class="flex items-center gap-1 truncate type-label text-fg-2">
-							{m.product_signup()} <RiArrowRightUpLine aria-hidden="true" class="size-3" />
-						</span>
-					{:else}
-						<span class="truncate type-label text-fg-3" data-account-status>{accountStatus}</span>
-					{/if}
+					<span class="truncate type-label text-fg-3" data-account-status>{accountStatus}</span>
 				</span>
 			</Sidebar.Item>
 		{/snippet}
@@ -288,20 +259,20 @@
 			>
 				<Menu.Group>
 					<!-- An email is one unbroken string, so it ends in an ellipsis rather than running out of the
-					     menu mid-address (CUR-2217); the full address is its hover text. A group label is set in
+					     menu mid-address; the full address is its hover text. A group label is set in
 					     the UI's label case, which would shout a person's own name or address back at them, so
 					     theirs keeps the case they typed. -->
 					<Menu.GroupLabel
 						class={user ? 'truncate normal-case' : 'truncate'}
 						title={user ? displayName : undefined}
-						>{user ? displayName : embeddedDemo ? m.product_demoSession() : m.product_guestSession()}</Menu.GroupLabel
+						>{user ? displayName : m.product_guestSession()}</Menu.GroupLabel
 					>
-					<Menu.LinkItem href={`${base}/settings`} onclick={intercept}>
+					<Menu.LinkItem href={`${base}/settings`}>
 						<RiSettings aria-hidden="true" /> {m.product_settings()}
 					</Menu.LinkItem>
 					<!-- Workspaces are organisation-level, so they sit with the account (as in a typical chat app's
-					     organisation switcher does), not in the per-chat sidebar. Gated like the page (CUR-913). -->
-					{#if page.data.workspacesEnabled && user}
+					     organisation switcher does), not in the per-chat sidebar. -->
+					{#if user}
 						<Menu.SubmenuRoot onOpenChange={(o) => !o && (switchError = '')}>
 							<Menu.SubmenuTrigger>
 								<RiTeamLine aria-hidden="true" /> {m.product_workspace()}
@@ -324,7 +295,7 @@
 													{@render switching(w.id)}
 												</Menu.RadioItem>
 											{/each}
-											<!-- CUR-3040: below the real ones, as on Settings → Workspace. -->
+											<!-- below the real ones, as on Settings → Workspace. -->
 											{#each formerWorkspaces as w (w.id)}
 												<Menu.RadioItem value={FORMER + w.id} closeOnSelect={false}>
 													<span class="truncate text-fg-2">{m.workspace_formerItem({ name: w.name })}</span>
@@ -340,7 +311,7 @@
 											<Menu.Group data-pending-invitations>
 												<Menu.GroupLabel>{m.workspace_invitations()}</Menu.GroupLabel>
 												{#each invitations as inv (inv.id)}
-													<Menu.LinkItem href={`${base}/workspace/accept/${inv.id}`} onclick={intercept}>
+													<Menu.LinkItem href={`${base}/workspace/accept/${inv.id}`}>
 														<RiMailLine aria-hidden="true" />
 														<PendingInviteRow workspaceName={inv.workspaceName} inviterEmail={inv.inviterEmail} />
 													</Menu.LinkItem>
@@ -348,7 +319,7 @@
 											</Menu.Group>
 										{/if}
 										<Menu.Separator />
-										<Menu.LinkItem href={`${base}/settings/workspace`} onclick={intercept}>
+										<Menu.LinkItem href={`${base}/settings/workspace`}>
 											<RiSettings aria-hidden="true" /> {m.product_manageWorkspaces()}
 										</Menu.LinkItem>
 									</Menu.Popup>
@@ -428,7 +399,7 @@
 										{/each}
 									</Menu.RadioGroup>
 									<Menu.Separator />
-									<Menu.LinkItem href={`${base}/settings/appearance`} onclick={intercept}>
+									<Menu.LinkItem href={`${base}/settings/appearance`}>
 										<RiSettings aria-hidden="true" /> {m.product_moreAppearance()}
 									</Menu.LinkItem>
 								</Menu.Popup>
@@ -439,35 +410,29 @@
 				<Menu.Separator />
 				<Menu.Group>
 					<Menu.GroupLabel>{m.product_help()}</Menu.GroupLabel>
-					{#if !embeddedDemo}
-						<Menu.Item onSelect={takeTour} data-take-tour>
-							<RiCompass3Line aria-hidden="true" /> {m.tour_take()}
-						</Menu.Item>
-					{/if}
-					<!-- Not in the /alpha demo: there's no real session to report on, and the sample
-					     answers aren't Alpha's to be judged on. -->
-					{#if !embeddedDemo}
-						<Menu.Item onSelect={() => (reportOpen = true)}>
-							<RiFlag aria-hidden="true" /> {m.product_reportProblem()}
-						</Menu.Item>
-						<Menu.LinkItem href={FEEDBACK_FORM_URL} target="_blank">
-							<RiFeedbackLine aria-hidden="true" /> {m.product_giveFeedback()}
-							<RiArrowRightUpLine aria-hidden="true" class="ml-auto" />
-						</Menu.LinkItem>
-					{/if}
-					<Menu.LinkItem href={`${base}/privacy-notice`} onclick={intercept}>
+					<Menu.Item onSelect={takeTour} data-take-tour>
+						<RiCompass3Line aria-hidden="true" /> {m.tour_take()}
+					</Menu.Item>
+					<Menu.Item onSelect={() => (reportOpen = true)}>
+						<RiFlag aria-hidden="true" /> {m.product_reportProblem()}
+					</Menu.Item>
+					<Menu.LinkItem href={FEEDBACK_FORM_URL} target="_blank">
+						<RiFeedbackLine aria-hidden="true" /> {m.product_giveFeedback()}
+						<RiArrowRightUpLine aria-hidden="true" class="ml-auto" />
+					</Menu.LinkItem>
+					<Menu.LinkItem href={`${base}/privacy-notice`}>
 						<RiFileTextLine aria-hidden="true" /> {m.product_privacyNotice()}
 					</Menu.LinkItem>
-					<Menu.LinkItem href={`${base}/trust-and-safety`} onclick={intercept}>
+					<Menu.LinkItem href={`${base}/trust-and-safety`}>
 						<RiShieldCheckLine aria-hidden="true" /> {m.product_trustSafety()}
 					</Menu.LinkItem>
-					{#if __COPY_EDIT__ && !embeddedDemo}
+					{#if __COPY_EDIT__}
 						<Menu.Item onSelect={() => void startCopyEdit()} data-dev-edit-text>
 							<RiEditLine aria-hidden="true" /> Edit text
 							<span class="ml-auto type-caption text-fg-3">Dev</span>
 						</Menu.Item>
 					{/if}
-					{#if dev && !embeddedDemo}
+					{#if dev}
 						<Menu.Item onSelect={replayWelcome} data-dev-meet-alpha>
 							<RiSparkling2Line aria-hidden="true" /> {m.product_meetAlpha()}
 							<span class="ml-auto type-caption text-fg-3">Dev</span>
@@ -478,16 +443,10 @@
 						</Menu.Item>
 					{/if}
 				</Menu.Group>
-				{#if embeddedDemo && !user}
-					<!-- Demo: the account row is the way in, so the menu ends on one big Sign up. -->
-					<Menu.Separator />
-					<Menu.Item tone="cta" onSelect={() => onEmbeddedNavigate?.({ kind: 'signup' })} data-demo-signup-cta>
-						{m.product_signup()} <RiArrowRightUpLine aria-hidden="true" />
-					</Menu.Item>
-				{:else if page.data.loginEnabled}
+				{#if page.data.loginEnabled}
 					<Menu.Separator />
 					{#if user}
-						<Menu.LinkItem href={`${base}/settings/account`} onclick={intercept}>
+						<Menu.LinkItem href={`${base}/settings/account`}>
 							<RiUserLine aria-hidden="true" /> {m.product_account()}
 						</Menu.LinkItem>
 						<Menu.Item disabled={loggingOut} onSelect={() => onlogout?.()}>
@@ -495,7 +454,7 @@
 							{loggingOut ? m.product_loggingOut() : m.product_logout()}
 						</Menu.Item>
 					{:else}
-						<Menu.LinkItem href={loginHref} onclick={intercept}>
+						<Menu.LinkItem href={loginHref}>
 							<RiLogin aria-hidden="true" /> {m.product_login()}
 						</Menu.LinkItem>
 					{/if}
@@ -505,5 +464,5 @@
 	</Menu.Portal>
 </Menu.Root>
 
-{#if !embeddedDemo}<ReportProblemDialog bind:open={reportOpen} />{/if}
-{#if dev && !embeddedDemo}<DevFlagsDialog bind:open={flagsOpen} />{/if}
+<ReportProblemDialog bind:open={reportOpen} />
+{#if dev}<DevFlagsDialog bind:open={flagsOpen} />{/if}

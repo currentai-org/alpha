@@ -25,7 +25,7 @@
 	const weakFooter = $derived(m.message_weakFooter({ link: '{link}' }).split(/(\{link\})/).filter(Boolean));
 
 	// The list is taller than a short window, and headless and macOS browsers hide the scrollbar until
-	// a scroll, so a cue at the bottom says the text continues until its end is in view (CUR-2744).
+	// a scroll, so a cue at the bottom says the text continues until its end is in view.
 	// The popup is the scroll box, and this dialog's body is its direct child.
 	let body = $state<HTMLDivElement>();
 	let more = $state(false);

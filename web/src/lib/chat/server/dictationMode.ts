@@ -1,15 +1,15 @@
-// Is dictation (mic → transcription → composer text) on? (CUR-198)
+// Is dictation (mic → transcription → composer text) on?
 //
 // Split out from multimodalMode.ts on purpose: dictation only ever produces TEXT — the
 // transcribed string lands in the same composer field typed text does, and goes through the
 // same moderation the rest of chat already runs. It carries none of the "does the model actually
 // understand this input" or "does anything screen it" questions the image/audio-in-general
-// multimodal flag exists for (CUR-160), so it doesn't need to wait on those to ship.
+// multimodal flag exists for, so it doesn't need to wait on those to ship.
 //
 // ── The FLAG is the gate; TRANSCRIPTION_MODEL is config ──────────────────────────────────────────
 // The PostHog `dictation` flag decides on/off. TRANSCRIPTION_MODEL is the Whisper-style model
-// address the transcribe call hits, NOT a switch — the anti-pattern this repo keeps removing
-// (agentMode.ts for AGENT_SERVICE_URL, multimodalMode.ts for MULTIMODAL_ENABLED). Env-var presence
+// address the transcribe call hits, NOT a switch
+// (the same rule as agentMode.ts for AGENT_SERVICE_URL, multimodalMode.ts for MULTIMODAL_ENABLED). Env-var presence
 // alone must not double as "voice is on" here too: it would light the client's transcriptionEnabled
 // flag while the mic button had no way to appear and the API gate read a different signal.
 //

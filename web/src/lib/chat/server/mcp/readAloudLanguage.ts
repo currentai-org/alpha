@@ -1,8 +1,7 @@
-// The voice read-aloud uses comes from the language of the answer being read (CUR-3151). Kokoro
+// The voice read-aloud uses comes from the language of the answer being read. Kokoro
 // (readAloudSpeech.ts) pronounces a text by its voice's language, so each language it covers has its own
 // voice here. A language outside them is refused here: the visitor is told there is no voice for it yet,
-// and may ask for the English voice instead. Nothing plays in a voice of another language unasked
-// (CUR-3989).
+// and may ask for the English voice instead. Nothing plays in a voice of another language unasked.
 import { heuristicClassify } from "$lib/chat/routing/heuristic";
 import { loadDetectors, refineLanguage } from "$lib/chat/routing/localClassifier";
 import { fromIso1, languageName, parentLanguage } from "$lib/chat/routing/languages";
@@ -134,7 +133,7 @@ function wordlessVoice(
 ): ReadAloudVoice {
 	if (question?.trim() && heuristicClassify(question).language.value !== "und") {
 		// A question placed in a language Kokoro has no voice for refuses in that language's name, so a
-		// short German answer is offered in English rather than read in it unasked (CUR-3989).
+		// short German answer is offered in English rather than read in it unasked.
 		return questionVoice(question, detectors);
 	}
 	const code = fallbackLanguage?.toLowerCase().split("-")[0];

@@ -10,9 +10,8 @@ import { computeSessionCookieScope } from "$lib/chat/server/betterAuth";
 // only back to the host that set it (RFC 6265 §5.1.3 domain-match, §5.3 step 6).
 // status.aipotluck.org is a CNAME to a third-party status page (Better Stack), and cms.aipotluck.org
 // is a separate app, so neither should ever receive a signed-in person's session.
-// (CUR-1910)
-// production's cookie is host-only, so it reaches neither. With the apex Domain it had
-// before (CUR-697), every "never sent" case below fails. (CUR-4442)
+// Production's cookie is host-only, so it reaches neither. With an apex Domain attribute, every
+// "never sent" case below would fail.
 function sentTo(host: string, cookie: { attributes: { domain?: string } }, setBy: string): boolean {
 	const domain = cookie.attributes.domain?.replace(/^\./, "").toLowerCase();
 	if (!domain) return host === setBy;
@@ -62,7 +61,7 @@ describe("production session cookie reach", () => {
 });
 
 // What Better Auth actually emits on an event instance. It reads its own name, so it never
-// picks a www session up, and its own cookie never travels back to www. (CUR-3156)
+// picks a www session up, and its own cookie never travels back to www.
 describe("event instance session cookie", () => {
 	const mozfest = getCookies({
 		baseURL: "https://mozfest.aipotluck.org",

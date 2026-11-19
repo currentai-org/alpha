@@ -29,7 +29,7 @@ export default async function globalSetup(): Promise<void> {
 
 	// A real throwaway turn, paid for here rather than by whichever spec's own 45s-ceiling
 	// assertion happens to run first against a cold PR preview. See helpers/warmup.ts for why this has
-	// to be a real turn and not a cheap route ping (CUR-1803).
+	// to be a real turn and not a cheap route ping.
 	const warmup = await warmUpChatPath(process.env.SCENARIO_BASE_URL as string);
 	recordWarmup(warmup);
 	console.log(

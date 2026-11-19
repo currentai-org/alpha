@@ -9,8 +9,8 @@ import { freshTestEmail, signInWithEmailOtp } from './helpers/signIn';
 import { startChattingPastWelcome } from './helpers/welcome';
 
 // The promises A3 ("My data stays mine") and A5 ("I can report what is wrong") make to a guest,
-// checked where they are made: on production's chat host (alpha since CUR-4439, chat at its root), every
-// four hours, by the live suite (CUR-2619).
+// checked where they are made: on production's chat host (alpha, chat at its root), every
+// four hours, by the live suite.
 //
 // WHY A SEPARATE FILE RATHER THAN TAGGING THE JOURNEY SPECS @live. Those specs are written for a
 // develop preview, and two of them assert things production does not offer: `report-a-problem.spec.ts`
@@ -143,13 +143,13 @@ test(
 // along and they land back in it; the rail names them; the account page shows their email and a way
 // to add another sign-in).
 //
-// ON WWW IT SIGNS IN AS ONE STANDING ACCOUNT, never a new one per run. Sign-ups are off (CUR-2050) in
+// ON WWW IT SIGNS IN AS ONE STANDING ACCOUNT, never a new one per run. Sign-ups are off in
 // production's run. The workflow hands over the sign-in probe's @example.org address with `+live-suite`
 // added (Resend never mails that domain) as LIVE_SIGNIN_EMAIL. It is a separate address because each
 // send voids the previous code, so sharing the probe's would let the two runs break each other. On any
 // other target a fresh @example.org address is minted, as every preview spec does. The conversation is
 // deleted at the end, so the account does not collect one every four hours.
-// alpha is production's chat host (CUR-4439); www still counts so a run pointed there stays guarded.
+// alpha is production's chat host; www still counts so a run pointed there stays guarded.
 const PRODUCTION_HOSTS = ['www.aipotluck.org', 'alpha.aipotluck.org'];
 
 test(
@@ -169,7 +169,7 @@ test(
 		await page.addLocatorHandler(welcomeDialog, async () => {
 			await startChattingPastWelcome(welcomeDialog);
 		});
-		// `load`, not `commit`: the nav renders twice and only CSS hides one (sign-in.spec.ts, CUR-1479).
+		// `load`, not `commit`: the nav renders twice and only CSS hides one (sign-in.spec.ts).
 		await page.goto(liveEntry(), { waitUntil: 'load' });
 		await expect(accountButton(page)).toHaveAccessibleName('Account — guest', {
 			timeout: 15_000

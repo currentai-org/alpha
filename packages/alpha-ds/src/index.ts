@@ -25,7 +25,6 @@ export { themes, accentPresets, type ThemeSeeds } from './tokens/themes.ts';
 export { cn, tv, type VariantProps } from './internal/cn.ts';
 
 // Components (Base UI)
-export { Accordion } from './components/accordion/index.ts';
 export { AlertDialog } from './components/alert-dialog/index.ts';
 export { Avatar } from './components/avatar/index.ts';
 export {
@@ -44,11 +43,9 @@ export { Input, inputRecipe } from './components/input/index.ts';
 export { Menu } from './components/menu/index.ts';
 export { Meter } from './components/meter/index.ts';
 export { Popover } from './components/popover/index.ts';
-export { PreviewCard } from './components/preview-card/index.ts';
 export { Progress } from './components/progress/index.ts';
 export { Radio, RadioGroup } from './components/radio/index.ts';
-export { ScrollArea } from './components/scroll-area/index.ts';
-export { Sheet, useCompact, COMPACT_QUERY } from './components/sheet/index.ts';
+export { Sheet, useCompact, useSheetOpen, COMPACT_QUERY } from './components/sheet/index.ts';
 export { Select } from './components/select/index.ts';
 export { Separator } from './components/separator/index.ts';
 export { Slider } from './components/slider/index.ts';
@@ -73,8 +70,6 @@ export { Spinner } from './components/spinner/index.ts';
 export { Textarea } from './components/textarea/index.ts';
 
 // Primitives
-export { Center } from './primitives/center/index.ts';
-export { Frame } from './primitives/frame/index.ts';
 export { Grid } from './primitives/grid/index.ts';
 export { Inline } from './primitives/inline/index.ts';
 export { Stack } from './primitives/stack/index.ts';

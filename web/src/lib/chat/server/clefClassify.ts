@@ -26,7 +26,7 @@ export class ClefError extends Error {
 }
 
 /**
- * The fetch a draft read goes through. SOL-201: in a scenario run (`mode` from resolveReplayMode) it is
+ * The fetch a draft read goes through. in a scenario run (`mode` from resolveReplayMode) it is
  * the model replay store, so CI's reads are answered from a recording and stop spending the Clef quota
  * real visitors share. The key is the whole request: Clef's path, model, question set and draft.
  */
@@ -34,6 +34,14 @@ export function clefFetch(mode: ReplayMode | null, live: typeof fetch = fetch): 
 	if (!mode) return live;
 	return ((url: string | URL | Request, init?: RequestInit) =>
 		replayOrRecord(url, init, (i) => live(url, i), { clef: true }, mode)) as typeof fetch;
+}
+
+function hostOf(url: string): string {
+	try {
+		return new URL(url).host;
+	} catch {
+		return "unparseable";
+	}
 }
 
 /**
@@ -47,6 +55,7 @@ async function clefResultFor(
 	timeoutMs: number,
 	fetchImpl: typeof fetch
 ): Promise<{ model?: string; answers?: unknown }> {
+	const started = Date.now();
 	let res: Response;
 	try {
 		res = await fetchImpl(`${cfg.url}/${encodeURIComponent(cfg.model)}`, {
@@ -67,6 +76,9 @@ async function clefResultFor(
 	if (!res.ok || !body?.success || !body.result) {
 		throw new ClefError(`clef ${res.status}: ${body?.errors?.[0]?.message ?? "no result"}`, 502);
 	}
+	// A read that worked names the router host it went through, so which router serves Clef can be read
+	// from the logs rather than inferred from config. Failures are logged by the callers.
+	logger.info({ host: hostOf(cfg.url), ms: Date.now() - started }, "[clef] read answered");
 	return body.result;
 }
 
@@ -115,7 +127,7 @@ export function __resetClefReadsForTest(): void {
 
 /**
  * The sent message's language, asked of Clef with `extra` languages offered beside the ones Auto asks
- * about (CUR-2237). Auto's list leaves out languages it has no benchmark row for, Hausa among them, so
+ * about. Auto's list leaves out languages it has no benchmark row for, Hausa among them, so
  * it can't name one; offered it, Clef can, where the trigram profiles cannot reliably. Returns the
  * chosen code when its probability
  * clears `floor`, null when Clef chose something else or was unsure, and undefined when Clef could not

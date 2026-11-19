@@ -1,6 +1,6 @@
 /**
  * This app's workspace admin (Better Auth's "admin" role, assigned via creatorRole in betterAuth.ts)
- * has to be able to delete its own workspace (CUR-827). Better Auth's BUILT-IN admin role cannot
+ * has to be able to delete its own workspace. Better Auth's BUILT-IN admin role cannot
  * (plugins/organization/access/statement.mjs): adminAc grants `organization: ["update"]` only,
  * "delete" is owner-only, and this app never assigns "owner" (its two roles are admin and member).
  * Without ORG_ROLES, every admin calling the plugin's own /organization/delete gets FORBIDDEN.
@@ -16,12 +16,12 @@
 import { describe, it, expect } from "vitest";
 import { ORG_ROLES } from "./betterAuth";
 
-describe("workspace ORG_ROLES (CUR-827)", () => {
+describe("workspace ORG_ROLES", () => {
 	it("grants the app's admin role permission to delete its own workspace", () => {
 		expect(ORG_ROLES.admin.authorize({ organization: ["delete"] }).success).toBe(true);
 	});
 
-	it("keeps every admin ability CUR-550 already shipped — invite, remove, cancel", () => {
+	it("keeps every admin ability already shipped — invite, remove, cancel", () => {
 		expect(ORG_ROLES.admin.authorize({ invitation: ["create", "cancel"] }).success).toBe(true);
 		expect(ORG_ROLES.admin.authorize({ member: ["create", "update", "delete"] }).success).toBe(true);
 	});

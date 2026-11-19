@@ -7,12 +7,17 @@
 <script lang="ts">
 	import { Dialog as Engine, type DialogRootProps } from 'bits-ui';
 	import { setSheet } from './context.ts';
+	import { holdSheetOpen } from './open.svelte.ts';
 
 	let { open = $bindable(false), children, ...rest }: DialogRootProps = $props();
 	setSheet({
 		close() {
 			open = false;
 		}
+	});
+	// Counted app-wide while open, so floating controls outside the sheet can step aside (useSheetOpen).
+	$effect(() => {
+		if (open) return holdSheetOpen();
 	});
 </script>
 

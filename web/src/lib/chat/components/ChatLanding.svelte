@@ -7,7 +7,6 @@
 	import { useSettingsStore } from '$lib/chat/stores/settings.js';
 	import { useConversationsStore } from '$lib/chat/stores/conversations.svelte';
 	import { findCurrentModel } from '$lib/chat/utils/models';
-	import { loading } from '$lib/chat/stores/loading.js';
 	import LinkPromptGate from '$lib/chat/components/LinkPromptGate.svelte';
 	import ChatShellSkeleton from '$lib/chat/components/ChatShellSkeleton.svelte';
 	import NoModelsAvailable from '$lib/chat/components/NoModelsAvailable.svelte';
@@ -34,10 +33,13 @@
 	const convsStore = useConversationsStore();
 
 	let files: File[] = $state([]);
+	// This page's own send, until the new conversation's page takes the turn over. Never a turn running
+	// in another chat: that one belongs to its own conversation, and a new chat stays free.
+	let loading = $state(false);
 	let draft = $state('');
 
 	// New chat on this page navigates nowhere, so a press since mount drops what is attached.
-	// The draft stays: it is the person's own typing, and New chat on the empty composer never cleared it. (CUR-3052)
+	// The draft stays: it is the person's own typing, and New chat on the empty composer never cleared it.
 	let newChatSeen = $newChatRequests;
 	$effect(() => {
 		if ($newChatRequests === newChatSeen) return;
@@ -78,14 +80,14 @@
 							analysis: analysisFor(message),
 							benchmarks: $activeBenchmarks,
 							config: $activeRoutingConfig,
-							// The same busy list the composer's forecast routed around. (CUR-4043)
+							// The same busy list the composer's forecast routed around.
 							busy: busyNow(serverBusyNow(page.data.busyModels as string[] | undefined, $serverBusy), $busyHere)
 						})
 					: undefined;
 				// A pick that isn't served stops the send; sendFromLanding shows this and puts the
-				// draft back. Falling through would answer from a model the person didn't pick. (CUR-4073)
+				// draft back. Falling through would answer from a model the person didn't pick.
 				if (resolved?.unavailable) throw new Error(m.chat_pickedModelUnavailable({ model: resolved.unavailable }));
-				// Auto's choice travels with the message so the answer's X-ray can say so. (CUR-3944)
+				// Auto's choice travels with the message so the answer's X-ray can say so.
 				pendingAutoRoute.set(
 					resolved?.modelId && resolved.route
 						? { text: message.trim(), note: autoRouteNote(resolved.route) }
@@ -98,7 +100,7 @@
 				if (validModels.includes($settings.activeModel)) return $settings.activeModel;
 				return models[0].id;
 			},
-			setLoading: (on) => ($loading = on),
+			setLoading: (on) => (loading = on),
 		});
 	}
 
@@ -112,7 +114,7 @@
 	<ChatWindow
 		onmessage={(message) => createConversation(message)}
 		onstop={landing.stop}
-		loading={$loading}
+		{loading}
 		pending={landing.pendingMessages.length > 0}
 		messages={landing.pendingMessages}
 		currentModel={model}
@@ -123,7 +125,7 @@
 {:else}
 	<NoModelsAvailable />
 {/if}
-<!-- CUR-2644: a deep link's prompt and attachments wait for the visitor to confirm. -->
+<!-- a deep link's prompt and attachments wait for the visitor to confirm. -->
 <LinkPromptGate
 	attach={(loaded) => (files = loaded)}
 	fill={(prompt) => {

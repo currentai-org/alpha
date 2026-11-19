@@ -1,6 +1,7 @@
-"""CUR-4603: a task runs on the model the chat names, or not at all.
+"""A task runs on the model the chat names, or not at all.
 
-A task may name its executor; AGENT_MODEL is the deployment-wide default. These are the contracts that make that safe: a named model the gateway
+The executor used to be one model per deployment (AGENT_MODEL), and the gateway rewrote every call to it.
+Now a task may name its executor. These are the contracts that make that safe: a named model the gateway
 cannot route is refused, and AGENT_MODEL never stands in for it; the gateway pins every call on a task's grant to
 that task's model; a provider with a model map never rewrites a model it lacks into one it has; and the
 task reports what ran.
@@ -249,8 +250,8 @@ def _large4_fields():
 
 
 def test_large4_gets_top_p_1_on_every_call_and_reasoning_off_only_when_unstreamed():
-    """Large 4 with its fallback off needs top_p 1 alongside temperature 0, and an unstreamed call needs
-    reasoning off. The app's review/derive/route calls are unstreamed at temp 0."""
+    """On the staging router, Large 4 with its fallback off rejects temperature 0 without top_p 1, and rejects an
+    unstreamed call unless reasoning is off. The app's review/derive/route calls are unstreamed at temp 0."""
     p = _large4_fields()
     unstreamed = json.loads(proxy._rewrite_model(b'{"model":"mistral-large-2610","temperature":0.0}', p))
     streamed = json.loads(proxy._rewrite_model(b'{"model":"mistral-large-2610","stream":true}', p))
@@ -259,7 +260,7 @@ def test_large4_gets_top_p_1_on_every_call_and_reasoning_off_only_when_unstreame
 
 
 def test_per_model_fields_never_reach_another_model_so_large3_is_not_sent_reasoning_effort():
-    # Large 3 rejects any reasoning_effort, so a provider-wide field would
+    # Large 3 rejects any reasoning_effort on the staging router, so a provider-wide field would
     # break every Large 3 task's review call.
     p = _large4_fields()
     p.model_map["mistral-large-2512"] = "mistralai/mistral-large-2512"
@@ -288,3 +289,120 @@ def test_a_pinned_large4_review_call_reaches_the_wire_with_its_fields(monkeypatc
                         grant_model="mistral-large-2610", providers=[_large4_fields()])
     assert sent and sent[0]["model"] == "mistralai/mistral-large-2610"
     assert sent[0]["top_p"] == 1 and sent[0]["reasoning_effort"] == "none" and sent[0]["disable_fallbacks"] is True
+
+
+# --------------------------------------------------------------------------- gateway: unstreamed calls go upstream streamed
+# Large 4's stream on the staging router: thinking blocks as a list, then a text block, then plain strings.
+_LARGE4_FRAMES = [
+    {"id": "c1", "created": 5, "model": "mistralai/mistral-large-2610",
+     "choices": [{"index": 0, "delta": {"role": "assistant", "content": ""}}]},
+    {"choices": [{"index": 0, "delta": {"content": [{"type": "thinking", "closed": True,
+                                                      "thinking": [{"type": "text", "text": "The user wants"}]}]}}]},
+    {"choices": [{"index": 0, "delta": {"content": [{"type": "thinking", "thinking": []},
+                                                     {"type": "text", "text": '{"agentic": '}]}}]},
+    {"choices": [{"index": 0, "delta": {"content": "true}"}, "finish_reason": "stop"}]},
+    {"choices": [], "usage": {"prompt_tokens": 30, "completion_tokens": 11, "total_tokens": 41}},
+]
+
+
+class _SseUpstream(_Upstream):
+    """An upstream that streams `frames` as SSE, or answers `status` with `error_body`."""
+
+    def __init__(self, sent, frames=(), status=200, error_body=b"", **kw):
+        super().__init__(sent, **kw)
+        self.frames, self.status, self.error_body = frames, status, error_body
+
+    class _SseResp:
+        def __init__(self, raw, status, ctype):
+            self.status_code, self._raw = status, raw
+            self.headers = {"content-type": ctype}
+
+        async def aread(self):
+            return self._raw
+
+        async def aclose(self):
+            pass
+
+    async def send(self, req, stream=True):
+        if self.status >= 400:
+            return self._SseResp(self.error_body, self.status, "application/json")
+        raw = b"".join(b"data: " + json.dumps(f).encode() + b"\n\n" for f in self.frames) + b"data: [DONE]\n\n"
+        return self._SseResp(raw, 200, "text/event-stream")
+
+
+def _restream_call(monkeypatch, body, frames=_LARGE4_FRAMES, status=200, error_body=b"", unstreamed_extra=None):
+    sent: list = []
+    p = _mistral(model_extra={"mistral-large-2610": {"top_p": 1}}, stream_upstream=frozenset({"mistral-large-2610"}),
+                 model_unstreamed_extra=unstreamed_extra or {})
+    monkeypatch.setattr(proxy, "PROVIDERS", [p])
+    monkeypatch.setattr(proxy, "DESTREAM", False)
+    monkeypatch.setattr(proxy, "RPM_LIMITERS", {})
+    monkeypatch.setattr(proxy.httpx, "AsyncClient",
+                        lambda **kw: _SseUpstream(sent, frames=frames, status=status, error_body=error_body, **kw))
+    nonce = "nonce-cur4752"
+    proxy._GRANTS[nonce] = proxy.Grant(max_requests=9, max_tokens=0, expires_at=proxy.time.monotonic() + 60,
+                                       label="t", attempt=1, model="")
+    try:
+        with TestClient(proxy.app) as tc:
+            r = tc.post("/v1/chat/completions", headers={"authorization": f"Bearer {nonce}"}, json=body)
+            _ = r.content
+        return r, sent, proxy._GRANTS.get(nonce)
+    finally:
+        proxy._GRANTS.pop(nonce, None)
+
+
+def test_an_unstreamed_large4_call_goes_upstream_streamed_and_returns_one_completion_without_the_thinking(monkeypatch):
+    """The gateway rejects Large 4 on reasoning_effort none and on every other unstreamed
+    call, so the router's, reviewer's and verify-deriver's stream=false calls must reach the wire streamed and
+    still get back the one JSON completion they parse, with only the answer text in it."""
+    r, sent, g = _restream_call(monkeypatch, {"model": "mistral-large-2610", "temperature": 0.0,
+                                              "messages": [{"role": "user", "content": "hi"}]})
+    assert r.status_code == 200, r.text
+    assert sent[0]["stream"] is True and sent[0]["stream_options"] == {"include_usage": True}
+    assert "reasoning_effort" not in sent[0] and sent[0]["top_p"] == 1, "no unstreamed extra is configured here"
+    d = r.json()
+    assert d["object"] == "chat.completion" and d["model"] == "mistralai/mistral-large-2610"
+    assert d["choices"][0]["message"]["content"] == '{"agentic": true}', "thinking blocks dropped, text joined"
+    assert d["choices"][0]["finish_reason"] == "stop"
+    assert d["usage"]["total_tokens"] == 41 and g.used_tokens == 41, "metered from the stream's usage frame"
+
+
+def test_a_restreamed_call_keeps_the_extra_its_caller_would_get_unstreamed(monkeypatch):
+    """A call the caller sent unstreamed keeps its reasoning_effort low extra after it is restreamed, so a small
+    token cap still yields a verdict."""
+    _r, sent, _g = _restream_call(monkeypatch, {"model": "mistral-large-2610", "messages": []},
+                                  unstreamed_extra={"mistral-large-2610": {"reasoning_effort": "low"}})
+    assert sent[0]["stream"] is True and sent[0]["reasoning_effort"] == "low"
+    p = _mistral(model_unstreamed_extra={"mistral-large-2610": {"reasoning_effort": "low"}})
+    streamed = json.loads(proxy._rewrite_model(b'{"model":"mistral-large-2610","stream":true}', p))
+    assert "reasoning_effort" not in streamed, "a call the caller streamed is unchanged"
+
+
+def test_a_streamed_call_and_another_models_unstreamed_call_are_not_restreamed():
+    p = _mistral(stream_upstream=frozenset({"mistral-large-2610"}))
+    assert not proxy._wants_restream(b'{"model":"mistral-large-2610","stream":true}', [p]), "already streamed"
+    assert not proxy._wants_restream(b'{"model":"mistral-medium-2604"}', [p]), "a model not listed"
+    assert not proxy._wants_restream(b"not json", [p])
+    assert proxy._wants_restream(b'{"model":"Mistral-Large-2610"}', [p]), "ids compare lower case"
+
+
+def test_an_upstream_error_on_a_restreamed_call_reaches_the_caller_with_its_status(monkeypatch):
+    r, _sent, _g = _restream_call(monkeypatch, {"model": "mistral-large-2610"}, status=400,
+                                  error_body=b'{"error":{"message":"bad"}}')
+    assert r.status_code == 400 and r.json()["error"]["message"] == "bad", "never dressed as a 200"
+
+
+def test_a_stream_that_ends_in_an_error_frame_is_a_502_not_an_empty_answer(monkeypatch):
+    frames = [_LARGE4_FRAMES[0], {"error": {"message": "Invalid response object"}}]
+    r, _sent, _g = _restream_call(monkeypatch, {"model": "mistral-large-2610"}, frames=frames)
+    assert r.status_code == 502 and "Invalid response object" in r.text
+
+
+def test_join_stream_assembles_tool_calls_by_index():
+    raw = b"".join(b"data: " + json.dumps(f).encode() + b"\n\n" for f in [
+        {"choices": [{"delta": {"tool_calls": [{"index": 0, "id": "t0", "function": {"name": "ro", "arguments": '{"a'}}]}}]},
+        {"choices": [{"delta": {"tool_calls": [{"index": 0, "function": {"name": "ute", "arguments": '":1}'}}]},
+                      "finish_reason": "tool_calls"}]},
+    ])
+    msg = proxy._join_stream(raw)["choices"][0]["message"]
+    assert msg["tool_calls"] == [{"id": "t0", "type": "function", "function": {"name": "route", "arguments": '{"a":1}'}}]

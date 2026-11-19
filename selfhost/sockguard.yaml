@@ -1,0 +1,118 @@
+# Policy for the `sockguard` service in compose.yaml (agent profile): the Docker socket proxy agent mode's
+# sandbox backend (agent-service/api/sandbox_docker.py) creates its per-conversation containers through.
+# sockguard (MIT, github.com/CodesWhat/sockguard) reads each create body, which a proxy that filters by method
+# and path alone does not: with create, start, exec and remove allowed by path, `docker run -v /:/host` and
+# `docker run --privileged` both pass, and either one is root on the host.
+#
+# Everything not listed below is refused. The rules are the calls the backend makes and nothing else (each
+# is named against the backend method that makes it), plus two reads the proxy's own check needs (/_ping and
+# a network inspect). Image pulls, builds, archive copies, attach, logs and every swarm, volume, plugin and
+# system endpoint are refused. Every create must set no-new-privileges and may not bind a host path, run
+# privileged, share a host namespace, add a capability or pass a device; an exec may not run as root.
+#
+# .github/workflows/selfhost-smoke.yml (the socket-proxy job) sends a `-v /:/host`, a `--privileged`, a
+# `--pid host` and a `--network host` create through this proxy and fails unless each is refused, then runs the
+# sandbox backend's contract tests through it and requires a privileged create, a host-root bind and a root
+# exec to come back 403. So a sockguard upgrade or a policy edit that reopens host root fails CI, and so does
+# one that refuses a call the backend needs.
+
+upstream:
+  socket: /var/run/docker.sock
+
+log:
+  level: info
+  format: json
+  access_log: true
+
+health:
+  enabled: true
+  path: /health
+
+# Exec takes arbitrary argv from the run-code tools, so it cannot be pinned to a command list, and agent mode's
+# stdio runs over a started exec's stream. Both are reads or writes sockguard cannot constrain by body, and need
+# these acknowledgements. A privileged exec and an exec as root stay refused (request_body.exec below).
+insecure_allow_body_blind_writes: true
+insecure_allow_read_exfiltration: true
+
+response:
+  redact_container_env: true
+  redact_mount_paths: true
+  redact_network_topology: true
+  redact_sensitive_data: true
+  deny_verbosity: minimal
+
+request_body:
+  container_remove:
+    allow_force: true
+    allow_remove_volumes: true
+  container_create:
+    allow_privileged: false
+    allow_host_network: false
+    allow_host_pid: false
+    allow_host_ipc: false
+    allow_host_userns: false
+    allow_host_cgroupns: false
+    allowed_bind_mounts: []
+    allow_all_devices: false
+    allowed_devices: []
+    allow_device_requests: false
+    allowed_device_requests: []
+    allow_device_cgroup_rules: false
+    allowed_device_cgroup_rules: []
+    allow_all_capabilities: false
+    allowed_capabilities: []
+    deny_unconfined_seccomp: true
+    deny_unconfined_apparmor: true
+    require_no_new_privileges: true
+    allow_sysctls: false
+    image_trust:
+      mode: "off"
+  exec:
+    allow_privileged: false
+    # The backend runs every exec as the sandbox's own non-root user (DockerConfig.user).
+    allow_root_user: false
+
+rules:
+  # The proxy's own health and the smoke check's docker CLI; the backend pins its API version and never asks.
+  - match: { method: GET, path: "/_ping" }
+    action: allow
+  - match: { method: HEAD, path: "/_ping" }
+    action: allow
+
+  # Containers. The create body is checked by request_body.container_create above.
+  - match: { method: POST, path: "/containers/create" } # _create
+    action: allow
+  - match: { method: POST, path: "/containers/*/start" } # _create
+    action: allow
+  - match: { method: GET, path: "/containers/*/json" } # find (inspect by name)
+    action: allow
+  - match: { method: GET, path: "/containers/json" } # sweep, reap, pool_load (filtered to the backend's label)
+    action: allow
+  - match: { method: DELETE, path: "/containers/*" } # destroy, kill, sweep, reap (forced remove)
+    action: allow
+
+  # Exec: run-code calls, file reads and writes, and agent mode's stdio, inside a conversation's container.
+  - match: { method: POST, path: "/containers/*/exec" } # exec, open_stdio, spawn
+    action: allow
+  - match: { method: POST, path: "/exec/*/start" }
+    action: allow
+  - match: { method: GET, path: "/exec/*/json" } # the exit code
+    action: allow
+
+  # One internal network per agent conversation, with the model gateway connected to it.
+  - match: { method: POST, path: "/networks/create" } # _network_for
+    action: allow
+  - match: { method: POST, path: "/networks/*/connect" } # _network_for (the gateway)
+    action: allow
+  - match: { method: POST, path: "/networks/*/disconnect" } # _remove_network
+    action: allow
+  - match: { method: DELETE, path: "/networks/*" } # _remove_network
+    action: allow
+  - match: { method: GET, path: "/networks" } # reap (filtered to the backend's label)
+    action: allow
+  - match: { method: GET, path: "/networks/*" } # the smoke check's docker CLI inspects before connecting
+    action: allow
+
+  - match: { method: "*", path: "/**" }
+    action: deny
+    reason: "not allowed by the Alpha sandbox policy"

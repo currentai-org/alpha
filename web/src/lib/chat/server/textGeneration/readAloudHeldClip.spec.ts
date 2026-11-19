@@ -3,11 +3,11 @@
  * clip until the model has answered. When the model never answers (a gateway 503 after exhausted
  * retries, a stream cut off), the route adds "No output was generated" to the bubble. The held clip
  * must not be surfaced next to it: a playable player over an error is a reply that says it both worked
- * and failed (CUR-2022).
+ * and failed.
  *
  * This drives the real textGenerationWithoutTitle. Only the edges are stubbed: the model call
- * (`generate`), the TTS Space (`maybeRunMcpTool`) and the pre-passes that would otherwise reach a
- * network. isReadAloudIntent, the held-clip logic and the compose step all run for real. (CUR-2045)
+ * (`generate`), the TTS call (`maybeRunMcpTool`) and the pre-passes that would otherwise reach a
+ * network. isReadAloudIntent, the held-clip logic and the compose step all run for real.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ObjectId } from "bson";
@@ -103,7 +103,7 @@ beforeEach(() => {
 	ttsCalls.length = 0;
 });
 
-describe("a held read-aloud clip follows the turn's outcome (CUR-2045)", () => {
+describe("a held read-aloud clip follows the turn's outcome", () => {
 	it("surfaces no clip when the turn ends without a final answer", async () => {
 		const updates = await run(PROMPT);
 		// Precondition: the intent path really fired and synthesized the inline text, so an absent clip

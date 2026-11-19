@@ -5,7 +5,7 @@ import { chatEntry } from './helpers/chatEntry';
 import { signInAsFreshUser } from './helpers/session';
 import { personaTurns, resolvePersonaLane, runPersona } from './helpers/personaDriver';
 
-// The fourth persona (CUR-2676). See persona-chaos-monkey.spec.ts for the shared reasoning.
+// The fourth persona. See persona-chaos-monkey.spec.ts for the shared reasoning.
 //
 // Welsh or Yoruba, chosen per run by the model, because the defects this project keeps finding in
 // languages the models serve badly (echo loops, the "we can't serve this language" notice looping on
@@ -37,7 +37,7 @@ test(
 
 		test.setTimeout(5 * 60_000);
 
-		await signInAsFreshUser(page); // CUR-2676, see persona-chaos-monkey.spec.ts
+		await signInAsFreshUser(page); // see persona-chaos-monkey.spec.ts
 
 		await runPersona({
 			page,

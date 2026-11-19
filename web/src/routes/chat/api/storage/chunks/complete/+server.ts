@@ -9,7 +9,7 @@ import { chunkFailure, requireChunkedUploads } from "../guard";
 // Finish a chunked upload. JSON `{ uploadId, chunks, size, name, folder, location? }`. The
 // staged chunks are taken out of the table and joined, then written through the same path as a
 // one-request upload, so size, rate, type, the CSAM scan, the image screen and the quota all run on
-// the whole file before any byte reaches a bucket. A refused file's chunks are gone either way. (CUR-1780)
+// the whole file before any byte reaches a bucket. A refused file's chunks are gone either way.
 export const POST: RequestHandler = async ({ locals, request }) => {
 	const accountId = await requireChunkedUploads(locals);
 

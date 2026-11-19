@@ -2,7 +2,8 @@
 """Does the upstream serve N concurrent streams, or serialize them?
 
 The decision this exists for: agent-service runs best-of-N attempts SEQUENTIALLY, sharing one task
-deadline, which makes best_of=3 behave as best_of=1 whenever attempt 1 spends the clock.
+deadline, which makes best_of=3 behave as best_of=1 whenever attempt 1 spends the clock (if attempt 1
+uses the whole budget, attempts 2 and 3 get little or nothing).
 Running the attempts concurrently instead is only an improvement if the upstream actually serves them
 concurrently. If it serializes, parallel attempts are strictly worse than sequential ones — same total
 work, no early exit, and every task pays for every attempt.
@@ -12,10 +13,11 @@ attempts finish in about calls x LN where N sequential attempts take about N x c
 wins iff LN < N x L1, and is close to free iff LN ~ L1. This exits 2 when LN >= N x L1 — the regime where
 switching to parallel attempts would make the service slower, not faster.
 
-Deliberately NOT an agent-loop measurement: dividing task wall-clock by metered call count cannot
-separate generation from queueing, retries, or session restarts. Hermes'
-own `latency=` lines are the ground truth for a real run; this script is the controlled version of the
-same measurement, one request in and one duration out, with nothing in between to attribute wrongly.
+Deliberately NOT an agent-loop measurement. Dividing a task's wall-clock by its metered call count cannot
+separate generation from queueing, retries, or session restarts, so it gives a per-call figure that means
+nothing. Hermes' own `latency=` lines are the ground truth for a real run; this script is the controlled
+version of the same measurement, one request in and one duration out, with nothing in between to
+attribute wrongly.
 
 Usage:  scripts/conccheck.py [--n 1,3] [--rounds 3]
 Exit:   0 concurrency is served   2 upstream serializes (parallel attempts would be a regression)
@@ -39,8 +41,8 @@ sys.path.insert(0, str(ROOT / "eval"))
 
 
 def _env(key: str) -> str:
-    """Real env only — run this via `doppler run` (agent-service/prd holds the live values). There is
-    no .env-parsing fallback, which avoids a whole class of quote-stripping bugs."""
+    """Real env only — run it with the service's production environment loaded. There is no
+    .env-parsing fallback, so there is no second parser with its own quoting bugs."""
     return os.environ.get(key, "")
 
 
@@ -58,7 +60,7 @@ def _model() -> str:
 
 
 # Sized to an agent call rather than a toy one: the runs this decision is about carry 4k-13k prompt
-# tokens (Hermes' own logs) because the tool schemas travel on every call. A 50-token probe
+# tokens (per Hermes' own logs) because the tool schemas travel on every call. A 50-token probe
 # would measure the endpoint's admission path and miss whatever scales with prompt size.
 _FILLER = ("The record store keeps notes as JSON. Each note has a title, a body, and tags. "
            "Tags are lowercased and sorted. The store survives being closed and reopened. ") * 120
@@ -67,12 +69,12 @@ _FILLER = ("The record store keeps notes as JSON. Each note has a title, a body,
 def _one_call(base: str, token: str, model: str, max_tokens: int, salt: int = 0) -> tuple[float, int, str]:
     """One non-streaming completion. Returns (seconds, completion_tokens, error).
 
-    The ASK has to demand length, not just permit it. A prompt like "summarise in one paragraph"
-    with max_tokens as the only lever leaves the median unchanged when that lever is raised — the model
-    writes its paragraph and stops either way, so the run measures prefill and not decode. Decode is
-    what N concurrent agent attempts contend over."""
-    # Distinct prefix per concurrent call, and it has to lead. CSCS does not re-prefill a repeated prefix
-    # (measured, CUR-138), so N identical prompts share one prefill and the probe would report the cost of
+    The ASK has to demand length, not just permit it. With a short ask ("summarise in one paragraph")
+    max_tokens is no lever at all: the model writes its paragraph and stops at any cap, so the run
+    measures prefill and not decode. Decode is what N concurrent agent attempts would actually contend
+    over."""
+    # Distinct prefix per concurrent call, and it has to lead. CSCS does not re-prefill a repeated prefix,
+    # so N identical prompts share one prefill and the probe would report the cost of
     # concurrency for traffic nobody sends — real concurrent tasks are different tasks. The salt goes at
     # the FRONT because a shared prefix with a varying tail still hits the cache for everything before the
     # tail, which is most of the prompt.

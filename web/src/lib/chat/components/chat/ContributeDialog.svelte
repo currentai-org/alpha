@@ -1,12 +1,12 @@
 <script lang="ts">
 	// The "what happens after the chat" contribution path: a GET handoff to the same Tally form
 	// the rest of the site uses (CallToAction.svelte), not a POST into our own DB, which has no
-	// notification on a new row, so submissions sit unactioned (CUR-512).
+	// notification on a new row, so submissions sit unactioned.
 	// Two framing modes: "Stay informed" and "Raise your hand". jagOVJ only has a URL-prefill
 	// hidden field for `email` (checked against its live block schema) — no field for name,
 	// organization, or free text — so those inputs are gone rather than kept as decoration that
 	// silently goes nowhere. contributionType is kept as a LOCAL-only signal (still fires in our
-	// own PostHog, per CUR-516's same "don't undercount interest" concern) even though Tally never
+	// own PostHog, per the same "don't undercount interest" concern) even though Tally never
 	// sees it; the visitor picks their own Builder/Funder/Connector path once inside the form.
 	import { untrack } from "svelte";
 	import { m } from "$lib/paraglide/messages.js";

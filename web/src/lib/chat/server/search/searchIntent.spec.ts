@@ -149,17 +149,6 @@ describe("decideSearchViaIntent", () => {
 		expect(v).toMatchObject({ ok: true, shouldSearch: true });
 	});
 
-	it("stays OFF when PostHog has no such flag yet, leaving the old gate deciding", async () => {
-		// The safety property of flagEnabledOr's fallback. A migration gate whose flag does not exist
-		// must leave the incumbent path in charge — never turn search triggering off, and never switch
-		// itself on by default before anyone has watched a rollout.
-		vi.doMock("$lib/chat/server/flags", () => ({
-			flagEnabledOr: (_key: string, fallback: () => boolean) => fallback(),
-		}));
-		const { searchIntentEnabled } = await import("./searchIntent");
-		expect(searchIntentEnabled()).toBe(false);
-	});
-
 	it("declines to decide when the embedding model changed but the threshold did not", async () => {
 		// The failure this gate exists to not repeat. A cosine margin is a number in ONE model's vector
 		// space — under a different encoder it is not a weaker signal, it is a meaningless one. The

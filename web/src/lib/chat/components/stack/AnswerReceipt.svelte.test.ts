@@ -7,7 +7,7 @@ import { MessageUpdateStatus, MessageUpdateType } from "$lib/chat/types/MessageU
 
 // The receipt's "Looked up" line said a search ran and found nothing whenever a
 // `searchAttempt` was recorded, including when the decider chose not to search at all
-// (`searched: false`), so X-ray misstated what happened. Step by step already split the two. (CUR-2657)
+// (`searched: false`), so X-ray misstated what happened. Step by step already split the two.
 const answer = (extra: Partial<Message> = {}): Message =>
 	({
 		id: "m1",
@@ -18,7 +18,7 @@ const answer = (extra: Partial<Message> = {}): Message =>
 
 const lookedUp = () => page.getByText(/answered from what the model already knows/i);
 
-describe("AnswerReceipt — the Looked up line tells a declined search from an empty one (CUR-2657)", () => {
+describe("AnswerReceipt — the Looked up line tells a declined search from an empty one", () => {
 	afterEach(() => {
 		cleanup();
 	});
@@ -49,8 +49,8 @@ describe("AnswerReceipt — the Looked up line tells a declined search from an e
 });
 
 // A send the server failed leaves an empty assistant turn ending in an error status. The
-// receipt described it as an answer from the model's own knowledge. (CUR-2812)
-describe("AnswerReceipt — a turn that failed before any answer says so (CUR-2812)", () => {
+// receipt described it as an answer from the model's own knowledge.
+describe("AnswerReceipt — a turn that failed before any answer says so", () => {
 	afterEach(() => {
 		cleanup();
 	});
@@ -82,8 +82,8 @@ describe("AnswerReceipt — a turn that failed before any answer says so (CUR-28
 });
 
 // read-aloud records itself as an open tool, so the receipt said "Used tools to work on your
-// request" about an answer Step by step said looked nothing up. (CUR-3317)
-describe("AnswerReceipt — Read aloud is not a lookup (CUR-3317)", () => {
+// request" about an answer Step by step said looked nothing up.
+describe("AnswerReceipt — Read aloud is not a lookup", () => {
 	afterEach(() => {
 		cleanup();
 	});
@@ -107,8 +107,8 @@ describe("AnswerReceipt — Read aloud is not a lookup (CUR-3317)", () => {
 });
 
 // A turn answered from an MCP tool (an operator's server or the person's own) read "nothing
-// was looked up" on X-ray's default tab, though Step by step named the call. (CUR-4038)
-describe("AnswerReceipt — never says nothing was looked up when an MCP tool answered (CUR-4038)", () => {
+// was looked up" on X-ray's default tab, though Step by step named the call.
+describe("AnswerReceipt — never says nothing was looked up when an MCP tool answered", () => {
 	const mcpCalls = [{ server: "deepwiki", tool: "ask_wiki_question", outcome: "ok", ms: 19262 }];
 
 	it("names the server and tool a call ran on", async () => {
@@ -130,8 +130,8 @@ describe("AnswerReceipt — never says nothing was looked up when an MCP tool an
 });
 
 // An answer read from a file the visitor attached, with no search, said "nothing was looked
-// up", so X-ray hid the one source the answer came from. (CUR-4150)
-describe("AnswerReceipt — a file the visitor attached counts as looked up (CUR-4150)", () => {
+// up", so X-ray hid the one source the answer came from.
+describe("AnswerReceipt — a file the visitor attached counts as looked up", () => {
 	afterEach(() => {
 		cleanup();
 	});

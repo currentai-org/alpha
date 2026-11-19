@@ -24,7 +24,7 @@ let generation = 0;
 
 // Whether the token is configured is a STATIC fact once the process is up (env doesn't change turn
 // to turn) — warn once, not on every caller's every turn. Same posture as localStore.ts's
-// warnedModelMismatch (CUR-879), same underlying failure class (CUR-878): every caller
+// warnedModelMismatch, for the same underlying failure class: every caller
 // (syftSources.ts, syftCatalog.ts) treats a null client identically to "queried, found nothing", with
 // nothing distinguishing "not configured here" from a real empty result, so the missing token is logged.
 let warnedUnconfigured = false;

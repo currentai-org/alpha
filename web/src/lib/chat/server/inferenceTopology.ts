@@ -1,5 +1,5 @@
 // Builds config/inference.ts's shape from the registry models.ts just published, and checks every
-// role against what its provider actually lists (CUR-2277 phase 1). Read-only: nothing here changes
+// role against what its provider actually lists. Read-only: nothing here changes
 // which model serves a turn. It reads the registry rather than the env vars so that whatever lane
 // logic models.ts applies (the backup host, side calls on the Mistral lane) is described as it is.
 
@@ -42,7 +42,7 @@ const norm = (url: string) => url.trim().replace(/\/$/, "");
 
 /**
  * The registry as an inference config. A lane whose base URL another lane already declared is the
- * same provider (prd's backup now calls the gateway itself, CUR-2293), so the first name wins. An
+ * same provider (prd's backup now calls the gateway itself), so the first name wins. An
  * endpoint on no declared lane becomes its own provider, named by host, with nothing to check against.
  * A role naming an id the registry does not hold reaches buildInferenceConfig, which throws.
  */
@@ -170,7 +170,7 @@ export type UncheckedProvider = {
 
 /**
  * Groups the "unread" roles by provider, so a cold start that cannot read one list logs one line
- * naming the list, the error and the roles, instead of one bare line per role (CUR-4057).
+ * naming the list, the error and the roles, instead of one bare line per role.
  */
 export function uncheckedProviders(
 	cfg: InferenceConfig,

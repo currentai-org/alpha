@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2018- The Hugging Face team
+SPDX-License-Identifier: Apache-2.0
+Modified by Current AI from huggingface/chat-ui.
+-->
 <script lang="ts">
 	import { page } from "$app/state";
 	import type { MessageFile } from "$lib/chat/types/Message";
@@ -46,7 +51,7 @@
 		mime.startsWith("image/") || mime === "webp" || mime === "jpeg" || mime === "png";
 
 	// An image this browser attached is drawn from its own copy, before and after the
-	// turn-end reload turns it into a stored reference, so the thumbnail never drops out. (CUR-2761)
+	// turn-end reload turns it into a stored reference, so the thumbnail never drops out.
 	const imageSrc = $derived(
 		file.type === "base64"
 			? `data:${file.mime};base64,${file.value}`
@@ -129,7 +134,7 @@
 			{/if}
 		{:else if isPlainText(file.mime)}
 			<div class="relative flex h-full w-full flex-col gap-2 p-4">
-				<!-- CUR-4668: one line, cut with an ellipsis, clear of the close button; the full name stays
+				<!-- one line, cut with an ellipsis, clear of the close button; the full name stays
 				     in `title`, and the heading's text is the whole name for a screen reader. -->
 				<div class="flex min-w-0 items-center gap-1 pr-8">
 					<CarbonDocument class="shrink-0" />

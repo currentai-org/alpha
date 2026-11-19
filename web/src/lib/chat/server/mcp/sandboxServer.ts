@@ -1,4 +1,4 @@
-// The conversation's sandbox as an MCP server on a native chat turn (CUR-4232). agent-service serves the
+// The conversation's sandbox as an MCP server on a native chat turn. agent-service serves the
 // box the agent runs in at `/mcp/` (agent-service/api/sandbox_mcp.py): Python and a shell, the
 // conversation's own workdir, no network and an environment built from nothing. Chat already has web
 // search, so with these tools beside it one turn can look something up and then compute on it.
@@ -9,8 +9,8 @@
 //
 // Its tools run without a confirmation card unless the person chose ask or never for one in Settings →
 // Connectors. What the card guards against is a tool reaching out or leaking; this box can do neither,
-// and Claude Code, Cursor and Claude.ai all run sandboxed code without asking per call (research on
-// CUR-4232). A tool here that ever gains network goes back behind the card.
+// and Claude Code, Cursor and Claude.ai all run sandboxed code without asking per call.
+// A tool here that ever gains network goes back behind the card.
 import { flagEnabledOr } from "$lib/chat/server/flags";
 import { agentServiceToken, agentServiceUrl } from "$lib/chat/server/agentMode";
 import { agentServiceHeaders } from "$lib/chat/server/endpoints/agent/endpointAgent";
@@ -23,13 +23,13 @@ import type { ServerTool } from "./serverTools";
 export const ONE_CHAT_SANDBOX_FLAG = "one-chat-sandbox";
 export const SANDBOX_SERVER_NAME = "sandbox";
 
-/** A turn with the sandbox may run 6 tool rounds, where every other turn gets 3 rounds and 4 calls. (CUR-4239)
- *  A write, run and check task needs four rounds or more (CUR-4232). */
+/** A turn with the sandbox may run 6 tool rounds, where every other turn gets 3 rounds and 4 calls.
+ *  A write, run and check task needs four rounds or more. */
 export const SANDBOX_MAX_ROUNDS = 6;
 /** 16 calls: Large 3 through chat makes one call per file, so a multi-step task needs about 12
  *  calls. Six rounds stay the bound. */
 export const SANDBOX_MAX_CALLS = 16;
-/** One sandbox call. agent-service waits up to 60 s (E2B_BUSY_WAIT_SECS) for a slot on a full host, (CUR-4584)
+/** One sandbox call. agent-service waits up to 60 s (E2B_BUSY_WAIT_SECS) for a slot on a full host,
  *  and the code then gets its 7 s, so the SDK's 60 s default would cut off a call that was about to run. */
 const SANDBOX_CALL_TIMEOUT_MS = 90_000;
 
@@ -39,7 +39,7 @@ function oneChatSandboxEnabled(): boolean {
 
 /** The sandbox server for this conversation, or undefined for a guest, when the flag is off, the
  *  deployment has no agent service, or its address is not https. A guest never gets it, whatever the
- *  flag's release conditions say: running code is for signed-in accounts, as agent mode is (CUR-4400). */
+ *  flag's release conditions say: running code is for signed-in accounts, as agent mode is. */
 export function sandboxServerFor(
 	conversationId: string,
 	locals: App.Locals | undefined,

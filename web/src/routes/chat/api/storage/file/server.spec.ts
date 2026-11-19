@@ -50,7 +50,7 @@ beforeEach(() => {
 describe('download refuses to describe the bytes it serves', () => {
 	it('forces attachment so an uploaded .html can never render on our own origin', async () => {
 		// The hazard is stored XSS: a rendered page from this origin runs with our cookies and our
-		// session. Nothing here has been scanned either (CUR-1130's open half), so the disposition is
+		// session. Nothing here has been scanned either (the open half), so the disposition is
 		// what keeps "we stored something malicious" from becoming "we executed it".
 		// @ts-expect-error - RequestEvent is heavier than this test needs
 		const res = await GET({ locals: locals(), url: url(`users/${ACCOUNT_ID}/documents/evil.html`) });
@@ -86,7 +86,7 @@ describe('download refuses to describe the bytes it serves', () => {
 		expect(cd).toContain(`filename*=UTF-8''${encodeURIComponent(nasty)}`);
 	});
 
-	it('refuses a filename carrying CR or LF with 400, so it never reaches the header or storage (CUR-3180)', async () => {
+	it('refuses a filename carrying CR or LF with 400, so it never reaches the header or storage', async () => {
 		await expect(
 			// @ts-expect-error - RequestEvent is heavier than this test needs
 			GET({ locals: locals(), url: url(`users/${ACCOUNT_ID}/documents/a";\r\nSet-Cookie: x=1;.txt`) })
@@ -103,8 +103,7 @@ describe('download refuses to describe the bytes it serves', () => {
 
 describe('one shared bucket credential means the path check is the whole boundary', () => {
 	it('answers 403 for a path naming another person, rather than the file', async () => {
-		// There is no per-user credential underneath this path check, so it is the whole boundary
-		// (CUR-1276).
+		// There is no per-user credential underneath this path check, so it is the whole boundary.
 		downloadCustodialFile.mockRejectedValue(new OwnershipMismatchError(ACCOUNT_ID, OTHER_ID));
 		await expect(
 			// @ts-expect-error - RequestEvent is heavier than this test needs
@@ -148,7 +147,7 @@ describe('missing input and missing files', () => {
 	});
 });
 
-describe('a path with a dot segment is refused, never resolved (CUR-3180)', () => {
+describe('a path with a dot segment is refused, never resolved', () => {
 	const WALKED = `users/${ACCOUNT_ID}/documents/../quarantine/1700000000000-bad.png`;
 
 	it('rejects a download path with a .. segment with 400 instead of resolving it, and never reaches storage', async () => {

@@ -3,16 +3,13 @@
 	import { writable } from 'svelte/store';
 	import { ThemeProvider } from '@aipotluck/alpha-ds';
 	import { catalog } from '$lib/chat/routing/catalog';
-	import type { EmbeddedIntent } from '$lib/chat/types/EmbeddedIntent';
 	import ChatComposerFrame from './ChatComposerFrame.svelte';
 
 	let {
-		onEmbeddedNavigate,
 		currentModelId,
 		started = false,
 		chatModelId
 	}: {
-		onEmbeddedNavigate: (intent?: EmbeddedIntent) => void;
 		currentModelId?: string;
 		/** Whether a conversation is already under way — the app passes `messages.length > 0`. */
 		started?: boolean;
@@ -43,8 +40,6 @@
 			currentModelId={chatModelId ?? $settings.activeModel}
 			servedIds={served}
 			{started}
-			embeddedDemo
-			{onEmbeddedNavigate}
 		>
 			{#snippet children(modelPicker)}
 				<form class="composer-shell flex h-24 items-end justify-end border p-2">

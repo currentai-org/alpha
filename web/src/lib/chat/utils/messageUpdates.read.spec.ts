@@ -3,7 +3,7 @@
  *
  * The conversation page shows "connection dropped" only when `isLateConnectionLoss` says so, so the
  * contract is which errors it accepts: a body that errors mid-answer does, and a TypeError thrown
- * by the code consuming the updates (a bug in our page) does not. (CUR-2912)
+ * by the code consuming the updates (a bug in our page) does not.
  */
 import { describe, expect, it, vi } from "vitest";
 import { fetchMessageUpdates, isLateConnectionLoss } from "./messageUpdates";
@@ -59,7 +59,7 @@ const open = (response: () => Response) =>
 		new AbortController().signal
 	);
 
-describe("a mid-answer failure is a dropped connection only when the read failed (CUR-2912)", () => {
+describe("a mid-answer failure is a dropped connection only when the read failed", () => {
 	it("counts a body that errors after the first token as a lost connection, still a TypeError", async () => {
 		const seen: MessageUpdate[] = [];
 		const err = await (async () => {

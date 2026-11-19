@@ -1,4 +1,4 @@
-// Fits a chat's history to the context the serving lane accepts, before the call (CUR-2893).
+// Fits a chat's history to the context the serving lane accepts, before the call.
 //
 // Sending the whole history fails once a chat grows past the lane's limit: the gateway answers 400
 // ("maximum context length is 32000 tokens") and Retry resends the same history, so it fails the same
@@ -6,20 +6,19 @@
 // the newest user turn, which carries the retrieval context) and fills the rest with older exchanges,
 // newest first. When the required part alone is over, the turn is refused before any call.
 //
-// Two estimates, because the two mistakes cost different things. Two served models counted a
-// 100,000-byte English document as 20,548 and 20,232 prompt tokens, about 4.9 bytes a token. Trimming
-// uses 4, so it leaves out an exchange a little early rather than overflow; text that tokenizes
-// denser (code, CJK) can still overflow and gets the generic error. Refusing uses 5, just above the
-// measured rate, so a message is only refused when it could not have fit: refusing on the trimming
-// count would turn away a document that fits.
+// Two estimates, because the two mistakes cost different things. English prose runs at about 4.9
+// bytes a token on the served models. Trimming uses 4, so it leaves out an exchange a little early
+// rather than overflow; text that tokenizes denser (code, CJK) can still overflow and gets the generic
+// error. Refusing uses 5, just above that rate, so a message is only refused when it could not have
+// fit: refusing on the trimming count would turn away a document that fits.
 
 import type OpenAI from "openai";
 
 type Msg = OpenAI.Chat.Completions.ChatCompletionMessageParam;
 
-/** Bytes per token when deciding what history fits: below the measured ~4.9, so it over-counts. */
+/** Bytes per token when deciding what history fits: below the typical ~4.9, so it over-counts. */
 const TRIM_BYTES_PER_TOKEN = 4;
-/** Bytes per token when deciding to refuse: just above what was measured, so it under-counts. */
+/** Bytes per token when deciding to refuse: just above the typical rate, so it under-counts. */
 const REFUSE_BYTES_PER_TOKEN = 5;
 /** Role markers and separators the chat template adds around each message. */
 const PER_MESSAGE_TOKENS = 8;
@@ -123,8 +122,8 @@ export function fitHistory(
 
 /**
  * The refusal for a newest message that is over the context on its own, decided before the input
- * screen runs, or null. A 100k CJK paste is 126 guard calls; screening it only to refuse it would keep the
- * person waiting.
+ * screen runs, or null. A very long paste takes many guard calls to screen, and screening it only to
+ * refuse it would keep the person waiting.
  *
  * A lower bound on fitHistory's own refusal: it counts the message alone, at the refusing rate, against
  * the whole context with nothing kept for the answer or the system prompt. Every message it refuses,

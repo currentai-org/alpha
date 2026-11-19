@@ -21,14 +21,14 @@ import { endpointOAIParametersSchema } from "./endpoints/openai/endpointOai";
 import { createTestLocals, createTestUser, cleanupTestData } from "./api/__tests__/testHelpers";
 
 // The discovery, caching and prewarm specs below run a real server on loopback, which is exactly the
-// request the private-address guard refuses on a hosted deployment (CUR-3387). They pass the guard
+// request the private-address guard refuses on a hosted deployment. They pass the guard
 // through to plain fetch; localEndpointFetch.spec.ts covers the guard itself.
 vi.mock("$lib/chat/server/localEndpointFetch", async (importOriginal) => ({
 	...(await importOriginal<typeof import("./localEndpointFetch")>()),
 	localEndpointFetch: (url: string | URL | Request, init?: RequestInit) => fetch(url, init),
 }));
 
-// localInferenceEndpointsEnabled() is a PostHog flag (CUR-3175; localEndpointsGate.spec.ts covers it in
+// localInferenceEndpointsEnabled() is a PostHog flag (localEndpointsGate.spec.ts covers it in
 // isolation). It is the one thing gating resolveLocalModelsForUser before it looks at the DB row or the
 // network, so these tests drive its answer directly: ON by default, OFF where a test says so.
 const gateMock = vi.hoisted(() => ({ enabled: true }));
@@ -59,7 +59,7 @@ async function insertLocalEndpoint(
 
 /** A real Node HTTP server standing in for a local Ollama-style OpenAI-compatible endpoint — real TCP,
  *  not a mocked `fetch` (matches this repo's own convention for exercising a real wire, see
- *  endpointOai.spec.ts's CUR-1208 section). Answers `GET /models` with the given model ids in the same
+ *  endpointOai.spec.ts's section). Answers `GET /models` with the given model ids in the same
  *  `{data: [{id, ...}]}` envelope models.ts's own catalog fetch parses. `delayMs` lets a test create a
  *  deliberate race window for the in-flight-dedupe assertion. */
 function startMockLocalServer(
@@ -178,14 +178,14 @@ describe("localModels — per-user local inference endpoint, models discovered l
 		]);
 		expect(result.every((m) => m.unlisted === false)).toBe(true);
 		// The internal `local:` id is for OUR bookkeeping/selection only — the WIRE request must carry the
-		// real model tag the server reported, never the internal id as the literal `model` field (CUR-1194).
+		// real model tag the server reported, never the internal id as the literal `model` field.
 		const llama = result.find((m) => m.id === `${LOCAL_MODEL_ID_PREFIX}${endpointId}:llama3.2:latest`);
 		expect(llama?.endpoints?.[0]).toMatchObject({
 			type: "openai",
 			baseURL: server.baseURL,
 			modelId: "llama3.2:latest",
 			// routerMetadata (via endpointOai.ts's routerModel/routerProvider) must carry the LABELED name,
-			// never a raw internal id like "local:20a5be97fcb02afb7ef902d2:llama3.2:latest" (CUR-1194).
+			// never a raw internal id like "local:20a5be97fcb02afb7ef902d2:llama3.2:latest".
 			routerModel: "nx16g:llama3.2:latest",
 			routerProvider: "local",
 		});
@@ -195,7 +195,7 @@ describe("localModels — per-user local inference endpoint, models discovered l
 		expect(llama?.displayName).toBe("nx16g:llama3.2:latest");
 	});
 
-	it("CUR-3177: a local endpoint's parsed apiKey is the non-secret placeholder, never the gateway key endpointOai defaults to", async () => {
+	it("a local endpoint's parsed apiKey is the non-secret placeholder, never the gateway key endpointOai defaults to", async () => {
 		const server = startMockLocalServer(["llama3.2:latest"]);
 		servers.push(server);
 
@@ -212,7 +212,7 @@ describe("localModels — per-user local inference endpoint, models discovered l
 		}
 	});
 
-	it("CUR-1291: an endpoint's custom headers become endpoints[0].defaultHeaders, sent with generation requests", async () => {
+	it("an endpoint's custom headers become endpoints[0].defaultHeaders, sent with generation requests", async () => {
 		const server = startMockLocalServer(["llama3.2:latest"]);
 		servers.push(server);
 
@@ -231,7 +231,7 @@ describe("localModels — per-user local inference endpoint, models discovered l
 		});
 	});
 
-	it("CUR-1291: an endpoint with no custom headers gets no defaultHeaders key at all", async () => {
+	it("an endpoint with no custom headers gets no defaultHeaders key at all", async () => {
 		const server = startMockLocalServer(["llama3.2:latest"]);
 		servers.push(server);
 
@@ -243,7 +243,7 @@ describe("localModels — per-user local inference endpoint, models discovered l
 		expect(result[0]?.endpoints?.[0]).not.toHaveProperty("defaultHeaders");
 	});
 
-	it("CUR-1291: custom headers are also sent on the model-DISCOVERY request, not just generation — a server behind auth 401s this call just as easily", async () => {
+	it("custom headers are also sent on the model-DISCOVERY request, not just generation — a server behind auth 401s this call just as easily", async () => {
 		const server = startMockLocalServer(["llama3.2:latest"]);
 		servers.push(server);
 
@@ -257,7 +257,7 @@ describe("localModels — per-user local inference endpoint, models discovered l
 		expect(server.lastHeaders().authorization).toBe("Bearer test-token");
 	});
 
-	it("CUR-1262: two endpoints reporting the SAME wire model tag never collide — each keeps its own id and baseURL", async () => {
+	it("two endpoints reporting the SAME wire model tag never collide — each keeps its own id and baseURL", async () => {
 		const serverA = startMockLocalServer(["llama3.2:latest"]);
 		const serverB = startMockLocalServer(["llama3.2:latest"]);
 		servers.push(serverA, serverB);
@@ -422,7 +422,7 @@ describe("localModels — per-user local inference endpoint, models discovered l
 	});
 });
 
-describe("prewarmLocalModel / prewarmLocalModelForUser — Ollama keep_alive preload (CUR-1194)", () => {
+describe("prewarmLocalModel / prewarmLocalModelForUser — Ollama keep_alive preload", () => {
 	let servers: Array<{ close: () => Promise<void> }> = [];
 
 	beforeEach(async () => {
@@ -463,7 +463,7 @@ describe("prewarmLocalModel / prewarmLocalModelForUser — Ollama keep_alive pre
 		expect(server.requests[0].url).toBe("/api/generate");
 	});
 
-	it("CUR-1291: prewarmLocalModel sends the given headers on the preload request", async () => {
+	it("prewarmLocalModel sends the given headers on the preload request", async () => {
 		const server = startRecordingServer();
 		servers.push(server);
 
@@ -501,7 +501,7 @@ describe("prewarmLocalModel / prewarmLocalModelForUser — Ollama keep_alive pre
 		});
 	});
 
-	it("CUR-1291: prewarmLocalModelForUser sends the endpoint's stored custom headers", async () => {
+	it("prewarmLocalModelForUser sends the endpoint's stored custom headers", async () => {
 		const server = startRecordingServer();
 		servers.push(server);
 

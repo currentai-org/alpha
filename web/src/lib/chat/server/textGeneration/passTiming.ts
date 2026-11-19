@@ -1,9 +1,8 @@
 import { logger } from "$lib/chat/server/logger";
 
-// The guards
-// in honestyStream.ts run synchronously over the whole answer, so one slow pass blocks the event loop
-// for as long as it runs. Each pass is timed, and one that crosses SLOW_PASS_MS is logged by name with
-// the length it ran over, so the next freeze names its own culprit. (CUR-3749)
+// The guards in honestyStream.ts run synchronously over the whole answer, so one slow pass blocks the
+// event loop for as long as it runs. Each pass is timed, and one that crosses SLOW_PASS_MS is logged by
+// name with the length it ran over, so a stalled turn's log names the pass that stalled it.
 
 /** A synchronous pass at least this slow is logged.
  *  @internal exported for its unit tests */

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import type { MessageFile } from "$lib/chat/types/Message";
 import {
 	type MessageUpdate,
@@ -18,16 +21,26 @@ import { noteHeartbeat, noteStreamSettled } from "$lib/chat/stores/connectionSta
 
 type MessageUpdateRequestOptions = {
 	base: string;
+	// Sealed history this tab opened (openedHistory.ts sealedHistoryForTurn).
+	history?: { id: string; rev: number; body: Record<string, unknown> }[];
+	sealedPreprompt?: { rev: number; text: string };
+	// Called once when the server refuses the posted history as missing or stale (a turn sent before
+	// the previous turn's reload brought the bodies it sealed): it reopens the conversation and returns
+	// the history to post on the one retry. Omitted, the refusal surfaces as an error.
+	resyncSealedHistory?: () => Promise<{
+		history?: { id: string; rev: number; body: Record<string, unknown> }[];
+		sealedPreprompt?: { rev: number; text: string };
+	}>;
 	inputs?: string;
 	messageId?: string;
 	isRetry: boolean;
 	isContinue?: boolean;
-	// Re-attach `messageId` to the agent task it already started (CUR-993).
+	// Re-attach `messageId` to the agent task it already started.
 	agentAttach?: boolean;
 	// Client-chosen id for this generation run, echoed back by stop-generating
 	// so the server can match a stop point to the run it belongs to
 	generationId?: string;
-	// The ids the page minted for this turn's new messages, so the server's copy matches (CUR-2098).
+	// The ids the page minted for this turn's new messages, so the server's copy matches.
 	newMessageIds?: { user?: string; assistant?: string };
 	files?: MessageFile[];
 	// User's IANA timezone (e.g. "America/New_York")
@@ -54,7 +67,7 @@ type MessageUpdateRequestOptions = {
 	// "auto" = the server asks the agent service's /route classifier whether to route. The send path reads
 	// $agentMode and forwards it; the server's resolveAgentRoute consumes it.
 	agentMode?: AgentMode;
-	// Auto chose this turn's model in the browser; the server keeps it on the answer. (CUR-3944)
+	// Auto chose this turn's model in the browser; the server keeps it on the answer.
 	autoRoute?: AutoRouteNote;
 	// Mint + adopt a FRESH generationId for a retry AFTER a 5xx (a dead claim). The caller owns the id (the
 	// stop-generating path reads its live value), so this both returns the new id and updates the caller's
@@ -91,7 +104,7 @@ type SmoothStreamConfig = {
  */
 /** The answer's body stopped being readable after the response arrived: the visitor went
  *  offline or a proxy cut the line. It extends TypeError, which is what the browser's own read rejects
- *  with, so checks written for that keep working; the page's dropped-connection notice asks (CUR-2912)
+ *  with, so checks written for that keep working; the page's dropped-connection notice asks
  *  `isLateConnectionLoss`, which accepts this class alone, so a TypeError from our own code shows its own message instead. */
 class StreamReadError extends TypeError {
 	constructor(cause: unknown) {
@@ -101,10 +114,36 @@ class StreamReadError extends TypeError {
 }
 
 /** Whether an error thrown after the answer started showing means the connection dropped.
- *  The conversation page asks this before showing its dropped-connection notice, so a TypeError from (CUR-2912)
+ *  The conversation page asks this before showing its dropped-connection notice, so a TypeError from
  *  our own code falls through to its own message. */
 export function isLateConnectionLoss(err: unknown): boolean {
 	return err instanceof StreamReadError;
+}
+
+/** Sealed-history causes a resync can fix: a body this tab has not opened, or one opened at an older
+ *  revision. `history_unexpected` and a missing MAC key are not fixed by reopening. */
+const RESYNCABLE_HISTORY_REASONS = new Set(["history_missing", "history_mismatch"]);
+
+/**
+ * Thrown when the server refuses a turn's posted sealed history. A 409 like the duplicate
+ * turn's, told apart by its `reason`, and never a run to attach to: nothing was claimed or stored.
+ */
+class SealedHistoryRefusedError extends Error {
+	readonly status = 409;
+	readonly reason: string;
+	constructor(reason: string, message: string) {
+		super(message);
+		this.name = "SealedHistoryRefusedError";
+		this.reason = reason;
+	}
+	get resyncable(): boolean {
+		return RESYNCABLE_HISTORY_REASONS.has(this.reason);
+	}
+}
+
+/** A 409's reason when it names a sealed-history refusal, else undefined. */
+function sealedHistoryReason(reason: unknown): string | undefined {
+	return typeof reason === "string" && reason.startsWith("history_") ? reason : undefined;
 }
 
 export class GenerationConflictError extends Error {
@@ -136,7 +175,7 @@ export class GenerationRequestError extends Error {
 	 *  invocation). Only "stream" ≥500s are retried at the vet level — retrying "http" ones too would
 	 *  multiply the two budgets (3×3 POSTs) against a persistently-down server. */
 	readonly source: "http" | "stream";
-	/** On a 429 from our own message limit: whole seconds until a send can pass (CUR-3216). */
+	/** On a 429 from our own message limit: whole seconds until a send can pass. */
 	readonly retryAfterSeconds?: number;
 	constructor(
 		status: number,
@@ -350,6 +389,11 @@ async function vetPrestream(
 		if (update.type === MessageUpdateType.Status) {
 			if (update.status === MessageUpdateStatus.Error && typeof update.statusCode === "number") {
 				await settleSource();
+				const historyReason =
+					update.statusCode === 409 ? sealedHistoryReason(update.reason) : undefined;
+				if (historyReason) {
+					throw new SealedHistoryRefusedError(historyReason, update.message ?? "history refused");
+				}
 				if (update.statusCode === 409) {
 					// W2 idempotency conflict, event-coded: same typed error the HTTP 409 produced, so the
 					// caller attaches to the existing run rather than toasting or double-submitting.
@@ -406,6 +450,9 @@ export async function fetchMessageUpdates(
 	// to a possibly-live run instead of starting a second generation. currentGenerationId tracks the id in
 	// use; advanceGenerationId also updates the caller's copy (the stop path reads its live value).
 	let currentGenerationId = opts.generationId;
+	// What this request posts as sealed history; replaced once by a resync.
+	let history = opts.history;
+	let sealedPreprompt = opts.sealedPreprompt;
 	const buildInit = (attempt: number, prevRetriableStatus: boolean): RequestInit => {
 		if (attempt > 0 && prevRetriableStatus) {
 			currentGenerationId = opts.advanceGenerationId?.() ?? currentGenerationId;
@@ -429,6 +476,9 @@ export async function fetchMessageUpdates(
 				speakMode: opts.speakMode,
 				agentMode: opts.agentMode,
 				autoRoute: opts.autoRoute,
+				// Sealed history this tab opened, for the server to check and read.
+				history,
+				preprompt: sealedPreprompt,
 			})
 		);
 		opts.files?.forEach((file) => {
@@ -446,7 +496,8 @@ export async function fetchMessageUpdates(
 	// instead of as a fast HTTP 5xx — so the "retry with a FRESH generationId" recovery that
 	// connectWithRetry's retryStatus provides for HTTP statuses has to live here too. Only "stream"-sourced
 	// ≥500s retry (HTTP ones already spent connectWithRetry's own budget); jitter and bounds match.
-	return await retryWithBackoff(
+	const connect = () =>
+		retryWithBackoff(
 		async (vetAttempt) => {
 			if (abortSignal.aborted) throw new DOMException("Aborted", "AbortError");
 			// Reaching attempt N>0 means the prior attempt failed with a stream-sourced ≥500 — that
@@ -481,6 +532,13 @@ export async function fetchMessageUpdates(
 					// POST from a network auto-retry). Surface a typed conflict so the caller attaches to the
 					// existing run rather than toasting an error or double-submitting.
 					const info = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+					const historyReason = sealedHistoryReason(info.reason);
+					if (historyReason) {
+						throw new SealedHistoryRefusedError(
+							historyReason,
+							typeof info.message === "string" ? info.message : "history refused"
+						);
+					}
 					throw new GenerationConflictError({
 						status: typeof info.status === "string" ? info.status : "in_flight",
 						conversationId:
@@ -537,6 +595,61 @@ export async function fetchMessageUpdates(
 			...(opts.connectRetryOptions?.random ? { random: opts.connectRetryOptions.random } : {}),
 		}
 	);
+
+	try {
+		return await connect();
+	} catch (err) {
+		// The server refused the posted sealed history as missing or stale: most often this turn was
+		// sent before the previous turn's reload opened the bodies the server sealed. Reopen the
+		// conversation and send once more; a second refusal surfaces. The refused request claimed and
+		// stored nothing, so the retry keeps the generationId.
+		if (
+			err instanceof SealedHistoryRefusedError &&
+			err.resyncable &&
+			opts.resyncSealedHistory &&
+			!abortSignal.aborted
+		) {
+			const fresh = await opts.resyncSealedHistory();
+			history = fresh.history;
+			sealedPreprompt = fresh.sealedPreprompt;
+			return await connect();
+		}
+		throw err;
+	}
+}
+
+/**
+ * Follow a turn whose stream dropped, through GET /conversation/[id]/generation/[generationId].
+ * Replays what the turn sent and carries on to its end. Null means there is nothing to
+ * follow (a 404 from the server, a refusal, or no connection), and the caller falls back to waiting
+ * for the saved copy. A caller abort surfaces as the AbortError every other fetch here throws.
+ */
+export async function fetchGenerationFollow(
+	base: string,
+	conversationId: string,
+	generationId: string,
+	abortSignal: AbortSignal
+): Promise<AsyncGenerator<MessageUpdate> | null> {
+	if (abortSignal.aborted) throw new DOMException("Aborted", "AbortError");
+	const attemptController = new AbortController();
+	const onCallerAbort = () => attemptController.abort();
+	abortSignal.addEventListener("abort", onCallerAbort);
+	try {
+		const response = await fetch(`${base}/conversation/${conversationId}/generation/${generationId}`, {
+			signal: attemptController.signal,
+		});
+		if (!response.ok || !response.body) {
+			abortSignal.removeEventListener("abort", onCallerAbort);
+			attemptController.abort();
+			return null;
+		}
+		return applyStreamingMode(endpointStreamToIterator(response, attemptController), "smooth");
+	} catch {
+		abortSignal.removeEventListener("abort", onCallerAbort);
+		attemptController.abort();
+		if (abortSignal.aborted) throw new DOMException("Aborted", "AbortError");
+		return null;
+	}
 }
 
 export function applyStreamingMode(

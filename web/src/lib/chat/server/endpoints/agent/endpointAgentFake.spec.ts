@@ -5,7 +5,7 @@ import { FAKE_AGENT_BASE, FAKE_RUN_MS, fakeAgentFetch, isFakeAgentTaskId } from 
 
 // A scenario send that carries `x-e2e-agent: fake` runs its agent turn on the in-process
 // stand-in, and a re-attach to a fake task id goes back to it, without one request reaching the real
-// agent-service. The global fetch throws, so any call that leaked past the stand-in fails the test. (SOL-212)
+// agent-service. The global fetch throws, so any call that leaked past the stand-in fails the test.
 
 const T0 = 1_760_000_000_000;
 const PROMPT = "Why do community meals matter? End your answer with the line: receipt 5eed5eed5eed";
@@ -26,7 +26,7 @@ async function drain(params: Record<string, unknown>, fake: boolean): Promise<Ch
 	});
 }
 
-describe("endpointAgent on the scenario stand-in (SOL-212)", () => {
+describe("endpointAgent on the scenario stand-in", () => {
 	const prevEnv = process.env.DEPLOY_ENV;
 	let realFetch: ReturnType<typeof vi.fn>;
 	beforeEach(() => {

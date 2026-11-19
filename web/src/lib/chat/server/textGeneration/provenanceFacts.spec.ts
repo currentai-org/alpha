@@ -4,27 +4,27 @@ import { hardenLastUserTurn } from "./grounding";
 import { buildPersonaPrompt, PROVENANCE_DEFERRED_SERVING_CLAUSE } from "./persona";
 import type { EndpointMessage } from "../endpoints/types";
 
-// The facts block's first line (provenanceFacts.ts, CUR-3771).
+// The facts block's first line (provenanceFacts.ts).
 const PROVENANCE_FACTS_HEADER = "Background about you for this turn, never part of your reply:";
 
 const APERTUS = "swiss-ai/Apertus-70B-Instruct-2509";
 const GATEWAY = { providerLabel: "the Public AI Inference Utility", namesSwitzerland: false };
 
-describe("buildProvenanceFacts (CUR-1435)", () => {
-	it("names the model and maker, and no host for this turn, on any lane (CUR-3562)", () => {
+describe("buildProvenanceFacts", () => {
+	it("names the model and maker, and no host for this turn, on any lane", () => {
 		const facts = buildProvenanceFacts({ modelId: APERTUS });
 		expect(facts).toContain("You are Apertus");
 		expect(facts).toContain("Swiss National AI Institute");
 		expect(facts).toContain("cannot know which provider or machine is answering now");
 		expect(facts).toContain("do not add a line about where the answer ran");
-		// With no answer for "who serves you", a model puts the operator there. (CUR-4079)
+		// With no answer for "who serves you", a model puts the operator there.
 		expect(facts).toContain("an inference provider chosen for each request serves you");
 		expect(facts).toContain("AI Potluck and Current AI do not serve you");
 		// With "provenance" in the block, a model can write its own "Provenance: Served by"
-		// line, and telling it not to in those words does not stop it. (CUR-3771)
+		// line, and telling it not to in those words does not stop it.
 		expect(facts).not.toMatch(/provenance|served by/i);
 		// A configured host reads as this turn's record and is wrong whenever a direct lane or a
-		// fallback served it, which is how "sovereign infrastructure" could reach an Infomaniak turn (CUR-2135).
+		// fallback served it, so the block names no host and no place.
 		expect(facts).not.toMatch(/sovereign infrastructure|in Switzerland|in France|Inference Utility|directly to/);
 	});
 

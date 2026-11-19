@@ -162,7 +162,7 @@ describe("neutralizeAdoptedName", () => {
 // The served model's own name is its identity. A Large 3 turn answering "I am Mistral Large 3, built
 // by Mistral AI…" must not get the "no personal name" chip, or neutralizeAdoptedName rewrites
 // "Mistral" to "this system" in later context.
-describe("detectNameAdoption — the served model's own name (CUR-2274)", () => {
+describe("detectNameAdoption — the served model's own name", () => {
 	const LARGE_3 = "mistral-large-2512";
 	const answer =
 		"I am Mistral Large 3, built by Mistral AI. Current AI serves me; I am running directly on Mistral AI's La Plateforme in France.";

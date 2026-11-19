@@ -35,6 +35,11 @@ export async function getAccountUsage(locals: App.Locals): Promise<AccountUsage>
 		? eq(conversations.userId, String(locals.user._id))
 		: and(eq(conversations.sessionId, locals.sessionId), isNull(conversations.userId));
 
+	// A sealed message stores `content` empty and its length as `chars`; a plaintext one has
+	// no `chars`, so its `content` is measured.
+	const messageChars = sql.raw(
+		`case when jsonb_typeof(m->'chars') = 'number' then (m->>'chars')::int else length(m->>'content') end`
+	);
 	const msgs = sql`jsonb_array_elements(coalesce(${conversations.doc}->'messages', '[]'::jsonb))`;
 	const db = getDb();
 
@@ -51,7 +56,7 @@ export async function getAccountUsage(locals: App.Locals): Promise<AccountUsage>
 	const [userRow] = await db.execute<{ user_messages: number; messages: number; characters: number }>(sql`
 		select count(*) filter (where m->>'from' = 'user')::int as user_messages,
 		       count(*) filter (where m->>'from' is distinct from 'system')::int as messages,
-		       coalesce(sum(length(m->>'content')) filter (where m->>'from' = 'user'), 0)::int as characters
+		       coalesce(sum(${messageChars}) filter (where m->>'from' = 'user'), 0)::int as characters
 		from ${conversations}, ${msgs} as m
 		where ${scope}`);
 

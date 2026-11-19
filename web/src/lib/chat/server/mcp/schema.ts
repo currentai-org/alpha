@@ -17,7 +17,7 @@ export type McpTool = {
 		required?: string[];
 	};
 	/** MCP tool annotations (spec 2025-03-26+). Hints from the server, never a guarantee: only
-	 *  `readOnlyHint: true` lets a tool run without the person confirming (CUR-3026). */
+	 *  `readOnlyHint: true` lets a tool run without the person confirming. */
 	annotations?: McpToolAnnotations;
 };
 

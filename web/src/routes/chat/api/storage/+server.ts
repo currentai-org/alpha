@@ -9,9 +9,9 @@ import { requireStorageAccess, storageFailure } from "./guard";
 import { requestedLocation, writeUpload } from "./write";
 import { throwIfHubRateLimitFault } from "$lib/chat/server/storage/hubBusy";
 
-// The front door CUR-899 never built. List and upload live here; download and delete are
+// The front door never built. List and upload live here; download and delete are
 // one level down in ./file, because download is the endpoint where a bug serves another person's
-// BYTES rather than their filenames, and it earns its own file and its own header discipline. (CUR-1276)
+// BYTES rather than their filenames, and it earns its own file and its own header discipline.
 
 /** One file, as the client sees it. Deliberately not the raw @huggingface/hub entry: that carries
  *  bucket-shaped fields (`oid`, `lfs`, `type`) a storage view has no use for, and shipping a vendor
@@ -21,7 +21,7 @@ type StorageFile = {
 	 *  the shape both of those expect; a hand-built path will not match it. */
 	path: string;
 	size: number;
-	/** When the bucket took the file (CUR-3289), so My files can say when each copy was added. */
+	/** When the bucket took the file, so My files can say when each copy was added. */
 	addedAt?: string;
 };
 

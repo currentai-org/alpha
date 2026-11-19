@@ -1,16 +1,16 @@
 // `Boolean(detect(answer))` is true for every return value of `detect` -- every object is
-// truthy, including `{fired: false}` (CUR-1617). `@typescript-eslint/no-unnecessary-
+// truthy, including `{fired: false}`. `@typescript-eslint/no-unnecessary-
 // condition` (wired up alongside this rule in eslint.quality.config.js) does not catch this shape: it
 // only inspects syntactic boolean POSITION (`if (x)`, `x ? a : b`, `x && y`, `!x`), not a value passed
 // as a function-call ARGUMENT -- `Boolean(x)`, `expect(x).toBeTruthy()`, `assert(x)` and
 // `expect(x).toBeDefined()` are all call arguments, invisible to it. This rule covers exactly that gap,
-// for the shapes CUR-1617 names.
+// for the shapes names.
 //
 // `isAlwaysObjectType` reimplements typescript-eslint's own always-truthy test, narrowed to "every
 // union/intersection constituent is an object type" (TypeFlags.Object) rather than the fully general
 // "possibly falsy" check `no-unnecessary-condition` uses internally -- that broader check lives in the
 // eslint-plugin's own dist/util/truthinessUtils.js, which is not part of its published API surface (no
-// stable subpath export) and isn't safe to deep-import. The object-only version is what CUR-1617 itself
+// stable subpath export) and isn't safe to deep-import. The object-only version is what itself
 // asks for ("objectExpr", "f returns an object") and is the actually non-obvious trap: an object is
 // truthy no matter its shape, while a string/number/boolean literal being always-truthy already shows
 // up in source and is partly caught by no-unnecessary-condition's syntactic checks.

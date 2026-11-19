@@ -33,9 +33,9 @@
 	} = $props();
 
 	const facts = $derived(message ? provenanceFacts(message) : undefined);
-	// The person may hide which model answered and where it ran; the line says so instead. (CUR-549)
+	// The person may hide which model answered and where it ran; the line says so instead.
 	const serving = useShowServing();
-	// A turn that failed before any answer arrived has nothing to describe (CUR-2812). Without this the
+	// A turn that failed before any answer arrived has nothing to describe. Without this the
 	// receipt read "Answered from what the model already knows" about a turn that never answered.
 	const failedBeforeAnswer = $derived(
 		!!message && deriveMessageStatus(message) === 'error' && !message.content?.trim()
@@ -60,7 +60,7 @@
 		if (!facts) return [] as string[];
 		const out: string[] = [];
 		// A file the visitor attached is something the answer read. Without it a turn answered
-		// from that file alone read "nothing was looked up". (CUR-4150)
+		// from that file alone read "nothing was looked up".
 		for (const name of attachedFiles) out.push(m.message_receiptAttached({ name }));
 		if (facts.webCount)
 			out.push(facts.webCount === 1 ? m.message_receiptWebOne() : m.message_receiptWebMany({ count: facts.webCount }));
@@ -75,7 +75,7 @@
 		if (facts.vault) out.push(m.message_receiptVault());
 		if (facts.toolLookup) out.push(m.message_receiptTools());
 		// A call to an MCP server, the operator's or the person's own, named with what came of it.
-		// Without it a turn answered from such a tool read "nothing was looked up". (CUR-4038)
+		// Without it a turn answered from such a tool read "nothing was looked up".
 		for (const call of message?.mcpCalls ?? []) out.push(mcpCallWhat(call));
 		if (!out.length) {
 			// `searchAttempted` also covers a search the decider declined; only `searchRan` means one ran.

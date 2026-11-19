@@ -22,7 +22,7 @@ export const LOCALITY_NOTE =
 	"This question's answer depends on the user's country, jurisdiction, or cultural context, and the specifics genuinely vary by place. In ONE short sentence, note that it varies by context and invite the user to share their country or context so you can be more relevant — then give the best general answer you can. Do not present one country's rules as universal, do not interrogate the user beyond their location/context, and do not refuse to answer.";
 
 /**
- * CUR-3929 (plan 3.7): {@link LOCALITY_NOTE} for a person who turned suggestions off, which asks for no
+ * (plan 3.7): {@link LOCALITY_NOTE} for a person who turned suggestions off, which asks for no
  * questions back. The invitation goes, and the "do not interrogate" limit goes with it, since it only
  * bounds an invitation. The rest is the same note.
  */

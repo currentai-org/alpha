@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""The chat surface's own shape against a deployed service: no spec, auto mode, nobody answering cards (CUR-4595).
+"""The chat surface's own shape against a deployed service: no spec, auto mode, nobody answering cards.
 
-`prod_smoke.py` hands the agent a verify spec, answers every confirmation, and asks for `out.txt`. A person in
+A spec-driven smoke hands the agent a verify spec, answers every confirmation, and asks for `out.txt`. A person in
 chat does none of that: the turn is `synthesize`d with no spec, auto mode decides each call, and they ask for a
-Word or Excel file. This probe runs that second path, which the smoke does not exercise.
+Word or Excel file. This probe runs that path.
 
 Two modes. `chat` sends exactly what the chat client sends (`synthesize`), so whether a spec is derived is a model
-call's coin flip, and only the no-spec turns reach the file checks (`verify_autoderived=false`). `nospec` sends no `synthesize` and no spec, which takes that no-spec path every time,
+call's coin flip, and only the no-spec turns (`verify_autoderived=false`) reach the checks this probe is for.
+`nospec` sends no `synthesize` and no spec, which takes that no-spec path every time,
 so it is the deterministic mode and the one the deploy runs.
 
 A run passes when the task completes, delivers a non-empty file with the asked-for extension, and the answer is
@@ -54,7 +55,7 @@ CASES = (
 def _token() -> str:
     if tok := os.environ.get("AGENT_SMOKE_TOKEN", "").strip():
         return tok
-    sys.exit("no AGENT_SMOKE_TOKEN — run under `doppler run -p agent-service -c <config>`")
+    sys.exit("no AGENT_SMOKE_TOKEN — set it in the environment")
 
 
 def judge(status: dict, ext: str) -> list[str]:
@@ -78,7 +79,7 @@ def judge(status: dict, ext: str) -> list[str]:
 
 def judge_charts(files: dict[str, bytes | None]) -> list[str]:
     """Why the delivered workbooks' charts fail, or [] when at least one chart exists and every one plots the cells
-    it should (CUR-4600). Same rules the service applies before answering, so a pass here is the file a person gets."""
+    it should. Same rules the service applies before answering, so a pass here is the file a person gets."""
     if not files:
         return []                                       # judge() already reports the missing file
     why, charts = [], 0

@@ -1,4 +1,4 @@
-"""The per-conversation sandbox as an MCP server, with no agent loop behind it (CUR-4232).
+"""The per-conversation sandbox as an MCP server, with no agent loop behind it.
 
 Chat already runs its own tool loop and already has web search. What it lacks is a place to run code.
 This module serves the same box the agent runs in (`_sandbox_prefix` in app.py: read-only host, hidden
@@ -10,7 +10,7 @@ so chat's model can search and then compute in one turn. Two things differ from 
 - The environment is built from nothing rather than filtered, so no secret can reach the code by a name
   `_SECRET_ENV_RE` does not know.
 
-The tools reach the code and its files only through a `SandboxBackend` (CUR-4438), so moving each
+The tools reach the code and its files only through a `SandboxBackend`, so moving each
 conversation into a sandbox of its own is a backend swap. With `BwrapBackend` the workdir is the one the
 agent uses for the same (principal, conversation), so a file one writes the other can read, and the
 existing artifact route serves anything the code writes.
@@ -107,7 +107,7 @@ def build_sandbox_server(
 
     def _handle(ctx: Context) -> tuple[str, Handle]:
         """The conversation's sandbox, made if it has none. Called on a worker thread: on a full host connect waits
-        there for a slot (CUR-4584), and tells chat so through the call's MCP progress."""
+        there for a slot, and tells chat so through the call's MCP progress."""
         principal, session = _caller(ctx)
         return principal, backend.connect(principal, session, Tier.RUN_CODE, on_wait=_progress(ctx))
 
@@ -121,7 +121,7 @@ def build_sandbox_server(
 
     def _existing(ctx: Context) -> Handle | None:
         """The conversation's sandbox if it has one. A read needs no new sandbox: on E2B that is a microVM held
-        for minutes just to answer "empty", and on a full host a busy error instead (CUR-4502)."""
+        for minutes just to answer "empty", and on a full host a busy error instead."""
         principal, session = _caller(ctx)
         return backend.find(principal, session, Tier.RUN_CODE)
 
@@ -217,7 +217,7 @@ def sandbox_http_app(server: MCPServer):
     """The Starlette app to mount. Stateless, because chat opens a new connection per call; no Host check,
     because callers are servers holding a bearer token, not browsers. Each call is answered as an SSE stream
     rather than one JSON body, since a JSON body has no room for the progress a call waiting on a full host
-    sends ahead of its result (CUR-4584)."""
+    sends ahead of its result."""
     return server.streamable_http_app(
         streamable_http_path="/",
         json_response=False,

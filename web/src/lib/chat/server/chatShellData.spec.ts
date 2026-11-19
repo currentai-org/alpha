@@ -13,7 +13,7 @@ import { ensureChatLocalsResolved } from './chatShellData';
 // vi.mock calls are hoisted above every import in this file (including the static one above), so
 // the mock is in place before chatShellData.ts's own `import { authenticateRequest } from
 // '$lib/chat/server/auth'` resolves. vi.hoisted, not a bare const, because the factory below is
-// hoisted along with vi.mock — a plain top-level const would still be in its temporal dead zone. (CUR-1075)
+// hoisted along with vi.mock — a plain top-level const would still be in its temporal dead zone.
 const { authenticateRequest } = vi.hoisted(() => ({ authenticateRequest: vi.fn() }));
 vi.mock('$lib/chat/server/auth', () => ({ authenticateRequest }));
 

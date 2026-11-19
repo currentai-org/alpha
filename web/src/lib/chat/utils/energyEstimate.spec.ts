@@ -83,7 +83,7 @@ describe("formatEnergyShort", () => {
 	});
 
 	// A first reply is ~10 mWh, and one decimal of Wh printed it as "0.0Wh" right after the
-	// bloom card said "~10 mWh", which reads as the counter resetting. (CUR-1694)
+	// bloom card said "~10 mWh", which reads as the counter resetting.
 	it("never prints a nonzero figure as 0.0Wh: a ~10 mWh reply reads 10mWh", () => {
 		expect(formatEnergyShort(0.01)).toBe("10mWh");
 		expect(formatEnergyShort(0.0002)).toBe("1mWh");

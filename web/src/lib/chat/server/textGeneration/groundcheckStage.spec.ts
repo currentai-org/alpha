@@ -2,7 +2,7 @@
 // source supports is deleted from the answer that SHIPS, including when the output screen composed that
 // answer from the tokens it released; an answer with nothing supported points at the sources; every
 // outcome is reported, a failed check included; and the check stands down where the answer must ship
-// as written (flag off, nothing retrieved, code-rendered numbers, a decline, a cut-off answer). (CUR-2765)
+// as written (flag off, nothing retrieved, code-rendered numbers, a decline, a cut-off answer).
 import { describe, it, expect, vi } from "vitest";
 import { MessageUpdateType, type MessageUpdate } from "$lib/chat/types/MessageUpdate";
 import type { OutputScreenResult } from "$lib/chat/server/moderation";
@@ -55,7 +55,7 @@ describe("groundcheckStage", () => {
 		expect(outcomes).toEqual([["revised", ANSWER.length]]);
 	});
 
-	it("hands the removed-claim count to onOutcome with a revision, for X-ray's Fact check row (CUR-2927)", async () => {
+	it("hands the removed-claim count to onOutcome with a revision, for X-ray's Fact check row", async () => {
 		const seen: unknown[][] = [];
 		const { gen } = stage(src([tok(ANSWER), fin()]), {
 			check: async () => ({ text: REVISED, outcome: "revised" as const, removed: 2 }),
@@ -65,7 +65,7 @@ describe("groundcheckStage", () => {
 		expect(seen).toEqual([["revised", ANSWER.length, 2]]);
 	});
 
-	it("says under the answer how many list items went, in the answer's language (CUR-4489)", async () => {
+	it("says under the answer how many list items went, in the answer's language", async () => {
 		const languageOf = vi.fn(async () => "fr" as const);
 		const { gen } = stage(src([fin()]), {
 			check: async () => ({ text: REVISED, outcome: "revised" as const, removed: 2, items: 2 }),

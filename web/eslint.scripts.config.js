@@ -1,4 +1,4 @@
-// Correctness lint for `scripts/` (CUR-2235). The main gate (eslint.config.js) ignores the
+// Correctness lint for `scripts/`. The main gate (eslint.config.js) ignores the
 // directory and `lint:quality` only warns, so before this nothing failed on an undefined name or a
 // dead import in the ops tooling that deploys, gates and probes the app. Run via `pnpm lint:scripts`.
 //
@@ -8,6 +8,7 @@ import js from '@eslint/js';
 import globals from 'globals';
 import ts from 'typescript-eslint';
 import { defineConfig } from 'eslint/config';
+import { noHostEnvRead } from './eslint-rules/no-host-env-read.js';
 
 const unusedVars = [
 	'error',
@@ -41,6 +42,15 @@ export default defineConfig(
 			'no-undef': 'off',
 			'no-unused-vars': 'off',
 			'@typescript-eslint/no-unused-vars': unusedVars
+		}
+	},
+	{
+		// The deployment's identity is read through src/lib/server/runtimeEnv.js, never as a VERCEL_*
+		// variable (eslint-rules/no-host-env-read.js). Specs set those variables to simulate a deployment.
+		files: ['scripts/**/*.{js,mjs,cjs,ts,mts}'],
+		ignores: ['scripts/__tests__/**', 'scripts/**/*.spec.ts'],
+		rules: {
+			'no-restricted-syntax': ['error', ...noHostEnvRead]
 		}
 	},
 	{

@@ -41,7 +41,7 @@ export const GET: RequestHandler = async ({ locals, url, getClientAddress }) => 
 	// This route has its own model call (openSearch's rewrite) and web fetches, and
 	// requireAuth alone doesn't meter anything — a guest cookie could loop it with zero counter.
 	// Same limiter, same keying as the chat turn (conversation/[id]/+server.ts): session first,
-	// falling back to the bare sessionId a guest always carries. (CUR-832)
+	// falling back to the bare sessionId a guest always carries.
 	await enforceRequestRateLimits({
 		userId: locals.user?._id ?? locals.sessionId,
 		clientAddress: getClientAddress(),
@@ -67,7 +67,7 @@ export const POST: RequestHandler = async ({ locals, request, getClientAddress }
 		// Reject before the rewrite model call, not just at search time.
 		throw error(400, "query too long");
 	}
-	// Gate BEFORE contextualizeQuery's rewrite call, the first model spend on this path. (CUR-832)
+	// Gate BEFORE contextualizeQuery's rewrite call, the first model spend on this path.
 	await enforceRequestRateLimits({
 		userId: locals.user?._id ?? locals.sessionId,
 		clientAddress: getClientAddress(),

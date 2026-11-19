@@ -1,7 +1,7 @@
 // Single source of truth for how a linked-auth provider is labeled and iconified. Was
 // duplicated inline in account/+page.svelte; the workspace zero-org identity view needs the exact
 // same mapping (a provider badge next to your name/email) and a second copy would drift the moment
-// either page's provider list changes without the other. (CUR-1175)
+// either page's provider list changes without the other.
 import RiGoogleFill from "~icons/ri/google-fill";
 import RiGithubFill from "~icons/ri/github-fill";
 import RiRobotLine from "~icons/ri/robot-line";

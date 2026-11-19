@@ -1,4 +1,4 @@
-// The tools every configured MCP server offers, under names that say which server owns them (CUR-3026).
+// The tools every configured MCP server offers, under names that say which server owns them.
 // Listing connects to each server, so the result is cached per server for a few minutes; a server that
 // is down drops out of the list for this turn and is retried on the next listing.
 import { createHash } from "node:crypto";
@@ -65,11 +65,11 @@ function canonicalJson(value: unknown): string {
 }
 
 /**
- * The hash a pin names (CUR-3985): everything in a listing that reaches the model or our policy —
+ * The hash a pin names: everything in a listing that reaches the model or our policy —
  * name, description, input schema, annotations. A server that edits any of them after approval (the
  * "rug pull") produces a different hash.
  */
-function toolSha256(tool: McpTool): string {
+export function toolSha256(tool: McpTool): string {
 	const { name, description, inputSchema } = tool;
 	const annotations = (tool as { annotations?: unknown }).annotations;
 	return createHash("sha256").update(canonicalJson({ name, description, inputSchema, annotations })).digest("hex");

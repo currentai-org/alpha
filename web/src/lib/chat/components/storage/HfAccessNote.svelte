@@ -1,7 +1,8 @@
 <script lang="ts">
 	// Forgetting a linked bucket on our side (Unlink, Forget everything, Delete account) leaves
 	// the person's files where they are, and leaves Alpha's access listed on Hugging Face. Hugging Face
-	// publishes no token revocation endpoint, so this sentence is how the person removes it. (CUR-2932)
+	// publishes no token revocation endpoint, so this sentence is how the person removes it.
+	import { m } from '$lib/paraglide/messages.js';
 	interface Props {
 		grants: ('alpha' | 'token' | 'oauth')[];
 	}
@@ -10,20 +11,21 @@
 
 {#if grants.includes('oauth')}
 	<span data-testid="hf-access-note-oauth">
-		To remove Alpha’s approval on Hugging Face too, open
-		<a
-			class="underline"
-			href="https://huggingface.co/settings/connected-applications"
-			target="_blank"
-			rel="noopener noreferrer">Connected apps</a
-		> in your Hugging Face settings.
+		{#each m.storage_hfNoteOauth({ link: '{link}' }).split(/(\{link\})/).filter(Boolean) as part, i (i)}{#if part === '{link}'}<a
+					class="underline"
+					href="https://huggingface.co/settings/connected-applications"
+					target="_blank"
+					rel="noopener noreferrer">{m.storage_hfNoteConnectedApps()}</a
+				>{:else}{part}{/if}{/each}
 	</span>
 {/if}
 {#if grants.includes('token')}
 	<span data-testid="hf-access-note-token">
-		You can also delete the token you made for Alpha in your
-		<a class="underline" href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener noreferrer"
-			>Hugging Face access tokens</a
-		>.
+		{#each m.storage_hfNoteToken({ link: '{link}' }).split(/(\{link\})/).filter(Boolean) as part, i (i)}{#if part === '{link}'}<a
+					class="underline"
+					href="https://huggingface.co/settings/tokens"
+					target="_blank"
+					rel="noopener noreferrer">{m.storage_hfNoteTokensLink()}</a
+				>{:else}{part}{/if}{/each}
 	</span>
 {/if}

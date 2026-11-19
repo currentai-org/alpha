@@ -5,7 +5,7 @@
 // client polls.
 //
 // A glob rather than an import because the file is absent from the repo and from most builds, and a
-// static import of a missing file fails the build. (CUR-2897, CUR-4199)
+// static import of a missing file fails the build.
 
 import type { FlagDefinitionCacheData, FlagDefinitionCacheProvider } from "posthog-node";
 

@@ -1,7 +1,7 @@
 // A scenario that fails at random had two ways to stop blocking merges: merge past red or an
 // in-spec skip, which the spec-isolation gate refuses and which nobody comes back for.
 // quarantine.json is the third way, and it carries the two things the others lack: the ticket that
-// owns the fix and a date the entry stops working (CUR-2445).
+// owns the fix and a date the entry stops working.
 //
 // One module, read by three places: playwright.config.ts (leaves quarantined tests out of a PR's
 // gating run), reporters/quarantineOutcomes.ts (marks which of develop's failures were quarantined)
@@ -73,7 +73,7 @@ export function quarantineProblems(entries, ctx) {
  * Splits the problems into what fails the check and what only warns. For EXPIRY_GRACE_DAYS after its
  * expiry, a lapsed entry fails only a change that touches quarantine.json: it still keeps its test out
  * of the PR run (playwright.config.ts reads every entry), so failing every other PR on that date
- * punished whoever happened to be open for an extension only the entry's owner can write (SOL-224).
+ * punished whoever happened to be open for an extension only the entry's owner can write.
  * Past the grace it fails everywhere, so the skip can't become permanent. Every other problem fails
  * everywhere.
  * @param {unknown[]} entries

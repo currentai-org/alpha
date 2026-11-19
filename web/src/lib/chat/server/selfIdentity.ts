@@ -1,6 +1,6 @@
 // Is this turn a question about the assistant itself (which model it is, who made, serves or runs
 // it, where its answer runs)? The conversation route uses the verdict to keep such a question off the
-// web (CUR-2135).
+// web.
 //
 // An embedding margin, same shape as search/searchIntent.ts: max cosine to questions about the
 // assistant minus max cosine to near misses about other models, companies and title-holders. It reads
@@ -9,7 +9,7 @@
 //
 // It embeds with its own multilingual model rather than the RAG embedder: the English-only
 // all-MiniLM-L6-v2 flags "Why is Tokyo the capital of Japan?" asked in Amharic or Chinese and misses
-// the identity question in many translations. At this threshold (evidence on CUR-2135) the Tokyo
+// the identity question in many translations. At this threshold (evidence) the Tokyo
 // question is flagged in none of 20 languages and the identity question is caught in all 18; on 24
 // English phrasings held back from fitting, 8 of 12 questions about the assistant are caught and 1 of
 // 12 near misses is flagged. Misses are the side to give up: a miss leaves the turn as it would be
@@ -18,13 +18,13 @@
 // The margin alone flags factual questions that resemble nothing on either side, such as one that sits
 // at 0.31 to the nearest question about the assistant and 0.24 to the nearest near miss, a margin of
 // 0.07. SELF_IDENTITY_MIN_SELF also requires the query to be close to a question about the assistant.
-// Offline (evidence on CUR-2135): the 33 identity questions, EN/FR/DE and 18 translations included,
+// Offline (evidence): the 33 identity questions, EN/FR/DE and 18 translations included,
 // score 0.56 or more to the self exemplars; of 149 factual questions and near misses, the highest
 // scores 0.54 and the margin alone flags 27. With the floor, 33 of 33 caught and 0 of 149 flagged.
 //
 // A follow-up about who oversees something else can read as one about the assistant: German "wer
 // überwacht sie?" (them) is spelled like formal "Sie" (you), and can veto the search at a margin like 0.32.
-// The near misses hold four "who enforces or supervises these rules" questions for that (CUR-3964):
+// The near misses hold four "who enforces or supervises these rules" questions for that:
 // with them, such follow-ups in five languages veto 0 of 20; 31 of 32 identity questions in 15
 // languages are still caught, the miss being "Who monitors you?".
 
@@ -183,7 +183,7 @@ export function startSelfIdentityVerdict(text: string): () => Promise<SelfIdenti
 
 /** What a search decision saw of the identity verdict. A question about Alpha that searched anyway
  *  is explained by one of: the reader was never built, the verdict missed the decision's budget, it
- *  had no opinion, or it read the question as not about Alpha (CUR-2135). Each search line carries
+ *  had no opinion, or it read the question as not about Alpha. Each search line carries
  *  which. */
 export type IdentityReading =
 	| { identity: "not-run" }

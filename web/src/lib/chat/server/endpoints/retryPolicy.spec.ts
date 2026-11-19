@@ -1,6 +1,6 @@
 // The one set of rules for sending a failed model request again, driven through withRetry,
 // the only way a caller reaches them. The contracts are the SDK's (what is retryable, where the host's
-// wait is read from) plus the turn's deadline: a wait that cannot fit is never started. (CUR-2432)
+// wait is read from) plus the turn's deadline: a wait that cannot fit is never started.
 import { describe, it, expect, vi } from "vitest";
 import { isRateLimited, rateLimitDetail, withRetry, type RetryPolicy } from "./retryPolicy";
 
@@ -145,7 +145,7 @@ describe("reporting and cancelling", () => {
 	});
 });
 
-describe("what a 429 said, for the failover log (SOL-200)", () => {
+describe("what a 429 said, for the failover log", () => {
 	it("keeps the host's wait and the upstream body from an SDK RateLimitError", () => {
 		const err = Object.assign(new Error("429 Rate limit exceeded"), {
 			status: 429,

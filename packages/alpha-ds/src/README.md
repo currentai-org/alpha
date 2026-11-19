@@ -15,7 +15,7 @@ primitive and pattern has a live preview, its code, an anatomy diagram and API t
 | -------------- | --------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
 | **Tokens**     | OKLCH colour ladder (light + dark) derived from a few seeds, plus type, space, radius, motion, z-index                            | `tokens/`            |
 | **Components** | Reusable, skinnable parts in Base UI anatomy (`Dialog.Root`, `Dialog.Popup`…)                                                     | `components/<name>/` |
-| **Primitives** | Layout that groups elements (`Surface`, `Stack`, `Inline`, `Grid`, `Center`, `Frame`)                                             | `primitives/<name>/` |
+| **Primitives** | Layout that groups elements (`Surface`, `Stack`, `Inline`, `Grid`)                                                                | `primitives/<name>/` |
 | **Patterns**   | Page structure for the chat app (`AppShell`, `Sidebar`, `ThreadHeader`, `Composer`, `ComposerAccessory`, `Message`, `EmptyState`) | `patterns/<name>/`   |
 
 The layers are listed bottom up. Everything is exported from one barrel: `import { Dialog, Stack, AppShell } from '@aipotluck/alpha-ds'`.

@@ -1,4 +1,4 @@
-"""The E2B host's load reading and the alerts that read it (CUR-4553)."""
+"""The E2B host's load reading and the alerts that read it."""
 
 import importlib.util
 from pathlib import Path
@@ -97,7 +97,7 @@ def test_healthz_names_the_hosts_this_machine_has_auto_off_and_none_for_a_backen
 
 def test_the_thread_pool_holds_more_calls_in_flight_than_anyios_default_forty():
     """Sandbox MCP calls and sync endpoints block a worker thread on the E2B host each; at anyio's default of 40 the
-    41st waited for a thread while the host had room. The lifespan raises the limit to THREADPOOL_TOKENS."""
+    41st call would wait for a thread while the host had room. The lifespan raises the limit to THREADPOOL_TOKENS."""
     import asyncio
 
     import anyio.to_thread

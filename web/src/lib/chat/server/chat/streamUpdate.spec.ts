@@ -31,7 +31,7 @@ function makeCtx(overrides: Partial<ApplyUpdateContext> = {}): ApplyUpdateContex
 
 const stream = (token: string): MessageUpdate => ({ type: MessageUpdateType.Stream, token });
 
-describe("applyMessageUpdate — agent confirmation gate (CUR-218)", () => {
+describe("applyMessageUpdate — agent confirmation gate", () => {
 	it("opens a confirmation onto message.agentConfirmations", async () => {
 		const ctx = makeCtx();
 		await applyMessageUpdate(
@@ -71,7 +71,7 @@ describe("applyMessageUpdate — agent confirmation gate (CUR-218)", () => {
 
 	// The route's silence watchdog reads state.awaitingConfirmation (deadlineLadder.ts's
 	// isSilentStall) so an open card isn't mistaken for a stalled generation. These pin the reducer's
-	// half of that fix; isSilentStall's own spec covers the watchdog's decision logic. (CUR-1085)
+	// half; isSilentStall's own spec covers the watchdog's decision logic.
 	it("arms awaitingConfirmation on AgentConfirm and disarms it on AgentConfirmResult", async () => {
 		const ctx = makeCtx();
 		expect(ctx.state.awaitingConfirmation).toBe(false);
@@ -211,7 +211,7 @@ describe("applyMessageUpdate", () => {
 		]);
 	});
 
-	it("keeps one reference per agent file, so a replayed done adds none and two same-bytes files keep both paths (CUR-4398)", async () => {
+	it("keeps one reference per agent file, so a replayed done adds none and two same-bytes files keep both paths", async () => {
 		const ctx = makeCtx();
 		const file = (agentPath: string): MessageUpdate => ({
 			type: MessageUpdateType.File,
@@ -226,7 +226,7 @@ describe("applyMessageUpdate", () => {
 		expect(ctx.message.files?.map((f) => f.agentPath)).toEqual(["a/__init__.py", "b/__init__.py"]);
 	});
 
-	it("still appends every non-agent file, identical bytes included (CUR-4398)", async () => {
+	it("still appends every non-agent file, identical bytes included", async () => {
 		const ctx = makeCtx();
 		const png: MessageUpdate = { type: MessageUpdateType.File, name: "a.png", sha: "abc123", mime: "image/png" };
 		await applyMessageUpdate(png, ctx);
@@ -234,7 +234,7 @@ describe("applyMessageUpdate", () => {
 		expect(ctx.message.files).toHaveLength(2);
 	});
 
-	it("persists a fixed-reply marker, so a reload still says no model wrote the notice (CUR-1872)", async () => {
+	it("persists a fixed-reply marker, so a reload still says no model wrote the notice", async () => {
 		const ctx = makeCtx();
 		const out = await applyMessageUpdate({ type: MessageUpdateType.FixedReply, kind: "capacity" }, ctx);
 
@@ -243,7 +243,7 @@ describe("applyMessageUpdate", () => {
 		expect(out).toEqual({ type: MessageUpdateType.FixedReply, kind: "capacity" });
 	});
 
-	it("persists a failover, so a reload's receipt still names the model the backup replaced (CUR-2239)", async () => {
+	it("persists a failover, so a reload's receipt still names the model the backup replaced", async () => {
 		const ctx = makeCtx();
 		const event = {
 			type: MessageUpdateType.Failover,
@@ -261,7 +261,7 @@ describe("applyMessageUpdate", () => {
 		expect(out).toEqual(event);
 	});
 
-	it("persists the failover's cause with it, so a reload still says why the primary gave up (CUR-3313)", async () => {
+	it("persists the failover's cause with it, so a reload still says why the primary gave up", async () => {
 		const ctx = makeCtx();
 		await applyMessageUpdate(
 			{
@@ -281,7 +281,7 @@ describe("applyMessageUpdate", () => {
 		});
 	});
 
-	it("persists how many older exchanges were left out, so the note under the answer survives reload (CUR-2893)", async () => {
+	it("persists how many older exchanges were left out, so the note under the answer survives reload", async () => {
 		const ctx = makeCtx();
 		const event = { type: MessageUpdateType.HistoryNotice, leftOut: 4 } as const;
 		const out = await applyMessageUpdate(event, ctx);
@@ -290,7 +290,7 @@ describe("applyMessageUpdate", () => {
 		expect(out).toEqual(event);
 	});
 
-	it("persists the files a turn could not read, so the note survives reload (CUR-3291)", async () => {
+	it("persists the files a turn could not read, so the note survives reload", async () => {
 		const ctx = makeCtx();
 		ctx.message.attachmentNotice = { message: "Refused." };
 		await applyMessageUpdate({ type: MessageUpdateType.AttachmentNotice, kind: "unread", message: "Couldn't read it." }, ctx);
@@ -298,13 +298,23 @@ describe("applyMessageUpdate", () => {
 		expect(ctx.message.attachmentNotice).toEqual({ message: "Refused." });
 	});
 
-	it("persists the agent task and its machine, so a later visit can find a run the tab no longer watches (CUR-993)", async () => {
+	it("persists the agent task and its machine, so a later visit can find a run the tab no longer watches", async () => {
 		const ctx = makeCtx();
 		await applyMessageUpdate({ type: MessageUpdateType.AgentRun, taskId: "t1", machineId: "m1" }, ctx);
 		expect(ctx.message.agentRun).toEqual({ taskId: "t1", machineId: "m1" });
 	});
 
-	it("persists every calculate call in order, so the expressions stay under the answer after reload (CUR-2273)", async () => {
+	it("keeps a run's submit-time handoff when a later update for the same run lacks it, and never carries it to another run", async () => {
+		const ctx = makeCtx();
+		await applyMessageUpdate({ type: MessageUpdateType.AgentRun, taskId: "t1", handoff: true }, ctx);
+		expect(ctx.message.agentRun).toEqual({ taskId: "t1", handoff: true });
+		await applyMessageUpdate({ type: MessageUpdateType.AgentRun, taskId: "t1", closed: true }, ctx);
+		expect(ctx.message.agentRun).toEqual({ taskId: "t1", closed: true, handoff: true });
+		await applyMessageUpdate({ type: MessageUpdateType.AgentRun, taskId: "t2" }, ctx);
+		expect(ctx.message.agentRun).toEqual({ taskId: "t2" });
+	});
+
+	it("persists every calculate call in order, so the expressions stay under the answer after reload", async () => {
 		const ctx = makeCtx();
 		await applyMessageUpdate(
 			{ type: MessageUpdateType.Calculation, expression: "3 * 14 * 18", result: "756", counts: "boxes: 3" },
@@ -320,7 +330,7 @@ describe("applyMessageUpdate", () => {
 		]);
 	});
 
-	it("records a helper-model frame on a non-router model, which carries no model of its own (CUR-984)", async () => {
+	it("records a helper-model frame on a non-router model, which carries no model of its own", async () => {
 		const ctx = makeCtx({ model: { isRouter: false } });
 		await applyMessageUpdate(
 			{
@@ -382,7 +392,7 @@ describe("applyMessageUpdate", () => {
 		});
 	});
 
-	it("persists the served backend on a healthy gateway turn — the ONLY provenance such a turn carries (CUR-114/115)", async () => {
+	it("persists the served backend on a healthy gateway turn — the ONLY provenance such a turn carries", async () => {
 		const ctx = makeCtx({ model: { isRouter: false } });
 		// A healthy LiteLLM-gateway turn sends no route/model/provider — the body echoes the group and no
 		// X-Router-Model header is set — so the backend host is the SOLE signal. A gate on
@@ -452,7 +462,7 @@ describe("applyMessageUpdate", () => {
 	});
 });
 
-// A native turn's failed web_search is written only here, so the note survives reload. (CUR-4091)
+// A native turn's failed web_search is written only here, so the note survives reload.
 describe("applyMessageUpdate — a web search that didn't finish", () => {
 	it("stores the failure on the message, and a later grounded search replaces it", async () => {
 		const ctx = makeCtx();
@@ -475,7 +485,7 @@ describe("applyMessageUpdate — a web search that didn't finish", () => {
 	});
 });
 
-describe("applyMessageUpdate — a code call waiting for a free sandbox (CUR-4584)", () => {
+describe("applyMessageUpdate — a code call waiting for a free sandbox", () => {
 	const phase = (name: string): MessageUpdate => ({
 		type: MessageUpdateType.Status,
 		status: MessageUpdateStatus.KeepAlive,
@@ -491,5 +501,32 @@ describe("applyMessageUpdate — a code call waiting for a free sandbox (CUR-458
 		expect(ctx.state.waitingForSandbox).toBe(true);
 		await applyMessageUpdate(phase("sandbox-ready"), ctx);
 		expect(ctx.state.waitingForSandbox).toBe(false);
+	});
+});
+
+describe("applyMessageUpdate — a native tool round still retrieving", () => {
+	const phase = (name: string): MessageUpdate => ({
+		type: MessageUpdateType.Status,
+		status: MessageUpdateStatus.KeepAlive,
+		message: `phase:${name}`,
+	});
+
+	it("counts as running tools from a searching marker until the model streams text again", async () => {
+		const ctx = makeCtx();
+		await applyMessageUpdate(phase("searching-documents-web"), ctx);
+		expect(ctx.state.runningTools).toBe(true);
+		// A heartbeat and an empty held-back chunk are not the model answering.
+		await applyMessageUpdate({ type: MessageUpdateType.Status, status: MessageUpdateStatus.KeepAlive }, ctx);
+		await applyMessageUpdate(stream(""), ctx);
+		expect(ctx.state.runningTools).toBe(true);
+		await applyMessageUpdate(stream("Barcelona "), ctx);
+		expect(ctx.state.runningTools).toBe(false);
+	});
+	it("ends at the next phase marker that is not a search", async () => {
+		const ctx = makeCtx();
+		await applyMessageUpdate(phase("searching"), ctx);
+		expect(ctx.state.runningTools).toBe(true);
+		await applyMessageUpdate(phase("thinking"), ctx);
+		expect(ctx.state.runningTools).toBe(false);
 	});
 });

@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // Pure resolution-logic test — proves the fallback chain, not the DB read itself (the stateful suite
 // covers real collections.settings behavior elsewhere, e.g. layoutData.spec.ts). It only checks that
 // resolveTurnPreferences picks the right value once handed a document. That a setting change reaches the
-// model on a real turn is proved by a live probe, not here (CUR-1443).
+// model on a real turn is proved by a live probe, not here.
 
 let findOneResult: {
 	replyInUserLanguage?: boolean;
@@ -72,7 +72,7 @@ describe("resolveTurnPreferences", () => {
 	});
 });
 
-describe("answer preferences on the turn path (CUR-3929)", () => {
+describe("answer preferences on the turn path", () => {
 	it("resolves an empty row to the defaults, every field present", async () => {
 		findOneResult = {};
 		expect((await resolveTurnPreferences({} as App.Locals)).answer).toEqual(ANSWER_DEFAULTS);
@@ -87,7 +87,7 @@ describe("answer preferences on the turn path (CUR-3929)", () => {
 		});
 	});
 
-	it("ignores a stored explainTerms, off the page under rule 4.6: an old row with it on resolves to the defaults (CUR-4288)", async () => {
+	it("ignores a stored explainTerms, off the page under rule 4.6: an old row with it on resolves to the defaults", async () => {
 		findOneResult = { explainTerms: true } as typeof findOneResult;
 		expect((await resolveTurnPreferences({} as App.Locals)).answer).toEqual(ANSWER_DEFAULTS);
 	});
@@ -98,7 +98,7 @@ describe("answer preferences on the turn path (CUR-3929)", () => {
 	});
 });
 
-describe("Personalization on the turn path (CUR-1443)", () => {
+describe("Personalization on the turn path", () => {
 	it("reads the instructions as saved now, so an edit reaches a chat created before it", async () => {
 		findOneResult = { customPrompts: { "*": "  End with Lugano.  " } };
 		const prefs = await resolveTurnPreferences({} as App.Locals);

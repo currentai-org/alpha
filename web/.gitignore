@@ -13,7 +13,7 @@ node_modules
 /e2e-footprints
 /e2e-footprints-develop
 /scenario-selection.json
-# The visual job renders its baseline from develop's build in the run itself (SOL-231)
+# The visual job renders its baseline from develop's build in the run itself
 /e2e/visual/__screenshots__
 /playwright-report
 
@@ -21,9 +21,8 @@ node_modules
 .DS_Store
 Thumbs.db
 
-# Env
-.env
-.env.*
+# Env. One `.env*` rule, then the negations: a later `.env*` would re-ignore them.
+.env*
 !.env.example
 !.env.local.example
 !.env.test
@@ -35,10 +34,9 @@ vite.config.ts.timestamp-*
 .cursor
 .vscode
 .claude
-.env*
 live-results.json
 
-# CUR-923: documented as gitignored in coop/README.md, but neither ".env"/".env.*"
+# documented as gitignored in coop/README.md, but neither ".env"/".env.*"
 # rule above actually matches a filename that doesn't START with ".env" — these don't.
 coop/.coop-secrets.env
 coop/.coop-ids.json
@@ -51,18 +49,18 @@ coop/.coop-ids.json
 /.cache/eslint-alpha-ds
 /.cache/prettier-alpha-ds
 
-# CUR-1044: local per-flag fuzzing harness output — read locally, never auto-filed, never committed
+# local per-flag fuzzing harness output — read locally, never auto-filed, never committed
 /.fuzz-findings
 
-# CUR-1189: Stryker's own per-run scratch + HTML report — regenerated every run, never committed
+# Stryker's own per-run scratch + HTML report — regenerated every run, never committed
 /stryker-tmp
 /reports/mutation
 
 # Paraglide output is compiled from project.inlang and messages at dev/build/check time.
 /src/lib/paraglide/
 
-# Walkthrough takes (CUR-2789): the trace and video the tour config writes.
+# Walkthrough takes: the trace and video the tour config writes.
 e2e/tour-results/
 
-# CUR-2897: a PR preview's flag definitions, written by scripts/bake-flag-definitions.mjs in vercel-build
+# a PR preview's flag definitions, written by scripts/bake-flag-definitions.mjs in vercel-build
 src/lib/chat/server/flag-definitions.baked.json

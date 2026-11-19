@@ -1,4 +1,4 @@
-"""Each conversation in a Firecracker microVM of its own, on a self-hosted E2B install (CUR-4451, part of CUR-4434).
+"""Each conversation in a Firecracker microVM of its own, on a self-hosted E2B install.
 
 E2B Embed (`e2b-dev/infra`, `embed/`, Apache-2.0) runs the whole E2B runtime on one VM in our own AWS account, and
 the `e2b` SDK (MIT) is the same one E2B Cloud uses. This backend is that SDK behind `SandboxBackend`:
@@ -6,8 +6,8 @@ the `e2b` SDK (MIT) is the same one E2B Cloud uses. This backend is that SDK beh
 - A conversation's sandbox carries `key_for(principal, conversation)` as metadata, so `connect` finds it with a
   metadata query from any agent machine. A paused sandbox resumes on connect, memory and files intact.
 - The run-code tier is created with all egress denied. The agent tier may reach only the model gateway, with the
-  task's own capped, revoked-at-the-end nonce. No header-rewrite rule is set, because Embed's network rules do not
-  rewrite request headers (CUR-4500).
+  task's own capped, revoked-at-the-end nonce. Embed stores header-rewrite rules but never applies them,
+  so none is set.
 - An idle sandbox pauses itself after its tier's idle window (`idle_for`, E2B's own lifecycle). `sweep` kills one
   unused past the session limit,
   read from E2B's own timestamps, so it keeps no state either.
@@ -69,33 +69,30 @@ class E2BConfig:
     template: str = "hermes"
     idle_secs: int = 600  # the agent tier's pause window: a task's attempts and confirm cards sit inside it
     # The run-code tier's pause window. A running sandbox holds its whole guest memory on the host and a paused one
-    # holds none, so this window, not the number of people, is what fills the host: at 600 s a host's 56 slots
-    # serve 56 people per ten minutes, and an account on the first tier is refused a second conversation for ten minutes.
+    # holds none, so this window, not the number of people, is what fills the host: a long window keeps each slot
+    # occupied after its person has gone, and an account on the first tier is refused a second conversation until it ends.
     # A call resumes a paused sandbox with its memory and files, so a shorter window costs a resume, not the work.
     run_code_idle_secs: int = 120
     gateway_host: str = ""  # the agent tier's one allowed destination
     # After the host refuses a create for capacity, refuse new sandboxes here for this long rather than queue every
     # conversation behind the SDK's own retries; the first create after it decides whether the host has room again.
     busy_cooloff_secs: int = 30
-    # How long a connect waits for a slot on a full host before it gives up with "the host is full" (CUR-4584); 0
+    # How long a connect waits for a slot on a full host before it gives up with "the host is full"; 0
     # refuses at once. The first wait is `busy_retry_secs`, the 5 s the run endpoint's Retry-After already names, and
     # each one after is half again as long, up to `_WAIT_MAX_STEP_SECS`.
     busy_wait_secs: float = 0.0
     busy_retry_secs: float = 5.0
-    # How many hosts the link fronts (CUR-4529). Slot i is reached on both URLs' ports moved by SLOT_PORT_STEP * (i-1),
+    # How many hosts the link fronts. Slot i is reached on both URLs' ports moved by SLOT_PORT_STEP * (i-1),
     # so slot 1 is the URLs as given and one slot is exactly the single-host backend.
     slots: int = 1
     # Slots taken out by hand (E2B_SLOTS_OFF): never asked, never placed on. A host that stays dead goes auto-off on
     # its own after `auto_off_secs`; this is for taking one out at once, or keeping it out.
     off: frozenset[int] = frozenset()
-    # How many run-code sandboxes one account may have running at once, across every slot (CUR-4553); 0 is no cap. A
+    # How many run-code sandboxes one account may have running at once, across every slot; 0 is no cap. A
     # paused sandbox is not live, so an account's idle conversations cost it nothing.
     account_max_live: int = 2
-    # Running sandboxes one host holds before it refuses a create, for the pool gauge's "nearly full" reading; 0 when
-    # not known, which leaves the gauge reporting counts with nothing to compare them to.
-    slot_capacity: int = 0
     # A slot that has failed every ask for this long is treated as off for refusals and placement
-    # (E2B_SLOT_AUTO_OFF_SECS, CUR-4592); 0 never does. `E2BBackend._auto_off` says what it changes and what it costs.
+    # (E2B_SLOT_AUTO_OFF_SECS); 0 never does. `E2BBackend._auto_off` says what it changes and what it costs.
     auto_off_secs: int = 300
 
     def __post_init__(self) -> None:
@@ -135,7 +132,7 @@ def _port_moved(url: str, by: int) -> str:
 
 
 def by_address(url: str) -> str:
-    """`url` with its host swapped for the address it resolves to now (CUR-4497).
+    """`url` with its host swapped for the address it resolves to now.
 
     E2B's client proxy reads the sandbox and port from `E2b-Sandbox-*` headers only when the request's host is
     localhost or an IP address; any other host is parsed as `<port>-<sandbox>.<domain>`, so the link's
@@ -188,7 +185,7 @@ class E2BBackend:
         self._e2b = e2b
         self._cfg = cfg
         self._log_event = log_event
-        # One per slot, and one capacity refusal opens it (CUR-4484). E2B calls a 503 "no capacity to place a
+        # One per slot, and one capacity refusal opens it. E2B calls a 503 "no capacity to place a
         # sandbox" and a 429 its concurrency cap, both after the SDK's own retries; any other error is a fault of
         # that one create.
         self._create_breakers = {
@@ -198,12 +195,12 @@ class E2BBackend:
         self._key_locks = [threading.Lock() for _ in range(64)]  # striped: bounded, and keys rarely share one
         self._owner_locks = [threading.Lock() for _ in range(64)]  # one account's count-then-start, one at a time here
         # Slots that get no new sandboxes, set by the pool's scaler before it turns one off, and slots it has turned
-        # off, which are never asked at all (CUR-4530).
+        # off, which are never asked at all.
         self.draining: set[int] = set()
         self.off: set[int] = set(cfg.off)
         self._down_until: dict[int, float] = {}  # slot -> monotonic time it is next asked again
-        # A waiting connect may ask a slot whose breaker is open, at most once per `_PROBE_SECS` across
-        # every waiter, so a slot that frees inside the cool-off is used then, not at its end. (CUR-4584)
+        # a waiting connect may ask a slot whose breaker is open, at most once per `_PROBE_SECS` across
+        # every waiter, so a slot that frees inside the cool-off is used then, not at its end.
         self._probed_at: dict[int, float] = {}
         self._probe_lock = threading.Lock()
         self._sleep: Callable[[float], None] = time.sleep  # tests swap both for a fake clock
@@ -228,12 +225,12 @@ class E2BBackend:
 
     def _each(self, call: Callable[[int], object]) -> tuple[list[tuple[int, object]], list[int]]:
         """`call(slot)` on every slot that is on, as ([(slot, result)], [slots that did not answer]). With one slot it
-        is the plain call, errors and all, so a single host behaves as it always has. With several they run at once;
+        is the plain call, errors and all, so a single host behaves as a plain call. With several they run at once;
         a slot that fails is not asked again for `_DOWN_SECS`, and both it and a slot still in that window are named
         as unanswered, so a caller that must see every slot refuses rather than taking silence for "none here".
 
         A slot that is auto-off (`_auto_off`) is still asked, and its first answer brings it back, but its silence is
-        left out of the unanswered list, so it no longer makes `find` and `destroy` refuse."""
+        left out of the unanswered list, so it does not make `find` and `destroy` refuse."""
         if self._cfg.slots == 1:
             return [(1, call(1))], []
         up = self._up()
@@ -296,7 +293,7 @@ class E2BBackend:
     def _params(self, slot: int) -> ApiParams:
         """Slot's API params for a list or kill, bounded by `_LIST_TIMEOUT_SECS` however many slots there are. A host
         behind a link that stops passing packets answers nothing: the link accepts the connection and its own connect
-        to the host hangs, so an unbounded call waits out the SDK's 60 s default, past chat's 45 s turn (CUR-4628)."""
+        to the host hangs, so an unbounded call waits out the SDK's 60 s default, past chat's 45 s turn."""
         params = self._cfg.api(slot)
         params["request_timeout"] = self._LIST_TIMEOUT_SECS
         return params
@@ -326,7 +323,7 @@ class E2BBackend:
     def find(self, principal: str, conversation: str, tier: Tier) -> Handle | None:
         """The conversation's sandbox if one exists, resumed; None rather than a new one. With several slots, None only
         when every slot that is on answered: a slot that didn't may hold it, and a new sandbox elsewhere would split
-        the conversation's files across two (CUR-4529)."""
+        the conversation's files across two."""
         key = key_for(principal, conversation)
         from e2b.api.client.models.sandbox_state import SandboxState
         from e2b.sandbox.sandbox_api import SandboxQuery
@@ -336,7 +333,7 @@ class E2BBackend:
             answered, unread = self._each(lambda s: self._listed(s, query))
         except Exception as e:
             # One slot: `_each` passes the host's own failure through. Worded, so the run-code tool returns a
-            # sentence the model can pass on instead of a bare "Error executing tool" (CUR-4628).
+            # sentence the model can pass on instead of a bare "Error executing tool".
             raise self._unreachable(self._on()) from e
         found = [(slot, info) for slot, infos in answered for info in cast("list", infos)]
         if any(info.metadata.get("tier") != tier.value for _s, info in found):
@@ -384,12 +381,20 @@ class E2BBackend:
             raise SandboxError("a sandbox of this conversation could not be killed; the idle sweep will retry")
         return sum(1 for r in results if r)
 
-    def sweep(self, older_than_secs: float) -> list[str]:
+    def sweep(self, older_than_secs: float, *, running_older_than_secs: float | None = None,
+              keep: frozenset[str] = frozenset()) -> list[str]:
         """Kill every sandbox of ours unused for longer than `older_than_secs`, returning their keys.
 
         Each connect sets the sandbox's timeout to its tier's idle window from now, so `end_at` is the last use
         plus that window while it runs, and the moment it paused once it has: either way the last use is
-        `end_at` minus the window. A running sandbox is never past the limit by this measure."""
+        `end_at` minus the window. A running sandbox is never past the limit by this measure.
+
+        `running_older_than_secs` also kills an agent sandbox still RUNNING whose last use is older
+        than that. A task connects its sandbox once it starts and ends within its hard limit, so passing that
+        limit plus a grace means no task on any machine holds it any more: its task ended without pausing it, or
+        its machine went away mid-run. A running agent sandbox holds its whole guest memory on the host, which is
+        what refused other runs as "host full". A key in `keep` (held by a live task on this machine) is never
+        killed by this rule, whatever its timestamps say. Run-code sandboxes are left to their own short window."""
         from e2b.api.client.models.sandbox_state import SandboxState
         from e2b.sandbox.sandbox_api import SandboxQuery
 
@@ -402,9 +407,16 @@ class E2BBackend:
             while pages.has_next:
                 for info in pages.next_items():
                     key = info.metadata.get("key") or ""
-                    idle = self._cfg.idle_for(info.metadata.get("tier"))
-                    stale = bool(key) and now - (info.end_at.timestamp() - idle) > older_than_secs
-                    if stale and self._kill(slot, info.sandbox_id):
+                    tier = info.metadata.get("tier")
+                    idle = self._cfg.idle_for(tier)
+                    unused = now - (info.end_at.timestamp() - idle)
+                    stale = bool(key) and unused > older_than_secs
+                    stuck = (running_older_than_secs is not None and bool(key) and key not in keep
+                             and tier == Tier.AGENT.value and getattr(info, "state", None) == SandboxState.RUNNING
+                             and unused > running_older_than_secs)
+                    if (stale or stuck) and self._kill(slot, info.sandbox_id):
+                        if stuck and not stale:
+                            self._log("sandbox.stuck_killed", key=key, slot=slot, unused_s=round(unused))
                         killed.append(key)
             return killed
         return [k for _s, keys in self._each(on)[0] for k in cast("list[str]", keys)]  # the next pass takes a miss
@@ -462,7 +474,7 @@ class E2BBackend:
             return True
         # Embed answers a create its guest-memory pool can't hold with a 500, not a 503: the orchestrator's
         # FailedPrecondition "this node cannot map N MiB of guest memory" (e2b-dev/infra bca4b33e44,
-        # packages/orchestrator/pkg/server/sandboxes.go:3130), forwarded as text (CUR-4518).
+        # packages/orchestrator/pkg/server/sandboxes.go:3130), forwarded as text.
         return isinstance(e, self._e2b.SandboxException) and "cannot map" in str(e)
 
     _WAIT_MAX_STEP_SECS = 10.0
@@ -471,7 +483,7 @@ class E2BBackend:
     def connect(self, principal: str, conversation: str, tier: Tier, *, on_wait: OnWait | None = None,
                 cancelled: Callable[[], bool] | None = None) -> Handle:
         """The conversation's sandbox, resumed or new. On a full host it waits up to `busy_wait_secs` for a slot,
-        asking again with a growing pause and telling `on_wait` once when the wait starts (CUR-4584); `cancelled`
+        asking again with a growing pause and telling `on_wait` once when the wait starts; `cancelled`
         ends the wait early. The wait holds no lock, and runs on the caller's thread, which is never a request's
         event loop: the agent task's own thread, or the worker a run-code tool hands its call to."""
         started = self._clock()
@@ -505,7 +517,7 @@ class E2BBackend:
     def _connect_once(self, principal: str, conversation: str, tier: Tier, *, probe: bool) -> Handle:
         key = key_for(principal, conversation)
         # Chat's tool calls run on worker threads, so a turn's parallel first calls would each find nothing and each
-        # create; the lock makes the later ones find the first one's sandbox (CUR-4517).
+        # create; the lock makes the later ones find the first one's sandbox.
         with self._key_locks[hash(key) % len(self._key_locks)], self._owner_lock(principal, tier):
             found = self.find(principal, conversation, tier)
             if found is not None:
@@ -536,7 +548,7 @@ class E2BBackend:
         `_DOWN_SECS` on the strength of one create.
 
         A slot whose breaker is open is skipped, unless `probe` (a connect already waiting) and `_may_probe` lets this
-        caller ask it: the breaker's success resets it, so a slot that freed serves everyone again (CUR-4584)."""
+        caller ask it: the breaker's success resets it, so a slot that freed serves everyone again."""
         self._admit(principal, key, tier)
         busy = SandboxBusy("the sandbox host is full right now; try again in a minute")
         failed: Exception | None = None
@@ -599,9 +611,10 @@ class E2BBackend:
         return Handle(key=key, tier=tier, ref=sbx, slot=slot)
 
     def pause(self, h: Handle) -> None:
-        """Pause, asking again while the host answers busy (CUR-4503). Embed refuses a pause with a 503 when the
+        """Pause, asking again while the host answers busy. Embed refuses a pause with a 503 when the
         node can't take it yet, and the SDK says a refused pause changed nothing, so the same call is safe to repeat;
-        given up after one try, the sandbox keeps its slot until the idle timeout and the host can fill up."""
+        a pause given up after one try leaves the sandbox holding its slot until the idle timeout, and a busy
+        host can fill with such sandboxes."""
         for wait in (*_PAUSE_RETRY_WAITS, None):
             try:
                 _sbx(h).pause()
@@ -699,7 +712,7 @@ class E2BBackend:
         block kills the process; the sandbox itself stays for the conversation's next task."""
         loop = asyncio.get_running_loop()
         # The timeout restarts the sandbox's pause clock: it otherwise counts from the conversation's last connect,
-        # and E2B paused the guest under a running attempt at exactly its idle window (CUR-4535).
+        # and E2B paused the guest under a running attempt at exactly its idle window.
         sbx = await self._e2b.AsyncSandbox.connect(_sbx(h).sandbox_id, timeout=self._cfg.idle_for(h.tier),
                                                    **self._cfg.api(h.slot))
         reader, errs = asyncio.StreamReader(), asyncio.StreamReader()
@@ -728,7 +741,7 @@ class E2BBackend:
             yield reader, stdin_writer(handle.send_stdin, loop), proc
         finally:
             if proc.returncode is None:
-                # Bounded: a kill sent to a paused or unreachable guest otherwise never returns (CUR-4535).
+                # Bounded: a kill sent to a paused or unreachable guest otherwise never returns.
                 with contextlib.suppress(TimeoutError):
                     await asyncio.wait_for(handle.kill(), _TEARDOWN_SECS)
             await asyncio.wait({reaper}, timeout=_TEARDOWN_SECS)
@@ -744,7 +757,7 @@ class _AsyncProc:
 
 
 def stdin_writer(send: Callable[[bytes], Awaitable[object]], loop: asyncio.AbstractEventLoop) -> asyncio.StreamWriter:
-    """A real `asyncio.StreamWriter` whose bytes go to the guest's stdin through `send`, in order (CUR-4498).
+    """A real `asyncio.StreamWriter` whose bytes go to the guest's stdin through `send`, in order.
 
     acp 0.9.0, the version the service runs, refuses anything that is not an `asyncio.StreamWriter`. Writes queue on
     the transport, and the protocol stays paused until the queue is sent, so `drain()` returns only once the guest

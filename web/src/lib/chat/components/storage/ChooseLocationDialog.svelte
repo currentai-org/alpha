@@ -3,7 +3,7 @@
 	import { Button, Dialog, Inline, Radio, RadioGroup } from '@aipotluck/alpha-ds';
 	import { locationLabel, locationDetail, type LocationSummary } from './locationTypes';
 
-	// "Ask every time". Shown before an upload when the default is to ask. (CUR-2930)
+	// "Ask every time". Shown before an upload when the default is to ask.
 	interface Props {
 		open?: boolean;
 		locations: LocationSummary[];

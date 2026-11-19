@@ -4,12 +4,12 @@ import { superjsonResponse } from "./superjsonResponse";
 import { discloseToOwner } from "./noSecretFields";
 
 // The assertions that matter here are the `@ts-expect-error` lines: `pnpm check` fails when one of
-// them stops being an error, which is how a weakened guard shows up (CUR-2643).
+// them stops being an error, which is how a weakened guard shows up.
 type RegistryEntry = { id: string; endpoints: { baseURL: string; apiKey?: string }[] };
 const entry: RegistryEntry = { id: "m", endpoints: [{ baseURL: "https://example.org", apiKey: "k" }] };
 
 describe("NoSecretFields: a response may not carry a secret-named field", () => {
-	it("refuses the model registry entry's nested endpoints[].apiKey, the CUR-2643 leak", () => {
+	it("refuses the model registry entry's nested endpoints[].apiKey, the leak", () => {
 		// @ts-expect-error apiKey under endpoints[]
 		expect(() => superjsonResponse(entry)).not.toThrow();
 		// @ts-expect-error apiKey under endpoints[]

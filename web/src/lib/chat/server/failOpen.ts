@@ -1,7 +1,7 @@
 import { logger as defaultLogger } from "$lib/chat/server/logger";
 
 /**
- * Fail-open branches and the state each one is expected to be in (CUR-68).
+ * Fail-open branches and the state each one is expected to be in.
  *
  * Rerank, embeddings, guard screening, search and the agent stream all degrade instead of failing the
  * turn: the user gets a worse answer and a 200. Counting every fallback is noise, because many of them
@@ -9,11 +9,11 @@ import { logger as defaultLogger } from "$lib/chat/server/logger";
  * declares what it is SUPPOSED to do, and only a departure from that is recorded.
  *
  * A departure is one warn line carrying two top-level fields, `failopen` (the branch) and `reason`.
- * Count them from Axiom's `vercel` dataset, which every environment drains into; `aipotluck` holds
- * prod only, and has no `failopen` column until prod carries this file (CUR-2142):
+ * Count them from the log dataset every environment drains into; a second dataset holds
+ * prod only, and has no `failopen` column until prod carries this file:
  *
- *     ['vercel'] | where message contains '[failopen]' | extend p = parse_json(message)
- *       | summarize count() by bin_auto(_time), env = tostring(['vercel.environment']),
+ *     ['<log dataset>'] | where message contains '[failopen]' | extend p = parse_json(message)
+ *       | summarize count by bin_auto(_time), env = tostring(environment),
  *           failopen = tostring(p['failopen']), reason = tostring(p['reason'])
  *
  * Never put user text in `fields`. The call sites pass counts, status codes and event names only.

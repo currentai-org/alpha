@@ -27,13 +27,13 @@ export interface GroundcheckStageOptions {
 }
 
 /**
- * Groundcheck (CUR-2467) for every harness, in one place. It runs on the finished answer
- * AFTER the output screen and the honesty stream, at the FinalAnswer every producer ends on.
+ * Groundcheck (deleting the claims no retrieved source supports) for every harness, in one place.
+ * It runs on the finished answer AFTER the output screen and the honesty stream, at the FinalAnswer every producer ends on.
  *
  * @remarks Native and scaffolded turns share this one copy. A copy inside native generation would run
  * before the output screen, and the screen composes its FinalAnswer from the tokens it released, so
  * every deletion it made would be discarded. Deletion-only, so every word that
- * can ship has already cleared the screen. Never throws: groundcheckAnswer fails open. (CUR-2765)
+ * can ship has already cleared the screen. Never throws: groundcheckAnswer fails open.
  */
 export async function* groundcheckStage(
 	source: AsyncIterable<MessageUpdate>,
@@ -71,7 +71,7 @@ async function checkFinal(final: FinalAnswer, opts: GroundcheckStageOptions): Pr
 		return final;
 	}
 	opts.onOutcome(res.outcome, final.text.length, res.removed);
-	// A list that lost items says so under the answer (CUR-4489): its count and numbering now match
+	// A list that lost items says so under the answer: its count and numbering now match
 	// what is left, and the reader would otherwise never know the model offered more.
 	if (res.outcome === "revised" && res.items) {
 		const lang = await (opts.languageOf ?? declineLanguageOf)(text).catch(() => "en" as const);

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 /**
  * Title selection must never name a conversation after a moderation-declined (toxic / child-safety)
  * message. Title gen runs on a later clean turn, so it must not title from the FIRST user message: a
@@ -92,7 +95,7 @@ describe("looksLikeTitle", () => {
 	});
 
 	// On an agent-mode identity question ("what model are you and who made you?") the title
-	// call can ignore the instruction and return a full persona reply like this one. (CUR-593)
+	// call can ignore the instruction and return a full persona reply like this one.
 	it("rejects a fabricated persona answer instead of a title", () => {
 		expect(
 			looksLikeTitle(
@@ -101,7 +104,7 @@ describe("looksLikeTitle", () => {
 		).toBe(false);
 	});
 
-	// Live on preview, normal chat, unrelated to agent routing entirely. (CUR-593)
+	// The same failure in normal chat, with no agent routing involved.
 	it("rejects a fabricated normal-chat answer instead of a title", () => {
 		expect(
 			looksLikeTitle(
@@ -121,10 +124,10 @@ describe("looksLikeTitle", () => {
 	});
 
 	// Four real outputs of the title call ignoring the instruction and returning a full answer
-	// instead (CUR-542), kept verbatim rather than paraphrased, so a future change to the
+	// instead, kept verbatim rather than paraphrased, so a future change to the
 	// char/word thresholds is checked against the failures this guard exists to catch, not just
 	// the narrower examples above.
-	describe("CUR-542 repros — all four predate this guard, all four must stay rejected", () => {
+	describe("repros — all four predate this guard, all four must stay rejected", () => {
 		it("rejects the false 'I can't create files' claim on a turn that created one", () => {
 			expect(
 				looksLikeTitle(
@@ -166,7 +169,7 @@ describe("looksLikeTitle", () => {
  *
  * An assertion that "the title is not the first five words" fails the same way for a
  * deployment with titling off, for a reply that fails `looksLikeTitle`, for a thrown call, and for
- * a slow one, printing the same message every time. (CUR-1819)
+ * a slow one, printing the same message every time.
  */
 const PROMPT = "CUR-1686 F2 scenario: what is the capital of France";
 
@@ -179,7 +182,7 @@ describe("classifyTitle", () => {
 	});
 
 	it("does not report an off-task reply as a generation failure, because the product meant to do that", () => {
-		// CUR-593's case: the model answered the question instead of naming it. The fallback is
+		// The model answered the question instead of naming it. The fallback is
 		// correct behaviour, so the source names the shape of the reply rather than an error.
 		const answered =
 			"The capital of France is Paris, which has been the seat of government since 987.";
@@ -191,7 +194,7 @@ describe("classifyTitle", () => {
 
 	it("never shows a provider's leaked reasoning as the title", () => {
 		// A provider can answer a reasoning-off GLM call with its reasoning as plain
-		// content, cut off by the 24-token budget. This is such a reply. (CUR-2090)
+		// content, cut off by the 24-token budget. This is such a reply.
 		const leaked =
 			'The user is asking me to title a chat thread. The first (and only) user message is "How do I';
 		expect(classifyTitle(PROMPT, leaked)).toEqual({
@@ -238,7 +241,7 @@ describe("classifyTitle", () => {
 	});
 });
 
-// `null` is a failed side-call (ceiling or upstream error); a string is the model's reply. (CUR-2046)
+// `null` is a failed side-call (ceiling or upstream error); a string is the model's reply.
 describe("titleWithOneRetry", () => {
 	const scripted = (...results: (string | null)[]) => {
 		const attempt = vi.fn(async () => results.shift() ?? null);
@@ -267,7 +270,7 @@ describe("titleWithOneRetry", () => {
 });
 
 describe("titleRequest", () => {
-	it("sends Apertus one user message with no system role, since its pooled deployments refuse one (CUR-2175)", () => {
+	it("sends Apertus one user message with no system role, since its pooled deployments refuse one", () => {
 		const { messages, preprompt } = titleRequest("How do I reverse a string?", "swiss-ai/apertus-v1.5-70b");
 		expect(preprompt, "a preprompt becomes a system message on the wire").toBeUndefined();
 		expect(messages).toHaveLength(1);

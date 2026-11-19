@@ -6,6 +6,7 @@
 	import { Tabs } from '@aipotluck/alpha-ds';
 	import { xrayMessageId, xraySecondOpinion } from '$lib/chat/stores/stack';
 	import AnswerReceipt from './AnswerReceipt.svelte';
+	import PromptView from './PromptView.svelte';
 	import StackXRay from './StackXRay.svelte';
 	import StepByStep from './StepByStep.svelte';
 	import { answerFooterDelta, panelBodyShrink } from './xrayScroll';
@@ -27,11 +28,11 @@
 
 	let tab = $state('answer');
 	let panel: HTMLElement | undefined = $state();
-	// The tab bodies' height once the panel has given some back to the answer (CUR-3951), read by
+	// The tab bodies' height once the panel has given some back to the answer, read by
 	// xray-body through --xray-body-max; unset, they keep xray-body's own height.
 	let bodyMax: number | undefined = $state();
 
-	// An answer's Second opinion action (CUR-4187): show Step by step and bring its offer into view.
+	// An answer's Second opinion action: show Step by step and bring its offer into view.
 	$effect(() => {
 		if (!$xraySecondOpinion) return;
 		xraySecondOpinion.set(false);
@@ -58,8 +59,8 @@
 
 	// The panel opens by easing its height up, taking that height from the thread, so the answer's footer
 	// would slide under the panel's edge. While it opens, the thread scrolls to keep that footer, the line
-	// X-ray is checked against, above the thread's bottom fade (CUR-3951). On a short window scrolling
-	// stops at the answer's start (CUR-3934), so the tab bodies give back whatever height the footer is
+	// X-ray is checked against, above the thread's bottom fade. On a short window scrolling
+	// stops at the answer's start, so the tab bodies give back whatever height the footer is
 	// still short of, down to MIN_BODY_PX.
 	const OPENING_MS = 1000;
 	const FOOTER_CLEARANCE_PX = 40;
@@ -128,7 +129,7 @@
 	{:else}
 		<!-- Every tab's body is the same height (the panel's maximum, matching the stack map's), so X-ray
 	     opens at full height and never jumps as you switch tabs. On a short window that height shrinks,
-	     so the answer stays in view above the panel (xray-body, CUR-3934). -->
+	     so the answer stays in view above the panel (xray-body). -->
 		<Tabs.Root bind:value={tab} class="flex min-h-0 flex-1 flex-col">
 			<Tabs.List>
 				<Tabs.Tab value="answer">This answer</Tabs.Tab>
@@ -145,6 +146,10 @@
 						signedIn={Boolean(page.data.user)}
 						attachedFiles={asked?.files?.map((f) => f.name) ?? []}
 					/>
+					<!-- Once the answer is stored: the prompt is rebuilt from the saved chat. -->
+					{#if page.params.id && !(loading && answer === answers.at(-1))}
+						<PromptView conversationId={page.params.id} messageId={answer.id} />
+					{/if}
 				</div>
 			</Tabs.Panel>
 			<Tabs.Panel value="steps" class="min-h-0 flex-1">

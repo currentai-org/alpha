@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 /// <reference types="@sveltejs/kit" />
 /// <reference types="unplugin-icons/types/svelte" />
 
@@ -33,16 +36,11 @@ declare global {
 			/** User's IANA timezone for this turn, so the tool prompt can localize the time. */
 			timezone?: string;
 			/** This request minted its guest session (it arrived with no cookie, or one the server never
-			 *  issued). Read by routes that must not hand out a session, such as api/fetch-url (CUR-3191). */
+			 *  issued). Read by routes that must not hand out a session, such as api/fetch-url. */
 			guestSessionMinted?: boolean;
 			/** This render served a stand-in for the CMS (a snapshot, an older value, an empty nav), so the
-			 *  CDN may hold it only briefly (CUR-1597, `$lib/cache/cdn.ts`). */
+			 *  CDN may hold it only briefly (`$lib/cache/cdn.ts`). */
 			servedStandIn?: boolean;
-			/** Set only on /chat/api/v2/sync/*. `clientId` names the OAuth client whose sync token (CUR-4312)
-			 *  authenticated the request; `error` says why none did (401 or 403). */
-			sync?:
-				| { clientId: string; error?: undefined }
-				| { clientId?: undefined; error: 'unauthenticated' | 'not_permitted' };
 		}
 
 		interface Error {
@@ -50,10 +48,10 @@ declare global {
 			errorId?: ReturnType<typeof crypto.randomUUID>;
 			/** Stable machine-readable cause code, set by routes whose client needs to tell error
 			 *  causes apart rather than show one generic failure message for all of them (e.g.
-			 *  agent-confirm's flag-off vs ownership-mismatch vs not-found, CUR-779). Optional —
+			 *  agent-confirm's flag-off vs ownership-mismatch vs not-found). Optional —
 			 *  most routes only set `message`. */
 			reason?: string;
-			/** On a 429 that knows its window: whole seconds until a retry can pass (CUR-3216). */
+			/** On a 429 that knows its window: whole seconds until a retry can pass. */
 			retryAfterSeconds?: number;
 		}
 		/** Root-layout data every page carries (src/routes/+layout.server.ts). null when the gap map
@@ -94,7 +92,9 @@ declare global {
 	// Injected by Vite `define`: whether this build has copy edit mode (every build but Vercel production).
 	const __COPY_EDIT__: boolean;
 	// Injected by Vite `define` from APP_SURFACE: which app this build serves (src/lib/surface.ts).
-	const __APP_SURFACE__: 'site' | 'chat';
+	const __APP_SURFACE__: 'site' | 'chat' | 'site-only';
+	// Injected by Vite `define` from the deployment file: the keys it sets (src/lib/deployment.ts).
+	const __DEPLOYMENT__: Partial<import('$lib/deployment').Deployment>;
 }
 
 export {};

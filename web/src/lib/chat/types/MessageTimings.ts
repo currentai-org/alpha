@@ -31,20 +31,20 @@ export interface TurnSpans {
 	/** promptedAt → stream construction (the whole pre-stream stretch). Cumulative from request start. */
 	preStreamMs?: number;
 
-	// ── math routing (CUR-2065, CUR-2198) ────────────────────────────────────────────────────────
+	// ── math routing ────────────────────────────────────────────────────────
 	/** The turn planner's forced call (`planTurn`), timeout and failure paths included; present on every
 	 *  turn math routing planned, absent otherwise. It runs after preStream and before the generation
 	 *  pre-passes, so it sits outside every other stage. Its outcome is on the turn's `math-route` rung. */
 	turnPlanMs?: number;
-	/** The retired ledger call (`extractLedger`) on turns before CUR-2198; only the regex floor's turns
+	/** The retired ledger call (`extractLedger`) on turns; only the regex floor's turns
 	 *  carry it. Kept so `ttft-baseline` still reads those rows. */
 	mathLedgerMs?: number;
 
-	// ── native calculate tool (CUR-2273) ─────────────────────────────────────────────────────────
+	// ── native calculate tool ─────────────────────────────────────────────────────────
 	/** Summed over tool rounds: from the model's tool calls to the next request's response headers
 	 *  (evaluation is microseconds; the rest is the extra request). Absent when no round ran. */
 	calculateToolMs?: number;
-	/** The part of calculateToolMs spent running the tools (web search), summed over rounds. (CUR-4282) */
+	/** The part of calculateToolMs spent running the tools (web search), summed over rounds. */
 	toolRunMs?: number;
 	/** How many tool rounds this answer took. */
 	calculateToolRounds?: number;
@@ -90,11 +90,11 @@ export interface TurnSpans {
 	totalScreenMs?: number;
 	/** Wall-clock span of the whole output-screening phase. */
 	screenPhaseMs?: number;
-	/** Part of screenPhaseMs spent waiting for the model's first token, before the idle window opened
-	 *  (CUR-2243). Absent when no token arrived. */
+	/** Part of screenPhaseMs spent waiting for the model's first token, before the idle window opened.
+	 *  Absent when no token arrived. */
 	screenPreTokenWaitMs?: number;
 
-	// ── coop overlap (historical: written only before the overlap was retired, CUR-92) ──────────────
+	// ── coop overlap (historical: written only before the overlap was retired) ──────────────
 	/** Generation events produced INSIDE the Coop window and held until the verdict landed. This is the
 	 *  overlap actually achieved — every one is an event the serial ordering would still be waiting
 	 *  on. A turn that reports 0 overlapped nothing, whatever the flag said. */

@@ -59,7 +59,7 @@ test(
 		// Step 2: Search chats finds one by a word from its title, and choosing it opens that chat.
 		await journeyStep(page, 'C1', 2, async () => {
 			await page.locator('button:visible', { hasText: 'Search chats' }).first().click();
-			// The words travel in the body, never the URL, because request logs keep URLs (CUR-4546).
+			// The words travel in the body, never the URL, because request logs keep URLs.
 			const searched = page.waitForRequest((r) =>
 				new URL(r.url()).pathname.endsWith('/api/conversations/search')
 			);
@@ -302,7 +302,7 @@ async function contrastAgainstBackground(target: Locator): Promise<number> {
 // Inside the chat's design-system root the legacy bridge resolves gray-100/200/300 to
 // near-black in dark mode, so the dialog's `dark:text-gray-200` title read 1.07:1 on its panel.
 test(
-	"CUR-4218: the delete-conversation dialog's title, close × and Cancel label meet 4.5:1 contrast in dark mode",
+	"the delete-conversation dialog's title, close × and Cancel label meet 4.5:1 contrast in dark mode",
 	{ tag: ['@preview-only', '@C1', '@CUR-4218'] },
 	async ({ page }) => {
 		test.setTimeout(90_000);

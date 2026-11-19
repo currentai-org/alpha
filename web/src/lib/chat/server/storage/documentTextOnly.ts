@@ -1,4 +1,4 @@
-// A PDF or DOCX reduced to its text before anything is stored (CUR-987, `document-text-only`).
+// A PDF or DOCX reduced to its text before anything is stored (the `document-text-only` flag).
 //
 // The workaround for accounts `document-attachments` does not select: their pictures cannot be
 // hash-scanned yet, so none are kept. The server reads the document's text layer, and the turn
@@ -6,7 +6,7 @@
 // picture in them are dropped here, in memory, and never reach uploadFile or the bucket.
 //
 // Reading the text layer is still in-process parsing (unpdf's text content, mammoth's raw text),
-// with no image ever decoded. The sandboxed parser (CUR-2780) remains what gates guests.
+// with no image ever decoded. The sandboxed parser remains what gates guests.
 
 import { logger as defaultLogger } from "$lib/chat/server/logger";
 import { extractTextFromUpload, RagExtractError } from "$lib/chat/server/rag/extractFile";

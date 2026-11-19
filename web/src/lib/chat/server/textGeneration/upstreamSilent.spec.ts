@@ -3,8 +3,8 @@ import { NoFirstChunkError } from "$lib/chat/server/endpoints/failover";
 import { MessageUpdateType, type MessageUpdate } from "$lib/chat/types/MessageUpdate";
 import { upstreamSilentMessage, watchdogCountsTowardBusy, watchdogTimedOutMessage } from "./upstreamSilent";
 
-describe("upstreamSilentMessage (CUR-3939)", () => {
-	it("gives a last lane that never sent a first chunk the took-too-long sentence, naming the model (CUR-3295)", () => {
+describe("upstreamSilentMessage", () => {
+	it("gives a last lane that never sent a first chunk the took-too-long sentence, naming the model", () => {
 		expect(
 			upstreamSilentMessage(new NoFirstChunkError("no first chunk within 20000ms"), "Apertus 1.5 70B")
 		).toBe("Apertus 1.5 70B took too long to respond. Please try again.");
@@ -16,7 +16,7 @@ describe("upstreamSilentMessage (CUR-3939)", () => {
 	});
 });
 
-describe("watchdogTimedOutMessage (CUR-4107)", () => {
+describe("watchdogTimedOutMessage", () => {
 	const search = { type: MessageUpdateType.WebSearch } as unknown as MessageUpdate;
 	const token = { type: MessageUpdateType.Stream, token: "Hi" } as MessageUpdate;
 	const generic = "The request took too long to respond. Please try again.";
@@ -36,7 +36,7 @@ describe("watchdogTimedOutMessage (CUR-4107)", () => {
 	});
 });
 
-describe("watchdogCountsTowardBusy (CUR-4345)", () => {
+describe("watchdogCountsTowardBusy", () => {
 	const search = { type: MessageUpdateType.WebSearch } as unknown as MessageUpdate;
 	const silentTurn = {
 		updates: [search],
@@ -55,7 +55,7 @@ describe("watchdogCountsTowardBusy (CUR-4345)", () => {
 		expect(watchdogCountsTowardBusy({ ...silentTurn, firstTokenAt: new Date() })).toBe(false);
 	});
 
-	it("does not count a stall in our own tool step or in retrieval (CUR-4107), which is not the model's", () => {
+	it("does not count a stall in our own tool step or in retrieval, which is not the model's", () => {
 		expect(watchdogCountsTowardBusy({ ...silentTurn, updates: [search], generationUpdatesFrom: 0 })).toBe(false);
 		expect(watchdogCountsTowardBusy({ ...silentTurn, generationUpdatesFrom: undefined })).toBe(false);
 	});
@@ -70,14 +70,14 @@ describe("watchdogCountsTowardBusy (CUR-4345)", () => {
 	});
 });
 
-describe("the e2e grade's reading of these sentences (SOL-277)", () => {
+describe("the e2e grade's reading of these sentences", () => {
 	it("counts the named sentence as a model that never answered", async () => {
 		const { namesASilentModel } = await import("../../../../../e2e/scenarios/helpers/upstreamAdvisory");
 		const named = upstreamSilentMessage(new NoFirstChunkError("no first chunk"), "Apertus 1.5 70B");
 		expect(namesASilentModel(`Alpha\n${named}\nRetry`)).toBe(true);
 	});
 
-	it("never counts the generic sentence, which means our own step stalled (CUR-4107)", async () => {
+	it("never counts the generic sentence, which means our own step stalled", async () => {
 		const { namesASilentModel } = await import("../../../../../e2e/scenarios/helpers/upstreamAdvisory");
 		const search = { type: MessageUpdateType.WebSearch } as unknown as MessageUpdate;
 		expect(namesASilentModel(watchdogTimedOutMessage([search], 0, "Apertus 1.5 70B"))).toBe(false);

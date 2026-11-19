@@ -1,7 +1,7 @@
 // e2e-product: @site
 import { test, expect } from './helpers/test';
 
-// On every public page the header painted half-built for about a second (CUR-2269). The Products
+// On every public page the header painted half-built for about a second. The Products
 // chevron and the "Help us improve the map" icons were missing, the logo was missing, and the nav
 // label read differently once Plus Jakarta Sans arrived (the gallery's grader read it as "Gap Map"
 // becoming "GapMap"). The server HTML already had all of it: the chevron and the icons are glyphs

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import type { AbortedGeneration } from "$lib/chat/types/AbortedGeneration";
 import type { Message } from "$lib/chat/types/Message";
 import { MessageUpdateType } from "$lib/chat/types/MessageUpdate";
@@ -42,10 +45,10 @@ export function clampStoppedContent(opts: {
  * when there is nothing to clamp.
  *
  * Smooth mode paces received text onto the page, so Stop can still be on screen after the server
- * has stored the whole answer (CUR-2306). No abort path runs for a generation that already
+ * has stored the whole answer. No abort path runs for a generation that already
  * completed, so the clamp above never applies and the reload brings back text the user never saw.
  * This applies the same stop point after the fact: content and the stored FinalAnswer text both,
- * since the page renders a finished message from the latter (CUR-2300), and marks it interrupted.
+ * since the page renders a finished message from the latter, and marks it interrupted.
  *
  * The prefix a continue flow appended to is recovered from the FinalAnswer: content ends with that
  * answer's text, so everything before it predates the generation.

@@ -1,4 +1,4 @@
-# The guest image for a conversation's E2B sandbox (CUR-4482): Hermes at the service image's pin, with the same
+# The guest image for a conversation's E2B sandbox: Hermes at the service image's pin, with the same
 # local patches, plus the run-code tools' libraries. It carries no credential and no agent-service code; the
 # service drives Hermes over stdio and the sandbox host adds the gateway grant outside the guest.
 # Built by build.mjs on the E2B host's own template-manager. HERMES_SHA must equal deploy/Dockerfile's
@@ -27,7 +27,7 @@ RUN git init -q /opt/hermes \
     && python -m compileall -q -j 0 /opt/hermes
 # What chat's run-code tools and the agent prompt offer (sandbox_mcp.py's tool descriptions, app.py's
 # COMPUTATION_NOTE): guest-libraries.txt, E2B's standard code-interpreter list plus the office formats. The guest
-# has no route to PyPI, so a library missing here can't be installed by the agent (CUR-4106).
+# has no route to PyPI, so a library missing here can't be installed by the agent.
 COPY guest-libraries.txt /tmp/guest-libraries.txt
 # pip check: a pin here that breaks one of Hermes' own pins fails the build instead of changing Hermes underneath it.
 RUN pip install -r /tmp/guest-libraries.txt && rm /tmp/guest-libraries.txt && pip check

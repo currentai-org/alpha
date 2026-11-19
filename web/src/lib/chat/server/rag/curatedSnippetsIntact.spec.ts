@@ -33,7 +33,7 @@ describe("curated chunks reach the model whole", () => {
 		expect(chunks.length).toBeGreaterThan(0);
 	});
 
-	it("carries every authored policy fact in the committed index, so a fact added without a rebuild never reaches retrieval (CUR-3157)", () => {
+	it("carries every authored policy fact in the committed index, so a fact added without a rebuild never reaches retrieval", () => {
 		const indexed = new Set(chunks.map((c) => c.id?.split("#")[0]));
 		const missing = policyContext.map((f) => f.id).filter((id) => !indexed.has(id));
 		expect(missing).toEqual([]);

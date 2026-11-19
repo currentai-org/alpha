@@ -6,7 +6,7 @@
 // (`KEY=`), so Vite injects them into `process.env` as `""` — not undefined. Code that reads
 // `process.env.KEY ?? default` (COOP_BLOCK_ACTION_PREFIX, PG_POOL_MAX, the HF_TOKEN `??=`
 // fallback, …) then sees `""` and skips the default. Under vitest the setup file above deletes
-// these; vite-node runs no setup file, so this import does it. See CUR-142.
+// these; vite-node runs no setup file, so this import does it..
 //
 // This is a SIDE-EFFECT import: putting it FIRST in a vite-node entry deletes the blanks before
 // any later import evaluates its own top-level `process.env` reads. Enforced across all vite-node

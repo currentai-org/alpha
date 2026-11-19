@@ -15,7 +15,7 @@ import { rateLimitedResponse, requireLocationsAccess, storageFailure, writeOptio
 
 // Copy or move one file between two of this account's locations. Both ids go through
 // resolveLocation, so another account's location id is a 404 and a path outside a location is a 403,
-// exactly as for a download or a delete. (CUR-2931)
+// exactly as for a download or a delete.
 
 type TransferBody = { from?: unknown; to?: unknown; path?: unknown; mode?: unknown; ifNameTaken?: unknown };
 
@@ -35,7 +35,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		const from = await resolveLocation(accountId, field(body, "from"));
 		const to = await resolveLocation(accountId, field(body, "to"));
 		const opts = await writeOptions(request);
-		// keepBoth is for moving a batch (CUR-2941): a taken name never stops it or overwrites anything.
+		// keepBoth is for moving a batch: a taken name never stops it or overwrites anything.
 		const ifNameTaken = body.ifNameTaken === "keepBoth" ? "keepBoth" : "refuse";
 		const { path, outcome } = await transferFile(from, to, field(body, "path"), mode as TransferMode, opts, ifNameTaken);
 		return json({ ok: true, location: to.id, path, outcome });

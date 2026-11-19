@@ -14,7 +14,7 @@ const answer = (backend?: string, extra: Partial<Message> = {}): Message =>
 
 const lit = (m: Message) => provenanceTouch("sovereign-compute", provenanceFacts(m));
 
-describe("the sovereign-compute card lights only for a turn served on Swiss compute (CUR-1883)", () => {
+describe("the sovereign-compute card lights only for a turn served on Swiss compute", () => {
 	it("lights when the recorded backend is on the Swiss allowlist", () => {
 		expect(lit(answer("https://api.inference.cscs.ch/v1"))).toBe(true);
 	});

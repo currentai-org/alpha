@@ -40,14 +40,19 @@ read them for expected behaviour rather than running them on a fresh clone.
 
 - **Configuration has three homes.** Secrets and per-deployment values are environment variables, each
   declared in `web/config/env-manifest.mjs` with a one-line description; `web/.env.example` mirrors it.
+  For local runs put them in `web/.env.local`, the file `web/vite.config.ts` loads into `process.env`.
+  Platform and build-time variables (`VERCEL_ENV`, `ADAPTER`, `POSTGRES_URL`) are read directly.
   Models, roles and tuning are committed in `web/config/`. On/off switches are PostHog feature flags,
   listed in `web/src/lib/chat/server/flagKeys.ts`.
 - **A flag decides whether a feature is on; an env var is only what it needs to run.** Never treat a
   variable's presence as an on switch. `web/src/lib/chat/server/agentMode.ts` is the reference: the
   `agent-mode` flag gates it and `AGENT_SERVICE_URL` is just the address.
 - **Every flag has a code fallback.** Without PostHog each flag takes the value its call site passes to
-  `flagEnabledOr`, so the app runs, with most optional features off. Check that fallback before deciding a
-  feature is broken.
+  `flagEnabledOr`, so the app runs, with most optional features off. A per-account flag read through
+  `flagEnabledForUser` counts as off. Check that fallback before deciding a feature is broken.
+- **`DEPLOY_ENV` is not a label.** Setting it to `production` or `preview` makes moderation required,
+  replaces `MODEL_ALLOWLIST` with `web/config/picker.ts` and makes `TASK_MODEL` mandatory. Leave it unset
+  for local work.
 - **UI is built from the design system.** Use `@aipotluck/alpha-ds` components and its token utilities
   (`bg-surface-1`, `text-fg-2` and so on), never a hard-coded colour or radius. Change the look in
   `packages/alpha-ds/src/tokens/themes.ts`. `web/src/lib/chat/design-system.md` has the chat's rules.
@@ -61,14 +66,19 @@ read them for expected behaviour rather than running them on a fresh clone.
 
 ## Things that look wrong but are not
 
-- Comments cite tickets such as `CUR-123` from an internal tracker that is not public. Ignore them.
+- A few ticket ids from an internal tracker that is not public remain in code and data, such as test
+  tags and flag descriptions. Ignore them.
 - `web/` started as Hugging Face's chat-ui. Files derived from it stay under Apache-2.0
-  (`web/LICENSE.chat-ui`), and `web/UPSTREAM.md` maps their paths. Keep the licence headers.
+  (`web/LICENSE.chat-ui`); `THIRD_PARTY_NOTICES.md` lists them and `web/UPSTREAM.md` names the forked
+  directories. Keep any upstream headers that are present.
 - `routerMetadata` keeps chat-ui's name though Alpha fills it on every turn, router or not.
 - `web/src/lib/chat/server/rules-s1.json` and `web/src/lib/chat/server/data/guard-vectors.json` are
   placeholders. With them, the optional S1 safety judge has no policies, and the guard examples are
   embedded at run time instead of read from precomputed vectors.
-- `pnpm dev` wraps Vite in `doppler run`. If your values are in `web/.env`, run `pnpm exec vite dev`.
+- `web/src/lib/chat/server/rules.json` is the screening policy, not a detector. It is enforced only by the
+  Shieldstral guard (`guard-primary` flag and `GUARD_SHADOW_URL`); by default Coop is the screen.
+- `pnpm dev` is plain `vite dev` and reads `web/.env.local`. `pnpm db:migrate` reads only `process.env`: run
+  `node --env-file=.env.local scripts/db-migrate.mjs` instead.
 
 ## Swapping out a hosted service
 

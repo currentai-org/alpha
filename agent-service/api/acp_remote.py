@@ -1,4 +1,4 @@
-"""ACP↔HTTP shim — point a LOCAL Hermes/editor frontend at the HOSTED agent service.
+"""ACP↔HTTP shim — point a LOCAL Hermes/editor frontend at the HOSTED agent service (Story A).
 
 The `mcp-remote` analog for ACP. A thin local Agent Client Protocol server (stdio JSON-RPC) that forwards
 each prompt to the deployed service's `POST /run` and streams `GET /run/{id}/events` back as ACP
@@ -6,7 +6,7 @@ session_update notifications. It runs NOTHING locally: the plan, tool execution,
 metering, auth, and moderation all happen server-side. The editor just sees a normal ACP agent; the work is
 hosted + sovereign (Apertus-1.5 on CSCS).
 
-Pure transport translation to the remote HTTP service — the hosted-backend case ("we host the backend, you run Hermes/Zed
+Pure transport translation to the remote HTTP service — Story A ("we host the backend, you run Hermes/Zed
 locally") needs only this shim + a per-user token. (Hermes itself already speaks ACP natively for a purely
 local run; this file exists only to point that same editor UX at the HOSTED service instead.)
 
@@ -54,9 +54,9 @@ def _headers(machine_id: str | None = None) -> dict:
     if TOKEN:
         h["authorization"] = f"Bearer {TOKEN}"
     if machine_id:
-        # Pin follow-up requests to the machine that created the task — a multi-machine
+        # pin follow-up requests to the machine that created the task — a multi-machine
         # deploy has no session affinity by default, so an unpinned request can land on a machine
-        # that never saw the task and 404. (CUR-895)
+        # that never saw the task and 404.
         h["Fly-Force-Instance-Id"] = machine_id
     return h
 
@@ -124,8 +124,8 @@ class RemoteACPAgent:
             await self._send(session_id, acp.update_agent_message_text("error: service returned no task id"))
             return PromptResponse(stop_reason="end_turn")
         sess["task_id"] = rid
-        # The machine that created this task — a multi-machine deploy has no session affinity
-        # by default, so the /events open below is a SEPARATE request that must pin back to it. (CUR-895)
+        # the machine that created this task — a multi-machine deploy has no session affinity
+        # by default, so the /events open below is a SEPARATE request that must pin back to it.
         mid = submitted.get("machine_id")
         sess["machine_id"] = mid
 

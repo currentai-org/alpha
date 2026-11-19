@@ -38,7 +38,7 @@ describe("resolveOrganizationsState", () => {
 });
 
 describe("isSignedOut", () => {
-	test("only a 401 ends the page's workspace controls; a refusal or an outage leaves them (CUR-4108)", () => {
+	test("only a 401 ends the page's workspace controls; a refusal or an outage leaves them", () => {
 		expect(isSignedOut({ status: 401, message: "Unauthorized" })).toBe(true);
 		expect(isSignedOut({ status: 403, message: "Only an admin can do that" })).toBe(false);
 		expect(isSignedOut({ status: 500 })).toBe(false);
@@ -48,7 +48,7 @@ describe("isSignedOut", () => {
 });
 
 describe("pageErrorText", () => {
-	test('a 401 says the person is signed out, never Better Auth\'s bare "Unauthorized" (CUR-3280)', () => {
+	test('a 401 says the person is signed out, never Better Auth\'s bare "Unauthorized"', () => {
 		expect(pageErrorText({ status: 401, message: "Unauthorized" }, "Couldn't load that workspace.")).toBe(
 			SIGNED_OUT_COPY
 		);

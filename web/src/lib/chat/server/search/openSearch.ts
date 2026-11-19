@@ -13,6 +13,7 @@
 // A Google-scale open web index still does not exist — that stays an honest GAP
 // on the map, not something we fake.
 
+import { DEPLOYMENT } from "$lib/deployment";
 import { distillQuery } from "./distill";
 import { correctEntityQuery } from "./entityCorrection";
 import { entityNameCorrectionEnabled } from "$lib/chat/server/entityCorrectionGate";
@@ -44,8 +45,9 @@ import { shapeQueryForEngine } from "$lib/chat/search/shapeQuery";
 import type { OpenSearchResult, SearchEngine, SearchSource } from "$lib/chat/types/Search";
 import type { AssistedBy } from "$lib/chat/types/Message";
 import { buildWebEvidence } from "./webEvidence";
+import { parseExternalUrl } from "$lib/chat/utils/externalLink";
 import { isoDay, pageDateFromMetadata } from "./pageDate";
-import { extractReadableHtml, readableExtractEnabled } from "$lib/chat/server/rag/readableExtract";
+import { extractReadableHtml } from "$lib/chat/server/rag/readableExtract";
 import { readBoundedText } from "$lib/chat/server/rag/adminIngest";
 import { isValidUrlStrict, ssrfStrictFetch } from "$lib/chat/server/urlSafety";
 
@@ -59,7 +61,7 @@ export { buildWebEvidence };
 // only so rerankByRelevance (rerank.ts) has more to score than title+snippet. numberWebSources below
 // builds the final wire SearchSource explicitly, field by field, so this structurally cannot leak —
 // a future field added here needs no vigilance to keep it off the wire, the no-spread build already
-// drops anything it doesn't name. (CUR-78)
+// drops anything it doesn't name.
 export type SearchCandidate = Omit<SearchSource, "n"> & { rerankText?: string };
 
 /** Latches the "searched, but there is no reranker so nothing can be grounded" warn to once per
@@ -76,18 +78,18 @@ let warnedNoRerankerGrounding = false;
 export type WebSearchOutcome = OpenSearchResult & {
 	relevanceVerified: boolean;
 	timings?: WebTimings;
-	/** The query-rewrite model's entry, from its own response, when it answered (CUR-3563). */
+	/** The query-rewrite model's entry, from its own response, when it answered. */
 	rewriteAssist?: AssistedBy;
 };
 
-/** Where a web retrieval spent its time (CUR-2105). Server-local, like relevanceVerified: the chat route
+/** Where a web retrieval spent its time. Server-local, like relevanceVerified: the chat route
  *  spreads it onto the `[retrieval] timing` log line and it never reaches a wire type. `engineMs` is
  *  each engine's own settle time measured from the fan-out start, so the slowest one is `enginesMs`. */
 type WebTimings = {
 	rewriteMs?: number;
 	enginesMs: number;
 	engineMs: Record<string, number>;
-	/** Engines aborted by the post-Firecrawl grace window (CUR-2121), not failures. */
+	/** Engines aborted by the post-Firecrawl grace window, not failures. */
 	cutEngines?: string[];
 	rerankMs: number;
 	enrichMs: number;
@@ -105,19 +107,36 @@ function clamp01(v: number): number {
 	return v > 1 ? 1 : v;
 }
 
-const UA = "AIPotluck/0.1 (open-knowledge search; contact@aipotluck.org)";
+const UA = `${DEPLOYMENT.crawlerAgent} (open-knowledge search${DEPLOYMENT.contactEmail ? `; ${DEPLOYMENT.contactEmail}` : ""})`;
 
 // An engine's refusal (402 out of credit, 403 key revoked, 429 rate-limited) carries its
-// status as a field, so the "engine failed" line logs it and `axiom-alert.mjs` can count refusals per
-// engine. The message keeps its old `<url> → <status>` shape for anyone grepping by hand. (CUR-2597)
+// status as a field, so the "engine failed" line logs it and a log alert can count refusals per
+// engine. The message keeps a `<url> → <status>` shape for anyone reading it by hand.
+/** A request URL minus its query string and fragment. OpenAlex and others put the visitor's search
+ *  terms in `?search=`, and an Error message reaches the logs and error tracking, so it must never carry them. */
+function withoutQuery(url: string): string {
+	const cut = url.search(/[?#]/);
+	return cut === -1 ? url : url.slice(0, cut);
+}
+
 class EngineHttpError extends Error {
 	constructor(
 		url: string,
 		readonly status: number
 	) {
-		super(`${url} → ${status}`);
+		super(`${withoutQuery(url)} → ${status}`);
 		this.name = "EngineHttpError";
 	}
+}
+
+/** What an engine failure may put in a log line: the error's name, never `err` or its message,
+ *  which can carry the request URL and with it the visitor's query. */
+function engineErrorFields(err: unknown): { errName: string; status?: number } {
+	const status = httpStatusOf(err);
+	return {
+		errName: err instanceof Error ? err.name : typeof err,
+		...(status !== undefined ? { status } : {}),
+	};
 }
 
 function httpStatusOf(err: unknown): number | undefined {
@@ -151,7 +170,7 @@ async function postJSON(
 	headers?: Record<string, string>
 ): Promise<unknown> {
 	// Firecrawl is the only caller, and it bills per call. In a scenario run this replays a
-	// recording like a model call does; anywhere else it is plain fetch. (SOL-219)
+	// recording like a model call does; anywhere else it is plain fetch.
 	const res = await replayAwareFetch(url, {
 		method: "POST",
 		headers: { "User-Agent": UA, "Content-Type": "application/json", ...headers },
@@ -281,7 +300,7 @@ function isFringe(url: string): boolean {
 
 /** The date filter for the past-year half of a "latest" search. A year, because the latest
  *  of a thing that happens every few weeks or months (a central bank meeting, a race) is often more than
- *  a month old: for "the ECB's most recent rate meeting", qdr:y returns the latest decision where (CUR-3932)
+ *  a month old: for "the ECB's most recent rate meeting", qdr:y returns the latest decision where
  *  qdr:m returns an unrelated statement and no filter returns index pages. */
 const RECENCY_TBS = "qdr:y";
 
@@ -307,7 +326,7 @@ function interleaveRecentFirst(
 	return out;
 }
 
-/** One Firecrawl search for this turn. FIRECRAWL_TBS, when set, filters every search as before. Otherwise
+/** One Firecrawl search for this turn. FIRECRAWL_TBS, when set, filters every search. Otherwise
  *  a "latest" question runs a past-year and an unfiltered search side by side and interleaves them, so
  *  the date filter can lift recent pages without hiding the right older one. Either half failing leaves
  *  the other; both failing throws. */
@@ -317,10 +336,11 @@ async function searchFirecrawlForTurn(
 	latest: boolean,
 	signal?: AbortSignal
 ): Promise<SearchCandidate[]> {
-	if (config.FIRECRAWL_TBS || !latest) return searchFirecrawl(query, limit, signal, config.FIRECRAWL_TBS || undefined);
+	if (config.FIRECRAWL_TBS || !latest)
+		return searchFirecrawl(query, limit, signal, config.FIRECRAWL_TBS || undefined, "single");
 	const [recent, unfiltered] = await Promise.allSettled([
-		searchFirecrawl(query, limit, signal, RECENCY_TBS),
-		searchFirecrawl(query, limit, signal),
+		searchFirecrawl(query, limit, signal, RECENCY_TBS, "latest-recent"),
+		searchFirecrawl(query, limit, signal, undefined, "latest-unfiltered"),
 	]);
 	if (recent.status === "rejected" && unfiltered.status === "rejected") throw unfiltered.reason;
 	return interleaveRecentFirst(
@@ -337,23 +357,47 @@ async function searchFirecrawlForTurn(
 // `qdr:h|d|w|m|y` predefined ranges, combinable with `sbd:1`), it's applied to bias
 // results by recency — the structural fix for stale-source drift, since Firecrawl's
 // `web` results (like Marginalia's before it) never return a per-result publish date.
+const FIRECRAWL_DEFAULT_BASE = "https://api.firecrawl.dev";
+
+/** A Firecrawl v2 endpoint on `FIRECRAWL_BASE_URL` (a self-hosted Firecrawl), else on api.firecrawl.dev. */
+function firecrawlUrl(endpoint: "search" | "scrape"): string {
+	const base = (config.FIRECRAWL_BASE_URL ?? "").trim().replace(/\/+$/, "") || FIRECRAWL_DEFAULT_BASE;
+	return `${base}/v2/${endpoint}`;
+}
+
+/** Which of a turn's Firecrawl calls this is: the only one, or one half of a "latest" pair. Logged with
+ *  the call's elapsed time so a slow or aborted call can be told by shape. */
+type FirecrawlCallShape = "single" | "latest-recent" | "latest-unfiltered";
+
+/** A call that took this long is logged even when it answered, so the slow tail is readable from calls
+ *  that finished and not only from the ones the cap cut. */
+const FIRECRAWL_SLOW_CALL_MS = 6000;
+
 async function searchFirecrawl(
 	query: string,
 	limit: number,
 	signal?: AbortSignal,
-	tbs?: string
+	tbs?: string,
+	shape: FirecrawlCallShape = "single"
 ): Promise<SearchCandidate[]> {
 	const apiKey = config.FIRECRAWL_API_KEY;
 	if (!apiKey) {
 		throw new Error("FIRECRAWL_API_KEY not configured");
 	}
+	const startedAt = Date.now();
 	try {
 		const data = (await postJSON(
-			"https://api.firecrawl.dev/v2/search",
+			firecrawlUrl("search"),
 			{ query, limit, ...(tbs ? { tbs } : {}) },
 			signal,
 			{ Authorization: `Bearer ${apiKey}` }
 		)) as { data?: { web?: { url: string; title: string; description?: string }[] } };
+		const elapsedMs = Date.now() - startedAt;
+		if (elapsedMs >= FIRECRAWL_SLOW_CALL_MS)
+			logger.info(
+				{ elapsedMs, shape, limit, tbs: tbs ?? null, hits: data.data?.web?.length ?? 0, queryLength: query.length },
+				"[search] Firecrawl search call was slow"
+			);
 		return (data.data?.web ?? [])
 			.filter((r) => r.url && !isFringe(r.url))
 			.map((r) => ({
@@ -365,15 +409,24 @@ async function searchFirecrawl(
 				// snippet, not a full-page excerpt, just wide enough to usually keep a description's second
 				// clause intact. A description can be raw page markdown (a release list arriving as
 				// logo-image links), which leads the model to pair one row's company with the next row's
-				// model, so it is flattened to text first (CUR-2207).
+				// model, so it is flattened to text first.
 				snippet: inlineMarkdownToText(r.description ?? "").slice(0, 500),
 				engine: "Firecrawl" as const,
 			}));
 	} catch (err) {
-		// Length only, never the query text itself -- same house rule CUR-914 applied to
-		// entityCorrection.ts and rag/localStore.ts already follow (this logger ships to Axiom in prod). (CUR-918)
+		// Length only, never the query text itself: this logger ships to the log store, and
+		// entityCorrection.ts and rag/localStore.ts follow the same rule.
 		logger.warn(
-			{ err, status: httpStatusOf(err), queryLength: query.length },
+			{
+				...engineErrorFields(err),
+				queryLength: query.length,
+				// How long the call ran and what it asked for, so an abort at the cap can be told from a
+				// fast failure and a past-year half from an unfiltered one.
+				elapsedMs: Date.now() - startedAt,
+				shape,
+				limit,
+				tbs: tbs ?? null,
+			},
 			"[search] Firecrawl search call failed"
 		);
 		throw err;
@@ -382,7 +435,7 @@ async function searchFirecrawl(
 
 /** Markdown syntax → the text a reader sees, on one line. Images go; a link becomes its text; links
  *  that sit back to back (a listing's rows, each one link) get "; " between them, so one row's
- *  trailing label ("Anthropic•6d ago") does not run into the next row's name (CUR-2207). Bold
+ *  trailing label ("Anthropic•6d ago") does not run into the next row's name. Bold
  *  markers (`**` only; `__` is too often a dunder name), backslash line breaks and heading markers
  *  go. Only markdown's own syntax is touched, never the words. */
 function inlineMarkdownToText(text: string): string {
@@ -409,7 +462,7 @@ function inlineMarkdownToText(text: string): string {
 // zero benefit). `markdown` skips that step and returns well under 2.5s cold. We condense it
 // ourselves in markdownToExcerpt below instead of relying on Firecrawl's LLM summary.
 // `onlyMainContent` keeps a site's cookie consent banner, so a GOV.UK page's markdown opens on
-// "Cookies on GOV.UK" (its first 663 characters), which X-ray would quote as the source (CUR-4198). These
+// "Cookies on GOV.UK", which X-ray would quote as the source. These
 // selectors name the banner by its markup, never by its wording, so they hold in any language: GOV.UK's
 // design-system banner, the common class/id naming, and the OneTrust and Cookiebot consent managers.
 // With them, a GOV.UK statistics page's markdown opens on the page's own title.
@@ -453,7 +506,7 @@ async function enrichFirecrawlSnippet(
 ): Promise<{ snippet: string; asOf?: string } | undefined> {
 	try {
 		const data = (await postJSON(
-			"https://api.firecrawl.dev/v2/scrape",
+			firecrawlUrl("scrape"),
 			FIRECRAWL_SCRAPE(url),
 			signal,
 			{ Authorization: `Bearer ${config.FIRECRAWL_API_KEY}` }
@@ -465,7 +518,11 @@ async function enrichFirecrawlSnippet(
 		const asOf = pageDateFromMetadata(data.data?.metadata);
 		return { snippet: excerpt, ...(asOf ? { asOf } : {}) };
 	} catch (err) {
-		logger.warn({ err, url }, "[search] Firecrawl enrichment scrape failed — keeping original snippet");
+		// The status is logged beside the search call's, so one query counts Firecrawl 429s across both calls.
+		logger.warn(
+			{ url, ...engineErrorFields(err) },
+			"[search] Firecrawl enrichment scrape failed — keeping original snippet"
+		);
 		return undefined;
 	}
 }
@@ -473,7 +530,7 @@ async function enrichFirecrawlSnippet(
 // How much of a page the person linked the model gets to read. The 900-char enrichment
 // excerpt above is sized for citing a search hit; a "summarise this article" turn needs the body, and a
 // 500-char search snippet of that exact article leaves the model saying it can't read it.
-// About 2k tokens: a long article's argument, bounded so one link can't crowd out the conversation. (CUR-1897)
+// About 2k tokens: a long article's argument, bounded so one link can't crowd out the conversation.
 const LINKED_PAGE_CHARS = 8000;
 const LINKED_PAGE_TIMEOUT_MS = 8000;
 
@@ -481,22 +538,20 @@ const LINKED_PAGE_TIMEOUT_MS = 8000;
  *  and return it as a source candidate, or undefined when it can't be read — an error status, an empty
  *  page, a timeout, or no way to read it at all. Undefined never throws into the turn.
  *
- *  Firecrawl first. With `readable-extract` on (CUR-2152), a page Firecrawl can't read, or any page
- *  when there is no Firecrawl key, is fetched from this deployment and run through Readability.
+ *  Firecrawl first. A page Firecrawl can't read, or any page when there is no Firecrawl key, is fetched from this deployment and run through Readability.
  *  `skipFirecrawl` is the `linked_page_firecrawl_down` fault (faultInjection.ts), which is the only way
  *  to exercise that path on a preview that holds a key. */
 export async function fetchLinkedPage(
 	url: string,
 	opts: { skipFirecrawl?: boolean } = {}
 ): Promise<SearchCandidate | undefined> {
-	// House rule (CUR-918): this logger ships to Axiom, and a URL the person typed can carry a share
+	// This logger ships to the log store, and a URL the person typed can carry a share
 	// token or a signed query string, so only the host is ever logged.
 	const host = new URL(url).hostname;
 	if (config.FIRECRAWL_API_KEY && !opts.skipFirecrawl) {
 		const page = await scrapeLinkedPage(url, host);
 		if (page) return page;
 	}
-	if (!readableExtractEnabled()) return undefined;
 	return fetchLinkedPageDirect(url, host);
 }
 
@@ -505,7 +560,7 @@ async function scrapeLinkedPage(url: string, host: string): Promise<SearchCandid
 	const timer = setTimeout(() => controller.abort(), LINKED_PAGE_TIMEOUT_MS);
 	try {
 		const data = (await postJSON(
-			"https://api.firecrawl.dev/v2/scrape",
+			firecrawlUrl("scrape"),
 			FIRECRAWL_SCRAPE(url),
 			controller.signal,
 			{ Authorization: `Bearer ${config.FIRECRAWL_API_KEY}` }
@@ -530,7 +585,7 @@ async function scrapeLinkedPage(url: string, host: string): Promise<SearchCandid
 // The direct read runs on THIS deployment's network, unlike Firecrawl's, so it goes through
 // the same strict SSRF guard admin ingest uses (https only, no private or link-local address after DNS).
 // Its own budget, shorter than Firecrawl's: it only runs after Firecrawl has already failed or is absent,
-// and the turn is waiting on it. (CUR-2152)
+// and the turn is waiting on it.
 const LINKED_PAGE_DIRECT_TIMEOUT_MS = 5000;
 const LINKED_PAGE_DIRECT_MAX_BYTES = 2_000_000;
 
@@ -591,8 +646,8 @@ interface OpenAlexWork {
 	};
 	open_access?: { oa_url?: string | null };
 }
-/** OpenAlex reads `?` and `*` in `search` as wildcards and answers 400 to them (CUR-3833), so a
- * question-shaped query ("what is CRISPR?") returned nothing. Neither carries meaning for a
+/** OpenAlex reads `?` and `*` in `search` as wildcards and answers 400 to them, so a
+ * question-shaped query ("what is CRISPR?") would return nothing. Neither carries meaning for a
  * full-text search, so drop them. */
 function openAlexSearchText(query: string): string {
 	return query.replace(/[?*]/g, " ").replace(/\s+/g, " ").trim();
@@ -608,7 +663,8 @@ async function searchOpenAlex(
 	const u = new URL("https://api.openalex.org/works");
 	u.searchParams.set("search", text);
 	u.searchParams.set("per-page", String(limit));
-	u.searchParams.set("mailto", "contact@aipotluck.org"); // polite pool (no key needed)
+	// OpenAlex's polite pool (no key needed) is for a request that names a contact.
+	if (DEPLOYMENT.contactEmail) u.searchParams.set("mailto", DEPLOYMENT.contactEmail);
 	const data = (await getJSON(u.toString(), signal)) as { results?: OpenAlexWork[] };
 	return (data.results ?? [])
 		.filter((w) => w.title?.trim())
@@ -623,7 +679,7 @@ async function searchOpenAlex(
 				.slice(0, 360);
 			const url = w.doi || w.primary_location?.landing_page_url || w.open_access?.oa_url || w.id;
 			// The snippet drops venue whenever an abstract exists (see snippet above) — the
-			// reranker gets both, uncapped here (rerank.ts's own 1200-char cap applies at scoring time). (CUR-78)
+			// reranker gets both, uncapped here (rerank.ts's own 1200-char cap applies at scoring time).
 			const rerankText = [venue, abstract].filter(Boolean).join(" · ") || undefined;
 			return {
 				title: (w.title ?? "").trim(),
@@ -707,7 +763,7 @@ async function searchHuggingFace(
 				.join(" · ");
 			// The snippet caps library tags at 4 and never includes the id path — the id itself
 			// carries query-relevant terms (org/model-name) the thin snippet doesn't. Full tag list here,
-			// uncapped (rerank.ts's own 1200-char cap applies at scoring time). (CUR-78)
+			// uncapped (rerank.ts's own 1200-char cap applies at scoring time).
 			const rerankText =
 				[m.id, m.pipeline_tag, (m.tags ?? []).join(", ")].filter(Boolean).join(" · ") || undefined;
 			return {
@@ -747,10 +803,10 @@ export type WebRetrieval = {
 	asOf: string;
 	relevanceVerified: boolean;
 	timings?: WebTimings;
-	/** Set only when the source-credibility-filter flag is on (CUR-2423): how many candidates the host
+	/** Set only when the source-credibility-filter flag is on: how many candidates the host
 	 *  screen kept and dropped before the rerank. Server-local; numberWebSources reads it. */
 	credibility?: CredibilityScreen;
-	/** The query-rewrite model's entry, from its own response, when it answered (CUR-3563). */
+	/** The query-rewrite model's entry, from its own response, when it answered. */
 	rewriteAssist?: AssistedBy;
 };
 
@@ -768,19 +824,19 @@ export type RetrieveWebOpts = {
 	/** Firecrawl-specific cap, independent of perEngineTimeoutMs and NOT clamped to timeoutMs — see
 	 *  DEFAULT_FIRECRAWL_TIMEOUT_MS below for why it needs its own, longer budget. */
 	firecrawlTimeoutMs?: number;
-	/** How long the other engines may keep running once primary Firecrawl has returned results
-	 *  (CUR-2121). See DEFAULT_AFTER_FIRECRAWL_GRACE_MS. */
+	/** How long the other engines may keep running once primary Firecrawl has returned results.
+	 *  See DEFAULT_AFTER_FIRECRAWL_GRACE_MS. */
 	afterFirecrawlGraceMs?: number;
 	recency?: boolean;
 	/** The person wants the latest of something (asksForTheLatest): Firecrawl adds a past-year search. */
 	latest?: boolean;
 	rawSignals?: Set<SearchIntent>;
 	preShaped?: boolean;
-	/** Threaded through to the entity-name correction branch's model call (CUR-877) — same
+	/** Threaded through to the entity-name correction branch's model call — same
 	 *  App.Locals every other side-call in this subtree takes. Undefined is fine; the correction
 	 *  call degrades the same way any other side-call does without it. */
 	locals?: App.Locals;
-	/** Written as the leg moves, so a caller that gives up on it can say where it was (CUR-4089). */
+	/** Written as the leg moves, so a caller that gives up on it can say where it was. */
 	progress?: WebProgress;
 };
 
@@ -794,19 +850,22 @@ export type WebProgress = {
 // Firecrawl is a live web crawl, not a fast static-index lookup like the other engines here, and
 // routinely takes longer than the shared perEngineTimeoutMs meant to protect against a genuinely-
 // stalled FAST engine (that cap's own comment at the call site names arXiv as the usual offender).
-// Cold /v2/search calls range from under 1s to about 9s, so a 4.5s shared budget aborts many of
-// them (CUR-633). Firecrawl therefore gets its own longer cap and does not follow the master abort that
+// Cold /v2/search calls can take several seconds, so a short shared budget would abort many of
+// them. Firecrawl therefore gets its own longer cap and does not follow the master abort that
 // bounds the fast engines (see followMaster in runEngine below). Promise.allSettled already waits for
 // it regardless, and the retrieval heartbeat (conversation/[id]/+server.ts) keeps the client's
-// first-token watchdog from firing during a legitimately-slow retrieval. This matches /api/search's
-// own 9000ms timeoutMs, which never overrides perEngineTimeoutMs down from it.
-const DEFAULT_FIRECRAWL_TIMEOUT_MS = 9000;
+// first-token watchdog from firing during a legitimately-slow retrieval.
+//
+// 11s, because a Firecrawl call near the cap is usually a slow answer, not a lost one. The leg's own
+// deadline is 15s (WEB_RETRIEVAL_DEADLINE_MS in runSearch.ts), and the rerank after the fan-out is
+// short, so 11s leaves the rest of the leg its room.
+const DEFAULT_FIRECRAWL_TIMEOUT_MS = 11_000;
 
 // Once primary Firecrawl returns results, the other engines get this long to finish before the master
-// controller cuts them (CUR-2121). Firecrawl supplies nearly every source an answer cites, while the
-// slowest fast engine (arXiv, p90 about 3.5s) would otherwise set the whole fan-out's end. The entity-correction branch
+// controller cuts them. Firecrawl supplies nearly every source an answer cites, while the
+// slowest fast engine (often arXiv) would otherwise set the whole fan-out's end. The entity-correction branch
 // does not follow the master abort, so it still runs to firecrawlCap. An empty Firecrawl result arms
-// nothing, and every engine runs to its own cap as before.
+// nothing, and every engine runs to its own cap.
 const DEFAULT_AFTER_FIRECRAWL_GRACE_MS = 300;
 
 /** Assign community-first citation numbers (`startAt+1 …`) to reranked hits and build the matching
@@ -816,13 +875,15 @@ export function numberWebSources(
 	merged: SearchCandidate[],
 	startAt: number,
 	/** WebRetrieval.credibility. When present the screen ran: label official and academic sources, and
-	 *  warn the model when it left too few (CUR-2423). */
+	 *  warn the model when it left too few. */
 	credibility?: CredibilityScreen
 ): { sources: SearchSource[]; evidence: string } {
 	// Explicit no-spread build — names every wire field, so a server-local-only field on
 	// SearchCandidate (rerankText today, whatever's added next) can never cross into the client- and
-	// model-facing SearchSource just by riding along in a `{...s}` spread. (CUR-78)
-	const sources: SearchSource[] = merged.map((s, i) => ({
+	// model-facing SearchSource just by riding along in a `{...s}` spread.
+	// A source URL is third-party metadata and becomes a clickable citation, so anything but an
+	// absolute http(s) URL without credentials is dropped before it can take a number.
+	const sources: SearchSource[] = merged.filter((s) => parseExternalUrl(s.url) !== undefined).map((s, i) => ({
 		n: startAt + i + 1,
 		title: s.title,
 		url: s.url,
@@ -891,8 +952,8 @@ export async function retrieveWeb(query: string, opts: RetrieveWebOpts = {}): Pr
 		}
 		const t = setTimeout(() => child.abort(), capMs);
 		// The cap settles the engine itself rather than trusting the fetch to honour its abort: an
-		// engine call can stay pending well past its cap and hold the fan-out until the leg deadline
-		// (CUR-4089). A fetch that does honour it rejects the same way, a moment earlier.
+		// engine call can stay pending well past its cap and hold the fan-out until the leg deadline.
+		// A fetch that does honour it rejects the same way, a moment earlier.
 		const cut = new Promise<never>((_, reject) => {
 			if (child.signal.aborted) reject(child.signal.reason);
 			else child.signal.addEventListener("abort", () => reject(child.signal.reason), { once: true });
@@ -911,7 +972,7 @@ export async function retrieveWeb(query: string, opts: RetrieveWebOpts = {}): Pr
 	// real empty search produces. Tag each engine's failure with its name and log it HERE,
 	// at the source, so `allSettled` only ever sees fulfilled promises and nothing downstream can lose
 	// the reason. A "not configured" message gets its own louder line — that class is an environment
-	// bug, not the search having an off day, and the two need to read differently in Axiom.
+	// bug, not the search having an off day, and the two need to read differently in the logs.
 	let failedEngines = 0;
 	const engineMs: Record<string, number> = {};
 	const cutEngines: string[] = [];
@@ -937,7 +998,7 @@ export async function retrieveWeb(query: string, opts: RetrieveWebOpts = {}): Pr
 			progress?.pending.delete(name);
 		}).catch((err) => {
 			// Cut by the post-Firecrawl grace window: the turn already has its sources, so this is a
-			// decision, not a failure, and it must not read as one in Axiom. Only the abort itself counts;
+			// decision, not a failure, and it must not read as one in the logs. Only the abort itself counts;
 			// an engine that fails for its own reason inside the window still logs as a failure.
 			if (graceCut && (err as { name?: unknown } | null)?.name === "AbortError") {
 				cutEngines.push(name);
@@ -946,11 +1007,11 @@ export async function retrieveWeb(query: string, opts: RetrieveWebOpts = {}): Pr
 			failedEngines++;
 			const misconfigured = err instanceof Error && /not configured/i.test(err.message);
 			if (misconfigured) {
-				logger.error({ engine: name, err }, "[search] engine unavailable — misconfigured, not empty");
-				void captureServerException(err, { routeId: `search-engine:${name}` });
+				logger.error({ engine: name, ...engineErrorFields(err) }, "[search] engine unavailable — misconfigured, not empty");
+				void captureServerException(new Error(`${name} engine unavailable (misconfigured)`), { routeId: `search-engine:${name}` });
 			} else {
 				logger.warn(
-					{ engine: name, status: httpStatusOf(err), err },
+					{ engine: name, ...engineErrorFields(err) },
 					"[search] engine failed — contributing zero results"
 				);
 			}
@@ -992,7 +1053,7 @@ export async function retrieveWeb(query: string, opts: RetrieveWebOpts = {}): Pr
 					)
 				)
 			);
-			// Entity-name correction (CUR-877): fires ALONGSIDE the primary Firecrawl call, sharing its
+			// Entity-name correction: fires ALONGSIDE the primary Firecrawl call, sharing its
 			// budget and its followMaster=false exemption, rather than as a sequential pre-check that
 			// would tax every search with its own model-call latency. Only worth attempting when
 			// Firecrawl is actually configured — with no key, searchFirecrawl throws immediately
@@ -1000,7 +1061,7 @@ export async function retrieveWeb(query: string, opts: RetrieveWebOpts = {}): Pr
 			// running the model call anyway would be pure waste (see entityCorrection.ts).
 			//
 			// Also gated on entityNameCorrectionEnabled() (default-on fallback, see
-			// entityCorrectionGate.ts). (CUR-917)
+			// entityCorrectionGate.ts).
 			if (config.FIRECRAWL_API_KEY && entityNameCorrectionEnabled()) {
 				engines.push(
 					namedEngine(
@@ -1042,7 +1103,7 @@ export async function retrieveWeb(query: string, opts: RetrieveWebOpts = {}): Pr
 
 		// The host screen runs BEFORE the rerank, so a removed forum or low-credibility page can
 		// never be refilled into the top-K when too few good pages survive. Too few reaches the model as
-		// a thin-evidence note (numberWebSources) and is never topped up. (CUR-2423)
+		// a thin-evidence note (numberWebSources) and is never topped up.
 		let credibility: CredibilityScreen | undefined;
 		if (flagEnabledOr(SOURCE_CREDIBILITY_FLAG, () => false)) {
 			const screened = screenSources(merged);
@@ -1098,7 +1159,7 @@ export async function retrieveWeb(query: string, opts: RetrieveWebOpts = {}): Pr
 			merged = rr.items;
 			relevanceVerified = rr.verified;
 			if (merged.length === 0 && before > 0) {
-				// Length only, never the query text -- see the note at the Firecrawl catch above. (CUR-918)
+				// Length only, never the query text -- see the note at the Firecrawl catch above.
 				logger.info(
 					{ queryLength: searchQuery.length, retrieved: before, verified: rr.verified },
 					"[search] no sources survived reranking — answering ungrounded (no fabricated citations)"
@@ -1123,7 +1184,7 @@ export async function retrieveWeb(query: string, opts: RetrieveWebOpts = {}): Pr
 			// between requests, and in an environment where it holds it would otherwise fire on every
 			// searched turn.
 			warnedNoRerankerGrounding = true;
-			// Length only, never the query text -- see the note at the Firecrawl catch above. (CUR-918)
+			// Length only, never the query text -- see the note at the Firecrawl catch above.
 			logger.warn(
 				{ queryLength: searchQuery.length, retrieved: merged.length },
 				"[search] no reranker configured (RERANK_MODEL unset) — retrieved sources cannot be relevance-verified, so this and every searched turn answers UNGROUNDED. Not a cold reranker; there isn't one."
@@ -1178,8 +1239,8 @@ export async function retrieveWeb(query: string, opts: RetrieveWebOpts = {}): Pr
 				});
 			}
 
-			// There is no prompt-injection classifier on retrieved content: the one available could not
-			// separate benign text from an attack (CUR-54). Retrieved content reaches the model only as
+			// There is no prompt-injection classifier on retrieved content: the classifiers tried could not
+			// reliably separate benign text from an attack. Retrieved content reaches the model only as
 			// fenced, cited evidence (buildWebEvidence above), never as instructions.
 		}
 

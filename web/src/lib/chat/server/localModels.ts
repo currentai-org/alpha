@@ -10,7 +10,7 @@
  * TTL (see `LOCAL_MODELS_CACHE_TTL_MS`) so the common per-request call sites (turn resolution, settings
  * validation) don't each pay a live round trip to the user's own machine — only a cache miss/expiry does,
  * which in practice means "whenever the user opens the settings page or the picker after the TTL has
- * lapsed," per CUR-1194's own ask.
+ * lapsed," per the ask.
  *
  * `getEffectiveModels`/`getEffectiveValidModelIdSchema` are the two things every call site that reads
  * the global `models` array or the module-level `validModelIdSchema` for a LIVE request should read
@@ -44,7 +44,7 @@ import {
 
 export const LOCAL_MODEL_ID_PREFIX = "local:";
 
-// A user can now have more than one local endpoint (CUR-1262), so the internal model id has to say
+// A user can now have more than one local endpoint, so the internal model id has to say
 // WHICH endpoint a discovered model came from — two servers can both report "llama3.2:latest", and
 // without this they'd collide (same picker entry, same {#each} key, ambiguous which server a turn
 // actually goes to). `newId()` (db/ids.ts) is a fixed-width 24-hex-char id, so a FIXED offset — not a
@@ -57,7 +57,7 @@ function buildLocalModelId(endpointId: string, servedModelId: string): string {
 }
 
 /** Inverse of buildLocalModelId — null for anything that isn't shaped like a local model id at all
- *  (a catalog id, garbage, or a local id from before CUR-1262's endpoint-namespacing). */
+ *  (a catalog id, garbage, or a local id from before the endpoint-namespacing). */
 function parseLocalModelId(modelId: string): { endpointId: string; servedModelId: string } | null {
 	if (!modelId.startsWith(LOCAL_MODEL_ID_PREFIX)) return null;
 	const rest = modelId.slice(LOCAL_MODEL_ID_PREFIX.length);
@@ -72,12 +72,11 @@ function parseLocalModelId(modelId: string): { endpointId: string; servedModelId
 // fetched from server-side. It turns what the UI's placeholder asks for ("http://localhost:11434", no
 // path) into the OpenAI-compatible base this table stores ("http://localhost:11434/v1"), and it refuses
 // an address the server must not reach.
-// (CUR-1262)
 // Outside local development that means every private address (localhost, loopback, RFC1918,
 // link-local, ULA and their IPv4-mapped forms). On a hosted deployment a private address names the
 // host's own network, never the visitor's machine; a visitor's own server is reached through a managed
 // (tunnel) endpoint instead. The cloud-metadata address is refused everywhere. This check reads the
-// typed hostname only, so localEndpointFetch repeats it on the resolved address at connect time. (CUR-3387)
+// typed hostname only, so localEndpointFetch repeats it on the resolved address at connect time.
 const CLOUD_METADATA_HOST = "169.254.169.254";
 
 /** True when `input` parses but names an address this deployment refuses (see above). */
@@ -127,12 +126,18 @@ interface LocalModelsCacheEntry {
 
 const localModelsCache = new Map<string, LocalModelsCacheEntry>();
 const localModelsInFlight = new Map<string, Promise<string[]>>();
+/** Endpoints whose last fetch failed. An unreachable endpoint is the visitor's own device being off,
+ *  not our defect, and the settings page re-polls it every ~10 s, so only the reachable-to-unreachable
+ *  transition is logged (info); each repeat is debug. A success removes the entry, so the next outage
+ *  logs again. */
+const localEndpointsDown = new Set<string>();
 
 /** Test-only: clears the module-level cache/in-flight state so specs don't leak a fetched model list
  *  (or a pending fetch) from one test into the next. Not called anywhere in production code. */
 export function __resetLocalModelsCacheForTests(): void {
 	localModelsCache.clear();
 	localModelsInFlight.clear();
+	localEndpointsDown.clear();
 }
 
 /** `endpoint.headers` (the settings UI's custom-header list) as a plain string→string record for a
@@ -165,7 +170,7 @@ async function fetchLocalModelIds(baseUrl: string, headers?: Record<string, stri
 }
 
 /** Cached, deduped model-id list for a given local endpoint. Cache key is `baseUrl` alone, as before
- *  CUR-1291 — two DIFFERENT rows pointing at the same baseUrl with different headers would share a
+ *  two DIFFERENT rows pointing at the same baseUrl with different headers would share a
  *  cache entry fetched with whichever row's headers won the race; not a new limitation (two rows
  *  sharing a baseUrl was already an unmodeled edge case) and not worth a compound key for.
  *
@@ -190,13 +195,18 @@ async function getCachedLocalModelIds(
 	const fetchPromise = fetchLocalModelIds(baseUrl, headers)
 		.then((modelIds) => {
 			localModelsCache.set(baseUrl, { modelIds, fetchedAt: Date.now() });
+			localEndpointsDown.delete(baseUrl);
 			return modelIds;
 		})
 		.catch((err) => {
-			logger.warn(
-				{ err: err instanceof Error ? err.message : String(err), baseUrl },
-				"[localModels] Failed to fetch model list from local endpoint"
-			);
+			const fields = { err: err instanceof Error ? err.message : String(err), baseUrl };
+			const message = "[localModels] Failed to fetch model list from local endpoint";
+			if (localEndpointsDown.has(baseUrl)) {
+				logger.debug(fields, message);
+			} else {
+				localEndpointsDown.add(baseUrl);
+				logger.info(fields, message);
+			}
 			return cached?.modelIds ?? [];
 		})
 		.finally(() => {
@@ -216,7 +226,7 @@ async function getCachedLocalModelIds(
  *
  *  A success also updates the SAME shared cache `getCachedLocalModelIds` reads, so a health-check
  *  poll doubles as a free model-list refresh (the Settings UI's ~10s poll interval is shorter than
- *  `LOCAL_MODELS_CACHE_TTL_MS`) rather than the picker paying a second, separate round trip to the (CUR-1267)
+ *  `LOCAL_MODELS_CACHE_TTL_MS`) rather than the picker paying a second, separate round trip to the
  *  user's own server moments later. */
 export async function checkLocalEndpointModels(
 	baseUrl: string,
@@ -224,6 +234,7 @@ export async function checkLocalEndpointModels(
 ): Promise<string[]> {
 	const modelIds = await fetchLocalModelIds(baseUrl, headers);
 	localModelsCache.set(baseUrl, { modelIds, fetchedAt: Date.now() });
+	localEndpointsDown.delete(baseUrl);
 	return modelIds;
 }
 
@@ -237,7 +248,7 @@ export async function checkLocalEndpointModels(
  *  the user and the id sent on the wire differ whenever more than one model sits behind an endpoint.
  *
  *  `endpoint` (not just its baseUrl) is threaded through so the internal `id` can be namespaced by
- *  endpoint (CUR-1262) — see buildLocalModelId's header comment for why that's load-bearing once a
+ *  endpoint — see buildLocalModelId's header comment for why that's load-bearing once a
  *  user can have more than one server. It also lets `name`/`displayName` read `${label}:${modelId}`
  *  (e.g. "nx16g:llama3.2:latest") instead of the bare served tag — the SAME disambiguation problem as
  *  the internal id: two endpoints can report the same wire model tag, and the label is the only thing
@@ -250,7 +261,7 @@ export async function checkLocalEndpointModels(
  *  `endpoint.headers` (the settings UI's "Advanced Options" custom-header list, via
  *  `headersRecord` above) is passed straight through as `defaultHeaders` — an EXISTING endpointOai.ts
  *  field (already used by modelsCatalog.ts's own backup-lane `X-HF-Bill-To`), which the OpenAI SDK
- *  attaches to every generation request it makes through this client. No new plumbing needed for the (CUR-1291)
+ *  attaches to every generation request it makes through this client. No new plumbing needed for the
  *  generation path: this is the one place a local endpoint's config becomes an actual `Endpoint`. */
 async function buildLocalProcessedModel(
 	endpoint: LocalInferenceEndpointRow,
@@ -266,7 +277,7 @@ async function buildLocalProcessedModel(
 		// A local/LAN OpenAI-compatible server (Ollama et al.) needs no key, and a server that does takes
 		// it as a custom header (e.g. "Authorization: Bearer …"), see defaultHeaders above. The apiKey is
 		// set explicitly because endpointOai's zod default is OPENAI_API_KEY, our gateway key, which would
-		// otherwise go to the user's URL as the bearer token on every turn (CUR-3177).
+		// otherwise go to the user's URL as the bearer token on every turn.
 		endpoints: [
 			{
 				type: "openai" as const,
@@ -286,7 +297,7 @@ async function buildLocalProcessedModel(
 		isRouter: false as boolean,
 		hasInferenceAPI: false,
 		// Carried through to the client so the composer can say which route a message took -- a
-		// managed endpoint goes through the tunnel, a direct one does not (CUR-3037).
+		// managed endpoint goes through the tunnel, a direct one does not.
 		localEndpointKind: endpoint.kind === "managed" ? ("managed" as const) : ("direct" as const),
 	} as ProcessedModel;
 }
@@ -332,7 +343,7 @@ export async function getEffectiveValidModelIdSchema(locals: App.Locals): Promis
 	return z.string().refine((v) => ids.has(v), "Invalid model id");
 }
 
-// CUR-1194 timeout audit: a cold Ollama-style instance pays real, unbounded model-LOAD time before it
+// timeout audit: a cold Ollama-style instance pays real, unbounded model-LOAD time before it
 // can answer at all — indistinguishable from a hang to the generation watchdog (see
 // deadlineLadder.ts's DEFAULT_LOCAL_GENERATION_TIMEOUT_MS). Raising the watchdog's patience (option 1)
 // only helps once the load has started; this (option 2) tries to make sure it already has, by the time
@@ -363,7 +374,7 @@ const OLLAMA_PREWARM_TIMEOUT_MS = DEFAULT_LOCAL_GENERATION_TIMEOUT_MS;
  * instance not yet accepting connections) just logs and gives up — this is a latency optimization for
  * OUR OWN cold-start problem, never a dependency a turn can fail on.
  *
- * `headers` (CUR-1291, see `headersRecord`) hits the SAME server as the generation call this preloads
+ * `headers` (see `headersRecord`) hits the SAME server as the generation call this preloads
  * for, so a server behind auth needs them here too — a preload that 401s just means the FIRST real
  * turn pays the cold-start cost this call exists to avoid, not a broken turn.
  */

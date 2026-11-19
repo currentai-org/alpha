@@ -1,6 +1,6 @@
 <script lang="ts">
 	// The EU AI Act's Article 50 requires telling a person AT FIRST INTERACTION that they're talking
-	// to an AI (CUR-996). WelcomeModal covers that for the normal empty-composer path, but it's gated
+	// to an AI. WelcomeModal covers that for the normal empty-composer path, but it's gated
 	// on `!shared && messages.length === 0`, and a shared conversation almost always arrives WITH
 	// messages, so that gate never fires for it ("Shared conversation views never show it," per
 	// ChatWindow.svelte). Someone opening a shared link is having a genuine first interaction with
@@ -12,7 +12,7 @@
 	// convention as ChatShell.svelte's SESSION_STARTED_KEY.
 	//
 	// Not yet localized into the person's language, like WelcomeModal; that remainder is tracked on
-	// CUR-996.
+	//.
 	import { browser } from '$app/environment';
 	import RiRobot from '~icons/ri/robot-line';
 	import RiCloseLine from '~icons/ri/close-line';

@@ -3,7 +3,7 @@ import { parseRange } from "../journeyGallery";
 
 // The video route must answer Range requests, or Chrome cannot seek and every
 // tile previews a blank first frame. These pin the
-// Range forms Chrome sends when a tile starts at `#t=1.5`. (CUR-1646)
+// Range forms Chrome sends when a tile starts at `#t=1.5`.
 describe("parseRange — the byte range a gallery video request asks for", () => {
 	it("serves the whole file when no range is asked for", () => {
 		expect(parseRange(null, 1000)).toBeNull();

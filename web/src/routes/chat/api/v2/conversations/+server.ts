@@ -1,4 +1,8 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { error, type RequestHandler } from "@sveltejs/kit";
+import { ObjectId } from "bson";
 import { superjsonResponse } from "$lib/chat/server/api/utils/superjsonResponse";
 import { requireAuth } from "$lib/chat/server/api/utils/requireAuth";
 import { getLayoutConversations } from "$lib/chat/server/layoutData";
@@ -13,9 +17,22 @@ import { WIPE_BUSY_MESSAGE } from "$lib/chat/constants/custodialUpload";
 export const GET: RequestHandler = async ({ locals, url, request }) => {
 	requireAuth(locals);
 	const p = parseInt(url.searchParams.get("p") ?? "0") || 0;
-	// Later pages keep the sidebar's workspace scope. (CUR-3023)
+	// Later pages keep the sidebar's workspace scope.
 	const scope = await workspaceScopeFor(locals, request?.headers);
-	return superjsonResponse(await getLayoutConversations(locals, p, scope));
+	// `?archived=1` is the Archived chats list; nothing archived is ever in the default one.
+	const view = url.searchParams.get("archived") === "1" ? "archived" : "active";
+	// The archived list continues from the last row the client has (`beforeAt` ms + `beforeId`), not an offset.
+	const beforeAt = Number(url.searchParams.get("beforeAt"));
+	const beforeId = url.searchParams.get("beforeId") ?? "";
+	const before =
+		view === "archived" && Number.isFinite(beforeAt) && url.searchParams.has("beforeAt")
+			? ObjectId.isValid(beforeId)
+				? { updatedAt: new Date(beforeAt), id: beforeId }
+				: error(400, "beforeId must be a conversation id")
+			: undefined;
+	// `?tag=<id>` is the sidebar's tag filter.
+	const tag = url.searchParams.get("tag") || undefined;
+	return superjsonResponse(await getLayoutConversations(locals, p, scope, view, before, tag));
 };
 
 export const DELETE: RequestHandler = async ({ locals, url, request }) => {
@@ -24,7 +41,7 @@ export const DELETE: RequestHandler = async ({ locals, url, request }) => {
 	// No client IP: the wipe keys on the caller's own session/user ids only. Keying on the IP hash
 	// deleted other people's rows from the same NAT (see wipeUserData's header).
 	// `?account=delete` is the "Delete account" action; without it the wipe is "Forget everything" and
-	// a signed-in person keeps their account (CUR-1420).
+	// a signed-in person keeps their account.
 	try {
 		// The `storage_hub_rate_limited` fault (preview only) fails the file delete as a throttled Hub does.
 		if ((await resolveFaultInjection(request)) === "storage_hub_rate_limited") {
@@ -40,7 +57,7 @@ export const DELETE: RequestHandler = async ({ locals, url, request }) => {
 		// The file delete runs before any row is touched (wipeUserData step 0), so this failure
 		// leaves the account whole and a retry can finish the job. Never a silent success.
 		if (e instanceof CustodialWipeError) {
-			// A Hugging Face throttle is the busy answer with the window's reset, not "try again" now. (CUR-3680)
+			// A Hugging Face throttle is the busy answer with the window's reset, not "try again" now.
 			const busy = hubBusyResponse(e, WIPE_BUSY_MESSAGE, "wipe");
 			if (busy) return busy;
 			logger.error({ err: e, cause: e.cause }, "[wipe] custodial storage delete failed");

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { describe, expect, it, afterEach } from "vitest";
 import { ObjectId } from "bson";
 import { collections } from "$lib/chat/server/database";
@@ -8,13 +11,13 @@ import type { McpCallResult } from "./client";
 // openDurableElicitation/submitElicitationAnswer are the real-DB half of the 2026-era
 // elicitation park/resolve mechanism. Real Postgres, not mocks — same reasoning workspaceUsage.spec.ts
 // gives for its own real-DB tests: a mocked collection can't prove a CAS filter or a cross-conversation
-// scope actually holds against the real adapter. (CUR-1017)
+// scope actually holds against the real adapter.
 
 afterEach(async () => {
 	await collections.mcpElicitations.deleteMany({});
 });
 
-describe.sequential("openDurableElicitation (CUR-1017)", () => {
+describe.sequential("openDurableElicitation", () => {
 	it("parks a well-formed elicitation-shaped input_required entry", async () => {
 		const conversationId = new ObjectId();
 		const result = await openDurableElicitation({
@@ -52,7 +55,7 @@ describe.sequential("openDurableElicitation (CUR-1017)", () => {
 	});
 });
 
-describe.sequential("submitElicitationAnswer (CUR-1017)", () => {
+describe.sequential("submitElicitationAnswer", () => {
 	async function park(conversationId = new ObjectId()) {
 		const opened = await openDurableElicitation({
 			conversationId,

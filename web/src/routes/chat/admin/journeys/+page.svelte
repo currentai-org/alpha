@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from "svelte";
+	import { on } from "svelte/events";
 	import { page } from "$app/state";
 	import { replaceState } from "$app/navigation";
 	import { base } from "$lib/chat/paths";
@@ -13,7 +14,10 @@
 		sortFailuresFirst,
 		badgeLabel,
 		findingCounts,
+		findingOwner,
+		gradedRecordingIndex,
 		NEXT_STEP,
+		recordingRefs,
 		recordingStatusLabel,
 		SEVERITY_LABEL,
 		splitRecordingsByOutcome,
@@ -46,9 +50,9 @@
 		partial: "border-solid border-caution-text text-caution-text",
 		// solid, not dashed — this journey WAS judged, real evidence exists. It shares
 		// `partial`'s hue rather than getting a fourth accent: both mean "the evidence is real but
-		// weaker than a clean pass," just for different reasons (incomplete coverage vs. a retry). (CUR-1613)
+		// weaker than a clean pass," just for different reasons (incomplete coverage vs. a retry).
 		flaky: "border-solid border-caution-text text-caution-text",
-		// graded, so solid; gray, because nothing has shown its checks can go red yet. (CUR-1614)
+		// graded, so solid; gray, because nothing has shown its checks can go red yet.
 		unproven: "border-solid border-line-1 text-fg-3",
 		"not-run": "border-dashed border-line-1 text-fg-3",
 		"not-graded": "border-dashed border-line-1 text-fg-3",
@@ -60,7 +64,7 @@
 	// ones want them; the stripe is the only thing on the card visible without focusing on it.
 	//
 	// Structure before hue, for the reason TONE gives above: judged states get a solid edge, unjudged
-	// a dashed one, so the split survives greyscale and a skim. Hue then separates within each group. (CUR-1568)
+	// a dashed one, so the split survives greyscale and a skim. Hue then separates within each group.
 	const EDGE: Record<JourneyState, string> = {
 		clean: "border-l-4 border-l-[var(--ds-line-3)]",
 		findings: "border-l-4 border-l-[var(--ds-accent-2-text)]",
@@ -76,9 +80,9 @@
 		product: "border-accent-2-text text-accent-2-text",
 		doc: "border-caution-text text-caution-text",
 		// A step a passing test claims and no frame shows is drawn as loudly as a product
-		// finding. The dashed edge keeps it distinguishable from one without relying on hue. (CUR-2245)
+		// finding. The dashed edge keeps it distinguishable from one without relying on hue.
 		unseen: "border-dashed border-accent-2-text text-accent-2-text",
-		// The claimed test did not run, so nothing was watched. Quiet, like inconclusive, and dashed. (SOL-110)
+		// The claimed test did not run, so nothing was watched. Quiet, like inconclusive, and dashed.
 		"not-run": "border-dashed border-line-2 text-fg-3",
 		inconclusive: "border-line-2 text-fg-3",
 	};
@@ -86,7 +90,7 @@
 	// The word on the badge. `unseen` is the manifest's field value and means nothing to a reader.
 	const CONCLUSION_LABEL: Record<string, string> = { unseen: "claimed, not seen", "not-run": "test did not run" };
 
-	// The product critique's own scale (CUR-1526). Same reasoning as TONE above: severity is carried
+	// The product critique's own scale. Same reasoning as TONE above: severity is carried
 	// by structure before hue, because the palette has three usable accents and this scale has three
 	// levels that a reader must not have to memorise a colour key for. The word is always present.
 	const SEVERITY_TONE: Record<string, string> = {
@@ -112,7 +116,7 @@
 	// The same journey is now walked on more than one viewport, so two recordings of one
 	// test sit side by side and differ in nothing else a reader can see. Playwright's project names
 	// are the source of truth; these are the two that exist today, and anything else falls through
-	// to its own name rather than being guessed at or hidden. (CUR-1550)
+	// to its own name rather than being guessed at or hidden.
 	const VIEWPORT_LABEL: Record<string, string> = {
 		chromium: "desktop",
 		"mobile-chromium": "mobile",
@@ -154,12 +158,12 @@
 
 	// A journey can grade `clean` on its doc while one of its own recordings failed at the Playwright
 	// level: the grader watches frames and reasons about the step table, it does not read meta.json's
-	// status field, so `needAttention` above (which filters on journey STATE) cannot see this
-	// (CUR-1759). So recordings are counted straight off the recordings, independent of what state
+	// status field, so `needAttention` above (which filters on journey STATE) cannot see this.
+	// So recordings are counted straight off the recordings, independent of what state
 	// their journey landed in.
 	//
 	// The split lives in journeyGallery.ts so it can be specced: reading `!== "passed"` as "failed"
-	// announces SKIPPED recordings as failures (CUR-1816). See that function's own comment for why the
+	// announces SKIPPED recordings as failures. See that function's own comment for why the
 	// two must stay apart.
 	const recordingsByOutcome = $derived(splitRecordingsByOutcome(manifest?.journeys ?? []));
 	const failedRecordings = $derived(recordingsByOutcome.failed);
@@ -176,18 +180,18 @@
 
 	// One journey on screen at a time, picked from the rail. The filters are the same three
 	// groups the summary above already names, so a reader can go from "A1, C2 are asking for a look"
-	// to walking exactly those. (CUR-2326)
+	// to walking exactly those.
 	type FilterKey = "all" | "changed" | "attention" | "unmeasured" | "clean";
 
 	// What changed since an earlier graded run. The manifest keeps a month of verdict
 	// summaries (`history`, newest first, this run included); the reader picks the previous graded run
-	// or the run a week ago, and the "Changed" filter narrows the rail to journeys whose verdict moved. (CUR-2548)
+	// or the run a week ago, and the "Changed" filter narrows the rail to journeys whose verdict moved.
 	let sinceDays = $state<number | null>(null);
 	const baseline = $derived(baselineRun(manifest?.history, sinceDays));
 	const changes = $derived<Record<string, string[]>>(
 		baseline && manifest?.history?.[0] ? changesSince(manifest.history[0], baseline) : {}
 	);
-	// Two runs on different profiles or models are two different results (CUR-2285), so the comparison
+	// Two runs on different profiles or models are two different results, so the comparison
 	// says so rather than reading a model swap as a product change.
 	const baselineCaveat = $derived(
 		baseline && manifest?.history?.[0] &&
@@ -215,7 +219,7 @@
 	let showKeys = $state(false);
 
 	// Failures first, so the rail opens on what a reader came to look at, and narrowed by the
-	// project letter (A, C, F...) as well as by state. (CUR-3076)
+	// project letter (A, C, F...) as well as by state.
 	let group = $state<string | null>(null);
 	const ordered = $derived(sortFailuresFirst(manifest?.journeys ?? []));
 	const groups = $derived(journeyGroups(manifest?.journeys ?? []));
@@ -293,13 +297,36 @@
 		if (next) select(next.journey);
 	}
 
-	// `?journey=A1` from a shared link, or `#A1` from a ticket filed before this layout (CUR-2023).
+	// `?journey=A1` from a shared link, or `#A1` from a ticket filed before this layout.
 	onMount(() => {
 		const wanted = page.url.searchParams.get("journey") ?? decodeURIComponent(page.url.hash.slice(1));
 		if (wanted && manifest?.journeys.some((j: JourneyCard) => j.journey === wanted)) selectedId = wanted;
 	});
 
 	let videoEl = $state<HTMLVideoElement | null>(null);
+
+	// a finding's "Recording 2 at 14.6s" opens that recording at that second. Changing the tab
+	// remounts the player, so the seek waits for the new one's metadata rather than landing on the old.
+	// The slug pins the seek to the new player: the old one can still be bound when this first runs.
+	let pendingSeek = $state<{ slug: string; at: number } | null>(null);
+	function openRef(index: number, at: number) {
+		const slug = selected?.recordings[index]?.slug;
+		if (slug == null) return;
+		recChoice = index;
+		pendingSeek = { slug, at };
+	}
+	$effect(() => {
+		const v = videoEl;
+		const want = pendingSeek;
+		if (!v || want == null || v.dataset.slug !== want.slug) return;
+		const seek = () => {
+			v.currentTime = want.at;
+			pendingSeek = null;
+			v.scrollIntoView({ block: "nearest" });
+		};
+		if (v.readyState >= 1) seek();
+		else return on(v, "loadedmetadata", seek, { once: true });
+	});
 
 	function onKey(e: KeyboardEvent) {
 		if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -350,13 +377,33 @@
      seen, then why it matters, then (for the critique) the smallest fix. The badges above them
      differ and the prose does not, so the prose lives here once. -->
 {#snippet findingProse(observation: string, rationale: string | undefined, suggestion: string | undefined)}
-	<p class="mt-1">{observation}</p>
+	<p class="mt-1">{@render withRefs(observation)}</p>
 	{#if rationale}
-		<p class="mt-1 text-fg-2">{rationale}</p>
+		<p class="mt-1 text-fg-2">{@render withRefs(rationale)}</p>
 	{/if}
 	{#if suggestion}
-		<p class="mt-1 text-fg-2">Suggested: {suggestion}</p>
+		<p class="mt-1 text-fg-2">Suggested: {@render withRefs(suggestion)}</p>
 	{/if}
+{/snippet}
+
+<!-- "Recording 2 at 14.6s" in a finding is a button that opens that recording at that second.
+     A reference to a recording the card does not show stays plain text. -->
+{#snippet withRefs(text: string)}
+	{#each recordingRefs(text) as part, i (i)}
+		{@const index = part.ref && selected ? gradedRecordingIndex(selected, part.ref.recording) : null}
+		{#if part.ref && index != null}
+			<button
+				type="button"
+				class="underline decoration-dotted underline-offset-2 hover:text-fg-1"
+				data-testid="recording-ref"
+				data-recording-index={index}
+				data-at={part.ref.at}
+				onclick={() => openRef(index, part.ref?.at ?? 0)}>{part.text}</button
+			>
+		{:else}
+			{part.text}
+		{/if}
+	{/each}
 {/snippet}
 
 
@@ -368,7 +415,7 @@
 	</header>
 
 	{#if data.needsLogin}
-		<StaffSignIn signedIn={data.signedIn} />
+		<StaffSignIn signedIn={data.signedIn} role={data.role} panel="Journeys" />
 	{:else if !manifest}
 		<div
 			class="border border-dashed border-line-2 bg-surface-2 p-6 text-body text-fg-2"
@@ -392,7 +439,7 @@
 		<!-- The configuration, before any result. A verdict with no configuration attached answers no
 		     question about readiness — which is how every by-hand run of this gets written up. -->
 		<section class="mb-6 border border-line-2 bg-surface-2 p-4 text-body" data-testid="journey-run-header">
-			<!-- CUR-3076: the verdict leads, the way a build review page (Chromatic, Vercel's deployment
+			<!-- the verdict leads, the way a build review page (Chromatic, Vercel's deployment
 			     list) opens on pass or fail before anything else. Words carry it; the border only repeats it. -->
 			<p class="mb-3 flex flex-wrap items-center gap-2">
 				<span class="border px-2 py-1 text-subhead font-medium {VERDICT_TONE[verdict.tone]}" data-testid="journey-verdict">
@@ -454,7 +501,7 @@
 						{lookNotBroken.length === 1 ? "is" : "are"} asking for a look, with nothing yet seen broken.
 					{/if}
 					{#if failedRecordings.length > 0}
-						<!-- CUR-2327: its own span so the self-check reads this sentence alone, not the
+						<!-- its own span so the self-check reads this sentence alone, not the
 						     whole paragraph, which also holds the expected-failures list. -->
 						<span data-testid="journey-failed-recordings">
 							{failedRecordings.length}
@@ -462,7 +509,7 @@
 							{failedRecordings.map((r) => `${r.journey} — ${r.title}`).join(", ")}.
 						</span>
 					{/if}
-					<!-- CUR-1816: a separate sentence in a quieter voice, because a skip is a gap in the
+					<!-- a separate sentence in a quieter voice, because a skip is a gap in the
 					     run and the page's whole job is to keep that apart from a result. Same register
 					     as the unmeasured block below, deliberately. -->
 					{#if skippedRecordings.length > 0}
@@ -474,7 +521,7 @@
 						</span>
 					{/if}
 				{/if}
-				<!-- CUR-2234: a test.fail() spec failing as declared is the suite working, so it sits
+				<!-- a test.fail spec failing as declared is the suite working, so it sits
 				     outside the "asking for a look" sentence, in the same quiet voice as a skip. -->
 				{#if expectedRecordings.length > 0}
 					<span class="font-normal text-fg-2" data-testid="journey-expected-failures">
@@ -533,7 +580,7 @@
 			</div>
 		{/if}
 
-		<!-- CUR-2326: one journey at a time. A rail of every journey on the left, the selected
+		<!-- one journey at a time. A rail of every journey on the left, the selected
 		     journey's recording as large as the page allows in the middle, and what was found beside
 		     it on a wide screen or under it otherwise. The old layout put every journey on one long
 		     page with its recordings in a two-column grid of thumbnails, which had to be fullscreened
@@ -648,7 +695,7 @@
 			{#if selected}
 				{@const j = selected}
 				{@const r = j.recordings[recIndex] ?? j.recordings[0]}
-				<!-- CUR-2023: the id is what a filed ticket's recording link lands on (`…/journeys#A1`),
+				<!-- the id is what a filed ticket's recording link lands on (`…/journeys#A1`),
 				     and the page selects that journey on load. -->
 				<article id={j.journey} data-testid="journey-open" class="min-w-0 border border-line-2 {EDGE[j.state]}">
 					<header
@@ -659,7 +706,7 @@
 								<span class="font-mono text-fg-3">{j.journey}</span>
 								{j.project || j.journey}
 							</h2>
-							<!-- CUR-1574: an undocumented recording (no docs/journeys/*.md claims this ID) has
+							<!-- an undocumented recording (no docs/journeys/*.md claims this ID) has
 							     nothing this line could show; `j.doc` is empty for exactly that case. -->
 							{#if j.doc}
 								<p class="mt-0.5 text-small text-fg-3">
@@ -713,9 +760,9 @@
 									</div>
 								{/if}
 								<figure class="space-y-1">
-									<!-- CUR-1623: a recording opens on the blank tab before its page loads, so it
+									<!-- a recording opens on the blank tab before its page loads, so it
 									     starts where the publisher measured the first paint. The video route answers
-									     Range requests for this (CUR-1646). A recording with no screen to show has no
+									     Range requests for this. A recording with no screen to show has no
 									     video stored, and says so instead of drawing a white box. -->
 									{#if r.noScreen}
 										<p
@@ -729,9 +776,10 @@
 									{:else}
 										{#key r.slug}
 											<!-- svelte-ignore a11y_media_has_caption -->
-											<!-- CUR-2244: one player per page, so nothing competes for the fetch the way ~100 tiles did. -->
+											<!-- one player per page, so nothing competes for the fetch the way ~100 tiles did. -->
 											<video
 												bind:this={videoEl}
+												data-slug={r.slug}
 												controls
 												preload="metadata"
 												class="max-h-[75vh] w-full border border-line-1 bg-black object-contain"
@@ -747,7 +795,7 @@
 											>{/if}
 										· {r.title}
 										{#if r.durationMs}· {secs(r.durationMs)}{/if} · {kb(r.bytes)}
-										<!-- SOL-103: what the spec measured, e.g. the A1 limit message's time; the breakdown on hover. -->
+										<!-- what the spec measured, e.g. the A1 limit message's time; the breakdown on hover. -->
 										{#each r.measurements ?? [] as m (m.name)}
 											· <span class="text-fg-2" title={m.detail} data-testid="journey-measurement"
 												>{m.name}: {m.value} {m.unit}</span
@@ -755,7 +803,7 @@
 										{/each}
 									</figcaption>
 								</figure>
-								<!-- CUR-1574: a persona spec's turn-by-turn record. Frames alone cannot say whether a
+								<!-- a persona spec's turn-by-turn record. Frames alone cannot say whether a
 								     click landed on what the persona asked for or on a neighbour — `acted` is what the
 								     driver actually did, `why` is only the model's stated intent. -->
 								{#if r.personaTrace}
@@ -818,12 +866,16 @@
 												<span class="text-fg-3">Next:</span>
 												{NEXT_STEP[f.conclusion] ?? NEXT_STEP.inconclusive}
 											</p>
+											<p class="mt-1 text-small" data-testid="finding-owner">
+												<span class="text-fg-3">Owner:</span>
+												{findingOwner(j, f)}
+											</p>
 										</li>
 									{/each}
 								</ul>
 							{/if}
 
-							<!-- CUR-1526. The block above is the doc grader: it can only find what a journey doc
+							<!-- The block above is the doc grader: it can only find what a journey doc
 							     already anticipated. This is the second reader — the same frames, no step table,
 							     the question being whether a person would mind. -->
 							{#if j.pm}
@@ -847,7 +899,7 @@
 														<span class="border px-1.5 py-0.5 text-small {SEVERITY_TONE[f.severity]}">
 															{f.severity} — {SEVERITY_LABEL[f.severity]}
 														</span>
-														<!-- CUR-1670: this states the filing RULE, never the outcome. Tickets are
+														<!-- this states the filing RULE, never the outcome. Tickets are
 														     opened in a step that runs after the manifest is published, so no
 														     ticket id exists for this line to check against. -->
 														<span class="text-small text-fg-3">
@@ -857,6 +909,10 @@
 														</span>
 													</div>
 													{@render findingProse(f.observation, f.rationale, f.suggestion)}
+													<p class="mt-1 text-small" data-testid="finding-owner">
+														<span class="text-fg-3">Owner:</span>
+														{findingOwner(j)}
+													</p>
 												</li>
 											{/each}
 										</ul>

@@ -92,7 +92,7 @@ describe("detectRecencyHedge", () => {
 
 	// The substance test was ASCII-only ([A-Za-z0-9]), so a non-Latin answer with any hedge
 	// sentence stripped counted as "nothing left" and the grounded caller replaced the real answer with
-	// the "I retrieved these sources" pointer. (CUR-4356)
+	// the "I retrieved these sources" pointer.
 	it("keeps an all-Arabic answer whose only removed sentence was a hedge (not bailed)", () => {
 		const arabic = "عاصمة أندورا هي أندورا لا فيلا. ويتحدث سكانها الكتالونية لأنها اللغة الرسمية الوحيدة [1].";
 		const { hedged, keptText, cleaned, bailedWholeAnswer } = detectRecencyHedge(
@@ -244,7 +244,7 @@ describe("buildGroundedHedgeReplacement — deterministic honest pointer for a b
 	// The contract, not the wording: this line is emitted precisely when the model READ these sources
 	// and declined to answer from them, so any claim about their quality is a claim the code cannot
 	// support. Copy that opened "I found sources relevant to this question" would put that
-	// sentence over a YouTube link (CUR-148). Rewording is fine; characterising the sources is not.
+	// sentence over a YouTube link. Rewording is fine; characterising the sources is not.
 	it("never characterises the sources as relevant/useful/helpful — it has no basis for that claim", () => {
 		const withSources = buildGroundedHedgeReplacement([{ n: 1, title: "Some page" }]);
 		const withoutSources = buildGroundedHedgeReplacement([]);
@@ -272,7 +272,7 @@ describe("buildGroundedHedgeReplacement — deterministic honest pointer for a b
 	});
 });
 
-// The line "I retrieved these sources but didn't write an answer" is localised to the chat language. (CUR-4339)
+// The line "I retrieved these sources but didn't write an answer" is localised to the chat language.
 describe("buildGroundedHedgeReplacement — reads in the language the person wrote in", () => {
 	const sources = [
 		{ n: 1, title: "Wikipedia" },

@@ -1,0 +1,75 @@
+{
+	"root": {
+		"children": [
+			{
+				"children": [
+					{
+						"detail": 0,
+						"format": 0,
+						"mode": "normal",
+						"style": "",
+						"text": "Before the card.",
+						"type": "text",
+						"version": 1
+					}
+				],
+				"direction": null,
+				"format": "",
+				"indent": 0,
+				"type": "paragraph",
+				"version": 1,
+				"textFormat": 0,
+				"textStyle": ""
+			},
+			{
+				"fields": {
+					"id": "6745f0c2a1b2c3d4e5f60718",
+					"blockName": "",
+					"blockType": "epicCard",
+					"tag": "In progress",
+					"title": "Your Data",
+					"body": {
+						"root": {
+							"children": [
+								{
+									"children": [
+										{
+											"detail": 0,
+											"format": 0,
+											"mode": "normal",
+											"style": "",
+											"text": "Control your files.",
+											"type": "text",
+											"version": 1
+										}
+									],
+									"direction": null,
+									"format": "",
+									"indent": 0,
+									"type": "paragraph",
+									"version": 1,
+									"textFormat": 0,
+									"textStyle": ""
+								}
+							],
+							"direction": null,
+							"format": "",
+							"indent": 0,
+							"type": "root",
+							"version": 1
+						}
+					},
+					"buttons": []
+				},
+				"format": "",
+				"type": "block",
+				"version": 2
+			}
+		],
+		"direction": null,
+		"format": "",
+		"indent": 0,
+		"type": "root",
+		"version": 1
+	}
+}

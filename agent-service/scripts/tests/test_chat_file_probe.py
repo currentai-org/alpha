@@ -1,4 +1,4 @@
-"""The chat file probe's verdict rules, on status dicts shaped like develop's real CUR-4595 failures."""
+"""The chat file probe's verdict rules, on status dicts shaped like real failures of a deployed service."""
 import io
 import sys
 from pathlib import Path

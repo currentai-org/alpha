@@ -9,7 +9,7 @@ import { openXrayTab } from './helpers/xray';
 import { startChattingPastWelcome } from './helpers/welcome';
 
 // A visitor attached a file and asked about it, and X-ray's "This answer" said nothing was
-// looked up, though the answer was read from that file (CUR-4150). The file the question carried is something
+// looked up, though the answer was read from that file. The file the question carried is something
 // the answer read, so X-ray names it under "Looked up".
 test(
 	'an answer to a question with a file attached names that file in X-ray, never "nothing was looked up"',
@@ -59,7 +59,7 @@ test(
 			'X-ray says nothing was looked up for an answer read from an attached file'
 		).not.toContainText(/nothing was looked up/i);
 
-		// Step by step's "Wrote the answer" said the answer came from training alone (CUR-4353).
+		// Step by step's "Wrote the answer" said the answer came from training alone.
 		await page.getByRole('tab', { name: 'Step by step' }).click();
 		const write = page.locator('[data-xray-steps] [data-step-id="write"]');
 		await expect(

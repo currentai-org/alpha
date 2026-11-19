@@ -1,5 +1,5 @@
 // The deadlines an ordinary (not agent, not local) turn runs under, shared by the conversation route's
-// generation watchdog and the warm cron's model probe (modelProbe.ts, CUR-4042), so a probe gives a model
+// generation watchdog and the warm cron's model probe (modelProbe.ts), so a probe gives a model
 // exactly as long to send its first chunk as a visitor's turn does.
 
 import { config } from "$lib/chat/server/config";
@@ -13,7 +13,7 @@ import {
 } from "$lib/chat/utils/deadlineLadder";
 
 /** An ordinary turn's total generation timeout: GENERATION_TIMEOUT_MS, raised to the model's own floor
- *  (harnessProfiles.ts `generationTimeoutMs`, CUR-4403). */
+ *  (harnessProfiles.ts `generationTimeoutMs`). */
 export function ordinaryTurnTimeout(modelId: string | undefined): ResolvedGenerationTimeout {
 	return withModelFloor(
 		resolveGenerationTimeoutMs(Reflect.get(config, "GENERATION_TIMEOUT_MS"), DEFAULT_GENERATION_TIMEOUT_MS),

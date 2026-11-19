@@ -21,7 +21,7 @@ const { default: Harness } = await import("./BackgroundGenerationPoller.harness.
 
 // The live tab's recovery path for a turn that finished server-side but whose stream this tab lost
 // is armFirstTokenWatchdog -> handleStalledConnection -> addBackgroundGeneration -> this poller
-// opening an SSE to pick up the terminal write (CUR-1157). A network capture cannot settle whether
+// opening an SSE to pick up the terminal write. A network capture cannot settle whether
 // that SSE opens, because EventSource isn't XHR/fetch, so this pins down the CLIENT WIRING claim
 // directly: does adding an entry to the shared store actually cause a real `new EventSource(...)`
 // construction, in a real browser, through the real reactive chain (module $state -> $effect.root
@@ -43,7 +43,7 @@ class FakeEventSource {
 	}
 }
 
-describe("BackgroundGenerationPoller — opens an EventSource once a generation is tracked (CUR-1157)", () => {
+describe("BackgroundGenerationPoller — opens an EventSource once a generation is tracked", () => {
 	let originalEventSource: typeof EventSource;
 
 	beforeEach(() => {

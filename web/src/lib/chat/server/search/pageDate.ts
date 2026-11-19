@@ -1,5 +1,5 @@
 // The date a page we already fetched says it was published, read from the metadata the fetch returned,
-// so the model can tell an old press release from this month's figure (CUR-4147). Firecrawl's scrape
+// so the model can tell an old press release from this month's figure. Firecrawl's scrape
 // flattens a page's <meta> tags into one map, and each site uses its own key: gov.uk uses
 // `govuk:public-updated-at`, Wikipedia `article:modified_time`, Reuters `DateModified`, arXiv
 // `citation_date`, Save the Children `date`.

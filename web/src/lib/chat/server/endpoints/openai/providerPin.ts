@@ -40,7 +40,7 @@ export function isHfRouter(baseURL: string | undefined): boolean {
 /**
  * The provider `modelId` is always pinned to on the HF router, or undefined when it has none here.
  *
- * Throws for a `zai-org/` id with no pin (CUR-2112). Unpinned, the router sends a GLM call to whichever
+ * Throws for a `zai-org/` id with no pin. Unpinned, the router sends a GLM call to whichever
  * provider it picks, Z.ai's own endpoint included, so a GLM id reaching the router without a decision
  * about who receives the text fails the call by name instead of going out.
  */
@@ -63,8 +63,8 @@ export function hfPinnedProvider(modelId: string, baseURL: string | undefined): 
  * decision about where GLM traffic goes.
  *
  * An own lane (the endpoint reaches its host on its own key) never takes the default pin: `:publicai`
- * is an HF-router suffix, and a direct host answers `<id>:publicai` with nothing until the timeout
- * (CUR-1875). Every caller passes `ownLane` rather than choosing "auto" itself, so the rule lives here.
+ * is an HF-router suffix, and a direct host answers `<id>:publicai` with nothing until the timeout.
+ * Every caller passes `ownLane` rather than choosing "auto" itself, so the rule lives here.
  */
 export function wireModelId(args: {
 	baseModelId: string;
@@ -94,10 +94,21 @@ export interface ServingLaneModel {
 	endpoints?: ReadonlyArray<{
 		type?: string;
 		baseURL?: string;
-		/** Env var NAME of the lane's key (CUR-2640); the value is read at call time. */
+		/** Env var NAME of the lane's key; the value is read at call time. */
 		apiKeyEnv?: string;
 		modelId?: string;
+		/** "local" on a visitor-registered endpoint (localModels.ts): its baseURL is theirs, not ours. */
+		routerProvider?: string;
 	}>;
+}
+
+/**
+ * True when the model is served from a visitor-registered local endpoint. Its baseURL is a URL the
+ * visitor typed, so a side call must never go there carrying our gateway key, nor through a fetch
+ * that skips the private-address guard.
+ */
+export function isLocalLane(model: ServingLaneModel | undefined): boolean {
+	return model?.endpoints?.[0]?.routerProvider === "local";
 }
 
 /** Where a side-call about a turn (search classifier, router) must be sent to reach the SAME model. */
@@ -120,7 +131,7 @@ export interface ClassifierLane {
  *
  * The search classifier must not read `defaultModel.id` (a module-level binding) or
  * `config.OPENAI_BASE_URL` (the global). Both are the registry default, which stops being the serving
- * model the moment anything substitutes per request (CUR-127): the content can come from one model
+ * model the moment anything substitutes per request: the content can come from one model
  * while the search decision is made by another. Nothing errors, because both globals are stale
  * together and produce a coherent request; it is simply a different model deciding.
  *
@@ -129,6 +140,10 @@ export interface ClassifierLane {
  *
  * A non-openai `endpoints[0]` (the agent lane) falls back to the global lane: an agent endpoint speaks
  * a different protocol and cannot answer a logprob classifier call.
+ *
+ * A visitor-registered local endpoint also falls back to the global lane, so the side call never sends
+ * our key to the visitor's URL. Callers should pass the default model in its place (see
+ * searchDecision.ts); this is the backstop for one that doesn't.
  */
 export function resolveClassifierLane(
 	model: ServingLaneModel | undefined,
@@ -136,7 +151,7 @@ export function resolveClassifierLane(
 	defaultProvider: string | undefined
 ): ClassifierLane {
 	const first = model?.endpoints?.[0];
-	const endpoint = first?.type === "openai" ? first : undefined;
+	const endpoint = first?.type === "openai" && !isLocalLane(model) ? first : undefined;
 	const apiKey = endpointApiKey(endpoint);
 	const ownLane = Boolean(apiKey);
 	return {
@@ -159,12 +174,11 @@ export function resolveClassifierLane(
  * What the `[ttft] decomposition` log should say about where a turn was routed and under what id.
  *
  * Both answers live on the SERVING MODEL'S endpoint, not in global config. Reading
- * `config.OPENAI_BASE_URL` for the host is wrong for every model that carries its own endpoint: the
- * Apertus 1.5 transparent swap points at CSCS direct and the compare models at a third host, yet the
- * log would name the LiteLLM gateway — a host those turns never touched. Resolving the wire id from
- * `model.id` is wrong the same way: a lane `modelId` is sent VERBATIM by endpointOai and deliberately
- * bypasses the provider pin, so the 1.5 swap sends "apertus-ai/Apertus-v1.5-70B" while the log would print
- * the internal swap key "apertus-1.5".
+ * `config.OPENAI_BASE_URL` for the host is wrong for every model that carries its own endpoint, such
+ * as a compare-panel model on its own host: the log would name the LiteLLM gateway, a host those turns
+ * never touched. Resolving the wire id from `model.id` is wrong the same way: a lane `modelId` is sent
+ * VERBATIM by endpointOai and deliberately bypasses the provider pin, so a lane can send
+ * "apertus-ai/Apertus-v1.5-70B" while the log would print the internal registration id "apertus-1.5".
  *
  * Ordinary catalog models build `endpoints[0]` from `config.OPENAI_BASE_URL` and set no lane modelId
  * (modelsCatalog.ts), so for them both values are the configured ones.

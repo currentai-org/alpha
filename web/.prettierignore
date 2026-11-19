@@ -33,7 +33,7 @@ stub/
 ../packages/alpha-ds/src/tokens/generated/
 
 # calque's registry: the weekly job appends entries in calque's own format, and a reflow would fail
-# every one of its PRs (CUR-2569).
+# every one of its PRs.
 /.calque/
 
 # Inlang/Paraglide working files; only project.inlang/settings.json is tracked.

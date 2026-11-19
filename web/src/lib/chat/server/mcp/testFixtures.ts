@@ -1,4 +1,4 @@
-// Shared test fixtures for CUR-1017's elicitation mechanism — used by both elicitation.spec.ts and
+// Shared test fixtures for the MCP elicitation mechanism — used by both elicitation.spec.ts and
 // db/__tests__/deleteConversations.spec.ts, so the fixture lives once rather than being duplicated
 // per test file (jscpd's audit:dup:check flags exactly that).
 import type { McpCallResult } from "./client";

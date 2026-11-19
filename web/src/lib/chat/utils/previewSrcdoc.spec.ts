@@ -10,7 +10,7 @@ function policyPrecedes(doc: string, marker: string): boolean {
 	return policy !== -1 && model !== -1 && policy < model;
 }
 
-describe("artifact srcdoc policy (CUR-3187)", () => {
+describe("artifact srcdoc policy", () => {
 	it("closes every way out of the frame: connect, form, frame, base, remote images", () => {
 		const policy = /http-equiv="Content-Security-Policy" content="([^"]*)"/.exec(
 			buildHtmlSrcdoc("<p>x</p>", "c")

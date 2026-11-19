@@ -1,7 +1,7 @@
 /**
  * The CLI's pairing handoff against the real table. The contracts: one visit provisions per
  * pairing id however many race for it, the parked credentials come out of the poll exactly once and
- * leave the table as they do, and an id held by one account never hands anything to another. (CUR-4110)
+ * leave the table as they do, and an id held by one account never hands anything to another.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -60,7 +60,7 @@ async function storedCredentialsAreSqlNull(): Promise<boolean[]> {
 	return [...result].map((r) => r.is_null);
 }
 
-describe.sequential("local inference pairings (CUR-4110)", () => {
+describe.sequential("local inference pairings", () => {
 	afterEach(async () => {
 		await cleanupTestData();
 	});

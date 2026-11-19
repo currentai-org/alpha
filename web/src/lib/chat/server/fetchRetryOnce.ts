@@ -4,7 +4,7 @@
 //
 // Retries exactly ONCE, and only for statuses the caller explicitly names as transient. A blanket
 // retry-on-any-failure would mask a real broken contract as flakiness, which is the opposite of what
-// these tests exist to catch. (CUR-1303)
+// these tests exist to catch.
 export async function fetchRetryOnce(
 	attempt: () => Promise<Response>,
 	opts: { retryableStatuses: readonly number[]; delayMs?: number }

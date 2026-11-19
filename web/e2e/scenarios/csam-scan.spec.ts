@@ -13,14 +13,14 @@ import { STORAGE_POLL_INTERVALS } from './helpers/storagePoll';
 import { failIfStorageThrottled } from './helpers/storageThrottle';
 import { startChattingPastWelcome } from './helpers/welcome';
 
-// The abuse-match refusal names no reason on purpose, only the next step (CUR-3086).
+// The abuse-match refusal names no reason on purpose, only the next step.
 const ABUSE_REFUSAL =
 	"This file couldn't be added, so it was taken off. You can send your message without it.";
 
 // My files' known-CSAM check, walked on a live preview against the placeholder bank
 // deployed on Fly (web/hma/fly/). test-bank-match.png is the one image that bank holds; test-bank-
 // clean.png is an unrelated image PDQ does not match. Neither is abuse material: the bank is a
-// placeholder until the real one arrives (CUR-713).
+// placeholder until the real one arrives.
 //
 // Three outcomes, each read from the screen and from the account's own listing:
 //   - a clean image uploads and is listed,
@@ -64,7 +64,7 @@ async function uploadImage(
 
 /** Why a clean image got a status other than 201. Two different 503s reach here: the scanner being
  *  unreachable, and Hugging Face throttling preview's shared storage token, which `storageFailure`
- *  answers with `Retry-After` (CUR-3120). The second says nothing about the scanner or the PR. */
+ *  answers with `Retry-After`. The second says nothing about the scanner or the PR. */
 function cleanUploadFailure({ status, retryAfter }: { status: number; retryAfter: string | null }) {
 	if (status === 503 && retryAfter !== null)
 		return `a clean image answered 503 with Retry-After ${retryAfter}: Hugging Face throttled preview's storage token (CUR-3189), not the scanner. Rerun once the throttle window has passed`;
@@ -109,7 +109,7 @@ test(
 			expect(await listedNames(page)).toContain('garden.png');
 
 			// A3 row 15: a file Alpha can't store is refused in plain words and never reaches My files.
-			// The row shows the server's own reason for a 422 (CUR-4662), which for a hash match is
+			// The row shows the server's own reason for a 422, which for a hash match is
 			// guard.ts's neutral line and never names the check that matched.
 			await journeyStep(page, 'A3', 15, async () => {
 				const { status: matchStatus } = await uploadImage(page, 'holiday.png', MATCH);
@@ -120,7 +120,7 @@ test(
 				await expect(page.getByText('This file could not be uploaded.')).toBeVisible({
 					timeout: 15_000
 				});
-				// The same file would be refused again, so the row offers Remove and never Try again (CUR-2450).
+				// The same file would be refused again, so the row offers Remove and never Try again.
 				await expect(page.getByRole('button', { name: 'Remove' })).toBeVisible();
 				await expect(page.getByRole('button', { name: 'Try again' })).toHaveCount(0);
 				expect(
@@ -140,7 +140,62 @@ test(
 );
 
 test(
-	'CUR-3591: with the scanner down, My files refuses an image in the same words as chat and stores nothing',
+	'when one scanner machine drops the first connection, My files still scans and stores the image',
+	{ tag: ['@preview-only', '@A6', '@A3', '@CUR-4672'] },
+	async ({ page, context, baseURL }) => {
+		test.setTimeout(150_000);
+		const token = process.env.E2E_FAULT_INJECT_TOKEN;
+		if (!token)
+			throw new Error('E2E_FAULT_INJECT_TOKEN is not set, so the scanner-blip fault cannot fire');
+		await openStorage(page, context, baseURL!);
+
+		// The fault fails the scan's first connection the way a just-stopped scanner machine does; the
+		// one retry reaches the scanner for real, so the upload is checked rather than skipped.
+		await page.route(
+			(url) => url.pathname.endsWith('/chat/api/storage'),
+			(route) =>
+				route.request().method() === 'POST'
+					? route.continue({
+							headers: {
+								...route.request().headers(),
+								'x-e2e-fault-inject-token': token,
+								'x-e2e-fault-inject': 'csam_scanner_blip'
+							}
+						})
+					: route.continue()
+		);
+
+		try {
+			const clean = await uploadImage(page, 'garden.png', CLEAN);
+			expect(clean.status, cleanUploadFailure(clean)).toBe(201);
+			expect(
+				await listedNames(page),
+				'the image was not listed after a scanner blip, so the retry did not store it'
+			).toContain('garden.png');
+			await expect(
+				page.getByText("We couldn't check this file just now"),
+				'a scanner blip refused the upload instead of retrying'
+			).toHaveCount(0);
+
+			// The retry still runs the real check: the bank's image is refused, never stored.
+			const { status: matchStatus } = await uploadImage(page, 'holiday.png', MATCH);
+			expect(
+				matchStatus,
+				`after a scanner blip the hash bank's image answered ${matchStatus}, so the retry skipped the check`
+			).toBe(422);
+			expect(await listedNames(page)).not.toContain('holiday.png');
+		} finally {
+			const res = await page.request.get('/chat/api/storage').catch(() => null);
+			const files = res?.ok() ? ((await res.json()) as { files: { path: string }[] }).files : [];
+			for (const f of files) {
+				await page.request.delete(`/chat/api/storage/file?path=${encodeURIComponent(f.path)}`);
+			}
+		}
+	}
+);
+
+test(
+	'with the scanner down, My files refuses an image in the same words as chat and stores nothing',
 	{ tag: ['@preview-only', '@A6', '@A3', '@CUR-3591'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(150_000);

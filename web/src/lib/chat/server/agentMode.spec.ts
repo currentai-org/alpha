@@ -5,22 +5,24 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 const cfg: Record<string, string> = {};
 vi.mock("$lib/chat/server/config", () => ({ config: cfg }));
 
-// Both gates read AGENT_MODE_FLAG through `flagEnabledOr` (CUR-1440). Mocked per-test rather than
+// Both gates read AGENT_MODE_FLAG through `flagEnabledOr`. Mocked per-test rather than
 // stubbed once: the flag is now a gate in its own right, so "the flag is on" has to be an explicit
 // precondition of every test about the OTHER gates instead of an accident of module state.
 const flagEnabledOrMock = vi.fn((_key: string, _fallback: () => boolean) => true);
-// The per-account read (CUR-1440). Returns `boolean | undefined` — `undefined` is PostHog declining to
-// answer, which the gate must treat as denial, so the mock's default is deliberately NOT a boolean.
+// The per-account read. `fallback` is the gate's own code default, which flagEnabledForUser
+// answers with when PostHog cannot; a test about that case makes the mock call it.
 const flagEnabledForUserMock =
-	vi.fn<(key: string, id: string, props: Record<string, unknown>) => Promise<boolean | undefined>>();
+	vi.fn<
+		(key: string, id: string, props: Record<string, unknown>, fallback?: () => boolean) => Promise<boolean>
+	>();
 // agentModeEnabledForUser() now awaits this before reading the flag, same as every other
 // per-request flag consumer. Mocked resolved so existing tests don't need to know it exists; the
-// dedicated test below asserts the call itself and its ordering. (CUR-1572)
+// dedicated test below asserts the call itself and its ordering.
 const ensureFlagsPolledMock = vi.fn().mockResolvedValue(undefined);
 vi.mock("$lib/chat/server/flags", () => ({
 	flagEnabledOr: (key: string, fallback: () => boolean) => flagEnabledOrMock(key, fallback),
-	flagEnabledForUser: (key: string, id: string, props: Record<string, unknown>) =>
-		flagEnabledForUserMock(key, id, props),
+	flagEnabledForUser: (key: string, id: string, props: Record<string, unknown>, fallback?: () => boolean) =>
+		flagEnabledForUserMock(key, id, props, fallback),
 	ensureFlagsPolled: () => ensureFlagsPolledMock(),
 }));
 
@@ -66,7 +68,7 @@ afterEach(() => {
 	else process.env.VERCEL_ENV = savedVercelEnv;
 });
 
-describe("agentModeEnabled — the flag and deployEnv() both gate, the URL is config (CUR-770, CUR-1440)", () => {
+describe("agentModeEnabled — the flag and deployEnv() both gate, the URL is config", () => {
 	it("is ON on preview when a service URL is configured", async () => {
 		cfg.AGENT_SERVICE_URL = "https://agent.test";
 		const { agentModeEnabled } = await import("./agentMode");
@@ -134,13 +136,13 @@ describe("agentModeEnabled — the flag and deployEnv() both gate, the URL is co
 	});
 });
 
-describe("agentModeEnabledForUser — same two gates as agentModeEnabled() (CUR-771, CUR-1440)", () => {
+describe("agentModeEnabledForUser — same two gates as agentModeEnabled()", () => {
 	it("preview → true", async () => {
 		const { agentModeEnabledForUser } = await import("./agentMode");
 		await expect(agentModeEnabledForUser(signedIn)).resolves.toBe(true);
 	});
 
-	// CUR-1572. Vercel Cron never fires on Preview, so `refreshFlags()` — the only other caller of
+	// Vercel Cron never fires on Preview, so `refreshFlags()` — the only other caller of
 	// this poll — never runs there. Without ensuring it here, a cold Preview instance whose first
 	// request lands on a page load reads `agent-mode` off an empty snapshot and silently denies an
 	// allowed account.
@@ -167,7 +169,7 @@ describe("agentModeEnabledForUser — same two gates as agentModeEnabled() (CUR-
 	});
 
 	it("outside preview/production → false, with no per-visitor escape hatch left to try", async () => {
-		// No per-tester path exists (CUR-1278), so outside preview and production the deploy env alone
+		// No per-tester path exists, so outside preview and production the deploy env alone
 		// decides, whoever is signed in.
 		process.env.VERCEL_ENV = "development";
 		const { agentModeEnabledForUser } = await import("./agentMode");
@@ -176,12 +178,12 @@ describe("agentModeEnabledForUser — same two gates as agentModeEnabled() (CUR-
 });
 
 // THE CONTRACT THIS BLOCK PINS: turning the flag off HIDES agent mode, on production and preview
-// alike, with no deploy (CUR-1440). A hardcoded `env in [preview, production]` check in either gate
+// alike, with no deploy. A hardcoded `env in [preview, production]` check in either gate
 // would make the flag vestigial, so a product decision to hide the feature could not be carried out by
 // flipping it. These tests fail if anyone hardcodes the env check.
 //
 // Each asserts the flag is off BY ITSELF — service URL configured, env allowed, nothing else wrong.
-describe("the flag hides agent mode without a deploy (CUR-1440)", () => {
+describe("the flag hides agent mode without a deploy", () => {
 	it("production is OFF when the flag is off, though the env is allowed and the URL is set", async () => {
 		process.env.VERCEL_ENV = "production";
 		cfg.AGENT_SERVICE_URL = "https://agent.example";
@@ -226,7 +228,7 @@ describe("the flag hides agent mode without a deploy (CUR-1440)", () => {
 
 	it("falls back to HIDDEN, so a cold start or a flag PostHog never returns cannot expose it", async () => {
 		// `flagEnabledOr` calls the thunk when it has never polled successfully, and again when it has
-		// polled but the key is absent — the two paths that closed this gate invisibly in CUR-770.
+		// polled but the key is absent — the two paths that can close this gate invisibly.
 		// Passing `() => false` is what makes both of them land on hidden rather than on exposed.
 		process.env.VERCEL_ENV = "production";
 		cfg.AGENT_SERVICE_URL = "https://agent.example";
@@ -247,14 +249,14 @@ describe("the flag hides agent mode without a deploy (CUR-1440)", () => {
 });
 
 // THE CONTRACT: which ACCOUNTS see agent mode is a per-person PostHog evaluation against a SECOND
-// key, keyed on the account's real id (CUR-1440). This is what lets the feature be hidden from
+// key, keyed on the account's real id. This is what lets the feature be hidden from
 // everyone while staying usable by named accounts — the thing a single deployment-wide flag cannot
 // express, because it is read with no person attached.
 //
-// The denial cases are the point. CUR-1278 deleted a per-tester path that fed PostHog a name the
-// visitor typed, so the flag answered a question about whoever asked; and CUR-770 closed a gate
-// invisibly when PostHog went quiet. Both failure shapes get a test here.
-describe("agentModeEnabledForUser — per-account access (CUR-1440)", () => {
+// The denial cases are the point. Feeding PostHog a name the visitor typed would make the flag answer
+// a question about whoever asked, and a fallback chosen wrongly would open or close the gate
+// invisibly when PostHog goes quiet. Both failure shapes get a test here.
+describe("agentModeEnabledForUser — per-account access", () => {
 	it("is ON for an allowed account", async () => {
 		process.env.VERCEL_ENV = "preview";
 		const { agentModeEnabledForUser } = await import("./agentMode");
@@ -268,19 +270,22 @@ describe("agentModeEnabledForUser — per-account access (CUR-1440)", () => {
 		await expect(agentModeEnabledForUser(signedIn)).resolves.toBe(false);
 	});
 
-	it("DENIES when PostHog declines to answer, rather than assuming the account is allowed", async () => {
-		// `flagEnabledForUser` returns undefined when it has no client or the request failed. Reading
-		// that as permission is the CUR-770 mistake pointed the other way: it would hand the feature to
-		// everyone at the moment we stopped being able to tell who should have it.
+	it("DENIES when PostHog cannot answer: the code default it passes is off", async () => {
+		// `flagEnabledForUser` answers with the caller's fallback when it has no client or the request
+		// failed. A fallback of "allowed" would hand the feature to everyone at the moment we can no
+		// longer tell who should have it.
 		process.env.VERCEL_ENV = "preview";
-		flagEnabledForUserMock.mockResolvedValue(undefined);
+		flagEnabledForUserMock.mockImplementation(async (_k, _id, _p, fallback) => {
+			if (!fallback) throw new Error("agentModeEnabledForUser passed no code default");
+			return fallback();
+		});
 		const { agentModeEnabledForUser } = await import("./agentMode");
 		await expect(agentModeEnabledForUser(signedIn)).resolves.toBe(false);
 	});
 
 	it("DENIES an anonymous visitor without evaluating anything against their session cookie", async () => {
-		// The cookie is client-supplied. Passing it as a distinct id is exactly the defect CUR-1278
-		// removed, so assert no per-person read happens at all — not merely that the answer is false.
+		// The cookie is client-supplied, so it must never be passed as a distinct id. Assert no
+		// per-person read happens at all — not merely that the answer is false.
 		process.env.VERCEL_ENV = "preview";
 		const { agentModeEnabledForUser } = await import("./agentMode");
 		await expect(agentModeEnabledForUser(anonymous)).resolves.toBe(false);
@@ -294,10 +299,10 @@ describe("agentModeEnabledForUser — per-account access (CUR-1440)", () => {
 		expect(flagEnabledForUserMock).toHaveBeenCalledWith(AGENT_MODE_ACCESS_FLAG, "acct-1", {
 			email: "someone@example.test",
 			env: "preview",
-		});
+		}, expect.any(Function));
 	});
 
-	it("sends no email for an unverified address on a team domain, so a team-only rule cannot match it (CUR-3182)", async () => {
+	it("sends no email for an unverified address on a team domain, so a team-only rule cannot match it", async () => {
 		process.env.VERCEL_ENV = "preview";
 		const { agentModeEnabledForUser, AGENT_MODE_ACCESS_FLAG } = await import("./agentMode");
 		const unverified = {
@@ -307,7 +312,7 @@ describe("agentModeEnabledForUser — per-account access (CUR-1440)", () => {
 		expect(flagEnabledForUserMock).toHaveBeenCalledWith(AGENT_MODE_ACCESS_FLAG, "acct-2", {
 			email: "",
 			env: "preview",
-		});
+		}, expect.any(Function));
 	});
 
 	it("reads a DIFFERENT key from the deployment gate, so narrowing access cannot unregister the model", async () => {
@@ -336,5 +341,90 @@ describe("agentModeEnabledForUser — per-account access (CUR-1440)", () => {
 		const { agentModeEnabledForUser } = await import("./agentMode");
 		await expect(agentModeEnabledForUser(signedIn)).resolves.toBe(false);
 		expect(flagEnabledForUserMock).not.toHaveBeenCalled();
+	});
+});
+
+// A self-hosted Alpha (ALPHA_EDITION=selfhost) can turn agent mode on without a hosted
+// deploy env, and names the missing setting when it cannot. Hosted behaviour is the blocks above.
+describe("self-host edition may offer agent mode", () => {
+	beforeEach(() => {
+		process.env.VERCEL_ENV = "development";
+		cfg.ALPHA_EDITION = "selfhost";
+	});
+
+	it("self-host with URL and no token and the real default (flag reads off) is OFF, with one warning naming AGENT_SERVICE_TOKEN", async () => {
+		cfg.AGENT_SERVICE_URL = "https://agent.test";
+		// The self-host default for `agent-mode` needs URL and token, so with no token it reads off.
+		flagEnabledOrMock.mockImplementation(() => false);
+		const { agentModeEnabled } = await import("./agentMode");
+		expect(agentModeEnabled()).toBe(false);
+		expect(warnMock).toHaveBeenCalledOnce();
+		expect(warnMock.mock.calls[0]![0]).toContain("AGENT_SERVICE_TOKEN");
+		expect(warnMock.mock.calls[0]![0]).toContain("stays off");
+	});
+
+	it("self-host with URL and no token but the flag FORCED on (ALPHA_FLAGS or PostHog) is enabled on both gates, still warning about the token", async () => {
+		cfg.AGENT_SERVICE_URL = "https://agent.test";
+		const { agentModeEnabled, agentModeEnabledForUser, agentServiceToken } = await import("./agentMode");
+		expect(agentServiceToken()).toBe("");
+		expect(agentModeEnabled()).toBe(true);
+		await expect(agentModeEnabledForUser(signedIn)).resolves.toBe(true);
+		expect(warnMock.mock.calls[0]![0]).toContain("AGENT_SERVICE_TOKEN");
+	});
+
+	it("a hosted deploy with URL and no token never gets the token warning — hosted behaviour is unchanged", async () => {
+		delete cfg.ALPHA_EDITION;
+		process.env.VERCEL_ENV = "preview";
+		cfg.AGENT_SERVICE_URL = "https://agent.test";
+		const { agentModeEnabled } = await import("./agentMode");
+		expect(agentModeEnabled()).toBe(true);
+		expect(warnMock).not.toHaveBeenCalled();
+	});
+
+	it("self-host with URL and token is ENABLED, with no warning", async () => {
+		cfg.AGENT_SERVICE_URL = "https://agent.test";
+		cfg.AGENT_SERVICE_TOKEN = "tok";
+		const { agentModeEnabled } = await import("./agentMode");
+		expect(agentModeEnabled()).toBe(true);
+		expect(warnMock).not.toHaveBeenCalled();
+	});
+
+	it("self-host with agent-mode on but AGENT_SERVICE_URL missing is WITHHELD with one warning naming AGENT_SERVICE_URL", async () => {
+		const { agentModeEnabled } = await import("./agentMode");
+		expect(agentModeEnabled()).toBe(false);
+		expect(warnMock).toHaveBeenCalledOnce();
+		expect(warnMock.mock.calls[0]![0]).toContain("AGENT_SERVICE_URL");
+	});
+
+	it("self-host with the agent-mode flag off stays OFF on both gates and says nothing", async () => {
+		cfg.AGENT_SERVICE_URL = "https://agent.test";
+		cfg.AGENT_SERVICE_TOKEN = "tok";
+		flagEnabledOrMock.mockImplementation(() => false);
+		const { agentModeEnabled, agentModeEnabledForUser } = await import("./agentMode");
+		expect(agentModeEnabled()).toBe(false);
+		await expect(agentModeEnabledForUser(signedIn)).resolves.toBe(false);
+		expect(warnMock).not.toHaveBeenCalled();
+	});
+
+	it("a development deploy that is NOT self-host stays OFF on both gates", async () => {
+		delete cfg.ALPHA_EDITION;
+		cfg.AGENT_SERVICE_URL = "https://agent.test";
+		const { agentModeEnabled, agentModeEnabledForUser } = await import("./agentMode");
+		expect(agentModeEnabled()).toBe(false);
+		await expect(agentModeEnabledForUser(signedIn)).resolves.toBe(false);
+	});
+
+	it("with no declared deploy env, the person property env is 'development', never null, so PostHog env conditions match nothing", async () => {
+		delete process.env.VERCEL_ENV;
+		cfg.AGENT_SERVICE_URL = "https://agent.test";
+		const { agentModeEnabledForUser } = await import("./agentMode");
+		await expect(agentModeEnabledForUser(signedIn)).resolves.toBe(true);
+		expect(flagEnabledForUserMock.mock.calls[0]![2]).toMatchObject({ env: "development" });
+	});
+
+	it("an anonymous visitor on a self-host is still denied the per-account gate", async () => {
+		cfg.AGENT_SERVICE_URL = "https://agent.test";
+		const { agentModeEnabledForUser } = await import("./agentMode");
+		await expect(agentModeEnabledForUser(anonymous)).resolves.toBe(false);
 	});
 });

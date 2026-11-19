@@ -43,7 +43,7 @@ beforeEach(async () => {
 	(await load()).__resetMultimodalWarnForTest();
 });
 
-describe("multimodalEnabled — the flag is the gate, MULTIMODAL_ENABLED is the deployment's consent (CUR-159)", () => {
+describe("multimodalEnabled — the flag is the gate, MULTIMODAL_ENABLED is the deployment's consent", () => {
 	it("BOTH keys, or shut: flag on plus MULTIMODAL_ENABLED=true is the only combination that opens it", async () => {
 		const { multimodalEnabled, MULTIMODAL_FLAG } = await load();
 		flagEnabledOrMock.mockReturnValue(true);
@@ -57,7 +57,7 @@ describe("multimodalEnabled — the flag is the gate, MULTIMODAL_ENABLED is the 
 		flagEnabledOrMock.mockReturnValue(false);
 		cfg.MULTIMODAL_ENABLED = "true";
 		expect(multimodalEnabled()).toBe(false);
-		// The point of the migration: before CUR-159 this env var alone opened every multimodal seam,
+		// The point of the migration: this env var alone opened every multimodal seam,
 		// so a single Doppler edit was the whole disable. It no longer decides anything on its own.
 		expect(multimodalConfigured()).toBe(true);
 	});
@@ -102,7 +102,32 @@ describe("multimodalEnabled — the flag is the gate, MULTIMODAL_ENABLED is the 
 	});
 });
 
-describe("resolveForceMultimodal — a stored user override is not a second way in (CUR-159)", () => {
+describe("multimodalConfigured on a self-host edition", () => {
+	it("ALPHA_EDITION=selfhost with MULTIMODAL_ENABLED unset consents by default", async () => {
+		const { multimodalConfigured } = await load();
+		cfg.ALPHA_EDITION = " SelfHost ";
+		expect(multimodalConfigured()).toBe(true);
+	});
+
+	it("ALPHA_EDITION=selfhost with an explicit MULTIMODAL_ENABLED=false still refuses: the operator's word wins", async () => {
+		const { multimodalConfigured } = await load();
+		cfg.ALPHA_EDITION = "selfhost";
+		for (const v of ["false", "0", "no"]) {
+			cfg.MULTIMODAL_ENABLED = v;
+			expect(multimodalConfigured(), v).toBe(false);
+		}
+	});
+
+	it("hosted, unset or any other edition gets no default: MULTIMODAL_ENABLED unset is still no consent (hosted Alpha unchanged)", async () => {
+		const { multimodalConfigured } = await load();
+		for (const edition of ["hosted", "", "self-host", "selfhosted"]) {
+			cfg.ALPHA_EDITION = edition;
+			expect(multimodalConfigured(), edition).toBe(false);
+		}
+	});
+});
+
+describe("resolveForceMultimodal — a stored user override is not a second way in", () => {
 	it("THE HOLE THIS CLOSES: an override set while multimodal was on does not survive turning it off", async () => {
 		// Nothing expires the stored setting, and prepareMessagesWithFiles formats files off the message
 		// HISTORY — so an override gated only on !isHuggingChat would, after one on-then-off cycle, keep
@@ -128,7 +153,7 @@ describe("resolveForceMultimodal — a stored user override is not a second way 
 	});
 });
 
-describe("modelTakesImagesNow — the model list is shared, the image answer is per visitor (CUR-2725)", () => {
+describe("modelTakesImagesNow — the model list is shared, the image answer is per visitor", () => {
 	it("a model that reads images is refused images for a visitor the flag does not select (a guest on preview)", async () => {
 		const { modelTakesImagesNow } = await load();
 		cfg.MULTIMODAL_ENABLED = "true";
@@ -152,8 +177,8 @@ describe("modelTakesImagesNow — the model list is shared, the image answer is 
 	});
 });
 
-describe("multimodalOnSignIn — would signing in give a guest images? (CUR-2949)", () => {
-	it("says yes only when the flag answers on for this guest signed in, asked for this guest with a bounded wait (CUR-3015)", async () => {
+describe("multimodalOnSignIn — would signing in give a guest images?", () => {
+	it("says yes only when the flag answers on for this guest signed in, asked for this guest with a bounded wait", async () => {
 		cfg.MULTIMODAL_ENABLED = "true";
 		guestSignInFlagValuesMock.mockResolvedValue(new Map([["multimodal", true]]));
 		expect(await (await load()).multimodalOnSignIn("session-a")).toBe(true);
@@ -178,7 +203,7 @@ describe("multimodalOnSignIn — would signing in give a guest images? (CUR-2949
 		expect(await (await load()).multimodalOnSignIn("session-a")).toBe(false);
 	});
 
-	it("follows a forced flag over PostHog's answer, so a request with multimodal forced off is not promised photos by signing in (CUR-3979)", async () => {
+	it("follows a forced flag over PostHog's answer, so a request with multimodal forced off is not promised photos by signing in", async () => {
 		cfg.MULTIMODAL_ENABLED = "true";
 		guestSignInFlagValuesMock.mockResolvedValue(new Map([["multimodal", true]]));
 		fuzzOverrideValueMock.mockImplementation((key) => (key === "multimodal" ? false : undefined));

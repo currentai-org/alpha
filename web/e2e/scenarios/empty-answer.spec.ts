@@ -34,7 +34,7 @@ test(
 			notice,
 			'the empty turn does not end on the notice naming the model; if it reads "No output was generated" the copy is not wired, and if it answered, the fault never reached the server'
 		).toBeVisible({ timeout: 60_000 });
-		// With Auto on, the turn goes to whichever model Auto routed it to (CUR-3923), so the notice has
+		// With Auto on, the turn goes to whichever model Auto routed it to, so the notice has
 		// to name one of the listed models rather than a fixed one.
 		const named = ((await notice.textContent()) ?? '').split(" couldn't answer")[0].trim();
 		expect(

@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 // The panel must never cap its height at the space left under its trigger. The account
 // page's "Delete account" sits near the foot of the viewport, where such a cap leaves the deletion
 // confirmation a sliver a person could confirm without reading it. These pin the contract that matters: the whole panel is on screen and at its natural height, wherever the
-// trigger sits. (CUR-1990)
+// trigger sits.
 
 const CONTENT_PX = 240;
 

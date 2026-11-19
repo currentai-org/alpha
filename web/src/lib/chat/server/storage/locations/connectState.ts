@@ -1,6 +1,6 @@
 // What the connect route hands the callback across the trip to Hugging Face. The state, the
 // PKCE verifier and the account that started it are sealed into one httpOnly cookie, so the callback
-// refuses a code that came back to a different account or with a state it did not mint. (CUR-2932)
+// refuses a code that came back to a different account or with a state it did not mint.
 import { open, seal, SealedSecretError } from "./sealedSecret";
 import { sameState } from "./hfOAuth";
 import { CHAT_API_PATH } from "$lib/chat/paths";

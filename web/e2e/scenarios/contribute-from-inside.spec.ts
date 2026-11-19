@@ -13,8 +13,8 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // page rather than driving the partner's site. Dataset sharing on the Mozilla Data Collective needs an
 // account and a reviewed uploader request, so "Share {language} data" goes to MDC's "Contribute your
 // language" page, which lays out the ways in and pre-fills its dataset search from `utm_term`; its
-// first target was MDC's sign-in page (CUR-3232), then its upload guide. Since the redesign the data
-// actions sit under a language picker rather than in their own cards (SOL-191).
+// first target was MDC's sign-in page, then its upload guide. Since the redesign the data
+// actions sit under a language picker rather than in their own cards.
 
 test(
 	'from the chat sidebar, a visitor reaches a place that takes a dataset, a recording or an idea',
@@ -72,7 +72,7 @@ test(
 			);
 			await answers200((await languages.getAttribute('href'))!, "Common Voice's language list");
 
-			// So is MDC's contribute page, for someone who already has a dataset in any language (SOL-192).
+			// So is MDC's contribute page, for someone who already has a dataset in any language.
 			const shareAny = data.locator('[data-language-data-action="mdc_share"]');
 			await expect(
 				shareAny,

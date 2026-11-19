@@ -1,10 +1,9 @@
 // A task that points at a document nobody gave ("Can you summarise this agenda in three bullet points
-// for our board?", "Translate the letter below into French.") comes back as an invented agenda or
-// letter in most turns (4 of 5 each), and persona examples do not move that beyond noise. Whether a
-// document is present is something the server already knows for certain: the turn's files, and the
-// text of every message in the conversation. A verified-context note stating that fact still lost to
-// the model in 7 of 20 turns, so a turn this detector matches is answered here and never reaches the
-// model (CUR-1835).
+// for our board?", "Translate the letter below into French.") usually comes back from the model as an
+// invented agenda or letter, and persona examples do not reliably stop it. Whether a document is
+// present is something the server already knows for certain: the turn's files, and the text of every
+// message in the conversation. A note in the context stating that fact does not reliably stop the
+// model either, so a turn this detector matches is answered here and never reaches the model.
 //
 // The detector is deliberately narrow, and every guard fails toward letting the model answer:
 // - the last user message is short, on one line, and quotes nothing and has nothing after a colon,
@@ -13,8 +12,8 @@
 //   below");
 // - no message in the conversation carries a file, and no earlier user turn is long enough to have
 //   been the document.
-// `web/evals/inspect_tasks/missing_document.py` measures the effect; its false-trigger rate on ordinary
-// turns is recorded on CUR-1835.
+// `web/evals/inspect_tasks/missing_document.py` measures the effect, including how often the detector
+// fires on ordinary turns.
 
 import type { Message } from "$lib/chat/types/Message";
 

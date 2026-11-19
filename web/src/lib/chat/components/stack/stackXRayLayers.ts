@@ -2,6 +2,7 @@
 
 import type { Message } from "$lib/chat/types/Message";
 import { provenanceFacts } from "$lib/chat/utils/trace/provenanceFacts";
+import { chatHome } from "$lib/chat/paths";
 import { PROVENANCE_PRODUCTS } from "./provenanceProducts.generated";
 import type { ProvenanceProductStatus } from "./provenanceProducts.generated";
 import { provenanceTouch } from "./provenanceTouch";
@@ -18,7 +19,7 @@ export interface StackXRayLayer {
 	partner: string;
 	partnerLink?: string;
 	/** A page of ours about this part, shown as its own link so the maker's name keeps pointing at
-	 *  the maker (CUR-1745). */
+	 *  the maker. */
 	ownLink?: { href: string; label: string };
 	osProduct?: string;
 	osProductUrl?: string;
@@ -33,7 +34,7 @@ export interface StackXRayLayer {
 	 *  names nothing in the catalog. Absent when the gap map is not part of this build. */
 	mapHref?: string;
 	/**
-	 * Per-user reachability, for a product ALSO gated by a per-request feature flag (CUR-1447) —
+	 * Per-user reachability, for a product ALSO gated by a per-request feature flag —
 	 * `undefined` for every product not behind one, which is every product except the one(s) named in
 	 * `FLAG_GATED_PRODUCTS` below. Where it applies, `status: "building"` alone can't distinguish "not
 	 * built yet" from "built, but not for you": a visitor without agent-mode access saw the exact same
@@ -41,14 +42,14 @@ export interface StackXRayLayer {
 	 * present-and-unavailable instead of a silent absence.
 	 */
 	available?: boolean;
-	/** The maker's own platform, when it served this answer directly and so stood in for this row
-	 *  (CUR-3966). Without it a skipped row reads like a part that sat idle while something unnamed ran
+	/** The maker's own platform, when it served this answer directly and so stood in for this row.
+	 *  Without it a skipped row reads like a part that sat idle while something unnamed ran
 	 *  the model. */
 	bypassedBy?: string;
 	/** The answer recorded nothing that says whether this row took part: no backend, so no reading
-	 *  either way (CUR-3966). Shown as unmeasured, never as "not used". */
+	 *  either way. Shown as unmeasured, never as "not used". */
 	unreported?: boolean;
-	/** Built and running elsewhere, but no model this app offers is served on it (CUR-4328). Before an
+	/** Built and running elsewhere, but no model this app offers is served on it. Before an
 	 *  answer it reads as not in use rather than as working. */
 	idle?: boolean;
 }
@@ -72,7 +73,7 @@ export interface StackXRayAvailability {
 }
 
 /** X-ray's chips read the roadmap's ecosystem status as a claim about this app, which is wrong for
- *  two rows (CUR-4328). Auto already chooses the model, though the roadmap still lists a chooser as
+ *  two rows. Auto already chooses the model, though the roadmap still lists a chooser as
  *  being built. The public computers exist, but no model offered on any deployment is served from
  *  them (`pnpm models:matrix`; prod answers by backend host). So before an answer that row says it is not
  *  in use, where "Working" claimed a part nothing ran on. A turn that reaches Swiss compute still
@@ -87,29 +88,19 @@ const FLAG_GATED_PRODUCTS: Partial<Record<string, keyof StackXRayAvailability>> 
 	"agent-service": "agentAvailable",
 };
 
-/** The roadmap names our own products by their production URL ("https://aipotluck.org/chat"). On a
- *  preview or local build that link would leave for production, so it becomes a path on whatever
- *  origin is serving the page. Every other URL passes through unchanged. */
-function sameSiteAsPath(url: string | null | undefined): string | undefined {
-	if (!url) return undefined;
-	try {
-		const parsed = new URL(url);
-		if (parsed.hostname === "aipotluck.org" || parsed.hostname === "www.aipotluck.org") {
-			return `${parsed.pathname}${parsed.search}${parsed.hash}`;
-		}
-	} catch {
-		// not an absolute URL — leave it as the roadmap wrote it
-	}
-	return url;
+/** Where the row's product name links: the chat's own home when the product is this chat, else the
+ *  roadmap's URL as written. */
+function productUrl(product: (typeof PROVENANCE_PRODUCTS)[number]): string | undefined {
+	return product.links_to_this_app ? chatHome : (product.os_product_url ?? undefined);
 }
 
 function partnerLink(product: (typeof PROVENANCE_PRODUCTS)[number]): string | undefined {
-	return product.maintainers_url[0] ?? sameSiteAsPath(product.os_product_url);
+	return product.maintainers_url[0] ?? productUrl(product);
 }
 
 /** Rows that stand between the app and the model: the gateway, the router behind it, the serving
  *  engine, the metering layer and the public compute. An answer from a maker's own API (a `vendor`
- *  host, CUR-2274) passed through none of them, so none of them lights (CUR-2287). */
+ *  host) passed through none of them, so none of them lights. */
 const INTERMEDIARY_ROWS = new Set([
 	"inference-platform",
 	"compute-router",
@@ -124,7 +115,7 @@ const COMPUTE_ROW = "sovereign-compute";
 /**
  * The model row as the served model, when that model is not the Apertus the roadmap row describes.
  * The roadmap's copy (maker, description, links) is Apertus's own, so none of it carries over: the row
- * names the served model and its maker, and links the public card only when there is one (CUR-2287).
+ * names the served model and its maker, and links the public card only when there is one.
  */
 function servedModelRow(layer: StackXRayLayer, servedModelId: string): StackXRayLayer {
 	const identity = resolveModelIdentity(servedModelId);
@@ -143,12 +134,12 @@ function servedModelRow(layer: StackXRayLayer, servedModelId: string): StackXRay
 }
 
 /** The roadmap's compute row is CSCS's. A turn served by another host names that host's catalog org
- *  (`BACKEND_HOSTS`, CUR-4587). */
+ *  (`BACKEND_HOSTS`). */
 const ROADMAP_COMPUTE_ORG = "cscs";
 
 /**
  * The compute row as the Swiss host that served the turn, when that host is not CSCS. The roadmap's
- * copy ("hosted by CSCS in Lugano") is CSCS's own, so none of it carries over (CUR-1883).
+ * copy ("hosted by CSCS in Lugano") is CSCS's own, so none of it carries over.
  */
 function servedComputeRow(layer: StackXRayLayer, backend: string | undefined): StackXRayLayer {
 	const host = backendHost(backend);
@@ -175,11 +166,11 @@ export function deriveStackXRayLayers(
 	availability: StackXRayAvailability = {}
 ): StackXRayLayer[] {
 	const facts = message ? provenanceFacts(message) : undefined;
-	// What actually answered, as the endpoint recorded it (CUR-2283). Unset on turns persisted before
+	// What actually answered, as the endpoint recorded it. Unset on turns persisted before
 	// direct lanes recorded it, which keep the roadmap rows as they were.
 	const servedModelId = message?.routerMetadata?.model || undefined;
 	const servedOther = !!servedModelId && !/apertus/i.test(resolveModelIdentity(servedModelId).short);
-	// Direct only when the host we SENT to is the maker's own API (CUR-4577). The backend is the
+	// Direct only when the host we SENT to is the maker's own API. The backend is the
 	// vendor's host on a router turn too, so reading it would call a router turn "served directly".
 	const vendor = laneVendor(message?.routerMetadata?.lane);
 	const direct = !!vendor;
@@ -212,7 +203,7 @@ export function deriveStackXRayLayers(
 			partnerLink: partnerLink(product),
 			ownLink: OWN_LINKS[product.name],
 			osProduct,
-			osProductUrl: sameSiteAsPath(product.os_product_url),
+			osProductUrl: productUrl(product),
 			productAttribution,
 			desc: product.description ?? "",
 			touched,

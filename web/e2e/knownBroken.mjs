@@ -1,6 +1,6 @@
 // When a feature works in one environment and is broken in another, the tempting fix is a matcher
 // weak enough to pass in both, which leaves a test that cannot go red for the defect it was written
-// about (CUR-1615: F6's provenance assertion, weakened until preview's missing headers passed). The
+// about (F6's provenance assertion, weakened until preview's missing headers passed). The
 // sanctioned move is `test.fail()` in the broken environment only: Playwright turns it red the day
 // the feature starts working there, so the cell retires itself.
 //
@@ -8,7 +8,7 @@
 // broken in, the ticket that owns the fix and a date the entry stops working. Specs read it through
 // failWhereKnownBroken(); scripts/check-known-broken.mjs keeps it honest in pre-push and CI.
 //
-// Distinct from quarantine.json (CUR-2445), which takes a flaky test out of the PR gate. A
+// Distinct from quarantine.json, which takes a flaky test out of the PR gate. A
 // known-broken test stays in every run and is expected to fail where its cell says.
 
 import { readFileSync } from 'node:fs';

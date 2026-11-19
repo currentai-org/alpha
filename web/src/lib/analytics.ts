@@ -1,7 +1,10 @@
 import posthog from 'posthog-js';
 import { browser } from '$app/environment';
-import { CHAT_HOST } from '$lib/chat/paths';
 import { isChatRoute } from '$lib/surface';
+import { DEPLOYMENT } from '$lib/deployment';
+
+// Chat's own host, which serves chat at its root (src/lib/deployment.ts). A link to it is a click to chat.
+const CHAT_HOST = DEPLOYMENT.chatHost;
 
 let initialized = false;
 
@@ -43,10 +46,10 @@ export type SiteEvent =
 // no-new-vendor argument (errorTracking.ts). With it off, a client-side crash would be recorded
 // nowhere: the analytics would see only the $pageview.
 //
-// `uiHost` keeps the reverse-proxy path open WITHOUT a code change: point PUBLIC_POSTHOG_HOST at a
-// first-party ingest proxy later (e.g. https://www.aipotluck.org/ingest, added as a rewrite) and
-// set PUBLIC_POSTHOG_UI_HOST=https://us.posthog.com so the toolbar / "view in PostHog" links still
-// resolve. Until then both are unset and traffic goes straight to us.i.posthog.com.
+// The default host is the same-origin /rs proxy (routes/rs/[...path]), which every deployment serves
+// and which forwards to POSTHOG_INGEST_HOST. PUBLIC_POSTHOG_HOST overrides it; set
+// PUBLIC_POSTHOG_UI_HOST (e.g. https://us.posthog.com) so the toolbar / "view in PostHog" links resolve
+// while the API host is a proxy.
 export function initAnalytics(
 	key: string | undefined,
 	host: string | undefined,
@@ -54,7 +57,7 @@ export function initAnalytics(
 ) {
 	if (!browser || !key || initialized) return;
 	posthog.init(key, {
-		api_host: host || 'https://us.i.posthog.com',
+		api_host: host || '/rs',
 		...(uiHost ? { ui_host: uiHost } : {}),
 		person_profiles: 'identified_only',
 		autocapture: false,
@@ -67,8 +70,11 @@ export function initAnalytics(
 		capture_exceptions: true,
 		// web_vitals only — network_timing is a session-replay companion (works WITH replay
 		// to correlate slow requests to a recording), useless while disable_session_recording stays
-		// true above, and pure overhead if it were ever turned on. (CUR-1513)
+		// true above, and pure overhead if it were ever turned on.
 		capture_performance: { web_vitals: true },
+		// No browser code reads a flag: every flag is evaluated on the server, locally. Without
+		// this, each page load makes a billed /flags request whose answer nobody reads.
+		advanced_disable_feature_flags: true,
 		before_send: (event) => (!event || isBrowserNoise(event) ? null : scrubRouteIds(event))
 	});
 	initialized = true;
@@ -99,11 +105,10 @@ export function isBrowserNoise(event: {
 // $set_once) has the id segment of the routes below replaced with ":id". The pattern matches
 // our own route shapes only, never free text. The walk descends into nested objects and arrays,
 // because `$web_vitals_*_event` carries its own `$current_url` and `navigationURL` one level down.
-// (CUR-2606)
 // On the chat surface the same routes live at the root (`/conversation/<id>`), and a site
 // event's `$referrer` can name one from alpha. So the shape matches either form on BOTH surfaces: the
 // `/chat`-prefixed one anywhere, as before, and the root one only where a URL's path begins — the
-// whole string (a `$pathname`) or straight after `//host` — never mid-path or in free text. (CUR-4448)
+// whole string (a `$pathname`) or straight after `//host` — never mid-path or in free text.
 const ROUTE_ID =
 	/((?:\/chat|^|\/\/[^/?#\s]+)\/(?:conversation|admin\/reports|workspace\/accept)\/)[^/?#\s]+/g;
 
@@ -154,7 +159,7 @@ export function scrubRouteIds<
 // which is client-side and per-browser.
 //
 // It is a LABEL and nothing more. Server-side feature-flag targeting does not read it, because a
-// string the visitor types is not an identity (CUR-1278); see the note in chat/server/flags.ts.
+// string the visitor types is not an identity; see the note in chat/server/flags.ts.
 export function internalTrafficProps(
 	hostname: string,
 	search: string
@@ -230,7 +235,8 @@ export function detectSource(url: URL): string {
 export function hrefToClickEvent(href: string | undefined | null): SiteEvent | null {
 	if (!href) return null;
 	const h = href.toLowerCase();
-	if (h.includes('/chat') || h === 'chat' || h.includes(CHAT_HOST)) return 'click_to_chat';
+	if (h.includes('/chat') || h === 'chat' || (CHAT_HOST !== null && h.includes(CHAT_HOST)))
+		return 'click_to_chat';
 	if (h.includes('/map') || h === 'map') return 'click_to_map';
 	if (h.includes('/contribute') || h === 'contribute') return 'click_to_contribute';
 	if (h.includes('/about') || h === 'about') return 'click_to_about';

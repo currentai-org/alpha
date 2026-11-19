@@ -1,5 +1,5 @@
-// "admin or uploader may delete" — the escape/edge cases are the point, same
-// discipline as custodialBucket.spec.ts's own header comment. (CUR-736/CUR-827)
+// "admin or uploader may delete" — the escape/edge cases are the point, the same
+// discipline custodialBucket.spec.ts's header comment describes.
 import { describe, it, expect } from "vitest";
 import { shadowUserId } from "$lib/chat/server/auth";
 import { assertRagDocumentAccess, RagDocumentOwnershipError } from "./documentOwnership";
@@ -92,8 +92,8 @@ describe("assertRagDocumentAccess", () => {
 
 	// The cross-tenant IDOR. actorIsWorkspaceAdmin alone must not clear the check: it
 	// has to compare which workspace the document actually belongs to, or an admin of workspace A,
-	// passing workspace B's documentId, would pass. (CUR-929)
-	it("refuses a workspace admin from a different workspace than the document's own — CUR-929", async () => {
+	// passing workspace B's documentId, would pass.
+	it("refuses a workspace admin from a different workspace than the document's own", async () => {
 		await expect(
 			assertRagDocumentAccess({
 				actorUserId: OTHER_MEMBER,
@@ -109,7 +109,7 @@ describe("assertRagDocumentAccess", () => {
 	// The workspace mismatch has to be disqualifying on its own, not just an extra condition folded
 	// into the admin branch — the original uploader acting from the wrong workspace context is exactly
 	// as unauthorized as an admin doing the same, since a document only ever belongs to one workspace.
-	it("refuses even the document's own uploader when acting from a different workspace — CUR-929", async () => {
+	it("refuses even the document's own uploader when acting from a different workspace", async () => {
 		await expect(
 			assertRagDocumentAccess({
 				actorUserId: UPLOADER,

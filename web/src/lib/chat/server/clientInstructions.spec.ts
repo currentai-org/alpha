@@ -8,7 +8,7 @@ import {
 import { guardChunkTexts } from "./guardGate";
 import { GUARD_CORPUS_CAP, textOnlyGuardInput } from "./guardScreenTypes";
 
-describe("CUR-3528 caller-written system text", () => {
+describe("caller-written system text", () => {
 	it("refuses a caller preprompt over the cap, and never refuses the model's own preprompt", () => {
 		const long = "x".repeat(CLIENT_INSTRUCTIONS_MAX_CHARS + 1);
 		expect(exceedsClientInstructionsCap(long)).toBe(true);
@@ -40,6 +40,14 @@ describe("CUR-3528 caller-written system text", () => {
 		const screen = withClientInstructions(textOnlyGuardInput("TURN"), stored);
 		expect(screen.corpus.length).toBe("TURN\n\n".length + CLIENT_INSTRUCTIONS_MAX_CHARS);
 		expect(guardChunkTexts(screen.corpus).join("")).toContain("TURN");
+	});
+
+	it("adds the instructions to the whole-history corpus too, so the re-read of a capped block still screens them", () => {
+		const capped = { ...textOnlyGuardInput("tail\n\nTURN", "TURN"), historyCorpus: "head tail\n\nTURN" };
+		const screen = withClientInstructions(capped, "MARKER");
+		expect(screen.corpus).toBe("tail\n\nTURN\n\nMARKER");
+		expect(screen.historyCorpus).toBe("head tail\n\nTURN\n\nMARKER");
+		expect(withClientInstructions(textOnlyGuardInput("TURN"), "MARKER").historyCorpus).toBeUndefined();
 	});
 
 	it("leaves the screen untouched when the caller wrote nothing", () => {

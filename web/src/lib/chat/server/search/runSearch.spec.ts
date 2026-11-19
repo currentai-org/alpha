@@ -11,7 +11,6 @@ const h = vi.hoisted(() => ({
 	classifySearchNeed: vi.fn(),
 	decideSearchViaTool: vi.fn(),
 	decideSearchViaIntent: vi.fn(),
-	searchIntentEnabled: vi.fn(() => true),
 	warn: vi.fn(),
 	info: vi.fn(),
 	cfg: {} as Record<string, string>,
@@ -30,9 +29,8 @@ vi.mock("./searchDecision", () => ({
 }));
 vi.mock("./searchIntent", () => ({
 	decideSearchViaIntent: h.decideSearchViaIntent,
-	searchIntentEnabled: h.searchIntentEnabled,
 }));
-// The deciding model's identity (CUR-984): the registry default and the embedder's own address.
+// The deciding model's identity: the registry default and the embedder's own address.
 vi.mock("$lib/chat/server/models", () => ({
 	defaultModel: {
 		id: "mistral-large-2512",
@@ -87,7 +85,7 @@ describe("runWebRetrieval — deferred numbering (§5.1)", () => {
 		expect(h.retrieveWeb).not.toHaveBeenCalled();
 	});
 
-	// A retrieval that never settles must not hold the turn until the 45s generation watchdog (CUR-4089).
+	// A retrieval that never settles must not hold the turn until the 45s generation watchdog.
 	it("returns undefined and logs the cut when retrieval never settles, instead of holding the turn forever", async () => {
 		vi.useFakeTimers();
 		try {
@@ -145,7 +143,7 @@ describe("runWebRetrieval — deferred numbering (§5.1)", () => {
 	});
 });
 
-// An engaged search that yields nothing must say why, or the turn reads as one nobody ran. (CUR-4091)
+// An engaged search that yields nothing must say why, or the turn reads as one nobody ran.
 describe("runWebRetrieval — says why a leg that ran produced no outcome", () => {
 	it("reports a leg cut at its deadline as a timeout", async () => {
 		vi.useFakeTimers();
@@ -222,11 +220,11 @@ describe("runWebSearch — numbers community-first at startAt (§5.1)", () => {
 	});
 });
 
-// CUR-2108. A decider that gives no verdict hands the turn to a fallback: search under margin
-// (CUR-2109), the recency regex under model/tool. That hand-off is a fail-open departure and must be
-// counted as one, and the decision line must say which decider ran, so a fallback can never be read
-// as a model "no". Each case names the decider and the path.
-describe("decideWebSearch — names its decider and logs every fallback (CUR-2108)", () => {
+// A decider that gives no verdict hands the turn to a fallback: search under margin, the recency
+// regex under model/tool. That hand-off is a fail-open departure and must be counted as one, and
+// the decision line must say which decider ran, so a fallback can never be read as a model "no".
+// Each case names the decider and the path.
+describe("decideWebSearch — names its decider and logs every fallback", () => {
 	// Timeless and carries no recency or lookup words, so any search here came from the decider.
 	const TEXT = "who painted the ceiling of the sistine chapel";
 
@@ -241,7 +239,6 @@ describe("decideWebSearch — names its decider and logs every fallback (CUR-210
 		h.classifySearchNeed.mockReset();
 		h.decideSearchViaTool.mockReset();
 		h.decideSearchViaIntent.mockReset();
-		h.searchIntentEnabled.mockReset().mockReturnValue(true);
 	});
 
 	it("margin: the embedding gate decides, and a verdict logs no departure", async () => {
@@ -269,7 +266,7 @@ describe("decideWebSearch — names its decider and logs every fallback (CUR-210
 
 	it("margin: a failed gate searches a timeless question, and the decision line says it was the fallback", async () => {
 		// TEXT has no recency word, so the regex fallback would decline. The search here can
-		// only have come from the no-verdict-means-search rule (CUR-2109).
+		// only have come from the no-verdict-means-search rule.
 		h.cfg.PUBLIC_SEARCH_TRIGGER = "margin";
 		h.decideSearchViaIntent.mockResolvedValue({ shouldSearch: false, ok: false, margin: 0, reason: "threw" });
 		const d = await decideWebSearch(TEXT, undefined, false);
@@ -289,15 +286,6 @@ describe("decideWebSearch — names its decider and logs every fallback (CUR-210
 		expect(decisionLine()).toMatchObject({ explicitLookupHit: true, heuristicHit: true, reason: "none" });
 	});
 
-	it("margin: the embedding flag off is a departure, not a silent switch to another gate", async () => {
-		h.cfg.PUBLIC_SEARCH_TRIGGER = "margin";
-		h.searchIntentEnabled.mockReturnValue(false);
-		const d = await decideWebSearch(TEXT, undefined, false);
-		expect(d).toMatchObject({ search: true, decider: "none", fallback: "embedding-gate-off" });
-		expect(h.decideSearchViaIntent).not.toHaveBeenCalled();
-		expect(departures()).toHaveLength(1);
-	});
-
 	it("model: the completion decider's verdict decides with no departure", async () => {
 		h.cfg.PUBLIC_SEARCH_TRIGGER = "model";
 		h.classifySearchNeed.mockResolvedValue({ shouldSearch: true, ok: true });
@@ -307,7 +295,7 @@ describe("decideWebSearch — names its decider and logs every fallback (CUR-210
 	});
 
 	// A bare "now" in an app question matches the recency regex, which must not override the
-	// classifier's no and send the turn to the web (CUR-2372).
+	// classifier's no and send the turn to the web.
 	it("model: a recency-regex hit does not override the completion decider's no", async () => {
 		h.cfg.PUBLIC_SEARCH_TRIGGER = "model";
 		h.classifySearchNeed.mockResolvedValue({ shouldSearch: false, ok: true });
@@ -324,7 +312,7 @@ describe("decideWebSearch — names its decider and logs every fallback (CUR-210
 		expect(decisionLine()).toMatchObject({ reason: "heuristic" });
 	});
 
-	it("model: the completion classifier is a side call, never handed the turn's model (CUR-2092)", async () => {
+	it("model: the completion classifier is a side call, never handed the turn's model", async () => {
 		h.cfg.PUBLIC_SEARCH_TRIGGER = "model";
 		h.classifySearchNeed.mockResolvedValue({ shouldSearch: false, ok: true });
 		await decideWebSearch(TEXT, undefined, false, { id: "mistral-large-2512" });
@@ -332,7 +320,7 @@ describe("decideWebSearch — names its decider and logs every fallback (CUR-210
 	});
 
 	// A file never switches search off. The decider is told what came with the message and
-	// still decides, so its yes on a photo turn is a search. (CUR-3192)
+	// still decides, so its yes on a photo turn is a search.
 	it("model: a turn with a photo tells the classifier, and its yes still searches", async () => {
 		h.cfg.PUBLIC_SEARCH_TRIGGER = "model";
 		h.classifySearchNeed.mockResolvedValue({ shouldSearch: true, ok: true });
@@ -340,6 +328,34 @@ describe("decideWebSearch — names its decider and logs every fallback (CUR-210
 		expect(h.classifySearchNeed.mock.calls[0]).toEqual(["where can I buy these shoes", undefined, ["image"]]);
 		expect(d).toMatchObject({ search: true, decider: "completion" });
 		expect(decisionLine()).toMatchObject({ attachments: 1 });
+	});
+
+	// The fault a preview spec arms: under margin, where the embedding gate otherwise decides,
+	// the completion classifier decides, and its malformed reading reaches the decision line apart from a no.
+	it("margin under search_classifier_malformed: the completion classifier decides, and the decision line reads malformed", async () => {
+		h.cfg.PUBLIC_SEARCH_TRIGGER = "margin";
+		h.classifySearchNeed.mockResolvedValue({ shouldSearch: false, ok: true, reading: "malformed" });
+		const d = await decideWebSearch(TEXT, undefined, false, undefined, [], [], { classifierMalformed: true });
+		expect(h.decideSearchViaIntent).not.toHaveBeenCalled();
+		expect(h.classifySearchNeed.mock.calls[0]).toEqual([TEXT, undefined, [], { malformedReply: true }]);
+		expect(d).toMatchObject({ search: false, decider: "completion", classifierReading: "malformed" });
+		expect(decisionLine()).toMatchObject({ decider: "completion", classifierOk: true, classifierReading: "malformed" });
+	});
+
+	it("model: a real no reads as no on the decision line, never as malformed", async () => {
+		h.cfg.PUBLIC_SEARCH_TRIGGER = "model";
+		h.classifySearchNeed.mockResolvedValue({ shouldSearch: false, ok: true, reading: "no" });
+		const d = await decideWebSearch(TEXT, undefined, false);
+		expect(d).toMatchObject({ search: false, classifierReading: "no" });
+		expect(decisionLine()).toMatchObject({ classifierReading: "no" });
+	});
+
+	it("tool under search_classifier_malformed: the completion classifier decides in the tool decider's place", async () => {
+		h.cfg.PUBLIC_SEARCH_TRIGGER = "tool";
+		h.classifySearchNeed.mockResolvedValue({ shouldSearch: false, ok: true, reading: "malformed" });
+		const d = await decideWebSearch(TEXT, undefined, false, undefined, [], [], { classifierMalformed: true });
+		expect(h.decideSearchViaTool).not.toHaveBeenCalled();
+		expect(d).toMatchObject({ decider: "completion", classifierReading: "malformed" });
 	});
 
 	it("margin: a turn with a file goes to the classifier, which can be told about it; the text-only embedding gate is not asked", async () => {
@@ -366,7 +382,7 @@ describe("decideWebSearch — names its decider and logs every fallback (CUR-210
 	});
 
 	// With the photo in hand, the serving model decides and writes the query from what it sees,
-	// whatever the strategy, the way Google's AI Mode and ChatGPT search an image. (CUR-3192)
+	// whatever the strategy, the way Google's AI Mode and ChatGPT search an image.
 	const PHOTO = [{ mime: "image/jpeg", b64: "AAAA" }];
 
 	it("vision: a photo question the model answers from the image runs no search, under every strategy", async () => {
@@ -421,7 +437,7 @@ describe("decideWebSearch — names its decider and logs every fallback (CUR-210
 
 	it("model: a failed completion call is a departure, not a model 'no'", async () => {
 		// A quiet fallback is what the production path must not have: classifySearchNeed swallowing every error
-		// and returning false would be recorded by the decision line exactly like the model declining (CUR-2108).
+		// and returning false would be recorded by the decision line exactly like the model declining.
 		h.cfg.PUBLIC_SEARCH_TRIGGER = "model";
 		h.classifySearchNeed.mockResolvedValue({ shouldSearch: false, ok: false });
 		const d = await decideWebSearch(TEXT, undefined, false);
@@ -453,7 +469,7 @@ describe("decideWebSearch — names its decider and logs every fallback (CUR-210
 	});
 });
 
-describe("decideWebSearch — names the model that decided, and only when one did (CUR-984)", () => {
+describe("decideWebSearch — names the model that decided, and only when one did", () => {
 	const TEXT = "who painted the ceiling of the sistine chapel";
 
 	beforeEach(() => {
@@ -461,7 +477,6 @@ describe("decideWebSearch — names the model that decided, and only when one di
 		h.classifySearchNeed.mockReset();
 		h.decideSearchViaTool.mockReset();
 		h.decideSearchViaIntent.mockReset();
-		h.searchIntentEnabled.mockReset().mockReturnValue(true);
 	});
 
 	it("margin: the embedding model and its host are the decider, keeping the host and not the path", async () => {

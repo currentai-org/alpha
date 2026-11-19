@@ -1,8 +1,8 @@
 /**
  * resolveFaultInjection is the only thing that can make a live request simulate a named
- * fault. Same shape as betterAuth.otpSendCapCarveOut.spec.ts (CUR-1553) — every case here is really
- * one assertion repeated: BOTH conditions (env allow-list, correct secret) must hold simultaneously,
- * and any one missing returns null, the same "apply real behavior" default the OTP carve-out uses. (CUR-1614)
+ * fault. Same shape as betterAuth.otpSendCapCarveOut.spec.ts: every case here is really one
+ * assertion repeated. BOTH conditions (env allow-list, correct secret) must hold simultaneously,
+ * and any one missing returns null, the same "apply real behavior" default the OTP carve-out uses.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
@@ -31,7 +31,7 @@ function req({ token, fault }: { token?: string; fault?: string } = {}): Request
 	});
 }
 
-describe("resolveFaultInjection (CUR-1614)", () => {
+describe("resolveFaultInjection", () => {
 	it("resolves the requested fault when both conditions hold, on preview", async () => {
 		process.env.VERCEL_ENV = "preview";
 		const resolveFaultInjection = await importSubject();
@@ -71,7 +71,7 @@ describe("resolveFaultInjection (CUR-1614)", () => {
 	});
 
 	// The canned read-aloud clip swaps a third-party call out of a user-visible turn, so it
-	// must sit behind the same gate as every other fault. (CUR-2253)
+	// must sit behind the same gate as every other fault.
 	it("resolves tts_canned_clip on preview and refuses it in production", async () => {
 		const resolveFaultInjection = await importSubject();
 		process.env.VERCEL_ENV = "preview";
@@ -118,8 +118,8 @@ describe("resolveFaultInjection (CUR-1614)", () => {
 });
 
 // A fixed window shorter than one Coop call may take (8s by default) would trip on a slow
-// but healthy screen. The window has to track the per-call bound, whatever COOP_TIMEOUT_MS is set to. (CUR-2705)
-describe("outputScreenWindowFaultMs (CUR-2705)", () => {
+// but healthy screen. The window has to track the per-call bound, whatever COOP_TIMEOUT_MS is set to.
+describe("outputScreenWindowFaultMs", () => {
 	it("is never shorter than one Coop call's own timeout, at the default or a configured bound", async () => {
 		const { outputScreenWindowFaultMs } = await import("./faultInjection");
 		const { coopCallTimeoutMs } = await import("$lib/chat/server/moderation");
@@ -136,10 +136,10 @@ describe("outputScreenWindowFaultMs (CUR-2705)", () => {
 });
 
 // `generation_timeout` uses a shorter watchdog than the real 45s, which reaches the same
-// abort path without the wait. (CUR-2757)
-describe("watchdogDeadlineMs (CUR-2757)", () => {
-	const plain = { isAgentTurn: false, silentLaneFailover: false };
-	const agent = { isAgentTurn: true, silentLaneFailover: false };
+// abort path without the wait.
+describe("watchdogDeadlineMs", () => {
+	const plain = { isAgentTurn: false };
+	const agent = { isAgentTurn: true };
 
 	it("keeps the configured deadline when no fault applies, including an agent fault on a plain turn", async () => {
 		const { watchdogDeadlineMs } = await import("./faultInjection");
@@ -160,22 +160,19 @@ describe("watchdogDeadlineMs (CUR-2757)", () => {
 		expect(watchdogDeadlineMs(240_000, "agent_turn_deadline_20s", agent)).toBe(20_000);
 	});
 
-	it("shortens a silent primary's watchdog only when failover-on-silent-lane is off, since the backup needs the real one", async () => {
+	it("keeps a silent primary's real watchdog, since the backup the silent-lane deadline moves to needs it", async () => {
 		const { watchdogDeadlineMs } = await import("./faultInjection");
-		expect(watchdogDeadlineMs(45_000, "primary_lane_hangs", plain)).toBe(15_000);
-		expect(
-			watchdogDeadlineMs(45_000, "primary_lane_hangs", { isAgentTurn: false, silentLaneFailover: true })
-		).toBe(45_000);
+		expect(watchdogDeadlineMs(45_000, "primary_lane_hangs", plain)).toBe(45_000);
 	});
 
-	it("answer_streams_past_cap shortens a plain turn's total cap to 4s, never lengthens a shorter one (CUR-4009)", async () => {
+	it("answer_streams_past_cap shortens a plain turn's total cap to 4s, never lengthens a shorter one", async () => {
 		const { watchdogDeadlineMs } = await import("./faultInjection");
 		expect(watchdogDeadlineMs(45_000, "answer_streams_past_cap", plain)).toBe(4_000);
 		expect(watchdogDeadlineMs(2_000, "answer_streams_past_cap", plain)).toBe(2_000);
 	});
 });
 
-describe("resolveReplayMode (SOL-148)", () => {
+describe("resolveReplayMode", () => {
 	const replayReq = (headers: Record<string, string>) =>
 		new Request("https://example.vercel.app/chat/conversation/abc123", { method: "POST", headers });
 	const token = { "x-e2e-fault-inject-token": "test-secret-value" };
@@ -208,7 +205,41 @@ describe("resolveReplayMode (SOL-148)", () => {
 	});
 });
 
-describe("input_screen_declines_rule's judge (CUR-4093)", () => {
+describe("adoptReplayMode — a scenario request's replay mode reaches every route", () => {
+	const replayReq = (headers: Record<string, string>) =>
+		new Request("https://example.vercel.app/chat/api/any-new-route", { method: "POST", headers });
+	const token = { "x-e2e-fault-inject-token": "test-secret-value" };
+
+	it("puts the mode in the request context, where every model call reads it", async () => {
+		process.env.VERCEL_ENV = "preview";
+		const { adoptReplayMode } = await import("./faultInjection");
+		const { runWithRequestContext, getRequestContext } = await import("$lib/chat/server/requestContext");
+		const seen = await runWithRequestContext(async () => {
+			await adoptReplayMode(replayReq({ ...token, "x-e2e-replay": "mock" }));
+			return getRequestContext()?.replayMode;
+		});
+		expect(seen).toBe("mock");
+	});
+
+	it("sets nothing for a request the gate refuses, so production and real visitors stay live", async () => {
+		const { adoptReplayMode } = await import("./faultInjection");
+		const { runWithRequestContext, getRequestContext } = await import("$lib/chat/server/requestContext");
+		process.env.VERCEL_ENV = "production";
+		const onProduction = await runWithRequestContext(async () => {
+			await adoptReplayMode(replayReq({ ...token, "x-e2e-replay": "mock" }));
+			return getRequestContext()?.replayMode;
+		});
+		process.env.VERCEL_ENV = "preview";
+		const withoutToken = await runWithRequestContext(async () => {
+			await adoptReplayMode(replayReq({ "x-e2e-replay": "mock" }));
+			return getRequestContext()?.replayMode;
+		});
+		expect(onProduction).toBeUndefined();
+		expect(withoutToken).toBeUndefined();
+	});
+});
+
+describe("input_screen_declines_rule's judge", () => {
 	it("says yes to the harassment rule's question and no to every other rule's", async () => {
 		const { harassmentRuleJudge } = await import("./faultInjection");
 		const RULES = (await import("$lib/chat/server/rules.json")).default as Record<string, { guard?: { query?: string } }>;
@@ -224,7 +255,7 @@ describe("input_screen_declines_rule's judge (CUR-4093)", () => {
 	});
 });
 
-describe("resolveProbeRequest (CUR-4042)", () => {
+describe("resolveProbeRequest", () => {
 	function probeReq(headers: Record<string, string>): Request {
 		return new Request("https://example.vercel.app/chat/api/warm", { headers });
 	}
@@ -241,8 +272,17 @@ describe("resolveProbeRequest (CUR-4042)", () => {
 		expect(await resolveProbeRequest(probeReq(full))).toEqual({
 			scope: "run-1",
 			model: "swiss-ai/apertus-v1.5-70b",
-			refuse: true,
+			refuse: 429,
 		});
+	});
+
+	it("returns a 402 refusal for every_lane_payment_required and none without a fault name", async () => {
+		process.env.VERCEL_ENV = "preview";
+		const { resolveProbeRequest } = await import("./faultInjection");
+		const paying = await resolveProbeRequest(probeReq({ ...full, "x-e2e-fault-inject": "every_lane_payment_required" }));
+		expect(paying?.refuse).toBe(402);
+		const { "x-e2e-fault-inject": _fault, ...healthy } = full;
+		expect((await resolveProbeRequest(probeReq(healthy)))?.refuse).toBeNull();
 	});
 
 	it("returns null on production even with the right secret, so no visitor can trigger a probe or mark a model", async () => {

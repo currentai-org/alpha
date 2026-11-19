@@ -849,7 +849,7 @@ describe("discoverSources — pre-flight router wiring", () => {
 	});
 });
 
-// ── stage timing spans (Phase 1.1: decompose the opaque ragMs into catalog/router/pickGate/metered) ──
+// ── stage timing spans (decompose the opaque ragMs into catalog/router/pickGate/metered) ──
 describe("SyftHub stage timing spans", () => {
 	it("records catalog/router/pickGate/metered into a passed sink on the router path", async () => {
 		h.router.enabled = true;

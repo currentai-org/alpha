@@ -4,7 +4,7 @@ export const PERSONAL_INSTRUCTIONS_KEY = "*";
 /**
  * The person's Personalization instructions as they stand right now, or null when there are none or
  * they are switched off. Read on every turn (turnPreferences.ts), never copied into a conversation,
- * so an edit reaches the next answer in a chat that is already open (CUR-1443).
+ * so an edit reaches the next answer in a chat that is already open.
  */
 export function personalInstructionsFrom(
 	settings:

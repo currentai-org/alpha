@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { z } from "zod";
 import { config } from "$lib/chat/server/config";
 import JSON5 from "json5";
@@ -27,7 +30,7 @@ export const usageLimits = usageLimitsSchema.parse(
 
 /**
  * How many stored conversations this account may hold: the deployment's USAGE_LIMITS.conversations, or
- * the staff tier's for a team account (teamAccount.ts, CUR-4620), never below the deployment's own.
+ * the staff tier's for a team account (teamAccount.ts), never below the deployment's own.
  * Undefined means no cap. `limit` is a parameter so the spec can pass one without an env.
  */
 export function conversationLimitFor(

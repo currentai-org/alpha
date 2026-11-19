@@ -1,10 +1,13 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 /**
- * Direct unit spec for `generate()` (CUR-1377). The route-level integration specs
+ * Direct unit spec for `generate()`. The route-level integration specs
  * (`server.turn.spec.ts`, `server.prestream.spec.ts`) assert against the persisted `[turn]` outcome log
  * and the DB row, never against individual streamed `MessageUpdate`s, and none of them sends a stream
  * chunk carrying `agentStep`/`writePolicy`/`agentTools`/`agentConfirm`/`agentConfirmResult`/
  * `routerMetadata`/`usage`. The branches that forward those run on every chunk (statement-covered)
- * without being checked for correctness (CUR-1336).
+ * without being checked for correctness.
  *
  * Covers those 7 forwarding branches, plus `unrunCode` (same shape), the abort-tracker bracket, and the
  * final-chunk abort/interrupted/stop-token logic. Not covered here: the reasoning-mode branches
@@ -37,14 +40,14 @@ vi.mock("$lib/chat/server/database", () => ({
 }));
 
 // Whether this request may send images is the per-visitor flag, so drive that answer here
-// rather than through PostHog. Every other textOnly export stays real. (CUR-2725)
+// rather than through PostHog. Every other textOnly export stays real.
 const imagesForThisVisitor = vi.hoisted(() => ({ allowed: false }));
 vi.mock("$lib/chat/server/textOnly", async (importOriginal) => ({
 	...(await importOriginal<typeof import("$lib/chat/server/textOnly")>()),
 	modelTakesImagesNow: (m: { multimodal?: boolean }) =>
 		m.multimodal === true && imagesForThisVisitor.allowed,
 }));
-// An agent turn's files are stored the way a chat attachment is; the spy shows what generate hands over. (CUR-4398)
+// An agent turn's files are stored the way a chat attachment is; the spy shows what generate hands over.
 const storeChatAttachments = vi.hoisted(() => vi.fn());
 vi.mock("$lib/chat/server/storage/attachmentsToCustodial", async (importOriginal) => ({
 	...(await importOriginal<typeof import("$lib/chat/server/storage/attachmentsToCustodial")>()),
@@ -154,7 +157,7 @@ describe("generate — provenance/agent forwarding branches (all silently blind 
 		});
 	});
 
-	// The adapter flags the first chunk it holds back as ALIA's untagged reasoning. (CUR-3942)
+	// The adapter flags the first chunk it holds back as ALIA's untagged reasoning.
 	it("turns a reasoningHeld chunk into the held-reasoning status, carrying no text", async () => {
 		const updates = await collect(
 			testCtx({
@@ -241,7 +244,27 @@ describe("generate — provenance/agent forwarding branches (all silently blind 
 		});
 	});
 
-	it("forwards an unrunCode chunk as an UnrunCode update (CUR-1341 — same blind-branch shape as the rest)", async () => {
+	it("forwards a handed-off agentRun with handoff: true, and a plain one without it", async () => {
+		const runUpdates = async (agentRun: { taskId: string; machineId: string; handoff?: boolean }) =>
+			(
+				await collect(
+					testCtx({
+						endpoint: endpointYielding([
+							{ token: normalToken(""), generated_text: null, agentRun },
+							{ token: specialToken(), generated_text: "done" },
+						]),
+					})
+				)
+			).filter((u) => u.type === MessageUpdateType.AgentRun);
+		expect(await runUpdates({ taskId: "t1", machineId: "m1", handoff: true })).toStrictEqual([
+			{ type: MessageUpdateType.AgentRun, taskId: "t1", machineId: "m1", handoff: true },
+		]);
+		expect(await runUpdates({ taskId: "t2", machineId: "m2" })).toStrictEqual([
+			{ type: MessageUpdateType.AgentRun, taskId: "t2", machineId: "m2" },
+		]);
+	});
+
+	it("forwards an unrunCode chunk as an UnrunCode update ( same blind-branch shape as the rest)", async () => {
 		const updates = await collect(
 			testCtx({
 				endpoint: endpointYielding([
@@ -260,7 +283,7 @@ describe("generate — provenance/agent forwarding branches (all silently blind 
 		});
 	});
 
-	it("forwards an agentFile chunk as a File update carrying its agent path, and ignores a falsy one (CUR-4398)", async () => {
+	it("forwards an agentFile chunk as a File update carrying its agent path, and ignores a falsy one", async () => {
 		const agentFile = { name: "b.py", sha: "a".repeat(64), mime: "text/x-python", agentPath: "sub/b.py" };
 		const updates = await collect(
 			testCtx({
@@ -276,7 +299,7 @@ describe("generate — provenance/agent forwarding branches (all silently blind 
 		]);
 	});
 
-	it("saves an agent turn's files with the conversation as attachments, never as pastes (CUR-4398)", async () => {
+	it("saves an agent turn's files with the conversation as attachments, never as pastes", async () => {
 		const saved = [{ type: "hash", value: "a".repeat(64), name: "b.py", mime: "text/x-python" }];
 		storeChatAttachments.mockResolvedValueOnce(saved);
 		const file = new File(["print(1)"], "b.py");
@@ -324,7 +347,7 @@ describe("generate — provenance/agent forwarding branches (all silently blind 
 	});
 
 	it("keeps auto mode's plain sentence on a forwarded AgentConfirm update, so the card can lead with it", async () => {
-		// `plain` must survive the copy, or every auto-mode card falls back to the raw command title. (CUR-4486)
+		// `plain` must survive the copy, or every auto-mode card falls back to the raw command title.
 		const updates = await collect(
 			testCtx({
 				endpoint: endpointYielding([
@@ -374,7 +397,7 @@ describe("generate — provenance/agent forwarding branches (all silently blind 
 		});
 	});
 
-	it("keeps an MCP confirmation's channel, so the card answers through the elicitation route (CUR-3026)", async () => {
+	it("keeps an MCP confirmation's channel, so the card answers through the elicitation route", async () => {
 		const updates = await collect(
 			testCtx({
 				endpoint: endpointYielding([
@@ -407,7 +430,7 @@ describe("generate — provenance/agent forwarding branches (all silently blind 
 		});
 	});
 
-	it("forwards each MCP server call in a round as its own McpCall update, with a shown call's input and output and no empty keys on the rest (CUR-3026, CUR-4232)", async () => {
+	it("forwards each MCP server call in a round as its own McpCall update, with a shown call's input and output and no empty keys on the rest", async () => {
 		const updates = await collect(
 			testCtx({
 				endpoint: endpointYielding([
@@ -460,7 +483,47 @@ describe("generate — provenance/agent forwarding branches (all silently blind 
 		});
 	});
 
-	it("forwards the lane the request was sent to, since `backend` alone can't tell a router turn from a direct one (CUR-3193)", async () => {
+	it("forwards the agent's route-only opening frame, so a turn the agent never answered can't mark the picked model busy", async () => {
+		const updates = await collect(
+			testCtx({
+				endpoint: endpointYielding([
+					{ token: normalToken(""), generated_text: null, routerMetadata: { route: "agent", model: "" } },
+					{ token: specialToken(), generated_text: "done" },
+				]),
+			})
+		);
+		expect(updates).toContainEqual(
+			expect.objectContaining({ type: MessageUpdateType.RouterMetadata, route: "agent", model: "" })
+		);
+	});
+
+	it("forwards a provider-only frame, the only signal from a non-router model's x-inference-provider", async () => {
+		const updates = await collect(
+			testCtx({
+				endpoint: endpointYielding([
+					{ token: normalToken(""), generated_text: null, routerMetadata: { route: "", model: "", provider: "scaleway" } },
+					{ token: specialToken(), generated_text: "done" },
+				]),
+			})
+		);
+		expect(updates).toContainEqual(
+			expect.objectContaining({ type: MessageUpdateType.RouterMetadata, provider: "scaleway", model: "" })
+		);
+	});
+
+	it("still drops a route-only frame for any route but the agent's", async () => {
+		const updates = await collect(
+			testCtx({
+				endpoint: endpointYielding([
+					{ token: normalToken(""), generated_text: null, routerMetadata: { route: "chat", model: "" } },
+					{ token: specialToken(), generated_text: "done" },
+				]),
+			})
+		);
+		expect(updates.some((u) => u.type === MessageUpdateType.RouterMetadata)).toBe(false);
+	});
+
+	it("forwards the lane the request was sent to, since `backend` alone can't tell a router turn from a direct one", async () => {
 		const updates = await collect(
 			testCtx({
 				endpoint: endpointYielding([
@@ -482,7 +545,7 @@ describe("generate — provenance/agent forwarding branches (all silently blind 
 		);
 	});
 
-	it("stamps the app server's region from VERCEL_REGION on the router report, unset off Vercel (CUR-4580)", async () => {
+	it("stamps the app server's region from VERCEL_REGION on the router report, unset off Vercel", async () => {
 		const run = () =>
 			collect(
 				testCtx({
@@ -504,7 +567,7 @@ describe("generate — provenance/agent forwarding branches (all silently blind 
 		}
 	});
 
-	it("forwards the failover's cause, so the saved turn says why the primary gave up (CUR-3313)", async () => {
+	it("forwards the failover's cause, so the saved turn says why the primary gave up", async () => {
 		const updates = await collect(
 			testCtx({
 				endpoint: endpointYielding([
@@ -532,7 +595,7 @@ describe("generate — provenance/agent forwarding branches (all silently blind 
 		});
 	});
 
-	it("forwards routerMetadata.verifyMethod as \"\" (presence, not truthiness — CUR-756)", async () => {
+	it("forwards routerMetadata.verifyMethod as \"\" (presence, not truthiness )", async () => {
 		const updates = await collect(
 			testCtx({
 				endpoint: endpointYielding([
@@ -631,7 +694,7 @@ describe("generate — final-chunk abort / interrupted / stop-token handling", (
 		});
 	});
 
-	it("stores an agent run handed off to the page as interrupted, even on a special final token (CUR-4410)", async () => {
+	it("stores an agent run handed off to the page as interrupted, even on a special final token", async () => {
 		const updates = await collect(
 			testCtx({
 				model: testModel({ stop: [] }),
@@ -662,12 +725,12 @@ describe("generate — final-chunk abort / interrupted / stop-token handling", (
 	});
 });
 
-// CUR-2081. Output screening rebuilds the answer from Stream updates alone (screenStream.ts), so any
+// Output screening rebuilds the answer from Stream updates alone (screenStream.ts), so any
 // text that reaches FinalAnswer without first streaming is text the visitor never gets. A provider
 // that sends its last content delta in the same chunk as `finish_reason` puts that delta on the
 // final chunk, which generate() turns into FinalAnswer without streaming it. The tail of the answer
 // (" = 391.") would be lost this way.
-describe("generate — every character of the answer streams before FinalAnswer (CUR-2081)", () => {
+describe("generate — every character of the answer streams before FinalAnswer", () => {
 	async function streamedAndFinal(
 		deltas: { content: string; finish_reason: string | null }[]
 	): Promise<{ streamed: string; final: string | undefined }> {
@@ -737,7 +800,7 @@ describe("generate — every character of the answer streams before FinalAnswer 
 	});
 });
 
-describe("generate — the native calculate tool (CUR-2273)", () => {
+describe("generate — the native calculate tool", () => {
 	it("forwards each evaluated call as a Calculation update, expression and result or error", async () => {
 		const updates = await collect(
 			testCtx({
@@ -760,7 +823,7 @@ describe("generate — the native calculate tool (CUR-2273)", () => {
 		]);
 	});
 
-	it("says a native web search did not finish with one ungrounded, unsearched SearchAttempt naming why (CUR-4091)", async () => {
+	it("says a native web search did not finish with one ungrounded, unsearched SearchAttempt naming why", async () => {
 		const updates = await collect(
 			testCtx({
 				endpoint: endpointYielding([
@@ -774,7 +837,21 @@ describe("generate — the native calculate tool (CUR-2273)", () => {
 		]);
 	});
 
-	it("sends no SearchAttempt for a tool round whose search finished (CUR-4091)", async () => {
+	it("says a native web search found nothing with one ungrounded SearchAttempt marked searched", async () => {
+		const updates = await collect(
+			testCtx({
+				endpoint: endpointYielding([
+					{ token: specialToken(), generated_text: null, toolSources: { searchEmpty: true } },
+					{ token: specialToken(), generated_text: "Answer." },
+				]),
+			})
+		);
+		expect(updates.filter((u) => u.type === MessageUpdateType.SearchAttempt)).toEqual([
+			{ type: MessageUpdateType.SearchAttempt, grounded: false, searched: true },
+		]);
+	});
+
+	it("sends no SearchAttempt for a tool round whose search finished", async () => {
 		const updates = await collect(
 			testCtx({
 				endpoint: endpointYielding([
@@ -799,7 +876,7 @@ describe("generate — the native calculate tool (CUR-2273)", () => {
 		expect(timings).toEqual({ calculateToolMs: 650, calculateToolRounds: 2 });
 	});
 
-	it("sums the tool-run share of each round into timings.toolRunMs, absent when no round reports it (CUR-4282)", async () => {
+	it("sums the tool-run share of each round into timings.toolRunMs, absent when no round reports it", async () => {
 		const ctx = testCtx({
 			endpoint: endpointYielding([
 				{ token: specialToken(), generated_text: null, calculateToolMs: 400, toolRunMs: 300 },
@@ -827,7 +904,7 @@ describe("generate — the native calculate tool (CUR-2273)", () => {
 		expect(seen[1].calculateTool).toBe(true);
 	});
 
-	// The planner's forced first call only means something when the tool is on the turn. (CUR-4191)
+	// The planner's forced first call only means something when the tool is on the turn.
 	it("passes calculateFirst to the endpoint only alongside the calculate tool", async () => {
 		const seen: Array<Record<string, unknown>> = [];
 		const endpoint = async (params: Record<string, unknown>) => {
@@ -846,7 +923,7 @@ describe("generate — the native calculate tool (CUR-2273)", () => {
 	});
 
 	// The endpoint fits the history once the stream starts, so the report arrives after the call
-	// returns and before the first chunk. It reaches the client once, ahead of the answer. (CUR-2893)
+	// returns and before the first chunk. It reaches the client once, ahead of the answer.
 	const fittingEndpoint = (leftOut: number) =>
 		(async (params: { onHistoryFitted?: (n: number) => void }) =>
 			(async function* () {
@@ -880,7 +957,7 @@ describe("generate — the native calculate tool (CUR-2273)", () => {
 		expect(notices).toEqual([{ type: MessageUpdateType.HistoryNotice, leftOut: 1 }]);
 	});
 
-	// An attached file the bucket could not read was dropped from the prompt with no word to the person. (CUR-3291)
+	// An attached file the bucket could not read is left out of the prompt, so the person is told before the answer.
 	it("sends an AttachmentNotice naming a file the turn could not read, before the answer", async () => {
 		const ctx = {
 			...testCtx({ endpoint: fittingEndpoint(0) }),
@@ -903,7 +980,7 @@ describe("generate — the native calculate tool (CUR-2273)", () => {
 		expect(updates.some((u) => u.type === MessageUpdateType.AttachmentNotice)).toBe(false);
 	});
 
-	it("asks the endpoint to replay model calls only on a model_replay turn, in the mode the fault names (SOL-92, SOL-148)", async () => {
+	it("asks the endpoint to replay model calls only on a model_replay turn, in the mode the fault names", async () => {
 		const seen: Array<Record<string, unknown>> = [];
 		const endpoint = async (params: Record<string, unknown>) => {
 			seen.push(params);
@@ -923,7 +1000,7 @@ describe("generate — the native calculate tool (CUR-2273)", () => {
 	});
 });
 
-describe("generate — CUR-1614 fault simulations", () => {
+describe("generate fault simulations", () => {
 	const answer = Array.from({ length: 20 }, (_, i) => ({ token: normalToken(`w${i} `), generated_text: null }));
 
 	it("stream_truncates_midway: streams 12 tokens, then throws undici's mid-stream 'terminated' with no FinalAnswer", async () => {
@@ -958,7 +1035,32 @@ describe("generate — CUR-1614 fault simulations", () => {
 		expect(healthy.some((u) => u.type === MessageUpdateType.RouterMetadata)).toBe(true);
 	});
 
-	it("lane_not_found (CUR-4629): throws the router's 404, status attached, before the endpoint is called", async () => {
+	it("provenance_host_stripped: reports the served model with no provider or backend host", async () => {
+		const chunks = [
+			{
+				token: normalToken(""),
+				generated_text: null,
+				routerMetadata: { route: "", model: "m", provider: "novita" as const, backend: "https://host-a.example/v1" },
+			},
+			{ token: normalToken("hi"), generated_text: null },
+			{ token: specialToken(), generated_text: "hi" },
+		];
+		const stripped = await collect({
+			...testCtx({ endpoint: endpointYielding(chunks) }),
+			faultInjection: "provenance_host_stripped" as const,
+		});
+		const report = stripped.find((u) => u.type === MessageUpdateType.RouterMetadata);
+		expect(report).toMatchObject({ model: "m", provider: undefined, backend: undefined });
+		expect(stripped).toContainEqual(expect.objectContaining({ type: MessageUpdateType.FinalAnswer, text: "hi" }));
+		// Without the fault the same chunks report both, so the drop above is the fault's doing.
+		const healthy = await collect(testCtx({ endpoint: endpointYielding(chunks) }));
+		expect(healthy.find((u) => u.type === MessageUpdateType.RouterMetadata)).toMatchObject({
+			provider: "novita",
+			backend: "https://host-a.example/v1",
+		});
+	});
+
+	it("lane_not_found: throws the router's 404, status attached, before the endpoint is called", async () => {
 		let called = false;
 		const endpoint = (async () => {
 			called = true;
@@ -975,7 +1077,7 @@ describe("generate — CUR-1614 fault simulations", () => {
 		expect(called).toBe(false);
 	});
 
-	it("lane_server_error (CUR-2829): throws the SDK's 500, status attached, before the endpoint is called", async () => {
+	it("lane_server_error: throws the SDK's 500, status attached, before the endpoint is called", async () => {
 		let called = false;
 		const endpoint = (async () => {
 			called = true;
@@ -996,7 +1098,7 @@ describe("generate — CUR-1614 fault simulations", () => {
 	});
 });
 
-describe("generate — images reach the endpoint only for a visitor allowed to send them (CUR-2725)", () => {
+describe("generate — images reach the endpoint only for a visitor allowed to send them", () => {
 	async function isMultimodalSent(opts: { modelReadsImages: boolean; visitorAllowed: boolean; force?: boolean }) {
 		imagesForThisVisitor.allowed = opts.visitorAllowed;
 		let seen: unknown;
@@ -1032,7 +1134,7 @@ describe("generate — images reach the endpoint only for a visitor allowed to s
 });
 
 // A native tool round says what it retrieves, and the live line reads the phase marker. The
-// marker must name only what runs: a documents-only round never reads as a web search. (CUR-2275)
+// marker must name only what runs: a documents-only round never reads as a web search.
 describe("generate — a native tool round's retrieval becomes the live phase", () => {
 	it("sends searching, searching-documents and searching-documents-web for web, documents and both", async () => {
 		const updates = await collect(
@@ -1058,7 +1160,7 @@ describe("generate — a native tool round's retrieval becomes the live phase", 
 	});
 });
 
-// A code call waiting for a free sandbox, and the end of that wait, become the live phase. (CUR-4584)
+// A code call waiting for a free sandbox, and the end of that wait, become the live phase.
 describe("generate — a sandbox wait becomes the live phase", () => {
 	it("sends waiting-sandbox when the wait starts and sandbox-ready when it ends", async () => {
 		const updates = await collect(
@@ -1079,7 +1181,7 @@ describe("generate — a sandbox wait becomes the live phase", () => {
 	});
 });
 
-describe("generate — the sustained tool-round 429 fault reaches the endpoint (CUR-2307)", () => {
+describe("generate — the sustained tool-round 429 fault reaches the endpoint", () => {
 	async function paramsFor(faultInjection: string | undefined) {
 		let seen: Record<string, unknown> | undefined;
 		const yielding = endpointYielding([{ token: specialToken(), generated_text: "ok" }]);
@@ -1097,23 +1199,37 @@ describe("generate — the sustained tool-round 429 fault reaches the endpoint (
 		expect(await paramsFor(undefined)).not.toHaveProperty("rateLimitToolRoundSustained");
 	});
 
-	// The silent re-pick scenario hangs every lane, so the endpoint has to be told. (CUR-4384)
+	// The silent re-pick scenario hangs every lane, so the endpoint has to be told.
 	it("sets hangEveryLane only for every_lane_hangs", async () => {
 		expect((await paramsFor("every_lane_hangs")).hangEveryLane).toBe(true);
 		expect(await paramsFor("primary_lane_hangs")).not.toHaveProperty("hangEveryLane");
 		expect(await paramsFor(undefined)).not.toHaveProperty("hangEveryLane");
 	});
 
-	// The busy spec makes every lane of one model refuse, so the endpoint has to be told. (CUR-4042)
+	// The stream-error spec fails one lane's first call, so the endpoint has to be told.
+	it("sets failStreamOnce only for primary_stream_errors_once", async () => {
+		expect((await paramsFor("primary_stream_errors_once")).failStreamOnce).toBe(true);
+		expect(await paramsFor("primary_lane_down")).not.toHaveProperty("failStreamOnce");
+		expect(await paramsFor(undefined)).not.toHaveProperty("failStreamOnce");
+	});
+
+	// The busy spec makes every lane of one model refuse, so the endpoint has to be told.
 	it("sets rateLimitEveryLane only for every_lane_rate_limited", async () => {
 		expect((await paramsFor("every_lane_rate_limited")).rateLimitEveryLane).toBe(true);
 		expect(await paramsFor("primary_lane_rate_limited")).not.toHaveProperty("rateLimitEveryLane");
 		expect(await paramsFor(undefined)).not.toHaveProperty("rateLimitEveryLane");
 	});
+
+	// The host's 402 on every lane, the answer a host gives when it won't bill the provider.
+	it("sets paymentRequiredEveryLane only for every_lane_payment_required", async () => {
+		expect((await paramsFor("every_lane_payment_required")).paymentRequiredEveryLane).toBe(true);
+		expect(await paramsFor("every_lane_rate_limited")).not.toHaveProperty("paymentRequiredEveryLane");
+		expect(await paramsFor(undefined)).not.toHaveProperty("paymentRequiredEveryLane");
+	});
 });
 
 // The agent endpoint reads the visitor's own system text from this field; dropped here, an
-// agent turn ignores their system prompt and Personalization. (CUR-4088)
+// agent turn ignores their system prompt and Personalization.
 describe("generate — visitor instructions reach the endpoint", () => {
 	it("passes clientInstructions to the endpoint when the turn has some, and omits the key when not", async () => {
 		const seen: Record<string, unknown>[] = [];

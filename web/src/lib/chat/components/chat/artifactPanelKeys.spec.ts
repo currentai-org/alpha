@@ -12,7 +12,7 @@ const state = (over: Partial<ArtifactPanelKeyState> = {}): ArtifactPanelKeyState
 describe("artifact panel Escape handling", () => {
 	// The condition this function is allowed to depend on, stated as a closed set. Whether a turn is
 	// still streaming is deliberately not an input: it would make Escape do nothing for exactly
-	// as long as the panel is worth having open (CUR-1405). Pinning the input SHAPE is what a unit test can
+	// as long as the panel is worth having open. Pinning the input SHAPE is what a unit test can
 	// honestly guarantee here: re-consulting streaming state has to widen this interface, which is a
 	// visible edit, where `&& !loading` inside the component was not. What it cannot guarantee is the
 	// component still calling this; that belongs to e2e.

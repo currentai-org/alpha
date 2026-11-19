@@ -11,7 +11,7 @@ import StorageSettingsPanel from './StorageSettingsPanel.svelte';
 import type { LocationsState } from './locationTypes';
 
 // Settings → Storage holds the storage settings in headed sections and no file list; the
-// files are on the rail's Files page, which it links to. (CUR-4363)
+// files are on the rail's Files page, which it links to.
 const locations: LocationsState = {
 	locations: [
 		{ id: 'alpha', kind: 'alpha', label: 'Alpha storage', detail: '', status: 'ok', lastError: null, grant: 'alpha' },
@@ -35,7 +35,7 @@ const files = [
 	{ path: 'users/u1/b.txt', size: 2000 }
 ];
 
-describe('Settings → Storage (CUR-4363)', () => {
+describe('Settings → Storage', () => {
 	beforeEach(() => {
 		appState.page.url = new URL('https://alpha.test/chat/settings/storage');
 		vi.stubGlobal(
@@ -81,7 +81,7 @@ describe('Settings → Storage (CUR-4363)', () => {
 		expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('location=loc-1'))).toBe(true);
 	});
 
-	it('offers Make a new bucket (recommended) before Link a bucket you already have, with the approval detail folded until asked for (CUR-4659)', async () => {
+	it('offers Make a new bucket (recommended) before Link a bucket you already have, with the approval detail folded until asked for', async () => {
 		const { container } = await render(StorageSettingsPanel, { initialFiles: files, initialLocations: locations });
 		const choices = [...container.querySelectorAll('[data-testid=storage-link-section] h3')].map((h) => h.textContent?.trim());
 		expect(choices).toEqual(['Make a new bucket', 'Link a bucket you already have']);
@@ -101,7 +101,7 @@ describe('Settings → Storage (CUR-4363)', () => {
 		await expect.element(page.getByTestId('link-bucket-form')).toBeVisible();
 	});
 
-	it('keeps the bucket name a refused connect came back with in the field (CUR-4234)', async () => {
+	it('keeps the bucket name a refused connect came back with in the field', async () => {
 		appState.page.url = new URL('https://alpha.test/chat/settings/storage?connect_error=taken&bucket=my-bucket');
 		await render(StorageSettingsPanel, { initialFiles: files, initialLocations: locations });
 		await expect.element(page.getByTestId('storage-connect').getByRole('textbox')).toHaveValue('my-bucket');

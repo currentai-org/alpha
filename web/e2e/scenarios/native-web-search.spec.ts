@@ -11,7 +11,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // the same way the scaffolded gate's answers are. This drives one such turn the way a visitor does and
 // reads the stored grounding and the citations on screen: the turn must store web sources, and at
 // least one numbered marker in the answer must link to a URL among them. A marker pointing nowhere, or
-// at a page the turn never retrieved, is what the provenance promise rules out (CUR-2275).
+// at a page the turn never retrieved, is what the provenance promise rules out.
 
 type Stored = {
 	id: string;

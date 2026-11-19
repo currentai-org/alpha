@@ -10,7 +10,7 @@ import {
 	WORKSPACE_NAME_MAX,
 } from "./workspacePermissions";
 
-describe("workspacePermissions (CUR-826)", () => {
+describe("workspacePermissions", () => {
 	it("labels every declared join method — a value with no label is a gap this test catches", () => {
 		for (const value of JOIN_METHODS) {
 			expect(joinMethodLabel(value)).not.toBe(value);
@@ -37,7 +37,7 @@ describe("workspacePermissions (CUR-826)", () => {
 	});
 });
 
-describe("joinMethodRefusal (CUR-3021)", () => {
+describe("joinMethodRefusal", () => {
 	it("refuses request and open, which have no join flow, in workspace words", () => {
 		for (const value of ["request", "open"]) {
 			const message = joinMethodRefusal(value);
@@ -58,8 +58,8 @@ describe("joinMethodRefusal (CUR-3021)", () => {
 });
 
 // The name goes into an email a stranger receives, so the check that matters is what it
-// refuses, and the control cases are ordinary team names that must still pass. (CUR-3194)
-describe("workspaceNameRefusal (CUR-3194)", () => {
+// refuses, and the control cases are ordinary team names that must still pass.
+describe("workspaceNameRefusal", () => {
 	it("refuses a name carrying a link, a web address or an email address", () => {
 		for (const name of [
 			"Win big at https://spam.example",

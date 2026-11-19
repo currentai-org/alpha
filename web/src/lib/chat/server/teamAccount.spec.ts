@@ -1,6 +1,6 @@
 // Who gets the staff tier. The contracts: a verified address on a team domain does; an
 // unverified one, a look-alike domain, an e2e test account and a guest do not; the conversation cap
-// for a team account is the staff tier's and never below the deployment's own. (CUR-4620)
+// for a team account is the staff tier's and never below the deployment's own.
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("$lib/chat/server/config", () => ({ config: { USAGE_LIMITS: "{}", RATE_LIMIT: "" } }));

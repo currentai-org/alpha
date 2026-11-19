@@ -3,7 +3,7 @@
 // Each clip URL gets ONE off-DOM audio element (`clipAudio`), shared by the autoplay in the send
 // path and by the answer's visible MediaAudioPlayer. When autoplay starts a clip, the player under
 // the answer is subscribed to that very element, so it shows playing and its pause button pauses
-// what you hear (CUR-2299). With two elements, an autoplayed answer would sit under a
+// what you hear. With two elements, an autoplayed answer would sit under a
 // player that reads stopped and starts again from the top when pressed.
 // Off-DOM because the duplicate-generation edge re-renders the message, and a DOM <audio> torn down
 // mid-play is cut off; an element that lives here survives the player being remounted.
@@ -23,7 +23,7 @@ const clips = new Map<string, Promise<HTMLAudioElement>>();
 // iOS Safari lets an audio element play without a tap only once that same element has been
 // played inside one. A read-aloud clip arrives seconds after the send tap, past several awaits, so a
 // fresh element for it is refused. The send tap primes an element by playing 50 ms of silence on it,
-// and the next clip to load takes that element instead of a new one. (CUR-4666)
+// and the next clip to load takes that element instead of a new one.
 const SILENCE = "data:audio/wav;base64,UklGRrQBAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YZABAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA";
 let primed: HTMLAudioElement | null = null;
 

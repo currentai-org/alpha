@@ -1,5 +1,5 @@
 /**
- * publishRegistry + applyLiveRegistry (TTFT plan §C). publishRegistry must update all FOUR live exports
+ * publishRegistry + applyLiveRegistry. publishRegistry must update all FOUR live exports
  * together (models by in-place mutation; defaultModel/taskModel/validModelIdSchema reassigned) so a drift
  * refresh can never leave them disagreeing; applyLiveRegistry must republish + log ONLY on an id-set
  * drift and stand pat otherwise.
@@ -60,7 +60,7 @@ describe("publishRegistry", () => {
 	// it's never a directly-selectable id, only resolveAgentRoute can produce it on a live turn. This is
 	// the one place that matters: every PATCH/settings/create endpoint validates through this (or, for a
 	// per-user request, getEffectiveValidModelIdSchema — localModels.ts — which applies the identical
-	// exclusion over the effective registry), so proving it here proves it everywhere real traffic goes. (CUR-770)
+	// exclusion over the effective registry), so proving it here proves it everywhere real traffic goes.
 	it("validModelIdSchema rejects the agent id even when it's a registered model", () => {
 		publishRegistry([mk("a/one"), mk(AGENT_MODEL_ID)]);
 
@@ -69,7 +69,7 @@ describe("publishRegistry", () => {
 	});
 
 	// The task model, the compare panel and the backup lane are registered `unlisted` so the
-	// server can call them. A visitor naming one in a PATCH must be refused, not chat on it from then on. (CUR-3517)
+	// server can call them. A visitor naming one in a PATCH must be refused, not chat on it from then on.
 	it("validModelIdSchema refuses an unlisted side-call model a visitor names, and keeps accepting a listed one", () => {
 		publishRegistry([mk("a/one"), { ...mk("side/task"), unlisted: true } as ProcessedModel]);
 
@@ -110,7 +110,7 @@ describe("applyLiveRegistry", () => {
 		expect(models.map((m) => m.id)).toEqual(["a"]); // unchanged
 	});
 
-	// CUR-1246, and the reason the `length === 0` guard above was not enough. buildModelsFromCatalog
+	// and the reason the `length === 0` guard above was not enough. buildModelsFromCatalog
 	// appends the agent model and the compare panel AFTER the allowlisted chat models, so a build whose
 	// allowlist matched NOTHING still returns several entries — all of them unlisted, none of them
 	// something a visitor can send a message to. Counting the array instead of the servable models let
@@ -132,7 +132,7 @@ describe("applyLiveRegistry", () => {
 });
 
 // The task model serves every side call. It must not fall back to modelList[0] when TASK_MODEL
-// is unset or matches nothing, or a typo or a reordered allowlist would move side calls silently. (CUR-2319)
+// is unset or matches nothing, or a typo or a reordered allowlist would move side calls silently.
 describe("resolveTaskModel", () => {
 	const list = [mk("first/model"), mk("named/task")];
 
@@ -162,6 +162,24 @@ describe("resolveTaskModel", () => {
 			);
 		}
 	);
+
+	it("on a self-host in production mode (ALPHA_EDITION=selfhost), falls back to the first model with a warning instead of refusing to boot", () => {
+		const saved = { d: process.env.DEPLOY_ENV, e: process.env.ALPHA_EDITION };
+		process.env.DEPLOY_ENV = "production";
+		process.env.ALPHA_EDITION = "selfhost";
+		const warn = vi.spyOn(logger, "warn").mockImplementation(() => logger);
+		try {
+			expect(modelsModule.resolveTaskModel(list, "").id).toBe("first/model");
+			expect(warn.mock.calls.some((c) => (c[0] as { taskModelFallback?: boolean })?.taskModelFallback)).toBe(true);
+			process.env.ALPHA_EDITION = "hosted";
+			expect(() => modelsModule.resolveTaskModel(list, "")).toThrow(/TASK_MODEL is unset on production/);
+		} finally {
+			for (const [k, v] of [["DEPLOY_ENV", saved.d], ["ALPHA_EDITION", saved.e]] as const) {
+				if (v === undefined) delete process.env[k];
+				else process.env[k] = v;
+			}
+		}
+	});
 
 	it("falls back to the first model with a warning only where no deployed environment is declared (local dev, hermetic CI)", () => {
 		const warn = vi.spyOn(logger, "warn").mockImplementation(() => logger);

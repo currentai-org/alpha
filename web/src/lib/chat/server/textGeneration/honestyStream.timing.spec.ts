@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { MessageUpdateType, type MessageUpdate } from "$lib/chat/types/MessageUpdate";
 
 // Every synchronous guard over the answer runs through timedPass under its own name, so a
-// guard that blocks the event loop is logged as itself. (CUR-3749)
+// guard that blocks the event loop is logged as itself.
 vi.mock("$lib/chat/server/logger", () => ({
 	logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn(), trace: vi.fn(), fatal: vi.fn() },
 }));
@@ -71,7 +71,7 @@ beforeEach(() => {
 	spin.on = false;
 });
 
-describe("honestyScreenStream pass timing (CUR-3749)", () => {
+describe("honestyScreenStream pass timing", () => {
 	it("times every guard of an ungrounded turn under its own name", async () => {
 		expect(await run(false)).toEqual(new Set([...EVERY_TURN, "stripUnbackedSourceClaims"]));
 	});

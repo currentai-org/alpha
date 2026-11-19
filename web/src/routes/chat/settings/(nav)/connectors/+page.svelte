@@ -5,11 +5,11 @@
 	import { mcpToolPolicyFor, type McpToolPolicy } from "$lib/chat/mcpToolPolicy";
 	import type { ActionData, PageData } from "./$types";
 
-	// Settings → Connectors (CUR-3984). Each service chat is connected to, its tools, and the person's
+	// Settings → Connectors. Each service chat is connected to, its tools, and the person's
 	// choice for each: always allow (no confirmation card), ask first (today's card for a tool that can
 	// change something) or never (the tool is not offered and does not run). Saved with their settings.
 	//
-	// A signed-in person can add a server of their own and remove it again (CUR-4016).
+	// A signed-in person can add a server of their own and remove it again.
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 	let adding = $state(false);
 	// What a refused add sent back: the reason, and the name and address to put back in the form. The

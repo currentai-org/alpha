@@ -1,5 +1,5 @@
 // Admin RAG upload console, gated on the signed-in account's role (adminAuth.ts). A role holder
-// (CUR-3990) needs console:view for the load and preview/audit, and rag:write for every mutation and
+// needs console:view for the load and preview/audit, and rag:write for every mutation and
 // upload. Mutations are SvelteKit form actions with optimistic-concurrency tokens; preview/upload are
 // fetch endpoints.
 
@@ -36,6 +36,7 @@ export const load: PageServerLoad = async ({ locals, cookies }) => {
 		return {
 			needsLogin: true,
 			signedIn: Boolean(locals.user),
+			role: locals.user?.role ?? null,
 			documents: [] as Awaited<ReturnType<typeof listRagDocuments>>,
 			adminEnabled: ragAdminEnabled(),
 			catalog: { model: "", dim: 0, builtAt: "", served: false, chunks: [] } as ReturnType<
@@ -46,6 +47,7 @@ export const load: PageServerLoad = async ({ locals, cookies }) => {
 	return {
 		needsLogin: false,
 		signedIn: Boolean(locals.user),
+		role: locals.user?.role ?? null,
 		documents: await listRagDocuments(),
 		adminEnabled: ragAdminEnabled(),
 		// Read-only: the committed Tier-A catalog (gap-map categories, exemplars, stack-map) so its

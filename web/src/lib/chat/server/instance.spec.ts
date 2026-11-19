@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_INSTANCE, deploymentInstance, isEventInstance } from "$lib/chat/server/instance";
 
 // INSTANCE names an event deployment (mozfest, lugano). Unset has to mean www, because
-// every deployment that predates the variable has it unset. (CUR-3156)
+// every deployment that predates the variable has it unset.
 describe("deploymentInstance", () => {
 	it("reads unset and blank as www, so existing deployments are unchanged", () => {
 		expect(deploymentInstance({})).toBe(DEFAULT_INSTANCE);

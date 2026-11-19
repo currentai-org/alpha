@@ -22,7 +22,7 @@ export const HEADROOM_REUSE_MS = 60_000;
 /**
  * Room for two full messages. One may have been stored since the read, and the one being
  * written still fits, so reusing it never refuses a file. A smaller headroom is listed again, so a
- * refusal always comes from a fresh listing. (CUR-3681)
+ * refusal always comes from a fresh listing.
  */
 function roomy(room: MyFilesHeadroom): boolean {
 	return room.files >= 2 * CHAT_ATTACHMENTS_MAX_COUNT && room.bytes >= 2 * CHAT_ATTACHMENTS_MAX_BYTES;
@@ -57,9 +57,8 @@ async function listMyFilesHeadroom(): Promise<MyFilesHeadroom | undefined> {
  * or undefined when there is nothing to check: no My files for this visitor, or a listing that failed
  * or was slow. Undefined lets the file through, and the send refuses it if the account really is full.
  * Read through `fetchAttachmentRooms`, the composer's entry point.
- * (CUR-3235)
  * The listing is a recursive Hugging Face call on a token every visitor shares, so a roomy
- * headroom read in the last minute is reused, and attaches that land together share one listing. (CUR-3681)
+ * headroom read in the last minute is reused, and attaches that land together share one listing.
  */
 async function fetchMyFilesHeadroom(): Promise<MyFilesHeadroom | undefined> {
 	if (!page.data.storageViewEnabled) return undefined;
@@ -72,7 +71,7 @@ async function fetchMyFilesHeadroom(): Promise<MyFilesHeadroom | undefined> {
 
 /**
  * What this visitor can still attach over the rolling 24 hours, or undefined when the count
- * failed or was slow. The send checks the same allowance, so undefined only moves the refusal later. (CUR-3235)
+ * failed or was slow. The send checks the same allowance, so undefined only moves the refusal later.
  */
 async function fetchAttachmentAllowance(): Promise<AttachmentRoom | undefined> {
 	try {

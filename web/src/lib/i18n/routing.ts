@@ -34,7 +34,7 @@ function prefixLocale(path: string): Locale | undefined {
 }
 
 function isAppPath(path: string): boolean {
-	// On the chat surface every path but the shared root ones is chat's (CUR-4448, src/lib/surface.ts).
+	// On the chat surface every path but the shared root ones is chat's (src/lib/surface.ts).
 	const pathname = chatRoutePath(pathnameOf(unlocalizedPath(path)));
 	return APP_PATH.test(pathname) || /\.[a-z0-9]+$/i.test(pathname);
 }

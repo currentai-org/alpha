@@ -12,3 +12,12 @@ const component = (found: Record<string, { default: AnyComponent }>): AnyCompone
 export const SiteChrome = component(
 	import.meta.glob<{ default: AnyComponent }>('/src/lib/website/SiteChrome.svelte', { eager: true })
 );
+
+/** ScrollSmoother for the site's content pages ($lib/scroll/smooth-scroll). Typed here rather than with
+ *  `typeof import(...)` so a build without the module still typechecks. */
+export const smoothScrolling = only(
+	import.meta.glob<{
+		syncSmoothScroll(enabled: boolean, from: URL | undefined, to: URL | undefined): Promise<void>;
+		unclampScrollRestore(): void;
+	}>('/src/lib/scroll/smooth-scroll.ts', { eager: true })
+);

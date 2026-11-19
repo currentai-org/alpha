@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { v4 } from "uuid";
 import type { Tree, TreeId, NewNode, TreeNode } from "./tree";
 
@@ -10,7 +13,7 @@ export function assertFreeId<T>(conv: Tree<T>, id: TreeId | undefined): void {
 /**
  * `id` lets the caller choose the new node's id. The chat page and the server each build the same
  * tree for a turn, and when both use one id the server's copy replaces the page's without remounting
- * the message (CUR-2098). Omitted, a fresh one is minted.
+ * the message. Omitted, a fresh one is minted.
  */
 export function addChildren<T>(
 	conv: Tree<T>,

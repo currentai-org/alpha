@@ -21,7 +21,7 @@ import {
 import { contextualizeQuery, type RewriteTurn } from "./queryRewrite";
 import { classifySearchNeed, decideSearchViaTool } from "./searchDecision";
 import type { AttachmentKind, DeciderImage } from "./classifierPrompt";
-import { decideSearchViaIntent, searchIntentEnabled } from "./searchIntent";
+import { decideSearchViaIntent } from "./searchIntent";
 import {
 	resolveTriggerStrategy,
 	shouldRunSearch,
@@ -50,9 +50,12 @@ export type WebSearchDecision = {
 	/** Set when the decider gave no verdict. Under margin the turn then searches; under model/tool the
 	 *  recency regex decides. */
 	fallback?: string;
-	/** The model that gave the verdict and where it ran (CUR-984). Absent when no model decided: the
+	/** The model that gave the verdict and where it ran. Absent when no model decided: the
 	 *  strategy runs none, or the one it runs failed and a fallback decided instead. */
 	assist?: AssistedBy;
+	/** How the completion classifier's reply read, when it ran and answered. "malformed" is a reply that
+	 *  was neither yes nor no: it decides like a "no", and this keeps the two apart in the log. */
+	classifierReading?: "yes" | "no" | "malformed";
 };
 
 /** The photos the vision decider sees: the newest two in the conversation, as their screening renditions
@@ -70,27 +73,29 @@ export function deciderImages(
 /** Decide whether this turn needs the open web, server-side. Mirrors decideSearch (resolveSearch.ts) +
  *  the /api/search/classify route: the model classifier is the primary decider under model/tool, with the
  *  recency heuristic OR'd in; under margin the embedding gate is the only decider and no verdict means
- *  search (CUR-2109). Returns the
- *  decision, the query to run (the model's authored query when it tool-called, else the raw text), and
- *  which decider ran plus why it fell back, if it did. */
+ *  search. Returns the decision, the query to run (the model's authored query when it tool-called,
+ *  else the raw text), and which decider ran plus why it fell back, if it did. */
 export async function decideWebSearch(
 	text: string,
 	locals: App.Locals | undefined,
 	// The route's ALREADY-computed recency signal (isRecencyQueryDenoised), threaded so the auto decision,
-	// webSearchPlan, and #4's recency prior share ONE value instead of each recomputing it (plan MINOR-2).
+	// webSearchPlan, and the recency prior share ONE value instead of each recomputing it.
 	// Undefined → compute it here (unchanged for callers that don't pass it). Since the heuristic is pure,
 	// a passed value is identical to a recomputed one — this just makes the single source of truth explicit.
 	recency?: boolean,
 	// The model SERVING this turn. Only the "tool" strategy asks it, since that decision depends on the
-	// answerer's own tool calling; the "model" classifier is a side call on TASK_MODEL (CUR-2092).
+	// answerer's own tool calling; the "model" classifier is a side call on TASK_MODEL.
 	servingModel?: ServingLaneModel,
-	// What came with the message (CUR-3192). Told to the deciders that read prose; the embedding gate reads
+	// What came with the message. Told to the deciders that read prose; the embedding gate reads
 	// the typed text alone, so a turn with files goes to the completion classifier instead of it.
 	attachments: readonly AttachmentKind[] = [],
 	// The conversation's photos, passed only when the serving model reads images and calls tools. Then
 	// that model decides from the photo itself and writes the query from what it sees, whatever the
-	// strategy: the way Google's AI Mode and ChatGPT search an image (CUR-3192).
-	images: readonly DeciderImage[] = []
+	// strategy: the way Google's AI Mode and ChatGPT search an image.
+	images: readonly DeciderImage[] = [],
+	// The `search_classifier_malformed` fault (preview only): the completion classifier decides whatever
+	// the strategy, and its reply is neither yes nor no.
+	opts: { classifierMalformed?: boolean } = {}
 ): Promise<WebSearchDecision> {
 	const strategy = resolveTriggerStrategy(
 		Reflect.get(config, "PUBLIC_SEARCH_TRIGGER") as string | undefined
@@ -101,13 +106,14 @@ export async function decideWebSearch(
 	// strategy can trust this even though it deliberately ignores the topic-based recency heuristic).
 	const explicitLookupHit = isExplicitLookupRequest(text);
 	// Which model decider ran, and, when it produced no verdict, why. Every such turn is a fail-open
-	// departure (CUR-68), counted as one rather than left to read like a real "no" (CUR-2108): under
+	// departure, counted as one rather than left to read like a real "no": under
 	// margin it searches, under model/tool the recency regex decides in the decider's place.
 	let decider: SearchDecider = "none";
 	let fallback: string | undefined;
 	let classifierHit = false;
 	let modelQuery: string | undefined;
 	let assist: AssistedBy | undefined;
+	let classifierReading: WebSearchDecision["classifierReading"];
 	if (images.length > 0) {
 		decider = "vision";
 		try {
@@ -127,9 +133,9 @@ export async function decideWebSearch(
 			logger.warn(e, "[search] vision decision threw");
 			fallback = "threw";
 		}
-	} else if (usesModelClassifier(strategy)) {
+	} else if (usesModelClassifier(strategy) || opts.classifierMalformed) {
 		try {
-			if (strategy === "tool") {
+			if (strategy === "tool" && !opts.classifierMalformed) {
 				decider = "tool";
 				const d = await decideSearchViaTool(text, locals, servingModel, attachments);
 				classifierHit = d.shouldSearch;
@@ -143,27 +149,26 @@ export async function decideWebSearch(
 					);
 					assist = assistedByEntry("search-decision", lane.modelId, lane.baseURL);
 				}
-			} else if (strategy === "margin" && attachments.length === 0) {
+			} else if (strategy === "margin" && attachments.length === 0 && !opts.classifierMalformed) {
 				// "margin" is the embedding gate. There is no logprob gate: not every model returns a
-				// logprobs array, so such a gate cannot decide for every lane (CUR-1297, CUR-2108).
-				if (searchIntentEnabled()) {
-					decider = "embedding";
-					const v = await decideSearchViaIntent(text);
-					classifierHit = v.shouldSearch;
-					if (!v.ok) fallback = `embedding-${v.reason ?? "no-opinion"}`;
-					else
-						assist = assistedByEntry(
-							"search-decision",
-							embeddingModel(),
-							embeddingEndpointUrl() || embeddingBaseUrl()
-						);
-				} else {
-					fallback = "embedding-gate-off";
-				}
+				// logprobs array, so such a gate cannot decide for every lane.
+				decider = "embedding";
+				const v = await decideSearchViaIntent(text);
+				classifierHit = v.shouldSearch;
+				if (!v.ok) fallback = `embedding-${v.reason ?? "no-opinion"}`;
+				else
+					assist = assistedByEntry(
+						"search-decision",
+						embeddingModel(),
+						embeddingEndpointUrl() || embeddingBaseUrl()
+					);
 			} else {
 				decider = "completion";
-				const v = await classifySearchNeed(text, locals, attachments);
+				const v = opts.classifierMalformed
+					? await classifySearchNeed(text, locals, attachments, { malformedReply: true })
+					: await classifySearchNeed(text, locals, attachments);
 				classifierHit = v.shouldSearch;
+				classifierReading = v.reading;
 				if (!v.ok) fallback = "completion-failed";
 				else if (v.served)
 					assist = assistedByEntry(
@@ -212,6 +217,7 @@ export async function decideWebSearch(
 			heuristicHit,
 			classifierHit,
 			classifierOk,
+			classifierReading,
 			attachments: attachments.length,
 			images: images.length,
 			reason: !search
@@ -233,7 +239,7 @@ export async function decideWebSearch(
 		"[search] decision"
 	);
 	// preShaped: the returned query is the MODEL-AUTHORED tool query (not the raw user text), so openSearch
-	// should NOT re-distill it — it flows into the engines verbatim (#5b). Only the tool strategy authors a
+	// should NOT re-distill it — it flows into the engines verbatim. Only the tool strategy authors a
 	// query; margin/model classifiers don't, so those return the raw text with preShaped=false.
 	const preShaped = classifierHit && !!modelQuery;
 	return {
@@ -243,6 +249,7 @@ export async function decideWebSearch(
 		decider,
 		fallback,
 		...(assist ? { assist } : {}),
+		...(classifierReading ? { classifierReading } : {}),
 	};
 }
 
@@ -251,13 +258,13 @@ export async function decideWebSearch(
 export type RunWebOpts = {
 	locals: App.Locals | undefined;
 	history?: RewriteTurn[];
-	/** Turn-quality context (#1/#4): the route's stored recency signal + raw-text intent signals.
+	/** Turn-quality context: the route's stored recency signal + raw-text intent signals.
 	 *  openSearch classifies the finalized query itself and UNIONS these raw signals for engine rescue,
 	 *  and uses `recency` for the (flag-gated) recency prior. */
 	ctx?: { recency: boolean; latest?: boolean; rawSignals?: Set<SearchIntent> };
-	/** The query is already model-authored (tool strategy) — pass through so openSearch skips distill (#5b). */
+	/** The query is already model-authored (tool strategy) — pass through so openSearch skips distill. */
 	preShaped?: boolean;
-	/** Told why a leg that ran produced no outcome, so the turn can say its search failed rather (CUR-4091)
+	/** Told why a leg that ran produced no outcome, so the turn can say its search failed rather
 	 *  than read as one nobody ran. Not called for the query guard (nothing ran) or for an empty outcome. */
 	onFailed?: (why: WebSearchFailure) => void;
 	/** The `web_search_hangs` fault (faultInjection.ts, preview only): the leg never settles, so only the
@@ -268,10 +275,10 @@ export type RunWebOpts = {
 /** Why a web leg that ran produced no outcome: it passed its deadline, or it threw. */
 export type WebSearchFailure = "timeout" | "error";
 
-/** The whole web leg's ceiling, rewrite through enrichment (CUR-4089). Each stage inside has its own
+/** The whole web leg's ceiling, rewrite through enrichment. Each stage inside has its own
  *  bound, yet a leg can still hang past all of them, and a hung leg would hold the turn until the 45s
- *  generation watchdog ended it with no answer and no turn plan. The slowest completed web leg takes
- *  about 7.5s (Axiom `[retrieval] timing`), so 15s cuts only a leg that has hung. */
+ *  generation watchdog ended it with no answer and no turn plan. A completed web leg finishes well
+ *  inside this (the `[retrieval] timing` log line shows each one), so 15s cuts only a leg that has hung. */
 const WEB_RETRIEVAL_DEADLINE_MS = 15_000;
 
 /** Run the open-web RETRIEVAL server-side WITHOUT assigning citation numbers (TTFT plan §5.1). The chat
@@ -293,7 +300,7 @@ export async function runWebRetrieval(
 	if (!raw || raw.length > 400) return undefined;
 	const startedAt = Date.now();
 	// Where the leg was when the deadline fired: no line inside the leg says, since every stage logs
-	// only when it fails or ends (CUR-4089).
+	// only when it fails or ends.
 	const progress: WebProgress = { stage: "rewrite", pending: new Set() };
 	// One reason per leg: a leg cut at the deadline that throws later must not rename its failure.
 	let reported = false;
@@ -346,10 +353,10 @@ async function retrieveOnce(
 		// below the 4500ms overall backstop: one slow/hung open-web engine (usually export.arxiv) can't hold
 		// the whole fan-out to the full cap. Healthy engines answer in <800ms, so this only bites a
 		// genuinely-stalled source (which the rerank would likely drop anyway); fail-open, quality-neutral in
-		// practice. Firecrawl is EXEMPT from this cap (CUR-633) — retrieveWeb gives it its own longer,
+		// practice. Firecrawl is EXEMPT from this cap — retrieveWeb gives it its own longer,
 		// independent budget (DEFAULT_FIRECRAWL_TIMEOUT_MS in openSearch.ts) since it's a live web crawl,
 		// not a fast static-index lookup, and this 3500ms would cut it off on most turns.
-		// recency + rawSignals feed intent routing / the recency prior; preShaped skips distill (#1/#4/#5b).
+		// recency + rawSignals feed intent routing / the recency prior; preShaped skips distill.
 		const r = await retrieveWeb(q, {
 			perEngineTimeoutMs: 3500,
 			recency: opts.ctx?.recency ?? false,
@@ -365,7 +372,7 @@ async function retrieveOnce(
 		// search ran". Grounding still requires sources, so this stays a no-op for the grounded predicate.
 		if (r.relevanceVerified && r.merged.length === 0) {
 			// Length only, never the query text -- same "Booleans only" rule this file
-			// states above. (CUR-918)
+			// states above.
 			logger.info(
 				{ queryLength: q.length },
 				"[search] verified-empty: reranker found no source above the floor"
@@ -377,7 +384,8 @@ async function retrieveOnce(
 		const withAssist = rewriteAssist ? { ...r, rewriteAssist } : r;
 		return r.timings ? { ...withAssist, timings: { ...r.timings, rewriteMs } } : withAssist;
 	} catch (e) {
-		logger.warn(e, "[search] open-web search failed; answering ungrounded");
+		// Name only: the error can carry an engine request URL and with it the visitor's query.
+		logger.warn({ errName: e instanceof Error ? e.name : typeof e }, "[search] open-web search failed; answering ungrounded");
 		opts.onFailed?.("error");
 		return undefined;
 	}

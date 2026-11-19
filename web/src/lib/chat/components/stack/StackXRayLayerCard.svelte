@@ -10,7 +10,7 @@
 	 * One part of Alpha's stack, in plain words: an emoji, a friendly name, what it does, and its
 	 * state. `expanded` (used by this answer, or lit by the live reveal) shows it as active; tapping
 	 * the row reveals who builds it and the open project behind it. `answered` says an answer is on
-	 * screen, so a working part it skipped reads as not used rather than as busy (CUR-2850).
+	 * screen, so a working part it skipped reads as not used rather than as busy.
 	 */
 	interface Props {
 		layer: StackXRayLayer;
@@ -24,7 +24,7 @@
 	let open = $state(false);
 
 	// A serving row the maker's own API stood in for, or one the answer recorded nothing about, says
-	// why rather than reading as a confident "Not used" (CUR-3966).
+	// why rather than reading as a confident "Not used".
 	const note = $derived(
 		expanded
 			? undefined
@@ -35,7 +35,7 @@
 					: undefined
 	);
 
-	// Agent mode reads as unavailable, not absent, for someone its flag doesn't clear (CUR-1447).
+	// Agent mode reads as unavailable, not absent, for someone its flag doesn't clear.
 	const chip = $derived(
 		layer.available === false
 			? { label: 'Not switched on for you', cls: 'bg-tint-subtle text-fg-3' }

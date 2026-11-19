@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { scrubFenceNonce, scrubFenceNarration } from "./fenceTags";
 
-describe("scrubFenceNonce (CUR-3164): the visitor never reads the injection fence's nonce", () => {
+describe("scrubFenceNonce: the visitor never reads the injection fence's nonce", () => {
 	it("drops the nonce from ALIA's recorded reasoning, tag form", () => {
 		expect(
 			scrubFenceNonce("The user has provided a message inside the <Q_33024de9> tags. It says hi.")
@@ -25,9 +25,19 @@ describe("scrubFenceNonce (CUR-3164): the visitor never reads the injection fenc
 		expect(scrubFenceNonce("a < b", true)).toBe("a < b");
 		expect(scrubFenceNonce("inside the <Q_3302", false)).toBe("inside the <Q_3302");
 	});
+
+	it("drops the compact fence's QUESTION_ + 4 digit nonce too, and holds back its half-arrived tag", () => {
+		expect(scrubFenceNonce("Inside <QUESTION_4821> and </QUESTION_4821>, QUESTION_4821 asks.")).toBe(
+			"Inside and , asks."
+		);
+		expect(scrubFenceNonce("inside the <QUEST", true)).toBe("inside the ");
+		expect(scrubFenceNonce("inside the </QUESTION_48", true)).toBe("inside the ");
+		expect(scrubFenceNonce("a <b", true)).toBe("a <b");
+		expect(scrubFenceNonce("QUESTION_12345 and QUESTION_ONE stay")).toBe("QUESTION_12345 and QUESTION_ONE stay");
+	});
 });
 
-describe("scrubFenceNarration (CUR-3945): the reasoning panel drops a sentence that restates our fence preamble", () => {
+describe("scrubFenceNarration: the reasoning panel drops a sentence that restates our fence preamble", () => {
 	it("drops ALIA's restatement as stored on www and the rest of its paragraph, which works through our preamble", () => {
 		expect(
 			scrubFenceNarration(

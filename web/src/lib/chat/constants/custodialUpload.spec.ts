@@ -14,7 +14,7 @@ import { tooManyImagesMessage } from "$lib/chat/server/storage/uploadImageGuard"
 const BYTES = CUSTODIAL_MAX_TOTAL_BYTES_PER_USER;
 const FILES = CUSTODIAL_MAX_FILES_PER_USER;
 
-describe("storageUsage (CUR-2631)", () => {
+describe("storageUsage", () => {
 	it("stays quiet below 80% of both caps", () => {
 		expect(storageUsage(BYTES * 0.79, FILES * 0.79)).toEqual({ fraction: 0.79 });
 	});
@@ -40,7 +40,7 @@ describe("storageUsage (CUR-2631)", () => {
 	});
 });
 
-describe("storageRefusalMessage (CUR-2631)", () => {
+describe("storageRefusalMessage", () => {
 	it("names the limit and the way out for each limit the guard refuses with", () => {
 		expect(storageRefusalMessage(413, "")).toBe(
 			"That file is over the 4.4 MB limit per file. Compress it or split it, then add it again.",
@@ -59,13 +59,13 @@ describe("storageRefusalMessage (CUR-2631)", () => {
 
 	it("falls back to the caller's message for a status it has no copy for", () => {
 		expect(storageRefusalMessage(500, "Upload failed.")).toBe("Upload failed.");
-		// A 503 is either the scanner or Hugging Face throttling us; the server's line says which. (CUR-3120)
+		// A 503 is either the scanner or Hugging Face throttling us; the server's line says which.
 		expect(storageRefusalMessage(503, STORAGE_BUSY_MESSAGE)).toBe(STORAGE_BUSY_MESSAGE);
 		expect(storageRefusalMessage(503, UPLOAD_NOT_SCANNED_MESSAGE)).toBe(UPLOAD_NOT_SCANNED_MESSAGE);
 		expect(storageRefusalMessage(502, "")).toBe("Upload failed (502).");
 	});
 
-	it("shows the server's own reason for a 422, not one generic line for every content refusal (CUR-4662)", () => {
+	it("shows the server's own reason for a 422, not one generic line for every content refusal", () => {
 		const tooMany = tooManyImagesMessage(41);
 		expect(storageRefusalMessage(422, tooMany)).toBe(tooMany);
 		expect(storageRefusalMessage(422, UNSCANNABLE_FILE_MESSAGE)).toBe(UNSCANNABLE_FILE_MESSAGE);
@@ -73,13 +73,13 @@ describe("storageRefusalMessage (CUR-2631)", () => {
 		expect(storageRefusalMessage(422, "")).toBe("This file can't be stored here, so it wasn't added.");
 	});
 
-	it("says a scanner outage in My files in the same words chat uses (CUR-3591)", () => {
+	it("says a scanner outage in My files in the same words chat uses", () => {
 		// The client words the 503 itself, so the server sending chat's line is not enough on its own.
 		expect(storageRefusalMessage(503, "")).toBe(UPLOAD_NOT_SCANNED_MESSAGE);
 	});
 });
 
-describe("storageRefusalRecovery (CUR-2450)", () => {
+describe("storageRefusalRecovery", () => {
 	it("offers no retry for a refusal the same file would get again (size, type, content match)", () => {
 		expect(storageRefusalRecovery(413)).toBe("remove");
 		expect(storageRefusalRecovery(415)).toBe("remove");

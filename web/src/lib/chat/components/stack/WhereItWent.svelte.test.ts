@@ -4,7 +4,7 @@ import { page } from "vitest/browser";
 import { describe, expect, it, afterEach } from "vitest";
 import type { Message } from "$lib/chat/types/Message";
 
-// "Where your last message went", read from the turn's own record. (CUR-4580)
+// "Where your last message went", read from the turn's own record.
 const answer = (routerMetadata: Message["routerMetadata"]): Message => ({
 	id: "a",
 	from: "assistant",

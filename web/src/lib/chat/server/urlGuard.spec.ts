@@ -47,6 +47,19 @@ describe("detectFabricatedUrls", () => {
 		expect(r.cleaned).toBe(text);
 	});
 
+	it("keeps our own public repo link clean, but still flags another repo on github.com", () => {
+		const ours = "It is MIT-licensed at [github.com/currentai-org/alpha](https://github.com/currentai-org/alpha).";
+		const r = detectFabricatedUrls(ours, { grounded: false });
+		expect(r.flagged).toBe(false);
+		expect(r.cleaned).toBe(ours);
+
+		const other = detectFabricatedUrls("See https://github.com/currentai-org/secret-plans for more.", {
+			grounded: false,
+		});
+		expect(other.flagged).toBe(true);
+		expect(other.cleaned).toContain(UNVERIFIED_TITLE);
+	});
+
 	it("on a grounded turn, leaves a URL whose host matches a retrieved source untouched", () => {
 		const text =
 			"According to the report at https://www.europarl.europa.eu/news/en/ai-act it applies in phases.";
@@ -142,7 +155,7 @@ describe("detectFabricatedUrls", () => {
 	// renderArtifacts() links a downloadable agent file with a same-origin RELATIVE href
 	// (/chat/conversation/.../agent-artifact/...). MD_LINK hard-requires `https?://` inside the
 	// parens, so this never matches — confirming a download link can't get caught by a guard built
-	// for citation URLs and silently marked "unverified" (or, worse, stripped). (CUR-546)
+	// for citation URLs and silently marked "unverified" (or, worse, stripped).
 	it("leaves a same-origin relative download link untouched — MD_LINK only matches http(s) URLs", () => {
 		const text = "**[`notes.txt`](/chat/conversation/abc123/agent-artifact/notes.txt)** — 5 bytes";
 		const r = detectFabricatedUrls(text, { grounded: false });
@@ -152,7 +165,7 @@ describe("detectFabricatedUrls", () => {
 	});
 
 	// The stream hands the guard one batch at a time, and a batch often ends on the "\n" between two
-	// list items. Losing it put the next item on this line: "small teams.- **Start here**" (CUR-2567).
+	// list items. Losing it put the next item on this line: "small teams.- **Start here**".
 	it("keeps a flagged batch's leading and trailing whitespace, so the next list item stays on its own line", () => {
 		const batch = "\n- Use the [playbook](https://airc.nist.gov/x) for small teams.\n";
 		const r = detectFabricatedUrls(batch, { grounded: false });

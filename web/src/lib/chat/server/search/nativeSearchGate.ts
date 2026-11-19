@@ -1,9 +1,8 @@
 // On a native turn the model decides whether to search, and it can answer a rights question
 // (an England eviction notice, France's VAT, Ontario's firing rules) from memory when it should search.
-// The embedding gate the pipeline
-// turn asks (searchIntent.ts) says search for all four rights questions in its holdout. This asks it on
-// an Auto native turn, so a "search" verdict forces the first round to web_search (nativeTools.ts); a
-// "no", no opinion, or a gate slower than the budget leaves the choice with the model, as before. (CUR-4083)
+// The embedding gate the pipeline turn asks (searchIntent.ts) says search for these rights questions.
+// This asks it on an Auto native turn, so a "search" verdict forces the first round to web_search
+// (nativeTools.ts); a "no", no opinion, or a gate slower than the budget leaves the choice with the model.
 
 import { decideSearchViaIntent } from "./searchIntent";
 import { readIdentityWithin, type SelfIdentityVerdict } from "$lib/chat/server/selfIdentity";
@@ -18,7 +17,7 @@ function within<T>(p: Promise<T>, ms: number): Promise<T | undefined> {
 
 /**
  * True only when the embedding gate says this message needs the web, the self-identity verdict does
- * not say it is a question about Alpha itself (CUR-2135: those are answered from provenance, never the
+ * not say it is a question about Alpha itself (those are answered from provenance, never the
  * web), and our catalog has nothing for it. A native turn reads the catalog through `search_catalog`,
  * so no catalog hit exists before the turn; `readCatalogHits` looks once, the way the pipeline turn's
  * community-first plan does (webSearchPlan.ts), and a hit leaves the choice with the model unless the
@@ -41,28 +40,28 @@ export async function nativeGateSaysSearch(
 	if (catalogHits) {
 		logger.info(
 			{ leg: "native-search-gate", margin: gate.margin, catalogHits },
-			"[search] gate said search; our catalog has it, so not forcing it"
+			"[search] gate said search; our catalog has it, so not searching ahead"
 		);
 		return false;
 	}
 	if (identity?.isSelf) {
 		logger.info(
 			{ leg: "native-search-gate", margin: gate.margin, identityMargin: identity.margin },
-			"[search] gate said search; a question about Alpha itself, so not forcing it"
+			"[search] gate said search; a question about Alpha itself, so not searching ahead"
 		);
 		return false;
 	}
 	logger.info(
 		{ leg: "native-search-gate", margin: gate.margin, ...reading },
-		"[search] gate said search; forcing web_search"
+		"[search] gate said search; running the web search before round 1"
 	);
 	return true;
 }
 
-/** Whether a native turn's first round is forced to web_search. "always" forces it. CUR-4083: on Auto,
- *  the embedding gate's "search" forces the search the model sometimes skips, unless a photo or a pasted
- *  link came with the message, which the turn reads first (CUR-3192, CUR-2734). */
-export function forcesWebSearch(t: {
+/** Whether the server runs the web search before a native turn's first round. "always" does. On
+ *  Auto, the embedding gate's "search" does, for the search the model sometimes skips, unless a photo
+ *  or a pasted link came with the message, which the turn reads first. */
+export function searchesBeforeRound1(t: {
 	mode: "off" | "auto" | "always" | undefined;
 	photoAttached: boolean;
 	pastedUrl: boolean;

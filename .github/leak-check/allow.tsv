@@ -1,0 +1,18 @@
+# check-name<TAB>path glob<TAB>reason. A hit in that path is accepted for that check.
+personal-emails	web/src/lib/chat/server/teamAccount.spec.ts	the code under test matches the team email domain, so the spec needs that domain; the addresses are synthetic
+personal-emails	web/scripts/__tests__/cleanupE2eArtifacts.spec.ts	synthetic e2e-run addresses the cleanup script matches, not people
+personal-emails	web/src/lib/chat/server/mcp/sandboxAllowance.spec.ts	the code under test matches e2e-*@currentai.org (TEST_ACCOUNT_EMAIL), so the spec needs that domain; the addresses are synthetic
+profanity	web/src/lib/chat/server/rag/rerankRag.ts	test input "whats up bro", a casual greeting the reranker must not treat as a query
+profanity	web/src/lib/chat/server/rag/rerankRag.spec.ts	the same "whats up bro" test input
+profanity	web/src/lib/chat/server/rag/syftSources.pregate.spec.ts	the same "whats up bro" test input
+profanity	web/src/lib/chat/server/rules-s1.json	policy text that names the language it forbids
+profanity	web/src/lib/chat/server/textGeneration/data/exemplars.json	the third-party repository name get-shit-done
+profanity	web/static/data/notebook_data.json	the third-party domain shittycodingagent.ai
+personal-emails	web/e2e/__tests__/personaDriver.spec.ts	the spec checks the driver refuses a real-looking address; someone@gmail.com is synthetic
+profanity	web/e2e/scenarios/fixtures/garden-report-bank-image.pdf	binary PDF bytes that happen to match, no text
+agents-md-refs	/AGENTS.md	the public guide for coding agents, copied from scripts/public-snapshot/
+agents-md-refs	/README.md	points readers at the public AGENTS.md
+agents-md-refs	/CONTRIBUTING.md	points readers at the public AGENTS.md
+agents-md-refs	.github/leak-check/allow.tsv	this list, shipped for the public repo's leak check, names the paths and gives each reason
+personal-emails	.github/leak-check/allow.tsv	the same list: a reason quotes the synthetic address its spec uses
+profanity	.github/leak-check/allow.tsv	the same list: a path names the third-party domain it allows

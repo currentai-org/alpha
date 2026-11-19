@@ -45,7 +45,7 @@
 		// Hold the page's post-turn resync for as long as this submission (and its
 		// acknowledgement) is on screen — see reportHold.ts. Released exactly once per increment,
 		// on every exit path, from a module-level store so it still fires correctly even if a
-		// resync this same hold prevented would otherwise have destroyed this component first. (CUR-1583)
+		// resync this same hold prevented would otherwise have destroyed this component first.
 		reportActionHoldCount.update((n) => n + 1);
 		try {
 			const res = await fetch(`${base}/conversation/${page.params.id}/report`, {
@@ -73,7 +73,7 @@
 
 <!-- The design system's Menu anchors the reasons below the flag and flips above it only when the
      viewport has no room there. Opening always upward would cover the answer it is
-     reporting and its open-gap banner (CUR-2383). -->
+     reporting and its open-gap banner. -->
 <Menu.Root
 	bind:open
 	onOpenChange={(o) => {
@@ -112,7 +112,7 @@
 						{/each}
 					</Menu.Group>
 					<!-- The reasons are disabled while a report is in flight, so say why: without this line a
-					     slow or failing request reads as a greyed-out menu (CUR-2637). -->
+					     slow or failing request reads as a greyed-out menu. -->
 					<div role="status" aria-live="polite">
 						{#if busy}
 							<p class="type-body px-2 pt-1 text-fg-2">{m.message_reportSending()}</p>

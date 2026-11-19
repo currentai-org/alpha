@@ -17,7 +17,7 @@ const { ConversationsStore } = await import("./conversations.svelte");
 const ID = "6ab54542987b7a161205a83f";
 const at = "2026-09-24T15:44:19.821Z";
 
-describe("conversations store: title source across a server resync (CUR-1971)", () => {
+describe("conversations store: title source across a server resync", () => {
 	let store: InstanceType<typeof ConversationsStore>;
 
 	beforeEach(() => {
@@ -67,7 +67,7 @@ describe("conversations store: title source across a server resync (CUR-1971)", 
 // prop when the infinite scroll loads a page), and a copy only follows a new array, never an
 // element written in place. So a title written in place reaches the header and leaves the rail
 // on "New Chat" until the post-turn refresh swaps the whole list.
-describe("conversations store: a title update reaches every reader of the list (CUR-2379)", () => {
+describe("conversations store: a title update reaches every reader of the list", () => {
 	it("hands readers a new array on update, so a component holding the old one is told to re-read", () => {
 		const store = new ConversationsStore();
 		store.init([{ id: ID, title: "New Chat", updatedAt: new Date(at) }]);
@@ -84,7 +84,7 @@ describe("conversations store: a title update reaches every reader of the list (
 // conversation it just created. Nothing reloads the layout on the move to that
 // conversation, so a list that replaces the prepend leaves the new chat out of the rail for its
 // whole first turn.
-describe("conversations store: a just-created conversation survives a late first-load list (CUR-2391)", () => {
+describe("conversations store: a just-created conversation survives a late first-load list", () => {
 	const NEW = "6abcd2e07da1da63c27da414";
 	const OLD = "6ab54542987b7a161205a83f";
 
@@ -143,7 +143,7 @@ describe("conversations store: a just-created conversation survives a late first
 // shell its chat layout's page-load list again, the same array as before. Applied a second time it
 // would replace everything the post-turn refresh brought in, so each chat made since the page loaded
 // would leave the rail until a reload.
-describe("conversations store: the layout's list re-handed by a root-only navigation (CUR-2545)", () => {
+describe("conversations store: the layout's list re-handed by a root-only navigation", () => {
 	const NEW = "6abe6930638d6d22f9279e38";
 	const OLD = "6ab54542987b7a161205a83f";
 

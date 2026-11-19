@@ -18,7 +18,7 @@ async function openChat(page: Page): Promise<void> {
 		await startChattingPastWelcome(welcomeDialog);
 	});
 	await page.goto(chatEntry(), { waitUntil: 'commit' });
-	// The trace opens from the footer's model name, which a canned reply has none of (CUR-2954).
+	// The trace opens from the footer's model name, which a canned reply has none of.
 	await installModelReplay(page);
 	await page.getByLabel('Message AI Potluck').click({ timeout: 30_000 });
 }

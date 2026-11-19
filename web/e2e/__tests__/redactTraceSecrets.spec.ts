@@ -22,7 +22,7 @@ function traceZip(): Uint8Array {
 	});
 }
 
-describe('redactTraceSecrets (CUR-2918)', () => {
+describe('redactTraceSecrets', () => {
 	it('removes every occurrence of each secret from every trace entry and keeps the rest byte-for-byte', () => {
 		const out = redactZip(traceZip(), [SECRET, OTHER]);
 		expect(out).not.toBeNull();

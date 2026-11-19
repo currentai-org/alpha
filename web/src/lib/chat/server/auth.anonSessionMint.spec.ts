@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// Every cookie-less mint gets its own anonymous session (CUR-1645). Coalescing two cookie-less
+// Every cookie-less mint gets its own anonymous session. Coalescing two cookie-less
 // requests from the same `(IP, User-Agent)` pair inside a short window into one session leaks one
 // visitor's session to another: two clients sharing both are exactly what a NAT full of identical
 // browser builds produces. A test that only checks clients sharing an IP but NOT a User-Agent stay
 // separate leaves that case unasserted.
 //
 // The assertions here are the inverse of a coalescing contract, not additions to it: a suite that
-// specifies the defect as correct has to be inverted, not extended (CUR-73). Every `it` below that
+// specifies the defect as correct has to be inverted, not extended. Every `it` below that
 // says "never" goes red against a coalescing implementation.
 //
 // Mirrors auth.betterAuthBridge.spec.ts's DB-mocking convention.
@@ -63,7 +63,7 @@ const noCookies = { get: () => undefined } as unknown as Parameters<typeof authe
 const RETIRED_KEY = "anon.session.mint:203.0.113.5:Mozilla/5.0 TestBrowser/1.0";
 const recentDoc = (overrides: Record<string, unknown>) => ({ createdAt: new Date(), ...overrides });
 
-describe("mintAnonymousSession — every cookie-less mint gets its own session (CUR-1645)", () => {
+describe("mintAnonymousSession — every cookie-less mint gets its own session", () => {
 	beforeEach(() => {
 		getClientAddress.mockReset().mockReturnValue("203.0.113.5");
 		userAgent.mockReset().mockReturnValue("Mozilla/5.0 TestBrowser/1.0");
@@ -120,7 +120,7 @@ describe("mintAnonymousSession — every cookie-less mint gets its own session (
 	});
 
 	// The write half. Nothing should record a new correlation row — those rows held the raw
-	// `secretSessionId` in the clear (CUR-1325), and the whole reason the sweep below can ever finish
+	// `secretSessionId` in the clear, and the whole reason the sweep below can ever finish
 	// draining them is that the writer is gone.
 	it("never records a correlation row, so no new plaintext secretSessionId is written", async () => {
 		await authenticateRequest(new Headers(), noCookies, url);
@@ -153,7 +153,7 @@ describe("mintAnonymousSession — every cookie-less mint gets its own session (
 		expect(result.secretSessionId).toBe(token);
 	});
 
-	// Retention (CUR-1325). The retired rows hold a live bearer value in readable form, so a mint drains
+	// Retention. The retired rows hold a live bearer value in readable form, so a mint drains
 	// them — scoped on `secretSessionId` existing, which is what keeps it off the lock rows sharing this
 	// collection, and NOT scoped to one key, since that narrowing is what left other clients' rows
 	// behind in the first place.

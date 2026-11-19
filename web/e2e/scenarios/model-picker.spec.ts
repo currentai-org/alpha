@@ -6,32 +6,30 @@ import { CHAT_ENTRY } from './helpers/chatEntry';
 import { warmupContext } from './helpers/warmup';
 import { setFlagOverrides } from './helpers/flagOverride';
 import { HF_PROVIDER_PIN } from '../../src/lib/chat/server/hfProviderPin';
-import { catalog, orgs } from '../../src/lib/chat/routing/catalog';
+import { catalog, MODEL_HOSTS, orgs } from '../../src/lib/chat/routing/catalog';
 import { startChattingPastWelcome } from './helpers/welcome';
 import { sameServedModel } from '../../config/picker';
 
 // F3 step 2 and A2 step 5 — "Choosing a model"; marked
-// preview there because `model-picker` is scoped to env=preview.
+// preview there because the since-retired `model-picker` flag was then scoped to env=preview.
 //
-// WHAT THIS WALKS. The picker lives in the composer now (CUR-967's ask): the model button in the message
+// WHAT THIS WALKS. The picker lives in the composer now (the ask): the model button in the message
 // box opens the list. With the `auto-routing` flag off, as production has it, that list is exactly the
-// model preference, so CUR-421's claim holds and is what this walks: what
+// model preference, so the claim holds and is what this walks: what
 // the picker offers and what actually answers are the same thing. Preview turned Auto on, which moves
 // the list into a "Choose a model yourself" submenu and drops the mid-chat hint, so every test here
-// pins it off (CUR-3923); the Auto menu has its own test at the end of this file, which pins it on.
+// pins it off; the Auto menu has its own test at the end of this file, which pins it on.
 //
 // THE MEASUREMENT IS THE POINT OF TEST 2. The demo list says the person "can pick any of the models
-// the gateway serves (14 models)". Two separate gates decide what they actually get: `model-picker`
-// decides whether anything past the FIRST allowlist entry is offered at all, and MODEL_ALLOWLIST
-// decides which entries are admissible. So a picker that opens and lists one model is not a broken
-// picker — it is a correctly-working picker over a one-entry allowlist, and a spec that cannot tell
-// those apart would send the next reader to the wrong file. The count is recorded rather than
-// asserted against 14 (CUR-1683 carries the gap between the two numbers).
-//
-// THE FLAG IS READ LIVE, NOT FORCED. `model-picker` is deployment-plane (resolved once per instance
-// in buildModelsFromCatalog), so the per-request override cookie other specs use cannot reach it —
-// so setting one changes nothing (CUR-1703, CUR-245). What runs here is the
-// flag as the preview actually has it: 100% on env=preview.
+// the gateway serves (14 models)". MODEL_ALLOWLIST (config/picker.ts on Vercel) decides what they
+// actually get, so a picker that opens and lists one model is a correctly-working picker over a
+// one-entry allowlist. The count is recorded rather than asserted against 14 (that change carries the gap
+// between the two numbers). The `model-picker` flag that once also narrowed the list to its first
+// entry was retired once it was on everywhere.
+
+// The HF provider whose concurrency units production and every preview share (hfProviderPin.ts). A
+// spec never holds two calls there at once.
+const SHARED_BUDGET_PROVIDER = 'featherless-ai';
 
 // The composer's model button. Its accessible name is "Model: <what is chosen>".
 const PICKER_TRIGGER = /^Model:/;
@@ -109,7 +107,7 @@ test(
 			labels.filter((l) => !l.trim()),
 			'every option has to name the model it selects — F3 rests on "every control is named"'
 		).toEqual([]);
-		// A row names the maker and never a host (CUR-3850). The planned host is not where
+		// A row names the maker and never a host. The planned host is not where
 		// every answer runs, and X-ray reads that per turn. A host that also makes a listed model
 		// (Mistral) is named as the maker, so only hosts that make nothing here count.
 		const makers = new Set(catalog.map((m) => m.maker));
@@ -121,7 +119,7 @@ test(
 			`a picker row names where the model runs (hosts: ${hostNames.join(', ')})`
 		).toEqual([]);
 
-		// Step 3. Picking is a CHOICE, not a navigation (CUR-1772). Skipped where only one model is admitted.
+		// Step 3. Picking is a CHOICE, not a navigation. Skipped where only one model is admitted.
 		if (offered < 2) {
 			test.info().annotations.push({
 				type: 'single model',
@@ -196,7 +194,7 @@ test(
 	}
 );
 
-// CUR-4683: Large 4 replaces Large 3 on the picker, under its own name with no preview mark, and a
+// Large 4 replaces Large 3 on the picker, under its own name with no preview mark, and a
 // person picking it gets Large 4.
 test(
 	'the picker offers Mistral Large 4 by its plain name and no Mistral Large 3, and picking Large 4 makes it the model',
@@ -239,8 +237,8 @@ test(
 	'picking a model makes the next turn be answered by that model, for every model offered',
 	{ tag: ['@preview-only', '@F3'] },
 	async ({ page: firstPage }) => {
-		// Two turns on a cold preview.
-		test.setTimeout(240_000);
+		// The concurrent turns, then each shared-budget model's turn on its own, on a cold preview.
+		test.setTimeout(300_000);
 		await openChatEntry(firstPage);
 		await firstPage.getByRole('button', { name: PICKER_TRIGGER }).click({ timeout: 30_000 });
 		const options = firstPage.locator('[data-model-id]');
@@ -261,17 +259,27 @@ test(
 		).toBeGreaterThan(1);
 		await firstPage.keyboard.press('Escape');
 
-		// Every turn is started before any answer is awaited, one page per model in this guest's context,
-		// so the test's time is the slowest turn rather than the sum of them (CUR-3181). A conversation is
+		// Turns are started before any answer is awaited, one page per model in this guest's context,
+		// so the test's time is the slowest turn rather than the sum of them. A conversation is
 		// served by the model it was created with (`conv.model`, conversation/[id]/+server.ts), so picking
 		// the next model once this page's conversation exists cannot change the turn already started.
+		//
+		// The exception is a model pinned to the provider whose concurrency units production shares
+		// (hfProviderPin.ts: a GLM-5.2 call takes 4 of 10). Its turn is sent alone, after the others have
+		// finished, so this test never holds more than one call there and never pushes a visitor's GLM
+		// turn onto the busy notice.
 		const turns: Array<{ id: string; page: Page; conversationId: string }> = [];
-		for (const { id, name } of offered) {
-			const page = turns.length === 0 ? firstPage : await firstPage.context().newPage();
+		let pagesUsed = 0;
+		const nextPage = async () =>
+			pagesUsed++ === 0 ? firstPage : await firstPage.context().newPage();
+		const sharesBudget = ({ id }: { id: string }) =>
+			HF_PROVIDER_PIN[id.toLowerCase()] === SHARED_BUDGET_PROVIDER;
+		const startTurn = async ({ id, name }: { id: string; name: string }) => {
+			const page = await nextPage();
 			await openChatEntry(page);
 			await page.getByRole('button', { name: PICKER_TRIGGER }).click();
 			// The pick is saved by a POST to /settings; a new chat created before it lands would start on
-			// the previous model (CUR-245), so wait for the save.
+			// the previous model, so wait for the save.
 			// Picking the model already chosen changes nothing, so it sends no save to wait for.
 			const option = page.locator(`[data-model-id="${id}"]`);
 			const saved =
@@ -294,130 +302,137 @@ test(
 			await page.waitForURL(/\/conversation\/[a-f0-9]+/, { timeout: 30_000 });
 			const conversationId = page.url().match(/\/conversation\/([a-f0-9]+)/)?.[1];
 			if (!conversationId) throw new Error(`could not read a conversation id out of ${page.url()}`);
-			turns.push({ id, page, conversationId });
-		}
+			const turn = { id, page, conversationId };
+			turns.push(turn);
+			return turn;
+		};
 
-		await Promise.all(
-			turns.map(async ({ id, page, conversationId }) => {
-				const answer = page.locator('[data-message-role="assistant"]').last();
-				await expect(
-					answer.getByRole('button', { name: 'Copy to clipboard', exact: true }),
-					`the turn after picking ${id} never finished within 60s` + warmupContext()
-				).toBeVisible({ timeout: 60_000 });
+		const checkTurn = async ({ id, page, conversationId }: (typeof turns)[number]) => {
+			const answer = page.locator('[data-message-role="assistant"]').last();
+			await expect(
+				answer.getByRole('button', { name: 'Copy to clipboard', exact: true }),
+				`the turn after picking ${id} never finished within 60s` + warmupContext()
+			).toBeVisible({ timeout: 60_000 });
 
-				// What the reader sees: no `<answer>` wrapper (ALIA wraps its reply in one), and the asked-for
-				// word survives to the end. A one-word reply with no reasoning is the case whose last characters
-				// the untagged-reasoning hold dropped (CUR-2470).
-				const shown = await answer.innerText();
-				expect(shown, `the answer after picking ${id} shows a raw <answer> tag`).not.toMatch(
-					/<\/?answer>/i
-				);
-				expect(shown, `the answer after picking ${id} lost the word it was asked for`).toMatch(
-					/\bready\b/i
-				);
-				// CUR-3164: ALIA narrates the injection fence by its nonce ("a message inside the <Q_33024de9>
-				// tags"). A model that shows no reasoning has no panel, and the check is about the panel's text.
-				const reasoning = answer.getByRole('button', { name: 'Expand', exact: true });
-				for (const toggle of await reasoning.all()) await toggle.click();
-				expect(
-					await answer.innerText(),
-					`the reasoning after picking ${id} shows the injection fence's nonce`
-				).not.toMatch(/Q_[0-9a-f]{8}/);
+			// What the reader sees: no `<answer>` wrapper (ALIA wraps its reply in one), and the asked-for
+			// word survives to the end. A one-word reply with no reasoning is the case whose last characters
+			// the untagged-reasoning hold dropped.
+			const shown = await answer.innerText();
+			expect(shown, `the answer after picking ${id} shows a raw <answer> tag`).not.toMatch(
+				/<\/?answer>/i
+			);
+			expect(shown, `the answer after picking ${id} lost the word it was asked for`).toMatch(
+				/\bready\b/i
+			);
+			// ALIA narrates the injection fence by its nonce ("a message inside the <Q_33024de9>
+			// tags"). A model that shows no reasoning has no panel, and the check is about the panel's text.
+			const reasoning = answer.getByRole('button', { name: 'Expand', exact: true });
+			for (const toggle of await reasoning.all()) await toggle.click();
+			expect(
+				await answer.innerText(),
+				`the reasoning after picking ${id} shows the injection fence's nonce`
+			).not.toMatch(/Q_[0-9a-f]{8}/);
 
-				// The measured half: `routerMetadata.model` is written from the gateway's response.
-				let served: string | undefined;
-				let provider: string | undefined;
-				let failoverFrom: string | undefined;
-				await expect
-					.poll(
-						async () => {
-							const res = await page.request.get(`/chat/api/v2/conversations/${conversationId}`);
-							const body = (await res.json()) as {
-								json?: {
-									messages?: Array<{
-										from: string;
-										routerMetadata?: { model?: string; provider?: string };
-										failover?: { from?: string };
-									}>;
-								};
+			// The measured half: `routerMetadata.model` is written from the gateway's response.
+			let served: string | undefined;
+			let provider: string | undefined;
+			let failoverFrom: string | undefined;
+			await expect
+				.poll(
+					async () => {
+						const res = await page.request.get(`/chat/api/v2/conversations/${conversationId}`);
+						const body = (await res.json()) as {
+							json?: {
+								messages?: Array<{
+									from: string;
+									routerMetadata?: { model?: string; provider?: string };
+									failover?: { from?: string };
+								}>;
 							};
-							const last = (body.json?.messages ?? []).filter((m) => m.from === 'assistant').at(-1);
-							served = last?.routerMetadata?.model;
-							provider = last?.routerMetadata?.provider;
-							failoverFrom = last?.failover?.from;
-							return served ?? '';
-						},
-						{
-							message: `the turn after picking ${id} persisted no routerMetadata.model, so nothing records which model answered it`,
-							timeout: 15_000
-						}
-					)
-					.not.toBe('');
-				// A pick that reached routing and then hit its lane's limit can hand off to an announced
-				// backup, and the stored failover names the pick as the model it replaced. No lane asks for
-				// another model (CUR-4383), so this branch is for a backup host serving the pick. A rate-limited key can be spent by a parallel
-				// suite. That turn proves the pick was served to routing; a pick that was never used
-				// has no failover from it and still fails here (CUR-2562).
-				const failedOver =
-					served?.toLowerCase() !== id.toLowerCase() &&
-					failoverFrom?.toLowerCase() === id.toLowerCase();
-				if (failedOver) {
-					test.info().annotations.push({
-						type: 'announced failover',
-						description: `${id} handed the turn to ${served}`
-					});
-				} else {
-					// CUR-4343: another host's name for the same weights (Scaleway's mistral-medium-3.5-128b for
-					// mistral-medium-2604) is the pick served, not a substitute.
-					expect(
-						sameServedModel(id, served ?? ''),
-						`picked ${id}, but the gateway reports ${served} answered the turn — the pick was recorded and not served`
-					).toBe(true);
-				}
+						};
+						const last = (body.json?.messages ?? []).filter((m) => m.from === 'assistant').at(-1);
+						served = last?.routerMetadata?.model;
+						provider = last?.routerMetadata?.provider;
+						failoverFrom = last?.failover?.from;
+						return served ?? '';
+					},
+					{
+						message: `the turn after picking ${id} persisted no routerMetadata.model, so nothing records which model answered it`,
+						timeout: 15_000
+					}
+				)
+				.not.toBe('');
+			// A pick that reached routing and then hit its lane's limit can hand off to an announced
+			// backup, and the stored failover names the pick as the model it replaced. No lane asks for
+			// another model, so this branch is for a backup host serving the pick. A rate-limited key can be spent by a parallel
+			// suite. That turn proves the pick was served to routing; a pick that was never used
+			// has no failover from it and still fails here.
+			const failedOver =
+				served?.toLowerCase() !== id.toLowerCase() &&
+				failoverFrom?.toLowerCase() === id.toLowerCase();
+			if (failedOver) {
+				test.info().annotations.push({
+					type: 'announced failover',
+					description: `${id} handed the turn to ${served}`
+				});
+			} else {
+				// another host's name for the same weights (Scaleway's mistral-medium-3.5-128b for
+				// mistral-medium-2604) is the pick served, not a substitute.
+				expect(
+					sameServedModel(id, served ?? ''),
+					`picked ${id}, but the gateway reports ${served} answered the turn — the pick was recorded and not served`
+				).toBe(true);
+			}
 
-				// A model with an HF provider pin is offered on the router's lane, so its text must have gone to
-				// the pinned provider and no other the router could have picked (CUR-1683, CUR-2112). A
-				// failed-over turn was served by the backup, whose provider says nothing about the pin.
-				const pin = HF_PROVIDER_PIN[id.toLowerCase()];
-				if (pin && !failedOver) {
-					expect(
-						provider?.toLowerCase(),
-						`picked ${id}, pinned to ${pin}, but the router reports ${provider ?? 'no provider'} served it`
-					).toBe(pin);
-				}
+			// A model with an HF provider pin is offered on the router's lane, so its text must have gone to
+			// the pinned provider and no other the router could have picked. A
+			// failed-over turn was served by the backup, whose provider says nothing about the pin.
+			const pin = HF_PROVIDER_PIN[id.toLowerCase()];
+			if (pin && !failedOver) {
+				expect(
+					provider?.toLowerCase(),
+					`picked ${id}, pinned to ${pin}, but the router reports ${provider ?? 'no provider'} served it`
+				).toBe(pin);
+			}
 
-				// The visible half: the answer footer names the same model, by its parameter size where the
-				// id carries one (the part that tells the offered models apart). On a failed-over turn the footer
-				// names Medium, so look for the backup badge instead. A size right after a letter is a
-				// mixture-of-experts active count (`120B-A12B`), never the size the footer names.
-				const size = [...id.matchAll(/(?<![a-z\d.])(\d+(?:\.\d+)?)b\b/gi)].at(-1)?.[1];
-				const badge = answer.getByRole('button', { name: /How this answer was made/ });
-				if (failedOver) {
-					await expect(
-						answer.locator('[title*="(backup — served in place of the primary model)"]'),
-						`${id} failed over to ${served}, but the answer carries no backup badge`
-					).toBeVisible({ timeout: 10_000 });
-				} else if (size) {
-					await expect(
-						badge,
-						`the answer footer does not name the ${size}B model, although the gateway reports ${id} served the turn`
-					).toHaveAccessibleName(new RegExp(`\\b${size.replace('.', '\\.')}B\\b`, 'i'), {
-						timeout: 10_000
-					});
-				} else {
-					await expect(badge).not.toHaveText('', { timeout: 10_000 });
-				}
-
-				// Once a chat has started, the menu says a pick switches this chat from the next message on
-				// (CUR-3190); the switch itself is walked in the test below.
-				await page.getByRole('button', { name: PICKER_TRIGGER }).click();
+			// The visible half: the answer footer names the same model, by its parameter size where the
+			// id carries one (the part that tells the offered models apart). On a failed-over turn the footer
+			// names Medium, so look for the backup badge instead. A size right after a letter is a
+			// mixture-of-experts active count (`120B-A12B`), never the size the footer names.
+			const size = [...id.matchAll(/(?<![a-z\d.])(\d+(?:\.\d+)?)b\b/gi)].at(-1)?.[1];
+			const badge = answer.getByRole('button', { name: /How this answer was made/ });
+			if (failedOver) {
 				await expect(
-					page.getByText('Pick another and your next message goes to it'),
-					'the picker does not say a pick takes effect on the next message of this chat'
+					answer.locator('[title*="(backup — served in place of the primary model)"]'),
+					`${id} failed over to ${served}, but the answer carries no backup badge`
 				).toBeVisible({ timeout: 10_000 });
-				await page.keyboard.press('Escape');
-			})
-		);
+			} else if (size) {
+				await expect(
+					badge,
+					`the answer footer does not name the ${size}B model, although the gateway reports ${id} served the turn`
+				).toHaveAccessibleName(new RegExp(`\\b${size.replace('.', '\\.')}B\\b`, 'i'), {
+					timeout: 10_000
+				});
+			} else {
+				await expect(badge).not.toHaveText('', { timeout: 10_000 });
+			}
+
+			// Once a chat has started, the menu says a pick switches this chat from the next message on;
+			// the switch itself is walked in the test below.
+			await page.getByRole('button', { name: PICKER_TRIGGER }).click();
+			await expect(
+				page.getByText('Pick another and your next message goes to it'),
+				'the picker does not say a pick takes effect on the next message of this chat'
+			).toBeVisible({ timeout: 10_000 });
+			await page.keyboard.press('Escape');
+		};
+
+		const together: Array<(typeof turns)[number]> = [];
+		for (const model of offered.filter((m) => !sharesBudget(m)))
+			together.push(await startTurn(model));
+		await Promise.all(together.map(checkTurn));
+		// One at a time, and only once nothing else this test started is still in flight.
+		for (const model of offered.filter(sharesBudget)) await checkTurn(await startTurn(model));
 	}
 );
 
@@ -428,6 +443,7 @@ async function servedTurns(page: Page, conversationId: string) {
 		json?: {
 			messages?: Array<{
 				from: string;
+				content?: string;
 				routerMetadata?: { model?: string };
 				failover?: { from?: string };
 			}>;
@@ -437,11 +453,12 @@ async function servedTurns(page: Page, conversationId: string) {
 		.filter((m) => m.from === 'assistant')
 		.map((m) => ({
 			model: m.routerMetadata?.model?.toLowerCase() ?? '',
-			failoverFrom: m.failover?.from?.toLowerCase()
+			failoverFrom: m.failover?.from?.toLowerCase(),
+			content: m.content ?? ''
 		}));
 }
 
-/** A turn answered by `id`, or handed by `id` to an announced backup (CUR-2562): either way `id` was used. */
+/** A turn answered by `id`, or handed by `id` to an announced backup: either way `id` was used. */
 const answeredAs = (turn: { model: string; failoverFrom?: string } | undefined, id: string) =>
 	!!turn && (sameServedModel(id, turn.model) || turn.failoverFrom === id.toLowerCase());
 
@@ -468,7 +485,7 @@ test(
 	'picking another model mid-chat answers the next message with it in the same conversation, and only that conversation',
 	{ tag: ['@preview-only', '@F3'] },
 	async ({ page }) => {
-		// A visitor picks another model mid-chat, and the conversation (CUR-3190)
+		// A visitor picks another model mid-chat, and the conversation
 		// carries on without starting again. Four turns on a cold preview, two of them concurrent.
 		test.setTimeout(300_000);
 		await openChatEntry(page);
@@ -548,7 +565,7 @@ test(
 
 		// The first answer was served by the model it was sent to, so its footer names that
 		// model plainly, not "(backup)" as it would if judged against the conversation's new model, on the live page
-		// and after a reload. A first turn that really did fail over is the one case the label is right (CUR-3234).
+		// and after a reload. A first turn that really did fail over is the one case the label is right.
 		if (!turns[0]?.failoverFrom) {
 			const firstFooter = page
 				.locator('[data-message-role="assistant"]')
@@ -598,7 +615,7 @@ test(
 	async ({ page }) => {
 		// Preview's MODEL_ALLOWLIST names zai-org/GLM-5.2, which only the HF router serves. The
 		// picker offers it from that lane because HF_PROVIDER_PIN says which provider receives its text.
-		// Without that lane the id matches nothing in the gateway catalog and silently drops out of the list (CUR-1683).
+		// Without that lane the id matches nothing in the gateway catalog and silently drops out of the list.
 		test.setTimeout(60_000);
 		await openChatEntry(page);
 		await page.getByRole('button', { name: PICKER_TRIGGER }).click({ timeout: 30_000 });
@@ -614,7 +631,102 @@ test(
 	}
 );
 
-// The model menu has no "Compare every model" link to the routing lab (CUR-3252). The lab is
+// GLM 5.2 is on the picker from the HF router lane, pinned to one provider (hfProviderPin.ts). The loop above
+// checks the served model and provider in the stored record, but for an id with no parameter size it
+// only checks that the footer is not empty. This picks GLM 5.2 by its id and reads what the person
+// sees: the footer names GLM 5.2 and its maker, and the provenance line under it names the host its
+// text went to. Red if GLM leaves the picker, if the turn is served by anything else, or if the
+// footer stops naming the model or the provider.
+const GLM = 'zai-org/GLM-5.2';
+test(
+	'picking GLM 5.2 gets an answer whose footer names GLM 5.2 and the provider it is pinned to, with its reasoning in the collapsed panel',
+	{ tag: ['@preview-only', '@F3', '@CUR-4189'] },
+	async ({ page }) => {
+		test.setTimeout(120_000);
+		const entry = catalog.find((m) => m.gatewayId === GLM);
+		const pin = HF_PROVIDER_PIN[GLM.toLowerCase()];
+		expect(entry, `${GLM} has no catalog entry, so the picker cannot offer it`).toBeTruthy();
+		expect(pin, `${GLM} has no HF provider pin, so its text could go to any provider`).toBeTruthy();
+		// The org a pin names, not the pin's own id: `deepinfra` is the org DeepInfra.
+		const providerName = orgs[MODEL_HOSTS[entry!.id]]?.name ?? pin;
+
+		await openChatEntry(page);
+		await page.getByRole('button', { name: PICKER_TRIGGER }).click({ timeout: 30_000 });
+		const option = page.locator(`[data-model-id="${GLM}"]`);
+		await expect(option, `the picker does not offer ${GLM}`).toBeVisible({ timeout: 10_000 });
+		const saved =
+			(await option.getAttribute('aria-checked')) === 'true'
+				? null
+				: page.waitForResponse(isPickSave, { timeout: 15_000 });
+		await option.click();
+		await expect(page.getByRole('button', { name: PICKER_TRIGGER })).toContainText(entry!.name, {
+			timeout: 10_000
+		});
+		if (saved)
+			expect((await saved).ok(), `the settings save after picking ${GLM} was refused`).toBe(true);
+
+		const composer = page.getByLabel('Message AI Potluck');
+		await composer.fill(`Quick check ${Date.now()}: reply with the single word "ready".`);
+		await composer.press('Enter');
+		await page.waitForURL(/\/conversation\/[a-f0-9]+/, { timeout: 30_000 });
+		const conversationId = page.url().match(/\/conversation\/([a-f0-9]+)/)?.[1];
+		if (!conversationId) throw new Error(`could not read a conversation id out of ${page.url()}`);
+
+		const answer = page.locator('[data-message-role="assistant"]').last();
+		await expect(
+			answer.getByRole('button', { name: 'Copy to clipboard', exact: true }),
+			`the turn after picking ${GLM} never finished within 60s` + warmupContext()
+		).toBeVisible({ timeout: 60_000 });
+
+		let turns: Awaited<ReturnType<typeof servedTurns>> = [];
+		await expect
+			.poll(
+				async () => (turns = await servedTurns(page, conversationId)).filter((t) => t.model).length,
+				{
+					message: `the turn after picking ${GLM} persisted no routerMetadata.model`,
+					timeout: 15_000
+				}
+			)
+			.toBe(1);
+		expect(
+			sameServedModel(GLM, turns[0].model ?? ''),
+			`picked ${GLM}, but the gateway reports ${turns[0].model} answered the turn`
+		).toBe(true);
+
+		// What the person sees: the footer button's name says which model and maker, and the line it
+		// abbreviates (its title, the whole provenance record) says which provider the text went to.
+		await expect(
+			answer.getByRole('button', { name: /How this answer was made/ }),
+			`the answer footer does not name ${entry!.name} by ${orgs[entry!.maker].name}`
+		).toHaveAccessibleName(new RegExp(`\\b${entry!.name} by ${orgs[entry!.maker].name}\\b`), {
+			timeout: 10_000
+		});
+		await expect(
+			answer.locator('[data-provenance="line"]').first(),
+			`the answer's provenance line does not say it was served via ${providerName}, the provider ${GLM} is pinned to`
+		).toHaveAttribute('title', new RegExp(`served via ${providerName}\\b`));
+
+		// GLM's reasoning sits in the collapsed Working panel, never in the answer and never
+		// dropped. Sent with reasoning off it wrote "Let me answer…" into the answer; dropped by the
+		// stream, the visitor saw no panel at all. Stored as an opening <think> block, which
+		// the page folds behind an Expand toggle.
+		const stored = turns[0].content;
+		expect(
+			stored.trimStart().startsWith('<think>') && stored.includes('</think>'),
+			`the ${GLM} answer was stored with no opening reasoning block, so the Working panel had nothing to show`
+		).toBe(true);
+		expect(
+			stored.replace(/<think>[\s\S]*?<\/think>/g, ''),
+			`the ${GLM} answer outside its reasoning block lost the word it was asked for`
+		).toMatch(/\bready\b/i);
+		await expect(
+			answer.getByRole('button', { name: 'Expand', exact: true }).first(),
+			`the ${GLM} answer shows no collapsed reasoning panel`
+		).toBeVisible({ timeout: 10_000 });
+	}
+);
+
+// The model menu used to end in a "Compare every model" link to the routing lab. The lab is
 // a developer page now (Settings → Model routing, Dev badge), so the menu links to it for nobody, Auto
 // on or off. auto-routing reads per request (flagEnabledOr), so the override cookie reaches it.
 test(
@@ -638,7 +750,7 @@ test(
 	}
 );
 
-// The menu link was not the only way in (CUR-3252). Settings listed Model routing whenever
+// The menu link was not the only way in. Settings listed Model routing whenever
 // Auto was on, and the page answered at its URL for anyone. The lab is developer-only now (the local
 // dev server or an admin), so a guest on a deployed build gets neither the entry nor the page.
 const LAB_ENTRY = { name: 'Model routing', exact: true };
@@ -681,13 +793,10 @@ test(
 	}
 );
 
-// The picker's OFF behaviour cannot be driven from the per-request override cookie (CUR-1703):
-// model-picker is deployment-plane only (fixed distinctId, resolved once per instance in
-// buildModelsFromCatalog), so a cookie can't reach an already-built registry, and preview runs the
-// flag 100% on. The logic that matters (offeredModels() truncating to one entry when the picker is
-// off) is a pure function, unit-tested in modelGates.spec.ts.
+// there used to be a second test here asserting the picker's OFF behaviour (one model)
+// through the fuzz override cookie, which could never reach the deployment-plane `model-picker` flag.
+// That flag has since been retired, so no OFF behaviour is left to test.
 //
-// On production, where the flag is off, the trigger renders its "Models" placeholder and opens to
-// exactly one entry. Driving that needs a deployment whose live flag is off, which means the suite's
-// production leg (`--grep-invert @preview-only`), and there is no prod-only tag yet to keep it out of
-// the preview legs. Unbuilt on purpose (CUR-1709).
+// Step 2b and the second half of Step 4 above landed alongside this removal: four properties this
+// file already leaned on and never checked. The load-bearing one is that `getByRole` matches the
+// trigger by its STATIC aria-label, so Step 4 used to pass whether or not the pick actually took.

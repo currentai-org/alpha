@@ -1,10 +1,11 @@
 // Where a turn went, hop by hop: the app server, the router (when one stood in between), the model
-// host, and where the conversation is stored (CUR-4580). Pure and client-safe: it reads only what the
+// host, and where the conversation is stored. Pure and client-safe: it reads only what the
 // turn recorded (`routerMetadata`) and one deployment label the server derived (the database's region),
 // and it never guesses. A place nobody published reads "location not published"; a fact the turn did not
 // record reads "not recorded". Each hop outside Europe carries a tag, so the storage claim can be checked
 // against a visitor's own turn.
 
+import { DEPLOYMENT } from "$lib/deployment";
 import type { Message } from "$lib/chat/types/Message";
 import { backendOrg, type OrgId } from "$lib/chat/routing/catalog";
 import { backendHost, laneVendor } from "$lib/chat/servingProvenance";
@@ -84,11 +85,12 @@ const AWS_REGIONS: Record<string, Place> = {
 
 // Routers and gateways a turn can be sent to. None of their operators publishes where the service runs,
 // so each reads "location not published" until one does (plan Part A, decision 4).
+// The installation's own router and develop host come from its deployment file (src/lib/deployment.ts).
 const ROUTERS: Record<string, { orgId?: OrgId; name: string }> = {
-	"router.stg.aipotluck.org": { name: "Potluck's model router" },
+	...(DEPLOYMENT.modelRouterHost ? { [DEPLOYMENT.modelRouterHost]: { name: "Potluck's model router" } } : {}),
 	"api-internal.publicai.co": { name: "Public AI's inference gateway" },
 	"router.huggingface.co": { orgId: "huggingface", name: "Hugging Face's router" },
-	"develop.aipotluck.org": { name: "a preview environment's adapter" },
+	...(DEPLOYMENT.siteDevelopHost ? { [DEPLOYMENT.siteDevelopHost]: { name: "a preview environment's adapter" } } : {}),
 };
 
 function placeWords(p: Place): string {
@@ -132,7 +134,7 @@ function regionHop(
 function modelHop(lane: string | undefined, backend: string | undefined): Hop {
 	const host = backendHost(backend);
 	if (host) {
-		// The catalog's host table names the org and its country (CUR-4587).
+		// The catalog's host table names the org and its country.
 		const known = backendOrg(host);
 		return {
 			role: "model",
@@ -156,7 +158,7 @@ function modelHop(lane: string | undefined, backend: string | undefined): Hop {
 }
 
 /** The router hop, when the turn was sent to a host other than the one that answered. A vendor lane is
- *  the model host itself, so it has none: a router.stg turn always does (CUR-4577). */
+ *  the model host itself, so it has none: a router.stg turn always does. */
 function routerHop(lane: string | undefined, backend: string | undefined): Hop | undefined {
 	if (!lane || laneVendor(lane)) return undefined;
 	if (lane === backendHost(backend)) return undefined;

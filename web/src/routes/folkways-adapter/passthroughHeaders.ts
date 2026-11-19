@@ -1,4 +1,4 @@
-// Which upstream response headers the adapter forwards to its caller (CUR-1452).
+// Which upstream response headers the adapter forwards to its caller.
 //
 // The adapter is a proxy. On preview, `OPENAI_BASE_URL` points at this route, which forwards to the
 // same LiteLLM gateway production talks to directly, so the gateway's provenance headers must reach
@@ -23,7 +23,7 @@ const FORWARDED_PREFIXES = ['x-litellm-', 'x-router-'] as const;
 
 // Exact names forwarded as well. `retry-after` and `retry-after-ms` are what chat's retry policy
 // (`$lib/chat/server/endpoints/retryPolicy.ts`) reads on a 429; Large 3 is capped per minute, so the
-// Mistral route (CUR-3186) has to carry them or chat backs off blind.
+// Mistral route has to carry them or chat backs off blind.
 const FORWARDED_NAMES = new Set(['retry-after', 'retry-after-ms']);
 
 /**

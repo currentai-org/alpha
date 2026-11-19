@@ -3,14 +3,14 @@
  * against the real `alert_state` table, end to end through the code that writes and reads the marks:
  * the warm probe's verdict (modelProbe.ts) or a turn's failure (modelBusy.ts) sets the mark, the read the
  * chat shell and `/chat/api/busy` share returns it, and Auto's router routes around it. Each test keeps
- * its marks under its own scope, so nothing here reaches another test's reads or a visitor's. (CUR-4629)
+ * its marks under its own scope, so nothing here reaches another test's reads or a visitor's.
  */
 import { randomUUID } from "node:crypto";
 import { like } from "drizzle-orm";
 import { afterAll, describe, expect, it } from "vitest";
 import { getDb } from "$lib/chat/server/db/client";
 import { alertState } from "$lib/chat/server/db/schema";
-import { busyModels, noteFailed } from "$lib/chat/server/modelBusy";
+import { CLEAR_AFTER, busyModels, noteFailed } from "$lib/chat/server/modelBusy";
 import { probeAndRecord } from "$lib/chat/server/modelProbe";
 import type { Endpoint, TextGenerationStreamOutputSimplified } from "$lib/chat/server/endpoints/types";
 import { route } from "$lib/chat/routing/router";
@@ -51,7 +51,7 @@ const routerNotFound: Endpoint = async () => {
 };
 const probeTarget = (id: string, endpoint: Endpoint) => ({ id, getEndpoint: async () => endpoint });
 
-describe("Auto and a model it knows is down (CUR-4629)", () => {
+describe("Auto and a model it knows is down", () => {
 	it("Auto does not pick a model whose last warm check failed on the router's 404, and picks its next best", async () => {
 		const scope = freshScope();
 		const usual = await autoPick(scope);
@@ -65,16 +65,21 @@ describe("Auto and a model it knows is down (CUR-4629)", () => {
 		expect(after.busy?.gatewayId).toBe(down);
 	});
 
-	it("a model marked down returns to Auto after one successful warm check, with no deploy or flag", async () => {
+	it("a model marked down stays out of Auto after one successful warm check and returns after CLEAR_AFTER in a row, with no deploy or flag", async () => {
 		const scope = freshScope();
 		const usual = await autoPick(scope);
 		const down = usual.model.gatewayId!;
 		await probeAndRecord(probeTarget(down, routerNotFound), { scope, deadlineMs: 5_000 });
 		expect((await autoPick(scope)).model.gatewayId).not.toBe(down);
 
+		for (let i = 1; i < CLEAR_AFTER; i++) {
+			const verdict = await probeAndRecord(probeTarget(down, answering), { scope, deadlineMs: 5_000 });
+			expect(verdict).toMatchObject({ ok: true });
+			expect(await busyModels(new Date(), scope), `${i} answered probe(s) cleared the mark`).toContain(down);
+		}
 		const verdict = await probeAndRecord(probeTarget(down, answering), { scope, deadlineMs: 5_000 });
 		expect(verdict).toMatchObject({ ok: true });
-		expect(await busyModels(new Date(), scope), "the answered probe left the mark standing").not.toContain(down);
+		expect(await busyModels(new Date(), scope), "the answered probes left the mark standing").not.toContain(down);
 		expect((await autoPick(scope)).model.gatewayId, "Auto did not take the model back").toBe(down);
 	});
 

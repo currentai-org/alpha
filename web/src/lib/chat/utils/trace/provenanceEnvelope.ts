@@ -33,7 +33,7 @@ export interface ProvenanceEnvelope {
 	 * (`routerMetadata.model`, the same per-answer measurement `backend` below uses), and falls back to
 	 * the id the conversation REQUESTED when it didn't. `measured` says which you got, because the two
 	 * are only equal when nothing substituted — and a substitution is the exact case this field exists
-	 * to expose. `id` is the served id, so a substitute lane answering for another model is reported as the substitute (CUR-113).
+	 * to expose. `id` is the served id, so a substitute lane answering for another model is reported as the substitute.
 	 * `measured: false` is not a fault: it means the lane sent no provenance header, which is normal on
 	 * some paths. Treat it as unconfirmed, never as a mismatch — reading absence as wrong pages on silence.
 	 */
@@ -42,7 +42,7 @@ export interface ProvenanceEnvelope {
 	 * WHO serves it and on what compute. `provider` is the lane we SEND to (a direct host, or the
 	 * routing layer on a sovereign lane) and never the institution that ran the token; `backend` is
 	 * that institution, measured per answer from the gateway's own header, absent when the lane does
-	 * not report one. Reading `provider` as the compute is the CUR-75 bug.
+	 * not report one. Reading `provider` as the compute is the bug.
 	 */
 	served: { provider: string; sovereign: boolean; checkpoint: string; backend?: string; lane?: string };
 	answer: {
@@ -125,7 +125,7 @@ export function buildProvenanceEnvelope(
 			// The one place in this envelope allowed to name an institution, because it is measured for
 			// THIS answer rather than asserted for the deployment.
 			backend: message.routerMetadata?.backend,
-			// The host the turn was sent to, which tells two lanes with one `backend` apart. (CUR-3193)
+			// The host the turn was sent to, which tells two lanes with one `backend` apart.
 			lane: message.routerMetadata?.lane,
 		},
 		answer: {

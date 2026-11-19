@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 // Read-aloud autoplay starts the clip before its metadata has loaded, so for a moment the element
 // plays with `duration` still NaN. The readout must not print that as 0:00 / 0:00, which
-// reads as an empty clip (CUR-2785).
+// reads as an empty clip.
 const clip = vi.hoisted(() => ({ el: undefined as unknown as HTMLAudioElement }));
 vi.mock('$lib/chat/stores/audioPlayback', () => ({
 	clipAudio: async () => clip.el,

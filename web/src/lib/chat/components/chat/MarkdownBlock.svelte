@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2018- The Hugging Face team
+SPDX-License-Identifier: Apache-2.0
+Modified by Current AI from huggingface/chat-ui.
+-->
 <script lang="ts">
 	import type { Token } from "$lib/chat/utils/marked";
 	import CodeBlock from "../CodeBlock.svelte";
@@ -15,7 +20,7 @@
 	// Derive rendered tokens for memoization
 	const renderedTokens = $derived(tokens);
 
-	// Shadow pass (CUR-4130): DOMPurify checks what marked.ts already sanitized and reports what it
+	// Shadow pass: DOMPurify checks what marked.ts already sanitized and reports what it
 	// would remove. The output is untouched. Skipped while streaming, when blocks change every chunk.
 	$effect(() => {
 		if (!browser || loading) return;

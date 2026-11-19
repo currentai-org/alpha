@@ -1,4 +1,4 @@
-// The next answer this person rates in a language (CUR-1914). Signed-in only.
+// The next answer this person rates in a language. Signed-in only.
 import { error, type RequestHandler } from "@sveltejs/kit";
 import { json } from "$lib/chat/server/api/utils/json";
 import { humanEvalEnabled } from "$lib/chat/server/humanEval/gate";

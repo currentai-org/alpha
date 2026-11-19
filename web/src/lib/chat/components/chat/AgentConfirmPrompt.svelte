@@ -1,7 +1,7 @@
 <script lang="ts">
-	// Agent confirmation gate (CUR-218): agent-service paused a tool call under
+	// Agent confirmation gate: agent-service paused a tool call under
 	// ACP_PERMISSION_POLICY=confirm and is waiting on a real answer — "the confirmation IS the security
-	// boundary, so it must be legible" (CUR-54 constraint 4). Renders WHILE the turn is still loading
+	// boundary, so it must be legible" (constraint 4). Renders WHILE the turn is still loading
 	// (ChatMessage does not gate this on `!loading` the way every other notice is) — the whole point is
 	// acting on it inside agent-service's own timeout window, not after the turn already finished.
 	//
@@ -17,6 +17,8 @@
 	import RiCheckLine from '~icons/ri/check-line';
 	import RiCloseLine from '~icons/ri/close-line';
 	import { pendingConfirm } from '$lib/chat/stores/pendingConfirm.svelte';
+	import { revealIfFollowing } from '$lib/chat/actions/snapScrollToBottom';
+	import { tick } from 'svelte';
 
 	interface Props {
 		conversationId: string;
@@ -25,14 +27,14 @@
 		kind: string;
 		title: string;
 		summary: string;
-		/** Auto mode's plain sentence; the card leads with it and tucks the raw call away. (CUR-3142) */
+		/** Auto mode's plain sentence; the card leads with it and tucks the raw call away. */
 		plain?: string;
 		decision?: 'allow' | 'deny' | 'canceled';
 		reason?: string;
-		/** Epoch ms this confirmation auto-denies at. Absent on an older/coarse frame that (CUR-1094)
+		/** Epoch ms this confirmation auto-denies at. Absent on an older/coarse frame that
 		 *  predates agent-service reporting its own timeout — the static fallback copy covers that case. */
 		deadlineAt?: number;
-		/** "mcp" when this asks before an MCP tool runs. Its answer goes to the elicitation (CUR-3026)
+		/** "mcp" when this asks before an MCP tool runs. Its answer goes to the elicitation
 		 *  route, which the confirming turn polls, instead of agent-service's agent-confirm. */
 		channel?: 'agent' | 'mcp';
 	}
@@ -51,6 +53,18 @@
 	}: Props = $props();
 
 	let sending: 'allow' | 'deny' | null = $state(null);
+	let card: HTMLDivElement | undefined = $state();
+
+	// a card can open below the fold (a long answer pinned to the top doesn't follow its growth),
+	// and one nobody sees times out to Deny. Bring it into view once, when it opens unanswered, unless the
+	// person has scrolled up to read: revealIfFollowing keeps the chat autoscroll's own rule.
+	let revealed = false;
+	$effect(() => {
+		if (!card || decision || revealed) return;
+		revealed = true;
+		const el = card;
+		void tick().then(() => revealIfFollowing(el));
+	});
 	let sendError: string | null = $state(null);
 
 	// Ticks once a second only while there's a real deadline to count down and nobody has answered yet —
@@ -71,7 +85,7 @@
 	// Keyed on `decision` rather than on mount: this component is NOT replaced when its confirmation
 	// resolves (ChatMessage keys the #each on confirmId and the `decision` prop changes underneath),
 	// so mount/unmount alone would leave a resolved card counted until the whole message unmounted.
-	// The cleanup covers navigation away with one still open. (CUR-1405)
+	// The cleanup covers navigation away with one still open.
 	$effect(() => {
 		if (decision) {
 			pendingConfirm.resolve(confirmId);
@@ -82,11 +96,10 @@
 	});
 
 	// The route (agent-confirm/+server.ts) tags every thrown error with a stable `reason` alongside
-	// its message (CUR-779) specifically so this doesn't collapse four different causes into one
-	// generic string — a disabled flag, an ownership mismatch, and a dead task all need someone to do
+	// its message specifically so this doesn't collapse different causes into one generic
+	// string — an ownership mismatch, a dead task and an unreachable service all need someone to do
 	// something different about them, and only one of those someones is "click retry."
 	const SEND_ERROR_COPY: Record<string, string> = {
-		flag_disabled: 'Agent confirmations are turned off in this environment right now.',
 		not_yours: "This confirmation isn't yours to answer.",
 		not_found: 'This request is no longer available.',
 		service_unreachable: 'The agent service is unreachable right now.',
@@ -138,6 +151,8 @@
 </script>
 
 <div
+	bind:this={card}
+	data-agent-confirm-card
 	class="mt-1.5 flex flex-col gap-1.5 border border-[var(--ap-border-2)] bg-[var(--ap-paper-2)] px-3 py-2 text-[color:var(--ap-ink)] rounded-card"
 >
 	{#if decision}
@@ -146,7 +161,7 @@
 				class="inline-block size-[6px] shrink-0 rounded-full"
 				style="background: var(--ap-ink-3)"
 			></span>
-			<span>{title || kind} — {resolvedCopy}</span>
+			<span>{plain || title || kind} — {resolvedCopy}</span>
 		</div>
 	{:else}
 		<div class="flex items-start gap-2">

@@ -122,7 +122,7 @@ test(
 		// The button is server-rendered and a click does nothing until hydration attaches its handler,
 		// which Svelte 5 stores on the element under a `Symbol('events')` key (see
 		// helpers/composer.ts). The click retry below gave up after 15 s on a cold preview that hydrated
-		// later, so wait for the handler first (SOL-283); the retry then only covers the embed script.
+		// later, so wait for the handler first; the retry then only covers the embed script.
 		await expect
 			.poll(
 				() =>

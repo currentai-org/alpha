@@ -1,6 +1,6 @@
 /**
- * per-user throttle on workspace invitations. betterAuth.ts's own `tooManyRecentInvitationSends`
- * (CUR-550) is keyed on the invite's TARGET email — it stops a flood of resends to one arbitrary
+ * Per-user throttle on workspace invitations. betterAuth.ts's own `tooManyRecentInvitationSends`
+ * is keyed on the invite's TARGET email — it stops a flood of resends to one arbitrary
  * inbox, but does nothing to stop one account spreading invites across many DIFFERENT target
  * addresses, especially once `organizationLimit` still allows several workspaces per user. This is
  * the missing dimension: keyed on the INVITING user, not the recipient.
@@ -9,7 +9,7 @@
  * the message_events table.
  *
  * FAIL OPEN, same posture as every other cap on this table: a DB blip must never block a legitimate
- * invite, so a count/insert error just logs and allows the send. (CUR-912)
+ * invite, so a count/insert error just logs and allows the send.
  */
 import { config } from "$lib/chat/server/config";
 import { recordEvent, underEventLimit } from "$lib/chat/server/db/eventWindow";
@@ -24,14 +24,17 @@ const WINDOW_MS = 24 * 60 * 60_000;
 //
 // An account younger than a week gets 5. At 20, two fresh accounts (an email code each)
 // spend the whole site-wide ceiling below and block every real admin's invites for the day; at 5 it
-// takes six verified inboxes, and an established account keeps its full allowance. (CUR-4168)
+// takes six verified inboxes, and an established account keeps its full allowance.
 const NEW_ACCOUNT_MS = 7 * 24 * 60 * 60_000;
+
+function isNewAccount(accountCreatedAt?: Date | string | null): boolean {
+	if (!accountCreatedAt) return false;
+	return Date.now() - new Date(accountCreatedAt).getTime() < NEW_ACCOUNT_MS;
+}
 
 export function maxInvitesPerDay(accountCreatedAt?: Date | string | null): number {
 	const full = Number(Reflect.get(config, "WORKSPACE_INVITE_MAX_PER_DAY")) || 20;
-	if (!accountCreatedAt) return full;
-	const age = Date.now() - new Date(accountCreatedAt).getTime();
-	if (!(age < NEW_ACCOUNT_MS)) return full;
+	if (!isNewAccount(accountCreatedAt)) return full;
 	const fresh = Number(Reflect.get(config, "WORKSPACE_INVITE_NEW_ACCOUNT_MAX_PER_DAY")) || 5;
 	return Math.min(full, fresh);
 }
@@ -55,7 +58,7 @@ export async function recordWorkspaceInviteSend(userId: string | null | undefine
 // away). This one counts every invitation on the site under one fixed key, so the (user_id, type,
 // expires_at) index serves it. It is a circuit breaker, not an allowance: real invitation volume is
 // far below 500, so it is reached only by abuse. Invitation mail and sign-in codes share one Resend
-// account, so sign-in codes get their own share (CUR-4172) and invites can never starve them. (CUR-3194)
+// account, so sign-in codes get their own share and invites can never starve them.
 const SITE_TYPE = "workspaceInviteSite";
 const SITE_KEY = "site";
 
@@ -63,12 +66,31 @@ function maxSiteInvitesPerDay(): number {
 	return Number(Reflect.get(config, "WORKSPACE_INVITE_SITE_MAX_PER_DAY")) || 500;
 }
 
-/** True while the whole site is under its daily invitation ceiling. Fail-open, like the per-user cap. */
-export async function siteInviteAllowed(): Promise<boolean> {
+// Accounts under a week old, which are an email code away, share half the site ceiling between
+// them. They can spend that half and no more, so an account older than a week always has the other half.
+const NEW_SITE_TYPE = "workspaceInviteSiteNew";
+
+function maxNewAccountSiteInvitesPerDay(): number {
+	return Math.floor(maxSiteInvitesPerDay() / 2);
+}
+
+/** True while an invite from this inviter fits under the site ceiling and, for an account under a week old,
+ *  under the share new accounts split. Fail-open, like the per-user cap. */
+export async function siteInviteAllowed(inviterCreatedAt?: Date | string | null): Promise<boolean> {
+	if (isNewAccount(inviterCreatedAt)) {
+		const newAllowed = await underEventLimit(
+			{ type: NEW_SITE_TYPE, userId: SITE_KEY },
+			maxNewAccountSiteInvitesPerDay(),
+			LABEL
+		);
+		if (!newAllowed) return false;
+	}
 	return underEventLimit({ type: SITE_TYPE, userId: SITE_KEY }, maxSiteInvitesPerDay(), LABEL);
 }
 
-/** Record one invitation against the site-wide ceiling. Best-effort. */
-export async function recordSiteInviteSend(): Promise<void> {
+/** Record one invitation against the site-wide ceiling, and against the new-account share when the inviter's
+ *  account is under a week old. Best-effort. */
+export async function recordSiteInviteSend(inviterCreatedAt?: Date | string | null): Promise<void> {
 	await recordEvent({ type: SITE_TYPE, userId: SITE_KEY }, WINDOW_MS, LABEL);
+	if (isNewAccount(inviterCreatedAt)) await recordEvent({ type: NEW_SITE_TYPE, userId: SITE_KEY }, WINDOW_MS, LABEL);
 }

@@ -9,6 +9,6 @@ export const transport: Transport = {
 };
 
 // Routing keeps the visible localized URL while resolving the existing page tree. On the chat surface
-// (CUR-4448) it also maps `/x` onto chat's `/chat/x` route; runs in the browser and on the server
+// it also maps `/x` onto chat's `/chat/x` route; runs in the browser and on the server
 // alike, so client navigation resolves the same route the server does. A no-op mapping on the site.
 export const reroute: Reroute = ({ url }) => chatRoutePath(unlocalizedPath(url.pathname));

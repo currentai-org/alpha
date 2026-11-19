@@ -18,7 +18,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // viewed, so the streaming turn's own post-turn resync 404s, and `conversation/[id]/+page.ts` turns
 // a 404 into a redirect to the chat entry. That redirect crosses route trees, so it is a document
 // load: it destroys the confirmation panel — the honest list of what was cleared — and the modal
-// comes back armed at "Forget everything?" as though the delete never ran (CUR-1642). Nothing in
+// comes back armed at "Forget everything?" as though the delete never ran. Nothing in
 // that chain is visible from inside a component test; it needs a real stream, a real delete, and a
 // real router.
 //
@@ -69,7 +69,7 @@ test(
 
 		const clearedHeading = page.getByRole('heading', { name: 'Your data has been cleared' });
 		// The disclosure itself, not the counts in it. What each bucket should say is
-		// data-portability.spec.ts's question and CUR-1638's; this test is only about whether the
+		// data-portability.spec.ts's question; this test is only about whether the
 		// visitor gets to read the list at all, so it must not go red over an argument about numbers.
 		const clearedList = page.getByText('We deleted and removed from our servers:');
 		await journeyStep(page, 'A3', 5, async () => {
@@ -78,11 +78,11 @@ test(
 			await expect(clearedList).toBeVisible({ timeout: 15_000 });
 		});
 
-		// CUR-1619/CUR-1620/CUR-1773: the wipe used to leave the in-flight generation running against
+		// the wipe used to leave the in-flight generation running against
 		// the conversation it had just deleted, so it ran to its own watchdog and surfaced as an error
 		// once the receipt was already up. A single status:error update drives the error line in the
-		// message bubble (CUR-1748) and disables the composer with a pointer to that line's Retry
-		// (CUR-1921, which also retired the toast and the composer's own error copy for this case). deleteConversationsCascade now aborts the generation before the delete runs,
+		// message bubble and disables the composer with a pointer to that line's Retry
+		// (which also retired the toast and the composer's own error copy for this case). deleteConversationsCascade now aborts the generation before the delete runs,
 		// so none of that should ever fire. Checked here, while the receipt is still the only thing on
 		// screen, and not just after the 25s wait below — the failure mode was a race, and the earliest
 		// possible check is the one most likely to catch it if the fix regresses.
@@ -95,7 +95,7 @@ test(
 		// spare, and every assertion below is about the panel STILL being there.
 		//
 		// The toast clears itself after 5s, so a check at each end of the window misses one raised in
-		// the middle, which is where the graded recordings caught it (CUR-1773). Watch for it the whole
+		// the middle, which is where the graded recordings caught it. Watch for it the whole
 		// time instead.
 		const toastRaised = await errorToast.waitFor({ state: 'visible', timeout: 25_000 }).then(
 			() => true,
@@ -125,7 +125,7 @@ test(
 		await expect(errorToast).toHaveCount(0);
 		await expect(page.getByRole('heading', { name: 'Forget everything?' })).toHaveCount(0);
 
-		// And the thing the receipt just promised actually happened (CUR-1672): the conversation the turn
+		// And the thing the receipt just promised actually happened: the conversation the turn
 		// was streaming into is gone, not waiting to be reopened.
 		await captionForRecording(page, "reopening the deleted chat's old link on purpose");
 		await page.goto(conversationUrl, { waitUntil: 'commit' });

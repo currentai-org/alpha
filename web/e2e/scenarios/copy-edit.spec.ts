@@ -152,7 +152,7 @@ test(
 
 // The landing's retention note shares one paragraph with the serving line, so the click lands on the
 // note's own words: edit mode finds the message under the caret. It was admin-overridable copy until
-// CUR-3660 removed the admin copy editor; this keeps pinning that it is editable in place.
+// that change removed the admin copy editor; this keeps pinning that it is editable in place.
 test(
 	'the landing retention note, which shares a paragraph with the serving line, is editable in place',
 	{ tag: '@copy-edit' },

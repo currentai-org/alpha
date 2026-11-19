@@ -24,7 +24,7 @@ const session = () => cdp() as unknown as CDPSession;
  * Runs `act`, catches the panels' eased transitions as Svelte starts them (`transitions` of them: one
  * to open or close, two to switch), and reads `measure()` with them paused at eleven evenly spaced
  * points from start to end. Seeking a paused animation puts every sample mid-flight however slow the
- * runner is; sampling live animation frames can miss a whole close on a loaded CI runner (CUR-2462).
+ * runner is; sampling live animation frames can miss a whole close on a loaded CI runner.
  * A panel that snaps starts no transition, so the wait below is what fails.
  */
 async function scrub(measure: () => number, act: () => Promise<unknown>, transitions: number) {

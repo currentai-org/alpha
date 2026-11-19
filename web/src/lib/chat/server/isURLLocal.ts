@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { Address6, Address4 } from "ip-address";
 import dns from "node:dns";
 import { isIP } from "node:net";

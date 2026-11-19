@@ -1,10 +1,10 @@
 /**
- * A turn this tab has sent but the server may not have saved yet (CUR-1893).
+ * A turn this tab has sent but the server may not have saved yet.
  *
  * The server writes the question only once its pre-stream chain has run, which takes seconds on a
  * cold instance. A reload in that gap loads a snapshot with no trace of the turn, so the page needs
  * a record to know to wait for the answer the server goes on to save. The page
- * records the id it minted for the turn's new message (the server adopts it, CUR-2098) before the
+ * records the id it minted for the turn's new message (the server adopts it) before the
  * POST, and a load that finds the record but not the message waits for it.
  *
  * Kept in sessionStorage, so it belongs to this tab and survives the reload that matters. Every

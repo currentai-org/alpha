@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2018- The Hugging Face team
+SPDX-License-Identifier: Apache-2.0
+Modified by Current AI from huggingface/chat-ui.
+-->
 <script lang="ts">
 	// First-run welcome (the Feature Lock's top item): a non-technical visitor arriving cold needs to
 	// know what Alpha is and who built it before the chat reads as "just another chatbot". It sits over
@@ -30,7 +35,7 @@
 		/** Any other way out: the welcome has closed. */
 		onStartChatting: () => void;
 		/** The welcome has started to close, by any way out. Fires before the close animation, so the
-		 *  seen mark is saved before a reload in that window can cancel it (CUR-4348). */
+		 *  seen mark is saved before a reload in that window can cancel it. */
 		onDismiss: () => void;
 	}
 
@@ -78,7 +83,7 @@
 	});
 
 	// An error raised while the welcome is up (a chat link that can't open) shows here, in the
-	// welcome, instead of as the toast that covered it. It stays until the welcome closes. (CUR-2883)
+	// welcome, instead of as the toast that covered it. It stays until the welcome closes.
 	let note = $state('');
 	$effect(() => {
 		if ($error) note = $error;
@@ -86,7 +91,7 @@
 
 	// Who made and who runs the models this deployment actually serves, read from its model list
 	// rather than typed out: production serves only Apertus, so crediting the develop-only makers there
-	// (BSC, AI Singapore) named parts a visitor could not use (CUR-2565). Cloudflare is credited for
+	// (BSC, AI Singapore) named parts a visitor could not use. Cloudflare is credited for
 	// Clef, the classifier Auto asks to read a draft, only where that read is on (`clef-routing`, the
 	// same gate as the picker's Clef credit).
 	const makers = $derived.by(() => {

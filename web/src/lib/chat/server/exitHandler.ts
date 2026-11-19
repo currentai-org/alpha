@@ -1,6 +1,11 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { randomUUID } from "$lib/chat/utils/randomUuid";
 import { timeout } from "$lib/chat/utils/timeout";
 import { logger } from "./logger";
+import { installGracefulShutdown } from "./gracefulShutdown";
+import { drainBackground } from "./vercelBackground";
 
 type ExitHandler = () => void | Promise<void>;
 type ExitHandlerUnsubscribe = () => void;
@@ -22,6 +27,12 @@ async function runExitHandler(handler: ExitHandler): Promise<void> {
 }
 
 export function initExitHandler() {
+	// adapter-node only: after its server closes, drain background work and exit (gracefulShutdown.ts).
+	installGracefulShutdown({
+		drain: drainBackground,
+		log: (msg, fields) => logger.info(fields, msg),
+	});
+
 	let signalCount = 0;
 	const exitHandler = async () => {
 		if (signalCount === 1) {

@@ -5,7 +5,7 @@ import { iconFontUrlFrom } from './fontUrl';
 
 const generatedCss = readFileSync(new URL('./icons.generated.css', import.meta.url), 'utf8');
 
-describe('icon font preload URL (CUR-2269)', () => {
+describe('icon font preload URL', () => {
 	it('names a font file that static/ actually serves, with the hash query the stylesheet uses', () => {
 		const [path, query] = iconFontUrlFrom(generatedCss).split('?');
 		expect(

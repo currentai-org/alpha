@@ -1,11 +1,15 @@
 /**
- * Which app this build serves (CUR-4448). The same `web/` builds two ways:
+ * Which app this build serves. The same `web/` builds three ways:
  *
  * - `site` (the default: www, develop, PR previews, every build without APP_SURFACE): the site at `/`
  *   and chat under `/chat`, exactly as before.
  * - `chat` (APP_SURFACE=chat, the alpha project): chat at the root of its host. The route files do
  *   not move; `reroute` in hooks.ts maps `/x` to the `/chat/x` route, so `page.route.id` still
  *   starts with `/chat` on both surfaces.
+ * - `site-only` (APP_SURFACE=site-only, www once chat lives on alpha): the site at `/` and none of
+ *   chat. Every `/chat` path and chat's root paths answer 308 to the same address on the chat host
+ *   (chat/paths.ts `siteOnlyChatRedirect`), chat's server init never runs, and the build boots
+ *   without chat's env.
  *
  * Config that names the deployment, like INSTANCE (chat/server/instance.ts); it turns no feature on
  * or off, so no flag gates it. It is fixed at build time by vite.config.ts's `define`, so the server
@@ -14,7 +18,7 @@
  * Shared by chat and the site, and free of imports, so hooks.ts, i18n routing and analytics can read
  * it without crossing the chat/site boundary.
  */
-export type AppSurface = 'site' | 'chat';
+export type AppSurface = 'site' | 'chat' | 'site-only';
 
 // `typeof` guard: a plain-tsx script that imports this module never went through Vite's define.
 export const APP_SURFACE: AppSurface =
@@ -28,12 +32,14 @@ export const CHAT_ROUTE_ROOT = '/chat';
  * is a prefix, matched at a segment boundary:
  *
  * - `/_app` — SvelteKit's own build assets and remote functions.
- * - `/.well-known` — RFC 8414 OAuth discovery for chat's sync clients
- *   (routes/.well-known/oauth-authorization-server), which the spec puts at the origin root.
+ * - `/.well-known` — origin-root discovery documents. No route serves one since Thunderbolt sync's
+ *   OAuth discovery went, so these answer the site's 404 rather than chat's.
  * - `/rs` — the PostHog reverse proxy (vercel.json rewrites, routes/rs), which chat's analytics use.
  * - `/folkways-adapter` — chat's OpenAI-compatible adapter, an OPENAI_BASE_URL target for previews.
- * - `/api/cms` — the CMS publish webhook; it re-syncs chat's policy pages (rag/policyPageSync.ts).
- *   Chat's own API answers under `/api/*` here too: no chat API route is named `cms`.
+ *
+ * The CMS publish webhook is not here either: `/api/cms/invalidate` reroutes to chat's own webhook
+ * route, `/chat/api/cms/invalidate`, which clears chat's CMS reads and re-syncs its policy pages.
+ * The site's route at that address belongs to the site's surfaces.
  *
  * Deliberately NOT here, so they fall through to chat (and 404 there): the site's pages (`/alpha`,
  * `/org`, `/product`, `/updates`, `/designsystem`, the CMS catch-all), its other `/api/*` routes
@@ -41,13 +47,7 @@ export const CHAT_ROUTE_ROOT = '/chat';
  * site pages at a host that does not serve them. `/roadmap-v2` is prerendered, so the CDN serves it
  * as a static file before reroute ever runs; it is unlinked either way.
  */
-const CHAT_SURFACE_ROOT_PREFIXES = [
-	'/_app',
-	'/.well-known',
-	'/rs',
-	'/folkways-adapter',
-	'/api/cms'
-] as const;
+const CHAT_SURFACE_ROOT_PREFIXES = ['/_app', '/.well-known', '/rs', '/folkways-adapter'] as const;
 
 /**
  * Top-level directories of `web/static`, served by the CDN as themselves. A root-level file (any
@@ -55,6 +55,7 @@ const CHAT_SURFACE_ROOT_PREFIXES = [
  * instead; `surface.spec.ts` checks every entry in `web/static` against both.
  */
 const STATIC_ROOT_DIRS = [
+	'alpha-features',
 	'chatui',
 	'data',
 	'e2e',

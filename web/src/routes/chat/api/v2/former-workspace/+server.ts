@@ -1,6 +1,6 @@
 // Picks which former workspace (one the person left, or that was deleted) the conversation
 // list shows, or clears the pick. Only a workspace in the caller's own former list is accepted, so the
-// cookie can never name a workspace whose chats this person doesn't have. (CUR-3040)
+// cookie can never name a workspace whose chats this person doesn't have.
 import { error, type RequestHandler } from "@sveltejs/kit";
 import { json } from "$lib/chat/server/api/utils/json";
 import { requireAuth } from "$lib/chat/server/api/utils/requireAuth";

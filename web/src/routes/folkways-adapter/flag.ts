@@ -44,8 +44,8 @@ function folkwaysEnabledFallback(): boolean {
 
 async function folkwaysEnabled(): Promise<boolean> {
 	// Vercel Cron (the warm leg that refreshes the flag snapshot) runs on Production only, never
-	// Preview, and this adapter's routes only ever run on preview/develop, as with guardGate.ts
-	// (CUR-1111). Reading flagEnabledOr() bare leaves a cold instance on the env fallback until its
+	// Preview, and this adapter's routes only ever run on preview/develop, as with guardGate.ts.
+	// Reading flagEnabledOr() bare leaves a cold instance on the env fallback until its
 	// first unrelated flag read happens to poll: a snapshot that never gets its first poll never
 	// carries the key, so the "polled but key absent" state this fallback exists for is never reached.
 	// FOLKWAYS_ENABLED=1 (preview only) narrows this window but doesn't close it: it says nothing about
@@ -63,9 +63,9 @@ export function folkwaysMode(): 'observe' | 'resolve' {
  * The answer an AUTHORIZED caller gets when the flag is off: the route exists and we turned it off.
  *
  * Not a bare 404 ("a disabled adapter looks like no adapter"), because the caller a 404 blinds is our
- * own host (CUR-1626). `fetchModelCatalog` cannot tell a deliberate off-switch from a wrong base URL:
+ * own host. `fetchModelCatalog` cannot tell a deliberate off-switch from a wrong base URL:
  * it reads a 404 as the primary being unreachable and fails over to a catalogue whose ids the
- * allowlist cannot match, leaving the instance serving an empty model registry (CUR-1246). An
+ * allowlist cannot match, leaving the instance serving an empty model registry. An
  * anonymous caller never sees this answer: adapterGate refuses it before the flag is read.
  *
  * 503 rather than 404 because the route is there. The header is the part a machine should read: a
@@ -109,11 +109,11 @@ function callerAuthorized(request: Request): boolean {
 }
 
 /**
- * Caller auth for the Mistral route (CUR-3186). Chat reaches this route only as its router lane
+ * Caller auth for the Mistral route. Chat reaches this route only as its router lane
  * (`mistralChatLane` in `$lib/chat/server/mistralKey.ts` uses MISTRAL_CHAT_BASE_URL only with
  * MISTRAL_CHAT_API_KEY), so that key is the one bearer chat ever sends here, and the route forwards
  * it upstream. Accepting nothing else keeps the route from relaying anyone else's key or posting
- * their traces to Folkways, and from carrying La Plateforme's own key (CUR-3193).
+ * their traces to Folkways, and from carrying La Plateforme's own key.
  */
 export function mistralCallerAuthorized(request: Request): boolean {
 	return bearerMatches(request.headers.get('authorization'), env.MISTRAL_CHAT_API_KEY?.trim());
@@ -126,7 +126,7 @@ const unauthorizedResponse = (): Response => new Response(null, { status: 401 })
 /**
  * Both gates, in the order that keeps each honest. Returns the Response to send, or null to proceed.
  *
- * Auth runs FIRST (CUR-1626). A caller with a bad key gets 401 whatever the flag says, so the flag's
+ * Auth runs FIRST. A caller with a bad key gets 401 whatever the flag says, so the flag's
  * state is no longer readable from outside — which is what the original 404 was trying to buy and
  * never did. A caller with the right key is only ever us, and gets told plainly which of the two
  * states it is in.

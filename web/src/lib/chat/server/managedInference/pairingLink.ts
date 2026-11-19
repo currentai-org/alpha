@@ -1,7 +1,7 @@
 /**
  * The pieces of the CLI pairing link (routes/chat/local-inference/pair) that are plain
  * functions and types, kept out of the route module because SvelteKit allows only its own exports
- * there. (CUR-4110)
+ * there.
  */
 import { randomServerName } from "$lib/chat/utils/randomServerName";
 
@@ -15,7 +15,10 @@ export type PairingOutcome =
 	/** Another account already used this link. */
 	| { state: "taken" }
 	| { state: "unavailable" }
-	| { state: "failed" };
+	| { state: "failed" }
+	/** The account already holds the most managed servers it may; removing one frees the link for a
+	 *  retry. */
+	| { state: "limit"; max: number };
 
 const MAX_LABEL_LENGTH = 100;
 

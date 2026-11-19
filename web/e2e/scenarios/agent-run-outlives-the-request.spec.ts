@@ -12,7 +12,8 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // An agent run longer than one chat request finishes on the page that asked for it. The request hands
 // the run off before its watchdog (deadlineLadder.ts agentHandoffAt), the answer is stored interrupted
 // with the run still open, and the page re-attaches to it until the run ends, with no reload and no
-// timeout shown. Before this, a run was cut at the 155s watchdog and the person read "timed out".
+// timeout shown. Before this, a run was cut at the 155s watchdog and the person read "timed out" or
+// "The request took too long to respond", the two wordings a watchdog cut has used.
 //
 // `agent_turn_deadline_20s` gives every request from this page a 20s watchdog, and the scenario
 // stand-in (fakeAgentService.ts) takes 35s, so the run outlasts at least one request: the page has to
@@ -37,12 +38,21 @@ async function storedAnswers(page: Page, conversationId: string): Promise<Stored
 
 /** Signs in with the handoff on and a 20s watchdog, sends an agent turn with a nonce, and returns once
  *  the page is on the conversation. `sends` counts every POST to it: the send, then each re-attach. */
-async function sendLongAgentTurn(page: Page, context: BrowserContext, baseURL: string) {
+async function sendLongAgentTurn(
+	page: Page,
+	context: BrowserContext,
+	baseURL: string,
+	extraFlags: Record<string, boolean> = {}
+) {
 	const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });
 	await page.addLocatorHandler(welcomeDialog, async () => {
 		await startChattingPastWelcome(welcomeDialog);
 	});
-	await setFlagOverrides(context, baseURL, { 'agent-mode': true, 'agent-run-handoff': true });
+	await setFlagOverrides(context, baseURL, {
+		'agent-mode': true,
+		'agent-run-handoff': true,
+		...extraFlags
+	});
 	await signInAsFreshUser(page);
 	await installFaultInjectionHeader(page, 'agent_turn_deadline_20s');
 
@@ -82,7 +92,7 @@ async function expectReceiptWithoutTimeout(page: Page, nonce: string, message: s
 		.poll(
 			async () => {
 				const text = (await answer.textContent({ timeout: 5_000 }).catch(() => '')) ?? '';
-				if (/timed out|ran out of time/i.test(text) && !sawTimeout)
+				if (/timed out|ran out of time|took too long/i.test(text) && !sawTimeout)
 					sawTimeout = text.trim().slice(0, 200);
 				return text.includes(`receipt ${nonce}`);
 			},
@@ -127,6 +137,15 @@ test(
 			counter.sends,
 			'only one request ran, so the run finished inside it and this spec measured nothing'
 		).toBeGreaterThanOrEqual(2);
+		// The followed answer carries the run's trace in the same tab, as a live agent turn does.
+		await expect(
+			page
+				.locator('[data-message-role="assistant"]')
+				.last()
+				.locator('[data-exclude-from-copy]')
+				.first(),
+			'the followed answer finished without the agent trace'
+		).toBeVisible({ timeout: 30_000 });
 		await expectStoredFinished(page, conversationId, nonce);
 	}
 );
@@ -158,6 +177,51 @@ test(
 			counter.sends,
 			'the reloaded page never re-attached, so the receipt came from somewhere else'
 		).toBeGreaterThan(sendsAtReload);
+		await expectStoredFinished(page, conversationId, nonce);
+	}
+);
+
+// an approval the run asks for after the first request has handed it off. The stand-in's
+// `confirm_after_handoff` knob opens the card 25s into the run, past the first request's handoff under
+// the 20s deadline, and finishes the run only once it is answered. The card arrives in a re-attach,
+// whose text has not yet caught up with the answer on screen, and it has to show there and then; the
+// request reading the run when the card is answered or unanswered must hand it off again rather than
+// deny the card and cancel the run. Before the fix the card stayed hidden and chat's watchdog denied it
+// with "No answer arrived in time".
+test(
+	'an approval asked for after the run is handed off shows its card in the same tab, takes Allow, and the run finishes',
+	{
+		tag: ['@preview-only', '@CUR-4699', '@CUR-4410', '@agent-knob:confirm_after_handoff']
+	},
+	async ({ page, context, baseURL }) => {
+		test.setTimeout(240_000);
+		const { conversationId, nonce, counter } = await sendLongAgentTurn(page, context, baseURL!, {});
+		const allow = page.getByRole('button', { name: 'Allow', exact: true }).first();
+		await expect(
+			allow,
+			'the approval card raised after the handoff never showed in the tab that sent the turn'
+		).toBeVisible({ timeout: 90_000 });
+		expect(
+			counter.sends,
+			'the card arrived in the first request, so this spec never exercised a card after a handoff'
+		).toBeGreaterThanOrEqual(2);
+
+		const confirmed = page.waitForResponse(
+			(r) => r.request().method() === 'POST' && new URL(r.url()).pathname.endsWith('/agent-confirm')
+		);
+		await allow.click();
+		expect((await confirmed).status(), 'the Allow click was not accepted').toBe(200);
+
+		await expectReceiptWithoutTimeout(
+			page,
+			nonce,
+			'after Allow the run never finished on the page that sent it'
+		);
+		await expect(page.getByText(/No answer arrived in time/)).toHaveCount(0);
+		expect(
+			counter.sends,
+			'the run finished inside one re-attach, so no request handed it off with the card open'
+		).toBeGreaterThanOrEqual(3);
 		await expectStoredFinished(page, conversationId, nonce);
 	}
 );

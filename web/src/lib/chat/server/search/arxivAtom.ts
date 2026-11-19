@@ -1,4 +1,4 @@
-// arXiv's export API answers in Atom. htmlparser2 parses it in XML mode (CUR-4068), which decodes the
+// arXiv's export API answers in Atom. htmlparser2 parses it in XML mode, which decodes the
 // entities and unwraps CDATA, so a title or abstract reaches the grounding block as plain text.
 
 import { parseDocument, DomUtils } from "htmlparser2";

@@ -3,15 +3,15 @@
 // ../../../settings/(nav)/account/+page.server.ts, redirecting back here after sign-in so an invited
 // person who isn't signed in yet lands right back on this invitation, not on some generic page.
 //
-// Also gated, same as settings/(nav)/workspace/+page.server.ts — checked BEFORE the sign-in
-// redirect (CUR-917). The underlying accept/reject calls already 404 through Better Auth's
-// organization-route gate when the flag is off, but this page's shell would render regardless,
-// disclosing that the feature exists.
-// (CUR-550)
-// Gated on workspaceOrgCreationEnabled specifically, not workspacesEnabled — this page is
-// entirely about accepting an invitation, so it stays behind the org-creation flag even once the
-// personal workspace view (workspacesEnabled alone) is live in production. Inviting anyone must be
-// unreachable by URL, and a live accept-invite shell is exactly that disclosure. (CUR-957)
+// also gated, same as settings/(nav)/workspace/+page.server.ts — checked BEFORE the sign-in
+// redirect. The underlying accept/reject calls already 404 through Better Auth's organization-route
+// gate when the flag is off, but this page's shell rendered regardless, disclosing the feature
+// exists. Missed.
+//
+// gated on workspaceOrgCreationEnabled specifically — this page is entirely about accepting
+// an invitation, so it stays behind the org-creation flag although the personal workspace view is
+// live for everyone signed in. Inviting anyone must be
+// unreachable by URL, and a live accept-invite shell is exactly that disclosure.
 import type { PageServerLoad } from "./$types";
 import { error, redirect } from "@sveltejs/kit";
 import { base } from "$lib/chat/paths";

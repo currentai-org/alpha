@@ -1,4 +1,4 @@
-// Which requests helpers/test.ts serves from its per-worker cache (CUR-2675). Kept apart from the
+// Which requests helpers/test.ts serves from its per-worker cache. Kept apart from the
 // fixture so the rule is unit-testable without Playwright.
 
 const STATIC_FILE = /\.(?:js|mjs|css|woff2?|ttf|png|jpe?g|webp|avif|svg|ico)$/;

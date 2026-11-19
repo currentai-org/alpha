@@ -7,7 +7,7 @@
  *
  * Real Postgres and the plugin's own endpoint, called with a real session cookie from its own
  * sign-up. The control case invites a different address and must create exactly one row, so the
- * zero-row assertion in the refusal case is a count that can go red. (CUR-3053)
+ * zero-row assertion in the refusal case is a count that can go red.
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { eq } from "drizzle-orm";
@@ -77,7 +77,7 @@ async function workspacesOf(userId: string) {
 		.where(eq(schema.member.userId, userId));
 }
 
-describe.sequential("a workspace admin inviting their own address (CUR-3053)", () => {
+describe.sequential("a workspace admin inviting their own address", () => {
 	const userIds: string[] = [];
 	const organizationIds: string[] = [];
 

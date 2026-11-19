@@ -1,4 +1,4 @@
-// Clipboard text for a selection inside a rendered answer (CUR-2421).
+// Clipboard text for a selection inside a rendered answer.
 //
 // `textContent` is the wrong source for `text/plain`: it keeps text no reader sees on screen (the
 // visually hidden " (unverified link)" label and the "?" marker that marked.ts adds to an unverified

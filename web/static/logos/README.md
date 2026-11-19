@@ -24,11 +24,40 @@ Each file is resized to a 96×96 PNG.
   at 96×96, converted from WebP.
 - NextBit: no file. It renders as a monogram.
 
-## Use and removal
+## Trademarks
 
-The marks belong to their organisations and appear only beside the name of the organisation they
-identify, as attribution. They imply no endorsement of or by it. `huggingface.png` is the
-Hugging Face company mark. This tree doesn't ship the HuggingChat product mark.
+All product names, logos and brands in this folder are the property of their respective owners. They
+are used here for identification purposes only: each mark appears beside the name of the organisation
+it identifies, to say who made, serves or stores something. Their use does not imply endorsement of,
+sponsorship by or affiliation with any of these organisations.
 
-A rights holder who objects to a mark can open an issue to have it removed. The catalog then shows a
-monogram.
+These files are not covered by the repository's MIT licence or by the Apache-2.0 licence of the files
+derived from chat-ui. This repository claims no licence or permission from their owners and grants
+none to you: they are used only as nominative references to the organisations they name. If you fork
+this code, check whether your own use of them is allowed where you are, or replace them.
+
+| File | Identifies | Owner of the mark |
+| --- | --- | --- |
+| `ai-singapore.png` | AI Singapore | AI Singapore |
+| `bsc.png` | Barcelona Supercomputing Center | Barcelona Supercomputing Center |
+| `cloudflare.png` | Cloudflare | Cloudflare |
+| `cohere.png` | Cohere | Cohere |
+| `common-voice.png` | Common Voice | Mozilla |
+| `cscs.png` | CSCS | Swiss National Supercomputing Centre (CSCS) |
+| `featherless.png` | Featherless | Featherless |
+| `huggingface.png` | Hugging Face (the company mark) | Hugging Face |
+| `infomaniak.png` | Infomaniak | Infomaniak |
+| `mistral.png` | Mistral AI | Mistral AI |
+| `mozilla-data-collective.png` | Mozilla Data Collective | Mozilla |
+| `openrouter.png` | OpenRouter | OpenRouter |
+| `phoeniqs.png` | Phoeniqs | Phoeniqs |
+| `speakleash.png` | SpeakLeash | SpeakLeash |
+| `swiss-ai.png` | Swiss National AI Institute | Swiss National AI Institute |
+| `zhipu.png` | Zhipu AI | Zhipu AI |
+
+This tree doesn't ship the HuggingChat product mark.
+
+### Removal requests
+
+A rights holder who objects to the use of a mark can ask for it to be removed by opening an issue on
+this repository. We remove it in the next update, and the catalog then shows a monogram in its place.

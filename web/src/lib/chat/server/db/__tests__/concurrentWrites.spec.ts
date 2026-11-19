@@ -1,7 +1,7 @@
 /**
  * Writes to one conversation that overlap must not erase each other. Each pair below runs
  * concurrently against the real database. Each would lose a write if an update read the whole
- * document and wrote its own copy of all of it back. (CUR-2806)
+ * document and wrote its own copy of all of it back.
  */
 import { describe, expect, it, afterEach } from "vitest";
 import { ObjectId } from "bson";

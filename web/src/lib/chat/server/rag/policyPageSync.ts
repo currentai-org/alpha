@@ -1,5 +1,5 @@
-// Keeps the chat's answers about safety, privacy and terms in step with the pages legal reviewed
-// (CUR-3105). A corpus holding a stale upload of a page would answer from text the site no longer
+// Keeps the chat's answers about safety, privacy and terms in step with the pages legal reviewed.
+// A corpus holding a stale upload of a page would answer from text the site no longer
 // shows, so the privacy, terms and safety copy is re-synced from the published page.
 //
 // Trigger: Payload's publish hook already POSTs every published page change to
@@ -10,9 +10,9 @@
 // moment rather than none. Each run retires only active copies OLDER than its own, so two publishes
 // racing each other settle on the newest.
 
+import { DEPLOYMENT } from "$lib/deployment";
 import { createHash } from "crypto";
 import { cmsPage } from "$lib/website.server";
-import type { LexicalNode } from "$lib/lexical/types";
 import { config } from "$lib/chat/server/config";
 import { logger } from "$lib/chat/server/logger";
 import { chunkDocumentText } from "./chunking";
@@ -43,6 +43,13 @@ const LEGACY_SOURCES: Partial<Record<PolicyPagePath, string[]>> = {
 // its rows are told apart by source_type "cms-page".
 const SYNC_ACTOR = null;
 const SOURCE_TYPE = "cms-page";
+
+/** The part of a Lexical JSON node this sync reads. Chat's own, so it needs none of the site's types. */
+type LexicalNode = {
+	type: string;
+	text?: string;
+	children?: LexicalNode[];
+};
 
 function inlineText(node: LexicalNode): string {
 	if (node.type === "text") return node.text ?? "";
@@ -109,7 +116,8 @@ export type PolicySyncDeps = {
 	activate: typeof activateRagDocument;
 	retire: typeof retireRagDocument;
 	update: typeof updateRagDocument;
-	origin: () => string;
+	/** The origin the corpus cites the page at, or null when none is configured. */
+	origin: () => string | null;
 };
 
 const liveDeps: PolicySyncDeps = {
@@ -126,7 +134,10 @@ const liveDeps: PolicySyncDeps = {
 	activate: activateRagDocument,
 	retire: retireRagDocument,
 	update: updateRagDocument,
-	origin: () => (config.PUBLIC_ORIGIN || "https://www.aipotluck.org").replace(/\/+$/, ""),
+	origin: () => {
+		const origin = config.PUBLIC_ORIGIN || (DEPLOYMENT.siteHost ? `https://${DEPLOYMENT.siteHost}` : "");
+		return origin ? origin.replace(/\/+$/, "") : null;
+	},
 };
 
 function pathOf(url: string | null): string | null {
@@ -143,12 +154,16 @@ function ownedBy(doc: RagDocumentListItem, path: PolicyPagePath): boolean {
 	return !doc.url && (LEGACY_SOURCES[path] ?? []).includes(doc.source);
 }
 
-/** Sync one published policy page into the chat's corpus. Never throws for an expected miss (page
- *  gone, empty body): it returns `skipped` with the reason, and the caller logs it. */
+/** Sync one published policy page into the chat's corpus. Never throws for an expected miss (no
+ *  origin to cite the page at, page gone, empty body): it returns `skipped` with the reason, and the
+ *  caller logs it. A copy is owned by the path of its absolute url, so without an origin each run
+ *  would add another copy that no later run could find and retire. */
 export async function syncPolicyPage(
 	path: PolicyPagePath,
 	deps: PolicySyncDeps = liveDeps
 ): Promise<PolicySyncResult> {
+	const origin = deps.origin();
+	if (!origin) return { outcome: "skipped", reason: "no origin to cite the page at: set PUBLIC_ORIGIN" };
 	const page = await deps.fetchPage(path);
 	if (!page) return { outcome: "skipped", reason: "no published page at this path" };
 	if (!page.text.trim()) return { outcome: "skipped", reason: "page body rendered empty" };
@@ -169,7 +184,7 @@ export async function syncPolicyPage(
 				title: page.title,
 				text: page.text,
 				source,
-				url: `${deps.origin()}${path}`,
+				url: `${origin}${path}`,
 				sourceType: SOURCE_TYPE,
 				// The pages print their own "Last updated" line, which lands in the text.
 				sourceDate: null,

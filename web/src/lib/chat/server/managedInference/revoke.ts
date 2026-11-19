@@ -6,7 +6,7 @@
  * Best effort. A failure is logged and reported, never thrown: neither caller should keep
  * a row the person can't use just because Pangolin's API was unreachable. A device that did pair
  * still needs `--remove-tunnel` on the device itself (see aipotluck-local-client); this only tears
- * down the server side. (CUR-1266)
+ * down the server side.
  */
 import { logger } from "$lib/chat/server/logger";
 import { deleteSite, deletePublicResource } from "$lib/chat/server/managedInference/pangolinClient";

@@ -1,10 +1,10 @@
 /**
- * The record of a member of staff reading a person's conversation content in the app (CUR-4385).
+ * The record of a member of staff reading a person's conversation content in the app.
  *
  * Two copies, because they answer different questions. The `admin_audit` row backs /admin/audit and
  * lives in the same Postgres database the admin path can write, so on its own it records an access
  * only for as long as nobody with database write access edits it. The security-logger line goes to the
- * Axiom security dataset (CUR-4143), which nobody with database access can alter, and to stdout, which
+ * Axiom security dataset, which nobody with database access can alter, and to stdout, which
  * the Vercel drain also ships to Axiom.
  *
  * Neither write blocks the read: an audit hiccup must not stop triage. The direct-database path is the

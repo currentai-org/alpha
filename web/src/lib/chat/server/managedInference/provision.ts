@@ -8,19 +8,20 @@
  * mint a resource access token (every public resource is SSO-gated by default; this is the
  * non-interactive credential Pangolin itself supports instead, see pangolinClient.ts) -> persist
  * one `local_inference_endpoints` row (`kind: "managed"`, the access token stored in the row's
- * existing `headers` column so it rides the same CUR-1266 request-header pipeline every other
+ * existing `headers` column so it rides the same per-endpoint request-header pipeline every other
  * local endpoint already uses) -> return the install flags `aipotluck-local-client`'s installer
  * takes directly (`--tunnel-id/--tunnel-secret/--tunnel-endpoint`).
- * (CUR-1266)
+ *
  * Shared by the two ways to pair — the settings page's Pair button
  * (api/v2/user/local-inference-endpoints/managed), which shows the install flags once, and the
  * CLI's pairing link (chat/local-inference/pair), which parks them for the CLI to collect once.
- * Callers gate on `managedInferenceEnabled()` and authenticate the user first; this just provisions. (CUR-4110)
+ * Callers gate on `managedInferenceEnabled()` and authenticate the user first; this just provisions.
  */
 import { randomBytes } from "crypto";
 import { error } from "@sveltejs/kit";
 import { pangolinDomainId, pangolinTunnelEndpoint } from "$lib/chat/server/managedInferenceGate";
 import * as pangolinClient from "$lib/chat/server/managedInference/pangolinClient";
+import { assertUnderEndpointCap } from "$lib/chat/server/localEndpointLimits";
 import {
 	createLocalEndpoint,
 	type LocalInferenceEndpointRow,
@@ -78,6 +79,9 @@ export async function provisionManagedEndpoint(
 ): Promise<{ row: LocalInferenceEndpointRow; installArgs: ManagedInstallArgs }> {
 	const { pangolin } = deps;
 	const { userId, label } = input;
+	// Before any Pangolin call, so a refused create leaves nothing in the tunnel org. Here rather than
+	// in each route, so the Pair button and the CLI's pairing link share it.
+	await assertUnderEndpointCap(userId, "managed");
 
 	const defaults = await pangolin.pickSiteDefaults();
 	// Pangolin's site "Name" is shared, org-wide dashboard state -- prefixing it with the owning
@@ -112,7 +116,7 @@ export async function provisionManagedEndpoint(
 		// The resource is SSO-gated by default; the access-token pair is what lets our own
 		// server-to-server requests (discovery, prewarm, generation — see localModels.ts's
 		// headersRecord()) through without a Pangolin login session, applied via the same
-		// per-endpoint header pipeline CUR-1266 built.
+		// per-endpoint header pipeline every local endpoint uses.
 		//
 		// The user's own headers go FIRST and the access token LAST, deliberately: headersRecord()
 		// builds the record with Object.fromEntries, where a later entry wins, so this ordering means

@@ -44,7 +44,7 @@ describe("summarizeInterruptedAgentWork", () => {
 
 	// Titles are agent-service's own confirm-prompt copy — an ASK ("Approve edit: a.py"), not a
 	// completed-action clause. Quoting them (rather than "Completed: <title>") sidesteps a tense this module
-	// has no business assuming (CUR-1091).
+	// has no business assuming.
 	it("quotes a single title as a label rather than presuming its grammatical tense", () => {
 		expect(summarizeInterruptedAgentWork([{ title: "Approve edit: a.py", decision: "allow" }])).toBe(
 			'Interrupted before finishing. Steps confirmed before the stall: "Approve edit: a.py".'

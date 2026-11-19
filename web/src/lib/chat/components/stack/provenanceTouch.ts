@@ -42,12 +42,12 @@ export function provenanceTouch(productName: string, facts: ProvenanceFacts): bo
 	}
 	// The card says the answer ran on sovereign compute in Switzerland, so it lights only when the
 	// backend that served this turn is on the Swiss allowlist. Every gateway lane outside it, and a turn
-	// with no recorded backend, leaves it dark (CUR-1883).
+	// with no recorded backend, leaves it dark.
 	if (productName === "sovereign-compute")
 		return facts.answered && !facts.servedFromCache && facts.swissCompute;
 	if (productName === "trust-and-safety") return safetyChecked(facts);
 	if (productName === "federated-rag") return privacyTouched(facts);
-	// mcpRan (open HF Space tool) and agentToolsRan (real ACP tool execution, CUR-601) are two distinct
+	// mcpRan (open HF Space tool) and agentToolsRan (real ACP tool execution) are two distinct
 	// mechanisms that both mean "agent-service did something this turn" — OR'd, not replaced, so the
 	// existing MCP-triggers-touch behavior keeps working for a turn with zero ACP tool use.
 	if (productName === "agent-service") return facts.mcpRan || facts.agentToolsRan;

@@ -15,9 +15,9 @@ describe('hrefToClickEvent', () => {
 	it('maps known destinations (real paths, full URLs, and CMS destination keys)', () => {
 		expect(hrefToClickEvent('/chat')).toBe('click_to_chat');
 		expect(hrefToClickEvent('chat')).toBe('click_to_chat');
-		expect(hrefToClickEvent('https://www.aipotluck.org/chat')).toBe('click_to_chat');
-		// chat's own host counts as chat once its links drop the /chat path. (CUR-4448)
-		expect(hrefToClickEvent('https://alpha.aipotluck.org/')).toBe('click_to_chat');
+		expect(hrefToClickEvent('https://www.example.test/chat')).toBe('click_to_chat');
+		// chat's own host counts as chat once its links drop the /chat path.
+		expect(hrefToClickEvent('https://alpha.example.test/')).toBe('click_to_chat');
 		expect(hrefToClickEvent('/map')).toBe('click_to_map');
 		expect(hrefToClickEvent('map')).toBe('click_to_map');
 		expect(hrefToClickEvent('/contribute')).toBe('click_to_contribute');
@@ -59,10 +59,10 @@ describe('detectSource (the custom `source` super-property on $pageview)', () =>
 	});
 });
 
-describe('internalTrafficProps (?ph_test → internal / tester markers, CUR-121)', () => {
+describe('internalTrafficProps (?ph_test → internal / tester markers )', () => {
 	it('is null for a normal remote visitor', () => {
-		expect(internalTrafficProps('www.aipotluck.org', '')).toBeNull();
-		expect(internalTrafficProps('www.aipotluck.org', '?foo=bar')).toBeNull();
+		expect(internalTrafficProps('www.example.test', '')).toBeNull();
+		expect(internalTrafficProps('www.example.test', '?foo=bar')).toBeNull();
 	});
 
 	it('marks localhost internal, with NO tester name', () => {
@@ -71,57 +71,57 @@ describe('internalTrafficProps (?ph_test → internal / tester markers, CUR-121)
 	});
 
 	it('?ph_test=1 is the plain internal marker, still no tester name', () => {
-		expect(internalTrafficProps('www.aipotluck.org', '?ph_test=1')).toEqual({
+		expect(internalTrafficProps('www.example.test', '?ph_test=1')).toEqual({
 			is_internal_test: true
 		});
 	});
 
 	it('?ph_test=<label> tags the browser, so two internal sessions can be told apart', () => {
-		expect(internalTrafficProps('www.aipotluck.org', '?ph_test=alpha')).toEqual({
+		expect(internalTrafficProps('www.example.test', '?ph_test=alpha')).toEqual({
 			is_internal_test: true,
 			tester: 'alpha'
 		});
-		expect(internalTrafficProps('develop.aipotluck.org', '?ph_test=bravo&x=1')).toEqual({
+		expect(internalTrafficProps('develop.example.test', '?ph_test=bravo&x=1')).toEqual({
 			is_internal_test: true,
 			tester: 'bravo'
 		});
 	});
 });
 
-describe('scrubRouteIds (CUR-2606: PostHog events carry no conversation id)', () => {
+describe('scrubRouteIds ( PostHog events carry no conversation id)', () => {
 	it('replaces the id in every URL-shaped property with :id, so an event links to no conversation', () => {
 		const out = scrubRouteIds({
 			event: '$pageleave',
 			properties: {
-				$current_url: 'https://www.aipotluck.org/chat/conversation/0123456789abcdef01234567?x=1',
+				$current_url: 'https://www.example.test/chat/conversation/0123456789abcdef01234567?x=1',
 				$pathname: '/chat/conversation/0123456789abcdef01234567',
 				$prev_pageview_pathname: '/chat/admin/reports/0123456789abcdef01234567',
-				$referrer: 'https://www.aipotluck.org/chat/workspace/accept/inv_123#top',
+				$referrer: 'https://www.example.test/chat/workspace/accept/inv_123#top',
 				turn_number: 3
 			},
-			$set_once: { $initial_current_url: 'https://www.aipotluck.org/chat/conversation/abc' }
+			$set_once: { $initial_current_url: 'https://www.example.test/chat/conversation/abc' }
 		});
 		expect(out.properties).toEqual({
-			$current_url: 'https://www.aipotluck.org/chat/conversation/:id?x=1',
+			$current_url: 'https://www.example.test/chat/conversation/:id?x=1',
 			$pathname: '/chat/conversation/:id',
 			$prev_pageview_pathname: '/chat/admin/reports/:id',
-			$referrer: 'https://www.aipotluck.org/chat/workspace/accept/:id#top',
+			$referrer: 'https://www.example.test/chat/workspace/accept/:id#top',
 			turn_number: 3
 		});
 		expect(out.$set_once).toEqual({
-			$initial_current_url: 'https://www.aipotluck.org/chat/conversation/:id'
+			$initial_current_url: 'https://www.example.test/chat/conversation/:id'
 		});
 		expect(out.event).toBe('$pageleave');
 	});
 
 	it('replaces the id inside nested objects and arrays, where $web_vitals keeps its own URLs', () => {
-		const url = 'https://develop.aipotluck.org/chat/conversation/0123456789abcdef01234567?x=1';
+		const url = 'https://develop.example.test/chat/conversation/0123456789abcdef01234567?x=1';
 		const out = scrubRouteIds({
 			properties: {
 				$web_vitals_FCP_event: { $current_url: url, navigationURL: url, delta: 316, entries: [url] }
 			}
 		});
-		const scrubbed = 'https://develop.aipotluck.org/chat/conversation/:id?x=1';
+		const scrubbed = 'https://develop.example.test/chat/conversation/:id?x=1';
 		expect(out.properties).toEqual({
 			$web_vitals_FCP_event: {
 				$current_url: scrubbed,
@@ -135,7 +135,7 @@ describe('scrubRouteIds (CUR-2606: PostHog events carry no conversation id)', ()
 	it('leaves pages with no id untouched, and a root-form route shape that is not where a URL path begins', () => {
 		const props = {
 			$pathname: '/chat',
-			$current_url: 'https://www.aipotluck.org/map',
+			$current_url: 'https://www.example.test/map',
 			other: 'see /conversation/x',
 			deeper: 'https://example.com/docs/conversation/x'
 		};
@@ -144,28 +144,28 @@ describe('scrubRouteIds (CUR-2606: PostHog events carry no conversation id)', ()
 
 	// On the chat surface the same routes live at the root, and a site event's $referrer can
 	// name one from alpha, so the root form is scrubbed on both surfaces. A privacy guard: no
-	// conversation id may reach PostHog whichever surface served the page. (CUR-4448)
+	// conversation id may reach PostHog whichever surface served the page.
 	it("replaces the id in the chat surface's root-form URLs too (/conversation/<id> with no /chat)", () => {
 		const out = scrubRouteIds({
 			properties: {
-				$current_url: 'https://alpha.aipotluck.org/conversation/0123456789abcdef01234567?x=1',
+				$current_url: 'https://alpha.example.test/conversation/0123456789abcdef01234567?x=1',
 				$pathname: '/conversation/0123456789abcdef01234567',
 				$prev_pageview_pathname: '/admin/reports/0123456789abcdef01234567',
-				$referrer: 'https://alpha-develop.aipotluck.org/workspace/accept/inv_123#top',
+				$referrer: 'https://alpha-develop.example.test/workspace/accept/inv_123#top',
 				nested: { navigationURL: 'http://localhost:5173/conversation/abc/output/a.mp4' }
 			}
 		});
 		expect(out.properties).toEqual({
-			$current_url: 'https://alpha.aipotluck.org/conversation/:id?x=1',
+			$current_url: 'https://alpha.example.test/conversation/:id?x=1',
 			$pathname: '/conversation/:id',
 			$prev_pageview_pathname: '/admin/reports/:id',
-			$referrer: 'https://alpha-develop.aipotluck.org/workspace/accept/:id#top',
+			$referrer: 'https://alpha-develop.example.test/workspace/accept/:id#top',
 			nested: { navigationURL: 'http://localhost:5173/conversation/:id/output/a.mp4' }
 		});
 	});
 });
 
-describe('isBrowserNoise (CUR-3039: the ResizeObserver loop warning is never sent)', () => {
+describe('isBrowserNoise ( the ResizeObserver loop warning is never sent)', () => {
 	const exception = (...values: string[]) => ({
 		event: '$exception',
 		properties: { $exception_list: values.map((value) => ({ type: 'Error', value })) }

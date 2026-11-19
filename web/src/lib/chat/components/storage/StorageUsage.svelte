@@ -5,7 +5,7 @@
 	import { formatBytes } from './formatBytes';
 
 	// How much of Alpha storage's quota a person's files use: the file count and the bytes against the
-	// ceiling. One piece, so the Files page and Settings → Storage say the same thing (CUR-4363).
+	// ceiling. One piece, so the Files page and Settings → Storage say the same thing.
 	interface Props {
 		fileCount: number;
 		totalBytes: number;

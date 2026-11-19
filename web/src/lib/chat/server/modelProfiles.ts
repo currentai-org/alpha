@@ -1,7 +1,7 @@
 // What each (model, provider) pair accepts on the wire, read from the rows `scripts/model-profile-probe.mjs`
-// measured and wrote to modelProfiles.verified.json (CUR-2113). Providers serving the same open model
+// measured and wrote to modelProfiles.verified.json. Providers serving the same open model
 // disagree on how reasoning is turned off, which `reasoning_effort` values they take, and whether a
-// system role or a forced tool call is honoured; a table keyed by provider alone (CUR-2090's first
+// system role or a forced tool call is honoured; a table keyed by provider alone (the first
 // shape) was wrong for every provider that serves two models differently. Every caller that builds a
 // request body asks this module rather than carrying its own copy of a provider's quirks.
 
@@ -89,7 +89,7 @@ export function reasoningOffFields(
 /**
  * The reasoning-off fields a verified row gives for this wire id on this host, and nothing otherwise:
  * no `thinking` guess. For non-streaming side calls on a model that reasons by default. Mistral Large 4
- * through the staging router is the case (CUR-4281): unstreamed, it answers in typed `thinking`/`text`
+ * through the staging router is the case: unstreamed, it answers in typed `thinking`/`text`
  * parts the router cannot parse, so the router retries for ~45 s and answers from its backup model
  * instead; with `reasoning_effort: "none"` it answers as Large 4 in about a second. A `thinking:
  * disabled` field the router does not accept stalls the call, so an unmeasured pair gets no field.
@@ -105,8 +105,8 @@ export function measuredReasoningOff(
 
 /**
  * Whether the user's answer to this model must go out as one flattened user message, and so whether
- * native-first's hedged retry has anything to fall back to (CUR-2145). The workaround exists for
- * Apertus deployments that refuse the system and assistant roles (CUR-1294); a model every measured
+ * native-first's hedged retry has anything to fall back to. The workaround exists for
+ * Apertus deployments that refuse the system and assistant roles; a model every measured
  * lane serves with roles gets its request once, in its real shape.
  *
  * A model with any row that is false or could not be told (null) is flattened: Apertus 70B stays
@@ -131,7 +131,7 @@ const EFFORT_ORDER: readonly Effort[] = ["none", "minimal", "low", "medium", "hi
 /**
  * The `reasoning_effort` to send for `wanted`, given what the serving pair accepts. A caller asking
  * for "none" on a model that rejects it gets the lowest effort the model does accept, instead of a
- * 400: gpt-oss-120b has no off switch and refuses "none" (CUR-2113). With no provider on the wire id
+ * 400: gpt-oss-120b has no off switch and refuses "none". With no provider on the wire id
  * the router picks one, so the rows for every measured provider are consulted and "none" is replaced
  * only when all of them reject it. A model with no rows gets `wanted` unchanged.
  */

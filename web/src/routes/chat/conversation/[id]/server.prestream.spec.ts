@@ -3,7 +3,7 @@
  * (no DB / no network):
  *
  *  1. Claim-lost → 409 fires ZERO moved-leg launches (a duplicate POST that loses the idempotency claim
- *     must not submit the turn to Coop, run embeds/engines, READ settings, or write the
+ *     must not submit the turn to the screen, run embeds/engines, READ settings, or write the
  *     conversation) — invariant 2/9. A `settings.findOne` spy is included precisely because settings now
  *     launches post-claim: an early settings launch must fail this suite.
  *  2. A settings rejection surfaces as a TURN ERROR (finishGeneration('error'), no model call) — never a
@@ -29,6 +29,7 @@ import {
 	PRESTREAM_EVENTS_HEADER,
 	type MessageUpdate,
 } from "$lib/chat/types/MessageUpdate";
+import type { MilaSpAnswerCheck } from "$lib/chat/server/milaSpOutputGuard";
 
 // ── hoisted spies (referenced by both the vi.mock factories and the tests) ──────────────────────────
 const h = vi.hoisted(() => {
@@ -41,6 +42,15 @@ const h = vi.hoisted(() => {
 	const getCoopVerdict = vi.fn(async () => ({ status: "ok" }));
 	const checkChildSafety = vi.fn(async () => ({ flagged: false }));
 	const checkContentPolicy = vi.fn(async () => ({ action: "allow" }));
+	// The guard screens every turn (resolveTurnPolicy); this one allows, with no endpoint needed.
+	const getGuardVerdict = vi.fn(async () => ({
+		verdict: { status: "ok", actions: [] },
+		childSafety: { flagged: false },
+		contentPolicy: { action: "allow" },
+		guardChunks: 1,
+		guardTruncated: false,
+		hits: [],
+	}));
 	const maybeRagGrounding = vi.fn(async () => null);
 	const ragWillSearch = vi.fn((_q?: string) => true);
 	const runWebRetrieval = vi.fn(async () => undefined);
@@ -50,7 +60,7 @@ const h = vi.hoisted(() => {
 	const readGeneration = vi.fn(async () => ({ status: "in_flight", messageId: "asst-1" }));
 	const finishGeneration = vi.fn(async () => {});
 	const textGeneration = vi.fn(() => (async function* (): AsyncGenerator<MessageUpdate> {})());
-	// One shape, overridable: a case needs both "an agent turn" and "webSearchMode: always" at once (CUR-574),
+	// One shape, overridable: a case needs both "an agent turn" and "webSearchMode: always" at once,
 	// which the plain module-level default (both "off") can't express on its own.
 	const baseParsedRequest = (
 		overrides: Partial<{
@@ -75,12 +85,15 @@ const h = vi.hoisted(() => {
 	const resolveAgentRoute = vi.fn(
 		async (): Promise<{ route: string; reason?: string; model?: unknown }> => ({ route: "selected" })
 	);
+	const milaSpCheck = vi.fn(async (_c: MilaSpAnswerCheck) => {});
 	return {
+		milaSpCheck,
 		settingsFindOne,
 		conversationsUpdateOne,
 		getCoopVerdict,
 		checkChildSafety,
 		checkContentPolicy,
+		getGuardVerdict,
 		maybeRagGrounding,
 		ragWillSearch,
 		runWebRetrieval,
@@ -97,8 +110,10 @@ const h = vi.hoisted(() => {
 });
 
 vi.mock("$lib/chat/server/config", () => {
+	// ALPHA_EDITION=hosted: this spec asserts the hosted flag fallbacks with PostHog unset, not the
+	// self-host defaults (flags.ts).
 	const config = new Proxy(
-		{ isHuggingChat: false },
+		{ isHuggingChat: false, ALPHA_EDITION: "hosted" },
 		{ get: (t, p) => (p in t ? Reflect.get(t, p) : "") }
 	);
 	return { config, ready: Promise.resolve() };
@@ -117,7 +132,7 @@ vi.mock("$lib/chat/server/database", () => ({
 		conversations: {
 			updateOne: h.conversationsUpdateOne,
 			// Message saves merge under a row lock. Here the merge runs against an empty
-			// stored conversation and its update goes to the same spy, so the write-order checks still hold. (CUR-2806)
+			// stored conversation and its update goes to the same spy, so the write-order checks still hold.
 			modifyOne: (
 				filter: unknown,
 				change: (current: { messages: [] }) => { $set?: Record<string, unknown> } | null
@@ -159,7 +174,7 @@ vi.mock("$lib/chat/server/chat/parseRequest", () => ({
 }));
 
 vi.mock("$lib/chat/server/chat/resolveAgentRoute", () => ({
-	// Re-exported because the route imports it to pick this turn's generation deadline (CUR-144).
+	// Re-exported because the route imports it to pick this turn's generation deadline.
 	// Omitting it fails loudly here; the danger is a mock that DEFINES it as something else, which
 	// would make agent turns look ordinary and silently assert the wrong deadline.
 	AGENT_MODEL_ID: "potluck-agent",
@@ -185,7 +200,14 @@ vi.mock("$lib/chat/server/moderation", () => ({
 		r.unscreened ? "unscreened-decline" : (ruleMessage ?? "child-decline"),
 	CONTENT_POLICY_DECLINE: "content-decline",
 	outputModerationEnabled: () => false,
+	outputModerationRequested: () => false,
 	isCoopConfigured: () => false,
+	isSelfHostEdition: () => false,
+}));
+
+vi.mock("$lib/chat/server/guardGate", async (importOriginal) => ({
+	...(await importOriginal<typeof import("$lib/chat/server/guardGate")>()),
+	getGuardVerdict: h.getGuardVerdict,
 }));
 
 vi.mock("$lib/chat/server/rag", () => ({
@@ -207,8 +229,10 @@ vi.mock("$lib/chat/server/abortRegistry", () => ({
 	AbortRegistry: { getInstance: () => ({ register: vi.fn(), unregister: vi.fn() }) },
 }));
 vi.mock("$lib/chat/server/textGeneration", () => ({ textGeneration: h.textGeneration }));
+vi.mock("$lib/chat/server/milaSpOutputGuard", () => ({ checkAnswerWithMilaSp: h.milaSpCheck }));
 
 import { POST } from "./+server";
+import { loadAuthorizedConversation } from "$lib/chat/server/chat/loadConversation";
 
 const CONV_ID = new ObjectId().toHexString();
 
@@ -274,7 +298,7 @@ describe("POST /conversation/[id] — pre-stream overlap", () => {
 		expect(res.status).toBe(409);
 		// none of the moved legs launched — including the settings read (must be post-claim)
 		expect(h.settingsFindOne).not.toHaveBeenCalled();
-		expect(h.getCoopVerdict).not.toHaveBeenCalled();
+		expect(h.getGuardVerdict).not.toHaveBeenCalled();
 		expect(h.maybeRagGrounding).not.toHaveBeenCalled();
 		expect(h.runWebRetrieval).not.toHaveBeenCalled();
 		expect(h.runWebSearch).not.toHaveBeenCalled();
@@ -312,8 +336,8 @@ describe("POST /conversation/[id] — pre-stream overlap", () => {
 	});
 
 	// The edit box holds Send for the wait this update names; the client half is edit-refused.spec.ts's
-	// first test. This is the server half: the 429's wait reaches the stream (CUR-3410, SOL-195).
-	// e2e-moved: scenarios/edit-refused.spec.ts › an edit refused by the server's own message limit holds the edit box Send for the wait the server sent (CUR-3410)
+	// first test. This is the server half: the 429's wait reaches the stream.
+	// e2e-moved: scenarios/edit-refused.spec.ts › an edit refused by the server's own message limit holds the edit box Send for the wait the server sent
 	it("a message-limit refusal streams Status=Error 429 carrying the server's wait, and runs no model", async () => {
 		vi.mocked(enforceRequestRateLimits).mockImplementationOnce(async () => {
 			error(429, { message: "You've sent a lot of messages. Try again shortly.", retryAfterSeconds: 30 });
@@ -423,7 +447,7 @@ describe("POST /conversation/[id] — pre-stream overlap", () => {
 		expect(lastUpdateOrder).toBeLessThan(finishOrder);
 	});
 
-	it("a Stop before the question is saved still saves it, with the answer marked stopped (CUR-3018)", async () => {
+	it("a Stop before the question is saved still saves it, with the answer marked stopped", async () => {
 		// On Vercel a hung-up request keeps running only while something is registered with waitUntil.
 		const kept: Promise<unknown>[] = [];
 		const contextKey = Symbol.for("@vercel/request-context");
@@ -488,7 +512,7 @@ describe("POST /conversation/[id] — pre-stream overlap", () => {
 		expect(persistedAfterTitle).toBe(true);
 	});
 
-	// ── retrieval is skipped on an agent turn (CUR-574) ───────────────────────────────────────────────
+	// ── retrieval is skipped on an agent turn ───────────────────────────────────────────────
 	// endpointAgent's returned function destructures only {messages, abortSignal, locals, conversationId}
 	// off its call — `preprompt` (where the evidence these legs produce gets injected, see
 	// textGeneration/index.ts) is dropped. Retrieval on an agent turn would pay for a round-trip
@@ -523,11 +547,11 @@ describe("POST /conversation/[id] — pre-stream overlap", () => {
 		await drain(res);
 
 		// "always" mode's no-history pre-launch retrieval (webRetrievalPromise) is what actually fires
-		// here — without the CUR-574 fix's gate, this is the SAME code path an agent turn would also hit.
+		// here — without the fix's gate, this is the SAME code path an agent turn would also hit.
 		expect(h.runWebRetrieval).toHaveBeenCalled();
 	});
 
-	// CUR-2223. The screening marker names the retrieval that is really running beside the safety
+	// The screening marker names the retrieval that is really running beside the safety
 	// screen, so a turn that looks only in our own documents never reads as a web search.
 	describe("the screening marker names what is being searched", () => {
 		it("search off, documents on: says our documents, and never sends the web marker", async () => {
@@ -549,5 +573,75 @@ describe("POST /conversation/[id] — pre-stream overlap", () => {
 			expect(phases).toContain("screening");
 			expect(phases.filter((p) => p.startsWith("screening-"))).toEqual([]);
 		});
+	});
+});
+
+describe("POST /conversation/[id] — a conversation the Mila output guard ended", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		h.claimGeneration.mockResolvedValue(true);
+		h.parseChatRequest.mockResolvedValue(h.baseParsedRequest());
+	});
+
+	const ended = (messages: unknown[]) =>
+		vi.mocked(loadAuthorizedConversation).mockResolvedValueOnce({
+			_id: new ObjectId(),
+			model: "test-model",
+			title: "t",
+			sessionId: "s",
+			crisisEndedAt: new Date("2026-10-30T12:00:00Z"),
+			messages,
+		} as never);
+
+	it("refuses a turn with 403 and runs no model and writes nothing", async () => {
+		ended([
+			{ id: "u-0", from: "user", content: "q", updates: [] },
+			{ id: "asst-0", from: "assistant", content: "flagged answer", updates: [] },
+		]);
+		await expect(makePost()).rejects.toMatchObject({ status: 403 });
+		expect(h.claimGeneration).not.toHaveBeenCalled();
+		expect(h.textGeneration).not.toHaveBeenCalled();
+		expect(h.conversationsUpdateOne).not.toHaveBeenCalled();
+	});
+
+	it("a hit after the stream saves crisisEndedAt with the messages and tells the client before Finished", async () => {
+		h.textGeneration.mockImplementation(() =>
+			(async function* (): AsyncGenerator<MessageUpdate> {
+				yield { type: MessageUpdateType.Stream, token: "Hello" };
+				yield { type: MessageUpdateType.FinalAnswer, text: "Hello", interrupted: false };
+			})()
+		);
+		h.conversationsUpdateOne.mockClear();
+		// What the guard does on a hit (its own order is unit-tested in milaSpOutputGuard.spec.ts).
+		h.milaSpCheck.mockImplementationOnce(async (c) => {
+			c.conv.crisisEndedAt = new Date("2026-10-30T12:00:00Z");
+			await c.persist();
+			await c.update({ type: MessageUpdateType.SupportNotice, supportLang: "en", conversationEnded: true });
+		});
+
+		const res = await makePost();
+		const reader = res.body!.getReader();
+		const decoder = new TextDecoder();
+		let text = "";
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			text += typeof value === "string" ? value : decoder.decode(value);
+		}
+
+		expect(h.milaSpCheck).toHaveBeenCalledTimes(1);
+		expect(h.milaSpCheck.mock.calls[0][0].answer).toBe("Hello");
+		const sets = h.conversationsUpdateOne.mock.calls.map(([, u]) => u?.$set ?? {});
+		expect(sets.some((set) => set.crisisEndedAt instanceof Date && "messages" in set)).toBe(true);
+		const notice = text.indexOf('"conversationEnded":true');
+		const finished = text.indexOf('"status":"finished"');
+		expect(notice).toBeGreaterThan(-1);
+		expect(finished).toBeGreaterThan(notice);
+	});
+
+	it("still refuses after the flagged message was deleted, since the stamp is on the conversation", async () => {
+		ended([{ id: "u-0", from: "user", content: "q", updates: [] }]);
+		await expect(makePost()).rejects.toMatchObject({ status: 403 });
+		expect(h.textGeneration).not.toHaveBeenCalled();
 	});
 });

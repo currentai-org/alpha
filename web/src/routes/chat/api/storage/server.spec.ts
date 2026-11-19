@@ -83,12 +83,13 @@ describe('storage route access control', () => {
 		await POST({ locals: locals(), request: upload() });
 		expect(uploadCustodialFile).toHaveBeenCalledWith(ACCOUNT_ID, 'documents/notes.txt', expect.any(File), {
 			scannerDown: false,
+			scannerBlip: false,
 			imagesAllowed: false,
 			documentsAllowed: false
 		});
 	});
 
-	it('ignores a scanner-down fault header that carries no valid token, so a caller cannot choose the fault (CUR-2382)', async () => {
+	it('ignores a scanner-down fault header that carries no valid token, so a caller cannot choose the fault', async () => {
 		const request = upload();
 		request.headers.set('x-e2e-fault-inject', 'csam_scanner_down');
 		request.headers.set('x-e2e-fault-inject-token', 'not-the-token');
@@ -96,13 +97,14 @@ describe('storage route access control', () => {
 		await POST({ locals: locals(), request });
 		expect(uploadCustodialFile).toHaveBeenCalledWith(ACCOUNT_ID, 'documents/notes.txt', expect.any(File), {
 			scannerDown: false,
+			scannerBlip: false,
 			imagesAllowed: false,
 			documentsAllowed: false
 		});
 	});
 });
 
-describe('the CUR-1129 limits are enforced FROM THE ROUTE, not only in a unit test', () => {
+describe('the limits are enforced FROM THE ROUTE, not only in a unit test', () => {
 	it('turns an oversize file into 413 rather than letting it through', async () => {
 		uploadCustodialFile.mockRejectedValue(new FileTooLargeError(9_000_000));
 		// @ts-expect-error - RequestEvent is heavier than this test needs
@@ -131,7 +133,7 @@ describe('the CUR-1129 limits are enforced FROM THE ROUTE, not only in a unit te
 	});
 });
 
-describe('an upload that could not be scanned (CUR-2382)', () => {
+describe('an upload that could not be scanned', () => {
 	it('refuses with 503 AND logs at error when no scanner is configured, since that is a config error', async () => {
 		const logged = vi.spyOn(logger, 'error').mockImplementation(() => {});
 		uploadCustodialFile.mockRejectedValue(new CsamScannerUnconfiguredError());
@@ -149,7 +151,7 @@ describe('an upload that could not be scanned (CUR-2382)', () => {
 	});
 });
 
-describe('Hugging Face throttling the storage token (CUR-3120)', () => {
+describe('Hugging Face throttling the storage token', () => {
 	const throttled = () => new HubApiError('https://huggingface.co/api/buckets/x', 429);
 
 	it('answers an upload with 503, the busy line and Retry-After, not a 500', async () => {
@@ -161,7 +163,7 @@ describe('Hugging Face throttling the storage token (CUR-3120)', () => {
 		expect(await res.json()).toEqual({ message: STORAGE_BUSY_MESSAGE });
 	});
 
-	it('lists each file with the time the bucket took it, and none of the vendor fields (CUR-3289)', async () => {
+	it('lists each file with the time the bucket took it, and none of the vendor fields', async () => {
 		listCustodialFiles.mockResolvedValue([
 			{ path: 'users/u/conversations/c1/abc/a.png', size: 3, uploadedAt: '2026-10-08T09:00:00Z', oid: 'x', type: 'file' },
 		]);
@@ -216,7 +218,7 @@ describe('upload input', () => {
 			ACCOUNT_ID,
 			'documents/escape.txt',
 			expect.any(File),
-			{ scannerDown: false, imagesAllowed: false, documentsAllowed: false }
+			{ scannerDown: false, scannerBlip: false, imagesAllowed: false, documentsAllowed: false }
 		);
 	});
 

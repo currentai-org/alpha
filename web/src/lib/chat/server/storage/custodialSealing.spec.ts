@@ -1,7 +1,7 @@
 // Sealed writes, end to end through custodialStorage against an in-memory bucket. The Hub
 // is faked as a map that keeps each object's bytes and upload order; the crypto is the real module and
 // the real `age-encryption`, and the fixtures that stand for a person's own age file are made by the
-// library directly, so the module cannot make its own fixtures agree with it. (CUR-4116)
+// library directly, so the module cannot make its own fixtures agree with it.
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { Encrypter, generateHybridIdentity, identityToRecipient } from "age-encryption";
 
@@ -95,6 +95,7 @@ beforeAll(async () => {
 beforeEach(() => {
 	for (const k of Object.keys(H.cfg)) delete H.cfg[k];
 	Object.assign(H.cfg, {
+		CUSTODIAL_STORAGE_BACKEND: "hf",
 		HF_BUCKETS_TOKEN: "hf_test",
 		HF_BUCKETS_REPO: "buckets/current-ai-official/custodial-storage",
 		CUSTODIAL_MASTER_IDENTITIES: JSON.stringify({ k1: master }),
@@ -110,7 +111,7 @@ beforeEach(() => {
 	downloadFile.mockClear();
 });
 
-describe("sealed writes (CUR-4116)", () => {
+describe("sealed writes", () => {
 	it("stores an attachment as an age file that does not contain its plaintext, and reads it back as written", async () => {
 		await storeChatAttachment({ userId: ME }, attachment(1), text("the quarterly numbers"));
 		const bucketPath = `users/${ME}/${attachment(1)}`;
@@ -202,7 +203,7 @@ describe("sealed writes (CUR-4116)", () => {
 
 });
 
-describe("Forget everything keeps the account able to upload (CUR-4415)", () => {
+describe("Forget everything keeps the account able to upload", () => {
 	it("an upload after a kept-account wipe succeeds and reads back", async () => {
 		await storeChatAttachment({ userId: ME }, attachment(1), text("before"));
 		await wipeCustodialFiles(ME, { keepAccount: true });
@@ -211,7 +212,7 @@ describe("Forget everything keeps the account able to upload (CUR-4415)", () => 
 		expect(await (await readCustodialAttachment(ME, attachment(2)))!.text()).toBe("after the wipe");
 	});
 
-	it("a kept-account wipe records each step's time and both lock waits for its log line (CUR-4548)", async () => {
+	it("a kept-account wipe records each step's time and both lock waits for its log line", async () => {
 		await storeChatAttachment({ userId: ME }, attachment(1), text("before"));
 		const timing: Record<string, number> = {};
 		await wipeCustodialFiles(ME, { keepAccount: true, timing });
@@ -219,6 +220,8 @@ describe("Forget everything keeps the account able to upload (CUR-4415)", () => 
 			[
 				"deleteMs",
 				"files",
+				"historyKeyLockHeldMs",
+				"historyKeyLockWaitMs",
 				"listMs",
 				"replaceLockHeldMs",
 				"replaceLockWaitMs",
@@ -254,7 +257,7 @@ describe("Forget everything keeps the account able to upload (CUR-4415)", () => 
 	});
 });
 
-describe("account wipe destroys the key first (CUR-4117)", () => {
+describe("account wipe destroys the key first", () => {
 	it("a wiped account's file that a failed delete left behind fails to open as tombstoned", async () => {
 		await storeChatAttachment({ userId: ME }, attachment(1), text("kept by a failed delete"));
 		await storeChatAttachment({ userId: ME }, attachment(2), text("deleted"));
@@ -267,7 +270,7 @@ describe("account wipe destroys the key first (CUR-4117)", () => {
 		expect(H.security).not.toHaveBeenCalled();
 	});
 
-	it("tombstones the recipient before the key object, and both before any file is deleted", async () => {
+	it("tombstones the recipient before the key object, then the history key, all before any file is deleted", async () => {
 		await storeChatAttachment({ userId: ME }, attachment(1), text("x"));
 		const order: string[] = [];
 		const watch = new Proxy(H.objects, {
@@ -285,7 +288,16 @@ describe("account wipe destroys the key first (CUR-4117)", () => {
 		} finally {
 			H.objects = original;
 		}
-		expect(order).toEqual([`write ${ownerRecipientPath(mine)}`, `write ${ownerKeyPath(mine)}`, `delete users/${ME}/${attachment(1)}`]);
+		expect(order).toEqual([
+			`write ${ownerRecipientPath(mine)}`,
+			`write ${ownerKeyPath(mine)}`,
+			`write _keys/user/${ME}.history.recipient`,
+			`write _keys/user/${ME}.history.age`,
+			`write _keys/user/${ME}.history.age.prev`,
+			// The generations list last, since it names every generation the wipe overwrites.
+			`write _keys/user/${ME}.history.generations`,
+			`delete users/${ME}/${attachment(1)}`,
+		]);
 	});
 
 	it("refuses a write that starts after the wipe, for an owner who never had a key too", async () => {

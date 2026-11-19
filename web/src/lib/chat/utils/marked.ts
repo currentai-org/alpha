@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { Marked } from 'marked';
 import { unwrapMarkdownFences } from './unwrapMarkdownFences';
 import { base } from '$lib/chat/paths';
@@ -15,6 +18,7 @@ import { finalizeMarkdown } from './finalizeMarkdown';
 import { parseMarkdownIntoBlocks } from './parseBlocks';
 import { htmlTextDirection } from './textDirection';
 import { collapseMarkerRun, collapseSources } from './collapseSources';
+import { normalizeUrl, sanitizeHref } from './safeHref';
 import { bracketCitations } from './trace/citedIndices';
 import { UNVERIFIED_HREF, UNVERIFIED_TITLE } from '$lib/chat/constants/unverifiedHref';
 
@@ -136,13 +140,12 @@ function isHttpUrl(url: string): boolean {
 // moment the answer appears, with whatever the model put in the URL — earlier messages included.
 // Only a conversation's own files and inline data:/blob: media load on their own; any absolute URL,
 // including one to our own origin, renders as a link the person has to choose to open.
-// (CUR-1898)
 // "relative" is not the same as "ours". `/rs/*` forwards to PostHog with whatever project
 // key the URL names, and `/chat/api/fetch-url` fetches any public host with the visitor's cookie, so
 // an image at either sends the conversation off-site with no click. A relative URL loads on its own
-// only when it names a conversation's output file or agent artifact, and carries no query string. (CUR-3389)
+// only when it names a conversation's output file or agent artifact, and carries no query string.
 // On the chat surface those live at `/conversation/...`; a `/chat/conversation/...` URL
-// saved in an earlier answer still loads there (it 308s to the root form), so both are accepted. (CUR-4448)
+// saved in an earlier answer still loads there (it 308s to the root form), so both are accepted.
 const OWN_MEDIA_PATH = new RegExp(
 	`^${base ? '\\/chat' : '(?:\\/chat)?'}\\/conversation\\/[A-Za-z0-9_-]+\\/(output|agent-artifact)\\/[^?#\\\\]+$`
 );
@@ -326,7 +329,7 @@ const katexInlineExtension: TokenizerExtension & RendererExtension = {
 
 // highlight.js and KaTeX run synchronously and can hold their thread for seconds on a huge block,
 // such as a model dumping a large unlabeled code block or a giant formula. Past these sizes the block
-// renders as escaped text instead (upstream 91123d1f, CUR-2647). Normal content is unaffected.
+// renders as escaped text instead (upstream 91123d1f). Normal content is unaffected.
 const MAX_HIGHLIGHT_LENGTH = 50_000;
 // Auto-detection runs every registered grammar over the input, so it gets a tighter cap.
 const MAX_AUTO_HIGHLIGHT_LENGTH = 5_000;
@@ -353,7 +356,7 @@ const FENCE_LINE = /^\s*(`{3,}|~{3,})/;
 const LIST_LEADING_CITATIONS =
 	/^(\s*(?:[-*+]\s+|\d{1,9}[.)]\s+))((?:\[(\d+(?:\s*,\s*\d+)*)\](?![(:])\s*)+)(\S[\s\S]*?)$/;
 // A grouped marker ("[1, 2]") counts too, by its first number, so a list item's leading group moves to
-// the item's end with the rest, where the inline pass links it (CUR-3299).
+// the item's end with the rest, where the inline pass links it.
 const CITATION_MARKER_ONLY = /\[(\d+)(?:\s*,\s*\d+)*\](?![(:])/g;
 
 function moveMarkersBeforeTerminalPunctuation(text: string, markers: string): string {
@@ -371,14 +374,14 @@ function appendLineCitationMarkers(text: string, markers: string): string {
 }
 
 // Mistral Large 3 cites in Pandoc's caret shapes, "Tokyo^1,2^", "[^1^]" and a "[^1^]: note" line,
-// which marked prints as text. Each becomes the bracketed marker the inline pass links (CUR-3551).
+// which marked prints as text. Each becomes the bracketed marker the inline pass links.
 const CARET_FOOTNOTE_DEFINITION = /^(\s*)\[\^(\d+)\^\]:\s*/;
 // Bold or italic round nothing but citation markers, "problemas**[1][2]**." Marked can't open bold
-// before "[" after a letter, so it printed both pairs of asterisks; the markers need no emphasis (CUR-2393).
+// before "[" after a letter, so it printed both pairs of asterisks; the markers need no emphasis.
 const EMPHASIZED_CITATIONS = /(\*{1,2}|_{1,2})(\s*(?:\[\d+(?:\s*,\s*\d+)*\]\s*)+)\1(?![*_])/g;
 const INLINE_CODE_SPAN = /(`+[^`\n]*`+)/;
 // The start of one still streaming in: "Tokyo^", "Tokyo^1,2", "[^1", "Tokyo[1]-". The lookbehind
-// spares the "^" that closes "^1,2,5^", which would otherwise be stripped to a raw "^1,2,5" (CUR-4124);
+// spares the "^" that closes "^1,2,5^", which would otherwise be stripped to a raw "^1,2,5";
 // its digit keeps "^1^ ^2" holding back the second group's opener.
 const CARET_CITATION_TAIL = /(?:\[\^[\d,\s]*\^?|(?<!\^[\d,\s]*\d[\d,\s]*)\^[\d,\s]*|\[\d+\]\s*[-–]\s*\d*)$/;
 
@@ -460,18 +463,18 @@ function addInlineCitations(md: string, webSearchSources: SimpleSource[] = []): 
 		return `\u0000${masks.length - 1}\u0000`;
 	});
 	// A run of markers is rewritten as one, in entry numbers: sources sharing a url show as one entry,
-	// so "[1][2]" over two chunks of one page reads "[1]" (collapseSources.ts, CUR-888).
-	// Cited pages are numbered first, in the order the whole answer cites them (CUR-3933). The rank comes
+	// so "[1][2]" over two chunks of one page reads "[1]" (collapseSources.ts).
+	// Cited pages are numbered first, in the order the whole answer cites them. The rank comes
 	// from the message, since this sees one block of it at a time.
 	const citedFirst = webSearchSources
 		.flatMap((s, i) => (s.citedRank === undefined ? [] : [[s.citedRank, i + 1]]))
 		.sort((a, b) => a[0] - b[0])
 		.map(([, n]) => n);
 	const { entries, display } = collapseSources(webSearchSources, citedFirst);
-	// A marker may group numbers, "[1,3]" or "[1, 3]", and each number becomes its own link (CUR-3246).
+	// A marker may group numbers, "[1,3]" or "[1, 3]", and each number becomes its own link.
 	// A grouped one is also how prose writes an interval or a list ("the interval [1, 2] is closed"), so
 	// it links only where a citation sits, at the end of a clause: followed by punctuation, a line end
-	// or nothing. One followed by more words on its line stays text (CUR-3299). A lone "[1]" is not
+	// or nothing. One followed by more words on its line stays text. A lone "[1]" is not
 	// held to this, as it linked before grouping did.
 	const linked = masked.replace(
 		/\[\d+(?:\s*,\s*\d+)*\](?:\s*\[\d+(?:\s*,\s*\d+)*\])*/g,
@@ -484,9 +487,13 @@ function addInlineCitations(md: string, webSearchSources: SimpleSource[] = []): 
 				.map((index: number) => {
 					if (index === 0) return false;
 					const source = entries[index - 1];
-					if (source?.link) {
-						return `<a href="${escapeHTML(source.link)}" target="_blank" rel="noreferrer" style="${linkStyle}">[${index}]</a>`;
+					// A citation href is third-party search metadata, so it gets the same scheme allowlist as
+					// every other rendered link; a refused one is an inert [n].
+					const href = source?.link ? sanitizeHref(source.link) : undefined;
+					if (href) {
+						return `<a href="${escapeHTML(href)}" target="_blank" rel="noreferrer" style="${linkStyle}">[${index}]</a>`;
 					}
+					if (source?.link) return `<span style="${markerStyle}">[${index}]</span>`;
 					if (source) {
 						// Source exists but carries no url (RAG catalog / admin-uploaded docs). Show the document
 						// NAME as a non-link marker so the reader sees where the claim came from — never a dead
@@ -511,38 +518,6 @@ function addInlineCitations(md: string, webSearchSources: SimpleSource[] = []): 
 	return linked.replace(/\u0000(\d+)\u0000/g, (_, i) => masks[Number(i)]);
 }
 
-// The schemes a rendered link may carry. Anything else, `javascript:` and `vbscript:` included, renders
-// as text. A denylist of bad schemes lost to `java\tscript:` (CUR-3515).
-const ALLOWED_HREF_SCHEMES = new Set(['http', 'https', 'mailto']);
-
-/**
- * The URL as the browser will resolve it: the WHATWG parser drops ASCII tab and newline anywhere and
- * leading/trailing C0 controls and spaces, so the scheme check has to look at the same string.
- */
-function normalizeUrl(value: string): string {
-	// eslint-disable-next-line no-control-regex
-	return value.replace(/[\t\n\r]/g, '').replace(/^[\u0000-\u0020]+|[\u0000-\u0020]+$/g, '');
-}
-
-/** The scheme the browser will read from `url`, lowercased, or null for a relative URL. */
-function urlScheme(url: string): string | null {
-	const match = /^([a-z][a-z0-9+.-]*):/i.exec(url);
-	return match ? match[1].toLowerCase() : null;
-}
-
-/** An inline image, video or audio payload, which only an image source may carry. */
-const INLINE_MEDIA_URL = /^(data:(image|video|audio)\/|blob:)/i;
-
-function sanitizeHref(href?: string | null, { media = false } = {}): string | undefined {
-	if (!href) return undefined;
-	const url = normalizeUrl(href).replace(/>$/, '');
-	if (!url) return undefined;
-	if (media && INLINE_MEDIA_URL.test(url)) return url;
-	const scheme = urlScheme(url);
-	if (scheme !== null && !ALLOWED_HREF_SCHEMES.has(scheme)) return undefined;
-	return url;
-}
-
 export function highlightCode(text: string, lang?: string): string {
 	if (text.length > MAX_HIGHLIGHT_LENGTH) return escapeHTML(text);
 	if (!hljs) {
@@ -564,7 +539,7 @@ export function highlightCode(text: string, lang?: string): string {
 function sanitizeMediaUrl(value: string): string | undefined {
 	const trimmed = normalizeUrl(value).replace(/>$/, '');
 	if (!MULTIMEDIA_ALLOWED_URI_PATTERN.test(trimmed)) return undefined;
-	// A remote src or poster loads as soon as the tag renders (CUR-1898), so it is dropped.
+	// A remote src or poster loads as soon as the tag renders, so it is dropped.
 	if (!loadsWithoutClick(trimmed)) return undefined;
 	return trimmed;
 }
@@ -628,14 +603,14 @@ function serializeMediaNode(node: HtmlNode, state: MediaSerializeState): string 
 }
 
 // marked hands the sanitizer one tag at a time, so only the whole rendered block shows whether a
-// <video>/<audio> kept any src. One that kept none is an empty player (CUR-1898), so it becomes a
+// <video>/<audio> kept any src. One that kept none is an empty player, so it becomes a
 // link to each remote source that was dropped, or nothing when there was none. This matches only
 // the tags serializeMediaNode itself emits.
 const MEDIA_ELEMENT_RE = /<(video|audio)\b([^>]*)>([\s\S]*?)<\/\1>/gi;
 const BLOCKED_SRC_RE = /data-blocked-src="([^"]*)"/g;
 
 // A player the block opens and never closes would take the rest of the block as its fallback
-// content, hidden from the reader (CUR-2901). Close it right after its own <source> tags. Only the
+// content, hidden from the reader. Close it right after its own <source> tags. Only the
 // whole block can say it is unclosed: marked hands the sanitizer `<video>` and `</video>` apart.
 // Opens and closes are paired in order, so a later player's close never stands in for an earlier one.
 const MEDIA_TAG_RE = /<(\/?)(video|audio)\b[^>]*>(?:\s*<source\b[^>]*>)*/gi;
@@ -715,7 +690,7 @@ function sanitizeHtmlForMultimedia(html: string): string {
 //
 // carry their own dir, so a <ul dir="auto"> of Urdu items with their own dir resolves left to right.
 // CI. Marked emits these tags bare or with attributes after a space, and escapes any "<p" inside code,
-// so only real tags match. (CUR-1917)
+// so only real tags match.
 const DIRECTION_BLOCKS = /<(p|h[1-6]|td|th|ul|ol|li|blockquote|table)(?=[\s>])/g;
 
 /** The block's own HTML, from its opening tag to its matching close (nested same-name tags counted). */
@@ -812,13 +787,13 @@ function createMarkedInstance(sources: SimpleSource[]): Marked {
 				// made this branch emit `&amp;lt;img …` — the literal entity text — under marked 12.
 				if (!safeHref) return `<span>${text}</span>`;
 				// A link to a media file stays a link. Promoting it to an inline player made the browser
-				// fetch it unasked, which is the CUR-1898 channel; a relative one is never promoted either,
+				// fetch it unasked, which is the channel; a relative one is never promoted either,
 				// since the model has no reason to link our own files as media.
 				return `<a href="${escapeHTML(safeHref)}" target="_blank" rel="noreferrer">${text}</a>`;
 			},
 			image(token) {
 				// Placeholder emitted by parseIncompleteMarkdown (remend 1.4+) while an image's URL is
-				// still streaming in: render nothing until the real URL arrives (CUR-4279).
+				// still streaming in: render nothing until the real URL arrives.
 				if (token.href === 'streamdown:incomplete-image') return '';
 				const safeHref = sanitizeHref(token.href, { media: true });
 				// token.text is the raw alt text; both sinks escape it exactly once.

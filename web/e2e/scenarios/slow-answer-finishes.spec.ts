@@ -7,7 +7,7 @@ import { installFaultInjectionHeader } from './helpers/faultInjection';
 import { startChattingPastWelcome } from './helpers/welcome';
 
 // Output screening's deadline is an idle bound, the longest the screen may go without
-// releasing a batch, not a cap on the whole answer (CUR-1884). As a whole-answer cap it cut nine healthy prod
+// releasing a batch, not a cap on the whole answer. As a whole-answer cap it cut nine healthy prod
 // answers in one week that were slow only because the model was.
 //
 // A real deployment can't show this at the real 25s window: answers stop at the output token cap
@@ -16,7 +16,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // token, so the first release still has to land inside it; after that, a whole-answer cap would cut
 // the answer within one window of its first visible text, and an idle bound lets it stream on. So the
 // check is how long the answer keeps streaming after its first text appears.
-// The window was a fixed 5s until CUR-2705: shorter than one screening call may take, so a slow but
+// The window was a fixed 5s: shorter than one screening call may take, so a slow but
 // healthy screen tripped it on 68 of 691 preview turns and the spec failed on PRs that touched no chat.
 // Preview-only: the fault switch is never armed on production (faultInjection.ts), and it needs
 // output screening on (OUTPUT_MODERATION), so it is tagged @output-screen.
@@ -83,7 +83,7 @@ test(
 		).not.toContain(TRUNCATED);
 		// Under a whole-answer cap the stream stops within one window of its first text. Two seconds
 		// more leaves margin for the page's own render delay; two whole windows would ask for 16s of
-		// streaming, and a tenth of healthy answers on preview stream for less (CUR-2705).
+		// streaming, and a tenth of healthy answers on preview stream for less.
 		expect(
 			streamedMs,
 			`the answer finished ${streamedMs}ms after its first text, inside ${WINDOW_MS + 2_000}ms, so it did not outlast the window and this run proves nothing either way`

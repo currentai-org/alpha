@@ -1,8 +1,8 @@
 // PDQ hash-matching (HMA — Hasher-Matcher-Actioner, facebook/ThreatExchange) on every
-// upload path, against the bank the HMA instance holds. Preview points at a Fly-hosted HMA with a
-// placeholder test bank (CUR-2382); the real NCMEC bank replaces it as config (CUR-713).
+// upload path, against the bank the HMA instance holds. Which bank that is (a placeholder test bank or
+// the NCMEC bank) is the instance's own config, not this module's.
 //
-// FAIL CLOSED, all three ways (CUR-2382):
+// FAIL CLOSED, all three ways:
 // - No scanner configured (CSAM_SCAN_BASE_URL unset): scanCsamHash throws CsamScannerUnconfiguredError,
 //   and csamScanConfigured() is false, which is what withholds the attach control in chat.
 // - Configured but unreachable: HmaUnreachableError. Nothing is stored.
@@ -13,7 +13,7 @@
 // against the real bank once it is loaded, and an open curator API would let anyone edit the banks.
 //
 // HMA's own POST /m/lookup does hashing AND matching in one round trip — no PDQ library needed here.
-// Live-probed against a local docker-compose HMA instance (web/hma/): a real image posted to this
+// Against the local docker-compose HMA instance (web/hma/), an image posted to this
 // endpoint after being seeded into a bank returns `{"pdq":{"BANK":[{"bank_content_id":N,"distance":"0"}]}}`
 // on a match, `{}` on no match — and `400 {"message":"invalid signal: invalid PDQ
 // hash"}` for perfectly legitimate low-texture content (a solid-color image has no computable PDQ
@@ -22,12 +22,16 @@
 // such as a wrong form field (`{"message":"no such content_type: '...'"}`) and a missing
 // upload (`{"message":"Missing multipart/form-data file upload"}`) — names a malformed request on our
 // own side, with no bearing on the content itself, so scanCsamHash matches on the message text, not
-// just the status, before calling anything "clean". (CUR-1136)
+// just the status, before calling anything "clean".
 
 import { config } from "$lib/chat/server/config";
+import { logger } from "$lib/chat/server/logger";
 
 export type CsamScanResult =
 	| { status: "clean" } // HMA answered; no bank matched (includes the "no computable hash" 400 case)
+	// The self-host operator turned the scan off (CSAM_SCAN=off) and took on the duty to detect and
+	// report. Never "clean": nothing was checked. Only csamScanOptedOut() produces it.
+	| { status: "unscanned-operator-opt-out" }
 	| { status: "match"; bankName: string; bankContentId: number; distance: string };
 
 export class HmaUnreachableError extends Error {
@@ -58,9 +62,48 @@ function csamScanBaseUrl(): string | undefined {
 	return typeof v === "string" && v.trim() ? v.trim().replace(/\/$/, "") : undefined;
 }
 
-/** Is a scanner configured? The attach control and every upload path read this one answer. */
+let warnedHostedOptOut = false;
+
+/**
+ * Has a self-host operator explicitly turned the scan off (CSAM_SCAN=off)? Honoured ONLY when
+ * ALPHA_EDITION is set and is not "hosted". Unset ALPHA_EDITION does not honour it, and hosted never
+ * does: a hosted process that sets it logs an error once and keeps refusing unscanned uploads.
+ */
+export function csamScanOptedOut(): boolean {
+	const asked = String(Reflect.get(config, "CSAM_SCAN") ?? "").trim().toLowerCase() === "off";
+	if (!asked) return false;
+	const edition = String(Reflect.get(config, "ALPHA_EDITION") ?? "").trim().toLowerCase();
+	if (edition === "") return false;
+	if (edition === "hosted") {
+		if (!warnedHostedOptOut) {
+			warnedHostedOptOut = true;
+			logger.error("[csam-scan] CSAM_SCAN=off is ignored on a hosted deployment; uploads are still scanned and refused when no scanner is configured");
+		}
+		return false;
+	}
+	return true;
+}
+
+/** The result for one accepted file when the operator opted out, with the warn line saying so. */
+export function unscannedByOperatorChoice(filename: string): CsamScanResult {
+	logger.warn(
+		{ filename },
+		"[csam-scan] file stored UNSCANNED: the operator set CSAM_SCAN=off and owns detecting and reporting CSAM"
+	);
+	return { status: "unscanned-operator-opt-out" };
+}
+
+/** The scan is skipped for this file: opted out, and no scanner configured to use anyway. */
+export function csamScanSkipped(): boolean {
+	return csamScanBaseUrl() === undefined && csamScanOptedOut();
+}
+
+/**
+ * Can uploads be taken at all? True with a scanner configured, or with the operator's explicit opt-out
+ * honoured. The attach control and every upload path read this one answer.
+ */
 export function csamScanConfigured(): boolean {
-	return csamScanBaseUrl() !== undefined;
+	return csamScanBaseUrl() !== undefined || csamScanOptedOut();
 }
 
 function csamScanToken(): string | undefined {
@@ -77,7 +120,7 @@ const CSAM_SCAN_TIMEOUT_MS = 15_000;
 // moment's restart or a busy worker, which should not tell a person to "try again in a minute". One
 // retry after a short pause clears that. A timeout is not retried (the scanner is already slow and a
 // second wait doubles the upload), nor a 4xx or a 500, which the same bytes get again (a HEIC is a 500).
-// After the retry the upload still fails closed. (CUR-4671)
+// After the retry the upload still fails closed.
 const TRANSIENT_STATUSES = new Set([502, 503, 504]);
 const RETRY_DELAY_MS = 400;
 
@@ -94,16 +137,19 @@ function isConnectionError(e: unknown): boolean {
  * {@link CsamScannerUnconfiguredError} when no scan endpoint is configured, and
  * {@link HmaUnreachableError} on a network failure or an HTTP status this function doesn't have a
  * defined clean-content meaning for; the caller (uploadCustodialFile) is responsible for failing the
- * upload closed on that error, per the ticket's own instruction — this function never decides that
+ * upload closed on that error. This function never decides that
  * itself, so a future caller with a different risk posture isn't forced to inherit this one's.
  */
 export async function scanCsamHash(
 	content: Blob,
 	filename: string,
-	opts: { retryDelayMs?: number } = {}
+	opts: { retryDelayMs?: number; failFirstAttempt?: boolean } = {}
 ): Promise<CsamScanResult> {
 	const baseUrl = csamScanBaseUrl();
-	if (!baseUrl) throw new CsamScannerUnconfiguredError();
+	if (!baseUrl) {
+		if (csamScanSkipped()) return unscannedByOperatorChoice(filename);
+		throw new CsamScannerUnconfiguredError();
+	}
 	const token = csamScanToken();
 
 	const lookup = () => {
@@ -119,6 +165,9 @@ export async function scanCsamHash(
 
 	const attempt = async (last: boolean): Promise<Response | "retry"> => {
 		try {
+			// The `csam_scanner_blip` fault (preview only): the first attempt fails as a connection to a
+			// scanner machine that just stopped does, so a spec sees the retry reach a live one.
+			if (!last && opts.failFirstAttempt) throw new TypeError("fault injection: csam_scanner_blip");
 			const r = await lookup();
 			return !last && TRANSIENT_STATUSES.has(r.status) ? "retry" : r;
 		} catch (e) {
@@ -135,7 +184,7 @@ export async function scanCsamHash(
 
 	if (res.status === 400) {
 		// A 400 is "clean" ONLY for the specific degenerate-hash case (see header) — every other 400
-		// live-confirmed against HMA (a wrong form field, a missing upload) carries a distinct message
+		// HMA returns (a wrong form field, a missing upload) carries a distinct message
 		// naming a malformed request on our side. Matching on the message, not just the status, keeps a
 		// request-construction bug from silently reading as "clean" the moment CSAM_SCAN_BASE_URL is
 		// ever set — exactly the fail-open this feature exists to avoid. An unparseable or unrecognized

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { artifactPanel } from "$lib/chat/stores/artifactPanel.svelte";
 
-describe("artifactPanel.openArtifact start tab (CUR-3187)", () => {
+describe("artifactPanel.openArtifact start tab", () => {
 	beforeEach(() => artifactPanel.reset());
 
 	it("opens on the code tab when asked, so a shared artifact's script does not run until the viewer picks Preview", () => {

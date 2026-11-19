@@ -2,13 +2,13 @@ import { describe, it, expect, vi } from "vitest";
 
 // The invite-accept link needs a signed-in session (Better Auth's acceptInvitation matches on the caller's
 // session email): redirect back to THIS invitation after sign-in, not somewhere generic, or an invited
-// person loses the link they just clicked (CUR-550).
+// person loses the link they just clicked.
 //
-// workspaceOrgCreationEnabled() defaults true here (matches "flag not yet created" behavior) so the tests
-// below exercise the signed-in-only gate unchanged; the flag-off case gets its own test below with the
-// mock flipped for that one call only. This page is entirely about accepting an invitation, so it stays
-// gated on the org-creation flag specifically even once the personal workspace view is live (CUR-917,
-// CUR-957).
+// workspaceOrgCreationEnabled defaults true here (matches "flag not yet created"
+// behavior) so the pre-existing tests below keep exercising the signed-in-only gate unchanged; the
+// flag-off case gets its own test below with the mock flipped for that one call only. Gated on
+// org creation — this page is entirely about accepting an invitation, so it stays
+// gated on the org-creation flag specifically even once the personal workspace view is live.
 const workspaceOrgCreationEnabledMock = vi.fn(() => true);
 vi.mock("$lib/chat/server/workspacesGate", () => ({
 	workspaceOrgCreationEnabled: () => workspaceOrgCreationEnabledMock(),
@@ -44,7 +44,7 @@ describe("workspace accept-invitation +page.server load", () => {
 		expect(result).toEqual({ invitationId: "inv-1" });
 	});
 
-	it("404s a signed-in visitor too when workspaceOrgCreationEnabled() is off (CUR-917/CUR-957)", async () => {
+	it("404s a signed-in visitor too when workspaceOrgCreationEnabled() is off", async () => {
 		workspaceOrgCreationEnabledMock.mockReturnValueOnce(false);
 		let threw: { status?: number } = {};
 		try {

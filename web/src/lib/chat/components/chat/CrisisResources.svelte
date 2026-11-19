@@ -20,15 +20,14 @@
 	// Tone: calm and plain, not alarm. Deliberately NOT gap-red (reads as error) and NOT the coral CTA
 	// colour (reserved for "contribute"); a quiet supportive card. Honest about being an automated
 	// pointer to real people, not a diagnosis.
-	// (CUR-3912)
 	// The copy is in the language the person wrote in, `lang` (a BCP-47 primary subtag from the
 	// support classifier), when the catalogs carry it; a language they don't (Hausa, Swahili until a
-	// native review) gets English, never the UI's language. With no `lang`, the UI's language. (CUR-4094)
+	// native review) gets English, never the UI's language. With no `lang`, the UI's language.
 	// Catalan, Italian and Portuguese come from a card-only table (crisisCardCopy.ts), since
-	// the UI catalogs do not carry them. (CUR-4103)
+	// the UI catalogs do not carry them.
 	// `country` is the country the person's message places the person at risk in, as the
 	// support classifier read it. It wins over the visitor's IP country, which can be wrong (a Hong Kong
-	// connection read as Taiwan) or simply not where the person at risk is (a teacher abroad). (CUR-4488)
+	// connection read as Taiwan) or simply not where the person at risk is (a teacher abroad).
 	let { lang, country: namedCountry }: { lang?: string; country?: string } = $props();
 	type Locale = (typeof locales)[number];
 	const copy = $derived(pickCardCopy(lang, locales, getLocale()));

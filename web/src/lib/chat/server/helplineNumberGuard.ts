@@ -1,4 +1,4 @@
-// Take a phone number the model wrote out of a crisis answer unless it is one we can vouch for (CUR-4061).
+// Take a phone number the model wrote out of a crisis answer unless it is one we can vouch for.
 //
 // CRISIS_AND_VALUES_CLAUSE (persona.ts) tells the model never to write a helpline number from memory.
 // Not every model follows it: models can write France's 3114 as 3115 or invent a number for a named
@@ -16,12 +16,12 @@
 // the crisis line; and so does the visitor's own emergency number from crisisLocale.ts, which cites a
 // source for each. A national line in NATIONAL_LINES below stays for every visitor, like the emergency
 // numbers: a crisis answer is often about another country, so a visitor in Hong Kong asking about a
-// pupil in France keeps 3114 (CUR-4488). Any country's police, ambulance or fire number stays too
+// pupil in France keeps 3114. Any country's police, ambulance or fire number stays too
 // (EMERGENCY_SERVICES). Every other run of three or more digits that reads as a phone number becomes a
 // link to findahelpline.com's front page, where the person picks their country and ThroughLine keeps
 // the verified line current. The link names no country: the model's words around a replaced number
 // ("the national suicide line") describe the country the person asked about, so pointing them at the IP
-// country's page would present another country's page as that national line (CUR-4488).
+// country's page would present another country's page as that national line.
 // When the person's message names the country (the support classifier reads it, in any language), the
 // link and the support card both go to that country's page instead.
 // Only digits are matched, so it works the same in any language.
@@ -57,7 +57,7 @@ const NATIONAL_LINES: Record<string, string[]> = {
 	de: ["08001110111", "08001110222"]
 };
 
-// Police, ambulance and fire numbers of any country, kept for every visitor (CUR-4122). A crisis answer
+// Police, ambulance and fire numbers of any country, kept for every visitor. A crisis answer
 // can be about another country, and a Russian question about a beaten neighbour
 // asked from a US address would lose Russia's police number 102 to a findahelpline link. These are the
 // three-digit codes in the police, ambulance and fire columns of Wikipedia's "List of emergency
@@ -108,7 +108,7 @@ export function namesOurCrisisResource(text: string): boolean {
  * Replace every unvouched phone number in `text` with a link to findahelpline.com. The caller decides
  * that the answer is a crisis answer; this only rewrites numbers. `country` is the visitor's
  * `x-vercel-ip-country` value, or null. `named` is the country the person's message places the person
- * at risk in, as the support classifier read it (CUR-4488): the link then goes to that country's page,
+ * at risk in, as the support classifier read it: the link then goes to that country's page,
  * since the model's words around the number describe that country, and its emergency number and 988
  * (for the US or Canada) survive. With no named country the link is the front page, never the IP
  * country's page.

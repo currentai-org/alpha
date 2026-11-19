@@ -3,8 +3,12 @@
  * content + in-app prompt-injection). A decline otherwise only stamps message.moderation inside the
  * conversation JSONB, which isn't queryable; this table backs the /admin/safety declines view.
  * Stores ONLY verdict metadata (kind / label / score / ids) — never the user's text.
+ *
+ * A row with `probe` set came from a scheduled production probe (probeMarker.ts). Every read below that
+ * counts or lists declines leaves those rows out, so they move no alert, hold no account and stay off
+ * /admin/safety; a visitor's row has `probe` null and is counted.
  */
-import { and, count, desc, eq, gte, not } from "drizzle-orm";
+import { and, count, desc, eq, gte, isNull, not } from "drizzle-orm";
 import { getDb } from "./client";
 import { newId } from "./ids";
 import { safetyEvents, type SafetyEventRow } from "./schema";
@@ -17,6 +21,8 @@ export interface LogDeclineInput {
 	sessionId?: string;
 	label?: string;
 	score?: number;
+	/** The verified production probe that sent the turn (probeMarker.ts); absent for every other turn. */
+	probe?: string;
 }
 
 /** Persist one decline. Throws on DB error — callers MUST treat it as best-effort (a logging hiccup
@@ -32,6 +38,7 @@ export async function logDecline(input: LogDeclineInput): Promise<void> {
 		sessionId: input.sessionId,
 		label: input.label,
 		score: input.score,
+		probe: input.probe,
 	});
 }
 
@@ -40,12 +47,13 @@ export function logDeclineSafe(input: LogDeclineInput): void {
 	logDecline(input).catch((e) => console.error("[safety-events] decline log failed:", e));
 }
 
-/** Recent declines for /admin/safety. Read-only, newest first, bounded. */
+/** Recent visitor declines for /admin/safety (probe rows left out). Read-only, newest first, bounded. */
 export async function listDeclines(limit = 200): Promise<SafetyEventRow[]> {
 	const db = getDb();
 	return db
 		.select()
 		.from(safetyEvents)
+		.where(isNull(safetyEvents.probe))
 		.orderBy(desc(safetyEvents.createdAt))
 		.limit(Math.max(1, Math.min(limit, 500)));
 }
@@ -81,15 +89,17 @@ export async function countFailClosedChildDeclines(windowMs: number): Promise<nu
 				eq(safetyEvents.kind, "child_safety"),
 				// The fallback label, NOT a raw Coop action ⇒ no rule fired ⇒ UNKNOWN verdict.
 				eq(safetyEvents.label, "child_safety"),
-				gte(safetyEvents.createdAt, since)
+				gte(safetyEvents.createdAt, since),
+				// A probe's turn is not a visitor's; the alert counts what visitors met.
+				isNull(safetyEvents.probe)
 			)
 		);
 	return row?.n ?? 0;
 }
 
-/** True when the account had a real decline since `since`: any decline but the fail-closed child-safety
- *  rows above, which say the screen was down, not that the person did anything. Holds a run-code
- *  account on its first usage tier (CUR-4578). Throws on DB error; the caller decides. */
+/** True when the account had a real decline since `since`: any decline but a probe's row and the
+ *  fail-closed child-safety rows above, which say the screen was down, not that the person did anything. Holds a run-code
+ *  account on its first usage tier. Throws on DB error; the caller decides. */
 export async function accountDeclinedSince(userId: string, since: Date): Promise<boolean> {
 	const [row] = await getDb()
 		.select({ n: count() })
@@ -98,6 +108,7 @@ export async function accountDeclinedSince(userId: string, since: Date): Promise
 			and(
 				eq(safetyEvents.userId, userId),
 				gte(safetyEvents.createdAt, since),
+				isNull(safetyEvents.probe),
 				not(and(eq(safetyEvents.kind, "child_safety"), eq(safetyEvents.label, "child_safety"))!)
 			)
 		);

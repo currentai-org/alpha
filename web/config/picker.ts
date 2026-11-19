@@ -5,21 +5,21 @@ import servedAs from "./served-as.json" with { type: "json" };
 
 /**
  * A deployment whose picker differs. Every preview deploy is `develop`; www is `production`; an event
- * instance (INSTANCE on its own Vercel project, CUR-3156) is its own site.
+ * instance (INSTANCE on its own Vercel project) is its own site.
  */
-export const pickerSites = ["develop", "production", "mozfest", "lugano"] as const;
+export const pickerSites = ["develop", "production", "lugano", "lasagne"] as const;
 export type PickerSite = (typeof pickerSites)[number];
 
-// What www offers. Apertus 1.5 70B Thinking is absent because the gateway no longer serves it
-// (CUR-3539). The SEA-LION v4 models are off on every site because a request that gets no
-// first chunk from their upstream leaves a visitor waiting 20-45 s for a backup's answer (CUR-3870);
+// What www offers. Apertus 1.5 70B Thinking is absent because the gateway no longer serves it.
+// The SEA-LION v4 models are off on every site because a request that gets no
+// first chunk from their upstream leaves a visitor waiting 20-45 s for a backup's answer;
 // SEA-LION v4.8 (Nemotron) is not one of them and stays.
-// Mistral Medium 3.5 leads every site's list, and so is the default (CUR-4002): through the staging
+// Mistral Medium 3.5 leads every site's list, and so is the default: through the staging
 // router it has the account's highest rate limit, which www, develop and CI all share.
-// Mistral Large 4 sits second, so a stage demo can pick it by hand while Medium stays the default
-// (CUR-4281). Its lane needs `mistral-large-2610` in each prd config's MISTRAL_MODELS.
+// Mistral Large 4 sits second, so a stage demo can pick it by hand while Medium stays the default.
+// Its lane needs `mistral-large-2610` in each prd config's MISTRAL_MODELS.
 // Mistral Large 3 (`mistral-large-2512`) is on no site's picker: Large 4 replaces it, and Medium is
-// Large 4's only stand-in (CUR-4683).
+// Large 4's only stand-in.
 const PRODUCTION_PICKER = [
 	"mistral-medium-2604",
 	"mistral-large-2610",
@@ -46,12 +46,11 @@ const offered = (ids: readonly string[]) => ids.filter((id) => !withdrawn.has(id
 
 /**
  * Which models each site's picker offers before WITHDRAWN, first entry the default. A change here is a
- * PR, reviewed and gated (CUR-3484). On a Vercel
+ * PR, reviewed and gated. On a Vercel
  * deployment PICKER below wins over MODEL_ALLOWLIST; off Vercel (local dev, CI, evals) MODEL_ALLOWLIST
- * still overrides it. Only the /alpha demo reads this list directly: its answers are recordings, so no
- * upstream model call is involved.
+ * still overrides it. Nothing outside this file reads this list directly.
  */
-export const PICKER_BEFORE_WITHDRAWALS: Readonly<Record<PickerSite, readonly string[]>> = {
+const PICKER_BEFORE_WITHDRAWALS: Readonly<Record<PickerSite, readonly string[]>> = {
 	develop: [
 		"mistral-medium-2604",
 		"mistral-large-2610",
@@ -62,7 +61,7 @@ export const PICKER_BEFORE_WITHDRAWALS: Readonly<Record<PickerSite, readonly str
 		"zai-org/GLM-5.2",
 	],
 	production: PRODUCTION_PICKER,
-	mozfest: PRODUCTION_PICKER,
+	lasagne: PRODUCTION_PICKER,
 	lugano: PRODUCTION_PICKER,
 };
 
@@ -70,14 +69,14 @@ export const PICKER_BEFORE_WITHDRAWALS: Readonly<Record<PickerSite, readonly str
 export const PICKER: Readonly<Record<PickerSite, readonly string[]>> = {
 	develop: offered(PICKER_BEFORE_WITHDRAWALS.develop),
 	production: offered(PICKER_BEFORE_WITHDRAWALS.production),
-	mozfest: offered(PICKER_BEFORE_WITHDRAWALS.mozfest),
+	lasagne: offered(PICKER_BEFORE_WITHDRAWALS.lasagne),
 	lugano: offered(PICKER_BEFORE_WITHDRAWALS.lugano),
 };
 
 /**
  * Other names a router reports for a model id when another host serves the same weights. The staging
  * router answers Mistral Medium 3.5 from Scaleway as well as from Mistral, and Scaleway's copy reports
- * `mistral-medium-3.5-128b` (CUR-4343). A served-model check reads a listed name as the model it asked
+ * `mistral-medium-3.5-128b`. A served-model check reads a listed name as the model it asked
  * for, and any other name as a different model. The table is JSON so the Python evaluation refresh
  * (refresh_eval_answers.py `served_matches`) reads the same one.
  */

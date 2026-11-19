@@ -6,7 +6,7 @@ import { installFaultInjectionHeader } from './helpers/faultInjection';
 import { journeyStep } from './helpers/journeyStep';
 import { startChattingPastWelcome } from './helpers/welcome';
 
-// When the default model's host answers 429 (CUR-2307; a preview key is capped at 30 requests
+// When the default model's host answers 429 (a preview key is capped at 30 requests
 // a minute, shared by every preview), the turn must not end with "429 Rate limit exceeded"
 // in the bubble. The `lane_rate_limited` fault throws that same error from the answer's endpoint call
 // on this one request, so the visitor sees what a real over-cap turn gives them.
@@ -27,7 +27,7 @@ test(
 		await journeyStep(page, 'C3', 2, async () => {
 			const composer = page.getByLabel('Message AI Potluck');
 			await composer.click({ timeout: 30_000 });
-			// No maths: a maths question can route to a different model than the default (CUR-2198).
+			// No maths: a maths question can route to a different model than the default.
 			await composer.fill('What is the capital of Switzerland?');
 			await composer.press('Enter');
 			await page.waitForURL(/\/conversation\/[a-f0-9]+/, { timeout: 30_000 });
@@ -38,8 +38,8 @@ test(
 				busy,
 				'the failed turn does not say the model is busy; if it shows "429 Rate limit exceeded" the copy is not wired, and if it answered, the fault never reached the server'
 			).toBeVisible({ timeout: 60_000 });
-			// With Auto on, the turn goes to whichever model Auto routed it to, not the first listed one
-			// (CUR-3923), so the copy has to name one of the listed models, not a fixed one.
+			// With Auto on, the turn goes to whichever model Auto routed it to, not the first listed one,
+			// so the copy has to name one of the listed models, not a fixed one.
 			const named = ((await busy.textContent()) ?? '').split(' is busy right now')[0].trim();
 			expect(
 				models.map((m) => m.displayName),

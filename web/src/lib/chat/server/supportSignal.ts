@@ -1,4 +1,4 @@
-// Multilingual support signal (CUR-4093). The guard's distress rules are English yes/no questions put
+// Multilingual support signal. The guard's distress rules are English yes/no questions put
 // to Shieldstral-1.0-3B, and they do not carry over to other languages: the hedged rule scores an
 // English "I feel hopeless" near 1 and the same sentence in Swahili or Hausa near 0. Every rule asks
 // about "themselves", so a message about a friend who wants to die scores low.
@@ -17,7 +17,7 @@
 // answer false: a French Python bug, a novel, a game, suicide statistics, divorce advice, a Swahili
 // week plan, homework and a tired weekend.
 //
-// Behind `support-signal-classifier`; enabling it in production is a separate decision (CUR-4096).
+// Behind `support-signal-classifier`; enabling it in production is a separate decision.
 // The message text goes to TASK_MODEL, the processor the titler already sends every first message to.
 
 import type OpenAI from "openai";
@@ -86,22 +86,64 @@ const SUPPORT_TOOL: OpenAI.Chat.Completions.ChatCompletionFunctionTool = {
 };
 
 /** `country` is the country the message places the person at risk in, a code findahelpline has a page
- *  for, or "" (CUR-4488). The card and the helpline number guard prefer it to the visitor's IP country:
+ *  for, or "". The card and the helpline number guard prefer it to the visitor's IP country:
  *  a teacher in Lyon writing from Hong Kong needs France's lines, not Taiwan's. */
 export type SupportSignal = { show: boolean; who: "writer" | "someone_else" | "none"; lang: string; country: string };
 
 /** The classifier's answer for one message, or null for every way the call can fail. */
 export type SupportCall = (text: string, signal: AbortSignal) => Promise<SupportSignal | null>;
 
+// The context check. The classifier reads the message alone, so a bare reply reads as distress: "yeah im
+// thinking about it", said in reply to an answer about a trip, showed the card. When the classifier
+// says show, one more call reads the message as a reply to the assistant's previous answer, and it can only
+// take the card away. The classifier itself never reads earlier turns: with them, distress in one turn put
+// the card on the turns after it.
+const CONTEXT_SYSTEM =
+	"A crisis classifier read a user's chat message on its own and flagged it for a support note pointing to " +
+	"crisis helplines. Read the message again as a reply to the assistant's previous message, and decide " +
+	"whether it is about distress: the writer, or someone they know, wanting to die, to not exist or to hurt " +
+	"themselves, or feeling hopeless and unable to go on.\n" +
+	"Say yes when the user's message states such distress in its own words, whatever the assistant's message " +
+	"is about.\n" +
+	"Say yes when the user's message refers to such distress in the assistant's message.\n" +
+	"Say no only when the user's message states no distress in its own words and, read as a reply, is about " +
+	"an ordinary topic in the assistant's message.";
+
+export const CONTEXT_TOOL_NAME = "reply_context";
+const CONTEXT_TOOL: OpenAI.Chat.Completions.ChatCompletionFunctionTool = {
+	type: "function",
+	function: {
+		name: CONTEXT_TOOL_NAME,
+		description: "Record whether the user's message, read as a reply, is about distress.",
+		parameters: {
+			type: "object",
+			properties: { about_distress: { type: "boolean", description: "true when the message is about distress" } },
+			required: ["about_distress"],
+			additionalProperties: false,
+		},
+	},
+};
+
+/** The context check's answer: true keeps the card, false takes it away, null for every way it can fail. */
+export type ContextCall = (reply: string, text: string, signal: AbortSignal) => Promise<boolean | null>;
+
 type MinimalLogger = { info: (o: unknown, m: string) => void; warn: (o: unknown, m: string) => void };
 
 /**
  * Asks whether `text` should carry the support card. Never rejects: null when the text is empty or the
- * call fails. Logs one line with the outcome, timing, `who` and language, never the message.
+ * call fails. When the classifier says show and `previousReply` holds the assistant's previous answer, the
+ * context check can turn the show into a clear; its failure keeps the show. Logs one line with the
+ * outcome, timing, `who`, language and the context check's result, never the message.
  */
 export async function supportSignal(
 	text: string,
-	deps: { call?: SupportCall; logger?: MinimalLogger; now?: () => number } = {}
+	deps: {
+		call?: SupportCall;
+		contextCall?: ContextCall;
+		previousReply?: string;
+		logger?: MinimalLogger;
+		now?: () => number;
+	} = {}
 ): Promise<SupportSignal | null> {
 	const t = text.trim();
 	if (!t) return null;
@@ -109,7 +151,21 @@ export async function supportSignal(
 	const now = deps.now ?? (() => Date.now());
 	const started = now();
 	const call = deps.call ?? taskModelSupportCall;
-	const result = await call(t.slice(-SIGNAL_MAX_CHARS), AbortSignal.timeout(SIGNAL_TIMEOUT_MS)).catch(() => null);
+	// One budget for both calls: the decline path and the helpline number guard await this signal.
+	const deadline = AbortSignal.timeout(SIGNAL_TIMEOUT_MS);
+	let result = await call(t.slice(-SIGNAL_MAX_CHARS), deadline).catch(() => null);
+	const reply = (deps.previousReply ?? "").trim();
+	let context: "kept" | "cleared" | "failed" | null = null;
+	if (result?.show && reply) {
+		const contextCall = deps.contextCall ?? taskModelContextCall;
+		const about = await contextCall(
+			reply.slice(-CONTEXT_REPLY_MAX_CHARS),
+			t.slice(-SIGNAL_MAX_CHARS),
+			deadline
+		).catch(() => null);
+		context = about === null ? "failed" : about ? "kept" : "cleared";
+		if (about === false) result = { ...result, show: false, who: "none" };
+	}
 	// A failure costs a person in distress the card whenever the guard's English rules also missed, so it
 	// logs at warn, where a rate monitor can see it.
 	log[result === null ? "warn" : "info"](
@@ -120,10 +176,39 @@ export async function supportSignal(
 			who: result?.who ?? null,
 			lang: result?.lang ?? null,
 			country: result?.country || null,
+			context,
 		},
 		"[support-signal] input"
 	);
 	return result;
+}
+
+// The tail of the previous answer, where a question to the user usually sits.
+const CONTEXT_REPLY_MAX_CHARS = 2_000;
+
+/** The default context check: one forced tool call on TASK_MODEL's own registered lane. */
+const taskModelContextCall: ContextCall = async (reply, text, signal) => {
+	const call = await forcedTaskModelToolCall({
+		system: CONTEXT_SYSTEM,
+		user: `Assistant's previous message:\n"""\n${reply}\n"""\n\nUser's message:\n"""\n${text}\n"""`,
+		tool: CONTEXT_TOOL,
+		maxTokens: 30,
+		timeoutMs: SIGNAL_TIMEOUT_MS,
+		signal,
+	});
+	return call === null ? null : parseContextArgs(call);
+};
+
+/** `about_distress` from the context tool call, or null when the tool is the wrong one or it is not a boolean. */
+export function parseContextArgs(toolCall: unknown): boolean | null {
+	const fn = (toolCall as { function?: { name?: string; arguments?: string } } | undefined)?.function;
+	if (fn?.name !== CONTEXT_TOOL_NAME || typeof fn.arguments !== "string") return null;
+	try {
+		const a = JSON.parse(fn.arguments) as Record<string, unknown>;
+		return typeof a.about_distress === "boolean" ? a.about_distress : null;
+	} catch {
+		return null;
+	}
 }
 
 /** The default call: one forced tool call on TASK_MODEL's own registered lane. */

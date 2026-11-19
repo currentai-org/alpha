@@ -1,13 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-const { configValues, flagOn, ssrfStrictFetch } = vi.hoisted(() => ({
+const { configValues, ssrfStrictFetch } = vi.hoisted(() => ({
 	configValues: {} as Record<string, string>,
-	flagOn: { value: false },
 	ssrfStrictFetch: vi.fn(),
 }));
 vi.mock("$lib/chat/server/config", () => ({ config: configValues }));
 vi.mock("$lib/chat/server/logger", () => ({ logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn() } }));
-vi.mock("$lib/chat/server/flags", () => ({ flagEnabledOr: () => flagOn.value }));
+vi.mock("$lib/chat/server/flags", () => ({ flagEnabledOr: () => false }));
 vi.mock("$lib/chat/server/urlSafety", async (orig) => ({
 	...(await orig<typeof import("$lib/chat/server/urlSafety")>()),
 	ssrfStrictFetch,
@@ -23,7 +22,6 @@ const htmlResponse = (html: string, status = 200) =>
 
 const firecrawl = vi.fn();
 beforeEach(() => {
-	flagOn.value = false;
 	ssrfStrictFetch.mockReset();
 	firecrawl.mockReset();
 	vi.stubGlobal("fetch", firecrawl);
@@ -35,8 +33,8 @@ afterEach(() => {
 
 // Firecrawl's onlyMainContent keeps GOV.UK's cookie banner, which X-ray would quote as the source.
 // The removal happens at Firecrawl, so what this pins is the request: the scrape names GOV.UK's banner
-// by its markup. The live effect is checked against Firecrawl on the ticket (CUR-4198).
-describe("Firecrawl scrape request (CUR-4198)", () => {
+// by its markup. The removal itself can only be checked against live Firecrawl.
+describe("Firecrawl scrape request", () => {
 	it("asks Firecrawl to drop cookie consent banners by markup, including GOV.UK's, so a source never opens on one", async () => {
 		configValues.FIRECRAWL_API_KEY = "k";
 		firecrawl.mockResolvedValue(
@@ -50,15 +48,8 @@ describe("Firecrawl scrape request (CUR-4198)", () => {
 	});
 });
 
-describe("fetchLinkedPage direct read (CUR-2152)", () => {
-	it("returns undefined without touching the network when there is no Firecrawl key and readable-extract is off", async () => {
-		expect(await fetchLinkedPage("https://example.org/a")).toBeUndefined();
-		expect(ssrfStrictFetch).not.toHaveBeenCalled();
-		expect(firecrawl).not.toHaveBeenCalled();
-	});
-
-	it("reads the page directly through the SSRF-strict fetch, as engine Direct, when there is no key and the flag is on", async () => {
-		flagOn.value = true;
+describe("fetchLinkedPage direct read", () => {
+	it("reads the page directly through the SSRF-strict fetch, as engine Direct, when there is no key", async () => {
 		ssrfStrictFetch.mockResolvedValue(htmlResponse(PAGE));
 		const page = await fetchLinkedPage("https://example.org/a");
 		expect(page?.engine).toBe("Direct");
@@ -69,7 +60,6 @@ describe("fetchLinkedPage direct read (CUR-2152)", () => {
 
 	it("falls through to the direct read when Firecrawl answers but can't read the page", async () => {
 		configValues.FIRECRAWL_API_KEY = "k";
-		flagOn.value = true;
 		firecrawl.mockResolvedValue(Response.json({ data: { markdown: "", metadata: { statusCode: 403 } } }));
 		ssrfStrictFetch.mockResolvedValue(htmlResponse(PAGE));
 		expect((await fetchLinkedPage("https://example.org/a"))?.engine).toBe("Direct");
@@ -77,7 +67,6 @@ describe("fetchLinkedPage direct read (CUR-2152)", () => {
 
 	it("keeps Firecrawl's page and never fetches directly when Firecrawl reads it", async () => {
 		configValues.FIRECRAWL_API_KEY = "k";
-		flagOn.value = true;
 		firecrawl.mockResolvedValue(
 			Response.json({ data: { markdown: "A paragraph of Firecrawl markdown that is well over thirty characters.", metadata: { title: "T" } } })
 		);
@@ -87,9 +76,8 @@ describe("fetchLinkedPage direct read (CUR-2152)", () => {
 
 	// The page's title arrives decoded from the extractor, and fetchLinkedPage adds no decode of
 	// its own. Readability unescapes its title once more upstream, so a literal "&amp;lt;" on a page still
-	// reads as "<" on this path; that pass is Readability's. (CUR-4068)
+	// reads as "<" on this path; that pass is Readability's.
 	it("gives the direct read's title as decoded text", async () => {
-		flagOn.value = true;
 		ssrfStrictFetch.mockResolvedValue(htmlResponse(PAGE.replace("A linked article", "Q&amp;A &#8211; part 2")));
 		expect((await fetchLinkedPage("https://example.org/a"))?.title).toBe("Linked page: Q&A – part 2");
 	});
@@ -104,26 +92,23 @@ describe("fetchLinkedPage direct read (CUR-2152)", () => {
 
 	it("skips Firecrawl under the linked_page_firecrawl_down fault even with a key", async () => {
 		configValues.FIRECRAWL_API_KEY = "k";
-		flagOn.value = true;
 		ssrfStrictFetch.mockResolvedValue(htmlResponse(PAGE));
 		expect((await fetchLinkedPage("https://example.org/a", { skipFirecrawl: true }))?.engine).toBe("Direct");
 		expect(firecrawl).not.toHaveBeenCalled();
 	});
 
 	it("refuses a plain-http link before any request, since the direct read runs on this deployment's network", async () => {
-		flagOn.value = true;
 		expect(await fetchLinkedPage("http://example.org/a")).toBeUndefined();
 		expect(ssrfStrictFetch).not.toHaveBeenCalled();
 	});
 
 	it("returns undefined for a non-HTML response rather than extracting it", async () => {
-		flagOn.value = true;
 		ssrfStrictFetch.mockResolvedValue(new Response("%PDF-1.7", { headers: { "content-type": "application/pdf" } }));
 		expect(await fetchLinkedPage("https://example.org/a.pdf")).toBeUndefined();
 	});
 });
 
-describe("a linked page carries the date it states (CUR-4147)", () => {
+describe("a linked page carries the date it states", () => {
 	it("reads Firecrawl's metadata date into the page's asOf", async () => {
 		configValues.FIRECRAWL_API_KEY = "k";
 		firecrawl.mockResolvedValue(
@@ -138,7 +123,6 @@ describe("a linked page carries the date it states (CUR-4147)", () => {
 	});
 
 	it("reads the direct page's article:published_time, and leaves a page with none undated", async () => {
-		flagOn.value = true;
 		const dated = PAGE.replace("<title>", '<meta property="article:published_time" content="2024-06-03T08:00:00Z"><title>');
 		ssrfStrictFetch.mockResolvedValue(htmlResponse(dated));
 		expect((await fetchLinkedPage("https://example.org/a"))?.asOf).toBe("2024-06-03");

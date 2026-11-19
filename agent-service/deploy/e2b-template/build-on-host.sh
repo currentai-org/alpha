@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Build the sandbox template on the E2B host itself (CUR-4482), over SSM, so nothing runs on a laptop and the
+# Build the sandbox template on the E2B host itself, over SSM, so nothing runs on a laptop and the
 # team API key never leaves the host. Usage: [E2B_TEMPLATE_ALIAS=hermes] build-on-host.sh <instance-id> [aws profile]
 # An empty profile ('') uses the ambient credentials, as agent-service-deploy.yml's template job does after
-# assuming its OIDC role (CUR-4573).
+# assuming its OIDC role.
 set -euo pipefail
-instance=$1 profile=${2-potluck-sandbox}
+instance=$1 profile=${2-${AWS_PROFILE:?pass the aws profile of the account holding the E2B hosts, or '' for ambient credentials}}
 aws_() { if [ -n "$profile" ]; then aws --profile "$profile" "$@"; else aws "$@"; fi; }
 here=$(cd "$(dirname "$0")" && pwd)
 ctx=$(mktemp -d)

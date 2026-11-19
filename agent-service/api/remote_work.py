@@ -1,4 +1,4 @@
-"""A task's workspace when Hermes ran in the conversation's own sandbox, not on this machine (CUR-4483).
+"""A task's workspace when Hermes ran in the conversation's own sandbox, not on this machine.
 
 app.py's post-attempt readers (artifacts, moderation, quarantine, the verifier, best-of-N reset, snapshot and
 restore) were written against a local directory. When the attempt ran remotely its files exist only in the

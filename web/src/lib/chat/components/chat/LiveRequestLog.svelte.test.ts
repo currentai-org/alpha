@@ -24,7 +24,7 @@ describe("LiveRequestLog's active line while an answer is coming", () => {
 	});
 });
 
-describe("LiveRequestLog's slow-to-start line (CUR-4384, CUR-4629)", () => {
+describe("LiveRequestLog's slow-to-start line", () => {
 	afterEach(() => {
 		repickWait.set(null);
 		cleanup();

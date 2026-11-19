@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { resolveFaultInjection } from "$lib/chat/server/textGeneration/faultInjection";
 import {
 	discovery,
@@ -12,7 +15,7 @@ import {
 	type TokenEndpointResponseHelpers,
 } from "openid-client";
 // Per-function subpaths: the date-fns barrel costs ~4 s to load, paid by every spec that imports
-// this file (CUR-2446).
+// this file.
 import { addWeeks } from "date-fns/addWeeks";
 import { differenceInMinutes } from "date-fns/differenceInMinutes";
 import { subMinutes } from "date-fns/subMinutes";
@@ -26,6 +29,7 @@ import { withTransaction } from "$lib/chat/server/db/client";
 import { captureServerException } from "$lib/chat/server/errorTracking";
 import { logger } from "$lib/chat/server/logger";
 import { ObjectId } from "bson";
+import { adminTokenManager, ADMIN_PROOF_COOKIE } from "./adminToken";
 import { getAuth } from "./betterAuth";
 import { OIDConfig, loginEnabled } from "./oidcConfig";
 import { migrateAnonymousConversations, migrateAnonymousSettings } from "./migrateAnonymousSession";
@@ -37,7 +41,7 @@ import { chatRoutePath } from "$lib/surface";
 import { acquireLock, isDBLocked, releaseLock } from "$lib/chat/server/dbLock";
 import { Semaphores } from "$lib/chat/types/Semaphore";
 import { isMintedGuestToken, mintGuestToken } from "./guestSession";
-import { SYNC_ACCESS_TOKEN_PREFIX, SYNC_REFRESH_TOKEN_PREFIX, verifySyncAccessToken } from "./sync/syncToken";
+import { sessionCookieName } from "./sessionCookieName";
 
 export interface OIDCSettings {
 	redirectURI: string;
@@ -51,7 +55,7 @@ export interface OIDCSettings {
  */
 export type OIDCTokens = TokenEndpointResponse & TokenEndpointResponseHelpers;
 
-// OIDConfig/loginEnabled moved to oidcConfig.ts (CUR-434): betterAuth.ts reuses these same values for
+// OIDConfig/loginEnabled moved to oidcConfig.ts: betterAuth.ts reuses these same values for
 // its Hugging Face genericOAuth provider, and importing them from here would create a circular
 // dependency now that authenticateRequest below imports the Better Auth instance from betterAuth.ts.
 // Re-exported (imported above) so every existing consumer of `$lib/chat/server/auth`'s
@@ -64,7 +68,7 @@ export const secure = z
 	.parse(config.COOKIE_SECURE === "" ? undefined : config.COOKIE_SECURE === "true");
 
 /**
- * `lax`, unconditionally (CUR-1645).
+ * `lax`, unconditionally.
  *
  * A default of `none` on secure deployments would make the more secure the deployment, the weaker the
  * cookie: `COOKIE_SAMESITE` is unset in every env file, so the session cookie would go out as
@@ -86,7 +90,7 @@ export const secure = z
  *   - The `huggingface.co` entry is the Space half, with no live consumer left to break.
  *
  * `lax` is the modern default for a first-party session cookie: still sent on the top-level
- * navigation that a cold page load IS — which is what the CUR-1645 cookie fix below depends on — and
+ * navigation that a cold page load IS — which the anonymous-session cookie below depends on — and
  * not sent from a third-party context. `COOKIE_SAMESITE` still overrides, so a genuine embedded
  * deployment sets `none` explicitly rather than inheriting it by accident.
  */
@@ -95,12 +99,7 @@ export const sameSite = z
 	.default("lax")
 	.parse(config.COOKIE_SAMESITE === "" ? undefined : config.COOKIE_SAMESITE);
 
-// Session cookie name. Unlike secure/sameSite, config has no default for COOKIE_NAME (it's a plain
-// env passthrough), so when the env var is unset — e.g. on a deploy that didn't set it — config.COOKIE_NAME
-// is "", and cookies.set("", …) makes cookie.serialize throw "argument name is invalid", 500-ing every
-// cookie-setting POST (conversation create, settings). Default to the chat-ui heritage name so the cookie
-// always has a valid name. Used for both set and read so they can't drift.
-export const sessionCookieName = config.COOKIE_NAME || "hf-chat";
+export { sessionCookieName };
 
 /**
  * Only a same-origin path survives. Browsers apply WHATWG special-scheme normalisation to a
@@ -137,7 +136,7 @@ export function refreshSessionCookie(cookies: Cookies, sessionId: string) {
 type MintedAnonSession = { sessionId: string; secretSessionId: string };
 
 /**
- * Mint a fresh anonymous session. No coalescing (CUR-1645).
+ * Mint a fresh anonymous session. No coalescing.
  *
  * A cookie-less mint is not coalesced against any other cookie-less mint from the same
  * `(IP, User-Agent)` pair. `ip:userAgent` cannot tell one visitor from another, so two strangers behind
@@ -156,7 +155,7 @@ type MintedAnonSession = { sessionId: string; secretSessionId: string };
  *
  * THE SWEEP IS NOT DEAD CODE. Rows left by the retired coalescing store `secretSessionId` — the raw
  * bearer value the cookie carries — in the clear, where the `sessions` table beside them keeps only
- * sha256 of it (CUR-1325). Nothing writes them now, so this drains what is left rather than leaving
+ * sha256 of it. Nothing writes them now, so this drains what is left rather than leaving
  * live credentials in a table nobody reads. It filters on `secretSessionId: {$exists: true}` rather
  * than on the retired `anon.session.mint:<ip>:<ua>` key — that `Semaphores` member is deleted, and
  * matching the shape of the row is what keeps this off the lock rows sharing this collection, which
@@ -172,7 +171,7 @@ async function mintAnonymousSession(): Promise<MintedAnonSession> {
 		.deleteMany({ secretSessionId: { $exists: true } } as never)
 		.catch(() => {});
 
-	// signed, so a later request can tell a value we issued from one it made up. (CUR-3191)
+	// signed, so a later request can tell a value we issued from one it made up.
 	const secret = config.BETTER_AUTH_SECRET;
 	if (!secret) warnUnsignedGuestSessions();
 	const secretSessionId = secret ? mintGuestToken(secret) : crypto.randomUUID();
@@ -204,7 +203,7 @@ function warnUnsignedGuestSessions(): void {
  * them would orphan their history. Any other value is one the server never issued, and the caller
  * gets a fresh minted session instead, so a made-up cookie no longer starts a new per-session
  * rate-limit budget. An unrecognised cookie cannot gain rows, because it is re-minted before
- * anything is written under it. (CUR-3191)
+ * anything is written under it.
  */
 async function keepGuestCookie(token: string, sessionId: string): Promise<boolean> {
 	const secret = config.BETTER_AUTH_SECRET;
@@ -235,7 +234,7 @@ async function guestSessionOwnsData(sessionId: string): Promise<boolean> {
  * conversation means no file either. A settings row alone does not count, because dismissing the
  * welcome modal writes one and should not cost a guest the chats they are bringing over. Replacing
  * such a session does lose its settings (that modal flag, a chosen model, answer preferences) for the
- * visitor; the conversations they bring over are worth more than those. (CUR-4445)
+ * visitor; the conversations they bring over are worth more than those.
  */
 export async function isReplaceableGuestSession(token: string): Promise<boolean> {
 	const sessionId = await sha256(token);
@@ -359,7 +358,7 @@ export const authCondition = (locals: App.Locals) => {
 /**
  * Derive the persisted session oauth shape from a token endpoint response.
  *
- * THE EXPIRY READ IS THE DELICATE PART (CUR-211). v5's `TokenSet` carried `expires_at`, an ABSOLUTE
+ * THE EXPIRY READ IS THE DELICATE PART. v5's `TokenSet` carried `expires_at`, an ABSOLUTE
  * unix timestamp. v6 removed that field outright — the response carries `expires_in`, RELATIVE
  * seconds, with an `expiresIn()` helper that also floors at 0 once elapsed. The two are not
  * interchangeable and the failure mode of confusing them is silent: reading a field v6 never sets
@@ -440,9 +439,8 @@ export async function getOIDCClient(settings: OIDCSettings, url: URL): Promise<C
 	//
 	// Upstream builds `new issuer.Client(client_config)` on openid-client v5, where `client_secret` is
 	// an ordinary property — omit it and you get a public client, which is exactly what a CIMD client
-	// IS. Our v6 migration (CUR-211) replaced that with an unconditional `ClientSecretPost(...)`, and
-	// v6 throws `"clientSecret" must not be empty` on an empty string. That quietly removed the only
-	// account path that needs no OAuth app registered: `OPENID_CLIENT_ID=__CIMD__` self-describes via
+	// IS. On v6, `ClientSecretPost(...)` throws `"clientSecret" must not be empty` on an empty string,
+	// so using it unconditionally would break the only account path that needs no OAuth app registered: `OPENID_CLIENT_ID=__CIMD__` self-describes via
 	// /.well-known/oauth-cimd and has no secret to give.
 	const clientAuth = OIDConfig.CLIENT_SECRET ? ClientSecretPost(OIDConfig.CLIENT_SECRET) : None();
 
@@ -510,17 +508,36 @@ async function getCoupledCookieHash(cookie: CookieRecord): Promise<string | unde
 	return await sha256(cookieValue);
 }
 
+/**
+ * The isAdmin composition every authenticateRequest() branch returns: a stored admin flag OR a
+ * same-instance admin-token grant OR the durable cross-instance admin-proof cookie. One
+ * function so a future change to any of the three checks — in particular the proof-cookie
+ * escalation, which two of five branches had inlined and three hadn't — reaches every branch
+ * instead of only the ones that happened to include it.
+ */
+export async function composeIsAdmin(
+	userIsAdmin: boolean | undefined,
+	sessionId: Session["sessionId"],
+	proofCookie: string | undefined
+): Promise<boolean> {
+	return (
+		!!userIsAdmin ||
+		adminTokenManager.isAdmin(sessionId) ||
+		(await adminTokenManager.verifyProof(proofCookie, sessionId))
+	);
+}
+
 // The shadow `users`/`conversations` doc-store rows are keyed by this hash, NOT by Better
 // Auth's own user.id — a query joining workspace membership (member.userId, Better Auth's raw id)
 // against conversations (conversations.userId, this hash) has to convert first, or it silently
 // matches nothing. Exported here rather than left inline below so there is exactly one place this
 // derivation lives — a workspace-usage query importing its own copy is exactly how the two would
-// drift if this ever changed. (CUR-552)
+// drift if this ever changed.
 export async function shadowUserId(betterAuthUserId: string): Promise<string> {
 	return (await sha256(betterAuthUserId)).slice(0, 24);
 }
 
-/** The `guest_file_move_skipped` fault, read on the request that signs a guest in. (CUR-3292) */
+/** The `guest_file_move_skipped` fault, read on the request that signs a guest in. */
 async function guestFileMoveSkipped(headers: HeaderRecord): Promise<boolean> {
 	return (await resolveFaultInjection(new Request("http://fault.local/", { headers }))) === "guest_file_move_skipped";
 }
@@ -531,14 +548,7 @@ export async function authenticateRequest(
 	url: URL,
 	isApi?: boolean
 ): Promise<App.Locals & { secretSessionId: string; mintedSession?: boolean }> {
-	// The conversation-sync routes take a sync access token and nothing else, and a sync
-	// access token is read on these routes and nowhere else. Ahead of the Better Auth bridge on purpose:
-	// a browser session cookie riding along on a sync request must not stand in for the token. (CUR-4312)
-	if (chatRoutePath(url.pathname).startsWith(`${CHAT_API_PATH}/v2/sync/`)) {
-		return authenticateSyncRequest(headers);
-	}
-
-	// Better Auth bridge (CUR-434) — checked FIRST, ahead of every branch below. On a hit, the shadow
+	// Better Auth bridge — checked FIRST, ahead of every branch below. On a hit, the shadow
 	// `users` doc-store row (keyed by a deterministic hash of Better Auth's own user.id, which isn't
 	// guaranteed to be ObjectId-shaped) is looked up or created on first login, and this returns in the
 	// exact shape every other branch already returns — so authCondition, requireAuth/requireAdmin, and
@@ -594,16 +604,16 @@ export async function authenticateRequest(
 			// same request carries (Better Auth's own session cookie is separate, see sessionCookieName's
 			// definition above), so this is the one place that old value is still reachable — it must not
 			// be deferred to a later request, since refreshSessionCookie overwrites this same cookie name
-			// with the Better Auth token further down in handle.ts for any POST/login request. (CUR-849)
+			// with the Better Auth token further down in handle.ts for any POST/login request.
 			const previousToken = cookie.get(sessionCookieName);
 			const previousSessionId = previousToken ? await sha256(previousToken) : undefined;
 
-			// Migrate BEFORE the shadow user row is inserted (CUR-1558). The `findOne` above is
+			// Migrate BEFORE the shadow user row is inserted. The `findOne` above is
 			// the only thing gating a concurrent request's own `!user` check — the instant `insertOne`
 			// below commits, every OTHER in-flight request for this browser sees a signed-in user whose
 			// conversations authCondition queries strictly by userId, whether or not migration has landed
 			// yet. A page load racing that gap gets a 403 on its own just-signed-in conversation and falls
-			// back to the generic landing route (resolveConversation.ts's CUR-1315 log names it;
+			// back to the generic landing route (a log line in resolveConversation.ts names it;
 			// chat/conversation/[id]/+page.ts's catch-all is what redirects there). This is a real ordering
 			// race, not a theoretical one. All three migrations
 			// are idempotent (migrateAnonymousSession.ts, migrateAgentTrust.ts), so running them here is
@@ -613,11 +623,10 @@ export async function authenticateRequest(
 			// before the row exists fails. The insert and both migrations share one transaction instead,
 			// which keeps what this comment asks for: no other request sees the `users` row until the
 			// migrated rows commit with it.
-			// (CUR-769)
 			// Same "first login only" scoping as the two migrations below — a returning user's
 			// agent trust already lives under their own subject, so this only matters the one time a
 			// session switches from anonymous to signed-in. Best-effort; never blocks sign-in. It is an
-			// HTTP call to the agent service, so it runs before the transaction rather than holding it. (CUR-761)
+			// HTTP call to the agent service, so it runs before the transaction rather than holding it.
 			await migrateAgentTrust(previousSessionId, shadowId);
 
 			const newUser: User = {
@@ -650,7 +659,7 @@ export async function authenticateRequest(
 			}
 		} else {
 			// A RETURNING user, not the first-login case above. The shadow user row already
-			// exists, so there's no CUR-1558 insert race to protect — that race was specifically about
+			// exists, so there's no first-login insert race to protect — that race was specifically about
 			// the gap between this file's own `findOne` and `insertOne` for a row that doesn't exist yet.
 			// Without this, a user who signs out, goes anonymous in the same browser, has a conversation,
 			// then signs back in gets nothing migrated: the `if (!user)` branch above never runs again,
@@ -662,20 +671,20 @@ export async function authenticateRequest(
 			// reason: a returning user's agent trust already lives under their own subject. Neither runs
 			// here. migrateAnonymousConversations carries no such warning — its docstring calls this
 			// exact case "safe," because the query is keyed strictly by `sessionId` and can only touch
-			// the previous anonymous session's own rows, never anything the shadow user already owns. (CUR-1719)
+			// the previous anonymous session's own rows, never anything the shadow user already owns.
 			const previousToken = cookie.get(sessionCookieName);
 			const previousSessionId = previousToken ? await sha256(previousToken) : undefined;
 			await migrateAnonymousConversations(previousSessionId, shadowId, { skipFileMove: await guestFileMoveSkipped(headers) });
 
 			// The shadow row's name is copied once, at first login, and the account menu reads
 			// it from here. A name changed since (Settings → Account calls Better Auth's updateUser) has
-			// to reach the row, or the menu keeps the old one for good. (CUR-1176)
+			// to reach the row, or the menu keeps the old one for good.
 			if (baUser.name && baUser.name !== user.name) {
 				await collections.users.updateOne({ _id: shadowId }, { $set: { name: baUser.name, updatedAt: new Date() } });
 				user = { ...user, name: baUser.name };
 			}
 			// The same for the email, which a returning OAuth sign-in can now change
-			// (refreshProviderEmail.ts). (CUR-3249)
+			// (refreshProviderEmail.ts).
 			if (baUser.email && baUser.email !== user.email) {
 				await collections.users.updateOne({ _id: shadowId }, { $set: { email: baUser.email, updatedAt: new Date() } });
 				user = { ...user, email: baUser.email };
@@ -686,7 +695,7 @@ export async function authenticateRequest(
 
 		return {
 			// The verification bit rides along from the session, not the shadow row, which
-			// copied the address once at first login and nothing else about it. (CUR-3182)
+			// copied the address once at first login and nothing else about it.
 			user: { ...user, emailVerified: baUser.emailVerified === true, role: baUser.role ?? undefined },
 			// See the comment above: intentionally not the HF token even when the provider IS Hugging
 			// Face — locals.token's few consumers (endpointOai.ts, apiToken.ts, billing-orgs) already
@@ -694,7 +703,7 @@ export async function authenticateRequest(
 			token: undefined,
 			sessionId,
 			secretSessionId: baSession.token,
-			isAdmin: !!user.isAdmin,
+			isAdmin: await composeIsAdmin(user.isAdmin, sessionId, cookie.get(ADMIN_PROOF_COOKIE)),
 		};
 	}
 
@@ -712,7 +721,7 @@ export async function authenticateRequest(
 		// This branch mints too — the caller HAS a cookie, it is just no longer valid — so it
 		// has to hand back the replacement on whatever method the request used, exactly like the
 		// cookie-less path below. Missing it here would leave an invalidated visitor re-minting on
-		// every GET, which is the same defect one branch over. (CUR-1645)
+		// every GET, which is the same defect one branch over.
 		let mintedSession = false;
 		if (result.invalidateSession || (result.guest && !(await keepGuestCookie(token, sessionId)))) {
 			({ sessionId, secretSessionId } = await mintAnonymousSession());
@@ -725,26 +734,26 @@ export async function authenticateRequest(
 			sessionId,
 			secretSessionId,
 			mintedSession,
-			isAdmin: !!result.user?.isAdmin,
+			// Durable admin: the proof cookie survives across serverless instances (the in-memory
+			// adminTokenManager.isAdmin only sees grants made on this same instance). Bound to this
+			// sessionId, so an invalidated/regenerated session above won't carry an old grant.
+			isAdmin: await composeIsAdmin(result.user?.isAdmin, sessionId, cookie.get(ADMIN_PROOF_COOKIE)),
 		};
 	}
 
 	// The cron endpoints carry `Authorization: Bearer ${CRON_SECRET}` (Vercel sends it to EVERY cron
 	// invocation), which is NOT an HF token — let them through instead of trying (and failing → 500)
-	// to resolve it as an API bearer here. Cleanup then runs its own CRON_SECRET gate; warm is
+	// to resolve it as an API bearer here. Cleanup and probes then run their own CRON_SECRET gate; warm is
 	// deliberately unauthenticated (204-only, fire-and-forget, server-throttled).
 	const cronPath = chatRoutePath(url.pathname);
 	const cronBearerExempt =
-		cronPath === `${CHAT_API_PATH}/cleanup` || cronPath === `${CHAT_API_PATH}/warm`;
+		cronPath === `${CHAT_API_PATH}/cleanup` ||
+		cronPath === `${CHAT_API_PATH}/probes` ||
+		cronPath === `${CHAT_API_PATH}/warm`;
 	if (isApi && !cronBearerExempt) {
 		const authorization = headers.get("Authorization");
 		if (authorization?.startsWith("Bearer ")) {
 			const token = authorization.slice(7);
-			// A sync token reaches this legacy path only off the sync routes, where it is not a
-			// credential. Refuse it here, before the Hugging Face lookup below would send it to a third party. (CUR-4315)
-			if (token.startsWith(SYNC_ACCESS_TOKEN_PREFIX) || token.startsWith(SYNC_REFRESH_TOKEN_PREFIX)) {
-				throw new Error("Unauthorized");
-			}
 			const hash = await sha256(token);
 			sessionId = secretSessionId = hash;
 
@@ -763,7 +772,7 @@ export async function authenticateRequest(
 					sessionId,
 					token,
 					secretSessionId,
-					isAdmin: !!user.isAdmin,
+					isAdmin: await composeIsAdmin(user.isAdmin, sessionId, cookie.get(ADMIN_PROOF_COOKIE)),
 				};
 			}
 
@@ -805,56 +814,15 @@ export async function authenticateRequest(
 				sessionId,
 				secretSessionId,
 				token,
-				isAdmin: !!user.isAdmin,
+				isAdmin: await composeIsAdmin(user.isAdmin, sessionId, cookie.get(ADMIN_PROOF_COOKIE)),
 			};
 		}
 	}
 
 	// Generate a new session if none exists. Not coalesced against any other cookie-less request — see
 	// mintAnonymousSession above for why. The `mintedSession` flag is what tells hooks/handle.ts to hand
-	// this cookie back on ANY method (CUR-1645).
+	// this cookie back on ANY method.
 	({ sessionId, secretSessionId } = await mintAnonymousSession());
 
 	return { user: undefined, sessionId, secretSessionId, isAdmin: false, mintedSession: true };
-}
-
-/**
- * Identity for /chat/api/v2/sync/*, from the `Authorization: Bearer` sync token alone. Never
- * mints a guest session and never sets a cookie (handle.ts skips the refresh when `sync` is set). A
- * request without a usable token comes back with no user and `sync.error`, which the route answers 401
- * or 403. (CUR-4312)
- */
-async function authenticateSyncRequest(
-	headers: HeaderRecord
-): Promise<App.Locals & { secretSessionId: string; mintedSession?: boolean }> {
-	const authorization = headers.get("Authorization") ?? "";
-	const token = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
-	const sessionId = await sha256(token ? `sync:${token}` : `sync:${crypto.randomUUID()}`);
-	const refused = (error: "unauthenticated" | "not_permitted") => ({
-		user: undefined,
-		sessionId,
-		secretSessionId: sessionId,
-		isAdmin: false,
-		sync: { error },
-	});
-	if (!token) return refused("unauthenticated");
-	const verified = await verifySyncAccessToken(token).catch((err) => {
-		logger.warn({ err }, "[auth][sync] token check failed");
-		return { ok: false as const, reason: "unauthenticated" as const };
-	});
-	if (!verified.ok) return refused(verified.reason);
-	const user = await collections.users.findOne({ _id: new ObjectId(await shadowUserId(verified.betterAuthUserId)) });
-	// The shadow row exists once the person has opened Alpha signed in, which consent requires.
-	if (!user) return refused("unauthenticated");
-	// The verification bit comes from the Better Auth row, as on the session path (CUR-3182): the
-	// shadow row never stores it, and without it a team-only flag such as thunderbolt-sync evaluates
-	// with no email and answers off, so a sync route 404s on any instance that hasn't cached this
-	// account's flags from a browser request.
-	return {
-		user: { ...user, emailVerified: verified.emailVerified },
-		sessionId,
-		secretSessionId: sessionId,
-		isAdmin: false,
-		sync: { clientId: verified.clientId },
-	};
 }

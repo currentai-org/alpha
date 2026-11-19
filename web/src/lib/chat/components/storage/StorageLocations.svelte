@@ -13,12 +13,12 @@
 	import { ASK_EVERY_TIME, LAST_USED, type LocationsState, locationLabel, locationDetail } from './locationTypes';
 
 	// The places this account's files can live, and where new ones go by default — the
-	// browser's download-folder setting. The design (CUR-415) gives linking your own Hugging Face
-	// storage its own copy. (CUR-2930)
+	// browser's download-folder setting. The design gives linking your own Hugging Face
+	// storage its own copy.
 	// With one place there is nothing to choose, so it is a plain line. With two or more,
-	// each place, then "Last used" (where an account starts) and "Ask every time". (CUR-3077)
+	// each place, then "Last used" (where an account starts) and "Ask every time".
 	// Rendered on Settings → Storage as two headed sections, Locations and Link your own
-	// Hugging Face bucket, with linking in plain view rather than behind the Advanced disclosure. (CUR-4363)
+	// Hugging Face bucket, with linking in plain view rather than behind the Advanced disclosure.
 	interface Props {
 		locations: LocationsState;
 		onChanged: () => void;
@@ -27,7 +27,7 @@
 	}
 	let { locations: locState, onChanged, counts = {} }: Props = $props();
 
-	// A bucket name that came back refused (CUR-4234) refills the field.
+	// A bucket name that came back refused refills the field.
 	const retryBucket = ['name', 'taken'].includes(page.url.searchParams.get('connect_error') ?? '')
 		? (page.url.searchParams.get('bucket') ?? '')
 		: '';
@@ -43,8 +43,8 @@
 	});
 
 	// The connect callback lands back here with `connected` or `connect_error`.
-	// Functions, so the copy follows a language switch. (CUR-2932)
-	// `name` and `taken` come back with the name the person typed, which refills the field. (CUR-4234)
+	// Functions, so the copy follows a language switch.
+	// `name` and `taken` come back with the name the person typed, which refills the field.
 	const connectBucket = page.url.searchParams.get('bucket') ?? '';
 	const CONNECT_MESSAGES: Record<string, () => string> = {
 		name: () => m.storage_connectName({ bucket: connectBucket }),
@@ -58,7 +58,7 @@
 	const connectOutcome = $derived.by(() => {
 		const params = page.url.searchParams;
 		const connected = params.get('connected');
-		// Connecting again to a bucket that is already linked refreshes it and adds nothing. (CUR-3326)
+		// Connecting again to a bucket that is already linked refreshes it and adds nothing.
 		if (connected === 'refreshed')
 			return {
 				ok: true,
@@ -74,7 +74,7 @@
 	});
 	const connectHref = `${base}/api/storage/locations/hf/connect`;
 
-	// The place just linked or connected, while its offer (save there, move my files) is up. (CUR-2941)
+	// The place just linked or connected, while its offer (save there, move my files) is up.
 	let offerFor = $state<string | null>(
 		page.url.searchParams.get('connected') === '1' ? page.url.searchParams.get('location') : null,
 	);
@@ -227,7 +227,7 @@
 	<p class="m-0 type-body text-fg-2">
 		{#each m.storage_ownStorageHelp({ org: "{org}" }).split(/(\{org\})/).filter(Boolean) as part, i (i)}{#if part === "{org}"}<OrgMention org={orgs.huggingface} />{:else}{part}{/if}{/each}
 	</p>
-	<!-- CUR-4659: two choices, each in its own card with a title, one line saying what it does, short
+	<!-- two choices, each in its own card with a title, one line saying what it does, short
 	     field help, and the approval and token detail behind a disclosure. The recommended one, where
 	     Alpha makes the bucket, comes first. -->
 	{#if locState.connectAvailable}

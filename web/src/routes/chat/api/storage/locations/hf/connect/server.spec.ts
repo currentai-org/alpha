@@ -22,7 +22,7 @@ async function connect(bucket: string): Promise<string> {
 	throw new Error('the connect route returned without redirecting');
 }
 
-describe('Hugging Face connect (CUR-4234)', () => {
+describe('Hugging Face connect', () => {
 	it('sends a name Hugging Face would refuse back to Storage settings with the name, instead of a bare error page', async () => {
 		expect(await connect('trail-')).toBe('/chat/settings/storage?connect_error=name&bucket=trail-');
 	});

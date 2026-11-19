@@ -1,5 +1,5 @@
 // Any account can put a workspace name it chose in front of any address, so the invite row
-// must show that name as plain text of bounded length: never as markup, never as a link. (CUR-4167)
+// must show that name as plain text of bounded length: never as markup, never as a link.
 import { describe, expect, it } from 'vitest';
 import { render } from 'svelte/server';
 import PendingInviteRow, { INVITE_NAME_MAX } from './PendingInviteRow.svelte';

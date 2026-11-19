@@ -3,7 +3,7 @@ import { deriveAgentSubject } from "$lib/chat/server/endpoints/agent/endpointAge
 import { logger } from "$lib/chat/server/logger";
 import type { User } from "$lib/chat/types/User";
 
-// Re-key an anonymous session's accrued agent trust onto the account signing in (CUR-761) — same
+// Re-key an anonymous session's accrued agent trust onto the account signing in — same
 // reasoning and same call sites as migrateAnonymousConversations/migrateAnonymousSettings:
 // authentication should only ever RAISE a caller's trust ceiling, never zero it.
 // agent-service's caller_history is keyed on X-Agent-Subject (deriveAgentSubject), which switches

@@ -1,6 +1,6 @@
 // GENERATED FILE — do not edit by hand.
 // Source: roadmap/roadmap.json (display_in_provenance === true) + roadmap/stackLayout.json
-// (layer/bucket/path have no Sheet column — CUR-91).
+// (layer/bucket/path have no Sheet column —).
 // Regenerate: npm run build:roadmap
 
 import type { RoadmapProduct } from "./stackRoadmap";

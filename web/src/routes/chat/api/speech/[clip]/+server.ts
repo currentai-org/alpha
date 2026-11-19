@@ -2,7 +2,7 @@
 // message.mcp.audio (readAloudSpeech.ts); this opens it and synthesizes the MP3. Only this server can
 // seal a clip, so the route reads nothing a visitor chose and stores nothing. Each fetch is a billed
 // synthesis, so the clip plays only for the owner of the conversation it was sealed in; anyone else,
-// including a viewer of a shared copy, gets the same 404 as a forged segment. (CUR-3151)
+// including a viewer of a shared copy, gets the same 404 as a forged segment.
 import { error, redirect } from "@sveltejs/kit";
 import { ObjectId } from "bson";
 import { authCondition } from "$lib/chat/server/auth";
@@ -26,21 +26,27 @@ export const GET: RequestHandler = async ({ params, locals, getClientAddress, re
 		...authCondition(locals),
 	});
 	if (!owned) throw error(404, "No such clip");
-	// The same limiter as every other billed side route (CUR-832). The browser's private cache
-	// spares an ordinary replay, but a script fetching its own clip URL in a loop pays per synthesis. (CUR-3519)
+	// The same limiter as every other billed side route. The browser's private cache
+	// spares an ordinary replay, but a script fetching its own clip URL in a loop pays per synthesis.
 	await enforceRequestRateLimits({
 		userId: locals.user?._id ?? locals.sessionId,
 		clientAddress: getClientAddress(),
 	});
 
 	// Under `tts_canned_clip` (preview plus the e2e secret) the clip is the canned one, so a
-	// spec that plays a sealed clip gates on our player and not on the synthesis provider's uptime. (CUR-4085)
+	// spec that plays a sealed clip gates on our player and not on the synthesis provider's uptime.
 	if ((await resolveFaultInjection(request)) === "tts_canned_clip") {
 		logger.info({ reason: "tts_canned_clip" }, "[read-aloud] canned clip, synthesis skipped");
 		throw redirect(302, CANNED_READ_ALOUD_CLIP);
 	}
+	// A clip sealed in a scenario turn that replayed its model calls gets the same canned clip, so a
+	// scenario run never bills a live synthesis (readAloudSpeech.ts, `replayed`). Production never seals one.
+	if (clip.replayed) {
+		logger.info({ reason: "replayed_turn" }, "[read-aloud] canned clip, synthesis skipped");
+		throw redirect(302, CANNED_READ_ALOUD_CLIP);
+	}
 
-	// The voice is logged beside the language, so Axiom can show which voice read a clip. (CUR-3989)
+	// The voice is logged beside the language, so Axiom can show which voice read a clip.
 	const voice = kokoroVoice(clip.language);
 	const t0 = Date.now();
 	let response: Response;

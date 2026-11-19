@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { goto } from "$app/navigation";
 import { base } from "$lib/chat/paths";
 import { page } from "$app/state";
@@ -6,7 +9,7 @@ import { page } from "$app/state";
  * Redirects to the login page if the user is not authenticated
  * and sign-in is actually MANDATORY here — not merely configured.
  *
- * loginEnabled alone means "sign-in is offered" (the `accounts` flag, CUR-246). automaticLogin is
+ * loginEnabled alone means "sign-in is offered" (the `accounts` flag). automaticLogin is
  * the separate, deliberate toggle (config.AUTOMATIC_LOGIN) that turns "offered" into "required", and
  * handle.ts's two server-side force-login gates require BOTH. This client gate must require both
  * too: checking loginEnabled alone force-redirects anonymous visitors to /login on every chat action

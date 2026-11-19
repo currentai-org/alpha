@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // the right SHAPE until the two checkpoints stop sharing a threshold. An omitted optional argument has
 // no error surface, so it needs an assertion or nothing can contradict it.
 //
-// THE CORRECT ARGUMENT IS NO ARGUMENT (CUR-243), and that is a real claim rather than the absence of
+// THE CORRECT ARGUMENT IS NO ARGUMENT, and that is a real claim rather than the absence of
 // one. Each decide* falls back to `defaultModel`, the registrations are collapsed, so `defaultModel`
 // IS what a default turn gets. These tests fail if a serving-model override is ever reintroduced here
 // — which is the point: reintroducing one means a substitution came back, and the threshold this route
@@ -48,7 +48,7 @@ vi.mock("$lib/chat/server/search/runSearch", () => ({ decideWebSearch: decideMoc
 vi.mock("$lib/chat/server/api/utils/requireAuth", () => ({ requireAuth: () => {} }));
 
 // The route now calls enforceRequestRateLimits before any strategy branch — mocked here (not
-// exercised for real) since this file's premise is DB-less. See rateLimit.spec.ts for the wiring itself. (CUR-926)
+// exercised for real) since this file's premise is DB-less. See rateLimit.spec.ts for the wiring itself.
 const rateLimitMock = vi.fn(async () => {});
 vi.mock("$lib/chat/server/chat/rateLimit", () => ({ enforceRequestRateLimits: rateLimitMock }));
 
@@ -93,9 +93,9 @@ describe("GET /chat/api/search/classify — answers with what a chat turn decide
 		});
 	});
 
-	it("reports the fallback and ok:false when the decider gave no verdict (CUR-2108)", async () => {
+	it("reports the fallback and ok:false when the decider gave no verdict", async () => {
 		// The case the old route could not express: the regex deciding in the gate's place. Before
-		// CUR-2108 a failed completion decider came back as shouldSearch:false with nothing else, which
+		// a failed completion decider came back as shouldSearch:false with nothing else, which
 		// reads exactly like the model declining.
 		decideMock.mockResolvedValueOnce({
 			search: false,

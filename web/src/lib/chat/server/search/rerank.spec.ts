@@ -659,8 +659,8 @@ describe("rerankByRelevance — chunking over the batch ceiling", () => {
 });
 
 // A departure from the declared expected state is one warn line with `failopen`/`reason` fields
-// (what Axiom counts). A designed fallback — rerank disabled, nothing to score — must stay silent, or the
-// count fills with noise. (CUR-68)
+// (what a log alert counts). A designed fallback — rerank disabled, nothing to score — must stay silent, or the
+// count fills with noise.
 describe("rerankByRelevance fail-open departures", () => {
 	const cands = [
 		{ title: "A", snippet: "one" },
@@ -695,8 +695,8 @@ describe("rerankByRelevance fail-open departures", () => {
 		expect(departures()).toEqual(["rerank:no-usable-result"]);
 	});
 
-	// axiom-alert's search-refusals check counts refusals per `engine`, so a reranker's
-	// non-OK line has to name it in a field, never only in the message text. (CUR-2597)
+	// A log alert counts refusals per `engine`, so a reranker's non-OK line has to name it in a
+	// field, never only in the message text.
 	it.each([
 		["cohere", { OPENAI_BASE_URL: "https://cscs/v1", OPENAI_API_KEY: "k" }, "rerank-cohere"],
 		["hf", { RERANK_KIND: "hf", HF_TOKEN: "x" }, "rerank-hf"],

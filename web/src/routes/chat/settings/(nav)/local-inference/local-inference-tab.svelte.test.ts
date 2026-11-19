@@ -11,7 +11,7 @@ import superjson from "superjson";
 vi.mock("$lib/chat/utils/safeInvalidate", () => ({ safeInvalidate: vi.fn(async () => {}) }));
 
 // $app/state's `page` doesn't exist outside a real SvelteKit router either, same reason as above —
-// but +page.server.ts's managedInferenceEnabled (CUR-1266+) rides page.data, which this component
+// but +page.server.ts's managedInferenceEnabled (+) rides page.data, which this component
 // reads directly, so it needs a real (if bare) object rather than the blanket safeInvalidate-style
 // mock. `vi.hoisted` so tests can mutate `mockPageData` after this factory has already run — plain
 // module state, not a Svelte $state proxy, which is fine since every test calls render(Page) fresh
@@ -90,7 +90,7 @@ vi.mock("$lib/chat/APIClient", () => {
 		);
 	}
 
-	// The page reads apiErrorMessage from APIClient now; same unwrap as the real one. (CUR-2822)
+	// The page reads apiErrorMessage from APIClient now; same unwrap as the real one.
 	function apiErrorMessage(err: unknown, fallback: string): string {
 		if (err instanceof ApiError) {
 			try {
@@ -141,18 +141,18 @@ function errorResponse(status: number, message: string): Response {
 // does NOT normalize baseUrl here, unlike the real route — asserting the raw value round-trips proves
 // the component displays exactly what the server returns, without this fake quietly duplicating
 // (and potentially drifting from) the real route's own normalization logic.
-describe("Local Inference settings tab — add/remove wiring (CUR-1262)", () => {
+describe("Local Inference settings tab — add/remove wiring", () => {
 	let rows: Row[];
 	let nextId: number;
 	let originalFetch: typeof globalThis.fetch;
 	// Captures the last create request's raw body so tests can assert on exactly what the
-	// component sent, not just what the fake server echoed back. (CUR-1291)
+	// component sent, not just what the fake server echoed back.
 	let lastCreateBody: { label: string; baseUrl: string; headers?: { name: string; value: string }[] } | null;
 	// Controls what GET .../managed/availability answers — the live Pangolin-reachability
-	// half of the managed-server gate, separate from mockPageData's deployment-level on/off. (CUR-1266)
+	// half of the managed-server gate, separate from mockPageData's deployment-level on/off.
 	let managedAvailable: boolean;
 	// What the managed pair request carried, so a test can see the shared advanced-options
-	// headers actually ride along with it. (CUR-3168)
+	// headers actually ride along with it.
 	let lastManagedBody: { label: string; headers?: { name: string; value: string }[] } | null;
 
 	beforeEach(() => {
@@ -312,8 +312,8 @@ describe("Local Inference settings tab — add/remove wiring (CUR-1262)", () => 
 	// The Advanced Options rollup + custom-headers form (design: "Local Inference Settings
 	// Tab", Advanced Options revision). Local component state only — no DB column or wire application
 	// exists yet (see the HeaderRow doc comment in +page.svelte), so these tests cover the UI's own
-	// behavior (toggle, add, remove, reset-on-submit) rather than anything reaching the network. (CUR-1291)
-	describe("Advanced Options — custom headers (local-only, CUR-1291)", () => {
+	// behavior (toggle, add, remove, reset-on-submit) rather than anything reaching the network.
+	describe("Advanced Options — custom headers (local-only )", () => {
 		it("the panel is collapsed by default and expands on toggle", async () => {
 			await render(Page);
 
@@ -401,13 +401,13 @@ describe("Local Inference settings tab — add/remove wiring (CUR-1262)", () => 
 	// managedLocalInferenceEndpointsEnabled() (page.data.managedInferenceEnabled, the
 	// deployment-wide flag) and Pangolin reachability (GET .../managed/availability, live) are two
 	// separate signals on purpose — see managedInferenceGate.ts's header. The first controls whether
-	// this whole section exists; the second only disables the Pair control within it. (CUR-1266)
-	// The name + Pair form lives under the "Pair a server manually" disclosure now. (CUR-1324)
+	// this whole section exists; the second only disables the Pair control within it.
+	// The name + Pair form lives under the "Pair a server manually" disclosure now.
 	async function openManualPair() {
 		await page.getByRole("button", { name: "Pair a server manually" }).click();
 	}
 
-	describe("Managed servers — flag split (CUR-1266+)", () => {
+	describe("Managed servers — flag split ( +)", () => {
 		it("hides the whole 'Add a managed server' section when the deployment flag is off", async () => {
 			mockPageData.data.managedInferenceEnabled = false;
 			await render(Page);
@@ -452,7 +452,7 @@ describe("Local Inference settings tab — add/remove wiring (CUR-1262)", () => 
 		});
 	});
 
-	describe("layout and shared options (CUR-3168)", () => {
+	describe("layout and shared options", () => {
 			// The managed flow is the one being promoted, so these run with it switched on. Nested inside
 			// the suite above on purpose: that one installs the fetch mock, and anything touching the
 			// availability poll is silently disabled without it.
@@ -516,7 +516,7 @@ describe("Local Inference settings tab — add/remove wiring (CUR-1262)", () => 
 	});
 
 
-		describe("the install-first managed card (CUR-1324)", () => {
+		describe("the install-first managed card", () => {
 			beforeEach(() => {
 				mockPageData.data.managedInferenceEnabled = true;
 			});
@@ -585,13 +585,13 @@ describe("Local Inference settings tab — add/remove wiring (CUR-1262)", () => 
 			});
 		});
 
-		describe("the install step's platform picker (CUR-3168)", () => {
+		describe("the install step's platform picker", () => {
 			// The install step only renders inside the managed block, so these need it switched on.
 			beforeEach(() => {
 				mockPageData.data.managedInferenceEnabled = true;
 			});
 
-			// The picker is the card's main path now, shown before any pair. (CUR-1324)
+			// The picker is the card's main path now, shown before any pair.
 			async function pair() {
 				await render(Page);
 				await expect.element(page.getByText("Install aipotluck-local-client on that machine")).toBeInTheDocument();
@@ -599,7 +599,7 @@ describe("Local Inference settings tab — add/remove wiring (CUR-1262)", () => 
 
 			it("opens on the app, the path the card leads with", async () => {
 				// An app build ships for every desktop platform, so the picker opens on it
-				// rather than on the command line. (CUR-1324)
+				// rather than on the command line.
 				await pair();
 				await expect.element(page.getByRole("tab", { name: "App" })).toHaveAttribute("aria-selected", "true");
 				await expect.element(page.getByText(/Download this on that machine/)).toBeInTheDocument();
@@ -632,7 +632,7 @@ describe("Local Inference settings tab — add/remove wiring (CUR-1262)", () => 
 			// Every fixed "latest" name, on the tab for its platform. Checked as the link's
 			// accessible name and its href, so a link pointing at the wrong platform's file fails. These
 			// names are the GUI repo's contract (.github/latest-download-names.txt there); change them only
-			// as docs/guides/local-client-downloads.md says. (CUR-4416)
+			// as docs/guides/local-client-downloads.md says.
 			const RELEASE = "https://github.com/currentai-org/aipotluck-local-client-gui/releases/latest/download/aipotluck-local-client-gui_";
 			const RELEASE_FILES: [string, string, string][] = [
 				["Linux", "x64 · .deb", "linux-x64.deb"],

@@ -1,16 +1,16 @@
-// The turn planner (CUR-2198) is one forced tool call, made on every turn before the answer model
-// answers, that decides how the turn is handled. Today it has one field, `math`: whether the latest
+// The turn planner is one forced tool call, made on every turn before the answer model
+// answers, that decides how the turn is handled. It has one field, `math`: whether the latest
 // message asks for a number to be worked out, and if so the setup as typed lines that code sums
 // (ledger.ts).
 //
 // Later decisions join this call as fields rather than becoming side calls of their own, so they share
-// its one round trip (CUR-2092). Each field is validated on its own and a field that fails skips only its
+// its one round trip. Each field is validated on its own and a field that fails skips only its
 // own contribution; `parsePlan` reports every field's outcome for the one log line. The one exception
-// so far is the follow-up read (followUp.ts): as a field here it degrades the "N people, K of them" ledger,
-// so it runs as its own call beside this one (CUR-1957).
+// is the follow-up read (followUp.ts): as a field here it degrades the "N people, K of them" ledger,
+// so it runs as its own call beside this one.
 //
-// Kept free of imports beyond ledger.ts, named with its extension, so a script can load the exact prompt
-// the app sends under Node's own type stripping (web/scripts/math-trigger-bench.mjs).
+// Kept free of imports beyond ledger.ts and toolCallId.ts, named with its extension, so a script can load the exact prompt
+// the app sends under Node's own type stripping.
 
 import {
 	LEDGER_TOOL,
@@ -21,8 +21,9 @@ import {
 	RENDERED_ROW_RE,
 	type Ledger,
 } from "./ledger.ts";
+import { toolCallId } from "../toolCallId.ts";
 
-export const PLAN_TOOL_NAME = "plan_turn";
+const PLAN_TOOL_NAME = "plan_turn";
 
 const MATH_FIELD = {
 	...LEDGER_TOOL.function.parameters,
@@ -76,10 +77,10 @@ export const PLAN_SYSTEM =
 
 // With no clock-time guidance the route model can give "leaves at 09:40" an empty ledger, and
 // the backup model can keep the 9 hours and drop the 40 minutes. This rule, placed before PLAN_SYSTEM's
-// closing sentences, fixes the train question. It is not in PLAN_SYSTEM itself because any sentence
-// there moves the "N people, K of them" case: as a worked example the FTE question degrades sharply, as
-// this rule it degrades slightly, and each other wording trades one case for the other. So only a turn
-// whose latest message contains a clock time gets it, and every other turn keeps the prompt without it. (CUR-2381)
+// closing sentences, has the planner count both. It is not in PLAN_SYSTEM itself because any sentence
+// there also moves the "N people, K of them" case, and every wording tried trades one case for the
+// other. So only a turn whose latest message contains a clock time gets it, and every other turn keeps
+// the prompt without it.
 export const CLOCK_TIME_RULE =
 	'Count a clock time in minutes from midnight (unit "minutes from midnight"): its hours as one line ' +
 	"with factors [hours, 60] and its minutes as another line with factors [minutes, 1]; a duration in " +
@@ -117,8 +118,8 @@ export function parsePlan(raw: string | undefined): TurnPlan | null {
 		return { math: { outcome: "not-asked", ledger: null } };
 	const ledger = parseLedgerArgs(JSON.stringify(math));
 	// One line holding one number is a count the planner read off the question ("how many cantons"),
-	// not arithmetic. Routing it would move the turn off the picked model for a one-number ledger
-	// (CUR-3316), so it plans as no math.
+	// not arithmetic. Routing it would move the turn off the picked model for a one-number ledger, so
+	// it plans as no math.
 	if (ledger && ledger.lines.length === 1 && ledger.lines[0].factors.length === 1)
 		return { math: { outcome: "nothing-to-compute", ledger: null } };
 	return { math: { outcome: ledger ? "ok" : "invalid", ledger } };
@@ -137,7 +138,7 @@ type PlanMessage =
  *  plan_turn call that produced it, its total as the tool result, and the prose that followed, so the
  *  planner sees its earlier setups as structure to revise rather than prose to copy. The ledger comes
  *  from the message's `mathLedger` field; an answer persisted before that field existed is read by its
- *  stamped rendering instead (CUR-3663). */
+ *  stamped rendering instead. */
 export function planTranscript(
 	messages: readonly { from: string; content?: string; mathLedger?: Ledger }[],
 	limit = 12
@@ -155,7 +156,7 @@ export function planTranscript(
 		}
 		const rendered = m.mathLedger && renderLedger(m.mathLedger);
 		if (m.mathLedger && rendered && text.startsWith(rendered)) {
-			const id = `plan_${++n}`;
+			const id = toolCallId(++n);
 			const { lines, unit } = m.mathLedger;
 			const math = { asks_for_calculation: true, lines, ...(unit ? { unit } : {}) };
 			out.push({
@@ -176,7 +177,7 @@ export function planTranscript(
 				label,
 			}));
 			const before = text.slice(cursor, match.index).trim();
-			const id = `plan_${++n}`;
+			const id = toolCallId(++n);
 			const math = { asks_for_calculation: true, lines, ...(unit ? { unit } : {}) };
 			out.push({
 				role: "assistant",

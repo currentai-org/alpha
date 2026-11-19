@@ -1,7 +1,7 @@
 import type { APIRequestContext } from '@playwright/test';
 
 // Which model a scenario is running against. The default model can change, and a spec that named one
-// in its assertions went red when it did (CUR-2272, CUR-2283). A
+// in its assertions went red when it did. A
 // spec asserts on the model the target actually serves, read here, and a spec that only makes sense
 // for one model pins it with `pinnedChatEntry` instead of relying on whatever the default is.
 
@@ -41,7 +41,7 @@ export function pinnedChatEntry(modelId: string): string {
  * `models` with every Apertus row moved to the end. A spec that needs some model of a kind (no tools,
  * self-hosted) and not Apertus in particular picks from this, so Apertus answers only the specs that
  * name it: listed first among the models without tools, it would fail every such spec whenever
- * its lane went quiet (CUR-3982), though other models answered on the same deployment.
+ * its lane went quiet, though other models answered on the same deployment.
  */
 export function apertusLast<T extends { id: string }>(models: T[]): T[] {
 	const apertus = (m: T) => /apertus/i.test(m.id);
@@ -49,8 +49,8 @@ export function apertusLast<T extends { id: string }>(models: T[]): T[] {
 }
 
 /**
- * The first listed model that cannot call tools, Apertus only when nothing else qualifies. Math routing plans a turn only for such a model
- * (CUR-2282): a tool-capable one calls `calculate` itself and never produces a `math-route` rung, so a
+ * The first listed model that cannot call tools, Apertus only when nothing else qualifies. Math routing plans a turn only for such a model:
+ * a tool-capable one calls `calculate` itself and never produces a `math-route` rung, so a
  * spec about the planner started on one would read "undefined" for a reason that has nothing to do
  * with the planner.
  */

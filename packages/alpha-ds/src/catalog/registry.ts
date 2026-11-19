@@ -147,7 +147,11 @@ export const LAYERS: { layer: Layer; label: string; blurb: string }[] = [
 		blurb: 'Base UI–shaped parts. Skin lives in each recipe.'
 	},
 	{ layer: 'primitive', label: 'Primitives', blurb: 'Layout: group elements together.' },
-	{ layer: 'pattern', label: 'Patterns', blurb: 'Page structure: sidebar, conversation and side panel.' }
+	{
+		layer: 'pattern',
+		label: 'Patterns',
+		blurb: 'Page structure: sidebar, conversation and side panel.'
+	}
 ];
 
 export type NavEntry = {

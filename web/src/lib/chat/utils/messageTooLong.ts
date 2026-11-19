@@ -2,7 +2,7 @@ const count = new Intl.NumberFormat("en");
 
 /**
  * The refusal for a message over `USAGE_LIMITS.messageLength`, worded so the person knows how much to cut
- * and that their text was kept (CUR-3695). The composer, the edit box and parseRequest all say this, so a
+ * and that their text was kept. The composer, the edit box and parseRequest all say this, so a
  * refusal reads the same wherever it is caught. It sits in a two-line toast, so it stays near 100 characters.
  */
 export function messageTooLongMessage(length: number, limit: number): string {

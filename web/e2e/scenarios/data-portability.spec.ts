@@ -13,8 +13,10 @@ import { captionForRecording, holdForRecording } from './helpers/recording';
 import { decodeStorageMarkers, openArchive, readConversationDoc } from './helpers/exportArchive';
 import { installCannedReplies } from './helpers/faultInjection';
 import { startChattingPastWelcome } from './helpers/welcome';
+import { composerHydrated, sendOpensConversation } from './helpers/composer';
+import { turnDone } from './helpers/turn';
 
-// This spec is about the first-run welcome, so it meets the welcome itself rather than through the shared handler (SOL-343).
+// This spec is about the first-run welcome, so it meets the welcome itself rather than through the shared handler.
 test.use({ welcome: 'show' });
 
 // global-setup.ts already asserts this is set before any test body runs — see sign-in.spec.ts's
@@ -57,7 +59,7 @@ test(
 		await page.waitForURL(/\/chat\/conversation\/[a-f0-9]+/, { timeout: 30_000 });
 		await expect(welcomeDialog).toBeHidden({ timeout: 15_000 });
 
-		// CUR-1638 (second half). Opening "Forget everything" while the turn above is still
+		// (second half). Opening "Forget everything" while the turn above is still
 		// streaming races the wipe against that turn's own post-completion invalidate: a live trace
 		// showed the invalidate re-fetching this conversation ~10s AFTER the DELETE had already
 		// succeeded, 404ing against the row the wipe just removed. [id]/+page.ts's redirect on that
@@ -75,13 +77,13 @@ test(
 		// "Forget everything" lives in Settings → Data & privacy, reached from any conversation, signed in
 		// or not. The “Where it goes” pill under the message box links there, which is the path a person leaving
 		// mid-conversation would take. Each of its three screens is held on camera: the grader saw only
-		// the chat before and the settings page after, never the pill doing it (CUR-2373).
+		// the chat before and the settings page after, never the pill doing it.
 		const forget = page.getByRole('button', { name: /^Forget everything/ });
 		await journeyStep(page, 'A3', 3, async () => {
 			const wherePill = page.getByRole('button', { name: 'Where your message goes' });
 			await expect(wherePill, 'the Where it goes pill sits under the message box').toBeVisible();
 			// The grader read the panel this opens ("Where your message goes") as X-ray's, three runs in a
-			// row, and filed the step's doc as wrong (CUR-2416). The caption names the control on camera.
+			// row, and filed the step's doc as wrong. The caption names the control on camera.
 			await captionForRecording(page, 'tapping "Where it goes" under the message box', {
 				at: 'top'
 			});
@@ -103,6 +105,8 @@ test(
 			'Data & privacy tells a guest where uploaded files are stored'
 		).toHaveCount(0);
 		await holdForRecording(page);
+		// What the confirm panel promised, read before the click that deletes.
+		let confirmedLines: string[] = [];
 		await journeyStep(page, 'A3', 4, async () => {
 			await forget.click();
 
@@ -116,17 +120,35 @@ test(
 				0
 			);
 
-			// A3 step 4 (CUR-1758): the armed phase's own reason for existing — plain language about what
+			// A3 step 4: the armed phase's own reason for existing — plain language about what
 			// gets cleared, and that it can't be undone (docs/journeys/a3-my-data.md step 4) — asserted
 			// before the click that leaves it, rather than only the heading above. The journey gallery's
 			// grader read a recording of this same flow as going "straight to a cleared modal, no separate
 			// pre-action dialog". The copy gets a real check here. The polls below resolve in milliseconds,
-			// though, so they never held the dialog long enough for the grader to keep a frame of it
-			// (CUR-2348); holdForRecording does.
+			// though, so they never held the dialog long enough for the grader to keep a frame of it;
+			// holdForRecording does.
 			await expect(page.getByText(phrase('We do not want to keep your data'))).toBeVisible({
 				timeout: 10_000
 			});
 			await expect(page.getByText(phrase('This action cannot be undone'))).toBeVisible();
+			// The confirm lists what will go, with counts, before anything is deleted. Read once the
+			// count has loaded: the first row is the conversation sent above.
+			const promised = page.getByTestId('wipe-preview').getByRole('listitem');
+			await expect(
+				promised.first(),
+				'the confirm panel lists no counts before the wipe'
+			).toBeVisible({
+				timeout: 15_000
+			});
+			// "any agent task history" is the one line the confirm may add: agent-service keeps its own store
+			// with no count to read, so the confirm names it wherever agent mode exists, and the receipt only
+			// when there were tasks. This guest sent no agent task, so the receipt leaves it out.
+			confirmedLines = (await promised.allTextContents()).filter(
+				(l) => l !== 'any agent task history'
+			);
+			expect(confirmedLines, 'the confirm panel does not count the conversation').toContain(
+				'1 conversation'
+			);
 			await holdForRecording(page);
 			// Opening on Cancel, not on the destructive button: an Enter pressed on arrival must not wipe.
 			await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
@@ -144,12 +166,17 @@ test(
 			// names it exactly — not a vague "your data was cleared". A wider matcher would turn a wrong
 			// count green and defeat the point of naming one at all; wipeUserData.ts's delete is correctly
 			// scoped to this session, so a mismatch here means the test let more than one conversation
-			// exist, not that the count is slow to render. CUR-1638: previously misdiagnosed as a rendering
+			// exist, not that the count is slow to render. previously misdiagnosed as a rendering
 			// lag and widened to a 15s timeout that could not have fixed it — the page snapshot at the
 			// failure showed "2 conversations" already rendered, which no timeout closes. The explicit
 			// dismiss wait added above keeps the count deterministic; the timeout here stays generous only
 			// to match the surrounding waits, not because of any known lag.
 			await expect(page.getByText('1 conversation')).toBeVisible({ timeout: 15_000 });
+			// The receipt lists exactly what the confirm promised: same buckets, same counts, same order.
+			await expect(
+				page.getByTestId('wipe-receipt').getByRole('listitem'),
+				'the receipt differs from what the confirm panel listed before the wipe'
+			).toHaveText(confirmedLines);
 			// The usage panel behind the receipt kept the pre-wipe counts, so the page said there
 			// was still a conversation while the receipt said it was gone.
 			await expect(
@@ -160,12 +187,12 @@ test(
 				'the usage panel behind the receipt still counts the wiped conversation'
 			).toHaveText('0', { timeout: 15_000 });
 			// The receipt is the step's honest result, and the grader drops a screen held under 0.5s; Done
-			// was clicked within milliseconds, so recordings showed no receipt at all (CUR-2270).
+			// was clicked within milliseconds, so recordings showed no receipt at all.
 			await holdForRecording(page);
 		});
 
 		// The handler above would dismiss the welcome splash the moment it showed, which is exactly the
-		// defect CUR-2270 is about: after Done, the reset page painted, then the splash over it once the
+		// defect that change is about: after Done, the reset page painted, then the splash over it once the
 		// wiped settings reloaded. So it comes off here, and the splash is watched for instead. The window
 		// covers the settings reload that follows Done.
 		await page.removeLocatorHandler(welcomeDialog);
@@ -252,7 +279,7 @@ test(
 				page.getByText('This action cannot be undone.'),
 				'the deletion warning must be readable before the confirm button is'
 			).toBeInViewport({ ratio: 1 });
-			// Deleting the account takes a typed word (CUR-1420).
+			// Deleting the account takes a typed word.
 			await page.getByLabel('Type DELETE to confirm').fill('DELETE');
 			await page.getByRole('button', { name: 'Delete account', exact: true }).click();
 			await expect(page.getByRole('heading', { name: 'Your data has been cleared' })).toBeVisible({
@@ -279,7 +306,7 @@ test(
 	}
 );
 
-// A3 step 9 (CUR-2627). Deleting the account is only the promise it makes if the account is really
+// A3 step 9. Deleting the account is only the promise it makes if the account is really
 // gone: signing in again with the same email has to start a new, empty account, with none of the
 // old chats listed and the old chat's address showing nothing. A deletion that cleared the screen
 // but left the rows keyed to the email would hand the history straight back.
@@ -360,25 +387,13 @@ test(
 	}
 );
 
-// @preview-only: export is gated behind the `data-export` PostHog flag (CUR-259/CUR-995), which is
-// 100% rollout but scoped to env=="preview" only — off in production with no lever
-// (ENABLE_DATA_EXPORT unset). Forcing both directions through the override cookie, rather than
-// relying on the live flag value, is the same CUR-1368 discipline sign-in.spec.ts already
-// established: a coincidentally-matching live value can't tell "the gate works" from "the gate
-// happens to already be in the state this run wanted."
+// Export used to sit behind the `data-export` PostHog flag, which was retired once
+// it was on everywhere, so every signed-in visitor can export their own data.
 test(
-	'a signed-in visitor can export their data only once the data-export flag is on',
+	'a signed-in visitor with nothing saved exports a README and an empty conversation list',
 	{ tag: ['@preview-only', '@A3'] },
-	async ({ page, context, baseURL }) => {
-		await setFlagOverrides(context, baseURL!, { 'data-export': false });
+	async ({ page }) => {
 		await signInAsFreshUser(page);
-
-		// Off first, against a fresh account with nothing exportable yet — the only thing that can
-		// produce a 403 here is the flag.
-		const denied = await page.request.get('/chat/api/v2/export');
-		expect(denied.status()).toBe(403);
-
-		await setFlagOverrides(context, baseURL!, { 'data-export': true });
 
 		// The archive on an account with nothing in it. `byteLength > 0` used to be the whole of this
 		// test, and a valid ZIP containing nothing satisfies it — so open the thing and say what an
@@ -396,8 +411,8 @@ test(
 	}
 );
 
-// A3 step 6 (CUR-1758): the two tests above prove the route itself is correct once the flag is
-// forced on, entirely through page.request — no UI is ever opened. The journey gallery's recording
+// A3 step 6: the two tests above prove the route itself is correct, entirely through
+// page.request — no UI is ever opened. The journey gallery's recording
 // of this step showed exactly that gap: an anonymous sign-in ending on the plain landing page, no
 // account page, export control, or downloaded ZIP in any frame. This walks the control a person
 // actually clicks, on its own fresh account so it doesn't collide with the once-per-hour export
@@ -409,9 +424,8 @@ test(
 		// A full chat turn has to finish before the account page can count its answer.
 		test.setTimeout(240_000);
 		await setFlagOverrides(context, baseURL!, {
-			'data-export': true,
 			// Off for the same reason as the round-trip test below: the router sends this prompt to the
-			// agent, and this test is about the export control (CUR-2343).
+			// agent, and this test is about the export control.
 			'agent-mode': false
 		});
 		await signInAsFreshUser(page);
@@ -450,7 +464,7 @@ test(
 			});
 			await expect(
 				exportRow,
-				'data-export is forced on for this account, so the row must be offered — an account inside the flag with no control to reach it is the same defect this journey step exists to catch'
+				'every signed-in account may export, so the row must be offered — an account with no control to reach the export is the same defect this journey step exists to catch'
 			).toBeVisible({ timeout: 15_000 });
 
 			// The row says what the ZIP will hold before the click, so the counts a person reads
@@ -469,17 +483,38 @@ test(
 			// text. Deliberately not the field-by-field comparison the fidelity test performs; that
 			// exists on the route directly, and repeating it here would test the click and nothing the
 			// click doesn't share.
+			//
+			// The answer finished moments ago, so its streamed text can still be in stream-follow's log,
+			// which the export carries as streaming-answers.json for two minutes after the answer ends.
+			// Whether this export lands inside that window depends on timing, so the file may
+			// be there or absent. When it is there, it holds this conversation's rows and no other's, and
+			// the README says what it is.
 			const readable = Object.keys(archive).filter((n) => n.startsWith('conversations/'));
-			expect(Object.keys(archive).sort()).toEqual(['README.md', 'conversations.json', ...readable]);
+			const streamed = 'streaming-answers.json' in archive ? ['streaming-answers.json'] : [];
+			expect(Object.keys(archive).sort()).toEqual(
+				['README.md', 'conversations.json', ...streamed, ...readable].sort()
+			);
 			expect(readable).toHaveLength(1);
 			expect(archive[readable[0]]).toContain(prompt);
 			const exported = (
 				JSON.parse(archive['conversations.json']) as {
-					conversations: { messages: Record<string, unknown>[] }[];
+					conversations: { id: string; messages: Record<string, unknown>[] }[];
 				}
 			).conversations;
 			expect(exported).toHaveLength(1);
 			expect(JSON.stringify(exported)).toContain(prompt);
+			if (streamed.length) {
+				const rows = JSON.parse(archive['streaming-answers.json']) as { conversationId: string }[];
+				expect(
+					rows.length,
+					'streaming-answers.json is in the ZIP with no rows in it'
+				).toBeGreaterThan(0);
+				expect(
+					[...new Set(rows.map((r) => r.conversationId))],
+					"streaming-answers.json carries a conversation that is not this person's one chat"
+				).toEqual([exported[0].id]);
+				expect(archive['README.md']).toContain('streaming-answers.json');
+			}
 
 			const answers = exported[0].messages.filter((m) => m.from === 'assistant');
 			const files = Object.keys(archive).filter(
@@ -506,8 +541,7 @@ test(
 test(
 	'a second Download inside the hour is refused on the account page, not on a bare 429 page',
 	{ tag: ['@preview-only', '@A3'] },
-	async ({ page, context, baseURL }) => {
-		await setFlagOverrides(context, baseURL!, { 'data-export': true });
+	async ({ page }) => {
 		await signInAsFreshUser(page);
 		await page.goto('/chat/settings/account', { waitUntil: 'commit' });
 		const exportRow = page.getByRole('link', {
@@ -525,7 +559,7 @@ test(
 					timeout: 15_000
 				});
 				// A reload lands at the top of the page. Scroll back to the row the way a person would, so
-				// the recording ends on the refusal and not on Linked providers (CUR-2295).
+				// the recording ends on the refusal and not on Linked providers.
 				await locked.scrollIntoViewIfNeeded();
 				await expect(locked.getByRole('status')).toContainText('You can download again after');
 				await expect(locked.getByRole('button', { name: 'Download' })).toBeDisabled();
@@ -537,13 +571,12 @@ test(
 );
 
 // The same refusal from a page that never saw the first export: one tab exports, and an Account page
-// opened before that still offers the link. Its click used to replace the page with a bare 429
-// (CUR-3849); the route now sends a navigation back to the Account page, which reads the hour itself.
+// opened before that still offers the link. Its click used to replace the page with a bare 429;
+// the route now sends a navigation back to the Account page, which reads the hour itself.
 test(
-	'Download on an Account page opened before an export in another tab shows the refusal in the row (CUR-3849)',
+	'Download on an Account page opened before an export in another tab shows the refusal in the row',
 	{ tag: ['@preview-only', '@A3', '@CUR-3849'] },
-	async ({ page, context, baseURL }) => {
-		await setFlagOverrides(context, baseURL!, { 'data-export': true });
+	async ({ page, context }) => {
 		await signInAsFreshUser(page);
 		const rowName = 'Download a ZIP of your conversations, files, and where each answer came from';
 		await page.goto('/chat/settings/account', { waitUntil: 'commit' });
@@ -574,7 +607,7 @@ test(
 	}
 );
 
-// Split out of the test above (CUR-1770): the export route allows one export per account per
+// Split out of the test above: the export route allows one export per account per
 // hour, so the empty-archive shape and the round-trip fidelity cannot both be observed from one
 // sign-in. Two accounts, one export each.
 test(
@@ -583,12 +616,11 @@ test(
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(120_000);
 		await setFlagOverrides(context, baseURL!, {
-			'data-export': true,
 			'custodial-storage-view': true,
 			// This test exports a conversation; it does not test agent mode. With the composer on
 			// "Agent: auto", its earlier prompt ("…has to come back out of the zip") was routed to the agent
 			// as "multi-step file transformation", and an agent turn that outlasted the output-screen window
-			// failed the export on a turn it never meant to take (CUR-2343).
+			// failed the export on a turn it never meant to take.
 			'agent-mode': false
 		});
 		await signInAsFreshUser(page);
@@ -615,16 +647,16 @@ test(
 
 		// The turn has to finish before the export, or the archive catches the answer before its
 		// provenance is written. Retry is the signal: ChatMessage.svelte:970 renders it only once
-		// `isTurnStillRunning` is false (CUR-1652), including for a turn that produced no text
-		// (CUR-1748). This used to wait on "Copy to clipboard", which a code block inside the answer
-		// also renders while it streams, so a reply with code let the export race the turn (CUR-2035).
+		// `isTurnStillRunning` is false, including for a turn that produced no text.
+		// This used to wait on "Copy to clipboard", which a code block inside the answer
+		// also renders while it streams, so a reply with code let the export race the turn.
 		await expect(
 			page.locator('[data-message-role="assistant"]').last().getByRole('button', { name: 'Retry' }),
 			'the turn never finished, so there is no completed answer to export'
 		).toBeVisible({ timeout: 60_000 });
 
 		// What the chat itself says about this answer, read off the page, so the archive is held to
-		// the chat's words rather than to a copy of them in this file (CUR-1836): the source class
+		// the chat's words rather than to a copy of them in this file: the source class
 		// ("from training" or "looked it up") and the badge's model name, the first segment of its
 		// title.
 		const reply = page.locator('[data-message-role="assistant"]').last();
@@ -714,7 +746,7 @@ test(
 			expect(JSON.stringify(exported)).toContain(prompt);
 
 			// "Where each answer came from" is one of the three things the account page says the ZIP
-			// holds. develop's lane sends a provenance header on every turn since CUR-1452, so an
+			// holds. develop's lane sends a provenance header on every turn, so an
 			// answer without one means the export or the record lost it.
 			const answerIndex = zipMessages.findLastIndex((m) => m.from === 'assistant');
 			expect(
@@ -729,7 +761,7 @@ test(
 			).toBe(storedModel);
 			// The stored backend is the lane's base URL, whose path can carry a provider account id
 			// (Infomaniak's does). A file we tell people to keep and share names the institution or the
-			// bare host, never a path (CUR-2186).
+			// bare host, never a path.
 			const storedBackend = (
 				dbMessages[answerIndex].routerMetadata as { backend?: string } | undefined
 			)?.backend;
@@ -750,7 +782,7 @@ test(
 				);
 			}
 
-			// EU AI Act Art. 50 (CUR-996): every answer is machine-readably marked as model-written, in
+			// EU AI Act Art. 50: every answer is machine-readably marked as model-written, in
 			// IPTC's digital-source-type vocabulary, and nothing the person wrote is.
 			for (const m of zipMessages) {
 				if (m.from === 'assistant') {
@@ -856,8 +888,7 @@ test(
 		await expect(deleteButton).toBeDisabled();
 		await confirmField.fill('DELETE');
 		await expect(deleteButton, 'typing DELETE did not enable Delete account').toBeEnabled();
-		// The recording has to show the confirm a person reads, not only the page before and after it
-		// (CUR-2348).
+		// The recording has to show the confirm a person reads, not only the page before and after it.
 		await holdForRecording(page);
 		await cancel.click();
 		await expect(page.getByRole('heading', { name: 'Delete your account?' })).toBeHidden();
@@ -874,6 +905,25 @@ test(
 	async ({ page }) => {
 		test.setTimeout(90_000);
 		await signInAsFreshUser(page);
+
+		// One finished turn, so the confirm has a conversation to count and the comparison below is
+		// between two non-empty lists.
+		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });
+		await page.addLocatorHandler(welcomeDialog, async () => {
+			await startChattingPastWelcome(welcomeDialog);
+		});
+		await installCannedReplies(page);
+		await page.goto(chatEntry(), { waitUntil: 'load' });
+		await composerHydrated(page);
+		const composer = page.getByLabel('Message AI Potluck');
+		await composer.click({ timeout: 30_000 });
+		await composer.fill('Name one lake in Italy in one short sentence.');
+		await sendOpensConversation(page);
+		await expect(
+			turnDone(page.locator('[data-message-role="assistant"]').last()),
+			'the turn never finished, so there is nothing for the confirm to count'
+		).toBeVisible({ timeout: 45_000 });
+		await page.removeLocatorHandler(welcomeDialog);
 
 		await page.goto('/chat/settings/data', { waitUntil: 'commit' });
 		// The page's own explainer said the account "is deleted", beside a confirm saying it
@@ -902,6 +952,20 @@ test(
 			page.getByText(phrase('You stay signed in, and your account stays'))
 		).toBeVisible();
 		await expect(page.getByLabel('Type DELETE to confirm')).toHaveCount(0);
+		// What the confirm promises a signed-in person, read before the click that deletes.
+		// As in the anonymous test, "any agent task history" is the one line the receipt may leave out:
+		// this person sent no agent task.
+		const promised = page.getByTestId('wipe-preview').getByRole('listitem');
+		await expect(
+			promised.first(),
+			'the signed-in confirm panel lists no counts before the wipe'
+		).toBeVisible({ timeout: 15_000 });
+		const confirmedLines = (await promised.allTextContents()).filter(
+			(l) => l !== 'any agent task history'
+		);
+		expect(confirmedLines, 'the signed-in confirm panel does not count the conversation').toContain(
+			'1 conversation'
+		);
 		await holdForRecording(page);
 
 		await journeyStep(page, 'A3', 10, async () => {
@@ -909,6 +973,10 @@ test(
 			await expect(page.getByRole('heading', { name: 'Your data has been cleared' })).toBeVisible({
 				timeout: 60_000
 			});
+			await expect(
+				page.getByTestId('wipe-receipt').getByRole('listitem'),
+				'the signed-in receipt differs from what the confirm panel listed before the wipe'
+			).toHaveText(confirmedLines);
 			await expect(page.getByText('your account and sign-in methods')).toHaveCount(0);
 			await holdForRecording(page);
 			await page.getByRole('button', { name: 'Done' }).click();
@@ -928,7 +996,7 @@ test(
 
 // The account page read its four sections (sign-in methods, passkeys, sessions, the
 // session itself) from the browser after hydration, so a first open showed a skeleton for 1.3-1.7 s,
-// and once 4.5 s. The server now reads them. As in workspaces.spec.ts's CUR-1975 test, read the raw
+// and once 4.5 s. The server now reads them. As in workspaces.spec.ts's test, read the raw
 // response: in a browser both versions end up showing the same page, so only the HTML tells them apart.
 test(
 	'the account page arrives with its sections in the HTML, so a first open needs no browser fetch before it shows them',

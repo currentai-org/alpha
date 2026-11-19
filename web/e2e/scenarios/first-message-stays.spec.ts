@@ -10,8 +10,8 @@ import { installCannedReplies } from './helpers/faultInjection';
 import { startChattingPastWelcome } from './helpers/welcome';
 
 // Pressing Enter on the landing screen emptied the composer at ~55 ms, and the message only reappeared
-// at ~2.0 s, once POST /conversation and the goto() into it had both finished (CUR-1676).
-// CUR-1706 renders the sent message on the landing screen at once.
+// at ~2.0 s, once POST /conversation and the goto into it had both finished.
+// renders the sent message on the landing screen at once.
 //
 // The create request is held for 3 s here, so the landing screen is still up while the assertion runs:
 // a message on screen within that window can only be the optimistic one. Without the hold, a fast
@@ -82,7 +82,7 @@ test(
 	}
 );
 
-// A model's own page carries its own copy of the landing's send, and CUR-1706's bubble went
+// A model's own page carries its own copy of the landing's send, and the bubble went
 // into the landing only. Under the gallery's prod profile chatEntry() already enters here; this case
 // pins the model page so develop's default runs check it too.
 test(

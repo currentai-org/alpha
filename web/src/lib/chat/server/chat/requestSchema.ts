@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { SEARCH_ENGINES } from "$lib/chat/types/Search";
 import { isMessageId } from "$lib/chat/utils/tree/isMessageId";
+import { MAC_SALT_PATTERN } from "$lib/chat/crypto/sealedShape";
 
 /**
  * Schema for the JSON `data` field of a chat POST (multipart form). Validates the prompt, the
@@ -14,7 +15,7 @@ export const chatRequestSchema = z.object({
 	// request so a stop point can be matched to the run it belongs to
 	generationId: z.string().uuid().optional(),
 	// The ids the page minted for this turn's new messages. The server uses them when they are free,
-	// so its post-turn snapshot carries the same ids and the page doesn't remount the answer (CUR-2098).
+	// so its post-turn snapshot carries the same ids and the page doesn't remount the answer.
 	newMessageIds: z
 		.object({
 			user: z.string().uuid().refine(isMessageId).optional(),
@@ -29,7 +30,7 @@ export const chatRequestSchema = z.object({
 	),
 	is_retry: z.optional(z.boolean()),
 	// re-attach the assistant message `id` to the agent task it already started, after the tab
-	// that started it closed. No prompt rides along; the task's replayed events rewrite the message. (CUR-993)
+	// that started it closed. No prompt rides along; the task's replayed events rewrite the message.
 	agent_attach: z.optional(z.boolean()),
 	selectedMcpServerNames: z.optional(z.array(z.string())),
 	selectedMcpServers: z
@@ -67,14 +68,14 @@ export const chatRequestSchema = z.object({
 	webSearchMode: z.optional(z.enum(["off", "auto", "always"])),
 	// The picker was on Auto and Auto chose this turn's model in the browser. `model` is the
 	// catalog id it chose, `reasons` its chips ("Spanish", "Medium task") and `explanation` the sentence
-	// the composer showed. The server keeps it only when `model` is the model this turn runs on. (CUR-3944)
+	// the composer showed. The server keeps it only when `model` is the model this turn runs on.
 	autoRoute: z.optional(
 		z.object({
 			model: z.string().max(80),
 			reasons: z.array(z.string().max(60)).max(6),
 			explanation: z.string().max(600),
 			// Auto's first choice for this question, which was busy or silent, so this turn is
-			// Auto picking again. The one retry that keeps an Auto claim. (CUR-4384)
+			// Auto picking again. The one retry that keeps an Auto claim.
 			repickedFrom: z.optional(z.string().max(80)),
 		})
 	),
@@ -102,6 +103,25 @@ export const chatRequestSchema = z.object({
 				)
 				.max(20),
 		})
+	),
+	// Sealed history, opened in the browser: each sealed message's body at the revision its
+	// skeleton names, and the sealed preprompt. The server checks each against the stored MAC
+	// (sealedTurn.ts hydrateSealedHistory) and takes only the words from it, never the tree.
+	history: z.optional(
+		z
+			.array(
+				z.object({
+					id: z.string().min(1).max(100),
+					rev: z.number().int().nonnegative(),
+					body: z.record(z.string(), z.unknown()),
+					// The envelope's MAC salt, absent for a blob sealed before salts.
+					salt: z.optional(z.string().regex(MAC_SALT_PATTERN)),
+				})
+			)
+			.max(5_000)
+	),
+	preprompt: z.optional(
+		z.object({ rev: z.number().int().nonnegative(), text: z.string(), salt: z.optional(z.string().regex(MAC_SALT_PATTERN)) })
 	),
 	files: z.optional(
 		z.array(

@@ -37,7 +37,7 @@ describe("routeFor", () => {
 		expect(hop(viaRouter, "model")).toMatchObject({ orgId: "mistral", source: "api.mistral.ai" });
 	});
 
-	it("names an Apertus turn's Phoeniqs host by its catalog org and places it in Switzerland (CUR-4587)", () => {
+	it("names an Apertus turn's Phoeniqs host by its catalog org and places it in Switzerland", () => {
 		const phoeniqs = answer({ route: "", model: "swiss-ai/apertus-v1.5-70b", backend: "https://maas.phoeniqs.com/v1" });
 		expect(hop(phoeniqs, "model")).toMatchObject({
 			orgId: "phoeniqs",

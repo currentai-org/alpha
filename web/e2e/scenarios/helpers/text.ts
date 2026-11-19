@@ -1,4 +1,4 @@
-// A page-text matcher that survives the template being rewrapped (CUR-1598).
+// A page-text matcher that survives the template being rewrapped.
 //
 // Playwright normalizes whitespace when `getByText` is handed a STRING and does NOT when it is
 // handed a RegExp. Against the journey gallery's own `<p>`, whose Svelte source wraps

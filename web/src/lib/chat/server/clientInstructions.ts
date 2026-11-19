@@ -2,7 +2,7 @@
 // preprompt when creating a conversation; any account can save Settings → Personalization text. The
 // input gate screens user turns only, so instructions placed there would skip it while each typed turn
 // stayed harmless. This bounds that text and hands it to the guard as part of the turn it shapes. A
-// model's own configured preprompt comes from our config and is left uncapped and unscreened. (CUR-3528)
+// model's own configured preprompt comes from our config and is left uncapped and unscreened.
 
 import type { GuardScreenInput } from "./guardScreenTypes";
 
@@ -44,5 +44,10 @@ export function withClientInstructions(
 ): GuardScreenInput {
 	if (!instructions) return screen;
 	const bounded = instructions.slice(0, CLIENT_INSTRUCTIONS_MAX_CHARS);
-	return { ...screen, corpus: screen.corpus ? `${screen.corpus}\n\n${bounded}` : bounded };
+	const append = (text: string) => (text ? `${text}\n\n${bounded}` : bounded);
+	return {
+		...screen,
+		corpus: append(screen.corpus),
+		...(screen.historyCorpus !== undefined ? { historyCorpus: append(screen.historyCorpus) } : {}),
+	};
 }

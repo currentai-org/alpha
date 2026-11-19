@@ -2,7 +2,7 @@ import { deployEnv } from "$lib/chat/server/deployEnv";
 import { ssrfStrictFetch } from "$lib/chat/server/urlSafety";
 
 /**
- * Whether a local inference endpoint may point at a private address (CUR-3387).
+ * Whether a local inference endpoint may point at a private address.
  *
  * Only in local development, where the server runs on the visitor's own machine and `localhost`
  * means their Ollama. On any hosted deployment a private address names the host's network, so

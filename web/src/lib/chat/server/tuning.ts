@@ -4,9 +4,9 @@
 // `override ?? code-default`, so a missing/invalid row — or deleting the whole panel —
 // reverts to the hardcoded behavior.
 //
-// Long-term disposition undecided (CUR-893): treat this as live infrastructure, not a stopgap.
+// Long-term disposition undecided: treat this as live infrastructure, not a stopgap.
 // It's a second source of behavior that isn't code (no git history, no diff), and an override
-// row can make a deployment drift from the code (CUR-620) — run
+// row can make a deployment drift from the code — run
 // scripts/check-tuning-overrides.sh before assuming a code/behavior mismatch is a code bug.
 // The row also carries a `history` array of prior persona/grounding versions (the version
 // backup) — if the panel is ever removed, drop that too: stale admin-authored prompt/safety-

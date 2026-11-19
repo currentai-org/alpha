@@ -1,6 +1,6 @@
 // A run-code call that waits on a full sandbox host shows "Waiting for a free sandbox…" while it is
 // still pending. Run through the real SDK client against the full-host stand-in (sandboxWaitStub.ts), whose
-// reply is the SSE stream agent-service sends: one progress notification, then the result. (CUR-4584)
+// reply is the SSE stream agent-service sends: one progress notification, then the result.
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("$lib/chat/server/logger", () => ({
@@ -9,12 +9,15 @@ vi.mock("$lib/chat/server/logger", () => ({
 vi.mock("$lib/chat/server/flags", () => ({ flagEnabledOr: () => true, ensureFlagsPolled: async () => {} }));
 vi.mock("$lib/chat/server/database", () => ({ collections: {} }));
 
-const { sandboxWaitStubServer, sandboxWaitFetch, SANDBOX_WAIT_STUB_STDOUT } = await import("./sandboxWaitStub");
+const { sandboxWaitStubServer, sandboxHangStubServer, sandboxWaitFetch, SANDBOX_WAIT_STUB_STDOUT } = await import("./sandboxWaitStub");
 const { listServerTools } = await import("./serverTools");
 const { mcpServersKit } = await import("./serversKit");
 const { framesWhile } = await import("../endpoints/toolFrames");
 const { originScopedFetch } = await import("./servers");
 const { sandboxServerFor } = await import("./sandboxServer");
+// Loaded here, not inside a test: its first import transforms a large module graph, and under a full
+// suite that cold load alone ran past the 30 s test timeout.
+const { mcpServersKitForTurn } = await import("./turnKit");
 
 // The config the turn is offered for a signed-in account; the stand-in replaces only its address and fetch.
 const OFFERED = sandboxServerFor("conv-1", { user: { _id: "u1" } } as unknown as App.Locals, {
@@ -31,7 +34,7 @@ async function kitFor(server: ReturnType<typeof sandboxWaitStubServer>) {
 	return mcpServersKit({ tools, servers, policies: { [RUN.name]: "allow" } });
 }
 
-describe("a sandbox call waiting for a free slot (CUR-4584)", () => {
+describe("a sandbox call waiting for a free slot", () => {
 	it("shows the wait while the call is pending, then ends it, and the call still answers with real output", async () => {
 		const kit = await kitFor(sandboxWaitStubServer(OFFERED, 50));
 		const running = kit.run(RUN);
@@ -67,13 +70,13 @@ describe("a sandbox call waiting for a free slot (CUR-4584)", () => {
 		};
 		const kit = await kitFor(hung);
 		const res = await kit.run(RUN);
-		// The call ran out of time, and the model is told so rather than "unreachable". (CUR-4627)
+		// The call ran out of time, and the model is told so rather than "unreachable".
 		expect(res.mcpCall?.outcome).toBe("call_timeout");
 		expect(kit.frames!.take()).toEqual([{ sandboxWait: "waiting" }, { sandboxWait: "ready" }]);
 	});
 });
 
-describe("the sandbox_host_full fault (CUR-4584)", () => {
+describe("the sandbox_host_full fault", () => {
 	const ctx = {
 		conv: { _id: { toString: () => "conv-9" } as never },
 		locals: { sessionId: "v", user: { _id: "a" } } as unknown as App.Locals,
@@ -94,7 +97,6 @@ describe("the sandbox_host_full fault (CUR-4584)", () => {
 	}
 
 	it("puts the full-host stand-in where the sandbox is offered, and never asks the real one", async () => {
-		const { mcpServersKitForTurn } = await import("./turnKit");
 		const real = realSandbox();
 		const kit = await mcpServersKitForTurn({ ...ctx, faultInjection: "sandbox_host_full" }, async () => ({}), async () => [], {
 			withSandbox: true,
@@ -107,11 +109,42 @@ describe("the sandbox_host_full fault (CUR-4584)", () => {
 	});
 
 	it("leaves a turn with no sandbox offered without one", async () => {
-		const { mcpServersKitForTurn } = await import("./turnKit");
 		const real = realSandbox();
 		const kit = await mcpServersKitForTurn({ ...ctx, faultInjection: "sandbox_host_full" }, async () => ({}), async () => [], {
 			sandboxFor: () => real.server,
 		});
 		expect(kit).toBeUndefined();
+	});
+});
+
+describe("the sandbox_call_hangs fault", () => {
+	const ctx = {
+		conv: { _id: { toString: () => "conv-9" } as never },
+		locals: { sessionId: "v", user: { _id: "a" } } as unknown as App.Locals,
+	};
+	const offered = () => ({ ...OFFERED, callTimeoutMs: 100 });
+
+	it("lists the sandbox's tools but never answers a run, so the call ends as call_timeout rather than output", async () => {
+		const kit = await mcpServersKitForTurn({ ...ctx, faultInjection: "sandbox_call_hangs" }, async () => ({}), async () => [], {
+			withSandbox: true,
+			sandboxFor: offered,
+			handoffEnabled: () => false,
+		});
+		expect(kit?.definitions.map((d) => d.function.name)).toEqual(["sandbox__run_code"]);
+		const res = await kit!.run(RUN);
+		expect(res.mcpCall?.outcome).toBe("call_timeout");
+		expect(res.content).not.toContain(SANDBOX_WAIT_STUB_STDOUT);
+	});
+
+	it("ends the pending request when the caller aborts it", async () => {
+		const stub = sandboxHangStubServer(offered());
+		const abort = new AbortController();
+		const pending = stub.fetch!("https://sandbox-wait-stub.e2e.invalid/mcp/", {
+			method: "POST",
+			body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "run_code", arguments: {} } }),
+			signal: abort.signal,
+		});
+		abort.abort();
+		await expect(pending).rejects.toBeDefined();
 	});
 });

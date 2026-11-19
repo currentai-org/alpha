@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { runWithRequestContext } from "$lib/chat/server/requestContext";
 import { hubCallSummary, hubFetch } from "./hubFetch";
 
-// The count is what names the route spending the shared storage token's Hub budget. (CUR-3682)
+// The count is what names the route spending the shared storage token's Hub budget.
 
 afterEach(() => vi.unstubAllGlobals());
 

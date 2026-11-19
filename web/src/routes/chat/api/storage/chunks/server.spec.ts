@@ -1,9 +1,9 @@
 /**
  * The two routes that carry a My files upload too large for one request. The contracts: both
- * answer 404 while the `chunked-uploads` flag is off, so the path is absent rather than refused; a
+ * answer 404 while My files (`custodial-storage-view`) is off for the account, so the path is absent rather than refused; a
  * finishing request announcing more than the 20 MB ceiling is refused 413 before any staged chunk is
  * read; and a finished upload goes through the one-request upload's own write path with the whole file
- * and the 20 MB ceiling, so every content check runs on the reassembled bytes. (CUR-1780)
+ * and the 20 MB ceiling, so every content check runs on the reassembled bytes.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -13,9 +13,8 @@ const { putUploadChunk, takeUploadChunks, sweepAbandonedUploadChunks } = vi.hois
 	takeUploadChunks: vi.fn(),
 	sweepAbandonedUploadChunks: vi.fn(),
 }));
-const { custodialStorageViewEnabledForUser, chunkedUploadsEnabledForUser, writeUpload } = vi.hoisted(() => ({
+const { custodialStorageViewEnabledForUser, writeUpload } = vi.hoisted(() => ({
 	custodialStorageViewEnabledForUser: vi.fn(),
-	chunkedUploadsEnabledForUser: vi.fn(),
 	writeUpload: vi.fn(),
 }));
 
@@ -28,9 +27,6 @@ vi.mock("$lib/chat/server/db/uploadChunks", async (importOriginal) => ({
 vi.mock("$lib/chat/server/storage/custodialStorageGate", () => ({
 	CUSTODIAL_STORAGE_VIEW_FLAG: "custodial-storage-view",
 	custodialStorageViewEnabledForUser,
-}));
-vi.mock("$lib/chat/server/storage/chunkedUploadGate", () => ({
-	chunkedUploadsEnabledForUser,
 }));
 vi.mock("$lib/chat/server/vercelBackground", () => ({ runInBackground: (p: Promise<unknown>) => p }));
 vi.mock("../write", () => ({ writeUpload }));
@@ -74,23 +70,22 @@ const finish = { uploadId: "specupload0001", chunks: 3, size: 11_000_000, name: 
 beforeEach(() => {
 	vi.clearAllMocks();
 	custodialStorageViewEnabledForUser.mockResolvedValue(true);
-	chunkedUploadsEnabledForUser.mockResolvedValue(true);
 	putUploadChunk.mockResolvedValue(undefined);
 	sweepAbandonedUploadChunks.mockResolvedValue(0);
 	takeUploadChunks.mockResolvedValue(Buffer.alloc(11_000_000, 7));
 	writeUpload.mockResolvedValue(new Response(null, { status: 201 }));
 });
 
-describe("chunked uploads are absent while the flag is off (CUR-1780)", () => {
+describe("chunked uploads are absent while My files is off for the account", () => {
 	it("answers 404 on a chunk and stages nothing", async () => {
-		chunkedUploadsEnabledForUser.mockResolvedValue(false);
+		custodialStorageViewEnabledForUser.mockResolvedValue(false);
 		// @ts-expect-error - RequestEvent is heavier than this test needs
 		expect(await statusOf(() => postChunk({ locals, request: chunkRequest() }))).toBe(404);
 		expect(putUploadChunk).not.toHaveBeenCalled();
 	});
 
 	it("answers 404 on a finish and reads no chunks", async () => {
-		chunkedUploadsEnabledForUser.mockResolvedValue(false);
+		custodialStorageViewEnabledForUser.mockResolvedValue(false);
 		// @ts-expect-error - RequestEvent is heavier than this test needs
 		expect(await statusOf(() => postComplete({ locals, request: completeRequest(finish) }))).toBe(404);
 		expect(takeUploadChunks).not.toHaveBeenCalled();

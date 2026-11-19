@@ -1,0 +1,47 @@
+name: Bug report
+description: Something in Alpha does not work as it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Report a security problem privately, as SECURITY.md describes, not here.
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where did it happen?
+      options:
+        - The hosted Alpha
+        - My own copy (selfhost/ with docker compose)
+        - My own copy (vite dev or another setup)
+        - Running the tests or CI
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, step by step, and what you saw.
+      placeholder: |
+        1. Open a new chat
+        2. Attach a PDF and ask for a summary
+        3. The answer never arrives and the spinner keeps going
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Commit or image
+      description: For your own copy, the commit SHA or image tag you run.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Remove anything private (keys, email addresses, conversation text) before pasting.
+      render: text

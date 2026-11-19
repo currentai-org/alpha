@@ -66,7 +66,7 @@ function deps(over: Partial<FanoutDeps> = {}): FanoutDeps & { slackTexts: string
 	};
 }
 
-describe("report fan-out (CUR-997)", () => {
+describe("report fan-out", () => {
 	it("does nothing at all when the report-fanout flag is off", async () => {
 		const d = deps({ flagOn: () => false });
 		const linear = d.linear as ReturnType<typeof fakeLinear>;
@@ -127,7 +127,7 @@ describe("report fan-out (CUR-997)", () => {
 	});
 
 	// Measuring back one window from each new report would find, for the third of a steady
-	// stream, the second (a repeat with no issue of its own), so it would be neither counted nor commented. (CUR-2913)
+	// stream, the second (a repeat with no issue of its own), so it would be neither counted nor commented.
 	it("counts the third report of a 90-second stream on the first report's issue", async () => {
 		const linear = fakeLinear();
 		const filed: ReturnType<typeof row>[] = [];

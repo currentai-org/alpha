@@ -61,8 +61,8 @@ beforeEach(() => {
 	resolveConversationMock.mockClear();
 });
 
-// A free-text question with no conversation used to go straight to the panel, unscreened. (CUR-3518)
-describe("POST /chat/api/second-opinion — the question comes only from the caller's conversation (CUR-3518)", () => {
+// A free-text question with no conversation used to go straight to the panel, unscreened.
+describe("POST /chat/api/second-opinion — the question comes only from the caller's conversation", () => {
 	it(
 		"refuses a question-only request with 400 before the limiter, the conversation lookup or the panel",
 		async () => {
@@ -88,11 +88,11 @@ describe("POST /chat/api/second-opinion — the question comes only from the cal
 
 // One /api/second-opinion request fans out to FOUR model completions (the panel plus the
 // aggregator), and requireAuth alone never metered it. These tests prove the chat turn's own limiter
-// now gates this route too, keyed the same way, before the panel fanout. (CUR-832)
-describe("POST /chat/api/second-opinion — rate limiting (CUR-832)", () => {
+// now gates this route too, keyed the same way, before the panel fanout.
+describe("POST /chat/api/second-opinion — rate limiting", () => {
 	// Explicit per-test timeout, above the project's own 30s default (vite.config.ts) — this file's
 	// actual work is a few mocked async calls and finishes in milliseconds under normal load; the
-	// margin exists purely to survive host scheduling delays outside the test's control (CUR-981:
+	// margin exists purely to survive host scheduling delays outside the test's control (
 	// this test can still hit the 30s default under a load spike even without the cold re-import).
 	// There is no slow code here.
 	it(

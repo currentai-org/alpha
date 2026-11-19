@@ -1,7 +1,6 @@
 // A sign-in from a device the account has not used before sends the account an email naming
 // the device and linking to Active sessions, so someone who did not sign in can see it and end the
 // session.
-// (CUR-4181)
 // A device is a browser, recognised by a random token in a signed, long-lived cookie set at
 // sign-in (OWASP's remembered-device cookie), and only while the email is on for the account, since the
 // cookie serves nothing else. The browser and system describePlatform reads from the
@@ -15,7 +14,7 @@
 // device and sends nothing.
 //
 // Everything here runs after the session exists and never throws: a failed read, a refused quota or a
-// Resend error is logged, and the sign-in it follows is never touched. (CUR-4231)
+// Resend error is logged, and the sign-in it follows is never touched.
 import { createHash, randomBytes } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { base } from "$lib/chat/paths";

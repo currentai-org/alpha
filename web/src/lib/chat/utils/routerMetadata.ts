@@ -5,7 +5,7 @@
 //
 // Last-non-empty-wins: route/model/provider/backend can arrive in separate frames, and an empty field
 // in a later frame must not clobber a value an earlier frame set. verifyMethod merges on PRESENCE,
-// because "" is a real "checked, unverified" signal (CUR-756). assistedBy merges by role (CUR-984).
+// because "" is a real "checked, unverified" signal. assistedBy merges by role.
 import type { Message } from "$lib/chat/types/Message";
 import type { MessageRouterMetadataUpdate } from "$lib/chat/types/MessageUpdate";
 import { assistedByMerged } from "$lib/chat/messageProvenance";
@@ -33,7 +33,7 @@ export function mergeRouterMetadata(
 }
 
 /** Whether the record says anything about who SERVED the turn. A record can exist holding only
- *  `assistedBy`, the helpers that ran before any answer did (CUR-984), and a turn that then errored
+ *  `assistedBy`, the helpers that ran before any answer did, and a turn that then errored
  *  has a record and no answer. Readers that took the record's presence to mean "a model answered"
  *  read this instead. */
 export function servingRecorded(rm: Message["routerMetadata"]): boolean {

@@ -1,8 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
+import { error } from "@sveltejs/kit";
 import { ObjectId } from "bson";
 import type { Message, MessageFile } from "$lib/chat/types/Message";
 import { moderationMarker } from "$lib/chat/messageProvenance";
-import { GUARD_CORPUS_CAP, MAX_TURN_IMAGES } from "$lib/chat/server/guardScreenTypes";
+import { GUARD_CORPUS_CAP, MAX_TURN_IMAGES, SCREEN_HISTORY_CAP } from "$lib/chat/server/guardScreenTypes";
 import {
 	prepareTurnMedia,
 	prepareScreenedTurnMedia,
@@ -11,6 +12,17 @@ import {
 } from "./prepareTurnMedia";
 import { AttachmentReadError } from "$lib/chat/server/files/downloadFile";
 
+// `guard-history-cap` is off unless a test turns it on.
+const historyCap = vi.hoisted(() => ({ on: false }));
+vi.mock("$lib/chat/server/flags", async (importActual) => {
+	const actual = await importActual<typeof import("$lib/chat/server/flags")>();
+	return {
+		...actual,
+		flagEnabledOr: (key: string, fallback: () => boolean) =>
+			key === "guard-history-cap" ? historyCap.on : actual.flagEnabledOr(key, fallback),
+	};
+});
+
 // ── fixtures ──────────────────────────────────────────────────────────────────────────────────────
 const CONV = new ObjectId();
 
@@ -18,7 +30,8 @@ const b64 = (s: string) => Buffer.from(s, "utf-8").toString("base64");
 
 type StoreEntry = { mime: string; value: string; name?: string };
 
-/** A fake GridFS-backed downloadFile: sha → hydrated record. Unknown sha throws (404 shape). */
+/** A fake GridFS-backed downloadFile: sha → hydrated record. Unknown sha throws a plain Error, an
+ * unexplained failure rather than the 404 for a file that is gone (`notFoundDownload`). */
 function fakeDownload(store: Record<string, StoreEntry>): PrepareTurnMediaDeps["downloadFile"] {
 	return vi.fn(async (sha: string) => {
 		const entry = store[sha];
@@ -49,6 +62,11 @@ const throwingSharp = vi.fn(() => ({
 	}),
 })) as unknown as PrepareTurnMediaDeps["sharpImpl"];
 
+/** downloadFile for a file deleted since it was attached: the same 404 downloadFile.ts throws. */
+const notFoundDownload = vi.fn(async () => {
+	error(404, "File not found");
+}) as unknown as PrepareTurnMediaDeps["downloadFile"];
+
 const ref = (sha: string): MessageFile => ({ type: "hash", value: sha, mime: "x", name: "ref" });
 
 function userMsg(id: string, content: string, files?: MessageFile[]): Message {
@@ -57,7 +75,7 @@ function userMsg(id: string, content: string, files?: MessageFile[]): Message {
 
 // ── tests ───────────────────────────────────────────────────────────────────────────────────────
 describe("prepareTurnMedia", () => {
-	it("hands every attachment read in one turn the same key store, and a new turn a new one (CUR-4116)", async () => {
+	it("hands every attachment read in one turn the same key store, and a new turn a new one", async () => {
 		const store = { s1: { mime: "text/plain", value: b64("one") }, s2: { mime: "text/plain", value: b64("two") } };
 		const download = fakeDownload(store);
 		const msgs = [userMsg("m0", "a", [ref("s1")]), userMsg("m1", "b", [ref("s2")])];
@@ -87,6 +105,35 @@ describe("prepareTurnMedia", () => {
 		expect(out.screen.images).toEqual([]);
 		expect(out.screen.failedUnits).toEqual([]);
 		expect(out.droppedImages).toBe(0);
+	});
+
+	it("an attached HTML page reaches the prompt as its readable article text, not raw markup", async () => {
+		const html = "<html><body><nav>Home | News</nav><article><p>Port Tessaly tide report</p></article></body></html>";
+		const download = fakeDownload({ h1: { mime: "text/html", value: b64(html), name: "c1-h1" } });
+		const readHtml = vi.fn(async () => ({ title: "Tides", text: "Port Tessaly tide report" }));
+		const out = await prepareTurnMedia([userMsg("m1", "summarise", [{ ...ref("h1"), name: "page.html" }])], CONV, {
+			downloadFile: download,
+			readHtml,
+		});
+
+		expect(readHtml).toHaveBeenCalledWith(html, "upload");
+		const fm = out.messages.get("m1")!;
+		expect(fm.finalText).toContain('<document name="page.html" type="text/html">');
+		expect(fm.finalText).toContain("Port Tessaly tide report");
+		expect(fm.finalText).not.toContain("<nav>");
+		expect(fm.finalText).not.toContain("Home | News");
+		expect(out.screen.corpus).not.toContain("<article>");
+	});
+
+	it("a plain text attachment never goes through the HTML reader", async () => {
+		const download = fakeDownload({ t1: { mime: "text/plain", value: b64("<b>literal</b>"), name: "c1-t1" } });
+		const readHtml = vi.fn();
+		const out = await prepareTurnMedia([userMsg("m1", "hi", [{ ...ref("t1"), name: "a.txt" }])], CONV, {
+			downloadFile: download,
+			readHtml,
+		});
+		expect(readHtml).not.toHaveBeenCalled();
+		expect(out.messages.get("m1")!.finalText).toContain("<b>literal</b>");
 	});
 
 	it("a text file renders a <document> wrapper into finalText and the corpus", async () => {
@@ -121,7 +168,7 @@ describe("prepareTurnMedia", () => {
 	});
 
 	// The agent endpoint keeps this part whole for earlier turns, so it must be finalText's
-	// attached part exactly, without the typed words. (CUR-4104)
+	// attached part exactly, without the typed words.
 	it("attachedText is finalText's attached part, without the typed text", async () => {
 		const download = fakeDownload({
 			c1: { mime: "application/vnd.chatui.clipboard", value: b64("PASTED CLIPBOARD TEXT") },
@@ -193,7 +240,7 @@ describe("prepareTurnMedia", () => {
 	});
 
 	// The budget fills newest first, so a second cap-sized paste leaves the first one empty.
-	// The model never reads it, and the answer has to say older messages were left out. (CUR-2893)
+	// The model never reads it, and the answer has to say older messages were left out.
 	it("counts an earlier paste the corpus budget cut as an older message left out", async () => {
 		const download = fakeDownload({
 			old: { mime: "application/vnd.chatui.clipboard", value: b64("o".repeat(GUARD_CORPUS_CAP)) },
@@ -311,7 +358,7 @@ describe("prepareTurnMedia", () => {
 		expect(out.messages.get("m1")!.finalText).toBe("hi");
 	});
 
-	// A file the bucket could not read is named in the turn's reply rather than left out silently. (CUR-3291)
+	// A file the bucket could not read is named in the turn's reply rather than left out silently.
 	it("names a file the bucket could not read in unreadFiles, so the turn can say so", async () => {
 		const download = vi.fn(async () => {
 			throw new AttachmentReadError("The storage bucket could not be read");
@@ -322,7 +369,7 @@ describe("prepareTurnMedia", () => {
 	});
 
 	// The unread file never reaches the model, so there is nothing unscreened. Counting it as
-	// a failed unit would make the guard fail child safety closed and decline the turn before the notice. (CUR-3291)
+	// a failed unit would make the guard fail child safety closed and decline the turn before the notice.
 	it("leaves a file the bucket could not read out of failedUnits, so the guard does not decline the turn", async () => {
 		const download = vi.fn(async () => {
 			throw new AttachmentReadError("The storage bucket could not be read");
@@ -335,7 +382,7 @@ describe("prepareTurnMedia", () => {
 	});
 
 	it("names a missing file only on the latest message, so a file gone from an older one is not repeated every turn", async () => {
-		const download = fakeDownload({});
+		const download = notFoundDownload;
 		const out = await prepareTurnMedia(
 			[
 				userMsg("m1", "first", [{ ...ref("gone"), name: "old.txt" }]),
@@ -345,6 +392,49 @@ describe("prepareTurnMedia", () => {
 			{ downloadFile: download }
 		);
 		expect(out.unreadFiles).toEqual([{ name: "new.txt", reason: "missing" }]);
+	});
+
+	// A file deleted from My files must not hold every later turn in that chat as unchecked.
+	it("leaves a file deleted from an older message out of failedUnits, with no notice, so later turns are not held", async () => {
+		const out = await prepareTurnMedia(
+			[
+				userMsg("m1", "what does the note say?", [{ ...ref("gone"), name: "walk-note.txt" }]),
+				userMsg("m2", "what is the capital of France?"),
+			],
+			CONV,
+			{ downloadFile: notFoundDownload }
+		);
+		expect(out.screen.failedUnits).toEqual([]);
+		expect(out.unreadFiles).toEqual([]);
+		expect(out.messages.get("m1")!.finalText).toBe("what does the note say?");
+	});
+
+	it("names a file deleted from the newest message as missing, and leaves it out of failedUnits", async () => {
+		const out = await prepareTurnMedia([userMsg("m1", "summarise this", [{ ...ref("gone"), name: "walk-note.txt" }])], CONV, {
+			downloadFile: notFoundDownload,
+		});
+		expect(out.screen.failedUnits).toEqual([]);
+		expect(out.unreadFiles).toEqual([{ name: "walk-note.txt", reason: "missing" }]);
+		expect(out.messages.get("m1")!.finalText).toBe("summarise this");
+	});
+
+	it("an unexplained download error is still a file-hydration FailedUnit, on an older message too, never treated as missing", async () => {
+		const out = await prepareTurnMedia(
+			[userMsg("m1", "first", [{ ...ref("boom"), name: "old.txt" }]), userMsg("m2", "second")],
+			CONV,
+			{ downloadFile: fakeDownload({}) }
+		);
+		expect(out.screen.failedUnits).toEqual([{ kind: "file-hydration", sha: "boom" }]);
+		expect(out.unreadFiles).toEqual([]);
+	});
+
+	it("a 403 for another conversation's file is a FailedUnit, not a missing file", async () => {
+		const forbidden = vi.fn(async () => {
+			error(403, "You don't have access to this file.");
+		}) as unknown as PrepareTurnMediaDeps["downloadFile"];
+		const out = await prepareTurnMedia([userMsg("m1", "hi", [ref("other")])], CONV, { downloadFile: forbidden });
+		expect(out.screen.failedUnits).toEqual([{ kind: "file-hydration", sha: "other" }]);
+		expect(out.unreadFiles).toEqual([]);
 	});
 
 	it("an undecodable text file is a text-decode FailedUnit — excluded from finalText", async () => {
@@ -445,7 +535,7 @@ describe("prepareScreenedTurnMedia — gate corpus after a declined turn", () =>
 });
 
 // A PDF or DOCX is read to text and screened with the turn, but only when the route says the
-// guard screens this turn (readDocuments). The extractor is stubbed; rag/extractFile.spec.ts covers it. (CUR-987)
+// guard screens this turn (readDocuments). The extractor is stubbed; rag/extractFile.spec.ts covers it.
 describe("prepareTurnMedia — document attachments", () => {
 	const PDF = "application/pdf";
 	const docRef = (sha: string, name: string): MessageFile => ({ type: "hash", value: sha, mime: PDF, name });
@@ -515,7 +605,7 @@ describe("prepareTurnMedia — document attachments", () => {
 	});
 });
 
-describe("outputAskerText — what the output screen reads as the person's question (CUR-1837)", () => {
+describe("outputAskerText — what the output screen reads as the person's question", () => {
 	it("carries an attached file's text, question first, so an answer quoting names from the person's own rota is judged against it", async () => {
 		const download = fakeDownload({ r1: { mime: "text/plain", value: b64("Saturday: Ana and Ben") } });
 		const msgs = [userMsg("m1", "Who is on the rota for Saturday?", [{ ...ref("r1"), name: "rota.txt" }])];
@@ -534,5 +624,74 @@ describe("outputAskerText — what the output screen reads as the person's quest
 		const download = fakeDownload({ r1: { mime: "text/plain", value: b64("OLD FILE BODY") } });
 		const msgs = [userMsg("m0", "first", [{ ...ref("r1"), name: "old.txt" }]), userMsg("m1", "second")];
 		expect(outputAskerText(msgs, await prepareTurnMedia(msgs, CONV, { downloadFile: download }))).toBe("second");
+	});
+});
+
+describe("prepareTurnMedia — guard-history-cap", () => {
+	const older = "o".repeat(6_000);
+	const recent = "r".repeat(3_500);
+	const newest = "n".repeat(1_000);
+	const run = async (on: boolean, msgs: Message[], deps: PrepareTurnMediaDeps = {}) => {
+		historyCap.on = on;
+		try {
+			return await prepareTurnMedia(msgs, CONV, deps);
+		} finally {
+			historyCap.on = false;
+		}
+	};
+
+	it("flag off, the zero-file corpus is every user message joined, byte for byte as before", async () => {
+		const out = await run(false, [userMsg("m0", older), userMsg("m1", recent), userMsg("m2", newest)]);
+		expect(out.screen.corpus).toBe(`${older}\n\n${recent}\n\n${newest}`);
+	});
+
+	it("flag on, the zero-file corpus is the newest message whole plus only the end of the history, up to the cap", async () => {
+		const out = await run(true, [userMsg("m0", older), userMsg("m1", recent), userMsg("m2", newest)]);
+		expect(out.screen.corpus.length).toBe(SCREEN_HISTORY_CAP);
+		expect(out.screen.corpus.endsWith(`\n\n${newest}`)).toBe(true);
+		expect(out.screen.corpus).not.toContain("o");
+		expect(out.screen.typedTurnText).toBe(newest);
+	});
+
+	it("flag on, a file turn keeps the newest finalText whole and caps only the screened history, never what the model is sent", async () => {
+		const download = fakeDownload({ t1: { mime: "text/plain", value: b64("OLD FILE BODY") } });
+		const msgs = [userMsg("m0", older, [{ ...ref("t1"), name: "old.txt" }]), userMsg("m1", recent), userMsg("m2", newest)];
+		const off = await run(false, msgs, { downloadFile: download });
+		const on = await run(true, msgs, { downloadFile: download });
+
+		const oldFinal = off.messages.get("m0")!.finalText;
+		expect(off.screen.corpus).toBe(`${oldFinal}\n\n${recent}\n\n${newest}`);
+		expect(on.screen.corpus.length).toBe(SCREEN_HISTORY_CAP);
+		expect(on.screen.corpus.endsWith(`\n\n${newest}`)).toBe(true);
+		expect(on.screen.corpus).not.toContain("OLD FILE BODY");
+		expect(on.messages.get("m0")!.finalText).toBe(oldFinal);
+		expect(on.screen.typedTurnText).toBe(off.screen.typedTurnText);
+	});
+
+	it("flag on and the cap cut something, historyCorpus is the whole uncapped corpus on both paths; flag off, it is absent", async () => {
+		const download = fakeDownload({ t1: { mime: "text/plain", value: b64("OLD FILE BODY") } });
+		const plain = [userMsg("m0", older), userMsg("m1", recent), userMsg("m2", newest)];
+		const files = [userMsg("m0", older, [{ ...ref("t1"), name: "old.txt" }]), userMsg("m1", recent), userMsg("m2", newest)];
+		for (const [msgs, deps] of [
+			[plain, {}],
+			[files, { downloadFile: download }],
+		] as const) {
+			const off = await run(false, msgs, deps);
+			const on = await run(true, msgs, deps);
+			expect(off.screen.historyCorpus).toBeUndefined();
+			expect(on.screen.historyCorpus).toBe(off.screen.corpus);
+		}
+	});
+
+	it("flag on and the whole history fits under the cap, historyCorpus is absent (nothing to re-read)", async () => {
+		const out = await run(true, [userMsg("m0", "short paste"), userMsg("m1", "short follow-up")]);
+		expect(out.screen.corpus).toBe("short paste\n\nshort follow-up");
+		expect(out.screen.historyCorpus).toBeUndefined();
+	});
+
+	it("flag on, a newest message over the cap is screened whole and alone", async () => {
+		const long = "L".repeat(SCREEN_HISTORY_CAP + 500);
+		const out = await run(true, [userMsg("m0", older), userMsg("m1", long)]);
+		expect(out.screen.corpus).toBe(long);
 	});
 });

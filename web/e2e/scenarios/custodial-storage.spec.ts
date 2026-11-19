@@ -13,8 +13,9 @@ import { faultInjectionHeaders, installFaultInjectionHeader } from './helpers/fa
 import { STORAGE_POLL_INTERVALS } from './helpers/storagePoll';
 import { failIfStorageThrottled } from './helpers/storageThrottle';
 import { startChattingPastWelcome } from './helpers/welcome';
+import { openArchive } from './helpers/exportArchive';
 
-// The bucket the target deployment writes to; unset means production's, same as the app (CUR-1288).
+// The bucket the target deployment writes to; unset means production's, same as the app.
 const BUCKET = process.env.HF_BUCKETS_REPO || 'buckets/current-ai-official/custodial-storage-eu';
 
 /**
@@ -64,7 +65,7 @@ async function bucketFilesUnder(prefix: string): Promise<string[] | null> {
 	const token = process.env.HF_BUCKETS_TOKEN;
 	if (!token) return null;
 	// A 429 is the shared token's 3,000-calls-per-5-minutes cap, which says nothing about the bucket.
-	// Waiting it out spends the next window alongside every other waiting shard (CUR-3680), so fail
+	// Waiting it out spends the next window alongside every other waiting shard, so fail
 	// at once and name it, as failIfStorageThrottled does for the storage routes. Any other error
 	// fails as itself.
 	try {
@@ -114,15 +115,14 @@ async function removeLeftovers(page: Page): Promise<void> {
 	}
 }
 
-// A3 step 7 — "the storage view for a person's own files". CUR-899 is the epic line; CUR-415 covers
+// A3 step 7 — "the storage view for a person's own files". That change is the epic line; that change covers
 // the words a person reads once they get there and is still open on its own question, so the first
 // test here walks reachability and says nothing about the copy. The second checks one factual claim
 // in it: where the files are kept.
 //
 // WHAT IT ASSERTS IS THE COUPLING, NOT THE FLAG STATE. `custodial-storage-view` is evaluated
 // per-account rather than per-deployment, so a scenario run cannot reliably force it in both
-// directions the way data-portability.spec.ts forces `data-export` (CUR-1664 is the same override
-// gap on the per-user path). Pinning an expected state would make this spec a report on whichever
+// directions (that change is the override gap on the per-user path). Pinning an expected state would make this spec a report on whichever
 // way the live flag happened to fall.
 //
 // So it pins the invariant instead, and the invariant is the defect this journey exists to prevent:
@@ -149,8 +149,8 @@ test(
 		});
 		const tabVisible = await tab.isVisible();
 
-		// Both storage pages: the settings inside the settings pane, where this tab leads (CUR-1769,
-		// CUR-4363), and the files at /chat/storage, where the chat rail's Files entry leads. One gate
+		// Both storage pages: the settings inside the settings pane, where this tab leads (
+		//), and the files at /chat/storage, where the chat rail's Files entry leads. One gate
 		// covers both.
 		for (const path of ['/chat/settings/storage', '/chat/storage']) {
 			const status = (await page.request.get(path)).status();
@@ -210,6 +210,50 @@ test(
 	}
 );
 
+// The other direction of the same gate, forced rather than left to the live flag. My files
+// is on for everyone in production, so no walker account can show the off state; the override cookie
+// can. The same account is walked with the flag on first, so the tab's locator is proven to find it
+// before its absence counts for anything.
+test(
+	'a signed-in account without My files sees no Storage tab in Settings, and both storage pages 404',
+	{ tag: ['@preview-only', '@A3'] },
+	async ({ page, context, baseURL }) => {
+		test.setTimeout(120_000);
+		await setFlagOverrides(context, baseURL!, { 'custodial-storage-view': true });
+		await signInAsFreshUser(page);
+
+		const tab = page.getByRole('link', {
+			name: 'How much storage you use, where new files go, and linked buckets'
+		});
+		const accountTab = page.getByRole('link', { name: /account/i }).first();
+		const openSettings = async () => {
+			await page.goto('/chat/settings', { waitUntil: 'commit' });
+			await page.waitForURL(/\/settings/, { timeout: 30_000 });
+			await expect(accountTab, 'the settings nav never rendered').toBeVisible({ timeout: 30_000 });
+		};
+
+		await openSettings();
+		await expect(
+			tab,
+			'with My files forced on, the Storage tab is missing, so its absence below would prove nothing'
+		).toBeVisible({ timeout: 15_000 });
+
+		await setFlagOverrides(context, baseURL!, { 'custodial-storage-view': false });
+		await openSettings();
+		await expect(
+			tab,
+			'an account without My files is offered a Storage tab that leads to a page it cannot open'
+		).toHaveCount(0);
+		for (const path of ['/chat/settings/storage', '/chat/storage']) {
+			const status = (await page.request.get(path)).status();
+			expect(
+				status,
+				`an account without My files has no Storage tab, but ${path} answered ${status}, so the page is still reachable by URL`
+			).toBe(404);
+		}
+	}
+);
+
 // A3 "delete my data": deleting the account left the person's upload
 // in the bucket, the done panel never mentioned files, and signing back in showed "No files yet", so
 // the orphan could never be reached again. This walks upload -> delete account -> the done panel
@@ -226,7 +270,7 @@ test(
 		await signInAsFreshUser(page);
 
 		// Where the files actually are: a Hugging Face bucket Current AI holds. The panel used to say
-		// they "stay inside Alpha", which no part of the storage path does. Since CUR-4363 Settings →
+		// they "stay inside Alpha", which no part of the storage path does. Settings →
 		// Storage says it; the files page links there.
 		await page.goto('/chat/settings/storage', { waitUntil: 'commit' });
 		const whereKept = page.getByTestId('storage-where-kept');
@@ -256,7 +300,7 @@ test(
 					timeout: 30_000
 				});
 				// The usage meter counts what was just stored, against the quota it names. With
-				// CUSTODIAL_SEAL_WRITES on, what is stored is the age file (CUR-4116), about 1.7 KB for this
+				// CUSTODIAL_SEAL_WRITES on, what is stored is the age file, about 1.7 KB for this
 				// 43-byte text, so the size may read in B or KB.
 				const meter = page.getByRole('meter', { name: '1 file' });
 				await expect(meter, 'the usage meter did not count the uploaded file').toHaveAttribute(
@@ -266,8 +310,8 @@ test(
 				await expect(page.getByTestId('storage-warning')).toHaveCount(0);
 
 				// The download button has to hand the person their file back: the page's URL changed to the file
-				// endpoint and nothing was saved (CUR-1861). Hard assertions: the `finally` below removes the file if
-				// any of them fails, so orphan protection no longer depends on these being soft (CUR-2033).
+				// endpoint and nothing was saved. Hard assertions: the `finally` below removes the file if
+				// any of them fails, so orphan protection no longer depends on these being soft.
 				const downloaded = await Promise.all([
 					page.waitForEvent('download', { timeout: 20_000 }).catch(() => null),
 					page.getByRole('button', { name: `Download ${name}` }).click()
@@ -296,7 +340,7 @@ test(
 				await page
 					.getByRole('button', { name: 'Delete your account, conversations, and sign-in methods' })
 					.click({ timeout: 30_000 });
-				// Deleting an account takes a typed word before the button enables (CUR-1420).
+				// Deleting an account takes a typed word before the button enables.
 				await page.getByLabel('Type DELETE to confirm').fill('DELETE');
 				await page.getByRole('button', { name: 'Delete account', exact: true }).click();
 				await expect(page.getByRole('heading', { name: 'Your data has been cleared' })).toBeVisible(
@@ -327,7 +371,7 @@ test(
 );
 
 // A3 "delete my data", one file at a time. The row's Delete button is the only way a person removes
-// a single upload, and until CUR-2033 no test pressed it. It goes red if the row stays, if the app
+// a single upload, and no test pressed it. It goes red if the row stays, if the app
 // still lists the file afterwards (a live read of the bucket), or, when the run holds
 // HF_BUCKETS_TOKEN, if the bucket itself still has it.
 test(
@@ -394,7 +438,7 @@ test(
 	}
 );
 
-// CUR-3289 slice 2: My files shows an image as a thumbnail and opens a file in place. The file
+// slice 2: My files shows an image as a thumbnail and opens a file in place. The file
 // endpoint always answers as a download (storage/file/+server.ts), so a row that opened by navigating
 // to it would save the file instead; the download listener is what tells the two apart.
 test(
@@ -501,7 +545,7 @@ async function dropRotaOnComposer(page: Page, name: string) {
 	return composer;
 }
 
-// A3 "work on my own documents" (CUR-2172): a file attached in a chat is one the person gave Alpha,
+// A3 "work on my own documents": a file attached in a chat is one the person gave Alpha,
 // so it belongs in My files too, where they can find it, delete it and export it. Until this, only
 // files uploaded on the storage page reached the bucket. It attaches through the composer's own
 // input, sends, and reads the list back from the app: red if the file never lands, or lands
@@ -557,7 +601,7 @@ test(
 				'the attachment reached My files but not under the conversation that used it'
 			).toContain(`/conversations/${conversationId}/`);
 
-			// CUR-3289, A3 step 29: from the chat, through the sidebar's Files, open the file in place and
+			// A3 step 29: from the chat, through the sidebar's Files, open the file in place and
 			// follow its row back to the chat it came from. The gallery films this row.
 			await journeyStep(page, 'A3', 29, async () => {
 				const openSidebar = page.getByRole('button', { name: 'Open sidebar' });
@@ -665,10 +709,234 @@ test(
 	}
 );
 
-// The bucket never stalls a turn. A write Hugging Face throttles puts the file in the
+// My files lists the newest file first, so a file just attached in chat is the top row rather than
+// below every older one. An older file goes in through the storage page first; then a
+// file is attached in chat and the rail's Files entry is followed: red if the attachment is not
+// the first row.
+test(
+	'a file just attached in chat is the first row in My files, above an older file',
+	{ tag: ['@preview-only', '@A3', '@CUR-4355'] },
+	async ({ page, context, baseURL }) => {
+		test.setTimeout(180_000);
+		await setFlagOverrides(context, baseURL!, {
+			'custodial-storage-view': true
+		});
+		await signInAsFreshUser(page);
+
+		const older = 'older-notes.txt';
+		const name = 'newest-rota.txt';
+		try {
+			await page.goto('/chat/storage', { waitUntil: 'commit' });
+			await expect(page.getByRole('heading', { name: 'Your files', level: 1 })).toBeVisible({
+				timeout: 30_000
+			});
+			await uploadThroughPage(page, older, 'Notes from last month.');
+			await expect(page.locator('[data-file-row]').filter({ hasText: older })).toBeVisible({
+				timeout: 30_000
+			});
+
+			const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });
+			await page.addLocatorHandler(welcomeDialog, async () => {
+				await startChattingPastWelcome(welcomeDialog);
+			});
+			await page.goto(answerShapeEntry(), { waitUntil: 'commit' });
+			const composer = await dropRotaOnComposer(page, name);
+			await composer.fill('What is on the rota for Saturday?');
+			await composer.press('Enter');
+			await page.waitForURL(/\/chat\/conversation\/[a-f0-9]+/, { timeout: 60_000 });
+			const first = page.locator('[data-message-role="assistant"]').first();
+			await expect(turnDone(first), 'the turn never finished').toBeVisible({ timeout: 90_000 });
+
+			const openSidebar = page.getByRole('button', { name: 'Open sidebar' });
+			if (await openSidebar.isVisible()) await openSidebar.click();
+			await page.getByRole('link', { name: 'Files', exact: true }).click();
+			await page.waitForURL(/\/chat\/storage$/, { timeout: 30_000 });
+			const rows = page.locator('[data-file-row]');
+			await expect(rows.filter({ hasText: older })).toBeVisible({ timeout: 30_000 });
+			await expect(rows.filter({ hasText: name })).toBeVisible();
+			await expect(
+				rows.first(),
+				'the file just attached in chat is not the first row in My files'
+			).toContainText(name);
+		} finally {
+			await removeLeftovers(page);
+		}
+	}
+);
+
+// after a person deleted a chat's attachment from My files, every later turn in that chat
+// was held as "Couldn't check this message". The deleted file never reaches the model, so nothing
+// goes unscreened, yet it counted as a failed unit and failed child safety closed. This attaches in
+// chat, deletes the file through My files' own Delete button, goes back to the chat and asks a
+// question the file has nothing to do with: red if that turn is held instead of answered.
+test(
+	'deleting a chat attachment from My files does not hold the later turns in that chat as unchecked',
+	{ tag: ['@preview-only', '@A3', '@CUR-4773'] },
+	async ({ page, context, baseURL }) => {
+		test.setTimeout(180_000);
+		await setFlagOverrides(context, baseURL!, {
+			'custodial-storage-view': true
+		});
+		await signInAsFreshUser(page);
+
+		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });
+		await page.addLocatorHandler(welcomeDialog, async () => {
+			await startChattingPastWelcome(welcomeDialog);
+		});
+		await page.goto(answerShapeEntry(), { waitUntil: 'commit' });
+
+		const name = 'deleted-rota.txt';
+		try {
+			const composer = await dropRotaOnComposer(page, name);
+			await composer.fill('What is on the rota for Saturday?');
+			await composer.press('Enter');
+			await page.waitForURL(/\/chat\/conversation\/[a-f0-9]+/, { timeout: 60_000 });
+			const conversationId = new URL(page.url()).pathname.split('/').pop()!;
+			const answers = page.locator('[data-message-role="assistant"]');
+			await expect(turnDone(answers.first()), 'the first turn never finished').toBeVisible({
+				timeout: 90_000
+			});
+
+			// Delete it the way a person does: My files, the row's Delete, confirm.
+			await page.goto('/chat/storage', { waitUntil: 'commit' });
+			const del = page.getByRole('button', { name: `Delete ${name}` });
+			await expect(del, 'My files does not list the file attached in chat').toBeVisible({
+				timeout: 30_000
+			});
+			await del.click();
+			const dialog = page.getByRole('dialog', { name: 'Delete this file?' });
+			await expect(dialog).toBeVisible();
+			const deleted = page.waitForResponse(
+				(r) => r.request().method() === 'DELETE' && r.url().includes('/chat/api/storage/file'),
+				{ timeout: 20_000 }
+			);
+			await dialog.getByRole('button', { name: 'Delete', exact: true }).click();
+			expect((await deleted).status(), 'the delete request was refused').toBe(200);
+			await expect(del, 'the file is still in My files after its Delete').toHaveCount(0, {
+				timeout: 15_000
+			});
+
+			// The question has nothing to do with the file, so a held turn is the bug and nothing else.
+			await page.goto(`/chat/conversation/${conversationId}`, { waitUntil: 'commit' });
+			await expect(answers.first()).toBeVisible({ timeout: 30_000 });
+			await composer.fill('Thanks. What is the capital of France?');
+			await composer.press('Enter');
+			await expect(answers, 'the turn after the delete never produced an answer').toHaveCount(2, {
+				timeout: 60_000
+			});
+			const second = answers.last();
+			await expect(turnDone(second), 'the turn after the delete never finished').toBeVisible({
+				timeout: 90_000
+			});
+			await expect(
+				page.getByText("Couldn't check this message"),
+				'the turn after the attachment was deleted was held as unchecked rather than answered'
+			).toHaveCount(0);
+			// Scenario runs replay recorded answers, so the wording is the harness's; what matters is that one came.
+			await expect(
+				second,
+				'the turn after the attachment was deleted produced no answer'
+			).not.toBeEmpty();
+		} finally {
+			await removeLeftovers(page);
+		}
+	}
+);
+
+// A3 "take it with me" and "delete my data" for a file given to Alpha in chat. The two
+// tests above that cover the export and the account wipe each start from a file uploaded on the
+// storage page, which is not where most files come from. This one attaches in chat, takes the data
+// export and finds the file in it once, byte for byte, then deletes the account and checks the done
+// panel counted the file. Red if the export leaves the attachment out or packs it twice,
+// or if the wipe leaves it behind.
+test(
+	'a file attached in chat is in the data export once, and goes when the account is deleted',
+	{ tag: ['@preview-only', '@A3', '@CUR-2172'] },
+	async ({ page, context, baseURL }) => {
+		test.setTimeout(180_000);
+		await setFlagOverrides(context, baseURL!, {
+			'custodial-storage-view': true,
+			// This test is about where the attachment goes, not agent mode (the reason data-portability.spec.ts
+			// gives).
+			'agent-mode': false
+		});
+		await signInAsFreshUser(page);
+
+		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });
+		await page.addLocatorHandler(welcomeDialog, async () => {
+			await startChattingPastWelcome(welcomeDialog);
+		});
+		await page.goto(answerShapeEntry(), { waitUntil: 'commit' });
+
+		const name = 'volunteer-rota.txt';
+		let accountDeleted = false;
+		try {
+			const composer = await dropRotaOnComposer(page, name);
+			await composer.fill('What is on the rota for Saturday?');
+			await composer.press('Enter');
+			await page.waitForURL(/\/chat\/conversation\/[a-f0-9]+/, { timeout: 60_000 });
+			const conversationId = new URL(page.url()).pathname.split('/').pop()!;
+			await expect(
+				turnDone(page.locator('[data-message-role="assistant"]').first()),
+				'the turn that used the attachment never finished'
+			).toBeVisible({ timeout: 90_000 });
+
+			// The test above shows the file is stored by the end of the turn; this one starts from there.
+			const stored = (await appListedPaths(page)).find((p) => p.endsWith(`/${name}`));
+			expect(stored, `${name} was not in My files after the turn that used it`).toBeTruthy();
+			expect(stored).toContain(`/conversations/${conversationId}/`);
+			const prefix = userPrefix(stored!);
+
+			// One export an hour per account, and this fresh account spends its one here.
+			const res = await page.request.get('/chat/api/v2/export');
+			expect(res.status(), 'the data export was refused').toBe(200);
+			const archive = openArchive(await res.body());
+			// A copy under attachments/ is the second copy that change removed: the conversation points at files/.
+			const copies = Object.keys(archive).filter(
+				(n) => n.endsWith(`/${name}`) || n.startsWith(`attachments/${conversationId}`)
+			);
+			expect(
+				copies,
+				`the export should hold the chat attachment once, under files/ at its My files path; it holds ${copies.length}: ${copies.join(', ')}`
+			).toEqual([`files/${stored!.slice(prefix.length)}`]);
+			expect(archive[copies[0]], 'the exported attachment is not the file that was attached').toBe(
+				ROTA_TEXT
+			);
+
+			await page.goto('/chat/settings/account', { waitUntil: 'commit' });
+			await page
+				.getByRole('button', { name: 'Delete your account, conversations, and sign-in methods' })
+				.click({ timeout: 30_000 });
+			await page.getByLabel('Type DELETE to confirm').fill('DELETE');
+			await page.getByRole('button', { name: 'Delete account', exact: true }).click();
+			await expect(page.getByRole('heading', { name: 'Your data has been cleared' })).toBeVisible({
+				timeout: 60_000
+			});
+			accountDeleted = true;
+			await expect(
+				page.getByText('1 uploaded file', { exact: true }),
+				'the account wipe did not count the file attached in chat, so it either left it in the bucket or deleted it without telling the person'
+			).toBeVisible();
+
+			const left = await bucketFilesUnder(prefix);
+			if (left)
+				expect(left, `files still under ${prefix} after the account was deleted`).toEqual([]);
+			test.info().annotations.push({
+				type: 'bucket check',
+				description: left
+					? `listed ${prefix} directly: empty`
+					: 'HF_BUCKETS_TOKEN not set for this run; the done panel count is the evidence'
+			});
+		} finally {
+			if (!accountDeleted) await removeLeftovers(page);
+		}
+	}
+);
+
+// the bucket never stalls a turn. A write Hugging Face throttles puts the file in the
 // conversation's files table and the turn goes on. The fault answers the store the way the real
 // failure does on the live preview, so this goes red if the failure ends the send, the question is
-// lost, or the file never reaches the model. A full quota is no longer one of these (CUR-3235, below).
+// lost, or the file never reaches the model. A full quota is no longer one of these (below).
 for (const fault of ['storage_hub_rate_limited'] as const) {
 	test(
 		`an attachment the bucket refuses (${fault}) still reaches the model, through the files table`,
@@ -893,7 +1161,7 @@ test(
 				{ timeout: 60_000 }
 			);
 			await composer.press('Enter');
-			// A refusal inside the turn's setup arrives in-stream on a 200 (CUR-1896), so the 413 is read
+			// A refusal inside the turn's setup arrives in-stream on a 200, so the 413 is read
 			// from the status update in the body, not from the HTTP status.
 			await turn;
 			expect(faultEcho, 'the full-quota fault never reached the server').toBe('storage_quota_full');
@@ -1004,6 +1272,29 @@ test(
 				page.getByText(name),
 				'the file past the allowance still sat on the composer, ready to send'
 			).toHaveCount(0);
+
+			// The refusal is the file's, never the message's: text still sends, and the turn carries no
+			// copy of the refused file to be stored anywhere.
+			await composer.fill('And what is on the rota for Sunday?');
+			const send = page.getByRole('button', { name: 'Send message', exact: true });
+			await expect(send, 'Send was disabled for a text-only message after the refusal').toBeEnabled(
+				{
+					timeout: 10_000
+				}
+			);
+			const textTurn = page.waitForResponse(
+				(r) =>
+					r.request().method() === 'POST' &&
+					/\/chat\/conversation\/[a-f0-9]+$/.test(new URL(r.url()).pathname),
+				{ timeout: 60_000 }
+			);
+			await send.click();
+			const sent = await textTurn;
+			expect(sent.ok(), 'the text-only turn after the refusal was refused').toBe(true);
+			expect(
+				sent.request().postDataBuffer()?.toString('latin1') ?? '',
+				'the turn after the refusal still carried the refused file'
+			).not.toContain(name);
 		} finally {
 			await removeLeftovers(page);
 		}
@@ -1291,7 +1582,7 @@ test(
 	}
 );
 
-// Forget everything destroyed the account's file key (CUR-4117's tombstone, meant for account
+// Forget everything destroyed the account's file key (the tombstone, meant for account
 // deletion) and kept the account, so every later upload failed for good. This walks upload -> Forget
 // everything -> upload again: the second upload must store and hand back the same bytes.
 test(

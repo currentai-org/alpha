@@ -4,7 +4,7 @@
 	import RiErrorWarningFill from '~icons/ri/error-warning-fill';
 	import RiCloseLine from '~icons/ri/close-line';
 
-	// CUR-1276, from files-components.jsx's Notice. Panel-level feedback for actions that finish
+	// from files-components.jsx's Notice. Panel-level feedback for actions that finish
 	// after their row is gone (delete) or that never had a row (download) — dismissible, flat, sharp
 	// corners.
 	interface Props {

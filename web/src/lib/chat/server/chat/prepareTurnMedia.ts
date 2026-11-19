@@ -26,15 +26,18 @@
 import sharp from "sharp";
 import type { ObjectId } from "bson";
 import type { Message } from "$lib/chat/types/Message";
-import { AttachmentReadError, downloadFile, type AttachmentOwner } from "$lib/chat/server/files/downloadFile";
+import { AttachmentReadError, downloadFile, isAttachmentMissing, type AttachmentOwner } from "$lib/chat/server/files/downloadFile";
 import { turnKeyStore } from "$lib/chat/server/storage/custodialStorage";
 import { stripDeclinedTurns } from "$lib/chat/server/textGeneration/stripDeclinedTurns";
 import { CLIPBOARD_MIME, DOCX_MIME } from "$lib/chat/constants/mime";
 import { isTextMime } from "$lib/chat/server/chat/attachmentType";
 import { extractTextFromUpload, RagExtractError } from "$lib/chat/server/rag/extractFile";
+import { extractReadableHtml } from "$lib/chat/server/rag/readableExtract";
 import type { UploadKind } from "$lib/chat/constants/ragUpload";
 import { logger as defaultLogger } from "$lib/chat/server/logger";
+import { flagEnabledOr } from "$lib/chat/server/flags";
 import {
+	capScreenHistory,
 	GUARD_CORPUS_CAP,
 	IMAGE_CAPTION_CAP,
 	MAX_TURN_IMAGES,
@@ -47,7 +50,7 @@ type PreparedMessageMedia = {
 	/** EXACTLY the text the endpoint will send for this message (clipboard + documents + typed). */
 	finalText: string;
 	/** The clipboard and document part of `finalText`, without the typed text; "" when none survived the
-	 *  budget. The agent endpoint keeps it whole where it cuts an earlier turn's text short (CUR-4104). */
+	 *  budget. The agent endpoint keeps it whole where it cuts an earlier turn's text short. */
 	attachedText: string;
 	/** Retained image occurrences riding in this message, in file order. */
 	images: PreparedImage[];
@@ -63,10 +66,10 @@ export type PreparedTurnMedia = {
 	truncatedFiles: { name: string; droppedBytes: number }[];
 	/** Earlier user messages that lost pasted or attached text to the corpus budget, which fills
 	 *  newest first. The model never reads what was cut, so the answer says older messages were
-	 *  left out, the same as when history fitting drops them (CUR-2893). */
+	 *  left out, the same as when history fitting drops them. */
 	olderMessagesCut: number;
 	droppedImages: number;
-	/** Attached files this turn could not read, by the name the person gave them (CUR-3291). The model
+	/** Attached files this turn could not read, by the name the person gave them. The model
 	 *  never saw them, so the turn says which ones; `unreadable` means the bucket errored and asking
 	 *  again can work, `missing` means the file is gone. */
 	unreadFiles: { name: string; reason: "unreadable" | "missing" }[];
@@ -74,12 +77,12 @@ export type PreparedTurnMedia = {
 
 export type PrepareTurnMediaDeps = {
 	/** The signed-in owner of the conversation, so each attachment is read from their My files copy
-	 *  first (CUR-2183). Absent for a guest, who passes guestSessionId instead. */
+	 *  first. Absent for a guest, who passes guestSessionId instead. */
 	ownerId?: string;
-	/** A guest conversation's session, whose bucket copy is read first (CUR-2183); for a conversation
+	/** A guest conversation's session, whose bucket copy is read first; for a conversation
 	 *  moved to an account at sign-in, its former session, read after the owner's copy. */
 	guestSessionId?: string;
-	/** Preview-only fault for the attachment read (faultInjection.ts, CUR-3291). */
+	/** Preview-only fault for the attachment read (faultInjection.ts). */
 	fault?: AttachmentOwner["fault"];
 	/** Injected for tests; defaults to the real downloadFile. */
 	downloadFile?: typeof downloadFile;
@@ -90,12 +93,19 @@ export type PrepareTurnMediaDeps = {
 	decodeText?: (base64: string) => string;
 	logger?: Pick<typeof defaultLogger, "info" | "warn">;
 	/** Read attached PDF/DOCX files to text. The route sets it only when the
-	 *  `document-attachments` flag is on AND this turn is screened on the guard path, the one path (CUR-987)
-	 *  that screens file text. Off, a document is left out of the prompt, as before. */
+	 *  `document-attachments` flag is on AND this turn is screened on the guard path, the one path
+	 *  that screens file text. Off, a document is left out of the prompt. */
 	readDocuments?: boolean;
 	/** Injected for tests; defaults to rag/extractFile.ts's extractor. */
 	extractDocument?: typeof extractTextFromUpload;
+	/** Injected for tests; defaults to rag/readableExtract.ts, which runs Readability. */
+	readHtml?: typeof extractReadableHtml;
 };
+
+function isHtmlMime(mime: string): boolean {
+	const m = (mime || "").toLowerCase().split(";")[0].trim();
+	return m === "text/html" || m === "application/xhtml+xml";
+}
 
 /** The extractor kind for a document mime, or null for anything that is not a readable document. */
 function documentKind(mime: string): Extract<UploadKind, "pdf" | "docx"> | null {
@@ -129,6 +139,21 @@ function composeAttachedText(clipboard: string[], documents: string[]): string {
 	return [clip, docs].filter((part) => part.length > 0).join("\n\n");
 }
 
+/** On, the screen reads the newest user message whole plus the end of the earlier ones up
+ *  to SCREEN_HISTORY_CAP, not every message. Off, the corpus is every message. */
+export const GUARD_HISTORY_CAP_FLAG = "guard-history-cap";
+const guardHistoryCapEnabled = (): boolean => flagEnabledOr(GUARD_HISTORY_CAP_FLAG, () => false);
+
+/** The screened corpus from the user messages' finalTexts, in prompt order. Under the cap,
+ *  `historyCorpus` carries the whole history whenever the cap cut something, so the gate can re-read
+ *  it before declining a follow-up whose context fell outside the window (runInputGate). */
+function screenCorpus(texts: string[]): Pick<GuardScreenInput, "corpus" | "historyCorpus"> {
+	const whole = texts.join("\n\n");
+	if (!guardHistoryCapEnabled()) return { corpus: whole };
+	const corpus = capScreenHistory(texts);
+	return corpus === whole ? { corpus } : { corpus, historyCorpus: whole };
+}
+
 // Internal per-message working shape, built during hydration, budgeted afterwards.
 type MessageWork = {
 	id: string;
@@ -139,7 +164,7 @@ type MessageWork = {
 	/** Rendered `<document …>` segments (wrappers included), file order. */
 	fileSegments: { name: string; rendered: string }[];
 	/** Image occurrences (deduped by sha within this message), file order. */
-	imageRefs: { sha: string; mime: string; source: Buffer }[];
+	imageRefs: { sha: string; mime: string; name: string; source: Buffer }[];
 };
 
 export async function prepareTurnMedia(
@@ -156,7 +181,7 @@ export async function prepareTurnMedia(
 		return {
 			messages: new Map(),
 			screen: {
-				corpus: userMessages.map((m) => m.content).join("\n\n"),
+				...screenCorpus(userMessages.map((m) => m.content)),
 				typedTurnText: userMessages.at(-1)?.content ?? "",
 				images: [],
 				failedUnits: [],
@@ -170,10 +195,11 @@ export async function prepareTurnMedia(
 
 	const download = deps.downloadFile ?? downloadFile;
 	// One per turn: every attachment of one owner then costs one key read, and the next turn reads
-	// the key again, so a wipe's tombstone is never missed (CUR-4116).
+	// the key again, so a wipe's tombstone is never missed.
 	const keys = turnKeyStore();
 	const decodeText = deps.decodeText ?? decodeBase64Utf8Fatal;
 	const extractDocument = deps.extractDocument ?? extractTextFromUpload;
+	const readHtml = deps.readHtml ?? extractReadableHtml;
 	const failedUnits: FailedUnit[] = [];
 	const unreadFiles: PreparedTurnMedia["unreadFiles"] = [];
 
@@ -210,14 +236,21 @@ export async function prepareTurnMedia(
 				} catch (err) {
 					// A file the bucket would not read back never reaches the model, so the guard has nothing
 					// unscreened; counting it as a failed unit would fail child safety closed and decline the turn
-					// before the notice could name it (CUR-3291).
+					// before the notice could name it.
 					if (err instanceof AttachmentReadError) {
 						unreadFiles.push({ name: displayName, reason: "unreadable" });
 						continue;
 					}
-					failedUnits.push({ kind: "file-hydration", sha });
+					// A file deleted since it was attached (from My files, say) is gone, so none of it reaches the model
+					// either: same reasoning, so a deleted file never holds every later turn in the chat.
 					// A file deleted from an older message would otherwise repeat its notice on every later turn.
-					if (i === userMessages.length - 1) unreadFiles.push({ name: displayName, reason: "missing" });
+					if (isAttachmentMissing(err)) {
+						if (i === userMessages.length - 1) unreadFiles.push({ name: displayName, reason: "missing" });
+						continue;
+					}
+					// Any other failure is unexplained, not a missing file, so it stays a failed unit and the guard
+					// fails closed.
+					failedUnits.push({ kind: "file-hydration", sha });
 					continue;
 				}
 				const mime = hydrated.mime;
@@ -233,10 +266,12 @@ export async function prepareTurnMedia(
 					// (text, image) pairs the endpoint serves separately (plan r4 #2).
 					if (seenImageShas.has(sha)) continue;
 					seenImageShas.add(sha);
-					w.imageRefs.push({ sha, mime, source: Buffer.from(hydrated.value, "base64") });
+					w.imageRefs.push({ sha, mime, name: displayName, source: Buffer.from(hydrated.value, "base64") });
 				} else if (isTextMime(mime)) {
 					try {
-						const content = decodeText(hydrated.value);
+						const decoded = decodeText(hydrated.value);
+						// An attached web page is read for its article, not its nav, cookie banner and footer.
+						const content = isHtmlMime(mime) ? (await readHtml(decoded, "upload")).text : decoded;
 						// The person's file name, never hydrated.name: that is the storage id (`<conv>-<sha>`), which
 						// the model then cites in the answer as if it were the document's name.
 						w.fileSegments.push({
@@ -250,7 +285,7 @@ export async function prepareTurnMedia(
 					// A PDF or DOCX joins the prompt as text, rendered like an attached text
 					// file, so the guard screens it inside the corpus. A document with no readable text (a
 					// scanned PDF, a corrupt file) still reaches the model as an empty element saying why,
-					// so the answer can tell the person rather than ignore the file. (CUR-987)
+					// so the answer can tell the person rather than ignore the file.
 					const kind = documentKind(mime)!;
 					const started = Date.now();
 					try {
@@ -372,6 +407,7 @@ export async function prepareTurnMedia(
 		const img: PreparedImage = {
 			sha: ref.sha,
 			mime: ref.mime,
+			name: ref.name,
 			source: ref.source,
 			screenB64,
 			sourceMessageId: w.id,
@@ -398,7 +434,7 @@ export async function prepareTurnMedia(
 	return {
 		messages: prepared,
 		screen: {
-			corpus: work.map((w) => finalTexts.get(w) ?? w.typed).join("\n\n"),
+			...screenCorpus(work.map((w) => finalTexts.get(w) ?? w.typed)),
 			// Coop scope is PINNED to the current typed turn text (plan r3 #3) — file/history bytes
 			// never go to the vendor.
 			typedTurnText: work.at(-1)?.typed ?? "",
@@ -430,7 +466,7 @@ export function prepareScreenedTurnMedia(
 	return prepareTurnMedia(stripDeclinedTurns(messages), convId, deps);
 }
 
-/** What the output screen's asker-context rules read as "the person asked" (CUR-1837): the newest user
+/** What the output screen's asker-context rules read as "the person asked": the newest user
  *  message's typed text, then everything it attached. An answer that quotes names from an attached rota
  *  is otherwise judged as exposing people the person never mentioned. The typed question goes first
  *  because the guard caps asker context from the front, so a long file can't push the question out. */

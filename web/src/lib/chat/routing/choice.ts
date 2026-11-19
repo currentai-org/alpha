@@ -50,7 +50,7 @@ export interface Resolution {
 	modelId?: string;
 	analysis?: DraftAnalysis;
 	route?: RouteChoice;
-	/** The name of a model the person picked that isn't served now. The caller must say so (CUR-4073)
+	/** The name of a model the person picked that isn't served now. The caller must say so
 	 *  and send nothing; falling back to its default would answer from a model they didn't pick. */
 	unavailable?: string;
 }
@@ -73,7 +73,7 @@ export function resolveModel(
 		const picked = catalog.find((m) => m.id === choice);
 		// A model the catalog doesn't list, such as one on the person's own local server
 		// (`local:<endpoint>:<model>`, localModels.ts), is picked by its served id, so it counts as
-		// served exactly when that id is. Without this, every local pick would be named unavailable (CUR-4073).
+		// served exactly when that id is. Without this, every local pick would be named unavailable.
 		if (!picked && servedIds.includes(choice)) return { modelId: choice };
 		const id = picked?.gatewayId && servedById.get(servedKey(picked.gatewayId));
 		return id ? { modelId: id } : { unavailable: picked?.name ?? choice };

@@ -17,7 +17,7 @@ vi.mock("$lib/chat/server/logger", () => ({
 // Signing in must RAISE a caller's agent-trust ceiling, never zero it. deriveAgentSubject
 // switches subject from the anonymous sessionId to the signed-in user's _id, which otherwise resets
 // agent-service's caller_history to a fresh "new" tier — migrateAgentTrust is the fix, mirroring
-// migrateAnonymousConversations' call sites and best-effort posture. (CUR-761)
+// migrateAnonymousConversations' call sites and best-effort posture.
 import { migrateAgentTrust } from "./migrateAgentTrust";
 
 describe.sequential("migrateAgentTrust", () => {

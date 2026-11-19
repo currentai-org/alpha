@@ -1,9 +1,15 @@
+<!--
+SPDX-FileCopyrightText: 2018- The Hugging Face team
+SPDX-License-Identifier: Apache-2.0
+Modified by Current AI from huggingface/chat-ui.
+-->
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages.js';
-	import type { EmbeddedIntent } from '$lib/chat/types/EmbeddedIntent';
 	import { base } from '$lib/chat/paths';
 	import { goto } from '$app/navigation';
 	import { page, navigating } from '$app/state';
+	import { browser } from '$app/environment';
+	import { untrack } from 'svelte';
 
 	import RiChatNewLine from '~icons/ri/chat-new-line';
 	import RiSearchLine from '~icons/ri/search-line';
@@ -34,7 +40,8 @@
 	import { useAPIClient, handleResponse } from '$lib/chat/APIClient';
 	import { requireAuthUser } from '$lib/chat/utils/auth';
 	import { authClient } from '$lib/chat/authClient';
-	import { Badge, Kbd, Sidebar } from '@aipotluck/alpha-ds';
+	import { Badge, Inline, Kbd, Sidebar, Toggle } from '@aipotluck/alpha-ds';
+	import type { ChatTag } from '$lib/chat/utils/chatTags';
 	const localizedTitles = $derived({ today: m.product_today(), yesterday: m.product_yesterday(), lastWeek: m.product_lastWeek(), lastMonth: m.product_lastMonth(), older: m.product_older() });
 	const client = useAPIClient();
 
@@ -45,9 +52,10 @@
 		loading?: boolean;
 		ondeleteConversation?: (id: string) => void;
 		onrenameConversation?: (id: string, title: string) => void;
-		embeddedDemo?: boolean;
-		embeddedActiveConversationId?: string;
-		onEmbeddedNavigate?: (intent?: EmbeddedIntent) => void;
+		onpinConversation?: (id: string, pinned: boolean) => void;
+		onarchiveConversation?: (id: string) => void;
+		/** Set a chat's tags by name; true when they were saved. */
+		ontagConversation?: (id: string, names: string[]) => Promise<boolean>;
 	}
 
 	let {
@@ -56,9 +64,9 @@
 		loading = false,
 		ondeleteConversation,
 		onrenameConversation,
-		embeddedDemo = false,
-		embeddedActiveConversationId,
-		onEmbeddedNavigate
+		onpinConversation,
+		onarchiveConversation,
+		ontagConversation
 	}: Props = $props();
 
 	let hasMore = $state(true);
@@ -67,7 +75,7 @@
 
 	// Settings is a state of the app: while a settings route is open, the sidebar's
 	// content becomes "Back to app" and the section list, instead of a modal over the chat.
-	const inSettings = $derived(!embeddedDemo && page.url.pathname.startsWith(`${base}/settings`));
+	const inSettings = $derived(page.url.pathname.startsWith(`${base}/settings`));
 	const sections = $derived(
 		inSettings
 			? settingsSections({
@@ -80,12 +88,6 @@
 
 	function handleNewChatClick(e: MouseEvent) {
 		isAborted.set(true);
-
-		if (embeddedDemo) {
-			e.preventDefault();
-			onEmbeddedNavigate?.({ kind: 'new-chat' });
-			return;
-		}
 
 		if (requireAuthUser()) {
 			e.preventDefault();
@@ -100,7 +102,7 @@
 		if (navigating.to) return;
 
 		// The empty composer's attachments and draft belong to the chat being left, including
-		// when this click navigates nowhere because the empty composer is already showing. (CUR-3052)
+		// when this click navigates nowhere because the empty composer is already showing.
 		newChatRequests.update((n) => n + 1);
 
 		// Already on the empty composer? Then this IS a new chat — no-op instead of reloading.
@@ -121,18 +123,14 @@
 	// route (which only clears that collection + the legacy cookie) would silently leave a Better Auth
 	// session cookie valid — a logout that appears to work and then reverses itself on the next request.
 	// Calling both is the only way to be correct regardless of which system authenticated this visitor;
-	// each is a no-op (not an error) when its own session doesn't exist. (CUR-432)
+	// each is a no-op (not an error) when its own session doesn't exist.
 	let loggingOut = $state(false);
 	async function handleLogout() {
-		if (embeddedDemo) {
-			onEmbeddedNavigate?.({ kind: 'app', label: 'Accounts' });
-			return;
-		}
 		if (loggingOut) return;
 		loggingOut = true;
 		// Better Auth's client reports a refused sign-out as `{ error }` rather than throwing,
 		// and answers success when there is no session to end. An error therefore means the session is
-		// still live, and reloading would land the person back in it as if Log out had worked. (CUR-3931)
+		// still live, and reloading would land the person back in it as if Log out had worked.
 		const result = await authClient.signOut().catch((e: unknown) => ({ error: e }));
 		await fetch(`${base}/logout`, { method: 'POST' }).catch(() => undefined);
 		if (result?.error) {
@@ -166,28 +164,28 @@
 	// eslint-disable-next-line svelte/prefer-svelte-reactivity
 	const oneMonthAgo = new Date().setMonth(new Date().getMonth() - 1);
 
+	// Pinned chats head the list in their own section; the date groups hold the rest.
+	let pinnedConversations = $derived(conversations.filter((c) => c.pinned));
+	let unpinnedConversations = $derived(conversations.filter((c) => !c.pinned));
+
 	let groupedConversations = $derived({
-		today: conversations.filter(({ updatedAt }) => updatedAt.getTime() >= startOfToday),
-		yesterday: conversations.filter(
+		today: unpinnedConversations.filter(({ updatedAt }) => updatedAt.getTime() >= startOfToday),
+		yesterday: unpinnedConversations.filter(
 			({ updatedAt }) =>
 				updatedAt.getTime() >= startOfYesterday && updatedAt.getTime() < startOfToday
 		),
-		lastWeek: conversations.filter(
+		lastWeek: unpinnedConversations.filter(
 			({ updatedAt }) => updatedAt.getTime() < startOfYesterday && updatedAt.getTime() > oneWeekAgo
 		),
-		lastMonth: conversations.filter(
+		lastMonth: unpinnedConversations.filter(
 			({ updatedAt }) => updatedAt.getTime() <= oneWeekAgo && updatedAt.getTime() > oneMonthAgo
 		),
-		older: conversations.filter(({ updatedAt }) => updatedAt.getTime() <= oneMonthAgo)
+		older: unpinnedConversations.filter(({ updatedAt }) => updatedAt.getTime() <= oneMonthAgo)
 	});
 
 	let hasAnyConversation = $derived(conversations.length > 0);
 
 	async function handleVisible() {
-		if (embeddedDemo) {
-			hasMore = false;
-			return;
-		}
 		p++;
 		const newConvs = await client.conversations
 			.get({
@@ -201,12 +199,105 @@
 
 		if (newConvs.length === 0) {
 			hasMore = false;
-			// Nothing to add, so keep reading the parent's list rather than a copy of it (CUR-2379).
+			// Nothing to add, so keep reading the parent's list rather than a copy of it.
 			return;
 		}
 
 		conversations = [...conversations, ...newConvs];
 	}
+
+	// ── Tags ───────────────────────────────────────────────────────────────────────────
+	// A row of the person's tags heads the list; choosing one shows only the chats carrying it, read
+	// from the server so a tagged chat past the loaded pages still shows. Choosing it again clears it.
+	const tagsEnabled = $derived(page.data.chatTagsEnabled === true);
+	let tags = $state<ChatTag[]>([]);
+	let activeTag = $state<string | null>(null);
+	let tagged = $state<ConvSidebar[]>([]);
+	let taggedPage = 0;
+	let taggedHasMore = $state(false);
+	const activeTagName = $derived(tags.find((t) => t.id === activeTag)?.name ?? activeTag ?? '');
+
+	type ListRow = { _id: { toString(): string }; title: string; updatedAt: Date | string; model?: string; pinned?: boolean; tags?: string[] };
+	const toSidebar = (c: ListRow): ConvSidebar => ({
+		id: c._id.toString(),
+		title: c.title.trim(),
+		model: c.model,
+		pinned: c.pinned === true,
+		tags: c.tags ?? [],
+		updatedAt: new Date(c.updatedAt)
+	});
+
+	async function refreshTags() {
+		try {
+			const res = (await client.tags.get().then(handleResponse)) as { tags: ChatTag[] };
+			tags = res.tags;
+			if (activeTag && !tags.some((t) => t.id === activeTag)) activeTag = null;
+		} catch {
+			// Keep the row the person has; the next change asks again.
+		}
+	}
+
+	$effect(() => {
+		if (browser && tagsEnabled) untrack(() => void refreshTags());
+	});
+
+	async function loadTagged(tag: string, from: number) {
+		const res = (await client.conversations.get({ query: { p: from, tag } }).then(handleResponse)) as {
+			conversations: ListRow[];
+			hasMore: boolean;
+		};
+		if (activeTag !== tag) return;
+		const rows = res.conversations.map(toSidebar);
+		tagged = from === 0 ? rows : [...tagged, ...rows];
+		taggedPage = from;
+		taggedHasMore = res.hasMore;
+	}
+
+	// InfiniteScroll calls again every 250 ms while it is in view, so one page is asked for at a time.
+	let taggedLoading = false;
+	async function moreTagged() {
+		if (!activeTag || taggedLoading) return;
+		taggedLoading = true;
+		await loadTagged(activeTag, taggedPage + 1).catch(() => (taggedHasMore = false));
+		taggedLoading = false;
+	}
+
+	async function chooseTag(id: string) {
+		if (activeTag === id) {
+			activeTag = null;
+			return;
+		}
+		activeTag = id;
+		tagged = [];
+		taggedHasMore = false;
+		await loadTagged(id, 0).catch(() => {
+			error.set("Couldn't load the chats with that tag. Please try again.");
+		});
+	}
+
+	// The filtered rows follow the rail's own copy when it has one, so a rename or a pin shows at once,
+	// and a chat that lost the tag leaves the filtered list.
+	const taggedShown = $derived.by(() => {
+		const live = new Map(conversations.map((c) => [String(c.id), c]));
+		return tagged
+			.map((c) => live.get(String(c.id)) ?? c)
+			.filter((c) => activeTag !== null && (c.tags ?? []).includes(activeTag));
+	});
+
+	async function tagConversation(id: string, names: string[]) {
+		if (!(await ontagConversation?.(id, names))) return;
+		await refreshTags();
+		if (activeTag) await loadTagged(activeTag, 0).catch(() => undefined);
+	}
+
+	// A chat that leaves the rail leaves the filtered list too, and may take its last use of a tag with it.
+	async function leaveFiltered(id: string, act?: (id: string) => unknown) {
+		await act?.(id);
+		tagged = tagged.filter((c) => String(c.id) !== id);
+		if (tagsEnabled) await refreshTags();
+	}
+	const deleteRow = (id: string) => void leaveFiltered(id, ondeleteConversation);
+	const archiveRow = (id: string) => void leaveFiltered(id, onarchiveConversation);
 
 	$effect(() => {
 		if (conversations.length <= CONV_NUM_PER_PAGE) {
@@ -277,7 +368,7 @@
 		{/each}
 		<!-- Pages outside settings open in a new tab, so the settings pane stays where it was. -->
 		<Sidebar.Section>
-			{#each settingsExternalLinks() as link (link.href)}
+			{#each settingsExternalLinks(page.data.statusPageUrl) as link (link.href)}
 				<Sidebar.Item
 					icon={link.icon}
 					href={link.href}
@@ -308,8 +399,8 @@
 		</span>
 	</Sidebar.Item>
 	<!-- The sidebar nav holds your library (projects, files). Present only when the
-	     per-user Files gate is on — the same gate /chat/storage enforces (CUR-1276). -->
-	{#if page.data.storageViewEnabled && !embeddedDemo}
+	     per-user Files gate is on — the same gate /chat/storage enforces. -->
+	{#if page.data.storageViewEnabled}
 		<Sidebar.Item
 			icon={RiFolder3Line}
 			href={`${base}/storage`}
@@ -322,20 +413,62 @@
 </Sidebar.Actions>
 
 <Sidebar.Content>
-	{#if loading}
+	{#if tagsEnabled && tags.length && !loading}
+		<Inline gap="1" class="px-2 pb-2" role="group" aria-label={m.product_filterByTag()} data-tag-filter>
+			{#each tags as tag (tag.id)}
+				<Toggle pressed={activeTag === tag.id} onPressedChange={() => chooseTag(tag.id)} data-tag-chip={tag.id}>
+					{tag.name}
+				</Toggle>
+			{/each}
+		</Inline>
+	{/if}
+	{#if activeTag}
+		<Sidebar.Section label={activeTagName}>
+			{#each taggedShown as conv (conv.id)}
+				<NavConversationItem
+					{conv}
+					ondeleteConversation={deleteRow}
+					{onrenameConversation}
+					{onpinConversation}
+					onarchiveConversation={archiveRow}
+					ontagConversation={tagConversation}
+					knownTags={tags}
+				/>
+			{/each}
+		</Sidebar.Section>
+		{#if taggedHasMore}
+			<InfiniteScroll onvisible={moreTagged} />
+		{/if}
+	{:else if loading}
 		<NavConversationsSkeleton />
 	{:else if hasAnyConversation}
+		{#if pinnedConversations.length}
+			<Sidebar.Section label={m.product_pinned()}>
+				{#each pinnedConversations as conv (conv.id)}
+					<NavConversationItem
+						{conv}
+						ondeleteConversation={deleteRow}
+						{onrenameConversation}
+						{onpinConversation}
+						onarchiveConversation={archiveRow}
+						ontagConversation={tagConversation}
+						knownTags={tags}
+					/>
+				{/each}
+			</Sidebar.Section>
+		{/if}
 		{#each Object.entries(groupedConversations) as [group, convs] (group)}
 			{#if convs.length}
 				<Sidebar.Section label={localizedTitles[group as keyof typeof localizedTitles]}>
 					{#each convs as conv (conv.id)}
 						<NavConversationItem
 							{conv}
-							{ondeleteConversation}
+							ondeleteConversation={deleteRow}
 							{onrenameConversation}
-							{embeddedDemo}
-							{embeddedActiveConversationId}
-							{onEmbeddedNavigate}
+							{onpinConversation}
+							onarchiveConversation={archiveRow}
+							ontagConversation={tagConversation}
+							knownTags={tags}
 						/>
 					{/each}
 				</Sidebar.Section>
@@ -352,19 +485,17 @@
 </Sidebar.Content>
 {/if}
 
-<!-- Above the account row: the dismissible "Get involved" card (not in settings, not in the demo). -->
-{#if !inSettings && !embeddedDemo}
+<!-- Above the account row: the dismissible "Get involved" card (not in settings). -->
+{#if !inSettings}
 	<GetInvolvedCard />
 {/if}
 <!-- Directly above the account row it points at: where the tour lives, after a skipped welcome. -->
-{#if !embeddedDemo}
-	<TourHint />
-{/if}
+<TourHint />
 
 <!-- One account row at the foot; settings, appearance, help, the GDPR wipe and
      sign in/out all live in its menu (AccountMenu). -->
 <Sidebar.Footer>
-	<AccountMenu {embeddedDemo} {onEmbeddedNavigate} onlogout={handleLogout} {loggingOut} />
+	<AccountMenu onlogout={handleLogout} {loggingOut} />
 </Sidebar.Footer>
 
-<ChatSearchDialog bind:open={searchOpen} {conversations} {embeddedDemo} {onEmbeddedNavigate} />
+<ChatSearchDialog bind:open={searchOpen} {conversations} />

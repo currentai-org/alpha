@@ -3,14 +3,14 @@ import { page } from "vitest/browser";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // "Sign in again" (shown once Better Auth calls the session too old to list sessions) signs out
-// and sends the person to /login (CUR-4011). A refused sign-out must stop there with a message:
+// and sends the person to /login. A refused sign-out must stop there with a message:
 // going on to /login with the session still live would bounce straight back here. The page is
 // mounted bare, with the server's "not fresh" answer handed in as data: reaching that state in a
 // scenario needs a session more than a day old.
 
 vi.mock("$app/navigation", () => ({ goto: vi.fn(async () => {}), invalidateAll: vi.fn(async () => {}) }));
 vi.mock("$app/state", () => ({
-	page: { url: new URL("http://localhost/chat/settings/account"), data: { dataExportEnabled: false } },
+	page: { url: new URL("http://localhost/chat/settings/account"), data: {} },
 }));
 
 const signOut = vi.hoisted(() => vi.fn());

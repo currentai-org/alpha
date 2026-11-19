@@ -8,9 +8,26 @@ const SET = {
 	clientSecret: "not-a-real-secret",
 };
 
-describe("mockOidcProvider (CUR-1551)", () => {
+describe("mockOidcProvider", () => {
 	it("refuses to register on production even with every var set, and names production as the reason", () => {
 		expect(mockOidcProvider({ deployEnv: "production", ...SET })).toEqual({
+			register: false,
+			reason: "production",
+		});
+	});
+
+	it("refuses production at every loopback spelling and with only some vars set, so no prd config can turn it on", () => {
+		for (const url of ["http://localhost:8080", "http://127.0.0.1:8080", "http://[::1]:8080"]) {
+			expect(mockOidcProvider({ deployEnv: "production", ...SET, url }), url).toEqual({
+				register: false,
+				reason: "production",
+			});
+		}
+		expect(mockOidcProvider({ deployEnv: "production", url: SET.url })).toEqual({
+			register: false,
+			reason: "production",
+		});
+		expect(mockOidcProvider({ deployEnv: "production", clientSecret: SET.clientSecret })).toEqual({
 			register: false,
 			reason: "production",
 		});
@@ -42,7 +59,7 @@ describe("mockOidcProvider (CUR-1551)", () => {
 		expect(mockOidcProvider({ deployEnv: "preview", ...SET, url: "" }).register).toBe(false);
 	});
 
-	it("registers on a development server too, where the local sign-in leg runs it (CUR-2451)", () => {
+	it("registers on a development server too, where the local sign-in leg runs it", () => {
 		expect(mockOidcProvider({ deployEnv: "development", ...SET }).register).toBe(true);
 	});
 
@@ -50,8 +67,13 @@ describe("mockOidcProvider (CUR-1551)", () => {
 		expect(mockOidcProvider({ deployEnv: null, ...SET })).toEqual({ register: false, reason: "unknown-env" });
 	});
 
-	it("refuses a mock on a public host, so nobody outside the test run can sign in through it (CUR-2522)", () => {
-		for (const url of ["https://mock-oidc.example.fly.dev", "https://localhost.example.org", "http://10.0.0.5:8080"]) {
+	it("refuses a mock on a public host, so nobody outside the test run can sign in through it", () => {
+		for (const url of [
+			"https://mock-oidc.example.fly.dev",
+			"https://mock-oidc.example.org",
+			"https://localhost.example.org",
+			"http://10.0.0.5:8080",
+		]) {
 			expect(mockOidcProvider({ deployEnv: "preview", ...SET, url }), url).toEqual({
 				register: false,
 				reason: "not-loopback",
@@ -68,7 +90,7 @@ describe("mockOidcProvider (CUR-1551)", () => {
 
 // The guarantee mockOidc.ts exists to keep, run against the real plugin: genericOAuth's init() is
 // what createAuthContext() awaits, and a throw from it takes every sign-in method down with it.
-describe("mock-oidc cannot take the other providers down (CUR-1551)", () => {
+describe("mock-oidc cannot take the other providers down", () => {
 	const DEAD = { deployEnv: "preview", ...SET, url: "http://127.0.0.1:9" };
 	const logger = { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() };
 

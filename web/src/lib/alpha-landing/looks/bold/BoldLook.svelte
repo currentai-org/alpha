@@ -1,7 +1,6 @@
 <script lang="ts">
 	import './bold.css';
 	import ArrowRightIcon from '@lucide/svelte/icons/arrow-right';
-	import AlphaDemoShell from '../../AlphaDemoShell.svelte';
 	import AlphaSectionNav from '../../AlphaSectionNav.svelte';
 	import LanguagesIcon from '@lucide/svelte/icons/languages';
 	import PackageOpenIcon from '@lucide/svelte/icons/package-open';
@@ -20,7 +19,7 @@
 	import BoldFeatures from './BoldFeatures.svelte';
 	import BoldPatternField from './BoldPatternField.svelte';
 	import PatternGlyph from './PatternGlyph.svelte';
-	import PotluckMark from '$lib/chat/components/PotluckMark.svelte';
+	import PotluckGlyph from '../../PotluckGlyph.svelte';
 
 	const tickerIcons: Record<TickerId, typeof LanguagesIcon> = {
 		open: PackageOpenIcon,
@@ -49,7 +48,7 @@
 				<p
 					class="flex items-center gap-3 font-mono text-[12px] tracking-[0.16em] text-white/60 uppercase"
 				>
-					<PotluckMark class="size-4 text-(--bold-coral)" />
+					<PotluckGlyph class="size-4 text-(--bold-coral)" />
 					{hero.eyebrow}
 				</p>
 				<h1
@@ -80,9 +79,10 @@
 					{hero.sub}
 				</p>
 				<div class="mt-9 flex flex-wrap items-center justify-center gap-x-7 gap-y-4">
-					<!-- eslint-disable svelte/no-navigation-without-resolve -- /chat and /alpha/demo are plain route links -->
+					<!-- eslint-disable svelte/no-navigation-without-resolve -- /chat is the CMS chat page, not a typed file route -->
 					<a
 						href={hero.ctaHref}
+						data-hero-cta
 						class="group inline-flex h-14 items-stretch bg-(--bold-coral) font-jakarta text-lg font-bold text-white transition-transform hover:-translate-y-0.5 focus-visible:ring-4 focus-visible:ring-white/40 focus-visible:outline-none"
 					>
 						<span class="flex items-center px-6">{hero.cta}</span>
@@ -92,26 +92,9 @@
 							<ArrowRightIcon class="size-5" strokeWidth={2.5} aria-hidden="true" />
 						</span>
 					</a>
-					<a
-						href="/alpha/demo"
-						data-hero-try-demo
-						class="group inline-flex items-center gap-2 font-jakarta text-lg font-semibold text-white"
-					>
-						<span
-							class="underline decoration-white/30 decoration-2 underline-offset-[6px] transition-colors group-hover:decoration-(--bold-coral)"
-							>{hero.demoCta}</span
-						>
-						<ArrowRightIcon
-							class="size-4 transition-transform group-hover:translate-x-1"
-							aria-hidden="true"
-						/>
-					</a>
 					<!-- eslint-enable svelte/no-navigation-without-resolve -->
 				</div>
 			</header>
-			<div class="pb-16 md:pb-24">
-				<AlphaDemoShell frame="bold" />
-			</div>
 		</div>
 
 		<div

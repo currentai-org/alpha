@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 // hands `onOpenAutoFocus` an event dispatched on no element, so Modal's `[data-autofocus]` lookup
 // through `e.target` found nothing and focus fell to the first tabbable element, the Trust & Safety
 // link at the bottom. Focusing it scrolled the title and the close control out of view.
-// e2e-moved: scenarios/weak-spots-dialog-fits.spec.ts › the Where it's weak dialog opens at its title, with the close control and a cue for more text in view (CUR-2744)
+// e2e-moved: scenarios/weak-spots-dialog-fits.spec.ts › the Where it's weak dialog opens at its title, with the close control and a cue for more text in view
 describe('WeakSpotsModal on open', () => {
 	afterEach(() => weakSpotsOpen.set(false));
 
@@ -62,13 +62,13 @@ describe('WeakSpotsModal on open', () => {
 // The last caveat ("For anything high-stakes, verify with a
 // qualified…") was cut off at 1280x720. The dialog fits the window and the caveat sits below the fold of
 // its own scroll area, so it has to stay reachable (the cue saying the text continues is tested at
-// 1024x576 above, where the dialog is taller than the window; at 1280x720 it may not be). CUR-3314:
+// 1024x576 above, where the dialog is taller than the window; at 1280x720 it may not be).
 // the cards must not send readers to "looked it up" / "from training" labels no answer shows.
-// accessibility.spec.ts opens the dialog from the control beside a real answer (SOL-206).
+// accessibility.spec.ts opens the dialog from the control beside a real answer.
 // e2e-moved: scenarios/weak-spots-dialog-fits.spec.ts › the Where it's weak dialog fits inside the window, and its last line can be scrolled into view
 // e2e-moved: scenarios/weak-spots-dialog-fits.spec.ts › the Where it's weak cards point at X-ray and the Web search setting, not at labels no answer shows
-// e2e-moved: scenarios/weak-spots-dialog-fits.spec.ts › the Where it's weak dialog shows that more text sits below its fold (CUR-1610)
-describe('WeakSpotsModal at 1280x720 (CUR-1610, CUR-3314)', () => {
+// e2e-moved: scenarios/weak-spots-dialog-fits.spec.ts › the Where it's weak dialog shows that more text sits below its fold
+describe('WeakSpotsModal at 1280x720', () => {
 	afterEach(() => weakSpotsOpen.set(false));
 
 	async function openAt1280() {
@@ -93,7 +93,7 @@ describe('WeakSpotsModal at 1280x720 (CUR-1610, CUR-3314)', () => {
 		expect(line.bottom, 'the last caveat is still below the window').toBeLessThanOrEqual(720);
 	});
 
-	it('as opened, either shows its last caveat or says more text sits below (CUR-1610 Q2)', async () => {
+	it('as opened, either shows its last caveat or says more text sits below ( Q2)', async () => {
 		const popup = await openAt1280();
 		const box = popup.getBoundingClientRect();
 		const line = page.getByText(/verify with a qualified/i).element().getBoundingClientRect();
@@ -106,7 +106,7 @@ describe('WeakSpotsModal at 1280x720 (CUR-1610, CUR-3314)', () => {
 		).toBe(true);
 	});
 
-	it('points at X-ray and says web search is automatic, not at a + menu switch or labels no answer shows (CUR-4262)', async () => {
+	it('points at X-ray and says web search is automatic, not at a + menu switch or labels no answer shows', async () => {
 		const popup = await openAt1280();
 		await expect.element(page.getByText(/Open X-ray under an answer/)).toBeVisible();
 		await expect.element(page.getByText(/Alpha searches the web and lists its sources/)).toBeInTheDocument();

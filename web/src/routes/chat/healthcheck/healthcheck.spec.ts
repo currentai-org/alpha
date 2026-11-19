@@ -4,7 +4,7 @@
  * during an incident.
  *
  * A literal "OK"/200 returned unconditionally would let a deployment serving "No models available" pass
- * every check (CUR-1246).
+ * every check.
  *
  * The mock here is `models`, NOT `ensureModelsReady`: stubbing the gate itself proves the route's
  * try/catch wiring and nothing about whether the endpoint asks the right question. The gate answers on
@@ -42,7 +42,7 @@ describe("chat healthcheck", () => {
 		expect(H.ready).toHaveBeenCalledTimes(1);
 	});
 
-	// THE ONE THAT MATTERS, and the one the previous spec could not express. This is the exact CUR-1246
+	// THE ONE THAT MATTERS, and the one the previous spec could not express. This is the exact
 	// state: the registry is non-empty, so the request gate is satisfied, and there is still nothing a
 	// visitor can pick. An endpoint that answers 200 here is the reason that deployment survived.
 	it("is 503 when the registry holds only the agent and compare models", async () => {

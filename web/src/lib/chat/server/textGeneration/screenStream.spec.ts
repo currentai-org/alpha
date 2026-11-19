@@ -57,7 +57,7 @@ const finalOf = (events: MessageUpdate[]) =>
 const clean: OutputScreenResult = { blocked: false, kind: null };
 const blockContent: OutputScreenResult = { blocked: true, kind: "content_policy", category: "x" };
 const blockChild: OutputScreenResult = { blocked: true, kind: "child_safety" };
-// A child query the guard never answered: fail closed, but nothing was flagged (CUR-3891).
+// A child query the guard never answered: fail closed, but nothing was flagged.
 const unscreenedChild: OutputScreenResult = { blocked: true, kind: "child_safety", unscreened: true };
 // A block whose action HAS a curated label (chat-block-violence → "Violent content" in rules.json).
 const blockNamed: OutputScreenResult = {
@@ -66,7 +66,7 @@ const blockNamed: OutputScreenResult = {
 	category: "chat-block-violence",
 };
 
-describe("screenOutputStream — re-check of a flagged batch (CUR-3975)", () => {
+describe("screenOutputStream — re-check of a flagged batch", () => {
 	const flaggedToxic: OutputScreenResult = {
 		blocked: true,
 		kind: "content_policy",
@@ -203,7 +203,7 @@ describe("screenOutputStream — hold-and-release per sentence", () => {
 	});
 
 	// textGeneration's explicit read-aloud path suppresses every Stream token (so a decline never
-	// flashes) and yields only a composed FinalAnswer (CUR-2045). Composing the answer from an empty
+	// flashes) and yields only a composed FinalAnswer. Composing the answer from an empty
 	// `released` buffer would make the route report "No output was generated" on a turn the model
 	// answered.
 	it("screens and releases a FinalAnswer that arrives with no Stream tokens before it, rather than dropping it", async () => {
@@ -247,7 +247,7 @@ describe("screenOutputStream — hold-and-release per sentence", () => {
 	// THE CONTRACT: this function throws away the upstream FinalAnswer's text and composes its own body
 	// from the screened Stream tokens. Anything a producer expressed AS TEXT on that update is lost
 	// here. A token-cap notice written that way never reaches the user, so the truncation has to
-	// survive as a FLAG, exactly like `interrupted` does (CUR-149).
+	// survive as a FLAG, exactly like `interrupted` does.
 	it("carries the upstream truncated flag onto the composed final answer", async () => {
 		const screen = vi.fn(async () => clean);
 		const events = await drain(
@@ -328,7 +328,7 @@ describe("screenOutputStream — hold-and-release per sentence", () => {
 		expect(finalOf(events)?.text).toContain(OUTPUT_CHILD_SAFETY_TRUNCATE);
 	});
 
-	it("an unanswered child screen holds the answer back saying the check couldn't finish, never that a classifier flagged it (CUR-3891)", async () => {
+	it("an unanswered child screen holds the answer back saying the check couldn't finish, never that a classifier flagged it", async () => {
 		const screen = vi.fn(async () => unscreenedChild);
 		const markers: OutputModerationMarker[] = [];
 		const events = await drain(
@@ -343,7 +343,7 @@ describe("screenOutputStream — hold-and-release per sentence", () => {
 		});
 	});
 
-	it("an unanswered child screen after a cleared prefix appends the couldn't-finish notice, not the child-safety one (CUR-3891)", async () => {
+	it("an unanswered child screen after a cleared prefix appends the couldn't-finish notice, not the child-safety one", async () => {
 		const screen = vi.fn(async (t: string) => (t.includes("LATER") ? unscreenedChild : clean));
 		const events = await drain(
 			screenOutputStream(src([tok("Fine. "), tok("LATER next.")]), { screen })
@@ -411,7 +411,7 @@ describe("screenOutputStream — hold-and-release per sentence", () => {
 		expect(finalOf(events)?.interrupted).toBe(true);
 	});
 
-	it("abort with only an unclosed <think> placeholder yields NO FinalAnswer (CUR-1178)", async () => {
+	it("abort with only an unclosed <think> placeholder yields NO FinalAnswer", async () => {
 		// The bug this pins: an agent turn's own "Working on it…" opener is wrapped in an unclosed <think> tag
 		// (endpointAgent.ts) and streamed as real, screened content — so a stall right after it leaves `released`
 		// holding only that placeholder. Yielding a FinalAnswer with that raw text regardless would set
@@ -440,7 +440,7 @@ describe("screenOutputStream — hold-and-release per sentence", () => {
 		expect(finalOf(events)?.interrupted).toBe(true);
 	});
 
-	it("an upstream throw propagates instead of silently finalizing with empty text (CUR-782)", async () => {
+	it("an upstream throw propagates instead of silently finalizing with empty text", async () => {
 		// The producer must not swallow a thrown it.next(): otherwise the consumer reads a mid-stream
 		// throw exactly like a clean end-of-stream and falls through to an empty FinalAnswer. The caller
 		// (+server.ts) would never see an error or log one, and the user would get a silent "No output
@@ -458,8 +458,9 @@ describe("screenOutputStream — hold-and-release per sentence", () => {
 	it("a throw before any content at all still propagates (not just a mid-stream one)", async () => {
 		const screen = vi.fn(async () => clean);
 		async function* dyingImmediately(): AsyncGenerator<MessageUpdate> {
-			throw new Error("connection refused");
-
+			// Rejects on the first next(), before any content. An awaited rejection keeps the yield
+			// below reachable, so the generator needs no lint exemption.
+			await Promise.reject(new Error("connection refused"));
 			yield tok("never");
 		}
 		await expect(drain(screenOutputStream(dyingImmediately(), { screen }))).rejects.toThrow(
@@ -698,7 +699,7 @@ describe("screenOutputStream — output ledger + stopped boundary", () => {
 	});
 
 	// Two rules share "Support needed" (and three "Respectful communication"), so the label alone can't
-	// say which rule cut an answer. The server log names it, for calibrating rules.json (CUR-2320).
+	// say which rule cut an answer. The server log names it, for calibrating rules.json.
 	it("names the rule that blocked in the server's per-answer screen log, and no rule when nothing blocked", async () => {
 		const info = vi.spyOn(logger, "info");
 		const ruleOf = () =>
@@ -716,10 +717,10 @@ describe("screenOutputStream — output ledger + stopped boundary", () => {
 	});
 });
 
-// The route rebuilds the withheld bubble from these out-of-band fields — `text` alone is discarded by the
-// downstream honesty layer (the CUR-946 empty-bubble bug), so the carriers are the real contract.
-describe("screenOutputStream — out-of-band decline/notice carriers (CUR-946)", () => {
-	// The resolved per-rule message: rules.json's sentence plus the who-set-this-limit line (CUR-3205).
+// The route rebuilds the withheld bubble from these out-of-band fields. `text` alone is discarded by the
+// downstream honesty layer, which would leave an empty bubble, so the carriers are the real contract.
+describe("screenOutputStream — out-of-band decline/notice carriers", () => {
+	// The resolved per-rule message: rules.json's sentence plus the who-set-this-limit line.
 	const RULE_MSG = resolveActionMessage("chat-block-violence");
 
 	it("full content block carries declineText (the decline copy), and no declineNotice", async () => {
@@ -793,7 +794,7 @@ function closable(gen: AsyncGenerator<MessageUpdate>): AsyncIterable<MessageUpda
 	};
 }
 
-describe("screenOutputStream — phase deadline (CUR-1657)", () => {
+describe("screenOutputStream — phase deadline", () => {
 	// PHASE_DEADLINE_MS is a module-level const read from OUTPUT_SCREEN_PHASE_TIMEOUT_MS at import time, so a
 	// real (small) value via a fresh module instance is simpler here than fighting fake-timer/microtask
 	// interleaving against a 25s default — this keeps the test genuinely fast without asserting on the
@@ -808,9 +809,8 @@ describe("screenOutputStream — phase deadline (CUR-1657)", () => {
 		return import("./screenStream");
 	}
 
-	// Simulates the exact symptom CUR-1657 measured: a screen call (or the upstream source) that never
-	// settles, for whatever reason the per-call bound didn't catch — the phase deadline is the backstop
-	// independent of why.
+	// Simulates a screen call (or the upstream source) that never settles, for whatever reason the
+	// per-call bound didn't catch. The phase deadline is the backstop, independent of why.
 	it("nothing released yet: an honest, non-safety decline — not silence until the outer watchdog", async () => {
 		const mod = await freshModule();
 		async function* hangingSrc(): AsyncGenerator<MessageUpdate> {
@@ -831,14 +831,14 @@ describe("screenOutputStream — phase deadline (CUR-1657)", () => {
 		expect(finalOf(events)?.declineNotice).toBeUndefined();
 		// Not a moderation flag — no verdict was ever reached, so this must not read as one.
 		expect(marker).toMatchObject({ flagged: false, screened: false });
-		// A model did start this answer, so it is not a fixed reply (CUR-1872 marks only the no-token case).
+		// A model did start this answer, so it is not a fixed reply; only the no-token case is marked as one.
 		expect(events.some((e) => e.type === MessageUpdateType.FixedReply)).toBe(false);
 	});
 
-	// The sovereignty-shed case — the upstream source hangs with NO token ever arriving, so
+	// The upstream source hangs with NO token ever arriving, so
 	// `screen` is never even called. Distinct from the test above, where "Hello there. " DOES arrive and
 	// DOES reach `screen` (it just never resolves) — that case still honestly says "I started to
-	// answer." This one must not. (CUR-1727)
+	// answer." This one must not.
 	it("no token ever arrived: the no-tokens decline, not the started-to-answer one", async () => {
 		const mod = await freshModule();
 		// eslint-disable-next-line require-yield -- deliberately never yields, to prove screenCount alone can't distinguish this from a pending-but-dispatched screen
@@ -863,9 +863,9 @@ describe("screenOutputStream — phase deadline (CUR-1657)", () => {
 		expect(marker).toMatchObject({ flagged: false, screened: false });
 	});
 
-	// That notice is server copy, and without a marker the receipt classed it as a model answer
+	// That notice is server copy, and without a marker the receipt would class it as a model answer
 	// "from training". The marker has to arrive BEFORE the FinalAnswer, which is when the client and the
-	// route's persist both act on the reply. (CUR-1872)
+	// route's persist both act on the reply.
 	it("no token ever arrived: marks the reply as a fixed capacity notice before the FinalAnswer", async () => {
 		const mod = await freshModule();
 		// eslint-disable-next-line require-yield -- deliberately never yields, same as the case above
@@ -899,9 +899,9 @@ describe("screenOutputStream — phase deadline (CUR-1657)", () => {
 		expect(Date.now() - started).toBeLessThan(10_000);
 	});
 
-	// Counted from the start of the phase, a 25s window declines a slow model's turns before their first
-	// token (CUR-2243). A slow first token is the route watchdogs'
-	// business; the idle window opens when the model starts answering.
+	// Counted from the start of the phase, a 25s window would decline a slow model's turns before their
+	// first token. A slow first token is the route watchdogs' business; the idle window opens when the
+	// model starts answering.
 	it("a first token later than the window is released, not declined (the window opens at the first token)", async () => {
 		const mod = await freshModule(100);
 		async function* slowStartSrc(): AsyncGenerator<MessageUpdate> {
@@ -933,7 +933,7 @@ describe("screenOutputStream — phase deadline (CUR-1657)", () => {
 			mod.screenOutputStream(closable(hangingEmptySrc()), { screen, signal: ctrl.signal })
 		);
 		// The stream outlived five windows and ended only on the abort. A wall-clock bound here would be
-		// flaky on a loaded runner, because the timer can fire early by Date.now() (CUR-2945).
+		// flaky on a loaded runner, because the timer can fire early by Date.now().
 		expect(ctrl.signal.aborted).toBe(true);
 		expect(finalOf(events)?.text ?? "").not.toMatch(/at capacity|couldn't finish verifying/i);
 		expect(events.some((e) => e.type === MessageUpdateType.FixedReply)).toBe(false);
@@ -961,7 +961,7 @@ describe("screenOutputStream — phase deadline (CUR-1657)", () => {
 
 	// The deadline bounds the gap between releases, not the whole answer. A slow model's
 	// healthy answer can take over a minute, and a whole-phase bound would cut it.
-	// Window 200ms, one paragraph every 60ms for 480ms: finishes only if every release re-arms it. (CUR-1884)
+	// Window 200ms, one paragraph every 60ms for 480ms: finishes only if every release re-arms it.
 	it("a slow but steady answer that outlasts the window streams in full (the window is an idle bound)", async () => {
 		const mod = await freshModule(200);
 		// Each paragraph is past MIN_CHUNK_CHARS (250), so every one is its own batch and its own release.
@@ -1018,8 +1018,8 @@ describe("screenOutputStream — phase deadline (CUR-1657)", () => {
 
 // textGeneration merges the title generator into the stream it hands this function, so a new
 // conversation's Title event can arrive seconds after the model's own FinalAnswer. The answer's tail must
-// not wait for it, or a short answer's last sentence is held behind a slow title call. (CUR-1907)
-describe("screenOutputStream — the answer does not wait for the title (CUR-1907)", () => {
+// not wait for it, or a short answer's last sentence is held behind a slow title call.
+describe("screenOutputStream — the answer does not wait for the title", () => {
 	const title = (t: string): MessageUpdate => ({ type: MessageUpdateType.Title, title: t }) as MessageUpdate;
 
 	it("finalizes the answer before a late title arrives, then still passes the title through", async () => {
@@ -1067,9 +1067,9 @@ describe("screenOutputStream — the answer does not wait for the title (CUR-190
 	});
 });
 
-// CUR-2316. When the primary lane stalls and the turn moves to the backup, the backup has to get a full
+// When the primary lane stalls and the turn moves to the backup, the backup has to get a full
 // idle window of its own, not whatever the silent primary left of it.
-describe("screenOutputStream — a lane switch re-arms the phase deadline (CUR-2316)", () => {
+describe("screenOutputStream — a lane switch re-arms the phase deadline", () => {
 	afterEach(() => {
 		vi.unstubAllEnvs();
 		vi.resetModules();
@@ -1098,12 +1098,12 @@ describe("screenOutputStream — a lane switch re-arms the phase deadline (CUR-2
 	});
 });
 
-// CUR-546. An agent turn works for longer than the phase window with no text, pulsing a non-content
+// An agent turn works for longer than the phase window with no text, pulsing a non-content
 // keepalive every 4s (endpointAgent.ts HEARTBEAT_MS). On agent turns those keepalives count as progress
 // while no screen is in flight, so a turn that is working is not declined as a stuck one.
-describe("screenOutputStream — agent keepalives re-arm the phase deadline (CUR-546)", () => {
+describe("screenOutputStream — agent keepalives re-arm the phase deadline", () => {
 	// Fake timers: on real ones a host stall landing inside a 30 ms keepalive sleep lets the
-	// 60 ms window expire first, which makes the test fail under load (CUR-2638).
+	// 60 ms window expire first, which makes the test fail under load.
 	beforeEach(() => {
 		vi.useFakeTimers();
 	});
@@ -1127,7 +1127,7 @@ describe("screenOutputStream — agent keepalives re-arm the phase deadline (CUR
 		model: "",
 	} as MessageUpdate;
 	// Says it is starting, then works silently for 3× the window pulsing a keepalive at half the
-	// window, then answers. The window opens at the first token (CUR-2243), so the silence has to
+	// window, then answers. The window opens at the first token, so the silence has to
 	// come after one for the keepalives to matter.
 	async function* workingAgentSrc(): AsyncGenerator<MessageUpdate> {
 		yield tok("Starting on it. ");
@@ -1153,7 +1153,7 @@ describe("screenOutputStream — agent keepalives re-arm the phase deadline (CUR
 		expect(finalOf(events)?.text).not.toMatch(/couldn't finish verifying|at capacity/i);
 	});
 
-	it("without the agent option, the same keepalives do not re-arm, so ordinary turns keep the CUR-1657 backstop", async () => {
+	it("without the agent option, the same keepalives do not re-arm, so ordinary turns keep the backstop", async () => {
 		const mod = await fresh();
 		const screen = vi.fn(() => Promise.resolve(clean));
 		const events = await drainOnClock(mod.screenOutputStream(workingAgentSrc(), { screen }));
@@ -1179,10 +1179,10 @@ describe("screenOutputStream — agent keepalives re-arm the phase deadline (CUR
 	});
 });
 
-// CUR-2343. A held-back answer was still served by a model, and the footer has to be able to say
+// A held-back answer was still served by a model, and the footer has to be able to say
 // which. The endpoint emits the served model with its first chunk, so it sits in the pass-through
 // queue by the time the phase deadline trips, and has to leave with the decline.
-describe("screenOutputStream — a phase-deadline decline keeps the served model (CUR-2343)", () => {
+describe("screenOutputStream — a phase-deadline decline keeps the served model", () => {
 	afterEach(() => {
 		vi.unstubAllEnvs();
 		vi.resetModules();
@@ -1209,10 +1209,10 @@ describe("screenOutputStream — a phase-deadline decline keeps the served model
 	});
 });
 
-// CUR-3847. A read-aloud clip is synthesized from the model's whole answer, so it carries text the
+// A read-aloud clip is synthesized from the model's whole answer, so it carries text the
 // screen has not cleared. It reaches the visitor only once the screen has cleared that answer, after
 // its text, and never on a decline, a truncation, or a phase-deadline notice.
-describe("screenOutputStream — a read-aloud clip waits for the answer's verdict (CUR-3847)", () => {
+describe("screenOutputStream — a read-aloud clip waits for the answer's verdict", () => {
 	const clip: MessageUpdate = {
 		type: MessageUpdateType.Mcp,
 		tool: "speak",

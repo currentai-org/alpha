@@ -27,7 +27,7 @@ for (const [where, find] of Object.entries(navLinks)) {
 			await page.goto('/');
 			const link = find(page);
 			// The footer lags under ScrollSmoother, so Playwright's own scroll can leave it under the
-			// fixed header, which then takes the hover (CUR-4492).
+			// fixed header, which then takes the hover.
 			if (where === 'footer') await scrollFooterToRest(page, link);
 			else await link.scrollIntoViewIfNeeded();
 			expect(await lineSize(link), 'the link is underlined before hovering').toBe('0% 1px');
@@ -48,6 +48,77 @@ for (const [where, find] of Object.entries(navLinks)) {
 		}
 	);
 }
+
+// `/` opens under the dark header, so the tests above drive only the dark tone. /updates opens under
+// the light (white) header, where the link and its line are dark blue.
+test(
+	'under the light header a nav link draws a dark underline on hover and retracts it on leave',
+	{ tag: '@CUR-4033' },
+	async ({ page }) => {
+		await page.goto('/updates');
+		const header = page.locator('header[data-site-header]');
+		await expect(header, '/updates no longer opens under the light header').toHaveAttribute(
+			'data-tone',
+			'light'
+		);
+		const link = navLinks.header(page);
+		expect(await lineSize(link), 'the link is underlined before hovering').toBe('0% 1px');
+
+		await link.hover();
+		await expect
+			.poll(() => lineSize(link), { message: 'the underline never finished drawing' })
+			.toBe('100% 1px');
+		// The line is drawn in the link's own colour (link-draw's currentColor). On the white header
+		// both must be dark; the dark tone draws them white.
+		const { color, line, headerBg } = await link.evaluate((el) => {
+			const s = getComputedStyle(el);
+			return {
+				color: s.color,
+				line: s.getPropertyValue('--link-line').trim(),
+				headerBg: getComputedStyle(el.closest('header')!).backgroundColor
+			};
+		});
+		expect(headerBg, 'the light header is not white').toBe('rgb(255, 255, 255)');
+		expect(line, 'a --link-line override recolours the underline').toBe('');
+		const [r, g, b] = color.match(/\d+/g)!.map(Number);
+		expect(
+			r + g + b,
+			`the link and its underline are ${color}, too light for a white header`
+		).toBeLessThan(300);
+
+		await page.mouse.move(0, 0);
+		await expect
+			.poll(() => lineSize(link), { message: 'the underline stayed after the pointer left' })
+			.toBe('0% 1px');
+	}
+);
+
+// links inside the Products dropdown draw the same underline.
+test(
+	'a link in the Products dropdown draws the same underline on hover and retracts it on leave',
+	{ tag: '@CUR-4611' },
+	async ({ page }) => {
+		await page.goto('/');
+		await page.locator('header nav button').filter({ hasText: 'Products' }).hover();
+		const link = page
+			.locator('[data-slot="navigation-menu-content"] a')
+			.filter({ visible: true })
+			.first();
+		await expect(link).toBeVisible();
+		expect(await lineSize(link), 'the link is underlined before hovering').toBe('0% 1px');
+
+		await link.hover();
+		await expect
+			.poll(() => lineSize(link), { message: 'the underline never finished drawing' })
+			.toBe('100% 1px');
+
+		// Leave the link but stay in the panel, so the dropdown stays open to read the retract.
+		await page.locator('[data-slot="navigation-menu-content"]').hover({ position: { x: 4, y: 4 } });
+		await expect
+			.poll(() => lineSize(link), { message: 'the underline stayed after the pointer left' })
+			.toBe('0% 1px');
+	}
+);
 
 test(
 	'keyboard focus on a header nav link shows the same underline',

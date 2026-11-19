@@ -20,7 +20,7 @@ describe('mergeRouterMetadata', () => {
 		expect(later).toMatchObject({ model: 'm', backend: MISTRAL, provider: 'mistral' });
 	});
 
-	// The staging router and La Plateforme both report api.mistral.ai; the lane is what differs. (CUR-3193)
+	// The staging router and La Plateforme both report api.mistral.ai; the lane is what differs.
 	it('keeps the lane a frame carries, and a later frame without one does not erase it', () => {
 		const first = mergeRouterMetadata(undefined, {
 			route: '',
@@ -52,7 +52,7 @@ describe('mergeRouterMetadata', () => {
 		expect(merged.verifyMethod).toBe('judge');
 	});
 
-	// Helper models arrive in their own frame, with no model of their own. (CUR-984)
+	// Helper models arrive in their own frame, with no model of their own.
 	it('keeps the helper models a frame carries, and a later model frame does not erase them', () => {
 		const helper = { role: 'math-route' as const, model: 'mistral-small-2603', backend: 'api.mistral.ai' };
 		const first = mergeRouterMetadata(undefined, { route: '', model: '', assistedBy: [helper] });

@@ -1,6 +1,6 @@
 // The opening words of each harness's fenced-turn preamble, defined in fenceTags.ts so the reasoning
 // panel can read them too. The prompts build their sentence from these, and honestyStream treats an
-// answer that opens with one as a recital of our own prompt (CUR-3886): some models repeat the whole
+// answer that opens with one as a recital of our own prompt, because some models repeat the whole
 // preamble to the length cap instead of answering.
 import { NATIVE_FENCE_OPENING, SCAFFOLDED_FENCE_OPENING } from "$lib/chat/utils/fenceTags";
 

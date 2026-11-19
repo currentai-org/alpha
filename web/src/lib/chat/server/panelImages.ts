@@ -2,7 +2,7 @@ import { catalogByGatewayId } from "$lib/chat/routing/catalog";
 
 /**
  * Second-opinion panel ids the routing catalog doesn't list that read images, as the HF router's
- * `/v1/models` lists their `input_modalities` (both `["text", "image"]`, CUR-4670). The
+ * `/v1/models` lists their `input_modalities` (both `["text", "image"]`). The
  * panel rides that router, and the compare models are registered without a catalog fetch, so this is
  * the one place the fact lives for them. A catalogued id is never listed here: the catalog's
  * `readsImages` decides it.

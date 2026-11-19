@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-// Read the production chat database by hand, with a record of who read what and why (CUR-4385).
+// Read the production chat database by hand, with a record of who read what and why.
 //
-//   pnpm db:prod-read --reason "CUR-1234: which model served turn X" --sql "select ... limit 20"
+//   pnpm db:prod-read --reason ": which model served turn X" --sql "select ... limit 20"
 //   pnpm db:prod-read --reason "..." --sql-file query.sql --csv
 //
-// Before psql runs, one event goes to the Axiom security dataset (CUR-4143): the actor (git email,
+// Before psql runs, one event goes to the Axiom security dataset: the actor (git email,
 // agent identity, OS user, host), the reason, the query's shape, the tables it reads and the time.
 // Nobody with database access can alter that dataset. When the event cannot be sent the query does
 // not run.
@@ -22,7 +22,7 @@
 // Postgres rejects any write that gets past the parse check.
 //
 // What this does not do: stop someone running psql directly. It is the documented path, but a person
-// holding production credentials can still go around it. Database-side auditing (pgaudit) is what would close that, and is left on CUR-4385.
+// holding production credentials can still go around it. Database-side auditing (pgaudit) is what would close that, and is left.
 //
 // Env (read inside `doppler run --config prd`, never printed): DATABASE_URL, AXIOM_SECURITY_TOKEN,
 // AXIOM_SECURITY_DATASET, AXIOM_INGEST_URL. PROD_DB_READ_AXIOM_URL overrides the ingest host, for the spec only.
@@ -230,7 +230,7 @@ export async function sendAuditEvent(event, env, fetchImpl = fetch) {
 			3
 		);
 	// AXIOM_INGEST_URL names the dataset's edge when it is not the org's default (US) edge: api.axiom.co
-	// refuses those with a 400, so they go through the edge's own ingest path (CUR-646).
+	// refuses those with a 400, so they go through the edge's own ingest path.
 	const host = env.PROD_DB_READ_AXIOM_URL || "https://api.axiom.co";
 	const edge = String(env.AXIOM_INGEST_URL ?? "")
 		.trim()

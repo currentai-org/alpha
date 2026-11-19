@@ -9,8 +9,8 @@ import { watchForChatLanding } from './helpers/landingWatch';
 import { journeyStep } from './helpers/journeyStep';
 import { startChattingPastWelcome } from './helpers/welcome';
 
-// A1 (CUR-1696): passkey is one of the five sign-in routes and the only one with no CI coverage at
-// all. Unlike the OAuth three (CUR-1551/CUR-1552), there is no third party in it — WebAuthn is a
+// A1: passkey is one of the five sign-in routes and the only one with no CI coverage at
+// all. Unlike the OAuth three, there is no third party in it — WebAuthn is a
 // browser API, and Chrome exposes a virtual authenticator over CDP that Playwright can drive
 // directly, no mock server to keep alive.
 //
@@ -19,7 +19,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // the passkey — proving the credential itself works, not that the OTP session carried over.
 //
 // New file rather than a new test in sign-in.spec.ts: e2e-scope-classify.mjs treats any modified
-// file's added test.skip() as unconditionally UNSAFE (CUR-1615) with no override, because a
+// file's added test.skip as unconditionally UNSAFE with no override, because a
 // conditional skip is indistinguishable from an unconditional one by counting.
 // The same test.skip(!present, reason) shape in voice-and-attachments.spec.ts fails the gate on its third
 // addition. A brand-new file has no "before"
@@ -31,14 +31,14 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // same bug into the test), this reads the credential's ACTUAL rpId back from the virtual
 // authenticator via CDP and checks it against the WebAuthn spec's own constraint: rpId must equal
 // the serving hostname or be one of its parent domains. That is exactly the constraint the browser
-// itself enforces at creation time, so it goes red for precisely the failure CUR-1696 names — "the
+// itself enforces at creation time, so it goes red for precisely the failure names — "the
 // day Alpha moves to a domain where APEX_DOMAIN's hardcoded aipotluck.org is no longer a suffix of
 // the real origin" — without predicting what the new value should be. Runs on every
-// deployment, PR previews included: CUR-1708 gave those an RP ID naming their own host.
+// deployment, PR previews included: gave those an RP ID naming their own host.
 test(
 	'a passkey registered through the UI survives sign-out and signs back in, bound to a valid RP ID',
 	// @apex-rp: develop's own build sets rpID to the apex (computePasskeyRp), so the gallery runs this
-	// test against the alias rather than develop's raw deployment URL (CUR-3098).
+	// test against the alias rather than develop's raw deployment URL.
 	{ tag: ['@A1', '@apex-rp', '@CUR-1696'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(180_000);
@@ -67,11 +67,11 @@ test(
 			}
 		});
 
-		// skipPendingLabelCheck: this test has no stake in CUR-1481/CUR-1487's pending-label timing —
+		// skipPendingLabelCheck: this test has no stake in the pending-label timing —
 		// see signIn.ts's own comment on that option for why the check is skipped rather than tightened.
 		await signInWithEmailOtp(page, databaseUrl, freshTestEmail(), { skipPendingLabelCheck: true });
 
-		// Registration lives in Settings → Account (CUR-649: named, not the bare "Passkey" fallback
+		// Registration lives in Settings → Account (named, not the bare "Passkey" fallback
 		// every unnamed credential renders as — naming it here doubles as coverage that
 		// the fix still holds).
 		const PASSKEY_NAME = `CUR-1696 e2e ${Date.now()}`;
@@ -130,7 +130,7 @@ test(
 			timeout: 15_000
 		});
 
-		// Signing in has to bring a person back to the conversation they were in (CUR-1677, CUR-1808),
+		// Signing in has to bring a person back to the conversation they were in,
 		// with no new-chat landing in between, on every route and not only email (sign-in.spec.ts walks
 		// that one). Signed out now, start a conversation in this same page so its anonymous session is
 		// the one sign-in carries, and wait for the answer so nothing is in flight when it does.
@@ -149,10 +149,10 @@ test(
 		const landingSightings = await watchForChatLanding(page);
 
 		// The login page fires a conditional-UI (autofill) passkey request on mount
-		// (+page.svelte, CUR-609), and with presence simulation on, the authenticator answers it before
+		// (+page.svelte), and with presence simulation on, the authenticator answers it before
 		// the click lands — sign-in completes, the page navigates, and the click times out on a button
 		// that is gone. Presence off while the page loads leaves that request pending; the button's own
-		// ceremony replaces it, and presence back on is what lets that one, and only that one, answer (CUR-2037).
+		// ceremony replaces it, and presence back on is what lets that one, and only that one, answer.
 		await cdp.send('WebAuthn.setAutomaticPresenceSimulation', { authenticatorId, enabled: false });
 
 		// When the button's options request is answered before the autofill's, the autofill's
@@ -164,7 +164,7 @@ test(
 		// request's arrival, so a slow login page can't spend them before the race is set up. The
 		// click waits until that first request has arrived, so it is always the autofill's: a click
 		// landing before the autofill fired would make the button's request the held one, and a reverted
-		// fix would pass on a retry (CUR-2695).
+		// fix would pass on a retry.
 		let optionsRequests = 0;
 		let releaseFirst = () => {};
 		let firstAnswered = () => {};

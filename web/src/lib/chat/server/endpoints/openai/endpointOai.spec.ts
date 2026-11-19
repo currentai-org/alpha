@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -18,16 +21,16 @@ vi.mock("$lib/chat/server/logger", () => ({
 	logger: { warn, info, error: errorLog, debug: vi.fn(), trace: vi.fn(), fatal: vi.fn() },
 }));
 
-// An Apertus answer goes out native-first (CUR-1886, its kill switch retired in CUR-2853): the
-// role-shaped request, then the flattened one (CUR-1294) if that fails. Each shape retries a
-// substitution once on its own, so a shed Apertus answer sends 4 requests, two per shape.
+// An Apertus answer goes out native-first: the role-shaped request, then the flattened one if that
+// fails. Each shape retries a substitution once on its own, so a shed Apertus answer sends 4
+// requests, two per shape.
 vi.mock("$lib/chat/server/flags", () => ({
 	flagEnabledOr: (_key: string, fallback: () => boolean) => fallback(),
 	ensureFlagsPolled: async () => {},
 	flagsDebugState: () => ({ polledOk: true, lastRefreshAt: 0, size: 1 }),
 }));
 
-// The router's Mistral version check reads La Plateforme's alias list; each test sets the verdict. (CUR-2928)
+// The router's Mistral version check reads La Plateforme's alias list; each test sets the verdict.
 const isSameMistralModel = vi.fn(async (_upstream: string, _pinned: string): Promise<boolean | undefined> => true);
 vi.mock("$lib/chat/server/mistralVersions", async (importOriginal) => ({
 	...(await importOriginal<typeof import("$lib/chat/server/mistralVersions")>()),
@@ -44,6 +47,8 @@ const CSCS = "https://api.inference.cscs.ch/v1";
 // The real host the second-opinion panel's Olmo/EuroLLM calls land on, and the reason the assertion
 // takes `servesUserAnswer` at all.
 const OFF_ALLOWLIST = "https://api-internal-intel.publicai.co/olmo/v1";
+
+const APERTUS_ID = "swiss-ai/apertus-v1.5-70b-thinking";
 
 /** A minimal chat-completions SSE body the openai SDK will parse to completion. */
 function sseBody(model = "swiss-ai/apertus-v1.5-70b-thinking", provider?: string): string {
@@ -107,12 +112,12 @@ function stubGatewaySequence(
 	return seen;
 }
 
-async function runTurnAgainst(seen: RequestInit[], params: { servesUserAnswer?: boolean }) {
+async function runTurnAgainst(seen: RequestInit[], params: { servesUserAnswer?: boolean }, modelId = APERTUS_ID) {
 	const endpoint = await endpointOai({
 		type: "openai",
 		baseURL: GATEWAY,
 		apiKey: "sk-test",
-		model: { id: "swiss-ai/apertus-v1.5-70b-thinking", name: "apertus", parameters: {} },
+		model: { id: modelId, name: modelId, parameters: {} },
 	});
 	const stream = await endpoint({
 		messages: [{ from: "user", content: "hi" }],
@@ -138,7 +143,7 @@ async function runTurnSequence(
 	return runTurnAgainst(stubGatewaySequence(sequence), params);
 }
 
-/** Same as runTurnSequence, but for the CUR-1313 shed path: exhausted-and-still-substituted returns a
+/** Same as runTurnSequence, but for the substitution shed path: exhausted-and-still-substituted returns a
  *  503 Response, which the openai SDK turns into a thrown APIError at the `endpoint(...)` call itself
  *  — before any stream exists to iterate. Asserts the throw and returns `seen` for the caller's own
  *  assertions on attempt count. */
@@ -167,17 +172,51 @@ beforeEach(() => {
 	warn.mockClear();
 	info.mockClear();
 	errorLog.mockClear();
+	// Declared, so deployEnv()'s one-time "no environment" warn never lands in a warn count below.
+	vi.stubEnv("DEPLOY_ENV", "preview");
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+	vi.unstubAllGlobals();
+	vi.unstubAllEnvs();
+});
+
+describe("the [request] sent line", () => {
+	it("logs once per HTTP request on a preview deployment, with the turn's shape and no body", async () => {
+		await runTurn(OFF_ALLOWLIST, { servesUserAnswer: true });
+
+		const sent = info.mock.calls.filter(([, msg]) => msg === "[request] sent");
+		expect(sent).toHaveLength(1);
+		const [fields] = sent[0];
+		expect(fields).toMatchObject({ lane: new URL(GATEWAY).host, turns: ["user:2"] });
+		expect(fields).not.toHaveProperty("sentRequest");
+	});
+});
 
 describe("the sovereign-compute assertion on the LiteLLM backend", () => {
-	it("warns when the USER'S ANSWER is served outside the Swiss allowlist", async () => {
+	it("warns when an Apertus route serving the user's answer leaves the Swiss allowlist", async () => {
 		await runTurn(OFF_ALLOWLIST, { servesUserAnswer: true });
 
 		expect(warn).toHaveBeenCalledTimes(1);
 		const [fields, msg] = warn.mock.calls[0];
 		expect(msg).toMatch(/sovereign-compute copy is false/);
 		expect(fields).toMatchObject({ backend: OFF_ALLOWLIST, swissBackend: false, servesUserAnswer: true });
+	});
+
+	it("logs no warn when a Mistral model's route leaves the Swiss allowlist", async () => {
+		// Mistral is never on Swiss compute, so the departure is expected: the per-minute warm probes and
+		// every Mistral turn would otherwise flood the warn stream. The route is still recorded at info.
+		const mistral = "mistral-large-2512";
+		await runTurnAgainst(
+			stubGatewaySequence([{ backend: "https://api.mistral.ai/v1", group: mistral, bodyModel: mistral }]),
+			{ servesUserAnswer: true },
+			mistral
+		);
+
+		expect(warn).not.toHaveBeenCalled();
+		expect(info).toHaveBeenCalledWith(
+			expect.objectContaining({ backend: "https://api.mistral.ai/v1", swissBackend: false, servesUserAnswer: true }),
+			expect.stringContaining("litellm route")
+		);
 	});
 
 	it("stays quiet for a SIDE-CALL on the same non-Swiss backend", async () => {
@@ -232,10 +271,10 @@ describe("the sovereign-compute assertion on the LiteLLM backend", () => {
 	});
 });
 
-describe("CUR-1313: the retry fires on a MODEL SUBSTITUTION, not on backend location", () => {
+describe("the retry fires on a MODEL SUBSTITUTION, not on backend location", () => {
 	it("does NOT retry a backend-only mismatch — Featherless is the accepted lane, not a violation", async () => {
 		// Same requested model on the one stubbed response, non-Swiss backend: a correct answer, not a
-		// substitution, so no retry fires (CUR-1313).
+		// substitution, so no retry fires.
 		const { seen } = await runTurnSequence([{ backend: OFF_ALLOWLIST }], { servesUserAnswer: true });
 
 		expect(seen).toHaveLength(1); // no retry spent on a healthy, merely non-Swiss, answer
@@ -291,7 +330,7 @@ describe("CUR-1313: the retry fires on a MODEL SUBSTITUTION, not on backend loca
 		});
 	});
 
-	it("sheds a healthy gateway answer under the wrong_model_served fault, and never sends the fault header upstream (CUR-1614)", async () => {
+	it("sheds a healthy gateway answer under the wrong_model_served fault, and never sends the fault header upstream", async () => {
 		// Headers and body both name Apertus, as on a healthy turn. The fault rewrites the body only, so the
 		// shed below can only come from the body check reading the swap.
 		const { seen } = await runTurnSequenceExpectingShed([{ backend: CSCS }], {
@@ -303,6 +342,56 @@ describe("CUR-1313: the retry fires on a MODEL SUBSTITUTION, not on backend loca
 		for (const init of seen) expect(new Headers(init.headers).has("ChatUI-Fault-Substitute-Model")).toBe(false);
 		const shed = errorLog.mock.calls.find(([, msg]) => String(msg).includes("retries were exhausted"));
 		expect(shed?.[0]).toMatchObject({ served: "aisingapore/Qwen-SEA-LION-v4-32B-IT", substituted: true });
+	});
+
+	// A PR run's replay answers a request it has no recording for with a mock (modelReplay.ts), which
+	// carries none of the gateway headers above. Under the fault that mock is the swap the fault stands
+	// for, so it sheds like a gateway substitution instead of answering under the substitute's id.
+	describe("a mock answer under the wrong_model_served fault", () => {
+		function stubMockAnswers() {
+			const seen: RequestInit[] = [];
+			vi.stubGlobal(
+				"fetch",
+				vi.fn(async (_url: unknown, init?: RequestInit) => {
+					seen.push(init ?? {});
+					return new Response(sseBody(), {
+						status: 200,
+						headers: { "content-type": "text/event-stream", "x-model-mock": "1" },
+					});
+				})
+			);
+			return seen;
+		}
+		const endpointFor = () =>
+			endpointOai({
+				type: "openai",
+				baseURL: GATEWAY,
+				apiKey: "sk-test",
+				model: { id: "swiss-ai/apertus-v1.5-70b-thinking", name: "apertus", parameters: {} },
+			});
+
+		it("sheds the mock with the substitution 503 on both shapes, so the turn ends on the error notice", async () => {
+			const seen = stubMockAnswers();
+			const endpoint = await endpointFor();
+			await expect(
+				endpoint({
+					messages: [{ from: "user", content: "hi" }],
+					locals: undefined,
+					servesUserAnswer: true,
+					substituteServedModel: "aisingapore/Qwen-SEA-LION-v4-32B-IT",
+				} as Parameters<typeof endpoint>[0])
+			).rejects.toMatchObject({ status: 503 });
+			expect(seen.length).toBeGreaterThanOrEqual(2); // native, then the flattened resend
+			const shed = errorLog.mock.calls.find(([, msg]) => String(msg).includes("fault on a mock answer"));
+			expect(shed?.[0]).toMatchObject({ served: "aisingapore/Qwen-SEA-LION-v4-32B-IT", mock: true });
+		});
+
+		it("answers with the mock as before when no fault is armed", async () => {
+			stubMockAnswers();
+			const { routerMetadata } = await runTurnAgainst([], { servesUserAnswer: true });
+			expect(routerMetadata?.model).not.toBe("aisingapore/Qwen-SEA-LION-v4-32B-IT");
+			expect(errorLog.mock.calls.some(([, msg]) => String(msg).includes("fault on a mock answer"))).toBe(false);
+		});
 	});
 
 	it("retries and sheds a substitution on a SIDE-CALL too — served-vs-requested applies regardless of servesUserAnswer", async () => {
@@ -371,7 +460,7 @@ describe("a substitution the headers can't see: the BODY names another model", (
 		expect(errorLog).not.toHaveBeenCalled();
 	});
 
-	it("does NOT retry or shed when the GROUP header differs from the requested id only in case (CUR-1960)", async () => {
+	it("does NOT retry or shed when the GROUP header differs from the requested id only in case", async () => {
 		// A call requesting `swiss-ai/Apertus-v1.5-70B` gets group `swiss-ai/apertus-v1.5-70b`
 		// back from real Apertus and must not be shed as a substitution.
 		const { seen } = await runTurnSequence([{ backend: FEATHERLESS, group: "swiss-ai/Apertus-v1.5-70B-Thinking" }], {
@@ -400,21 +489,21 @@ describe("a substitution the headers can't see: the BODY names another model", (
 	});
 });
 
-describe("routerMetadata.model — the served id the badge actually reads (CUR-874)", () => {
+describe("routerMetadata.model — the served id the badge actually reads", () => {
 	it("carries the litellm group even on a healthy turn (harmless no-op: group == requested)", async () => {
 		const { routerMetadata } = await runTurn(CSCS, { servesUserAnswer: true });
 		expect(routerMetadata?.model).toBe("swiss-ai/apertus-v1.5-70b-thinking");
 	});
 
-	it("never returns a stream at all when litellm substitutes — CUR-1313 sheds instead of labeling and serving", async () => {
-		// This is the CUR-1313 case, not a legitimate configured backup lane (that's laneModelId,
+	it("never returns a stream at all when litellm substitutes sheds instead of labeling and serving", async () => {
+		// This is a gateway substitution, not a legitimate configured backup lane (that's laneModelId,
 		// sent verbatim and never flagged as a substitution against itself). litellm silently swapping
-		// the model on the SAME endpoint now retries then sheds; it does not reach routerMetadata.
+		// the model on the SAME endpoint retries then sheds; it does not reach routerMetadata.
 		await runTurnSequenceExpectingShed([{ backend: GATEWAY, group: "aisingapore/Qwen-SEA-LION-v4-32B-IT" }]);
 	});
 });
 
-describe("an answer the router sent through OpenRouter (CUR-4683)", () => {
+describe("an answer the router sent through OpenRouter", () => {
 	const OPENROUTER = "https://openrouter.ai/api/v1";
 
 	it("records the provider OpenRouter names as the backend, and OpenRouter as who served it", async () => {
@@ -434,11 +523,76 @@ describe("an answer the router sent through OpenRouter (CUR-4683)", () => {
 	});
 });
 
+// The gateway names the answering deployment (x-litellm-model-id) on every response and its base URL
+// only on some. A response carrying the id alone still records where the turn ran, read from the
+// gateway's deployment list, and a deployment the list lacks records no host at all.
+describe("a gateway response that names its deployment but not its base URL", () => {
+	const SCALEWAY_DEPLOYMENT = "aff0530ff642";
+	const MISTRAL_DEPLOYMENT = "699d8d10d803";
+
+	function stubIdOnlyGateway(deployment: string) {
+		const urls: string[] = [];
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (url: unknown, init?: RequestInit) => {
+				const href = String(url instanceof Request ? url.url : url);
+				urls.push(`${init?.method ?? "POST"} ${href}`);
+				if (href.endsWith("/model/info")) {
+					return Response.json({
+						data: [
+							{
+								model_name: "mistralai/mistral-medium-3-5",
+								model_info: { id: MISTRAL_DEPLOYMENT },
+								litellm_params: { model: "mistral/mistral-medium-3-5", api_base: null },
+							},
+							{
+								model_name: "mistralai/mistral-medium-3-5-fallback",
+								model_info: { id: SCALEWAY_DEPLOYMENT },
+								litellm_params: { model: "openai/mistral-medium-3.5-128b", api_base: "https://api.scaleway.ai/x/v1" },
+							},
+						],
+					});
+				}
+				return new Response(sseBody("mistral-medium-3.5"), {
+					status: 200,
+					headers: { "content-type": "text/event-stream", "x-litellm-model-id": deployment },
+				});
+			})
+		);
+		return urls;
+	}
+
+	beforeEach(async () => {
+		(await import("./gatewayDeployments")).resetGatewayDeployments();
+	});
+
+	it("records the base URL the deployment list gives that deployment, read once with a GET", async () => {
+		const urls = stubIdOnlyGateway(SCALEWAY_DEPLOYMENT);
+		const first = await runTurnAgainst([], { servesUserAnswer: true }, "mistral-medium-3.5");
+		const second = await runTurnAgainst([], { servesUserAnswer: true }, "mistral-medium-3.5");
+		expect(first.routerMetadata?.backend).toBe("https://api.scaleway.ai/x/v1");
+		expect(second.routerMetadata?.backend).toBe("https://api.scaleway.ai/x/v1");
+		expect(urls.filter((u) => u.endsWith("/model/info"))).toEqual([`GET ${GATEWAY}/model/info`]);
+	});
+
+	it("records Mistral's own API for a deployment on LiteLLM's mistral provider with no base URL of its own", async () => {
+		stubIdOnlyGateway(MISTRAL_DEPLOYMENT);
+		const { routerMetadata } = await runTurnAgainst([], { servesUserAnswer: true }, "mistral-medium-3.5");
+		expect(routerMetadata?.backend).toBe("https://api.mistral.ai/v1");
+	});
+
+	it("records no host for a deployment the list does not carry", async () => {
+		stubIdOnlyGateway("not-on-the-list");
+		const { routerMetadata } = await runTurnAgainst([], { servesUserAnswer: true }, "mistral-medium-3.5");
+		expect(routerMetadata?.backend).toBeUndefined();
+	});
+});
+
 // A per-user local (LAN/self-hosted) endpoint has no gateway in front of it — no
 // X-Router-Model, no x-litellm-* headers — so it can never earn routerMetadata the way the catalog
 // path does above. localModels.ts seeds it directly instead, since it already knows exactly what
-// should be shown (the endpoint's own label + the served model tag). (CUR-1194/CUR-1262)
-describe("routerModel/routerProvider — seeding routerMetadata with no gateway in front (CUR-1194)", () => {
+// should be shown (the endpoint's own label + the served model tag).
+describe("routerModel/routerProvider — seeding routerMetadata with no gateway in front", () => {
 	it("seeds routerMetadata.model/.provider from routerModel/routerProvider when no header ever arrives", async () => {
 		stubPlainServer();
 		const endpoint = await endpointOai({
@@ -506,7 +660,7 @@ describe("routerModel/routerProvider — seeding routerMetadata with no gateway 
 	});
 });
 
-// A direct host that sends no provenance header (Mistral's La Plateforme, CUR-2283) would leave a turn
+// A direct host that sends no provenance header (Mistral's La Plateforme) would leave a turn
 // with no persisted served model, and its badge could never show a measured marker. The body's own
 // model id is the record.
 describe("a direct host's answer records the model its own body names", () => {
@@ -561,7 +715,7 @@ describe("a direct host's answer records the model its own body names", () => {
 		expect(meta?.model).toBe("mistral-medium-2604");
 	});
 
-	it("records Large 4 under our id when La Plateforme answers as mistral-large-4-0, the name we sent it (CUR-3027)", async () => {
+	it("records Large 4 under our id when La Plateforme answers as mistral-large-4-0, the name we sent it", async () => {
 		const meta = await runDirect("mistral-large-4-0", {
 			model: { id: "mistral-large-2610", name: "mistral-large-2610", parameters: {} },
 			modelId: "mistral-large-4-0",
@@ -570,7 +724,7 @@ describe("a direct host's answer records the model its own body names", () => {
 		expect(meta?.model).toBe("mistral-large-2610");
 	});
 
-	it("does not credit Large 4 to a direct answer from a model other than the one we sent (CUR-3027)", async () => {
+	it("does not credit Large 4 to a direct answer from a model other than the one we sent", async () => {
 		const meta = await runDirect("mistral-medium-2604", {
 			model: { id: "mistral-large-2610", name: "mistral-large-2610", parameters: {} },
 			modelId: "mistral-large-4-0",
@@ -579,7 +733,7 @@ describe("a direct host's answer records the model its own body names", () => {
 		expect(meta?.model).toBe("mistral-medium-2604");
 	});
 
-	it("leaves a local endpoint's chosen label alone (CUR-1194)", async () => {
+	it("leaves a local endpoint's chosen label alone", async () => {
 		const meta = await runDirect("llama3.2:latest", {
 			baseURL: "http://127.0.0.1:11434/v1",
 			routerModel: "nx16g:llama3.2:latest",
@@ -590,7 +744,7 @@ describe("a direct host's answer records the model its own body names", () => {
 	});
 });
 
-describe("CUR-1291: {{macro}} expansion in a local endpoint's custom defaultHeaders", () => {
+describe("{{macro}} expansion in a local endpoint's custom defaultHeaders", () => {
 	it("expands {{conversationId}}, {{userId}}, and {{modelId}} on the actual wire request", async () => {
 		const seen = stubPlainServer();
 		const conversationId = new ObjectId();
@@ -657,15 +811,15 @@ describe("CUR-1291: {{macro}} expansion in a local endpoint's custom defaultHead
 	});
 });
 
-// ── CUR-1208 over the real wire ──────────────────────────────────────────────────────────────────
+// ── The substitution retry over the real wire ────────────────────────────────────────────────────
 // Everything above stubs `fetch` in-process — real logic, but a mocked function call, not a network
 // round trip. This section runs a REAL local HTTP server on an OS-assigned port and points
 // endpointOai's baseURL at it, so the retry loop performs actual TCP connections, real Node fetch
 // (undici), and real SSE bytes over the wire — the same client stack the deployed app uses. What this
 // still is NOT: the real LiteLLM gateway. It proves the mechanism survives a real wire, not that the
 // real gateway behaves the way this mock says it does — that can only be observed live, on real
-// traffic (CUR-1208).
-describe("CUR-1208 over the real wire — a real local HTTP server, not a mocked fetch", () => {
+// traffic.
+describe("over the real wire — a real local HTTP server, not a mocked fetch", () => {
 	let server: Server | undefined;
 
 	afterEach(async () => {
@@ -755,7 +909,7 @@ describe("CUR-1208 over the real wire — a real local HTTP server, not a mocked
 	});
 });
 
-// ── The outgoing messages array (CUR-1294) ────────────────────────────────────────────────────────
+// ── The outgoing messages array ───────────────────────────────────────────────────────────────────
 // The tests above drive one `user` message and assert on provenance headers. The tests below cover the
 // preprompt-merge branch and the flatten that follows it, on the one payload field the gateway routes by.
 
@@ -788,10 +942,9 @@ const HISTORY = [
 ];
 
 describe("the outgoing messages array", () => {
-	it("sends real roles first while native-first is at its code default (CUR-1886)", async () => {
-		// The flattened transcript is what makes a later answer copy an earlier one, so with the kill
-		// switch untouched the answer lane must try the role-shaped conversation and stop there when
-		// the gateway accepts it.
+	it("sends real roles first while native-first is at its code default", async () => {
+		// The flattened transcript is what makes a later answer copy an earlier one, so the answer lane
+		// must try the role-shaped conversation first and stop there when the gateway accepts it.
 		const seen = stubGatewayServing(GATEWAY);
 		const endpoint = await endpointOai({
 			type: "openai",
@@ -815,7 +968,7 @@ describe("the outgoing messages array", () => {
 		]);
 	});
 
-	it("resends the same turn flattened when the gateway rejects the role-shaped one (CUR-1886)", async () => {
+	it("resends the same turn flattened when the gateway rejects the role-shaped one", async () => {
 		// A deployment that rejects assistant roles, with fallbacks disabled, surfaces as an HTTP error
 		// before any token. The turn must still be answered, in the shape that deployment accepts.
 		const seen: RequestInit[] = [];
@@ -878,7 +1031,7 @@ describe("the outgoing messages array", () => {
 		expect(body.messages.map((m) => m.role)).toEqual(["system", "user", "assistant", "user"]);
 	});
 
-	// The workaround is for models some lane refuses roles on, read from the verified profiles. (CUR-2145)
+	// The flatten is for models some lane refuses roles on, read from the verified profiles.
 	async function answerTurn(modelId: string, seen: RequestInit[]) {
 		const endpoint = await endpointOai({
 			type: "openai",
@@ -896,13 +1049,13 @@ describe("the outgoing messages array", () => {
 		return seen;
 	}
 
-	it("keeps a GLM answer's roles, since every measured GLM lane serves them (CUR-2145)", async () => {
+	it("keeps a GLM answer's roles, since every measured GLM lane serves them", async () => {
 		const seen = await answerTurn("zai-org/GLM-5.3", stubGatewaySequence([{ backend: GATEWAY, group: "zai-org/GLM-5.3", bodyModel: "zai-org/GLM-5.3" }]));
 		expect(seen).toHaveLength(1);
 		expect(sentBody(seen).messages.map((m) => m.role)).toEqual(["system", "user", "assistant", "user"]);
 	});
 
-	it("never sends a GLM answer a second, flattened request, even when the first one fails (CUR-2145)", async () => {
+	it("never sends a GLM answer a second, flattened request, even when the first one fails", async () => {
 		const seen: RequestInit[] = [];
 		vi.stubGlobal(
 			"fetch",
@@ -919,7 +1072,7 @@ describe("the outgoing messages array", () => {
 		expect(info).not.toHaveBeenCalledWith(expect.anything(), "[native-first] served shape");
 	});
 
-	it("keeps the flattened resend for Apertus 1.5 70B, which Featherless serves only as one user message (CUR-2145)", () => {
+	it("keeps the flattened resend for Apertus 1.5 70B, which Featherless serves only as one user message", () => {
 		expect(answersNativeFirst("swiss-ai/apertus-v1.5-70b")).toBe(true);
 	});
 
@@ -937,11 +1090,11 @@ describe("the outgoing messages array", () => {
 	});
 });
 
-// Reached through the backup lane, a GLM title call can spend its whole token budget reasoning and
-// come back empty (CUR-1933). A side call to GLM goes out with thinking off; the answer keeps it, since the
-// stream strips the reasoning there. On the HF router the side call is also pinned to the provider
-// measured to honour the field, since the router's own pick varies per request (CUR-2090).
-describe("thinking is off on a GLM side call, and only there (CUR-1933, CUR-2090)", () => {
+// A GLM title call can spend its whole token budget reasoning and come back empty. A side call to
+// GLM goes out with thinking off; the answer keeps it, and its reasoning streams into the Working
+// panel. On the HF router the side call is also pinned to a provider that honours the field, since
+// the router's own pick varies per request.
+describe("thinking is off on a GLM side call, and only there", () => {
 	async function sentBody(
 		modelId: string,
 		params: { servesUserAnswer?: boolean; provider?: string }
@@ -973,14 +1126,23 @@ describe("thinking is off on a GLM side call, and only there (CUR-1933, CUR-2090
 		expect(body.reasoning_effort).toBeUndefined();
 	});
 
-	it("sends a GLM-5.2 side call to scaleway with reasoning_effort none and no thinking field", async () => {
+	// GLM-5.2 is pinned to Featherless, whose profile row honours no reasoning-off field, so a side
+	// call sends neither and its reasoning is dropped from the text instead.
+	it("sends a GLM-5.2 side call to featherless-ai with no reasoning_effort and no thinking field", async () => {
 		const body = await sentBody("zai-org/GLM-5.2", {});
-		expect(body.model).toBe("zai-org/GLM-5.2:scaleway");
-		expect(body.reasoning_effort).toBe("none");
+		expect(body.model).toBe("zai-org/GLM-5.2:featherless-ai");
+		expect(body.reasoning_effort).toBeUndefined();
 		expect(body.thinking).toBeUndefined();
 	});
 
-	// unpinned, the router would choose who receives the text, Z.ai's own endpoint included. (CUR-2112)
+	it("still sends reasoning_effort none to a GLM-5.2 side call that names scaleway", async () => {
+		const body = await sentBody("zai-org/GLM-5.2:scaleway", {});
+		expect(body.model).toBe("zai-org/GLM-5.2:scaleway");
+		expect(body.reasoning_effort).toBe("none");
+	});
+
+	// A GLM id with no pin is refused: unpinned, the router would choose who receives the text, Z.ai's
+	// own endpoint included.
 	it("refuses a GLM call with no pin before anything is sent, naming the id", async () => {
 		const seen = stubPlainServer();
 		const endpoint = await endpointOai({
@@ -1003,17 +1165,18 @@ describe("thinking is off on a GLM side call, and only there (CUR-1933, CUR-2090
 	it("leaves thinking on for the GLM answer, and still pins its provider", async () => {
 		const body = await sentBody("zai-org/GLM-5.2", { servesUserAnswer: true });
 		expect(body.thinking).toBeUndefined();
-		expect(body.model).toBe("zai-org/GLM-5.2:scaleway");
+		expect(body.model).toBe("zai-org/GLM-5.2:featherless-ai");
 	});
 
 	it("pins a GLM call that asked for provider auto, so the router never picks who gets the text", async () => {
 		const body = await sentBody("zai-org/GLM-5.2", { servesUserAnswer: true, provider: "auto" });
-		expect(body.model).toBe("zai-org/GLM-5.2:scaleway");
+		expect(body.model).toBe("zai-org/GLM-5.2:featherless-ai");
 	});
 
-	// With reasoning off, a GLM 5.2 answer carries its reasoning in the answer text ("Let me answer from
-	// the document.", CUR-4189). With it on, Scaleway streams the reasoning apart, into the Working panel.
-	it("keeps reasoning on for a GLM answer on the HF router, still pinned, while its side call turns it off", async () => {
+	// Sent with reasoning off, GLM 5.2 writes its reasoning into the answer ("Let me answer from the
+	// document."). With it on, the provider streams it apart, into the Working panel. The side call,
+	// pinned the same way, sends no reasoning-off field, since Featherless honours none.
+	it("keeps reasoning on for a GLM answer on the HF router, pinned to featherless-ai like its side call", async () => {
 		const send = async (servesUserAnswer: boolean) => {
 			const seen = stubPlainServer();
 			const endpoint = await endpointOai({
@@ -1031,11 +1194,11 @@ describe("thinking is off on a GLM side call, and only there (CUR-1933, CUR-2090
 			return JSON.parse(String(seen[0].body)) as { model: string; reasoning_effort?: string };
 		};
 		const answer = await send(true);
-		expect(answer.model).toBe("zai-org/GLM-5.2:scaleway");
+		expect(answer.model).toBe("zai-org/GLM-5.2:featherless-ai");
 		expect(answer.reasoning_effort).toBeUndefined();
 		const side = await send(false);
-		expect(side.model).toBe("zai-org/GLM-5.2:scaleway");
-		expect(side.reasoning_effort).toBe("none");
+		expect(side.model).toBe("zai-org/GLM-5.2:featherless-ai");
+		expect(side.reasoning_effort).toBeUndefined();
 	});
 
 	it("lets an explicit per-request provider win over the pin", async () => {
@@ -1050,8 +1213,8 @@ describe("thinking is off on a GLM side call, and only there (CUR-1933, CUR-2090
 
 // The second-opinion route asks every panelist for `reasoning_effort: "none"` so the budget goes to
 // the answer. gpt-oss-120b has no off switch and answers that with a 400, so the effort sent is the
-// lowest one its verified profile row accepts (CUR-2113). The panel sends provider "auto".
-describe("a panelist's reasoning_effort follows its verified profile (CUR-2113)", () => {
+// lowest one its verified profile row accepts. The panel sends provider "auto".
+describe("a panelist's reasoning_effort follows its verified profile", () => {
 	async function panelistBody(modelId: string) {
 		const seen = stubPlainServer();
 		const endpoint = await endpointOai({
@@ -1083,7 +1246,7 @@ describe("a panelist's reasoning_effort follows its verified profile (CUR-2113)"
 	});
 });
 
-describe("an answer from the staging router is recorded under our id only when its version checks out (CUR-2928)", () => {
+describe("an answer from the staging router is recorded under our id only when its version checks out", () => {
 	const ROUTER = "https://router.example.test/v1";
 
 	async function routerTurn(upstream = "openai/mistral-large-latest", ours = "mistral-large-2512") {
@@ -1133,7 +1296,7 @@ describe("an answer from the staging router is recorded under our id only when i
 	});
 
 	// The router reports Mistral's own host as its backend, the same host a direct turn reports,
-	// so only the host we sent to says the router carried this turn. (CUR-3193)
+	// so only the host we sent to says the router carried this turn.
 	it("records the router as the turn's lane even though its backend names api.mistral.ai", async () => {
 		isSameMistralModel.mockResolvedValueOnce(true);
 		const { routerMetadata } = await routerTurn();
@@ -1159,17 +1322,31 @@ describe("an answer from the staging router is recorded under our id only when i
 		expect(routerMetadata?.model).toBe("mistral-large-latest");
 	});
 
-	it("records Large 4 (preview) under our id when the router asked Mistral for mistral-large-4, which Mistral's list cannot date (CUR-3027)", async () => {
+	it("records Large 4 (preview) under our id when the router asked Mistral for mistral-large-4, which Mistral's list cannot date", async () => {
 		isSameMistralModel.mockClear();
 		const { routerMetadata } = await routerTurn("openai/mistral-large-4", "mistral-large-2610");
 		expect(isSameMistralModel).not.toHaveBeenCalled();
 		expect(routerMetadata?.model).toBe("mistral-large-2610");
 	});
 
-	it("does not credit Large 4 to an answer the router got from a different Mistral model (CUR-3027)", async () => {
+	it("does not credit Large 4 to an answer the router got from a different Mistral model", async () => {
 		isSameMistralModel.mockResolvedValueOnce(false);
 		const { routerMetadata } = await routerTurn("openai/mistral-large-latest", "mistral-large-2610");
 		expect(routerMetadata?.model).toBe("mistral-large-latest");
+	});
+
+	// A LiteLLM router can report `x-litellm-model-name: mistral/<name>`.
+	it("credits the dated version when the router names the model with a mistral/ provider prefix", async () => {
+		isSameMistralModel.mockResolvedValueOnce(true);
+		const { routerMetadata } = await routerTurn("mistral/mistral-medium-3-5", "mistral-medium-2604");
+		expect(isSameMistralModel).toHaveBeenLastCalledWith("mistral/mistral-medium-3-5", "mistral-medium-2604");
+		expect(routerMetadata?.model).toBe("mistral-medium-2604");
+	});
+
+	it("records the router's name without its mistral/ provider prefix when the version cannot be confirmed", async () => {
+		isSameMistralModel.mockResolvedValueOnce(false);
+		const { routerMetadata } = await routerTurn("mistral/mistral-medium-3-5", "mistral-medium-2604");
+		expect(routerMetadata?.model).toBe("mistral-medium-3-5");
 	});
 
 	it("does not treat the router's prefixed id as a substitution, so the answer is served on the first attempt", async () => {
@@ -1178,9 +1355,9 @@ describe("an answer from the staging router is recorded under our id only when i
 	});
 });
 
-// The history is fitted to the lane's context (CUR-2893); sending it whole fails every Retry of a chat
+// The history is fitted to the lane's context; sending it whole fails every Retry of a chat
 // past that context. A model with no harness row gets the 32000-token floor.
-describe("the history is fitted to the lane's context before the call (CUR-2893)", () => {
+describe("the history is fitted to the lane's context before the call", () => {
 	const localEndpoint = () =>
 		endpointOai({
 			type: "openai",
@@ -1250,10 +1427,10 @@ describe("the history is fitted to the lane's context before the call (CUR-2893)
 	});
 });
 
-// A compare model reaches its host on its own key (CUR-1875). With OPENAI_PROVIDER set, sending
+// A compare model reaches its host on its own key. With OPENAI_PROVIDER set, sending
 // `<id>:publicai` there would hit an HF-router suffix a direct host answers with nothing until the
 // timeout. Side calls and turns take the same rule from wireModelId.
-describe("an own-lane model never takes the default provider pin (CUR-1875)", () => {
+describe("an own-lane model never takes the default provider pin", () => {
 	const OWN_HOST = "https://compare.example.org/v1";
 
 	async function sentModel(endpointExtra: Record<string, unknown>, provider?: string) {
@@ -1291,5 +1468,48 @@ describe("an own-lane model never takes the default provider pin (CUR-1875)", ()
 
 	it("lets an explicit per-request provider through on an own lane", async () => {
 		expect(await sentModel({ apiKeyEnv: "SECOND_OPINION_API_KEY" }, "nscale")).toBe("allenai/Olmo-3-32B:nscale");
+	});
+});
+
+// The gateway caches identical requests, so without an opt-out the entity-scope guard's three samples
+// of one hit would come back as one cached answer under one response id. The guard asks for LiteLLM's
+// per-request opt-out, and only a gateway base URL may receive it: La Plateforme answers 422 on an
+// unknown field.
+describe("skipGatewayCache sends the gateway's cache opt-out, to the gateway only", () => {
+	const MISTRAL_DIRECT = "https://api.mistral.ai/v1";
+
+	async function bodyFor(baseURL: string, skipGatewayCache: boolean | undefined) {
+		const realGet = config.get.bind(config);
+		vi.spyOn(config, "get").mockImplementation((key) =>
+			key === "MISTRAL_CHAT_BASE_URL" ? GATEWAY : key === "OPENAI_BASE_URL" ? CSCS : realGet(key)
+		);
+		const seen = stubPlainServer();
+		const endpoint = await endpointOai({
+			type: "openai",
+			baseURL,
+			apiKey: "sk-test",
+			model: { id: "mistral-small-2603", name: "mistral-small-2603", parameters: {} },
+		});
+		const stream = await endpoint({
+			messages: [{ from: "user", content: "hi" }],
+			locals: undefined,
+			generateSettings: { max_tokens: 3, temperature: 0 },
+			...(skipGatewayCache === undefined ? {} : { skipGatewayCache }),
+		} as Parameters<typeof endpoint>[0]);
+		for await (const _ of stream) void _;
+		vi.restoreAllMocks();
+		return JSON.parse(String(seen[0].body)) as { cache?: unknown };
+	}
+
+	it("puts cache no-cache on a request to the side-call lane's gateway when asked", async () => {
+		expect((await bodyFor(GATEWAY, true)).cache).toEqual({ "no-cache": true });
+	});
+
+	it("leaves the cache alone when the caller does not ask (every other side call)", async () => {
+		expect((await bodyFor(GATEWAY, undefined)).cache).toBeUndefined();
+	});
+
+	it("sends no cache field to a direct host that is not the gateway, even when asked", async () => {
+		expect((await bodyFor(MISTRAL_DIRECT, true)).cache).toBeUndefined();
 	});
 });

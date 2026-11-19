@@ -1,6 +1,6 @@
 // Every fetch of a read-aloud clip is a billed synthesis, so a clip plays only for the owner
 // of the conversation it was sealed in. A copied URL in anyone else's hands is a 404 that never reaches
-// the speech provider. (CUR-3151)
+// the speech provider.
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { ObjectId } from "bson";
 
@@ -37,6 +37,7 @@ vi.mock("$lib/chat/server/mcp", () => ({ CANNED_READ_ALOUD_CLIP: "/e2e/canned-re
 import { GET } from "./+server";
 import { speechClipUrl } from "$lib/chat/server/mcp/readAloudSpeech";
 import { logger } from "$lib/chat/server/logger";
+import { runWithRequestContext, updateRequestContext } from "$lib/chat/server/requestContext";
 
 const guest = (sessionId: string) => ({ sessionId, user: undefined }) as unknown as App.Locals;
 const fetchClip = (segment: string, locals: App.Locals) =>
@@ -57,7 +58,7 @@ beforeEach(() => {
 const segmentFor = (conversation: string) =>
 	speechClipUrl({ text: "Le pain est dans le four.", language: "fr", conversation }).split("/").pop()!;
 
-describe("speech route — a clip plays only for its conversation's owner (CUR-3151)", () => {
+describe("speech route — a clip plays only for its conversation's owner", () => {
 	it("synthesizes the clip for the guest session that owns the conversation", async () => {
 		const res = await fetchClip(segmentFor(owner.conversation), guest(owner.sessionId));
 
@@ -83,7 +84,7 @@ describe("speech route — a clip plays only for its conversation's owner (CUR-3
 	});
 });
 
-describe("speech route — each synthesis counts against the chat limiter (CUR-3519)", () => {
+describe("speech route — each synthesis counts against the chat limiter", () => {
 	it("keys the limiter on the owner's session and address before synthesizing", async () => {
 		await fetchClip(segmentFor(owner.conversation), guest(owner.sessionId));
 		expect(rateLimit).toHaveBeenCalledWith({ userId: owner.sessionId, clientAddress: "203.0.113.7" });
@@ -99,7 +100,7 @@ describe("speech route — each synthesis counts against the chat limiter (CUR-3
 	});
 });
 
-describe("speech route — the canned clip stands in for synthesis under the e2e fault (CUR-4085)", () => {
+describe("speech route — the canned clip stands in for synthesis under the e2e fault", () => {
 	it("redirects to the canned clip and never reaches the speech provider under tts_canned_clip", async () => {
 		fault.mockResolvedValue("tts_canned_clip");
 		await expect(fetchClip(segmentFor(owner.conversation), guest(owner.sessionId))).rejects.toMatchObject({
@@ -117,7 +118,7 @@ describe("speech route — the canned clip stands in for synthesis under the e2e
 	});
 });
 
-describe("speech route — the synthesis log names the voice that read the clip (CUR-3989)", () => {
+describe("speech route — the synthesis log names the voice that read the clip", () => {
 	it("logs ff_siwis beside language fr when a French clip is synthesized", async () => {
 		vi.mocked(logger.info).mockClear();
 		await fetchClip(segmentFor(owner.conversation), guest(owner.sessionId));
@@ -125,5 +126,30 @@ describe("speech route — the synthesis log names the voice that read the clip 
 			expect.objectContaining({ language: "fr", voice: "ff_siwis" }),
 			"[read-aloud] clip synthesized"
 		);
+	});
+});
+
+describe("speech route — a scenario turn's clip never bills a live synthesis", () => {
+	// The turn seals the clip; the player's fetch for it carries no replay header, so the seal is what
+	// says the turn replayed.
+	const segmentSealedInReplayedTurn = (conversation: string) =>
+		runWithRequestContext(() => {
+			updateRequestContext({ replayMode: "mock" });
+			return segmentFor(conversation);
+		});
+
+	it("serves the canned clip for a clip sealed in a turn that replayed its model calls", async () => {
+		const segment = segmentSealedInReplayedTurn(owner.conversation);
+		await expect(fetchClip(segment, guest(owner.sessionId))).rejects.toMatchObject({
+			status: 302,
+			location: "/e2e/canned-read-aloud.wav",
+		});
+		expect(synthesize).not.toHaveBeenCalled();
+	});
+
+	it("still synthesizes a clip sealed outside a scenario request", async () => {
+		const res = await fetchClip(segmentFor(owner.conversation), guest(owner.sessionId));
+		expect(res.status).toBe(200);
+		expect(synthesize).toHaveBeenCalledTimes(1);
 	});
 });

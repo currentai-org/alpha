@@ -51,7 +51,7 @@ async function getClient(): Promise<MinimalPostHog | undefined> {
 		const { PostHog } = await import("posthog-node");
 		client = new PostHog(projectKey, {
 			// NOT env("PUBLIC_POSTHOG_HOST"): a relative browser adblock-proxy path (`/rs`) is not a valid
-			// server-side host and silently breaks delivery. See posthogHost.ts (CUR-87).
+			// server-side host and silently breaks delivery. See posthogHost.ts.
 			host: serverPosthogHost(),
 			featureFlagsPollingInterval: 0,
 			disableGeoip: true,
@@ -76,7 +76,7 @@ async function getClient(): Promise<MinimalPostHog | undefined> {
 // the same debounce, the same alert webhook and the same alert_state row as every other probe. Same
 // shape as warmDeclineRate, which already counts declines over a window.
 //
-// PER-INSTANCE, and that is a real limitation (CUR-90 tracks the class): each serverless instance has
+// PER-INSTANCE, and that is a real limitation (that change tracks the class): each serverless instance has
 // its own counter, so the alert fires on "one instance saw N errors", not "the fleet did". That biases
 // toward LATE alerting under fan-out, never early — acceptable for a threshold whose job is catching a
 // sustained problem, not a single blip. Moving the count to Postgres is the fix when it matters.

@@ -1,12 +1,14 @@
-// Stands in for the upstreams the app reads for the local sign-in leg (CUR-2451), which edits no
+// Stands in for the upstreams the app reads for the local sign-in leg, which edits no
 // content:
 //
 // - the model registry's catalog fetch at boot, `GET <OPENAI_BASE_URL>/models`, answered with
 //   MODEL_ALLOWLIST's ids;
 // - Payload CMS reads (`PUBLIC_CMS_PAYLOAD_URL/api/...`), answered empty: an empty global, a
-//   collection with no documents;
+//   collection with no documents. The one exception is the published page at CMS_CHECK_PATH, whose
+//   title `POST /__stub/cms-page {"title": ...}` changes, standing in for an editor's publish
+//   (deploy/cms-publish-smoke.sh);
 // - `POST <OPENAI_BASE_URL>/chat/completions`, answered with one fixed sentence, streamed or not as
-//   asked, so a guest can have a finished conversation for an OAuth sign-in to carry (CUR-1677).
+//   asked, so a guest can have a finished conversation for an OAuth sign-in to carry.
 //
 // Anything else answers 404 and fails loud.
 import { createServer } from 'node:http';
@@ -32,6 +34,22 @@ const EMPTY_COLLECTION = {
 	totalPages: 0,
 	hasNextPage: false
 };
+
+// One published CMS page, so a check can render it, change it as an editor would, and see whether the
+// app shows the change. Every other page read still finds nothing.
+const CMS_CHECK_PATH = '/cms-publish-check';
+let cmsCheckTitle = 'CMS publish check: first title';
+function cmsCheckPage() {
+	return {
+		id: 1,
+		title: cmsCheckTitle,
+		slug: CMS_CHECK_PATH.slice(1),
+		template: 'editorial',
+		content: null,
+		breadcrumbs: [{ url: CMS_CHECK_PATH, label: cmsCheckTitle }],
+		_status: 'published'
+	};
+}
 
 const STUB_ANSWER =
 	'This is the local sign-in leg answering from its stub model, with no real model behind it.';
@@ -64,11 +82,17 @@ function completion(model, stream) {
 }
 
 function answer(req) {
-	const path = new URL(req.url ?? '/', 'http://localhost').pathname;
+	const url = new URL(req.url ?? '/', 'http://localhost');
+	const path = url.pathname;
 	if (req.method !== 'GET') return null;
 	if (path === '/v1/models')
 		return { object: 'list', data: IDS.map((id) => ({ id, object: 'model' })) };
 	if (path.startsWith('/api/globals/')) return {};
+	if (
+		path === '/api/pages' &&
+		url.searchParams.get('where[breadcrumbs.url][equals]') === CMS_CHECK_PATH
+	)
+		return { ...EMPTY_COLLECTION, docs: [cmsCheckPage()], totalDocs: 1, totalPages: 1 };
 	if (path.startsWith('/api/')) return EMPTY_COLLECTION;
 	return null;
 }
@@ -96,6 +120,13 @@ createServer(async (req, res) => {
 		res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
 		for (const chunk of completion(model, true)) res.write(`data: ${JSON.stringify(chunk)}\n\n`);
 		res.end('data: [DONE]\n\n');
+		return;
+	}
+	if (req.method === 'POST' && path === '/__stub/cms-page') {
+		const { title } = await readJson(req);
+		if (typeof title === 'string' && title) cmsCheckTitle = title;
+		res.writeHead(200, { 'content-type': 'application/json' });
+		res.end(JSON.stringify(cmsCheckPage()));
 		return;
 	}
 	const body = answer(req);

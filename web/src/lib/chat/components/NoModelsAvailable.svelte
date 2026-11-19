@@ -1,10 +1,10 @@
 <!--
-	CUR-1141: the shared fallback for every ChatWindow mount site (ChatLanding.svelte,
+	the shared fallback for every ChatWindow mount site (ChatLanding.svelte,
 	routes/chat/conversation/[id]/+page.svelte, routes/chat/models/[...model]/+page.svelte) —
 	each guards on {#if currentModel} before mounting ChatWindow, since findCurrentModel's
 	models[0] fallback is undefined the instant the model catalog is empty. One component serves all three, so the copy is not duplicated (audit:dup:check).
 
-	CUR-1154: the permanent misconfiguration copy must not show unconditionally, so "genuinely never
+	the permanent misconfiguration copy must not show unconditionally, so "genuinely never
 	configured" is told apart from "registry not yet built on a cold instance" (as on a fresh
 	cold-started preview). The three mount sites are all server-loaded
 	(no client-side undefined phase to key off, unlike ChatLanding's own client fetch), so the

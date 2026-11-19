@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import type { Message } from "$lib/chat/types/Message";
 import { showsLiveProvenanceTrace } from "$lib/chat/messageProvenance";
 import { MessageUpdateStatus, MessageUpdateType, type MessageUpdate } from "$lib/chat/types/MessageUpdate";
@@ -56,7 +59,7 @@ export function deriveMessageStatus(message?: Message): MessageStatus {
  * Is this assistant turn still actively producing content? Neither `loading` (the client fetch
  * flag) nor `deriveMessageStatus(message) === "running"` (no terminal update yet) is safe alone —
  * each can lag the other by a beat, so a check gated on only one reads "finished" a moment before
- * the turn actually is. CUR-708/CUR-903: two different UI surfaces hit this from the same gap
+ * the turn actually is. two different UI surfaces hit this from the same gap
  * before adopting this composition (see `shouldShowEmptyAnswerNotice` and ChatMessage's
  * `isProcessStreaming`).
  */
@@ -73,7 +76,7 @@ export function isConversationGenerationActive(messages: Message[]): boolean {
 
 /**
  * The answer at the end of the visible thread, when it is an agent run the tab lost and could pick up
- * again (CUR-993): interrupted, holding the task it started, and not closed by Stop or by agent-service
+ * again: interrupted, holding the task it started, and not closed by Stop or by agent-service
  * forgetting it. Anything else leaves the page as it is.
  */
 export function agentRunToReattach(path: Message[]): Message | undefined {
@@ -87,6 +90,10 @@ export function agentRunToReattach(path: Message[]): Message | undefined {
  * reading it before its watchdog and stored the answer interrupted with the run still open
  * (deadlineLadder.ts agentHandoffAt). The page that sent the turn then follows the run, as a reload
  * would (agentRunToReattach). A turn ended by an error, or a run that is closed, is not one.
+ *
+ * only a run the server stored as submitted to hand off (`handoff` on its AgentRun update)
+ * counts. The page never consults its own copy of `agent-run-handoff`, which is read once at tab load
+ * on another instance and can disagree with the server that handed the run off.
  */
 export function handedOffAgentRun(updates: MessageUpdate[] | undefined): boolean {
 	const list = updates ?? [];
@@ -97,6 +104,7 @@ export function handedOffAgentRun(updates: MessageUpdate[] | undefined): boolean
 	);
 	return (
 		run?.type === MessageUpdateType.AgentRun &&
+		run.handoff === true &&
 		run.closed !== true &&
 		final?.type === MessageUpdateType.FinalAnswer &&
 		final.interrupted === true &&
@@ -105,10 +113,10 @@ export function handedOffAgentRun(updates: MessageUpdate[] | undefined): boolean
 }
 
 /**
- * When a page stops re-attaching to an agent run (CUR-3875): the run's ceiling, counted from when its
+ * When a page stops re-attaching to an agent run: the run's ceiling, counted from when its
  * answer was first written. An attach keeps the answer's `createdAt`, so this is the run's own start,
  * not the latest re-attach. A message with no readable start counts from `now`. With `agent-run-handoff`
- * on (CUR-4410) the ceiling covers every attempt the service may make.
+ * on the ceiling covers every attempt the service may make.
  */
 export function agentRunReattachDeadline(
 	message: Pick<Message, "createdAt">,
@@ -129,7 +137,7 @@ export function endsTheTurn(update: MessageUpdate): boolean {
 }
 
 /**
- * What a re-attached agent answer shows while the task's events replay into a copy of it (CUR-3875).
+ * What a re-attached agent answer shows while the task's events replay into a copy of it.
  *
  * The server rebuilds the answer from the run's first event, so the copy starts empty. Writing that
  * straight onto the screen blanked an answer the person was already reading. Instead the screen keeps
@@ -189,7 +197,7 @@ export function serverSnapshotHasAnswer(messages: Message[] | undefined): boolea
  * refresh (invalidation delivering a new `data.messages` identity) applies only when:
  *  - no locally-written turn holds the sync. The hold spans the WHOLE turn — from submit until
  *    the writeMessage finally's post-turn refresh has been OBSERVED to apply (not merely
- *    resolved: a superseded SvelteKit invalidate() resolves without applying). This is what
+ *    resolved: a superseded SvelteKit invalidate resolves without applying). This is what
  *    keeps a whole-conversation snapshot swap from orphaning the live stream's write target
  *    (which spills one turn's text into another), and, unlike `pending` (false at the first
  *    token), it covers the full stream plus the stop/terminal-persist window.
@@ -201,8 +209,8 @@ export function serverSnapshotHasAnswer(messages: Message[] | undefined): boolea
  *    output screening is the first-token gate, a turn the server completed and persisted reaches
  *    this path with `cacheFallbackHere` set (the client aborts after the last keepalive and the
  *    server persists the answer anyway), and an unconditional veto would leave the page showing
- *    "… is working…" over an answer already in the database (CUR-1660).
- *  - no "Report a problem" submission is on screen (CUR-1583): the sync re-mints message ids
+ *    "… is working…" over an answer already in the database.
+ *  - no "Report a problem" submission is on screen: the sync re-mints message ids
  *    from the server snapshot, which would destroy and re-create the ReportButton mid-action,
  *    silently discarding its local open/busy/done state before the user ever sees an
  *    acknowledgement. See reportHold.ts.
@@ -235,7 +243,7 @@ export function shouldSyncMessagesFromData(args: {
 
 /**
  * After a Stop that came before any of the reply, whether the server's copy of the conversation is
- * missing the turn this tab sent (CUR-3018). The server saves the question at the end of a slow
+ * missing the turn this tab sent. The server saves the question at the end of a slow
  * pre-stream chain, so a Stop in those seconds reads back a snapshot without it, and syncing to that
  * snapshot blanks the pane. False when it cannot tell (no snapshot read, no id), which keeps the
  * ordinary post-stop refresh.
@@ -306,60 +314,155 @@ export function classifyWatchdogFire(args: {
 }
 
 /**
- * The silence watchdog itself is a `setTimeout`, and a backgrounded tab is exactly the case CUR-708
- * needs it to be reliable for (a long agent turn is the reason someone tabs away while it runs).
- * Chrome throttles timers in a hidden tab — ordinary 1s alignment at first, then "intensive
- * throttling" coalescing them to roughly once a minute once a page has accumulated enough hidden
- * time — so the timer that is supposed to notice a dead connection or a finished-but-undelivered
- * turn can itself sit queued well past `timeoutMs`. `visibilitychange` is not subject to that
- * throttling: it fires the instant the tab is looked at again. Use it as a second trigger that
- * re-checks WALL-CLOCK elapsed time directly — "has it actually been `timeoutMs` since the last
- * arm" — rather than trusting the timer to have fired on schedule.
+ * whether a stream that ENDED without throwing still left the turn unanswered, so the page
+ * should hand it to the background-generation poller the way a stall does.
  *
- * Pure enough to unit-test the arithmetic, but the actual bug this guards is in the browser's timer
- * scheduling, so the real assurance is the accompanying real-browser test exercising the listener
- * itself, not this function's return value alone.
+ * @remarks iOS closes a fetch body cleanly when the phone locks or the visitor switches apps, and a
+ * venue Wi-Fi drop can do the same: the read resolves `done` with content on screen and no
+ * FinalAnswer. No watchdog fires and nothing throws, so before this the turn ended as `incomplete`
+ * with half an answer while the server went on to finish and save the whole one. Every other way the
+ * turn can have ended (an answer, a Stop, a refusal, an error, a watchdog path, a reattach) already
+ * has its own handling, and each of them rules this out.
+ */
+export function streamClosedBeforeAnswer(args: {
+	firstContentSeen: boolean;
+	finalAnswerSeen: boolean;
+	isAborted: boolean;
+	stopRequested: boolean;
+	requestRefused: boolean;
+	turnErrored: boolean;
+	watchdogFired: boolean;
+}): boolean {
+	return (
+		args.firstContentSeen &&
+		!args.finalAnswerSeen &&
+		!args.isAborted &&
+		!args.stopRequested &&
+		!args.requestRefused &&
+		!args.turnErrored &&
+		!args.watchdogFired
+	);
+}
+
+/**
+ * What the silence watchdog tells its caller when it fires.
+ *
+ * @remarks `hiddenMs` is how long the page was hidden inside the silence that fired it. More than zero
+ * means the silence spanned a lock or an app switch, which is the usual reason a phone's fetch dies,
+ * so the caller can log that outcome as its own instead of as a dead connection.
+ */
+export type SilenceWatchdogFire = { hiddenMs: number };
+
+/**
+ * The silence watchdog: fire `onFire` after `timeoutMs` of silence the visitor could see.
+ *
+ * @remarks Hidden time does not count. While `document.visibilityState` is hidden the timer
+ * is paused; when the page shows again it resumes with whatever was left of the window when it hid.
+ * A phone that locks for twenty seconds mid-answer therefore comes back to a live watchdog with its
+ * remaining budget, not to an instant fire that labels the turn a dead connection. If the stream is
+ * still alive its next update re-arms the watchdog; if it died while hidden, the watchdog fires once
+ * that remaining visible budget has run out, and reports the hidden time so the caller can say so.
+ *
+ * This also covers the case, a backgrounded tab whose throttled timer sits queued past
+ * `timeoutMs`: no timer runs while the page is hidden, and the one that resumes on return is an
+ * ordinary foreground timer.
+ *
+ * `hiddenMs` and `returnedFromHidden` report the whole life of the watchdog, across re-arms, for
+ * the turn's terminal telemetry.
  */
 export function armSilenceWatchdog(opts: {
 	timeoutMs: number;
-	onFire: () => void;
+	onFire: (fire: SilenceWatchdogFire) => void;
 	/** Injectable for tests; defaults to the real clock. */
 	now?: () => number;
-}): { rearm: () => void; dispose: () => void } {
+}): {
+	rearm: () => void;
+	dispose: () => void;
+	hiddenMs: () => number;
+	returnedFromHidden: () => boolean;
+} {
 	const { timeoutMs, onFire, now = Date.now } = opts;
 	let timer: ReturnType<typeof setTimeout> | undefined;
-	let lastArmedAt = now();
+	const isHidden = () => document.visibilityState === "hidden";
+	// The current silence window: visible time already spent in it, when the current visible stretch
+	// began, and the hidden time inside it.
+	let visibleSpentMs = 0;
+	let visibleSince = now();
+	let windowHiddenMs = 0;
+	// Set while the page is hidden.
+	let hiddenSince: number | undefined = isHidden() ? now() : undefined;
+	// The whole life of the watchdog, across re-arms.
+	let totalHiddenMs = 0;
+	let returned = false;
+	let disposed = false;
 
-	const fire = () => {
+	const clearTimer = () => {
 		if (timer) {
 			clearTimeout(timer);
 			timer = undefined;
 		}
-		onFire();
+	};
+
+	const fire = () => {
+		clearTimer();
+		if (disposed) return;
+		onFire({ hiddenMs: windowHiddenMs });
+	};
+
+	const startTimer = (ms: number) => {
+		clearTimer();
+		if (ms <= 0) fire();
+		else timer = setTimeout(fire, ms);
 	};
 
 	const onVisibilityChange = () => {
-		if (document.visibilityState !== "visible") return;
-		if (now() - lastArmedAt >= timeoutMs) fire();
+		const at = now();
+		if (isHidden()) {
+			if (hiddenSince !== undefined) return;
+			clearTimer();
+			visibleSpentMs += at - visibleSince;
+			hiddenSince = at;
+			return;
+		}
+		if (hiddenSince === undefined) return;
+		const hiddenFor = at - hiddenSince;
+		hiddenSince = undefined;
+		windowHiddenMs += hiddenFor;
+		totalHiddenMs += hiddenFor;
+		returned = true;
+		visibleSince = at;
+		startTimer(timeoutMs - visibleSpentMs);
 	};
 	document.addEventListener("visibilitychange", onVisibilityChange);
 
 	const rearm = () => {
-		lastArmedAt = now();
-		if (timer) clearTimeout(timer);
-		timer = setTimeout(fire, timeoutMs);
+		const at = now();
+		visibleSpentMs = 0;
+		windowHiddenMs = 0;
+		visibleSince = at;
+		if (hiddenSince !== undefined) {
+			// An update arrived while hidden (a desktop tab keeps streaming): the window restarts, still paused.
+			totalHiddenMs += at - hiddenSince;
+			hiddenSince = at;
+			clearTimer();
+			return;
+		}
+		startTimer(timeoutMs);
 	};
 	rearm();
 
 	const dispose = () => {
-		if (timer) {
-			clearTimeout(timer);
-			timer = undefined;
-		}
+		disposed = true;
+		clearTimer();
 		document.removeEventListener("visibilitychange", onVisibilityChange);
 	};
 
-	return { rearm, dispose };
+	return {
+		rearm,
+		dispose,
+		hiddenMs: () => totalHiddenMs + (hiddenSince !== undefined ? now() - hiddenSince : 0),
+		returnedFromHidden: () => returned,
+	};
 }
 
 /**
@@ -374,7 +477,7 @@ export function armSilenceWatchdog(opts: {
  * seconds). LiveRequestLog gates on `loading || status === 'running'` (ChatMessage.svelte), so
  * without this check the two surfaces disagree about whether the same turn is over and both render.
  *
- * A turn that reasons at length and then FINISHES empty still gets the notice (CUR-113): a
+ * A turn that reasons at length and then FINISHES empty still gets the notice: a
  * FinalAnswer update arrived, the status is `complete`, and the notice fires over its empty body. What
  * this defers is the never-terminal case — a stream that dies with no terminal update now shows a
  * blank bubble until something makes it terminal. That is deliberate and it is already owned: the
@@ -415,7 +518,7 @@ export function shouldShowEmptyAnswerNotice(args: {
  * still says `running`, so gating on `!loading` renders the `{:else}` branch, the one that says
  * nothing reported which model served this answer, WHILE the answer is being served, and then
  * replaces it with the full provenance line a moment later. That contradicts the product's own
- * claim about where Alpha runs and who runs it (CUR-1674).
+ * claim about where Alpha runs and who runs it.
  *
  * Deliberately strictly later than bare `!loading` and never earlier: this block cannot appear
  * before a turn is genuinely finished. The live phases during a turn are LiveRequestLog's job, and

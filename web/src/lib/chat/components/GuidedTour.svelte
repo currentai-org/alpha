@@ -2,7 +2,7 @@
 	import { untrack } from 'svelte';
 	import { on } from 'svelte/events';
 	import { prefersReducedMotion } from 'svelte/motion';
-	import { Button, Dialog, getAppShell, useCompact } from '@aipotluck/alpha-ds';
+	import { Button, Dialog, getAppShell, useCompact, useSheetOpen } from '@aipotluck/alpha-ds';
 	import { m } from '$lib/paraglide/messages.js';
 	import { tour } from '$lib/chat/tour/tour.svelte';
 	import { placeCard, visibleTarget, type Rect } from '$lib/chat/tour/steps';
@@ -23,15 +23,21 @@
 	 * opens the drawer and the next stop, or the tour's end, closes it again. The tour's layer is
 	 * portalled out of the conversation column, which the open drawer pushes aside, fades and stops
 	 * taking clicks.
+	 *
+	 * On a phone a try-it opens a bottom sheet, which is modal: it covers the foot of the screen, and
+	 * its scroll lock stops taps everywhere outside it. While any sheet is open the tour steps aside
+	 * (no chip, card or ring), so the chip never covers a sheet's last lines and Resume can only be
+	 * pressed once the sheet is shut, rather than moving on under a sheet that leaves the card dead.
 	 */
 	const reduceMotion = $derived(prefersReducedMotion.current);
+	const sheetOpen = useSheetOpen();
 
 	let cardEl = $state<HTMLDivElement | null>(null);
 	let ring = $state<(Rect & { radius: string }) | null>(null);
 	let cardPos = $state<{ top: number; left: number } | null>(null);
 	let primaryEl = $state<HTMLElement | null>(null);
 
-	const step = $derived(tour.paused ? undefined : tour.step);
+	const step = $derived(tour.paused || sheetOpen.current ? undefined : tour.step);
 	const isLast = $derived(tour.index >= tour.steps.length - 1);
 
 	const shell = getAppShell();
@@ -119,7 +125,8 @@
 	$effect(() => {
 		if (!tour.active) return;
 		return on(window, 'keydown', (e) => {
-			if (e.key === 'Escape' && !tour.paused) {
+			// With a sheet open, Escape is the sheet's: it closes the sheet, not the tour.
+			if (e.key === 'Escape' && !tour.paused && !sheetOpen.current) {
 				e.preventDefault();
 				tour.finish('dismissed');
 			}
@@ -146,7 +153,7 @@
 
 <!-- Out of the conversation column: the phone's open drawer pushes it aside and fades it. -->
 <Dialog.Portal>
-	{#if tour.active && tour.paused}
+	{#if tour.active && tour.paused && !sheetOpen.current}
 		<div class="tour-chip-corner pointer-events-none fixed z-popover flex">
 			<div
 				class="tour-chip tour-chip-accent pointer-events-auto flex items-center gap-1 bg-surface-3 py-1 pr-1 pl-3 rounded-pill"
@@ -184,7 +191,7 @@
 			aria-modal="false"
 			aria-labelledby="tour-title"
 			aria-describedby="tour-body"
-			class="tour-card fixed z-popover flex w-80 flex-col gap-3 bg-surface-3 p-4 shadow-popover rounded-popup"
+			class="tour-card pointer-events-auto fixed z-popover flex w-80 flex-col gap-3 bg-surface-3 p-4 shadow-popover rounded-popup"
 			class:tour-card-moves={!reduceMotion}
 			class:invisible={!cardPos}
 			style:--tour-top="{cardPos?.top ?? 0}px"

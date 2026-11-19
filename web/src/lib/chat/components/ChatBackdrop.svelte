@@ -3,7 +3,7 @@
 	import {
 		createAlphaPotluckField,
 		type PotluckFieldHandle
-	} from '$lib/alpha-landing/alpha-potluck-field';
+	} from './alpha-potluck-field';
 
 	/**
 	 * The Bold /alpha page's two backdrops blended behind the new-chat screen: the hero's octagon dot

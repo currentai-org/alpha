@@ -1,12 +1,11 @@
 /**
  * A turn that asks for no audio must not run the read-aloud tool. Otherwise "summarise this
- * agenda" can get a TTS result injected and an answer saying "Here is your text read aloud". The plain
- * path (no read-aloud intent) called the tool router with `allowTts: ttsAllowed`, which is true whenever
- * the `read-aloud` flag is on, so the router's own LLM was the only thing deciding against TTS.
+ * agenda" can get a TTS result injected and an answer saying "Here is your text read aloud", because a
+ * tool router allowed to pick TTS leaves the decision to its own LLM.
  *
  * This drives the real textGenerationWithoutTitle, the same harness as readAloudHeldClip.spec.ts. The
- * stubbed router selects TTS whenever it is allowed to, which is the misfire made deterministic: the
- * contract is that a turn with no read-aloud intent never lets the router reach TTS at all. (CUR-2162)
+ * stubbed router selects TTS whenever it is allowed to, so the contract is that a turn with no
+ * read-aloud intent never lets the router reach TTS at all.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ObjectId } from "bson";
@@ -96,7 +95,7 @@ const ttsUpdates = (updates: MessageUpdate[]) =>
 			(("audio" in u && !!u.audio) || ("tool" in u && u.tool === "generate_speech_audio"))
 	);
 
-// The message from the CUR-2162 sample, verbatim.
+// A summary request that asks for no audio.
 const AGENDA = `Can you summarise this agenda in three bullet points for our board?
 
 1. Welcome and apologies
@@ -109,8 +108,8 @@ beforeEach(() => {
 	routerCalls.length = 0;
 });
 
-describe("a turn with no read-aloud intent never reaches TTS (CUR-2162)", () => {
-	it("never asks for a clip on a summary request, so it gets none (CUR-3989 removed the plain-path router)", async () => {
+describe("a turn with no read-aloud intent never reaches TTS", () => {
+	it("never asks for a clip on a summary request, so it gets none ( removed the plain-path router)", async () => {
 		const updates = await run(AGENDA);
 		expect(routerCalls, "a turn that asked for no audio still called read-aloud").toEqual([]);
 		expect(ttsUpdates(updates), "a TTS result reached a turn that asked for no audio").toEqual([]);

@@ -33,7 +33,7 @@ const roles = { defaultChat: "swiss-ai/apertus-v1.5-70b", task: "mistral-small",
 const gatewayKnown = new Map([["gateway", new Set(["swiss-ai/apertus-v1.5-70b", "swiss-ai/apertus-v1.5-70b-thinking"])]]);
 
 describe("inference topology from the registry", () => {
-	it("fails the fallback role loud when HF does not list prd's old FALLBACK_MODEL_ID (CUR-2293)", async () => {
+	it("fails the fallback role loud when HF does not list prd's old FALLBACK_MODEL_ID", async () => {
 		const cfg = topologyFromRegistry(registry(HF, "swiss-ai/Apertus-v1.5-70B"), lanes, roles, "production");
 		const fetchIds = vi.fn(async () => ["swiss-ai/Apertus-8B-Instruct-2509", "zai-org/GLM-5.3"]);
 		const { unserved } = await checkRoles(cfg, lanes, gatewayKnown, fetchIds);
@@ -74,7 +74,7 @@ describe("inference topology from the registry", () => {
 		expect(fetchErrors).toEqual({ backup: "503 from https://router.huggingface.co/v1/models" });
 	});
 
-	it("a /models that times out at boot yields one unchecked-roles warning naming the provider, host, error and role, never an absent role (CUR-4057)", async () => {
+	it("a /models that times out at boot yields one unchecked-roles warning naming the provider, host, error and role, never an absent role", async () => {
 		const cfg = topologyFromRegistry(registry(HF, "zai-org/GLM-5.3"), lanes, roles, "develop");
 		const { unserved, fetchErrors } = await checkRoles(cfg, lanes, gatewayKnown, async () => {
 			throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
@@ -88,7 +88,7 @@ describe("inference topology from the registry", () => {
 		);
 	});
 
-	it("groups unread roles one line per provider and tells a non-2xx answer from an unreachable host (CUR-4057)", () => {
+	it("groups unread roles one line per provider and tells a non-2xx answer from an unreachable host", () => {
 		const cfg = topologyFromRegistry(registry(HF, "zai-org/GLM-5.3"), lanes, roles, "develop");
 		const unread = (role: string, provider: string, upstream: string) =>
 			({ role, model: upstream, provider, upstream, reason: "unread" }) as const;
@@ -124,7 +124,7 @@ describe("inference topology from the registry", () => {
 	});
 });
 
-describe("a model id registered twice (CUR-2277, develop's Bielik)", () => {
+describe("a model id registered twice ( develop's Bielik)", () => {
 	const twice: RegistryEntry[] = [
 		...registry(HF, "swiss-ai/Apertus-v1.5-70B"),
 		{ id: "speakleash/Bielik-11B-v3.0-Instruct", endpoints: [{ baseURL: GATEWAY }] },

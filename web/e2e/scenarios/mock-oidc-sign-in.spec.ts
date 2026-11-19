@@ -19,7 +19,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // without a real HF account.
 //
 // @local-mock: the mock runs inside the test run, on localhost beside the app and its database, never
-// on a public host (CUR-2451). sign-in-local.yml starts all three from the checked-out tree and sets
+// on a public host. sign-in-local.yml starts all three from the checked-out tree and sets
 // SCENARIO_LOCAL_MOCK=1; playwright.config.ts leaves the tag out of every other run. The mock's
 // address comes from MOCK_OIDC_PROVIDER_URL, the same variable the app registers it from.
 //
@@ -83,7 +83,7 @@ test(
 	}
 );
 
-// A1 step 9, the half left open by CUR-2362: the account_not_linked warning (sign-in.spec.ts) sends a
+// A1 step 9, the half left open: the account_not_linked warning (sign-in.spec.ts) sends a
 // person to Settings → Account to add their second provider, and this walks that link to the end.
 // It drives the same `/link-social` call the page's Link button makes, aimed at the mock provider
 // because the button's real providers send the browser to Google, GitHub or Hugging Face, where CI
@@ -96,7 +96,7 @@ test(
 		const email = freshTestEmail();
 		// `accounts` is on in develop and production. This leg has no PostHog, so without the override
 		// loginEnabled() falls back to OPENID_CLIENT_ID, which it doesn't set, and the settings nav
-		// drew a signed-in person as signed out: no Account entry beside the Account page (CUR-2663).
+		// drew a signed-in person as signed out: no Account entry beside the Account page.
 		await setFlagOverrides(context, baseURL!, { accounts: true });
 		// The walk above signs in as the mock identity, which leaves its account row on that user.
 		await deleteTestUsers([MOCK_IDENTITY_EMAIL]);
@@ -193,8 +193,8 @@ async function signInThroughMock(
 	return currentUser(page);
 }
 
-// A1 step 9's other half (CUR-2721). Linking a provider only matters if the person can come back
-// through it. The server side resolves the linked provider to the same user (CUR-1166,
+// A1 step 9's other half. Linking a provider only matters if the person can come back
+// through it. The server side resolves the linked provider to the same user (
 // betterAuth.accountMerge.spec.ts); this walks it in a browser with a conversation in the account, and
 // checks that the person sees that chat again as well as getting the same user id. The mock's single
 // identity has a different email from the account's, so a sign-in that made a new user would carry
@@ -296,7 +296,7 @@ test(
 	}
 );
 
-// A1 step 12 (CUR-2794). Someone whose only way in is one provider must not be able to unlink it, or
+// A1 step 12. Someone whose only way in is one provider must not be able to unlink it, or
 // they lock themselves out. The page disables the button, but the guard that matters is the server's:
 // better-auth refuses the last account unless `allowUnlinkingAll` is set, and our config leaves it
 // unset (betterAuth.ts, `accountLinking`). This calls `/unlink-account` directly, the way the page's
@@ -337,9 +337,9 @@ test(
 					'Link another provider before unlinking this one'
 				);
 				// A tooltip on a disabled button never shows on touch, often not on hover either, and never in
-				// a recording, so the reason has to be on the page (CUR-2899). It names the real rule, the last
+				// a recording, so the reason has to be on the page. It names the real rule, the last
 				// provider, and never says the person would have no way in: the email-code row above it says it
-				// can always sign in (CUR-3144).
+				// can always sign in.
 				await expect(
 					onlyRow.getByText(
 						'This is the only provider linked, so link another before unlinking it. Your email code still works either way.'
@@ -405,7 +405,7 @@ test(
 	}
 );
 
-// A1 step 13 (CUR-2792). One provider account signs in one person. If linking could move it, whoever
+// A1 step 13. One provider account signs in one person. If linking could move it, whoever
 // linked it first would take over someone else's sign-in. Better Auth's link callback refuses a
 // provider account that already belongs to another user (callback.mjs, before any write) with
 // `account_already_linked_to_different_user`, and the account page shows that code's copy. Here the
@@ -502,7 +502,7 @@ async function rowsForEmail(email: string): Promise<{ users: number; providers: 
 	}
 }
 
-// A1 step 9 (CUR-2790). Someone who first signed in by email code comes back through a provider that
+// A1 step 9. Someone who first signed in by email code comes back through a provider that
 // reports the same email. Implicit linking is off (betterAuth.ts, `disableImplicitLinking`), so the
 // callback refuses with `account_not_linked`, lands back on the sign-in page, and shows the warning.
 // sign-in.spec.ts renders that warning from the URL alone; this drives the refusal that produces it,

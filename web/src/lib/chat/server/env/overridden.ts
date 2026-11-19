@@ -7,13 +7,13 @@ import { logger } from "$lib/chat/server/logger";
 // when it falls past position 0. It is the wrong tool here for two reasons: the losing key is often a
 // DIFFERENT concept (RERANK_ENDPOINT_URL vs RERANK_KIND — a URL beating a mode name), and firstKey's
 // warning fires on every designed fallback, which makes it too noisy to read when the
-// fallback is the intended configuration (CUR-60).
+// fallback is the intended configuration.
 //
 // THE RULE THAT KEEPS THIS QUIET: log only when the loser was ACTUALLY SET. Nothing overridden, nothing
 // logged. So the line appears exactly when a human's mental model is wrong — someone set a value that
 // does nothing — and never during normal operation. That is the opposite of firstKey's problem.
 //
-// Example (CUR-112): with RERANK_KIND=hf and RERANK_ENDPOINT_URL both set, reranking goes over TEI and
+// Example: with RERANK_KIND=hf and RERANK_ENDPOINT_URL both set, reranking goes over TEI and
 // the `hf` setting never applies. Nothing else surfaces that: env:audit sees a non-empty key, and
 // env-drift sees prd and preview agreeing. Only the decision site knows, so the decision site logs.
 //

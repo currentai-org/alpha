@@ -8,7 +8,7 @@ import { journeyStep } from './helpers/journeyStep';
 import { holdForRecording } from './helpers/recording';
 import type { BrowserContext, Page } from '@playwright/test';
 
-// A3 row 18 (CUR-2797): one Hugging Face token holds every account's files (CUR-1288), so the
+// A3 row 18: one Hugging Face token holds every account's files, so the
 // ownership check in `routes/chat/api/storage/guard.ts` is all that keeps one person's files from
 // another's. This drives that check against a real preview: account B, signed in, asks for and tries
 // to delete a file account A stored, and must be refused without learning anything, while A's file
@@ -86,7 +86,7 @@ test(
 				expect([400, 403, 404]).toContain(climbed.status());
 				expect(await climbed.text()).not.toContain(body);
 
-				// Write (CUR-1288): an upload whose filename climbs to the owner's full path must land in
+				// Write: an upload whose filename climbs to the owner's full path must land in
 				// B's own folder or be refused, never over A's file. The owner's read-back below catches it.
 				const overwrite = await b.request.post('/chat/api/storage', {
 					multipart: {

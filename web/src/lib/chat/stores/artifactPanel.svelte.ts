@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { browser } from "$app/environment";
 
 // Loose absolute bounds for a resized width; the real visual bounds are
@@ -53,8 +56,8 @@ class ArtifactPanelStore {
 	private autoOpenedKeys = new Set<string>();
 
 	/**
-	 * @param startOn - the tab a newly opened artifact shows. A shared conversation passes "code"
-	 *   (CUR-3187): its artifact was written for someone else, so the viewer reads it before
+	 * @param startOn - the tab a newly opened artifact shows. A shared conversation passes "code":
+	 *   its artifact was written for someone else, so the viewer reads it before
 	 *   choosing to run it.
 	 */
 	openArtifact(

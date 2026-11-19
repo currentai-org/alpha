@@ -1,5 +1,5 @@
 // An admin can see who is active and how much the workspace is used: counts only, never the content
-// of a member's conversations (CUR-552). That is enforced HERE, structurally, not left to the caller
+// of a member's conversations. That is enforced HERE, structurally, not left to the caller
 // to omit fields: every query in this file
 // selects only aggregate scalars (count, sum, max) and never the `doc` column itself, so there is no
 // code path through which a title, a preview, or message text could reach the return value. A
@@ -9,10 +9,10 @@
 //
 // The id-space trap this file exists to get right: workspace membership (member.userId) is keyed by
 // Better Auth's own user id, but conversations.userId is keyed by the SHADOW doc-store user id — a
-// hash of that same id (auth.ts's shadowUserId, CUR-434). A query joining the two directly would
+// hash of that same id (auth.ts's shadowUserId). A query joining the two directly would
 // silently match zero rows for every workspace, not error.
 //
-// Membership alone isn't workspace scope (CUR-961). A member's conversations.organizationId column
+// Membership alone isn't workspace scope. A member's conversations.organizationId column
 // (schema.ts) records which workspace was active when a conversation was created — the counting
 // query below requires BOTH a membership match and an organizationId match; membership alone would
 // let a brand-new empty workspace show an admin's lifetime usage from everywhere else.
@@ -39,7 +39,7 @@ export type WorkspaceUsage = {
 	activeMemberCount: number;
 	perMember: MemberUsage[];
 	/** rag_documents rows scoped to this workspace (organizationId), for the delete
-	 *  confirmation's "naming what goes" disclosure — a count, same posture as everything else in this (CUR-736/CUR-827)
+	 *  confirmation's "naming what goes" disclosure — a count, same posture as everything else in this
 	 *  file, no titles or content. 0 when organizationId is omitted, not "unknown". */
 	documentCount: number;
 };
@@ -56,7 +56,7 @@ const EMPTY_USAGE: WorkspaceUsage = {
  * Aggregate, counts-only usage for a set of workspace members (pass member.userId values — Better
  * Auth ids, not shadow ids; the id-space conversion happens inside). `organizationId` is optional and
  * used only for the document count — documents are scoped directly by organizationId, unlike
- * conversations, which have none (CUR-736's decision).
+ * conversations, which have none (the decision).
  */
 export async function getWorkspaceUsage(
 	memberUserIds: string[],
@@ -65,7 +65,7 @@ export async function getWorkspaceUsage(
 	const documentCount = organizationId ? await countWorkspaceDocuments(organizationId) : 0;
 	// No workspace, no conversation usage — same posture as documentCount just above. The conversation
 	// query below filters on organizationId; without that filter it would return a member's usage across
-	// every workspace, not usage inside this one (CUR-961).
+	// every workspace, not usage inside this one.
 	if (memberUserIds.length === 0 || !organizationId) return { ...EMPTY_USAGE, documentCount };
 
 	const shadowIds = await Promise.all(memberUserIds.map(shadowUserId));

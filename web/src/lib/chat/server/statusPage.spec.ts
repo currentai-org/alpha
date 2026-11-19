@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
-import { statusPageState } from "./statusPage";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { statusPageState, statusPageUrl } from "./statusPage";
 
 // The held answer is module state, so each read below happens at least a minute after the one before
 // it and asks Better Stack afresh.
@@ -8,7 +8,7 @@ const body = (aggregate_state: unknown) =>
 let clock = 0;
 const later = () => (clock += 10 * 60_000);
 
-describe("statusPageState (CUR-4062)", () => {
+describe("statusPageState", () => {
 	it("reports the status page's own aggregate state", async () => {
 		const f = vi.fn(async () => body("degraded"));
 		expect(await statusPageState(f as unknown as typeof fetch, later())).toBe("degraded");
@@ -33,5 +33,43 @@ describe("statusPageState (CUR-4062)", () => {
 		f.mockImplementation(async () => body("operational"));
 		expect(await statusPageState(f as unknown as typeof fetch, start + 60_000)).toBe("operational");
 		expect(f).toHaveBeenCalledTimes(2);
+	});
+});
+
+// A self-hosted Alpha must not ask our status page anything or show its incidents.
+describe("which status page", () => {
+	afterEach(() => vi.unstubAllEnvs());
+
+	it("hosted, or ALPHA_EDITION unset, reads status.example.test when STATUS_PAGE_URL is unset", async () => {
+		for (const edition of ["hosted", ""]) {
+			vi.stubEnv("ALPHA_EDITION", edition);
+			vi.stubEnv("STATUS_PAGE_URL", "");
+			expect(statusPageUrl()).toBe("https://status.example.test");
+		}
+		const f = vi.fn(async () => body("operational"));
+		await statusPageState(f as unknown as typeof fetch, later());
+		expect(f).toHaveBeenCalledWith("https://status.example.test/index.json", expect.anything());
+	});
+
+	it("ALPHA_EDITION=selfhost with STATUS_PAGE_URL unset has no status page: null state, and nothing is fetched", async () => {
+		vi.stubEnv("ALPHA_EDITION", "selfhost");
+		vi.stubEnv("STATUS_PAGE_URL", "");
+		expect(statusPageUrl()).toBeNull();
+		const f = vi.fn(async () => body("downtime"));
+		expect(await statusPageState(f as unknown as typeof fetch, later())).toBeNull();
+		expect(f).not.toHaveBeenCalled();
+	});
+
+	it("STATUS_PAGE_URL names the operator's own page, on any edition, and the held answer follows a change of page", async () => {
+		vi.stubEnv("ALPHA_EDITION", "selfhost");
+		vi.stubEnv("STATUS_PAGE_URL", "https://status.example.org/");
+		expect(statusPageUrl()).toBe("https://status.example.org");
+		const t = later();
+		const f = vi.fn(async () => body("maintenance"));
+		expect(await statusPageState(f as unknown as typeof fetch, t)).toBe("maintenance");
+		expect(f).toHaveBeenCalledWith("https://status.example.org/index.json", expect.anything());
+		vi.stubEnv("STATUS_PAGE_URL", "");
+		expect(await statusPageState(f as unknown as typeof fetch, t + 1)).toBeNull();
+		expect(f).toHaveBeenCalledTimes(1);
 	});
 });

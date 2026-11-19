@@ -5,9 +5,9 @@
 
 	// Link a Hugging Face bucket the person already owns, with a token they create for it.
 	// The token goes to our server once, is checked against Hugging Face, and is stored encrypted; it is
-	// never shown again. The person's files stay in their bucket if they unlink. (CUR-2930)
+	// never shown again. The person's files stay in their bucket if they unlink.
 	interface Props {
-		/** Called with the new location's id, so the card can offer to move files there (CUR-2941). */
+		/** Called with the new location's id, so the card can offer to move files there. */
 		onLinked: (id: string | undefined) => void;
 	}
 	let { onLinked }: Props = $props();

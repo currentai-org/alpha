@@ -2,7 +2,7 @@
  * The daily cleanup cron route (routes/chat/api/cleanup), against the real database. Pangolin and the
  * guest-file bucket are the only things replaced.
  *
- * CUR-4110's contract here is ordering: the sweep of uncollected pairings must run BEFORE
+ * The contract here is ordering: the sweep of uncollected pairings must run BEFORE
  * cleanupExpired(), which deletes expired pairing rows. The other way round, the rows that say which
  * endpoints were never collected are gone first, and those endpoints are never removed.
  */
@@ -28,7 +28,7 @@ function runCron(authorization?: string) {
 	return GET({ request: new Request("http://localhost/chat/api/cleanup", { headers }) } as never);
 }
 
-describe("cleanup cron route — CUR-4110 uncollected pairings", () => {
+describe("cleanup cron route uncollected pairings", () => {
 	beforeEach(async () => {
 		revoke.mockClear();
 		await cleanupTestData();
@@ -62,7 +62,7 @@ describe("cleanup cron route — CUR-4110 uncollected pairings", () => {
 		expect(await listLocalEndpointsForUserId(userId)).toEqual([]);
 	});
 
-	it("deletes a 61-day-old safety record and reports it in deleted.safetyEvents (CUR-4428)", async () => {
+	it("deletes a 61-day-old safety record and reports it in deleted.safetyEvents", async () => {
 		const id = `cur4428-route-${crypto.randomUUID()}`;
 		await getDb()
 			.insert(safetyEvents)

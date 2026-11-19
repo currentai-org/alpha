@@ -11,7 +11,7 @@ import { resolveReplayMode } from "$lib/chat/server/textGeneration/faultInjectio
 // gets back Clef's language, task size and skill probabilities, which it merges over its local read.
 // The key stays here; the browser never sees it. The draft is never logged, only its length.
 //
-// A scenario run's read is answered from the model replay store (SOL-201), keyed like a model answer,
+// A scenario run's read is answered from the model replay store, keyed like a model answer,
 // so CI does not spend the Clef quota real visitors share. Production never replays: resolveReplayMode
 // needs the fault-inject token, which only preview and development deployments hold.
 //

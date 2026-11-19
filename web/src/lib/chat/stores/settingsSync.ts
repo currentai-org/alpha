@@ -5,16 +5,16 @@
 // nested object in place and an identity check would miss it.
 //
 // A field is marked saved only after the server took it. A failed save leaves it dirty, so the next
-// save resends it. (CUR-1643)
+// save resends it.
 
 export type SyncTracker<T extends object> = {
 	/** Fields whose current value differs from the last one saved. */
 	dirty(current: T): Partial<T>;
 	/** POST `fields` with `post`; on success, record them as saved. */
 	save(fields: Partial<T>, post: (fields: Partial<T>) => Promise<boolean>): Promise<boolean>;
-	/** Record `fields` as saved without posting, for a write made outside `save`. (CUR-3929) */
+	/** Record `fields` as saved without posting, for a write made outside `save`. */
 	recordSaved(fields: Partial<T>): void;
-	/** The last value the server took for `key`, as this tab last saw it; `undefined` when (CUR-3929)
+	/** The last value the server took for `key`, as this tab last saw it; `undefined` when
 	 *  none, or when the last saved value was a reset. */
 	confirmed<K extends keyof T>(key: K): T[K] | undefined;
 };

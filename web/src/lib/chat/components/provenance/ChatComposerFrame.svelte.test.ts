@@ -1,8 +1,7 @@
 import type { CDPSession } from '@vitest/browser-playwright';
 import { cdp, page, userEvent } from 'vitest/browser';
 import { cleanup, render } from 'vitest-browser-svelte';
-import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import type { EmbeddedIntent } from '$lib/chat/types/EmbeddedIntent';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Harness from './ChatComposerFrame.harness.svelte';
 import { catalogByGatewayId } from '$lib/chat/routing/catalog';
 import { AUTO, modelChoice } from '$lib/chat/routing/choice';
@@ -32,12 +31,9 @@ const modelButton = () => page.getByRole('button', { name: /^Model:/ });
 // vitest types `cdp()` as an empty interface; the Playwright provider's own type has `send`.
 const session = () => cdp() as unknown as CDPSession;
 
-let onEmbeddedNavigate: Mock<(intent?: EmbeddedIntent) => void>;
-
 beforeEach(async () => {
 	await page.viewport(1280, 900);
-	onEmbeddedNavigate = vi.fn<(intent?: EmbeddedIntent) => void>();
-	render(Harness, { props: { onEmbeddedNavigate } });
+	render(Harness, { props: {} });
 });
 
 afterEach(cleanup);
@@ -84,7 +80,7 @@ describe('the composer model button', () => {
 		for (const on of [false, true]) {
 			cleanup();
 			autoFlag.on = on;
-			render(Harness, { props: { onEmbeddedNavigate } });
+			render(Harness, { props: {} });
 			await modelButton().click();
 			await expect.element(page.getByRole('menu')).toBeVisible();
 			const lab = page.getByRole('menu').element().querySelector('a[href$="/settings/routing"]');
@@ -123,7 +119,7 @@ describe('closing the model menu', () => {
 });
 
 // On a phone the picker is a bottom sheet, not the menu, and it closed back onto the pill the same way
-// the menu once did (CUR-3237): the sheet's dialog returned focus to its trigger.
+// the menu once did: the sheet's dialog returned focus to its trigger.
 describe('closing the phone model sheet', () => {
 	const box = () => page.getByRole('textbox', { name: 'Message AI Potluck' });
 	const sheet = () => document.querySelector<HTMLElement>('[data-model-sheet]');
@@ -131,7 +127,7 @@ describe('closing the phone model sheet', () => {
 	beforeEach(async () => {
 		cleanup();
 		await page.viewport(390, 844);
-		render(Harness, { props: { onEmbeddedNavigate } });
+		render(Harness, { props: {} });
 	});
 
 	it('puts focus in the message box after a pick, so what is typed next lands there', async () => {
@@ -157,8 +153,8 @@ describe('closing the phone model sheet', () => {
 	});
 });
 
-// Mistral Small is registered so CI ticket-branch previews can serve on it, and is not a model we offer
-// (CUR-2763). Every gateway id is served in the harness, so only the catalog's `offered` decides.
+// Mistral Small is registered so CI ticket-branch previews can serve on it, and is not a model we offer.
+// Every gateway id is served in the harness, so only the catalog's `offered` decides.
 // Sparkles mean Auto is choosing. A model picked by hand shows its maker's mark, as its menu row does.
 describe("the model button's icon", () => {
 	const pillLogo = () => modelButton().element().querySelector('[data-org-logo]');
@@ -188,7 +184,7 @@ describe("the model button's icon", () => {
 		cleanup();
 		autoFlag.on = true;
 		localStorage.setItem('alpha:model-choice', 'auto');
-		render(Harness, { props: { onEmbeddedNavigate } });
+		render(Harness, { props: {} });
 		await expect.element(modelButton()).toHaveAccessibleName(/^Model: Auto/);
 		expect(pillLogo(), 'Auto shows a maker logo, as if one model were picked').toBeNull();
 		expect(modelButton().element().querySelector('svg:not([class*="text-fg-3"])')).not.toBeNull();
@@ -209,7 +205,7 @@ describe('a model registered for CI and not offered', () => {
 
 	it('is listed, as the chosen model, where the deployment defaults to it, and stays listed after another pick', async () => {
 		cleanup();
-		render(Harness, { props: { onEmbeddedNavigate, currentModelId: small } });
+		render(Harness, { props: { currentModelId: small } });
 		await modelButton().click();
 
 		await expect.element(page.getByRole('menu')).toBeVisible();
@@ -233,7 +229,7 @@ describe('the Local marker', () => {
 
 	it('appears when the conversation is answered by the person’s own server', async () => {
 		cleanup();
-		render(Harness, { props: { onEmbeddedNavigate, currentModelId: LOCAL_ID } });
+		render(Harness, { props: { currentModelId: LOCAL_ID } });
 
 		await expect.element(localPill()).toBeVisible();
 	});
@@ -248,7 +244,7 @@ describe('the Local marker', () => {
 
 	it('opens a panel describing the session, so it is a disclosure and not just a badge', async () => {
 		cleanup();
-		render(Harness, { props: { onEmbeddedNavigate, currentModelId: LOCAL_ID } });
+		render(Harness, { props: { currentModelId: LOCAL_ID } });
 
 		await localPill().click();
 
@@ -261,7 +257,7 @@ describe('the Local marker', () => {
 		// the landing screen -- and "this reply was written by" is plainly wrong when there is no
 		// reply yet.
 		cleanup();
-		render(Harness, { props: { onEmbeddedNavigate, currentModelId: LOCAL_ID, started: false } });
+		render(Harness, { props: { currentModelId: LOCAL_ID, started: false } });
 		await localPill().click();
 
 		await expect.element(page.getByText(/will be answered by/i)).toBeVisible();
@@ -270,7 +266,7 @@ describe('the Local marker', () => {
 
 	it('speaks in the past once a reply exists', async () => {
 		cleanup();
-		render(Harness, { props: { onEmbeddedNavigate, currentModelId: LOCAL_ID, started: true } });
+		render(Harness, { props: { currentModelId: LOCAL_ID, started: true } });
 		await localPill().click();
 
 		await expect.element(page.getByText(/This reply was written by/i)).toBeVisible();
@@ -283,7 +279,7 @@ describe('the Local marker', () => {
 		// reading a privacy panel and concluding their messages never left the house would be worse
 		// off than with no panel at all, so this copy is load-bearing rather than decorative.
 		cleanup();
-		render(Harness, { props: { onEmbeddedNavigate, currentModelId: LOCAL_ID } });
+		render(Harness, { props: { currentModelId: LOCAL_ID } });
 		await localPill().click();
 
 		await expect.element(page.getByText(/still pass through/i)).toBeVisible();
@@ -297,7 +293,7 @@ describe('the Local marker', () => {
 		// real client is in before the model list loads. The direct wording promises strictly less,
 		// and claiming WireGuard here would be an assurance with nothing behind it.
 		cleanup();
-		render(Harness, { props: { onEmbeddedNavigate, currentModelId: LOCAL_ID } });
+		render(Harness, { props: { currentModelId: LOCAL_ID } });
 		await localPill().click();
 
 		await expect.element(page.getByText(/There is no tunnel on this route/i)).toBeVisible();
@@ -305,7 +301,7 @@ describe('the Local marker', () => {
 	});
 });
 
-// CUR-3190, with Auto on: a model picked in one chat is the default for new chats, and must not
+// with Auto on: a model picked in one chat is the default for new chats, and must not
 // redirect another chat's next message.
 describe('a model picked in another chat, with Auto on', () => {
 	const nextSwitch = () => document.querySelector('[data-model-next-switch]');
@@ -315,7 +311,7 @@ describe('a model picked in another chat, with Auto on', () => {
 	// the picker serves. With Auto on they sit in the "Choose a model yourself" submenu.
 	async function servedPair() {
 		autoFlag.on = false;
-		render(Harness, { props: { onEmbeddedNavigate, started: true } });
+		render(Harness, { props: { started: true } });
 		await modelButton().click();
 		await expect.element(page.getByRole('menu')).toBeVisible();
 		const [own, other] = rows().map((r) => catalogByGatewayId(r.dataset.modelId)!);
@@ -340,7 +336,7 @@ describe('a model picked in another chat, with Auto on', () => {
 	it("leaves an older chat's next message on that chat's own model", async () => {
 		const { own, other } = await servedPair();
 		modelChoice.set(other.id);
-		render(Harness, { props: { onEmbeddedNavigate, started: true, chatModelId: own.gatewayId } });
+		render(Harness, { props: { started: true, chatModelId: own.gatewayId } });
 		await modelButton().click();
 		await expect.element(page.getByRole('menu')).toBeVisible();
 		expect(nextSwitch(), `the older chat says its next message goes to ${other.family}`).toBeNull();
@@ -348,7 +344,7 @@ describe('a model picked in another chat, with Auto on', () => {
 
 	it('switches the chat a model is picked in, from its next message', async () => {
 		const { own, other } = await servedPair();
-		render(Harness, { props: { onEmbeddedNavigate, started: true, chatModelId: own.gatewayId } });
+		render(Harness, { props: { started: true, chatModelId: own.gatewayId } });
 		await modelButton().click();
 		await page.getByRole('menuitem', { name: /Choose a model yourself/ }).click();
 		await expect.poll(() => rows().length).toBeGreaterThan(1);
@@ -360,10 +356,10 @@ describe('a model picked in another chat, with Auto on', () => {
 		await expect.poll(() => nextSwitch()?.textContent ?? '').toContain(`Next message goes to ${label}`);
 	});
 
-	// Large 3 to Medium 3.5 must not read "Next message goes to Mistral, not Mistral." (CUR-4357)
+	// Large 3 to Medium 3.5 must not read "Next message goes to Mistral, not Mistral."
 	it('names both models, not their shared family, when switching within one family', async () => {
 		autoFlag.on = false;
-		render(Harness, { props: { onEmbeddedNavigate, started: true } });
+		render(Harness, { props: { started: true } });
 		await modelButton().click();
 		await expect.element(page.getByRole('menu')).toBeVisible();
 		const served = rows().map((r) => catalogByGatewayId(r.dataset.modelId)!);
@@ -372,7 +368,7 @@ describe('a model picked in another chat, with Auto on', () => {
 		const other = served.find((m) => m.id !== own?.id && m.family === own?.family);
 		expect(other, 'the menu serves no two models of one family').toBeDefined();
 		autoFlag.on = true;
-		render(Harness, { props: { onEmbeddedNavigate, started: true, chatModelId: own!.gatewayId } });
+		render(Harness, { props: { started: true, chatModelId: own!.gatewayId } });
 		await modelButton().click();
 		await page.getByRole('menuitem', { name: /Choose a model yourself/ }).click();
 		await expect.poll(() => rows().length).toBeGreaterThan(1);
@@ -386,7 +382,7 @@ describe('a model picked in another chat, with Auto on', () => {
 
 	it('keeps the Auto row checked in an older chat when Auto is the choice', async () => {
 		const { own } = await servedPair();
-		render(Harness, { props: { onEmbeddedNavigate, started: true, chatModelId: own.gatewayId } });
+		render(Harness, { props: { started: true, chatModelId: own.gatewayId } });
 		await modelButton().click();
 		await expect.element(page.getByRole('menu')).toBeVisible();
 		await expect.element(page.getByRole('menuitemradio', { name: /^Auto/ })).toHaveAttribute('aria-checked', 'true');

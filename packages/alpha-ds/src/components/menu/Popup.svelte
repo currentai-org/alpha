@@ -26,7 +26,7 @@
 	// Never taller than the room the positioner found (bits-ui's --bits-floating-available-height), so
 	// a long menu scrolls instead of running off the screen, as Select's popup already does. The rows
 	// scroll inside an inner region whose edges fade while there is more to scroll, so a row cut by the
-	// edge reads as "more below" rather than as clipped text (CUR-2351). The fade sits on the inner
+	// edge reads as "more below" rather than as clipped text. The fade sits on the inner
 	// region because its mask and scroll-driven animation would otherwise clip the popup's offset
 	// shadow and replace its open/close animation.
 	const classes = $derived(

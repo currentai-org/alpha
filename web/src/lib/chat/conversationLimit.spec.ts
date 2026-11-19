@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { conversationLimitMessage } from "./conversationLimit";
 
-describe("conversationLimitMessage (CUR-2891)", () => {
+describe("conversationLimitMessage", () => {
 	it("names the count, the limit, and the number to delete for an account carried past the cap", () => {
 		expect(conversationLimitMessage(173, 100)).toBe(
 			"You have 173 conversations and the limit is 100. Delete 74 to start a new one."

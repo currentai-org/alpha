@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Cheaper-model tool-call adherence test (feeds the cost comparison).
+# Cheaper-model tool-call adherence test (brief §9/§13 — feeds economics).
 # Runs the REAL Hermes loop (not a raw-API curl) for each model, N times, on the deterministic
 # 3-file fixture. A "clean completion" = the agent executed the tool loop and wrote exactly "3".
-# A model can pass a raw tool call and still emit textual tool calls under Hermes' prompt, so the
-# loop — not the raw API — is the right test. Goal: find the cheapest model that reliably drives it.
+# This is where Llama-3.3-70B failed (hallucinated textual tool-calls), so the loop — not the
+# raw API — is the right test. Goal: find the cheapest model that reliably drives Hermes' loop.
 # Backs up and restores ~/.hermes/config.yaml.
 set -uo pipefail   # not -e: we want to tally per-run failures, not abort.
 

@@ -58,7 +58,7 @@ describe("audioPlayback coordinator", () => {
 	});
 });
 
-describe("clipAudio: one element per clip, shared by autoplay and the player (CUR-2299)", () => {
+describe("clipAudio: one element per clip, shared by autoplay and the player", () => {
 	class FakeAudio extends EventTarget {
 		preload = "";
 		paused = true;
@@ -114,7 +114,7 @@ describe("clipAudio: one element per clip, shared by autoplay and the player (CU
 });
 
 // iOS Safari plays an element without a tap only if that element was played inside one. The
-// send tap primes an element; the answer's clip, loaded seconds later, must play on that same element. (CUR-4666)
+// send tap primes an element; the answer's clip, loaded seconds later, must play on that same element.
 describe("priming read-aloud on the send tap", () => {
 	type FakeEl = {
 		src: string;

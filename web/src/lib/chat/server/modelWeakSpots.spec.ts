@@ -65,7 +65,7 @@ describe("knownWeakSpotFor", () => {
 		}
 	});
 
-	// The answer settings each picker model failed on the develop preview probe, k=5 (CUR-4289). Typed
+	// The answer settings each picker model failed on the develop preview probe, k=5. Typed
 	// out, not read from the module, so a dropped or added setting turns these red.
 	it("names, for each picker model that failed an answer setting, exactly the settings it failed", () => {
 		expect(knownWeakSpotFor("mistral-large-2610")).toBe(

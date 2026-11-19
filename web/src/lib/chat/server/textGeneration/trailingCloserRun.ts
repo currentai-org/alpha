@@ -1,13 +1,13 @@
-// Trim an answer that ends in a run of closing brackets nothing opened (CUR-2882).
+// Trim an answer that ends in a run of closing brackets nothing opened.
 //
-// The failure: a model answers a question about an attached PDF correctly, then echoes the
-// `</document>` tag prepareTurnMedia.ts wraps a document in, and ran on into
+// The failure: a model can answer a question about an attached PDF correctly, then echo the
+// `</document>` tag prepareTurnMedia.ts wraps a document in, and run on into
 //
 //   _/document_.]() }}}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}]}…
 //
-// for hundreds of characters. The answer above it was right; the tail made it read as broken.
-// Neither existing probe sees it: degeneration.ts counts `{}` groups with nothing inside and this
-// tail has no `{` at all, and repetitionGuard.ts counts words.
+// for hundreds of characters. The answer above the tail is right; the tail makes it read as broken.
+// Neither of the other probes sees it: degeneration.ts counts `{}` groups with nothing inside and
+// this tail has no `{` at all, and repetitionGuard.ts counts words.
 //
 // The signal is mechanism, the same way degeneration.ts's is: a closing bracket with no opener
 // anywhere before it closes nothing. Legitimate text balances, including JSON or code left outside a
@@ -63,8 +63,8 @@ const MARKUP_ONLY_SPAN_RE = /^`[\s\p{P}\p{S}]*(?:<\/?[a-z]+(?:_[0-9a-f]+)?>[\s\p
 
 /**
  * maskCode for the echo trims, except that a code span holding only bare tags keeps its tags. A model
- * can wrap the echoed closer in backticks (`` .```</document>```.```</div>``` ``,
- * CUR-3218), and masking it as code hid the echo. Only a span inside a longer run of backticks is
+ * can wrap the echoed closer in backticks (`` .```</document>```.```</div>``` ``), and masking
+ * it as code would hide the echo. Only a span inside a longer run of backticks is
  * read this way: `` `</document>` `` written once, to explain the tag, stays code, and so does any
  * tag with attributes.
  */
@@ -140,7 +140,7 @@ function stripCloserRun(text: string): CloserRunVerdict {
 /**
  * Our opener's two attributes with the tag word itself lost: `** name="expenses-policy.pdf"
  * type="application/pdf">`, or only `="expenses-policy.pdf" type="application/pdf"` (seen on
- * every PDF turn asked to cite its sources, CUR-3212). The value must be a file name
+ * every PDF turn asked to cite its sources). The value must be a file name
  * with an extension and the type a MIME type, and a bare `=` must not follow a letter, so HTML in an
  * answer (`src="a.js" type="text/javascript"`) is not read as it.
  */
@@ -177,15 +177,15 @@ const MAX_REMAINDER_WORDS = 2;
 
 /**
  * The tail of our opener's `name="…"` echoed after the last sentence, with no tag around it
- * (`…boiler servicing. lakeside-library-hours.txt"].`, PR #2561 preview, CUR-3203). It must look
+ * (`…boiler servicing. lakeside-library-hours.txt"].`). It must look
  * like the attribute: a file name with an extension, our closing quote, then `]` or `>`, after a sentence
  * stop or a closing `**`, `_` or `)` (an answer ending on a bold list item).
  */
 const ECHOED_NAME_TAIL_RE = /(?<=[.!?*_)])\s+[\w.-]+\.[a-z0-9]{2,5}"\s*[\]>][^\p{L}\p{N}]*$/iu;
 
 /**
- * Trim our `<document>` wrapper echoed after an answer, and the markup the model ran on into after it
- * (CUR-2882's second shape). A correct PDF answer can end on
+ * Trim our `<document>` wrapper echoed after an answer, and the markup the model runs on into after it
+ * (the second shape of the failure in this file's header). A correct PDF answer can end on
  * `22:00document name="expenses-policy.pdf" type="application/pdf">./cite[1]/./cite]./cite]…`.
  * The run interleaves letters, so stripTrailingCloserRun's tail holds one closer and never fires.
  *
@@ -208,7 +208,7 @@ export function stripEchoedWrapperTail(answer: string): { cleaned: string; flagg
 			.replace(ECHOED_CLOSER_RE, " ");
 		const words = new Set((rest.match(/\p{L}+/gu) ?? []).map((w) => w.toLowerCase()));
 		// The whole wrapper echoed back, `name="…" type="…">`, the document's text and our closer, ends
-		// the answer: everything from the opener on is the attachment (CUR-3212). Only after
+		// the answer: everything from the opener on is the attachment. Only after
 		// a finished sentence, so a lead-in ("Here is a summary:") that puts the model's own answer
 		// inside the wrapper keeps it, through the tag-only trim below.
 		const after = masked.slice(at + m[0].length);
@@ -227,7 +227,7 @@ export function stripEchoedWrapperTail(answer: string): { cleaned: string; flagg
 		}
 		if (words.size > MAX_REMAINDER_WORDS) continue;
 		// `after 22:00 [1]<document>.` keeps its full stop: with no words after the tag, the stop is the
-		// sentence's own (CUR-3212).
+		// sentence's own.
 		const stop = words.size === 0 && !/[.!?]$/.test(kept) ? (rest.match(/[.!?]/)?.[0] ?? "") : "";
 		return { cleaned: kept + stop, flagged: true };
 	}
@@ -251,11 +251,11 @@ export function stripEchoedWrapperTail(answer: string): { cleaned: string; flagg
 
 /**
  * A tool call written into the answer as Hermes-format text, `<function=calculate>\n</function>`,
- * with the `------` rules a model can draw around it (CUR-3302). Nothing on this
- * path parses the format, so it reached the reader verbatim. Our own prose never writes the tag.
+ * with the `------` rules a model can draw around it. Nothing on this path parses the format, so
+ * without this trim it would reach the reader verbatim. Our own prose never writes the tag.
  */
 const HERMES_CALL_RE = /\s*-*[ \t]*<function=[\w.-]+>[^<]{0,2000}<\/function>[ \t]*-*\s*/g;
-/** Backticks, closers, stops and spaces: what the runaway in CUR-3302 is made of, and nothing else. */
+/** Backticks, closers, stops and spaces: what a markup runaway is made of, and nothing else. */
 const MARKUP_RUN_RE = /[`\])}.\s]{40,}/g;
 /** Backticks and closers a run must hold, so a long ellipsis or blank lines never count. */
 const MIN_RUN_MARKS = 12;
@@ -267,7 +267,7 @@ const OPEN_FENCE_RE = /(?:^|\n)[ \t]*(?:```|~~~)[^\n]*(?:\n[\s\S]*)?$/;
 /**
  * The text with code blanked out: closed fences, inline spans, and, while the answer is still streaming,
  * a fence still open. A tag shown as code, as in an answer explaining the Hermes format, is the answer's
- * content and stays (CUR-3302). A fence still open when the answer ends is the runaway's, so the final
+ * content and stays. A fence still open when the answer ends is the runaway's, so the final
  * trim leaves it unmasked. Runs are not checked against this, since the runaway pairs its own backticks.
  */
 function blankCode(text: string, streaming: boolean): string {
@@ -278,7 +278,7 @@ function blankCode(text: string, streaming: boolean): string {
 
 /**
  * Cut an answer at the first long run of backticks and closing brackets, mid-answer as well as at the
- * end, and drop any Hermes tool-call tag written into it (CUR-3302). A model can write the run, then prose
+ * end, and drop any Hermes tool-call tag written into it. A model can write the run, then prose
  * apologising for "formatting artifacts", then more runs and restarts, to the length limit. Everything
  * after the first run is that cascade, so the cut keeps only the answer before it, and only when that
  * answer holds a letter. stripTrailingCloserRun cannot see it: prose follows the run, and backticks
@@ -288,7 +288,7 @@ export function stripMarkupRunaway(text: string): { cleaned: string; flagged: bo
 	if (!text) return { cleaned: text, flagged: false };
 	const code = blankCode(text, false);
 	// HERMES_CALL_RE opens on `\s*`, which is retried from every position of a long blank run, so it
-	// only runs on text that holds a tag at all (CUR-4006).
+	// only runs on text that holds a tag at all.
 	let cleaned = !text.includes("<function=")
 		? text
 		: text.replace(HERMES_CALL_RE, (m, at: number) => {
@@ -314,9 +314,9 @@ export function stripMarkupRunaway(text: string): { cleaned: string; flagged: bo
 /**
  * Where a Hermes tag opens, before its closing tag has arrived, with the blank lines, `------` rule and
  * spaces in front of it. Found by indexOf and a walk back, not by `/\s*-*[ \t]*<function=/`: blankCode
- * turns a code block into one long blank run, and that regex retried `\s*` from every position of it,
- * so a 6 KB fence costs seconds of synchronous CPU per streamed chunk and freezes the whole instance
- * (CUR-4006).
+ * turns a code block into one long blank run, and that regex retries `\s*` from every position of
+ * it, so a 6 KB fence would cost seconds of synchronous CPU per streamed chunk and freeze the whole
+ * instance.
  */
 function hermesOpenAt(text: string): number | null {
 	const tag = text.indexOf("<function=");
@@ -330,7 +330,7 @@ function hermesOpenAt(text: string): number | null {
 
 /**
  * Where, in text still streaming, the runaway stripMarkupRunaway cuts begins: a Hermes tag's opening,
- * or the first qualifying run after some answer (CUR-3302). Null when neither is there yet. The
+ * or the first qualifying run after some answer. Null when neither is there yet. The
  * stream stops releasing at this point so the visitor never watches the cascade type out; the
  * end-of-stream trim then decides what of it survives.
  */

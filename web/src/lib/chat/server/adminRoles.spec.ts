@@ -3,7 +3,7 @@ import { roleGrants, seesDeveloperTools, type AdminPermission } from "./adminRol
 
 // Which staff role may do what in /chat/admin. Each list is the whole of what a role must
 // hold; the `withheld` lists are the grants that would leak visitor data or let a role change what
-// visitors get, so a widened role goes red here. (CUR-3990)
+// visitors get, so a widened role goes red here.
 const ALL: AdminPermission[] = [
 	{ console: "view" },
 	{ tuning: "try" },
@@ -75,7 +75,7 @@ describe("roleGrants: a missing or unknown role grants nothing (fail closed)", (
 	});
 });
 
-// Settings' developer tools follow the staff roles, so they don't need the shared password. (CUR-3992)
+// Settings' developer tools follow the staff roles, so they don't need the shared password.
 describe("seesDeveloperTools", () => {
 	it("opens for every staff role and the legacy admin flag, and stays shut for a plain or unknown role", () => {
 		expect(seesDeveloperTools(true, undefined)).toBe(true);

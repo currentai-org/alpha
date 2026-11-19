@@ -8,6 +8,7 @@ const { configValues } = vi.hoisted(() => ({ configValues: {} as Record<string, 
 vi.mock("$lib/chat/server/config", () => ({ config: configValues }));
 
 import {
+	embeddingBaseUrl,
 	embeddingToken,
 	syft,
 	syftEnabled,
@@ -180,7 +181,7 @@ describe("embeddingToken — dedicated RAG token precedence", () => {
 		expect(embeddingToken()).toBe("hf_openai"); // last resort
 	});
 
-	it("never borrows the compare panel's SECOND_OPINION_API_KEY, so rotating it can't move embeddings (CUR-2265)", () => {
+	it("never borrows the compare panel's SECOND_OPINION_API_KEY, so rotating it can't move embeddings", () => {
 		configValues.SECOND_OPINION_API_KEY = "hf_second";
 		configValues.OPENAI_API_KEY = "hf_openai";
 		expect(embeddingToken()).toBe("hf_openai");
@@ -191,5 +192,29 @@ describe("embeddingToken — dedicated RAG token precedence", () => {
 
 	it("returns empty string when no token is configured", () => {
 		expect(embeddingToken()).toBe("");
+	});
+});
+
+// A self-host sends no text to Hugging Face it did not name.
+describe("embeddingBaseUrl() — no Hugging Face default on a self-host edition", () => {
+	afterEach(() => {
+		for (const k of Object.keys(configValues)) delete configValues[k];
+	});
+
+	it("hosted or unset ALPHA_EDITION keeps Hugging Face's serverless base when RAG_EMBEDDING_BASE_URL is unset", () => {
+		expect(embeddingBaseUrl()).toBe("https://router.huggingface.co/hf-inference/models");
+		configValues.ALPHA_EDITION = "hosted";
+		expect(embeddingBaseUrl()).toBe("https://router.huggingface.co/hf-inference/models");
+	});
+
+	it("ALPHA_EDITION=selfhost with RAG_EMBEDDING_BASE_URL unset is empty: no embedder, no request", () => {
+		configValues.ALPHA_EDITION = "selfhost";
+		expect(embeddingBaseUrl()).toBe("");
+	});
+
+	it("ALPHA_EDITION=selfhost uses the embedder the operator names", () => {
+		configValues.ALPHA_EDITION = "selfhost";
+		configValues.RAG_EMBEDDING_BASE_URL = "http://tei:8080/models/";
+		expect(embeddingBaseUrl()).toBe("http://tei:8080/models");
 	});
 });

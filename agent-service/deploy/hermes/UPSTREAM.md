@@ -5,11 +5,12 @@ directory. `deploy/Dockerfile` holds the pin (`HERMES_SHA`) and each patch's exi
 
 | Field | Value |
 | --- | --- |
-| Release | v0.21.6 |
+| Release | v0.21.6, published 2026-10-08 |
 | Commit | `818c13be1dc4fd28987e1e881a9408224afd4535` |
+| Previous pin | v2026.8.31 (`29112bef`) |
 | Patches | `0002-acp-confirm-execute.patch` |
 | Retired | `0001-acp-configurable-toolsets.patch`, replaced by upstream's `platform_toolsets.acp` |
-| Review cadence | monthly, or sooner when an upstream ACP adapter fix is needed |
+| Next review | with the next Hermes release, or sooner for an ACP adapter fix we need |
 
 ## Bumping
 
@@ -23,5 +24,6 @@ Upstream ships several commits a day, so review by release tag, not commit by co
    It must return exactly the toolsets `acp_client._write_acp_toolsets` writes.
 5. Confirm an ACP session's system prompt still carries `Conversation started:`. Then move
    `_HERMES_SHA_DATE_ANCHOR_VERIFIED` in `api/test_agent_service.py` to the new commit.
-6. Run `scripts/date_anchor_probe.py` against the redeployed pair.
+6. Run `eval/remote_eval.py` against the develop pair before the merge and again after its
+   redeploy, then run `scripts/date_anchor_probe.py` against the redeployed pair.
 7. Update this file.

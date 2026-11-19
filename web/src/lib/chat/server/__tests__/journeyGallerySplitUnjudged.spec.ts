@@ -8,7 +8,7 @@ import { splitUnjudgedByDoc, withUndocumentedAsNotCovered, type JourneyCard } fr
  *
  * Fixtures mirror a real board: A7 has a doc
  * (`a7-everyday-jobs.md`) and a skipped recording; P1/P2 are undocumented persona recordings
- * (CUR-1574, `doc: ""`); A9/A10/F1/F4/F7/F8/R1/R2/W2/W3/W4 are register-only, with no doc and no
+ * (`doc: ""`); A9/A10/F1/F4/F7/F8/R1/R2/W2/W3/W4 are register-only, with no doc and no
  * recording at all.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- only the three fields the splitter reads
@@ -29,7 +29,7 @@ describe("splitUnjudgedByDoc", () => {
 
 	it("keys on doc, not on not-covered — an undocumented persona recording is still a doc gap even in not-graded", () => {
 		// P1/P2 carry a recording (even a skipped one) so they land in not-graded, not
-		// not-covered — the state most readers would reach for is the wrong signal here. (CUR-1574)
+		// not-covered — the state most readers would reach for is the wrong signal here.
 		const { ranButNoVerdict, noDocYet } = splitUnjudgedByDoc([
 			card("P1", "", "not-graded"),
 			card("P2", "", "not-graded"),
@@ -65,8 +65,8 @@ describe("splitUnjudgedByDoc", () => {
 });
 
 describe("withUndocumentedAsNotCovered", () => {
-	// The state pills count by state and the "no doc yet" sentence by doc (CUR-2266). Fixture is a
-	// develop board's shape: A9 recorded with no doc (not-graded), A7 documented and ungraded, F1
+	// The state pills count by state and the "no doc yet" sentence by doc. Fixture is a
+	// real board's shape: A9 recorded with no doc (not-graded), A7 documented and ungraded, F1
 	// register-only.
 	it("makes the 'no journey doc' pill count equal the 'no doc yet' sentence", () => {
 		const journeys = withUndocumentedAsNotCovered([

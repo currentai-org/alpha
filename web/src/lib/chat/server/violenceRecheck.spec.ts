@@ -1,6 +1,6 @@
 // The violence re-check's contract: it can only lift a block the violence rule raised alone, only on an
 // explicit false from both of its calls, which ask two different questions, and every failure leaves the
-// block standing (CUR-1853).
+// block standing.
 import { describe, it, expect, vi } from "vitest";
 
 import {
@@ -112,7 +112,7 @@ describe("recheckViolenceBlock", () => {
 	});
 
 	// "I could kill for a pizza" in turn 2, then a photo in turn 3. The guard re-screens the
-	// idiom with the chat's history and the image comes back clean, so the text is re-judged. (CUR-3258)
+	// idiom with the chat's history and the image comes back clean, so the text is re-judged.
 	it("re-judges the text when the images all cleared violence, and tells the judge an image was attached", async () => {
 		const call = vi.fn<RecheckCall>(async () => false);
 		const g = { ...blocked(), imageCleared: [VIOLENCE_KEY] };

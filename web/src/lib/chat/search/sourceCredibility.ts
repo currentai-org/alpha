@@ -1,4 +1,4 @@
-// Host-type screen for open-web search results (CUR-2423). Pure and a LEAF module, like sourcePrior.ts.
+// Host-type screen for open-web search results. Pure and a LEAF module, like sourcePrior.ts.
 //
 // The reranker scores relevance and a forum post can be very relevant, so without this screen a
 // YouTube video or a Reddit thread can be cited for a factual claim. This classifies each

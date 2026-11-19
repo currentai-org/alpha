@@ -8,7 +8,7 @@ const isChatSurfaceRootPath = (p: string) => chatRoutePath(p, 'chat') === p;
 
 const WEB = join(__dirname, '..', '..');
 
-// `reroute` (hooks.ts) is chatRoutePath on the unlocalized path. (CUR-4448)
+// `reroute` (hooks.ts) is chatRoutePath on the unlocalized path.
 describe('chatRoutePath on the site surface', () => {
 	it('is the identity for every path, so www, develop and PR previews route exactly as before', () => {
 		for (const p of [
@@ -66,7 +66,6 @@ describe('chatRoutePath on the chat surface', () => {
 			'/.well-known/oauth-authorization-server/chat/api/auth',
 			'/rs/e/',
 			'/folkways-adapter/v1/chat/completions',
-			'/api/cms/invalidate',
 			'/favicon.ico',
 			'/llms.txt',
 			'/robots.txt',
@@ -83,6 +82,12 @@ describe('chatRoutePath on the chat surface', () => {
 		expect(route('/alpha')).toBe('/chat/alpha');
 		expect(route('/org/hugging-face')).toBe('/chat/org/hugging-face');
 		expect(route('/api/favicon')).toBe('/chat/api/favicon');
+	});
+
+	// Payload and site-only www post every publish to the chat host at this address; chat answers it
+	// with its own webhook route, never the site's.
+	it("routes the CMS publish webhook to chat's own webhook route", () => {
+		expect(route('/api/cms/invalidate')).toBe('/chat/api/cms/invalidate');
 	});
 
 	it('matches root prefixes at a segment boundary only', () => {

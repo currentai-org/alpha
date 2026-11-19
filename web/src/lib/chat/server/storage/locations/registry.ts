@@ -1,7 +1,7 @@
 import { m } from '$lib/paraglide/messages.js';
 // (account, location id) → a StorageLocation, or a typed refusal. The only place a sealed
 // credential is opened, and the place a location's "needs-reconnect" status is written, so a broken
-// location reads the same everywhere it is shown. (CUR-2930)
+// location reads the same everywhere it is shown.
 import { logger } from "$lib/chat/server/logger";
 import {
 	getStorageLocation,
@@ -24,7 +24,7 @@ import {
 } from "./types";
 
 export const ASK_EVERY_TIME = "ask";
-/** The default for an account that never chose: wherever its most recent upload went. (CUR-3077) */
+/** The default for an account that never chose: wherever its most recent upload went. */
 export const LAST_USED = "last";
 
 export { credentialSecret };
@@ -149,7 +149,7 @@ export class LocationChoiceRequiredError extends Error {
  *
  * - No saved default is "Last used": the most recent upload's location while it is still linked,
  *   else Alpha storage.
- * - "ask" asks only when there is a choice. With Alpha storage the only place, it is Alpha storage. (CUR-3077)
+ * - "ask" asks only when there is a choice. With Alpha storage the only place, it is Alpha storage.
  */
 function uploadTarget(
 	prefs: { defaultLocation: string | null; lastUsedLocation: string | null },
@@ -182,7 +182,7 @@ export async function resolveUploadLocation(userId: string, requested?: string |
 	return resolveLocation(userId, target);
 }
 
-/** Records where an upload went, for "Last used". A failed write is logged, never the (CUR-3077)
+/** Records where an upload went, for "Last used". A failed write is logged, never the
  *  upload's failure: the file is already stored. */
 export async function recordUpload(userId: string, locationId: string): Promise<void> {
 	await setLastUsedStorageLocation(userId, locationId).catch((err) =>
@@ -209,7 +209,7 @@ export type LocationsSummary = {
 	lastUsed: string;
 	/** Where an upload that names no location goes now ("ask" only when there is a choice). */
 	uploadsGoTo: string;
-	/** Whether the storage OAuth app is configured, so the page can offer Connect Hugging Face (CUR-2932). */
+	/** Whether the storage OAuth app is configured, so the page can offer Connect Hugging Face. */
 	connectAvailable: boolean;
 };
 

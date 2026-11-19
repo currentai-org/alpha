@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2018- The Hugging Face team
+SPDX-License-Identifier: Apache-2.0
+Modified by Current AI from huggingface/chat-ui.
+-->
 <script lang="ts">
 	import ChatWindow from "$lib/chat/components/chat/ChatWindow.svelte";
 	import NoModelsAvailable from "$lib/chat/components/NoModelsAvailable.svelte";
@@ -11,6 +16,12 @@
 	import { repickWait } from "$lib/chat/stores/repickWait";
 	import { onDestroy, onMount, untrack } from "svelte";
 	import { page } from "$app/state";
+	import { shownThreadTitle } from "$lib/chat/crypto/shownTitle.svelte";
+	import { sealedHistoryForTurn } from "$lib/chat/crypto/openedHistory";
+	import { finishSealedStop } from "$lib/chat/utils/sealedStop";
+	import { sealedHistoryForRequest } from "$lib/chat/utils/sealedRequest";
+	import { historyKeyring } from "$lib/chat/crypto/historyKeyring.svelte";
+	import type { SealableConversation } from "$lib/chat/crypto/sealedShape";
 	import { trackEvent } from "$lib/analytics";
 	import { beforeNavigate, replaceState } from "$app/navigation";
 	import { UrlDependency } from "$lib/chat/types/UrlDependency";
@@ -71,6 +82,7 @@
 	import { addSibling } from "$lib/chat/utils/tree/addSibling";
 	import {
 		fetchMessageUpdates,
+		fetchGenerationFollow,
 		GenerationConflictError,
 		GenerationRequestError,
 		isLateConnectionLoss,
@@ -86,13 +98,14 @@
 	import type { TreeNode, TreeId } from "$lib/chat/utils/tree/tree";
 	import "katex/dist/katex.min.css";
 	import { updateDebouncer } from "$lib/chat/utils/updates.js";
-	import { loading } from "$lib/chat/stores/loading.js";
+	import { conversationLoading } from "$lib/chat/stores/loading.js";
 	import { clipAudio, playExclusive, stopPlayback } from "$lib/chat/stores/audioPlayback";
 	import { streamStart } from "$lib/chat/utils/haptics";
 	import { requireAuthUser } from "$lib/chat/utils/auth.js";
 	import {
 		armSilenceWatchdog,
 		classifyWatchdogFire,
+		streamClosedBeforeAnswer,
 		agentRunToReattach,
 		agentRunReattachDeadline,
 		endsTheTurn,
@@ -124,7 +137,13 @@
 	const footprint = useSessionFootprintStore();
 
 	let convId = $derived(page.params.id ?? "");
+	// Whether a turn is running in the conversation on screen. Keyed by conversation, so a turn still
+	// answering in another chat never locks this one's composer.
+	let loading = $derived(conversationLoading(convId));
 	let pending = $state(false);
+	// The conversation a live SupportNotice said the Mila output guard ended. Its id, not a boolean, so
+	// opening another conversation shows that one's composer; a reload reads the saved stamp instead.
+	let liveEndedId = $state<string | null>(null);
 	let initialRun = true;
 	// Conversation-scoped stop tombstone. A boolean reset on page.params.id
 	// changes resurrects the generating UI: invalidation reassigns page.params,
@@ -141,7 +160,7 @@
 	// Moves the tokens writeMessage holds for its next frame into the reply's content. The answer
 	// renders each token from `updates` as it arrives, a frame before `content` gets it, so Stop calls
 	// this before it measures the reply; otherwise a word already on screen falls outside the stop
-	// point and is never saved (CUR-3845).
+	// point and is never saved.
 	let commitHeldTokens: (() => void) | undefined;
 	// True while writeMessage runs; lets the generation-state effect skip the
 	// snapshot-staleness check for the generation streaming in this very tab.
@@ -163,15 +182,22 @@
 	// raise the hold while the previous one is still awaiting that refresh. An owner-blind release
 	// then dropped the NEW turn's hold, and the previous turn's snapshot (taken before the new user
 	// message existed) replaced `messages` mid-stream: the new turn vanished from the screen and its
-	// live status log moved onto the previous answer (CUR-1978).
+	// live status log moved onto the previous answer.
 	let localTurnSyncHoldOwner: symbol | undefined;
 	// An attach that ended without the run's answer hands its hold here rather than releasing
-	// it, so nothing swaps in the server's emptied copy before the next attach; followAgentRun releases it. (CUR-3875)
+	// it, so nothing swaps in the server's emptied copy before the next attach; followAgentRun releases it.
 	const REATTACH_HOLD = Symbol("reattach");
 	// Between two attaches to the same run, so a run that keeps cutting off does not loop hot.
 	const REATTACH_PAUSE_MS = 1_000;
+	// a dropped plain turn is followed through the generation follow route. A follow stream can
+	// end before the turn does (its own lifetime, another drop), so it goes again a few times, inside the
+	// window a turn can run (the platform's 300 s), before the saved-copy poller takes over.
+	const FOLLOW_MAX_ATTEMPTS = 4;
+	const FOLLOW_WINDOW_MS = 300_000;
 	// Set by an attach's finally: it ended without the run's answer and the run may still be going.
 	let attachWantsAnother = false;
+	// how the latest follow attempt ended, read by followGeneration.
+	let lastFollowEnd: "final" | "gave-up" | undefined;
 	let messageUpdatesAbortController = new AbortController();
 	// Message ids whose fresh audio we've already autoplayed — dedup so the duplicate-generation edge
 	// (which completes a turn twice) can't double-play overlapping clips.
@@ -204,7 +230,7 @@
 	// crosses route trees here, so it is a real document load: the wipe's confirmation panel — the
 	// honest list of what was cleared — is destroyed
 	// before it has been read, and the modal comes back armed at "Forget everything?" as though the
-	// delete never ran (CUR-1642). The trigger is a turn still streaming when the visitor hits
+	// delete never ran. The trigger is a turn still streaming when the visitor hits
 	// the control: its post-turn resync below fires seconds later against a row that is deliberately
 	// gone.
 	//
@@ -217,7 +243,7 @@
 	}
 
 	// Set when the page is unloading (beforeNavigate's "leave", or pagehide), so a turn torn down by a
-	// reload keeps its pending-turn note (CUR-1893).
+	// reload keeps its pending-turn note.
 	let leavingPage = false;
 
 	let cacheFallbackConvId = $state<string | null>(null);
@@ -306,40 +332,60 @@
 		prompt,
 		messageId = messagesPath.at(-1)?.id ?? undefined,
 		isRetry = false,
-		attach = false,
+		attach: attachRequested = false,
+		follow,
 		resendFiles,
 		autoRoute,
 	}: {
 		prompt?: string;
 		messageId?: string;
 		isRetry?: boolean;
-		/** Re-attach this agent answer to the task it started, rewriting it in place (CUR-993). */
+		/** Re-attach this agent answer to the task it started, rewriting it in place. */
 		attach?: boolean;
-		/** The files of a question being sent again (CUR-2803), in place of the composer's. */
+		/**
+		 * Follow this answer's generation through the follow route after its stream dropped. Works
+		 * like an attach: the replay goes into an off-screen copy that takes over once it has caught up with
+		 * what is shown. `fallback` hands the turn to the saved-copy poller when the follow cannot finish it.
+		 */
+		follow?: {
+			generationId: string;
+			fallback: () => void;
+			last: boolean;
+			/** set when the turn this follows went silent while the page was hidden; its hidden time. */
+			hiddenMs?: number;
+		};
+		/** The files of a question being sent again, in place of the composer's. */
 		resendFiles?: Message["files"];
-		/** Auto's choice, read before any await: the composer drops it once its draft clears (CUR-3944). */
+		/** Auto's choice, read before any await: the composer drops it once its draft clears. */
 		autoRoute?: AutoRouteNote;
 	}): Promise<void> {
-		// A new turn silences the last answer's read-aloud rather than talking over the next one (CUR-2299).
+		// A new turn silences the last answer's read-aloud rather than talking over the next one.
 		stopPlayback();
+		const attach = attachRequested || follow !== undefined;
 		// Time-to-first-token watchdog state (see where it's armed, below). Declared
 		// at function scope so the finally can always dispose it.
-		let watchdogHandle: { rearm: () => void; dispose: () => void } | undefined;
+		let watchdogHandle: ReturnType<typeof armSilenceWatchdog> | undefined;
 		let firstContentSeen = false;
 		// The message the server writes first for this turn (the new question, or the answer a retry
-		// rewrites). Hoisted so the finally can tell whether the server's copy holds the turn (CUR-3018).
+		// rewrites). Hoisted so the finally can tell whether the server's copy holds the turn.
 		let turnAnchorId: Message["id"] | undefined;
 		let watchdogTimedOut = false;
 		// Set when the watchdog fires AFTER content had already streamed — see
 		// classifyWatchdogFire's doc comment for the failure mode this catches (a connection that
-		// dies mid-turn, after the server has already started, or finished, answering). (CUR-708)
+		// dies mid-turn, after the server has already started, or finished, answering).
 		let staleConnectionDetected = false;
-		// An attach's final answer arrived and was not an interrupted one. (CUR-3875)
+		// the watchdog fired over a silence that began or ran while the page was hidden (a phone
+		// locked, an app switch). Routed like any other fire, but logged as its own outcome, never as
+		// ttft_timeout or stale_connection: hidden time is not evidence of a dead connection.
+		let firedAfterHidden = false;
+		// the stream ended cleanly with half an answer shown (a phone locking, a Wi-Fi drop).
+		let streamClosedEarly = false;
+		// an attach's final answer arrived and was not an interrupted one.
 		let cleanFinalSeen = false;
-		// The request was refused or failed in a way another attempt would repeat. (CUR-3875)
+		// The request was refused or failed in a way another attempt would repeat.
 		let requestRefused = false;
 		// For an attach, whether it ends by trying again rather than by any failure path. Decided
-		// once, the first time a path asks, since every path that asks runs after the stream has ended. (CUR-3875)
+		// once, the first time a path asks, since every path that asks runs after the stream has ended.
 		let reattachDecision: boolean | undefined;
 		let reattachDeadline = 0;
 		// A new turn whose agent run outlasted the request: the server handed the run off to this page
@@ -347,10 +393,23 @@
 		let handedOff = false;
 		// The answer a new turn writes, for that decision; an attach has its own copy above.
 		let turnAnswer: Message | undefined;
+		// set when this plain turn's stream dropped and the page will follow its generation once
+		// this request has settled (beginFollow), and when a follow found nothing to follow.
+		let followHandoff: { generationId: string; fallback: () => void; hiddenMs?: number } | undefined;
+		let followUnavailable = false;
+		let finalAnswerAt: number | undefined;
 		const attachConvId = convId;
+		// Every write below is for the conversation this turn runs in, even once the visitor has moved on
+		// to another one: the component is reused across conversations, so `$loading` follows the page.
+		const turnLoading = conversationLoading(attachConvId);
 		const willReattach = () =>
 			(reattachDecision ??=
-				(attach || handedOff) &&
+				(attach || handedOff || followHandoff !== undefined) &&
+				!followUnavailable &&
+				!follow?.last &&
+				// A follow that has been handed the turn's final answer has nothing left to follow, even an
+				// interrupted one (another tab's Stop), which cleanFinalSeen does not count.
+				(follow === undefined || finalAnswerAt === undefined) &&
 				!$isAborted &&
 				!cleanFinalSeen &&
 				!requestRefused &&
@@ -363,15 +422,14 @@
 		// generation success/latency/failure-reason is observable. turnStartedAt anchors both
 		// TTFT (first content byte) and total latency (final answer).
 		const turnStartedAt = Date.now();
-		// A held refusal from the last send stays up until the person sends again (CUR-1896).
+		// A held refusal from the last send stays up until the person sends again.
 		if (get(errorHeld)) {
 			error.set(undefined);
 			errorHeld.set(false);
 		}
 		let firstTokenAt: number | undefined;
-		let finalAnswerAt: number | undefined;
 		// Which model the turn asked for and which one the router says served it, so TTFT can be
-		// split by model (CUR-3967). Turn-scoped here because messageToWriteTo lives inside the try.
+		// split by model. Turn-scoped here because messageToWriteTo lives inside the try.
 		let modelRequested: string | undefined;
 		let modelServed: string | undefined;
 		// Per-turn error flag for the outcome telemetry. Deliberately NOT the shared $error
@@ -393,23 +451,25 @@
 		let applyEarlyStreamFailure: (() => Promise<void>) | undefined;
 		// Same reason as applyEarlyStreamFailure above: assigned inside the try once
 		// messageToWriteTo exists, called from both the after-loop path and the catch
-		// (CUR-708's stall-recovery branch — see classifyWatchdogFire).
+		// (the stall-recovery branch — see classifyWatchdogFire).
 		let handleStalledConnection: (() => void) | undefined;
-		// Set for an attach once its copy exists; called after every update and from the finally. (CUR-3875)
+		// Set for an attach once its copy exists; called after every update and from the finally.
 		let publishReplay: ((mode: "streaming" | "final" | "gave-up") => void) | undefined;
-		// Same again, for the visitor's own connection failing after content streamed (CUR-2805).
+		// Same again, for the visitor's own connection failing after content streamed.
 		let handleLateConnectionLoss: (() => void) | undefined;
+		// see where it is assigned. Returns whether the turn will be followed.
+		let beginFollow: ((fallback: () => void) => boolean) | undefined;
 		// This turn's claim on localTurnSyncHold (see localTurnSyncHoldOwner).
 		const turnHoldToken = Symbol("turn");
-		// Set once the turn's pending-turn note is written (CUR-1893); run from the finally.
+		// Set once the turn's pending-turn note is written; run from the finally.
 		let clearOwnPendingTurn: (() => void) | undefined;
 		try {
 			stopRequestedFor = null;
 			$isAborted = false;
-			$loading = true;
+			turnLoading.set(true);
 			// An attach rewrites an answer already on screen, so there is no new answer to stand in for:
-			// `pending` would add an empty "Working on it…" bubble under it until the replay's first token
-			// (CUR-3875). The answer itself reads as running, which keeps `$loading` up.
+			// `pending` would add an empty "Working on it…" bubble under it until the replay's first token.
+			// The answer itself reads as running, which keeps `$loading` up.
 			pending = !attach;
 			// A fresh attempt (incl. a resend) supersedes any prior unpersisted-turn veto
 			// for this conversation; re-enable the normal server reconcile.
@@ -424,13 +484,14 @@
 			// encoding or MCP hydration must abort THIS request, not whichever
 			// stale controller a previous generation left behind.
 			messageUpdatesAbortController = new AbortController();
-			activeGenerationId = v4();
+			// A follow stops and is stopped by the generation it follows (the server clamps to its stop point).
+			activeGenerationId = follow?.generationId ?? v4();
 			// A send from a new chat was encoded on the landing page, so this resolves without a read and the
-			// question replaces that page's bubble with nothing between them (CUR-3506).
+			// question replaces that page's bubble with nothing between them.
 			const base64Files = resendFiles ?? (await encodeMessageFiles(files ?? []));
 
 			let messageToWriteToId: Message["id"] | undefined = undefined;
-			// An attach's off-screen copy of the answer; see the attach branch below. (CUR-3875)
+			// An attach's off-screen copy of the answer; see the attach branch below.
 			let replay: Message | undefined;
 			// used for building the prompt, subtree of the conversation that goes from the latest message to the root
 			// Defaults to messageId: correct for the edit-a-user-message retry, where messageId
@@ -438,16 +499,18 @@
 			// where messageId names the assistant answer instead and the user turn is its parent.
 			let userMessageId: Message["id"] | undefined = messageId;
 			// The user message this turn adds, when it adds one. Sent with messageToWriteToId so the server
-			// builds its copy of the turn with the same ids; see newMessageIds in requestSchema (CUR-2098).
+			// builds its copy of the turn with the same ids; see newMessageIds in requestSchema.
 			let newUserId: Message["id"] | undefined = undefined;
 
 			if (attach && messageId) {
 				// The server empties this same message and rebuilds it from the task's replayed events. The
 				// page streams those into a copy and keeps showing the answer until the copy catches up
-				// (CUR-3875, see reattachView), minus whatever ended the last attempt, so it reads as running.
+				// (see reattachView), minus whatever ended the last attempt, so it reads as running.
 				const target = messages.find((message) => message.id === messageId);
 				if (target) {
-					reattachDeadline = agentRunReattachDeadline(target, Date.now(), page.data.agentRunHandoffEnabled === true);
+					reattachDeadline = follow
+						? Date.now() + FOLLOW_WINDOW_MS
+						: agentRunReattachDeadline(target, Date.now(), target.agentRun?.handoff === true);
 					Object.assign(target, {
 						updates: (target.updates ?? []).filter((update) => !endsTheTurn(update)),
 						interrupted: false,
@@ -548,20 +611,24 @@
 			}
 			const messageToWriteTo = replay ?? shownMessage;
 			if (!attach) turnAnswer = shownMessage;
-			// Copy the attach's replay onto the screen once reattachView allows it. (CUR-3875)
+			// Copy the attach's replay onto the screen once reattachView allows it.
 			if (replay) {
 				const copy = replay;
 				publishReplay = (mode) => {
 					const view = reattachView(shownMessage, copy, mode);
 					if (view) Object.assign(shownMessage, { ...copy, ...view });
+					// an approval card can open while the copy's text is still shorter than what is
+					// shown (a run waiting on the card writes no more text), so cards go on screen at once.
+					else if (copy.agentConfirmations?.length)
+						shownMessage.agentConfirmations = copy.agentConfirmations;
 				};
 			}
 			// The server stamps the same id on its copy. Set here too so the footer judges this
-			// answer against the model it was sent to before the end-of-turn refresh brings that copy back. (CUR-3234)
+			// answer against the model it was sent to before the end-of-turn refresh brings that copy back.
 			if (currentModel) messageToWriteTo.requestedModel = modelRequested = currentModel.id;
 			// Say live what Auto does about a slow first word. Auto's second ask shows the note naming
 			// both models now, not only after the end-of-turn refresh brings the server's copy back; a first
-			// send tells the live log how long Auto will wait, so it can say the model is slow to start. (CUR-4384)
+			// send tells the live log how long Auto will wait, so it can say the model is slow to start.
 			if (isRetry && autoRoute?.repickedFrom) messageToWriteTo.autoRoute = autoRoute;
 			else {
 				const autoChoice = isRetry || attach ? undefined : (autoRoute ?? autoRouteFor(prompt));
@@ -579,7 +646,7 @@
 			// pinnedLeafId's declaration next to messagesPath.
 			pinnedLeafId = messageToWriteToId;
 			// A reload before the server saves this turn would load a snapshot without it, so
-			// leave a note naming the message the server will write first. The finally clears it. (CUR-1893)
+			// leave a note naming the message the server will write first. The finally clears it.
 			const turnConvId = convId;
 			const turnMessageId = newUserId ?? messageToWriteToId;
 			turnAnchorId = turnMessageId;
@@ -620,9 +687,9 @@
 			// so nothing misleads. On a MISS fall back to a retryable message; since no
 			// tokens streamed, the turn is safe to resend.
 			applyEarlyStreamFailure = async () => {
-				// An attach that will try again is not a failed turn. (CUR-3875)
+				// An attach that will try again is not a failed turn.
 				if (willReattach()) return;
-				// CUR-1660 — see the note below this assignment for why the early-failure regime needs
+				// see the note below this assignment for why the early-failure regime needs
 				// this too, and why it is free when the request genuinely never reached the server.
 				addBackgroundGeneration({ id: convId, startedAt: Date.now() });
 				const cached = await getCachedAnswer(prompt ?? "");
@@ -657,7 +724,7 @@
 				// terminal update the empty assistant still derives as "running", so its live line went on
 				// counting "Working on it…" after the toast said the send had failed. The error status makes
 				// it ChatMessage's retryable error notice (role="alert"), which replaces the toast here, and
-				// a server-side answer the poller finds later still replaces the whole turn. (CUR-2613)
+				// a server-side answer the poller finds later still replaces the whole turn.
 				messageToWriteTo.updates = [
 					...(messageToWriteTo.updates ?? []),
 					{
@@ -668,7 +735,7 @@
 				];
 			};
 
-			// This path ALSO has to watch for a server-side completion, like the others (CUR-1660). The
+			// This path ALSO has to watch for a server-side completion, like the others. The
 			// split in classifyWatchdogFire reads "nothing rendered, so the request never reached the
 			// server", which is false on a deployment where output screening is the first-token gate:
 			// there an ordinary turn renders nothing until it ENDS and `firstContentSeen` is false for
@@ -685,7 +752,7 @@
 			// The registration itself lives at the top of applyEarlyStreamFailure above, so all four
 			// of its call sites are covered by one line and a fifth cannot forget it.
 
-			// CUR-708 STALL-recovery path: the watchdog fired AFTER content had already streamed (see
+			// STALL-recovery path: the watchdog fired AFTER content had already streamed (see
 			// classifyWatchdogFire). Unlike the early-failure regime above, the connection was
 			// genuinely alive at some point — the server may already have finished and persisted a
 			// full, correct answer that this tab's own dead connection just never delivered. So this
@@ -702,29 +769,66 @@
 			// whatever killed this specific fetch's connection.
 			handleStalledConnection = () => {
 				if (willReattach()) return;
-				messageToWriteTo.interrupted = true;
-				addBackgroundGeneration({ id: convId, startedAt: Date.now() });
+				const settleWithPoller = () => {
+					messageToWriteTo.interrupted = true;
+					addBackgroundGeneration({ id: convId, startedAt: Date.now() });
+				};
+				// follow the turn live first; the poller below is what a follow falls back to.
+				if (beginFollow?.(settleWithPoller)) return;
+				settleWithPoller();
+			};
+
+			// the stream dropped on a plain turn the server is still writing. Hand it to the follow
+			// route once this request has settled (see the finally), when the flag is on and the person has not
+			// stopped it. Not an agent turn, which re-attaches to its own task, and not a follow itself.
+			beginFollow = (fallback: () => void) => {
+				const generationId = activeGenerationId;
+				if (
+					page.data.streamFollowEnabled !== true ||
+					!generationId ||
+					attach ||
+					!turnAnswer ||
+					turnAnswer.agentRun ||
+					$isAborted ||
+					stopRequestedFor === attachConvId ||
+					page.params.id !== attachConvId
+				)
+					return false;
+				// the follow carries the hide, so the turn's one terminal event says it resumed.
+				followHandoff = {
+					generationId,
+					fallback,
+					hiddenMs: firedAfterHidden ? (watchdogHandle?.hiddenMs() ?? 0) : undefined,
+				};
+				reattachDeadline = Date.now() + FOLLOW_WINDOW_MS;
+				// willReattach() was already asked once on the way here and remembered its answer.
+				reattachDecision = undefined;
+				return true;
 			};
 
 			// The fetch itself failed after content streamed — the visitor went offline, or a
 			// proxy cut the line. The partial answer stays, the turn ends with a retryable notice in the
 			// transcript instead of a toast of the browser's own "network error", and the poller is told
 			// to watch, because the server keeps generating and a finished answer it finds replaces the
-			// whole turn once the visitor is back online. (CUR-2805)
+			// whole turn once the visitor is back online.
 			handleLateConnectionLoss = () => {
 				if (willReattach()) return;
-				// Veto the reconcile, as the early path does: the reload that follows this turn either fails
-				// offline or returns a snapshot without this turn's answer, and either way must not wipe it.
-				setCacheFallback(convId);
-				messageToWriteTo.updates = [
-					...(messageToWriteTo.updates ?? []),
-					{
-						type: MessageUpdateType.Status,
-						status: MessageUpdateStatus.Error,
-						message: ERROR_MESSAGES.connectionDroppedMidAnswer,
-					},
-				];
-				addBackgroundGeneration({ id: convId, startedAt: Date.now() });
+				const settleWithPoller = () => {
+					// Veto the reconcile, as the early path does: the reload that follows this turn either fails
+					// offline or returns a snapshot without this turn's answer, and either way must not wipe it.
+					setCacheFallback(convId);
+					messageToWriteTo.updates = [
+						...(messageToWriteTo.updates ?? []),
+						{
+							type: MessageUpdateType.Status,
+							status: MessageUpdateStatus.Error,
+							message: ERROR_MESSAGES.connectionDroppedMidAnswer,
+						},
+					];
+					addBackgroundGeneration({ id: convId, startedAt: Date.now() });
+				};
+				if (beginFollow?.(settleWithPoller)) return;
+				settleWithPoller();
 			};
 
 			// Time-to-first-token watchdog (cause-agnostic). fetch() has no timeout, and
@@ -734,7 +838,7 @@
 			// take the EARLY-failure path.
 			//
 			// The window is re-armed on every inbound update (below, for the WHOLE turn as of
-			// CUR-708 — not just before the first token), so this is purely a DEAD-CONNECTION
+			// not just before the first token), so this is purely a DEAD-CONNECTION
 			// detector: it fires only on TOTAL silence. A legitimately slow turn — e.g. a grounded
 			// answer doing >8s of retrieval before the first token, or an agent turn computing
 			// silently between narration steps — keeps re-arming and is never false-tripped; the
@@ -750,12 +854,15 @@
 			// agent turn is exactly the case someone tabs away during. armSilenceWatchdog adds a
 			// visibilitychange fallback that re-checks wall-clock elapsed time the instant the tab is
 			// looked at again, instead of trusting the timer to have fired on schedule — see its own doc
-			// comment in generationState.ts. (CUR-708)
+			// comment in generationState.ts.
 			watchdogHandle = armSilenceWatchdog({
 				timeoutMs: FIRST_TOKEN_TIMEOUT_MS,
-				onFire: () => {
+				onFire: ({ hiddenMs }) => {
 					const outcome = classifyWatchdogFire({ firstContentSeen, isAborted: $isAborted });
 					if (outcome === "ignore") return;
+					// hidden time never counts toward the window (armSilenceWatchdog pauses it), so this
+					// is a real visible silence after the return; it is labelled by the hide that preceded it.
+					if (hiddenMs > 0) firedAfterHidden = true;
 					if (outcome === "early-failure") watchdogTimedOut = true;
 					else staleConnectionDetected = true;
 					messageUpdatesAbortController.abort();
@@ -766,7 +873,7 @@
 			const handleFetchError = (err: unknown) => {
 				// A 404 on a plain Retry means the server never stored this turn, which is what a
 				// send that failed before the question was saved leaves behind. onRetry sends the question
-				// again as a new turn, so this is not an error to show. (CUR-2803)
+				// again as a new turn, so this is not an error to show.
 				if (isRetry && !prompt && !attach && err instanceof GenerationRequestError && err.status === 404) {
 					retryTargetMissing = true;
 					return undefined;
@@ -801,11 +908,11 @@
 					// back on resync because the server never saved it — so without this the user's typed
 					// text is silently eaten. Restore it to the composer (reactive via the pendingChatInput
 					// $effect) so a refusal never loses what they wrote. Rate-limit / cap 429s were the
-					// first case of this; CUR-1896 found 400 "Message too long." and 413/415 doing the same.
+					// first case of this; found 400 "Message too long." and 413/415 doing the same.
 					const refused = err instanceof GenerationRequestError && err.status < 500;
 					const restore = refused || (err instanceof Error && isRateLimitMessage(err.message));
 					// A refused EDIT goes back into its own edit box with the reason beside it.
-					// In the main composer, Send made a new message instead of a new version of this one. (CUR-2825)
+					// In the main composer, Send made a new message instead of a new version of this one.
 					const edited =
 						isRetry && prompt && messageId
 							? messages.find((m) => m.id === messageId && m.from === "user")
@@ -818,14 +925,14 @@
 					}
 					// The server said how long our own limit's window has left, so Send is held and
 					// counted down instead of leaving a press that only extends the wait: the composer's, and a
-					// refused edit's own box (CUR-3410). (CUR-3216)
+					// refused edit's own box.
 					if (refused && err.retryAfterSeconds) {
 						sendHeldUntil.set(Date.now() + err.retryAfterSeconds * 1000);
 					}
 					if (refused && !edited) {
 						errorHeld.set(true);
 						// The attachment IS the reason for these; leaving it on the composer makes a resend
-						// fail the same way. 422 is the abuse-match refusal (CUR-3086).
+						// fail the same way. 422 is the abuse-match refusal.
 						if (err.status === 413 || err.status === 415 || err.status === 422) files = [];
 					}
 				}
@@ -840,7 +947,14 @@
 				// fetchMessageUpdates throws -> handleFetchError sets requestFailedEarly -> we fail the turn via
 				// applyEarlyStreamFailure below (a cached answer or a retryable error, never a phantom "working").
 				requestFailedEarly = false;
-				const messageUpdatesIterator = await fetchMessageUpdates(
+				const messageUpdatesIterator = follow
+					? ((await fetchGenerationFollow(
+							base,
+							convId,
+							follow.generationId,
+							messageUpdatesAbortController.signal
+						).catch(handleFetchError)) ?? undefined)
+					: await fetchMessageUpdates(
 					convId,
 					{
 						base,
@@ -858,14 +972,30 @@
 						// new server reads so it can honor "off" (which speakAll alone collapses into "auto").
 						speakAll: get(speakMode) === "always",
 						speakMode: get(speakMode),
-						// The stored preference outlives a sign-out, and the server refuses a guest's "on" (CUR-4400),
+						// The stored preference outlives a sign-out, and the server refuses a guest's "on",
 						// so it is sent only to an account the composer offers agent mode to.
 						agentMode: page.data.agentEnabled ? get(agentMode) : "off",
-						// A retry carries Auto's note only when it is Auto picking again (CUR-4384).
+						// A retry carries Auto's note only when it is Auto picking again.
 						autoRoute:
 							attach || (isRetry && !autoRoute?.repickedFrom)
 								? undefined
 								: (autoRoute ?? autoRouteFor(prompt)),
+						// The sealed messages and preprompt this tab opened, which the server checks and
+						// reads in place of what it cannot open.
+						...sealedHistoryForTurn(
+							convId,
+							messages.map((m) => m.id)
+						),
+						// A turn sent before the previous turn's reload has not opened what that turn sealed;
+						// the server refuses it, and this reopens the stored chat for one retry.
+						resyncSealedHistory: async () => {
+							const doc = (await useAPIClient()
+								.conversations({ id: convId })
+								.get()
+								.then(handleResponse)) as SealableConversation;
+							const { reopenForTurn } = await import("$lib/chat/crypto/sealedHistory");
+							return reopenForTurn(doc, convId, historyKeyring.identity);
+						},
 						advanceGenerationId: () => (activeGenerationId = v4()),
 						// Pre-stream events (heartbeats while the server's chain runs) are consumed by the
 						// vet inside fetchMessageUpdates and never reach the loop below — re-arm the
@@ -873,23 +1003,26 @@
 						onPrestreamEvent: () => {
 							if (!firstContentSeen) armFirstTokenWatchdog();
 							// Stop was pressed on the landing page before this page took over. The
-							// first event means the server has the question, so stopping now keeps it. (CUR-2971)
+							// first event means the server has the question, so stopping now keeps it.
 							if (takeStopOnArrival(convId)) void stopGeneration();
 						},
 					},
 					messageUpdatesAbortController.signal,
 				).catch(handleFetchError);
 			if (messageUpdatesIterator === undefined) {
+				// nothing to follow (flag off, rows already gone, no connection): the finally hands
+				// the turn to the saved-copy poller.
+				if (follow) followUnavailable = true;
 				// No stream. Take the EARLY-failure path if the TTFT watchdog aborted a setup stall OR the
 				// connect layer exhausted its retries on a 5xx; the finally resets the spinner either way.
 				if (watchdogTimedOut || requestFailedEarly) await applyEarlyStreamFailure?.();
 				return;
 			}
 
-			// The same landing-page Stop, for a response that sent no pre-stream event. (CUR-2971)
+			// The same landing-page Stop, for a response that sent no pre-stream event.
 			if (takeStopOnArrival(convId)) void stopGeneration();
 
-			files = [];
+			if (!follow) files = [];
 			let buffer = "";
 			// Initialize lastUpdateTime outside the loop to persist between updates
 			let lastUpdateTime = new Date();
@@ -933,7 +1066,7 @@
 				// Any inbound update proves the connection is alive: re-arm the watchdog so a
 				// legitimately slow turn (long retrieval before the first token, or an agent
 				// computing silently between narration steps) isn't aborted as a false positive.
-				// The watchdog is armed for the WHOLE turn, so a connection that dies mid-turn is still caught (CUR-708).
+				// The watchdog is armed for the WHOLE turn, so a connection that dies mid-turn is still caught.
 				armFirstTokenWatchdog();
 
 				// Remove null characters added due to remote keylogging prevention
@@ -961,7 +1094,7 @@
 					// generation poller). A mislabeled turn would let a real, server-side-successful TTS attempt
 				// (the Space woke, returned a real clip, the client fetched and played it) still surface as
 				// "The connection dropped before a reply arrived" instead of quietly
-				// recovering — from the user's chair that reads as "nothing was even attempted." (CUR-1076)
+				// recovering — from the user's chair that reads as "nothing was even attempted."
 				if (update.type === MessageUpdateType.Status && update.message === SPEAK_STATUS) {
 					synthesizingAudioFor.set(messageToWriteTo.id);
 					markFirstContent();
@@ -1100,13 +1233,13 @@
 						const next = encodeURIComponent(`${base}/conversation/${convId}`);
 						window.location.assign(`${base}/login?next=${next}`);
 					} else {
-						// No toast (CUR-1921). The failed turn's bubble renders this same message with its
-						// Retry (ChatMessage's error notice, CUR-1748), and a toast on top made a timed-out
+						// No toast. The failed turn's bubble renders this same message with its
+						// Retry (ChatMessage's error notice), and a toast on top made a timed-out
 						// turn read as two separate failures.
 						turnErrored = true;
-						// A 429 on the stream is the model's host refusing, so Auto skips it here. (CUR-4043)
-						// So is a model that sent nothing before its give-up, and CUR-4629 a 404 or 5xx. (CUR-4098)
-						// Never a turn the agent served, which the chosen model never answered. (CUR-4661)
+						// A 429 on the stream is the model's host refusing, so Auto skips it here.
+						// So is a model that sent nothing before its give-up, and a 404 or 5xx.
+						// Never a turn the agent served, which the chosen model never answered.
 						if (
 							failureMarksModelBusy({
 								statusCode: update.statusCode,
@@ -1116,7 +1249,7 @@
 							currentModel
 						)
 							markBusyHere(currentModel.id);
-						// Auto chose this model and it never started, so onMessage asks Auto again. (CUR-4384)
+						// Auto chose this model and it never started, so onMessage asks Auto again.
 						const sentWith = isRetry || attach ? autoRoute : (autoRoute ?? autoRouteFor(prompt));
 						if (
 							shouldRepick({
@@ -1135,7 +1268,7 @@
 				} else if (update.type === MessageUpdateType.Title) {
 					// Update the sidebar title directly via the store — no side-channel needed.
 					// `source` rides along so the rail can say whether a model named this conversation
-					// or it fell back to the first five words, which look identical (CUR-1819).
+					// or it fell back to the first five words, which look identical.
 					convsStore.update(convId, { title: update.title, titleSource: update.source });
 				} else if (update.type === MessageUpdateType.File) {
 					if (
@@ -1160,7 +1293,7 @@
 					// empty frame clobber a real model, and the badge would fall back to the conversation default
 					// (for example showing the default model on an agent turn that ran another). Mirrors the
 					// server reducer's merge in streamUpdate.ts by calling the same function, so the live
-					// badge keeps `backend` (its "compute:" segment) and `verifyMethod` too (CUR-2135).
+					// badge keeps `backend` (its "compute:" segment) and `verifyMethod` too.
 					messageToWriteTo.routerMetadata = mergeRouterMetadata(
 						messageToWriteTo.routerMetadata,
 						update
@@ -1190,6 +1323,7 @@
 						score: update.score,
 						kind: update.kind,
 						ruleLabel: update.ruleLabel,
+						ruleLabels: update.ruleLabels,
 						unscreened: update.unscreened,
 						support: update.support,
 					});
@@ -1209,13 +1343,13 @@
 						...(update.unscreened ? { unscreened: true } : {}),
 					};
 				} else if (update.type === MessageUpdateType.AttachmentNotice && update.kind === "unread") {
-					// A stored file this turn could not read back. Persists on reload. (CUR-3291)
+					// A stored file this turn could not read back. Persists on reload.
 					messageToWriteTo.unreadFilesNotice = update.message;
 				} else if (update.type === MessageUpdateType.AttachmentNotice) {
 					// This turn's files were refused because they could not be scanned; the
-					// answer still streams. Persists on reload, mirroring safetyNotice. (CUR-2382)
+					// answer still streams. Persists on reload, mirroring safetyNotice.
 					messageToWriteTo.attachmentNotice = { message: update.message };
-					// Mark the left-out files on the sent message now, as the reload will. (CUR-3405)
+					// Mark the left-out files on the sent message now, as the reload will.
 					const question = messages.find((m) => m.id === messageToWriteTo.ancestors?.at(-1));
 					if (question && update.leftOutFiles?.length) {
 						const leftOut = new Set(update.leftOutFiles.map((f) => f.name));
@@ -1223,14 +1357,14 @@
 						question.leftOutFiles = update.leftOutFiles;
 					}
 				} else if (update.type === MessageUpdateType.InputScreen) {
-					// Mirrors the server's allowed-turn stamp, so X-ray reads the check before a reload. (CUR-3963)
+					// Mirrors the server's allowed-turn stamp, so X-ray reads the check before a reload.
 					messageToWriteTo.moderation = {
 						...(messageToWriteTo.moderation ?? { flagged: false, label: null, score: 0, kind: "content_policy" }),
 						screened: update.screened,
 					};
 				} else if (update.type === MessageUpdateType.SupportNotice) {
 					// A self-harm distress rule let the turn through, so the answer leads with the
-					// Support resources card. Mirrors the server stamp, which persists it for reload. (CUR-3915)
+					// Support resources card. Mirrors the server stamp, which persists it for reload.
 					messageToWriteTo.moderation = {
 						...(messageToWriteTo.moderation ?? { flagged: false, label: null, score: 0, kind: "content_policy" }),
 						support: true,
@@ -1238,11 +1372,12 @@
 						...(update.supportCountry ? { supportCountry: update.supportCountry } : {}),
 						...(update.ruleLabel ? { ruleLabel: update.ruleLabel } : {}),
 					};
+					if (update.conversationEnded) liveEndedId = attachConvId;
 				} else if (update.type === MessageUpdateType.AgentRouteNotice) {
-					// Auto's route check failed, so the selected model answered. Persists on reload. (CUR-2830)
+					// Auto's route check failed, so the selected model answered. Persists on reload.
 					messageToWriteTo.agentRouteFailed = true;
 				} else if (update.type === MessageUpdateType.HistoryNotice) {
-					// Older exchanges were left out so the chat fit the model. Persists on reload. (CUR-2893)
+					// Older exchanges were left out so the chat fit the model. Persists on reload.
 					messageToWriteTo.historyLeftOut = update.leftOut;
 				} else if (update.type === MessageUpdateType.SafetyNotice) {
 					// Non-blocking safety advisory (Coop "notice" tier): the turn was NOT declined, so
@@ -1254,20 +1389,20 @@
 					// "this system has no name" chip renders beside the answer (and persists on reload).
 					messageToWriteTo.nameNotice = { name: update.name };
 				} else if (update.type === MessageUpdateType.FixedReply) {
-					// The server answered with a fixed string and no model ran; the receipt says so. (CUR-1579)
+					// The server answered with a fixed string and no model ran; the receipt says so.
 					messageToWriteTo.fixedReply = { kind: update.kind };
 				} else if (update.type === MessageUpdateType.Calculation) {
-					// Code evaluated one of the model's calculate calls; the expression shows live. (CUR-2273)
+					// Code evaluated one of the model's calculate calls; the expression shows live.
 					messageToWriteTo.calculations = calculationAppended(
 						messageToWriteTo.calculations,
 						update
 					);
 				} else if (update.type === MessageUpdateType.McpCall) {
-					// One call to a configured MCP server; the trace shows it live. (CUR-3026)
+					// One call to a configured MCP server; the trace shows it live.
 					messageToWriteTo.mcpCalls = mcpCallAppended(messageToWriteTo.mcpCalls, update);
 				} else if (update.type === MessageUpdateType.Failover) {
 					// The primary didn't answer and a backup model took over; the live log and
-					// the receipt both show the switch. (CUR-2239)
+					// the receipt both show the switch.
 					messageToWriteTo.failover = { from: update.from, to: update.to, reason: update.reason };
 				} else if (update.type === MessageUpdateType.Rag) {
 					// RAG retrieval ran server-side before generation. Stamp provenance so the
@@ -1304,25 +1439,34 @@
 					const mcpStamp = mcpProvenance(update);
 					if (mcpStamp) messageToWriteTo.mcp = mcpStamp;
 				} else if (update.type === MessageUpdateType.WritePolicy) {
-					// This caller's writes were resolved to deny_writes for the task (CUR-471). Stamp
+					// This caller's writes were resolved to deny_writes for the task. Stamp
 					// provenance so the badge appears live during streaming, not only after reload. Shape
 					// owned by writePolicyProvenance — only a real restriction ever stamps.
 					const writePolicyStamp = writePolicyProvenance(update);
 					if (writePolicyStamp) messageToWriteTo.writePolicy = writePolicyStamp;
 				} else if (update.type === MessageUpdateType.AgentTools) {
-					// The agent observed at least one real ACP tool run this turn (CUR-601). Stamp provenance so
+					// The agent observed at least one real ACP tool run this turn. Stamp provenance so
 					// the trace reads "ran tools" live, not "from training". Shape owned by agentToolsProvenance
 					// — only a genuinely tool-running turn ever stamps.
 					const agentToolsStamp = agentToolsProvenance(update);
 					if (agentToolsStamp) messageToWriteTo.agentTools = agentToolsStamp;
 				} else if (update.type === MessageUpdateType.UnrunCode) {
-					// This turn's answer is predicted, not measured (CUR-1341). Stamp it live so the reasoning
+					// This turn's answer is predicted, not measured. Stamp it live so the reasoning
 					// panel's header stops saying "Computed" as the turn lands, rather than only correcting
 					// itself after a reload. Shape owned by unrunCodeProvenance, same as the stamps above.
 					const unrunStamp = unrunCodeProvenance(update);
 					if (unrunStamp) messageToWriteTo.unrunCode = unrunStamp;
+				} else if (update.type === MessageUpdateType.AgentRun) {
+					// the run's handle, and whether it was submitted to hand off. The page decides
+					// whether to follow the run from this stored fact, never from its own copy of the flag.
+					messageToWriteTo.agentRun = {
+						taskId: update.taskId,
+						...(update.machineId ? { machineId: update.machineId } : {}),
+						...(update.closed ? { closed: true } : {}),
+						...(update.handoff || messageToWriteTo.agentRun?.handoff ? { handoff: true } : {}),
+					};
 				} else if (update.type === MessageUpdateType.AgentConfirm) {
-					// Agent-service opened a confirmation gate mid-run (CUR-218). Stamp it LIVE — unlike every
+					// Agent-service opened a confirmation gate mid-run. Stamp it LIVE — unlike every
 					// other provenance stamp here, ChatMessage renders this while the turn is still loading,
 					// since the whole point is a human acting on it before the 45s window (or whatever
 					// agent-service is configured for) closes.
@@ -1345,7 +1489,7 @@
 			}
 
 			// Autoplay a freshly-generated clip through the clip's shared element (audioPlayback.ts), the
-			// same one the answer's player drives, so the player shows it playing (CUR-2299). Deduped per
+			// same one the answer's player drives, so the player shows it playing. Deduped per
 			// message id so the duplicate-generation edge (which completes a turn twice) can't double-play.
 			// Live completion only (not an abort), so a reload/history render never replays. Best-effort:
 			// a policy block just leaves the player for a manual press.
@@ -1373,7 +1517,22 @@
 				await applyEarlyStreamFailure?.();
 			} else if (staleConnectionDetected) {
 				// Same clean-end shape as the early-failure case, but content HAD already
-				// streamed — see handleStalledConnection for why this branches differently. (CUR-708)
+				// streamed — see handleStalledConnection for why this branches differently.
+				handleStalledConnection?.();
+			} else if (
+				streamClosedBeforeAnswer({
+					firstContentSeen,
+					finalAnswerSeen: finalAnswerAt !== undefined,
+					isAborted: $isAborted,
+					stopRequested: stopRequestedFor === convId,
+					requestRefused,
+					turnErrored,
+					watchdogFired: watchdogTimedOut || staleConnectionDetected,
+				})
+			) {
+				// nothing fired and nothing threw, but the answer never finished. The server is
+				// most likely still writing it, so follow it the way a stall is followed.
+				streamClosedEarly = true;
 				handleStalledConnection?.();
 			}
 		} catch (err) {
@@ -1391,7 +1550,7 @@
 				requestRefused = true;
 				$error = "Too much traffic, please try again.";
 			} else if (err instanceof Error && isRateLimitMessage(err.message)) {
-				// Only our own limiter's copy (CUR-2805): a provider's 429 that merely contains the
+				// Only our own limiter's copy: a provider's 429 that merely contains the
 				// number is not the visitor sending too much, and must not say so.
 				requestRefused = true;
 				$error = ERROR_MESSAGES.rateLimited;
@@ -1404,7 +1563,7 @@
 				await applyEarlyStreamFailure();
 			} else if (isLateConnectionLoss(err) && handleLateConnectionLoss) {
 				// LATE network failure: reading the answer's body failed, so the connection dropped. Only the
-				// read is tagged (CUR-2912): any other TypeError is our own bug and shows its own message.
+				// read is tagged: any other TypeError is our own bug and shows its own message.
 				handleLateConnectionLoss();
 			} else if (err instanceof Error) {
 				// LATE failure: a partial answer is already on screen — keep it and
@@ -1426,17 +1585,13 @@
 			repickWait.set(null);
 			clearOwnPendingTurn?.();
 			// A new agent turn whose run was handed off reads as running until the page re-attaches to it.
-			if (
-				page.data.agentRunHandoffEnabled === true &&
-				turnAnswer &&
-				handedOffAgentRun(turnAnswer.updates)
-			) {
+			if (turnAnswer && handedOffAgentRun(turnAnswer.updates)) {
 				handedOff = true;
 				// This turn follows its own run below, after its save lands; the reload effect stays out.
 				followedAgentRuns.add(turnAnswer.id);
-				reattachDeadline = agentRunReattachDeadline(turnAnswer, Date.now(), page.data.agentRunHandoffEnabled === true);
+				reattachDeadline = agentRunReattachDeadline(turnAnswer, Date.now(), true);
 			}
-			// An attach either goes again, keeping what is shown, or settles the answer now. (CUR-3875)
+			// An attach either goes again, keeping what is shown, or settles the answer now.
 			const reattaching = willReattach();
 			if (handedOff && reattaching && turnAnswer) {
 				Object.assign(turnAnswer, {
@@ -1445,19 +1600,25 @@
 				});
 			}
 			attachWantsAnother = reattaching;
+			// a follow reports how it ended to followGeneration, which decides on the saved-copy poller.
+			if (follow) lastFollowEnd = cleanFinalSeen || finalAnswerAt ? "final" : "gave-up";
 			publishReplay?.(reattaching ? "streaming" : cleanFinalSeen ? "final" : "gave-up");
 			// The inner try/finally exists for ONE invariant: `localTurnSyncHold` must release no
 			// matter which branch runs or what throws anywhere in this cleanup — a wedged hold would
 			// veto the data-driven resync forever. It wraps the WHOLE cleanup (not just the refresh
 			// tail) so a future throwing statement added anywhere above the release can't wedge it.
 			try {
+				// how long this turn spent hidden, read before the watchdog that measures it goes.
+				const turnHiddenMs = (watchdogHandle?.hiddenMs() ?? 0) + (follow?.hiddenMs ?? 0);
+				const turnResumedAfterHidden =
+					(watchdogHandle?.returnedFromHidden() ?? false) || follow?.hiddenMs !== undefined;
 				// Always dispose the watchdog (its timer AND its visibilitychange listener) so a late
 				// fire can't abort a later request.
 				watchdogHandle?.dispose();
 				watchdogHandle = undefined;
 				writeMessageInFlight = false;
 				activeGenerationId = undefined;
-				$loading = false;
+				turnLoading.set(false);
 				pending = false;
 				synthesizingAudioFor.set(null); // clear the "Generating audio…" footer marker
 				currentPhase.set(null); // clear the live phase marker (request log)
@@ -1483,12 +1644,17 @@
 				// Chat-health outcome: emit exactly one terminal event per turn. A pure
 				// navigation-abort is not a real turn result, so skip it. Keep telemetry
 				// isolated so analytics can never disrupt cleanup or the authoritative refresh.
-				if (!abortedByNavigation) {
+				// a turn that went silent while hidden and is now followed live leaves its event to
+				// the follow, which carries the hide and reports how the turn actually ended.
+				const resumedInFollow = firedAfterHidden && reattaching && followHandoff !== undefined;
+				if (!abortedByNavigation && !resumedInFollow) {
 					try {
 						const outcomeBase = {
 							logged_in: !!page.data.user,
 							model_requested: modelRequested ?? null,
 							model_served: modelServed ?? null,
+							resumed_after_hidden: turnResumedAfterHidden,
+							hidden_ms: turnHiddenMs,
 						};
 						if (finalAnswerAt) {
 							trackEvent("response_received", {
@@ -1502,13 +1668,17 @@
 								? "user_stopped"
 								: capacityShed
 									? "capacity_shed"
-									: watchdogTimedOut
+									: firedAfterHidden
+										? "resumed_after_hidden" // silent since a hide; handed to the saved copy
+										: watchdogTimedOut
 										? "ttft_timeout"
 										: staleConnectionDetected
-											? "stale_connection" // CUR-708: content streamed, then the connection went dark
+											? "stale_connection" // content streamed, then the connection went dark
 											: requestFailedEarly
 												? "early_5xx"
-												: turnErrored
+												: streamClosedEarly
+													? "stream_closed"
+													: turnErrored
 													? "error"
 													: firstContentSeen
 														? "incomplete"
@@ -1519,7 +1689,7 @@
 						/* never let analytics disrupt the turn */
 					}
 				}
-				// The next attach follows at once; the server's copy is the emptied one until it ends. (CUR-3875)
+				// The next attach follows at once; the server's copy is the emptied one until it ends.
 				if (!abortedByNavigation && !reattaching) {
 					// stop-generating returns as soon as the abort marker is written,
 					// NOT when the generating pod has persisted interrupted:true.
@@ -1532,7 +1702,7 @@
 						// A Stop before any of the reply arrived can land before the server has
 						// saved the question. Its copy then lacks the turn, and syncing to it would blank
 						// the pane, question and stopped notice both. Keep the local turn under the same
-						// veto a client-only cached answer uses; its timer reconciles once the turn is saved. (CUR-3018)
+						// veto a client-only cached answer uses; its timer reconciles once the turn is saved.
 						if (
 							stoppedTurnMissingFromSnapshot({
 								firstContentSeen,
@@ -1588,6 +1758,9 @@
 				// The handed-off run is followed from here, as a reload would follow it.
 				if (handedOff && attachWantsAnother && turnAnswer)
 					void followAgentRun(attachConvId, turnAnswer.id, { pauseFirst: true });
+				// a dropped plain turn is followed live; the poller is what it falls back to.
+				else if (followHandoff && attachWantsAnother && turnAnswer)
+					void followGeneration(attachConvId, turnAnswer.id, followHandoff);
 			}
 		}
 	}
@@ -1640,16 +1813,36 @@
 			lastAssistant.interrupted = true;
 		}
 
-		const sendStopRequest = async () => {
-			const response = await fetch(`${base}/conversation/${page.params.id}/stop-generating`, {
+		const stopUrl = `${base}/conversation/${page.params.id}/stop-generating`;
+		const postStop = (body: unknown) =>
+			fetch(stopUrl, {
 				method: "POST",
-				...(stopPoint && {
+				...(body !== undefined && {
 					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify(stopPoint),
+					body: JSON.stringify(body),
 				}),
 			});
+		const sendStopRequest = async () => {
+			const response = await postStop(stopPoint);
 			if (!response.ok) {
 				throw new Error(`Stop request failed: ${response.status}`);
+			}
+			// A sealed answer that finished before the stop arrived: the server cannot cut text it cannot
+			// read, so this tab opens the stored answer and sends its body once.
+			const stoppedConv = page.params.id;
+			if (stopPoint && stoppedConv) {
+				const outcome = await finishSealedStop({
+					first: response,
+					stopPoint,
+					reopen: () => sealedHistoryForRequest(stoppedConv, historyKeyring.identity),
+					post: postStop,
+				}).catch((err) => {
+					console.warn("[stop] the sealed answer could not be cut to the stop point", err);
+					return "refused" as const;
+				});
+				if (outcome === "locked" || outcome === "refused") {
+					console.warn(`[stop] the sealed answer was kept whole (${outcome})`);
+				}
 			}
 		};
 
@@ -1686,6 +1879,7 @@
 	}
 
 	onMount(async () => {
+		const mountedLoading = conversationLoading(convId);
 		// Read the first message from SvelteKit shallow-routing history state.
 		// Text is serialized directly; File objects travel via the pendingFiles
 		// client-side Map, retrieved once by nonce and then discarded.
@@ -1715,7 +1909,7 @@
 			!isGenerationStale(data.updatedAt);
 		if (streaming) {
 			addBackgroundGeneration({ id: convId, startedAt: Date.now() });
-			$loading = true;
+			mountedLoading.set(true);
 		} else if (!pendingText) {
 			const awaited = pendingTurnToAwait(
 				convId,
@@ -1723,23 +1917,23 @@
 			);
 			if (awaited) void followPendingTurn(convId, awaited);
 			// An agent run outlives the tab that started it. Coming back to one, pick it up again:
-			// the answer fills in from the task's events, finished or still going. (CUR-993)
+			// the answer fills in from the task's events, finished or still going.
 			const reattach = agentRunToReattach(messagesPath);
 			const followedHere =
-				page.data.agentRunHandoffEnabled === true && reattach && followedAgentRuns.has(reattach.id);
+				reattach?.agentRun?.handoff === true && followedAgentRuns.has(reattach.id);
 			if (reattach && !followedHere) await followAgentRun(convId, reattach.id);
 		}
 	});
 
 	// Agent runs followed since this conversation was opened, so each is followed once per visit; the
-	// component outlives a client navigation, so the set is cleared on a change of conversation (CUR-4410).
+	// component outlives a client navigation, so the set is cleared on a change of conversation.
 	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- bookkeeping read inside untrack, never rendered
 	const followedAgentRuns = new Set<string>();
 	let followedAgentRunsConv = "";
 
 	// A page loaded while another request was still reading the run (a reload mid-follow) tracks that
 	// request in the background; when it hands the run off in turn, follow the run from here rather than
-	// leave the "still working" text up until the next reload (CUR-4410). Flag off: unchanged.
+	// leave the "still working" text up until the next reload. A run not submitted to hand off is left alone.
 	$effect(() => {
 		const conv = convId;
 		const reattach = agentRunToReattach(messagesPath);
@@ -1749,7 +1943,7 @@
 				followedAgentRunsConv = conv;
 			}
 		});
-		if (!reattach || $loading || page.data.agentRunHandoffEnabled !== true) return;
+		if (!reattach || $loading || reattach.agentRun?.handoff !== true) return;
 		untrack(() => {
 			if (writeMessageInFlight || followedAgentRuns.has(reattach.id)) return;
 			void followAgentRun(convId, reattach.id);
@@ -1757,7 +1951,48 @@
 	});
 
 	/**
-	 * Re-attach to an agent run until it hands back its answer or reaches its ceiling (CUR-3875). An
+	 * Follow a plain turn whose stream dropped while the server went on writing it. The follow
+	 * route replays the generation's log from the start into an off-screen copy that takes over once it has
+	 * caught up with what is shown, so the answer keeps growing from where the connection broke. A follow
+	 * can end before the turn does, so it goes again a few times; when it cannot finish the turn (no log,
+	 * the window passed), the saved-copy poller takes over, as it does with the flag off.
+	 */
+	async function followGeneration(
+		id: string,
+		messageId: string,
+		handoff: { generationId: string; fallback: () => void; hiddenMs?: number }
+	) {
+		let settled = false;
+		try {
+			for (let attempt = 0; attempt < FOLLOW_MAX_ATTEMPTS; attempt++) {
+				lastFollowEnd = undefined;
+				await writeMessage({
+					messageId,
+					follow: {
+						generationId: handoff.generationId,
+						fallback: handoff.fallback,
+						last: attempt === FOLLOW_MAX_ATTEMPTS - 1,
+						hiddenMs: handoff.hiddenMs,
+					},
+				});
+				if (!attachWantsAnother) break;
+				await new Promise((resolve) => setTimeout(resolve, 400));
+				if (page.params.id !== id || stopRequestedFor === id) return;
+			}
+			settled = lastFollowEnd === "final";
+			// Stopped, or left the page: nothing to hand on.
+			if (!settled && page.params.id === id && stopRequestedFor !== id) handoff.fallback();
+		} finally {
+			attachWantsAnother = false;
+			if (localTurnSyncHoldOwner === REATTACH_HOLD) {
+				localTurnSyncHoldOwner = undefined;
+				localTurnSyncHold = false;
+			}
+		}
+	}
+
+	/**
+	 * Re-attach to an agent run until it hands back its answer or reaches its ceiling. An
 	 * attach stream can end before the run does: the request's own deadline, or a silence the page reads
 	 * as a dead connection. The answer stays on screen and running between attempts; only the last
 	 * attempt settles it, as finished or interrupted.
@@ -1786,13 +2021,14 @@
 	}
 
 	/**
-	 * Wait for a turn this tab sent before a reload, which the server had not saved yet (CUR-1893).
+	 * Wait for a turn this tab sent before a reload, which the server had not saved yet.
 	 * Refreshes the snapshot until the turn's message is in it, then hands a still-running turn to the
 	 * background poller, the way a load that caught the turn mid-answer does. A turn that never
 	 * arrives inside PENDING_TURN_MAX_MS was lost before the server saved it.
 	 */
 	async function followPendingTurn(id: string, messageId: string) {
-		$loading = true;
+		const idLoading = conversationLoading(id);
+		idLoading.set(true);
 		const deadline = Date.now() + PENDING_TURN_MAX_MS;
 		try {
 			while (Date.now() < deadline && page.params.id === id) {
@@ -1803,10 +2039,10 @@
 					addBackgroundGeneration({ id, startedAt: Date.now() });
 					return;
 				}
-				$loading = false;
+				idLoading.set(false);
 				return;
 			}
-			if (page.params.id === id) $loading = false;
+			idLoading.set(false);
 		} finally {
 			clearPendingTurn(id);
 		}
@@ -1847,7 +2083,7 @@
 	// A message sent before the composer's pause-in-typing analysis settled has no Auto choice
 	// published for its text. Route it here, as the landing page does for a first message, so the turn
 	// goes where Auto would send it and its X-ray can say why. A photo turn stays with the composer,
-	// whose photo routing already holds for whatever is sent with it. (CUR-3944)
+	// whose photo routing already holds for whatever is sent with it.
 	function routeAtSend(content: string): AutoRouteNote | undefined {
 		if (page.data.autoRoutingEnabled !== true || get(modelChoice) !== AUTO) return undefined;
 		if (files.some((file) => file.type.startsWith("image/"))) return undefined;
@@ -1869,7 +2105,7 @@
 		return autoRouteNote(resolved.route);
 	}
 
-	// Set by writeMessage when the model Auto chose answered nobody (repick.ts) before any text. (CUR-4384)
+	// Set by writeMessage when the model Auto chose answered nobody (repick.ts) before any text.
 	let repickFor: { answerId: Message["id"]; from: string } | undefined;
 
 	async function onMessage(content: string) {
@@ -1879,7 +2115,7 @@
 		// The composer stays open after a failed turn. When that turn failed before the server
 		// stored its question, the page's copy is the only one, and a send built on it names a parent the
 		// server has never seen: the post-turn refresh then left an empty page. Drop it and send under its
-		// parent, as Retry's resend does (CUR-2803). (CUR-4494)
+		// parent, as Retry's resend does.
 		const last = messagesPath.at(-1);
 		const failed =
 			last?.from === "assistant" ? messages.find((message) => message.id === last.ancestors?.at(-1)) : undefined;
@@ -1890,7 +2126,7 @@
 		);
 	}
 
-	/** Sends a new question; when the model Auto chose never starts, Auto asks another (CUR-4384). */
+	/** Sends a new question; when the model Auto chose never starts, Auto asks another. */
 	async function sendThenRepick(content: string, send: () => Promise<void>) {
 		const sentIn = page.params.id;
 		repickFor = undefined;
@@ -1920,7 +2156,7 @@
 		return parentId;
 	}
 
-	// Set by writeMessage when the server answers a plain Retry with "Message not found" (CUR-2803).
+	// Set by writeMessage when the server answers a plain Retry with "Message not found".
 	let retryTargetMissing = false;
 
 	async function onRetry(payload: { id: Message["id"]; content?: string }) {
@@ -1942,7 +2178,7 @@
 
 		// The server never stored this turn (the send failed before the question was saved),
 		// so there is no answer of its to retry. Drop the page's copy of the turn and ask the question
-		// again under the same parent, the way the first send did. (CUR-2803)
+		// again under the same parent, the way the first send did.
 		await writeMessage({
 			prompt: question.content,
 			messageId: dropUnsavedTurn(question),
@@ -1982,7 +2218,7 @@
 	//    The release only happens after writeMessage's finally has OBSERVED its refresh apply
 	//    (see refreshUntilApplied) — a stale load parked during the stream can therefore never
 	//    be the snapshot the release applies, short of the documented bounded residual.
-	// 4. `reportActionHoldCount` (CUR-1583) is a second, independent veto for a hazard one beat
+	// 4. `reportActionHoldCount` is a second, independent veto for a hazard one beat
 	//    AFTER `localTurnSyncHold` releases: the post-turn snapshot re-mints message ids, and a
 	//    "Report a problem" submission started in that narrow window would have its ReportButton
 	//    destroyed and re-created mid-action, silently discarding the acknowledgement the user is
@@ -2017,7 +2253,7 @@
 				cacheFallbackHere,
 				// What the veto above is actually protecting against is an EMPTY snapshot.
 				// Derived from the delivery being decided on, so a snapshot carrying a real, finished
-				// answer lifts it and the turn the server completed reaches the screen. (CUR-1660)
+				// answer lifts it and the turn the server completed reaches the screen.
 				snapshotHasAnswer: serverSnapshotHasAnswer(newMessages),
 				reportActionPending: $reportActionHoldCount > 0, // TRACKED — see constraint #4
 			})
@@ -2042,7 +2278,7 @@
 			// this guard it would keep the spinner on. Tracked, so the flag flipping at
 			// watchdog time re-runs this effect and clears the spinner immediately.
 			// A background generation is not re-registered here: the poller's invalidate can only apply a
-			// snapshot that actually has an answer in it (`snapshotHasAnswer`, CUR-1660), so tracking a
+			// snapshot that actually has an answer in it (`snapshotHasAnswer`), so tracking a
 			// conversation with a fallback painted is safe.)
 			cacheFallbackConvId !== convId &&
 			isConversationGenerationActive(messages) &&
@@ -2067,7 +2303,7 @@
 		// keepalive and the server carries on and persists the answer. Evicting here would drop the
 		// registration applyEarlyStreamFailure just made, in the same beat, and the SSE terminal event
 		// would arrive with nothing tracking it. Bounded by `setCacheFallback`'s own timer, which
-		// clears the flag and re-runs this effect, and by the poller's own eviction. (CUR-1660)
+		// clears the flag and re-runs this effect, and by the poller's own eviction.
 		if (!streaming && browser && cacheFallbackConvId !== convId) {
 			removeBackgroundGeneration(convId);
 		}
@@ -2087,7 +2323,7 @@
 	let messagesPath = $derived(createMessagesPath(messages, pinnedLeafId));
 	let messagesAlternatives = $derived(createMessagesAlternatives(messages));
 
-	// The branch this tab was reading, so a reload reopens it (CUR-2860). Kept per tab and per
+	// The branch this tab was reading, so a reload reopens it. Kept per tab and per
 	// conversation in sessionStorage: one localStorage key shared by every tab reopened tab B on
 	// tab A's branch. It is applied after mount, never during the first render, because the server
 	// renders without it; Svelte keeps server-rendered text it disagrees with during hydration, so
@@ -2119,7 +2355,7 @@
 	beforeNavigate((navigation) => {
 		if (!page.params.id) return;
 		// A reload or tab close arrives here as "leave", before pagehide, and the abort below runs the
-		// turn's finally at once. Marking it first keeps the pending-turn note the reload needs (CUR-1893).
+		// turn's finally at once. Marking it first keeps the pending-turn note the reload needs.
 		if (navigation.type === "leave") leavingPage = true;
 
 		const navigatingAway =
@@ -2129,7 +2365,7 @@
 			addBackgroundGeneration({ id: page.params.id, startedAt: Date.now() });
 		}
 		// This page is reused from one conversation to the next, so files attached here and
-		// never sent would otherwise ride along into the next one. (CUR-3052)
+		// never sent would otherwise ride along into the next one.
 		if (navigatingAway) files = [];
 
 		$isAborted = true;
@@ -2138,8 +2374,9 @@
 	});
 
 	let title = $derived.by(() => {
-		const rawTitle =
-			convsStore.list.find((conv) => conv.id === page.params.id)?.title ?? data.title;
+		const listed = convsStore.list.find((conv) => conv.id === page.params.id);
+		// Sealed or not, the title comes from the one helper every surface uses.
+		const rawTitle = shownThreadTitle(listed, { ...data, id: page.params.id ?? data.id });
 		return rawTitle ? rawTitle.charAt(0).toUpperCase() + rawTitle.slice(1) : rawTitle;
 	});
 
@@ -2148,7 +2385,7 @@
 	// ChatWindow's many unguarded currentModel.* reads (isRouter, id, multimodal, ...) throws
 	// the instant that happens, with nothing here catching it. ChatLanding.svelte already
 	// guards this same fallback before ever mounting ChatWindow; this page rendered it
-	// unconditionally. (CUR-1141)
+	// unconditionally.
 	let currentModel = $derived(
 		findCurrentModel(
 			data.models,
@@ -2160,11 +2397,11 @@
 <svelte:window onkeydown={handleKeydown} onpagehide={() => (leavingPage = true)} />
 
 <svelte:head>
-	<!-- CUR-1405: an unanswered agent confirmation prefixes the tab, because the card that asks for it
+	<!-- an unanswered agent confirmation prefixes the tab, because the card that asks for it
 	     renders inside the message body and nowhere a backgrounded tab can show. Composed through
 	     SvelteKit's own <title> rather than by assigning document.title, so navigation and the title
 	     store stay the single owner of the string and there is nothing to restore afterwards. -->
-	<title>{confirmTitle(title, pendingConfirm.count)}</title>
+	<title>{confirmTitle(title ?? '', pendingConfirm.count)}</title>
 </svelte:head>
 
 {#if currentModel}
@@ -2176,6 +2413,8 @@
 		{messagesAlternatives}
 		shared={data.shared}
 		formerWorkspace={data.formerWorkspace ?? null}
+		crisisEnded={Boolean(data.crisisEnded) || liveEndedId === data.id}
+		expiresAt={data.expiresAt ?? null}
 		preprompt={data.preprompt}
 		bind:files
 		onmessage={onMessage}

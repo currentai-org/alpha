@@ -25,15 +25,28 @@ import { queryEmbedCache, EmbedCache } from "./embedCache";
 /** The feature-extraction URL for `model`. Each dedicated endpoint serves one model: the RAG embedder's,
  *  or the self-identity check's. Any other model, or one whose endpoint is unset, goes through the
  *  shared serverless path. */
-function featureExtractionUrl(model: string): string {
+function featureExtractionUrl(model: string): string | null {
 	const dedicated =
 		model === embeddingModel()
 			? embeddingEndpointUrl()
 			: model === MULTILINGUAL_EMBEDDING_MODEL
 				? multilingualEmbeddingEndpointUrl()
 				: "";
-	return dedicated || `${embeddingBaseUrl()}/${model}/pipeline/feature-extraction`;
+	if (dedicated) return dedicated;
+	const base = embeddingBaseUrl();
+	if (!base) {
+		// A self-host that named no embedder (rag/env.ts embeddingBaseUrl): no request at all.
+		if (!warnedNoEmbedder) {
+			warnedNoEmbedder = true;
+			logger.warn(
+				"[rag] no embedding endpoint on this self-host (RAG_EMBEDDING_BASE_URL unset): every embedding feature fails open and no text leaves for Hugging Face"
+			);
+		}
+		return null;
+	}
+	return `${base}/${model}/pipeline/feature-extraction`;
 }
+let warnedNoEmbedder = false;
 
 /** `model` defaults to the RAG embedder. A caller that fitted a threshold in another model's space
  *  (selfIdentity.ts) names that model here, so a change to the RAG embedder cannot move its margins. */
@@ -56,6 +69,7 @@ export async function embedText(
 		return cached;
 	}
 	const url = featureExtractionUrl(model);
+	if (!url) return null;
 	const ac = new AbortController();
 	const timer = setTimeout(() => ac.abort(), timeoutMs);
 	try {
@@ -130,6 +144,7 @@ export async function embedTexts(
 		return parts.some((p) => p === null) ? null : parts.flat() as number[][];
 	}
 	const url = featureExtractionUrl(model);
+	if (!url) return null;
 	const ac = new AbortController();
 	const timer = setTimeout(() => ac.abort(), timeoutMs);
 	try {

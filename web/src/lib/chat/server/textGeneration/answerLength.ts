@@ -1,4 +1,4 @@
-// How much text a turn actually produced (CUR-443).
+// How much text a turn actually produced.
 //
 // WHY THIS EXISTS. Without a length, `[turn] outcome` records the outcome, four timings, the model and
 // four citation counts, and a turn whose entire answer is the two characters `AI` logs `outcome:
@@ -12,19 +12,18 @@
 // with a sources pointer, so the shipped message is a few hundred characters of OUR copy. Logging
 // only that reports a healthy length for the turn that produced no answer at all. `modelChars` is
 // measured BEFORE any final-only guard rewrote the text; `answerChars` is what the user received.
-// They differ only on a mutated turn (rare), and on exactly those turns the
-// difference is the whole story.
+// They differ only on a turn a final-only guard rewrote, and on those turns the difference is what
+// matters.
 //
 // READ `modelChars` FOR WHAT IT IS: characters that survived to the final-guard stage, which is not
 // the same as characters the model emitted. The per-chunk guards run first and can strip a whole
 // answer to nothing, so `modelChars: 0` covers both "wrote nothing" and "wrote only recency hedge".
 // It is also not the test for whether a turn produced an answer — a turn whose answer is just `[1] [2]` has
 // seven of these. `guardReplacedAnswer` is that test; see outcomeLadder.ts, which uses this only as a
-// second arm (CUR-445).
+// second arm.
 //
-// NO THRESHOLD HERE, deliberately. One recorded case is enough to justify measuring and nowhere
-// near enough to justify a floor: a bound fitted to n=1 reports a number and cannot go red for the
-// failure it names. Read the logged distribution before deciding whether a floor exists and where.
+// NO THRESHOLD HERE, deliberately. A floor needs a distribution to be fitted to; read the logged
+// lengths before deciding whether a floor exists and where it sits.
 
 export interface AnswerLengths {
 	/** Characters the user received, after any final-only guard. */

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { collections } from "$lib/chat/server/database";
 import { ObjectId } from "bson";
 import { describe, expect, it } from "vitest";
@@ -99,7 +102,7 @@ describe("addChildren", async () => {
 			conv.messages[conv.messages.length - 1].id
 		);
 	});
-	// The page and the server build the same turn; a caller-chosen id keeps them equal. (CUR-2098)
+	// The page and the server build the same turn; a caller-chosen id keeps them equal.
 	it("uses the caller's id for the new message when one is given", async () => {
 		const convId = await insertSideBranchesConversation();
 		const conv = await collections.conversations.findOne({ _id: new ObjectId(convId) });

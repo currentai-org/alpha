@@ -8,7 +8,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // PR previews screen the scenario suite with a stub that allows everything, so a screen that
 // starts declining ordinary questions would pass every stubbed spec. This one keeps the real screen
 // (`@real-screen`) on a question it has wrongly declined before: the CPF question, which the output
-// fraud rule declined 5 of 6 times with search on until it read the question too (CUR-2422). It sits
+// fraud rule declined 5 of 6 times with search on until it read the question too. It sits
 // beside violence-idiom-answered, own-details-answered and bring-your-own-text's Austen paste, the other
 // everyday questions on the real screen.
 

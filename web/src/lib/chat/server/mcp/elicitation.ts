@@ -1,5 +1,8 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 // Park a 2026-era MCP input_required result, and answer one later from a separate, independent
-// request (CUR-1017). See db/schema.ts's mcpElicitations comment for why this repo only supports
+// request. See db/schema.ts's mcpElicitations comment for why this repo only supports
 // the stateless 2026-era flow, never the 2025-era blocking one.
 //
 // Unlike upstream's Mongo `_id` + a separate `elicitationId` UUID, this uses the row's own `_id`
@@ -25,8 +28,7 @@ export type OpenElicitationResult =
  *  alongside (or instead of) an elicitation — this repo declares neither capability, so a
  *  well-behaved server shouldn't send them, but a misbehaving one might; pick the first entry
  *  that actually normalizes as an elicitation and drop the rest rather than guess at them.
- *  Nothing in production opens one since the single-Space path retired (CUR-3989); the answer route
- *  stays so a configured server can use it again. */
+ *  No built-in tool opens one; the answer route is here for a configured server that asks for input. */
 export async function openDurableElicitation(opts: {
 	conversationId: ObjectId;
 	server: string;

@@ -12,6 +12,10 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // Nothing reached the page while it held: a visitor who picked ALIA saw no text and no reasoning
 // panel for 5-36 s. The server now says the reasoning is held, without its text, and the page opens the
 // reasoning panel for the wait. The stored answer is still built from released tokens alone.
+//
+// since about 10-23 ALIA (NextBit) opens with an explicit `<think>`, so the hold releases at once
+// and the reasoning streams under its tag, shown as it arrives (4-5 s after send on alpha-develop, 11-04,
+// twice). Either path ends the blank wait, so the turn passes when either shows first.
 
 type Stored = { id: string; content: string };
 
@@ -29,7 +33,7 @@ async function openChat(page: Page, context: BrowserContext, choice: string) {
 		},
 		[CHOICE_KEY, choice] as const
 	);
-	await context.addInitScript(recordHeldPanel);
+	await context.addInitScript(recordFirstShown);
 	const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });
 	await page.addLocatorHandler(welcomeDialog, async () => {
 		await startChattingPastWelcome(welcomeDialog);
@@ -43,23 +47,59 @@ async function openChat(page: Page, context: BrowserContext, choice: string) {
 }
 
 /**
- * Records when a Working… held-reasoning panel first enters the page. A replayed ALIA reply arrives
- * whole in about 14 ms, so the panel is mounted and gone between two polls of a visibility check; an
- * observer installed before the send sees it however briefly it stays.
+ * Records when the turn first shows the visitor something: the Working… held-reasoning panel, or the
+ * first text of the reply (reasoning that streams under its own `<think>`). A replayed ALIA
+ * reply arrives whole in about 14 ms, so the panel is mounted and gone between two polls of a visibility
+ * check; an observer installed before the send sees it however briefly it stays.
  */
-function recordHeldPanel() {
-	const w = window as unknown as { __heldPanelAt?: number };
+function recordFirstShown() {
+	const w = window as unknown as {
+		__shownAt?: number;
+		__shownBy?: string;
+		__shownText?: string;
+		__shownSettled?: boolean;
+	};
 	new MutationObserver(() => {
-		if (w.__heldPanelAt) return;
+		if (w.__shownSettled) return;
+		const streamedText = () =>
+			document.querySelector('[data-message-role="assistant"] .prose')?.textContent ?? '';
+		// The time is the first letter's; the text keeps growing until it has 20 letters or digits, so a
+		// one-word first chunk ("The", "A") cannot match the start of the reasoning by chance.
+		if (w.__shownBy === 'streamed') {
+			const text = streamedText();
+			w.__shownText = text.trim().slice(0, 200);
+			w.__shownSettled = text.replace(/[^\p{L}\p{N}]+/gu, '').length >= 20;
+			return;
+		}
+		if (w.__shownAt) return;
 		const panel = document.querySelector('[data-testid="held-reasoning"]');
-		if (panel?.textContent?.includes('Working…')) w.__heldPanelAt = Date.now();
+		if (panel?.textContent?.includes('Working…')) {
+			w.__shownAt = Date.now();
+			w.__shownBy = 'held';
+			w.__shownSettled = true;
+			return;
+		}
+		const text = streamedText();
+		// A letter or digit, so a lone '…' or '-' never counts as shown and the reasoning check below
+		// always has something to compare.
+		if (/[\p{L}\p{N}]/u.test(text)) {
+			w.__shownAt = Date.now();
+			w.__shownBy = 'streamed';
+			w.__shownText = text.trim().slice(0, 200);
+		}
 	}).observe(document, { childList: true, subtree: true, characterData: true });
 }
 
-/** When the Working… panel first appeared, in ms since the epoch, or 0 while it has not. */
-async function heldPanelAt(page: Page): Promise<number> {
-	return page.evaluate(() => (window as unknown as { __heldPanelAt?: number }).__heldPanelAt ?? 0);
+/** When the turn first showed something, in ms since the epoch (0 while it has not), and by which path. */
+async function firstShown(page: Page): Promise<{ at: number; by: string; text: string }> {
+	return page.evaluate(() => {
+		const w = window as unknown as { __shownAt?: number; __shownBy?: string; __shownText?: string };
+		return { at: w.__shownAt ?? 0, by: w.__shownBy ?? '', text: w.__shownText ?? '' };
+	});
 }
+
+/** Letters and digits only, lower-cased, so rendered markdown compares with its stored source. */
+const plain = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
 
 /** The stored answer, read from the conversation the page is on. */
 async function storedTurn(page: Page, answer: Locator): Promise<Stored | undefined> {
@@ -72,7 +112,7 @@ async function storedTurn(page: Page, answer: Locator): Promise<Stored | undefin
 }
 
 test(
-	'a picked ALIA turn opens the reasoning panel while its reasoning is held, and stores none of it as the answer',
+	'a picked ALIA turn ends its blank wait within 30 s, with the held-reasoning panel or its streamed text, and stores none of its reasoning as the answer',
 	{ tag: ['@F2', '@CUR-3942'] },
 	async ({ page, context }) => {
 		test.setTimeout(150_000);
@@ -86,15 +126,17 @@ test(
 		const answer = page.locator('[data-message-role="assistant"]').first();
 		const heldPanel = answer.getByTestId('held-reasoning');
 		await expect
-			.poll(() => heldPanelAt(page), {
-				message: 'no Working… reasoning panel opened while ALIA reasoned' + warmupContext(),
+			.poll(async () => (await firstShown(page)).at, {
+				message:
+					'neither a Working… panel nor any streamed text showed while ALIA reasoned' +
+					warmupContext(),
 				timeout: 30_000
 			})
 			.toBeGreaterThan(0);
-		const panelMs = (await heldPanelAt(page)) - sentAt;
+		const shown = await firstShown(page);
 		test.info().annotations.push({
-			type: 'held-reasoning panel ms after send',
-			description: String(panelMs)
+			type: `first shown (${shown.by}) ms after send`,
+			description: String(shown.at - sentAt)
 		});
 
 		await expect(
@@ -117,6 +159,20 @@ test(
 			).toBe(true);
 		}
 		const answerText = content.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+		// A streamed first show counts only if what showed was reasoning. Had the page shown nothing until
+		// the answer began, its first text would be the answer's, and that is the blank wait.
+		if (shown.by === 'streamed') {
+			const reasoning = content.match(/^\s*<think>([\s\S]*?)<\/think>/)?.[1] ?? '';
+			// Read again now the turn is done: the first read came at the first letter, before the
+			// observer had grown the text to the 20 letters compared here.
+			const settled = await firstShown(page);
+			// The stored reasoning has to begin with it: the first 20 letters or digits shown, which a
+			// first chunk of the answer will not share with the reasoning's opening.
+			expect(
+				plain(reasoning).startsWith(plain(settled.text).slice(0, 20)),
+				`the first text shown ("${settled.text.slice(0, 60)}") was not the start of ALIA's reasoning`
+			).toBe(true);
+		}
 		expect(
 			answerText.length,
 			'the stored ALIA turn has no answer outside its reasoning'
@@ -125,6 +181,6 @@ test(
 		// message creates its conversation and navigates (~3 s on a preview), then the input gate,
 		// retrieval, the maths planner and the gateway's first byte. Most preview runs replay ALIA, so the
 		// time mostly measures our own pipeline. It is recorded above; on www it is compared with a Large 3
-		// turn's first text (CUR-3942 Done when).
+		// turn's first text (Done when).
 	}
 );

@@ -4,7 +4,7 @@ export type Verdict = NonNullable<Message["verdict"]>;
 
 /**
  * Why a verdict is what it is. `parsed` is the aggregator's own verdict; every other code is the
- * neutral fallback, and the code says which step lost it (CUR-2082). `no_answer` covers a timeout,
+ * neutral fallback, and the code says which step lost it. `no_answer` covers a timeout,
  * a transport error, an empty reply and reasoning that used the whole budget; the route's
  * `reason` field on the same log line tells those apart.
  */

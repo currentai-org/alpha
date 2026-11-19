@@ -1,6 +1,6 @@
 // The open seam, against real age files made here with `age-encryption` itself. The fixtures
 // are built by the library rather than by the module under test, so a bug in the seam can't make its
-// own fixtures agree with it. (CUR-4115)
+// own fixtures agree with it.
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { Encrypter, generateHybridIdentity, identityToRecipient } from "age-encryption";
 
@@ -104,7 +104,7 @@ describe("openCustodialObject", () => {
 	});
 
 	it("refuses another owner's file under this owner's grant as no_identity_matched, never decrypting it", async () => {
-		// The CUR-3180 shape: a path check let A's request reach B's object. A holds no key for it.
+		// A path check that lets A's request reach B's object still opens nothing: A holds no key for it.
 		const bobsFile = await sealTo(bob, "bob's private file");
 		expect(await openFails(alicesGrant, bobsFile)).toBe("no_identity_matched");
 	});

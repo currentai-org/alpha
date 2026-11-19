@@ -4,10 +4,10 @@
  * Arabic score, that number decides and every hand-set estimate for Arabic steps aside
  * (languageScores.ts `neutralSupport`), so these run on the shipped tables as they are.
  *
- * Large 4 (0.937 raw) and Medium (0.92, provisional: Large 4's score in CIP's run, CUR-392) are both
+ * Large 4 (0.937 raw) and Medium (0.92, provisional: Large 4's score in CIP's run) are both
  * measured and both strong in Arabic, and Auto gives Large 4 large drafts only. So a small or medium
  * Arabic draft goes to Medium: the pick must rest on a measured score within `MARGIN` of the best one,
- * and a large draft the classifier is sure of still goes to the best measured model. (CUR-4042)
+ * and a large draft the classifier is sure of still goes to the best measured model.
  */
 import { describe, expect, it } from 'vitest';
 import { catalog } from './catalog';

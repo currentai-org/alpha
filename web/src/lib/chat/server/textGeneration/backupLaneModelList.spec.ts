@@ -1,7 +1,7 @@
 /**
- * A backup lane's prompt says it is the lane's model (the lane rewrites, CUR-2460), so its list
- * of models has to say so too. The list is built for the model that serves the turn, so it names the
- * lane's model as the one in use and lists the others. (CUR-3895)
+ * A backup lane rewrites the prompt so it says it is the lane's model, so its list of models has to
+ * say so too. The list is built for the model that serves the turn: it names the lane's model as the
+ * one in use and lists the others.
  */
 import { describe, expect, it, vi } from "vitest";
 import { ObjectId } from "bson";
@@ -82,7 +82,7 @@ async function laneRewritesFor(harness: "native" | "scaffolded"): Promise<{ syst
 	return { system: got.preprompt, lane };
 }
 
-describe("a backup lane's list of models (CUR-3895)", () => {
+describe("a backup lane's list of models", () => {
 	for (const harness of ["native", "scaffolded"] as const) {
 		it(`${harness}: the lane's prompt marks Medium as answering and lists Large 3 among the others`, async () => {
 			const { system, lane } = await laneRewritesFor(harness);

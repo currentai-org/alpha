@@ -11,7 +11,7 @@ describe("encodeMessageFiles", () => {
 		read.mockImplementation(async (file) => `b64:${file.name}`);
 	});
 
-	it("reads each attached file once, so the conversation page reuses the landing page's encode (CUR-3402, CUR-3506)", async () => {
+	it("reads each attached file once, so the conversation page reuses the landing page's encode", async () => {
 		const photo = new File(["x"], "IMG_4032.jpg", { type: "image/jpeg" });
 		const first = await encodeMessageFiles([photo]);
 		const second = await encodeMessageFiles([photo]);

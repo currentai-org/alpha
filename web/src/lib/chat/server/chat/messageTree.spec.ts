@@ -196,10 +196,10 @@ describe("appendTurnMessages — a second tab's turn follows the first, never fo
 	});
 });
 
-// CUR-2098. The page builds the same turn locally and sends the ids it minted. When the server uses
+// The page builds the same turn locally and sends the ids it minted. When the server uses
 // them, its post-turn snapshot carries the page's ids and the page swaps it in without remounting
 // the answer, so a trace or source list the person opened stays open.
-describe("appendTurnMessages — adopts the page's ids so the answer isn't remounted (CUR-2098)", () => {
+describe("appendTurnMessages — adopts the page's ids so the answer isn't remounted", () => {
 	const USER = "11111111-1111-4111-8111-111111111111";
 	const ASSISTANT = "22222222-2222-4222-8222-222222222222";
 
@@ -275,7 +275,7 @@ describe("appendTurnMessages — adopts the page's ids so the answer isn't remou
 	});
 });
 
-describe("appendTurnMessages — re-attaching to an agent task (CUR-993)", () => {
+describe("appendTurnMessages — re-attaching to an agent task", () => {
 	function withAgentRun(run: { taskId: string; closed?: boolean } | undefined) {
 		const seeded = seededConv();
 		const answer = seeded.conv.messages.find((m) => m.id === seeded.assistantId)!;

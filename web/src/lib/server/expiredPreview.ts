@@ -6,14 +6,14 @@
 // Only the error MESSAGE changes, and only on a PR preview. client.ts and cached-client.ts stay
 // fail-loud: on production and develop a Payload 500 is a real failure and must read as one.
 
-const EXPIRED_PREVIEW_MESSAGE =
-	"This preview's data is gone. Its pull request was most likely merged or closed, which removes the preview's database. Open develop.aipotluck.org, or the latest preview of an open pull request.";
+import { DEPLOYMENT } from '$lib/deployment';
+import { deployEnvName, gitRef, type RuntimeEnv } from '$lib/server/runtimeEnv';
 
-type PreviewEnv = { VERCEL_ENV?: string; VERCEL_GIT_COMMIT_REF?: string };
+const EXPIRED_PREVIEW_MESSAGE = `This preview's data is gone. Its pull request was most likely merged or closed, which removes the preview's database. Open ${DEPLOYMENT.siteDevelopHost ?? 'the develop deployment'}, or the latest preview of an open pull request.`;
 
 /** A per-PR preview: not production, and not develop's long-lived preview, whose database is never reaped. */
-function isPullRequestPreview(env: PreviewEnv): boolean {
-	return env.VERCEL_ENV === 'preview' && env.VERCEL_GIT_COMMIT_REF !== 'develop';
+function isPullRequestPreview(env: RuntimeEnv): boolean {
+	return deployEnvName(env) === 'preview' && gitRef(env) !== 'develop';
 }
 
 /**
@@ -31,7 +31,7 @@ function looksLikeReapedDatabase(error: unknown): boolean {
 }
 
 /** The message to show instead of "Internal Error", or undefined to leave the error as it is. */
-export function expiredPreviewMessage(error: unknown, env: PreviewEnv): string | undefined {
+export function expiredPreviewMessage(error: unknown, env: RuntimeEnv): string | undefined {
 	return isPullRequestPreview(env) && looksLikeReapedDatabase(error)
 		? EXPIRED_PREVIEW_MESSAGE
 		: undefined;

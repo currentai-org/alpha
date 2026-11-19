@@ -20,6 +20,7 @@ import { error } from "@sveltejs/kit";
 import { json } from "$lib/chat/server/api/utils/json";
 import { eq } from "drizzle-orm";
 import { env } from "$env/dynamic/private";
+import { gitSha } from "$lib/server/runtimeEnv";
 import { getDb } from "$lib/chat/server/db/client";
 import { configKv } from "$lib/chat/server/db/schema";
 import { MANIFEST_KEY, type JourneyManifest } from "$lib/chat/server/journeyGallery";
@@ -40,6 +41,6 @@ export const GET: RequestHandler = async ({ cookies, locals }) => {
 		sha: manifest?.run?.sha ?? null,
 		ranAt: manifest?.run?.ranAt ?? null,
 		journeys: manifest?.journeys?.length ?? 0,
-		buildSha: env.VERCEL_GIT_COMMIT_SHA ?? null,
+		buildSha: gitSha(env) ?? null,
 	});
 };

@@ -70,7 +70,7 @@ describe("production log line shape", () => {
 		expect(line).toMatchObject({
 			request_id: "req-abc",
 			url: "/chat/conversation/1",
-			// Hashed on the way out (CUR-1721, logRedaction.ts); still one stable value per user.
+			// Hashed on the way out (logRedaction.ts); still one stable value per user.
 			user: "u_" + createHash("sha256").update("u-42").digest("hex").slice(0, 12),
 			status_code: 200,
 		});
@@ -98,7 +98,7 @@ describe("production log line shape", () => {
 		}
 	});
 
-	it("stamps the deployment environment as `env` on every line, inside a request and out (CUR-2057)", () => {
+	it("stamps the deployment environment as `env` on every line, inside a request and out", () => {
 		const lines: string[] = [];
 		const stream: pino.DestinationStream = { write: (line: string) => void lines.push(line) };
 		const logger = pino(buildLoggerOptions({ dev: false, level: "info", env: "preview" }), stream);
@@ -114,7 +114,7 @@ describe("production log line shape", () => {
 		expect(line).not.toHaveProperty("env");
 	});
 
-	it("stamps the commit and branch on every line, inside a request and out, so develop's lines are findable (CUR-2019)", () => {
+	it("stamps the commit and branch on every line, inside a request and out, so develop's lines are findable", () => {
 		const lines: string[] = [];
 		const stream: pino.DestinationStream = { write: (line: string) => void lines.push(line) };
 		const sha = "02d7775da4fcb7e18b2503793338bea4a9c6e704";
@@ -131,7 +131,7 @@ describe("production log line shape", () => {
 		]);
 	});
 
-	it("stamps the instance on every line, inside a request and out, so mozfest's lines are findable apart from www's (CUR-3202)", () => {
+	it("stamps the instance on every line, inside a request and out, so an event instance's lines are findable apart from www's", () => {
 		const lines: string[] = [];
 		const stream: pino.DestinationStream = { write: (line: string) => void lines.push(line) };
 		const logger = pino(
@@ -177,7 +177,7 @@ describe("transport", () => {
 	});
 
 	// A bare "pino-pretty" leaves pino to resolve it from its callers, and under vite pino
-	// 10.4.0 finds no caller that can see it. (CUR-3977)
+	// 10.4.0 finds no caller that can see it.
 	it("is pino-pretty in dev, named by an absolute path so pino never resolves it from its callers", () => {
 		const target = (buildLoggerOptions({ dev: true, level: "info" }).transport as { target: string }).target;
 		expect(isAbsolute(target), `"${target}" is not an absolute path`).toBe(true);

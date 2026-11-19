@@ -69,7 +69,7 @@
 	let api = $state<EvalApi>(httpEvalApi);
 	let phase = $state<Phase>({ name: 'boot' });
 	let languages = $state<EvalLanguage[]>([]);
-	// Ids the service lists: the picker shows all 26, so one missing here is closed (CUR-4263).
+	// Ids the service lists: the picker shows all 26, so one missing here is closed.
 	let openIds = $state<string[]>([]);
 	let language = $state(evalLanguageId(params.get('language') ?? ''));
 	const languageOptions = $derived(languages.map((l) => {
@@ -78,7 +78,7 @@
 	}));
 	const current = $derived(languages.find((l) => l.id === language));
 	const languageLabel = $derived(current?.name ?? '');
-	// Open, with nothing stored to rate yet (CUR-4263): said on the picker, before any consent.
+	// Open, with nothing stored to rate yet: said on the picker, before any consent.
 	const nothingToRate = $derived(current?.hasAnswers === false);
 	// Not open at all (no speaker has checked its requests): its own message, apart from open-but-empty.
 	const notOpenYet = $derived(!api.sample && !!current && !openIds.includes(current.id));

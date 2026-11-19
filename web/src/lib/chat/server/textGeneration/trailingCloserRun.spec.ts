@@ -9,10 +9,10 @@ import {
 const ANSWER =
 	"According to the attached Northwind Volunteers Travel and Expenses Policy, a taxi is reimbursed " +
 	"**up to 37 EUR per trip**, and this applies **only for journeys that start after 22:00**.";
-// A model's answer tail with an echoed wrapper closer and a run of closers (CUR-2882), shortened.
+// A model's answer tail with an echoed wrapper closer and a run of closers, shortened.
 const WRECK = ANSWER + " _/document_.]() }}}" + "]}".repeat(120);
 
-describe("stripTrailingCloserRun (CUR-2882)", () => {
+describe("stripTrailingCloserRun", () => {
 	it("cuts the echoed </document> tag and the closer run, keeping the answer above it whole", () => {
 		const v = stripTrailingCloserRun(WRECK);
 		expect(v.flagged).toBe(true);
@@ -109,7 +109,7 @@ const CITE_WRECK =
 	"./cite]".repeat(10) +
 	".";
 
-describe("stripEchoedWrapperTail (CUR-2882)", () => {
+describe("stripEchoedWrapperTail", () => {
 	it("cuts our echoed <document> opener and the cite run after it, keeping the answer above it", () => {
 		expect(stripTrailingCloserRun(CITE_WRECK).flagged).toBe(false);
 		expect(stripEchoedWrapperTail(CITE_WRECK)).toEqual({ cleaned: ECHO_ANSWER, flagged: true });
@@ -139,7 +139,7 @@ describe("stripEchoedWrapperTail (CUR-2882)", () => {
 		expect(stripEchoedWrapperTail(code).flagged).toBe(false);
 	});
 
-	// Live shapes from Large 3 on a .txt turn (CUR-3203).
+	// Shapes Large 3 writes on a .txt turn.
 	const HOURS = "The reading room closes at **19:40** on Thursdays, due to boiler servicing";
 	it("cuts a bare <document> echo and the backtick run after it", () => {
 		expect(stripEchoedWrapperTail(HOURS + "<document>. </document>.```]```").cleaned).toBe(HOURS + ".");
@@ -173,7 +173,7 @@ describe("stripEchoedWrapperTail (CUR-2882)", () => {
 		});
 	});
 
-	it("cuts a bare <document> after a citation marker, keeping the marker and the full stop (CUR-3212, mozfest PDF step)", () => {
+	it("cuts a bare <document> after a citation marker, keeping the marker and the full stop", () => {
 		const t = "It applies only for journeys that start after 22:00 [1]<document>.";
 		expect(stripEchoedWrapperTail(t)).toEqual({
 			cleaned: "It applies only for journeys that start after 22:00 [1].",
@@ -181,18 +181,18 @@ describe("stripEchoedWrapperTail (CUR-2882)", () => {
 		});
 	});
 
-	it("keeps a <document> tag written inside a code span (CUR-3212)", () => {
+	it("keeps a <document> tag written inside a code span", () => {
 		const t = "Wrap the file in `<document>` and close it with `</document>`.";
 		expect(stripEchoedWrapperTail(t)).toEqual({ cleaned: t, flagged: false });
 	});
 
-	// Shape seen on .txt turns (CUR-3218).
+	// A shape models write on .txt turns.
 	it("cuts a numbered <document_1> echo and the gibberish run after it", () => {
 		const t = HOURS + '<document_1>. </document_1>"]}]}```]]}```jsonزراء1<document_1>.```]]}```';
 		expect(stripEchoedWrapperTail(t)).toEqual({ cleaned: HOURS, flagged: true });
 	});
 
-	// The suffix is hex, not a count (CUR-3218).
+	// The suffix is hex, not a count.
 	it("cuts a hex-suffixed <document_116841d6> echo and keeps the sentence's full stop", () => {
 		const said =
 			"The reading room at Lakeside Library closes at **19:40 on Thursdays**. This is noted in the internal document as an exception due to boiler servicing";
@@ -226,7 +226,7 @@ describe("stripEchoedWrapperTail (CUR-2882)", () => {
 		expect(stripEchoedWrapperTail("Read the document name list ]]]").flagged).toBe(false);
 	});
 
-	it("never reads HTML attributes in an answer as our opener with its tag word lost (CUR-3212)", () => {
+	it("never reads HTML attributes in an answer as our opener with its tag word lost", () => {
 		for (const t of [
 			'Load it with <script src="app.js" type="text/javascript"></script> at the end.',
 			'Set name="report.pdf" in the form and the browser sends it as a file.',
@@ -234,7 +234,7 @@ describe("stripEchoedWrapperTail (CUR-2882)", () => {
 			expect(stripEchoedWrapperTail(t).flagged).toBe(false);
 	});
 
-	it("keeps the model's own answer when a lead-in puts it inside our wrapper, and drops only the tags (CUR-3212 review)", () => {
+	it("keeps the model's own answer when a lead-in puts it inside our wrapper, and drops only the tags ( review)", () => {
 		const body = "Taxis are reimbursed up to 37 EUR per trip, and only after 22:00. Trains are covered in full.";
 		for (const lead of ["Here is a summary of the policy:", "Here is a summary of the policy"]) {
 			const { cleaned } = stripEchoedWrapperTail(
@@ -260,7 +260,7 @@ describe("stripEchoedWrapperTail (CUR-2882)", () => {
 
 // Every echo shape seen live, crossed with answer endings, through both trims in the order
 // honestyStream.ts runs them. One test per shape cannot see a shape breaking another's answer.
-describe("echoed-wrapper trims, every live shape × every answer ending (CUR-3203, CUR-3212)", () => {
+describe("echoed-wrapper trims, every live shape × every answer ending", () => {
 	const clean = (t: string) => stripEchoedWrapperTail(stripTrailingCloserRun(t).cleaned).cleaned;
 	const outsideCode = (t: string) => t.replace(/`[^`\n]*`/g, "");
 	const ANSWERS = [
@@ -281,7 +281,7 @@ describe("echoed-wrapper trims, every live shape × every answer ending (CUR-320
 		" _/document_.]() }}}" + "]}".repeat(40),
 		"] }]```}```" + "]```]```}```".repeat(20),
 		"```]```",
-		// Large 3, a PDF turn asked to cite its sources (CUR-3212): the tag word is
+		// Large 3, a PDF turn asked to cite its sources: the tag word is
 		// gone, and the whole wrapper comes back with the document's text inside it.
 		' name="expenses-policy.pdf" type="application/pdf">\nNorthwind Volunteers: Travel and Expenses Policy\n' +
 			"Taxis are reimbursed up to 37 EUR per trip, and only for journeys that start after 22:00.\n</document.",
@@ -313,7 +313,7 @@ describe("echoed-wrapper trims, every live shape × every answer ending (CUR-320
 // Large 3 on cited PDF answers: the answer ends "after 22:00**" with no
 // full stop. The model wrote its stop after our closer (`</document.`), and the whole-wrapper cut
 // dropped it with the wrapper; the matrix above strips trailing stops before comparing, so it can't see it.
-it("keeps the full stop written after our closer when it cuts a whole echoed wrapper from a bold ending (CUR-3212)", () => {
+it("keeps the full stop written after our closer when it cuts a whole echoed wrapper from a bold ending", () => {
 	const answer = "The cap is **37 EUR per trip**, and it applies **only for journeys that start after 22:00**";
 	const wrapper =
 		' name="expenses-policy.pdf" type="application/pdf">\nTaxis are reimbursed up to 37 EUR per trip.\n</document.';
@@ -324,12 +324,12 @@ it("keeps the full stop written after our closer when it cuts a whole echoed wra
 	expect(stripEchoedWrapperTail(answer + wrapper.slice(0, -1)).cleaned).toBe(answer);
 });
 
-it("drops a follow-up of two words or fewer after an echoed tag: the remainder threshold reads it as markup (known trade, CUR-3203)", () => {
+it("drops a follow-up of two words or fewer after an echoed tag: the remainder threshold reads it as markup (known trade )", () => {
 	const out = stripEchoedWrapperTail('The cap is 37 EUR.<document name="a.txt">. </document>. Anything else?').cleaned;
 	expect(out).toBe("The cap is 37 EUR.");
 });
 
-describe("stripMarkupRunaway (CUR-3302)", () => {
+describe("stripMarkupRunaway", () => {
 	const FIRST = "No, I don't remember what you told me last time. Each message is processed on its own.";
 	const SECOND =
 		'The song *"Remember What I Told You to Forget"* is by the band **Tavares** [1][2]. If you meant a ' +
@@ -371,7 +371,7 @@ describe("stripMarkupRunaway (CUR-3302)", () => {
 	});
 });
 
-describe("markupRunawayStart (CUR-3302)", () => {
+describe("markupRunawayStart", () => {
 	it("points at a tool tag's opening before its closing tag has streamed", () => {
 		const text = "Each message stands alone. ------<function=calcu";
 		expect(markupRunawayStart(text)).toBe(text.indexOf(" ------"));
@@ -391,9 +391,9 @@ describe("markupRunawayStart (CUR-3302)", () => {
 
 // An agent answer carrying a 6 KB markdown file in a fence must not freeze an instance: the stream screen
 // runs markupRunawayStart on the whole text once per chunk, and a tag regex that costs seconds per call on
-// the blank run blankCode makes of a fence is too slow (CUR-4006). The bound leaves room for a slow CI
+// the blank run blankCode makes of a fence is too slow. The bound leaves room for a slow CI
 // runner and none for that.
-describe("markupRunawayStart stays linear on a long code block (CUR-4006)", () => {
+describe("markupRunawayStart stays linear on a long code block", () => {
 	const fileLines = Array.from({ length: 200 }, (_, i) => `- Item ${i}: a line of the saved file, indented.`);
 	const fence = "```markdown\n" + fileLines.join("\n");
 	const closed = "Here is the file I saved:\n\n" + fence + "\n```\n\nreceipt abc123";
@@ -419,7 +419,7 @@ describe("markupRunawayStart stays linear on a long code block (CUR-4006)", () =
 	});
 });
 
-describe("a tool tag shown as code is the answer, not a runaway (CUR-3302)", () => {
+describe("a tool tag shown as code is the answer, not a runaway", () => {
 	const TAG = "<function=calculate></function>";
 
 	it("keeps a tag quoted in inline code and in a fence", () => {

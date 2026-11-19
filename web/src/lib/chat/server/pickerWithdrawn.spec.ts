@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { PICKER, WITHDRAWN, pickerSites } from "../../../../config/picker";
 
 // A model on config/picker.ts's WITHDRAWN list is off every site's picker, and the list says when
-// someone decides again (CUR-4162). Past that date the unit job carries a warning, so bringing the model
+// someone decides again. Past that date the unit job carries a warning, so bringing the model
 // back, or moving the date in a reviewed PR, is a decision somebody makes rather than a list nobody reads.
 
 function overdueWithdrawals(today: string): string[] {
@@ -10,7 +10,7 @@ function overdueWithdrawals(today: string): string[] {
 		(w) => `${w.model} (${w.ticket}) was due back ${w.until}: restore it or move the date in a PR`
 	);
 }
-describe("a withdrawn model stays off every picker, and only until its date (CUR-4162)", () => {
+describe("a withdrawn model stays off every picker, and only until its date", () => {
 	it("is offered by no site's picker", () => {
 		for (const { model } of WITHDRAWN) {
 			const offering = pickerSites.filter((s) => PICKER[s].includes(model));

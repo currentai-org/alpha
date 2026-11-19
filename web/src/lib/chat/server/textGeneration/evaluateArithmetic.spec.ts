@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { evaluateArithmetic } from "./evaluateArithmetic";
+import { evaluateArithmetic, evaluateExactInteger } from "./evaluateArithmetic";
 
 describe("evaluateArithmetic", () => {
-	it("evaluates the exact CUR-959 FTE expression", () => {
+	it("evaluates the exact FTE expression", () => {
 		expect(evaluateArithmetic("9 + 3*0.5")).toBeCloseTo(10.5, 6);
 	});
 
@@ -46,7 +46,7 @@ describe("evaluateArithmetic", () => {
 	});
 
 	// Models sometimes write Unicode math notation instead of ASCII. Normalizing it keeps the
-	// expression from being discarded for a reason that is not a security refusal (CUR-853/958).
+	// expression from being discarded for a reason that is not a security refusal.
 	describe("normalizes benign Unicode math notation before the whitelist check", () => {
 		it("accepts × as multiplication", () => {
 			expect(evaluateArithmetic("10.5 - (2 × 0.5)")).toBeCloseTo(9.5, 6);
@@ -66,7 +66,7 @@ describe("evaluateArithmetic", () => {
 		});
 	});
 	// 500 EUR at 18% a year over 14 months. A power can be written three ways (^, ** and
-	// pow); refusing any of them leaves the model to compute by hand. Python gives 39.8617. (CUR-4028)
+	// pow); refusing any of them leaves the model to compute by hand. Python gives 39.8617.
 	describe("evaluates powers written as ^, ** or pow(a, b)", () => {
 		it("gives 1.015 to the 14th as 1.23176 in all three notations", () => {
 			for (const expr of ["pow(1.015, 14)", "1.015^14", "1.015**14", "(1 + (0.18 / 12))^14", "pow(1 + (0.18 / 12), 14)"]) {
@@ -107,7 +107,7 @@ describe("evaluateArithmetic", () => {
 	});
 
 	// A benefit of 65% of 1,840, capped at 1,150, plus 42 for each of 2 children. With no min()
-	// the cap could not be one expression and the model spent its tool rounds trying. (CUR-4490)
+	// the cap cannot be one expression, and the model spends its tool rounds trying.
 	describe("evaluates capped and bounded sums with min and max", () => {
 		it("gives the capped benefit as 1234", () => {
 			expect(evaluateArithmetic("min(1840*0.65, 1150) + 42*2")).toBe(1234);
@@ -148,5 +148,24 @@ describe("evaluateArithmetic", () => {
 		]) {
 			expect(evaluateArithmetic(expr), expr).toBeNull();
 		}
+	});
+});
+
+describe("evaluateExactInteger", () => {
+	it("returns integer products and powers past 2^53 exactly, where a float rounds them", () => {
+		expect(evaluateExactInteger("987654321 × 123456789")).toBe(121932631112635269n);
+		expect(evaluateExactInteger("2^64 - 1")).toBe(18446744073709551615n);
+		expect(evaluateExactInteger("max(2^60, 3) + abs(-1)")).toBe(1152921504606846977n);
+		expect(evaluateExactInteger("2^53 + 1 - 2^53")).toBe(1n);
+	});
+
+	it("returns null (left to the float path) for division, decimals, constants, mod and negative powers", () => {
+		for (const expr of ["7 / 2", "1.5 * 2", "pi * 2", "17 % 5", "2^-1", "sqrt(16)", "x + 1", ""]) {
+			expect(evaluateExactInteger(expr), expr).toBeNull();
+		}
+	});
+
+	it("returns null rather than expanding an intermediate a float cannot hold", () => {
+		expect(evaluateExactInteger("min(2^(2^30), 2^60)")).toBeNull();
 	});
 });

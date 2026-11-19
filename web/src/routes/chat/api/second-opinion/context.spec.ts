@@ -62,7 +62,7 @@ async function askPanel() {
 	await response.text();
 }
 
-describe("POST /chat/api/second-opinion — earlier turns (CUR-3319)", () => {
+describe("POST /chat/api/second-opinion — earlier turns", () => {
 	it(
 		"sends each panelist and the aggregator the earlier turns, so a follow-up is judged in context",
 		async () => {

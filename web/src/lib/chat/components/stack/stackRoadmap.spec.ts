@@ -26,9 +26,9 @@ const ALLOWED_KEYS = new Set([
 ]);
 
 describe("roadmap sidebar data (leak guard)", () => {
-	// Not an exact count: display_in_provenance=yes rows are a Sheet-authoring decision (CUR-91),
+	// Not an exact count: display_in_provenance=yes rows are a Sheet-authoring decision,
 	// not a structural invariant this leak guard exists to protect — a hardcoded number here just
-	// relocates the same staleness problem CUR-91 fixed in the data file into a test instead.
+	// relocates the same staleness problem that change fixed in the data file into a test instead.
 	it("is never empty", () => {
 		expect(ROADMAP_PRODUCTS.length).toBeGreaterThan(0);
 	});

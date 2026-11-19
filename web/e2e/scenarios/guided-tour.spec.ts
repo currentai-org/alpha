@@ -3,7 +3,7 @@
 import { test, expect, type Page } from './helpers/test';
 import { setFlagOverrides } from './helpers/flagOverride';
 
-// This spec is about the first-run welcome, so it meets the welcome itself rather than through the shared handler (SOL-343).
+// This spec is about the first-run welcome, so it meets the welcome itself rather than through the shared handler.
 test.use({ welcome: 'show' });
 
 // The guided tour: a ring around each of Alpha's own features in turn (Auto, Languages, Private,
@@ -210,6 +210,140 @@ test.describe('the guided tour', () => {
 			await card.locator('[data-tour-next]').click();
 			await expect(card).toHaveCount(0);
 			await expect(drawer, 'the tour ended with the drawer it opened still open').toHaveCount(0);
+		});
+	});
+
+	// An iPhone SE (3rd gen): the shortest phone a conference visitor is likely to carry. On a phone each
+	// try-it opens a bottom sheet, which is modal: while one is open the tour steps aside, so its
+	// Resume chip never covers the sheet's last lines, and Resume can't move the tour on
+	// under a sheet whose scroll lock leaves the next card dead to taps.
+	test.describe('on a short phone', () => {
+		test.use({ viewport: { width: 375, height: 667 }, isMobile: true, hasTouch: true });
+
+		async function tourTo(page: Page, id: string) {
+			const welcome = await arrive(page);
+			await welcome.locator('[data-welcome-tour]').click();
+			await expect(welcome).toHaveCount(0);
+			const card = page.locator('[data-tour-card]');
+			await expect(card).toHaveAttribute('data-tour-card', 'auto');
+			for (;;) {
+				if ((await card.getAttribute('data-tour-card')) === id) return card;
+				const next = card.locator('[data-tour-next]');
+				expect(
+					(await next.textContent())?.trim(),
+					`the tour ended without reaching the ${id} stop`
+				).not.toBe('Done');
+				await next.click();
+			}
+		}
+
+		test("a try-it's sheet scrolls its last line into view with no Resume chip over it, and the chip is back once the sheet closes", async ({
+			page
+		}) => {
+			const card = await tourTo(page, 'privacy');
+			await card.locator('[data-tour-cta]').click();
+			const sheet = page.locator('[data-sheet]:visible');
+			await expect(sheet).toHaveAttribute('data-accessory-panel', 'privacy');
+			await expect(sheet.getByRole('heading', { name: 'Where your message goes' })).toBeVisible();
+			const resume = page.locator('[data-tour-resume]');
+			await expect(resume, 'the Resume chip floats over the open sheet').toHaveCount(0);
+			await expect(card).toHaveCount(0);
+
+			// Scroll the sheet's body to its end, then read where its last line of text landed and what
+			// sits on top of that line.
+			const last = await sheet.evaluate((popup) => {
+				const scroller = [...popup.querySelectorAll<HTMLElement>('*')].find(
+					(el) => getComputedStyle(el).overflowY === 'auto'
+				);
+				if (!scroller) return { error: 'the sheet has no scrolling body' } as const;
+				scroller.scrollTop = scroller.scrollHeight;
+				const leaves = [...scroller.querySelectorAll<HTMLElement>('*')].filter((el) => {
+					const r = el.getBoundingClientRect();
+					return (
+						r.width > 0 &&
+						r.height > 0 &&
+						[...el.childNodes].some((n) => n.nodeType === Node.TEXT_NODE && n.textContent!.trim())
+					);
+				});
+				const lastLeaf = leaves.at(-1);
+				if (!lastLeaf) return { error: 'the sheet body holds no text' } as const;
+				const range = document.createRange();
+				range.selectNodeContents(lastLeaf);
+				const lines = [...range.getClientRects()].filter((r) => r.width > 0);
+				const line = lines.at(-1)!;
+				// Left, middle and right of the line: the chip sat in the bottom-right corner.
+				const y = line.top + line.height / 2;
+				const covered = [line.left + 2, line.left + line.width / 2, line.right - 2].some((x) => {
+					const onTop = document.elementFromPoint(x, y);
+					return !onTop || !scroller.contains(onTop);
+				});
+				return {
+					text: lastLeaf.textContent!.trim().slice(-60),
+					overflows: scroller.scrollHeight > scroller.clientHeight,
+					scrolled: scroller.scrollTop,
+					lineBottom: line.bottom,
+					bodyBottom: scroller.getBoundingClientRect().bottom,
+					viewport: window.innerHeight,
+					covered
+				};
+			});
+			expect('error' in last ? last.error : undefined).toBeUndefined();
+			if ('error' in last) return;
+			test.info().annotations.push({ type: 'sheet-last-line', description: JSON.stringify(last) });
+			if (last.overflows)
+				expect(last.scrolled, 'the sheet body does not scroll').toBeGreaterThan(0);
+			expect(
+				last.lineBottom,
+				`the last line ("${last.text}") ends below the sheet's body`
+			).toBeLessThanOrEqual(last.bodyBottom);
+			expect(
+				last.lineBottom,
+				`the last line ("${last.text}") ends below the window`
+			).toBeLessThanOrEqual(last.viewport);
+			expect(last.covered, `something sits over the last line ("${last.text}")`).toBe(false);
+
+			await sheet.locator('[data-sheet-close]').click();
+			await expect(page.locator('[data-sheet]:visible')).toHaveCount(0);
+			await expect(resume, 'closing the sheet left no way back to the tour').toContainText(
+				'Resume tour'
+			);
+			await expect(resume).toContainText(/4 of \d+/);
+		});
+
+		test("Resume after the session sheet reaches 6 of 6, and the last stop's Done ends the tour", async ({
+			page
+		}) => {
+			const card = await tourTo(page, 'footprint');
+			await card.locator('[data-tour-cta]').click();
+			const sheet = page.locator('[data-sheet]:visible');
+			await expect(sheet).toHaveAttribute('data-footprint-sheet');
+			const resume = page.locator('[data-tour-resume]');
+			await expect(
+				resume,
+				'the Resume chip is offered over the open session sheet, which Resume cannot close'
+			).toHaveCount(0);
+
+			await sheet.locator('[data-sheet-close]').click();
+			await expect(page.locator('[data-sheet]:visible')).toHaveCount(0);
+			await expect(resume).toContainText(/6 of 6/);
+			await resume.locator('[data-tour-resume-button]').click();
+
+			await expect(card).toHaveAttribute('data-tour-card', 'get-involved');
+			await expect(card.locator('[data-tour-progress]')).toHaveText(/6 of 6/i);
+			await expect(
+				page.locator('[data-sheet]:visible'),
+				'a sheet is still open under the last stop'
+			).toHaveCount(0);
+			const done = card.locator('[data-tour-next]');
+			await expect(done).toHaveText('Done');
+			await expect(done).toBeInViewport({ ratio: 1 });
+			await done.click();
+			await expect(card, 'Done on the last stop left the tour on screen').toHaveCount(0);
+			await expect(page.locator('[data-tour-ring]')).toHaveCount(0);
+			await expect(
+				page.locator('aside[data-mobile-open]'),
+				'the tour ended with its drawer open'
+			).toHaveCount(0);
 		});
 	});
 });

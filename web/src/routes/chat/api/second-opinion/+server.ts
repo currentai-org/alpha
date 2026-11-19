@@ -20,8 +20,15 @@ import { parseVerdict } from "$lib/chat/server/compareVerdict";
 import { earlierTurns, earlierTurnsBlock, type EarlierTurn } from "$lib/chat/server/secondOpinionContext";
 import { prepareTurnMedia } from "$lib/chat/server/chat/prepareTurnMedia";
 import { multimodalEnabled } from "$lib/chat/server/textOnly";
+import { resolveFaultInjection, resolveReplayMode } from "$lib/chat/server/textGeneration/faultInjection";
+import { updateRequestContext } from "$lib/chat/server/requestContext";
 import { panelModelReadsImages } from "$lib/chat/server/panelImages";
 import type { EndpointMessage } from "$lib/chat/server/endpoints/types";
+import {
+	conversationSealWritesOn,
+	hydratePostedHistory,
+	parsePostedHistory,
+} from "$lib/chat/server/chat/sealedTurn";
 
 // Collective second opinion (opt-in). The sovereign Apertus primary has ALREADY answered;
 // this fans the same question out to a panel of independent open models IN PARALLEL, then
@@ -47,7 +54,7 @@ import type { EndpointMessage } from "$lib/chat/server/endpoints/types";
 //
 // An empty answer and a dead model both come back as `null` here, so a panelist that returns "" looks
 // like a timeout. A backend may merge `usage` into the finish_reason chunk, and the stream transform
-// must not skip such a chunk or runOne() sees "" (CUR-153). A parallel fanout should not be held by
+// must not skip such a chunk or runOne sees "". A parallel fanout should not be held by
 // its slowest member:
 //   • EMPTY: nothing landed yet → the panel is almost certainly all-cold; give up fast instead of a
 //     minute-long spinner (an all-cold panel can hang about 69s before failing).
@@ -70,7 +77,7 @@ const AGG_TIMEOUT_MS = 20_000;
 // block on any question worth reasoning about and never reach its answer. stripThink then correctly
 // drops the unclosed block, so the panelist returns nothing for every substantive question, which is
 // the only kind anyone asks a verification panel. A substantive multi-part question therefore returns
-// `available:false, "empty"`, while a short factual question finishes in a few seconds (CUR-149).
+// `available:false, "empty"`, while a short factual question finishes in a few seconds.
 //
 // DO NOT FIX THIS BY RAISING THE NUMBER. At 3072 the reasoning does finish (about 15,000 characters
 // with finish_reason `stop`), but it takes about 43 seconds, so all four panelists exceed PANEL_TIMEOUT_MS
@@ -81,7 +88,7 @@ const AGG_TIMEOUT_MS = 20_000;
 // panelist on a substantive question needs roughly three times the deadline a second opinion should
 // take. The way out is a product decision, not a constant: suppress reasoning for panelists if the
 // backend exposes a switch, drop reasoning models from the panel, or accept a much longer wait. The
-// value stays at 1024 until then (CUR-149).
+// value stays at 1024 until then.
 const PANELIST_MAX_TOKENS = 1024;
 // The aggregator is the SAME reasoning model (AGGREGATOR_MODEL is GLM-5.2-FP8) and had its own
 // hardcoded 1024. Named rather than inlined so the two move together when the decision above is made.
@@ -112,10 +119,10 @@ type PanelistResult = {
 /**
  * One panelist's take, asked with reasoning off, and asked once more without the field when the lane
  * refuses it. Bielik on the Public AI gateway runs on vLLM, which accepts only low/medium/high and
- * answers `reasoning_effort: "none"` with a 400 (CUR-4601). A model that does not reason loses nothing
+ * answers `reasoning_effort: "none"` with a 400. A model that does not reason loses nothing
  * by the missing field; one that does may spend its budget reasoning, and then reports
  * `capped_reasoning` rather than a refusal. A measured row in modelProfiles.verified.json would let
- * acceptedEffort pick the right value before the first call (CUR-2113).
+ * acceptedEffort pick the right value before the first call.
  */
 async function runOne(
 	modelId: string,
@@ -135,7 +142,7 @@ async function runOne(
 	return ask(undefined);
 }
 
-/** What the person attached to the question being checked (CUR-4670): the images the turn sent, as
+/** What the person attached to the question being checked: the images the turn sent, as
  *  the endpoint takes them, and how many attachments there were in all. */
 type QuestionAttachments = { images: NonNullable<EndpointMessage["files"]>; total: number };
 
@@ -143,7 +150,7 @@ type QuestionAttachments = { images: NonNullable<EndpointMessage["files"]>; tota
  * The question as one panel model gets it. A model that reads images, on a request the multimodal gate
  * opens, gets the images themselves; anything it cannot see is named in a line, so it doesn't conclude
  * the person attached nothing. A panel that is not told judges a correct answer about a photo as
- * wrong because "no image was attached" (CUR-4670).
+ * wrong because "no image was attached".
  */
 function panelQuestion(
 	modelId: string,
@@ -178,10 +185,10 @@ async function askPanelist(
 	const question = panelQuestion(modelId, content, attached);
 	// generateFromDefaultEndpoint answers "" on failure, which alone reads as a model that said nothing.
 	// A panelist whose provider refused it (for example a 400 once a model's only
-	// provider went to error) sits in the panel as "empty" for as long as that lasts (CUR-2107).
+	// provider went to error) sits in the panel as "empty" for as long as that lasts.
 	let failure: { kind: "ceiling" | "error"; status?: number } | undefined;
-	// Where the call ran, from its own response's routing record only, so the take can name its host
-	// (CUR-3563). onServed fires more than once; later fields fill in, never blank out, earlier ones.
+	// Where the call ran, from its own response's routing record only, so the take can name its host.
+	// onServed fires more than once; later fields fill in, never blank out, earlier ones.
 	const served: { backend?: string; provider?: string } = {};
 	try {
 		const raw = await withTimeout(
@@ -206,7 +213,7 @@ async function askPanelist(
 					//
 					// Zero answer is not a slow panelist or a flaky one; it is a panelist that cannot
 					// answer, on every question worth asking a panel. This lane ignores
-					// `chat_template_kwargs.enable_thinking` (CUR-149).
+					// `chat_template_kwargs.enable_thinking`.
 					reasoningEffort,
 					modelId,
 					// OPT OUT of the OPENAI_PROVIDER default pin (config default = "publicai", set to keep the
@@ -240,7 +247,7 @@ async function askPanelist(
 		// Three different facts share one `return null` path, and the difference is the whole
 		// diagnosis: a panelist that spent its budget reasoning is a CONFIG problem (its cap is too
 		// small), a panelist that returned nothing is a MODEL problem, and a throw is a TRANSPORT
-		// problem. Reported separately so the next empty panel is readable from one line (CUR-149).
+		// problem. Reported separately so the next empty panel is readable from one line.
 		return {
 			answer: null,
 			reason: droppedUnclosedThink(text) ? "capped_reasoning" : "empty",
@@ -290,8 +297,16 @@ async function questionAttachments(
 // a `maxDuration` below it would only lower the ceiling. If a non-default timeout is ever genuinely
 // needed, set it adapter-globally in svelte.config.js, never here.
 
+
 export const POST: RequestHandler = async ({ request, locals, getClientAddress }) => {
 	requireAuth(locals);
+	const fault = await resolveFaultInjection(request);
+	// A scenario run's panel replays like its turn does (conversation/[id]/+server.ts): each panelist
+	// and the aggregator read the mode from the request's context, so a recorded panel calls no model.
+	// Without it every run's panel went live, two GLM-5.2 calls each on the provider whose concurrency
+	// units production shares (hfProviderPin.ts). Null for every real request.
+	const replayMode = await resolveReplayMode(request);
+	if (replayMode) updateRequestContext({ replayMode });
 
 	// The compare/second-opinion token's HF Inference-Providers permission is granted org-scoped
 	// ("on behalf of" the organisation), not user-scoped — so every call on this route needs
@@ -322,29 +337,37 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 	const aggId =
 		((Reflect.get(appConfig, "AGGREGATOR_MODEL") as string | undefined) ?? "").trim() || panelIds[0];
 
-	let body: { conversationId?: string; messageId?: string };
+	let body: { conversationId?: string; messageId?: string; history?: unknown; preprompt?: unknown };
 	try {
 		body = await request.json();
 	} catch {
 		throw error(400, "invalid JSON body");
 	}
+	// The sealed messages and preprompt the browser opened, in the turn's own shape.
+	// Parsed before the conversation is read, so a malformed post is a 400 whatever the id.
+	const sealedPost = parsePostedHistory(body);
 	const conversationId = (body.conversationId ?? "").trim();
 	const messageId = (body.messageId ?? "").trim();
 	// The question always comes from the caller's own conversation, as the user turn that
 	// produced the answer being checked. That turn passed the input screen before it was persisted. A
 	// free-text `question` in the body is not accepted: it would send
-	// up to 4,000 unscreened characters to the non-sovereign panel. (CUR-3518)
+	// up to 4,000 unscreened characters to the non-sovereign panel.
 	if (!conversationId || !messageId) throw error(400, "conversationId and messageId are required");
 
 	// Throws its own 400 (bad id), 403 (someone else's) or 404, which pass through as they are.
 	const conversation = await resolveConversation(conversationId, locals);
+	// A sealed conversation is read from the bodies the browser opened, each checked against the
+	// MAC stored with it, as a turn is; the server never opens what it sealed. Whether the
+	// target was sealed is read before, so its verdict is never written back in plaintext.
+	const targetWasSealed = Boolean(conversation.messages.find((m) => m.id === messageId)?.sealed);
+	hydratePostedHistory(conversation, conversationId, sealedPost, "[compare]");
 	// The PRIMARY answer the panel is verifying, and the user message it answered.
 	const targetMessage: Message | undefined = conversation.messages.find((m) => m.id === messageId);
 	const primaryAnswer = (targetMessage?.content ?? "").trim();
 	const parent = conversation.messages.find((m) => m.children?.includes(messageId));
 	if (parent?.from !== "user" || !parent.content?.trim()) throw error(400, "missing question");
 	const question = parent.content.trim();
-	// The turns before the question, so a follow-up is judged in context (CUR-3319).
+	// The turns before the question, so a follow-up is judged in context.
 	const earlier: EarlierTurn[] = earlierTurns(conversation, parent.id);
 	if (question.length > 4000) throw error(400, "question too long");
 	const attached = await questionAttachments(parent, conversation);
@@ -352,7 +375,7 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 	// One request here is FOUR model completions (the panel fanout + the aggregator), so
 	// this route needs the same per-session/daily metering the chat turn has, even though the
 	// question text itself was already screened when the primary turn that produced it was sent —
-	// this route only re-sends it, it doesn't accept new unscreened text. (CUR-832)
+	// this route only re-sends it, it doesn't accept new unscreened text.
 	await enforceRequestRateLimits({
 		userId: locals.user?._id ?? locals.sessionId,
 		clientAddress: getClientAddress(),
@@ -401,10 +424,17 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 					provider?: string;
 				};
 				const landed: (Take | null)[] = new Array(panelIds.length).fill(null);
+				// How each panelist ended, by index; a slot still undefined when the wait closes was cut off by
+				// the settle deadline. Read after the wait to list every panelist that gave no take.
+				const ended: (PanelistReason | undefined)[] = new Array(panelIds.length).fill(undefined);
 				const tasks = panelIds.map((id, i) =>
 					(async () => {
 						const t0 = Date.now();
-						const { answer, reason, status, served } = await runOne(
+						// `panelist_never_answers` (preview only): the last listed panelist ends with no take, no call.
+						const silenced = fault === "panelist_never_answers" && i === panelIds.length - 1;
+						const { answer, reason, status, served } = silenced
+							? ({ answer: null, reason: "empty" } as Awaited<ReturnType<typeof runOne>>)
+							: await runOne(
 							id,
 							question,
 							panelistPrompt,
@@ -415,6 +445,13 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 							attached
 						);
 						const ms = Date.now() - t0;
+						ended[i] = reason;
+						// One line per panelist, whatever its outcome: an empty answer or a straggler otherwise
+						// leaves no trace, and the panel then shows fewer takes than it listed.
+						logger.info(
+							{ model: id, reason, ms, ...(status !== undefined ? { status } : {}) },
+							"[compare] panelist outcome"
+						);
 						if (reason === "capped_reasoning") {
 							logger.warn(
 								{ model: id, ms, maxTokens: PANELIST_MAX_TOKENS },
@@ -459,6 +496,17 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 					settleTimer = setTimeout(finish, PANEL_SETTLE_DEADLINE_MS);
 				});
 				const opinions = landed.filter((o): o is Take => o !== null);
+				// Every listed panelist that gave no take, so the panel shows it with an honest state rather
+				// than silently counting one fewer. `slow` = still running when the wait closed.
+				const unanswered = panelMeta
+					.map((p, i) => ({ model: p.model, modelShort: p.modelShort, reason: ended[i] ?? "slow" }))
+					.filter((_, i) => !landed[i]);
+				if (unanswered.some((u) => u.reason === "slow")) {
+					logger.info(
+						{ models: unanswered.filter((u) => u.reason === "slow").map((u) => u.model) },
+						"[compare] panelist still running at the settle deadline; listed as unanswered"
+					);
+				}
 				if (!opinions.length) {
 					emit({ type: "done", available: false, reason: "empty" });
 					return;
@@ -473,7 +521,7 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 					earlierTurnsBlock(earlier) +
 					`QUESTION:\n${question}\n\n` +
 					// The aggregator reads no images; told of them, it doesn't side with a take that says there were
-					// none (CUR-4670).
+					// none.
 					(attached?.total ? `${unseenAttachmentsNote(attached.total)}\n\n` : "") +
 					(primaryAnswer
 						? `ANSWER GIVEN (by the primary model, the one being audited):\n${primaryAnswer}\n\n`
@@ -500,7 +548,7 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 					Boolean(primaryAnswer)
 				);
 				// One line per aggregator call, fallback or not, so a timeout or an empty reply
-				// leaves a trace (CUR-2082). Counts and
+				// leaves a trace. Counts and
 				// codes only, never text.
 				logger.info(
 					{
@@ -515,13 +563,20 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 					"[compare] aggregator"
 				);
 
-				// Persist opinions[] + verdict onto the target message (best-effort).
-				if (targetMessage) {
+				// Persist opinions[] + verdict onto the target message (best-effort). The save seals the
+				// target again while sealing is on (sealForSave). A sealed target on a deployment that no
+				// longer seals is not saved: that would write its words back in plaintext.
+				if (targetMessage && targetWasSealed && !conversationSealWritesOn()) {
+					logger.error(
+						{ event: "second-opinion-unsealed-refused", conversationId },
+						"[compare] the answer is sealed and this deployment does not seal; the verdict was not stored"
+					);
+				} else if (targetMessage) {
 					try {
 						const updatedMessages = conversation.messages.map((m) =>
-							m.id === messageId ? { ...m, opinions, verdict } : m
+							m.id === messageId ? { ...m, opinions, verdict, unanswered } : m
 						);
-						// merged, so a turn sent while the panel ran is not erased. (CUR-2806)
+						// merged, so a turn sent while the panel ran is not erased.
 						await saveConversationMessages(
 							{ _id: new ObjectId(conversation._id), ...authCondition(locals) },
 							snapshotConversation(conversation),
@@ -532,7 +587,7 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 					}
 				}
 
-				emit({ type: "done", available: true, opinions, verdict });
+				emit({ type: "done", available: true, opinions, verdict, unanswered });
 			} catch (e) {
 				logger.error(e, "[compare] fanout failed");
 				emit({ type: "done", available: false, reason: "error" });

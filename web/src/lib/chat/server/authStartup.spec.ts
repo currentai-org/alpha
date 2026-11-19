@@ -47,7 +47,7 @@ afterEach(() => {
 	logger.error.mockClear();
 });
 
-describe("Hugging Face discovery failure stays contained to HF (CUR-2128)", () => {
+describe("Hugging Face discovery failure stays contained to HF", () => {
 	it("init resolves with HF discovery unreachable, skips HF, and logs the failure instead of throwing", async () => {
 		discoveryUnreachable();
 		const r = await initWith(huggingFaceOAuthConfig(HF));
@@ -88,7 +88,7 @@ describe("Hugging Face discovery failure stays contained to HF (CUR-2128)", () =
 	});
 });
 
-describe("memoizeAuthUntilRejected (CUR-2128)", () => {
+describe("memoizeAuthUntilRejected", () => {
 	const settle = () => new Promise((r) => setTimeout(r, 0));
 
 	it("rebuilds after a rejected context instead of serving the dead one until the instance recycles", async () => {

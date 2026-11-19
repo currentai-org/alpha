@@ -78,7 +78,7 @@ describe("hashIp", () => {
 	});
 });
 
-describe("hashTargetEmail (CUR-920 review follow-up)", () => {
+describe("hashTargetEmail ( review follow-up)", () => {
 	beforeEach(() => {
 		h.pepper = "test-pepper-0123456789abcdef";
 	});

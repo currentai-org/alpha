@@ -37,14 +37,14 @@ class CategoryScore:
 def case_ok(want: bool, got: bool, source: str) -> bool:
     """Whether one routed case counts as correct. A `fallback` verdict is the router failing (gateway down,
     timeout, unparseable reply) and defaulting to DIRECT; it is a miss even where DIRECT was the label,
-    or a dead router scores 100% on every direct category (CUR-2154)."""
+    or a dead router scores 100% on every direct category."""
     return source != "fallback" and got == want
 
 
 def is_moderation_block(status: int, body: str) -> bool:
     """Whether a /route error is the agent service's input screen refusing the probe's own prompt. Such a
     case never reached the router, so it is neither a hit nor a miss; the run reports it on its own
-    rather than stopping at the first one (CUR-2154)."""
+    rather than stopping at the first one, so one blocked prompt cannot end the whole run."""
     return status == 403 and "blocked by moderation" in body
 
 

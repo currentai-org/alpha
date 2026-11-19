@@ -2,7 +2,7 @@
 // name is set at registration is the only shot at telling credentials apart later. Simpler fallback
 // named in the ticket rather than an AAGUID-registry lookup: a suggested default built from the
 // browser + OS + today's date, editable before the ceremony completes. Pure and testable — takes the
-// UA string as an argument rather than reading `navigator` itself. (CUR-649)
+// UA string as an argument rather than reading `navigator` itself.
 const BROWSERS: [RegExp, string][] = [
 	[/edg\//i, "Edge"],
 	[/opr\/|opera/i, "Opera"],

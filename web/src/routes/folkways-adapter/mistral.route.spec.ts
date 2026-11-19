@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // Mistral streams reaches chat byte for byte (list-shaped `delta.content`, `reference` parts,
 // tool-call deltas, the finish chunk, usage), what chat sent reaches Mistral byte for byte with
 // chat's own bearer, and Folkways gets a trace without the conversation. The stream fixtures are
-// split mid-event so a route that parsed and re-serialized per chunk would not reproduce them. (CUR-3186)
+// split mid-event so a route that parsed and re-serialized per chunk would not reproduce them.
 
 const mockEnv = vi.hoisted(() => ({
 	env: {} as Record<string, string | undefined>
@@ -110,7 +110,7 @@ const turn = (bearer = HOST_KEY, body = RAW_BODY) =>
 const mistralCalls = () => calls.filter((c) => !c.url.startsWith('http://folkways.test'));
 const traceCalls = () => calls.filter((c) => c.url === 'http://folkways.test/v1/traces');
 
-describe('Folkways Mistral route: a byte-for-byte proxy that also traces (CUR-3186)', () => {
+describe('Folkways Mistral route: a byte-for-byte proxy that also traces', () => {
 	it('forwards a list-shaped delta.content with reference parts, the finish chunk and usage unchanged', async () => {
 		const res = await POST({ request: turn() });
 		expect(res.status).toBe(200);

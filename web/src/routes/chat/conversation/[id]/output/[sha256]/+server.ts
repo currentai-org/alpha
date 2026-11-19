@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { authCondition } from "$lib/chat/server/auth";
 import { collections } from "$lib/chat/server/database";
 import { error } from "@sveltejs/kit";
@@ -42,7 +45,7 @@ export const GET: RequestHandler = async ({ locals, params, request }) => {
 		error(404, "Conversation not found");
 	}
 
-	// The reference's own name locates the owner's My files copy (CUR-2183).
+	// The reference's own name locates the owner's My files copy.
 	const ref = conv.messages.flatMap((m) => m.files ?? []).find((f) => f.value === sha256);
 	const fault = await resolveFaultInjection(request);
 	let file: Awaited<ReturnType<typeof downloadFile>>;
@@ -57,7 +60,7 @@ export const GET: RequestHandler = async ({ locals, params, request }) => {
 		});
 	} catch (e) {
 		// The bucket errored on both reads. A throttle waits for the token's window to reset;
-		// anything else is still worth one more try, and neither is a 500. (CUR-3680)
+		// anything else is still worth one more try, and neither is a 500.
 		if (!(e instanceof AttachmentReadError)) throw e;
 		return hubBusyResponse(e, STORAGE_BUSY_MESSAGE, "files") ?? error(503, ATTACHMENT_UNREADABLE_MESSAGE);
 	}

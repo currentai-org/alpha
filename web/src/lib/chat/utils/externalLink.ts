@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 /**
  * Parse an untrusted href (e.g. forwarded via postMessage from a sandboxed
  * artifact preview) into a URL that is safe to open in a new tab. Only

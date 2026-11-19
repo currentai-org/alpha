@@ -11,7 +11,7 @@
 //
 // The compute cell's node is passed in by the caller, resolved from the backend the gateway reported
 // for this answer. A deployment-wide boolean such as `serving.isSovereign` must not stand in for it:
-// it is true for every turn, so the CSCS node would light on turns another provider served (CUR-75).
+// it is true for every turn, so the CSCS node would light on turns another provider served.
 // The caller passes the NODE, resolved from a measurement, so there is no
 // place for "the lane is sovereign" to stand in for "this institution ran it".
 
@@ -29,7 +29,7 @@ export const COMPUTE_NODE = "cscs";
 // Which stack-map node a CURATED, authored backend corresponds to (CSCS has real lineage copy in
 // stack-map.json — a trained-here story worth its own hand-written node). A backend NOT in this map
 // still lights, via backendComputeNode's synthesis below — this table is no longer "the backends we
-// can show at all", only "the ones with bespoke copy". CUR-1124: synthesis means a provider with
+// can show at all", only "the ones with bespoke copy". synthesis means a provider with
 // real traffic (Infomaniak, for one) lights without anyone adding an entry here.
 const BACKEND_COMPUTE_NODES: Record<string, string> = {
 	"api.inference.cscs.ch": COMPUTE_NODE,
@@ -54,7 +54,7 @@ export function backendComputeNode(backendBaseURL?: string): string | undefined 
 // Same shape, model side: MODEL_NODES[0] ("apertus") has real lineage copy (training data, the
 // technical report) worth a hand-authored node. Any other served model still lights, via a
 // synthesized `model:${slug}` id — honest by construction because the slug is derived from the
-// measured served id, never guessed. CUR-1124: a cross-model fallback (GLM, or the sea-lion Qwen
+// measured served id, never guessed. a cross-model fallback (GLM, or the sea-lion Qwen
 // fine-tune LiteLLM substitutes) lights its own node, not the Apertus node.
 export function modelNodeFor(servedModelId?: string): string {
 	if (!servedModelId || servedModelId.toLowerCase().includes("apertus")) return MODEL_NODES[0];
@@ -72,10 +72,10 @@ export const CATALOG_RAG_NODE = "potluck-rag";
 export const SYFTHUB_RAG_NODE = "syft-rag";
 export const EPFL_RAG_NODE = "syft-epfl";
 export const VAULT_NODE = "localculture";
-/** The person's own earlier chats. No map node carries this id, so nothing on the map lights. (CUR-4576) */
+/** The person's own earlier chats. No map node carries this id, so nothing on the map lights. */
 export const PAST_CHATS_NODE = "past-chats";
 export const ROUTER_NODE = "router";
-export const SAFETY_NODES = ["safety"] as const;
+const SAFETY_NODES = ["safety"] as const;
 
 export const ALL_STACK_NODE_IDS = [
 	...MODEL_NODES,

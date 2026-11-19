@@ -11,7 +11,7 @@ import { runWithRequestContext } from "./requestContext";
 import { hardenLastUserTurn } from "./textGeneration/grounding";
 import { buildPersonaPrompt } from "./textGeneration/persona";
 
-describe("parseEvalLayers (CUR-2139)", () => {
+describe("parseEvalLayers", () => {
 	it("reads all three switches", () => {
 		expect(parseEvalLayers('{"promptBlock":false,"retrieval":true,"maxTokens":4096}')).toEqual({
 			promptBlock: false,
@@ -20,11 +20,11 @@ describe("parseEvalLayers (CUR-2139)", () => {
 		});
 	});
 
-	it("reads the persona switch (CUR-2331)", () => {
+	it("reads the persona switch", () => {
 		expect(parseEvalLayers('{"persona":false}')).toEqual({ persona: false });
 	});
 
-	it("reads the per-trick switch, and changes nothing for an unknown trick or an empty list (CUR-2697)", () => {
+	it("reads the per-trick switch, and changes nothing for an unknown trick or an empty list", () => {
 		expect(parseEvalLayers('{"dropTricks":["groundedDecoding"]}')).toEqual({ dropTricks: ["groundedDecoding"] });
 		expect(parseEvalLayers('{"dropTricks":["webSearch"]}')).toBeUndefined();
 		expect(parseEvalLayers('{"dropTricks":[]}')).toBeUndefined();
@@ -38,7 +38,7 @@ describe("parseEvalLayers (CUR-2139)", () => {
 	});
 });
 
-describe("withoutFewShot (CUR-2139)", () => {
+describe("withoutFewShot", () => {
 	const persona = buildPersonaPrompt("swiss-ai/apertus-v1.5-70b");
 
 	it("removes every few-shot example from the real persona and keeps the rest", () => {
@@ -56,7 +56,7 @@ describe("withoutFewShot (CUR-2139)", () => {
 	});
 });
 
-describe("the request-scoped switches (CUR-2139)", () => {
+describe("the request-scoped switches", () => {
 	it("are absent outside a layer-test request, and recording an applied switch is then a no-op", () => {
 		runWithRequestContext(() => {
 			expect(evalLayers()).toBeUndefined();
@@ -77,7 +77,7 @@ describe("the request-scoped switches (CUR-2139)", () => {
 	});
 });
 
-describe("hardenLastUserTurn with the prompt block off (CUR-2139)", () => {
+describe("hardenLastUserTurn with the prompt block off", () => {
 	const userMsg = (content: string): EndpointMessage => ({ from: "user", content }) as EndpointMessage;
 
 	it("sends the person's words bare: no guard paragraph and no fence", async () => {

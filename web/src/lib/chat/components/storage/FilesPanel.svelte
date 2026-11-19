@@ -8,7 +8,7 @@
 	import { myFilesChanged } from '$lib/chat/utils/myFilesHeadroom';
 	import { storablePhoto } from '$lib/chat/utils/shrinkImage';
 	import {
-		custodialMaxBytesPerFile,
+		CUSTODIAL_MAX_BYTES_PER_CHUNKED_FILE,
 		STORAGE_BUSY_MESSAGE,
 		storageRefusalMessage,
 		storageRefusalRecovery,
@@ -30,7 +30,7 @@
 	import { formatBytes } from './formatBytes';
 	import RiRefreshLine from '~icons/ri/refresh-line';
 
-	// CUR-1276. The Files destination, built on the real --ap-* tokens (see design-system.md) and the
+	// The Files destination, built on the real --ap-* tokens (see design-system.md) and the
 	// real API contract (web/src/routes/chat/api/storage/). Self-contained — it owns its own fetch
 	// calls and state — so an in-chat overlay entry point (matching XRAY VIEW's slide-in mechanics in
 	// ChatWindow.svelte) can mount this same component rather than duplicate it. It ships as its own
@@ -72,31 +72,28 @@
 		/** True when +page.server.ts's own listCustodialFiles call failed — the page still renders,
 		 *  starting in the Unavailable state instead of claiming an empty list. */
 		initialUnavailable?: boolean;
-		/** The server-side listing failed because Hugging Face throttled the storage token. (CUR-3680) */
+		/** The server-side listing failed because Hugging Face throttled the storage token. */
 		initialBusy?: boolean;
-		/** The account's storage locations, or null when the `storage-locations` flag is off (CUR-2930)
+		/** The account's storage locations, or null when the `storage-locations` flag is off
 		 *  for them — the panel is then Alpha storage only, exactly as before. */
 		initialLocations?: LocationsState | null;
-		/** The `chunked-uploads` flag for this account. On, a file up to the chunked ceiling (CUR-1780)
-		 *  is sent in chunks, and the picker and refusals name that ceiling. */
-		chunkedUploads?: boolean;
 	}
 	let {
 		initialFiles,
 		initialUnavailable = false,
 		initialBusy = false,
 		initialLocations = null,
-		chunkedUploads = false,
 	}: Props = $props();
-	// The ceiling shown is the ceiling sent: one number for the picker, the refusal and the check.
-	const maxBytesPerFile = $derived(custodialMaxBytesPerFile(chunkedUploads));
+	// The ceiling shown is the ceiling sent: one number for the picker, the refusal and the check. A file
+	// over the single-request ceiling goes in chunks, so the chunked ceiling is the one named.
+	const maxBytesPerFile = CUSTODIAL_MAX_BYTES_PER_CHUNKED_FILE;
 
 	let locState = $state<LocationsState | null>(initialLocations);
 	// The location being browsed. Opens on the default when that is a place still in the list, and
 	// uploads go to whichever location is open, so the default decides where a file lands unless the
 	// person switches. `initialFiles` is always Alpha storage's listing, so a linked default starts
 	// empty and loads its own list on mount rather than showing Alpha's files under its name.
-	// `uploadsGoTo` already resolves "Last used" to a place (CUR-3077).
+	// `uploadsGoTo` already resolves "Last used" to a place.
 	const initialTarget = initialLocations?.uploadsGoTo;
 	let viewing = $state(
 		initialTarget &&
@@ -125,7 +122,7 @@
 	}
 
 	// Each place's file count once its list has been read, so a tab can say how many files
-	// it holds. Places never opened in this visit show no count rather than a guess. (CUR-4363)
+	// it holds. Places never opened in this visit show no count rather than a guess.
 	let counts = $state<Record<string, number>>(
 		openedOnAlpha && !initialUnavailable ? { [ALPHA_LOCATION_ID]: initialFiles.length } : {},
 	);
@@ -147,14 +144,14 @@
 
 	// The listing's full bucket keys, keyed by row id. The id is the full key too, never the basename:
 	// two chats can each hold a shapes.png, and a basename id would give both rows one key and blank the
-	// whole list (CUR-3198). Round-tripped to download/delete; never rebuilt by hand client-side, per
-	// this API's own warning about CUR-928.
+	// whole list. Round-tripped to download/delete; never rebuilt by hand client-side, per
+	// this API's own warning about.
 	let pathById = $state<Record<string, string>>(
 		openedOnAlpha ? Object.fromEntries(initialFiles.map((f) => [f.path, f.path])) : {},
 	);
 
 	// A file attached in chat is kept at `users/<id>/conversations/<conversation>/…`, so the
-	// conversation it came from is the segment after `conversations` (CUR-3289).
+	// conversation it came from is the segment after `conversations`.
 	function conversationOf(path: string): string | undefined {
 		const parts = path.split('/');
 		const at = parts.indexOf('conversations');
@@ -183,8 +180,8 @@
 	let confirmError = $state<string | undefined>(undefined);
 
 	const storedRows = $derived(rows.filter((r): r is StoredRow => r.kind === 'stored'));
-	// Newest first, so a file just attached in chat is at the top rather than below every older one
-	// (CUR-4355). Uploads in flight and failed ones go above the stored files, in the order they began.
+	// Newest first, so a file just attached in chat is at the top rather than below every older one.
+	// Uploads in flight and failed ones go above the stored files, in the order they began.
 	const shownRows = $derived([
 		...rows.filter((r) => r.kind !== 'stored'),
 		...[...storedRows].sort((a, b) => (Date.parse(b.addedAt ?? '') || 0) - (Date.parse(a.addedAt ?? '') || 0)),
@@ -192,7 +189,7 @@
 	const totalBytes = $derived(storedRows.reduce((sum, r) => sum + r.sizeBytes, 0));
 	const usage = $derived(storageUsage(totalBytes, storedRows.length));
 
-	// Set when the listing answered that Hugging Face is throttling the storage token. (CUR-3680)
+	// Set when the listing answered that Hugging Face is throttling the storage token.
 	let listBusy = $state<string | null>(openedOnAlpha && initialBusy ? STORAGE_BUSY_MESSAGE : null);
 
 	async function reloadList() {
@@ -229,7 +226,7 @@
 	}
 
 	async function uploadOne(picked: File, target: string = viewing) {
-		// An iPhone HEIC goes up as a JPEG, since the scanner cannot hash a HEIC. (CUR-4665)
+		// An iPhone HEIC goes up as a JPEG, since the scanner cannot hash a HEIC.
 		const file = await storablePhoto(picked);
 		const id = `${file.name}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 		if (file.size > maxBytesPerFile) {
@@ -243,7 +240,6 @@
 		const result = await sendUpload(
 			file,
 			{ folder: 'documents', ...(locState ? { location: target } : {}) },
-			chunkedUploads,
 			(progress) => {
 				rows = rows.map((r) => (r.id === id && r.kind === 'uploading' ? { ...r, progress } : r));
 			},
@@ -254,7 +250,7 @@
 			return;
 		}
 		if (result.status >= 200 && result.status < 300) {
-			// The composer's reused headroom no longer matches what is stored. (CUR-3681)
+			// The composer's reused headroom no longer matches what is stored.
 			myFilesChanged();
 			rows = rows.filter((r) => r.id !== id);
 			if (target !== viewing) {
@@ -284,7 +280,7 @@
 
 	function onFiles(files: File[]) {
 		// "Ask every time" asks before anything is sent, then sends every dropped file to the one choice.
-		// The server reports "ask" only while there is more than one place (CUR-3077): with Alpha storage
+		// The server reports "ask" only while there is more than one place: with Alpha storage
 		// the only place, there is nothing to ask.
 		if (locState?.uploadsGoTo === ASK_EVERY_TIME) {
 			pendingFiles = files;
@@ -316,7 +312,7 @@
 		return `${base}/api/storage/file?path=${encodeURIComponent(path)}${q ? `&${q}` : ''}`;
 	}
 
-	// The file a row opened in place. (CUR-3289)
+	// The file a row opened in place.
 	let previewTarget = $state<StoredRow | null>(null);
 	let previewOpen = $state(false);
 	function openRow(row: StoredRow) {
@@ -340,7 +336,7 @@
 		a.remove();
 	}
 
-	// Copy or move a stored file to another of the person's locations. (CUR-2931)
+	// Copy or move a stored file to another of the person's locations.
 	let transferTarget = $state<StoredRow | null>(null);
 	let transferOpen = $state(false);
 	let transferBusy = $state(false);
@@ -429,7 +425,7 @@
 		<StorageNotice tone={notice.tone} text={notice.text} onDismiss={() => (notice = null)} />
 	{/if}
 
-	<!-- CUR-4363: the places a person's files live are peers of one view, so they are tabs (Apple HIG tab
+	<!-- the places a person's files live are peers of one view, so they are tabs (Apple HIG tab
 	     views; iOS Files' Locations): a real tablist with arrow, Home and End keys and a roving tab stop
 	     (bits-ui's Tabs engine), each tab with its file count once known, and the list as its panel. The
 	     open tab is where a dropped file goes, so the panel needs no separate "Adding to" line. -->
@@ -460,7 +456,7 @@
 		{@render fileView()}
 	{/if}
 
-	<!-- CUR-4363: where files are kept, where new ones go and linking a bucket are settings, so they live
+	<!-- where files are kept, where new ones go and linking a bucket are settings, so they live
 	     in Settings → Storage; this page keeps the files and links there. -->
 	<div class="flex justify-end">
 		<Button variant="secondary" size="sm" href={`${base}/settings/storage`} data-testid="manage-storage"
@@ -518,7 +514,7 @@
 			{/each}
 		</div>
 
-		<!-- CUR-2382: with no CSAM scanner configured every upload is refused, so none is offered. -->
+		<!-- with no CSAM scanner configured every upload is refused, so none is offered. -->
 		{#if !page.data.attachmentsEnabled}
 			<p class="m-0 font-sans text-micro text-fg-3">
 				{m.storage_addingOff()}

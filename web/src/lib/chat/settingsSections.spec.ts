@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { settingsNavInputs, settingsSections } from "./settingsSections";
+import { settingsExternalLinks, settingsNavInputs, settingsSections } from "./settingsSections";
 
 const base = "/chat";
 const routingHref = `${base}/settings/routing`;
@@ -21,13 +21,13 @@ describe("Settings → Model routing is developer-only, not live for visitors on
 
 // The Connectors tab follows the `mcp-servers` flag the layout data carries
 // (`mcpServersEnabled`), for a guest as well as a signed-in account, since a guest's choices are
-// kept by session. (CUR-3984)
+// kept by session.
 const hrefs = (pageData: object, signedIn: boolean) =>
 	settingsSections({ base, path: `${base}/settings/connectors`, ...settingsNavInputs(pageData), signedIn }).map(
 		(s) => s.href
 	);
 
-describe("the Connectors settings tab (CUR-3984)", () => {
+describe("the Connectors settings tab", () => {
 	it("is listed when mcp-servers is on, signed in or not", () => {
 		expect(hrefs({ mcpServersEnabled: true }, false)).toContain("/chat/settings/connectors");
 		expect(hrefs({ mcpServersEnabled: true }, true)).toContain("/chat/settings/connectors");
@@ -50,7 +50,31 @@ describe("settingsNavInputs reads every section gate from the layout data", () =
 
 	it("passes the per-account gates through as the layout data states them", () => {
 		expect(
-			settingsNavInputs({ workspacesEnabled: true, localInferenceEnabled: false, custodialStorageEnabled: true })
-		).toMatchObject({ workspacesEnabled: true, localInferenceEnabled: false, custodialStorageEnabled: true });
+			settingsNavInputs({ localInferenceEnabled: false, custodialStorageEnabled: true })
+		).toMatchObject({ localInferenceEnabled: false, custodialStorageEnabled: true });
+	});
+});
+
+describe("the Archived chats settings tab", () => {
+	it("is listed for a guest and for a signed-in account, because an archive is kept by session too", () => {
+		expect(hrefs({}, false)).toContain("/chat/settings/archived");
+		expect(hrefs({}, true)).toContain("/chat/settings/archived");
+	});
+});
+
+describe("the settings list's Status page link follows the deployment's status page", () => {
+	const status = (url: string | null | undefined) => settingsExternalLinks(url).find((l) => l.label === "Status page");
+
+	it("links to status.aipotluck.org where the layout says that is the page (hosted)", () => {
+		expect(status("https://status.aipotluck.org")?.href).toBe("https://status.aipotluck.org");
+	});
+
+	it("links to the operator's own page when STATUS_PAGE_URL names one", () => {
+		expect(status("https://status.example.org")?.href).toBe("https://status.example.org");
+	});
+
+	it.each([null, undefined, ""])("leaves the link out, never pointing at ours, when there is no status page (%s)", (url) => {
+		expect(status(url)).toBeUndefined();
+		expect(settingsExternalLinks(url).map((l) => l.href)).toEqual(["/privacy-notice"]);
 	});
 });

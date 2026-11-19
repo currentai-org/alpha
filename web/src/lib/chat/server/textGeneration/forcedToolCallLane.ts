@@ -2,7 +2,7 @@
 // `tool_calls` entry or the inline marker some backends leave in the message content. Used by math
 // routing (mathRouting.ts).
 
-// ── CUR-1143 fallback: a backend may return Apertus's native tool-call token in the message content
+// ── Inline tool-call fallback: a backend may return Apertus's native tool-call token in the message content
 // instead of a structured tool_calls entry — `<|tools_prefix|>[{"toolName": {...args}}]` sitting in
 // the content as prose, with the right tool and arguments chosen. A forced and an auto tool_choice
 // call against swiss-ai/apertus-v1.5-70b both produce this shape. This extracts the same information
@@ -18,7 +18,7 @@ const TOOLS_SUFFIX_MARKER = "<|tools_suffix|>";
 // or the end of the text, and the arguments are the first complete JSON value in it (Python's
 // `raw_decode`). JS has no `raw_decode`, so the scan below tracks strings and escapes to find where
 // that value ends; a `]` inside a string argument is text, not structure. vLLM's partial-JSON
-// fallback for truncated output is not ported: a truncated call stays undefined. (CUR-2151)
+// fallback for truncated output is not ported: a truncated call stays undefined.
 
 /** The first complete JSON array at the start of `text` (after leading whitespace), or undefined if it
  *  never closes. Brackets inside string values and escaped quotes are skipped. */

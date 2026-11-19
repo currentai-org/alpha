@@ -14,7 +14,7 @@ import { resolveLocation } from "$lib/chat/server/storage/locations/registry";
 
 import { locationsEnabled, requireStorageAccess, storageFailure } from "../guard";
 
-/** `?location=` names a linked location; honoured only behind the `storage-locations` flag. (CUR-2930) */
+/** `?location=` names a linked location; honoured only behind the `storage-locations` flag. */
 async function locationFrom(locals: App.Locals, accountId: string, url: URL): Promise<string | null> {
 	const value = url.searchParams.get("location");
 	if (!value) return null;
@@ -22,18 +22,18 @@ async function locationFrom(locals: App.Locals, accountId: string, url: URL): Pr
 	return value;
 }
 
-// CUR-1276. Download and delete, against a full bucket key the client got from the listing.
+// Download and delete, against a full bucket key the client got from the listing.
 //
 // WHY DOWNLOAD IS THE DANGEROUS ONE
 //
 // Every other endpoint here leaks metadata at worst. This one serves BYTES a person uploaded, from
-// aipotluck.org's own origin, to a browser. Two separate hazards stack on that:
+// the app's own origin, to a browser. Two separate hazards stack on that:
 //
 //   1. Same-origin script execution. An uploaded .html or .svg served with a content type a browser
 //      will render is stored XSS against our own origin — the attacker's page runs with our cookies
 //      and our session. The defence is not to guess a safe content type; it is to never render at
 //      all. Forced attachment, one fixed `application/octet-stream`, `nosniff`.
-//   2. Nothing has scanned these files. CUR-1130's open half is malware scanning, and until that
+//   2. Nothing has scanned these files. The open half is malware scanning, and until that
 //      exists a download route is precisely the thing that converts "we stored something malicious"
 //      into "we served it to someone". Attachment disposition does not fix that; it does mean the
 //      browser hands the file to the user as a file rather than executing it in our origin.

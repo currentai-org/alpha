@@ -6,7 +6,7 @@ const m = (over: Partial<Message> = {}): Message =>
 	({ id: "m1", from: "assistant", content: "a", ...over }) as Message;
 
 describe("provenanceFacts — one definition of what happened this turn", () => {
-	it("does not count a fixed reply as answered, so X-ray credits no model with text no model wrote (CUR-2954)", () => {
+	it("does not count a fixed reply as answered, so X-ray credits no model with text no model wrote", () => {
 		for (const kind of ["canned", "capacity", "missing-document", "low-resource-language"] as const) {
 			const f = provenanceFacts(m({ content: "No model wrote this.", fixedReply: { kind } }));
 			expect(f.answered, kind).toBe(false);

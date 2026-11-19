@@ -5,7 +5,7 @@ import { answerShapeEntry } from './helpers/chatEntry';
 import { startChattingPastWelcome } from './helpers/welcome';
 
 // A reader scrolled down to keep reading a long answer while it was still being written, and
-// every new chunk pulled the view back up to the top of the answer (CUR-2526). ChatWindow.svelte re-pins the
+// every new chunk pulled the view back up to the top of the answer. ChatWindow.svelte re-pins the
 // newest question to the top of the view on each resize while a turn streams, which is the right
 // thing until the reader takes over the scroll themselves.
 //
@@ -19,7 +19,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // growing after the scroll, so that is asserted too.
 //
 // `@no-replay`: a replayed answer streams with no pacing, so a 10,000-character answer finished about
-// 5 s after send and ended before the scroll could see it grow (SOL-166). The check needs live pacing.
+// 5 s after send and ended before the scroll could see it grow. The check needs live pacing.
 const PROMPT =
 	'CUR-2526: write a detailed 900-word essay on the history of river trade in medieval Europe.';
 const PIN_TOLERANCE_PX = 120;
@@ -82,7 +82,7 @@ test(
 				// ChatWindow re-pins from a ResizeObserver, so a sample taken between a chunk's layout and
 				// that callback can catch the view one frame off the pin: a run read -9px once,
 				// on both attempts. A reader never sees one
-				// frame. CUR-2526's defect held the view off the pin for the rest of the turn, so an
+				// frame. The defect held the view off the pin for the rest of the turn, so an
 				// off-pin sample fails only if the view is still off the pin 1 s later.
 				const pinned = (top: number) => top >= -2 && top <= PIN_TOLERANCE_PX;
 				if (!pinned(s.questionTop)) {

@@ -1,7 +1,7 @@
 <script lang="ts">
-	// The multi-provider sign-in chooser (CUR-434, CUR-482). Email leads, then Google/GitHub/Hugging
-	// Face as a secondary "OR" group so no single company is the only way in, then passkey last
-	// (CUR-608): a passkey button can only sign in against a credential that already exists, so for a
+	// The multi-provider sign-in chooser. Email leads, then Google/GitHub/Hugging
+	// Face as a secondary "OR" group so no single company is the only way in, then passkey last:
+	// a passkey button can only sign in against a credential that already exists, so for a
 	// new user it is a dead end and would read as broken at the top of the list.
 	//
 	// Icon paths below are copied verbatim from the installed `remixicon` package (google-line,
@@ -17,17 +17,19 @@
 	import { base } from "$lib/chat/paths";
 	import { authClient, passkeyOptionsSettled } from "$lib/chat/authClient";
 	import { APP_NAME } from "$lib/chat/constants/app";
+	import { SIGN_UP_CLOSED_CODE, SIGN_UP_CLOSED_MESSAGE } from "$lib/chat/signUpClosed";
 	import { friendlyAuthErrorMessage, friendlyPasskeyError } from "$lib/chat/authErrorMessages";
 	// The only way to interrupt an in-flight passkey ceremony (navigator.credentials.get())
 	// is SimpleWebAuthn's own abort singleton — startAuthentication() (called inside Better Auth's
 	// passkeyClient()) always requests a fresh AbortSignal from this service before calling
 	// navigator.credentials.get(), so cancelCeremony() here reaches the exact in-flight call. Better
 	// Auth's passkey client doesn't expose a signal/cancel option of its own (checked
-	// @better-auth/passkey's dist/client.mjs), so there's no way to reach this except directly. (CUR-1064)
+	// @better-auth/passkey's dist/client.mjs), so there's no way to reach this except directly.
 	import { WebAuthnAbortService } from "@simplewebauthn/browser";
 	import { Button, Input, Spinner } from "@aipotluck/alpha-ds";
 	import SignInHero from "$lib/chat/components/SignInHero.svelte";
 	import RiCloseLine from "~icons/ri/close-line";
+	import RiBuildingLine from "~icons/ri/building-line";
 
 	let { data }: { data: PageData } = $props();
 
@@ -38,16 +40,26 @@
 	let busy = $state<string | null>(null);
 	let errorMsg = $state("");
 
+	// a self-host with no mailer signs in with email and password, since no code could arrive.
+	// `creating` switches the same form between signing in and creating an account.
+	const passwordMode = $derived(data.emailSignIn === "password");
+	let password = $state("");
+	let creating = $state(false);
+	// the first account on a mailless self-host closes password sign-up, unless the operator
+	// set ALPHA_OPEN_SIGNUP=true. The page and the server's refusal share their words (signUpClosed.ts).
+	const signUpClosed = $derived(passwordMode && data.signUpClosed);
+
 	// The routes after email, passkey always among them: four sit as a 2×2 grid, three in one row.
 	const alternateCount = $derived(
-		1 + [data.providers.google, data.providers.github, data.providers.huggingface].filter(Boolean).length
+		1 + [data.providers.org, data.providers.google, data.providers.github, data.providers.huggingface].filter(Boolean).length
 	);
 	// The providers this deployment offers, by the names the buttons use, for the passkey failure copy.
-	const offeredProviders = $derived(
-		([["google", "Google"], ["github", "GitHub"], ["huggingface", "Hugging Face"]] as const)
+	const offeredProviders = $derived([
+		...(data.providers.org ? [data.providers.org] : []),
+		...([["google", "Google"], ["github", "GitHub"], ["huggingface", "Hugging Face"]] as const)
 			.filter(([key]) => data.providers[key])
-			.map(([, name]) => name)
-	);
+			.map(([, name]) => name),
+	]);
 	const alternateColumns = $derived(alternateCount === 3 ? "sm:grid-cols-3" : alternateCount > 1 ? "sm:grid-cols-2" : "");
 
 	// Both forms' onsubmit is a property Svelte attaches at hydration. A click landing on the
@@ -55,7 +67,7 @@
 	// submission. Neither input carries `name`, so that native submit is a GET with an empty query: it
 	// silently discards whatever was typed and reloads this same page. Gating each submit button's
 	// `disabled` on this flag removes it as the form's activatable default button during that window,
-	// which blocks both a direct click and an implicit Enter-key submission. (CUR-1400)
+	// which blocks both a direct click and an implicit Enter-key submission.
 	let hydrated = $state(false);
 
 	const ICONS = {
@@ -69,7 +81,7 @@
 		// Fill variant of the error icon, per design-system.md's icon rule ("destructive → Accent 2 ...
 		// reserved for the most important, highest-stakes icons"). A plain-text errorMsg box read as a
 		// second, duplicate email input rather than an error — same border/background as the field above
-		// it, no color or icon to mark it as a problem (CUR-1064) — so the icon is colored via --ap-danger
+		// it, no color or icon to mark it as a problem — so the icon is colored via --ap-danger
 		// (the design system's Accent 2 destructive color), on the icon only, never the surface or
 		// border. Verbatim from @iconify-json/ri's error-warning-fill.
 		errorWarning:
@@ -83,7 +95,7 @@
 	// invitation's accept page, whose own +page.server.ts redirects here with `next` set when the
 	// visitor has no session yet. Dropping `next` lands a brand-new invitee on the bare app root with
 	// no trace of the invitation they clicked, so their account is created but the invitation never
-	// is (CUR-960).
+	// is.
 	function afterSignIn() {
 		window.location.href = data.next ?? `${base}/`;
 	}
@@ -99,15 +111,17 @@
 		}
 	}
 
-	function signInSocial(provider: "google" | "github" | "huggingface") {
+	// "org-oidc" is the organisation's own login on a self-hosted Alpha (orgOidc.ts).
+	type Provider = "org-oidc" | "google" | "github" | "huggingface";
+	function signInSocial(provider: Provider) {
 		return withBusy(provider, async () => {
 			const { error } = await authClient.signIn.social({
 				provider,
 				// Same `next` handling as afterSignIn(): an invited visitor who signs up via an OAuth provider
-				// instead of email-OTP would otherwise lose it (CUR-960).
+				// instead of email-OTP would otherwise lose it.
 				callbackURL: data.next ?? `${base}/`,
 				// Without this, a callback failure (most notably account_not_linked — see betterAuth.ts's
-				// disableImplicitLinking) falls through to Better Auth's bare-root default (CUR-850). Round-trips
+				// disableImplicitLinking) falls through to Better Auth's bare-root default. Round-trips
 				// back here instead, where the ?error= handling below reads it. This `error` from signIn.social
 				// itself only fires for a failure to START the redirect (e.g. no such provider) — the callback
 				// failure arrives later, as a query param on this same round-trip. Carries `next` forward too, so
@@ -124,8 +138,8 @@
 	// signIn.social resolves once it has set the provider's URL, before the browser leaves,
 	// and withBusy then clears `busy`, so the button would go back to "Google" and take clicks for as long
 	// as the provider takes to answer. This holds the redirecting state until the page is gone, and lets
-	// it go if Back restores this page from the back-forward cache. (CUR-2739)
-	let leavingFor = $state<"google" | "github" | "huggingface" | null>(null);
+	// it go if Back restores this page from the back-forward cache.
+	let leavingFor = $state<Provider | null>(null);
 	$effect(() => {
 		const restored = (e: PageTransitionEvent) => {
 			if (e.persisted) leavingFor = null;
@@ -137,14 +151,14 @@
 	// Set right before we abort so the resulting AUTH_CANCELLED result (Better Auth's
 	// passkey client catches whatever navigator.credentials.get() throws and turns it into a normal
 	// {error} return, never a rejection — see @better-auth/passkey's dist/client.mjs) reads as "back to
-	// normal", not as a failure the user needs to react to. (CUR-1064)
+	// normal", not as a failure the user needs to react to.
 	let passkeyCancelledByUser = false;
 
 	function signInPasskey() {
 		passkeyCancelledByUser = false;
 		return withBusy("passkey", async () => {
 			// Let the autofill ceremony reach the browser first, so this one aborts it rather
-			// than racing it for the one challenge cookie. (CUR-2695)
+			// than racing it for the one challenge cookie.
 			await passkeyOptionsSettled();
 			const result = await authClient.signIn.passkey();
 			if (result?.error) {
@@ -167,7 +181,7 @@
 
 	// WebAuthn conditional UI — silently offers a matching passkey as browser autofill on
 	// the email field below, no button, nothing shown if none exists. Must never touch errorMsg/busy:
-	// the explicit passkey button above is the loud-failure path (CUR-608), this one stays quiet. (CUR-609)
+	// the explicit passkey button above is the loud-failure path, this one stays quiet.
 	let passkeyAutofillTried = $state(false);
 	async function signInPasskeyConditional() {
 		const result = await authClient.signIn.passkey({ autoFill: true });
@@ -182,7 +196,7 @@
 
 	// A callback failure round-trips back to this page via errorCallbackURL above (most notably
 	// account_not_linked — see betterAuth.ts's disableImplicitLinking) instead of falling through to
-	// Better Auth's bare-root default (CUR-850). Read the code once, show it, then strip the query
+	// Better Auth's bare-root default. Read the code once, show it, then strip the query
 	// string so a refresh doesn't re-show a stale error — same pattern as account/+page.svelte.
 	//
 	// This arrival is a HARD browser navigation (the OAuth provider's own redirect back to
@@ -193,20 +207,19 @@
 	// anywhere, only the query string is changing. `replaceState` (from `$app/navigation`, distinct
 	// from `goto`'s `replaceState` option) is the narrower primitive SvelteKit ships for exactly
 	// this — swap the URL/state in place with no navigation lifecycle at all — so use that instead
-	// of routing a cosmetic query-string strip through the full navigator (CUR-1060).
+	// of routing a cosmetic query-string strip through the full navigator.
 	onMount(() => {
 		hydrated = true;
 		const errorCode = page.url.searchParams.get("error");
 		if (errorCode) {
 			errorMsg = friendlyAuthErrorMessage(errorCode);
 			// Strip only `error`, not the whole query string — `next` (errorCallbackURL above carries it)
-			// has to survive this so a retry after a failed OAuth attempt still knows where to return to
-			// (CUR-960).
+			// has to survive this so a retry after a failed OAuth attempt still knows where to return to.
 			const target = data.next ? `${page.url.pathname}?next=${encodeURIComponent(data.next)}` : page.url.pathname;
 			// After a tick, not synchronously. onMount runs during hydration, before SvelteKit's router
 			// holds its root component, and replaceState writes to that root, so a synchronous call throws
 			// `reading '$set'` and the message above never renders. Same deferral as ChatLanding.svelte's
-			// query-param strips (CUR-1813).
+			// query-param strips.
 			tick().then(() => replaceState(target, page.state));
 		}
 	});
@@ -218,7 +231,7 @@
 	const RATE_LIMITED = "rate-limited";
 	const DEAD_CODE_ERRORS = new Set(["OTP expired", "Too many attempts", RATE_LIMITED]);
 	// The rate limiter answers a burst of tries with a 429 before email-otp sees the code,
-	// and that code is spent by the time the limit lifts, so it is a dead code too. (CUR-3048)
+	// and that code is spent by the time the limit lifts, so it is a dead code too.
 	function otpErrorKey(error: { status?: number; message?: string }): string | undefined {
 		return error.status === 429 ? RATE_LIMITED : error.message;
 	}
@@ -240,8 +253,7 @@
 	// The <input type="email" required> below would rely entirely on the browser's own constraint
 	// validation (native tooltip on submit) for feedback, which an automation harness reading the DOM
 	// cannot see and which is inconsistent with the errorMsg convention this same page uses for every
-	// other failure below. `novalidate` on the form turns the native check off so this runs instead
-	// (CUR-1064).
+	// other failure below. `novalidate` on the form turns the native check off so this runs instead.
 	const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 	function sendOtp() {
@@ -268,9 +280,53 @@
 		});
 	}
 
+	// Better Auth's error codes for the email-and-password routes, in words a person can act on.
+	function friendlyPasswordError(error: { code?: string; message?: string; status?: number }): string {
+		if (error.status === 429) return "Too many tries in a row. Wait a minute, then try again.";
+		switch (error.code) {
+			case "INVALID_EMAIL_OR_PASSWORD":
+				return "That email and password don't match an account. Check both, or create an account.";
+			case "USER_ALREADY_EXISTS":
+			case "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL":
+				return "An account already uses that email. Sign in instead.";
+			case "PASSWORD_TOO_SHORT":
+				return "Use a password of at least 8 characters.";
+			case "PASSWORD_TOO_LONG":
+				return "That password is too long. Use at most 128 characters.";
+			// an account already exists on a self-host with no mailer (selfHostSignUp.ts).
+			case SIGN_UP_CLOSED_CODE:
+				return SIGN_UP_CLOSED_MESSAGE;
+			default:
+				return error.message ?? "Couldn't sign you in.";
+		}
+	}
+
+	function submitPassword() {
+		return withBusy("password", async () => {
+			const trimmed = email.trim();
+			if (!EMAIL_PATTERN.test(trimmed)) {
+				errorMsg = trimmed ? "That doesn't look like a valid email address." : "Enter your email address.";
+				return;
+			}
+			if (!password) {
+				errorMsg = "Enter your password.";
+				return;
+			}
+			email = trimmed;
+			const { error } = creating
+				? await authClient.signUp.email({ email: trimmed, password, name: trimmed.split("@")[0] })
+				: await authClient.signIn.email({ email: trimmed, password });
+			if (error) {
+				errorMsg = friendlyPasswordError(error);
+				return;
+			}
+			afterSignIn();
+		});
+	}
+
 	// An expired code and a code locked after three wrong tries both tell the person to send a new
 	// one, so the code screen needs a control that does it without going back to the email step and
-	// retyping the address. This resends to the same address and clears the dead code (CUR-2793).
+	// retyping the address. This resends to the same address and clears the dead code.
 	let resent = $state(false);
 	function resendOtp() {
 		return withBusy("resend-otp", async () => {
@@ -294,13 +350,13 @@
 	// code and get a real rejection from the backend: a genuine successful sign-in followed by a false
 	// "code didn't match" error. Guarded here, shared by both entry points, rather than only inside the
 	// effect. Deliberately does NOT block resubmitting a code that genuinely FAILED — verifiedCode is
-	// only ever set on success, so a manual retry after a real rejection is untouched (CUR-1131).
+	// only ever set on success, so a manual retry after a real rejection is untouched.
 	//
 	// The same window has a visible half: `busy` clearing re-enables the Verify button and its label
 	// reverts to "Verify" while the code is still visibly accepted and correct, up to ~2.3s before
 	// the redirect lands, and nothing on screen tells the person their code was accepted. The button
 	// below stays disabled and relabelled for as long as verifiedCode is set, covering this window as
-	// well as the busy === "verify-otp" one (CUR-1481).
+	// well as the busy === "verify-otp" one.
 	let verifiedCode = $state("");
 
 	function verifyOtp() {
@@ -311,7 +367,7 @@
 				const key = otpErrorKey(error);
 				errorMsg = friendlyOtpError(key);
 				// An expired or locked code can never work again, so clearing it also disables
-				// Verify and leaves Send a new code as the one way on. A mistyped code stays for correcting. (CUR-2879)
+				// Verify and leaves Send a new code as the one way on. A mistyped code stays for correcting.
 				if (DEAD_CODE_ERRORS.has(key ?? "")) otp = "";
 				return;
 			}
@@ -389,7 +445,8 @@
 					novalidate
 					onsubmit={(e) => {
 						e.preventDefault();
-						sendOtp();
+						if (passwordMode) submitPassword();
+						else sendOtp();
 					}}
 				>
 					<label for="signin-email" class="sr-only">Email</label>
@@ -403,14 +460,49 @@
 						size="lg"
 						placeholder="you@example.org"
 					/>
-					<Button type="submit" variant="primary" size="lg" casing="sentence" block disabled={!!busy || !hydrated}>
-						{@render icon(ICONS.mail)}
-						{busy === "send-otp" ? "Sending…" : "Continue with email"}
-					</Button>
+					{#if passwordMode}
+						<label for="signin-password" class="sr-only">Password</label>
+						<Input
+							id="signin-password"
+							type="password"
+							required
+							autocomplete={creating ? "new-password" : "current-password"}
+							bind:value={password}
+							disabled={!!busy}
+							size="lg"
+							placeholder={creating ? "A password of 8 or more characters" : "Password"}
+						/>
+						<Button type="submit" variant="primary" size="lg" casing="sentence" block disabled={!!busy || !hydrated}>
+							{@render icon(ICONS.mail)}
+							{busy === "password" ? (creating ? "Creating your account…" : "Signing you in…") : creating ? "Create account" : "Sign in with email"}
+						</Button>
+						{#if signUpClosed && !creating}
+							<p class="text-center type-caption text-fg-2" data-testid="signup-closed">{SIGN_UP_CLOSED_MESSAGE}</p>
+						{:else}
+							<Button
+								variant="ghost"
+								size="md"
+								casing="sentence"
+								block
+								disabled={!!busy}
+								onclick={() => {
+									creating = !creating;
+									errorMsg = "";
+								}}
+							>
+								{creating ? "I have an account. Sign in" : "New here? Create an account"}
+							</Button>
+						{/if}
+					{:else}
+						<Button type="submit" variant="primary" size="lg" casing="sentence" block disabled={!!busy || !hydrated}>
+							{@render icon(ICONS.mail)}
+							{busy === "send-otp" ? "Sending…" : "Continue with email"}
+						</Button>
+					{/if}
 				</form>
 
-				<!-- CUR-2468: every route after email is one bordered button in one group, passkey included,
-				     so five ways in read as five equal choices. Passkey stays last (CUR-608): it only signs in
+				<!-- every route after email is one bordered button in one group, passkey included,
+				     so five ways in read as five equal choices. Passkey stays last: it only signs in
 				     against a credential that already exists. -->
 				<div class="flex items-center gap-3" aria-hidden="true">
 					<span class="h-px flex-1 bg-line-1"></span>
@@ -418,6 +510,12 @@
 					<span class="h-px flex-1 bg-line-1"></span>
 				</div>
 				<div class="grid gap-2 {alternateColumns}">
+					{#if data.providers.org}
+						<Button variant="secondary" size="lg" casing="sentence" block disabled={!!busy || !!leavingFor} onclick={() => signInSocial("org-oidc")} aria-label={`Continue with ${data.providers.org}`}>
+							<RiBuildingLine aria-hidden="true" class="size-4" />
+							{busy === "org-oidc" || leavingFor === "org-oidc" ? "Redirecting…" : data.providers.org}
+						</Button>
+					{/if}
 					{#if data.providers.google}
 						<Button variant="secondary" size="lg" casing="sentence" block disabled={!!busy || !!leavingFor} onclick={() => signInSocial("google")} aria-label="Continue with Google">
 							{@render icon(ICONS.google)}
@@ -451,12 +549,16 @@
 					</Button>
 				</div>
 
-				<!-- CUR-1133: disableImplicitLinking (betterAuth.ts) refuses a second provider on an address that
+				<!-- disableImplicitLinking (betterAuth.ts) refuses a second provider on an address that
 				     already has an account (account_not_linked), so a provider is added by linking it in Settings
-				     while signed in. CUR-3157: an email code finds the account by address, and the line says both. -->
+				     while signed in. an email code finds the account by address, and the line says both. -->
 				<p class="text-center type-caption text-fg-3">
-					An email code opens the account that uses that address. To add Google, GitHub or Hugging Face as
-					another way in, sign in first, then link it in Settings.
+					{#if passwordMode}
+						This server sends no email, so you sign in with your email address and a password you choose.
+					{:else}
+						An email code opens the account that uses that address. To add Google, GitHub or Hugging Face as
+						another way in, sign in first, then link it in Settings.
+					{/if}
 				</p>
 			{:else if phase === "otp-code"}
 				<form
@@ -467,7 +569,7 @@
 					}}
 				>
 					<label class="sr-only" for="signin-otp">6-digit code</label>
-					<!-- CUR-2298: the field mounts each time this phase opens, including after "Use a different
+					<!-- the field mounts each time this phase opens, including after "Use a different
 					     email" sends a new code, so focusing on attach puts the cursor in it every time. -->
 					<Input
 						id="signin-otp"
@@ -483,10 +585,10 @@
 					/>
 					<Button type="submit" variant="primary" size="lg" casing="sentence" block disabled={!!busy || !hydrated || otp.length < 6 || !!verifiedCode}>
 						{busy === "verify-otp" || verifiedCode ? "Signing you in…" : "Verify and sign in"}
-						<!-- CUR-1621: the label alone sat still for the whole wait, which reads as a stalled page.
+						<!-- the label alone sat still for the whole wait, which reads as a stalled page.
 						     Hidden from the accessibility tree so the button's name stays the label. -->
 						{#if busy === "verify-otp" || verifiedCode}
-							<!-- CUR-2660: `flex` makes the Spinner a flex item. In a block wrapper it is an inline-grid
+							<!-- `flex` makes the Spinner a flex item. In a block wrapper it is an inline-grid
 							     with no text, so it sat on the label's baseline, 5.75px below the label's centre. -->
 							<span aria-hidden="true" data-signing-in-spinner class="flex"><Spinner size="sm" /></span>
 						{:else}
@@ -539,7 +641,7 @@
 			radial-gradient(ellipse 50% 50% at 90% 100%, color-mix(in oklch, var(--ds-xray-glow) 16%, transparent), transparent 70%),
 			var(--ds-bg-1);
 	}
-	/* The card hangs from a fixed distance below the top instead of being centred, so an error (CUR-3491)
+	/* The card hangs from a fixed distance below the top instead of being centred, so an error
 	   box or the code step growing it pushes its bottom edge down and never lifts the part being read. */
 	@media (min-width: 640px) {
 		.signin-stage {

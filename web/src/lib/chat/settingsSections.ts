@@ -19,7 +19,7 @@ import RiInformationLine from '~icons/ri/information-line';
 import RiPulseLine from '~icons/ri/pulse-line';
 import RiFlagLine from '~icons/ri/flag-line';
 import RiPlugLine from '~icons/ri/plug-line';
-import RiLinksLine from '~icons/ri/links-line';
+import RiArchiveLine from '~icons/ri/archive-line';
 
 /**
  * The settings section list, shared by the places that render it: the sidebar (which becomes the
@@ -46,11 +46,10 @@ export interface SettingsSectionInput {
 	base: string;
 	path: string;
 	signedIn: boolean;
-	workspacesEnabled?: boolean;
 	localInferenceEnabled?: boolean;
-	/** The per-account gate /chat/storage itself 404s on. (CUR-1682) */
+	/** The per-account gate /chat/storage itself 404s on. */
 	custodialStorageEnabled?: boolean;
-	/** The active model, named (CUR-2203: never its wire id). Opens its configuration page. */
+	/** The active model, named (never its wire id). Opens its configuration page. */
 	model?: { id: string; name: string };
 	/** Developer tools (Model settings, Model routing) — the local dev server, or an admin. */
 	devTools?: boolean;
@@ -58,10 +57,8 @@ export interface SettingsSectionInput {
 	autoRoutingEnabled?: boolean;
 	/** The `human-eval` flag (layout data's `humanEvalEnabled`): Evaluate language opens /chat/settings/evaluate. */
 	humanEvalEnabled?: boolean;
-	/** The `mcp-servers` flag (layout data's `mcpServersEnabled`): Connectors shows only with it on. (CUR-3984) */
+	/** The `mcp-servers` flag (layout data's `mcpServersEnabled`): Connectors shows only with it on. */
 	connectorsEnabled?: boolean;
-	/** The `thunderbolt-sync` flag (layout data's `thunderboltSyncEnabled`): Connections shows only with it on. (CUR-4312) */
-	thunderboltSyncEnabled?: boolean;
 }
 
 /** The active model for the settings nav, from the layout data every chat page already carries. */
@@ -91,25 +88,21 @@ export function settingsNavInputs(pageData: object): Omit<SettingsSectionInput, 
 	const data = pageData as {
 		loginEnabled?: boolean;
 		user?: unknown;
-		workspacesEnabled?: boolean;
 		localInferenceEnabled?: boolean;
 		custodialStorageEnabled?: boolean;
 		autoRoutingEnabled?: boolean;
 		humanEvalEnabled?: boolean;
 		mcpServersEnabled?: boolean;
-		thunderboltSyncEnabled?: boolean;
 	};
 	return {
 		signedIn: Boolean(data.loginEnabled && data.user),
-		workspacesEnabled: data.workspacesEnabled,
 		localInferenceEnabled: data.localInferenceEnabled,
 		custodialStorageEnabled: data.custodialStorageEnabled,
 		model: activeSettingsModel(pageData),
 		devTools: settingsDevTools(pageData),
 		autoRoutingEnabled: data.autoRoutingEnabled === true,
 		humanEvalEnabled: data.humanEvalEnabled === true,
-		connectorsEnabled: data.mcpServersEnabled === true,
-		thunderboltSyncEnabled: data.thunderboltSyncEnabled === true
+		connectorsEnabled: data.mcpServersEnabled === true
 	};
 }
 
@@ -139,6 +132,7 @@ const SECTION_SLUGS = new Set([
 	'appearance',
 	'data',
 	'reports',
+	'archived',
 	'account',
 	'workspace',
 	'local-inference',
@@ -146,8 +140,7 @@ const SECTION_SLUGS = new Set([
 	'routing',
 	'contribute',
 	'evaluate',
-	'connectors',
-	'connections'
+	'connectors'
 ]);
 
 export function settingsSections(input: SettingsSectionInput): SettingsSection[] {
@@ -170,11 +163,13 @@ export function settingsSections(input: SettingsSectionInput): SettingsSection[]
 		entry('personalization', m.product_personalization(), RiUserHeartLine),
 		entry('appearance', m.product_appearance(), RiPaletteLine),
 		entry('data', m.product_dataPrivacy(), RiShieldUserLine),
-		// What this visitor reported and what the team decided. A guest's are kept by session. (CUR-3903)
-		{ ...entry('reports', m.product_yourReports(), RiFlagLine), ariaLabel: m.product_yourReportsAria() }
+		// What this visitor reported and what the team decided. A guest's are kept by session.
+		{ ...entry('reports', m.product_yourReports(), RiFlagLine), ariaLabel: m.product_yourReportsAria() },
+		// Chats archived out of the sidebar, to unarchive or delete.
+		entry('archived', m.product_archivedChats(), RiArchiveLine)
 	];
 	// The services chat is connected to, and which of their tools run without asking. A
-	// guest's choices are kept by session, like the rest of their settings. (CUR-3984)
+	// guest's choices are kept by session, like the rest of their settings.
 	if (input.connectorsEnabled) {
 		list.push({ ...entry('connectors', m.product_connectors(), RiPlugLine), ariaLabel: m.product_connectorsAria() });
 	}
@@ -193,19 +188,15 @@ export function settingsSections(input: SettingsSectionInput): SettingsSection[]
 	}
 	if (input.signedIn) {
 		list.push(entry('account', m.product_account(), RiUserLine));
-		// The apps this person let read and write their conversations, each with Disconnect. (CUR-4312)
-		if (input.thunderboltSyncEnabled) {
-			list.push({ ...entry('connections', m.product_connections(), RiLinksLine), ariaLabel: m.product_connectionsAria() });
-		}
-		// The person's own stored files, opened inside the settings pane (CUR-1769) so this
-		// entry switches the pane like its siblings instead of leaving settings. (CUR-1682)
+		// The person's own stored files, opened inside the settings pane so this
+		// entry switches the pane like its siblings instead of leaving settings.
 		if (input.custodialStorageEnabled) {
 			list.push({
 				...entry('storage', m.product_storage(), RiFolderLine),
 				ariaLabel: m.product_storageAria()
 			});
 		}
-		if (input.workspacesEnabled) list.push(entry('workspace', m.product_workspace(), RiTeamLine));
+		list.push(entry('workspace', m.product_workspace(), RiTeamLine));
 		if (input.localInferenceEnabled) {
 			list.push(entry('local-inference', m.product_localInference(), RiServerLine));
 		}
@@ -222,7 +213,7 @@ export function settingsSections(input: SettingsSectionInput): SettingsSection[]
 	// Potluck: how Auto picks a model per message (with every model's scores; edits apply on this
 	// device), and ways to help fill Alpha's gaps — where the sidebar's "Get involved" card and the
 	// composer's language-gap notice lead. Model routing is developer-only, like Model settings: the
-	// lab still carries a PLACEHOLDER badge (CUR-3252), so it is not live for visitors on prod.
+	// lab still carries a PLACEHOLDER badge, so it is not live for visitors on prod.
 	if (input.devTools) list.push({ ...entry('routing', m.product_modelRouting(), RiFlaskLine, 'potluck'), badge: 'Dev' });
 	list.push(entry('contribute', m.product_contribute(), RiHandHeartLine, 'potluck'));
 	// The evaluation flow itself, one click from the nav, opened inside the settings pane like its siblings.
@@ -236,12 +227,15 @@ export interface SettingsExternalLink {
 	icon: Component<Record<string, unknown>>;
 }
 
-/** Pages outside settings that the settings list links to. They open in a new tab, so settings stays. */
-export function settingsExternalLinks(): SettingsExternalLink[] {
-	return [
-		{ href: '/privacy-notice', label: m.product_aboutPrivacy(), icon: RiInformationLine },
-		{ href: 'https://status.aipotluck.org', label: m.product_statusPage(), icon: RiPulseLine }
-	];
+/**
+ * Pages outside settings that the settings list links to. They open in a new tab, so settings stays.
+ * The status page is the deployment's own (page.data.statusPageUrl, statusPage.ts); a self-host with no
+ * STATUS_PAGE_URL has none, so the entry is left out rather than sending people to ours.
+ */
+export function settingsExternalLinks(statusPageUrl: string | null | undefined): SettingsExternalLink[] {
+	const links: SettingsExternalLink[] = [{ href: '/privacy-notice', label: m.product_aboutPrivacy(), icon: RiInformationLine }];
+	if (statusPageUrl) links.push({ href: statusPageUrl, label: m.product_statusPage(), icon: RiPulseLine });
+	return links;
 }
 
 /** A settings page that needs more width than the reading column (evaluation's side-by-side rating). */

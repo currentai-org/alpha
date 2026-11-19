@@ -1,7 +1,7 @@
 // Free of imports on purpose. The chunk store (server/db/uploadChunks.ts) reads these, and
-// the cleanup cron that sweeps it also runs under tsx in scripts/verify-cleanup.ts, outside Vite. (CUR-1780)
-/** With the `chunked-uploads` flag on, a file may arrive in chunks and this ceiling, the
- * design's 20 MB, applies instead. Each chunk request stays under Vercel's body cap and the server
+// the cleanup cron that sweeps it also runs under tsx in scripts/verify-cleanup.ts, outside Vite.
+/** A file over the single-request ceiling arrives in chunks, and this ceiling, the design's 20 MB,
+ * applies instead. Each chunk request stays under Vercel's body cap and the server
  * checks the reassembled file whole, so policy sets this number. */
 export const CUSTODIAL_MAX_BYTES_PER_CHUNKED_FILE = 20_000_000;
 

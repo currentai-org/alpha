@@ -1,5 +1,5 @@
 // A staff read of conversation content is recorded in the security dataset and in
-// admin_audit, with its reason, and never with the content itself. (CUR-4385)
+// admin_audit, with its reason, and never with the content itself.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const securityInfo = vi.fn();
@@ -10,7 +10,7 @@ vi.mock("$lib/chat/server/db/ipHash", () => ({ hashIp: (ip: string | null) => (i
 
 const { acceptableReason, recordStaffContentRead } = await import("./staffContentRead");
 
-describe("staff content reads (CUR-4385)", () => {
+describe("staff content reads", () => {
 	beforeEach(() => {
 		securityInfo.mockReset();
 		logAdminActionSafe.mockReset();

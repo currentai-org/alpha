@@ -2,7 +2,7 @@
 // A shared storage token has a Hub budget of 3000 calls per 5 minutes, so it matters which route
 // spends them. Every custodialStorage.ts call on that token passes `fetch: hubFetch`,
 // and hooks/handle.ts puts the request's tally on its "Request completed" line. A linked bucket's
-// calls run on the person's own token and are left out, so the count is the shared token's alone. (CUR-3682)
+// calls run on the person's own token and are left out, so the count is the shared token's alone.
 import { getRequestContext } from "$lib/chat/server/requestContext";
 
 const REPO_TYPES = new Set(["models", "datasets", "spaces", "buckets"]);

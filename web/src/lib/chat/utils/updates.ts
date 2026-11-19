@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 // This is a debouncer for the updates from the server to the client
 // It is used to prevent the client from being overloaded with too many updates
 // It works by keeping track of the time it takes to render the updates

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { navigating } from "$app/state";
 import { tick } from "svelte";
 
@@ -34,6 +37,30 @@ const getFollowBottom = (value: MaybeScrollDependency): boolean => {
 		return (value as ScrollDependency).followBottom ?? true;
 	}
 	return true;
+};
+
+// each scroll node this action runs on, mapped to "is it still following the bottom?". A card
+// that needs to be seen when it appears (an agent approval) asks through revealIfFollowing, so it moves the
+// view under the same rule as the autoscroll: never after the person has scrolled up to read.
+const following = new WeakMap<HTMLElement, () => boolean>();
+
+/**
+ * Scroll `el` into view, by the least movement, when the chat scroll it sits in is still following the
+ * bottom. Leaves the view alone when the person has scrolled up or is scrolling, and when `el` is in no
+ * snapScrollToBottom node. Returns whether it scrolled.
+ *
+ * Unlike the ResizeObserver follow, this ignores `followBottom: false`: a long answer pinned to the top
+ * should not chase its streaming cursor, but a card waiting on the person must still be seen.
+ */
+export const revealIfFollowing = (el: HTMLElement): boolean => {
+	for (let node = el.parentElement; node; node = node.parentElement) {
+		const isFollowing = following.get(node);
+		if (!isFollowing) continue;
+		if (!isFollowing()) return false;
+		el.scrollIntoView({ block: "nearest", behavior: "instant" });
+		return true;
+	}
+	return false;
 };
 
 /**
@@ -287,6 +314,8 @@ export const snapScrollToBottom = (node: HTMLElement, dependency: MaybeScrollDep
 
 	// --- Setup ----------------------------------------------------------------
 
+	following.set(node, () => !isDetached && !userScrolling);
+
 	node.addEventListener("wheel", handleWheel, { passive: true });
 	node.addEventListener("touchstart", handleTouchStart, { passive: true });
 	node.addEventListener("touchmove", handleTouchMove, { passive: true });
@@ -310,6 +339,7 @@ export const snapScrollToBottom = (node: HTMLElement, dependency: MaybeScrollDep
 		update: updateScroll,
 		destroy: () => {
 			clearUserScrollTimeout();
+			following.delete(node);
 
 			node.removeEventListener("wheel", handleWheel);
 			node.removeEventListener("touchstart", handleTouchStart);

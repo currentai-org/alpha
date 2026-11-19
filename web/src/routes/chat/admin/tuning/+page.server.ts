@@ -1,5 +1,5 @@
 // Operator override panel (reviewers/editors edit prompts + params without a deploy) — see
-// $lib/chat/server/tuning.ts for the row shape and its long-term-disposition note (CUR-893).
+// $lib/chat/server/tuning.ts for the row shape and its long-term-disposition note.
 // Gated by the unified admin login (adminAuth) like the other /admin panels. Unauthenticated
 // visitors bounce to the /admin portal (which carries the login form); the shared admin cookie then
 // authorizes this page.
@@ -71,7 +71,7 @@ function safetyWarnings(t: Tuning): string[] {
 }
 
 // Non-blocking, same reasoning as safetyWarnings: an operator may genuinely want a small fixed
-// set (a campaign, a demo), so warn rather than reject. Catches the CUR-620/CUR-893 footgun —
+// set (a campaign, a demo), so warn rather than reject. Catches the footgun —
 // pickRotatingStarters (starterRotation.ts) short-circuits at pool.length <= count and just
 // returns the whole pool unshuffled, so a starters override this small silently freezes what
 // every visitor sees instead of rotating it.

@@ -186,7 +186,7 @@ describe.sequential("POST /conversation/[id]/report", () => {
 
 		expect(await reportsFor(conv._id.toString())).toHaveLength(0);
 	});
-	describe("CUR-3520: a report counts against the shared per-IP limit", () => {
+	describe("a report counts against the shared per-IP limit", () => {
 		it("charges the limiter with the reporter's session and address before saving", async () => {
 			const { locals } = await createTestUser();
 			const conv = await createTestConversation(locals);

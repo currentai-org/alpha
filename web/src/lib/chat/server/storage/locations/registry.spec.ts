@@ -198,7 +198,7 @@ describe("resolveUploadLocation: a broken default fails loudly, never silently i
 	});
 });
 
-describe("CUR-3077: 'Last used' resolves to the most recent upload's location, falling back to Alpha storage", () => {
+describe("'Last used' resolves to the most recent upload's location, falling back to Alpha storage", () => {
 	it("an account that never chose follows its last upload into its linked bucket", async () => {
 		link("loc1", "u1");
 		await recordUpload("u1", "loc1");
@@ -237,7 +237,7 @@ describe("CUR-3077: 'Last used' resolves to the most recent upload's location, f
 	});
 });
 
-describe("CUR-3077: 'ask' asks only when there is more than one place", () => {
+describe("'ask' asks only when there is more than one place", () => {
 	it("a saved 'ask' with only Alpha storage left uploads to Alpha storage with no prompt", async () => {
 		prefs.set("u1", "ask");
 		expect((await resolveUploadLocation("u1")).kind).toBe("alpha");

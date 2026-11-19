@@ -33,18 +33,15 @@
 	interface Props {
 		/** Mobile row under the header: smaller trigger. */
 		compact?: boolean;
-		/** Marketing embed: reset fixture data only — never open the real GDPR wipe modal. */
-		embeddedDemo?: boolean;
 		/** Show "Forget everything" beside the stats. Off in the chat (it lives in Settings → Data & privacy). */
 		forget?: boolean;
-		onDemoForgetEverything?: () => void;
 	}
 
-	let { compact = false, embeddedDemo = false, forget = true, onDemoForgetEverything }: Props = $props();
+	let { compact = false, forget = true }: Props = $props();
 
 	const footprint = useSessionFootprintStore();
 	// The datacenter clause below must not claim "several Swiss backends" unless the serving
-	// config says so — derived from the one flag every "may this surface name Switzerland" reads. (CUR-1389)
+	// config says so — derived from the one flag every "may this surface name Switzerland" reads.
 	const serving = $derived(page.data.servingProvenance ?? resolveServing());
 
 	let open = $state(false);
@@ -103,11 +100,6 @@
 	});
 
 	function openDeleteAll() {
-		if (embeddedDemo) {
-			footprint.reset();
-			onDemoForgetEverything?.();
-			return;
-		}
 		deleteAllAnchor.set(forgetBtnEl ?? undefined);
 		deleteAllMode.set('data');
 		deleteAllOpen.set(true);
@@ -135,7 +127,7 @@
 	let lastTime: string | undefined;
 	// The figures alone go unnoticed. After each reply the trigger says, for a few seconds,
 	// what that reply cost in everyday terms ("a light bulb for 3 s"). It grows inside the trigger rather
-	// than floating over the thread: a card floating over the messages would cover the Edit box (CUR-1925). (CUR-4266)
+	// than floating over the thread: a card floating over the messages would cover the Edit box.
 	let lastEnergyWh: number | undefined;
 	let replyNote = $state<string | null>(null);
 	let replyNoteTimer: ReturnType<typeof setTimeout> | undefined;
@@ -161,7 +153,7 @@
 
 {#snippet triggerBody()}
 			<!-- The server has no sessionStorage, so its store reads zero: the figures stay hidden until the
-			     browser's store has loaded, or a reload flashes "0Wh" over a session that used energy (CUR-1890). -->
+			     browser's store has loaded, or a reload flashes "0Wh" over a session that used energy. -->
 			<span
 				class="flex items-center gap-1 tabular-nums"
 				class:text-fg-1={footprint.hasActivity && !revealing}

@@ -5,7 +5,7 @@ export type CopyState = "idle" | "copied" | "failed";
 /**
  * A copy control's feedback: "copied" or "failed" after each copy, back to idle after a delay.
  * One reset timer, cleared by the next copy, so an earlier copy's timer can't cut a later
- * one short. CUR-2823: a refused copy reads "failed" instead of looking like nothing happened. (CUR-2920)
+ * one short. a refused copy reads "failed" instead of looking like nothing happened.
  */
 export class CopyFeedback {
 	state = $state<CopyState>("idle");

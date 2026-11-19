@@ -11,11 +11,10 @@ import {
 
 const enc = (s: string) => new TextEncoder().encode(s);
 
-/** A PDF of `n` pages that all show one shared content stream reading "x". */
-function pagesPdf(n: number): Uint8Array {
+/** A PDF of `n` pages that all show one shared content stream, by default one reading "x". */
+function pagesPdf(n: number, content = "BT /F1 12 Tf 72 720 Td (x) Tj ET"): Uint8Array {
 	const objs: string[] = [];
 	const kids = Array.from({ length: n }, (_, i) => `${4 + i} 0 R`).join(" ");
-	const content = "BT /F1 12 Tf 72 720 Td (x) Tj ET";
 	objs[1] = "<< /Type /Catalog /Pages 2 0 R >>";
 	objs[2] = `<< /Type /Pages /Count ${n} /Kids [${kids}] >>`;
 	objs[3] = `<< /Length ${content.length} >>\nstream\n${content}\nendstream`;
@@ -107,7 +106,7 @@ describe("extractTextFromUpload", () => {
 	});
 
 	// Chat attachments arrive as base64 and decode to a Node Buffer, often a view into Node's shared
-	// pool. unpdf refuses a Buffer outright, and the refusal read as "corrupt" (CUR-987).
+	// pool. unpdf refuses a Buffer outright, so the extractor must hand it a plain copy.
 	it("reads a PDF handed over as a pooled Buffer, the shape a chat attachment decodes to", async () => {
 		const fixture = readFileSync(
 			join(import.meta.dirname, "../../../../../e2e/scenarios/fixtures/expenses-policy.pdf")
@@ -117,8 +116,8 @@ describe("extractTextFromUpload", () => {
 		expect(out.text).toContain("37 EUR");
 	});
 
-	// A few KB of PDF can name thousands of pages, and reading them all takes 10.7 s at 10,000 and runs
-	// node out of memory at 30,000 (CUR-3837). The limit is checked before any page is read.
+	// A few KB of PDF can name tens of thousands of pages, and reading them all takes seconds and can
+	// run node out of memory. The limit is checked before any page is read.
 	it("refuses a PDF over the page limit before reading any page, naming the limit", async () => {
 		const bytes = readFileSync(
 			join(import.meta.dirname, "../../../../../e2e/scenarios/fixtures/too-many-pages.pdf")
@@ -131,6 +130,18 @@ describe("extractTextFromUpload", () => {
 	it("still reads a PDF at exactly the page limit", async () => {
 		const out = await extractTextFromUpload({ bytes: pagesPdf(1_000), name: "long.pdf", kind: "pdf" });
 		expect(out.text).toContain("x");
+	});
+
+	// A scan is pages of pictures with no text layer, so the parser reads nothing. Until OCR runs, the
+	// person is told so in plain words and how to send it instead, never handed an empty answer.
+	it("refuses a PDF with no text layer, a scan, in plain words that say what to send instead", async () => {
+		// Two pages that only draw (a line and a filled box), as a page holding a scanned picture has no text.
+		const scan = pagesPdf(2, "0 0 m 300 300 l S 72 72 200 100 re f");
+		const out = extractTextFromUpload({ bytes: scan, name: "scanned-letter.pdf", kind: "pdf" });
+		await expect(out).rejects.toThrow(RagExtractError);
+		await expect(out).rejects.toThrow(
+			"No text layer found (scanned PDF?). Upload a text-based PDF, or upload the page as an image."
+		);
 	});
 
 	it("rejects empty files", async () => {

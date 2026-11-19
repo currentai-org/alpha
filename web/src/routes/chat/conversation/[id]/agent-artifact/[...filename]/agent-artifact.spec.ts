@@ -2,13 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ObjectId } from "bson";
 
 // An agent turn saves its files with the conversation, and the reply's download link reads
-// that copy before agent-service's workdir, which a deploy or the idle reaper erases. (CUR-4398)
+// that copy before agent-service's workdir, which a deploy or the idle reaper erases.
 const download = vi.fn();
 vi.mock("$lib/chat/server/files/downloadFile", async (orig) => ({
 	...(await orig<typeof import("$lib/chat/server/files/downloadFile")>()),
 	downloadFile: (...args: unknown[]) => download(...args),
 }));
-vi.mock("$lib/chat/server/agentArtifactDownload", () => ({ agentArtifactDownloadEnabled: () => true }));
 vi.mock("$lib/chat/server/agentMode", () => ({
 	agentServiceUrl: () => "http://agent.test",
 	agentServiceToken: () => "",

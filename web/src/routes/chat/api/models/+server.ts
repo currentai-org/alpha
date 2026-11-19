@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { models } from "$lib/chat/server/models";
 import { evalFingerprint } from '$lib/chat/server/evalFingerprint';
 import evaluationGeneration from '$lib/chat/server/data/eval/generation-v1.json';
@@ -5,7 +8,7 @@ import { modelTakesImagesNow } from "$lib/chat/server/textOnly";
 import type { RequestHandler } from "@sveltejs/kit";
 
 // `private`: the list varies per caller again, because whether a model takes images is the
-// per-account `multimodal` flag (CUR-2725). Don't loosen it to a shared cache.
+// per-account `multimodal` flag. Don't loosen it to a shared cache.
 const MODELS_CACHE_HEADERS = { "Cache-Control": "private, max-age=60" };
 
 export const GET: RequestHandler = async () => {

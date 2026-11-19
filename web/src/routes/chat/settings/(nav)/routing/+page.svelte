@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages.js';
 	import { page } from "$app/state";
+	import { base } from "$lib/chat/paths";
 	import { Badge, Button, Input, Select, Switch, Textarea, Toggle, ToggleGroup } from "@aipotluck/alpha-ds";
 	import OrgLogo from "$lib/chat/components/provenance/OrgLogo.svelte";
 	import { catalog, orgs } from "$lib/chat/routing/catalog";
@@ -289,6 +290,13 @@
 		<section class="flex flex-col gap-3" aria-labelledby="scores-heading">
 			<div class="flex flex-col gap-1">
 				<h2 id="scores-heading" class="type-label text-fg-1">{m.routing_scoresTitle()}</h2>
+				<a
+					href={`${base}/languages?language=${encodeURIComponent(analysis.language.value)}`}
+					target="_blank"
+					rel="noopener"
+					class="self-start type-caption text-fg-1 underline decoration-line-3 underline-offset-2 hover:decoration-fg-1"
+					data-routing-lab-scores-link>{m.product_languagesScores()}</a
+				>
 				<p class="type-caption text-fg-2">
 					Picked: <span class="text-fg-1">{choice.model.name}</span>. Needs reasoning ≈ {choice.target}. For this
 					message: <span data-routing-lab-shares>{draftShares}</span>.

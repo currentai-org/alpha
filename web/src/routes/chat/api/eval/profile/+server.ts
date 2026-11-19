@@ -1,5 +1,5 @@
-// Declare a language and a level, and agree to how ratings are used, before the first rating
-// (CUR-1914). Signed-in only.
+// Declare a language and a level, and agree to how ratings are used, before the first rating.
+// Signed-in only.
 import { error, type RequestHandler } from "@sveltejs/kit";
 import { json } from "$lib/chat/server/api/utils/json";
 import { z } from "zod";

@@ -2,7 +2,7 @@
  * Read a response body with a hard byte cap, cancelling the stream the moment it is passed, so a body
  * with no or a lying Content-Length (or a decompression bomb) is never fully buffered. Returns null
  * when the cap is passed; the caller says what that means. Shared by the admin RAG ingest and
- * api/fetch-url (CUR-3191).
+ * api/fetch-url.
  */
 export async function readCappedBytes(res: Response, maxBytes: number): Promise<Uint8Array<ArrayBuffer> | null> {
 	const body = res.body;

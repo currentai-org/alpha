@@ -1,5 +1,5 @@
 /**
- * A friendly default name for a machine someone is about to pair (CUR-3168).
+ * A friendly default name for a machine someone is about to pair.
  *
  * The managed-server form asks for a name before there is anything to look at, and "what should I
  * call it?" is a worse first question than it sounds: the name is only a label in a list, so any

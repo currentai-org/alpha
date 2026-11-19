@@ -47,7 +47,7 @@ function declareSize(zip: Uint8Array, size: number): Uint8Array {
 
 const file = (bytes: Uint8Array, name: string, type: string) => new File([new Uint8Array(bytes)], name, { type });
 
-describe('documentAsText (CUR-987, document-text-only)', () => {
+describe('documentAsText ( document-text-only)', () => {
 	it('keeps only the text of a PDF that also holds a picture, as a .txt with no picture bytes in it', async () => {
 		const out = await documentAsText(file(GARDEN_PDF, 'report.pdf', 'application/pdf'), 'application/pdf', {
 			logger: quietLog

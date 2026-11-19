@@ -1,0 +1,21 @@
+{
+	"apexDomain": "example.test",
+	"siteHost": "www.example.test",
+	"siteDevelopHost": "develop.example.test",
+	"chatHost": "alpha.example.test",
+	"chatDevelopHost": "alpha-develop.example.test",
+	"chatAliasHosts": ["chat.example.test"],
+	"mediaOrigins": ["https://content.example.test"],
+	"previewTrustedOrigins": [
+		"https://alpha-?????????-example.vercel.app",
+		"https://alpha-git-*-example.vercel.app"
+	],
+	"modelRouterHost": "router.stg.example.test",
+	"statusPageUrl": "https://status.example.test",
+	"userAgent": "example.test",
+	"crawlerAgent": "AIPotluck/0.1",
+	"contactEmail": "contact@example.test",
+	"mailFrom": "AI Potluck <noreply@mail.example.test>",
+	"sourceName": "AI Potluck (example.test)",
+	"publisher": { "name": "Example Org", "url": "https://example.test" }
+}

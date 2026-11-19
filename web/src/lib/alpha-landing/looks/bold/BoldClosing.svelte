@@ -1,7 +1,7 @@
 <script lang="ts">
 	import ArrowRightIcon from '@lucide/svelte/icons/arrow-right';
 	import ArrowUpRightIcon from '@lucide/svelte/icons/arrow-up-right';
-	import PotluckMark from '$lib/chat/components/PotluckMark.svelte';
+	import PotluckGlyph from '../../PotluckGlyph.svelte';
 	import { isExternalHref } from '$lib/utils/hrefs';
 	import { getAlphaLandingContent } from '../../content.svelte';
 	const readContent = getAlphaLandingContent();
@@ -23,7 +23,7 @@
 			<p
 				class="flex items-center gap-3 font-mono text-[13px] tracking-[0.16em] text-white/80 uppercase"
 			>
-				<PotluckMark class="size-4 text-(--bold-coral)" />
+				<PotluckGlyph class="size-4 text-(--bold-coral)" />
 				{closing.eyebrow}
 			</p>
 			<h2

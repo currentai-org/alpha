@@ -1,7 +1,7 @@
 import { paraglideOptions } from "../paraglide.config.js";
 
 // `prepare` runs this on every install, including `pnpm install --prod`, which leaves out this
-// devDependency: the scheduled sign-in probe's install fails without it (SOL-194).
+// devDependency: the scheduled sign-in probe's install fails without it.
 // `--if-installed` lets that one caller skip; check and build still fail loudly without it.
 let compile;
 try {

@@ -1,7 +1,10 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { generateFromDefaultEndpoint } from "$lib/chat/server/generateFromDefaultEndpoint";
 import { MessageUpdateType } from "$lib/chat/types/MessageUpdate";
 
-/** A side call, so it runs on TASK_MODEL rather than the model that is reasoning (CUR-2092). */
+/** A side call, so it runs on TASK_MODEL rather than the model that is reasoning. */
 export async function generateSummaryOfReasoning(
 	reasoning: string,
 	locals: App.Locals | undefined

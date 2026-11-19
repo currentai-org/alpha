@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Multi-toolset reliability test (a launch-gate check for a cheaper mixture-of-experts model).
+# Multi-toolset reliability test (brief §9 — the launch-gate for the cheap MoE).
 # The worry: a LARGER tool schema (more toolsets = bigger system prompt) is exactly what made
 # Llama-3.3-70B hallucinate tool-calls. This loads 6 toolsets and gives a task that forces 4
 # DISTINCT tools (todo -> code_execution -> file -> terminal), then asserts the real result.

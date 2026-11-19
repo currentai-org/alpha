@@ -8,8 +8,7 @@ import { UPSTREAM_UNANSWERED_ANNOTATION } from './helpers/upstreamAdvisory';
 
 // A message longer than the model can read must not go out, come back as the gateway's
 // context-length 400, and end on "couldn't answer this time. Press Retry", which would resend the same
-// message and fail the same way. The server refuses it before calling and says to shorten it
-// (CUR-2893).
+// message and fail the same way. The server refuses it before calling and says to shorten it.
 //
 // Reaching the refusal from the product takes a self-hosted model, whose lanes serve 32000 tokens,
 // and a paste dense enough to be over it: 100,000 CJK characters are 300,000 bytes, which the
@@ -97,7 +96,7 @@ test(
 		).toBeLessThan(30_000);
 		await expect(reply).not.toContainText(/couldn't answer this time/);
 		await expect(reply).not.toContainText(/maximum context length/);
-		// The planner reads text only (CUR-3011), so on this paste it would stamp "Total: 1 characters
+		// The planner reads text only, so on this paste it would stamp "Total: 1 characters
 		// (arithmetic checked by code)" above the refusal. A turn carrying a file is not planned.
 		await expect(
 			reply,
@@ -153,8 +152,8 @@ async function growPastContext(page: Page, modelId: string) {
 		timeout: 120_000
 	});
 	await expect(answers.first()).not.toContainText(/couldn't answer this time/);
-	// A 100k paste is 117 guard calls, and on the shared guard the screen gives up on most of them
-	// (CUR-3749). The decline is prose too, so without this the red would blame the fitting.
+	// A 100k paste is 117 guard calls, and on the shared guard the screen gives up on most of them.
+	// The decline is prose too, so without this the red would blame the fitting.
 	await expect(
 		answers.first(),
 		"the input screen didn't finish the first 100k paste, so nothing here reached the fitting (CUR-3749)"

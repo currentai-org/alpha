@@ -5,7 +5,7 @@ import { buildLoggerOptions } from "./loggerOptions";
 import { runWithRequestContext } from "./requestContext";
 import { createHash } from "node:crypto";
 
-// CUR-1721. Every assertion reads the SERIALIZED line from a real pino built with the production
+// Every assertion reads the SERIALIZED line from a real pino built with the production
 // options, because that line is what both Axiom datasets receive. A sentinel stands in for what a
 // user typed; if it appears anywhere in the line, the content reached the log.
 // Written out here rather than imported, so a field dropped from logRedaction.ts goes red.

@@ -62,11 +62,29 @@ describe("isSameMistralModel", () => {
 		}
 	});
 
-	it("credits Medium to its pin when the router asks for mistral-medium-3-5 and the list is too slow (CUR-4652)", async () => {
+	it("credits Medium to its pin when the router asks for mistral-medium-3-5 and the list is too slow", async () => {
 		vi.useFakeTimers();
 		try {
 			vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
 			const p = isSameMistralModel("openai/mistral-medium-3-5", "mistral-medium-2604");
+			await vi.advanceTimersByTimeAsync(2_500);
+			expect(await p).toBe(true);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	// api-internal's LiteLLM names the provider it called as `mistral/`, where router.stg said `openai/`.
+	it("credits the dated version when the router names the model with a mistral/ provider prefix", async () => {
+		serve(MODELS);
+		expect(await isSameMistralModel("mistral/mistral-medium-3-5", "mistral-medium-2604")).toBe(true);
+	});
+
+	it("credits the dated version from the snapshot when the router names the model with a mistral/ provider prefix and the list is too slow", async () => {
+		vi.useFakeTimers();
+		try {
+			vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
+			const p = isSameMistralModel("mistral/mistral-medium-3-5", "mistral-medium-2604");
 			await vi.advanceTimersByTimeAsync(2_500);
 			expect(await p).toBe(true);
 		} finally {
@@ -105,7 +123,7 @@ describe("isSameMistralModel", () => {
 	});
 
 	// An instance that sends chat through its own adapter, which forwards completions only, needs the
-	// list from the router behind it (CUR-3841).
+	// list from the router behind it.
 	it("reads the list from the router behind a Folkways adapter lane, not from the adapter", async () => {
 		cfg.MISTRAL_API_KEY = undefined;
 		cfg.MISTRAL_CHAT_BASE_URL = "https://event.example.test/folkways-adapter/mistral/v1";

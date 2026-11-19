@@ -1,6 +1,8 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { base } from "$lib/chat/paths";
 import { browser } from "$app/environment";
-import { tryDemoApiFetch } from "$lib/chat/demoApiFetch";
 import superjson from "superjson";
 import ObjectId from "bson-objectid";
 
@@ -49,8 +51,7 @@ async function apiCall<T = unknown>(
 		init.body = JSON.stringify(body);
 	}
 
-	const demoResponse = tryDemoApiFetch(u.toString(), init);
-	const res = demoResponse ?? (await fetcher(u.toString(), init));
+	const res = await fetcher(u.toString(), init);
 	if (!res.ok) {
 		let errorBody: unknown;
 		try {
@@ -119,10 +120,10 @@ export function useAPIClient({
 			reports: endpoint(fetcher, `${baseUrl}/user/reports`),
 			"billing-orgs": endpoint(fetcher, `${baseUrl}/user/billing-orgs`),
 			// client.user["local-inference-endpoints"].get()/.post(body), or
-			// client.user["local-inference-endpoints"]({ id }).delete() for one row. (CUR-1262)
+			// client.user["local-inference-endpoints"]({ id }).delete for one row.
 			// .managed.post(body) provisions a managed (tunnel) endpoint;
 			// ({ id }).status.get() polls its online/offline state; .managed.availability.get() checks
-			// whether Pangolin is actually reachable right now (Settings UI's Pair-button disable). (CUR-1266)
+			// whether Pangolin is actually reachable right now (Settings UI's Pair-button disable).
 			"local-inference-endpoints": Object.assign(
 				(params: { id: string }) => ({
 					...endpoint(fetcher, `${baseUrl}/user/local-inference-endpoints/${params.id}`),
@@ -152,13 +153,15 @@ export function useAPIClient({
 			config: endpoint(fetcher, `${baseUrl}/debug/config`),
 		},
 		export: endpoint(fetcher, `${baseUrl}/export`),
+		// The tags on the caller's sidebar chats.
+		tags: endpoint(fetcher, `${baseUrl}/tags`),
 	};
 }
 
 // Callers that need to tell "not found/not yours" (404/403) apart from a network blip —
 // e.g. a stale conversation link after signing in — read `.status` off the thrown error instead of
 // parsing `.message`. `ApiResponse.status` was already threaded through from apiCall; handleResponse
-// just wasn't carrying it onto what it throws. (CUR-849)
+// just wasn't carrying it onto what it throws.
 export class ApiError extends Error {
 	constructor(
 		public status: number,

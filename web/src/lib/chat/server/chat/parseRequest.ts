@@ -53,6 +53,28 @@ import type { Conversation } from "$lib/chat/types/Conversation";
 import type { Message } from "$lib/chat/types/Message";
 import { messageTooLongMessage } from "$lib/chat/utils/messageTooLong";
 
+/**
+ * Reads the `data` field as a chat request. A body that is not JSON, or fails the schema, is the
+ * caller's mistake: it answers 400 naming the bad fields (names only, never values) and logs at warn,
+ * rather than letting a JSON SyntaxError or ZodError reach SvelteKit as a 500 and an exception capture.
+ */
+function parseChatRequestData(json: string): ChatRequestPayload {
+	let raw: unknown;
+	try {
+		raw = JSON.parse(json);
+	} catch {
+		logger.warn({ fields: [] }, "chat request body is not valid JSON");
+		error(400, "Invalid request: the data field is not valid JSON");
+	}
+	const parsed = chatRequestSchema.safeParse(raw);
+	if (!parsed.success) {
+		const fields = [...new Set(parsed.error.issues.map((i) => i.path.join(".") || "(body)"))];
+		logger.warn({ fields }, "chat request body failed validation");
+		error(400, `Invalid request: ${fields.join(", ")}`);
+	}
+	return parsed.data;
+}
+
 /** The typed inputs a chat turn needs, parsed out of the multipart POST body. MCP selection and
  *  timezone are not returned — they are attached to `locals` as forward-looking pipeline context
  *  (see below). */
@@ -65,21 +87,24 @@ export interface ParsedChatRequest {
 	newMessageIds: ChatRequestPayload["newMessageIds"];
 	searchContext: ChatRequestPayload["searchContext"];
 	/** Never absent: a request with no mode is resolved to "off" here, once, so the persona, the classic
-	 *  search plan and the native path all read the same value (CUR-3293). */
+	 *  search plan and the native path all read the same value. */
 	webSearchMode: NonNullable<ChatRequestPayload["webSearchMode"]>;
 	speakAll: ChatRequestPayload["speakAll"];
 	speakMode: ChatRequestPayload["speakMode"];
 	agentMode: ChatRequestPayload["agentMode"];
 	autoRoute: ChatRequestPayload["autoRoute"];
+	/** Sealed history the browser opened, checked by hydrateSealedHistory before anything reads it. */
+	history: ChatRequestPayload["history"];
+	sealedPreprompt: ChatRequestPayload["preprompt"];
 	uploadedFiles: NonNullable<Message["files"]>;
-	/** Set when this turn's files were refused because they could not be scanned (CUR-2382). */
+	/** Set when this turn's files were refused because they could not be scanned. */
 	attachmentNotice?: string;
-	/** The files this turn left out, by name, so the sent message can still show them (CUR-3405). */
+	/** The files this turn left out, by name, so the sent message can still show them. */
 	leftOutFiles: NonNullable<Message["leftOutFiles"]>;
 }
 
 /** Whose attachment allowance a conversation's files count against, or undefined with no identity. A
- *  guest is also counted by network (CUR-3600). */
+ *  guest is also counted by network. */
 function attachmentOwner(
 	conv: { userId?: { toString(): string }; sessionId?: string },
 	clientAddress: string | undefined
@@ -97,23 +122,23 @@ function attachmentOwner(
  * the exact order the inline handler ran them so error precedence is preserved:
  *   - 400 if `data` is missing/non-string, then schema validation;
  *   - attaches the per-turn MCP selection + timezone to `locals` (forward-looking, see note below);
- *   - 413 if the message carries more than CHAT_ATTACHMENTS_MAX_COUNT files, pastes included (CUR-3530);
+ *   - 413 if the message carries more than CHAT_ATTACHMENTS_MAX_COUNT files, pastes included;
  *   - 415 if an attachment is present while the text-only alpha gate is closed;
  *   - 400 if the prompt exceeds the configured message-length limit;
  *   - 413 if a base64 upload exceeds the shared file-size cap;
  *   - 422 if an image attachment matches a known CSAM hash — the whole request is refused, nothing
- *     is uploaded (CUR-986). With no scanner configured, or one that does not answer, the files are
- *     dropped and the text still answered, with `attachmentNotice` set (CUR-2382);
+ *     is uploaded. With no scanner configured, or one that does not answer, the files are
+ *     dropped and the text still answered, with `attachmentNotice` set;
  *   - stores base64 files (hash refs pass through untouched): in the bucket where
  *     `custodial-storage-view` selects the owner, else in the files table. A throttled or stalled
- *     bucket, or a guest's full quota, sends the file to the files table and the turn goes on (CUR-2183,
- *     `storeChatAttachments`). A signed-in person's full quota answers 413 (CUR-3235).
+ *     bucket, or a guest's full quota, sends the file to the files table and the turn goes on (see
+ *     `storeChatAttachments`). A signed-in person's full quota answers 413.
  */
 export async function parseChatRequest(opts: {
 	request: Request;
 	conv: Conversation;
 	locals: App.Locals;
-	/** The caller's address, so a guest's attachments also count against their network (CUR-3600). */
+	/** The caller's address, so a guest's attachments also count against their network. */
 	clientAddress?: string;
 }): Promise<ParsedChatRequest> {
 	const { request, conv, locals } = opts;
@@ -142,9 +167,11 @@ export async function parseChatRequest(opts: {
 		webSearchMode,
 		agentMode,
 		autoRoute,
-	} = chatRequestSchema.parse(JSON.parse(json));
+		history,
+		preprompt: sealedPreprompt,
+	} = parseChatRequestData(json);
 
-	// Agent mode is for signed-in accounts (CUR-4400). The composer never offers it to a guest, so this
+	// Agent mode is for signed-in accounts. The composer never offers it to a guest, so this
 	// holds the line for a request that asks anyway: an explicit "on", or a re-attach to an agent task.
 	// "auto" is left to agentModeEnabledForUser, which routes a guest's turn to chat.
 	if (!locals.user && (agentMode === "on" || agentAttach)) {
@@ -182,7 +209,7 @@ export async function parseChatRequest(opts: {
 		.getAll("files")
 		.filter((entry): entry is File => entry instanceof File && entry.size > 0);
 	// Counted before any part is read, sniffed, scanned or stored. Pastes count too: the byte
-	// cap below leaves them out, so this is the only bound on how many writes one request asks for. (CUR-3530)
+	// cap below leaves them out, so this is the only bound on how many writes one request asks for.
 	if (fileParts.length > CHAT_ATTACHMENTS_MAX_COUNT) {
 		error(413, chatAttachmentsTooManyMessage());
 	}
@@ -202,14 +229,14 @@ export async function parseChatRequest(opts: {
 	// Reject any attachment server-side when the multimodal gate is shut. The UI hides upload, but
 	// enforce it here too so a crafted request can't slip a file/image through — a rejection that fires
 	// is a check that can go red, where a capability flag that is merely false is not. Gated, not
-	// removed. See $lib/chat/server/multimodalMode (CUR-159).
+	// removed. See $lib/chat/server/multimodalMode.
 	//
-	// A long paste is not an attachment (CUR-1895). The composer turns a paste of 3,984+ characters into
+	// A long paste is not an attachment. The composer turns a paste of 3,984+ characters into
 	// a clipboard-typed file so the message box stays usable, and prepareTurnMedia inlines it back into
 	// the prompt as text, through the same guard screen and size cap as anything else. Counting it here
 	// would fail every send after a long paste where this gate is shut. Only a fresh base64
 	// paste is exempt: a hash reference points at stored bytes, and stays behind the gate. The declared
-	// mime is the client's word, and uploadFile stores by sniffed type (see CUR-1449 below), so the
+	// mime is the client's word, and uploadFile stores by sniffed type (see the sniffing below), so the
 	// exemption also requires bytes with no binary signature — an image relabelled as a paste still 415s.
 	const isTextPaste = async (f: (typeof inputFiles)[number]) =>
 		f.type === "base64" &&
@@ -223,7 +250,7 @@ export async function parseChatRequest(opts: {
 	// Guests cannot attach files. Where sign-in is offered, a visitor without an account is
 	// asked to sign in first; the composer offers sign-in instead of the picker, and this holds the line
 	// for a request that skips it. A preview or production deployment refuses a guest's file even with sign-in
-	// off (CUR-4400); only local dev and CI, which have no sign-in, stay open.
+	// off; only local dev and CI, which have no sign-in, stay open.
 	const deployed = deployEnv() === "preview" || deployEnv() === "production";
 	if (attachments.length > 0 && !locals.user && (loginEnabled() || deployed)) {
 		error(403, SIGN_IN_TO_ATTACH_MESSAGE);
@@ -236,7 +263,7 @@ export async function parseChatRequest(opts: {
 	// each file is either:
 	// base64 string requiring upload to the server
 	// hash pointing to an existing file
-	// A hash reference names a file this conversation already stored. Where it lives (CUR-2930) is
+	// A hash reference names a file this conversation already stored. Where it lives is
 	// taken from the conversation's own copy of the reference, never from the request.
 	const storedLocations = new Map(
 		(conv.messages ?? []).flatMap((m) => m.files ?? []).flatMap((f) => (f.location ? [[f.value, f.location] as const] : []))
@@ -248,7 +275,7 @@ export async function parseChatRequest(opts: {
 				const location = storedLocations.get(file.value);
 				return location ? { ...file, location } : file;
 			}) ?? [];
-	// A long paste rides along as message text (CUR-1895 above), so it is never refused below.
+	// A long paste rides along as message text (see above), so it is never refused below.
 	const b64Inputs = inputFiles
 		.map((file, i) => ({ file, isPaste: pasteFlags[i] }))
 		.filter(({ file }) => file.type !== "hash");
@@ -259,7 +286,7 @@ export async function parseChatRequest(opts: {
 	const refusable = b64Inputs.map(({ isPaste }) => !isPaste);
 
 	// The cap is on the message's attachments together, because they share one request body
-	// (see $lib/chat/constants/uploadLimits). A paste rides as message text and is not counted here. (CUR-2631)
+	// (see $lib/chat/constants/uploadLimits). A paste rides as message text and is not counted here.
 	const attachedBytes = b64Files.reduce((sum, file, i) => (refusable[i] ? sum + file.size : sum), 0);
 	if (attachedBytes > CHAT_ATTACHMENTS_MAX_BYTES) {
 		error(413, chatAttachmentsTooLargeMessage());
@@ -267,19 +294,18 @@ export async function parseChatRequest(opts: {
 
 	// Scan every image attachment for a known-CSAM hash match before any of them reaches
 	// uploadFile — refuse the whole request rather than storing a file and rejecting it later.
-	// (CUR-986)
 	// `file.type` here is the CLIENT-DECLARED part Content-Type (set as `mime: file.type`
 	// above). Trusting it to pick what gets scanned would let a request label an image
 	// `application/octet-stream` and skip scanCsamHash entirely, while uploadFile.ts stores it as an
 	// image anyway, because that path sniffs the real bytes with fileTypeFromBuffer instead of
 	// trusting the header. Sniff here too, so the same real type decides both scan-selection and
 	// storage; a type fileTypeFromBuffer can't identify (e.g. plain text) falls back to the declared
-	// one, same as uploadFile.ts's own fallback. (CUR-1449)
+	// one, same as uploadFile.ts's own fallback.
 	const b64FileTypes = await Promise.all(
 		b64Files.map(async (file) => (await fileTypeFromBuffer(await file.arrayBuffer()))?.mime ?? file.type)
 	);
 	//
-	// CUR-2382, fail closed: no file is accepted unless it could be scanned. With no scanner configured
+	// Fail closed: no file is accepted unless it could be scanned. With no scanner configured
 	// (the composer offers no attach control then, so only a crafted request gets here) or one that
 	// does not answer, every file in the turn is dropped rather than stored, the text of the turn is
 	// still answered, and `attachmentNotice` tells the person why. Text files cannot be PDQ-hashed, so
@@ -302,7 +328,7 @@ export async function parseChatRequest(opts: {
 	};
 	// A type the composer never offers (a 7z, a program, a spreadsheet) is dropped here with
 	// its own line. Past this point it would be stored with no scan, since nothing can check it. A kept
-	// text file is relabelled with its bare type, which the prompt's document wrapper prints unescaped. (CUR-3832)
+	// text file is relabelled with its bare type, which the prompt's document wrapper prints unescaped.
 	const relabelled = new Map<File, File>();
 	const notAccepted = new Set<File>();
 	for (const file of b64Files) {
@@ -322,7 +348,7 @@ export async function parseChatRequest(opts: {
 	}
 	b64Files = b64Files.map((file) => relabelled.get(file) ?? file);
 	// A PDF or DOCX is opened only where `document-attachments` selects the account: its pictures are
-	// extracted in-process (CUR-2780 tracks the sandboxed parser). Elsewhere it is
+	// extracted in-process, not in a sandbox. Elsewhere it is
 	// dropped unopened, never stored unscanned.
 	const documentsAllowed = documentAttachmentsEnabled();
 	const unopenedDocuments = new Set(
@@ -355,7 +381,7 @@ export async function parseChatRequest(opts: {
 		attachmentNotice ??= DOCUMENTS_NOT_ACCEPTED_MESSAGE;
 	}
 	// Every file that can hold a picture is scanned, a PDF or DOCX by each image inside it,
-	// so a picture cannot reach the model or storage by arriving in a document. (CUR-987)
+	// so a picture cannot reach the model or storage by arriving in a document.
 	const scanned = b64Files
 		.map((file) => ({ file, target: scanTargetForMime(sniffedType.get(file) ?? file.type) }))
 		.filter(({ target }) => target !== null);
@@ -403,7 +429,7 @@ export async function parseChatRequest(opts: {
 	const csamMatch = scans.find((s) => s.status === "match");
 	if (csamMatch?.status === "match") {
 		// In runInBackground, not a bare `void`: the 422 below returns the response, and on Vercel a
-		// floating promise freezes with it, so the alert post and the Coop report never leave (CUR-2382).
+		// floating promise freezes with it, so the alert post and the Coop report never leave.
 		void runInBackground(
 			Promise.all([
 				recordCsamMatch(
@@ -426,15 +452,15 @@ export async function parseChatRequest(opts: {
 			])
 		);
 		// No reason, on purpose, but a next step: the client drops the file on a 422, so the rest
-		// of the message can go as it is. (CUR-3086)
+		// of the message can go as it is.
 		error(422, "This file couldn't be added, so it was taken off. You can send your message without it.");
 	}
 
 	// awaited, so the turn reads a stored copy. The bucket never stalls the turn: a write it
 	// fails or takes too long on goes to the files table instead (storeChatAttachments). A long paste is
-	// message text (CUR-1895 above), not a file the person gave Alpha, so it is stored out of My files
-	// and its quota. CUR-3235: a signed-in person's full My files answers 413, so the client drops the
-	// file and gives the text back. The composer refuses such a file at attach time; this is the race. (CUR-2183)
+	// message text (see above), not a file the person gave Alpha, so it is stored out of My files
+	// and its quota. A signed-in person's full My files answers 413, so the client drops the
+	// file and gives the text back. The composer refuses such a file at attach time; this is the race.
 	const toStore = b64Files.map((file) => {
 		const paste = file.type === CLIPBOARD_MIME && !refusableFiles.has(file);
 		// Real bytes labelled as a paste are an attachment, stored and referenced under their sniffed
@@ -444,13 +470,13 @@ export async function parseChatRequest(opts: {
 	});
 	// The 24-hour allowance bounds what one identity attaches across both stores. The composer
 	// checks it at attach (GET /chat/api/attachment-allowance); this is the race, and a request that
-	// skipped the composer. 413 for the same reason as a full My files: the file is what's refused. (CUR-3235)
+	// skipped the composer. 413 for the same reason as a full My files: the file is what's refused.
 	const allowanceOwner = attachmentOwner(conv, opts.clientAddress);
 	const attachedSizes = toStore.filter((f) => !f.paste).map((f) => f.file.size);
 	if (allowanceOwner && attachedSizes.length) {
 		const left = await attachmentAllowanceLeft(allowanceOwner);
 		const guest = !("userId" in allowanceOwner);
-		// Off: count and log, store anyway (CUR-3600). The log is what the production decision reads.
+		// Off: count and log, store anyway. The logged refusals are what to read before turning enforcement on.
 		if (!fitsAllowance(left, attachedSizes) && !attachmentAllowanceEnforced()) {
 			logger.info(
 				{ guest, network: left?.network === true, files: attachedSizes.length },
@@ -494,6 +520,8 @@ export async function parseChatRequest(opts: {
 		speakMode,
 		agentMode,
 		autoRoute,
+		history,
+		sealedPreprompt,
 		uploadedFiles,
 		attachmentNotice,
 		leftOutFiles,

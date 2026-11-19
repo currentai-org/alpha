@@ -37,14 +37,14 @@ const index = ragIndex as RagIndex;
 // embedding model doesn't change turn to turn), so each warns once per process rather than on every
 // query — the same posture openSearch.ts's warnedNoRerankerGrounding uses for the same reason: an
 // unconditional per-turn warn would spam the log forever once either condition trips, without adding
-// any new information after the first line. (CUR-879 — this reads as "the catalog has nothing
-// relevant" turn after turn without either warning existing at all.)
+// any new information after the first line. Without either warning, a broken index would read as
+// "the catalog has nothing relevant" turn after turn.
 let warnedEmptyIndex = false;
 let warnedModelMismatch = false;
 
-// Catalog products and organizations, one chunk each with its page url (CUR-888). ~1,750 chunks and
-// ~8.5MB, so it is read from disk on the first retrieval rather than imported: a cold start that
-// never retrieves never pays for it, and the build never parses it (CUR-2919). Built by
+// Catalog products and organizations, one chunk each with its page url. The file runs to
+// megabytes, so it is read from disk on the first retrieval rather than imported: a cold start that
+// never retrieves never pays for it, and the build never parses it. Built by
 // `build-rag-index.mjs --entities` from the gap-map database, so it can trail the live catalog until
 // the next rebuild.
 let entityChunks: Promise<IndexChunk[]> | undefined;
@@ -124,10 +124,10 @@ export async function queryLocalStore(query: string): Promise<Omit<RagSource, "n
 		);
 		return [];
 	}
-	// The authored corpus and the catalog entities each get their own top-K (CUR-2429). Ranked as one
-	// pool, ~1,800 entity chunks would fill all five slots for "Who runs Current AI?", the entity-scope
-	// guard would drop all five, and the about-us chunk that answers it would never reach the reranker. The reranker orders the merged list, so at most 2×K candidates
-	// reach it.
+	// The authored corpus and the catalog entities each get their own top-K. Ranked as one pool, the
+	// far more numerous entity chunks would fill all five slots for "Who runs Current AI?", the
+	// entity-scope guard would drop all five, and the about-us chunk that answers it would never reach
+	// the reranker. The reranker orders the merged list, so at most 2×K candidates reach it.
 	const entities = await loadEntityChunks();
 	const scored = [
 		...rankByCosine(qv, index.chunks, localMinScore(), localTopK()),

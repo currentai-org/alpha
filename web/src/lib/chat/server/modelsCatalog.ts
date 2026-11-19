@@ -19,7 +19,7 @@ import { configKey } from "$lib/chat/server/endpointKey";
 import { config } from "$lib/chat/server/config";
 import { mistralChatLane } from "$lib/chat/server/mistralKey";
 
-/** `defaultHeaders` carrying `X-HF-Bill-To` for a lane on the HF router, else nothing (CUR-1877). */
+/** `defaultHeaders` carrying `X-HF-Bill-To` for a lane on the HF router, else nothing. */
 function billToDefaultHeaders(baseURL: string | undefined, billTo: string | undefined) {
 	const headers = hfBillToHeader(baseURL, { ownLane: false }, billTo);
 	return Object.keys(headers).length ? { defaultHeaders: headers } : {};
@@ -44,7 +44,7 @@ export function selectAllowedModels(data: CatalogEntry[], allowlistSpec: string)
 	const byId = new Map(data.map((m) => [m.id, m]));
 	const filtered = allowlist.map((id) => byId.get(id)).filter((m): m is CatalogEntry => Boolean(m));
 	// A picker id the catalog does not hold is dropped from the picker without a word, so a typo in
-	// config/inference.ts or an id the gateway stopped serving would look like a smaller picker (CUR-3484).
+	// config/inference.ts or an id the gateway stopped serving would look like a smaller picker.
 	const missing = allowlist.filter((id) => !byId.has(id));
 	if (filtered.length && missing.length) {
 		logger.error({ missing }, "[models] allowlisted ids are in no catalog and are not offered");
@@ -78,7 +78,7 @@ export interface ToModelConfigsOptions {
 	 *  producing output. Names its own key's env var because the backup host's token differs from the
 	 *  primary's (the CSCS key is not the HF token). Omitted/blank → single-lane, unchanged behavior. */
 	fallbackBaseURL?: string;
-	/** Env var NAME holding the backup lane's key, never the value (CUR-2640). Omitted → the lane
+	/** Env var NAME holding the backup lane's key, never the value. Omitted → the lane
 	 *  rides endpointOai's default key. */
 	fallbackApiKeyEnv?: string;
 	/** Optional id override for the BACKUP lane, for a backup host that spells the primary's model
@@ -88,7 +88,7 @@ export interface ToModelConfigsOptions {
 	 *  same-checkpoint failover into cross-model substitution.
 	 *  Omitted/blank → the backup lane requests the primary id unchanged.
 	 *
-	 *  A comma-separated list makes one backup lane per id, tried in order (CUR-3750). Every lane but
+	 *  A comma-separated list makes one backup lane per id, tried in order. Every lane but
 	 *  the last gets the failover deadline, so a backup that goes silent hands the turn on instead of
 	 *  holding it until the generation watchdog. */
 	fallbackModelId?: string;
@@ -126,7 +126,7 @@ export function toModelConfigs(
 	const primary = baseURL.replace(/\/$/, "");
 	return data.map((m) => {
 		// The primary's own host can back it with a different model on that host (the gateway's
-		// Infomaniak-only Apertus group behind its mixed one, CUR-2293); the same host asking for the
+		// Infomaniak-only Apertus group behind its mixed one); the same host asking for the
 		// same model would only repeat the request that just failed.
 		// One backup lane per listed id, the entry's own id meaning "no override". An empty list is one
 		// same-id lane. On the primary's own host a same-id lane only repeats the call that just failed.
@@ -150,14 +150,14 @@ export function toModelConfigs(
 			: inputModalities.includes("image") || inputModalities.includes("vision");
 
 		// Tool support from any provider that lists it, or from the model's row: the LiteLLM gateway lists
-		// no providers, so without the row every gateway model reads as tool-less (CUR-4191).
+		// no providers, so without the row every gateway model reads as tool-less.
 		const supportsTools =
 			Boolean((m.providers ?? []).some((p) => p?.supports_tools === true)) || declaresToolCalls(m.id);
 		return {
 			id: m.id,
 			name: m.id,
 			// The id is a wire name ("swiss-ai/apertus-v1.5-70b"); a visitor reads this one wherever a
-			// model is listed, Settings included (CUR-2203). Search still matches on the id.
+			// model is listed, Settings included. Search still matches on the id.
 			displayName: resolveModelIdentity(m.id).short,
 			description: m.description,
 			logoUrl,
@@ -191,17 +191,17 @@ export function toModelConfigs(
 	}) as ModelConfig[];
 }
 
-/** A second OpenAI-compatible host whose models can be allowlisted like the primary's (CUR-2272). */
+/** A second OpenAI-compatible host whose models can be allowlisted like the primary's. */
 export interface DirectEndpoint {
 	baseURL: string;
-	/** Env var NAME holding this host's key, never the value (CUR-2640). */
+	/** Env var NAME holding this host's key, never the value. */
 	apiKeyEnv: string;
 	modelIds: string[];
 	/** Provider key the badge names ("mistral"); display-only, never sent upstream. */
 	provider?: string;
 	/**
 	 * Our model id → the id this host knows it by, when the two differ: the staging router names
-	 * Mistral Large `mistralai/mistral-large-2512` and refuses the bare id (CUR-2928). Unset means the
+	 * Mistral Large `mistralai/mistral-large-2512` and refuses the bare id. Unset means the
 	 * host uses our ids.
 	 */
 	wireIds?: Record<string, string>;
@@ -212,7 +212,7 @@ export interface DirectEndpoint {
 // Parse MISTRAL_* into an endpoint, or null when any part is missing. A partial config is
 // logged, not silently dropped: an allowlist naming a direct model then fails loud in
 // selectAllowedModels rather than quietly serving something else. `apiKeyEnv` names the env var the
-// key lives in; its value is read here only to check it is set, and never stored (CUR-2640).
+// key lives in; its value is read here only to check it is set, and never stored.
 export function parseDirectEndpoint(
 	baseURL: string,
 	apiKeyEnv: string,
@@ -245,12 +245,12 @@ export function parseDirectEndpoint(
 }
 
 /**
- * Chat's Mistral models as an endpoint on `mistralChatLane()`'s host: the staging router when it is
- * configured (CUR-2928), otherwise La Plateforme (CUR-2272). Null when MISTRAL_MODELS names none.
+ * Chat's Mistral models as an endpoint on `mistralChatLane`'s host: the staging router when it is
+ * configured, otherwise La Plateforme. Null when MISTRAL_MODELS names none.
  *
  * @remarks
  * The catalog registers Mistral turns from this, and the model warm probe aims at it, so the probe
- * reaches the host and wire id a real turn does (CUR-3848). Read per call, so a registry refresh picks
+ * reaches the host and wire id a real turn does. Read per call, so a registry refresh picks
  * up the current values.
  */
 export function mistralChatEndpoint(): DirectEndpoint | null {
@@ -266,7 +266,7 @@ export function mistralChatEndpoint(): DirectEndpoint | null {
 
 /**
  * The endpoint fields that send `id` under the host's own name and record the answer under ours.
- * Empty when the host uses our id, so the endpoint is exactly what it was before (CUR-2928).
+ * Empty when the host uses our id, so the endpoint is exactly what it was before.
  */
 export function directWire(
 	direct: Pick<DirectEndpoint, "wireIds"> | null,
@@ -277,7 +277,7 @@ export function directWire(
 }
 
 /**
- * The HF router as a picker lane (CUR-1683): the allowlisted ids that have a provider pin, in
+ * The HF router as a picker lane: the allowlisted ids that have a provider pin, in
  * allowlist order, or null when there are none or the router is not configured.
  *
  * @remarks
@@ -286,7 +286,7 @@ export function directWire(
  * who serves it. Nothing about the second-opinion or compare panels feeds this. These models are
  * offered for their answers, so their harnessProfiles.ts rows carry every trick. The answer keeps its
  * reasoning, which streams into the Working panel; with reasoning off, GLM 5.2 puts it into the
- * answer instead (CUR-4189). An allowlisted `zai-org/` id with no pin is logged
+ * answer instead. An allowlisted `zai-org/` id with no pin is logged
  * and left for `selectAllowedModels` to report, rather than offered from a router that would refuse it.
  */
 export function hfPinnedLane(
@@ -341,7 +341,7 @@ export function withDirectModels(
 
 // Point each direct model at its own host, on one lane. It never inherits the catalog's backup lane, which
 // serves a different checkpoint picked for Apertus, and it gets no lane asking for another model: a
-// picked model is answered by itself or ends on the busy notice (CUR-4383).
+// picked model is answered by itself or ends on the busy notice.
 export function routeDirectModels(configs: ModelConfig[], direct: DirectEndpoint | null): ModelConfig[] {
 	if (!direct) return configs;
 	const ids = new Set(direct.modelIds);
@@ -371,7 +371,7 @@ function laneModel(lane: { modelId?: string; servedAs?: string }, picked: string
 }
 
 /**
- * Drop every lane that would answer as a different model than the one the person picked (CUR-3936).
+ * Drop every lane that would answer as a different model than the one the person picked.
  *
  * @remarks
  * A backup lane exists to retry the picked model somewhere else, never to substitute another one.

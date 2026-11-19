@@ -3,7 +3,7 @@ import { answerFooterDelta, panelBodyShrink } from './xrayScroll';
 
 const view = { top: 100, bottom: 400 };
 
-describe('answerFooterDelta (CUR-3951)', () => {
+describe('answerFooterDelta', () => {
 	it('scrolls the footer up out of the bottom fade when the panel takes the thread height', () => {
 		expect(answerFooterDelta(view, { top: 200, bottom: 420 }, 40)).toBe(60);
 	});
@@ -12,7 +12,7 @@ describe('answerFooterDelta (CUR-3951)', () => {
 		expect(answerFooterDelta(view, { top: 120, bottom: 300 }, 40)).toBe(0);
 	});
 
-	it("stops at the answer's start on a short window, so its text stays readable (CUR-3934)", () => {
+	it("stops at the answer's start on a short window, so its text stays readable", () => {
 		// A 600px answer in a 300px thread: reaching the footer would scroll its first 280px away.
 		expect(answerFooterDelta(view, { top: 130, bottom: 730 }, 40)).toBe(30);
 	});
@@ -28,7 +28,7 @@ describe('answerFooterDelta (CUR-3951)', () => {
 	});
 });
 
-describe('panelBodyShrink (CUR-3951)', () => {
+describe('panelBodyShrink', () => {
 	it('gives back the shortfall when the answer fits the thread only without the panel', () => {
 		// A 280px answer starting 20px into a 300px thread with a 40px fade: its footer is 20px short.
 		expect(panelBodyShrink(view, { top: 120, bottom: 400 }, 40, 210, 128)).toBe(20);

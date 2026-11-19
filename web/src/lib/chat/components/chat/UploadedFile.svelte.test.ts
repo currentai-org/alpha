@@ -29,7 +29,7 @@ describe('UploadedFile remove button', () => {
 	});
 });
 
-describe('UploadedFile preview title (CUR-4668)', () => {
+describe('UploadedFile preview title', () => {
 	it('keeps a 120-character file name on one line inside the dialog at phone width, with the full name in title', async () => {
 		await page.viewport(375, 700);
 		const name = `${'quarterly-budget-review-final-version-'.repeat(3)}x.txt`.slice(0, 116) + '.txt';

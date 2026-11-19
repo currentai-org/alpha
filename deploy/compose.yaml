@@ -1,0 +1,83 @@
+# Alpha from its published, signed image, beside Postgres and a file store. No build on your machine:
+#
+#   cd deploy && cp .env.example .env    # then fill in .env
+#   docker compose pull && docker compose up -d
+#
+# The image is the one .github/workflows/image.yml publishes from this repository: the chat build
+# (APP_SURFACE=chat), for amd64 and arm64, signed with cosign and carrying an SBOM and a provenance
+# attestation. README.md next to this file says how to verify it and how to upgrade. ALPHA_IMAGE picks
+# another tag or a digest. This file never builds, so the image that runs is always the pulled one;
+# ../selfhost/ builds web/Dockerfile from this checkout under its own tag.
+#
+# deploy/smoke.sh checks a running stack end to end: `SMOKE_CHAT_PATH= ./smoke.sh`, since the chat
+# build serves chat at the root. Every value the app refuses to boot without is a `:?` below, so a
+# missing one stops compose with its name rather than starting a broken app.
+#
+# Published on 127.0.0.1 only. Put a TLS proxy in front and set PUBLIC_ORIGIN to its https origin
+# before anyone else uses it.
+name: alpha
+
+services:
+  db:
+    # Docker Hub's library image through AWS's public mirror, so no anonymous pull limit stops a start.
+    image: public.ecr.aws/docker/library/postgres:17-alpine
+    environment:
+      POSTGRES_USER: alpha
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-alpha}
+      POSTGRES_DB: alpha
+    volumes: [db:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U alpha -d alpha"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  # The store for people's files: SeaweedFS (Apache-2.0) in its one-process `mini` mode, pinned by
+  # digest. It makes the bucket and one identity from the two keys.
+  files:
+    image: chrislusf/seaweedfs:4.50@sha256:c2658820e763294a9e9de7b36c81e59b879e3459148351aee4e31a126ca64860
+    command: mini
+    environment:
+      AWS_ACCESS_KEY_ID: ${FILES_ACCESS_KEY:?set FILES_ACCESS_KEY (openssl rand -hex 16)}
+      AWS_SECRET_ACCESS_KEY: ${FILES_SECRET_KEY:?set FILES_SECRET_KEY (openssl rand -hex 32)}
+      S3_BUCKET: alpha-files
+    volumes: [files:/data]
+    restart: unless-stopped
+
+  web:
+    # A release tag, never a moving one. Change it to upgrade (README.md, "Upgrade").
+    image: ${ALPHA_IMAGE:-ghcr.io/currentai-org/alpha:0.1.0}
+    # Every `up` checks the registry, so a local image that once took this tag (an older `--build`)
+    # is replaced by the signed one rather than run under its name. A start needs the registry.
+    pull_policy: always
+    depends_on:
+      db: { condition: service_healthy }
+      files: { condition: service_started }
+    ports: ["127.0.0.1:${PORT:-3000}:3000"]
+    # The server drains open chat streams and background work on SIGTERM.
+    stop_grace_period: 30s
+    environment:
+      DATABASE_URL: postgres://alpha:${POSTGRES_PASSWORD:-alpha}@db:5432/alpha
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:3000}
+      ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:3000}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET (openssl rand -hex 32)}
+      # One OpenAI-compatible base URL (vLLM, Ollama, LiteLLM, llama.cpp, a hosted provider) and its key.
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:?set OPENAI_BASE_URL}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-none}
+      MODEL_ALLOWLIST: ${MODEL_ALLOWLIST:-*}
+      # People's files go to the bundled SeaweedFS. Set CUSTODIAL_STORAGE_BACKEND to local to keep them
+      # on the web container's disk instead.
+      CUSTODIAL_STORAGE_BACKEND: s3
+      CUSTODIAL_S3_ENDPOINT: http://files:8333
+      CUSTODIAL_S3_BUCKET: alpha-files
+      CUSTODIAL_S3_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: ${FILES_ACCESS_KEY:?set FILES_ACCESS_KEY (openssl rand -hex 16)}
+      AWS_SECRET_ACCESS_KEY: ${FILES_SECRET_KEY:?set FILES_SECRET_KEY (openssl rand -hex 32)}
+      # Plain http on localhost: a Secure cookie would never come back. Set false behind TLS.
+      ALLOW_INSECURE_COOKIES: ${ALLOW_INSECURE_COOKIES:-true}
+    restart: unless-stopped
+
+volumes:
+  db:
+  files:

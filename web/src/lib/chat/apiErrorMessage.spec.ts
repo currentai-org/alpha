@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ApiError, apiErrorMessage } from "./APIClient";
 
-describe("apiErrorMessage (CUR-2822)", () => {
+describe("apiErrorMessage", () => {
 	it("returns the server's own sentence from an error() body, never the JSON around it", () => {
 		const err = new ApiError(502, { message: "Nothing was cleared. Please try again." });
 		expect(apiErrorMessage(err, "fallback")).toBe("Nothing was cleared. Please try again.");

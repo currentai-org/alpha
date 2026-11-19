@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2018- The Hugging Face team
+SPDX-License-Identifier: Apache-2.0
+Modified by Current AI from huggingface/chat-ui.
+-->
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages.js';
 	import { getLocale } from '$lib/paraglide/runtime.js';
@@ -49,7 +54,7 @@
 		photoModelPickable?: boolean;
 		// A guest where sign-in is offered: Attach files asks them to sign in instead of opening the picker.
 		onSignInToAttach?: () => void;
-		// Per-model "Reasoning effort" override from settings (CUR-680). Shown only when the
+		// Per-model "Reasoning effort" override from settings. Shown only when the
 		// model's own settings-page switch is on; the level itself lives here, in the footer,
 		// per the settings page's own copy ("Show a Low / Medium / High selector in the chat
 		// footer for this model"). Cycles like webSearchMode/speakMode/agentMode.
@@ -74,12 +79,12 @@
 		modelLabel?: string;
 		/** The model picker (ChatComposerFrame's), placed left of dictate. Absent on read-only views. */
 		modelPicker?: import('svelte').Snippet;
-		// Dictation's entry point (CUR-198): the recorder, the transcribe route and the layout flag
+		// Dictation's entry point: the recorder, the transcribe route and the layout flag
 		// sit behind this button. Gated on dictationEnabled(), its own flag, independent of
 		// `multimodal`.
 		transcriptionEnabled?: boolean;
 		onstartrecording?: () => void;
-		/** Why dictation can't work right now (CUR-3403): dims the button and replaces its hover text. */
+		/** Why dictation can't work right now: dims the button and replaces its hover text. */
 		dictationBlocked?: string;
 		children?: import('svelte').Snippet;
 		/** The files attached to this draft, as the first thing in the box, above the text. */
@@ -128,13 +133,13 @@
 		if (!e.target) return;
 		const target = e.target as HTMLInputElement;
 		// Back to the box now, not once the photo is ready: a large one takes seconds to prepare, and
-		// whatever the person types meanwhile otherwise lands on nothing (CUR-3197). Before any wait,
+		// whatever the person types meanwhile otherwise lands on nothing. Before any wait,
 		// too, since redrawing it holds the main thread and keys typed then reach the page body.
 		void focusTextarea({ immediate: true });
-		// An avif, bmp, tiff or HEIC this browser can open becomes a JPEG first (CUR-3073).
+		// An avif, bmp, tiff or HEIC this browser can open becomes a JPEG first.
 		const chosen = await convertImages(Array.from(target.files ?? []), mimeOffered(mimeTypes, 'image/jpeg'));
 		// The dialog's own filter can be switched to "All files", so the picker refuses what the
-		// composer doesn't offer, the way paste and drop do (CUR-3051).
+		// composer doesn't offer, the way paste and drop do.
 		const selected = chosen.filter((file) => mimeOffered(mimeTypes, file.type));
 		const refusedMessage = refusedPasteMessage(
 			chosen.filter((file) => !selected.includes(file)),
@@ -169,7 +174,7 @@
 
 	let textareaElement: HTMLTextAreaElement | undefined = $state();
 	// The Dictate hover text anchors to the whole composer, not the mic: at phone width the toolbar
-	// wraps, and a tooltip just above the mic lay on the chip row (CUR-2720).
+	// wraps, and a tooltip just above the mic lay on the chip row.
 	let composerEl: HTMLDivElement | undefined = $state();
 	let isCompositionOn = $state(false);
 	let blurTimeout: ReturnType<typeof setTimeout> | null = $state(null);
@@ -178,7 +183,7 @@
 	let isDropdownOpen = $state(false);
 
 	// One picker for every type on offer: text always, photos when the model reads them, PDF and Word
-	// where the server opens them (CUR-987). The dialog's own filter shows what can be chosen.
+	// where the server opens them. The dialog's own filter shows what can be chosen.
 	function openFilePicker() {
 		fileInputEl?.click();
 	}
@@ -414,7 +419,7 @@
 
 	// The attach button shows wherever a file type is on offer. offeredMimeTypes offers none where the
 	// server would refuse every upload (no scanner, or the `multimodal` flag shut for this visitor), so
-	// the button never appears and then fails (CUR-2725). A text-only model still takes text files and
+	// the button never appears and then fails. A text-only model still takes text files and
 	// documents; it keeps the button, as a drop on the same composer works.
 	let showFileUpload = $derived(mimeTypes.length > 0);
 	// The tools row always renders — it carries the permanent Web-search on/off toggle (plus
@@ -521,7 +526,7 @@
 		<!-- Composer toolbar: [+] attachments · [Tools] menu · chips for the tools that
 		     are on (tap a chip to turn it off) · dictate on the right. The three-state modes live in the
 		     Tools menu as radio groups, so the current value is always visible where it is changed —
-		     which also settles CUR-1432 (a cycling control dismissing the label that showed its state).
+		     which also settles (a cycling control dismissing the label that showed its state).
 		     The send/stop button is positioned by ChatWindow; `max-w` reserves its corner. -->
 		<div class="flex max-w-[calc(100%-44px)] flex-wrap items-center gap-1.5 px-2 pt-1 pb-2">
 			{#if showFileUpload}
@@ -542,7 +547,7 @@
 				/>
 			{/if}
 			<!-- One [+] menu holds attaching files and every composer tool, each tool a flyout whose row
-			     shows its current mode, so the value is visible where it is changed (CUR-1432). -->
+			     shows its current mode, so the value is visible where it is changed. -->
 			<Menu.Root
 				bind:open={isDropdownOpen}
 				onOpenChange={(open) => {
@@ -569,7 +574,7 @@
 				<Menu.Portal>
 					<Menu.Positioner side="top" align="start" sideOffset={8}>
 						<!-- Closing the menu puts focus in the message box: left nowhere, focus would sit on a dying
-						     popup div and the next message's keystrokes would be lost (CUR-3237). -->
+						     popup div and the next message's keystrokes would be lost. -->
 						<Menu.Popup
 							class="w-72"
 							onCloseAutoFocus={(e) => {
@@ -631,7 +636,7 @@
 														{/each}
 													</Menu.RadioGroup>
 													{#if tool.id === 'webSearch' && $agentMode !== 'off' && $webSearchMode !== 'off'}
-														<!-- CUR-657: an agent turn never reads searchContext; say so rather than promise a search. -->
+														<!-- an agent turn never reads searchContext; say so rather than promise a search. -->
 														<p class="px-2 pb-1 type-caption text-fg-3">{m.product_agentNotApplied({ value: $agentMode === 'auto' ? m.product_auto() : m.product_on() })}</p>
 													{/if}
 												</Menu.Group>
@@ -641,7 +646,7 @@
 								</Menu.SubmenuRoot>
 							{/each}
 							{#if (page.data as { mcpServersEnabled?: boolean }).mcpServersEnabled}
-								<!-- CUR-4016: connected services, and adding one of your own, live in Settings → Connectors. -->
+								<!-- connected services, and adding one of your own, live in Settings → Connectors. -->
 								<Menu.Separator />
 								<Menu.Item onSelect={() => goto(`${base}/settings/connectors`)} data-testid="composer-connectors">
 									<RiPlugLine aria-hidden="true" />
@@ -663,7 +668,7 @@
 			{/if}
 			{#each tools.filter((t) => t.showsChip) as tool (tool.id)}
 				{@const ChipIcon = TOOL_ICONS[tool.id]}
-				<!-- The chip names the tool and its mode, so Auto and Always read differently (CUR-3570). -->
+				<!-- The chip names the tool and its mode, so Auto and Always read differently. -->
 				<Composer.Chip
 					icon={ChipIcon}
 					disabled={loading}
@@ -679,7 +684,7 @@
 				{@render modelPicker?.()}
 				{#if transcriptionEnabled}
 					<!-- The hover text says which way the control works: it records you, it doesn't read aloud.
-					     A native `title` is never shown on a phone and a recording cannot capture it (CUR-2363). -->
+					     A native `title` is never shown on a phone and a recording cannot capture it. -->
 					<Tooltip.Root>
 						<Tooltip.Trigger
 							variant="ghost"

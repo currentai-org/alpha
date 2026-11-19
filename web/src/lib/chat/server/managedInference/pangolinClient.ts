@@ -1,5 +1,5 @@
 /**
- * Thin wrapper around Pangolin's Integration API (CUR-1266) — the reverse-tunnel control plane
+ * Thin wrapper around Pangolin's Integration API — the reverse-tunnel control plane
  * behind "managed" local-inference endpoints. Every field name below was confirmed directly against
  * `fosrl/pangolin`'s server source, since its OpenAPI docs type response
  * shapes loosely (`additionalProperties: nullable`) — see `server/routers/site/*.ts`,
@@ -179,7 +179,7 @@ export async function createTarget(
 // (`server.resource_access_token_headers`, default `P-Access-Token-Id`/`P-Access-Token`, confirmed
 // in verifySession.ts). No `validForSeconds` given → never expires, matching how the newt
 // secret/tunnel credential is already stored permanently. These two headers get stored in the
-// row's EXISTING `headers` jsonb column (CUR-1266) — no new plumbing needed on the request path,
+// row's EXISTING `headers` jsonb column — no new plumbing needed on the request path,
 // since `headersRecord()`/`defaultHeaders` already apply whatever's there to every request
 // (discovery, prewarm, generation).
 const accessTokenSchema = z.object({ accessTokenId: z.string(), accessToken: z.string() }).passthrough();

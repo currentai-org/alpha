@@ -23,7 +23,7 @@ export async function accountMenuItem(
 	return item;
 }
 
-/** Opens the account menu's Workspace flyout (CUR-3097) and returns it. The row's name carries the
+/** Opens the account menu's Workspace flyout and returns it. The row's name carries the
  *  current workspace ("Workspace Personal"), so it is matched from the start. */
 export async function workspaceFlyout(page: Page, open: { timeout: number }): Promise<Locator> {
 	const flyout = page.locator('[data-workspace-flyout]');

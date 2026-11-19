@@ -9,8 +9,6 @@ import { error } from "@sveltejs/kit";
 import { json } from "$lib/chat/server/api/utils/json";
 import { z } from "zod";
 import { requireAdminPermission } from "$lib/chat/server/adminAuth";
-import { config } from "$lib/chat/server/config";
-import { createOpenAIClient } from "$lib/chat/server/openaiClient";
 import { defaultModel } from "$lib/chat/server/models";
 import { buildPersonaPrompt, resolveDecoding } from "$lib/chat/server/textGeneration/persona";
 import sliceJson from "../../../../../../evals/mini/slice.json";
@@ -114,14 +112,10 @@ export const POST: RequestHandler = async ({ request, locals, cookies }) => {
 	// Same identity-token fill as the live chat, so the canary reflects what users would see.
 	const system = buildPersonaPrompt(model, persona);
 
-	const client = await createOpenAIClient({
-		baseURL: config.OPENAI_BASE_URL,
-		apiKey: config.OPENAI_API_KEY || config.HF_TOKEN || "sk-",
-		// Admin-only canary, so nobody's turn is at stake — bounded anyway so a hung gateway returns an
-		// error to the tuning screen instead of spinning to the platform kill (CUR-1345).
-		timeout: 60_000,
-		defaultHeaders: { "User-Agent": "aipotluck.org" },
-	});
+	// The model's own endpoint, the one a chat turn calls: its lanes send the wire id the host knows
+	// (`mistral-medium-2604` is our picker id, not a name the gateway accepts) and use the lane's own
+	// base URL and key, as tuning's try does.
+	const endpoint = await defaultModel.getEndpoint();
 
 	// Use the SAME decoding the live chat uses (GROUNDED_DECODING: temp 0.1 + frequency/presence
 	// penalties + 512 cap), so the canary reflects what users actually get. A different temperature or
@@ -132,13 +126,24 @@ export const POST: RequestHandler = async ({ request, locals, cookies }) => {
 	const { turn1_suffix, challenge } = slice.contract.two_turn;
 
 	async function ask(messages: ChatMessage[]): Promise<string> {
-		const res = await client.chat.completions.create({
-			model,
-			messages,
-			stream: false,
-			...decoding,
+		const preprompt = messages.find((m) => m.role === "system")?.content;
+		const stream = await endpoint({
+			messages: messages
+				.filter((m) => m.role !== "system")
+				.map((m) => ({ from: m.role as "user" | "assistant", content: m.content })),
+			preprompt,
+			generateSettings: decoding,
+			// Admin-only canary, so nobody's turn is at stake — bounded anyway so a hung gateway returns
+			// an error to the tuning screen instead of spinning to the platform kill.
+			abortSignal: AbortSignal.timeout(60_000),
+			locals,
 		});
-		return res.choices?.[0]?.message?.content ?? "";
+		let streamed = "";
+		for await (const out of stream) {
+			if (out.generated_text) return out.generated_text;
+			streamed += out.token?.text ?? "";
+		}
+		return streamed;
 	}
 
 	async function runItem(item: SliceItemAny): Promise<ItemResult> {

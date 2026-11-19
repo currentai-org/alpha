@@ -1,12 +1,12 @@
-// Server-side feature flags (CUR-86). The plane that owns ROLLOUT and VISIBILITY — "should this be
-// on, and for whom" — as distinct from Doppler env, which owns secrets and SAFETY gates. The split is
+// Server-side feature flags. The plane that owns ROLLOUT and VISIBILITY — "should this be
+// on, and for whom" — as distinct from env, which owns secrets and SAFETY gates. The split is
 // by what a flag DOES, not by which system has nicer ergonomics: a flag service being unreachable and
 // defaulting moderation off is a worse failure than config drift, so OUTPUT_MODERATION /
 // COOP_BLOCK_ACTIONS stay in env, local and fail-closed, and never come here.
 //
-// Why not just env vars: they are not a fast lever (CUR-61). `config` reads $env/dynamic/private,
+// Why not just env vars: they are not a fast lever. `config` reads $env/dynamic/private,
 // which is runtime-READ, but a Lambda's process.env is fixed by the deployment's function
-// configuration at deploy time. Runtime-read is not runtime-SETTABLE: a Doppler sync does not reach
+// configuration at deploy time. Runtime-read is not runtime-SETTABLE: a change to the env store does not reach
 // the running deployment until it is redeployed. So flipping an env var costs a full redeploy, and
 // percentage rollout is impossible.
 //
@@ -27,10 +27,10 @@
 //   3. Polled and fresh → PostHog's value.
 // Anything numeric must additionally be clamped at the read site: a knob changeable without a PR can
 // set GENERATION_TIMEOUT_MS to a value that breaks the deadline ladder with no code review, and
-// PostHog makes that faster, not safer (CUR-45).
+// PostHog makes that faster, not safer.
 //
 // A flag nobody removes is worse than no flag. Each one gets an owner and an expected end date, or it
-// is permanent config and belongs in Doppler. Every key the server reads is declared in flagKeys.ts,
+// is permanent config and belongs in env. Every key the server reads is declared in flagKeys.ts,
 // and refreshFlags reconciles that list against what PostHog actually returns — so a key that was
 // renamed, deleted, or never created cannot stay invisible behind a fallback of `false`.
 
@@ -41,8 +41,16 @@ import { deployEnv, isTestDeployment } from "$lib/chat/server/deployEnv";
 import { bakedCacheProvider, bakedFlagDefinitions } from "$lib/chat/server/flagDefinitionsBaked";
 import { runInBackground } from "$lib/chat/server/vercelBackground";
 import { deploymentInstance } from "$lib/chat/server/instance";
-import { DEPLOYMENT_SCOPED_FLAG_KEYS, FLAG_KEYS, FLAG_KEY_NAMES } from "$lib/chat/server/flagKeys";
+import {
+	DEPLOYMENT_SCOPED_FLAG_KEYS,
+	FLAG_KEYS,
+	FLAG_KEY_NAMES,
+	type FlagSelfHostCondition,
+	type FlagSelfHost,
+} from "$lib/chat/server/flagKeys";
 import { logger } from "$lib/chat/server/logger";
+import { csamScanOptedOut } from "$lib/chat/server/storage/csamScan";
+import { selfHostDefaultFor } from "$lib/chat/server/edition";
 import { serverPosthogHost } from "$lib/chat/server/posthogHost";
 import { getRequestContext } from "$lib/chat/server/requestContext";
 
@@ -57,7 +65,73 @@ function envBool(key: string): boolean {
 	return env(key).toLowerCase() === "true";
 }
 
-// ── Local fuzzing-harness override (CUR-1044) ───────────────────────────────────────────────────────
+// ── Self-host defaults (no PostHog) ──────────────────────────────────────────────────────────────
+// A deployment with no PUBLIC_POSTHOG_KEY has no flag service to ask, so every flag used to read its
+// call site's fallback, mostly off. There each key reads its `selfHost` value from flagKeys.ts instead,
+// and the operator changes one with ALPHA_FLAGS="+key,-key" (comma-separated; `+` on, `-` off). With
+// PostHog configured none of this runs: the branch is the `selfHostDefaultsApply()` check and nothing else.
+// ALPHA_FLAGS is read only there, so it cannot move a flag on a hosted deployment.
+
+/** True when this deployment has a PostHog project key, the same test `getClient` makes. */
+export function postHogConfigured(): boolean {
+	return env("PUBLIC_POSTHOG_KEY") !== "";
+}
+
+/** Self-host defaults apply with PostHog unset, unless the process says `ALPHA_EDITION=hosted`. That
+ *  opt-out is for a hosted-shaped process that has no PostHog key on purpose (the unit suites). */
+function selfHostDefaultsApply(): boolean {
+	return !postHogConfigured() && env("ALPHA_EDITION").toLowerCase() !== "hosted";
+}
+
+const selfHostByKey = new Map<string, FlagSelfHost>(FLAG_KEYS.map((f) => [f.key, f.selfHost]));
+
+function envSet(name: string): boolean {
+	const v = env(name).toLowerCase();
+	return v !== "" && v !== "false" && v !== "0" && v !== "no" && v !== "off";
+}
+
+let parsedAlphaFlags: { raw: string; map: Map<string, boolean> } | undefined;
+
+/** `ALPHA_FLAGS="+a,-b"` as key to on/off. A bare key counts as `+`. Last mention of a key wins. */
+function alphaFlagOverrides(): Map<string, boolean> {
+	const raw = env("ALPHA_FLAGS");
+	if (parsedAlphaFlags?.raw === raw) return parsedAlphaFlags.map;
+	const map = new Map<string, boolean>();
+	for (const part of raw.split(",")) {
+		const t = part.trim();
+		if (!t) continue;
+		const off = t.startsWith("-");
+		const k = t.replace(/^[+-]/, "").trim();
+		if (k) map.set(k, !off);
+	}
+	parsedAlphaFlags = { raw, map };
+	return map;
+}
+
+/** What `key` reads as with PostHog not configured: the operator's ALPHA_FLAGS entry, else the key's
+ *  `selfHost` default, else (a key the registry does not declare) the caller's fallback. */
+export function selfHostFlagValue(key: string, fallback: () => boolean): boolean {
+	const override = alphaFlagOverrides().get(key);
+	if (override !== undefined) return override;
+	const d = selfHostByKey.get(key);
+	if (d === undefined || d === "code") return fallback();
+	if (d === "on") return true;
+	if (d === "off") return false;
+	return d.onWhenEnv.every((name) => envSet(name) || satisfiedInstead(name, d.satisfiedBy?.[name]));
+}
+
+/** How each registry condition is evaluated; a condition added to SELF_HOST_CONDITIONS without one here fails the type check. */
+const conditionHolds: Record<FlagSelfHostCondition, (name: string) => boolean> = {
+	"self-host-edition-unless-set": (name) => selfHostDefaultFor(env(name)),
+	"csam-scan-opted-out": () => csamScanOptedOut(),
+};
+
+/** Whether the condition the registry names for `name` holds in place of the variable being set. */
+function satisfiedInstead(name: string, condition: FlagSelfHostCondition | undefined): boolean {
+	return condition !== undefined && conditionHolds[condition](name);
+}
+
+// ── Local fuzzing-harness override ───────────────────────────────────────────────────────
 // The local per-flag Playwright/Stagehand harness needs to force a specific flag on/off for a browser
 // session without touching live PostHog config. Deliberately NOT a bootstrap/localStorage/query-param
 // mechanism a real visitor could ever hit: gated OFF in production unconditionally, in code, and even
@@ -73,7 +147,7 @@ function envBool(key: string): boolean {
 // The override never changes what a production visitor gets: a fuzz-override request needs a
 // non-production deployment, FUZZ_OVERRIDE_ENABLED set and the cookie present, and
 // `fuzzOverrideEnabled()` short-circuits unless the deployment declares itself preview or development
-// (`isTestDeployment`, CUR-1881).
+// (`isTestDeployment`).
 export function fuzzOverrideEnabled(): boolean {
 	return isTestDeployment() && envBool("FUZZ_OVERRIDE_ENABLED");
 }
@@ -83,9 +157,9 @@ export const FUZZ_OVERRIDE_KEY_COOKIE = "fuzz_override_key";
 const FUZZ_OVERRIDE_KEY_LABEL = "fuzz-override-key-v1";
 
 /**
- * Whether this request may apply its `fuzz_override` and `eval_layers` cookies (CUR-3516).
+ * Whether this request may apply its `fuzz_override` and `eval_layers` cookies.
  *
- * `fuzzOverrideEnabled()` decides per deployment, and preview has it on so the scenario suite can force
+ * `fuzzOverrideEnabled` decides per deployment, and preview has it on so the scenario suite can force
  * flags, which would let any anonymous visitor to develop force them too. On anything but local
  * server the request must also carry `fuzz_override_key` holding `E2E_OTP_BYPASS_TOKEN`, compared
  * as HMAC digests the way `otpSendCapCarveOut` compares it. No token configured means no request
@@ -93,8 +167,8 @@ const FUZZ_OVERRIDE_KEY_LABEL = "fuzz-override-key-v1";
  */
 export async function fuzzOverrideAuthorized(suppliedKey: string | undefined): Promise<boolean> {
 	if (!fuzzOverrideEnabled()) return false;
-	// Local servers declare `development` (Doppler's dev config sets DEPLOY_ENV). The Dev flags dialog
-	// runs there and carries no key. An undeclared deployment never gets this far (CUR-1881).
+	// Local servers declare `development` (a local env sets DEPLOY_ENV). The Dev flags dialog
+	// runs there and carries no key. An undeclared deployment never gets this far.
 	if (deployEnv() === "development") return true;
 	const token = config.E2E_OTP_BYPASS_TOKEN;
 	if (!token || !suppliedKey) return false;
@@ -129,7 +203,7 @@ const firstPollWaiters: Array<() => unknown> = [];
  * Run `fn` once, after the first poll that returns flags, and return true; return false and do nothing
  * when one already has. A value read before then is a fallback, and a cold poll can come back empty
  * well inside any cap because the SDK's definitions haven't loaded yet, so a caller that keeps what it
- * read (the model registry) needs this rather than the poll's own settling (CUR-4194).
+ * read (the model registry) needs this rather than the poll's own settling.
  */
 export function whenFlagsPolled(fn: () => unknown): boolean {
 	if (polledOk) return false;
@@ -151,6 +225,7 @@ export function __resetFlagsForTest(): void {
 	warnedMissingKeys.clear();
 	client = undefined;
 	clientInitAttempted = false;
+	parsedAlphaFlags = undefined;
 	localEvaluation = false;
 	warnedRemoteKeys.clear();
 	undefinedRemoteKeys.clear();
@@ -176,7 +251,7 @@ export function flagEnabled(key: string, envFallbackKey: string): boolean {
  * Same contract as `flagEnabled`, but the fallback is COMPUTED rather than read from a boolean env var.
  *
  * Needed because not every gate we're migrating from is a `"true"`/`"false"` string. `AGENT_SERVICE_URL`
- * is the clearest case: a URL whose NON-EMPTINESS doubles as the feature gate (CUR-87), so the current
+ * is the clearest case: a URL whose NON-EMPTINESS doubles as the feature gate, so the current
  * behaviour it must fall back to is "is that URL set", not "is that env var the word true".
  *
  * `fallback` is a thunk, not a value, so it is only evaluated when actually needed — and so callers
@@ -187,11 +262,12 @@ export function flagEnabledOr(key: string, fallback: () => boolean): boolean {
 	const override = fuzzOverrideValue(key);
 	if (override !== undefined) return override;
 	// A signed-in request reads its account's own answer first, unless the flag builds
-	// something every visitor shares (flagKeys.ts, FlagScope). (CUR-2463)
+	// something every visitor shares (flagKeys.ts, FlagScope).
 	if (!DEPLOYMENT_SCOPED_FLAG_KEYS.has(key)) {
 		const acct = getRequestContext()?.accountFlags?.get(key);
 		if (acct !== undefined) return acct;
 	}
+	if (selfHostDefaultsApply()) return selfHostFlagValue(key, fallback);
 	if (!polledOk) return fallback();
 	const v = snapshot.get(key);
 	// Polled, but PostHog doesn't define this flag: fall back rather than inventing `false`. A flag that
@@ -207,9 +283,9 @@ export function flagEnabledOr(key: string, fallback: () => boolean): boolean {
 // Remote evaluation bills every `getAllFlags`, and the cost is per Lambda instance, not per
 // deployment: each instance polls for the deployment and once per signed-in account every 60s, and
 // scenario runs on PR previews start many short-lived instances, so remote evaluation can pass the
-// free request allowance within days (PostHog billing, CUR-2897).
+// free request allowance within days (PostHog billing).
 // Locally, `getAllFlags` costs nothing; the SDK polls `/flags/definitions` once per instance per
-// FLAG_SNAPSHOT_MAX_AGE_MS, billed as 1 request when nothing changed (ETag, 304) and 10 when it did.
+// FLAG_DEFINITIONS_POLL_MS, billed as 1 request when nothing changed (ETag, 304) and 10 when it did.
 // A PR preview polls nothing at all: its definitions are baked at build (flagDefinitionsBaked.ts).
 //
 // Local evaluation only answers a condition on a property the call passes. Live conditions read `env`,
@@ -319,11 +395,17 @@ async function evaluateFlags(
 }
 
 /** The distinctId used for DEPLOYMENT-level evaluation. v1 flags are on/off for the whole deployment,
- *  not per-user: that is what CUR-87 needs (flip the Apertus version or the ACP transport without a
+ *  not per-user: that is what that change needs (flip the Apertus version or the ACP transport without a
  *  deploy). Per-user targeting is a separate, necessarily-async read at the call site — deliberately
  *  out of scope here rather than half-built. A FIXED id keeps percentage rollouts deterministic
  *  instead of flapping between refreshes. */
 const DEPLOYMENT_DISTINCT_ID = "aipotluck-server";
+
+/** True when a bake's timestamp is within one definitions-poll interval. Unknown or unparseable is stale. */
+function bakeIsFresh(bakedAt: string | undefined): boolean {
+	const t = bakedAt ? Date.parse(bakedAt) : NaN;
+	return Number.isFinite(t) && Date.now() - t < FLAG_DEFINITIONS_POLL_MS;
+}
 
 async function getClient(): Promise<MinimalPostHog | undefined> {
 	if (clientInitAttempted) return client;
@@ -338,14 +420,14 @@ async function getClient(): Promise<MinimalPostHog | undefined> {
 		const secretKey = env("POSTHOG_FLAGS_SECRET_KEY");
 		client = new PostHog(projectKey, {
 			// NOT env("PUBLIC_POSTHOG_HOST"): that browser var may be a relative adblock-proxy path
-			// (`/rs`) that makes getAllFlags return {} silently. See posthogHost.ts (CUR-87).
+			// (`/rs`) that makes getAllFlags return {} silently. See posthogHost.ts.
 			host: serverPosthogHost(),
 			...(secretKey
 				? {
 						secretKey,
 						// The SDK's own definitions poller. A frozen Lambda's timer doesn't fire, so an
 						// idle instance doesn't poll.
-						featureFlagsPollingInterval: FLAG_SNAPSHOT_MAX_AGE_MS,
+						featureFlagsPollingInterval: FLAG_DEFINITIONS_POLL_MS,
 						...(bakedFlagDefinitions
 							? { flagDefinitionCacheProvider: bakedCacheProvider(bakedFlagDefinitions) }
 							: {}),
@@ -369,10 +451,13 @@ async function getClient(): Promise<MinimalPostHog | undefined> {
 			},
 			"[flags] PostHog client ready"
 		);
-		// A seeded client starts on the build's definitions (CUR-4199). Fetch live once the seed has
+		// A seeded client starts on the build's definitions. Fetch live once the seed has
 		// loaded, held open so a frozen instance can't park it, so a flag flipped since the build lands
 		// on this instance now rather than at the poller's next tick.
-		if (secretKey && bakedFlagDefinitions?.mode === "seed") {
+		// Skipped when the bake is younger than one poll interval: the live fetch would find what the
+		// seed already holds, and the poller covers any flip after that. A cold start on an older build
+		// (the usual case) still fetches, since the seed may predate a flip.
+		if (secretKey && bakedFlagDefinitions?.mode === "seed" && !bakeIsFresh(bakedFlagDefinitions.bakedAt)) {
 			const c = client;
 			void runInBackground(
 				(async () => {
@@ -438,8 +523,8 @@ function flagEnvProperty(): string {
 	return resolvedEnv === "development" ? "preview" : resolvedEnv;
 }
 
-/** The `instance` person property every evaluation carries: `www`, or an event instance's name
- *  (CUR-3156), so a flag can hold a condition for one event instance without touching www. */
+/** The `instance` person property every evaluation carries: `www`, or an event instance's name,
+ *  so a flag can hold a condition for one event instance without touching www. */
 function flagInstanceProperty(): string {
 	return deploymentInstance(process.env);
 }
@@ -451,14 +536,14 @@ export async function refreshFlags(): Promise<void> {
 		const c = await getClient();
 		if (!c) return;
 		// Carry the deployment env as a person-property so a flag can register a feature on preview
-		// deployments without touching prod (CUR-121: the agent model registers where `env == "preview"`,
+		// deployments without touching prod (the agent model registers where `env == "preview"`,
 		// then per-user surface gates keep it hidden from everyone but a cleared tester).
-		// `deployEnv()` (CUR-208) reads DEPLOY_ENV then VERCEL_ENV and warns when neither names an
+		// `deployEnv` reads DEPLOY_ENV then VERCEL_ENV and warns when neither names an
 		// environment; "development" is the harmless placeholder for that undeclared case, so it still
 		// fails closed rather than leaking a preview feature into a misconfigured prod deployment.
 		//
 		// A GENUINE local dev machine, though, deliberately sets DEPLOY_ENV=development rather than
-		// leaving it unset (CUR-884) — and for that case we query PostHog AS preview (CUR-885): local
+		// leaving it unset — and for that case we query PostHog AS preview: local
 		// dev is earlier in the pipeline than preview, never real user traffic, and every flag scoped
 		// `env == "preview"` should be testable on a laptop without a second targeting condition. This
 		// doesn't reopen the prod-leak risk above: Vercel sets VERCEL_ENV on every real deployment, so
@@ -501,18 +586,24 @@ let pollInFlight: Promise<void> | null = null;
  *  cron interval, so preview's flags go stale no faster than production's. */
 export const FLAG_SNAPSHOT_MAX_AGE_MS = 60_000;
 
+/** How often the SDK fetches live definitions from PostHog, per warm instance. Separate from
+ *  FLAG_SNAPSHOT_MAX_AGE_MS on purpose: that one bounds how stale a re-evaluation may be and costs
+ *  nothing (it reads in-process definitions); this one is the only part PostHog bills (1 request on a
+ *  304, 10 on a change), so it is the longer one. A flag flip reaches a warm instance within this. */
+export const FLAG_DEFINITIONS_POLL_MS = 5 * 60_000;
+
 /**
- * CUR-853/958: block THIS turn on one poll if the snapshot has never been populated, instead of
+ * block THIS turn on one poll if the snapshot has never been populated, instead of
  * silently reading every flag as its OFF fallback until the warm cron happens to reach this instance
  * — which, per modelGates.ts's own header comment, is ALWAYS the case on preview (no cron runs there
  * at all) and briefly true in prod on a cold start. `resolveRegistryGates` already does this for the
- * three model-registry gates by awaiting `refreshFlags()` before it reads them; this is the same
+ * three model-registry gates by awaiting `refreshFlags` before it reads them; this is the same
  * pattern for any other flag read on the per-request path, generalized rather than re-solved per gate.
  *
  * Once `polledOk` is true it never waits — a warm instance's request only starts a background
  * refresh when the snapshot is stale — so the wait is confined to the first flag-gated request
  * after a cold boot. Bounded so an unreachable PostHog
- * can't stall a turn indefinitely: `refreshFlags()` already swallows its own errors, so racing it
+ * can't stall a turn indefinitely: `refreshFlags` already swallows its own errors, so racing it
  * against a timeout is purely a LATENCY bound, not a correctness one — a slow poll keeps running in
  * the background and the NEXT turn on this instance benefits from it even if this one didn't wait.
  */
@@ -521,13 +612,13 @@ export async function ensureFlagsPolled(timeoutMs = 2000): Promise<void> {
 		// Preview runs no cron, so without this a warm instance kept its first snapshot until
 		// Vercel recycled it, and a flag created or flipped on develop never reached it. Refresh in the
 		// background once the snapshot is older than the cron interval: this turn reads the last
-		// snapshot, the next one reads the fresh one, and no request ever waits on it. (CUR-2610)
+		// snapshot, the next one reads the fresh one, and no request ever waits on it.
 		if (!pollInFlight && Date.now() - lastRefreshAt > FLAG_SNAPSHOT_MAX_AGE_MS) {
 			const ageMs = Date.now() - lastRefreshAt;
 			pollInFlight = refreshFlags().finally(() => {
 				pollInFlight = null;
 				// A successful refresh logs nothing else, so without this no line shows a warm instance
-				// re-polling, and CUR-2610's live check has nothing to read. At most once a minute per instance.
+				// re-polling, and the live check has nothing to read. At most once a minute per instance.
 				logger.info({ leg: "flags-refresh", ageMs, polled: polledOk }, "[flags] background refresh");
 			});
 		}
@@ -541,14 +632,14 @@ export async function ensureFlagsPolled(timeoutMs = 2000): Promise<void> {
 	const t0 = Date.now();
 	await Promise.race([pollInFlight, new Promise<void>((resolve) => setTimeout(resolve, timeoutMs))]);
 	// What a cold instance's request actually waited. Logged only on this path, so a warm instance
-	// never writes it; `polled: false` means the cap fired or PostHog failed (CUR-1959).
+	// never writes it; `polled: false` means the cap fired or PostHog failed.
 	logger.info(
 		{ leg: "flags-poll", ms: Date.now() - t0, polled: polledOk, capMs: timeoutMs },
 		"[flags] request waited on the first poll"
 	);
 }
 
-// ── Per-ACCOUNT rollout values (CUR-2463) ─────────────────────────────────────────────────────────
+// ── Per-ACCOUNT rollout values ─────────────────────────────────────────────────────────
 // The snapshot above answers for one fixed id with only `env`, so a release condition on a person
 // (`email` matches `@<team domain>$`) cannot match, so production could not turn a feature on for the
 // team alone. This evaluates every flag once per signed-in account and puts the answers on the request
@@ -562,12 +653,12 @@ export async function ensureFlagsPolled(timeoutMs = 2000): Promise<void> {
 // agentModeEnabledForUser already sends on every signed-in page load, so a condition written the way
 // `agent-mode-access`'s is (`email` matches `@<domain>$`) works on every flag. The address is passed
 // inline for one evaluation; no person profile is created.
-// The distinct id is the account id, never anything the request carries (CUR-1278, below). The one
+// The distinct id is the account id, never anything the request carries (below). The one
 // exception is the guest sign-in hint (`guestSignInFlagValues`), which decides copy and nothing else.
 
 type AccountEntry = { values: ReadonlyMap<string, boolean>; at: number };
 
-// One store per kind of subject, so guests asking for the sign-in hint (CUR-3015) never evict an
+// One store per kind of subject, so guests asking for the sign-in hint never evict an
 // account's answers. Bounded: one entry per recently active subject, oldest dropped first. The guest
 // store is smaller because a guest is asked about only after a refused photo, and asks once.
 type EvalStore = { cache: Map<string, AccountEntry>; inFlight: Map<string, Promise<AccountEntry | undefined>>; max: number };
@@ -662,7 +753,7 @@ export async function accountFlagValues(
 ): Promise<ReadonlyMap<string, boolean> | undefined> {
 	// `account_id` repeats the distinct id as a property, so "these accounts only" is an ordinary
 	// property condition evaluated from what this call sends, with no person profile behind it.
-	// `signed_in` is what a rule for everyone who signs in is written against (CUR-3015): a guest's
+	// `signed_in` is what a rule for everyone who signs in is written against: a guest's
 	// sign-in hint is evaluated with it too, and a guest has no email to match.
 	return valuesIn(
 		accounts,
@@ -676,13 +767,13 @@ export async function accountFlagValues(
 }
 
 /**
- * What this guest would get once signed in (CUR-3015), for copy only: the sign-in hint on a refused
+ * What this guest would get once signed in, for copy only: the sign-in hint on a refused
  * paste. Evaluated for the guest's own distinct id, so a percentage rollout buckets each guest rather
  * than one stand-in, with `signed_in` and no email, so a team-only rule says no and a rule for everyone
  * signed in says yes. A guess for the account they would sign in as, which PostHog buckets afresh.
  *
  * @param sessionId `locals.sessionId`, server-issued. Hashed before it leaves, never sent raw, and the
- *   answer gates no access, so the CUR-1278 rule on request-carried ids is not in play.
+ *   answer gates no access, so the rule on request-carried ids is not in play.
  */
 export async function guestSignInFlagValues(
 	sessionId: string,
@@ -692,7 +783,7 @@ export async function guestSignInFlagValues(
 	return valuesIn(guests, distinctId, () => ({ env: flagEnvProperty(), instance: flagInstanceProperty(), signed_in: "true" }), timeoutMs);
 }
 
-// ── Per-USER evaluation (CUR-121) ──────────────────────────────────────────────────────────────────
+// ── Per-USER evaluation ──────────────────────────────────────────────────────────────────
 // Everything above is DEPLOYMENT-level: one fixed distinctId, a warm-cron snapshot, sync reads. This is
 // the other axis — evaluate a flag for a SPECIFIC user, so a flag's release conditions can target one
 // tester without every visitor getting it. Necessarily async (a live remote read), so it is NOT for the
@@ -700,16 +791,29 @@ export async function guestSignInFlagValues(
 //
 // No stored person profile: `personProperties` are passed INLINE for this one evaluation, which is the
 // documented way to target anonymous users under `identified_only` without calling identify() (which
-// would create a profile, change the distinctId, and expand processing — GDPR-minimal, CUR-121/CUR-116).
+// would create a profile, change the distinctId, and expand processing — GDPR-minimal).
 
 /**
- * Is `key` on for THIS user? Async; returns `undefined` when it could not be evaluated (no client, or
- * PostHog errored) so the caller decides the fallback — PostHog best-practice is "undefined = not
- * evaluated", never a silent `false`.
+ * Is `key` on for THIS user? Async, never throws, always answers — the per-person counterpart of
+ * `flagEnabledOr`, with the same shape: `fallback` is the call site's code default, used whenever
+ * PostHog cannot answer. That is: no client (no PUBLIC_POSTHOG_KEY, so every self-hosted deployment),
+ * local definitions not loaded, a flag PostHog does not define, or a read that threw. A flag that
+ * cannot be evaluated is "not evaluated", never a silent `false`, so the caller states what that means
+ * rather than inheriting it. Until this took a fallback it returned `undefined` there, and every
+ * caller read that as off, so these gates could never be switched on without PostHog.
+ *
+ * Precedence, highest first: the dev-only fuzz override (`fuzzOverrideValue`, which answers even with
+ * no client), then PostHog's answer for this person, then `fallback`. The request's account-flag map
+ * (`accountFlags`, which `flagEnabledOr` reads) is NOT consulted: this path asks PostHog live for this
+ * person, as it always has.
+ *
+ * `fallback` is a thunk, as in `flagEnabledOr`, so it is evaluated only when needed. It is optional
+ * only so chunkedUploadGate.ts, which PR #4561 deletes, compiles unchanged; the default is off, the
+ * value every caller got before the hook existed. A new caller passes its own.
  *
  * `distinctId` MUST be the account's real id. It is the hash input that decides the answer, so a
  * synthetic one derived from anything the client supplies makes the flag answer a question about a
- * claim rather than about a person — see the CUR-1278 note below.
+ * claim rather than about a person — see the note below.
  * Currently uncalled: kept because it is the shape PostHog recommends, and deleting it invites the
  * next per-person gate to be reinvented the wrong way.
  *
@@ -721,13 +825,25 @@ export async function guestSignInFlagValues(
 export async function flagEnabledForUser(
 	key: string,
 	distinctId: string,
-	personProperties: Record<string, string | number | boolean>
-): Promise<boolean | undefined> {
+	personProperties: Record<string, string | number | boolean>,
+	fallback: () => boolean = () => false
+): Promise<boolean> {
 	// Ahead of the client check on purpose: an override must answer even when PostHog is unreachable
-	// or unconfigured, which is the state a local harness run is usually in. Returning `undefined`
-	// there would hand the caller its fallback instead of the value the harness asked for.
+	// or unconfigured, which is the state a local harness run is usually in. Falling through there
+	// would hand the caller its fallback instead of the value the harness asked for.
 	const override = fuzzOverrideValue(key);
 	if (override !== undefined) return override;
+	if (selfHostDefaultsApply()) return selfHostFlagValue(key, fallback);
+	const answer = await userFlagAnswer(key, distinctId, personProperties);
+	return answer === undefined ? fallback() : answer;
+}
+
+/** PostHog's answer for this person, or `undefined` when it could not give one. */
+async function userFlagAnswer(
+	key: string,
+	distinctId: string,
+	personProperties: Record<string, string | number | boolean>
+): Promise<boolean | undefined> {
 	const c = await getClient();
 	if (!c) return undefined;
 	try {
@@ -748,13 +864,13 @@ export async function flagEnabledForUser(
 	} catch (e) {
 		logger.warn(
 			{ err: e instanceof Error ? e.message : String(e), key },
-			"[flags] per-user flag read failed — returning undefined (caller decides fallback)"
+			"[flags] per-user flag read failed — using the caller's fallback"
 		);
 		return undefined;
 	}
 }
 
-// ── Do not rebuild the tester path (CUR-1278) ──────────────────────────────────────────────────────
+// ── Do not rebuild the tester path ──────────────────────────────────────────────────────
 // Do not add a flag read that takes a name the visitor typed (e.g. `?ph_test=<name>`) and passes
 // `tester:<name>` to PostHog as the distinct id, with a roster mapping names to accounts. A distinct id
 // names a PERSON: PostHog's model is that a flag result is a pure hash of (flag key, distinct id), so
@@ -762,7 +878,7 @@ export async function flagEnabledForUser(
 // roster cross-check fixes that, it only makes the spoof harder, and a roster means keeping
 // colleagues' names and account ids in this repo.
 //
-// What PostHog documents instead, and what any per-person gate here uses (the storage view, CUR-1276):
+// What PostHog documents instead, and what any per-person gate here uses (the storage view):
 //
 //   - Evaluate server-side with the REAL distinct id (the account's own id) and pass the properties
 //     your own database already knows, inline, via `flagEnabledForUser` above. Their guidance is to

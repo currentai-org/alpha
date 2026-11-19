@@ -11,7 +11,7 @@ import { chatEntry } from './helpers/chatEntry';
 import { signInAsFreshUser } from './helpers/session';
 import { installCannedReplies } from './helpers/faultInjection';
 
-// This spec is about the first-run welcome, so it meets the welcome itself rather than through the shared handler (SOL-343).
+// This spec is about the first-run welcome, so it meets the welcome itself rather than through the shared handler.
 test.use({ welcome: 'show' });
 
 test.describe('accessibility', () => {
@@ -36,7 +36,7 @@ test.describe('accessibility', () => {
 	] as const) {
 		test(`${name} page has no serious/critical violations`, async ({ page }) => {
 			// The dataset page is ~8.8 MB of HTML and ~30,000 elements, and axe's scan of it alone ran past
-			// the default 90 s on loaded CI runners (CUR-4447). The verdict is unchanged; only the wait is.
+			// the default 90 s on loaded CI runners. The verdict is unchanged; only the wait is.
 			if (name === 'dataset') test.setTimeout(240_000);
 			await page.goto(path, { waitUntil: 'load' });
 			await assertNoSeriousA11yViolations(page, name);
@@ -87,7 +87,7 @@ test.describe('keyboard reach at desktop width', () => {
 	// The welcome is modal, but Tab used to walk through the composer hidden behind it and Escape did
 	// nothing, so the first screen of Alpha could not be used without a mouse.
 	test(
-		'a first-time guest can stay inside the welcome with Tab and leave it with Escape for the message box @CUR-4259',
+		'a first-time guest can stay inside the welcome with Tab and leave it with Escape for the message box',
 		{ tag: ['@P5', '@F3'] },
 		async ({ page }) => {
 			await page.goto(chatEntry(), { waitUntil: 'load' });
@@ -197,7 +197,7 @@ test(
 	"the provenance trace's ? button is named for the dialog it opens",
 	{ tag: '@F3' },
 	async ({ page }) => {
-		// Sends a real turn and waits up to 90s for it, after up to 60s of setup (CUR-1633's budget check).
+		// Sends a real turn and waits up to 90s for it, after up to 60s of setup (the budget check).
 		test.setTimeout(180_000);
 		const welcome = page.getByRole('dialog', { name: 'Welcome to Alpha' });
 		await page.addLocatorHandler(welcome, async () => {

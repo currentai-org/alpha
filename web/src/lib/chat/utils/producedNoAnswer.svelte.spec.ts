@@ -6,7 +6,7 @@ const think = (content: string) => ({ type: "think" as const, content, closed: f
 const artifact = () => ({ type: "artifact" as const, opIndex: 0 });
 
 describe("producedNoAnswer", () => {
-	// THE case, reduced (CUR-113): the model reasons for 34s inside an unclosed <think> and never writes an
+	// THE case, reduced: the model reasons for 34s inside an unclosed <think> and never writes an
 	// answer. Every block is a think block, so the user gets a blank bubble on a finished turn.
 	it("is TRUE when the entire output was reasoning — a turn that only thought answered nothing", () => {
 		expect(producedNoAnswer([think("The user wants me to fact-check the claim that…")])).toBe(true);

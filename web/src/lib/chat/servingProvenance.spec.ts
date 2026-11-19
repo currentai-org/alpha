@@ -15,8 +15,7 @@ describe("resolveServing", () => {
 	// Sovereign hosts are config-driven (SOVEREIGN_HOSTS), not hardcoded — the
 	// test supplies one via the spec arg, so no internal infra hostname lives in source.
 	// This one is deliberately NOT a SWISS_BACKEND_HOSTS entry — it mirrors the production shape:
-	// a routing GATEWAY, config-flagged sovereign, that fans out to a mix of backends per request
-	// (CUR-1361).
+	// a routing GATEWAY, config-flagged sovereign, that fans out to a mix of backends per request.
 	const SOV_HOST = "sovereign.example";
 	const SOV = `https://${SOV_HOST}/v1`;
 	// Deliberately the shape prod ships: an entry whose LABEL names an institution. The sovereign
@@ -51,8 +50,8 @@ describe("resolveServing", () => {
 		expect(s.cscsServingNote).not.toMatch(/not yet/i);
 	});
 
-	// A gateway lane that fans out to a mix of backends must not claim a specific country pre-answer
-	// (CUR-1361). The input is a config-sovereign host that is NOT itself a vetted single Swiss backend,
+	// A gateway lane that fans out to a mix of backends must not claim a specific country pre-answer.
+	// The input is a config-sovereign host that is NOT itself a vetted single Swiss backend,
 	// like the production gateway.
 	it("does not claim Switzerland on a gateway lane that can route to a non-Swiss backend", () => {
 		const s = resolveServing(SOV, "swiss-ai/Apertus-70B-Instruct-2509", SOV_SPEC);
@@ -60,7 +59,7 @@ describe("resolveServing", () => {
 		expect(copy).not.toMatch(/switzerland/i);
 	});
 
-	// Contract (CUR-75): a gateway lane picks a backend per request, so no pre-turn string may name the
+	// Contract: a gateway lane picks a backend per request, so no pre-turn string may name the
 	// institution that will run the turn. Naming CSCS on every turn is wrong for the share of turns another
 	// backend serves. If this test ever passes vacuously, check that SOV_SPEC still supplies an institution
 	// name for the branch to swallow.
@@ -82,7 +81,7 @@ describe("resolveServing", () => {
 
 	// A DIRECT single-backend Swiss connection is the one shape where the specific pre-answer claim
 	// stays true by construction — no gateway fan-out to hide behind. Today's production config has no
-	// such lane (CSCS-direct retired, CUR-162), but the branch has to keep working for when it returns.
+	// such lane (CSCS-direct retired), but the branch has to keep working for when it returns.
 	it("keeps today's exact Switzerland sentence for a DIRECT connection to a vetted Swiss backend", () => {
 		const s = resolveServing(DIRECT_SWISS, "swiss-ai/Apertus-70B-Instruct-2509", DIRECT_SWISS_SPEC);
 		expect(s.isSovereign).toBe(true);
@@ -129,7 +128,7 @@ describe("resolveServing", () => {
 	});
 
 	// The contract: recognising a public checkpoint must not depend on how the LANE cases its wire id. 1.5 is
-	// served as `apertus-ai/Apertus-v1.5-70B` or as the gateway's `swiss-ai/apertus-v1.5-70b` (CUR-162); a
+	// served as `apertus-ai/Apertus-v1.5-70B` or as the gateway's `swiss-ai/apertus-v1.5-70b`; a
 	// case-sensitive lookup would miss, and the control would silently downgrade to the org page — which is
 	// also what a genuinely unpublished checkpoint produces, so the assertion above would stay green. Two live
 	// wire ids, both directions.
@@ -156,38 +155,38 @@ describe("resolveServing", () => {
 		expect(s.heroServingLine).toMatch(/served via example\.com/i);
 	});
 
-	it("does not leak develop's own hostname into visible copy (CUR-1629)", () => {
-		const s = resolveServing("https://develop.aipotluck.org/folkways-adapter/v1", "some/model");
+	it("does not leak develop's own hostname into visible copy", () => {
+		const s = resolveServing("https://develop.example.test/folkways-adapter/v1", "some/model");
 		expect(s.providerLabel).toBe("a preview environment");
 		expect(s.isSovereign).toBe(false);
-		expect(s.heroServingLine).not.toMatch(/develop\.aipotluck\.org/i);
+		expect(s.heroServingLine).not.toMatch(/develop\.example\.test/i);
 	});
 
-	it("names La Plateforme in France, not the app's own host, when the Mistral lane goes through the Folkways adapter (CUR-3186)", () => {
+	it("names La Plateforme in France, not the app's own host, when the Mistral lane goes through the Folkways adapter", () => {
 		const direct = resolveServing("https://api.mistral.ai/v1", "mistral-large-2512");
 		for (const base of [
-			"https://mozfest.aipotluck.org/folkways-adapter/mistral/v1",
-			"https://mozfest.aipotluck.org/folkways-adapter/mistral/v1/",
+			"https://mozfest.example.test/folkways-adapter/mistral/v1",
+			"https://mozfest.example.test/folkways-adapter/mistral/v1/",
 		]) {
 			const s = resolveServing(base, "mistral-large-2512");
 			expect(s, base).toEqual(direct);
-			expect(s.heroServingLine).not.toMatch(/aipotluck\.org/i);
+			expect(s.heroServingLine).not.toMatch(/example\.test/i);
 		}
 		// resolveServing alone still names the gateway route's own host; baseURLForModel unwraps it
-		// to the adapter's upstream before it gets here (CUR-3573, below).
-		expect(resolveServing("https://mozfest.aipotluck.org/folkways-adapter/v1", "x").providerLabel).toBe(
-			"mozfest.aipotluck.org"
+		// to the adapter's upstream before it gets here (below).
+		expect(resolveServing("https://mozfest.example.test/folkways-adapter/v1", "x").providerLabel).toBe(
+			"mozfest.example.test"
 		);
 	});
 
-	it("names the adapter's upstream, never the instance's own host, when the base is the Folkways gateway route (CUR-3573)", () => {
-		const ADAPTER = "https://mozfest.aipotluck.org/folkways-adapter/v1";
+	it("names the adapter's upstream, never the instance's own host, when the base is the Folkways gateway route", () => {
+		const ADAPTER = "https://mozfest.example.test/folkways-adapter/v1";
 		const apertus = { endpoints: [{ type: "openai", baseURL: ADAPTER }] };
 		for (const base of [ADAPTER, `${ADAPTER}/`]) {
 			// As mozfest is configured: the adapter forwards to the sovereign gateway.
 			const viaSov = resolveServing(baseURLForModel(undefined, base, SOV), "x", SOV_SPEC);
 			expect(viaSov, base).toEqual(resolveServing(SOV, "x", SOV_SPEC));
-			expect(viaSov.heroServingLine).not.toMatch(/aipotluck\.org/i);
+			expect(viaSov.heroServingLine).not.toMatch(/example\.test/i);
 		}
 		// A model's own endpoint on the gateway route unwraps the same way.
 		expect(baseURLForModel(apertus, undefined, SOV)).toBe(SOV);
@@ -195,22 +194,22 @@ describe("resolveServing", () => {
 		expect(baseURLForModel(undefined, ADAPTER)).toBe(HF);
 		expect(baseURLForModel(undefined, ADAPTER, "  ")).toBe(HF);
 		// The Mistral adapter route and any other base pass through untouched.
-		const MISTRAL_ROUTE = "https://mozfest.aipotluck.org/folkways-adapter/mistral/v1";
+		const MISTRAL_ROUTE = "https://mozfest.example.test/folkways-adapter/mistral/v1";
 		expect(baseURLForModel(undefined, MISTRAL_ROUTE, SOV)).toBe(MISTRAL_ROUTE);
 		expect(baseURLForModel(undefined, SOV, HF)).toBe(SOV);
 		expect(baseURLForModel(undefined, "not a url", SOV)).toBe("not a url");
 	});
 
-	it("names a model the staging router doesn't forward in words, never its staging hostname (CUR-3573)", () => {
-		const s = resolveServing("https://router.stg.aipotluck.org/v1", "BSC-LT/ALIA-40b-instruct");
+	it("names a model the staging router doesn't forward in words, never its staging hostname", () => {
+		const s = resolveServing("https://router.stg.example.test/v1", "BSC-LT/ALIA-40b-instruct");
 		expect(s.providerLabel).toBe("a staging router");
-		expect(s.heroServingLine).not.toMatch(/aipotluck\.org/i);
-		expect(s.welcomeServingLine).not.toMatch(/aipotluck\.org/i);
+		expect(s.heroServingLine).not.toMatch(/example\.test/i);
+		expect(s.welcomeServingLine).not.toMatch(/example\.test/i);
 	});
 
-	it("a Mistral model through the staging router says Mistral in France and never public compute (SOL-288)", () => {
+	it("a Mistral model through the staging router says Mistral in France and never public compute", () => {
 		for (const id of ["mistral-medium-2604", "mistral-large-2512"]) {
-			const s = resolveServing("https://router.stg.aipotluck.org/v1", id);
+			const s = resolveServing("https://router.stg.example.test/v1", id);
 			expect(s.providerLabel).toBe("Mistral AI's La Plateforme");
 			expect(s.directCountry).toBe("France");
 			expect(s.isSovereign).toBe(false);
@@ -221,6 +220,30 @@ describe("resolveServing", () => {
 		}
 	});
 
+	it("a Mistral model on the Public AI router names its French providers and the router, never sovereign or directly", () => {
+		const SOV_SPEC = "api-internal.publicai.co=Public AI";
+		for (const id of ["mistral-medium-2604", "mistral-large-2512"]) {
+			const s = resolveServing("https://api-internal.publicai.co/v1", id, SOV_SPEC);
+			expect(s.isSovereign).toBe(false);
+			expect(s.directCountry).toBe("France");
+			expect(s.routedVia).toBe("the Public AI router");
+			for (const line of [s.computeTail, s.heroServingLine, s.welcomeServingLine]) {
+				expect(line).toContain("Mistral AI or Scaleway in France, through the Public AI router");
+				expect(line).not.toMatch(/public compute|sovereign|directly/i);
+			}
+		}
+	});
+
+	it("Apertus on the same router keeps its sovereign copy from SOVEREIGN_HOSTS", () => {
+		const s = resolveServing(
+			"https://api-internal.publicai.co/v1",
+			"swiss-ai/Apertus-70B-Instruct-2509",
+			"api-internal.publicai.co=Public AI"
+		);
+		expect(s.isSovereign).toBe(true);
+		expect(s.routedVia).toBeUndefined();
+	});
+
 	it("degrades gracefully with no base URL or model id", () => {
 		const s = resolveServing(undefined, undefined);
 		expect(s.providerLabel).toBe("the configured endpoint");
@@ -228,7 +251,7 @@ describe("resolveServing", () => {
 		expect(s.servedCheckpoint).toBe("the configured model");
 	});
 
-	it("never claims LUMI in the welcome copy (TODO A24, 2026-07-01): dropped from product copy, this was stale", () => {
+	it("never claims LUMI in the welcome copy, which product copy no longer names", () => {
 		expect(resolveServing(HF, "swiss-ai/Apertus-70B-Instruct-2509").welcomeServingLine).not.toMatch(
 			/LUMI/i
 		);
@@ -250,7 +273,7 @@ describe("backend allowlist (the falsifier for the sovereign-compute copy)", () 
 	});
 
 	// The red condition. endpointOai warns on exactly this, and it is the moment the shipped "sovereign public
-	// compute in Switzerland" copy becomes false: the same routing group can have a Singapore source (CUR-75),
+	// compute in Switzerland" copy becomes false: the same routing group can have a Singapore source,
 	// so this is a route that has really existed.
 	it("rejects a backend outside Switzerland, and rejects garbage rather than defaulting true", () => {
 		expect(backendIsSwiss("https://api.example.sg/v1")).toBe(false);
@@ -279,7 +302,7 @@ describe("backend allowlist (the falsifier for the sovereign-compute copy)", () 
 			expect(sovereignCopyFalsifiedBy({ backend: OFF_ALLOWLIST, servesUserAnswer: true })).toBe(
 				true
 			);
-			// Singapore was a real source for this routing group (CUR-75).
+			// Singapore was a real source for this routing group.
 			expect(
 				sovereignCopyFalsifiedBy({ backend: "https://api.example.sg/v1", servesUserAnswer: true })
 			).toBe(true);
@@ -301,7 +324,7 @@ describe("backend allowlist (the falsifier for the sovereign-compute copy)", () 
 		expect(backendDisplay(undefined)).toBeUndefined();
 	});
 
-	// CUR-996. The HF fallback lane serves from api.featherless.ai and api.sea-lion.ai (neither Swiss), and
+	// The HF fallback lane serves from api.featherless.ai and api.sea-lion.ai (neither Swiss), and
 	// the badge must not go silent on them: backendDisplay and backendIsSwiss read separate maps, so naming a
 	// backend never makes it Swiss. These two tests pin that: one proves the silence is gone, the other proves
 	// naming a backend can never make it Swiss.
@@ -326,20 +349,20 @@ describe("backend allowlist (the falsifier for the sovereign-compute copy)", () 
 
 // A model offered in the picker without a card on the list shows its name in X-ray as plain text, so a
 // visitor cannot check the weights behind the answer. Each offered model links its public card, or says
-// here why it has none (CUR-3864).
+// here why it has none.
 describe("publicModelPage covers every model a picker offers", () => {
 	const NO_PUBLIC_CARD: Record<string, string> = {
 		"BSC-LT/ALIA-40b-instruct": "the served repo answers 401 on Hugging Face (CUR-3913)",
 		"mistral-large-2610": "Mistral Large 4's weights are not published yet (CUR-3027)",
 	};
 
-	it("every offered model links its Hugging Face card or is listed as having none (CUR-3864)", () => {
+	it("every offered model links its Hugging Face card or is listed as having none", () => {
 		const offered = [...new Set(Object.values(PICKER).flat())];
 		const unlinked = offered.filter((id) => !publicModelPage(id) && !(id in NO_PUBLIC_CARD));
 		expect(unlinked).toEqual([]);
 	});
 
-	it("a SEA-LION v4.8 answer links its public card (CUR-3864)", () => {
+	it("a SEA-LION v4.8 answer links its public card", () => {
 		expect(publicModelPage("aisingapore/Nemotron-SEA-LION-v4.8-120B-A12B")).toBe(
 			"https://huggingface.co/aisingapore/Nemotron-SEA-LION-v4.8-120B-A12B"
 		);

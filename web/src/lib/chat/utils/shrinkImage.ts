@@ -6,7 +6,7 @@ import { trackEvent } from "$lib/analytics";
 // A phone photo is often 3-5 MB, over chat's 3 MB per message (uploadLimits.ts), so it was
 // refused before it reached the model. A photo larger than half that budget is redrawn in the browser
 // at a size a vision model reads just as well, so two photos still fit in one message. Anything
-// smaller, and anything that isn't a still photo format, is sent untouched. (CUR-2633)
+// smaller, and anything that isn't a still photo format, is sent untouched.
 
 /** An image at or under this many bytes is sent as it is. */
 export const SHRINK_ABOVE_BYTES = CHAT_ATTACHMENTS_MAX_BYTES / 2;
@@ -52,7 +52,7 @@ export async function shrinkImage(file: File): Promise<File> {
 // An iPhone photo is a HEIC, a screenshot tool may save AVIF or BMP, and a scanner TIFF.
 // Chat sends JPEG, PNG, WebP and GIF only, so each of these was refused by name. The browser redraws
 // one as a JPEG before the type check when it can decode it: Safari opens HEIC and TIFF, Chromium and
-// Firefox open AVIF and BMP. One it can't open is left as it is and refused, naming the types that work. (CUR-3073)
+// Firefox open AVIF and BMP. One it can't open is left as it is and refused, naming the types that work.
 
 /** Photo types the composer redraws as JPEG when this browser can decode them. */
 export const CONVERTIBLE_IMAGE_MIME = ["image/avif", "image/bmp", "image/tiff", "image/heic", "image/heif"];
@@ -83,7 +83,6 @@ export function convertibleType(file: { type: string; name: string }): string | 
  * when this browser can't decode it. Never throws, so each caller falls back to the original file.
  */
 async function toJpeg(file: File): Promise<File | undefined> {
-	if (typeof createImageBitmap !== "function") return undefined;
 	try {
 		const blob = await redrawAsJpeg(file);
 		if (!blob) return undefined;
@@ -113,7 +112,7 @@ export async function convertImages(files: File[], jpegOffered: boolean): Promis
 /**
  * `file` redrawn as a JPEG when it is a photo type the server's scanner cannot hash (an
  * iPhone HEIC), so My files can store it; any other file is returned as it is. A HEIC this browser
- * can't decode is returned unchanged too, and the server refuses it by type. Never throws. (CUR-4665)
+ * can't decode is returned unchanged too, and the server refuses it by type. Never throws.
  */
 export async function storablePhoto(file: File): Promise<File> {
 	const type = convertibleType(file);
@@ -121,10 +120,38 @@ export async function storablePhoto(file: File): Promise<File> {
 	return (await toJpeg(file)) ?? file;
 }
 
+/** What the canvas draws: a decoded bitmap or image, its size, and how to release it. */
+type Decoded = { source: CanvasImageSource; width: number; height: number; close: () => void };
+
+/**
+ * Decode `file` with `createImageBitmap`, or through an `<img>` when that rejects or is missing: a
+ * browser can open a format in one and not the other, and a photo that opens in neither is the only
+ * one refused by type. Throws when neither decodes it.
+ */
+async function decode(file: File): Promise<Decoded> {
+	if (typeof createImageBitmap === "function") {
+		try {
+			// `from-image` applies the photo's EXIF orientation, so a portrait shot stays upright.
+			const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+			return { source: bitmap, width: bitmap.width, height: bitmap.height, close: () => bitmap.close() };
+		} catch {
+			// Fall through to the <img> decode below.
+		}
+	}
+	const url = URL.createObjectURL(file);
+	try {
+		const img = new Image();
+		img.src = url;
+		await img.decode();
+		return { source: img, width: img.naturalWidth, height: img.naturalHeight, close: () => {} };
+	} finally {
+		URL.revokeObjectURL(url);
+	}
+}
+
 /** The canvas step shared by shrinking and converting: decode, fit, fill white, encode JPEG. */
 async function redrawAsJpeg(file: File): Promise<Blob | null> {
-	// `from-image` applies the photo's EXIF orientation, so a portrait shot stays upright.
-	const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+	const bitmap = await decode(file);
 	const { width, height } = fitWithin(bitmap.width, bitmap.height);
 	const canvas = document.createElement("canvas");
 	canvas.width = width;
@@ -138,7 +165,7 @@ async function redrawAsJpeg(file: File): Promise<Blob | null> {
 	// A pixel value baked into the photo's bytes, not a UI colour, so no theme token applies.
 	ctx.fillStyle = "white";
 	ctx.fillRect(0, 0, width, height);
-	ctx.drawImage(bitmap, 0, 0, width, height);
+	ctx.drawImage(bitmap.source, 0, 0, width, height);
 	bitmap.close();
 	return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.85));
 }
@@ -146,12 +173,12 @@ async function redrawAsJpeg(file: File): Promise<Blob | null> {
 /**
  * Photos being shrunk right now, across every way into the composer (pick, paste, drop). A 6 MB photo
  * takes seconds to redraw, and until it resolves the composer has no file to show, so the composer
- * shows one placeholder chip per count (CUR-2905).
+ * shows one placeholder chip per count.
  */
 export const preparingPhotos = writable(0);
 
 /**
- * Attachments waiting on My files' headroom before they reach the composer (CUR-3235). Counted apart
+ * Attachments waiting on My files' headroom before they reach the composer. Counted apart
  * from `preparingPhotos`, which draws a placeholder chip per count, but held by the send all the same.
  */
 export const checkingRoom = writable(0);
@@ -163,7 +190,7 @@ export function attachmentsPending(): boolean {
 	return get(attachmentsInFlight) > 0;
 }
 
-/** Resolves the next time no attachment is on its way to the composer, at once if none is (CUR-3197). */
+/** Resolves the next time no attachment is on its way to the composer, at once if none is. */
 export function photosReady(): Promise<void> {
 	if (!attachmentsPending()) return Promise.resolve();
 	return new Promise((resolve) => {
@@ -192,7 +219,7 @@ export async function shrinkImages(files: File[]): Promise<File[]> {
 
 // Nothing recorded how large the photos people attach are, so nobody could say how many
 // arrive over the message limit or how much the shrink saves. One event per photo carries its type and
-// byte counts before and after, never its name or contents. (CUR-2633)
+// byte counts before and after, never its name or contents.
 function reportPhotoSizes(before: File[], after: File[]) {
 	before.forEach((original, i) => {
 		if (!original.type.startsWith("image/")) return;

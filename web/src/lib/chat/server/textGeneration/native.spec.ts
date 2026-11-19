@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { nativeLaneRewrites, nativeSystemPrompt } from "./native";
-import { forcesWebSearch } from "../search/nativeSearchGate";
+import { searchesBeforeRound1 } from "../search/nativeSearchGate";
 import { UNSERVABLE_LIVE_CLAUSE } from "./persona";
 
 const promptFor = (modelId: string) =>
@@ -12,7 +12,7 @@ const promptFor = (modelId: string) =>
 		account: { loginOffered: true, signedIn: false },
 	});
 
-describe("nativeLaneRewrites (CUR-2697)", () => {
+describe("nativeLaneRewrites", () => {
 	it("hands a backup lane serving another model the native prompt naming that model, not the one it replaced", () => {
 		const model = { id: "mistral-large-2512", name: "mistral-large-2512", endpoints: [{}, { modelId: "mistral-medium-2604" }] };
 		const system = promptFor(model.id);
@@ -31,7 +31,7 @@ describe("nativeLaneRewrites (CUR-2697)", () => {
 	});
 });
 
-describe("a live value no source here carries (CUR-2697)", () => {
+describe("a live value no source here carries", () => {
 	const base = { modelId: "mistral-large-2512", fence: "msg-abc", today: "2026-10-05", web: true, account: { loginOffered: true, signedIn: false } };
 	it("tells the model it cannot look the value up, in place of the instruction to call web_search", () => {
 		const p = nativeSystemPrompt({ ...base, unservableLive: true });
@@ -45,20 +45,20 @@ describe("a live value no source here carries (CUR-2697)", () => {
 	});
 });
 
-describe("forcesWebSearch: on Auto the embedding gate's search verdict forces the first web_search (CUR-4083)", () => {
+describe("searchesBeforeRound1: on Auto the embedding gate's search verdict makes the server search before round 1", () => {
 	const auto = { mode: "auto" as const, photoAttached: false, pastedUrl: false };
-	it("forces web_search on Auto when the gate says search", () => {
-		expect(forcesWebSearch({ ...auto, gateSaysSearch: true })).toBe(true);
+	it("searches first on Auto when the gate says search", () => {
+		expect(searchesBeforeRound1({ ...auto, gateSaysSearch: true })).toBe(true);
 	});
 	it("leaves the choice with the model on Auto when the gate says no or gave no verdict", () => {
-		expect(forcesWebSearch({ ...auto, gateSaysSearch: false })).toBe(false);
+		expect(searchesBeforeRound1({ ...auto, gateSaysSearch: false })).toBe(false);
 	});
-	it("forces nothing past a photo or a pasted link, which the turn reads first", () => {
-		expect(forcesWebSearch({ ...auto, gateSaysSearch: true, photoAttached: true })).toBe(false);
-		expect(forcesWebSearch({ ...auto, gateSaysSearch: true, pastedUrl: true })).toBe(false);
+	it("searches nothing first past a photo or a pasted link, which the turn reads first", () => {
+		expect(searchesBeforeRound1({ ...auto, gateSaysSearch: true, photoAttached: true })).toBe(false);
+		expect(searchesBeforeRound1({ ...auto, gateSaysSearch: true, pastedUrl: true })).toBe(false);
 	});
-	it("forces on 'always' whatever the gate says, and never with search off", () => {
-		expect(forcesWebSearch({ ...auto, mode: "always", gateSaysSearch: false })).toBe(true);
-		expect(forcesWebSearch({ ...auto, mode: "off", gateSaysSearch: true })).toBe(false);
+	it("searches first on 'always' whatever the gate says, and never with search off", () => {
+		expect(searchesBeforeRound1({ ...auto, mode: "always", gateSaysSearch: false })).toBe(true);
+		expect(searchesBeforeRound1({ ...auto, mode: "off", gateSaysSearch: true })).toBe(false);
 	});
 });

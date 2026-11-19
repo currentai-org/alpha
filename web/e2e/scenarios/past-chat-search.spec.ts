@@ -1,6 +1,6 @@
 // e2e-product: @chat
 // e2e-area: @settings
-// Past-chat search (CUR-4576). A signed-in person switches "Search my past chats" on in Settings →
+// Past-chat search. A signed-in person switches "Search my past chats" on in Settings →
 // Personalization, tells Alpha a made-up name in one chat, then asks for it in a new chat. The answer
 // has to carry the name, which exists nowhere but in the first chat, and the note under it has to link
 // that chat. The name is fresh per run, so no earlier run's chat and no model's training can supply it.

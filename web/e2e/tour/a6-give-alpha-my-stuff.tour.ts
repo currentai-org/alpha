@@ -10,18 +10,21 @@ import {
 	highlight,
 	waitForNarration
 } from 'playwright-recast/helpers';
-import { openHome, clickIntoChat, TOUR_RECAST } from './show';
+import { openHome, clickIntoChat, TOUR_RECAST, TOUR_TYPING_DELAY_MS } from './show';
+import { tourEmail } from '../../scripts/lib/tourPersonas.mjs';
 import { signInWithEmailOtp } from '../scenarios/helpers/signIn';
 import { turnDone } from '../scenarios/helpers/turn';
 import { phonePhotoJpeg } from '../scenarios/helpers/phonePhoto';
 import { installFaultInjectionHeader } from '../scenarios/helpers/faultInjection';
 
 // The A6 walkthrough: give Alpha my stuff. One person signs in from the account menu, chooses a 6 MB
-// phone photo from the plus button and types straight away while the browser shrinks it (CUR-2633,
-// CUR-2905, CUR-3197), then attaches a PDF and gets an answer only that file holds. A photo sent while
-// the upload scanner is down is marked "Not added" on the sent message (CUR-3505), and read-aloud set
-// to Always says so on its chip and reads the next answer (CUR-3570, CUR-3557, CUR-3434). Image input
-// is on for team accounts on develop (CUR-2725), and the @example.org address the sign-in carve-out
+// phone photo from the plus button and types straight away while the browser shrinks it (
+//), then attaches a PDF and gets an answer only that file holds. A photo sent while
+// the upload scanner is down is marked "Not added" on the sent message, and read-aloud set
+// to Always says so on its chip and reads the next answer. Dictation on a
+// browser that can record no audio says so in plain words, and at phone width the Dictate
+// hover text covers no composer control. Image input
+// is on for team accounts on develop, and the @example.org address the sign-in carve-out
 // needs is one of them.
 //
 // It is filmed for people. photo-question.spec.ts and document-attachments.spec.ts hold the
@@ -30,7 +33,7 @@ import { installFaultInjectionHeader } from '../scenarios/helpers/faultInjection
 setupRecast(test, TOUR_RECAST);
 
 const DATABASE_URL = process.env.SCENARIO_DATABASE_URL;
-const EMAIL = `alex.moreau.${Math.random().toString(36).slice(2, 7)}@example.org`;
+const EMAIL = tourEmail('alex.moreau');
 const FAULT_TOKEN = process.env.E2E_FAULT_INJECT_TOKEN;
 const PDF = join(import.meta.dirname, '..', 'scenarios', 'fixtures', 'expenses-policy.pdf');
 
@@ -75,6 +78,8 @@ async function newAnswer(page: Page, before: number) {
 }
 
 test('A6: give Alpha a photo and a document, and it answers from them', async ({ page }) => {
+	// A sign-in, four model turns, a read-aloud clip and the dictation steps on develop.
+	test.setTimeout(480_000);
 	expect(DATABASE_URL, 'SCENARIO_DATABASE_URL is needed to read the sign-in code').toBeTruthy();
 	expect(
 		FAULT_TOKEN,
@@ -115,7 +120,9 @@ test('A6: give Alpha a photo and a document, and it answers from them', async ({
 	await narrate(
 		'The browser shrinks it to fit, and Alex can type straight away. The question goes with the photo.'
 	);
-	await page.keyboard.type('What colour is the circle in this picture? One word.', { delay: 15 });
+	await page.keyboard.type('What colour is the circle in this picture? One word.', {
+		delay: TOUR_TYPING_DELAY_MS
+	});
 	const photo = page.getByAltText('IMG_4032.jpg').or(page.getByText('IMG_4032.jpg')).first();
 	await expect(photo).toBeVisible({ timeout: 30_000 });
 	await highlight(photo);
@@ -189,6 +196,87 @@ test('A6: give Alpha a photo and a document, and it answers from them', async ({
 	).toBeVisible({ timeout: 90_000 });
 	await zoom(spoken, 1.5);
 	await waitForNarration();
+
+	// At phone width the Dictate hover text sits clear of every composer control. The take
+	// is one continuous recording, so the phone width is a resize inside it: 390 x 720 CSS px is
+	// 780 x 1440 device px, the video's full height, so the frame is the phone page beside grey
+	// padding, unscaled. The viewport goes back to 1280 x 720 straight after, so only this step has
+	// padding; the rule is about a resize the rest of a recording never recovers from.
+	const dictate = page.getByRole('button', {
+		name: 'Dictate your message (voice input, not read-aloud)'
+	});
+	// eslint-disable-next-line no-restricted-syntax -- a bracketed phone-width step, undone below
+	await page.setViewportSize({ width: 390, height: 720 });
+	await narrate(
+		"On a phone, the microphone button's hover text sits clear of the other controls by the box."
+	);
+	await expect(dictate).toBeVisible({ timeout: 10_000 });
+	await dictate.hover();
+	const tip = page.getByText(/records you.*not read-aloud/i);
+	await expect(tip).toBeVisible({ timeout: 5_000 });
+	const tipBox = (await tip.boundingBox())!;
+	// The composer's own controls, names them. The hover text sits above the box, so in a
+	// chat with messages it can lie over the last message's Edit and Copy, which is a tooltip doing its
+	// job, not a composer control hidden.
+	const composerForm = page.locator('form').filter({ has: page.getByLabel('Message AI Potluck') });
+	const covered = (
+		await composerForm.locator('button:visible, a:visible').evaluateAll((els) =>
+			els.map((el) => {
+				const r = el.getBoundingClientRect();
+				return {
+					name: (el.getAttribute('aria-label') || (el as HTMLElement).innerText).trim(),
+					x: r.x,
+					y: r.y,
+					width: r.width,
+					height: r.height
+				};
+			})
+		)
+	).filter(
+		(c) =>
+			c.width * c.height > 0 &&
+			!c.name.startsWith('Dictate your message') &&
+			Math.min(tipBox.x + tipBox.width, c.x + c.width) - Math.max(tipBox.x, c.x) > 0 &&
+			Math.min(tipBox.y + tipBox.height, c.y + c.height) - Math.max(tipBox.y, c.y) > 0
+	);
+	expect(
+		covered.map((c) => c.name),
+		'the Dictate hover text covers a control'
+	).toEqual([]);
+	await waitForNarration();
+	await page.mouse.move(0, 0);
+	// eslint-disable-next-line no-restricted-syntax -- restores the take's own viewport
+	await page.setViewportSize({ width: 1280, height: 720 });
+
+	// Dictation records in whatever type the browser can make, and a browser that can record none is
+	// told so in plain words, never a raw "Microphone error". This page is made to report no
+	// recordable type, as such a browser does; the check runs before the microphone is asked for.
+	await narrate(
+		'The microphone button dictates. Alpha records in whatever audio format the browser can make, so a browser without the usual one still dictates.'
+	);
+	await highlight(dictate);
+	await waitForNarration();
+	await page.evaluate(() => {
+		const w = window as unknown as { __isTypeSupported?: typeof MediaRecorder.isTypeSupported };
+		w.__isTypeSupported = MediaRecorder.isTypeSupported;
+		MediaRecorder.isTypeSupported = () => false;
+	});
+	await narrate('And on a browser that cannot record audio at all, it says so in plain words.');
+	await click(dictate);
+	const noRecording = page.getByTestId('chat-error-toast').locator('[data-toast-title]');
+	await expect(noRecording, 'a browser that cannot record was not told so').toHaveText(
+		"This browser can't record audio, so dictation isn't available here.",
+		{ timeout: 10_000 }
+	);
+	await expect(noRecording, 'the browser exception reached the screen').not.toContainText(
+		'Microphone error'
+	);
+	await highlight(noRecording);
+	await waitForNarration();
+	await page.evaluate(() => {
+		const w = window as unknown as { __isTypeSupported?: typeof MediaRecorder.isTypeSupported };
+		if (w.__isTypeSupported) MediaRecorder.isTypeSupported = w.__isTypeSupported;
+	});
 
 	await narrate(
 		'That is A6: hand Alpha a photo or a document and it answers from what you gave it, and it tells you when it could not take one.'

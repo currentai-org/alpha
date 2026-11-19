@@ -13,7 +13,7 @@
  *   - A pair nobody measured is unknown, never 0 and never a default: once any model is measured in a
  *     language, an unmeasured one scores the lowest of the measured ones there (`neutralSupport`), so
  *     it is not pushed away for lack of a test and never outranks a model that was tested. A median
- *     would let an untested model outrank tested ones in a language such as Arabic or Amharic (CUR-4035).
+ *     would let an untested model outrank tested ones in a language such as Arabic or Amharic.
  */
 import raw from './data/language-scores.json';
 import { parentLanguage } from './languages';

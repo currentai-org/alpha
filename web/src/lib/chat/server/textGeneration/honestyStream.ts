@@ -61,13 +61,13 @@ import { detectFabricatedUrls, markedUrlsIn, stripRawSourceUrls } from "$lib/cha
 // NOT everything is chunk-safe, and this module does NOT pretend otherwise:
 //   • detectFabricatedSources' trailing "Sources:"-heading-to-EOF trim needs to see all the way to
 //     the real end of the answer (a heading only means "the rest is a fabricated bibliography" once
-//     nothing legitimate follows it) — resolved once at end-of-stream, same as before.
+//     nothing legitimate follows it) — resolved once at end-of-stream.
 //   • The semantic (embedding) hedge catch-all is a deliberate RECALL boost over sentences the cheap
 //     regex pass didn't flag (semanticHedge.ts's own docs) — running it per-chunk would mean one
 //     embedding round trip per batch instead of one for the whole answer. The regex pass alone runs
 //     per-chunk (zero latency, catches "the obvious cases" per its own doc comment); the embedding
 //     pass still runs once at the end, so it can only rarely correct a sentence that ALREADY
-//     streamed — same residual, rare flash as today, not eliminated, but no longer the common case.
+//     streamed. That residual flash remains possible, but it is the rare case.
 //   • bailedWholeAnswer (the whole answer WAS a hedge/refusal) is inherently an end-of-stream
 //     verdict — you cannot know "nothing substantive survives" until nothing more is coming.
 //   • detectFabricatedSources' disclaimer-strip and stripUnbackedSourceClaims BOTH carry their own
@@ -76,8 +76,8 @@ import { detectFabricatedUrls, markedUrlsIn, stripRawSourceUrls } from "$lib/cha
 //     but the flagged sentence, that floor rejects the strip every time (removing 100% of a tiny
 //     batch always looks like over-stripping), so per-batch application would never fire. Both run once at end-of-stream instead, where "how much of
 //     the WHOLE answer would this remove" is the question the floor was actually designed to answer.
-// All four residual cases are rare in practice, unlike dangling citations / bad labels / fabricated URLs / hyphenation, which
-// this module now corrects before anything reaches the client.
+// Each of these four is a rare case. The common corrections (dangling citations, bad labels, fabricated
+// URLs, hyphenation) are made before anything reaches the client.
 
 const MAX_CHUNK_CHARS = 400; // same fallback grain as screenStream — see nextChunk's own doc comment
 
@@ -129,37 +129,37 @@ export interface HonestyStreamOptions {
 	/** retrieved source URLs (web + RAG) — trusted hosts on a grounded turn (urlGuard). */
 	allowedUrls: string[];
 	/** The turn retrieves through tool calls (the native harness), so its sources arrive as
-	 *  WebSearch and Rag updates inside the stream rather than before it. Each update carries that (CUR-2697)
+	 *  WebSearch and Rag updates inside the stream rather than before it. Each update carries that
 	 *  kind's set so far; it replaces what the stream holds and makes the turn grounded. */
 	sourcesFromStream?: boolean;
 	/** called once, after the FinalAnswer resolves, with whatever was actually flagged (fields are 0
 	 *  / empty when nothing fired — caller decides whether to stamp a message notice). */
 	onNotice?: (notice: HonestyGuardNotice) => void;
-	/** Called when a grounded turn's whole answer bails to a hedge/refusal (CUR-148), BEFORE falling
+	/** Called when a grounded turn's whole answer bails to a hedge/refusal, BEFORE falling
 	 *  back to the static sources-pointer (buildGroundedHedgeReplacement). Should resolve to a freshly
 	 *  generated ungrounded answer, or undefined to fall back to the pointer — also what happens when a
-	 *  caller has no ungrounded-regen path wired (e.g. eval harnesses), preserving today's behavior. See
+	 *  caller has no ungrounded-regen path wired (e.g. eval harnesses). See
 	 *  $lib/chat/server/textGeneration/groundedBailRegen for the implementation this wraps in +server.ts. */
 	onGroundedBail?: () => Promise<string | undefined>;
-	/** Called when the answer opens by reciting the fenced turn's preamble (CUR-3886). Should resolve
+	/** Called when the answer opens by reciting the fenced turn's preamble. Should resolve
 	 *  to a fresh answer to the same turn, or undefined; with none usable, the answer is replaced by
 	 *  RECITAL_FALLBACK_MESSAGE rather than shipping our own prompt text. */
 	onRecital?: () => Promise<string | undefined>;
 	/** How many numbered sources the visitor pasted into their message (visitorSources.ts). Our own sources
-	 *  are numbered after them, and the guards treat [1..k] as backed by the message (CUR-3844). */
+	 *  are numbered after them, and the guards treat [1..k] as backed by the message. */
 	visitorSourceCount?: number;
-	/** The language the person wrote in, awaited only when the loop notice replaces the answer (CUR-4052). */
+	/** The language the person wrote in, awaited only when the loop notice replaces the answer. */
 	noticeLanguage?: Promise<DeclineLanguage>;
 	/** The 639-3 tag of what the person wrote, awaited only when the sources pointer replaces the answer,
-	 *  so it reads in their language (CUR-4339). Undefined reads in English. */
+	 *  so it reads in their language. Undefined reads in English. */
 	messageLanguage?: Promise<string | undefined>;
-	/** Whether the turn is stamped `moderation.support` (CUR-4061). Read per batch, since the stamp can
+	/** Whether the turn is stamped `moderation.support`. Read per batch, since the stamp can
 	 *  land while the answer streams. Without it, an answer counts as a crisis answer only once it names
 	 *  findahelpline, 112 or 988 itself. */
 	crisisSupport?: () => boolean;
 	/** The visitor's `x-vercel-ip-country`, so their own emergency number survives the number guard. */
 	helplineCountry?: string | null;
-	/** The country the message names for the person at risk (CUR-4488), read per batch. When set, a replaced
+	/** The country the message names for the person at risk, read per batch. When set, a replaced
 	 *  number links that country's findahelpline page and its emergency number survives. */
 	namedHelplineCountry?: () => string | undefined;
 	/** Settles once the support classifier has stamped the turn or declined to. The end-of-stream number
@@ -181,10 +181,9 @@ const RECITAL_FALLBACK_MESSAGE =
  * emitInterruptedFinalAnswer() owns composing that answer (it clamps to the exact reported stop
  * point), and must not be pre-empted by a FinalAnswer manufactured here.
  *
- * An upstream FinalAnswer ends the content (CUR-1907). The composed FinalAnswer goes out then, and
- * anything the source still yields afterwards, such as the conversation title merged into the same
- * stream, passes through after it. Waiting for the source to end held a short answer back until the
- * title call finished, up to 15s, which is the hold screenStream.ts dropped in #1326.
+ * An upstream FinalAnswer ends the content. The composed FinalAnswer goes out then, and anything the
+ * source still yields afterwards, such as the conversation title merged into the same stream, passes
+ * through after it, so a short answer never waits on the title call (screenStream.ts does the same).
  */
 export async function* honestyScreenStream(
 	source: AsyncIterable<MessageUpdate>,
@@ -239,20 +238,20 @@ async function* honestyScreenContent(
 	// A genuine hedge sentence streams real tokens before per-chunk stripping reduces it to
 	// nothing (see processBatch's hedge branch below) — so "empty after stripping" alone can't tell a
 	// real hedge apart from a dead generation that never produced a single token. This does: it's
-	// false only when NO Stream event ever arrived at all. (CUR-1157)
+	// false only when NO Stream event ever arrived at all.
 	let anyStreamTokenSeen = false;
 	// Third of three layers that hold the incoming FinalAnswer and compose a replacement (the others
 	// are screenStream and the compose block in index.ts). Each one drops every field it does not copy
-	// by hand, so a field added upstream (such as the token-cap notice) must be copied here too (CUR-149).
+	// by hand, so a field added upstream (such as the token-cap notice) must be copied here too.
 	let finalTruncated = false;
 	// The source's own FinalAnswer.text, held so it can be recovered below when it carries
 	// real content this loop never saw as Stream tokens (see the recovery after the loop). Paired with
 	// rawStreamedLen, the RAW length actually sent as Stream tokens before any correction ran — the
 	// signal that tells "never streamed" apart from "streamed, then corrected down to something
-	// shorter," which `released`'s own (post-correction) length cannot. (CUR-1145)
+	// shorter," which `released`'s own (post-correction) length cannot.
 	let sourceFinalText = "";
 	let rawStreamedLen = 0;
-	// Out-of-band output-moderation carriers (CUR-946). Held like finalTruncated: this stage discards
+	// Out-of-band output-moderation carriers. Held like finalTruncated: this stage discards
 	// the incoming FinalAnswer.text, so a decline/notice written into that text would vanish. The route
 	// resolves these into the body once, after every model-text guard. Honesty is the last guard.
 	let finalDeclineText: string | undefined;
@@ -326,7 +325,7 @@ async function* honestyScreenContent(
 		}
 		const candidate = released + cleaned;
 		const cleanPrefix = timedPass("sourceGuardCleanPrefix", candidate, () => sourceGuardCleanPrefix(candidate));
-		// A written tool tag or a run of backticks and closers (CUR-3302): release nothing from its start
+		// A written tool tag or a run of backticks and closers: release nothing from its start
 		// on. The end-of-stream trim cuts the cascade; held here, the visitor never watches it type out.
 		const runaway = timedPass("markupRunawayStart", candidate, () => markupRunawayStart(candidate));
 		// Stryker disable next-line ConditionalExpression,EqualityOperator: the ungrounded guard refuses to strip text still holding a run, so no test reaches a guard prefix ahead of one; kept so a guard that can never streams past a run
@@ -388,9 +387,9 @@ async function* honestyScreenContent(
 		}
 
 		// The first crisis-line 988 decides, once per answer, whether findahelpline.com and 112
-		// go ahead of it. Runs before the URL check so the inserted link is judged like any other. (CUR-2136)
+		// go ahead of it. Runs before the URL check so the inserted link is judged like any other.
 		if (!crisisOrderDecided) {
-			// The person's language is awaited only for a batch that may hold the first 988 (CUR-4061).
+			// The person's language is awaited only for a batch that may hold the first 988.
 			// Stryker disable next-line StringLiteral: with no 988 in the batch the language is never read.
 			const lang = /988/.test(text) ? await (opts.noticeLanguage ?? Promise.resolve("en" as const)) : "en";
 			const order = leadWithEuropeanLine(text, released, lang);
@@ -402,14 +401,14 @@ async function* honestyScreenContent(
 		}
 
 		// A findahelpline.com the model wrote as a bare domain renders as plain text. Chunks end
-		// at sentence punctuation followed by whitespace, so the domain never splits across two batches. (CUR-3909)
+		// at sentence punctuation followed by whitespace, so the domain never splits across two batches.
 		const helpline = linkBareHelpline(text);
 		if (helpline.linked && flagEnabledOr(CRISIS_REFERRAL_ORDER_FLAG, () => true)) text = helpline.cleaned;
 
 		// In a crisis answer, a phone number other than 112, 988, the visitor's own emergency
-		// number or a sourced national line for their country (CUR-4122) is one the model recalled, and
+		// number or a sourced national line for their country is one the model recalled, and
 		// small models recall them wrong. It becomes a findahelpline
-		// link. The end-of-stream pass below catches a number released before the answer named a resource. (CUR-4061)
+		// link. The end-of-stream pass below catches a number released before the answer named a resource.
 		if (inCrisisAnswer(released + text) && flagEnabledOr(CRISIS_REFERRAL_ORDER_FLAG, () => true)) {
 			const numbers = guardHelplineNumbers(text, opts.helplineCountry, opts.namedHelplineCountry?.());
 			if (numbers.replaced) {
@@ -494,20 +493,20 @@ async function* honestyScreenContent(
 	// correct — recover exactly that tail, appended after whatever was already released and corrected,
 	// never used to replace it. A length comparison (not a string-prefix match against the corrected
 	// `released`) is what makes this safe: per-chunk correction can shrink `released` well below
-	// rawStreamedLen even for a normal answer (a hedge sentence stripped to nothing, CUR-1157's own
-	// case below) without that ever counting as "unseen" content.
+	// rawStreamedLen even for a normal answer (a hedge sentence stripped to nothing, as in the
+	// grounded-bail case below) without that ever counting as "unseen" content.
 	//
-	// `!finalDeclineNotice && !finalDeclineText` (CUR-946): a moderation carrier's `sourceFinalText`
+	// `!finalDeclineNotice && !finalDeclineText`: a moderation carrier's `sourceFinalText`
 	// legitimately grows past `rawStreamedLen` too (a mid-stream notice appends its own text past the
 	// streamed prefix, a full block sends none of its text as tokens at all), but that tail is the
-	// out-of-band copy CUR-946 deliberately withholds from `text`, not unseen model content to restore.
+	// out-of-band copy that is deliberately withheld from `text`, not unseen model content to restore.
 	// Recovering it here would silently re-merge the notice into `released`, defeating the whole point
 	// of carrying it separately for the route to resolve.
 	if (sourceFinalText.length > rawStreamedLen && !finalDeclineNotice && !finalDeclineText) {
 		released += sourceFinalText.slice(rawStreamedLen);
 	}
 
-	// Full output-moderation block (CUR-946): forward the reviewed decline UNRESOLVED and stop. text:""
+	// Full output-moderation block: forward the reviewed decline UNRESOLVED and stop. text:""
 	// (never finalDeclineText) so no downstream stream pass can rewrite the copy even
 	// transiently; the route swaps it in. Short-circuits onGroundedBail (no second generation),
 	// detectFabricatedSources, every source/title/URL strip, measureDegeneration, and onNotice — none of
@@ -523,12 +522,12 @@ async function* honestyScreenContent(
 	}
 
 	let finalText = released + sourceTail;
-	// Set when a fully-hedged answer is REPLACED — either by an ungrounded regen (CUR-148: the model's
+	// Set when a fully-hedged answer is REPLACED — either by an ungrounded regen (the model's
 	// own training-data answer, when it has one) or, failing that, by buildGroundedHedgeReplacement's
 	// sources pointer. Either replacement is a known-good construction, not a model-appended duplicate
 	// of a SourceStrip rendered separately, so the trailing-source-list strip below must NOT run on it.
 	let bailedToFallback = false;
-	// `!finalDeclineNotice` (CUR-946): a mid-stream moderation block must NOT regenerate. onGroundedBail
+	// `!finalDeclineNotice`: a mid-stream moderation block must NOT regenerate. onGroundedBail
 	// runs a real second model generation + a second output screen and can overwrite message.outputModeration
 	// — regenerating an answer only to append a "we stopped this" notice after it is self-contradictory.
 	// The deterministic source/title strips below stay UNGUARDED: they are pure text checks on the real
@@ -591,7 +590,7 @@ async function* honestyScreenContent(
 			// reported, from before this replacement — generate.ts's stop-token heuristic can flag a
 			// genuinely complete turn as interrupted, and that stale flag would carry through to the
 			// finished, deliberate text below it. Both branches just built a complete, honest answer
-			// (a real regen or the sources pointer), never a cut-off stream — force it false here. (CUR-1157)
+			// (a real regen or the sources pointer), never a cut-off stream — force it false here.
 			finalInterrupted = false;
 		}
 	}
@@ -599,7 +598,7 @@ async function* honestyScreenContent(
 	// An answer that opens with the fenced turn's preamble is our own prompt read back, often
 	// to the length cap, so it is never shipped. Ask the turn once more; a retry that recites too, or
 	// fails, gives way to a fixed notice. Not on a moderation-stopped turn, which must not regenerate
-	// (the same rule as the grounded bail above). (CUR-3886)
+	// (the same rule as the grounded bail above).
 	if (!finalDeclineNotice && opensWithFencePreamble(finalText)) {
 		const before = finalText;
 		const regen = await opts.onRecital?.();
@@ -670,8 +669,6 @@ async function* honestyScreenContent(
 			recordFinalMutation("trailingTitleDump", before, finalText);
 		}
 	}
-	// Groundcheck (CUR-2467): last of the grounded passes, so it reads the answer the source strips left.
-	// Not on a bail replacement (known-good text), a mid-stream decline, or a cut-off answer.
 	// Unbacked-citation guard (ungrounded turns only — stands down at sourceCount>0) — same deferral.
 	if (!grounded) {
 		const unbacked = timedPass("stripUnbackedSourceClaims", finalText, () =>
@@ -685,25 +682,9 @@ async function* honestyScreenContent(
 		}
 	}
 
-	// Reconcile the URL notice to the marks that ACTUALLY SURVIVE in finalText. urlCount/urls were tallied
-	// per-batch as links were flagged during streaming, but the end-of-stream source-strips above can remove
-	// a flagged link after it was counted (a fabricated URL inside a trailing "Sources:" block, a stripped
-	// title dump, …). Emitting the raw tally would make the UrlNotice chip claim "N links marked (? above)"
-	// pointing at a "?" no longer in the body. Deriving the count from the final body makes the footer honest by construction: it can only
-	// ever announce marks that render (and when none survive, urlCount is 0 → no notice fires at all).
-	// Structural-collapse probe (CUR-149). OBSERVE ONLY — the answer is not touched. A turn that
-	// spends its time emitting `\boxed{\mathbf{ }}` and stops mid-token would log `outcome: complete`
-	// and be indistinguishable from a good answer; this is the line that tells them apart. Whether a
-	// tripped probe should replace the text is a product decision with a real cost when it misfires,
-	// and it is not made here.
-	//
-	// `symbolRatio` rides along on the warn precisely because it is NOT the trigger: the metric the
-	// ticket originally specified cannot separate a wreck from a quadratic-formula derivation (see
-	// degeneration.ts). Logging it makes the real distribution queryable, so if it ever does separate
-	// on production traffic the threshold can be set from that rather than from two fixtures.
-	// A run of closing brackets nothing opened, after the last word (CUR-2882). Unlike the probe below,
+	// A run of closing brackets nothing opened, after the last word. Unlike the probe below,
 	// this one trims: the tail holds no letter or digit, so nothing a reader needs goes with it.
-	// Stryker disable next-line ArrowFunction: Stryker's run completes 0 tests on this mutant (CUR-3749); applied by hand it fails 15+ honestyStream specs
+	// Stryker disable next-line ArrowFunction: Stryker's run completes no tests on this mutant; applied by hand it fails the honestyStream specs
 	const closerRun = timedPass("stripTrailingCloserRun", finalText, () => stripTrailingCloserRun(finalText));
 	if (closerRun.flagged) {
 		logger.warn(
@@ -715,8 +696,8 @@ async function* honestyScreenContent(
 		recordFinalMutation("trailingCloserRun", before, finalText);
 	}
 	// Our own <document> wrapper echoed after the answer, with markup run on after it that holds
-	// letters (`./cite]` repeated), so the closer trim above cannot see it (CUR-2882).
-	// Stryker disable next-line ArrowFunction: Stryker's run completes 0 tests on this mutant (CUR-3749); `echoed.flagged` then throws, which every honestyStream spec turn reaches
+	// letters (`./cite]` repeated), so the closer trim above cannot see it.
+	// Stryker disable next-line ArrowFunction: Stryker's run completes no tests on this mutant; `echoed.flagged` then throws, which every honestyStream spec turn reaches
 	const echoed = timedPass("stripEchoedWrapperTail", finalText, () => stripEchoedWrapperTail(finalText));
 	if (echoed.flagged) {
 		logger.warn(
@@ -728,7 +709,7 @@ async function* honestyScreenContent(
 		recordFinalMutation("echoedWrapperTail", before, finalText);
 	}
 	// A Hermes tool-call tag written as text, and a long run of backticks and closers with apologies
-	// and restarts after it, to the length limit (CUR-3302). Everything from the first run on is that
+	// and restarts after it, to the length limit. Everything from the first run on is that
 	// cascade, so it goes; the answer before it stays.
 	const runaway = timedPass("stripMarkupRunaway", finalText, () => stripMarkupRunaway(finalText));
 	if (runaway.flagged) {
@@ -741,6 +722,16 @@ async function* honestyScreenContent(
 		recordFinalMutation("markupRunaway", before, finalText);
 	}
 
+	// Structural-collapse probe. OBSERVE ONLY — the answer is not touched. A turn that
+	// spends its time emitting `\boxed{\mathbf{ }}` and stops mid-token would log `outcome: complete`
+	// and be indistinguishable from a good answer; this is the line that tells them apart. Whether a
+	// tripped probe should replace the text is a product decision with a real cost when it misfires,
+	// and it is not made here.
+	//
+	// `symbolRatio` rides along on the warn precisely because it is NOT the trigger: a plain symbol
+	// ratio cannot separate a wreck from a quadratic-formula derivation (see
+	// degeneration.ts). Logging it makes the real distribution queryable, so if it ever does separate
+	// on production traffic the threshold can be set from that rather than from two fixtures.
 	const degen = timedPass("measureDegeneration", finalText, () => measureDegeneration(finalText));
 	if (degen.degenerate) {
 		logger.warn(
@@ -749,9 +740,9 @@ async function* honestyScreenContent(
 		);
 	}
 
-	// Repeated-clause collapse probe (CUR-1104). Unlike degen above, THIS one replaces the answer when
-	// it fires — repetitionGuardEnabled() defaults off pending exactly the live verification pass that
-	// gate exists for. Known, accepted tradeoff when it does fire: every other guard in this file
+	// Repeated-clause collapse probe. Unlike degen above, THIS one replaces the answer when it fires,
+	// so repetitionGuardEnabled() defaults off until its flag is switched on. Known, accepted tradeoff
+	// when it does fire: every other guard in this file
 	// corrects PER-CHUNK specifically to avoid "the client's rendered answer visibly snaps to something
 	// different from what it just watched type out" (this file's own header) — a
 	// repetition loop can only be told apart from a real answer once the model stops, so this one is
@@ -771,7 +762,7 @@ async function* honestyScreenContent(
 		recordFinalMutation("degenerateRepetition", before, finalText);
 	}
 
-	// CUR-4061, whole answer: a number streamed before the answer first named findahelpline, 112 or 988
+	// Whole answer: a number streamed before the answer first named findahelpline, 112 or 988
 	// passed the per-batch check. The persisted answer still loses it, and the client snaps to this text.
 	// A short answer can finish before the support classifier stamps the turn. The stamp only matters when
 	// the answer holds a number the guard would replace, so only then does this wait for the verdict
@@ -792,6 +783,12 @@ async function* honestyScreenContent(
 		}
 	}
 
+	// Reconcile the URL notice to the marks that ACTUALLY SURVIVE in finalText. urlCount/urls were tallied
+	// per-batch as links were flagged during streaming, but the end-of-stream source-strips above can remove
+	// a flagged link after it was counted (a fabricated URL inside a trailing "Sources:" block, a stripped
+	// title dump, …). Emitting the raw tally would make the UrlNotice chip claim "N links marked (? above)"
+	// pointing at a "?" no longer in the body. Deriving the count from the final body means the footer can
+	// only announce marks that render (and when none survive, urlCount is 0, so no notice fires at all).
 	const survivingMarkedUrls = markedUrlsIn(finalText);
 	opts.onNotice?.({
 		labelCount,
@@ -817,7 +814,7 @@ async function* honestyScreenContent(
 		...(finalTruncated ? { truncated: true } : {}),
 		// Forward the mid-stream notice UNRESOLVED — finalText here is the guard-processed prefix; the
 		// route appends the notice once, in its FinalAnswer loop, after every later stage has seen that
-		// prefix (CUR-946).
+		// prefix.
 		...(finalDeclineNotice ? { declineNotice: finalDeclineNotice } : {}),
 	};
 }

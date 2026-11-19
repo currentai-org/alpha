@@ -2,22 +2,22 @@
 	import { unlocalizedPath } from '$lib/i18n/routing';
 	import { syncInterfaceLocale } from '$lib/i18n/client.svelte';
 	import { page } from '$app/state';
-	import { SiteChrome } from '$lib/websiteChrome';
+	import { SiteChrome, smoothScrolling } from '$lib/websiteChrome';
 	import '../app.css';
 	// The latin faces the first screen needs, preloaded so they arrive alongside the JS rather than after
-	// the client-rendered welcome has painted in a fallback face (CUR-2385). Same files as
+	// the client-rendered welcome has painted in a fallback face. Same files as
 	// styles/fonts-self-hosted.css, so Vite emits one hashed asset for both.
 	import jakartaLatin from '@fontsource-variable/plus-jakarta-sans/files/plus-jakarta-sans-latin-wght-normal.woff2?url';
 	import notoSerifLatin from '@fontsource-variable/noto-serif/files/noto-serif-latin-wght-normal.woff2?url';
 	// The site header's chevron and icons are glyphs from this font; it is preloaded because otherwise it is
-	// only requested once the first paint needs it, and the header paints without them (CUR-2269).
+	// only requested once the first paint needs it, and the header paints without them.
 	import iconsCss from '$lib/icons/icons.generated.css?raw';
 	import { iconFontUrlFrom } from '$lib/icons/fontUrl';
 	const iconFontUrl = iconFontUrlFrom(iconsCss);
 
 	import { onMount, type Component } from 'svelte';
 	import { initCopyEdit, loadCopyEditLayer } from '$lib/i18n/copyEdit/entry.svelte';
-	import { afterNavigate, beforeNavigate } from '$app/navigation';
+	import { afterNavigate, beforeNavigate, onNavigate } from '$app/navigation';
 	import { navigating } from '$app/state';
 	import { env } from '$env/dynamic/public';
 	import {
@@ -31,6 +31,16 @@
 	let { children, data } = $props();
 	// The server resolves each page's language; keep the browser's reactive locale on it.
 	$effect.pre(() => syncInterfaceLocale(data.locale));
+
+	const SMOOTH_SCROLL_TEMPLATES = new Set([
+		'default',
+		'landing',
+		'hero',
+		'map',
+		'editorial',
+		'updates',
+		'roadmap'
+	]);
 
 	// Site-wide PostHog — ONE project, ONE singleton (init is idempotent). Native $pageview fires on
 	// every route (/chat included) so the whole site is instrumented uniformly; posthog auto-fires
@@ -53,8 +63,13 @@
 			document.documentElement.style.scrollBehavior = 'auto';
 		}
 	});
-	afterNavigate(() => {
+	onNavigate(({ type, from, to }) => {
+		if (type === 'popstate' && from?.url.pathname !== to?.url.pathname)
+			smoothScrolling?.unclampScrollRestore();
+	});
+	afterNavigate(({ from, to }) => {
 		document.documentElement.style.scrollBehavior = '';
+		smoothScrolling?.syncSmoothScroll(smoothScroll, from?.url, to?.url);
 	});
 	usePageTransition(() => !isChatApp);
 
@@ -98,7 +113,10 @@
 	// literally slugged "home" can't be confused with the actual isHome-flagged Payload doc.
 	const isHome = $derived('isHome' in page.data && page.data.isHome === true);
 	// The gap map's org and product pages are code routes, not Payload docs, so no template names them.
-	const isEntity = $derived(page.route.id === '/org/[slug]' || page.route.id === '/product/[slug]');
+	// A plain string list rather than `===` against each id: a build without the gap map has neither
+	// route, and svelte-check rejects comparing route ids that cannot occur.
+	const ENTITY_ROUTES: readonly (string | null)[] = ['/org/[slug]', '/product/[slug]'];
+	const isEntity = $derived(ENTITY_ROUTES.includes(page.route.id));
 	const bodyClass = $derived(
 		[
 			template ? `template-${template}` : null,
@@ -127,8 +145,19 @@
 	// The Alpha chat is a full-page app, not a page inside the Potluck site: the dedicated /chat/*
 	// tree renders without the site header and footer. (The /alpha landing page embeds the same app
 	// inside the site, and keeps the chrome.)
-	const isChatApp = $derived(
-		page.route.id?.startsWith('/chat') === true || page.route.id === '/alpha/demo'
+	const isChatApp = $derived(page.route.id?.startsWith('/chat') === true);
+
+	// Content pages scroll through ScrollSmoother, with their blocks lagging behind (see
+	// $lib/scroll/smooth-scroll, reached through $lib/websiteChrome). The gap-map and dataset
+	// templates and the app-like routes (/org, /product, /alpha, /roadmap-v2, /designsystem…) keep
+	// native scrolling: their sticky side
+	// panels and fixed legends, navs and tooltips stop working inside the smoothed, transformed
+	// content.
+	const smoothScroll = $derived(
+		!isChatApp &&
+			(isHome ||
+				collection === 'update' ||
+				(template !== undefined && SMOOTH_SCROLL_TEMPLATES.has(template)))
 	);
 </script>
 
@@ -154,8 +183,8 @@
 		{@render children()}
 	</div>
 {:else if SiteChrome}
-	<!-- The website's header, footer and scroll wrapper (lib/website/SiteChrome.svelte). The public
-	     snapshot has no website, so it falls through to the bare page below. -->
+	<!-- The website's header, footer and ScrollSmoother wrapper (lib/website/SiteChrome.svelte; see
+	     smoothScroll above). A build without the website falls through to the bare page below. -->
 	<SiteChrome {data} {bodyClass}>
 		{@render children()}
 	</SiteChrome>

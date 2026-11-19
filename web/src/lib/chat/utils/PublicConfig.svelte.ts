@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import type { env as publicEnv } from "$env/dynamic/public";
 import { page } from "$app/state";
 import { staticAssetPath } from "$lib/chat/paths";
@@ -35,8 +38,8 @@ class PublicConfigManager {
 	}
 
 	get assetPath() {
-		// CUR-1172 sibling: PUBLIC_ORIGIN is one value shared by every preview deployment, so
-		// preferring it here would point favicons/manifest.json/OG-image tags at develop.aipotluck.org from
+		// sibling: PUBLIC_ORIGIN is one value shared by every preview deployment, so
+		// preferring it here would point favicons/manifest.json/OG-image tags at the develop host from
 		// every per-PR preview — a cross-origin fetch a browser can refuse outright
 		// for a PWA manifest. page.url.origin is always the host actually serving this page; fall back
 		// to PUBLIC_ORIGIN only when it's unavailable (prerendering outside a real request).

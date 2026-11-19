@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Does the agent still know what day it is — and does knowing still leave a relative deadline alone?
 
-WHY THIS EXISTS. None of the seven `*_NOTE` constants in app.py states the current date, yet a prose
-deadline question reaches the model with a wall-clock anchor (CUR-1217): on both transports, with zero
-tool calls, the agent resolves a lapsed-deadline question with the right arithmetic. The anchor comes
-from one layer up:
+WHY THIS EXISTS. None of the `*_NOTE` constants in app.py states the current date, and none needs to:
+on both transports, with zero tool calls, the agent states today's date and resolves a lapsed-deadline
+question with the right arithmetic. The anchor comes from one layer up:
 Hermes' own system prompt renders
 
     Conversation started: {%A, %B %d, %Y}{ (zone) }
@@ -12,20 +11,19 @@ Hermes' own system prompt renders
 unconditionally (agent/system_prompt.py at HERMES_SHA 29112bef, line ~995), plus a second
 "Today's date (as of the last context rebuild)" line once a session crosses midnight.
 
-So nothing here needs a NOW_NOTE, and adding one would put a second date into a prompt whose
-note ORDER decides which instruction holds (CUR-706, CUR-752). What this repo lacks is an
-assertion that the inherited property is still there. It rides on a pinned upstream SHA
-(CUR-748), and upstream has a live code path that deliberately DROPS the date line
-(`_bot_chat_timeless_prompt`). A bump that removed it would change nothing visible here — no test, no
-CI job, and agent-service's deploy workflow runs no post-deploy probe at all. This is that probe.
+So nothing here needs a NOW_NOTE, and adding one would put a second date into a prompt whose note
+ORDER is already sensitive. What a test has to assert is that the inherited property is still there.
+It rides on a pinned upstream SHA that gets bumped, and upstream has a live code path that deliberately
+DROPS the date line (`_bot_chat_timeless_prompt`). A bump that removed it would change nothing visible
+in this repo's unit tests. This probe is the check.
 
   today     a date question with no tool available -> must match the date THIS PROCESS computes.
             Two clocks, one assertion: the expected value must not come from the service.
-  lapsed    the ticket's own stated impact — "has this notice period lapsed?" -> must name the
+  lapsed    the question a person actually asks — "has this notice period lapsed?" -> must name the
             end date this probe derives itself (1 Aug 2026 + 28 days) and say it has passed.
   relative  a plain-language rewrite of a notice whose only deadline is RELATIVE -> must STAY
             relative. A model that knows today's date is a model equipped to convert one into a
-            fixed date, which is the drift CUR-672/CUR-676 address. A green
+            fixed date, which silently moves the deadline for anyone reading later. A green
             `today` leg over a red `relative` leg is a net loss, so a green run requires both.
 
 The `relative` fixture deliberately carries no absolute date of its own, which makes its assertion
@@ -33,9 +31,9 @@ unambiguous: any absolute date in that answer was invented, since there was none
 
 The token comes from AGENT_SMOKE_TOKEN and is never printed.
 
-  doppler run -p agent-service -c prd -- python scripts/date_anchor_probe.py
-  doppler run -p agent-service -c prd -- python scripts/date_anchor_probe.py --transport oneshot
-  doppler run -p agent-service -c prd -- python scripts/date_anchor_probe.py --only relative -k 3
+  <production environment loaded> python scripts/date_anchor_probe.py
+  <production environment loaded> python scripts/date_anchor_probe.py --transport oneshot
+  <production environment loaded> python scripts/date_anchor_probe.py --only relative -k 3
 """
 from __future__ import annotations
 
@@ -67,7 +65,7 @@ LAPSED_PROMPT = (
 )
 
 # A notice with a relative deadline and no absolute date anywhere in it. "entitlement"/"under review"
-# are CUR-676's category and status axes, kept so a failure implicates one axis rather than three.
+# are the notice's category and status axes, kept so a failure implicates one axis rather than three.
 RELATIVE_PROMPT = (
     "Rewrite the following notice in plain language, in English, so that someone without legal "
     "training can act on it. Keep it short. Do not write a file.\n\n"
@@ -87,7 +85,7 @@ ABSOLUTE_DATE = re.compile(
     rf"\b(?:{MONTHS})\s+\d{{1,2}},?\s+\d{{4}}\b|\b\d{{1,2}}/\d{{1,2}}/\d{{4}}\b",
     re.IGNORECASE,
 )
-# The other half of CUR-672's drift, and the half a date-aware model is newly equipped to reach for:
+# The other half of deadline drift, and the half a date-aware model is newly equipped to reach for:
 # re-anchoring the countdown to the reader instead of to the notice.
 REANCHORED = re.compile(
     r"\bfrom today\b|\bfrom now\b|\bstarting today\b|\bwithin 28 days of (?:today|receiving|receipt)\b|"
@@ -107,8 +105,8 @@ AFFIRMED = re.compile(r"\b(?:passed|expired|lapsed|elapsed|is over|has closed)\b
 def _token() -> str:
     if tok := os.environ.get("AGENT_SMOKE_TOKEN", "").strip():
         return tok
-    sys.exit("no AGENT_SMOKE_TOKEN — run via `doppler run -p agent-service -c prd`, or mint one as "
-             "an HS256 JWT signed with WEBUI_SECRET_KEY")
+    sys.exit("no AGENT_SMOKE_TOKEN — set it in the environment, or mint one with "
+             "fly/mint-token.sh")
 
 
 def _run_task(base: str, token: str, prompt: str, transport: str | None, poll_timeout: int) -> dict:
@@ -117,9 +115,9 @@ def _run_task(base: str, token: str, prompt: str, transport: str | None, poll_ti
         body["transport"] = transport
     submitted = _req(f"{base}/run", token, body)
     # Every leg says "do not write a file", but COMPUTATION_NOTE pushes date arithmetic toward the
-    # terminal tool and CUR-975 made that always-confirm too — so a `lapsed` run that decides to check
-    # its own subtraction would pause forever without this. It has not happened yet; that is luck about
-    # which path the model picks, not a property of the prompt (CUR-1224).
+    # terminal tool, which always asks for confirmation, so a `lapsed` run that decides to check its own
+    # subtraction would pause forever without this. Whether it does depends on which path the model
+    # picks, not on a property of the prompt.
     return poll(base, token, submitted["id"], submitted.get("machine_id"), poll_timeout)
 
 
@@ -187,7 +185,7 @@ def main() -> int:
     ap.add_argument("--min-pass", type=int, default=0,
                     help="passes a leg needs out of -k (default: all k). A removed anchor fails every "
                          "run, so 2 of 3 still catches it; one wrong sample in three does not block "
-                         "a deploy (two builds, two different legs on 2026-10-09)")
+                         "a deploy (two builds can fail two different legs)")
     ap.add_argument("--timeout", type=int, default=0,
                     help="per-leg poll budget (default: /healthz's own wall_clock_task_s)")
     args = ap.parse_args()

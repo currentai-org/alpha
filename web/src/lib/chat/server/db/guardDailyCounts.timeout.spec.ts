@@ -1,6 +1,6 @@
 /**
  * The distress answer awaits its count, so a database that never answers must not hold it. The
- * contract: the count gives up at its deadline and resolves, and a write that rejects resolves too. (CUR-3915)
+ * contract: the count gives up at its deadline and resolves, and a write that rejects resolves too.
  */
 import { describe, expect, it, vi } from "vitest";
 
@@ -18,7 +18,7 @@ vi.mock("$lib/chat/server/db/client", () => ({
 
 const { countGuardHitsSafe } = await import("./guardDailyCounts");
 
-describe("countGuardHitsSafe deadline (CUR-3915)", () => {
+describe("countGuardHitsSafe deadline", () => {
 	it("resolves at its deadline when the database never answers, so the distress answer is not held", async () => {
 		pending = new Promise(() => {});
 		const started = Date.now();

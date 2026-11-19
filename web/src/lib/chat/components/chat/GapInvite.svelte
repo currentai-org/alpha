@@ -32,7 +32,7 @@
      model · How this was made): same type, same muted ink, an underlined link as the one action. The
      Potluck mark says whose invitation this is. Neutral, never gap-red — in the chat red reads as an
      error (red is reserved for the safety/decline signal).
-     CUR-1873: it is an invitation, not a fact about the answer, so it is marked as a note of its own
+     it is an invitation, not a fact about the answer, so it is marked as a note of its own
      and never shares a line with the provenance readout. -->
 <div
 	role="note"

@@ -1,17 +1,17 @@
-// CUR-1294. Collapse a role-shaped OpenAI messages array into ONE `user` message.
+// Collapse a role-shaped OpenAI messages array into ONE `user` message.
 //
 // Why: an Apertus deployment behind the gateway can fail on any message whose role is not `user`,
-// and the gateway then serves the request from `aisingapore/Qwen-SEA-LION-v4-32B-IT` instead, while
-// reporting `x-litellm-attempted-fallbacks: 0`. A request with system and assistant roles reaches the
-// substitute; one flattened user message reaches `swiss-ai/apertus-v1.5-70b` with no fallback.
-// `swiss-ai/apertus-70b-instruct` substitutes identically, so no lane swap avoids it. Unflattened,
-// answers come from the substitute while the badge says Apertus, and some turns produce no answer at
-// all (the watchdog fires at 45s with no first token).
+// and the gateway can then serve the request from `aisingapore/Qwen-SEA-LION-v4-32B-IT` instead, with
+// `x-litellm-attempted-fallbacks: 0` in the response headers. A request with system and assistant
+// roles can reach the substitute; one flattened user message reaches `swiss-ai/apertus-v1.5-70b`
+// with no fallback. `swiss-ai/apertus-70b-instruct` substitutes the same way, so no lane swap avoids
+// it. Unflattened, answers can come from the substitute while the badge says Apertus, and some turns
+// produce no answer at all (the watchdog fires with no first token).
 //
-// This is a serving workaround, not a prompt-quality claim. The gateway owns the substitution
-// (CUR-1209) and the serving config owns the role handling (CUR-1048). When either lands, delete
-// this module rather than leaving a second prompt shape to maintain. Which models get it is
-// `rolesNeedFlattening` (modelProfiles.ts), with no flag (CUR-2697).
+// This is a serving workaround, not a prompt-quality claim. Once the gateway stops substituting
+// another model or every deployment accepts roles, delete this module rather than leaving a second
+// prompt shape to maintain. Which models get it is `rolesNeedFlattening` (modelProfiles.ts), with no
+// flag.
 //
 // Why not the model's own delimiters: the model's chat template ships `<|system_start|>`,
 // `<|user_start|>` and `<|assistant_start|>`, and tokenizer_config.json marks every one of them
@@ -31,7 +31,7 @@ const USER_LABEL = "[USER]";
 const ASSISTANT_LABEL = "[ASSISTANT]";
 
 /** With labels alone, a follow-up that points back ("which one is easiest?") reads as a standalone
- *  question (CUR-1957): the live turn arrives inside a fence the guard calls "ONLY a question to
+ *  question: the live turn arrives inside a fence the guard calls "ONLY a question to
  *  answer", and in one flat message nothing ties that fence to the turns above it, so the model asks
  *  which options the person meant while the options sit in its own previous reply. These two lines
  *  say what the role boundaries would: the earlier turns are this conversation, and the latest

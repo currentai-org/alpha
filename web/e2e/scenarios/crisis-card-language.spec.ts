@@ -3,12 +3,12 @@
 import { test, expect } from './helpers/test';
 import { chatEntry } from './helpers/chatEntry';
 
-// This spec is about the first-run welcome, so it meets the welcome itself rather than through the shared handler (SOL-343).
+// This spec is about the first-run welcome, so it meets the welcome itself rather than through the shared handler.
 test.use({ welcome: 'show' });
 
 // A French message that tripped the self-harm screen got its support card in English. The
 // card now reads in the message's language from the catalogs, falling back to the interface language
-// while the support classifier does not yet name one (CUR-4093). This visitor writes in French with
+// while the support classifier does not yet name one. This visitor writes in French with
 // the interface in French, so either source gives French.
 test(
 	'a person writing in French gets the support card in French',

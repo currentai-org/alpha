@@ -47,7 +47,7 @@ export async function getFileByFilename(
  * is part of the query, so this cannot return somebody's conversation attachment however the caller
  * spells the filename. That predicate is the access check, not a filter applied afterwards.
  *
- * Deployment walkthrough recordings are stored this way (CUR-1524) — they are evidence about a
+ * Deployment walkthrough recordings are stored this way — they are evidence about a
  * deployment rather than about a conversation, and nothing else writes a conversation-less file row.
  */
 export async function getUnscopedFileByFilename(filename: string): Promise<FileRow | undefined> {

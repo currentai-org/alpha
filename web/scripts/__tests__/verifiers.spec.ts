@@ -15,7 +15,7 @@ const REPO_WEB = new URL("../..", import.meta.url).pathname;
 //
 // Stateful project only (serial): each verifier seeds rows, runs a real cleanup/migration check against
 // the shared database, and deletes what it seeded. Running these file-parallel with other DB specs
-// races on those rows (CUR-93).
+// races on those rows.
 
 const VERIFIERS = [
 	{

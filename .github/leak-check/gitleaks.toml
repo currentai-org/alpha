@@ -1,0 +1,16 @@
+# Extends gitleaks' default rules. The paths below hold hash-like strings that the generic-api-key rule
+# mistakes for keys: translation strings and test fixtures. hardening-test.sh sends a throwaway test
+# nonce as a bearer token to a local proxy, which gitleaks 8.21's curl-auth-header rule reads as a credential.
+# The paraglide compile cache (gitignored, written by a build) maps each generated message file to its
+# sha256 digest, which generic-api-key and jfrog-identity-token read as keys.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "hash-like strings, not secrets"
+paths = [
+  '''web/messages/translated-from\.json''',
+  '''agent-service/api/test_agent_service\.py''',
+  '''agent-service/hardening-test\.sh''',
+  '''web/project\.inlang/cache/''',
+]

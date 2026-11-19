@@ -1,4 +1,4 @@
-"""Each conversation's home machine, so its sandbox calls reach the machine holding its workdir (CUR-4435).
+"""Each conversation's home machine, so its sandbox calls reach the machine holding its workdir.
 
 A conversation's workdir is local disk on whichever machine first served it (`_sandbox_workdir`, `_resolve_workdir`
 in app.py), and Fly's proxy balances requests across the app's machines. Chat pins an agent turn's follow-ups
@@ -13,13 +13,13 @@ where it landed, so a fallback can never bounce. Adding or removing a machine mo
 home it was, the property rendezvous hashing exists for.
 
 The machine list comes from Fly's internal DNS: the TXT record on `vms.<app>.internal` lists each machine as
-`<id> <region>`, comma-separated (fly.io/docs/networking/private-networking). The machine API socket (`/.fly/api`) is not used: it serves no requests
-in this environment, root's included. The egress filter keeps the
+`<id> <region>`, comma-separated (fly.io/docs/networking/private-networking). The machine API socket (`/.fly/api`)
+is not used for the list. The egress filter keeps the
 app's uid off port 53, so the entrypoint runs `python3 home_machine.py --write <file>` as root on a timer and
 the server reads the file. No file, one machine, or no Fly environment means every request is served where it
 lands, today's behaviour.
 
-This is the interim for CUR-4434, which moves workspaces off the machine altogether.
+This is the interim for the planned move of workspaces off the machine altogether.
 """
 
 from __future__ import annotations

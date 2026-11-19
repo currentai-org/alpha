@@ -9,7 +9,7 @@ import { journeyStep } from './helpers/journeyStep';
 import { holdForRecording } from './helpers/recording';
 import { openArchive } from './helpers/exportArchive';
 
-// A3 row 19 (CUR-2798): the export route lists the person's stored files and, when that listing
+// A3 row 19: the export route lists the person's stored files and, when that listing
 // fails, still sends the ZIP and says in its README that no files are in it
 // (`api/v2/export/+server.ts`, `exportFormat.ts` `listingFailed`). Only a unit test of the README
 // text covered it. This stores a file, fails the listing with the `storage_listing_down` fault, clicks
@@ -20,7 +20,6 @@ test(
 	{ tag: ['@preview-only', '@A3'] },
 	async ({ page, context, baseURL }) => {
 		await setFlagOverrides(context, baseURL!, {
-			'data-export': true,
 			'custodial-storage-view': true
 		});
 		await signInAsFreshUser(page);

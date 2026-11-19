@@ -3,7 +3,7 @@ import { createSyncTracker } from "./settingsSync";
 
 const saved = { streamingMode: "smooth", directPaste: false, customPrompts: {} as Record<string, string> };
 
-describe("createSyncTracker (CUR-1643)", () => {
+describe("createSyncTracker", () => {
 	it("names only the changed field, so a write cannot carry a stale copy of another", () => {
 		const sync = createSyncTracker(saved);
 		expect(sync.dirty({ ...saved, directPaste: true })).toEqual({ directPaste: true });
@@ -30,7 +30,7 @@ describe("createSyncTracker (CUR-1643)", () => {
 		expect(sync.dirty(current)).toEqual({});
 	});
 
-	// The answer-preference lane records its own saves and reads back what the server took. (CUR-3929)
+	// The answer-preference lane records its own saves and reads back what the server took.
 	it("reports the confirmed value of a key, and undefined once a reset was saved", () => {
 		const sync = createSyncTracker<{ tone?: string; directPaste: boolean }>({ tone: "plain", directPaste: false });
 		expect(sync.confirmed("tone")).toBe("plain");

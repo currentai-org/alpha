@@ -44,7 +44,7 @@ const ES_ANSWER =
 
 const WEB_SEARCH_GAP = { node: "websearch", ask: "a Google-scale open web search index" };
 
-describe("webSearchGapFor: the card shows only under an answer in the card's own language (CUR-2377)", () => {
+describe("webSearchGapFor: the card shows only under an answer in the card's own language", () => {
 	it("an English browser gets the card under an English answer", () => {
 		expect(webSearchGapFor(EN_ANSWER, "en")).toEqual(WEB_SEARCH_GAP);
 	});
@@ -59,7 +59,7 @@ describe("webSearchGapFor: the card shows only under an answer in the card's own
 		expect(webSearchGapFor(EN_ANSWER, "fr")).toBeUndefined();
 	});
 
-	it("a French browser keeps its card under short French answers the heuristic ranks Spanish first (CUR-2394)", () => {
+	it("a French browser keeps its card under short French answers the heuristic ranks Spanish first", () => {
 		for (const answer of [
 			"La capitale du Japon est Tokyo.",
 			"La capitale du Japon est Tokyo, qui est aussi la plus grande ville du pays [1].",

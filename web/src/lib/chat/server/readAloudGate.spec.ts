@@ -12,8 +12,8 @@ vi.mock("$lib/chat/server/logger", () => ({
 
 const { READ_ALOUD_FLAG, readAloudEnabled } = await import("./readAloudGate");
 
-// Read-aloud has two places that can switch it off: server synthesis and the composer toggle
-// (CUR-225). Turning the feature on server-side alone produces audio nobody can reach: the rollout
+// Read-aloud has two places that can switch it off: server synthesis and the composer toggle.
+// Turning the feature on server-side alone produces audio nobody can reach: the rollout
 // reads as successful and every user sees nothing.
 //
 // Both answer to readAloudEnabled(), and this file makes a divergence between them go red. Without
@@ -34,7 +34,7 @@ describe("read-aloud has ONE gate, not two", () => {
 		expect(FLAG_KEY_NAMES).toContain(READ_ALOUD_FLAG);
 	});
 
-	// The Space's address used to be a second, undocumented switch. (CUR-3151)
+	// The Space's address used to be a second, undocumented switch.
 	it("is on with the flag and the router credential alone", () => {
 		cfg.HF_TOKEN = "hf_test";
 		expect(readAloudEnabled()).toBe(true);

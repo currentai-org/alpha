@@ -1,6 +1,6 @@
-// HTML → text extraction for the admin ingest-from-url path (Phase 3), and the fallback behind
+// HTML → text extraction for the admin ingest-from-url path (adminIngest.ts), and the fallback behind
 // readableExtract.ts. Pure + leaf so it's unit-testable in the hermetic gate. htmlparser2 does the
-// parsing and entity decoding (CUR-4068); this walks the tree, drops script/style/noise blocks,
+// parsing and entity decoding; this walks the tree, drops script/style/noise blocks,
 // ends each block element with a newline so adjacent blocks don't merge into one word, and collapses
 // whitespace. The extracted text is REVIEWED by an admin before it's saved (and the grounding layer
 // fences all retrieved text as untrusted).

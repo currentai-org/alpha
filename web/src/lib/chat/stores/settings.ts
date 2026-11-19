@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { browser } from "$app/environment";
 import { base } from "$lib/chat/paths";
 import type { ReasoningEffort, StreamingMode } from "$lib/chat/types/Settings";
@@ -32,28 +35,28 @@ type SettingsStore = {
 	directPaste: boolean;
 	hapticsEnabled: boolean;
 	billingOrganization?: string;
-	/** How Alpha writes to this person. `undefined` is Alpha's default; never `null` here. (CUR-3929) */
+	/** How Alpha writes to this person. `undefined` is Alpha's default; never `null` here. */
 	tone?: Tone;
 	answerLength?: Length;
 	suggestions?: boolean;
 	answerLanguage?: AnswerLanguage;
 	plainLanguage?: boolean;
-	/** The milestone 7 fields, the same shape. (CUR-549) */
+	/** The milestone 7 fields, the same shape. */
 	answerFormat?: Format;
 	emojis?: Emojis;
 	showServing?: boolean;
-	/** How Alpha refers to itself; true is the person register, `undefined` Alpha's default. (CUR-3930) */
+	/** How Alpha refers to itself; true is the person register, `undefined` Alpha's default. */
 	selfReferenceAsPerson?: boolean;
-	/** Settings → Personalization, "Search my past chats". `undefined` is off. (CUR-4576) */
+	/** Settings → Personalization, "Search my past chats". `undefined` is off. */
 	searchPastChats?: boolean;
 	/** Settings → Personalization, "Ask before every step". `undefined` is off: agent mode runs in auto mode. */
 	agentAskEveryStep?: boolean;
-	/** An answer-preference save failed and a value went back to what the server holds. (CUR-3929) */
+	/** An answer-preference save failed and a value went back to what the server holds. */
 	answerSaveFailed: boolean;
 };
 
 /** The fields the serial save lane owns (answerSaveLane.ts): every answer preference the
- *  store carries, self-reference included (CUR-3930). The debounced `setSettings` path never sends (CUR-3929)
+ *  store carries, self-reference included. The debounced `setSettings` path never sends
  *  them, so two writers cannot race on one key. */
 type LaneKey = AnswerPreferenceKey;
 const LANE_KEYS: ReadonlyArray<LaneKey> = ANSWER_PREFERENCE_KEYS;
@@ -67,9 +70,9 @@ type SettingsStoreWritable = Writable<SettingsStore> & {
 		nestedKey: string,
 		value: string | boolean
 	) => Promise<void>;
-	/** Set one answer preference, `undefined` to reset it. Optimistic, through the lane. (CUR-3929) */
+	/** Set one answer preference, `undefined` to reset it. Optimistic, through the lane. */
 	setField: <K extends LaneKey>(key: K, value: SettingsStore[K]) => Promise<void>;
-	/** Set several answer preferences in one request (a preset), through the same lane. (CUR-3929) */
+	/** Set several answer preferences in one request (a preset), through the same lane. */
 	setFields: (patch: AnswerPatch) => Promise<void>;
 };
 
@@ -81,10 +84,10 @@ export function useSettingsStore() {
 // a fetch's response body stream completely unconsumed lets Chromium cancel it once the Response is
 // eligible for cleanup, and that shows up to any CDP/Playwright network listener as a `net::ERR_ABORTED`
 // requestfailed event AFTER the real response was already logged, so a network listener such as the
-// fuzz harness records a failure for a save that completed server-side (CUR-1044). Shared by all
+// fuzz harness records a failure for a save that completed server-side. Shared by all
 // three call sites below rather than repeated, which the duplication gate (audit:dup:check) refuses.
 //
-// `keepalive` lets a save outlive the page, the way the debounced path's sendBeacon does (CUR-2574).
+// `keepalive` lets a save outlive the page, the way the debounced path's sendBeacon does.
 // Without it, a reload landing while `instantSet`'s request is in flight (dismissing the welcome,
 // then reloading) cancels it, so the intro comes back. The browser caps keepalive bodies at 64 KiB in
 // flight, and a body near that, a long personalization instruction, goes out without it.
@@ -135,10 +138,10 @@ export function createSettingsStore(initialValue: StoreSeed) {
 	// A debounced write below (setSettings/initValue) can be discarded mid-flight by
 	// a reload or tab close — the pending setTimeout simply never fires, so the toggle just
 	// clicked silently reverts to whatever was last durably saved. Tracks whether a debounced
-	// write is currently outstanding, so it can be flushed on the way out. (CUR-1649)
+	// write is currently outstanding, so it can be flushed on the way out.
 	let pendingSave = false;
 	// A write carries only the fields changed since this tab's last successful save
-	// (settingsSync.ts). (CUR-1643)
+	// (settingsSync.ts).
 	const sync = createSyncTracker<StoreSeed>(initialValue);
 	function dirtyFields() {
 		const { recentlySaved: _saved, answerSaveFailed: _failed, ...current } = get(baseStore);
@@ -153,7 +156,7 @@ export function createSettingsStore(initialValue: StoreSeed) {
 
 	// The answer preferences' own save path (answerSaveLane.ts). The error is per key: a key
 	// that went back to its confirmed value stays in error until that same key saves, so a later save
-	// of a different key cannot hide it. (CUR-3929)
+	// of a different key cannot hide it.
 	const failedKeys = new Set<LaneKey>();
 	const setFailedFlag = () =>
 		baseStore.update((s) =>

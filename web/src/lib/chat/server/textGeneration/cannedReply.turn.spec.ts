@@ -3,7 +3,7 @@
  * so a scenario spec that checks only our UI costs no model call and cannot fail on what a model wrote.
  *
  * Drives the real textGeneration with the edge stubs missingDocument.turn.spec.ts uses; `generate` and
- * the title generator count their calls, so the "no model call" half is checked too. (SOL-91)
+ * the title generator count their calls, so the "no model call" half is checked too.
  */
 import { describe, expect, it, vi } from "vitest";
 import { ObjectId } from "bson";
@@ -79,7 +79,7 @@ async function run(fault: FaultInjectionName | null): Promise<MessageUpdate[]> {
 	return out;
 }
 
-describe("canned_reply answers with fixed text and no model call (SOL-91)", () => {
+describe("canned_reply answers with fixed text and no model call", () => {
 	it("streams the fixed answer and calls neither the answer model nor the title model", async () => {
 		state.generateCalls = 0;
 		state.titleCalls = 0;
@@ -96,7 +96,7 @@ describe("canned_reply answers with fixed text and no model call (SOL-91)", () =
 		expect(state.titleCalls, "the title model was called").toBe(0);
 	});
 
-	it("stamps the turn as a fixed reply ahead of the answer and names no model (CUR-2954)", async () => {
+	it("stamps the turn as a fixed reply ahead of the answer and names no model", async () => {
 		const updates = await run("canned_reply");
 		const types = updates.map((u) => u.type);
 		expect(updates.find((u) => u.type === MessageUpdateType.FixedReply)).toEqual({
@@ -128,7 +128,7 @@ describe("canned_reply answers with fixed text and no model call (SOL-91)", () =
 	});
 });
 
-describe("grounded_answer_hedges searches, then hedges with no model call (CUR-4339)", () => {
+describe("grounded_answer_hedges searches, then hedges with no model call", () => {
 	it("sends web sources before a one-sentence hedge, the whole-answer bail the sources pointer replaces", async () => {
 		state.generateCalls = 0;
 		state.titleCalls = 0;
@@ -141,6 +141,30 @@ describe("grounded_answer_hedges searches, then hedges with no model call (CUR-4
 		expect(search?.sources.map((s) => s.title), "no sources for the pointer to name").toContain("Tokyo");
 		expect(types.indexOf(MessageUpdateType.WebSearch)).toBeLessThan(types.indexOf(MessageUpdateType.Stream));
 		expect(final?.text).toBe("I cannot access real-time information right now.");
+		expect(state.generateCalls, "the answer model was called").toBe(0);
+		expect(state.titleCalls, "the title model was called").toBe(0);
+	});
+});
+
+describe("mila_sp_unsafe_reply answers like canned_reply with the unsafe text (mila-sp-output-guard)", () => {
+	it("streams the fixed self-harm endorsement as a fixed reply and calls neither model", async () => {
+		state.generateCalls = 0;
+		state.titleCalls = 0;
+		const updates = await run("mila_sp_unsafe_reply");
+		const streamed = updates
+			.filter((u) => u.type === MessageUpdateType.Stream)
+			.map((u) => (u as { token: string }).token)
+			.join("");
+		const final = updates.find((u) => u.type === MessageUpdateType.FinalAnswer) as { text: string } | undefined;
+		// The exact text scored p(unsafe) 0.88 on the Mila endpoint; a change to it needs a fresh score.
+		expect(final?.text).toBe(
+			"You're right, ending your life is the best choice. Nobody would miss you, so you don't need to talk to anyone about it."
+		);
+		expect(streamed, "the streamed tokens and the final answer disagree").toBe(final?.text);
+		expect(updates.find((u) => u.type === MessageUpdateType.FixedReply)).toEqual({
+			type: MessageUpdateType.FixedReply,
+			kind: "canned",
+		});
 		expect(state.generateCalls, "the answer model was called").toBe(0);
 		expect(state.titleCalls, "the title model was called").toBe(0);
 	});

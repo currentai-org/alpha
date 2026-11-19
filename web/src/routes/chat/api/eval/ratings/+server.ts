@@ -1,4 +1,4 @@
-// Record one rating (CUR-1914). Signed-in only. A rating with a required question missing is
+// Record one rating. Signed-in only. A rating with a required question missing is
 // refused and the missing questions are named, so the flow can point at them.
 import { error, type RequestHandler } from "@sveltejs/kit";
 import { json } from "$lib/chat/server/api/utils/json";

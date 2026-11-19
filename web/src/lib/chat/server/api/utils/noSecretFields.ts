@@ -1,6 +1,6 @@
 /**
- * A compile-time check that a value bound for a response carries no field named like a credential
- * (CUR-2643).
+ * A compile-time check that a value bound for a response carries no field named like a
+ * credential.
  *
  * @remarks
  * A model registry entry carries `endpoints[].apiKey`, a provider key, and the per-model route

@@ -10,24 +10,25 @@ import { signInAsFreshUser } from './helpers/session';
 import { freshTestEmail } from './helpers/signIn';
 import { journeyStep } from './helpers/journeyStep';
 import { recordMeasurement } from './helpers/measurement';
-import { setFlagOverrides } from './helpers/flagOverride';
 import { pinnedChatEntry } from './helpers/servedModel';
 import { startChattingPastWelcome } from './helpers/welcome';
 import { installFaultInjectionHeader } from './helpers/faultInjection';
 import { phonePhotoJpeg } from './helpers/phonePhoto';
+import { setFlagOverrides } from './helpers/flagOverride';
+import { agentOption, openAgentTools } from './helpers/agentTool';
 
-// A6 step "send a photo" (CUR-454). The default model reads images; a catalog entry with no
+// A6 step "send a photo". The default model reads images; a catalog entry with no
 // modality field offered no image type, so a pasted or dropped photo was dropped
 // before it reached the turn. The picture is drawn here, a blue circle on yellow, so the expected
 // answer comes from the fixture rather than from a model. On preview `multimodal` is on for team
-// accounts only (CUR-2725), so these tests sign in as an @example.org test account, which the flag
+// accounts only, so these tests sign in as an @example.org test account, which the flag
 // selects; production has it off for everyone, so this stays @preview-only.
 //
 // The first test pastes the photo, the way a person pastes a screenshot. The second presses the
-// composer's attach button and chooses the photo from the file picker (CUR-2725). The third drops it
+// composer's attach button and chooses the photo from the file picker. The third drops it
 // onto the chat, which goes through the dropzone's own type check rather than the paste handler.
 
-// A made-up wordmark (CUR-3616): the photo question below asks for a brand, and on the plain shapes the
+// A made-up wordmark: the photo question below asks for a brand, and on the plain shapes the
 // model, given no logo, named one anyway ("the flag of Sweden"). With a word to read, the picture
 // really does answer the question, and the answer can be checked for it.
 const LOGO_WORD = 'ZORVEX';
@@ -67,7 +68,7 @@ async function pasteImage(page: Page, name: string, type: string, bytes: Buffer)
  * Pastes like `pasteImage`, then returns the milliseconds from the paste event to the first frame
  * `selector` is on the page, or null if it never shows within `opts.timeout`. Timed in the page: the
  * photo's 8 MB of base64 crosses CDP and is decoded before the event, and a clock on the test side
- * or the recording would count that as the app's delay (CUR-2905).
+ * or the recording would count that as the app's delay.
  */
 async function pasteImageTimed(
 	page: Page,
@@ -133,7 +134,7 @@ async function modelsTakingImages(page: Page): Promise<string[]> {
 	return list.filter((m) => m.multimodal).map((m) => m.id);
 }
 
-// `multimodal` is on for everyone on preview (CUR-3979, reversing CUR-2725's team-only rule), so a
+// `multimodal` is on for everyone on preview (reversing the team-only rule), so a
 // guest meets the same image input a team account does. The off path is asserted in
 // attachment-limits.spec.ts and custodial-storage.spec.ts, which force the flag off.
 test(
@@ -219,7 +220,7 @@ test(
 
 		// A follow-up attaches nothing new, but the turn still carries the photo, so it must stay on the
 		// model that reads it. The agent's /route classifier sent image questions to the agent, which
-		// never receives the image (CUR-454).
+		// never receives the image.
 		const assistant = page.locator('[data-message-role="assistant"]');
 		const answersBefore = await assistant.count();
 		await composer.fill('And what colour is the background? Answer with one word.');
@@ -237,11 +238,75 @@ test(
 	}
 );
 
+// with the composer's Agent control on, the photo used to stop at chat, since the agent run
+// carried text only, and the agent answered about a picture it never saw. The run now carries the
+// conversation's photos: copied into the agent's workdir and shown to its model as image input.
+// The control is chosen in the + menu the way a person chooses it, and the send is read to show the turn
+// really asked for the agent. `@real-agent`: only the real agent machine can see the photo, so this runs
+// on develop's push run, not on PR runs, where the stand-in answers.
+test(
+	'with Agent set to On, a photo question is still answered from the photo',
+	{ tag: ['@A6', '@preview-only', '@CUR-3155', '@real-agent'] },
+	async ({ page, context, baseURL }) => {
+		// An agent turn runs a sandbox and several model rounds (agent-math-turn.spec.ts).
+		test.setTimeout(300_000);
+		await setFlagOverrides(context, baseURL!, { 'agent-mode': true });
+		await openChat(page);
+
+		await openAgentTools(page, { timeout: 15_000 });
+		await agentOption(page, 'On').click();
+		await expect(agentOption(page, 'On')).toHaveAttribute('aria-checked', 'true', {
+			timeout: 10_000
+		});
+		await page.keyboard.press('Escape');
+
+		await pasteImage(page, 'shapes.png', 'image/png', await shapesPng());
+		await expect(
+			page.getByAltText('shapes.png').or(page.getByText('shapes.png')).first(),
+			'the pasted photo was not attached'
+		).toBeVisible({ timeout: 10_000 });
+
+		const sent = page.waitForRequest(
+			(r) => r.method() === 'POST' && /\/chat\/conversation\/[a-f0-9]+$/.test(r.url()),
+			{ timeout: 30_000 }
+		);
+		const composer = page.getByLabel('Message AI Potluck');
+		await composer.fill('What colour is the circle in this picture? Answer with one word.');
+		await composer.press('Enter');
+		expect(
+			(await sent).postData() ?? '',
+			'the turn did not ask for the agent, so this test is not exercising Agent: On'
+		).toContain('"agentMode":"on"');
+
+		// The develop agent asks before running code; a person asking about their photo would allow it.
+		const answer = page.locator('[data-message-role="assistant"]').last();
+		const allow = page.getByRole('button', { name: 'Allow', exact: true }).first();
+		await expect
+			.poll(
+				async () => {
+					if (await allow.isVisible()) await allow.click();
+					return turnDone(answer).isVisible();
+				},
+				{
+					message: 'the agent turn did not finish' + warmupContext(),
+					timeout: 240_000,
+					intervals: [1_000]
+				}
+			)
+			.toBe(true);
+		await expect(
+			answer,
+			'the answer does not name the circle as blue: with Agent on, the photo did not reach the model that answered'
+		).toContainText(/blue/i);
+		await holdForRecording(page);
+	}
+);
+
 // When the input screen doesn't finish, the decline says "send it again", and the only Retry
 // was the footer's unlabelled icon, so a visitor retyped the question and went looking for the photo
-// again (CUR-3739). The decline now carries a labelled Retry, and pressing it answers from the same photo.
+// again. The decline now carries a labelled Retry, and pressing it answers from the same photo.
 test(
-	'CUR-3739: a photo turn the safety check could not finish offers a labelled Retry that answers from the same photo',
+	'a photo turn the safety check could not finish offers a labelled Retry that answers from the same photo',
 	{ tag: ['@A6', '@preview-only', '@CUR-3739', '@real-screen'] },
 	async ({ page }) => {
 		test.setTimeout(240_000);
@@ -351,7 +416,7 @@ test(
 );
 
 // The composer offers jpeg, png, webp and gif, the types a browser can draw as a thumbnail,
-// so an avif or a bmp was refused by name (CUR-3073). The browser now redraws either as a JPEG before the type
+// so an avif or a bmp was refused by name. The browser now redraws either as a JPEG before the type
 // check. The two circles differ in colour, so an answer naming both shows the model saw both photos.
 async function shapesRaw(circle: string): Promise<{ data: Buffer; width: number; height: number }> {
 	const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256">
@@ -450,7 +515,7 @@ test(
 // all. Playwright fills in a type from the name when given an empty one, so these files are built in
 // the page and set on the input directly, the way such a picker leaves them.
 test(
-	'an avif and a bmp the picker hands over with no type still get thumbnails, or a refusal that names them',
+	'an avif and a bmp the picker hands over with no type are redrawn as photos and get thumbnails',
 	{ tag: ['@A6', '@preview-only', '@CUR-3073'] },
 	async ({ page }) => {
 		test.setTimeout(90_000);
@@ -488,18 +553,18 @@ test(
 			''
 		]);
 
-		// A refusal names the type by extension ("AVIF file"), since the file carries none.
-		for (const [jpg, label] of [
-			['blue.jpg', 'AVIF'],
-			['red.jpg', 'BMP']
-		]) {
+		// Chromium decodes both types whatever the file's stated type, so each must become a thumbnail
+		// under its redrawn .jpg name. A refusal naming the type is a failure: it is what the walk saw.
+		for (const jpg of ['blue.jpg', 'red.jpg']) {
 			await expect(
-				page
-					.getByAltText(jpg)
-					.or(page.getByText(new RegExp(`can't be attached here: .*${label}`, 'i'))),
-				`the ${label} with no type was dropped silently: no thumbnail and no refusal naming it`
+				page.getByAltText(jpg),
+				`${jpg} has no thumbnail: a photo picked with no type was refused or dropped instead of redrawn`
 			).toBeVisible({ timeout: 15_000 });
 		}
+		await expect(
+			page.getByText(/can't be attached here/i),
+			'a refusal showed although both photos should have been redrawn'
+		).toHaveCount(0);
 		await holdForRecording(page);
 	}
 );
@@ -551,7 +616,7 @@ test(
 	}
 );
 
-// A team account (CUR-2725): every other photo test signs in on example.org, so nothing showed that the
+// A team account: every other photo test signs in on example.org, so nothing showed that the
 // staff-domain condition in the flag's targeting reaches a real team sign-in. No flag override:
 // the attach button has to come from the flag's own targeting, on the model a visitor gets by default.
 test(
@@ -678,7 +743,7 @@ test(
 			turnDone(answer),
 			'no finished answer to the photo question' + warmupContext()
 		).toBeVisible({ timeout: 90_000 });
-		// The turn-end reload replaces the message, thumbnail included (CUR-2761). Wait for that, then
+		// The turn-end reload replaces the message, thumbnail included. Wait for that, then
 		// for the replacement to be drawn.
 		await expect
 			.poll(() => sent?.evaluate((n) => n.isConnected), {
@@ -719,7 +784,7 @@ test(
 	async ({ page }) => {
 		test.setTimeout(150_000);
 		// The chat opens first: the recording starts with the page, so a photo built before it would
-		// show as a blank tab the gallery grades as the site's load time (CUR-2784).
+		// show as a blank tab the gallery grades as the site's load time.
 		await openChat(page);
 		const photo = await phonePhotoJpeg();
 		expect(
@@ -727,7 +792,7 @@ test(
 			'the fixture is no longer a 6 MB phone photo, so this tests something smaller'
 		).toBeGreaterThan(6_000_000);
 		await journeyStep(page, 'A6', 5, async () => {
-			// The shrink takes seconds, and the composer said nothing until it finished (CUR-2905).
+			// The shrink takes seconds, and the composer said nothing until it finished.
 			const placeholderMs = await pasteImageTimed(
 				page,
 				'IMG_4032.jpg',
@@ -780,7 +845,7 @@ test(
 		});
 
 		// The empty composer is already the new-chat page, so this press navigates nowhere; the
-		// attachment has to be dropped all the same (CUR-3052).
+		// attachment has to be dropped all the same.
 		await page
 			.getByRole('complementary', { name: 'Conversations' })
 			.getByRole('link', { name: /new chat/i })
@@ -795,7 +860,7 @@ test(
 );
 
 // The empty chat centres its greeting and composer, and the photo row grows the composer,
-// so attaching a photo moved the message box out from under the person about to type (CUR-3617). Measured as
+// so attaching a photo moved the message box out from under the person about to type. Measured as
 // the box's top edge before the paste and once the photo shows; a few pixels of rounding pass.
 // On a window too short to hold the box still, the greeting's heading must stay on screen.
 async function attachLeavesTheBoxInPlace(page: Page, name: string, pinned: boolean) {
@@ -909,7 +974,7 @@ async function attachLeavesTheBoxInPlace(page: Page, name: string, pinned: boole
 }
 
 test(
-	'attaching a photo on the empty chat leaves the message box where it was (CUR-3617)',
+	'attaching a photo on the empty chat leaves the message box where it was',
 	{ tag: ['@A6', '@preview-only', '@CUR-3617'] },
 	async ({ page }) => attachLeavesTheBoxInPlace(page, 'on a window the greeting fills', false)
 );
@@ -920,14 +985,14 @@ test.describe('on a window with some centring room, less than the photo row need
 	// is under 72 px. 620 leaves about 54 px: some room, less than the row.
 	test.use({ viewport: { width: 1280, height: 620 } });
 	test(
-		'attaching a photo on the empty chat leaves the message box where it was, with the block pinned and the column scrolled (CUR-3617)',
+		'attaching a photo on the empty chat leaves the message box where it was, with the block pinned and the column scrolled',
 		{ tag: ['@A6', '@preview-only', '@CUR-3617'] },
 		async ({ page }) => attachLeavesTheBoxInPlace(page, 'with some centring room', true)
 	);
 });
 
 // A large photo takes seconds to shrink, and the picker used to hand focus back to the
-// box only once it was ready, so typing straight after choosing it landed on nothing (CUR-3197). And Enter
+// box only once it was ready, so typing straight after choosing it landed on nothing. And Enter
 // while it was still shrinking would send the text without the photo. Typed with the keyboard, not
 // `fill`, because `fill` focuses the box itself and would hide the first defect.
 test(
@@ -974,15 +1039,14 @@ test(
 );
 
 test(
-	'a question about an attached photo is answered from the photo, with no web search, and names the logo it shows (CUR-3616)',
+	'a question about an attached photo is answered from the photo, with no web search, and names the logo it shows',
 	{ tag: ['@A6', '@preview-only', '@CUR-3192', '@CUR-3616'] },
-	async ({ page, context, baseURL }) => {
+	async ({ page }) => {
 		test.setTimeout(180_000);
 		// The picture answers this question, so a search here is the defect and not a judgement call.
-		// Every model that reads photos is on the native plan (CUR-4015): the model decides whether to
-		// search, told by the photo-search section of its prompt. The gate is forced on so a turn that
-		// does ask it still has to decline.
-		await setFlagOverrides(context, baseURL!, { 'search-intent-embedding-gate': true });
+		// Every model that reads photos is on the native plan: the model decides whether to
+		// search, told by the photo-search section of its prompt. The search gate is always on, so a
+		// turn that does ask it still has to decline.
 		await page.addInitScript(() => {
 			const w = window as unknown as { __liveLines?: string[] };
 			w.__liveLines = [];
@@ -998,7 +1062,7 @@ test(
 			}).observe(document, { childList: true, subtree: true, characterData: true });
 		});
 		// Pinned to the model www serves. A ticket-branch preview defaults to Mistral Small 4, which no
-		// visitor is offered, and which misses the printed wordmark too often (CUR-3861).
+		// visitor is offered, and which misses the printed wordmark too often.
 		await openChat(page, undefined, pinnedChatEntry(MEDIUM_MODEL));
 		await pasteImage(page, 'logo.png', 'image/png', await logoPng());
 		await expect(
@@ -1055,7 +1119,7 @@ test(
 );
 
 test(
-	'CUR-3506 CUR-3402: a photo question sent from a new chat stays on screen with its photo in every frame from send to answer',
+	'a photo question sent from a new chat stays on screen with its photo in every frame from send to answer',
 	{ tag: ['@A6', '@preview-only', '@CUR-3506', '@CUR-3402'] },
 	async ({ page }) => {
 		test.setTimeout(180_000);
@@ -1071,8 +1135,8 @@ test(
 
 		const question = 'What colour is the circle in this picture? Answer with one word.';
 		// One sample per painted frame, in the page: from the first frame that shows the question, count
-		// every later frame that shows no bubble holding it (CUR-3506), and every frame whose bubble holds
-		// the question but not its photo (CUR-3402). A client-side navigation keeps this window, so the
+		// every later frame that shows no bubble holding it, and every frame whose bubble holds
+		// the question but not its photo. A client-side navigation keeps this window, so the
 		// sampler sees the landing page's bubble hand over to the conversation page's.
 		await page.evaluate(
 			({ q, name }) => {

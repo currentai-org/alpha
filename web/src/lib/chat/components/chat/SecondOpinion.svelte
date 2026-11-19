@@ -15,6 +15,7 @@
 	} from "./secondOpinionFailure";
 	import { m } from "$lib/paraglide/messages.js";
 	import { assistHostLabel } from "$lib/chat/utils/trace/assistHost";
+	import { historyKeyring } from "$lib/chat/crypto/historyKeyring.svelte";
 
 	// Collective second opinion. The Apertus answer is shown
 	// above; one click fans the question out to a panel of independent open models in
@@ -34,11 +35,15 @@
 		// Persisted panel + verdict (rendered straight away on reload).
 		opinions?: Message["opinions"];
 		verdict?: Message["verdict"];
+		// Listed panelists that gave no take; persisted beside the takes.
+		unanswered?: Message["unanswered"];
 	}
-	let { question, messageId, opinions, verdict }: Props = $props();
+	let { question, messageId, opinions, verdict, unanswered: persistedUnanswered }: Props = $props();
 
 	// svelte-ignore state_referenced_locally
 	let takes = $state<Opinion[]>(opinions ? [...opinions] : []);
+	// svelte-ignore state_referenced_locally
+	let unanswered = $state<NonNullable<Message["unanswered"]>>(persistedUnanswered ? [...persistedUnanswered] : []);
 	// svelte-ignore state_referenced_locally
 	let panelVerdict = $state<Verdict | undefined>(verdict);
 	let loading = $state(false);
@@ -75,14 +80,29 @@
 		| { type: "panel"; panelists: { model: string; modelShort: string }[] }
 		| { type: "panelist"; model: string; ok: boolean; ms?: number }
 		| { type: "phase"; phase: string }
-		| { type: "done"; available: boolean; opinions?: Opinion[]; verdict?: Verdict; reason?: string }
+		| {
+				type: "done";
+				available: boolean;
+				opinions?: Opinion[];
+				verdict?: Verdict;
+				unanswered?: NonNullable<Message["unanswered"]>;
+				reason?: string;
+			}
 		// not_configured early-exit comes back as a single plain-JSON object (no `type`)
-		| { available: boolean; opinions?: Opinion[]; verdict?: Verdict; reason?: string };
+		| {
+				available: boolean;
+				opinions?: Opinion[];
+				verdict?: Verdict;
+				unanswered?: NonNullable<Message["unanswered"]>;
+				reason?: string;
+		  };
 
 	let done = $derived(takes.length > 0 && !!panelVerdict);
 	// "1 open model" not "1 open models" — singular when exactly one panelist responded.
+	// Counts the panelists the panel listed, so one that did not answer still shows in the header and is named below.
+	let listedCount = $derived(takes.length + unanswered.length);
 	let modelCount = $derived(
-		takes.length === 1 ? m.message_soModelsOne() : m.message_soModelsMany({ count: takes.length })
+		listedCount === 1 ? m.message_soModelsOne() : m.message_soModelsMany({ count: listedCount })
 	);
 	// A "collective/panel/convergence" framing is only honest with ≥2 models. When the fanout collapses
 	// to one (cold-start timeouts), it's a single second opinion — agreement is vs the PRIMARY answer,
@@ -126,14 +146,22 @@
 		flashRoute();
 		try {
 			// Must include the SvelteKit `base` (= /chat in prod): a bare "/api/second-opinion"
-			// resolves against the site root (aipotluck.org), not the chat mount, so in prod it would hit
+			// resolves against the site root, not the chat mount, so in prod it would hit
 			// the main site and return non-JSON ("unavailable"). Locally base="" hides this.
 			const ac = new AbortController();
 			controller = ac;
+			const conversationId = $page.params.id;
+			// A sealed chat is read from what this tab opens of it; the server cannot open it.
+			// Loaded on click, so the API client stays out of this component's import graph.
+			const sealed = conversationId
+				? await (
+						await import("$lib/chat/utils/sealedRequest")
+					).sealedHistoryForRequest(conversationId, historyKeyring.identity)
+				: {};
 			const res = await fetch(`${base}/api/second-opinion`, {
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ question: q, conversationId: $page.params.id, messageId }),
+				body: JSON.stringify({ question: q, conversationId, messageId, ...sealed }),
 				signal: ac.signal,
 			});
 			if (!res.ok || !res.body) {
@@ -188,6 +216,7 @@
 				return;
 			}
 			takes = final.opinions;
+			unanswered = Array.isArray(final.unanswered) ? final.unanswered : [];
 			panelVerdict = final.verdict as Verdict;
 			// Count the panel toward the session energy estimate: it ran N independent open models plus
 			// a synthesiser — real inference the footprint otherwise misses. Same output-token proxy as a
@@ -255,6 +284,15 @@
 				</div>
 			</div>
 		</div>
+
+		<!-- A listed panelist with no take stays visible, with its honest state, so the panel never shrinks silently. -->
+		{#if unanswered.length}
+			<ul class="type-caption mt-1.5 flex flex-col gap-0.5 text-fg-3" data-so-unanswered>
+				{#each unanswered as u (u.model)}
+					<li>– {u.modelShort} · {m.message_soNoResponse()}</li>
+				{/each}
+			</ul>
+		{/if}
 
 		<!-- Agreement map: confirm / challenge / weak spots. Only non-empty sections show. -->
 		{#if panelVerdict.consensus.length || panelVerdict.contradictions.length || panelVerdict.weakSpots?.length}
@@ -328,7 +366,7 @@
 								{take.openness}{take.sovereign ? "" : ` · ${m.message_soNotSovereign()}`}
 							</span>
 						</div>
-						<!-- Where this take's own call ran, from its routing record; never a planned host (CUR-3563). -->
+						<!-- Where this take's own call ran, from its routing record; never a planned host. -->
 						<div class="type-caption mb-1 text-fg-3" data-take-host>
 							{assistHostLabel(take)
 								? m.message_soTakeRanOn({ host: assistHostLabel(take) })

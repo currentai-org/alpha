@@ -6,7 +6,7 @@ import { setFlagOverrides } from './helpers/flagOverride';
 import { warmupContext } from './helpers/warmup';
 import { startChattingPastWelcome } from './helpers/welcome';
 
-// Asked to summarise "this agenda" with nothing attached, Alpha would invent board items (CUR-1835). A
+// Asked to summarise "this agenda" with nothing attached, Alpha would invent board items. A
 // turn that names a document the conversation does not contain is answered by the server
 // before any model call (`missingDocument.ts`), so its reply is exact and this spec can assert it
 // word for word. The second test is the other half of the contract: a real paste earlier in the

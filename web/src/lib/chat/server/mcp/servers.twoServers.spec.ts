@@ -1,7 +1,7 @@
 // operator-configured MCP servers, against two real MCP servers on 127.0.0.1 (the
 // client.isError.spec.ts pattern). The real SDK client, the origin-scoped fetch, the kit and the tool
 // loop all run unmocked; only the model is scripted. Each server records every request's headers, so
-// "A's header reaches only A" is read off the wire, not off our own config. (CUR-3026)
+// "A's header reaches only A" is read off the wire, not off our own config.
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { createServer, type IncomingHttpHeaders, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -140,7 +140,7 @@ const call = (id: string, name: string, args: object = {}) => ({ id, name, argum
 
 const toolCalls = (seen: Seen[]) => seen.filter((s) => s.tool).map((s) => s.tool);
 
-describe("two configured MCP servers (CUR-3026)", () => {
+describe("two configured MCP servers", () => {
 	it("offers every tool from both servers, each under its own server's name", async () => {
 		const tools = await listServerTools(twoServers());
 		expect(tools.map((t) => t.fnName).sort()).toEqual(["a__broken_a", "a__read_a", "a__write_a", "b__read_b"]);
@@ -180,7 +180,7 @@ describe("two configured MCP servers (CUR-3026)", () => {
 	});
 });
 
-describe("a tool not marked readOnlyHint runs only after the person confirms (CUR-3026)", () => {
+describe("a tool not marked readOnlyHint runs only after the person confirms", () => {
 	it("does not call the tool while the question is open, and calls it once allowed", async () => {
 		const servers = twoServers();
 		const tools = await listServerTools(servers);
@@ -252,7 +252,7 @@ describe("a tool not marked readOnlyHint runs only after the person confirms (CU
 		expect(toolCalls(A.seen)).toEqual([]);
 	});
 
-	it("CUR-3983: with the default window, a yes that takes the person 30s to give still runs the tool", async () => {
+	it("with the default window, a yes that takes the person 30s to give still runs the tool", async () => {
 		const servers = twoServers();
 		const tools = await listServerTools(servers);
 		let t = 0;
@@ -320,7 +320,7 @@ async function drain(gen: AsyncGenerator<Output, void, void>): Promise<Output[]>
 	return out;
 }
 
-describe("the multi-call loop (CUR-3026)", () => {
+describe("the multi-call loop", () => {
 	it("makes a read and then a confirmed write in one turn", async () => {
 		const servers = twoServers();
 		const tools = await listServerTools(servers);

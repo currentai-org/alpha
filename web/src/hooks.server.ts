@@ -19,17 +19,21 @@ import {
 	GUEST_HANDOFF_PATH,
 	chatHome,
 	chatSurfaceRedirect,
-	chatSurfaceSiteRedirect
+	chatSurfaceSiteRedirect,
+	siteOnlyChatRedirect
 } from '$lib/chat/paths';
 import { isPageLoad, wwwChatRedirect } from '$lib/chat/wwwChatRedirect';
 import { APP_SURFACE, CHAT_ROUTE_ROOT, chatRoutePath, isChatRoute } from '$lib/surface';
 import { expiredPreviewMessage } from '$lib/server/expiredPreview';
+import { deployEnvName } from '$lib/server/runtimeEnv';
 import { CSP_REPORT_GROUP, cspReportEndpoint } from '$lib/cspReportEndpoint';
 import { cdnCacheFor } from '$lib/cache/cdn';
+import { addVaryAccept, negotiateType } from '$lib/acceptNegotiation';
 import { expireLegacySessionCookies } from '$lib/chat/server/legacySessionCookie';
+import vercelConfig from '../vercel.json';
 
 // How long the module graph took to load before hooks evaluated, since `performance.now()` counts from
-// process start (CUR-2371). Each stage logs once per instance, as a
+// process start. Each stage logs once per instance, as a
 // `leg: 'boot'` line, through chat's logger (already loaded by the time any stage ends).
 const hooksLoadedMs = Math.round(performance.now());
 let chatPipelineTimed = false;
@@ -44,11 +48,20 @@ async function logBootStage(stage: string, startMs: number, extra: Record<string
 	}
 }
 
-// A request belongs to chat: the /chat root or anything under /chat/. On the chat surface (CUR-4448)
+// A site-only build (www once chat lives on alpha) serves none of chat: its addresses 308 to
+// the chat host before anything below runs, and chat's server init, request chain and DB pool never load.
+const siteOnly = APP_SURFACE === 'site-only';
+
+// The scheduled jobs vercel.json registers. www and the alpha project build from the same web/, so
+// both register them; on a site-only www each answers 404 rather than 308, so www's copy of the cron
+// does no work and the alpha project's runs once.
+const CRON_PATHS: readonly string[] = (vercelConfig.crons ?? []).map((cron) => cron.path);
+
+// A request belongs to chat: the /chat root or anything under /chat/. On the chat surface
 // that is every path `reroute` maps into the /chat route tree, so it reads the mapped path.
 const isChatPath = (pathname: string | undefined) => isChatRoute(pathname);
 
-// Retired chat entry paths (CUR-2195): each 308s to /chat before the CMS or the catch-all sees it.
+// Retired chat entry paths: each 308s to /chat before the CMS or the catch-all sees it.
 const isChatAliasRoot = (pathname: string) =>
 	(CHAT_ALIAS_PATHS as readonly string[]).includes(pathname);
 
@@ -80,7 +93,7 @@ async function aliasTarget(pathname: string): Promise<string | null> {
 	return null;
 }
 
-// Chat's paths are code-owned, so a CMS redirect entry never applies to them (CUR-2195).
+// Chat's paths are code-owned, so a CMS redirect entry never applies to them.
 const shouldCheckCmsRedirects = (pathname: string, method: string) =>
 	(method === 'GET' || method === 'HEAD') && !isChatPath(pathname) && !pathname.startsWith('/api/');
 
@@ -98,98 +111,19 @@ async function cmsRedirectTarget(
 	}
 }
 
-// ── Accept: text/markdown content negotiation (CUR-682, acceptmarkdown.com) ───────────────────
+// ── Accept: text/markdown content negotiation ───────────────────────────────────────
 //
-// Adapted from acceptmarkdown.com's own SvelteKit recipe (RFC 9110 Accept parsing with q-values,
-// RFC 7763 text/markdown, RFC 8288 Link headers) — that site exists specifically to be copied, so
-// this ports its parseAccept/preferredType/appendVaryAccept near-verbatim rather than
-// reimplementing q-value precedence from scratch.
+// Parsing and q-value precedence live in $lib/acceptNegotiation (RFC 9110 Accept, RFC 7763
+// text/markdown, RFC 8288 Link headers).
 //
 // Deliberately narrow: negotiation only runs for the exact chat root (`/chat`, or `/` on the chat
 // surface), the one page with
 // a real Markdown sibling today (static/llms.txt). Every other /chat/* path — including the large
 // /chat/api/* and /chat/admin/* surfaces, which send their own Accept headers for real reasons —
 // is untouched by the 406/markdown branches below. The one thing applied everywhere under /chat is
-// Vary: Accept on the root response and a short Markdown 404 (CUR-681) when the caller's own
+// Vary: Accept on the root response and a short Markdown 404 when the caller's own
 // Accept explicitly prefers Markdown over HTML — never on any other Accept value, so a JSON API
 // client hitting a genuine 404 sees no change.
-type AcceptEntry = { type: string; q: number; specificity: number };
-
-function parseAccept(header: string): AcceptEntry[] {
-	return header
-		.split(',')
-		.map((raw) => {
-			const parts = raw
-				.trim()
-				.split(';')
-				.map((s) => s.trim());
-			const type = (parts[0] ?? '').toLowerCase();
-			if (!type) return null;
-			let q = 1;
-			for (const param of parts.slice(1)) {
-				const [name, value] = param.split('=').map((s) => s.trim());
-				if (name === 'q') {
-					const parsed = Number(value);
-					if (!Number.isNaN(parsed)) q = Math.max(0, Math.min(1, parsed));
-				}
-			}
-			const specificity = type === '*/*' ? 0 : type.endsWith('/*') ? 1 : 2;
-			return { type, q, specificity };
-		})
-		.filter((e): e is AcceptEntry => e !== null);
-}
-
-function acceptEntryMatches(entry: AcceptEntry, candidate: string): boolean {
-	if (entry.type === '*/*') return true;
-	if (entry.type.endsWith('/*')) return candidate.startsWith(entry.type.slice(0, -1));
-	return entry.type === candidate;
-}
-
-/** The best of `produces` (in preference order) the client's Accept header actually accepts, by
- *  q-value then specificity then `produces` order. Null only when Accept names none of them. */
-function preferredType(header: string | null, produces: string[]): string | null {
-	if (!header) return produces[0] ?? null;
-	const entries = parseAccept(header);
-	if (entries.length === 0) return produces[0] ?? null;
-
-	let bestType: string | null = null;
-	let bestQ = -1;
-	let bestPos = Infinity;
-	for (const candidate of produces) {
-		let matched: AcceptEntry | null = null;
-		let matchedPos = Infinity;
-		for (let i = 0; i < entries.length; i++) {
-			const e = entries[i];
-			if (!acceptEntryMatches(e, candidate)) continue;
-			if (
-				matched === null ||
-				e.specificity > matched.specificity ||
-				(e.specificity === matched.specificity && i < matchedPos)
-			) {
-				matched = e;
-				matchedPos = i;
-			}
-		}
-		if (!matched || matched.q <= 0) continue;
-		if (matched.q > bestQ || (matched.q === bestQ && matchedPos < bestPos)) {
-			bestQ = matched.q;
-			bestPos = matchedPos;
-			bestType = candidate;
-		}
-	}
-	return bestType;
-}
-
-function appendVaryAccept(headers: Headers): void {
-	const existing = headers.get('vary');
-	if (!existing) {
-		headers.set('Vary', 'Accept');
-		return;
-	}
-	const tokens = existing.split(',').map((s) => s.trim().toLowerCase());
-	if (!tokens.includes('accept')) headers.set('Vary', `${existing}, Accept`);
-}
-
 const CHAT_MARKDOWN_TYPES = ['text/html', 'text/markdown'];
 
 async function negotiateChatMarkdown(input: Parameters<Handle>[0]): Promise<Response> {
@@ -197,14 +131,14 @@ async function negotiateChatMarkdown(input: Parameters<Handle>[0]): Promise<Resp
 	const routePath = chatRoutePath(event.url.pathname);
 	const isChatRoot = routePath === CHAT_ROUTE_ROOT || routePath === `${CHAT_ROUTE_ROOT}/`;
 	const accept = event.request.headers.get('accept');
-	const chosen = preferredType(accept, CHAT_MARKDOWN_TYPES);
+	const chosen = negotiateType(accept, CHAT_MARKDOWN_TYPES);
 
 	if (isChatRoot && chosen === null && accept) {
 		const res = new Response('Not Acceptable\n\nAvailable: text/html, text/markdown\n', {
 			status: 406,
 			headers: { 'content-type': 'text/plain; charset=utf-8' }
 		});
-		appendVaryAccept(res.headers);
+		addVaryAccept(res.headers);
 		return withResponseHeaders(res);
 	}
 
@@ -216,7 +150,7 @@ async function negotiateChatMarkdown(input: Parameters<Handle>[0]): Promise<Resp
 			const res = new Response(await llms.text(), {
 				headers: { 'content-type': 'text/markdown; charset=utf-8' }
 			});
-			appendVaryAccept(res.headers);
+			addVaryAccept(res.headers);
 			return withResponseHeaders(res);
 		}
 		// llms.txt itself failed to serve — fall through to the normal HTML page below.
@@ -231,7 +165,7 @@ async function negotiateChatMarkdown(input: Parameters<Handle>[0]): Promise<Resp
 	const response = withResponseHeaders(await handleRequest(input));
 
 	if (isChatRoot) {
-		appendVaryAccept(response.headers);
+		addVaryAccept(response.headers);
 		if (response.headers.get('content-type')?.includes('text/html')) {
 			const link = '</llms.txt>; rel="alternate"; type="text/markdown"';
 			const existingLink = response.headers.get('link');
@@ -247,7 +181,7 @@ async function negotiateChatMarkdown(input: Parameters<Handle>[0]): Promise<Resp
 				'- [llms.txt](/llms.txt) — what this app is and how to use it\n',
 			{ status: 404, headers: { 'content-type': 'text/markdown; charset=utf-8' } }
 		);
-		appendVaryAccept(res.headers);
+		addVaryAccept(res.headers);
 		return withResponseHeaders(res);
 	}
 
@@ -256,19 +190,19 @@ async function negotiateChatMarkdown(input: Parameters<Handle>[0]): Promise<Resp
 
 // robots.txt is static and allow-all, so it ships identically to every preview deployment — this
 // header is the only thing that keeps a preview URL out of the index. Reads VERCEL_ENV directly
-// rather than the app's own deployEnv() (CUR-208): this is a fact about which Vercel environment
+// rather than the app's own deployEnv: this is a fact about which Vercel environment
 // served the request, not one of our PostHog-scoped env conditions, and deployEnv() would pull
 // chat's config/logger module chain into every map-only request just to decide a header.
 //
 // Every response also gets nosniff and an explicit Referrer-Policy, which only a few
-// endpoints set before. An endpoint's own value wins, so fetch-url keeps its stricter no-referrer. (CUR-3514)
+// endpoints set before. An endpoint's own value wins, so fetch-url keeps its stricter no-referrer.
 const BASELINE_SECURITY_HEADERS: Record<string, string> = {
 	'X-Content-Type-Options': 'nosniff',
 	'Referrer-Policy': 'strict-origin-when-cross-origin'
 };
 
 // The CSP's report-to directive (svelte.config.js) names a Reporting API group, and the
-// browser looks the group up in this header. Same env, same URL as the policy's report-uri. (CUR-3188)
+// browser looks the group up in this header. Same env, same URL as the policy's report-uri.
 const cspReportUrl = cspReportEndpoint(process.env);
 if (cspReportUrl) {
 	BASELINE_SECURITY_HEADERS['Reporting-Endpoints'] = `${CSP_REPORT_GROUP}="${cspReportUrl}"`;
@@ -279,7 +213,8 @@ function withResponseHeaders(response: Response): Response {
 		for (const [name, value] of Object.entries(BASELINE_SECURITY_HEADERS)) {
 			if (!response.headers.has(name)) response.headers.set(name, value);
 		}
-		if (process.env.VERCEL_ENV && process.env.VERCEL_ENV !== 'production') {
+		const environment = deployEnvName();
+		if (environment && environment !== 'production') {
 			response.headers.set('X-Robots-Tag', 'noindex');
 		}
 	} catch {
@@ -297,7 +232,7 @@ function withResponseHeaders(response: Response): Response {
 // directly. Dynamic-imported (like the rest of chat's server code) so a map-only request
 // never pulls postgres.js; non-blocking + non-throwing; `PG_PRECONNECT=off` disables it. See
 // docs/plans/ttft-critical-path.md §B.
-if (!building) {
+if (!building && !siteOnly) {
 	void import('$lib/chat/server/db/client')
 		.then(({ preconnectDb }) => preconnectDb())
 		.catch(() => {});
@@ -312,15 +247,38 @@ export const init: ServerInit = async () => {
 
 	// A dropped CMS doc goes to pino so it reaches the aipotluck dataset, where its production
 	// alert reads it; the Payload client cannot import the logger itself because it also runs in
-	// the browser.
+	// the browser. Site code gets the same logger and chat's flag reader here, so it imports
+	// neither from chat (payload/hostServices.ts). Where chat runs in this app, the site's CMS webhook
+	// also hands each publish to chat's side of it; a site-only build forwards it to the
+	// chat host instead.
 	try {
 		const { logger } = await import('$lib/chat/server/logger');
-		await startCms((detail, message) => logger.error(detail, message));
+		const { flagEnabledOr } = await import('$lib/chat/server/flags');
+		await startCms((detail, message) => logger.error(detail, message), {
+			logger: {
+				info: (detail, message) => logger.info(detail, message),
+				warn: (detail, message) => logger.warn(detail, message),
+				error: (detail, message) => logger.error(detail, message)
+			},
+			flagEnabledOr,
+			...(siteOnly
+				? {}
+				: {
+						onCmsPublish: async (body: unknown) => {
+							const { cmsPublished } = await import('$lib/chat/server/cmsPublish');
+							await cmsPublished(body);
+						}
+					})
+		});
 	} catch (err) {
-		console.error(
-			'[cms] failed to start the CMS client (dropped-doc sink, invalidation poller):',
-			err
-		);
+		console.error('[cms] failed to start the CMS client (dropped-doc sink):', err);
+	}
+
+	// A site-only build checks the site's own env and stops: chat's init would demand chat's keys.
+	if (siteOnly) {
+		const { validateEnv } = await import('$lib/chat/server/env/validate');
+		validateEnv();
+		return;
 	}
 
 	// Chat's server boot: fail fast on misconfigured env in production (so a bad deploy
@@ -337,7 +295,7 @@ export const init: ServerInit = async () => {
 			initStartMs: Math.round(initStart)
 		});
 		// Loading chat's request handler takes about 2s on the first /chat request of a cold instance,
-		// often long after init has finished (CUR-2371). Start it here, unawaited: a /chat request
+		// often long after init has finished. Start it here, unawaited: a /chat request
 		// awaits the same in-flight module in negotiateChatMarkdown, and a map request never waits on it.
 		void import('$lib/chat/server/hooks/handle').catch(() => {});
 	} catch (err) {
@@ -353,18 +311,18 @@ export const init: ServerInit = async () => {
 };
 
 // A guest moving to the chat host from www or chat. carries their session with them; the
-// module loads only when there is a guest cookie to carry. (CUR-4439)
+// module loads only when there is a guest cookie to carry.
 async function guestHandoff(
 	cookies: Cookies | undefined,
 	target: string
 ): Promise<Response | null> {
 	if (!cookies || cookies.getAll().length === 0) return null;
-	const { guestHandoffPage } = await import('$lib/chat/server/guestHandoff');
+	const { guestHandoffPage } = await import('$lib/chat/server/guestHandoffPage');
 	return guestHandoffPage(cookies, new URL(target));
 }
 
 // Whether this answer is a 308 or the handoff page depends on the request's fetch metadata
-// and cookies, so no cache may store it and replay it to a request that should get the other one. (CUR-4439)
+// and cookies, so no cache may store it and replay it to a request that should get the other one.
 function movedToChatHost(target: string): Response {
 	return new Response(null, {
 		status: 308,
@@ -383,18 +341,44 @@ export const handleApplication: Handle = async (input) => {
 			transformPageChunk: ({ html }) => html.replace('%gaId%', '')
 		});
 	}
-	// Clear production's old apex-wide session cookies wherever a browser still sends them. (CUR-4442)
+	// Clear production's old apex-wide session cookies wherever a browser still sends them.
 	expireLegacySessionCookies(input.event.cookies, process.env);
 	const { hostname, search } = input.event.url;
 	const pathname = unlocalizedPath(input.event.url.pathname);
 
-	// Chat's hosts (CUR-1067): an alias host sends every path to the same place on the chat host, and
+	// Chat's hosts: an alias host sends every path to the same place on the chat host, and
 	// the chat host's bare root opens chat. No other host is affected.
 	const method = input.event.request?.method ?? 'GET';
 	const headers = input.event.request?.headers ?? new Headers();
 
-	// The chat host takes a guest's session handed over from www or chat. (guestHandoff.ts). (CUR-4439)
-	if (hostname === CHAT_HOST && pathname === GUEST_HANDOFF_PATH && method === 'POST') {
+	// Site-only: every chat address, a page load or an API call of any method, moves to the chat host.
+	// A page load still carries a guest's session there first.
+	if (siteOnly) {
+		if (CRON_PATHS.includes(pathname)) {
+			return new Response(
+				'Not found: this deployment runs no scheduled jobs; the chat host does.',
+				{
+					status: 404,
+					headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' }
+				}
+			);
+		}
+		const toChat = siteOnlyChatRedirect({
+			url: input.event.url,
+			pathname,
+			vercelEnv: deployEnvName()
+		});
+		if (toChat !== null) {
+			if (isPageLoad(method, headers) && new URL(toChat).hostname === CHAT_HOST) {
+				const handoff = method === 'GET' ? await guestHandoff(input.event.cookies, toChat) : null;
+				if (handoff) return handoff;
+			}
+			return movedToChatHost(toChat);
+		}
+	}
+
+	// The chat host takes a guest's session handed over from www or chat. (guestHandoff.ts).
+	if (!siteOnly && hostname === CHAT_HOST && pathname === GUEST_HANDOFF_PATH && method === 'POST') {
 		const { acceptGuestHandoff } = await import('$lib/chat/server/guestHandoff');
 		const { next, outcome } = await acceptGuestHandoff(input.event.request, input.event.cookies);
 		const { logger } = await import('$lib/chat/server/logger');
@@ -410,25 +394,25 @@ export const handleApplication: Handle = async (input) => {
 		}
 		return movedToChatHost(target);
 	}
-	// On the chat surface the root IS chat, so only the site surface sends it on (CUR-4448).
+	// On the chat surface the root IS chat, so only the site surface sends it on.
 	if (APP_SURFACE === 'site' && hostname === CHAT_HOST && pathname === '/') {
 		throw redirect(308, `${chatHome}${search}`);
 	}
 	// On the chat surface, an old `/chat/...` address moves to the same path at the root.
-	// Reserved paths (CHAT_RESERVED_PATHS) are served in place, and only a GET or HEAD moves. (CUR-4448)
+	// Reserved paths (CHAT_RESERVED_PATHS) are served in place, and only a GET or HEAD moves.
 	const atRoot = chatSurfaceRedirect(pathname, method);
 	if (atRoot !== null) throw redirect(308, `${atRoot}${search}`);
 	// On the chat surface, a site page (`/map`, a CMS slug) matches no chat route after
-	// `reroute`, so it moves to the same path on the site's host instead of 404ing here. (CUR-4448)
+	// `reroute`, so it moves to the same path on the site's host instead of 404ing here.
 	const toSite = chatSurfaceSiteRedirect({
 		pathname,
 		search,
 		method,
 		routeId: input.event.route?.id ?? null,
-		vercelEnv: process.env.VERCEL_ENV
+		vercelEnv: deployEnvName()
 	});
 	if (toSite !== null) throw redirect(308, toSite);
-	// A page load of www's /chat moves to the chat host; API calls keep answering on www. (CUR-4439)
+	// A page load of www's /chat moves to the chat host; API calls keep answering on www.
 	const chatHostTarget = wwwChatRedirect(input.event.url, method, headers, pathname);
 	if (chatHostTarget) {
 		const handoff =
@@ -441,9 +425,9 @@ export const handleApplication: Handle = async (input) => {
 		throw redirect(308, `${chatHome}${input.event.url.search}`);
 	}
 
-	if (isChatPath(pathname)) {
+	if (!siteOnly && isChatPath(pathname)) {
 		// Chat's full request pipeline (auth, CSRF, CSP) — loaded on demand, wrapped by the
-		// Accept: text/markdown negotiation above (CUR-681/CUR-682).
+		// Accept: text/markdown negotiation above.
 		return negotiateChatMarkdown(input);
 	}
 
@@ -467,7 +451,7 @@ export const handle: Handle = sequence(handleLocale, handleApplication);
 
 export const handleError: HandleServerError = async (input) => {
 	if (building) throw input.error;
-	if (isChatPath(input.event?.url?.pathname)) {
+	if (!siteOnly && isChatPath(input.event?.url?.pathname)) {
 		const { handleServerError } = await import('$lib/chat/server/hooks/error');
 		const result = await handleServerError(input);
 		const expired = expiredPreviewMessage(input.error, process.env);
@@ -520,7 +504,7 @@ export const handleError: HandleServerError = async (input) => {
 
 export const handleFetch: HandleFetch = async (input) => {
 	if (building) return input.fetch(input.request);
-	if (isChatPath(input.event?.url?.pathname)) {
+	if (!siteOnly && isChatPath(input.event?.url?.pathname)) {
 		const { handleFetchRequest } = await import('$lib/chat/server/hooks/fetch');
 		return handleFetchRequest(input);
 	}

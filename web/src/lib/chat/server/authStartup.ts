@@ -5,7 +5,7 @@ import type { GenericOAuthConfig } from "better-auth/plugins/generic-oauth";
  *
  * A failed discovery fetch stays contained to HF. Since Better Auth 1.7.10, genericOAuth's `init()`
  * logs "Discovery fetch failed" and skips the provider instead of throwing, so email OTP, passkey,
- * Google and GitHub keep working on that instance (CUR-2128).
+ * Google and GitHub keep working on that instance.
  *
  * Endpoints still come from discovery because genericOAuth builds its ID-token verification (JWKS,
  * issuer, nonce) and its `sub`-keyed account subject only from a discovered document.
@@ -23,7 +23,7 @@ export function huggingFaceOAuthConfig(opts: {
 		providerId: "huggingface",
 		name: "Hugging Face",
 		clientId: opts.clientId,
-		// A missing secret means a PUBLIC client (the __CIMD__ path, CUR-451) — optional here for the
+		// A missing secret means a PUBLIC client (the __CIMD__ path) — optional here for the
 		// same reason it's conditional in auth.ts's own getOIDCClient.
 		clientSecret: opts.clientSecret || undefined,
 		// Better Auth fetches this literally — unlike openid-client's discovery(), it does not

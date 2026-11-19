@@ -82,7 +82,7 @@ describe("verifyCitationLabels — strip confabulated labels the retrieved sourc
 	});
 });
 
-describe("verifyCitationLabels with the visitor's own sources first (CUR-3844)", () => {
+describe("verifyCitationLabels with the visitor's own sources first", () => {
 	it("checks [k+1] against the first retrieved source and leaves the person's [1] alone", () => {
 		const sources = [{ title: "Quantum — Wikipedia", url: "https://en.wikipedia.org/wiki/Quantum" }];
 		const out = verifyCitationLabels("[1] (Smith Report) and [2] (White House) say X.", sources, 1);

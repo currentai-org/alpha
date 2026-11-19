@@ -48,7 +48,7 @@ export async function readSignInOtp(databaseUrl: string, email: string): Promise
 }
 
 /** Ages the newest sign-in code for `email` past its expiry, so a spec can walk an expired code
- *  without waiting out the 600 s window (CUR-2793). Fails loud when there is no row to age, since a
+ *  without waiting out the 600 s window. Fails loud when there is no row to age, since a
  *  spec that "expired" nothing would then be testing a live code. */
 export async function expireSignInOtp(databaseUrl: string, email: string): Promise<void> {
 	const sql = postgres(databaseUrl, { ssl: sslFor(databaseUrl), max: 1 });

@@ -8,7 +8,7 @@ import { composerHydrated, sendOpensConversation } from './helpers/composer';
 import { startChattingPastWelcome } from './helpers/welcome';
 import { openStepByStep } from './helpers/xray';
 
-// A person in distress gets Alpha's answer with the Support resources card on top (CUR-3915); only a
+// A person in distress gets Alpha's answer with the Support resources card on top; only a
 // request for a method, a means or a lethal amount is declined. The distress rules (-intent, -passive,
 // -hedged) are log rules, and their hit stamps the card on the answer from the server, which is what
 // reaches "hopeless", a message the card's own client-side phrase check misses. The
@@ -32,11 +32,11 @@ async function ask(page: Page, text: string) {
 }
 
 test(
-	'distress is answered under the support card, and lethal-amount and purging requests are declined (CUR-3915)',
+	'distress is answered under the support card, and lethal-amount and purging requests are declined',
 	{ tag: ['@CUR-3915', '@real-screen'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(300_000);
-		// support-signal-classifier off (CUR-4093): the card here comes from the guard's own distress rules.
+		// support-signal-classifier off: the card here comes from the guard's own distress rules.
 		await setFlagOverrides(context, baseURL!, {
 			'self-harm-distress-declines': false,
 			'support-signal-classifier': false
@@ -81,7 +81,7 @@ test(
 );
 
 test(
-	'the support card on an answered hopeless message survives a reload, and X-ray names the rule as matched (CUR-3915)',
+	'the support card on an answered hopeless message survives a reload, and X-ray names the rule as matched',
 	{ tag: ['@CUR-3915', '@real-screen'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(120_000);
@@ -118,7 +118,7 @@ test(
 );
 
 test(
-	'with self-harm-distress-declines on, a hopeless message gets the support decline again (CUR-3915)',
+	'with self-harm-distress-declines on, a hopeless message gets the support decline again',
 	{ tag: ['@CUR-3915', '@real-screen'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(90_000);

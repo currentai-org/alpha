@@ -2,7 +2,7 @@
 // server, because no provider copies across accounts: @huggingface/hub's copyFile stays inside one
 // namespace, and Alpha storage and a person's own bucket are two. The destination's own `write` does
 // the screening (type, size, rate, CSAM scan, failing closed), so a transfer is checked exactly like
-// an upload into that location. (CUR-2931)
+// an upload into that location.
 import { CUSTODIAL_SUBFOLDERS, type CustodialSubfolder } from "../custodialBucket";
 import type { UploadOptions } from "../custodialStorage";
 import type { StorageLocation } from "./types";
@@ -46,7 +46,7 @@ function folderOf(path: string): CustodialSubfolder {
  *  same bytes already there and wrote nothing. */
 type TransferOutcome = "copied" | "renamed" | "alreadyThere";
 
-/** `refuse` (a single file) answers 409 for a name already taken. `keepBoth` (moving a batch, CUR-2941)
+/** `refuse` (a single file) answers 409 for a name already taken. `keepBoth` (moving a batch)
  *  never overwrites and never stops: the same bytes under that name count as already copied, and
  *  different bytes are written as `name (2).ext`, rclone's skip-if-identical plus Immich's and
  *  Nextcloud's keep-both. */
@@ -139,7 +139,7 @@ export async function transferFile(
 	// Size only: the two stores do not promise comparable hashes (one may report a Xet hash and the
 	// other a git oid for the same bytes), and a mismatch there would keep both copies for no reason.
 	// A copy is checked too, because moving a batch copies every file first and deletes the originals
-	// only once all of them have landed (CUR-2941).
+	// only once all of them have landed.
 	// A store that lists sealed sizes is read back, since its listing counts the ciphertext.
 	const landed = sealedSizes ? await to.read(copied) : await to.stat(copied);
 	if (!landed || landed.size !== content.size) {

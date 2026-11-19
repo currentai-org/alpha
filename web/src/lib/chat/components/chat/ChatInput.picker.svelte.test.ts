@@ -13,7 +13,7 @@ vi.mock('$app/navigation', () => ({ afterNavigate: () => {}, goto: async () => {
 vi.mock('$lib/chat/utils/isVirtualKeyboard', () => ({ isVirtualKeyboard: () => false }));
 
 // A large photo's redraw holds the main thread, so a focus that waits a frame lets the keys typed in
-// that window land on the page body; the first 30 characters of a question can be lost (CUR-3197).
+// that window land on the page body; the first 30 characters of a question can be lost.
 describe('choosing a photo in the picker', () => {
 	it('puts focus in the message box before anything waits, so keys typed during the redraw land there', async () => {
 		const { baseElement } = await render(ChatInput, {

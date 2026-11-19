@@ -1,4 +1,4 @@
-// The chat entry point. `/chat` is code-owned on every target (CUR-2195), so there is one path and
+// The chat entry point. `/chat` is code-owned on every target, so there is one path and
 // nothing to resolve per target; `/alpha/chat`, the old entry while the landing page lived in the
 // CMS, now 308s here.
 
@@ -9,7 +9,7 @@ export const CHAT_ENTRY = CHAT_SURFACE ? '/' : '/chat';
 
 /**
  * A chat page's path on this run's target: `/chat/login` on a site-surface run, `/login` on a
- * chat-surface one, where `/chat/x` would 308 (CUR-4448). Pages only: the reserved API paths
+ * chat-surface one, where `/chat/x` would 308. Pages only: the reserved API paths
  * (`/chat/api/...`) keep their prefix on both, so a fetch of one is written out in full.
  */
 export function chatPath(path: `/${string}`): string {
@@ -25,7 +25,7 @@ export const CONVERSATION_URL = CHAT_SURFACE
  * Confirm `baseURL` serves the chat entry directly, once per run, before any spec depends on it.
  *
  * Redirects are NOT followed: a 3xx means something (a CMS redirect, a platform rule) is sending
- * chat's own path elsewhere, which is the regression CUR-2195 exists to prevent.
+ * chat's own path elsewhere, which is the regression exists to prevent.
  */
 export async function checkChatEntry(baseURL: string): Promise<void> {
 	const url = new URL(CHAT_ENTRY, baseURL);
@@ -34,7 +34,7 @@ export async function checkChatEntry(baseURL: string): Promise<void> {
 	if (res.status >= 500) {
 		const body = await res.text().catch((err) => `<failed to read body: ${err}>`);
 		// This message's "the path is right and the application threw" clause is matched
-		// verbatim by scenario-suite-check.yml's CUR-1589 teardown-race carve-out — a 5xx here is
+		// verbatim by scenario-suite-check.yml's teardown-race carve-out — a 5xx here is
 		// exactly what happens once a PR's Neon branch is torn down mid-run, so the carve-out greps
 		// the suite's captured output for this text as its evidence of the race, alongside PR state,
 		// before waving a failure off. Reword this clause and the carve-out silently stops
@@ -69,14 +69,14 @@ export function chatEntry(): string {
 /**
  * The chat entry for a spec whose assertion rests on how a strong model answers: a long essay to
  * stop or scroll through, a saved instruction followed, a full recipe. Per-ticket previews default to
- * Mistral Small to keep the suite off the large models' bill (CUR-2716), and Small answers those briefly
+ * Mistral Small to keep the suite off the large models' bill, and Small answers those briefly
  * or loosely, so these few specs enter on Large 4, a strong model every site offers. `SCENARIO_MODEL`
  * still wins, so the gallery's `prod` profile grades them on production's default.
  */
 /**
  * Mistral Large 4, for a spec that pins a picked model other than the default Medium, whatever
  * `SCENARIO_MODEL` says. A spec here pins it by URL, so the default does not reach it. Large 3 is on no
- * site's picker (CUR-4683).
+ * site's picker.
  */
 export const LARGE4_MODEL = 'mistral-large-2610';
 /** Mistral Medium 3.5, every site's default, for a spec that pins the model a visitor gets. */

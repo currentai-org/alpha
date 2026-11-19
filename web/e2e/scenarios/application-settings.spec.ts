@@ -12,7 +12,7 @@ import { composerHydrated } from './helpers/composer';
 import { startChattingPastWelcome } from './helpers/welcome';
 import { testAuthHelpers } from '../testAuth';
 
-// This spec is about the first-run welcome, so it meets the welcome itself rather than through the shared handler (SOL-343).
+// This spec is about the first-run welcome, so it meets the welcome itself rather than through the shared handler.
 test.use({ welcome: 'show' });
 
 // A4 ("I can change how Alpha behaves, and see every setting that applies to me"), steps 1-5. The
@@ -79,7 +79,7 @@ test(
 			);
 		});
 
-		// Step 5, CUR-3929, CUR-549 and CUR-3930. Ten structured answer settings are on the page, for a
+		// Step 5. Ten structured answer settings are on the page, for a
 		// guest as for anyone, each live and each marked Default while unset: nothing greyed out, no
 		// "coming soon" placeholder. How Alpha refers to itself reads Machine until the person picks Person.
 		await journeyStep(page, 'A4', 5, async () => {
@@ -116,7 +116,7 @@ test(
 	}
 );
 
-// CUR-2431 built Settings → Personalization; CUR-1443 makes it reach the turn. The instruction is
+// built Settings → Personalization; that change makes it reach the turn. The instruction is
 // read on every turn, not copied into a conversation at creation, so the claim here is the one a
 // person would test: a chat already open when they save follows the instruction on its next answer.
 // The conversation API's preprompt is read from the same resolution the turn uses, so it has to name
@@ -322,7 +322,7 @@ test.describe('settings tabs at phone width', () => {
 	// Settings from the account menu opened straight onto General, so on a phone the list
 	// with Personalization sat one tap behind a "Settings" back button. A phone now lands on the list.
 	test(
-		'CUR-3601: at phone width, Settings from the account menu opens the section list, and Personalization is one tap from it',
+		'at phone width, Settings from the account menu opens the section list, and Personalization is one tap from it',
 		{ tag: ['@A4', '@CUR-3601', '@preview-only'] },
 		async ({ page }) => {
 			test.setTimeout(120_000);
@@ -421,7 +421,7 @@ test(
 	}
 );
 
-// A4 steps 10-12 (CUR-2627). The chat window opens dark, and Settings → Appearance's Mode control
+// A4 steps 10-12. The chat window opens dark, and Settings → Appearance's Mode control
 // switches it. This is the chat window's own mode (chatTheme.ts); the site outside the chat has no
 // dark mode. A choice that took on screen and reverted on reload would
 // look exactly like one that saved, so the window's mode is read again after the reload.
@@ -484,7 +484,7 @@ test(
 // requestfinished for a keepalive request whose page has gone, so the spec asserts the outcome and
 // records whether the held request could still be sent.
 test(
-	'CUR-2574: dismissing Welcome to Alpha and reloading at once still keeps the intro down on the next load',
+	'dismissing Welcome to Alpha and reloading at once still keeps the intro down on the next load',
 	{ tag: ['@A4', '@CUR-2574', '@preview-only'] },
 	async ({ page }, testInfo) => {
 		test.setTimeout(90_000);
@@ -543,7 +543,7 @@ test(
 
 // These contracts were written against General's streaming and paste controls. When General was
 // retired they moved to the haptics switch on Appearance, the switch that page still saves to the
-// server. It renders only on a touch device, so the block emulates one. The CUR-1649 check (a saved
+// server. It renders only on a touch device, so the block emulates one. The check (a saved
 // switch is not faded before hydration) did not move: this switch renders only in the browser, so
 // there is no server-rendered switch to look at.
 test.describe('settings saves, on the haptics switch', () => {
@@ -565,7 +565,7 @@ test.describe('settings saves, on the haptics switch', () => {
 			await page.goto('/chat/settings/appearance', { waitUntil: 'commit' });
 			const toggle = hapticsSwitch(page);
 			await expect(toggle).toBeVisible({ timeout: 15_000 });
-			// Hydrated once the switch takes input: neither disabled nor inside an inert wrapper (CUR-2009, CUR-1649).
+			// Hydrated once the switch takes input: neither disabled nor inside an inert wrapper.
 			await expect
 				.poll(
 					() => toggle.evaluate((el) => !el.hasAttribute('disabled') && !el.closest('[inert]')),
@@ -700,7 +700,7 @@ test.describe('settings saves, on the haptics switch', () => {
 // Only the deterministic claims live here: that a choice is stored, shown after a reload, reset to
 // Default, and read on a second device. Whether a model then follows the choice is the live probe's
 // claim (evals/inspect_tasks/answer_preferences.py).
-test.describe('how Alpha answers (CUR-3929)', () => {
+test.describe('how Alpha answers', () => {
 	const isSettingsSave = (r: { request(): { method(): string }; url(): string }) =>
 		r.request().method() === 'POST' && new URL(r.url()).pathname === '/chat/settings';
 	const ROWS = [
@@ -709,10 +709,8 @@ test.describe('how Alpha answers (CUR-3929)', () => {
 		'suggestions',
 		'answerLanguage',
 		'plainLanguage',
-		// CUR-549
 		'answerFormat',
 		'emojis',
-		// CUR-3930
 		'selfReferenceAsPerson',
 		'showServing'
 	] as const;

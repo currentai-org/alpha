@@ -1,12 +1,12 @@
 /**
- * Side-call models register themselves (CUR-2261). ARITHMETIC_ROUTE_MODEL (the math-routing turn
+ * Side-call models register themselves. ARITHMETIC_ROUTE_MODEL (the math-routing turn
  * planner) and TASK_MODEL (titles and other side calls) are looked up by id in the registry. Each
  * registers its own model, so it works whether or not COMPARE_PANEL lists the same id; otherwise math
  * routing would log "plan model is not registered" and plan nothing, and titles would fall back to the
  * default chat model.
  *
  * Idioms mirror models.boot.spec.ts: `config` is a Proxy over a mutable object, `$app/environment`
- * says `building: true` so the module-eval boot is skipped, and each test drives bootModels() against
+ * says `building: true` so the module-eval boot is skipped, and each test drives bootModels against
  * a stubbed live catalog.
  */
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
@@ -96,7 +96,7 @@ const boot = async () => {
 	return mod;
 };
 
-describe("side-call models register in their own right (CUR-2261)", () => {
+describe("side-call models register in their own right", () => {
 	it("registers ARITHMETIC_ROUTE_MODEL as an unlisted model on the compare endpoint even when COMPARE_PANEL does not list it", async () => {
 		H.cfg.ARITHMETIC_ROUTE_MODEL = PLANNER;
 		const mod = await boot();
@@ -132,10 +132,9 @@ describe("side-call models register in their own right (CUR-2261)", () => {
 	});
 });
 
-describe("the entity-scope guard's model registers even when COMPARE_PANEL omits it (CUR-2263)", () => {
-	// rag/entityScopeGuard.ts pins to SECOND_OPINION_MODEL only when models.some(m => m.id === id),
-	// so registration is exactly the condition the pin depends on.
-	it("registers a SECOND_OPINION_MODEL that COMPARE_PANEL does not list, so the guard pins to it instead of the default endpoint", async () => {
+describe("the second-opinion model registers even when COMPARE_PANEL omits it", () => {
+	// The panel's first seat is looked up by id, so registration is the condition it depends on.
+	it("registers a SECOND_OPINION_MODEL that COMPARE_PANEL does not list, as an unlisted model on the compare endpoint", async () => {
 		const GUARD = "test-org/guard";
 		H.cfg.SECOND_OPINION_MODEL = GUARD;
 		const mod = await boot();
@@ -147,7 +146,22 @@ describe("the entity-scope guard's model registers even when COMPARE_PANEL omits
 	});
 });
 
-describe("a side-call model that Mistral serves registers on the Mistral lane (CUR-2262)", () => {
+describe("the entity-scope guard's own role registers even when COMPARE_PANEL omits it", () => {
+	// rag/entityScopeGuard.ts pins to ENTITY_SCOPE_MODEL only when models.some(m => m.id === id), so
+	// it must not depend on COMPARE_PANEL happening to list Qwen3.6.
+	it("registers an ENTITY_SCOPE_MODEL that COMPARE_PANEL does not list, so the guard pins to it instead of the default endpoint", async () => {
+		const GUARD = "test-org/entity-guard";
+		H.cfg.ENTITY_SCOPE_MODEL = GUARD;
+		const mod = await boot();
+
+		const guard = mod.models.find((m) => m.id === GUARD);
+		expect(guard).toBeDefined();
+		expect(guard?.unlisted).toBe(true);
+		expect(JSON.stringify(guard?.endpoints)).toContain(COMPARE_BASE);
+	});
+});
+
+describe("a side-call model that Mistral serves registers on the Mistral lane", () => {
 	// Side calls moving to mistral-small-2603: registered on the compare endpoint, that id would be
 	// sent to the second-opinion provider, which does not serve it.
 	beforeEach(() => {
@@ -172,6 +186,17 @@ describe("a side-call model that Mistral serves registers on the Mistral lane (C
 		expect(mod.taskModel.id).toBe(MISTRAL_SMALL);
 	});
 
+	it("with side-call-own-lane on, puts an ENTITY_SCOPE_MODEL listed in MISTRAL_MODELS on the Mistral lane, not the compare endpoint", async () => {
+		H.flagsOn.add("side-call-own-lane");
+		H.cfg.ENTITY_SCOPE_MODEL = MISTRAL_SMALL;
+		const mod = await boot();
+
+		const guard = mod.models.filter((m) => m.id === MISTRAL_SMALL);
+		expect(guard).toHaveLength(1);
+		expect(JSON.stringify(guard[0]?.endpoints)).toContain(MISTRAL_BASE);
+		expect(JSON.stringify(guard[0]?.endpoints)).not.toContain(COMPARE_BASE);
+	});
+
 	it("with side-call-own-lane on, registers the Mistral side-call model even when no compare endpoint is configured", async () => {
 		H.flagsOn.add("side-call-own-lane");
 		delete H.cfg.SECOND_OPINION_BASE_URL;
@@ -189,7 +214,7 @@ describe("a side-call model that Mistral serves registers on the Mistral lane (C
 		expect(JSON.stringify(small?.endpoints)).toContain(COMPARE_BASE);
 	});
 
-	it("backs Small with Medium and Medium with Small, both on the Mistral lane (CUR-2092)", async () => {
+	it("backs Small with Medium and Medium with Small, both on the Mistral lane", async () => {
 		H.flagsOn.add("side-call-own-lane");
 		Object.assign(H.cfg, {
 			MISTRAL_MODELS: `${MISTRAL_SMALL},${MISTRAL_MEDIUM}`,
@@ -221,19 +246,17 @@ describe("a side-call model that Mistral serves registers on the Mistral lane (C
 
 	it("never offers the Mistral side-call model in the picker: it stays out of the allowlisted chat models", async () => {
 		H.flagsOn.add("side-call-own-lane");
-		H.flagsOn.add("model-picker");
 		const mod = await boot();
 
 		expect(mod.models.filter((m) => !m.unlisted).map((m) => m.id)).toEqual([CHAT_MODEL]);
 	});
 });
 
-describe("a pinned GLM id in the allowlist is offered from the HF router, independent of the compare panel (CUR-1683)", () => {
+describe("a pinned GLM id in the allowlist is offered from the HF router, independent of the compare panel", () => {
 	const HF = "https://router.huggingface.co/v1";
 	const GLM = "zai-org/GLM-5.2";
 
 	beforeEach(() => {
-		H.flagsOn.add("model-picker");
 		Object.assign(H.cfg, { HF_BASE_URL: HF, HF_TOKEN: "hf-key", HF_BILL_TO: "test-org" });
 	});
 

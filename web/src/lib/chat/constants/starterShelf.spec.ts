@@ -17,7 +17,7 @@ const record = (prompts: StarterRecord['prompts']): StarterRecord => ({
 	prompts
 });
 
-describe('gradedShelf (CUR-1003)', () => {
+describe('gradedShelf', () => {
 	it('drops a candidate the record never graded, so an added prompt stays off the shelf until it is graded', () => {
 		expect(gradedShelf(['graded', 'new'], record({ graded: { correct: 5, runs: 5 } }))).toEqual(['graded']);
 	});
@@ -49,7 +49,7 @@ describe('the committed shelf', () => {
 	});
 });
 
-describe('offersShelf (CUR-2323)', () => {
+describe('offersShelf', () => {
 	it('offers nothing when the browser ranks another language first, even with English as a fallback', () => {
 		expect(offersShelf('fr-FR,fr;q=0.9,en;q=0.8')).toBe(false);
 		expect(offersShelf('es-MX')).toBe(false);

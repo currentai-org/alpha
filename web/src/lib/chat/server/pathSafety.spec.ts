@@ -28,7 +28,7 @@ describe("hasUnsafePathSegment", () => {
 		expect(hasUnsafePathSegment("exports/2026/report.csv")).toBe(false);
 	});
 
-	it("accepts unicode and spaces (CUR-571: real agent-chosen filenames)", () => {
+	it("accepts unicode and spaces ( real agent-chosen filenames)", () => {
 		expect(hasUnsafePathSegment("Café notes été.txt")).toBe(false);
 	});
 

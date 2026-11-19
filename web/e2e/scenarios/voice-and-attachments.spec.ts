@@ -16,7 +16,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 //
 // This file walks speaking and listening. Photos are walked in `photo-question.spec.ts`: paste,
 // drop and the attach button, for a team account on preview, where the `multimodal` flag selects
-// them (CUR-454, CUR-2725). Documents are not walked yet (CUR-987).
+// them. Documents are not walked yet.
 //
 // THE FAILURE THIS JOURNEY IS SHAPED AROUND is users confusing the two voice directions. Dictation puts the user's
 // words into the composer. Read-aloud is the other direction: the model's words, spoken back. The labels in
@@ -32,9 +32,9 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // rather than silent.
 //
 // Dictation is tested twice. The first test sends a recorded clip to `/chat/api/transcribe` and
-// requires the spoken words back (CUR-198). The second presses Dictate with the page's microphone
-// replaced by that clip, and requires the words in the composer (CUR-2723). Read-aloud's audio is asserted by the
-// last test below (CUR-225): a headless browser cannot hear, but it can fetch the clip and decode
+// requires the spoken words back. The second presses Dictate with the page's microphone
+// replaced by that clip, and requires the words in the composer. Read-aloud's audio is asserted by the
+// last test below: a headless browser cannot hear, but it can fetch the clip and decode
 // its duration. Both outcome tests read their flag from the rendered page and FAIL when the control
 // is hidden, since both flags are at 100% on preview and a hidden control there is the defect.
 //
@@ -72,13 +72,13 @@ async function openComposer(page: Page, entry: string = chatEntry()): Promise<vo
 }
 
 // The two read-aloud paths run again pinned to Large 4, whose turn is native, since every
-// model is meant to read aloud the same way (CUR-2734).
+// model is meant to read aloud the same way.
 const LARGE_4 = LARGE4_MODEL;
 type Fixtures = { page: Page; context: BrowserContext; baseURL: string | undefined };
 
 /** Walks the real read-aloud control to `mode`, reading the label each step rather than counting taps. */
 // Read-aloud's mode is a radio group in the composer's + menu, in a "Read aloud" flyout (composerTools.ts),
-// one option per mode, the chosen one checked. The group is only offered while the `read-aloud` flag is on (CUR-225).
+// one option per mode, the chosen one checked. The group is only offered while the `read-aloud` flag is on.
 const MODE_LABEL = { off: 'Off', auto: 'Auto', always: 'Always' } as const;
 type ReadAloudMode = keyof typeof MODE_LABEL;
 const readAloudGroup = (page: Page) => toolGroup(page, 'Read aloud');
@@ -107,11 +107,11 @@ async function setReadAloud(page: Page, mode: 'auto' | 'always'): Promise<void> 
 
 /** Waits for the last reply to finish and requires a real answer in it. */
 async function expectAnsweredTurn(page: Page): Promise<void> {
-	// The turn has to finish, and finish with an answer, before a clip means anything (CUR-2022).
+	// The turn has to finish, and finish with an answer, before a clip means anything.
 	// Retry renders only once `isTurnStillRunning` goes false (ChatMessage.svelte:970), and speak-all
 	// synthesizes inside the turn, so by the time Retry shows the clip has either arrived or been
 	// recorded as skipped. An errored turn also ends with Retry, so the answer itself is checked:
-	// CUR-2022's journey recording showed a playable clip over "No output was generated."
+	// The journey recording showed a playable clip over "No output was generated."
 	const reply = page.locator('[data-message-role="assistant"]').last();
 	await expect(
 		reply.getByRole('button', { name: 'Retry' }),
@@ -191,7 +191,7 @@ async function expectPlayableClip(
 	// The half a person meets: the player under the reply loads the clip and the browser decodes a
 	// real duration from it, which the player prints as "elapsed / length". The Play button stays
 	// disabled until the clip has loaded. Until the length is known the player prints a placeholder for
-	// it (CUR-2785), so this requires a printed length rather than the absence of 0:00.
+	// it, so this requires a printed length rather than the absence of 0:00.
 	const answer = page.locator('[data-message-role="assistant"]').last();
 	await expect(
 		answer.getByRole('button', { name: 'Play' }),
@@ -221,9 +221,9 @@ test(
 		await expect(dictate).toBeEnabled();
 
 		// The hover text is what a person reads before pressing, so it is read the way they would: hover,
-		// then the tooltip on screen, held long enough for the recording to show it (CUR-2363).
+		// then the tooltip on screen, held long enough for the recording to show it.
 		// bits-ui's tooltip content carries no role="tooltip", so it is found by its words. A screen
-		// reader gets the same words through the trigger's aria-describedby (CUR-2378).
+		// reader gets the same words through the trigger's aria-describedby.
 		await journeyStep(page, 'A6', 2, async () => {
 			await dictate.hover();
 			await expect(
@@ -297,7 +297,7 @@ async function useFixtureMicrophone(page: Page): Promise<void> {
 
 // The test above sends the clip straight to the endpoint, so the part a visitor touches —
 // pressing Dictate, MediaRecorder's chunks, the upload, the transcript landing in the composer — never
-// ran (CUR-2723). Here the page's microphone is the fixture: getUserMedia is replaced, for this page only, with a
+// ran. Here the page's microphone is the fixture: getUserMedia is replaced, for this page only, with a
 // Web Audio stream playing the WAV on a loop, the way the denied-microphone tests below replace it with
 // a rejection. Everything from the stream onward is the app's own code, pressed through its controls.
 // (Chromium's fake capture flags would do the same, but they are launch options, which Playwright only
@@ -362,7 +362,7 @@ test(
 	}
 );
 
-// A transcription that times out used to show "Transcription failed (CUR-2801). Please try again.",
+// A transcription that times out used to show "Transcription failed. Please try again.",
 // which sends the visitor to retry the same long recording. The first upload is answered with the
 // server's own 504; the retry goes through to the real endpoint.
 test(
@@ -386,7 +386,7 @@ test(
 		const recorder = page.getByRole('group', { name: 'Voice recording' });
 		const confirm = recorder.getByRole('button', { name: 'Confirm and transcribe (Enter)' });
 
-		// Row 7 (once the refusal rows land, CUR-2800): the speaking control is pressed and the words
+		// Row 7 (once the refusal rows land): the speaking control is pressed and the words
 		// never come back.
 		await journeyStep(page, 'A6', 7, async () => {
 			await dictate.click();
@@ -433,7 +433,7 @@ async function recordableTypes(page: Page, types: string[]): Promise<void> {
 }
 
 // The recorder asked only for WebM, so a browser that can't record it (older Safari) threw
-// and showed the browser's own exception text (CUR-2802). The transcribe endpoint already takes mp4.
+// and showed the browser's own exception text. The transcribe endpoint already takes mp4.
 test(
 	'a browser that records only mp4 still dictates, and the clip goes up as mp4',
 	{ tag: ['@A6', '@preview-only', '@CUR-2802'] },
@@ -506,10 +506,10 @@ test(
 );
 
 // The toast said dictation couldn't work while the Dictate button beside it still looked
-// live and its hover text still promised to record (CUR-3403). The button now dims and says why, and stays
+// live and its hover text still promised to record. The button now dims and says why, and stays
 // pressable, so a person who allows the microphone can press it again and record.
 test(
-	'CUR-3403: after the microphone is refused, the Dictate button dims and says why, and pressing it once allowed records',
+	'after the microphone is refused, the Dictate button dims and says why, and pressing it once allowed records',
 	{ tag: ['@A6', '@preview-only', '@CUR-3403'] },
 	async ({ page }) => {
 		test.setTimeout(90_000);
@@ -569,7 +569,7 @@ test(
 );
 
 test(
-	'CUR-3403: on a browser that can record no audio, the Dictate button dims and says dictation is not available here',
+	'on a browser that can record no audio, the Dictate button dims and says dictation is not available here',
 	{ tag: ['@A6', '@preview-only', '@CUR-3403'] },
 	async ({ page }) => {
 		test.setTimeout(90_000);
@@ -601,7 +601,7 @@ test(
 	async ({ page }) => {
 		await openComposer(page);
 
-		// The read-aloud group is offered only while the flag is on (CUR-225 — the control used to be a
+		// The read-aloud group is offered only while the flag is on (the control used to be a
 		// second, independent off switch, so a server-side enable produced audio nobody could reach).
 		// Visibility is therefore the real signal here.
 		const present = await journeyStep(page, 'A6', 1, async () => {
@@ -645,7 +645,7 @@ test(
 			});
 
 			// With the menu closed, the composer's chip says the mode, so Auto and Always read
-			// differently at a glance (CUR-3570). Off shows no chip at all.
+			// differently at a glance. Off shows no chip at all.
 			await page.keyboard.press('Escape');
 			const chip = page.locator('[data-composer-chip]', { hasText: 'Read aloud' });
 			if (next === 'off') {
@@ -664,7 +664,7 @@ test(
 );
 
 // The outcome the two tests above never reach — that read-aloud, set to "always" through the
-// real toggle, produces audio a person can play (CUR-225). `read-aloud` is at 100% on preview and is read live,
+// real toggle, produces audio a person can play. `read-aloud` is at 100% on preview and is read live,
 // with no override cookie, so this exercises the flag as it is deployed.
 //
 // A HIDDEN TOGGLE FAILS HERE; IT DOES NOT SKIP. The test above skips on a hidden toggle so the gallery
@@ -699,11 +699,12 @@ test.describe('in a short window', () => {
 
 	test(
 		'a Tools menu taller than the room above the composer scrolls with a faded edge, and its last row can be reached whole',
-		{ tag: '@A6' },
+		// @prod-safe: it only opens the + menu and scrolls it, so the one-spec run can drive it on alpha.
+		{ tag: ['@A6', '@prod-safe'] },
 		async ({ page }) => {
 			// With agent mode and read-aloud on, the Tools menu is taller than the room above the
 			// composer, and its edge used to cut the last row mid-word ("Alway") with nothing saying more
-			// was below (CUR-2351). The short window (set for the whole context, so the recording matches) forces the
+			// was below. The short window (set for the whole context, so the recording matches) forces the
 			// overflow, so this checks the scroll every time.
 			await openComposer(page);
 			await plusButton(page).click({ timeout: 10_000 });
@@ -757,14 +758,14 @@ test.describe('in a short window', () => {
 async function alwaysReadsAloud({ page }: Fixtures, native: boolean): Promise<void> {
 	test.setTimeout(240_000);
 	// The canned clip stands in for the TTS Space, so this gates on our speak-all pipeline
-	// (mode → synthesis request → persisted clip → player) and not on a third party's uptime (CUR-2253). The
+	// (mode → synthesis request → persisted clip → player) and not on a third party's uptime. The
 	// real Space is walked by the @third-party test at the end of this block.
 	await installFaultInjectionHeader(page, 'tts_canned_clip');
 	await openComposer(page, native ? pinnedChatEntry(LARGE_4) : chatEntry());
 
 	await setReadAloud(page, 'always');
 
-	// A plain question, and deliberately so (CUR-2022). The prompt used to read "CUR-225 read-aloud
+	// A plain question, and deliberately so. The prompt used to read " read-aloud
 	// check …: reply with one short sentence.", which matches isReadAloudIntent (mcp/router.ts), so
 	// every run took the explicit "read this aloud: X" path instead of "always": it synthesized the
 	// text after the colon (30 characters, logged as the TTS call's inputChars) before the model had
@@ -816,7 +817,7 @@ function longClip(seconds: number): Buffer {
 }
 
 // Auto-play ran on an audio element of its own, so the answer was heard while the player
-// under it read stopped, and pressing play started it again from the top (CUR-2299). Sending the next message
+// under it read stopped, and pressing play started it again from the top. Sending the next message
 // didn't stop it either. The canned clip is 1.2s, too short to watch play, so this serves a 30s one
 // in its place.
 test(
@@ -883,7 +884,7 @@ test(
 );
 
 // When the voice doesn't answer, the note under the reply said "An open component was cold
-// this turn and didn't respond", backend words a visitor can't act on (CUR-2268). `tts_space_down` makes the TTS
+// this turn and didn't respond", backend words a visitor can't act on. `tts_space_down` makes the TTS
 // call skip the way a timed-out Space does, so this reads the note a visitor actually gets.
 test(
 	'when read-aloud fails, the note says the audio is missing in plain words and the answer still shows',
@@ -922,7 +923,7 @@ test(
 	}
 );
 
-// Kokoro has no German voice (CUR-3989). The answer must not play in an English accent unasked: the note
+// Kokoro has no German voice. The answer must not play in an English accent unasked: the note
 // says there is no German voice, and the English voice reads it only after the visitor asks.
 test(
 	'a German answer has no German voice, so the English voice plays only when the visitor asks for it, on that one tap',
@@ -930,7 +931,7 @@ test(
 	async ({ page }) => {
 		test.setTimeout(180_000);
 		// The English clip is synthesized when the player fetches it, so the canned clip stands in
-		// on that fetch alone (CUR-4085). The turn itself runs as normal, which is what puts the "no German voice" note up.
+		// on that fetch alone. The turn itself runs as normal, which is what puts the "no German voice" note up.
 		await installFaultInjectionHeader(page, 'tts_canned_clip', /\/api\/speech\/[^/]+$/, 'GET');
 		// Count clips the browser actually started. Only a fetched clip (a blob: URL) counts, not the
 		// silence a tap primes the element with.
@@ -989,7 +990,7 @@ test(
 );
 
 // Every Kokoro Portuguese voice is Brazilian and the detector can't tell Portugal from
-// Brazil, so the player names the accent rather than leaving a Lisbon visitor to wonder (CUR-3989).
+// Brazil, so the player names the accent rather than leaving a Lisbon visitor to wonder.
 test(
 	'a Portuguese answer plays in a voice the player names as Brazilian Portuguese',
 	{ tag: ['@A6'] },
@@ -1036,10 +1037,10 @@ async function readThisAloudOnAuto(page: Page, entry?: string): Promise<void> {
 async function readThisAloudPlaysX({ page }: Fixtures, native: boolean): Promise<void> {
 	test.setTimeout(240_000);
 	// The explicit read-aloud request, which starts TTS in parallel with the answer and holds the clip
-	// until the model has replied. CUR-2045 made that clip depend on the turn producing an answer, so
+	// until the model has replied. That change made that clip depend on the turn producing an answer, so
 	// this is the success half: a request that is answered must still play. The failure half (no clip
 	// over "No output was generated") is covered in readAloudHeldClip.spec.ts, where the model call can
-	// be made to fail on demand. The canned clip (CUR-2253) keeps the Space's uptime out of this verdict.
+	// be made to fail on demand. The canned clip keeps the Space's uptime out of this verdict.
 	await installFaultInjectionHeader(page, 'tts_canned_clip');
 	await readThisAloudOnAuto(page, native ? pinnedChatEntry(LARGE_4) : undefined);
 }
@@ -1054,7 +1055,7 @@ test(
 	async ({ page, context, baseURL }) => readThisAloudPlaysX({ page, context, baseURL }, true)
 );
 
-// The one walk that calls the real TTS Space (CUR-2253). Tagged @third-party so neither a PR's gating
+// The one walk that calls the real TTS Space. Tagged @third-party so neither a PR's gating
 // suite nor the journey gallery runs it (playwright.config.ts leaves it out unless
 // SCENARIO_THIRD_PARTY=1), and @live so scenario-suite-live.yml's develop leg does, every 4h. A red here
 // is a finding about the Space or our route to it; the two tests above say whether our pipeline works.
@@ -1068,7 +1069,7 @@ test(
 );
 
 // A read-aloud turn holds every token back until the end, so the live line used to sit on
-// "<model> is computing…" through the whole generation and then the speech wait (21s in a graded run) (CUR-2210).
+// "<model> is computing…" through the whole generation and then the speech wait (21s in a graded run).
 // This reads only the live line, not the clip, so a TTS outage cannot decide it: the server marks the
 // writing phase as soon as the first held token exists, whether or not speech synthesis later works.
 test(
@@ -1110,7 +1111,7 @@ test(
 
 // A read-aloud turn holds its text back until the end, and the clip could land first, so the
 // player showed a play button and a length under an empty reply whose status still said the model was
-// computing (CUR-2048). The player now waits for the turn to finish. This records the reply at the moment its
+// computing. The player now waits for the turn to finish. This records the reply at the moment its
 // player first appears, whichever element draws it.
 test(
 	'the read-aloud player appears only once the answer it reads is on screen',
@@ -1169,19 +1170,19 @@ test(
 	}
 );
 
-// CUR-2210, the other half: once the answer is written, a speak-all turn waits on speech synthesis. The
+// the other half: once the answer is written, a speak-all turn waits on speech synthesis. The
 // live line used to keep naming the model through that wait, crediting it with time the TTS Space was
-// taking. The canned clip (CUR-2253) keeps the Space's uptime out of it; the server still sends the
+// taking. The canned clip keeps the Space's uptime out of it; the server still sends the
 // speaking status before it answers with the clip, so the line has its moment to change.
 // The placeholder under the reply said "Preparing the open voice…", in English only, while the
-// live line above it said "Making the audio…" in the visitor's language (CUR-3434). Both read the same label now.
+// live line above it said "Making the audio…" in the visitor's language. Both read the same label now.
 test(
-	'read-aloud set to always says the audio is being made while it is, once, and never names the open voice (CUR-3434, CUR-3557)',
+	'read-aloud set to always says the audio is being made while it is, once, and never names the open voice',
 	{ tag: ['@A6', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(240_000);
 		// The slow clip, not the instant one: "while it is" needs a wait to name. With the clip answering
-		// at once, and held for the output screen's verdict since CUR-3847, the speaking status and the
+		// at once, and held for the output screen's verdict, the speaking status and the
 		// clip landed in one frame often enough that the line never painted.
 		await installFaultInjectionHeader(page, 'tts_slow_canned_clip');
 		await openComposer(page);
@@ -1199,7 +1200,7 @@ test(
 					const found = m[0].trim();
 					if (w.__liveLines.at(-1) !== found) w.__liveLines.push(found);
 				}
-				// The list above folds repeats together, so count the copies on screen at once (CUR-3557).
+				// The list above folds repeats together, so count the copies on screen at once.
 				const atOnce = text.match(/making the audio…/gi)?.length ?? 0;
 				w.__audioLinesAtOnce = Math.max(w.__audioLinesAtOnce, atOnce);
 			}).observe(document.body, { childList: true, subtree: true, characterData: true });
@@ -1244,14 +1245,14 @@ test(
 	}
 );
 
-// With read-aloud on Always, the reply's text waited for its audio (CUR-3810). The server held the
+// With read-aloud on Always, the reply's text waited for its audio. The server held the
 // final answer until the clip came back, and the output screen releases a short answer's last sentence
 // only on that final, so a visitor read "Making the audio…" over an empty bubble for the whole TTS
 // round-trip. `tts_slow_canned_clip` sends the canned clip twenty seconds late, counted from the moment
 // the final goes out. The text still waits for the output screen, which has taken 8-12 s on develop, so
 // the lead is twenty seconds less the screen: wide enough to tell the two orders apart.
 test(
-	"CUR-3810: read-aloud set to always shows the reply's text before its audio is ready",
+	"read-aloud set to always shows the reply's text before its audio is ready",
 	{ tag: ['@A6', '@CUR-3810', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(240_000);
@@ -1308,12 +1309,12 @@ test(
 );
 
 // The read-aloud clip is synthesized from the model's whole answer, so a clip of an answer
-// the output screen declined would read the declined text aloud (CUR-3847). `tts_canned_clip_output_blocked` sends
+// the output screen declined would read the declined text aloud. `tts_canned_clip_output_blocked` sends
 // the canned clip and blocks every chunk, so with Always on the server makes a clip of an answer the
 // visitor must not hear. The decline has to show, and neither the page nor the stored message may
 // carry a clip.
 test(
-	'CUR-3847: read-aloud set to always plays nothing for an answer the output screen declined',
+	'read-aloud set to always plays nothing for an answer the output screen declined',
 	{ tag: ['@A6', '@CUR-3847', '@preview-only', '@output-screen'] },
 	async ({ page }) => {
 		test.setTimeout(240_000);
@@ -1370,7 +1371,7 @@ test(
 );
 
 // A visitor who blocks the microphone has to be told, in words they can read, and the
-// telling must not sit over a control they might reach for next (CUR-1065). The browser's refusal is stood in
+// telling must not sit over a control they might reach for next. The browser's refusal is stood in
 // for by making getUserMedia reject with NotAllowedError, which is what Chrome raises after "Block".
 // On phones the toast used to cover the X-ray button and clamp the message to "Please allow in…".
 async function expectMicDeniedToastReadableAndClear(page: Page): Promise<void> {
@@ -1397,7 +1398,7 @@ async function expectMicDeniedToastReadableAndClear(page: Page): Promise<void> {
 		'the message is cut off by its line clamp, so the visitor cannot read what to do'
 	).toBe(false);
 	// Dark text on the chat window's dark pill read as 1.2:1, and the journey critic saw garbled
-	// fragments of it on every phone recording (CUR-2296). Each colour is painted onto a 1x1 canvas
+	// fragments of it on every phone recording. Each colour is painted onto a 1x1 canvas
 	// over the page background and read back as sRGB, since computed styles come back in oklch.
 	const contrast = await message.evaluate((h2) => {
 		const ctx = document.createElement('canvas').getContext('2d')!;
@@ -1433,8 +1434,8 @@ async function expectMicDeniedToastReadableAndClear(page: Page): Promise<void> {
 	// is a tab running most of the chat window's height, and the pill crossing about 5% of it leaves
 	// the rest to click; on a phone the pill covered the whole X-ray button.
 	// The landing's Potluck mark is left out: it is decorative, a button only so a tap can spin it
-	// (#2011), and the pill passing over the logo for 5 s was ruled ordinary toast behaviour (CUR-3274,
-	// CUR-3947).
+	// (#2011), and the pill passing over the logo for 5 s was ruled ordinary toast behaviour (
+	//).
 	const pill = (await toast.locator('> div').boundingBox())!;
 	// Every control's box is read in one pass: a control that leaves the page mid-check (a hover
 	// tooltip's trigger, a re-rendered toolbar) would otherwise hold the next read until the timeout.
@@ -1473,7 +1474,7 @@ test.describe('on a phone', () => {
 	);
 
 	// The gallery filmed the Dictate hover text lying over the Web search chip at phone
-	// width, cutting its label to "Web s" (CUR-2720). Web search no longer shows a chip, but the toolbar can still
+	// width, cutting its label to "Web s". Web search no longer shows a chip, but the toolbar can still
 	// wrap at 390 px, so a tooltip placed just above the mic must land on no control. Any overlap
 	// counts: the tooltip is opaque.
 	test(

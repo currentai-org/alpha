@@ -8,26 +8,26 @@ import {
 	computePasskeyRp,
 } from "$lib/chat/server/betterAuth";
 
-// passkeyRpId is pinned to the apex only when this returns true (CUR-697); the session cookie is
-// host-only regardless (CUR-4442). A credential scoped to the exact hostname would not carry to a
-// sibling subdomain (chat.aipotluck.org / alpha.aipotluck.org) after a split, and a WebAuthn
+// passkeyRpId is pinned to the apex only when this returns true; the session cookie is
+// host-only regardless. A credential scoped to the exact hostname would not carry to a
+// sibling subdomain (chat.example.test / alpha.example.test) after a split, and a WebAuthn
 // credential already registered narrow can't be widened after the fact.
 describe("isApexOrSubdomain", () => {
 	it("matches the apex itself", () => {
-		expect(isApexOrSubdomain(APEX_DOMAIN)).toBe(true);
+		expect(isApexOrSubdomain(APEX_DOMAIN ?? undefined)).toBe(true);
 	});
 
 	it("matches a subdomain of the apex", () => {
-		expect(isApexOrSubdomain("chat.aipotluck.org")).toBe(true);
-		expect(isApexOrSubdomain("alpha.aipotluck.org")).toBe(true);
+		expect(isApexOrSubdomain("chat.example.test")).toBe(true);
+		expect(isApexOrSubdomain("alpha.example.test")).toBe(true);
 	});
 
 	// A naive `.includes` or unanchored suffix check would also match this — a different domain that
 	// merely ends with the same characters, with no subdomain-separating dot. Pinning THIS hostname's
-	// cookie/RP-ID to "aipotluck.org" would be scoping a credential to a domain the browser never
+	// cookie/RP-ID to "example.test" would be scoping a credential to a domain the browser never
 	// actually served it from.
 	it("does not match a different domain that happens to end with the same string", () => {
-		expect(isApexOrSubdomain("notaipotluck.org")).toBe(false);
+		expect(isApexOrSubdomain("notexample.test")).toBe(false);
 	});
 
 	it("does not match a preview deploy or local dev host", () => {
@@ -43,9 +43,9 @@ describe("isApexOrSubdomain", () => {
 // The pin-to-apex decision follows the per-deployment signal, not
 // isApexOrSubdomain(publicOriginHostname): PUBLIC_ORIGIN is the same `preview` value on every preview
 // deployment regardless of which branch built it, so that check is always true. An ephemeral per-PR
-// preview would inherit "pin to the apex" from develop.aipotluck.org's own config, send Better Auth's
-// session cookie with Domain=aipotluck.org from a *.vercel.app response, and Chromium would discard
-// it, so a signed-in visitor loses their session on the next navigation. These pin the per-deployment signal. (CUR-1172)
+// preview would inherit "pin to the apex" from develop.example.test's own config, send Better Auth's
+// session cookie with Domain=example.test from a *.vercel.app response, and Chromium would discard
+// it, so a signed-in visitor loses their session on the next navigation. These pin the per-deployment signal.
 describe("computeOriginIsApexOrSubdomain", () => {
 	it("is true on a real production deployment", () => {
 		expect(computeOriginIsApexOrSubdomain({ VERCEL_ENV: "production" })).toBe(true);
@@ -71,10 +71,10 @@ describe("computeOriginIsApexOrSubdomain", () => {
 	});
 });
 
-// Production and develop both wrote Better Auth's default-named session cookie with
-// Domain=aipotluck.org, so a sign-in on one overwrote the other's and signed the visitor out there.
-// Every deployment now gets its own name and a host-only scope (production since CUR-4442), so none
-// can overwrite or read another's cookie. (CUR-1904)
+// If two deployments both wrote Better Auth's default-named session cookie with
+// Domain=example.test, a sign-in on one would overwrite the other's and sign the visitor out there.
+// Every deployment gets its own name and a host-only scope, so none can overwrite or read another's
+// cookie.
 const PRODUCTION_SCOPE = {
 	cookiePrefix: PRODUCTION_COOKIE_PREFIX,
 	useSecureCookies: false,
@@ -82,12 +82,12 @@ const PRODUCTION_SCOPE = {
 };
 
 describe("computeSessionCookieScope", () => {
-	// host-only, so no other aipotluck.org host receives a production session. (CUR-4442)
+	// host-only, so no other example.test host receives a production session.
 	it("gives production a host-only __Host- cookie with no apex Domain", () => {
 		expect(computeSessionCookieScope({ VERCEL_ENV: "production" })).toEqual(PRODUCTION_SCOPE);
 	});
 
-	// INSTANCE unset, blank or www is www itself. (CUR-3156)
+	// INSTANCE unset, blank or www is www itself.
 	it("gives www production's scope when INSTANCE is unset, blank or www", () => {
 		for (const INSTANCE of [undefined, "", "www"]) {
 			expect(computeSessionCookieScope({ VERCEL_ENV: "production", INSTANCE })).toEqual(PRODUCTION_SCOPE);
@@ -125,10 +125,10 @@ describe("computeSessionCookieScope", () => {
 
 // A per-PR preview must take its passkey RP ID from its own host, not from PUBLIC_ORIGIN
 // (develop's shared hostname). The browser on the preview's own *.vercel.app host refuses a registration
-// whose RP ID names another domain ("The RP ID develop.aipotluck.org is invalid for this domain"). The RP
-// ID and a trusted origin have to name the host the browser is actually on. (CUR-1708)
+// whose RP ID names another domain ("The RP ID develop.example.test is invalid for this domain"). The RP
+// ID and a trusted origin have to name the host the browser is actually on.
 describe("computePasskeyRp", () => {
-	const develop = "https://develop.aipotluck.org";
+	const develop = "https://develop.example.test";
 
 	it("names the PR preview's own host, never develop's, so registration can succeed there", () => {
 		const rp = computePasskeyRp(
@@ -150,21 +150,21 @@ describe("computePasskeyRp", () => {
 
 	it("keeps the apex on production", () => {
 		expect(
-			computePasskeyRp({ VERCEL_ENV: "production", VERCEL_URL: "x.vercel.app" }, "https://www.aipotluck.org").rpID
+			computePasskeyRp({ VERCEL_ENV: "production", VERCEL_URL: "x.vercel.app" }, "https://www.example.test").rpID
 		).toBe(APEX_DOMAIN);
 	});
 
-	// An event instance's database holds none of www's passkeys, so it registers its own host. (CUR-3156)
+	// An event instance's database holds none of www's passkeys, so it registers its own host.
 	it("names an event instance's own host in production, never the apex", () => {
 		const rp = computePasskeyRp(
 			{ VERCEL_ENV: "production", INSTANCE: "mozfest", VERCEL_URL: "x.vercel.app" },
-			"https://mozfest.aipotluck.org"
+			"https://mozfest.example.test"
 		);
-		expect(rp).toEqual({ rpID: "mozfest.aipotluck.org", origins: ["https://mozfest.aipotluck.org"] });
+		expect(rp).toEqual({ rpID: "mozfest.example.test", origins: ["https://mozfest.example.test"] });
 	});
 
 	it("keeps the apex in production when INSTANCE is unset", () => {
-		expect(computePasskeyRp({ VERCEL_ENV: "production", INSTANCE: "" }, "https://www.aipotluck.org").rpID).toBe(
+		expect(computePasskeyRp({ VERCEL_ENV: "production", INSTANCE: "" }, "https://www.example.test").rpID).toBe(
 			APEX_DOMAIN
 		);
 	});

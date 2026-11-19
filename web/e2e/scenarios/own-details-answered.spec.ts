@@ -11,7 +11,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // header written and then withheld by the output screen as someone's private information. The
 // privacy rule read only the answer, and an answer that is a name, a street and an email looks like
 // exposure (0.932) until the rule can see that the person asking supplied every detail (0.165).
-// guardGate.ts screens the privacy rule on the person's own message plus the answer (CUR-1837).
+// guardGate.ts screens the privacy rule on the person's own message plus the answer.
 //
 // Tagged @output-screen: with OUTPUT_MODERATION off nothing is withheld, so both tests pass with
 // nothing checked. The details are the promotion checklist's, all fictional.
@@ -24,9 +24,9 @@ const WITHHELD =
 
 // The privacy rule's own decline (rules.json chat-block-privacy), which only the INPUT screen shows in
 // place of an answer. The query that let this request past the input screen also declined a donor
-// letter that signs the sender's name (0.321 → 0.593, CUR-1842), so the rule keeps its original wording,
+// letter that signs the sender's name (0.321 → 0.593), so the rule keeps its original wording,
 // under which this request scores 0.974 and is declined before any answer exists. That path is
-// asserted and annotated rather than skipped while CUR-1837 is open: the decline must be the rule's
+// asserted and annotated rather than skipped while that change is open: the decline must be the rule's
 // curated copy, and the output screen must still not withhold it.
 const INPUT_PRIVACY_DECLINE =
 	"This chatbot is not able to help with requests that involve finding, sharing, or exposing someone's personal or private information.";
@@ -69,7 +69,7 @@ test(
 			// The body only: the container also carries the decline badge ("declined ▸ ? Flagged by open
 			// content-safety policy"), so equality on it could never pass. `.prose` holds the answer text
 			// alone (language-response.spec.ts:62). ruleLabel.ts follows the rule's copy with who set the
-			// limit (CUR-3205), so the body is exactly those two paragraphs.
+			// limit, so the body is exactly those two paragraphs.
 			const body = (await answer.locator('.prose').first().innerText()).trim();
 			expect(
 				body.replace(/\s+/g, ' '),
@@ -84,7 +84,7 @@ test(
 	}
 );
 
-// CUR-1837, attached files: the output privacy rule read the person's typed message as "what they
+// attached files: the output privacy rule read the person's typed message as "what they
 // asked", and an attached file's text was never part of it. A rota naming Ana and Ben, asked who is on
 // Saturday, was answered and then withheld as Privacy on 6 to 8 of 10 turns, while the same rota
 // pasted into the message was answered 10 of 10. Three fresh chats in a row all have to show the

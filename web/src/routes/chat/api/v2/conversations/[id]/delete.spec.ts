@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ObjectId } from "bson";
 
 // Deleting one chat lists the person's bucket folder first. When Hugging Face throttles the storage token,
-// that listing throws, and the route must say storage is busy rather than answer 500 (CUR-3666).
+// that listing throws, and the route must say storage is busy rather than answer 500.
 const cascade = vi.fn();
 vi.mock("$lib/chat/server/db/deleteConversations", () => ({
 	deleteConversationsCascade: (...args: unknown[]) => cascade(...args),

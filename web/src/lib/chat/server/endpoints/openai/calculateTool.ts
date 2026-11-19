@@ -4,25 +4,26 @@
 // second request, so the visitor reads one answer. Each expression and its result also go to the UI,
 // so the visitor can check the setup the model wrote down, not just the number that came out of it.
 //
-// Why a model-native tool and not a side call: on the arithmetic set (CUR-2256) Mistral Large 3 scores
-// 43/50 with the tool offered, every miss a turn that skipped the tool, and 50/50 once the persona
-// tells it to call `calculate` before stating any number (CALCULATE_FIRST_CLAUSE in persona.ts). A hybrid setup that stamps "arithmetic checked by code" on a total can be right about
-// the arithmetic and wrong about the setup, so the UI shows the expression and never says "checked" or
-// "verified".
+// Why a model-native tool and not a side call: a model offered the tool misses arithmetic mainly on
+// turns where it skips the tool, so the persona tells it to call `calculate` before stating any number
+// (CALCULATE_FIRST_CLAUSE in persona.ts). A hybrid setup that stamps "arithmetic checked by code" on a
+// total can be right about the arithmetic and wrong about the setup, so the UI shows the expression
+// and never says "checked" or "verified".
 //
-// Model-agnostic: nothing here names a model. The flag decides whether the tool exists at all, and the
-// model's own `supportsTools` decides whether it is offered to that model. (CUR-2273)
+// Model-agnostic: nothing here names a model. The model's own `supportsTools` decides whether it is
+// offered to that model.
 
+import { catalogByGatewayId } from "$lib/chat/routing/catalog";
 import type OpenAI from "openai";
-import { flagEnabledOr } from "$lib/chat/server/flags";
 import { logger } from "$lib/chat/server/logger";
-import { evaluateArithmetic } from "$lib/chat/server/textGeneration/evaluateArithmetic";
+import { evaluateArithmetic, evaluateExactInteger } from "$lib/chat/server/textGeneration/evaluateArithmetic";
 import { rolesNeedFlattening } from "../../modelProfiles";
 import {
 	createHedgeThrottle,
 	isRateLimited,
 	statusOf,
 	TOOL_ROUND_RETRY,
+	upstreamErrorText,
 	withRetry,
 	type HedgeThrottle,
 	type RetryPolicy,
@@ -35,16 +36,11 @@ import type {
 	TextGenerationStreamOutputSimplified,
 } from "../types";
 
-export const NATIVE_CALCULATE_TOOL_FLAG = "native-calculate-tool";
-
-const nativeCalculateToolEnabled = (): boolean =>
-	flagEnabledOr(NATIVE_CALCULATE_TOOL_FLAG, () => false);
-
 const warnedWithoutTools = new Set<string>();
 const warnedNativeFirst = new Set<string>();
 
 /**
- * Whether the answer request for this model goes out on the native-first path (endpointOai.ts, CUR-1886),
+ * Whether the answer request for this model goes out on the native-first path (endpointOai.ts),
  * which hedges with a flattened resend and has no place for a tool round. A model with no measured
  * profile row counts as needing the flatten, so a new tool-capable model lands here until its row exists.
  * A model on this path whose tool the endpoint dropped, while the persona still tells it to call
@@ -55,13 +51,11 @@ export function answersNativeFirst(modelId: string): boolean {
 }
 
 /**
- * Whether this turn offers `calculate`. Needs the flag on AND the model's config declaring tool support,
- * because a model that does not do tool calls either ignores the tool or answers with a malformed one.
- * Flag on with a model that declares no tool support is a misconfiguration, logged once per model
- * rather than silently read as off.
+ * Whether this turn offers `calculate`. Needs the model's config declaring tool support, because a
+ * model that does not do tool calls either ignores the tool or answers with a malformed one. A model
+ * that declares no tool support is logged once per model rather than silently skipped.
  */
 export function calculateToolOffered(model: { id?: string; name?: string; supportsTools?: boolean }): boolean {
-	if (!nativeCalculateToolEnabled()) return false;
 	const id = model.id ?? model.name ?? "unknown";
 	if (model.supportsTools) {
 		if (!answersNativeFirst(id)) return true;
@@ -69,7 +63,7 @@ export function calculateToolOffered(model: { id?: string; name?: string; suppor
 			warnedNativeFirst.add(id);
 			logger.warn(
 				{ leg: "calculate-tool", model: id },
-				"[calculate] native-calculate-tool is on but this model's answer goes out native-first, which cannot run the tool loop; the tool and the persona's calculate paragraph are both withheld"
+				"[calculate] this model's answer goes out native-first, which cannot run the tool loop; the tool and the persona's calculate paragraph are both withheld"
 			);
 		}
 		return false;
@@ -78,21 +72,20 @@ export function calculateToolOffered(model: { id?: string; name?: string; suppor
 		warnedWithoutTools.add(id);
 		logger.warn(
 			{ leg: "calculate-tool", model: id },
-			"[calculate] native-calculate-tool is on but this model's config does not set supportsTools; the tool is not offered"
+			"[calculate] this model's config does not set supportsTools; the tool is not offered"
 		);
 	}
 	return false;
 }
 
 /** Tool rounds before the model has to answer without the tool. Each round is one more request, so the
- *  cap bounds the turn's latency; the bake-off's multi-step questions needed at most two. */
+ *  cap bounds the turn's latency; three leaves room for a multi-step question. */
 export const MAX_CALCULATE_ROUNDS = 3;
 
 export const CALCULATE_TOOL_NAME = "calculate";
 
-// Same name, description and parameter as the bake-off harness's tool (scored 50/50,
-// web/evals/inspect_tasks/mistral_large_bakeoff.py), except the clock-time sentence in the parameter's
-// description.
+// Same name, description and parameter as the evaluation harness's tool, except the clock-time
+// sentence in the parameter's description.
 const CALCULATE_TOOL: OpenAI.Chat.Completions.ChatCompletionTool = {
 	type: "function",
 	function: {
@@ -106,9 +99,8 @@ const CALCULATE_TOOL: OpenAI.Chat.Completions.ChatCompletionTool = {
 				expression: {
 					type: "string",
 					// Without the clock-time form named here, a model sends minutes since midnight for an
-					// arrival time, and the note's "= 1480" matches nothing in the answer (CUR-3860). The
-					// functions are named with a cap's form so a capped benefit takes one call instead of a
-					// round per step (CUR-4490).
+					// arrival time, and the note's "= 1480" matches nothing in the answer. The functions are
+					// named with a cap's form so a capped benefit takes one call instead of a round per step.
 					description:
 						"The arithmetic expression, using numbers, + - * / ^, parentheses and the functions min, max, round, floor, ceil, abs, sqrt and pow. Apply a cap as min(amount, cap) and a floor as max(amount, floor), as in min(1840 * 0.65, 1150) + 2 * 42. To add or subtract clock times or durations, write them as H:MM terms, as in 23:35 + 1:05, and the result comes back as a time.",
 				},
@@ -118,11 +110,11 @@ const CALCULATE_TOOL: OpenAI.Chat.Completions.ChatCompletionTool = {
 };
 
 // On the native turn, "12 people, 3 at 0.5 FTE, two full-timers drop to 0.5" is easy to write as
-// (9 * 1) + (3 * 0.5) + (2 * 0.5), which leaves the two movers in the full-time count (CUR-4015). On
-// native turns the tool requires each group's size after every change before the expression, for a
-// model whose harness row asks for it (`calculateCounts`). Whether it helps depends on the model and
-// on whether past calls are replayed in the request (CUR-1202, harnessProfiles.ts). The evaluator
-// reads `expression` alone.
+// (9 * 1) + (3 * 0.5) + (2 * 0.5), which leaves the two movers in the full-time count. On native
+// turns the tool requires each group's size after every change before the expression, for a model
+// whose harness row asks for it (`calculateCounts`). Whether it helps depends on the model and on
+// whether past calls are replayed in the request (harnessProfiles.ts). The evaluator reads
+// `expression` alone.
 const CALCULATE_COUNTS_TOOL: OpenAI.Chat.Completions.ChatCompletionTool = {
 	type: "function",
 	function: {
@@ -143,7 +135,7 @@ const CALCULATE_COUNTS_TOOL: OpenAI.Chat.Completions.ChatCompletionTool = {
 	},
 };
 
-/** The calculate definition a native turn offers a model whose row sets `calculateCounts` (CUR-4015). */
+/** The calculate definition a native turn offers a model whose row sets `calculateCounts`. */
 export const CALCULATE_COUNTS_DEFINITIONS: NativeToolKit["definitions"] = [
 	CALCULATE_COUNTS_TOOL as NativeToolKit["definitions"][number],
 ];
@@ -156,8 +148,17 @@ type Calculation = { expression: string; result?: string; error?: string; counts
 const MAX_COUNTS_CHARS = 500;
 
 /** Readable, exact enough, and the same string the model and the visitor both see. Twelve significant
- *  digits drops float noise (0.1 + 0.2) without losing anything a person would type. */
-function formatResult(value: number): string {
+ *  digits drops float noise (0.1 + 0.2) without losing anything a person would type. An exact integer
+ *  carries no float noise, so it is returned whole: rounding 2^43 to twelve digits would give
+ *  8796093022210. Past 2^53 a float is no longer exact, so an integer-only expression is worked in
+ *  BigInt; as a float, 987654321 * 123456789 comes out as 121932631113000000. A value at or past 10^12
+ *  that still has no exact form says it is rounded, so it never reads as an exact whole number. */
+function formatResult(value: number, expression: string): string {
+	// First, since a safe result can still come from an inexact step: 2^53 + 1 - 2^53 is 0 as floats.
+	const exact = evaluateExactInteger(expression);
+	if (exact !== null) return exact.toString();
+	if (Number.isSafeInteger(value)) return String(value);
+	if (Math.abs(value) >= 1e12) return `about ${value.toPrecision(12)} (rounded to 12 significant digits)`;
 	return String(Number(value.toPrecision(12)));
 }
 
@@ -182,6 +183,8 @@ export function runCalculate(call: StreamedToolCall): Calculation {
 	const withCounts = counts ? { counts } : {};
 	const clock = addClockTimes(expression);
 	if (clock !== null) return { expression, result: clock, ...withCounts };
+	const days = daysBetween(expression);
+	if (days !== null) return { expression, result: days, ...withCounts };
 	const date = expression.match(DATE_TERM)?.[0];
 	if (date) return { expression, error: dateError(date), ...withCounts };
 	const value = evaluateArithmetic(expression);
@@ -192,7 +195,7 @@ export function runCalculate(call: StreamedToolCall): Calculation {
 				"could not evaluate this; use only numbers, + - * / ^, parentheses and min, max, round, floor, ceil, abs, sqrt or pow, with no units, words, variables or division by zero. For clock times, add or subtract H:MM terms, as in 23:35 + 1:05",
 		};
 	}
-	return { expression, result: formatResult(value), ...withCounts };
+	return { expression, result: formatResult(value, expression), ...withCounts };
 }
 
 /**
@@ -202,8 +205,37 @@ export function runCalculate(call: StreamedToolCall): Calculation {
  */
 const DATE_TERM = /(?<![\d.])(?:\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{4})(?![\d.])/;
 
+/**
+ * One year-first date minus another, `2026-12-21 - 2026-11-14`, each optionally in parentheses, counted
+ * exactly as whole days. A model asked how many days are left sends this shape, and refusing it would
+ * leave the person with a "could not be worked out" note under an answer the model counted by hand. Only
+ * year-first dates qualify: 10/11/2026 is October or November depending on who wrote it, so day-first and
+ * month-first dates, and any other arithmetic on a date, are still refused below.
+ */
+const DATE_DIFFERENCE =
+	/^\(?\s*(\d{4})([-/.])(\d{1,2})\2(\d{1,2})\s*\)?\s*-\s*\(?\s*(\d{4})([-/.])(\d{1,2})\6(\d{1,2})\s*\)?$/;
+
+function utcDay(y: string, m: string, d: string): number | null {
+	const [year, month, day] = [Number(y), Number(m), Number(d)];
+	const t = Date.UTC(year, month - 1, day);
+	const back = new Date(t);
+	// 2026-02-30 rolls over to March in Date.UTC; a date that does not exist is refused, not counted.
+	if (back.getUTCFullYear() !== year || back.getUTCMonth() !== month - 1 || back.getUTCDate() !== day) return null;
+	return t / 86_400_000;
+}
+
+function daysBetween(expression: string): string | null {
+	const m = expression.match(DATE_DIFFERENCE);
+	if (!m) return null;
+	const later = utcDay(m[1], m[3], m[4]);
+	const earlier = utcDay(m[5], m[7], m[8]);
+	if (later === null || earlier === null) return null;
+	const n = later - earlier;
+	return `${n} ${Math.abs(n) === 1 ? "day" : "days"}`;
+}
+
 function dateError(date: string): string {
-	return `"${date}" is a date, and calculate reads it as arithmetic (${date.replace(/[-/.]/g, (c) => ` ${c} `)}), not as a day, so any result would be wrong. Do not send dates to calculate. To count the days between two dates, use a code-running tool if this turn has one, or work it out in whole numbers: within one month subtract the days of the month (28 Oct minus 26 Oct is 28 - 26); across months add the days left in the first month to the day in the last, plus the length of any month between.`;
+	return `"${date}" is a date, and calculate reads it as arithmetic (${date.replace(/[-/.]/g, (c) => ` ${c} `)}), not as a day, so any result would be wrong. To count the days between two dates, send one year-first date minus the other, as in 2026-12-21 - 2026-11-14, and calculate counts the days exactly; send no other arithmetic on a date. Otherwise use a code-running tool if this turn has one, or work it out in whole numbers: within one month subtract the days of the month (28 Oct minus 26 Oct is 28 - 26); across months add the days left in the first month to the day in the last, plus the length of any month between.`;
 }
 
 const CLOCK_TERM = /^\d{1,2}:[0-5]\d$/;
@@ -213,7 +245,7 @@ const hm = (minutes: number, pad: boolean): string =>
 	`${String(Math.floor(minutes / 60)).padStart(pad ? 2 : 1, "0")}:${String(minutes % 60).padStart(2, "0")}`;
 
 /**
- * H:MM terms joined by + and -, as a model writes an arrival time ("23:35 + 1:05", CUR-3860).
+ * H:MM terms joined by + and -, as a model writes an arrival time ("23:35 + 1:05").
  * evaluateArithmetic refuses that form, and the retry comes back in minutes since midnight (1480),
  * which no reader can match to "12:40 AM". The result is the total as H:MM, and when it leaves
  * the day, the time of day it lands on, so a sum of durations and a clock time plus a duration both read
@@ -240,7 +272,7 @@ function addClockTimes(expression: string): string | null {
 }
 
 /** The answer a turn ends on when the model never wrote one: each evaluated expression and its result,
- *  or nothing when no call evaluated, which leaves the turn's own "couldn't answer" (CUR-4495). */
+ *  or nothing when no call evaluated, which leaves the turn's own "couldn't answer". */
 function answerFromCalculations(calculations: readonly Calculation[]): string {
 	const answered = calculations.filter((c) => c.result !== undefined);
 	return answered.map((c) => `${c.expression} = ${c.result}`).join("\n\n");
@@ -256,7 +288,7 @@ type ChatMessage = OpenAI.Chat.Completions.ChatCompletionMessageParam;
 
 /**
  * A later round stayed over the host's rate cap through its same-lane retries before the answer had
- * written a word (CUR-2307). Nothing the reader saw would be spliced, so withFailover may hand the
+ * written a word. Nothing the reader saw would be spliced, so withFailover may hand the
  * transcript, tool results included, to the next lane, which continues the loop instead of rerunning
  * the tools. `cause` is the 429 itself, rethrown where there is no next lane.
  */
@@ -277,7 +309,7 @@ export class ToolRoundHandoff extends Error {
 }
 
 /**
- * Earlier answers' calculate calls, back in the history as the calls and results they were (CUR-1202).
+ * Earlier answers' calculate calls, back in the history as the calls and results they were.
  * Without them a follow-up sees only the prose total and rebuilds the groups: on "one more full-time
  * student joins", the 7 full-time equivalents can be counted as 7 full-timers. `messages` and `mapped` line up one to one, as prepareMessagesWithFiles
  * returns them. Only failed calls are left out, since their error taught the earlier turn nothing the
@@ -316,10 +348,15 @@ export function withPastCalculations(
 	});
 }
 
-/** "auto" and "none" as the API spells them, or one named tool the round must call. */
-export type ToolChoice = "auto" | "none" | { type: "function"; function: { name: string } };
+/** "auto", "none" and "required" as the API spells them, or one named tool the round must call. */
+export type ToolChoice = "auto" | "none" | "required" | { type: "function"; function: { name: string } };
 
-/** The scaffolded harness's one tool: calculate, evaluated by code (CUR-2273). */
+/** The choice sent for `gatewayId`: a named tool becomes "required" for a model that ignores one. */
+export function wireToolChoice(choice: ToolChoice, gatewayId: string | undefined): ToolChoice {
+	return typeof choice === "object" && catalogByGatewayId(gatewayId)?.namedToolChoice === false ? "required" : choice;
+}
+
+/** The scaffolded harness's one tool: calculate, evaluated by code. */
 export const CALCULATE_KIT: NativeToolKit = {
 	label: "calculate",
 	definitions: [CALCULATE_TOOL as NativeToolKit["definitions"][number]],
@@ -330,7 +367,7 @@ export const CALCULATE_KIT: NativeToolKit = {
 };
 
 /**
- * Runs the answer as a tool loop over a kit (CUR-2420: the native harness offers web search, catalog
+ * Runs the answer as a tool loop over a kit (the native harness offers web search, catalog
  * search and calculate; the scaffolded harness offers calculate alone). `attempt` sends one request with
  * the tools offered and returns its transformed stream; `toolChoice` is "auto" for the first MAX rounds
  * and "none" after, so the last request has to answer in words. The tools stay in the request on that
@@ -341,9 +378,9 @@ export const CALCULATE_KIT: NativeToolKit = {
  * the next request goes out, so the source cards are on screen while the model writes from them.
  *
  * Later rounds go out after the lane has committed, so withFailover never sees their errors. They retry
- * here instead, on the same lane under TOOL_ROUND_RETRY and inside `retry.deadlineAt` (CUR-2432); moving
+ * here instead, on the same lane under TOOL_ROUND_RETRY and inside `retry.deadlineAt`; moving
  * to another model mid-answer would splice two models' text into one reply. Nor does withFailover's hedge
- * see them, so a later round hedges here, on the same lane, when `retry.hedgeAfterMs` is set (CUR-4372).
+ * see them, so a later round hedges here, on the same lane, when `retry.hedgeAfterMs` is set.
  */
 export async function withToolLoop(opts: {
 	messages: ChatMessage[];
@@ -358,7 +395,7 @@ export async function withToolLoop(opts: {
 	now?: () => number;
 	/** How a later round retries: the turn's deadline and cancel signal, plus test seams. */
 	retry?: ToolRoundRetry;
-	/** The round `messages` already reached, when this lane continues another lane's loop (CUR-2307). */
+	/** The round `messages` already reached, when this lane continues another lane's loop. */
 	resumeRound?: number;
 }): Promise<AsyncGenerator<Output, void, void>> {
 	const maxRounds = opts.maxRounds ?? MAX_CALCULATE_ROUNDS;
@@ -371,12 +408,44 @@ export async function withToolLoop(opts: {
 			: opts.kit.firstRoundTool && startRound === 0
 				? { type: "function", function: { name: opts.kit.firstRoundTool } }
 				: "auto";
-	const first = await opts.attempt(closingRound(opts.messages, firstChoice), firstChoice);
-	return loop(first, opts.messages, opts.attempt, opts.kit, maxRounds, now, opts.retry ?? {}, startRound);
+	// Calls the server runs before round 1 stand in for a round the model already made, so the
+	// first request is the loop's second and goes out on "auto" once their results are in the transcript.
+	const first =
+		opts.kit.firstRoundCalls?.length && startRound === 0 && typeof firstChoice === "string" && firstChoice === "auto"
+			? serverRound(opts.kit.firstRoundCalls)
+			: await opts.attempt(closingRound(opts.messages, firstChoice), firstChoice);
+	return loop(
+		first,
+		opts.messages,
+		opts.attempt,
+		opts.kit,
+		maxRounds,
+		now,
+		opts.retry ?? {},
+		startRound,
+		typeof firstChoice === "object"
+	);
 }
+
+/** A round the server made for the model: it calls these tools and writes nothing. */
+async function* serverRound(calls: StreamedToolCall[]): AsyncGenerator<Output, void, void> {
+	yield { token: { id: -1, text: "", logprob: 0, special: true }, generated_text: null, details: null, toolCalls: calls };
+}
+
+// A round forced to call a tool can still write first: Mistral Large 4 can write a whole answer and
+// then call web_search, so the reader would get that answer and then the searched one. The forced
+// round's text is held, and dropped when the round ends in its call. It is released to stream once
+// it passes either bound, so a runaway round still reaches the loop-cut. The time bound stays well
+// under the page's 8 s silence watchdog (+page.svelte FIRST_TOKEN_TIMEOUT_MS), which nothing re-arms
+// during the hold.
+const FORCED_ROUND_HOLD_MS = 4_000;
+const FORCED_ROUND_HOLD_CHARS = 1_500;
 
 type ToolRoundRetry = {
 	deadlineAt?: number;
+	/** When the loop stops offering tools: the next round is the closing one. Omitted: no
+	 *  time limit, only `maxRounds`. */
+	answerBy?: number;
 	signal?: AbortSignal;
 	policy?: RetryPolicy;
 	/** How long a later round's request may go without response headers before a second one goes out
@@ -390,7 +459,7 @@ type ToolRoundRetry = {
 	random?: () => number;
 };
 
-// `tool_choice: "none"` alone does not end the searching (CUR-4552): given three rounds of results that
+// `tool_choice: "none"` alone does not end the searching: given three rounds of results that
 // do not answer the question, a model can keep searching in its text, writing `⟦web_search⟧{query=…}`
 // until max_tokens. A closing message last in the request makes it answer from the results and say what
 // they did not cover. It goes as a user turn because some chat templates refuse a system message
@@ -405,19 +474,22 @@ function closingRound(messages: ChatMessage[], choice: ToolChoice): ChatMessage[
 
 const ROUND_BREAK = "\n\n";
 
-/** A later round that has not reached response headers after 12 s gets a second request (CUR-4372).
- *  Production later rounds reach headers at p95 5.1 s and p98 10.9 s; a round that never does ends the
- *  turn on the 45 s cap. The second request starts about 28 s into a typical search turn, leaving it
- *  ~17 s to answer. */
+/** A later round that has not reached response headers after 12 s gets a second request. A round
+ *  that never reaches them would end the turn on the 45 s cap; a second request sent at 12 s still
+ *  has time to answer inside it. */
 export const TOOL_ROUND_HEDGE_AFTER_MS = 12_000;
 
-// Per-instance, as failover.ts keeps its own: a broad upstream failure stops tool-round hedges without touching round one's.
+/** How long a tool loop may keep calling tools before the next round must answer. The ceiling a
+ *  still-working turn can stretch to is ~155 s; this leaves an answer round room inside it. */
+export const TOOL_LOOP_ANSWER_BY_MS = 90_000;
+
+// Per-instance, as failover.ts keeps its own: a broad outage stops tool-round hedges without touching round one's.
 const roundHedgeThrottle = createHedgeThrottle();
 
 /**
  * Sends one round's request; with `hedgeAfterMs` set and no headers by then, sends a second alongside
  * it on the same lane, keeps whichever reaches headers first and cuts the other (failover.ts
- * attemptLane, CUR-1344, does the same for round one). A rejection while the other is still in flight
+ * attemptLane does the same for round one). A rejection while the other is still in flight
  * is waited out; when both fail, the last error goes to withRetry, which decides as before.
  */
 async function sendRound<T extends AsyncGenerator<Output, void, void>>(
@@ -490,7 +562,8 @@ async function* loop(
 	maxRounds: number,
 	now: () => number,
 	retry: ToolRoundRetry,
-	startRound = 0
+	startRound = 0,
+	holdFirstRound = false
 ): AsyncGenerator<Output, void, void> {
 	let messages = initial;
 	let stream = first;
@@ -499,21 +572,45 @@ async function* loop(
 	// generated_text carries it too, or the persisted answer would drop what was on screen.
 	let before = "";
 	// The round after the cap may run its calls once more when nothing has been written yet,
-	// and the last results evaluated are what an answer can still be built from. (CUR-4495)
+	// and the last results evaluated are what an answer can still be built from.
 	let rescued = false;
+	// Whether the round being read was asked to answer without tools: past the round cap, or past
+	// `retry.answerBy`.
+	let closing = round >= maxRounds;
+	// Cleared when a forced first round fails and is asked again unforced.
+	let holding = holdFirstRound;
 	let lastCalculations: Calculation[] = [];
 	for (;;) {
 		let roundText = "";
 		let calls: StreamedToolCall[] | undefined;
-		// A round that ended on "mudança." and called a tool was followed by "Confirmação" with
-		// nothing between them, on screen and in the stored answer. The break goes in only where neither
-		// side already has whitespace, judged on the visible text: reasoning is not what the reader sees. (CUR-4086)
+		// Without a break, a round that ends on "mudança." and calls a tool runs straight into the next
+		// round's "Confirmação", on screen and in the stored answer. The break goes in only where neither
+		// side already has whitespace, judged on the visible text: reasoning is not what the reader sees.
 		const shown = before.replace(/<think>[\s\S]*?<\/think>/g, "");
 		let joinPending = shown !== "" && !/\s$/.test(shown);
+		// The forced round's output, held until it calls its tool or passes a bound.
+		let held: Output[] | null = holding && round === startRound ? [] : null;
+		let heldChars = 0;
+		const holdStarted = now();
+		try {
 		for await (const out of stream) {
 			if (out.toolCalls) {
 				calls = out.toolCalls;
 				continue;
+			}
+			if (held) {
+				const final = out.generated_text !== null && out.generated_text !== undefined;
+				if (!final) {
+					held.push(out);
+					if (!out.token.special) {
+						roundText += out.token.text;
+						heldChars += out.token.text.length;
+					}
+				}
+				if (!final && heldChars <= FORCED_ROUND_HOLD_CHARS && now() - holdStarted <= FORCED_ROUND_HOLD_MS) continue;
+				yield* held;
+				held = null;
+				if (!final) continue;
 			}
 			if (out.generated_text !== null && out.generated_text !== undefined) {
 				yield { ...out, generated_text: before + out.generated_text };
@@ -529,10 +626,34 @@ async function* loop(
 			if (!out.token.special) roundText += out.token.text;
 			yield out;
 		}
-		if (!calls) return;
-		before += roundText;
+		} catch (error) {
+			// Mistral Medium 3.5, forced to web_search, can loop on its own answer instead of calling the
+			// tool and end the stream on finish_reason "error". Nothing of the forced round reached the
+			// reader while it was held, so the round is asked once more with the choice left to the model,
+			// which answers the same question cleanly. The turn's own cancel and a 429 keep their paths.
+			if (held === null || retry.signal?.aborted || isRateLimited(error)) throw error;
+			logger.warn(
+				{ leg: `${kit.label}-tool`, round, chars: heldChars, ms: now() - holdStarted, status: statusOf(error), ...retry.log },
+				"[native] forced round failed before any text reached the reader; asking again without forcing the tool"
+			);
+			holding = false;
+			stream = await attempt(messages, "auto");
+			continue;
+		}
+		if (!calls) {
+			if (held) yield* held;
+			return;
+		}
+		if (held) {
+			// Never shown, so it stays out of the answer; the transcript below still carries it.
+			if (heldChars > 0)
+				logger.info(
+					{ leg: `${kit.label}-tool`, round, chars: heldChars, ms: now() - holdStarted },
+					"[native] forced round's text held back: the round called its tool"
+				);
+		} else before += roundText;
 		const written = before.replace(/<think>[\s\S]*?(<\/think>|$)/g, "").trim() !== "";
-		if (round >= maxRounds && (written || rescued)) {
+		if (closing && (written || rescued)) {
 			// Asked to answer without the tool and called it anyway. End the turn on what streamed rather
 			// than loop: a further request is latency the reader pays for nothing.
 			logger.warn(
@@ -540,7 +661,7 @@ async function* loop(
 				"[calculate] tool called after the round cap; ending the turn on the text so far"
 			);
 			// With nothing written, ending on the text so far is "couldn't answer". The results
-			// code already evaluated are the answer the model kept trying to reach, so they are stated. (CUR-4495)
+			// code already evaluated are the answer the model kept trying to reach, so they are stated.
 			const fallback = written ? "" : answerFromCalculations(lastCalculations);
 			if (fallback) {
 				before += fallback;
@@ -553,8 +674,8 @@ async function* loop(
 			};
 			return;
 		}
-		if (round >= maxRounds) {
-			// Calls made after the cap with nothing written (CUR-4495): run the calls once more and ask
+		if (closing) {
+			// Calls made after the cap with nothing written: run the calls once more and ask
 			// again for the answer, rather than end the turn empty.
 			rescued = true;
 			logger.warn(
@@ -573,7 +694,7 @@ async function* loop(
 				details: null,
 				toolRetrieval,
 			};
-		// A tool that may change something waits here for the person's yes, before any call runs. (CUR-3026)
+		// A tool that may change something waits here for the person's yes, before any call runs.
 		if (kit.beforeRun) {
 			for await (const frame of kit.beforeRun(calls)) {
 				yield { token: { id: -1, text: "", logprob: 0, special: true }, generated_text: null, details: null, ...frame };
@@ -588,7 +709,7 @@ async function* loop(
 					return out;
 				})()
 			: Promise.all(calls.map((c) => kit.run(c)));
-		// What a call shows while it runs (a sandbox waiting for a slot) reaches the live line now. (CUR-4584)
+		// What a call shows while it runs (a sandbox waiting for a slot) reaches the live line now.
 		if (kit.frames) {
 			for await (const frame of framesWhile(running, kit.frames)) {
 				yield { token: { id: -1, text: "", logprob: 0, special: true }, generated_text: null, details: null, ...frame };
@@ -633,9 +754,12 @@ async function* loop(
 		// Each result carries the turn's sources so far, so the last one that has any is the whole set.
 		const webSearch = results.findLast((r) => r.webSearch)?.webSearch;
 		const rag = results.findLast((r) => r.rag)?.rag;
-		// A search in this round that did not finish, unless the turn has web sources anyway. (CUR-4091)
+		// A search in this round that did not finish, unless the turn has web sources anyway.
 		const searchFailed = webSearch ? undefined : results.find((r) => r.searchFailed)?.searchFailed;
-		if (webSearch || rag || searchFailed)
+		// A search in this round that finished and found nothing, unless the turn has web sources anyway or
+		// another search of the round did not finish (the unfinished note is the stronger claim).
+		const searchEmpty = webSearch || searchFailed ? undefined : results.some((r) => r.searchEmpty) || undefined;
+		if (webSearch || rag || searchFailed || searchEmpty)
 			yield {
 				token: { id: -1, text: "", logprob: 0, special: true },
 				generated_text: null,
@@ -644,13 +768,23 @@ async function* loop(
 					...(webSearch ? { webSearch } : {}),
 					...(rag ? { rag } : {}),
 					...(searchFailed ? { searchFailed } : {}),
+					...(searchEmpty ? { searchEmpty } : {}),
 				},
 			};
-		const choice: ToolChoice = round < maxRounds ? "auto" : "none";
+		// A model can keep searching until the turn runs into its ceiling with no answer. Past
+		// `answerBy`, the next round answers from what it has.
+		const outOfTime = retry.answerBy !== undefined && now() >= retry.answerBy;
+		if (outOfTime && round < maxRounds)
+			logger.info(
+				{ leg: `${kit.label}-tool`, round, ...retry.log },
+				`[${kit.label}] tool loop out of time; asking for the answer now`
+			);
+		const choice: ToolChoice = round < maxRounds && !outOfTime ? "auto" : "none";
+		closing = choice === "none";
 		let retries = 0;
 		let hedged = 0;
 		const nextStarted = now();
-		// Logged before the request, so a round that never answers still says where it waited. (CUR-4372)
+		// Logged before the request, so a round that never answers still says where it waited.
 		logger.info(
 			{ leg: `${kit.label}-tool`, round, searchMs, ...retry.log },
 			`[${kit.label}] round request sent`
@@ -687,7 +821,7 @@ async function* loop(
 				},
 			});
 		} catch (error) {
-			// The line a stalled round never had. `aborted` is the turn's own cancel or cap. (CUR-4372)
+			// Logged for a round that fails or stalls. `aborted` is the turn's own cancel or cap.
 			logger.warn(
 				{
 					leg: `${kit.label}-tool`,
@@ -697,13 +831,15 @@ async function* loop(
 					retries,
 					hedged,
 					status: statusOf(error),
+					// The host's error text, so a 402's reason is in the log and not only its status.
+					upstream: upstreamErrorText(error),
 					aborted: retry.signal?.aborted === true,
 					...retry.log,
 				},
 				`[${kit.label}] round request failed`
 			);
 			// Still over the cap after the retries. With no answer text on screen yet, the next
-			// lane can pick the transcript up; with some, it would splice two models' answers, so it ends here. (CUR-2307)
+			// lane can pick the transcript up; with some, it would splice two models' answers, so it ends here.
 			if (isRateLimited(error) && before.trim() === "") {
 				logger.warn(
 					{ leg: `${kit.label}-tool`, round, retries },

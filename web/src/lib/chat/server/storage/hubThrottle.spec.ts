@@ -3,7 +3,7 @@ import { HUB_BUSY_FALLBACK_SECONDS, hubFetch, hubRetryAfterSeconds, resetHubThro
 
 // Hugging Face counts the storage token's calls over 5-minute fixed windows and says when the
 // window resets in `RateLimit`'s `t`. A busy answer's Retry-After is that reset, and a call made before
-// it fails busy without spending quota the window no longer has. (CUR-3680)
+// it fails busy without spending quota the window no longer has.
 const throttled = (t: number) =>
 	new Response(null, { status: 429, headers: { ratelimit: `"api";r=0;t=${t}`, "ratelimit-policy": `"fixed window";"api";q=3000;w=300` } });
 
@@ -60,7 +60,7 @@ describe("hubFetch", () => {
 		expect(inner).toHaveBeenCalledTimes(2);
 	});
 
-	// A listing page gets 15 s, body included, so a tree listing that never answers cannot hold GET /chat/api/storage until the socket closes. (CUR-3980)
+	// A listing page gets 15 s, body included, so a tree listing that never answers cannot hold GET /chat/api/storage until the socket closes.
 	const hangsUntilAborted: typeof fetch = (_input, init) =>
 		new Promise((_resolve, reject) => init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError"))));
 

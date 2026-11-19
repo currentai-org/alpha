@@ -1,4 +1,4 @@
-// Signed-out/guest landing-page starter prompts (CUR-620). The layout server samples `count` of
+// Signed-out/guest landing-page starter prompts. The layout server samples `count` of
 // these at random per visit rather than always showing the same ones — see
 // $lib/chat/utils/starterRotation and +layout.server.ts. The tuning panel can still override this
 // whole pool live via page.data.starters (see $lib/chat/server/tuning); rotation runs over whichever
@@ -35,13 +35,13 @@ export const suggestions: string[] = [
 	// Does not flatter you
 	"I think social media should be banned for under-16s. Where is that argument strongest, and where does it fall apart?",
 	"Nuclear power is the only realistic way to decarbonise. What is the strongest case against that?",
-	// Drawn from how people use chatbots (CUR-690): checking a claim, news, practical help, money,
+	// Drawn from how people use chatbots: checking a claim, news, practical help, money,
 	// writing. They replace two prompts that asked about Alpha itself rather than the visitor's own
 	// question. A prompt reaches the shelf only once starterRecord.json grades it, so one that fails
 	// live stays in this file without being offered.
 	"Is it true that most of the plastic people put in recycling bins is never recycled? Show me where the answer comes from.",
-	// "What actually changed in the EU AI Act this year, and what is still undecided?" is not offered
-	// (CUR-2553): answers present the 2024 adoption as this year's news, and the output screen can
+	// "What actually changed in the EU AI Act this year, and what is still undecided?" is not offered:
+	// answers present the 2024 adoption as this year's news, and the output screen can
 	// truncate them.
 	"My electricity bill doubled this quarter, what are the usual reasons and what should I check first?",
 	"Explain what an ETF is to someone who has never bought anything financial before.",

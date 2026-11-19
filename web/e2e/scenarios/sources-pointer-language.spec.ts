@@ -6,7 +6,7 @@ import { installFaultInjectionHeader } from './helpers/faultInjection';
 import { startChattingPastWelcome } from './helpers/welcome';
 
 // When a grounded answer bails to a hedge, the honesty stream replaces it with a pointer to the
-// sources it found (CUR-4339). An Amharic chat got that pointer in English, "I retrieved these sources but didn't
+// sources it found. An Amharic chat got that pointer in English, "I retrieved these sources but didn't
 // write an answer from them this time". The `grounded_answer_hedges` fault searches, then hedges with no
 // model call, and the route skips the ungrounded re-answer as production does, so the pointer is what
 // the visitor reads.

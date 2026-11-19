@@ -12,7 +12,7 @@
 // bypassing the function body; until then this is the ceiling.
 //
 // My files uploads one raw file per request, so its per-file cap (custodialUpload.ts) sits just under
-// the platform cap itself. (CUR-2631)
+// the platform cap itself.
 
 import { formatBytes } from "$lib/chat/components/storage/formatBytes";
 import { CLIPBOARD_MIME } from "$lib/chat/constants/mime";
@@ -32,7 +32,7 @@ export const CHAT_MESSAGE_HEADROOM_BYTES = 300_000;
 /** Total raw bytes of the files attached to one chat message. */
 export const CHAT_ATTACHMENTS_MAX_BYTES = 3_000_000;
 
-/** Files one chat message may carry, counting long pastes and references to stored files (CUR-3530).
+/** Files one chat message may carry, counting long pastes and references to stored files.
  *  The byte cap above leaves pastes out, so without a count a request under the
  *  body cap could carry hundreds of short pastes, each a storage write on this turn and a read on every
  *  later one. Ten is more than the composer is ever handed in practice. */
@@ -40,13 +40,13 @@ export const CHAT_ATTACHMENTS_MAX_COUNT = 10;
 
 /** The files and bytes one identity may attach in chat over a rolling 24 hours, counted in
  *  both stores. My files' quota bounds the bucket, but a write the bucket fails goes to the files
- *  table, which nothing else limits. The guest numbers are the guest session's storage tier; an (CUR-3235)
+ *  table, which nothing else limits. The guest numbers are the guest session's storage tier; an
  *  account gets My files' total. Long pastes are message text and never count. */
 export const ATTACHMENT_ALLOWANCE_WINDOW_MS = 24 * 60 * 60 * 1000;
 /** What every guest session on one network may attach between them in the same 24 hours.
  *  A guest who clears cookies is minted a new session and a fresh guest allowance; this bounds that
  *  by network, the same backstop chat messages have (rateLimit.ts). Sized for a room, not a person:
- *  a few hundred visitors behind one event's Wi-Fi each attaching once stay under 500. Lower it and (CUR-3600)
+ *  a few hundred visitors behind one event's Wi-Fi each attaching once stay under 500. Lower it and
  *  an event trips it; raise it and one address can fill the files table faster. */
 const ATTACHMENT_ALLOWANCE_NETWORK_MULTIPLIER = 50;
 export const ATTACHMENT_ALLOWANCE = {
@@ -79,7 +79,7 @@ export function attachmentAllowanceMessage(opts: { guest: boolean; network?: boo
 		: `You've attached as many files as Alpha takes in a day. ${when}`;
 }
 
-/** The share of the 24-hour allowance, in files or in bytes, at or below which the composer (CUR-3235)
+/** The share of the 24-hour allowance, in files or in bytes, at or below which the composer
  *  says how much is left, so the refusal is never the first a person hears of the limit. */
 const ATTACHMENT_ALLOWANCE_WARN_SHARE = 0.2;
 
@@ -126,7 +126,7 @@ export function voiceRecordingTooLargeMessage(): string {
 	return `Recordings can be up to ${formatBytes(VOICE_RECORDING_MAX_BYTES)}. Record a shorter message.`;
 }
 
-/** The sentence a file is refused with when My files has no room for it, when it is (CUR-3235)
+/** The sentence a file is refused with when My files has no room for it, when it is
  *  attached and again if the send finds the account full. */
 export function myFilesFullMessage(): string {
 	return `Your files are full (${formatBytes(CUSTODIAL_MAX_TOTAL_BYTES_PER_USER)}). Delete a file in My files to attach this one.`;
@@ -166,7 +166,7 @@ export function admitAttachments(
 	let used = existing.reduce((sum, f) => sum + f.size, 0);
 	// Each known room (My files' headroom, the 24-hour allowance) counts every file headed for
 	// storage, including the ones already waiting on the composer. A long paste is message text and
-	// never counts. (CUR-3235)
+	// never counts.
 	const kept = existing.filter((f) => f.type !== CLIPBOARD_MIME);
 	const keptBytes = kept.reduce((sum, f) => sum + f.size, 0);
 	const left = (rooms === undefined ? [] : Array.isArray(rooms) ? rooms : [rooms as AttachmentRoom]).map((r) => ({
@@ -209,5 +209,5 @@ export function admitAttachments(
 /** Guests cannot attach files: where sign-in is offered, the composer asks for it and the server
  *  refuses a guest's attachment with this line. */
 export const SIGN_IN_TO_ATTACH_MESSAGE = "Sign in to attach files.";
-/** Guests cannot use agent mode: the server refuses a guest's agent turn with this line (CUR-4400). */
+/** Guests cannot use agent mode: the server refuses a guest's agent turn with this line. */
 export const SIGN_IN_TO_USE_AGENT_MESSAGE = "Sign in to use agent mode.";

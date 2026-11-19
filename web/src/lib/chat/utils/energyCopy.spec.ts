@@ -34,7 +34,7 @@ describe("localizedElapsed", () => {
 	});
 });
 
-// The short form the footprint trigger shows for a few seconds after each reply. (CUR-4266)
+// The short form the footprint trigger shows for a few seconds after each reply.
 describe("localizedBulbShort", () => {
 	it("names one reply's energy as seconds of an LED bulb, never zero", () => {
 		expect(localizedBulbShort(0.001)).toBe("an LED bulb for 1 s");

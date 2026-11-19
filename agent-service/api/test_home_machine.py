@@ -1,4 +1,4 @@
-"""A conversation's sandbox calls, file downloads and first agent turn reach one home machine (CUR-4435).
+"""A conversation's sandbox calls, file downloads and first agent turn reach one home machine.
 
 The MCP face's own replay case lives in test_sandbox_mcp.py, which owns the one MCP session manager a test
 process may run; this file covers the routing rule itself and the two plain HTTP routes.

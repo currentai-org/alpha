@@ -1,5 +1,5 @@
 // web/.prettierrc, with its plugins and Tailwind stylesheet resolved from web/, since this package
-// installs neither (CUR-4479).
+// installs neither.
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 

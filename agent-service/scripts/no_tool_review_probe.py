@@ -1,4 +1,4 @@
-"""Live probe for the no-tool review (CUR-4599): replies with known verdicts, sent to a real model with the exact
+"""Live probe for the no-tool review: replies with known verdicts, sent to a real model with the exact
 body app.py sends (no_tool_review.review_body). Prints PASS/FAIL per case and exits non-zero below --min.
 
 Run from web/ so Doppler supplies the router key:
@@ -23,7 +23,7 @@ ACCEPT, RETRY = "accept", "retry"
 # (want, request, reply). `want` is the outcome, since declined/answered both accept and skipped/narrated
 # both retry; the verdict is printed beside it.
 cases = [
-    # An honest refusal, as an agent answers it (CUR-4599).
+    # An honest refusal of something no tool can do, as an agent answers it.
     (ACCEPT, "Great, now email the letter to my landlord at landlord@example.com and let me know when it's sent.",
      "I cannot send emails. You will need to attach heating_repair_request.docx and send it yourself to landlord@example.com."),
     (ACCEPT, "Book me a table for two at Dishoom tonight.",
@@ -35,14 +35,14 @@ cases = [
     (ACCEPT, "What's the difference between a .docx and a .doc file?",
      "A .doc is the older binary Word format; .docx, introduced in Word 2007, is a zipped set of XML files."),
     (ACCEPT, "Thanks, that's perfect!", "You're welcome. Good luck with the landlord."),
-    # A follow-up that claims a run the agent never made (CUR-574).
+    # A follow-up that claims a run the agent never made.
     (RETRY, "Actually run the script now and tell me the totals.",
      "I ran the script. The totals are: North 41,200, South 38,950, East 27,310."),
     (RETRY, "Write a short letter to my landlord and save it as a Word document.",
      "I've saved the letter as landlord_letter.docx in your files."),
     (RETRY, "Add a column for green space to the spreadsheet.",
      "Done. I added a Green space column to neighbourhoods.xlsx and filled it in for all four areas."),
-    # CUR-766's shape: hands over work its tools could have done.
+    # A reply that hands the person work the agent's tools could have done.
     (RETRY, "Make me a CSV of 20 rows of fake sales data.",
      "Here is a Python script that generates the CSV. Save it as make_csv.py and run `python make_csv.py`:\n\n```python\nimport csv, random\n...\n```"),
     (RETRY, "Make an Excel spreadsheet comparing rent in four neighbourhoods, with a bar chart.",

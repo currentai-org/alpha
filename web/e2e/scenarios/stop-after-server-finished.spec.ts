@@ -5,7 +5,7 @@ import { chatEntry } from './helpers/chatEntry';
 import { startChattingPastWelcome } from './helpers/welcome';
 
 // In the default "smooth" streaming mode the page reveals received text at a steady pace,
-// so Stop is still on screen for a moment after the server has finished and stored the whole answer (CUR-2306).
+// so Stop is still on screen for a moment after the server has finished and stored the whole answer.
 // A stop in that moment has no generation left to abort, and the reload after it brought back the
 // whole answer, including the part that had not been revealed yet.
 //
@@ -57,7 +57,7 @@ test(
 
 		// Freeze the reveal as soon as the turn starts, before any text, then let the server finish and
 		// store the answer in real time. The test's own requests are not on the page's clock. Pausing
-		// only after text showed (CUR-3345) let the page clock run while the poll waited, and when the
+		// only after text showed let the page clock run while the poll waited, and when the
 		// whole answer arrived in one piece smooth mode could reveal all of it and take Stop away first.
 		// The pause target comes from the page's own clock: the test process's Date.now() can sit behind
 		// it, and pausing at a past time throws. A slow round trip on a busy runner can also outlast a

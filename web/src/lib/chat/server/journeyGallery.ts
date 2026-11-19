@@ -1,5 +1,5 @@
 /**
- * The app's side of the journey gallery (CUR-1524), the QA recordings board — the shape `/chat/admin/journeys` reads and the
+ * The app's side of the journey gallery, the QA recordings board — the shape `/chat/admin/journeys` reads and the
  * two strings it shares with the publisher.
  *
  * WHY THE CONSTANTS APPEAR TWICE. `scripts/lib/journeyGalleryManifest.mjs` writes these rows and
@@ -19,12 +19,12 @@ export const VIDEO_PREFIX = "journey-gallery/";
 /**
  * What a journey's card says about itself.
  *
- * Ordered loudest first, which is also the order deriveState() decides them in: the two states
+ * Ordered loudest first, which is also the order deriveState decides them in: the two states
  * meaning "you learned nothing about this journey" are settled before any state meaning "this
  * journey is fine". A green that a journey nobody watched could reach would make this page worse
  * than no page.
  *
- * `not-covered` is a fifth, stronger form of the same complaint (CUR-1612): not "this run didn't
+ * `not-covered` is a fifth, stronger form of the same complaint: not "this run didn't
  * grade it" but "nothing has ever been written to walk it at all" — a lettered Linear project
  * (docs/journeys/journey-register.json) with no journey doc, so `readJourneyDocs` never even
  * produces a card for buildManifest to derive a normal state for. Without this state the coverage
@@ -32,7 +32,7 @@ export const VIDEO_PREFIX = "journey-gallery/";
  * nobody wrote a journey for would be invisible.
  *
  * `flaky` is a sixth state, and a different kind from the other five: it IS real, judged evidence —
- * not one of the "you learned nothing" states above — but weaker evidence than `clean` (CUR-1613). A
+ * not one of the "you learned nothing" states above — but weaker evidence than `clean`. A
  * journey whose only recording exists because an earlier attempt of the same test failed is not
  * a first-try pass. `deriveState` reads the retry count off the recording itself and refuses to
  * call that `clean`.
@@ -49,9 +49,9 @@ export type JourneyState =
 
 type JourneyFinding = {
 	step: number;
-	/** `unseen` (CUR-2245): graded inconclusive on a step the doc's coverage block says a test drives
+	/** `unseen`: graded inconclusive on a step the doc's coverage block says a test drives
 	 *  or a frame shows. Relabelled by the manifest builder, never emitted by the grader itself.
-	 *  `not-run` (SOL-110): the same claim, when the test it names did not run this run. */
+	 *  `not-run`: the same claim, when the test it names did not run this run. */
 	conclusion: "product" | "doc" | "unseen" | "not-run" | "inconclusive";
 	observation: string;
 	rationale?: string;
@@ -85,15 +85,15 @@ type JourneyRecording = {
 	title: string;
 	/** Playwright's own result status — "passed", "failed", "timedOut", "interrupted", "skipped". */
 	status: string;
-	/** A `test.fail()` spec failing as declared, so `status` is "failed" and nothing is (CUR-2234)
+	/** A `test.fail` spec failing as declared, so `status` is "failed" and nothing is
 	 *  wrong. Absent on a manifest built before the reporter recorded Playwright's outcome. */
 	expectedFailure?: boolean;
 	/** The `fail` annotation's description, when the spec gave one. */
 	expectedFailureReason?: string | null;
-	/** An injury proof, a test that passes only when the journey's checks go red under the (CUR-1614)
+	/** An injury proof, a test that passes only when the journey's checks go red under the
 	 *  fault it is named after (journeyArtifacts.ts). Absent on a recording made before the field. */
 	injuryProof?: boolean;
-	/** Numbers the spec measured about the product (e2e/scenarios/helpers/measurement.ts), (SOL-103)
+	/** Numbers the spec measured about the product (e2e/scenarios/helpers/measurement.ts),
 	 *  e.g. how long the A1 limit message took. Absent on a manifest built before the field. */
 	measurements?: { name: string; value: number; unit: string; detail?: string }[];
 	startedAt: string;
@@ -101,7 +101,6 @@ type JourneyRecording = {
 	 *  Named `project` because that is what Playwright calls it and what `meta.json` carries, which
 	 *  is a different `project` from `JourneyCard.project` below: that one is the journey's roadmap
 	 *  title, this one is a viewport. Null for a recording written before the reporter named it.
-	 * (CUR-1550)
 	 *  The card renders it because two recordings of one test are otherwise the same row twice. */
 	project: string | null;
 	durationMs: number | null;
@@ -109,19 +108,19 @@ type JourneyRecording = {
 	/** The `files.filename` this video is stored under, and what the video endpoint is asked for. */
 	file: string;
 	/** Seconds into the video where the tile starts, just past the opening blank tab.
-	 *  Null when the publisher could not read the recording, and absent on a manifest published (CUR-1623)
+	 *  Null when the publisher could not read the recording, and absent on a manifest published
 	 *  before this field existed; the page falls back to a fixed offset for both. */
 	startAt?: number | null;
-	/** Set when the tab stayed blank for the whole recording (a test skipped before its (CUR-1623)
+	/** Set when the tab stayed blank for the whole recording (a test skipped before its
 	 *  first navigation, or a request-only test), so no video was stored and the tile is a caption. */
 	noScreen?: "blank";
-	/** The adversarial persona series' turn-by-turn record, absent for every non-persona (CUR-1574)
+	/** The adversarial persona series' turn-by-turn record, absent for every non-persona
 	 *  journey. Null both when nothing was attached and when the file existed but did not parse. */
 	personaTrace: PersonaTrace | null;
 };
 
 /**
- * One finding from the product critique (CUR-1526) — the pass that watches the same frames WITHOUT
+ * One finding from the product critique — the pass that watches the same frames WITHOUT
  * the journey doc's step table and asks whether a person would mind. `area` comes from a closed
  * vocabulary, so a card can group by it and the Linear key stays stable run to run.
  */
@@ -147,12 +146,12 @@ type PmCritique = {
  *
  *  This is the filing RULE and never a record of what was filed — membership here says a finding of
  *  that severity is one the workflow's filing step is meant to open a ticket for, not that any
- *  ticket exists (CUR-1670). Nothing on the
+ *  ticket exists. Nothing on the
  *  page can say otherwise: the filing step runs after the manifest is published, so no ticket id
  *  is available at publish time. */
 export const PM_FILED: PmFinding["severity"][] = ["annoying", "blocking"];
 
-/** The viewport clause of the page's configuration line, and the reason CUR-1554 cannot be
+/** The viewport clause of the page's configuration line, and the reason cannot be
  *  forgotten: no mobile cards means either "the viewport is switched off" or "it ran and recorded
  *  nothing", and those look identical on screen while wanting opposite reactions. The run states
  *  what it was CONFIGURED for, and this turns that into the sentence a reader sees first.
@@ -162,7 +161,7 @@ export const PM_FILED: PmFinding["severity"][] = ["annoying", "blocking"];
  *
  *  Lives here rather than inline in the page so it can be tested in the fast project: the browser
  *  project this would otherwise need fails roughly one run in eleven for reasons unrelated to the
- *  code under test (CUR-1549). */
+ *  code under test. */
 export function viewportNote(viewports: string[] | undefined): string {
 	if (viewports === undefined) return "";
 	return viewports.includes("mobile")
@@ -177,7 +176,7 @@ export const SEVERITY_LABEL: Record<PmFinding["severity"], string> = {
 };
 
 /**
- * How much of its project a journey's step table walks (CUR-1571).
+ * How much of its project a journey's step table walks.
  *
  * Null when the doc names no `milestones:` key, or when the milestone snapshot has no entry for the
  * project. The card then says nothing about coverage — an unassessed journey must not read as a
@@ -206,13 +205,13 @@ export type JourneyCard = {
 	/** One sentence under the badge saying what the state means for this journey specifically. */
 	reason: string;
 	findings: JourneyFinding[];
-	/** What a product manager watching the same frames said, or null if nobody watched (CUR-1526). */
+	/** What a product manager watching the same frames said, or null if nobody watched. */
 	pm: PmCritique | null;
 	/** Titles of the recordings the grader actually judged. */
 	graded: string[];
 	excluded: { title: string; status: string }[];
-	/** Directories holding a video without its meta.json, or the reverse — a partial artifact write
-	 *  (CUR-1489). Counted rather than dropped, because a dropped one is indistinguishable from a
+	/** Directories holding a video without its meta.json, or the reverse — a partial artifact write.
+	 *  Counted rather than dropped, because a dropped one is indistinguishable from a
 	 *  recording that never happened. */
 	stale: { slug: string; missing: string }[];
 	recordings: JourneyRecording[];
@@ -225,16 +224,16 @@ type JourneyRun = {
 	baseUrl: string;
 	signedOut: boolean;
 	agentMode: boolean;
-	/** The search mode the suite's browser starts in. A boolean on runs published before CUR-2030, when
+	/** The search mode the suite's browser starts in. A boolean on runs published, when
 	 *  search defaulted to off and the field could only say on or off. */
 	webSearch: boolean | "off" | "auto" | "always";
 	/** The viewports this run was CONFIGURED to record — a different fact from which
 	 *  recordings came back. `["desktop"]` means mobile was switched off, and the page says so;
 	 *  without it, "off" and "on but produced nothing" are the same absence on screen. Absent on a
-	 *  manifest published before this field existed, which reads as "we don't know" rather than (CUR-1554)
+	 *  manifest published before this field existed, which reads as "we don't know" rather than
 	 *  as desktop-only. */
 	viewports?: string[];
-	/** `develop` enters chat on develop's own default; `prod` pins every chat to `model`, (CUR-2285)
+	/** `develop` enters chat on develop's own default; `prod` pins every chat to `model`,
 	 *  production's default at run time. Absent on runs published before the field existed (develop). */
 	profile?: "develop" | "prod";
 	model?: string | null;
@@ -243,7 +242,7 @@ type JourneyRun = {
 	languageProbe: string | null;
 };
 
-/** One graded run's verdicts, written by the publisher's `summarizeRun` (CUR-2548). Kept a month in
+/** One graded run's verdicts, written by the publisher's `summarizeRun`. Kept a month in
  *  the manifest so the page can say what changed since an earlier run. */
 export type RunSummary = {
 	sha: string;
@@ -266,9 +265,9 @@ export type JourneyManifest = {
 	version: number;
 	run: JourneyRun;
 	journeys: JourneyCard[];
-	/** Newest first, this run included. Absent on a manifest published before CUR-2548. */
+	/** Newest first, this run included. Absent on a manifest published. */
 	history?: RunSummary[];
-	/** What no scenario spec reaches, measured against the app's route tree and flag (CUR-1533)
+	/** What no scenario spec reaches, measured against the app's route tree and flag
 	 *  registry rather than the journey docs. Absent on a manifest published before it existed. */
 	untouched?: UntouchedSurfaces;
 };
@@ -302,14 +301,14 @@ export const STATE_LABEL: Record<JourneyState, string> = {
 /**
  * The word on a card's badge. A clean card may carry minor product-critique notes, which by design do
  * not withhold `clean` (journeyGalleryManifest.mjs), so the badge counts them: a skimmer who trusts
- * "Clean" without opening the card still learns there is something to read (CUR-1707).
+ * "Clean" without opening the card still learns there is something to read.
  */
 export function badgeLabel(j: Pick<JourneyCard, "state" | "pm" | "findings">): string {
 	const notes = j.state === "clean" && j.pm?.watched ? j.pm.findings.length : 0;
 	if (notes > 0) return `${STATE_LABEL.clean} · ${notes} note${notes === 1 ? "" : "s"}`;
 	if (j.state !== "findings") return STATE_LABEL[j.state];
 	// "Findings" lumped a broken step in with a doc that is out of date and a step nobody
-	// saw, so a reader could not tell from the rail which cards meant a visitor hits something. (CUR-2896)
+	// saw, so a reader could not tell from the rail which cards meant a visitor hits something.
 	const c = findingCounts(j);
 	const parts = [
 		c.broken > 0 && `${c.broken} broken`,
@@ -349,7 +348,77 @@ export const NEXT_STEP: Record<JourneyFinding["conclusion"], string> = {
 };
 
 /**
- * The order the rail lists journeys in (CUR-3076): what wants a reader first, then what carries no
+ * Who a finding belongs to, so a reader knows where to take it without asking. The journey's
+ * roadmap project owns the journey, its doc and the specs that walk it, and its lead is named in
+ * Linear; the second half says which of its parts the finding is about. A product-critique finding
+ * passes no conclusion and is the product's.
+ */
+export function findingOwner(
+	j: Pick<JourneyCard, "journey" | "project" | "doc" | "spec">,
+	f?: Pick<JourneyFinding, "conclusion" | "claim">
+): string {
+	const project = `the ${j.project || j.journey} project`;
+	switch (f?.conclusion) {
+		case "doc":
+			return j.doc ? `${project}, for its journey doc (docs/journeys/${j.doc})` : project;
+		case "unseen":
+		case "not-run": {
+			const spec = f.claim?.file ?? (f.claim?.kind === "spec" ? j.spec : null);
+			return spec ? `${project}, for the spec that should walk this step (${spec})` : `${project}, for its coverage`;
+		}
+		default:
+			return project;
+	}
+}
+
+/** A stretch of finding prose, or a reference in it to a moment of one of the journey's recordings. */
+export type ProsePart = { text: string; ref?: { recording: number; at: number } };
+
+/**
+ * Splits finding prose around its references to a recording: the graders read the frames in groups
+ * headed "Recording k of N" and captioned with the second each appeared (critique-journey.mjs
+ * `buildContent`, `frameCaption`), so they cite a moment as "Recording 2 at 14.6s" or "Recording 2,
+ * 14.6s". The shape is ours, not free language. A range ("12.2s–15.6s", "14.1s/15.6s") points at its
+ * start. `recording` is 1-based, as written.
+ */
+export function recordingRefs(text: string): ProsePart[] {
+	const parts: ProsePart[] = [];
+	const re = /\b[Rr]ecording (\d+)(?:,| at) (\d+(?:\.\d+)?)s\b/g;
+	let last = 0;
+	for (const m of text.matchAll(re)) {
+		const at = m.index ?? 0;
+		if (at > last) parts.push({ text: text.slice(last, at) });
+		parts.push({ text: m[0], ref: { recording: Number(m[1]), at: Number(m[2]) } });
+		last = at + m[0].length;
+	}
+	if (last < text.length) parts.push({ text: text.slice(last) });
+	return parts;
+}
+
+/**
+ * The index into `j.recordings` of the grader's "Recording k": the graders number only the recordings
+ * they judged (`j.graded`, in that order), which can skip a failed one the card still shows. Two walks
+ * of one test share a title, so the k-th graded title maps to the same occurrence of it among the
+ * recordings. Null when k names no recording on the card.
+ */
+export function gradedRecordingIndex(
+	j: Pick<JourneyCard, "graded" | "recordings">,
+	k: number
+): number | null {
+	if (!Number.isInteger(k) || k < 1) return null;
+	if (j.graded.length === 0) return k <= j.recordings.length ? k - 1 : null;
+	const title = j.graded[k - 1];
+	if (title == null) return null;
+	const nth = j.graded.slice(0, k).filter((t) => t === title).length;
+	let seen = 0;
+	for (const [i, r] of j.recordings.entries()) {
+		if (r.title === title && ++seen === nth) return i;
+	}
+	return null;
+}
+
+/**
+ * The order the rail lists journeys in: what wants a reader first, then what carries no
  * verdict, then clean, then journeys with no doc. Lower comes first.
  */
 const STATE_RANK: Record<JourneyState, number> = {
@@ -386,8 +455,8 @@ export function journeyGroups(journeys: Pick<JourneyCard, "journey">[]): string[
 }
 
 /**
- * The run's verdict in one line, for the header (CUR-3076). `attention` when a journey has findings,
- * is flaky or partly graded, or a recording failed outside a declared `test.fail()`; `unmeasured` when
+ * The run's verdict in one line, for the header. `attention` when a journey has findings,
+ * is flaky or partly graded, or a recording failed outside a declared `test.fail`; `unmeasured` when
  * nothing asks for a look but some journey that has a doc carries no verdict; `clean` otherwise.
  * Journeys with no doc never make a run unmeasured: no re-run can grade them.
  */
@@ -416,14 +485,14 @@ export function runVerdict(
 /** One recording the summary names, flattened out of its journey. */
 export type RecordingRow = { journey: string; title: string; status: string };
 
-/** What a recording's status reads as on the page: an expected failure is named as one (CUR-2234). */
+/** What a recording's status reads as on the page: an expected failure is named as one. */
 export function recordingStatusLabel(r: { status: string; expectedFailure?: boolean }): string {
 	return r.expectedFailure ? "expected failure" : r.status;
 }
 
 /**
- * Every step, across the whole run, that a passing test or a frame claims and the grader never saw
- * (CUR-2245). The summary names them before any card is opened, so they are not drawn in the same
+ * Every step, across the whole run, that a passing test or a frame claims and the grader never saw.
+ * The summary names them before any card is opened, so they are not drawn in the same
  * grey as steps nothing claims to walk.
  */
 export function unseenSteps(
@@ -442,7 +511,7 @@ export function unseenSteps(
  * `status` is Playwright's own field and carries five values (see `JourneyRecording`), of which
  * `skipped` means the test never ran: no result arrived, so there is nothing to have failed.
  * Filtering on `status !== "passed"` would announce skipped `@preview-only` and persona runs as
- * failures (CUR-1816).
+ * failures.
  *
  * The distinction is this page's reason to exist: it tells the reader, about a different set, that a
  * gap in the run is "not a result about the product", so a summary that counts skips as product
@@ -455,7 +524,7 @@ export function unseenSteps(
 export function splitRecordingsByOutcome(journeys: Pick<JourneyCard, "journey" | "recordings">[]): {
 	failed: RecordingRow[];
 	skipped: RecordingRow[];
-	/** `test.fail()` specs that failed as declared. Kept out of `failed`, which a reader (CUR-2234)
+	/** `test.fail` specs that failed as declared. Kept out of `failed`, which a reader
 	 *  takes as something to chase. */
 	expected: RecordingRow[];
 } {
@@ -475,14 +544,14 @@ export function splitRecordingsByOutcome(journeys: Pick<JourneyCard, "journey" |
 /**
  * Split `UNJUDGED` journeys into the two things "carries no verdict" must never merge.
  *
- * CUR-1814. Naming every unjudged journey in one sentence ("14 of 28 journeys carry no verdict... a
+ * Naming every unjudged journey in one sentence ("14 of 28 journeys carry no verdict... a
  * gap in the run, not a result about the product") is true of each individually and the wrong shape
  * read together. Journeys with no `docs/journeys/*.md` have nothing for a spec to walk, and no
  * additional test coverage can produce a verdict for them. A journey that has a doc and simply
  * produced nothing to grade in this run is a gap another run can close.
  *
  * The split key is `doc`, not `state`. It would be tempting to key on `state === "not-covered"`
- * instead, since that state's own label is "No journey doc" — but CUR-1574's undocumented-recording
+ * instead, since that state's own label is "No journey doc" — but the undocumented-recording
  * cards (an adversarial persona run with no roadmap doc) carry `doc: ""` and can still land in
  * `not-run`/`not-graded`, exactly like a documented journey whose recording never produced a grade.
  * `state` alone cannot tell "nothing was written down" apart from "something was written down and
@@ -506,7 +575,7 @@ export function splitUnjudgedByDoc(journeys: Pick<JourneyCard, "journey" | "doc"
  * Give every unjudged card with no journey doc the state `not-covered`, so the state pills, the
  * card badges and the "no doc yet" sentence all count the same journeys.
  *
- * CUR-2266. An undocumented recording (CUR-1574: a persona run, or a journey recorded before its doc
+ * An undocumented recording (a persona run, or a journey recorded before its doc
  * was written) lands in `not-graded`, while `splitUnjudgedByDoc` names it under "no doc yet"; this
  * keeps the state pills and the sentence counting the same journeys. Applied when the page reads the
  * stored manifest, so an older manifest reads the same way.
@@ -533,7 +602,7 @@ export function parseRange(header: string | null, size: number): { start: number
 }
 
 /**
- * What changed for each journey between an earlier graded run and this one (CUR-2548), as one short
+ * What changed for each journey between an earlier graded run and this one, as one short
  * line per change. A journey absent from the result did not change.
  *
  * "Changed" means a verdict moved, never that a recording or its prose differs: the state moved, a

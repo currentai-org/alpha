@@ -7,7 +7,7 @@ import { composerHydrated, sendOpensConversation } from './helpers/composer';
 import { installFaultInjectionHeader } from './helpers/faultInjection';
 import { startChattingPastWelcome } from './helpers/welcome';
 
-// The output screen judges each batch of an answer on its own (CUR-3975), so it can cut answers that only
+// The output screen judges each batch of an answer on its own, so it can cut answers that only
 // read as harmful out of context. A flagged batch is asked again with the question and the whole answer
 // so far, and released when every rule that fired says no. The re-check runs wherever the output screen
 // runs (OUTPUT_MODERATION).

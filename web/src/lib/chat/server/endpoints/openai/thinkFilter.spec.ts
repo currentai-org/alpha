@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
-import { ThinkFilter, dropsReasoning, reasoningOffRequest } from "./thinkFilter";
+import { describe, it, expect, vi } from "vitest";
+import { logger } from "$lib/chat/server/logger";
+import { ThinkFilter, dropsReasoning, reasoningOffRequest, thinkChars } from "./thinkFilter";
 import { openAIChatToTextGenerationStream } from "./openAIChatToTextGenerationStream";
 import { opensReasoningUntagged } from "../../harnessProfiles";
 
@@ -67,7 +68,7 @@ async function answer(model: string, deltas: Delta[], finish = "stop") {
 }
 const heldCounts = new WeakMap<Delta[], number>();
 
-// What a visitor and the stored message see when GLM answers a chat turn (CUR-1933). Both wire
+// What a visitor and the stored message see when GLM answers a chat turn. Both wire
 // shapes GLM arrives in are covered, and Apertus is the control that must be left alone.
 describe("openAIChatToTextGenerationStream — a GLM answer carries no reasoning", () => {
 	it("drops reasoning_content deltas (the Hugging Face router's shape)", async () => {
@@ -98,11 +99,11 @@ describe("openAIChatToTextGenerationStream — a GLM answer carries no reasoning
 });
 
 // A model can open its reasoning with no `<think>` and end it with a bare `</think>` (ALIA 40B's shape). The client folds only a tagged block, so unhandled, the reasoning would be the
-// visible answer (CUR-2470).
+// visible answer.
 describe("openAIChatToTextGenerationStream — an untagged-reasoning model's reasoning is folded, not shown", () => {
 	const ALIA = "BSC-LT/ALIA-40b-instruct";
 
-	it("streams no reasoning as answer text and closes it into a think block at the bare </think>", async () => {
+	it("streams reasoning live inside an opened think block and closes it at the bare </think>", async () => {
 		const r = await answer(ALIA, [
 			{ content: "The user's message is wrapped in markers. " },
 			{ content: "I should answer concisely.\n</th" },
@@ -114,9 +115,29 @@ describe("openAIChatToTextGenerationStream — an untagged-reasoning model's rea
 		expect(r).toEqual({ streamed: folded, final: folded });
 	});
 
-	it("releases a reply that never closes a think block as the answer, rather than hiding it", async () => {
+	it("shows a reply that never closes a think block as the answer, after streaming it live in the folded block", async () => {
 		const r = await answer(ALIA, [{ content: "The capital of Poland " }, { content: "is Warsaw." }]);
-		expect(r).toEqual({ streamed: "The capital of Poland is Warsaw.", final: "The capital of Poland is Warsaw." });
+		const shown = "<think>The capital of Poland is Warsaw.</think>The capital of Poland is Warsaw.";
+		expect(r).toEqual({ streamed: shown, final: shown });
+	});
+
+	// Holding everything until </think> or the end would leave a long answer with no reasoning blank
+	// for its whole generation. Each chunk must reach the visitor as it arrives.
+	it("sends each reasoning chunk on the push that brings it, not at the end", async () => {
+		const { UntaggedReasoningHold } = await import("./thinkFilter");
+		const hold = new UntaggedReasoningHold();
+		expect(hold.push("1. **Understand")).toBe("<think>1. **Understand");
+		expect(hold.push(" the goal.** ")).toBe(" the goal.** ");
+		expect(hold.push("Done.</th")).toBe("Done.");
+		expect(hold.push("ink>El tren arriba a les 12:15.")).toBe("</think>El tren arriba a les 12:15.");
+	});
+
+	it("streams a reply that opens with <answer> as the answer from its first chunk", async () => {
+		const { UntaggedReasoningHold } = await import("./thinkFilter");
+		const hold = new UntaggedReasoningHold();
+		expect(hold.push("<ans")).toBe("");
+		expect(hold.push("wer> Hola! ")).toBe("Hola!");
+		expect(hold.push("T'esperem.")).toBe(" T'esperem.");
 	});
 
 	it("folds a reply cut off at the token cap before </think>, since it was still reasoning", async () => {
@@ -129,15 +150,19 @@ describe("openAIChatToTextGenerationStream — an untagged-reasoning model's rea
 		expect(r.final).not.toContain("</think>");
 	});
 
-	// While the reasoning is held the visitor sees nothing, so the hold is flagged (CUR-3942).
-	it("flags the hold once, on the first held chunk, without the held text", async () => {
+	// The reasoning itself streams, so the hold flag is set only while a first chunk could still be
+	// `<think>` or `<answer>`.
+	it("streams reasoning instead of flagging a hold, and flags only an ambiguous first chunk", async () => {
 		const deltas = [
 			{ content: "1. **Identify the core entity" },
 			{ content: "** and answer.\n" },
 			{ content: "</think>Warsaw." },
 		];
 		await answer(ALIA, deltas);
-		expect(heldCounts.get(deltas)).toBe(1);
+		expect(heldCounts.get(deltas)).toBe(0);
+		const ambiguous = [{ content: "<" }, { content: "reasoning starts" }, { content: "</think>Warsaw." }];
+		await answer(ALIA, ambiguous);
+		expect(heldCounts.get(ambiguous)).toBe(1);
 	});
 
 	it("does not flag a reply that opens with <think>, since it streams its reasoning tagged", async () => {
@@ -157,7 +182,7 @@ describe("openAIChatToTextGenerationStream — an untagged-reasoning model's rea
 		expect(r.final).toBe("<think>short</think>Warsaw.");
 	});
 
-	// Shape from develop: Catalan drafting turns with no reasoning, the reply wrapped whole.
+	// ALIA's shape on Catalan drafting turns with no reasoning: the reply wrapped whole.
 	it("drops the <answer> wrapper around a reply with no reasoning, tags split across chunks", async () => {
 		const r = await answer(ALIA, [
 			{ content: "<ans" },
@@ -178,11 +203,12 @@ describe("openAIChatToTextGenerationStream — an untagged-reasoning model's rea
 		expect(r).toEqual({ streamed: folded, final: folded });
 	});
 
-	// CUR-2470 review: the held text of a reply with no reasoning went through a second strip nobody flushed,
-	// so a tail that could start "<answer>" was lost at the end of the stream.
+	// The held text of a reply with no reasoning goes through the answer strip, which must be flushed at
+	// the end of the stream, or a tail that could start "<answer>" is lost.
 	it("keeps the last characters of a reply with no reasoning that could start a tag", async () => {
 		const r = await answer(ALIA, [{ content: "Use a < " }, { content: "b, then a <" }]);
-		expect(r).toEqual({ streamed: "Use a < b, then a <", final: "Use a < b, then a <" });
+		const shown = "<think>Use a < b, then a <</think>Use a < b, then a <";
+		expect(r).toEqual({ streamed: shown, final: shown });
 	});
 
 	it("drops the <answer> wrapper from a reply that opens with <think>", async () => {
@@ -210,13 +236,13 @@ describe("opensReasoningUntagged", () => {
 	});
 });
 
-// CUR-2090. HF providers disagree about how GLM's reasoning is turned off, so a reasoning-off call is
-// pinned to the one measured to honour `thinking: disabled`, and only where the pin names a provider
+// HF providers differ in how GLM's reasoning is turned off, so a reasoning-off call is pinned to a
+// provider verified to honour its reasoning-off field, and only where the pin names a provider
 // that serves the model.
 describe("reasoningOffRequest pins a multi-provider GLM to a measured provider on the HF router only", () => {
 	const HF = "https://router.huggingface.co/v1";
 
-	it("refuses a GLM id with no pin on the HF router, naming it, rather than letting the router pick (CUR-2112)", () => {
+	it("refuses a GLM id with no pin on the HF router, naming it, rather than letting the router pick", () => {
 		expect(() => reasoningOffRequest("zai-org/GLM-5.3", HF)).toThrow(/zai-org\/GLM-5\.3 has no HF provider pin/);
 		expect(() => reasoningOffRequest("zai-org/glm-5.3", HF)).toThrow(/no HF provider pin/);
 	});
@@ -247,17 +273,40 @@ describe("reasoningOffRequest pins a multi-provider GLM to a measured provider o
 		expect(reasoningOffRequest("zai-org/GLM-5.3", "https://gateway.example/v1").fields).toEqual(off);
 	});
 
-	// Scaleway ignores `thinking` and honours `reasoning_effort: "none"` (CUR-2104): sent `thinking`, a
-	// title or classifier call would keep reasoning and could spend its whole budget on it.
-	it("pins GLM-5.2 to scaleway and turns its reasoning off with reasoning_effort, never thinking", () => {
-		const req = reasoningOffRequest("zai-org/GLM-5.2", HF);
-		expect(req.model).toBe("zai-org/GLM-5.2:scaleway");
-		expect(req.fields).toEqual({ reasoning_effort: "none" });
+	// Scaleway ignores `thinking` and honours `reasoning_effort: "none"`, so a call that names it
+	// still gets that field.
+	it("turns GLM-5.2's reasoning off with reasoning_effort on scaleway, never thinking", () => {
 		expect(reasoningOffRequest("zai-org/GLM-5.2:scaleway", HF).fields).toEqual({ reasoning_effort: "none" });
+	});
+
+	// DeepInfra turns GLM-5.2's reasoning off with reasoning_effort "none". The default pin for GLM-5.2
+	// is Featherless; this row serves a call that names DeepInfra explicitly.
+	it("turns GLM-5.2's reasoning off with reasoning_effort none on a call that names deepinfra", () => {
+		expect(reasoningOffRequest("zai-org/GLM-5.2:deepinfra", HF).fields).toEqual({ reasoning_effort: "none" });
+	});
+
+	it("pins GLM-5.2 to featherless-ai and sends it no reasoning field", () => {
+		const req = reasoningOffRequest("zai-org/GLM-5.2", HF);
+		expect(req.model).toBe("zai-org/GLM-5.2:featherless-ai");
+		expect(req.fields).toEqual({});
+	});
+
+	// Featherless honours neither `thinking` nor `reasoning_effort` for GLM-5.2, so its profile row sends
+	// nothing rather than a guess.
+	it("sends no reasoning field to GLM-5.2 named on featherless-ai, since Featherless honours none", () => {
+		expect(reasoningOffRequest("zai-org/GLM-5.2:featherless-ai", HF).fields).toEqual({});
+	});
+
+	// The entity-scope guard runs on Qwen3.6, which DeepInfra serves with reasoning turned off by
+	// reasoning_effort "none".
+	it("pins Qwen3.6 to deepinfra and turns its reasoning off with reasoning_effort none", () => {
+		const req = reasoningOffRequest("Qwen/Qwen3.6-35B-A3B", HF);
+		expect(req.model).toBe("Qwen/Qwen3.6-35B-A3B:deepinfra");
+		expect(req.fields).toEqual({ reasoning_effort: "none" });
 	});
 });
 
-// Mistral's API answered 422 extra_forbidden on `thinking`, so a direct host gets no guess. (CUR-2282)
+// Mistral's API answers 422 extra_forbidden on `thinking`, so a direct host gets no guess.
 describe("reasoningOffRequest sends the unverified thinking field only to the gateway and the HF router", () => {
 	const GATEWAY = "https://gateway.example/v1";
 	it("sends nothing to a direct host with no verified row", () => {
@@ -271,5 +320,50 @@ describe("reasoningOffRequest sends the unverified thinking field only to the ga
 		expect(reasoningOffRequest("zai-org/GLM-5.3", `${GATEWAY}/`, GATEWAY).fields).toEqual({
 			thinking: { type: "disabled" },
 		});
+	});
+});
+
+describe("thinkChars", () => {
+	it("sums every closed block, counts an unclosed one to the end, and finds none in plain text", () => {
+		expect(thinkChars("<think>abc</think>x<think>de</think>y")).toBe(5);
+		expect(thinkChars("x<think>still going")).toBe("still going".length);
+		expect(thinkChars("no reasoning here")).toBe(0);
+	});
+});
+
+// The finish line's reasoningChars sizes each model's reasoning allowance, so it must read the
+// same for reasoning in its own field (Large 4) and reasoning written into the content (ALIA, GLM).
+describe("the [generation] finish line counts reasoning however the model sends it", () => {
+	async function reasoningCharsOf(model: string, deltas: Delta[]) {
+		const info = vi.spyOn(logger, "info").mockImplementation(() => undefined);
+		try {
+			await answer(model, deltas);
+			const finish = info.mock.calls.find((c) => c[1] === "[generation] finish");
+			return (finish?.[0] as { reasoningChars?: number }).reasoningChars;
+		} finally {
+			info.mockRestore();
+		}
+	}
+
+	it("counts reasoning sent in its own field", async () => {
+		expect(
+			await reasoningCharsOf("mistral-large-2610", [{ reasoning_content: "Plan the days." }, { content: "Day 1." }])
+		).toBe("Plan the days.".length);
+	});
+
+	it("counts ALIA's untagged reasoning up to its bare </think>", async () => {
+		expect(
+			await reasoningCharsOf("BSC-LT/ALIA-40b-instruct", [{ content: "Think it over.\n</think>Warsaw." }])
+		).toBe("Think it over.\n".length);
+	});
+
+	it("reads zero for an ALIA reply that never closed a block, though the answer is copied into one", async () => {
+		expect(await reasoningCharsOf("BSC-LT/ALIA-40b-instruct", [{ content: "Warsaw is the capital." }])).toBe(0);
+	});
+
+	it("counts the reasoning a GLM answer drops", async () => {
+		expect(await reasoningCharsOf("zai-org/GLM-5.2", [{ content: "<think>17 × 23</think>391" }])).toBe(
+			"17 × 23".length
+		);
 	});
 });

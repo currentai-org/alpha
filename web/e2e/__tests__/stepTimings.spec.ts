@@ -6,7 +6,7 @@ type Fake = { category: string; title: string; duration: number; steps?: Fake[] 
 const step = (s: Fake): TestStep =>
 	({ ...s, steps: (s.steps ?? []).map(step) }) as unknown as TestStep;
 
-describe('stepTimings (SOL-98)', () => {
+describe('stepTimings', () => {
 	it('puts every instance of one kind of wait in one bucket, keeping a navigation path', () => {
 		expect(
 			stepKey({ category: 'pw:api', title: "Click getByRole('button', { name: 'Send' })" })

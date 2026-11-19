@@ -1,4 +1,4 @@
-// Which of our routes each scenario test reaches, recorded from its requests (SOL-245).
+// Which of our routes each scenario test reaches, recorded from its requests.
 //
 // PR runs pick tests through the `e2e-product` and `e2e-area` header tags, and 134 of 152 specs say
 // `@chat`, so any chat-turn change selects nearly the whole suite. A footprint is the set of

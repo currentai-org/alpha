@@ -1,6 +1,6 @@
 // An open language with no stored answers. A person must hear "nothing to rate yet" before
 // they consent, and "you've rated every answer" only after they have rated one. The database calls are
-// stubbed; humanEval.flow.spec.ts drives the same service against a real Postgres. (CUR-4263)
+// stubbed; humanEval.flow.spec.ts drives the same service against a real Postgres.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const db = vi.hoisted(() => ({

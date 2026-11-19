@@ -3,7 +3,7 @@
 	import { Tooltip } from '@aipotluck/alpha-ds';
 	import { catalogBaseOf, catalogByGatewayId, orgs } from '$lib/chat/routing/catalog';
 	import { resolveModelIdentity } from '$lib/chat/identity';
-	import { provenanceLine } from '$lib/chat/provenanceLine';
+	import { provenanceLine, ranOn } from '$lib/chat/provenanceLine';
 	import { chromeCopy } from '$lib/chat/chromeCopy';
 	import { m } from '$lib/paraglide/messages.js';
 	import { stackOpen, xrayMessageId, xraySecondOpinion } from '$lib/chat/stores/stack';
@@ -28,8 +28,8 @@
 	 * Identity honesty is unchanged from ProvenanceBadge: `modelId` is the served id
 	 * (`servedModelId`), a failover lane is named "(backup)", and a turn with no router signal at all
 	 * passes no id — then no model is named, and `provenance` says why instead of going silent:
-	 * `fixed` for a reply the server wrote as a fixed string (no model ran, CUR-1579), `unavailable`
-	 * for a finished answer nothing reported a model for (CUR-1606).
+	 * `fixed` for a reply the server wrote as a fixed string (no model ran), `unavailable`
+	 * for a finished answer nothing reported a model for.
 	 */
 	let {
 		messageId,
@@ -69,18 +69,21 @@
 		lang?: string;
 	} = $props();
 
-	// The person may hide which model answered and where it ran; the X-ray link stays. (CUR-549)
+	// The person may hide which model answered and where it ran; the X-ray link stays.
 	const serving = useShowServing();
 	const model = $derived(catalogByGatewayId(modelId));
-	// A reasoning variant has no catalog entry of its own; its maker is its base checkpoint's (CUR-1873).
+	// A reasoning variant has no catalog entry of its own; its maker is its base checkpoint's.
 	const base = $derived(catalogBaseOf(modelId));
 	const maker = $derived(base ? orgs[base.maker] : undefined);
 	const identity = $derived(modelId ? resolveModelIdentity(modelId) : undefined);
 	// The exact model ("Apertus 1.5 70B"), not its family: two Apertus sizes serve side by side.
 	const name = $derived(model?.name ?? identity?.short);
 	const makerName = $derived(maker?.name ?? identity?.makerShort);
+	// Where THIS turn ran, from its own routing record: a router can send one model to several hosts,
+	// so no host configured for the model may stand in for it. Nothing shows when the record names none.
+	const ran = $derived(modelId ? ranOn(backend, provider) : undefined);
 
-	// A refused copy says so on the control instead of looking like nothing happened (CUR-2823).
+	// A refused copy says so on the control instead of looking like nothing happened.
 	const feedback = new CopyFeedback(1600);
 	const copyState = $derived(feedback.state);
 	onDestroy(() => feedback.dispose());
@@ -98,7 +101,7 @@
 	// A disclosure for XRAY on THIS answer: expanded while the panel shows this message, so a second tap
 	// closes it. Keyed by message id, so an answer the page remounts under a new id reads as collapsed.
 	// One full sentence per shape, so each language orders the model, maker and backup note itself.
-	// With the model and host hidden, the label names neither. (CUR-549)
+	// With the model and host hidden, the label names neither.
 	const howMadeLabel = $derived(
 		!serving.current
 			? chromeCopy(lang).howMade
@@ -119,7 +122,7 @@
 		xrayMessageId.set(messageId);
 		stackOpen.set(true);
 	}
-	// Second opinion lives in Step by step, so this action opens XRAY there on this answer (CUR-4187).
+	// Second opinion lives in Step by step, so this action opens XRAY there on this answer.
 	function openSecondOpinion() {
 		xrayMessageId.set(messageId);
 		xraySecondOpinion.set(true);
@@ -146,7 +149,7 @@
 		>
 			{#if serving.current}
 				{#if maker}<OrgLogo org={maker} size="xs" />{/if}
-				<!-- A failover answer says so, with the same explanation ProvenanceBadge gives (CUR-1933). -->
+				<!-- A failover answer says so, with the same explanation ProvenanceBadge gives. -->
 				<span
 					class="truncate"
 					title={modelId ? provenanceLine({ modelId, backup, provider, backend, verifyMethod }) : undefined}
@@ -160,6 +163,9 @@
 				<RiScan2Line aria-hidden="true" class="size-3.5" /> {chromeCopy(lang).howMade}
 			</span>
 		</button>
+		{#if serving.current && ran}
+			<span class="type-caption text-fg-3" data-answer-ran-on>{m.message_ranOn({ host: ran.label })}</span>
+		{/if}
 	{/if}
 
 	{#if showActions}

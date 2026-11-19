@@ -1,7 +1,7 @@
 import { m } from '$lib/paraglide/messages.js';
 
 // A call to an MCP server, by how it ended. Functions, so the copy follows a language switch.
-// Step by step and the "This answer" receipt (CUR-4038) both read these, so the two can't disagree. (CUR-3026)
+// Step by step and the "This answer" receipt both read these, so the two can't disagree.
 export const MCP_CALL_TITLE: Record<string, () => string> = {
 	ok: () => m.message_mcpTitleOk(),
 	tool_error: () => m.message_mcpTitleToolError(),

@@ -1,6 +1,6 @@
 // A Playwright trace records every request's final headers, including the ones a page.route()
 // handler adds, so the secret headers signIn.ts and faultInjection.ts install travel into
-// trace.zip in plaintext (CUR-2918). Every workflow that uploads test output then publishes them as an
+// trace.zip in plaintext. Every workflow that uploads test output then publishes them as an
 // Actions artifact; `::add-mask::` only scrubs logs.
 //
 // This reporter rewrites each trace attachment as its test ends, replacing every secret value with

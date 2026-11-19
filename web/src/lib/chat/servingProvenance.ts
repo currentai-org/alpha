@@ -13,6 +13,7 @@
 // from server config and ships only the derived labels (not the raw URL) to the
 // client, where the map and greeting consume it.
 
+import { DEPLOYMENT } from "$lib/deployment";
 import { resolveModelIdentity } from "./identity";
 import { backendOrg, SWISS_BACKEND_HOSTS } from "./routing/catalog";
 
@@ -20,7 +21,7 @@ export type ServingProvenance = {
 	/**
 	 * Who we SEND the request to — a direct host ("HuggingFace") or, on a sovereign lane, the routing
 	 * layer. NEVER the institution whose hardware ran the token: on a gateway lane that is decided
-	 * per request and is not knowable here. See the sovereign branch of resolveServing (CUR-75).
+	 * per request and is not knowable here. See the sovereign branch of resolveServing.
 	 */
 	providerLabel: string;
 	/** True when the lane lands on sovereign public compute rather than a prototype host. */
@@ -34,14 +35,19 @@ export type ServingProvenance = {
 	 * `isSovereign` is the imprecise one: true for the gateway even though it fans out to Featherless).
 	 * `api-internal.publicai.co`, the only configured sovereign host, is not itself
 	 * in SWISS_BACKEND_HOSTS, so this is `false` in production — and stays correct automatically
-	 * if a direct Swiss lane is ever configured again (CSCS-direct, retired CUR-162). (CUR-1361)
+	 * if a direct Swiss lane is ever configured again (CSCS-direct, retired).
 	 */
 	namesSwitzerland: boolean;
 	/**
 	 * Set only when the configured host is the model maker's own API (a `vendor` host), to the
-	 * country it serves from. One destination, so the pre-answer copy may name the platform and country. (CUR-2274)
+	 * country it serves from. One destination, so the pre-answer copy may name the platform and country.
 	 */
 	directCountry?: string;
+	/**
+	 * Set when a router sits between us and the maker's model, so the copy names the router and must
+	 * never say "directly". `directCountry` still carries the country every route ends in.
+	 */
+	routedVia?: string;
 	/** The served checkpoint, e.g. "Apertus-70B-Instruct-2509". */
 	servedCheckpoint: string;
 	/** HF model page for the served checkpoint (best-effort). */
@@ -68,7 +74,7 @@ export type ServingProvenance = {
 
 
 // `vendor` marks a host that is the model maker's own API, answering directly with no gateway or
-// fan-out in between (CUR-2274: Mistral AI's La Plateforme for Mistral Large 3). Its copy names the
+// fan-out in between (Mistral AI's La Plateforme for Mistral Large 3). Its copy names the
 // maker's platform and country as fact, because the request cannot land anywhere else.
 // `forwards`: a router that hands one maker's models unchanged to that maker's own API, keyed by
 // ModelIdentity.maker, valued by the API's host. Those turns take the API's facts.
@@ -80,23 +86,45 @@ type HostFacts = {
 };
 
 // Static, non-sensitive hosts. router.huggingface.co = the HF prototype host (fast
-// to stand up, but not sovereign). develop.aipotluck.org is our own
-// proxy host on preview (CUR-1748) — without an entry here it falls through to the
-// unknown-host branch below and renders the raw hostname as providerLabel, which
-// reads as an internal deployment URL (CUR-1629).
+// to stand up, but not sovereign). The installation's develop host (src/lib/deployment.ts) is its own
+// proxy host on preview; without an entry here it falls through to the unknown-host branch below and
+// renders the raw hostname as providerLabel, which reads as an internal deployment URL.
 const STATIC_HOSTS: Record<string, HostFacts> = {
 	"router.huggingface.co": { label: "HuggingFace", sovereign: false },
-	"develop.aipotluck.org": { label: "a preview environment", sovereign: false },
-	// The staging deployment of that router, which the Mistral lane goes through. Its raw hostname on the
-	// welcome reads as a staging build leaking into the UI (CUR-3573). It sends every Mistral model to
-	// La Plateforme (api.mistral.ai), so those turns say Mistral in France, not "public compute"
-	// (SOL-288).
-	"router.stg.aipotluck.org": {
-		label: "a staging router",
-		sovereign: false,
-		forwards: { "Mistral AI": "api.mistral.ai" },
-	},
+	...(DEPLOYMENT.siteDevelopHost
+		? { [DEPLOYMENT.siteDevelopHost]: { label: "a preview environment", sovereign: false } }
+		: {}),
+	// The installation's model router, which the Mistral lane goes through. Its raw hostname on the
+	// welcome would read as an internal build leaking into the UI. It sends every Mistral model to
+	// La Plateforme (api.mistral.ai), so those turns say Mistral in France, not "public compute".
+	...(DEPLOYMENT.modelRouterHost
+		? {
+				[DEPLOYMENT.modelRouterHost]: {
+					label: "a staging router",
+					sovereign: false,
+					forwards: { "Mistral AI": "api.mistral.ai" },
+				},
+			}
+		: {}),
 	"api.mistral.ai": { label: "Mistral AI's La Plateforme", sovereign: false, vendor: { country: "France" } },
+};
+
+// A sovereign routing host that sends some makers' models to commercial providers, keyed by
+// ModelIdentity.maker. Those turns take the providers' facts, never the sovereign copy that
+// SOVEREIGN_HOSTS gives the host's other lanes. Kept apart from STATIC_HOSTS because an entry there
+// would shadow the SOVEREIGN_HOSTS entry for the host's Apertus lane.
+//
+// The gateway (api-internal.publicai.co) load-balances Mistral Medium 3.5 and Large 2512 across
+// La Plateforme, Scaleway in Paris, and OpenRouter, whose only provider for both is Mistral itself.
+// Every route ends in France, at Mistral AI or Scaleway. If the router adds a
+// provider outside France, this entry is false and must change with it.
+const ROUTED_VENDORS: Record<string, { via: string; makers: Record<string, HostFacts> }> = {
+	"api-internal.publicai.co": {
+		via: "the Public AI router",
+		makers: {
+			"Mistral AI": { label: "Mistral AI or Scaleway", sovereign: false, vendor: { country: "France" } },
+		},
+	},
 };
 
 // Sovereign serving hosts (served DIRECTLY on public supercompute, the production
@@ -126,8 +154,8 @@ export function parseSovereignHosts(spec?: string): Record<string, HostFacts> {
 // lookup, valued by the casing to link.
 //
 // The lookup is case-insensitive because a wire id can change case without changing repo: the
-// gateway serves 1.5 as `swiss-ai/apertus-v1.5-70b`, and identity.card carries that casing through
-// (CUR-162). A case-sensitive miss is silent: the fallback is BY DESIGN identical for an unpublished
+// gateway serves 1.5 as `swiss-ai/apertus-v1.5-70b`, and identity.card carries that casing through.
+// A case-sensitive miss is silent: the fallback is BY DESIGN identical for an unpublished
 // checkpoint and for a public one we failed to recognise, so the downgrade looks exactly like the
 // feature working.
 //
@@ -141,17 +169,17 @@ const PUBLIC_MODEL_PAGES = new Map(
 		"swiss-ai/Apertus-70B-Instruct-2509",
 		"swiss-ai/Apertus-8B-Instruct-2509",
 		"swiss-ai/Apertus-v1.5-70B",
-		// Public and ungated (CUR-2274).
+		// Public and ungated.
 		"mistralai/Mistral-Large-3-675B-Instruct-2512",
-		// Public and ungated (CUR-2460).
+		// Public and ungated.
 		"mistralai/Mistral-Medium-3.5-128B",
-		// Public and ungated (CUR-2716).
+		// Public and ungated.
 		"mistralai/Mistral-Small-4-119B-2603",
-		// Public (CUR-3913): GLM ungated, Bielik behind the same click-through as Apertus. ALIA's
+		// Public: GLM ungated, Bielik behind the same click-through as Apertus. ALIA's
 		// served BSC-LT/ALIA-40b-instruct answers 401, so it is left off.
 		"zai-org/GLM-5.2",
 		"speakleash/Bielik-11B-v3.0-Instruct",
-		// 200 and ungated (CUR-3864). It is in the picker, and without this entry its X-ray row names
+		// 200 and ungated. It is in the picker, and without this entry its X-ray row names
 		// the model with nothing to check it against.
 		"aisingapore/Nemotron-SEA-LION-v4.8-120B-A12B",
 	].map(
@@ -161,9 +189,9 @@ const PUBLIC_MODEL_PAGES = new Map(
 const SWISSAI_ORG_URL = "https://huggingface.co/swiss-ai";
 
 // Which backends we can name, and which of them are Swiss, are both read from the catalog's one host
-// table (`BACKEND_HOSTS`, routing/catalog.ts, CUR-4587). Swiss is the host's org region, never the
+// table (`BACKEND_HOSTS`, routing/catalog.ts). Swiss is the host's org region, never the
 // fact that a host has a name: naming a backend and claiming it Swiss were once the same edit, and
-// that would have called api.featherless.ai and api.sea-lion.ai Swiss (CUR-996).
+// that would have called api.featherless.ai and api.sea-lion.ai Swiss.
 //
 // The sovereign lane's gateway, api-internal.publicai.co, is our own routing infrastructure and stays
 // in config, out of the table. endpointOai warns on every response that lands outside the Swiss set.
@@ -214,10 +242,10 @@ export function throughOpenRouter(
 }
 
 /** The maker's own platform when the host a turn was SENT to (`routerMetadata.lane`, a bare host,
- *  CUR-3193) is a direct vendor API (CUR-2287: the X-Ray panel shows no gateway rows for an answer that never
+ *) is a direct vendor API (the X-Ray panel shows no gateway rows for an answer that never
  *  passed through one). `backend` alone cannot say this: a router that forwards to the
- *  vendor records the vendor's host as the backend too, so a router.stg turn would read as direct
- *  (CUR-4577). Unset lane (turns persisted before CUR-3193) is not a reading, so not direct. */
+ *  vendor records the vendor's host as the backend too, so a router.stg turn would read as direct.
+ *  Unset lane (turns persisted) is not a reading, so not direct. */
 export function laneVendor(lane?: string): { label: string; country: string } | undefined {
 	const host = lane?.includes("://") ? hostOf(lane) : lane?.trim();
 	const facts = host ? STATIC_HOSTS[host] : undefined;
@@ -272,7 +300,7 @@ export function sovereignCopyFalsifiedBy(call: {
 // The Folkways adapter's Mistral route, in front of chat's Mistral lane. It forwards each
 // request unchanged to its upstream, La Plateforme unless FOLKWAYS_MISTRAL_UPSTREAM_BASE_URL says
 // otherwise, so the serving facts are La Plateforme's. Without this, pointing MISTRAL_CHAT_BASE_URL at
-// the route renders the app's own hostname as the provider and drops the vendor country. (CUR-3186)
+// the route renders the app's own hostname as the provider and drops the vendor country.
 const FOLKWAYS_MISTRAL_PATH = "/folkways-adapter/mistral/v1";
 const FOLKWAYS_MISTRAL_UPSTREAM_HOST = "api.mistral.ai";
 
@@ -288,7 +316,7 @@ function hostOf(baseURL?: string): string {
 }
 
 /**
- * The base URL this model's requests actually go to (CUR-2274). A model configured with its own
+ * The base URL this model's requests actually go to. A model configured with its own
  * OpenAI-compatible endpoint (a direct vendor API such as Mistral's) goes there; every catalog model's
  * first endpoint already carries the shared OPENAI_BASE_URL, so for those this changes nothing. An
  * agent-type endpoint is not an inference host, so it keeps the deployment's fallback.
@@ -296,7 +324,7 @@ function hostOf(baseURL?: string): string {
  * A base URL on the Folkways adapter's gateway route is the app's own host, which forwards
  * every request unchanged to `FOLKWAYS_UPSTREAM_BASE_URL`. The serving facts are that upstream's, so
  * pass the deployment's value as `adapterUpstream` (unset, the adapter's own default, HF's router).
- * Without it the welcome line reads "served via <the deployment's own host>". (CUR-3573)
+ * Without it the welcome line reads "served via <the deployment's own host>".
  */
 export function baseURLForModel(
 	model: { endpoints?: ReadonlyArray<{ type: string; baseURL?: string }> } | undefined,
@@ -328,7 +356,9 @@ export function resolveServing(
 	const laneHost = hostOf(baseURL);
 	const host =
 		STATIC_HOSTS[laneHost]?.forwards?.[resolveModelIdentity(servedModelId).maker] ?? laneHost;
-	const known = STATIC_HOSTS[host] ?? parseSovereignHosts(sovereignHostsSpec)[host];
+	const routed = ROUTED_VENDORS[laneHost];
+	const routedFacts = routed?.makers[resolveModelIdentity(servedModelId).maker];
+	const known = routedFacts ?? STATIC_HOSTS[host] ?? parseSovereignHosts(sovereignHostsSpec)[host];
 	const providerLabel = known?.label ?? (host || "the configured endpoint");
 	const isSovereign = known?.sovereign ?? false;
 
@@ -339,10 +369,32 @@ export function resolveServing(
 	// checkpoint (research build served on CSCS) still falls back to the SNAI org page instead of 401'ing.
 	const checkpointUrl = publicModelPage(servedModelId) ?? SWISSAI_ORG_URL;
 
+	if (routedFacts?.vendor && routed) {
+		// Several commercial providers behind a router, all in one country. The copy names the
+		// providers, the country and the router, and never says "directly" or "sovereign".
+		const where = `${providerLabel} in ${routedFacts.vendor.country}`;
+		const line = `This prototype is served by ${where}, through ${routed.via}.`;
+		return {
+			providerLabel,
+			isSovereign: false,
+			namesSwitzerland: false,
+			directCountry: routedFacts.vendor.country,
+			routedVia: routed.via,
+			servedCheckpoint,
+			checkpointUrl,
+			computeTail: `served by ${where}, through ${routed.via}.`,
+			heroServingLine: line,
+			mapHeaderLine: `The open source stack behind this answer — live components, and the gaps still open.`,
+			welcomeServingLine: line,
+			routingProvider: `${routed.via}, which sends this model to ${where}`,
+			cscsServingNote: `this prototype's current model is served by ${where}, not from CSCS`,
+		};
+	}
+
 	if (known?.vendor) {
 		// The maker's own API. One destination, so naming the platform and its country before
 		// the answer is true by construction; the badge's measured backend says the same thing after.
-		// Nothing here says sovereign or public compute: La Plateforme is a company's commercial service. (CUR-2274)
+		// Nothing here says sovereign or public compute: La Plateforme is a company's commercial service.
 		const where = `${providerLabel} in ${known.vendor.country}`;
 		return {
 			providerLabel,
@@ -362,7 +414,7 @@ export function resolveServing(
 
 	if (isSovereign) {
 		// A sovereign lane is a ROUTING lane, and the compute behind it is chosen per request. So the
-		// copy describes the compute by its PROPERTIES and names no institution (CUR-75).
+		// copy describes the compute by its PROPERTIES and names no institution.
 		//
 		// Naming one from the config label is wrong on a measurable share of turns: in one week of
 		// production the `swiss-ai/apertus-70b-instruct` routing group answered from CSCS 293 times and
@@ -374,7 +426,7 @@ export function resolveServing(
 
 		// `isSovereign` only says the configured host is a ROUTING lane, not which backend answers: that
 		// lane can route every real answer to Featherless (a US host), and this branch runs pre-answer,
-		// before any backend is chosen (CUR-1361). `backendIsSwiss()` and `sovereignCopyFalsifiedBy()`
+		// before any backend is chosen. `backendIsSwiss` and `sovereignCopyFalsifiedBy`
 		// read the per-answer measured backend and feed the provenance badge and endpointOai's retry.
 		//
 		// A live per-request measurement is too costly here: resolveServing() runs in loadChatShellData
@@ -407,7 +459,7 @@ export function resolveServing(
 			};
 		}
 
-		// Placeholder wording (CUR-1361), pending final copy. Honest about the lane's INTENT (it is
+		// Placeholder wording, pending final copy. Honest about the lane's INTENT (it is
 		// genuinely Public AI's own sovereign routing infrastructure) without naming a country the
 		// gateway cannot guarantee per answer. The provenance badge carries the specific, per-answer
 		// truth (Switzerland or not) from the measured backend — this copy no longer duplicates that

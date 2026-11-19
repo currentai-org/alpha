@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { describe, expect, test, vi } from "vitest";
 import { processBlocksSync, processTokensSync } from "./marked";
 import { UNVERIFIED_TITLE } from "$lib/chat/constants/unverifiedHref";
@@ -124,7 +127,7 @@ describe("inline web-search citations", () => {
 		expect(html).toContain("[2]</a>");
 	});
 
-	test("a grouped marker like [1,3] links each number to its own source, rather than staying plain text (CUR-3246)", () => {
+	test("a grouped marker like [1,3] links each number to its own source, rather than staying plain text", () => {
 		const three = [...sources, { title: "Third", link: "https://c.example/page" }];
 		for (const marker of ["[1,3]", "[1, 3]"]) {
 			const html = renderHtmlWithSources(`Rigi has panoramic views ${marker}.`, three);
@@ -136,7 +139,7 @@ describe("inline web-search citations", () => {
 		}
 	});
 
-	test("a grouped bracket that more words follow stays prose, while one ending its clause still links (CUR-3299)", () => {
+	test("a grouped bracket that more words follow stays prose, while one ending its clause still links", () => {
 		for (const prose of ["The interval [1, 2] is closed.", "Take the row [1,2] from the matrix."]) {
 			const html = renderHtmlWithSources(prose, sources);
 			expect(html, prose).not.toContain("<a href");
@@ -153,8 +156,8 @@ describe("inline web-search citations", () => {
 		expect(renderHtmlWithSources("1. [1, 2] The official EU AI Act text", sources)).toContain("[2]</a>");
 	});
 
-	// Mistral Large 3 cites in Pandoc's caret shapes. Each line below is a develop answer. (CUR-3551)
-	test("a caret citation like Tokyo^1,2^ links each number instead of printing the carets (CUR-3551)", () => {
+	// Mistral Large 3 cites in Pandoc's caret shapes. Each line below is a develop answer.
+	test("a caret citation like Tokyo^1,2^ links each number instead of printing the carets", () => {
 		for (const answer of [
 			"La capitale du Japon est Tokyo^1,2^.",
 			"and a detector benchmark leaderboard ^1,2^.",
@@ -168,7 +171,7 @@ describe("inline web-search citations", () => {
 	});
 
 	// "Tokyo[1]-4." must link [1] and leave no stray "-4".
-	test("a citation range like Tokyo[1]-4 or [1-2] links each number and prints no dash (CUR-3551)", () => {
+	test("a citation range like Tokyo[1]-4 or [1-2] links each number and prints no dash", () => {
 		for (const answer of ["La capitale du Japon est Tokyo[1]-4.", "Tokyo [1-2].", "Tokyo [1–2]", "Tokyo^1-2^."]) {
 			const html = renderHtmlWithSources(answer, sources);
 			expect(html, answer).toContain("[1]</a>");
@@ -183,8 +186,8 @@ describe("inline web-search citations", () => {
 	});
 
 	// "problemas**[1][2][3][4][6][7]**." is a develop answer in Spanish; marked can't open bold before
-	// "[" after a letter, so it printed both pairs of asterisks (CUR-2393).
-	test("bold or italic wrapped round citation markers links them and prints no asterisks (CUR-2393)", () => {
+	// "[" after a letter, so it printed both pairs of asterisks.
+	test("bold or italic wrapped round citation markers links them and prints no asterisks", () => {
 		for (const answer of [
 			"Ayuda a resolver problemas**[1][2]**.",
 			"Ayuda a resolver problemas **[1][2]**.",
@@ -204,8 +207,8 @@ describe("inline web-search citations", () => {
 	});
 
 	// "in Qatar \[1,3,4\]." is a develop answer; "\[" opens display math, so the markers
-	// showed as a dim monospace "1,3,4" line with the full stop under it (CUR-3551).
-	test("backslash-escaped citation brackets link each source and open no math block (CUR-3551)", () => {
+	// showed as a dim monospace "1,3,4" line with the full stop under it.
+	test("backslash-escaped citation brackets link each source and open no math block", () => {
 		for (const answer of ["Hosted in Qatar \\[1,2\\].", "Hosted in Qatar \\[1\\]\\[2\\]."]) {
 			const tokens = processTokensSync(answer, sources);
 			const html = tokens.map((t) => (t.type === "text" && typeof t.html === "string" ? t.html : "")).join("");
@@ -221,13 +224,13 @@ describe("inline web-search citations", () => {
 		expect(JSON.stringify(noSources)).toContain("data-katex-pending");
 	});
 
-	test("a caret footnote definition reads as a bracketed note, not raw markup (CUR-3551)", () => {
+	test("a caret footnote definition reads as a bracketed note, not raw markup", () => {
 		const html = renderHtmlWithSources("[^1^]: Australian Government site", sources);
 		expect(html).not.toContain("^");
 		expect(html).toContain("Australian Government site");
 	});
 
-	test("carets with no sources, in code, or in math stay as written (CUR-3551)", () => {
+	test("carets with no sources, in code, or in math stay as written", () => {
 		expect(renderHtmlWithSources("Tokyo^1^.", [])).toContain("Tokyo^1^.");
 		const tokens = processTokensSync("```\nx^1,2^\n```", sources);
 		const code = tokens.find((token) => token.type === "code");
@@ -272,7 +275,7 @@ describe("inline web-search citations", () => {
 	});
 
 	test("does not linkify bracketed numbers inside image attributes", () => {
-		// A relative path, because a remote image renders as a link and has no alt attribute (CUR-1898).
+		// A relative path, because a remote image renders as a link and has no alt attribute.
 		const html = renderHtmlWithSources("![chart [1]](/chat/conversation/abc/output/pic.png) cite [1].", sources);
 		expect(html).toContain('alt="chart [1]"');
 		expect(html.match(/href="https:\/\/a\.example\/page"/g)).toHaveLength(1);
@@ -321,6 +324,24 @@ describe("inline web-search citations", () => {
 		]);
 		expect(html).toContain("&amp;");
 		expect(html).not.toContain('?a=1&b=2"');
+	});
+
+	// a citation's href is third-party search metadata, so it is held to the same
+	// http/https/mailto allowlist as every other rendered link.
+	test.each([
+		["javascript:", "javascript:alert(document.domain)"],
+		["java\\tscript:", "java\tscript:alert(document.domain)"],
+		["vbscript:", "  VBScript:msgbox(1)"],
+	])("renders a source link with a %s scheme as an inert [n], never a link", (_label, link) => {
+		const html = renderHtmlWithSources("Claim [1].", [{ title: "Evil", link }]);
+		expect(html).not.toContain("<a ");
+		expect(html).not.toMatch(/script:/i);
+		expect(html).toContain("[1]</span>");
+	});
+
+	test("still links a citation whose source is an ordinary https URL", () => {
+		const html = renderHtmlWithSources("Claim [1].", [{ title: "Good", link: "https://a.example/p" }]);
+		expect(html).toContain('<a href="https://a.example/p"');
 	});
 });
 
@@ -382,7 +403,7 @@ describe("link renderer escapes its text (all four branches)", () => {
 
 	// The browser's URL parser drops tab/newline anywhere and leading C0 controls, so a
 	// scheme check on the raw string let `java\tscript:` through. Only http, https, mailto and
-	// relative links may render as anchors. (CUR-3515)
+	// relative links may render as anchors.
 	test("renders no anchor for a script scheme hidden behind a tab, a control character, or vbscript:", () => {
 		for (const md of [
 			"[x](<java\tscript:alert(1)>)",
@@ -440,8 +461,8 @@ describe("link renderer escapes its text (all four branches)", () => {
 // This renderer draws model output, and a page the model read can steer that output. A
 // remote <img>/<video>/<audio> is fetched the moment the answer renders, carrying whatever the model
 // put in its URL, so nothing remote loads without a click. Our own relative paths and inline data:
-// media still render in place. (CUR-1898)
-describe("marked image renderer — nothing remote loads without a click (CUR-1898)", () => {
+// media still render in place.
+describe("marked image renderer — nothing remote loads without a click", () => {
 	test("a remote image renders as a link, never an <img> the browser fetches unasked", () => {
 		const html = renderHtml("![chart](https://evil.example/x.png?d=secret)");
 		expect(html).not.toMatch(/<img\b/i);
@@ -468,7 +489,7 @@ describe("marked image renderer — nothing remote loads without a click (CUR-18
 	});
 
 	// Two same-origin routes forward a request off-site — /rs to PostHog with whatever
-	// project key the URL names, fetch-url to any public host — so "relative" does not mean "ours". (CUR-3389)
+	// project key the URL names, fetch-url to any public host — so "relative" does not mean "ours".
 	test.each([
 		"/rs/e/?data=eyJhcGlfa2V5IjoicGhjX2F0dGFja2VyIn0",
 		"/rs/i/v0/e/",
@@ -524,7 +545,7 @@ describe("marked html video tag support", () => {
 	});
 
 	// An unclosed player made the browser read the rest of its block as fallback content, so the
-	// reader never saw that text (CUR-2901).
+	// reader never saw that text.
 	test.each([
 		["inline, own src", 'Here is the clip: <video controls src="/chat/conversation/abc/output/v.mp4"> and the text after it.'],
 		["inline, nested source", 'Listen <audio controls><source src="/chat/conversation/abc/output/a.mp3"> then read on.'],
@@ -561,7 +582,7 @@ describe("marked html video tag support", () => {
 		expect((before.match(/<(video|audio)\b/g) ?? []).length, html).toBe((before.match(/<\/(video|audio)>/g) ?? []).length);
 	});
 
-	test("a raw player whose only sources are remote becomes a link to each, never an empty player (CUR-1898)", () => {
+	test("a raw player whose only sources are remote becomes a link to each, never an empty player", () => {
 		const html = renderHtml(
 			'<video controls poster="https://evil.example/p.png?d=secret"><source src="https://evil.example/v.webm"></video>'
 		);
@@ -570,7 +591,7 @@ describe("marked html video tag support", () => {
 		expect(html).not.toContain("p.png");
 	});
 
-	test("a raw player with a relative source keeps playing it and drops the remote one (CUR-1898)", () => {
+	test("a raw player with a relative source keeps playing it and drops the remote one", () => {
 		const html = renderHtml(
 			'<audio controls><source src="https://evil.example/a.mp3"><source src="/chat/conversation/abc/output/a.mp3"></audio>'
 		);
@@ -808,7 +829,7 @@ describe("completed message finalization (finalizeMarkdown)", () => {
 });
 
 describe("processBlocksSync streaming behavior", () => {
-	test("a caret citation still arriving shows no stray caret mid-stream (CUR-3551)", () => {
+	test("a caret citation still arriving shows no stray caret mid-stream", () => {
 		for (const partial of [
 			"The capital of Japan is Tokyo^",
 			"The capital of Japan is Tokyo^1,2",
@@ -820,7 +841,7 @@ describe("processBlocksSync streaming behavior", () => {
 		}
 	});
 
-	test("a caret citation that just closed links mid-stream, never painting raw ^1,2,5 (CUR-4124)", () => {
+	test("a caret citation that just closed links mid-stream, never painting raw ^1,2,5", () => {
 		const sources = [1, 2, 3, 4, 5].map((n) => ({ title: `Source ${n}`, link: `https://s${n}.example/page` }));
 		const partial = "The capital of Japan is Tokyo.^1,2,5^";
 		const streaming = processBlocksSync(partial, sources, true).at(-1)?.content ?? "";
@@ -912,9 +933,9 @@ describe("lazy full-render (processBlocks async)", () => {
 	// regex matches that expression unchanged; it only rejects $-amounts.)
 });
 
-// CUR-2647 (upstream 91123d1f): highlight.js and KaTeX run synchronously, so a huge block held the
+// (upstream 91123d1f): highlight.js and KaTeX run synchronously, so a huge block held the
 // thread rendering it. Past the caps it renders as escaped text; normal content still highlights.
-describe("oversized code and math render as escaped text, normal ones still highlight (CUR-2647)", () => {
+describe("oversized code and math render as escaped text, normal ones still highlight", () => {
 	test("a labeled block over 50k chars is escaped, not highlighted", async () => {
 		await ensureHljs();
 		const big = "const x = 1; // <b>\n".repeat(3_000);
@@ -974,7 +995,7 @@ describe("oversized code and math render as escaped text, normal ones still high
 		expect(blocks[2].tokens[0].type).toBe("code");
 	});
 
-	// The answer e2e/scenarios/oversized-code-block.spec.ts seeded into a real conversation (SOL-206):
+	// The answer e2e/scenarios/oversized-code-block.spec.ts seeded into a real conversation:
 	// a normal python block, 400 paragraphs of formatted prose, and a 200 KB unlabeled block whose lines
 	// carry markup. The server renders with processBlocksSync on an instance that has highlight.js
 	// loaded; the browser's markdown worker renders with processBlocks. Both have to hold the caps.
@@ -994,7 +1015,7 @@ describe("oversized code and math render as escaped text, normal ones still high
 		const started = performance.now();
 		const tokens = (await renderBlocks(seeded)).flatMap((b) => b.tokens);
 		const html = (await Promise.all(tokens.map((t) => (t.type === "text" ? t.html : "")))).join("");
-		// A server render of 15 s or more means the big block held the thread (CUR-2647).
+		// A server render of 15 s or more means the big block held the thread.
 		// In process it takes well under a second, so 5 s leaves CI room and still catches a regex or
 		// KaTeX pass that goes quadratic on the big block.
 		expect(performance.now() - started, "rendering the answer took 5 s or more").toBeLessThan(5_000);
@@ -1013,8 +1034,8 @@ describe("oversized code and math render as escaped text, normal ones still high
 });
 
 // The first client render runs before highlight.js loads and draws code plain. That block
-// went into blockCache, and the full render read it back, so a reopened chat's code never got colours. (CUR-2647)
-describe("a block drawn before highlight.js loads is not reused by the full render (CUR-2647)", () => {
+// went into blockCache, and the full render read it back, so a reopened chat's code never got colours.
+describe("a block drawn before highlight.js loads is not reused by the full render", () => {
 	test("processBlocks highlights code the sync render drew plain", async () => {
 		vi.resetModules();
 		const fresh = await import("./marked");
@@ -1032,8 +1053,8 @@ describe("a block drawn before highlight.js loads is not reused by the full rend
 // Arabic, Urdu and Pashto answers were laid out left to right because nothing carried a dir.
 // Every block gets an explicit direction from the majority of its letters (textDirection.ts). Never
 // dir="auto": it takes the first letter, and skips children with their own dir, and CI caught both — an
-// Urdu <ul dir="auto"> resolved ltr, and an Arabic paragraph opening "AI Potluck" resolved ltr. (CUR-1917)
-describe("answer blocks take their direction from their own text (CUR-1917)", () => {
+// Urdu <ul dir="auto"> resolved ltr, and an Arabic paragraph opening "AI Potluck" resolved ltr.
+describe("answer blocks take their direction from their own text", () => {
 	test("an Arabic paragraph that opens with a Latin name is right to left", () => {
 		expect(renderBlocksHtml("AI Potluck هو المحادثة المفتوحة من Current AI.", false)).toMatch(
 			/<p dir="rtl">AI Potluck/
@@ -1078,7 +1099,7 @@ describe("answer blocks take their direction from their own text (CUR-1917)", ()
 });
 
 // The note that replaces an answer groundcheck emptied, rendered the way the chat renders it.
-// Two chunks of one url-less document, as a demo chat retrieves them. (CUR-2614)
+// Two chunks of one url-less document, as a demo chat retrieves them.
 describe("groundcheck's emptied-answer note, rendered", () => {
 	test("names a url-less source once, with no bracketed copy beside it", () => {
 		const sources = [

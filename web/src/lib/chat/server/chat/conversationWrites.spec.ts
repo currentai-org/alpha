@@ -1,7 +1,25 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Message } from "$lib/chat/types/Message";
 import { MessageUpdateType } from "$lib/chat/types/MessageUpdate";
-import { mergeMessages, snapshotConversation } from "./conversationWrites";
+
+// One stored conversation; modifyOne applies the update's $set to it, as the doc store does.
+const store = vi.hoisted(() => ({ doc: {} as Record<string, unknown> }));
+vi.mock("$lib/chat/server/database", () => ({
+	collections: {
+		conversations: {
+			modifyOne: async (
+				_filter: unknown,
+				change: (current: Record<string, unknown>) => { $set?: Record<string, unknown> } | null
+			) => {
+				const update = change(store.doc);
+				if (update?.$set) store.doc = { ...store.doc, ...update.$set };
+				return { matchedCount: 1, modifiedCount: update ? 1 : 0 };
+			},
+		},
+	},
+}));
+
+import { mergeMessages, saveConversationMessages, snapshotConversation } from "./conversationWrites";
 
 const msg = (id: string, from: Message["from"], ancestors: string[], extra: Partial<Message> = {}): Message => ({
 	id,
@@ -46,7 +64,7 @@ describe("mergeMessages keeps every writer's messages", () => {
 	});
 
 	it("keeps an answer another request finished, when this request only built on its empty placeholder", () => {
-		// Retry right after Stop (CUR-2667): the retry loaded the stopped answer before its final save.
+		// Retry right after Stop: the retry loaded the stopped answer before its final save.
 		const placeholder = withTurn(loaded(), "q2", "a2");
 		const base = snapshotConversation({ messages: placeholder, title: "t" }).messages;
 		const stored = placeholder.map((m) => (m.id === "a2" ? { ...m, content: "the stopped text" } : m));
@@ -81,7 +99,7 @@ describe("mergeMessages keeps every writer's messages", () => {
 	});
 });
 
-describe("mergeMessages and two re-attaches to one agent run (CUR-3875)", () => {
+describe("mergeMessages and two re-attaches to one agent run", () => {
 	const agentRun = { taskId: "t1" };
 	const ending = (text: string, interrupted?: boolean) => [
 		{ type: MessageUpdateType.FinalAnswer, text, ...(interrupted ? { interrupted } : {}) },
@@ -165,5 +183,31 @@ describe("mergeMessages removes only what nobody else touched", () => {
 		expect(ids(merged)).toContain("q3");
 		expect(ids(merged)).toContain("q2");
 		expect(byId(merged, "a1")?.children).toEqual(["q2"]);
+	});
+});
+
+describe("saveConversationMessages and the Mila output guard's crisisEndedAt", () => {
+	it("writes crisisEndedAt when given, and a later save without it (a message delete) leaves it as stored", async () => {
+		const endedAt = new Date("2026-10-30T12:00:00Z");
+		const turn = withTurn(loaded(), "q2", "a2", "flagged answer");
+		store.doc = { messages: turn, title: "t" };
+		const base = snapshotConversation({ messages: turn, title: "t" });
+
+		await saveConversationMessages({}, base, { messages: turn, crisisEndedAt: endedAt });
+		expect(store.doc.crisisEndedAt).toBe(endedAt);
+
+		// The message-delete route's save: the flagged turn removed, no crisisEndedAt passed.
+		const afterStamp = snapshotConversation({ messages: store.doc.messages as Message[], title: "t" });
+		const withoutTurn = loaded();
+		await saveConversationMessages({}, afterStamp, { messages: withoutTurn });
+		expect(ids(store.doc.messages as Message[])).toEqual(["root", "q1", "a1"]);
+		expect(store.doc.crisisEndedAt).toBe(endedAt);
+	});
+
+	it("never writes crisisEndedAt on a save that does not pass it", async () => {
+		store.doc = { messages: loaded(), title: "t" };
+		const base = snapshotConversation({ messages: loaded(), title: "t" });
+		await saveConversationMessages({}, base, { messages: withTurn(loaded(), "q2", "a2", "answer"), updatedAt: new Date() });
+		expect("crisisEndedAt" in store.doc).toBe(false);
 	});
 });

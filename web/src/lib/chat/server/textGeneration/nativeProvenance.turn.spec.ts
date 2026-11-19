@@ -1,10 +1,10 @@
 /**
  * On the native harness, asked "where are you running right now?", a model can answer "on AI
  * Potluck's infrastructure". The scaffolded turn carries the per-turn provenance facts
- * (provenanceFacts.ts, CUR-1435); the native system prompt must carry them too, or the model places
- * itself in "AI Potluck's chat".
+ * (provenanceFacts.ts); the native system prompt must carry them too, or the model places itself in
+ * "AI Potluck's chat".
  *
- * Drives the real turn under a tool-calling plan and records the system prompt `generate` is handed. (CUR-2135)
+ * Drives the real turn under a tool-calling plan and records the system prompt `generate` is handed.
  */
 import { describe, expect, it, vi } from "vitest";
 import { ObjectId } from "bson";
@@ -40,7 +40,7 @@ import { textGenerationWithoutTitle } from "./index";
 import { planFromTricks } from "../harness";
 import type { TextGenerationContext } from "./types";
 
-// The facts block's first line (provenanceFacts.ts, CUR-3771).
+// The facts block's first line (provenanceFacts.ts).
 const PROVENANCE_FACTS_HEADER = "Background about you for this turn, never part of your reply:";
 
 const LARGE_3 = "mistral-large-2512";
@@ -83,8 +83,8 @@ async function run(): Promise<string> {
 	return state.preprompt ?? "";
 }
 
-describe("a native turn tells the model where it runs (CUR-2135)", () => {
-	it("carries the provenance facts, naming no host even when Large 3 goes direct (CUR-3562)", async () => {
+describe("a native turn tells the model where it runs", () => {
+	it("carries the provenance facts, naming no host even when Large 3 goes direct", async () => {
 		// A fallback can serve the turn elsewhere, so only the answer's provenance line names the host.
 		state.factsOn = true;
 		const system = await run();
@@ -101,7 +101,7 @@ describe("a native turn tells the model where it runs (CUR-2135)", () => {
 		expect(to).not.toContain("You are Mistral Large 3");
 	});
 
-	it("a backup lane whose host names Medium by a wire id is rewritten under the id failover looks up (CUR-3777)", async () => {
+	it("a backup lane whose host names Medium by a wire id is rewritten under the id failover looks up", async () => {
 		// directWire gives the lane `modelId: <wire id>, servedAs: <our id>`, and laneModelIds names it by
 		// servedAs. Keyed by the wire id, the pairs were never found and Medium answered as Large 3.
 		state.factsOn = true;

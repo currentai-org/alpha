@@ -6,9 +6,9 @@ import { openComposerTool, toolGroup } from './helpers/composerMenu';
 import { warmupContext } from './helpers/warmup';
 
 // The first web-searched answer in a conversation carries the "open gap · help build it"
-// card, written in the browser's language (CUR-2394). An English browser asking
+// card, written in the browser's language. An English browser asking
 // in French or Spanish must not get the English card under the answer, where it
-// would read as internal copy leaking into the reply (CUR-2377). The card shows only under an answer in its own
+// would read as internal copy leaking into the reply. The card shows only under an answer in its own
 // language. Every test picks "Always" in the composer's Tools menu so the turn searches the web, which
 // is the only turn the card can appear on; the English test is the control that proves the card can
 // render on this deployment at all, without which the French test's "no card" would prove nothing.
@@ -98,7 +98,7 @@ test.describe('an English browser', () => {
 				'the first web-searched English answer lost its open-gap card'
 			).toHaveCount(1, { timeout: 15_000 });
 			// A card sentence like "The open stack still needs a Google-scale open web search index" reads as roadmap
-			// copy under an answer about a mountain (CUR-2885).
+			// copy under an answer about a mountain.
 			const card = message.locator('[data-gap-invite]');
 			await expect(card).toContainText('No open search index covers the whole web yet.');
 			await expect(card, 'the open-gap card still talks roadmap to the visitor').not.toContainText(
@@ -108,7 +108,7 @@ test.describe('an English browser', () => {
 	);
 });
 
-// The card a French browser gets is written in French (CUR-2394). The language heuristic ranks short
+// The card a French browser gets is written in French. The language heuristic ranks short
 // French answers Spanish first, which can hide the card from French browsers, so this is
 // the same one-sentence question the English-browser test asks in French.
 test.describe('a French browser', () => {

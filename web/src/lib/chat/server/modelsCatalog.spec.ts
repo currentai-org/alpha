@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { tricksFor } from "./harnessProfiles";
 
-// Endpoints name the env var their key lives in (CUR-2640); the lane builders read it to check the key
+// Endpoints name the env var their key lives in; the lane builders read it to check the key
 // is set. These are the only keys this file's config holds.
 vi.mock("$lib/chat/server/config", () => {
 	const cfg: Record<string, string> = { MISTRAL_API_KEY: "test-key", HF_TOKEN: "hf-key" };
@@ -68,7 +68,7 @@ describe("toModelConfigs", () => {
 		expect(m.logoUrl).toBe("https://huggingface.co/api/avatars/swiss-ai");
 	});
 
-	it("gives a visitor a readable name, never the wire id, while id and name keep the wire id (CUR-2203)", () => {
+	it("gives a visitor a readable name, never the wire id, while id and name keep the wire id", () => {
 		const [m] = toModelConfigs([entry("swiss-ai/apertus-v1.5-70b")], opts);
 		expect(m.displayName).toBe("Apertus 1.5 70B");
 		expect(m.id).toBe("swiss-ai/apertus-v1.5-70b");
@@ -149,7 +149,7 @@ describe("toModelConfigs", () => {
 		expect(noTools[0].supportsTools).toBe(false);
 	});
 
-	it("a gateway entry with no providers field takes tool support from its row, and an unmeasured one stays tool-less (CUR-4191)", () => {
+	it("a gateway entry with no providers field takes tool support from its row, and an unmeasured one stays tool-less", () => {
 		// The LiteLLM gateway's /models carries only id, object, created and owned_by.
 		const [alia, unmeasured] = toModelConfigs(
 			[entry("BSC-LT/ALIA-40b-instruct"), entry("aisingapore/Gemma-SEA-LION-v4-27B-IT")],
@@ -225,7 +225,7 @@ describe("toModelConfigs", () => {
 
 	// The HF router serves no Apertus 70B, so production's backup is the gateway's
 	// Infomaniak-only Apertus group, on the primary's own host. Dropping that lane as a duplicate would
-	// leave a 12 s gateway stall with nowhere to go. (CUR-2293)
+	// leave a 12 s gateway stall with nowhere to go.
 	it("keeps a backup lane on the primary's own host when it asks for a different model, with the primary's key and no HF billing", () => {
 		const [m] = toModelConfigs([entry("swiss-ai/apertus-v1.5-70b")], {
 			...opts,
@@ -272,7 +272,7 @@ describe("toModelConfigs", () => {
 		expect(backup.modelId).toBe("zai-org/GLM-5.2");
 	});
 
-	// CUR-3750. A list is one backup lane per id, in order, so a silent first backup has a lane behind it.
+	// A list is one backup lane per id, in order, so a silent first backup has a lane behind it.
 	it("makes one backup lane per listed id, in order", () => {
 		const [m] = toModelConfigs([entry("mistral-large-2512")], {
 			...opts,
@@ -346,7 +346,7 @@ describe("applyOverrides", () => {
 	});
 });
 
-describe("direct endpoint models (CUR-2272)", () => {
+describe("direct endpoint models", () => {
 	const gateway = [entry("swiss-ai/apertus-v1.5-70b")];
 	const direct = parseDirectEndpoint(
 		"https://api.mistral.ai/v1/",
@@ -363,7 +363,7 @@ describe("direct endpoint models (CUR-2272)", () => {
 			fallbackApiKeyEnv: "HF_TOKEN",
 		});
 
-	it("a direct model its maker says reads images is multimodal only while the multimodal gate is open (CUR-454)", () => {
+	it("a direct model its maker says reads images is multimodal only while the multimodal gate is open", () => {
 		const open = toModelConfigs(withDirectModels(gateway, direct), {
 			baseURL: "https://gateway.example/v1",
 			isHFRouter: false,
@@ -377,7 +377,7 @@ describe("direct endpoint models (CUR-2272)", () => {
 		expect(shut?.multimodal).toBe(false);
 	});
 
-	it("a direct model not known to read images stays text-only with the multimodal gate open (CUR-454)", () => {
+	it("a direct model not known to read images stays text-only with the multimodal gate open", () => {
 		const other = parseDirectEndpoint("https://api.mistral.ai/v1/", "MISTRAL_API_KEY", "codestral-2508", "mistral");
 		const [config] = toModelConfigs(withDirectModels([], other), {
 			baseURL: "https://gateway.example/v1",
@@ -412,7 +412,7 @@ describe("direct endpoint models (CUR-2272)", () => {
 		expect(apertus?.endpoints).toHaveLength(2);
 	});
 
-	it("asks a router that renames the model for its own id, and records the answer under ours (CUR-2928)", () => {
+	it("asks a router that renames the model for its own id, and records the answer under ours", () => {
 		const router = parseDirectEndpoint(
 			"https://api.mistral.ai/v1/",
 			"MISTRAL_API_KEY",
@@ -441,7 +441,7 @@ describe("direct endpoint models (CUR-2272)", () => {
 	});
 });
 
-describe("a pinned model on the HF router as a picker lane (CUR-1683)", () => {
+describe("a pinned model on the HF router as a picker lane", () => {
 	const gateway = [entry("swiss-ai/apertus-v1.5-70b")];
 	const HF = "https://router.huggingface.co/v1";
 	const shape = (data: CatalogEntry[]) =>
@@ -451,7 +451,7 @@ describe("a pinned model on the HF router as a picker lane (CUR-1683)", () => {
 			multimodalEnabled: false,
 		});
 
-	it("offers an allowlisted id with a provider pin from the router, billed, with its reasoning left on and its own row's tricks, none (CUR-2697)", () => {
+	it("offers an allowlisted id with a provider pin from the router, billed, with its reasoning left on and its own row's tricks, none", () => {
 		const allowlist = "swiss-ai/apertus-v1.5-70b, zai-org/GLM-5.2";
 		const lane = hfPinnedLane(`${HF}/`, "HF_TOKEN", "test-org", allowlist);
 		expect(lane?.modelIds).toEqual(["zai-org/GLM-5.2"]);
@@ -482,7 +482,7 @@ describe("a pinned model on the HF router as a picker lane (CUR-1683)", () => {
 	});
 });
 
-describe("withOnlyPickedModelLanes: a pick is answered by itself, retried, or not at all (CUR-3936)", () => {
+describe("withOnlyPickedModelLanes: a pick is answered by itself, retried, or not at all", () => {
 	const at = (url: string, modelId?: string, servedAs?: string) => ({
 		type: "openai" as const,
 		baseURL: url,
@@ -514,7 +514,7 @@ describe("withOnlyPickedModelLanes: a pick is answered by itself, retried, or no
 		expect(withOnlyPickedModelLanes([apertus])[0].endpoints).toHaveLength(3);
 	});
 
-	it("drops Large 3's Medium lane: no pick is answered by another model, Large 3 included (CUR-4383)", () => {
+	it("drops Large 3's Medium lane: no pick is answered by another model, Large 3 included", () => {
 		const large = model("mistral-large-2512", [
 			at("https://api.mistral.ai/v1"),
 			at("https://api.mistral.ai/v1", "mistral-medium-2604"),

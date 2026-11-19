@@ -2,20 +2,39 @@
 // native.ts), and a reasoning model narrates it: "The user has provided a message inside the
 // <Q_33024de9> tags." The answer is scrubbed server-side (stripFenceTags), but the reasoning panel shows
 // the model's text as it streams, so the visitor read the opaque nonce. This is the panel's scrub. It matches
-// only our nonce shape, Q_ + 8 hex (randomUUID().slice(0, 8)), as a tag or bare. (CUR-3164)
+// only our nonce shape, Q_ + 8 hex (randomUUID.slice(0, 8)), as a tag or bare.
 
-const FENCE_RE = /<\/?Q_[0-9a-f]{8}>|\bQ_[0-9a-f]{8}\b/g;
+// A model whose harness row sets compactFence (harnessProfiles.ts) gets QUESTION_ + 4 digits instead: in a
+// replay of the self-host walk turn, qwen2.5-0.5b at temperature 0 answered 10 of 10 under that shape and
+// 9 of 10 under a fresh Q_ + 8 hex, 8 of 10 under Q_ + 8 digits.
+export const COMPACT_FENCE_PREFIX = "QUESTION_";
+/** Both fence nonce shapes, as a regex source for every matcher that must recognise one. */
+export const FENCE_NONCE_SOURCE = `(?:Q_[0-9a-f]{8}|${COMPACT_FENCE_PREFIX}\\d{4})`;
 
-// While a tag is still arriving the text can end in `<`, `<Q`, `</Q_3a`…; holding that tail back keeps a
-// half-written nonce off the screen until the next token says whether it is one.
-const PARTIAL_TAIL_RE = /<\/?(?:Q(?:_[0-9a-f]{0,8})?)?$/;
+const FENCE_RE = new RegExp(`</?${FENCE_NONCE_SOURCE}>|\\b${FENCE_NONCE_SOURCE}\\b`, "g");
+
+// While a tag is still arriving the text can end in `<`, `<Q`, `</Q_3a`, `<QUEST`…; holding that tail back
+// keeps a half-written nonce off the screen until the next token says whether it is one.
+const TAIL_RE = /<\/?([A-Za-z0-9_]{0,13})$/;
+function isNoncePrefix(s: string): boolean {
+	return (
+		/^Q(?:_[0-9a-f]{0,8})?$/.test(s) ||
+		s === "" ||
+		COMPACT_FENCE_PREFIX.startsWith(s) ||
+		new RegExp(`^${COMPACT_FENCE_PREFIX}\\d{0,4}$`).test(s)
+	);
+}
+function dropPartialTail(text: string): string {
+	const tail = TAIL_RE.exec(text);
+	return tail && isNoncePrefix(tail[1]) ? text.slice(0, tail.index) : text;
+}
 
 /** Removes the fence nonce from model text a visitor reads, tag or bare; text without one is returned as is. */
 export function scrubFenceNonce(text: string, streaming = false): string {
 	if (!text.includes("Q") && !(streaming && text.endsWith("<"))) return text;
 	let out = text.replace(FENCE_RE, "");
 	if (out !== text) out = out.replace(/([^\s]) {2,}(?=\S)/g, "$1 ");
-	return streaming ? out.replace(PARTIAL_TAIL_RE, "") : out;
+	return streaming ? dropPartialTail(out) : out;
 }
 
 // The opening words of each harness's fenced-turn preamble (grounding.ts, promptSections.ts). They live
@@ -34,7 +53,7 @@ const SEGMENT_RE = /[^.!?\n]*(?:[.!?]+|\n|$)[ \t]*/g;
  * should not mention the tags or the wrapper"), so a sentence that opens with one of our own preamble
  * openings drops the rest of its line with it. Lines before and after are kept as is. The trigger stays
  * our own preamble's words, so no wording of the model's is classified. While streaming, a tail that
- * could still become one is held back until it ends. (CUR-3945)
+ * could still become one is held back until it ends.
  */
 export function scrubFenceNarration(text: string, streaming = false): string {
 	let out = "";

@@ -3,7 +3,6 @@ import { ObjectId } from "bson";
 import type { MessageFile } from "$lib/chat/types/Message";
 import { keepAgentFiles } from "./agentFiles";
 
-vi.mock("$lib/chat/server/agentArtifactDownload", () => ({ agentArtifactDownloadEnabled: () => true }));
 
 const { endpointAgent } = await import("./endpointAgent");
 
@@ -14,7 +13,7 @@ const fakeSave = (seen: File[][] = []) =>
 		return files.map((f, i) => ({ type: "hash", value: `${i}`.padStart(64, "a"), mime: f.type, name: f.name }));
 	});
 
-describe("keepAgentFiles (CUR-4398)", () => {
+describe("keepAgentFiles", () => {
 	it("saves a whole inlined file from its text and fetches a truncated one from the workdir", async () => {
 		const read = vi.fn(async () => new TextEncoder().encode("full,csv\n1,2\n"));
 		const seen: File[][] = [];
@@ -107,7 +106,7 @@ async function agentTurn(artifacts: unknown[], params: Record<string, unknown>) 
 	return { chunks, fetchMock };
 }
 
-describe("an agent turn's files are saved with the conversation (CUR-4398)", () => {
+describe("an agent turn's files are saved with the conversation", () => {
 	const conversationId = new ObjectId();
 
 	it("saves both files of a two-file turn and yields one file reference each", async () => {

@@ -16,13 +16,13 @@ import { isUnsavedAnswer } from "./settlePendingAnswers";
  *     answer from the prompt subtree.
  *   - normal turn → append the user message + a blank assistant child back to back, after the newest
  *     turn on the branch the page named (see `newestOnBranch`).
- *   - attach to an ASSISTANT message holding an agent task (CUR-993) → no new node: the same message
+ *   - attach to an ASSISTANT message holding an agent task → no new node: the same message
  *     is emptied and rewritten from the task's replayed events, so a reload after the tab closed
  *     shows the run's answer where its interrupted one was, rather than a regenerated sibling.
  *
  * `newMessageIds` are the ids the page minted for the same messages. Using them keeps the post-turn
  * snapshot's ids equal to the page's, so the page swaps in the server copy without remounting the
- * answer and resetting whatever the person had opened on it (CUR-2098). An id that is already in the
+ * answer and resetting whatever the person had opened on it. An id that is already in the
  * conversation (a re-POST of the same turn after a dropped connection) is not reused; the server
  * mints a fresh one, as it always did, and says so in the log.
  *

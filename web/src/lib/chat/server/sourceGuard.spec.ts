@@ -368,3 +368,41 @@ describe("stripTrailingTitleDump — the marker-less run of reproduced titles", 
 		expect(cleaned).toBe(text);
 	});
 });
+
+// a thinking model's final text carries its reasoning in <think> blocks. Large 4's reasoning
+// listed "Sources:" while planning, the cut ran from there to the end, and the turn kept only reasoning.
+describe("detectFabricatedSources reads the answer, never the reasoning", () => {
+	const reasoning =
+		"<think>The user wants a three-day Lisbon plan. Let me plan the days.\nSources:\n[1] Belém Tower tickets\n[2] Tram 28 guide\nNow write it.</think>";
+	const answer =
+		"Day 1: Belém Tower and the monastery [1]. Day 2: ride Tram 28 through Alfama [2]. Day 3: Sintra by train.";
+
+	it("a Sources line inside reasoning leaves the answer after it whole", () => {
+		const text = `<think>Searching first.</think>${reasoning}${answer}`;
+		const { flagged, cleaned } = detectFabricatedSources(text, { grounded: true });
+		expect(flagged).toBe(false);
+		expect(cleaned).toBe(text);
+	});
+
+	it("a Sources block in the answer is still cut, and the reasoning before it is kept as it was", () => {
+		const text = `${reasoning}${answer}\n\nSources:\n[1] Belém Tower tickets\n[2] Tram 28 guide`;
+		const { flagged, cleaned } = detectFabricatedSources(text, { grounded: true });
+		expect(flagged).toBe(true);
+		expect(cleaned).toBe(`${reasoning}${answer}`);
+	});
+
+	it("a fictional-source disclaimer in the answer is cut without touching reasoning that names one", () => {
+		const think = "<think>These sources are hypothetical examples, so I will not cite them.</think>";
+		const text = `${think}The castle opens at 9:00. Note: these sources are fictional examples.`;
+		const { flagged, cleaned } = detectFabricatedSources(text, { grounded: true });
+		expect(flagged).toBe(true);
+		expect(cleaned).toBe(`${think}The castle opens at 9:00.`);
+	});
+
+	it("an unclosed reasoning block with a Sources line is left alone", () => {
+		const text = `${answer}<think>Sources:\n[1] Belém Tower tickets\nmore thoughts`;
+		const { flagged, cleaned } = detectFabricatedSources(text, { grounded: true });
+		expect(flagged).toBe(false);
+		expect(cleaned).toBe(text);
+	});
+});

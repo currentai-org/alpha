@@ -82,7 +82,7 @@ describe("applyServerDefault — seeds a cleared tester's first-ever visit, neve
 	// so the toggle is clickable before this seed runs. A toggle clicked to "on" in that window reads
 	// "Agent: on" in the DOM, then the next request carries `agentMode:"auto"` if this function resets
 	// it. Simulated here as a manual `agentMode.set` between module import
-	// and the call, standing in for "the user's own click already landed." (CUR-1067)
+	// and the call, standing in for "the user's own click already landed."
 	it("does not clobber a click that already landed before this call runs, even on a first-ever visit", async () => {
 		stubStorage(); // KEY absent entirely — a genuine first visit, storedAtLoad === null
 		const { agentMode, applyServerDefault } = await import("./agentMode");

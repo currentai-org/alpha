@@ -1,9 +1,11 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { authCondition } from "$lib/chat/server/auth";
 import { saveConversationMessages, snapshotConversation } from "$lib/chat/server/chat/conversationWrites";
 import { collections } from "$lib/chat/server/database";
 import { error } from "@sveltejs/kit";
 import { ObjectId } from "bson";
-import { syncBump, tombstoneMessages } from "$lib/chat/server/sync/syncTouch";
 
 export async function DELETE({ locals, params }) {
 	const messageId = params.messageId;
@@ -21,7 +23,7 @@ export async function DELETE({ locals, params }) {
 		error(404, "Conversation not found");
 	}
 
-	// Taken before the filter below edits messages in place. (CUR-2806)
+	// Taken before the filter below edits messages in place.
 	const loaded = snapshotConversation(conversation);
 	const filteredMessages = conversation.messages
 		.filter(
@@ -37,12 +39,9 @@ export async function DELETE({ locals, params }) {
 			return message;
 		});
 
-	const before = [...conversation.messages];
 	await saveConversationMessages({ _id: conversation._id, ...authCondition(locals) }, loaded, {
 		messages: filteredMessages,
-		...syncBump(locals),
 	});
-	await tombstoneMessages(locals, before, filteredMessages);
 
 	return new Response();
 }

@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // The forced side call on TASK_MODEL's lane (violenceRecheck, groundcheck). The request must name the
 // model the way its host does: the endpoint's `modelId`, which side-call registration sets to the
 // router's wire id. Sending the TASK_MODEL id as written draws a 400 from a router that names the model
-// differently, and the violence re-check then fails closed (CUR-3057).
+// differently, and the violence re-check then fails closed.
 const sent: Record<string, unknown>[] = [];
 let endpoint: { baseURL: string; apiKeyEnv: string; modelId?: string };
 

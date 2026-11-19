@@ -8,7 +8,7 @@ import { turnDone } from './helpers/turn';
 import { startChattingPastWelcome } from './helpers/welcome';
 
 // The scenario verdict tells a red a mock answered from a red the PR caused by asking, after a
-// failed attempt, whether the page shows a mock answer (helpers/replayMiss.ts) (SOL-250). This proves that question
+// failed attempt, whether the page shows a mock answer (helpers/replayMiss.ts). This proves that question
 // says yes on a real preview: the send asks for mock mode itself, on every run (a record run would
 // otherwise call the live model), and carries a nonce no recording can match.
 test(

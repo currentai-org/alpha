@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
 import type { ExportedConversation } from "$lib/chat/server/exportFormat";
+import { inertWidgets } from "../utils/inertWidgets";
 
 // Converts Alpha's conversations.json into a file Thunderbird's Thunderbolt can import, and reads one
-// of their exports back (CUR-2407). Thunderbolt's Settings → Preferences → Data → Import Data reads
+// of their exports back. Thunderbolt's Settings → Preferences → Data → Import Data reads
 // `thunderbolt-export` schemaVersion 1 (their docs/internals/architecture/export-format.md) and writes
 // each row into the person's local database, which then syncs it, encrypted, to their other devices.
 // The file itself is plaintext on both sides, the same as Alpha's ZIP.
@@ -88,12 +89,8 @@ export function uuidv7Time(id: string): Date | null {
 
 const ms = (iso: string | undefined) => (iso ? Date.parse(iso) : NaN);
 
-// Thunderbolt renders `<widget:NAME …>` in a message's text as live UI (their src/ai/widget-parser.ts):
-// a "connect Gmail" OAuth prompt, a link preview that fetches a URL, a question whose answer goes back
-// to the model. In Alpha the same text is inert, and an answer can carry it from a web page or a
-// forked shared conversation. Escaping the `<` keeps it visible as text in Thunderbolt's markdown and
-// out of their parser; the trip home restores it on rows Alpha wrote.
-const inertWidgets = (text: string) => text.replace(/<(?=widget:)/gi, "&lt;");
+// `inertWidgets` (utils/inertWidgets.ts) escapes Thunderbolt's live widget tags; this restores them on
+// rows Alpha wrote.
 const reviveWidgets = (text: string) => text.replace(/&lt;(?=widget:)/gi, "<");
 
 /**

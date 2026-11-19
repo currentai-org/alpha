@@ -12,7 +12,7 @@ vi.mock("$lib/chat/server/models", () => {
 		unlisted: false,
 		endpoints: [{ type: "openai", baseURL: "https://upstream.invalid/v1", apiKey: SECRET }],
 		// The registry schema lets both of these through with `.passthrough()`, so a field the
-		// gateway catalog adds per provider, or one set in MODELS overrides, rides along (CUR-2640).
+		// gateway catalog adds per provider, or one set in MODELS overrides, rides along.
 		providers: [{ provider: "acme-host", supports_tools: true, apiKey: SECRET }],
 		parameters: { temperature: 0.3, truncate: 4096, upstreamKey: SECRET },
 	};
@@ -38,10 +38,9 @@ const PUBLIC_FIELDS = new Set([
 	"datasetName",
 	"datasetUrl",
 	"displayName",
-	// CUR-3037. Only a user's OWN local model carries this, and these routes are per-user and
-	// `private`-cached, so it reaches nobody but the person whose endpoint it describes. Recorded
-	// here deliberately: this list exists to make a growing payload a decision rather than an
-	// accident, and it caught this one.
+	// Only a user's OWN local model carries this, and these routes are per-user and
+	// `private`-cached, so it reaches nobody but the person whose endpoint it describes. This list
+	// exists to make a growing payload a decision rather than an accident.
 	"localEndpointKind",
 	"description",
 	"knownWeakSpot",

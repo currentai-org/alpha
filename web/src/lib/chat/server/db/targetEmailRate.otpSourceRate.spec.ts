@@ -4,7 +4,7 @@
  * real attendees never approaches the cap, while one source repeatedly hitting the SAME victim does.
  * These tests exercise that property directly against the actual query filter, not just the wiring —
  * asserting only that the fields are "truthy" would pass a bug that hashed BOTH
- * `ipHash` and `userId` from the same input (email or ip). (CUR-920)
+ * `ipHash` and `userId` from the same input (email or ip).
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 

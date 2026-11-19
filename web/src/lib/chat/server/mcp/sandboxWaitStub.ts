@@ -1,7 +1,7 @@
 // A stand-in for agent-service's /mcp/ on a full host. It answers a run the way the real server does
 // when connect has to wait for a slot: the call's reply is an SSE stream carrying one MCP progress
 // notification, "Waiting for a free sandbox…", then the result after `holdMs`. The progress, the SDK client,
-// the kit's frames and the live line all run unmodified; only the sandbox is stood in. (CUR-4584)
+// the kit's frames and the live line all run unmodified; only the sandbox is stood in.
 import { answerMcpRequest, type McpFixture } from "./e2eStub";
 import { originScopedFetch, type McpServerConfig } from "./servers";
 
@@ -75,5 +75,38 @@ export function sandboxWaitStubServer(offered: McpServerConfig, holdMs: number):
 		headers: {},
 		origin,
 		fetch: originScopedFetch(origin, sandboxWaitFetch(holdMs)),
+	};
+}
+
+/** A fetch answering as a sandbox that has stopped responding: the listing works, but a tools/call is
+ *  never answered. It ends only when the caller aborts, as a real fetch does. */
+function sandboxHangFetch() {
+	return async (_url: string | URL, init?: RequestInit): Promise<Response> => {
+		if ((init?.method ?? "GET").toUpperCase() !== "POST") return new Response(null, { status: 405 });
+		const body = String(init?.body ?? "{}");
+		const msg = JSON.parse(body) as { method?: string };
+		if (msg.method === "tools/call") {
+			return new Promise<Response>((_resolve, reject) => {
+				const abort = () => reject(init?.signal?.reason ?? new DOMException("aborted", "AbortError"));
+				if (init?.signal?.aborted) abort();
+				else if (init?.signal) init.signal.onabort = abort;
+			});
+		}
+		const { status, payload } = answerMcpRequest(body, FIXTURE);
+		if (payload === undefined) return new Response(null, { status });
+		return new Response(JSON.stringify(payload), { status, headers: { "content-type": "application/json" } });
+	};
+}
+
+/** The unresponsive sandbox in place of the one the turn was offered, for the `sandbox_call_hangs` fault.
+ *  Same config as the real one, so its call timeout follows it; only the address and the fetch change. */
+export function sandboxHangStubServer(offered: McpServerConfig): McpServerConfig {
+	const origin = new URL(SANDBOX_WAIT_STUB_URL).origin;
+	return {
+		...offered,
+		url: SANDBOX_WAIT_STUB_URL,
+		headers: {},
+		origin,
+		fetch: originScopedFetch(origin, sandboxHangFetch()),
 	};
 }

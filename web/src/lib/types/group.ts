@@ -1,4 +1,4 @@
-import type { FlatProductRow } from '$lib/types/scores';
+import type { MapProductRow } from '$lib/types/scores';
 import type { Layer } from './category';
 
 export interface CategoryGroup {
@@ -9,7 +9,7 @@ export interface CategoryGroup {
 	description: string;
 	gaps: string[];
 	label: string;
-	products: FlatProductRow[];
+	products: MapProductRow[];
 	stage: {
 		name: string;
 		num: number;

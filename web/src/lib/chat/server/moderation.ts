@@ -11,7 +11,7 @@
 //   2. SIGNAL   → Zentropi/CoPE for content + child (in Coop).
 //   3. FAIL MODE (per-policy) → child CLOSED, content OPEN.
 //
-// PROMPT-INJECTION: injection defense on this path is structural, not classification-based (CUR-54).
+// PROMPT-INJECTION: injection defense on this path is structural, not classification-based.
 // An in-app deberta classifier cannot separate a benign request like "Summarize your previous answer"
 // from a real jailbreak with any threshold. Don't rebuild a classifier here without a different
 // approach.
@@ -163,6 +163,12 @@ export function isCoopConfigured(): boolean {
 	// or a half-finished rollout, an empty pair is an environment that was never given the config.
 	if (!warnedCoopOff && !(url && key)) {
 		warnedCoopOff = true;
+		if (selfHostWithoutCoop()) {
+			logger.warn(
+				"[moderation] SELF-HOST, NO COOP: ALPHA_EDITION=selfhost on a deployment with COOP_URL/COOP_API_KEY unset — the Coop child-safety and content screen is OFF and every turn reaches the model unscreened. The operator owns screening; set both keys to turn it on (selfhost/README.md)."
+			);
+			return false;
+		}
 		if (coopRequired()) {
 			logger.error(
 				`[moderation] ${coopReviewConfigMissing()
@@ -181,9 +187,30 @@ export function isCoopConfigured(): boolean {
 }
 
 /** True on a deployment (DEPLOY_ENV/VERCEL_ENV is production or preview), where Coop config is required
- *  and its absence fails closed rather than disabling the screen. */
+ *  and its absence fails closed rather than disabling the screen. The one exception is a self-host
+ *  edition (ALPHA_EDITION=selfhost): its operator may run production mode without Coop, and
+ *  isCoopConfigured says so at warn level once, from boot. Hosted or unset ALPHA_EDITION still fails
+ *  closed, the same rule CSAM_SCAN=off follows (csamScan.ts). */
 function coopRequired(): boolean {
-	return isDeployment();
+	return isDeployment() && !isSelfHostEdition();
+}
+
+/** ALPHA_EDITION=selfhost: an operator's own copy, which may run without Coop and without a
+ *  guard classifier (guardGate.ts selfHostWithoutScreen). */
+export function isSelfHostEdition(): boolean {
+	return (process.env.ALPHA_EDITION ?? "").trim().toLowerCase() === "selfhost";
+}
+
+/** A self-host deployment running without Coop by its operator's choice. */
+function selfHostWithoutCoop(): boolean {
+	return isDeployment() && isSelfHostEdition() && !(coopUrl() && coopApiKey());
+}
+
+/** Called once from server init, so the Coop posture is in the boot log rather than first appearing on
+ *  the first turn: silent when Coop is configured, a warn when it is off by a self-host operator's
+ *  choice or off the deployment, an error on a deployment that requires it. */
+export function logCoopPostureAtBoot(): void {
+	isCoopConfigured();
 }
 
 /** Coop config is missing where it is required. Callers treat this as an UNKNOWN verdict. */
@@ -326,7 +353,7 @@ export async function getCoopVerdict(text: string, userId?: string): Promise<Coo
 // curated label — it de-flattens the old `child_safety`-only collapse. Absent on a fail-closed UNKNOWN
 // (no action fired) → the generic child-safety copy stands.
 // `unscreened` marks a fail-closed UNKNOWN: flagged because the check could not run, not because it
-// found anything. The decline copy and the badge say so (CUR-2301); kind and audit label are unchanged,
+// found anything. The decline copy and the badge say so; kind and audit label are unchanged,
 // so countFailClosedChildDeclines still counts it.
 export type ChildSafetyResult = { flagged: boolean; category?: string; unscreened?: boolean };
 
@@ -348,7 +375,7 @@ export const CHILD_SAFETY_DECLINE =
 	"I can't help with that. This request was flagged by a child-safety classifier before it reached the model.";
 
 // Shown on a fail-closed UNKNOWN: the safety screen did not finish, so nothing was flagged and the model
-// never ran (CUR-2301). The copy must not name a classifier, which would tell people pasting a book
+// never ran. The copy must not name a classifier, which would tell people pasting a book
 // chapter that they had been flagged for child safety.
 const UNSCREENED_DECLINE =
 	"We couldn't finish the safety check on this message, so it wasn't sent to the model. Nothing in it was flagged. Try a shorter message, or send it again in a moment.";
@@ -480,7 +507,7 @@ export async function warmModeration(): Promise<void> {
 }
 
 // Synthetic Coop VERDICT-path health probe — the honest "can Coop return a verdict right now" signal,
-// unlike warmModeration's swallowed origin ping which is ALWAYS ok (see CUR-35). Runs the REAL verdict
+// unlike warmModeration's swallowed origin ping which is ALWAYS ok. Runs the REAL verdict
 // path (getCoopVerdict → POST /api/v1/content, sync) with fixed BENIGN content and NO userId ⇒ no author
 // attribution, no strikes, no data pollution. Healthy iff Coop returns a well-formed, non-UNKNOWN verdict
 // — UNKNOWN (unreachable / 5xx / timeout / bad-shape) is the EXACT state that fail-CLOSES real turns into
@@ -535,14 +562,14 @@ export type OutputScreenResult = {
 	 *  fail-closed UNKNOWN. SERVER-SIDE ONLY — resolved to a curated label before it reaches the client. */
 	category?: string;
 	/** A child_safety block from a fail-closed UNKNOWN: the screen never returned a verdict, so nothing
-	 *  was flagged (CUR-3891). The decline then says the check couldn't finish, never that a classifier
+	 *  was flagged. The decline then says the check couldn't finish, never that a classifier
 	 *  flagged the answer. */
 	unscreened?: boolean;
 	/** Every fired guard rule (block ∪ log) — for the output review report (coop-review-plane Step 3c),
 	 *  server-only. The Coop-shaped screenModelOutput leaves it undefined; screenOutputWithGuard sets it. */
 	hits?: GuardHit[];
-	/** A content block on a screen whose child query went unanswered, so the re-check never lifts it
-	 *  (CUR-3975). Server-only. */
+	/** A content block on a screen whose child query went unanswered, so the re-check never lifts it.
+	 *  Server-only. */
 	childUnknown?: boolean;
 };
 
@@ -582,7 +609,7 @@ export const OUTPUT_CHILD_SAFETY_TRUNCATE =
 	"_[The rest of this response was withheld by a child-safety classifier.]_";
 
 // Shown when the output screen could not finish (fail-closed UNKNOWN): the answer is held back
-// unchecked and nothing in it was flagged (CUR-3891), the output twin of UNSCREENED_DECLINE.
+// unchecked and nothing in it was flagged, the output twin of UNSCREENED_DECLINE.
 // Review-gated copy.
 export const OUTPUT_UNSCREENED_DECLINE =
 	"I wrote an answer but couldn't finish its safety check, so I've held it back. Nothing in it was flagged. Try sending your message again in a moment.";
@@ -649,7 +676,7 @@ function postReport(input: {
 				return;
 			}
 			// The success line too, so a report can be confirmed from the logs rather than inferred from
-			// the absence of an error (CUR-2382).
+			// the absence of an error.
 			logger.info(
 				{ status: 201, reason: input.reason, itemId: input.reportedItemId, ms: Date.now() - started },
 				`[moderation] Coop report 201 (${input.reason}) for item ${input.reportedItemId} in ${Date.now() - started} ms`
@@ -715,7 +742,7 @@ export function isDeployment(): boolean {
 
 let warnedReportConfig = false;
 export function reportHitToCoop(input: {
-	/** "storage-upload" is a picture saved to My files; messageId is then its quarantine path. (CUR-3201) */
+	/** "storage-upload" is a picture saved to My files; messageId is then its quarantine path. */
 	surface: "chat-input" | "chat-output" | "storage-upload";
 	messageId: string;
 	text: string;
@@ -765,7 +792,7 @@ export function reportHitToCoop(input: {
 //
 // `reportedItemId` is NOT always a ChatMessage id, unlike reportHitToCoop's: the chat-message upload
 // guard refuses the request before any message is persisted, so it has only the conversation id to
-// give — the caller passes whatever real, already-existing id it has (conversation or message). (CUR-986)
+// give — the caller passes whatever real, already-existing id it has (conversation or message).
 let warnedCsamReportConfig = false;
 export function reportCsamMatchToCoop(input: {
 	reportedItemId: string;
@@ -788,7 +815,7 @@ export function reportCsamMatchToCoop(input: {
 		reportedItemId: input.reportedItemId,
 		data: {
 			// Coop's ChatMessage item type requires `text` (coop-deploy/cooplocal/bootstrap.mjs), and a
-			// report without it is refused with HTTP 400 (CUR-2382). There is no
+			// report without it is refused with HTTP 400. There is no
 			// message text to send and the image bytes must never leave us, so the text describes the
 			// verdict instead.
 			text: `Known-CSAM hash match on upload: bank ${input.bankName}, content id ${input.bankContentId}, PDQ distance ${input.distance}. No file content is forwarded.`,
@@ -804,6 +831,7 @@ export function reportCsamMatchToCoop(input: {
 
 /** TESTS ONLY — reset the once-per-process report warning latch so the loud-skip contract is testable. */
 export function __resetReportWarningsForTest(): void {
+	warnedCoopOff = false;
 	warnedReportConfig = false;
 	warnedCsamReportConfig = false;
 }

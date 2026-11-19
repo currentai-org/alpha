@@ -1,6 +1,6 @@
 // What a tool call shows while it is still running. A kit's calls push frames here; the tool loop
 // (openai/calculateTool.ts) yields them as they arrive, so the live line can say "Waiting for a free
-// sandbox…" during the call rather than after it returns. (CUR-4584)
+// sandbox…" during the call rather than after it returns.
 import type { ToolFrames, ToolRunFrame } from "./types";
 
 export function toolFrames(): ToolFrames {

@@ -10,11 +10,24 @@
  *  named one by here is not going to, and the peek must never buffer a whole answer. */
 const PEEK_LIMIT_BYTES = 64 * 1024;
 
+/**
+ * LiteLLM's provider routing prefix names the provider it called and is no part of the model's name. A
+ * gateway can report `x-litellm-model-name: openai/<name>` or `mistral/<name>`. Only the providers
+ * our routers use are listed, so an id whose first segment is an organisation (`mistralai/`,
+ * `swiss-ai/`) keeps it.
+ */
+const LITELLM_PROVIDER_PREFIX = /^(?:openai|mistral)\//i;
+
+/** `name` without LiteLLM's provider routing prefix: `mistral/mistral-medium-3-5` → `mistral-medium-3-5`. */
+export function withoutLitellmProvider(name: string): string {
+	return name.replace(LITELLM_PROVIDER_PREFIX, "");
+}
+
 /** Two model ids name the same model. Case differs between a provider's own id and the gateway's
  *  alias (`swiss-ai/Apertus-v1.5-70B` against `swiss-ai/apertus-v1.5-70b`), and LiteLLM's
- *  `openai/` routing prefix names the transport. */
+ *  provider routing prefix names the transport. */
 export function sameModelId(a: string, b: string): boolean {
-	const norm = (id: string) => id.trim().toLowerCase().replace(/^openai\//, "");
+	const norm = (id: string) => withoutLitellmProvider(id.trim()).toLowerCase();
 	return norm(a) === norm(b);
 }
 
@@ -108,7 +121,7 @@ export async function peekServedModel(
 }
 
 /**
- * The `wrong_model_served` fault (CUR-1614): hand back `response` with every `model` field in its body
+ * The `wrong_model_served` fault: hand back `response` with every `model` field in its body
  * replaced by `model`, headers untouched.
  *
  * @remarks

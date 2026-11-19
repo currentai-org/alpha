@@ -22,8 +22,8 @@ beforeEach(async () => {
 });
 
 // On cold start (before PostHog's first successful poll) this flag fails closed unconditionally,
-// regardless of what the LLM_SUMMARIZATION env var says. (CUR-891)
-describe("conversationTitlesEnabled — cold start fails closed (CUR-891)", () => {
+// regardless of what the LLM_SUMMARIZATION env var says.
+describe("conversationTitlesEnabled — cold start fails closed", () => {
 	it("is off before PostHog has ever been polled, even when LLM_SUMMARIZATION=true", async () => {
 		cfg.PUBLIC_POSTHOG_KEY = "phc_test";
 		cfg.LLM_SUMMARIZATION = "true";

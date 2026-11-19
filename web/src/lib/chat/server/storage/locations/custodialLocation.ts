@@ -1,5 +1,5 @@
 // Alpha storage as a StorageLocation. A thin wrapper: quota, rate, type sniff, CSAM scan and
-// the users/<id>/ ownership check all stay in custodialStorage.ts, unchanged. (CUR-2930)
+// the users/<id>/ ownership check all stay in custodialStorage.ts, unchanged.
 import { CUSTODIAL_MAX_BYTES_PER_FILE } from "$lib/chat/constants/custodialUpload";
 import {
 	deleteCustodialFile,
@@ -27,7 +27,7 @@ export function custodialLocation(userId: string): StorageLocation {
 		},
 		async stat(path) {
 			const hit = (await listCustodialFiles(userId)).find((e) => e.path === path);
-			return hit ? { size: hit.size, hash: hit.xetHash ?? hit.oid } : null;
+			return hit ? { size: hit.size } : null;
 		},
 		read: (path) => downloadCustodialFile(userId, path),
 		async write(folder: LocationFolder, name: string, content: Blob, opts: UploadOptions) {

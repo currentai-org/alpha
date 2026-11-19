@@ -22,7 +22,7 @@ export function isTextMime(mime: string): boolean {
 }
 
 /**
- * The type a chat attachment is stored under, or null when chat does not take it (CUR-3832). Pass the
+ * The type a chat attachment is stored under, or null when chat does not take it. Pass the
  * type sniffed from the bytes, with the declared one only as the fallback for text.
  *
  * Accepted are the types the composer offers: JPEG, PNG, WebP and GIF (it redraws an AVIF or BMP as

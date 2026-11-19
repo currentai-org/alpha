@@ -1,4 +1,4 @@
-// Provider keys on the model registry (CUR-2640).
+// Provider keys on the model registry.
 //
 // A registry endpoint names the env var its key lives in (`apiKeyEnv: "HF_TOKEN"`) and never holds the
 // value. The registry is long-lived and gets serialized (routes, logs, the inference-topology report),
@@ -31,7 +31,7 @@ export function endpointApiKey(endpoint: { apiKeyEnv?: string } | undefined): st
 
 /**
  * The fixed key a per-user local endpoint sends (localModels.ts). Not a secret: it exists so
- * endpointOai's default, our gateway key, never goes to a user's URL (CUR-3177). The only `apiKey`
+ * endpointOai's default, our gateway key, never goes to a user's URL. The only `apiKey`
  * a registry endpoint may carry.
  */
 export const LOCAL_ENDPOINT_API_KEY = "sk-local" as const;

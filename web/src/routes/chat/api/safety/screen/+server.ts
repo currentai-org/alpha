@@ -7,7 +7,7 @@
 // calls the report hook, the "probe/shadow/screen endpoint never report" contract holds structurally.
 //
 // AUTH: a shared bearer (SAFETY_SCREEN_TOKEN), constant-time compared over fixed-length HMAC digests —
-// the CUR-922 pattern (hooks/handle.ts, admin/env-extract). 401 on a wrong/absent bearer; 503 (loud) when
+// the pattern (hooks/handle.ts). 401 on a wrong/absent bearer; 503 (loud) when
 // the token is UNSET — config missing is not an open door. The token is CONFIG, not a feature flag; this
 // endpoint is NOT gated by `guard-primary` (that flag governs the chat turn path only — the agent asks
 // for screening by configuration, on its own deploy cadence).
@@ -21,13 +21,14 @@ import type { RequestHandler } from "@sveltejs/kit";
 import { hmacSha256, timingSafeEqual } from "$lib/chat/server/crypto";
 import { captureServerException } from "$lib/chat/server/errorTracking";
 import { logger } from "$lib/chat/server/logger";
-import { runGuardScreen, toHits } from "$lib/chat/server/guardGate";
+import { ensureFlagsPolled } from "$lib/chat/server/flags";
+import { runGuardScreen, s1JudgeFor, toHits } from "$lib/chat/server/guardGate";
 import { loadGuardPolicy } from "$lib/chat/server/guardPolicy";
 import { textOnlyGuardInput, GUARD_CORPUS_CAP } from "$lib/chat/server/guardScreenTypes";
 import { safetyScreenToken } from "$lib/chat/server/safetyScreen";
 
 // Hashing both sides to a fixed 64-hex digest before timingSafeEqual is what keeps the compare safe over
-// arbitrary-length strings (CUR-922). Label is per-endpoint so a digest from one gate is meaningless at
+// arbitrary-length strings. Label is per-endpoint so a digest from one gate is meaningless at
 // another.
 const AUTH_HASH_LABEL = "safety-screen-auth-v1";
 
@@ -86,10 +87,20 @@ export const POST: RequestHandler = async ({ request }) => {
 		? (loadGuardPolicy()?.shield.outputInstruct ?? undefined)
 		: undefined;
 
-	const screen = await runGuardScreen(textOnlyGuardInput(text), { instruct });
+	// The agent's answer and files are output, so they run the output screen's rules, not the input-only
+	// ones such as chat-block-hate-advocacy.
+	const phase = OUTPUT_SHAPED_SURFACES.has(surface) ? "output" : "input";
+	// With `s1-safety-judge` on, S1 judges agent text against rules-s1.json in that phase, as it judges the
+	// chat turn; off, Shieldstral judges against rules.json. A cold instance reads the flag as its off
+	// fallback until the first poll, and nothing above this route polls, so wait for it here.
+	await ensureFlagsPolled();
+	const s1 = s1JudgeFor();
+	const screen = await runGuardScreen(textOnlyGuardInput(text), { instruct, screen: phase, s1 });
 	// Union of block ∪ log hits on EVERY status — an UNKNOWN screen can still carry a fired log hit, and a
 	// safe screen can carry a log-only detection; the caller decides what to report.
 	const hits = toHits([...screen.blockHits, ...screen.logHits]);
-	logger.info(`[safety/screen] surface=${surface} status=${screen.status} hits=${hits.length}`);
+	logger.info(
+		`[safety/screen] surface=${surface} phase=${phase} judge=${s1 ? "s1" : "shieldstral"} served=${screen.servedModels.join(",") || "none"} status=${screen.status} hits=${hits.length}`
+	);
 	return json({ status: screen.status, hits });
 };

@@ -1,6 +1,6 @@
 // Security events go to their own Axiom dataset, kept longer than the app logs. These pin
 // which lines reach it: a securityLogger line reaches both datasets, an ordinary line never reaches the
-// security one, and with the security dataset unconfigured securityLogger is the ordinary logger. (CUR-4143)
+// security one, and with the security dataset unconfigured securityLogger is the ordinary logger.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const cfg: Record<string, string | undefined> = {};
@@ -19,7 +19,7 @@ async function loadLogger() {
 	return import("./logger");
 }
 
-describe("securityLogger (CUR-4143)", () => {
+describe("securityLogger", () => {
 	beforeEach(() => {
 		for (const k of Object.keys(written)) delete written[k];
 		Object.assign(cfg, {

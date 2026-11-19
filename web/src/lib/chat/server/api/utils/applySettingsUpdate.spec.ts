@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // A key sent as null leaves the row through $unset, so a later read sees it unset; every
-// other key is still $set, and a key the body did not send is not touched (CUR-1643). (CUR-3929)
+// other key is still $set, and a key the body did not send is not touched.
 const updateOne = vi.fn(async (_filter: unknown, _update: unknown) => ({
 	acknowledged: true,
 	matchedCount: 1,
@@ -33,7 +33,7 @@ beforeEach(() => {
 	updateOne.mockClear();
 });
 
-describe("applySettingsUpdate (CUR-3929 resets)", () => {
+describe("applySettingsUpdate ( resets)", () => {
 	it("sets a sent value and unsets a sent null, in one write", async () => {
 		await applySettingsUpdate({} as App.Locals, { tone: "plain", answerLength: null });
 		const update = lastUpdate();
@@ -57,7 +57,7 @@ describe("applySettingsUpdate (CUR-3929 resets)", () => {
 		}
 	});
 
-	it("writes a preset body as one $set over exactly its fields, and nothing else (CUR-549)", async () => {
+	it("writes a preset body as one $set over exactly its fields, and nothing else", async () => {
 		const { PRESETS, PRESET_FIELDS } = await import("$lib/chat/answerPreferences");
 		await applySettingsUpdate({} as App.Locals, { ...PRESETS.formal });
 		const update = lastUpdate();
@@ -68,14 +68,14 @@ describe("applySettingsUpdate (CUR-3929 resets)", () => {
 		expect("$unset" in update).toBe(false);
 	});
 
-	it("unsets a milestone 7 field sent as null and sets the receipt toggle like any other (CUR-549)", async () => {
+	it("unsets a milestone 7 field sent as null and sets the receipt toggle like any other", async () => {
 		await applySettingsUpdate({} as App.Locals, { emojis: null, showServing: false });
 		const update = lastUpdate();
 		expect(update.$set).toMatchObject({ showServing: false });
 		expect(update.$unset).toEqual({ emojis: true });
 	});
 
-	it("accepts an old client's explainTerms, off the page under rule 4.6, and writes nothing for it (CUR-4288)", async () => {
+	it("accepts an old client's explainTerms, off the page under rule 4.6, and writes nothing for it", async () => {
 		for (const value of [true, null]) {
 			await applySettingsUpdate({} as App.Locals, { explainTerms: value, tone: "plain" });
 			const update = lastUpdate();

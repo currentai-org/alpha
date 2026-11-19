@@ -32,7 +32,7 @@ beforeEach(() => {
 	hashIp.mockReset().mockReturnValue("iphash");
 });
 
-describe("fetchUrlAllowed (CUR-3191)", () => {
+describe("fetchUrlAllowed", () => {
 	it("allows and records a fetch under both limits", async () => {
 		counts(FETCH_URL_PER_SESSION - 1, FETCH_URL_PER_IP - 1);
 		await expect(fetchUrlAllowed(OPTS)).resolves.toBe("ok");

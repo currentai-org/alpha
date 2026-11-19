@@ -7,7 +7,7 @@ import { chunkFailure, requireChunkedUploads } from "./guard";
 
 // One chunk of a My files upload too large for a single request. Multipart, with `uploadId`
 // (the client's name for this upload), `idx` (0-based) and `chunk`. The chunk is staged unread; the
-// finishing request in ./complete reassembles the file and runs every upload check on it whole. (CUR-1780)
+// finishing request in ./complete reassembles the file and runs every upload check on it whole.
 export const POST: RequestHandler = async ({ locals, request }) => {
 	const accountId = await requireChunkedUploads(locals);
 

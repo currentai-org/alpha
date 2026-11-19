@@ -1,5 +1,5 @@
 """What isolates the agent's work, as config and /healthz state it. Every Fly deploy runs the E2B backend while
-the image still bakes AGENT_SANDBOX=bwrap, so /healthz must report the backend in use, not `"sandbox": "bwrap"`."""
+the image still bakes AGENT_SANDBOX=bwrap, and /healthz reports the backend in use, not the baked value."""
 import importlib.util
 import os
 import subprocess
@@ -66,6 +66,22 @@ def test_an_unset_backend_boots_as_e2b_and_refuses_without_its_config():
     assert "AGENT_SANDBOX_BACKEND=e2b needs" in r.stderr, r.stderr[-2000:]
 
 
+
+def test_the_docker_backend_refuses_to_boot_without_its_config_or_on_the_raw_socket():
+    """The docker backend reaches Docker only through the socket proxy, so a DOCKER_HOST naming the
+    socket itself is a refusal at start, as is any missing setting."""
+    base = {k: v for k, v in os.environ.items() if not k.startswith(("DOCKER_", "AGENT_SANDBOX"))}
+    base.update(AGENT_DB_PATH=":memory:", AGENT_WATCHDOG_SECS="0", AGENT_SANDBOX_BACKEND="docker")
+    cases = [({}, "AGENT_SANDBOX_BACKEND=docker needs"),
+             ({"DOCKER_HOST": "unix:///var/run/docker.sock", "AGENT_SANDBOX_IMAGE": "x@sha256:" + "a" * 64,
+               "AGENT_GATEWAY_PUBLIC_URL": "http://gateway:8732", "AGENT_SANDBOX_GATEWAY_CONTAINER": "gw",
+               "PROXY_ADMIN_KEY": "k"}, "never a socket")]
+    for extra, said in cases:
+        r = subprocess.run([sys.executable, "-c", "import app"], cwd=Path(__file__).resolve().parent,
+                           env={**base, **extra}, capture_output=True, text=True, timeout=120)
+        assert r.returncode != 0
+        assert said in r.stderr, r.stderr[-2000:]
+
 def test_the_fly_template_sets_no_bwrap_profile_knob():
     import tomllib
     env = tomllib.loads((ROOT / "fly" / "agent-app.toml").read_text())["env"]
@@ -100,3 +116,16 @@ def test_prodcheck_requires_the_bwrap_profile_only_where_bwrap_runs():
     assert any("AGENT_SANDBOX_REQUIRED is ABSENT" in p for p in problems)
     # Under e2b the egress half is still required: it guards the machine the service runs on.
     assert any("AGENT_EGRESS" in p for p in pc._closed_problems({**closed, "AGENT_EGRESS": "off"}))
+
+
+def test_session_workdirs_live_on_the_mounted_volume_so_a_restarted_machine_keeps_them():
+    """On the root filesystem a restart or deploy drops every session workdir, and the next
+    follow-up is told its session expired. The scratch root has to sit under the [mounts] destination."""
+    import tomllib
+    cfg = tomllib.loads((ROOT / "fly" / "agent-app.toml").read_text())
+    dest = cfg["mounts"]["destination"].rstrip("/")
+    scratch = cfg["env"].get("AGENT_SCRATCH_ROOT", "").rstrip("/")
+    assert scratch == dest or scratch.startswith(dest + "/"), (scratch, dest)
+    db_dir = os.path.dirname(cfg["env"]["AGENT_DB_PATH"])
+    assert scratch == db_dir or scratch.startswith(db_dir + "/"), \
+        "entrypoint.sh chowns only the DB dir to the server's uid, so the scratch root must sit inside it"

@@ -1,4 +1,4 @@
-// Per-person roles for the /chat/admin area (CUR-3990, under CUR-927).
+// Per-person roles for the /chat/admin area.
 //
 // Better Auth's admin plugin stores one `role` string on each user row; this file says what each role
 // may do. Three staff roles, each a superset of the one before:
@@ -74,7 +74,7 @@ export function roleGrants(role: string | null | undefined, permission: AdminPer
 
 /**
  * Whether Settings shows this person the developer tools (per-model pages and switches): the legacy
- * admin flag, or any staff role that may view the admin console (CUR-3992). Without the second half a
+ * admin flag, or any staff role that may view the admin console. Without the second half a
  * role holder signed in as themselves never sees them.
  */
 export function seesDeveloperTools(isAdmin: boolean, role: string | null | undefined): boolean {

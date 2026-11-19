@@ -7,11 +7,12 @@ import * as schema from "./schema";
 
 // The stores OUTSIDE Postgres, stubbed so the wipe can run with no network and no database. Each stub
 // records that it was reached; the "stores outside Postgres" block below asserts every declared store was.
-const { wipeCustodialFiles, deleteAgentServiceData } = vi.hoisted(() => ({
+const { wipeCustodialFiles, resetGuestHistoryKey, deleteAgentServiceData } = vi.hoisted(() => ({
 	wipeCustodialFiles: vi.fn(async (_uid: string) => 3),
+	resetGuestHistoryKey: vi.fn(async (_sid: string) => {}),
 	deleteAgentServiceData: vi.fn(async (_visitor: string | undefined) => 2),
 }));
-vi.mock("$lib/chat/server/storage/custodialStorage", () => ({ wipeCustodialFiles }));
+vi.mock("$lib/chat/server/storage/custodialStorage", () => ({ wipeCustodialFiles, resetGuestHistoryKey }));
 vi.mock("$lib/chat/server/deleteAgentServiceData", () => ({ deleteAgentServiceData }));
 vi.mock("./deleteConversations", () => ({ deleteConversationsCascade: vi.fn(async () => 0) }));
 // A query builder that accepts any chain and resolves to no rows: enough to run wipeUserData's
@@ -110,6 +111,10 @@ const COVERAGE: Record<string, { verdict: Verdict; why: string }> = {
 		verdict: "exempt",
 		why: "Transient abort signalling keyed to a conversation; GC'd by the retention cleanup.",
 	},
+	generation_events: {
+		verdict: "wiped",
+		why: "CUR-4716: stream-follow's event log holds the answer text while it streams, keyed to a conversation. deleteConversationsCascade deletes it with the conversation (wipeUserData goes through that), the producer deletes it two minutes after the turn ends, and cleanup.ts sweeps a leftover after ten.",
+	},
 	mcp_elicitations: {
 		verdict: "exempt",
 		why: "CUR-1017: a parked MCP elicitation, keyed to a conversation. Unlike aborted_generations it can hold real content (the user's own form answer), so deleteConversationsCascade deletes it outright alongside files/generations rather than leaving it to the TTL sweep — the sweep (24h) is a backstop for an unresolved or orphaned row, not the primary mechanism.",
@@ -148,7 +153,7 @@ const COVERAGE: Record<string, { verdict: Verdict; why: string }> = {
 	},
 	oauth_client: {
 		verdict: "wiped",
-		why: "CUR-4312: an OAuth client a person registered. Nobody can (clientPrivileges refuses every create in betterAuth.ts), so the seeded Thunderbolt client has no user_id; any that did is deleted by wipeUserData's account step and cascades from `user`.",
+		why: "CUR-4312: an OAuth client a person registered. Nothing creates one since Thunderbolt sync was removed, and the seeded Thunderbolt client had no user_id; any that did is deleted by wipeUserData's account step and cascades from `user`.",
 	},
 	oauth_access_token: {
 		verdict: "wiped",
@@ -165,6 +170,14 @@ const COVERAGE: Record<string, { verdict: Verdict; why: string }> = {
 	sync_tombstones: {
 		verdict: "wiped",
 		why: "CUR-4312: ids of conversations and messages a person deleted, for a connected Thunderbolt to mirror. Deleted by wipeUserData (step 2e) and cascades from the shadow users row.",
+	},
+	conversation_tags: {
+		verdict: "wiped",
+		why: "CUR-4789: the tag names a person typed on their chats. wipeUserData (step 1a') deletes every row under the account, so Forget everything, which keeps the account, leaves none; the FK to users cascades as a backstop.",
+	},
+	shared_conversations: {
+		verdict: "wiped",
+		why: "CUR-2632: read-only share links, each holding a snapshot of a conversation. deleteConversationsCascade deletes a chat's link with it, and wipeUserData (step 1a) deletes every link left under the account; both FKs cascade as a backstop.",
 	},
 	invitation: {
 		verdict: "wiped",
@@ -185,14 +198,14 @@ function userScopedTables(): string[] {
 		// not `userId`. Named explicitly rather than loosening the regex, which would drag in every
 		// table with an `id` column.
 		//
-		// `user` (Better Auth's own, CUR-434) has the identical blind spot for the identical reason —
+		// `user` (Better Auth's own) has the identical blind spot for the identical reason —
 		// its PK is also `id`, and it holds the most identifying fields of all (name, email) — so it
 		// gets the same explicit carve-out.
-		// `verification` (CUR-434) holds an email in `identifier` during the passkey/email-OTP sign-in
+		// `verification` holds an email in `identifier` during the passkey/email-OTP sign-in
 		// flow — the same blind spot again (no userId/sessionId column; its subject is the row's OWN
 		// `identifier`, not a foreign key). Named explicitly for the same reason as user/users above.
 		//
-		// `invitation` (CUR-550) is the identical shape once more: it holds the invitee's email as its
+		// `invitation` is the identical shape once more: it holds the invitee's email as its
 		// OWN `email` column, not a foreign-keyed userId — the invitee may not even have a `user` row
 		// yet. Named explicitly rather than widening USER_KEY, which would drag in every table with a
 		// plain `email` column regardless of whether it identifies a person (e.g. `contributions`,
@@ -251,7 +264,8 @@ const EXTERNAL_STORES: Record<string, { summaryField: string; stub: ReturnType<t
 	"agent-service task store": { summaryField: "agentServiceTasksDeleted", stub: deleteAgentServiceData },
 };
 
-/** Modules under src/ that import the HF hub SDK, which is how this app writes to a bucket. */
+/** Modules under src/ that import a storage SDK: the HF hub SDK, or the S3 SDK behind a self-hosted
+ *  deployment's custodial store. Either is how this app writes a file. */
 function hfSdkImporters(): string[] {
 	const webRoot = resolve(__dirname, "../../../../..");
 	const found: string[] = [];
@@ -260,7 +274,7 @@ function hfSdkImporters(): string[] {
 			const p = join(dir, name);
 			if (statSync(p).isDirectory()) walk(p);
 			else if (/\.(ts|js)$/.test(name) && !/\.(spec|test)\./.test(name)) {
-				if (/from\s+["']@huggingface\/hub["']/.test(readFileSync(p, "utf8"))) {
+				if (/from\s+["'](@huggingface\/hub|@aws-sdk\/client-s3)["']|import\(\s*["']@aws-sdk\/client-s3["']/.test(readFileSync(p, "utf8"))) {
 					found.push(relative(webRoot, p));
 				}
 			}
@@ -283,24 +297,45 @@ describe("GDPR wipe coverage — stores outside Postgres", () => {
 		expect(wipeCustodialFiles).toHaveBeenCalledWith("acct123", expect.objectContaining({ keepAccount: false }));
 	});
 
-	it("Forget everything asks the bucket wipe to keep the account's key usable (CUR-4415)", async () => {
+	it("Forget everything asks the bucket wipe to keep the account's key usable", async () => {
 		wipeCustodialFiles.mockClear();
 		await wipeUserData({ userId: "acct123", sessionId: "sess123" });
 		expect(wipeCustodialFiles).toHaveBeenCalledWith("acct123", expect.objectContaining({ keepAccount: true }));
 	});
 
-	it("every module that imports the HF hub SDK is a declared store, so a new bucket cannot escape the wipe", () => {
+	it("a guest's Forget everything empties the guest's history key slot, so a new key can be enrolled", async () => {
+		resetGuestHistoryKey.mockClear();
+		wipeCustodialFiles.mockClear();
+		await wipeUserData({ sessionId: "sess123" });
+		expect(resetGuestHistoryKey).toHaveBeenCalledWith("sess123", expect.any(Object));
+		expect(wipeCustodialFiles).not.toHaveBeenCalled();
+	});
+
+	it("a signed-in wipe leaves the guest slot alone: wipeCustodialFiles handles the account's key", async () => {
+		resetGuestHistoryKey.mockClear();
+		await wipeUserData({ userId: "acct123", sessionId: "sess123" });
+		expect(resetGuestHistoryKey).not.toHaveBeenCalled();
+	});
+
+	it("every module that imports a storage SDK is a declared store, so a new bucket cannot escape the wipe", () => {
 		expect(
 			hfSdkImporters(),
-			"A module now talks to @huggingface/hub. If it stores user data, wipeUserData must delete it and EXTERNAL_STORES must declare it."
+			"A module now talks to @huggingface/hub or @aws-sdk/client-s3. If it stores user data, wipeUserData must delete it and EXTERNAL_STORES must declare it."
 		).toEqual([
+			// The Open WebUI importer only reads uploads from the operator's own Open WebUI bucket, and
+			// writes every file it brings across through custodialStorage.ts, so the wipe already
+			// reaches them. Nothing is stored in the source bucket.
+			"src/lib/chat/server/openWebUiImport/files.ts",
+			// The custodial store's backends (Hugging Face, S3-compatible, local disk). Only
+			// custodialStorage.ts calls it, so wipeCustodialFiles reaches whichever one is configured.
+			"src/lib/chat/server/storage/custodialBackend.ts",
 			"src/lib/chat/server/storage/custodialStorage.ts",
 			// A bucket the person linked is in their own Hugging Face account, not ours. The wipe
 			// deletes our link and the sealed token (storage_locations, above) and leaves their files, as
-			// the delete dialog says. (CUR-2930)
+			// the delete dialog says.
 			"src/lib/chat/server/storage/locations/hfBucketLocation.ts",
 			// Connect Hugging Face creates <user>/alpha-files in the person's own account, for the
-			// same reason as above. The wipe deletes the storage_locations row and its sealed OAuth grant. (CUR-2932)
+			// same reason as above. The wipe deletes the storage_locations row and its sealed OAuth grant.
 			"src/lib/chat/server/storage/locations/hfOAuth.ts",
 		]);
 	});

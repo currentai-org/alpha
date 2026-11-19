@@ -56,7 +56,7 @@ export function buildObserveTracePayload(fields: {
 	};
 	// The live path checks the payload against the same invariant the spec does, so a real
 	// regression (an unlisted key, a `messages` field slipping into `detail`) fails loudly instead of
-	// shipping silently. (CUR-1165)
+	// shipping silently.
 	assertValidTrace(payload);
 	return payload;
 }

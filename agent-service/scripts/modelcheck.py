@@ -2,15 +2,15 @@
 """Does the model still emit tool calls — the thing every task actually rides on?
 
 `check_model_live()` in scripts/dogfood.py asks whether the model id is in the catalog. An id can stay
-in the catalog and answer while tool ARGUMENTS come back as ordinary message content whenever the
-prompt carries instruction text (`finish_reason=stop`, no `tool_calls`), and every agent task then
-fails. From outside, a working service and a broken one look identical unless something probes the
-capability.
+in the catalog and answer while the model behind it returns tool ARGUMENTS as ordinary message content
+whenever the prompt carries instruction text (`finish_reason=stop`, no `tool_calls`), and every agent
+task then fails. From outside, a working service and a broken one look identical unless something
+probes the capability.
 
-This is that probe. Four conditions, because when tool calling breaks they do NOT agree and the
+This is that probe. Four conditions, because in that kind of regression they do NOT agree and the
 disagreement is the diagnosis:
 
-  bare              a bare user turn                   — still works when tool calling is broken
+  bare              a bare user turn                   — still works in that regression
   system            instruction text in a system turn   — fails; this is what Hermes sends
   stream            the same, streamed                  — fails; this is how Hermes sends it
   folded            the same text in the USER turn      — red at baseline; a control, not a check
@@ -28,31 +28,35 @@ endpoint, one tool throughout:
 
 So it is not length, not position, and not the presence of instructions. Text *about the tools*
 suppresses tool calling when it sits in the user turn, and the identical text in a system turn is fine.
-The mechanism is not established. Hermes puts its instructions in a system turn, so the user-turn case
-is not on our path.
+Mechanism unknown — plausibly the model reading tool-talk from the user as a description of a protocol
+and answering in kind, which would explain the JSON-as-content shape, but that is a guess and is not
+measured. Hermes puts its instructions in a system turn, so nothing here is on our path.
 
-`folded` is red at baseline, so it is a control: it carries no signal about instruction text versus role.
+When `system` and `folded` both fail, that does not mean the trigger is the instruction text rather
+than the role: with `folded` red at baseline the comparison carries no information.
 
-Repeats default to 3 because temperature 0 is not deterministic on this endpoint (about 5% flips over 20
-samples on one fixture), so a single sample can mislead.
+Repeats default to 3 because temperature 0 is not deterministic on this endpoint: a fixture can look
+deterministic over two samples and still flip on a later one. A single sample here could not tell a
+regression from a flip.
 
   python scripts/modelcheck.py              # against prod's own AGENT_MODEL
   python scripts/modelcheck.py -n 5         # more repeats
   python scripts/modelcheck.py --model X    # some other id
 
-Exit 0 every condition passed · 2 tool calling is broken (an instruction-carrying condition failed) ·
+Exit 0 every condition passed · 2 a real regression (an instruction-carrying condition failed) ·
 1 could not run (missing token, unreachable, id not in the catalog).
 
-NOTE: this script hits CSCS DIRECTLY, using PROVIDER_CSCS_TOKEN/BASE from the CALLER's own
-local env. Production does NOT talk to CSCS directly (CUR-189): the model app has no CSCS credential of
-its own; it proxies through the internal gateway app, which holds its OWN separate CSCS credential. A
-local run of this script therefore tests a different credential over a different network path than any real request takes,
+DUAL-PATH WARNING: this script hits CSCS DIRECTLY, using PROVIDER_CSCS_TOKEN/BASE from the CALLER's own
+local env. Production does NOT talk to CSCS directly: the model app has no CSCS credential of
+its own (`fly secrets list -a <model app>` has nothing CSCS-named); it proxies through the internal
+LiteLLM gateway app, which holds its OWN separate PROVIDER_CSCS_TOKEN Fly secret. A local run of this
+script therefore tests a different credential over a different network path than any real request takes,
 and it can return 404 on every condition, `bare` included, while the same model completes real tasks
 through the deployed path (`scripts/client.py` against the live service URL, or
-`scripts/dogfood.py apertus15`). A uniform failure here — especially 404, which is outside the documented
-error codes (401 bad token, 503 unrecognized model id) — is at least as likely to
+`scripts/dogfood.py apertus15`). A uniform failure here — especially 404, which is not one of CSCS's documented
+error codes (401 bad token, 503 unrecognized model id; see docs/roadmap.md) — is at least as likely to
 mean "this local credential or IP is not allowlisted" as "CSCS is down." Confirm against the actual
-deployed service (`scripts/client.py`) before treating a red run here as a production failure.
+deployed service (`scripts/client.py`) before treating a red run here as a production incident.
 """
 from __future__ import annotations
 
@@ -67,8 +71,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-# One tool is enough: the failure is identical at 1 and at 8 tools, so schema count is not the variable
-# and a wider set would only cost tokens.
+# One tool is enough. The failure is identical at 1 tool and at 8, so schema count is
+# not the variable and a wider set would only cost tokens.
 TOOL = [{"type": "function", "function": {
     "name": "write_file", "description": "Write text to a file.",
     "parameters": {"type": "object",
@@ -82,13 +86,13 @@ TASK = "Write the text ok to a file named out.txt."
 
 
 def _env() -> dict[str, str]:
-    """Real env only — run this via `doppler run` (agent-service/prd holds the live values)."""
+    """Real env only — run it with the service's production environment loaded."""
     return dict(os.environ)
 
 
 def _prod_model() -> str:
     """Whatever the DEPLOYED config says, not whatever this file was written knowing. Probing a model
-    prod does not run measures a model that is not shipped."""
+    prod does not run measures nothing about prod."""
     try:
         spec = importlib.util.spec_from_file_location("prodcheck", ROOT / "eval" / "prodcheck.py")
         pc = importlib.util.module_from_spec(spec)
@@ -100,7 +104,7 @@ def _prod_model() -> str:
 
 def _post(base: str, tok: str, body: dict, timeout: int = 120) -> tuple[int, str]:
     # user-agent matches api/proxy.py's UPSTREAM_USER_AGENT — see the matching comment in dogfood.py's
-    # snapshot_models() for why this is here (CUR-602).
+    # snapshot_models() for why this is here.
     req = urllib.request.Request(f"{base}/chat/completions", data=json.dumps(body).encode(),
                                  headers={"authorization": f"Bearer {tok}",
                                           "content-type": "application/json",
@@ -157,10 +161,11 @@ def probe(base: str, model: str, tok: str, repeats: int,
     """(condition, hits, repeats, prod_relevant, note) per condition.
 
     `tool_choice` is the knob, not a constant, because "auto" measures whether the model CHOOSES to call
-    a tool and "required" measures whether the SERVER will make it. Those are different questions.
-    The second is the one that matters when a model answers with a long chat message containing the whole
-    deliverable instead of writing a file, which no amount of prompt wording makes impossible the way a
-    server-side constraint does. A non-200 on "required" is itself the answer —
+    a tool and "required" measures whether the SERVER will make it. Those are different questions and
+    only the first was ever asked here. The second is the one that matters for the failure this script
+    keeps finding: long-horizon attempts answer with a 70KB+ chat message
+    containing the whole package instead of writing a single file, and no amount of prompt wording makes
+    that impossible the way a server-side constraint does. A non-200 on "required" is itself the answer —
     it means the fix is not available on this endpoint."""
     rows = []
     for name, build, stream, relevant in CONDITIONS:
@@ -215,16 +220,16 @@ def main() -> int:
     print(f"\nREGRESSION: {', '.join(r[0] for r in broken)} did not produce a tool call.")
     if bare_ok:
         print("`bare` still works, so the capability is intact and the trigger is the instruction text —\n"
-              "the instruction text differs between the passing and failing shapes. Agent tasks that send a\n"
-              "failing shape fail until the upstream behaviour changes; re-run this to see whether it has.")
+              "the R1h shape exactly. Nothing on our side fixes it. Agent tasks will fail\n"
+              "until it clears; re-run this to find out when.")
     else:
         print("`bare` failed too, so this is broader than the R1h shape.\n"
               "Before treating this as a production incident: this script hits CSCS DIRECTLY with a\n"
               "credential from YOUR local env, not the path production takes (the model app proxies\n"
               "through the internal LiteLLM gateway, which holds its own separate CSCS token). A uniform\n"
               "failure across every condition, including `bare`, is at least as likely to be this script's\n"
-              "own credential or IP being rejected as it is a real outage — confirmed live 2026-08-25, a\n"
-              "404 here while the real deployed service completed a task in the same minute. Confirm\n"
+              "own credential or IP being rejected as it is a real outage: a 404 here can coincide with the\n"
+              "deployed service completing tasks. Confirm\n"
               "against the actual service (scripts/client.py against its real URL) before escalating.")
     return 2
 

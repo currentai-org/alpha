@@ -17,7 +17,7 @@ const medium = (tag: string): DraftAnalysis => ({
 	source: 'manual'
 });
 
-describe('languageCoverage: the Languages panel names Auto’s medium-size pick per launch language (CUR-4692)', () => {
+describe('languageCoverage: the Languages panel names Auto’s medium-size pick per launch language', () => {
 	const { strong, learning } = coverageOf();
 	const all = [...strong, ...learning];
 

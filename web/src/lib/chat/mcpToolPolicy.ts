@@ -1,4 +1,4 @@
-// A person's choice for one tool on a connected MCP server (CUR-3984), set in Settings → Connectors and
+// A person's choice for one tool on a connected MCP server, set in Settings → Connectors and
 // stored with their settings as `mcpToolPolicies`, keyed by the tool's `server__tool` name.
 //
 //   allow  runs without the confirmation card, write tools included.

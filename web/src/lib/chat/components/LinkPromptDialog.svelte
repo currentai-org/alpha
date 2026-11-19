@@ -1,6 +1,6 @@
 <!--
   @component
-  Asks before a deep link sends a prompt or fetches attachments (CUR-2644, ported from upstream
+  Asks before a deep link sends a prompt or fetches attachments (ported from upstream
   chat-ui 5418e752). Whoever wrote the link chose the text, the files and, on a model route, the
   model, so nothing happens until the visitor presses the confirming button.
 -->

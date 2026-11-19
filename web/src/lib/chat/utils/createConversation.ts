@@ -1,6 +1,13 @@
 import { get } from "svelte/store";
 import { base } from "$lib/chat/paths";
 import { ERROR_MESSAGES, error, errorHeld } from "$lib/chat/stores/errors";
+import { rememberSent } from "$lib/chat/crypto/openedHistory";
+
+/** What the create route sealed of this request, in the turn's post shape. */
+type OpenedAtCreate = {
+	preprompt: { rev: number; text: string; salt?: string };
+	history: { id: string; rev: number; body: Record<string, unknown>; salt?: string }[];
+};
 
 /** The two settings fields the new-conversation request reads. `$settings` from the
  *  settings store satisfies this structurally. */
@@ -16,7 +23,7 @@ export { PERSONAL_INSTRUCTIONS_KEY } from "$lib/chat/personalInstructions";
  * (textGeneration/index.ts), so this can only ADD context, never replace the persona.
  *
  * Personalization's instructions (key `*`) are NOT sent here: the server reads them on every turn
- * (turnPreferences.ts), so an edit reaches chats that are already open (CUR-1443). A copy stored on
+ * (turnPreferences.ts), so an edit reaches chats that are already open. A copy stored on
  * the conversation would outlive the person changing or clearing them.
  */
 export function prepromptFor(model: string, settings: PrepromptSettings): string | undefined {
@@ -62,18 +69,21 @@ export async function requestNewConversation(
 		}
 		error.set(errorMessage);
 		// A refusal (the conversation cap's 429, a 400) is a reason the person has to act on, so the
-		// toast is held like a refused send's (CUR-1896) rather than flashing for five seconds (CUR-2875).
+		// toast is held like a refused send's rather than flashing for five seconds.
 		if (res.status < 500) errorHeld.set(true);
 		console.error("Error while creating conversation: ", errorMessage);
 		return null;
 	}
 
 	// The server made the chat, so a held refusal from an earlier try (the cap's 429) no longer
-	// applies. Left up, it sat over the answer for its whole 20 s hold (CUR-2979).
+	// applies. Left up, it sat over the answer for its whole 20 s hold.
 	if (get(errorHeld)) {
 		error.set(undefined);
 		errorHeld.set(false);
 	}
-	const { conversationId } = await res.json();
-	return conversationId as string;
+	const { conversationId, opened } = (await res.json()) as { conversationId: string; opened?: OpenedAtCreate };
+	// The server sealed what this tab just sent. Keep it, so the first turn posts it back
+	// even from a tab that has not unlocked; a reload forgets it and the chat shows as locked.
+	if (opened) rememberSent(conversationId, opened.preprompt, opened.history);
+	return conversationId;
 }

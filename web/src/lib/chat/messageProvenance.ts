@@ -57,7 +57,7 @@ export function searchProvenance(
 // are mutually exclusive — stamped only when the path was engaged AND it did not ground the turn.
 //
 // `failed` says the search ran and did not finish, so the answer can say so. Without it a
-// search cut at its deadline stored searched=false, which X-ray read as "decided a search wasn't needed". (CUR-4091)
+// search cut at its deadline stored searched=false, which X-ray read as "decided a search wasn't needed".
 export function searchAttemptNotice(
 	attempted: boolean,
 	searched: boolean,
@@ -131,7 +131,7 @@ export function mcpProvenance(
 	return out;
 }
 
-// Write-permission provenance (CUR-471): stamped only when this caller's writes were actually
+// Write-permission provenance: stamped only when this caller's writes were actually
 // restricted for the task ("deny_writes") — a plain "allow" turn, the overwhelming common case, has
 // nothing to explain, so returns undefined then. Same shape-authority pattern as mcpProvenance above:
 // the DECISION (was this caller resolved to deny_writes?) is made upstream by agent-service; only the
@@ -149,8 +149,8 @@ export function writePolicyProvenance(
 	};
 }
 
-// Agent tool-execution provenance (CUR-601): stamped only when the ACP tool-call stream observed at
-// least one real tool run this turn — an empty/missing toolKinds has nothing to explain (same CUR-234
+// Agent tool-execution provenance: stamped only when the ACP tool-call stream observed at
+// least one real tool run this turn — an empty/missing toolKinds has nothing to explain (
 // ambiguity `writePolicyProvenance`'s neighbor discusses), so returns undefined then. Same
 // shape-authority pattern as mcpProvenance/writePolicyProvenance above.
 export function agentToolsProvenance(
@@ -160,7 +160,7 @@ export function agentToolsProvenance(
 	return { toolKinds: update.toolKinds, counts: update.counts };
 }
 
-// Unrun-code provenance (CUR-1341): the mirror of agentToolsProvenance above, and the same
+// Unrun-code provenance: the mirror of agentToolsProvenance above, and the same
 // shape-authority pattern — one function owns the stamp so the server's persisted copy and the client's
 // optimistic live copy cannot drift. Stamps on any reason, because unlike toolKinds there is no empty
 // case to disambiguate: the server emits this update ONLY when its own unrun check fired, so an update
@@ -177,10 +177,10 @@ export function unrunCodeProvenance(
 // One answer can make several calculate calls, so this accumulates, in call order. Server
 // and client fold updates through this one function so the persisted and live lists cannot drift.
 // Capped: the tool loop stops after three rounds, but a round can carry any number of calls, and a
-// runaway should not grow the message without bound. (CUR-2273)
+// runaway should not grow the message without bound.
 const MAX_CALCULATIONS = 12;
 // The kit caps a turn at four calls; the bound here only stops a malformed stream growing
-// the message. (CUR-3026)
+// the message.
 const MAX_MCP_CALLS = 8;
 export function mcpCallAppended(
 	list: Message["mcpCalls"],
@@ -218,7 +218,7 @@ export function calculationAppended(
 	];
 }
 
-// Agent confirmation gate (CUR-218): unlike the stamp-once shapes above, one turn can open more than
+// Agent confirmation gate: unlike the stamp-once shapes above, one turn can open more than
 // one confirmation, so this ACCUMULATES rather than replaces — server and client both fold updates
 // through the same two functions so the array can never drift between the persisted and live view.
 //
@@ -294,9 +294,11 @@ export function moderationMarker(fields: {
 	// rule (or a non-Coop decline like prompt-injection) leaves `ruleLabel` absent rather than null —
 	// the display surfaces then fall back to the generic safety copy.
 	ruleLabel?: string | null;
-	// The screen could not run (fail-closed UNKNOWN), so nothing was flagged (CUR-2301).
+	// Every labeled rule that blocked the turn, when more than one did.
+	ruleLabels?: string[];
+	// The screen could not run (fail-closed UNKNOWN), so nothing was flagged.
 	unscreened?: boolean;
-	// A self-harm rule declined the turn, so the Support resources card shows with it (CUR-2111).
+	// A self-harm rule declined the turn, so the Support resources card shows with it.
 	support?: boolean;
 }): NonNullable<Message["moderation"]> {
 	return {
@@ -305,6 +307,7 @@ export function moderationMarker(fields: {
 		score: fields.score,
 		kind: fields.kind,
 		...(fields.ruleLabel ? { ruleLabel: fields.ruleLabel } : {}),
+		...(fields.ruleLabels && fields.ruleLabels.length > 1 ? { ruleLabels: fields.ruleLabels } : {}),
 		...(fields.unscreened ? { unscreened: true } : {}),
 		...(fields.support ? { support: true } : {}),
 	};
@@ -313,7 +316,7 @@ export function moderationMarker(fields: {
 // One helper model's entry, for a model that worked on the turn without writing it. `baseURL`
 // is the address the call went to, or a bare host (LiteLLM's api-base header can be either), and only
 // its host is kept, so a path or a key in a query string never reaches the message. Returns undefined without a model id: an entry naming nobody would be a row in
-// the trace with nothing behind it. (CUR-984)
+// the trace with nothing behind it.
 export function assistedByEntry(
 	role: AssistRole,
 	model: string | undefined,

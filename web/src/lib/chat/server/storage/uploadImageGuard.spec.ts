@@ -1,6 +1,6 @@
 // The child-safety screen on stored pictures. The judge is injected, so these tests pin the
 // contract around the model (which rules run, how many calls, how a failure lands) and never what
-// Shieldstral answers; the live probe on the PR preview covers that. (CUR-3201)
+// Shieldstral answers; a live probe against a deployed endpoint covers that.
 import { describe, it, expect, vi } from "vitest";
 import sharp from "sharp";
 import { childRules, loadGuardPolicy } from "$lib/chat/server/guardPolicy";
@@ -14,11 +14,11 @@ import {
 } from "./uploadImageGuard";
 
 /** The screen's cap, written out: changing it changes the screen's coverage, which is a decision for the
- *  safety lead, so a change here should be a deliberate edit to this spec too (CUR-4662). */
+ *  safety lead, so a change here should be a deliberate edit to this spec too. */
 const MAX_SCREENED_IMAGES_PER_FILE = 20;
 
 const quiet = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
-const on = { enabled: () => true, configured: () => true, logger: quiet };
+const on = { configured: () => true, logger: quiet };
 
 /** A distinct solid-colour PNG per index, so dedupe sees n different pictures. */
 async function png(i: number): Promise<Uint8Array> {
@@ -85,7 +85,7 @@ describe("screenStoredImages — child-tier rules only, fail closed", () => {
 		expect(calls).toHaveLength(0);
 	});
 
-	it("tells the person how many pictures the file has, the most we check, and to split it (CUR-4662)", async () => {
+	it("tells the person how many pictures the file has, the most we check, and to split it", async () => {
 		const many = await Promise.all(Array.from({ length: 41 }, (_, i) => png(i + 100)));
 		const refused = await screenStoredImages(many, { ...on, judge: judgeAnswering(() => no).judge }).catch((e) => e);
 		expect(refused).toBeInstanceOf(TooManyImagesToScreenError);
@@ -94,16 +94,26 @@ describe("screenStoredImages — child-tier rules only, fail closed", () => {
 		);
 	});
 
-	it("refuses loudly when guard-primary is on and no endpoint is configured, never a silent pass", async () => {
+	it("a hosted image upload with no classifier is refused loudly, never a silent pass", async () => {
 		await expect(
-			screenStoredImages([await png(5)], { enabled: () => true, configured: () => false, logger: quiet })
+			screenStoredImages([await png(5)], { configured: () => false, selfHost: () => false, logger: quiet })
 		).rejects.toBeInstanceOf(ImageScreenUnavailableError);
 		expect(quiet.error).toHaveBeenCalled();
 	});
 
-	it("makes no call when guard-primary is off, matching chat, whose screen runs under the same flag", async () => {
-		const { judge, calls } = judgeAnswering(() => yes);
-		await screenStoredImages([await png(6)], { ...on, enabled: () => false, judge });
-		expect(calls).toHaveLength(0);
+	it("a self-host edition with no classifier stores the picture unscreened, says so, and makes no call", async () => {
+		const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+		await expect(
+			screenStoredImages([await png(6)], { configured: () => false, selfHost: () => true, logger: log })
+		).resolves.toBeUndefined();
+		expect(log.warn).toHaveBeenCalled();
+		expect(log.error).not.toHaveBeenCalled();
+	});
+
+	it("a self-host edition with a classifier screens like a hosted build: a child rule that fires still refuses", async () => {
+		const { judge } = judgeAnswering(() => yes);
+		await expect(
+			screenStoredImages([await png(7)], { configured: () => true, selfHost: () => true, judge, logger: quiet })
+		).rejects.toBeInstanceOf(ImageScreenBlockedError);
 	});
 });

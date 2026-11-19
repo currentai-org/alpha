@@ -7,7 +7,7 @@ import { buildServingNote } from "./grounding";
 
 // When Mistral Large 3 serves, every surface that says who made the model and where it runs
 // names Mistral AI and La Plateforme (France), never Apertus, SNAI, or public compute. The wire id and
-// base URL are the ones CUR-2272 configures. (CUR-2274)
+// base URL are the ones the Large 3 model config uses.
 const LARGE_3 = "mistral-large-2512";
 const MISTRAL_BASE = "https://api.mistral.ai/v1";
 const GATEWAY_BASE = "https://api-internal.example/v1";
@@ -71,14 +71,14 @@ describe("Large 3 serving label comes from the endpoint the model is sent to", (
 describe("what the model is told about itself when Large 3 serves", () => {
 	const serving = resolveServing(MISTRAL_BASE, LARGE_3);
 
-	it("per-turn provenance facts name Mistral AI as the maker and no host, even on its direct lane (CUR-3562)", () => {
+	it("per-turn provenance facts name Mistral AI as the maker and no host, even on its direct lane", () => {
 		// A fallback can serve a Large 3 turn somewhere else, so La Plateforme is a forecast here.
 		const facts = buildProvenanceFacts({ modelId: LARGE_3 });
 		expect(facts).toContain("You are Mistral Large 3, built by Mistral AI.");
 		expect(facts).not.toMatch(/La Plateforme|France|Apertus|Swiss National AI|Public AI Inference Utility/);
 	});
 
-	it("a persona deferring to the per-turn facts names no host in its few-shot either (CUR-3562)", () => {
+	it("a persona deferring to the per-turn facts names no host in its few-shot either", () => {
 		const prompt = buildPersonaPrompt(LARGE_3, undefined, { serving, deferServing: true });
 		expect(prompt).toContain("used here through AI Potluck, the chat app Current AI runs");
 		expect(prompt).not.toMatch(/La Plateforme|in France/);
@@ -93,7 +93,7 @@ describe("what the model is told about itself when Large 3 serves", () => {
 		expect(prompt).not.toContain("{computeFewShot}");
 	});
 
-	it("gives the Apertus few-shot no compute claim on a gateway lane, since the gateway picks the host (CUR-2135)", () => {
+	it("gives the Apertus few-shot no compute claim on a gateway lane, since the gateway picks the host", () => {
 		const prompt = buildPersonaPrompt(APERTUS, undefined, {
 			serving: resolveServing(GATEWAY_BASE, APERTUS, "api-internal.example=Gateway"),
 		});
@@ -103,7 +103,7 @@ describe("what the model is told about itself when Large 3 serves", () => {
 	});
 
 	// "served here by Current AI" can come back as "served directly by Current AI".
-	// Current AI runs the app; only the host may be said to serve or run the model. (CUR-2135)
+	// Current AI runs the app; only the host may be said to serve or run the model.
 	it("never tells the model that Current AI serves, hosts or runs it, on a direct or a gateway lane", () => {
 		const operatorAsHost = /(serv(e|es|ed)|host(s|ed)?|runs?)\b[^.;]{0,20}\bby Current AI|Current AI (serves|hosts|runs) (you|the model)/;
 		for (const s of [serving, resolveServing(GATEWAY_BASE, APERTUS, "api-internal.example=Gateway")]) {

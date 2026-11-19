@@ -61,7 +61,7 @@ if (browser) {
 }
 
 /**
- * Seed a cleared tester's first-ever visit into "auto" instead of "off" (CUR-770). Call once, e.g. from
+ * Seed a cleared tester's first-ever visit into "auto" instead of "off". Call once, e.g. from
  * the layout's onMount, with `page.data.agentModeDefault`.
  *
  * Fires ONLY when localStorage had never been written at the moment this module first loaded —
@@ -73,7 +73,7 @@ if (browser) {
  * "never chosen" from "chose off."
  *
  * `storedAtLoad` alone is NOT enough to keep "an explicit past choice always wins" true on a
- * FIRST-EVER visit (CUR-1067): it is frozen at MODULE load (script evaluation, before any component
+ * FIRST-EVER visit: it is frozen at MODULE load (script evaluation, before any component
  * exists), not at the time this function actually runs. This is called from ChatShell's onMount, and
  * Svelte fires a child component's onMount BEFORE its parent's, so the composer's Agent toggle is
  * already mounted and clickable while this call is still pending. A toggle clicked to "on" within that

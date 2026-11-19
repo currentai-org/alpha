@@ -12,3 +12,8 @@ overrides:
   handlebars: ^4.7.10
   http-cache-semantics: ^4.3.0
   ip-address: ^10.7.2
+  # GHSA-3g3m-2fjr-6pw4 (glob) and GHSA-g3hv-75wg-m249 (minimatch): fantasticon's build-time file
+  # matching only; `pnpm build` still runs on glob 14.
+  glob: ^14.0.2
+  minimatch@^9: ^11.0.1
+  minimatch@^10: ^11.0.1

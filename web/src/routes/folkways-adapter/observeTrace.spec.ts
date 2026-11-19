@@ -32,7 +32,7 @@ describe('folkways-adapter observeTrace', () => {
 		expect(payload.detail).not.toHaveProperty('messages');
 	});
 
-	// assertValidTrace is called on the live path through buildObserveTracePayload (CUR-1165), and
+	// assertValidTrace is called on the live path through buildObserveTracePayload, and
 	// this test builds the payload the same way the real caller does. The other 'rejects' tests below
 	// construct an already-built payload by hand and never touch buildObserveTracePayload's own
 	// return path, so they cannot see a missing validation call there.

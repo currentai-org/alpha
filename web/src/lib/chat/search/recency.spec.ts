@@ -105,7 +105,7 @@ describe("isUnservableLiveQuery — the serveability gate", () => {
 		}
 	});
 
-	it("does NOT fire on prices, exchange rates, place weather or headlines: Firecrawl serves today's figure (CUR-2424)", () => {
+	it("does NOT fire on prices, exchange rates, place weather or headlines: Firecrawl serves today's figure", () => {
 		for (const q of [
 			"exchange rate between the euro and the Moroccan dirham today?",
 			"USD to EUR exchange rate",
@@ -219,7 +219,7 @@ describe("isExplicitLookupRequest — the user's own stated ask to search", () =
 	});
 });
 
-describe("asksForTheLatest: the newest of something, never just a year (CUR-3932)", () => {
+describe("asksForTheLatest: the newest of something, never just a year", () => {
 	it.each([
 		"What did the ECB decide at its most recent rate meeting?",
 		"When was the most recent total solar eclipse visible in the US?",

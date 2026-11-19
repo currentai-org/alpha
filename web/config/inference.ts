@@ -1,16 +1,17 @@
-// Which model fills which role, on which host: one declared shape for the whole inference topology
-// (CUR-2277). The shape follows LiteLLM's `model_list` (MIT, github.com/BerriAI/litellm): a provider
+// Which model fills which role, on which host: one declared shape for the whole inference topology.
+// The shape follows LiteLLM's `model_list` (MIT, github.com/BerriAI/litellm): a provider
 // carries its base URL and the NAME of the env var holding its key, never the key itself; a model
 // names its provider and the id sent upstream; a role is a named pointer to a model.
 //
 // Phase 1 builds this from today's env vars at boot (models.ts) and changes nothing that is served.
 // What it adds is the check: a role whose model its provider does not list fails loud at boot, where
 // today it surfaces as a visitor-facing 400 the first time the role is used. A fallback model id the
-// HF router serves under no name would otherwise surface only when failover fires (CUR-2293). Phase 2 moves the values themselves into this file; the
-// picker lists below are the first (CUR-3484).
+// HF router serves under no name would otherwise surface only when failover fires. Phase 2 moves the values themselves into this file; the
+// picker lists below are the first.
 
 import { z } from "zod";
 import { pickerSites, type PickerSite } from "./picker.ts";
+import { deployEnvName } from "../src/lib/server/runtimeEnv.js";
 
 /** The two overlays. Every preview deploy shares develop's config; there is never one per branch. */
 const environments = ["develop", "production"] as const;
@@ -124,7 +125,7 @@ export type UnservedRole = {
 /**
  * Roles whose model its provider does not serve. `served` maps a provider name to the ids its
  * /models listed; a provider that lists models but is missing from the map is reported "unread",
- * because a check that passes when it could not look is the CUR-113 shape. Providers with
+ * because a check that passes when it could not look is the shape. Providers with
  * lists_models false have nothing to check against and are skipped.
  */
 export function unservedRoles(cfg: InferenceConfig, served: ReadonlyMap<string, ReadonlySet<string>>): UnservedRole[] {
@@ -174,8 +175,18 @@ export { PICKER, pickerSites, type PickerSite } from "./picker.ts";
  * vars off one; primaryModel.ts and config.ts both branch on this.
  */
 export function deployedEnv(env: Record<string, string | undefined>): "production" | "preview" | null {
-	const raw = (env.DEPLOY_ENV || env.VERCEL_ENV || "").trim();
+	const raw = (deployEnvName(env) || "").trim();
 	return raw === "production" || raw === "preview" ? raw : null;
+}
+
+/**
+ * deployedEnv, except null on a self-host edition (ALPHA_EDITION=selfhost). The committed config a
+ * deployment reads (the picker, the role models, the judges' endpoints) is hosted Alpha's own; a self-host
+ * in production mode keeps reading its env, MODEL_ALLOWLIST and the rest, as it does off one.
+ */
+export function committedConfigEnv(env: Record<string, string | undefined>): "production" | "preview" | null {
+	if ((env.ALPHA_EDITION ?? "").trim().toLowerCase() === "selfhost") return null;
+	return deployedEnv(env);
 }
 
 export function pickerSite(vercelEnv: string | undefined, instance: string): PickerSite {
@@ -187,7 +198,7 @@ export function pickerSite(vercelEnv: string | undefined, instance: string): Pic
 
 /**
  * Which model fills each side-call role, and the backup lane's upstream id. Every deployed site uses
- * the same values (CUR-2277). On a Vercel deployment config.ts serves these and ignores the env var
+ * the same values. On a Vercel deployment config.ts serves these and ignores the env var
  * of the same name; off Vercel (local dev, CI, evals) the env var alone decides.
  */
 export const ROLE_MODELS = {
@@ -195,24 +206,33 @@ export const ROLE_MODELS = {
 	TASK_MODEL: "mistral-small-2603",
 	/** The math-routing turn planner, and the model that answers the math turns. */
 	ARITHMETIC_ROUTE_MODEL: "mistral-medium-2604",
-	/** The collective second-opinion panel, in fan-out order. */
-	COMPARE_PANEL: [
-		"zai-org/GLM-5.2",
-		"google/gemma-4-31B-it",
-		"speakleash/Bielik-11B-v3.0-Instruct",
-		"Qwen/Qwen3.6-35B-A3B",
-	],
+	/**
+	 * The collective second-opinion panel, in fan-out order. Qwen 3.6 left it: the router passes its
+	 * one acceptable provider, DeepInfra, through OpenRouter, which the privacy notice does not name,
+	 * and on Featherless it wrote its reasoning into the answer.
+	 */
+	COMPARE_PANEL: ["zai-org/GLM-5.2", "google/gemma-4-31B-it", "speakleash/Bielik-11B-v3.0-Instruct"],
 	/** Writes the second-opinion verdict. */
 	AGGREGATOR_MODEL: "zai-org/GLM-5.2",
-	/** The sequential panel's first seat, and the RAG entity-scope guard's model. */
+	/** The sequential panel's first seat. */
 	SECOND_OPINION_MODEL: "zai-org/GLM-5.2",
+	/**
+	 * The RAG entity-scope guard's model. It is TASK_MODEL's Mistral Small, so it rides the same
+	 * api-internal side-call lane (MISTRAL_MODELS, `side-call-own-lane`) rather than one pinned HF
+	 * provider: while DeepInfra paused Qwen 3.6 the guard failed open on every call and 2 of 8
+	 * colliders grounded wrong. Collision probe on this model, 2 runs: 0/8 colliders wrong,
+	 * 0/3 controls lost, 198 of 198 calls gave a verdict, p50 723 ms. Qwen3.5-35B-A3B on the same
+	 * router also scored 0/8 and 0/3 but reasons by default (16 to 23 s a call without a reasoning-off
+	 * field) at p50 1,080 ms with one; Qwen3.8-27B answered every call 400 there.
+	 */
+	ENTITY_SCOPE_MODEL: "mistral-small-2603",
 	THIRD_OPINION_MODEL: "utter-project/EuroLLM-22B-Instruct-2512",
 	/**
 	 * The catalog backup lane's spelling of the primary's id, for a backup host that cases it
 	 * differently. Empty: every backup host here spells Apertus, ALIA and Bielik as the primary does.
 	 * It never names another model. A person who picks a model gets that model, a retry of it on the
 	 * backup host, then an error, and `withOnlyPickedModelLanes` (modelsCatalog.ts) drops any lane
-	 * that asks for something else (CUR-3936).
+	 * that asks for something else.
 	 */
 	FALLBACK_MODEL_ID: "",
 } as const satisfies Record<string, string | readonly string[]>;

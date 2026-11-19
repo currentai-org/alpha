@@ -53,7 +53,7 @@
  * This is deliberately NOT the same axis as `whenAbsent`. That records which way the code defaults
  * when PostHog is silent (a rollout gate defaults off; a kill switch like `crisis-referral-order`
  * defaults on). A fix can legitimately be either — starting a new guard dark is often right, and
- * a filler-opener guard (CUR-170) is the argument for it: it
+ * a filler-opener guard is the argument for it: it
  * never fired and would have deleted a one-word answer. What `class` adds is the END STATE, which `whenAbsent` says nothing
  * about.
  */
@@ -102,7 +102,7 @@ type FlagCodeDefault =
 	| "env";
 
 /**
- * Whose answer a signed-in request reads (CUR-2463). flags.ts evaluates every flag once per signed-in
+ * Whose answer a signed-in request reads. flags.ts evaluates every flag once per signed-in
  * account, with the account id as distinct id and `env`, `account_id` and `email` as person properties, so a
  * production release condition can say "team accounts only" and mean it.
  *
@@ -132,11 +132,46 @@ type FlagVerification = {
 	/** The probe and its result, specific enough to re-run — not "looked fine". */
 	evidence: string;
 	/**
-	 * The model that actually served during the probe, from `routerMetadata.model` (CUR-874) — never
+	 * The model that actually served during the probe, from `routerMetadata.model` — never
 	 * the badge, which names one model no matter which lane answered.
 	 */
 	servedBy: string;
 };
+
+/**
+ * The conditions that can stand in for an env var in `onWhenEnv`, each with how selfhost/README.md's
+ * flag table states it (scripts/selfhost-flag-table.mjs) for the env names it stands in for. flags.ts's
+ * `satisfiedInstead` evaluates each one.
+ */
+export const SELF_HOST_CONDITIONS = {
+	/** ALPHA_EDITION=selfhost with the variable itself unset, so an explicit "false" still reads off (edition.ts). */
+	"self-host-edition-unless-set": (names: string) =>
+		`\`ALPHA_EDITION=selfhost\` stands in for ${names} when it is unset`,
+	/** CSAM_SCAN=off on a set, non-hosted edition (csamScan.ts, csamScanOptedOut). */
+	"csam-scan-opted-out": (names: string) =>
+		`\`CSAM_SCAN=off\` (with \`ALPHA_EDITION\` set to something other than \`hosted\`) stands in for ${names}`,
+} as const;
+
+export type FlagSelfHostCondition = keyof typeof SELF_HOST_CONDITIONS;
+
+/**
+ * What a flag reads as on a self-hosted deployment, meaning one with no PUBLIC_POSTHOG_KEY. It is the
+ * only answer used there; a deployment with PostHog configured never reads it. `ALPHA_FLAGS="+key,-key"`
+ * overrides it per key (flags.ts, selfHostFlagValue).
+ */
+export type FlagSelfHost =
+	/** On. */
+	| "on"
+	/** Off. Also the value for a flag whose self-host default is a pending decision for the project lead. */
+	| "off"
+	/** The call site's own fallback, unchanged: there is no better self-host answer than what the code does without PostHog. */
+	| "code"
+	/** On exactly when every named env var is set (non-empty, and not false/0/no/off); otherwise off. */
+	| {
+			onWhenEnv: string[];
+			/** Env names in `onWhenEnv` that count as set when the named condition holds instead. */
+			satisfiedBy?: Record<string, FlagSelfHostCondition>;
+	  };
 
 export type FlagKeySpec = {
 	/** The key as PostHog stores it. No dots — PostHog rejects them in flag keys. */
@@ -145,12 +180,14 @@ export type FlagKeySpec = {
 	class: FlagClass;
 	/** Which way the code falls with PostHog silent, read off the call site. See FlagCodeDefault. */
 	codeDefault: FlagCodeDefault;
+	/** What the flag reads as with PostHog not configured. Required, so a new key states it. See FlagSelfHost. */
+	selfHost: FlagSelfHost;
 	/** Whose answer `flagEnabledOr` reads for a signed-in visitor. See FlagScope. */
 	scope: FlagScope;
 	/** Who decides this flag's release conditions and when it gets removed. */
 	owner: string;
 	/**
-	 * ISO date (YYYY-MM-DD) by which `owner` removes this flag or sets a later date on purpose (CUR-1337).
+	 * ISO date (YYYY-MM-DD) by which `owner` removes this flag or sets a later date on purpose.
 	 * Required for `fix`, `migration` and `probe`, which are temporary by their own class docs above;
 	 * optional for `feature`, whose resting state can be dark for as long as anyone wants.
 	 *
@@ -168,7 +205,7 @@ export type FlagKeySpec = {
 	whenAbsent: string;
 	/**
 	 * The `linear:cur-NNN` tag this flag carries (or should carry) in PostHog, the link between a Linear
-	 * ticket and the PostHog flag that gates it; `trig link`/`trig status` read and write this tag (CUR-515).
+	 * ticket and the PostHog flag that gates it; `trig link`/`trig status` read and write this tag.
 	 * Filled in by whoever adds the entry, same moment as `owner`/`gates`, not a separate step to
 	 * remember.
 	 *
@@ -181,10 +218,10 @@ export type FlagKeySpec = {
 	 * Other registered keys this flag's own release conditions must stay a subset of — a declared
 	 * relationship, not one only implied by a `gates` comment cross-referencing another entry. A gate
 	 * composed in prose only can drift: a parent flag can get a production release group its child lacks,
-	 * and production silently loses the child's surface with nothing to catch it (CUR-1085).
+	 * and production silently loses the child's surface with nothing to catch it.
 	 *
 	 * Exported by `flags-export.mjs` for `trig reconcile` to read; `trig` itself does not yet assert
-	 * anything about it (CUR-1086). The relationship is real and worth stating regardless of when the
+	 * anything about it. The relationship is real and worth stating regardless of when the
 	 * checker catches up to it.
 	 */
 	requires?: string[];
@@ -199,7 +236,7 @@ export type FlagKeySpec = {
 	verified?: FlagVerification;
 	/**
 	 * The scenario specs (file names under `web/e2e/scenarios/`) that force this flag on and off
-	 * through `setFlagOverrides`, so each state of the gated code runs somewhere (CUR-2166). A flag
+	 * through `setFlagOverrides`, so each state of the gated code runs somewhere. A flag
 	 * tested in one state only ships its other state unrun, and flipping it later is the first time
 	 * anyone sees that code. `flagKeys.spec.ts` checks each named file really forces that state, and
 	 * holds the list of non-probe flags still missing one, which may only shrink.
@@ -209,7 +246,7 @@ export type FlagKeySpec = {
 	 * Set on a flag that gates a safety or moderation behaviour: a screen, a judge, a crisis or
 	 * violence path. `verify-flags.mjs` reads it to decide how loud an unconfirmed intent is: an
 	 * unconfirmed safety flag fails the run, any other unconfirmed flag only warns, because a safety
-	 * flag sitting off in production with nobody having said so is the state worth a red (CUR-4588).
+	 * flag sitting off in production with nobody having said so is the state worth a red.
 	 */
 	safety?: true;
 };
@@ -234,6 +271,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		key: "local-inference",
 		scope: "account",
 		codeDefault: "env",
+		selfHost: "on",
 		class: "feature",
 		owner: "chat",
 		gates:
@@ -251,6 +289,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		key: "local-inference-managed",
 		scope: "account",
 		codeDefault: "env",
+		selfHost: { onWhenEnv: ["PANGOLIN_API_URL", "PANGOLIN_INTEGRATION_TOKEN", "PANGOLIN_ORG_ID", "PANGOLIN_DOMAIN_ID", "PANGOLIN_TUNNEL_ENDPOINT"] },
 		class: "feature",
 		owner: "chat",
 		// Separate from `local-inference` rather than derived from it, for the reason
@@ -272,29 +311,41 @@ export const FLAG_KEYS = defineFlagKeys([
 		scope: "deployment",
 		specs: { on: "everyday-jobs.spec.ts", off: "data-portability.spec.ts" },
 		codeDefault: "env",
+		selfHost: { onWhenEnv: ["AGENT_SERVICE_URL", "AGENT_SERVICE_TOKEN"] },
 		class: "feature",
 		owner: "chat",
 		gates:
 			// Both agentModeEnabled() and agentModeEnabledForUser() (agentMode.ts) check deployEnv() first,
-			// then poll AGENT_MODE_FLAG, and this description has to match that call site (CUR-1451).
+			// then poll AGENT_MODE_FLAG, and this description has to match that call site.
 			"registration of the Apertus-Agent model and per-user access to it (both agentMode.ts: deployEnv() === \"preview\" | \"production\" gates first, then AGENT_MODE_FLAG is polled from PostHog — CUR-770/CUR-771)",
 		whenAbsent: "agent mode off everywhere — the model is never registered and never offered",
-		// PostHog's actual tag, not the ticket that put agent-mode behind a flag (CUR-87): trig's
-		// Linear↔PostHog link work (CUR-515) used agent-mode as its pilot/reference flag.
+		// PostHog's actual tag, not the ticket that put agent-mode behind a flag: trig's
+		// Linear↔PostHog link work used agent-mode as its pilot/reference flag.
 		ticket: "CUR-515",
 	},
-	// There is deliberately no `apertus15` flag (CUR-243): a rollout ends by making the checkpoint the
+	// There is deliberately no `apertus15` flag: a rollout ends by making the checkpoint the
 	// configured default, not by leaving a permanently-100% flag behind. A flag nobody removes is worse
 	// than no flag (flags.ts). Delete the definition in PostHog too: a key that
 	// exists and is read by nothing is the same invisible state this registry was built to surface.
 	{
 		key: "multimodal",
-		// Per account (CUR-2725); on for everyone on preview (CUR-3979). The model registry reads
+		// Per account; on for everyone on preview. The model registry reads
 		// `multimodalConfigured()`, and each request asks `modelTakesImagesNow`, so no shared build
 		// carries one visitor's answer to the next.
 		scope: "account",
 		specs: { on: "guest-uploads.spec.ts", off: "bring-your-own-text.spec.ts" },
 		codeDefault: "off",
+		selfHost: {
+			onWhenEnv: ["MULTIMODAL_ENABLED", "CSAM_SCAN_BASE_URL", "CSAM_SCAN_TOKEN"],
+			// CSAM_SCAN=off on a self-host edition replaces the scanner pair (csamScan.ts, csamScanOptedOut).
+			// ALPHA_EDITION=selfhost stands in for MULTIMODAL_ENABLED unless it is set (multimodalConfigured,
+			//), so a self-host's uploads wait only on the operator's scan decision.
+			satisfiedBy: {
+				MULTIMODAL_ENABLED: "self-host-edition-unless-set",
+				CSAM_SCAN_BASE_URL: "csam-scan-opted-out",
+				CSAM_SCAN_TOKEN: "csam-scan-opted-out",
+			},
+		},
 		class: "feature",
 		owner: "trust-and-safety",
 		gates:
@@ -307,6 +358,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		key: "dictation",
 		scope: "account",
 		codeDefault: "off",
+		selfHost: { onWhenEnv: ["TRANSCRIPTION_MODEL"] },
 		class: "feature",
 		owner: "chat",
 		gates:
@@ -319,6 +371,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		safety: true,
 		scope: "account",
 		codeDefault: "on",
+		selfHost: "code",
 		class: "fix",
 		owner: "chat",
 		expires: "2026-12-31",
@@ -333,6 +386,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		safety: true,
 		scope: "account",
 		codeDefault: "off",
+		selfHost: "off",
 		class: "fix",
 		owner: "chat",
 		expires: "2026-12-31",
@@ -347,6 +401,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		specs: { on: "support-signal-multilingual.spec.ts", off: "self-harm-hedged.spec.ts" },
 		scope: "account",
 		codeDefault: "off",
+		selfHost: "off",
 		class: "fix",
 		owner: "chat",
 		expires: "2026-12-31",
@@ -359,6 +414,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		key: "groundcheck",
 		scope: "account",
 		codeDefault: "off",
+		selfHost: "off",
 		class: "fix",
 		owner: "chat",
 		expires: "2026-12-31",
@@ -371,6 +427,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		key: "conversation-titles",
 		scope: "account",
 		codeDefault: "off",
+		selfHost: "on",
 		class: "feature",
 		owner: "chat",
 		gates:
@@ -380,22 +437,11 @@ export const FLAG_KEYS = defineFlagKeys([
 		ticket: "CUR-258",
 	},
 	{
-		key: "data-export",
-		scope: "account",
-		specs: { on: "data-portability.spec.ts", off: "data-portability.spec.ts" },
-		codeDefault: "off",
-		class: "feature",
-		owner: "chat",
-		gates:
-			"the endpoint that zips a user's own conversations and files (dataPortability.ts, read from routes/chat/api/v2/export). The route's admin-only check is SEPARATE and stricter — turning this on does not open export to everyone",
-		whenAbsent: "OFF, unconditionally (CUR-891) — see conversation-titles above for why",
-		ticket: "CUR-259",
-	},
-	{
 		key: "human-eval",
 		scope: "account",
 		specs: { on: "human-evaluation.spec.ts", off: "human-evaluation.spec.ts" },
 		codeDefault: "off",
+		selfHost: "on",
 		class: "feature",
 		owner: "chat",
 		gates:
@@ -407,6 +453,9 @@ export const FLAG_KEYS = defineFlagKeys([
 		key: "read-aloud",
 		scope: "account",
 		codeDefault: "env",
+		// Off, and turned on by itself with ALPHA_FLAGS=+read-aloud: HF_TOKEN is no switch, since boot copies
+		// OPENAI_API_KEY into it, and speech goes to Hugging Face's router with the answer text.
+		selfHost: "off",
 		class: "feature",
 		owner: "chat",
 		gates:
@@ -420,21 +469,10 @@ export const FLAG_KEYS = defineFlagKeys([
 		ticket: "CUR-225",
 	},
 	{
-		key: "model-picker",
-		scope: "deployment",
-		codeDefault: "off",
-		class: "feature",
-		owner: "chat",
-		gates:
-			"whether the registry offers more than the default model (modelGates.ts, read from models.ts buildModelsFromCatalog). MODEL_ALLOWLIST still decides WHICH models are admissible; this decides whether any but the first is offered, so a widened allowlist is inert until it is on",
-		whenAbsent:
-			"the allowlist's first entry alone — which is prod today, so nothing changes. Turning it ON is what the per-model vetting in CUR-245 gates, not the merge",
-		ticket: "CUR-245",
-	},
-	{
 		key: "rag-entity-scope-guard",
 		scope: "account",
 		codeDefault: "off",
+		selfHost: "on",
 		class: "fix",
 		owner: "chat",
 		expires: "2026-12-31",
@@ -448,6 +486,9 @@ export const FLAG_KEYS = defineFlagKeys([
 		key: "accounts",
 		scope: "deployment",
 		codeDefault: "env",
+		// On: a self-host always has a working email sign-in, a code through its mailer or, with none,
+		// email and password (mailer.ts), so the sign-in link shows without an OAuth client.
+		selfHost: "on",
 		class: "feature",
 		owner: "chat",
 		gates:
@@ -457,50 +498,10 @@ export const FLAG_KEYS = defineFlagKeys([
 		ticket: "CUR-246",
 	},
 	{
-		key: "grounded-bail-regen",
-		scope: "account",
-		codeDefault: "off",
-		class: "fix",
-		owner: "chat",
-		expires: "2026-12-31",
-		gates:
-			"re-answering UNGROUNDED when a grounded turn's whole answer bails to a hedge/refusal, instead of always substituting a citation pointer to sources the model itself declined to use (groundedBailRegen.ts, CUR-148)",
-		whenAbsent:
-			"the static sources-pointer stands for every bail — today's behavior, correct but sometimes worse than the model's own training-data answer",
-		ticket: "CUR-148",
-	},
-	{
-		key: "agent-artifact-download",
-		scope: "account",
-		specs: { on: "agent-file-download.spec.ts" },
-		codeDefault: "off",
-		class: "feature",
-		owner: "chat",
-		gates:
-			"whether a completed agent turn's files render as real download links back to agent-service's still-alive session workdir (agentArtifactDownload.ts, CUR-546), instead of only the inline-code-block rendering CUR-195 already ships. Not `multimodal`'s existing 'file download' gate, which covers the unrelated Postgres-blob output/[sha256] route for user-uploaded files",
-		whenAbsent:
-			"no download links — artifacts render exactly as before this ticket, inline-only",
-		ticket: "CUR-546",
-	},
-	{
-		key: "agent-confirm-ui",
-		scope: "account",
-		codeDefault: "off",
-		class: "feature",
-		owner: "chat",
-		gates:
-			"whether the chat UI renders/accepts the agent confirmation Allow/Deny control (agentConfirmUi.ts, CUR-218) for a tool call agent-service paused under ACP_PERMISSION_POLICY=confirm, and whether the agent-confirm proxy route accepts a click. Composes with, and does not substitute for, agent-service's own ACP_PERMISSION_POLICY — that stays off `confirm` (so the event this flag gates can't fire) until this UI exists to answer it",
-		whenAbsent:
-			"no Allow/Deny UI — a paused confirmation narrates in the think block but has nothing to click, and fails closed to deny on agent-service's own timeout regardless",
-		ticket: "CUR-218",
-		// The CUR-1085 relationship, declared rather than left to the `gates` prose above: this flag is
-		// only meaningful where agent-mode is also live.
-		requires: ["agent-mode"],
-	},
-	{
 		key: "agent-auto-mode",
 		scope: "deployment",
 		codeDefault: "on",
+		selfHost: "on",
 		class: "feature",
 		owner: "chat",
 		gates:
@@ -514,6 +515,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		key: "agent-mode-access",
 		scope: "account",
 		codeDefault: "off",
+		selfHost: "on",
 		class: "feature",
 		owner: "chat",
 		gates:
@@ -524,14 +526,14 @@ export const FLAG_KEYS = defineFlagKeys([
 		// A SECOND key rather than a release condition on `agent-mode`, for a mechanical reason and not
 		// a stylistic one: `agent-mode` is read deployment-wide from the getAllFlags() snapshot with no
 		// person attached, so a person-scoped condition on it would match nobody AND would stop the
-		// agent model registering at all. Same separation as agent-confirm-ui and
-		// agent-artifact-download — one question per key.
+		// agent model registering at all. One question per key.
 		requires: ["agent-mode"],
 	},
 	{
 		key: "router-alias",
 		scope: "deployment",
 		codeDefault: "off",
+		selfHost: { onWhenEnv: ["LLM_ROUTER_ROUTES_PATH"] },
 		class: "feature",
 		owner: "chat",
 		gates:
@@ -541,31 +543,18 @@ export const FLAG_KEYS = defineFlagKeys([
 		ticket: "CUR-257",
 	},
 	{
-		key: "guard-shadow",
-		safety: true,
-		scope: "account",
-		codeDefault: "off",
-		class: "probe",
-		owner: "trust-and-safety",
-		expires: "2026-12-31",
-		gates:
-			"the MEASURE-ONLY Llama Guard 3 shadow probe run beside the live gate (guardShadow.ts, launched from routes/chat/conversation/[id]/+server.ts). It blocks nothing and changes no decision — it only emits a [guard-shadow] latency+labels log line. GUARD_SHADOW_URL is the address (config), not the toggle",
-		whenAbsent:
-			"the shadow probe never runs — no guard call, no [guard-shadow] line. Off is the safe default for a measure-only experiment; scope its rollout to preview/internal per the data rule",
-		ticket: "CUR-496",
-	},
-	{
 		key: "guard-primary",
 		safety: true,
 		scope: "account",
 		codeDefault: "off",
+		selfHost: "off",
 		class: "migration",
 		owner: "trust-and-safety",
 		expires: "2026-12-31",
 		gates:
-			"the SYNC input gate's verdict source (guardGate.ts, selected once per turn via resolveTurnPolicy in routes/chat/conversation/[id]/+server.ts): ON screens every turn with Shieldstral-1.0-3B (every rules.json category query runs per turn — no umbrella gate) and makes Coop the REVIEW plane (hit-only /api/v1/report via reportHitToCoop — Coop receives only turns that fired a rule, never a clean turn); it also enables output moderation whenever OUTPUT_MODERATION itself is true, routed through the same Shieldstral detector as input (CUR-944 dropped the old pin-to-OFF), and suppresses the guard-shadow for the turn. GUARD_SHADOW_URL is the address (config), not the toggle — ON with it unset is a loud misconfiguration (UNKNOWN, child fails closed, unhealthy probe)",
+			"nothing in this build: the guard screens every chat turn (guardGate.ts resolveTurnPolicy) and Coop is only the REVIEW plane. Older builds read it as the SYNC input gate's verdict source (ON: the guard; OFF: Coop), so it stays defined at 100% until no such build can be served (CUR-4802)",
 		whenAbsent:
-			"the Coop gate screens every turn exactly as before the swap — OFF is the kill switch (wholesale return to Coop, no redeploy). Do not turn ON before the plan's 0b async-contract evidence, T&S sign-off, retention terms, and min-replicas≥1 are all in hand",
+			"no change in this build. An older build that reads it falls back to the Coop gate, which is why it is not archived until those builds are gone",
 		ticket: "CUR-490",
 	},
 	{
@@ -573,6 +562,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		safety: true,
 		scope: "account",
 		codeDefault: "off",
+		selfHost: "off",
 		class: "feature",
 		owner: "trust-and-safety",
 		gates:
@@ -581,95 +571,75 @@ export const FLAG_KEYS = defineFlagKeys([
 			"distress gets Alpha's answer with the Support resources card on top; only a request for a method, a means or a lethal amount (`chat-block-self-harm`) is declined",
 		ticket: "CUR-3915",
 		specs: { on: "self-harm-hedged.spec.ts", off: "self-harm-hedged.spec.ts" },
-		// Answer-plus-card is the project lead's call (CUR-3915); the trust-and-safety lead holds the sign-off
-		// (CUR-737). Turn this ON to restore the declines without a redeploy.
-	},
-	{
-		key: "zentropi-african-routing",
-		safety: true,
-		scope: "account",
-		codeDefault: "off",
-		class: "fix",
-		owner: "trust-and-safety",
-		expires: "2026-12-31",
-		gates:
-			"the chat turn's input screen asking Zentropi's CoPE-B (`zentropi-ai/cope-b-a4b` on our own Hugging Face Inference Endpoint) each rule's question instead of Shieldstral when the typed text is Amharic, Yoruba, Hausa or Kiswahili (guardGate.ts inputJudgeFor, detectors/zentropi.ts, config in web/config/safetyScreen.ts, read in routes/chat/conversation/[id]/+server.ts). A CoPE call that fails or passes 5 s screens with Shieldstral. A turn the detector ranks as one of them without clearing its margin keeps Shieldstral and gets a second CoPE screen whose hits are added (CUR-4423, CUR-4361)",
-		whenAbsent: "OFF — every turn screens with Shieldstral",
-		ticket: "CUR-4340",
-		specs: { on: "zentropi-african-screen.spec.ts", off: "zentropi-african-screen.spec.ts" },
+		// Answer-plus-card is the project lead's call; the trust-and-safety lead holds the sign-off.
+		// Turn this ON to restore the declines without a redeploy.
 	},
 	{
 		key: "s1-safety-judge", // gitleaks:allow — a flag key, not a secret
 		safety: true,
 		scope: "account",
 		codeDefault: "off",
+		selfHost: "off",
 		class: "fix",
 		owner: "trust-and-safety",
 		expires: "2027-03-31",
 		gates:
-			"the chat turn's input screen (and output screen, when OUTPUT_MODERATION is on) asking Zentropi S1 (`zentropi-ai/cope-b-s1` on our own Hugging Face Inference Endpoint, `POST /v1/systemone`) to judge every text chunk against the policies in rules-s1.json, in place of Shieldstral's per-rule questions and the zentropi-african-routing CoPE lane (guardGate.ts inputJudgesFor and s1JudgeFor, detectors/s1.ts, config in web/config/safetyScreen.ts, read in routes/chat/conversation/[id]/+server.ts). Image units stay Shieldstral's. An S1 call that fails or times out leaves its rules unknown and the turn fails closed as today, with no retry",
+			"the chat turn's input screen (and output screen, when OUTPUT_MODERATION is on) asking Zentropi S1 (`zentropi-ai/cope-b-s1` on our own Hugging Face Inference Endpoint, `POST /v1/systemone`) to judge every text chunk against the policies in rules-s1.json, in place of Shieldstral's per-rule questions (guardGate.ts inputJudgesFor and s1JudgeFor, detectors/s1.ts, config in web/config/safetyScreen.ts, read in routes/chat/conversation/[id]/+server.ts). Image units stay Shieldstral's. An S1 call that fails or times out leaves its rules unknown and the turn fails closed as today, with no retry",
 		whenAbsent:
-			"OFF — every turn screens with Shieldstral and the CoPE routing, as before CUR-4527. Dark everywhere; the e2e forces the flag with the override cookie",
+			"OFF — every turn screens with Shieldstral, as before CUR-4527. The e2e forces the flag with the override cookie",
 		ticket: "CUR-4527",
 		specs: { on: "s1-safety-judge.spec.ts", off: "s1-safety-judge.spec.ts" },
 	},
 	{
-		key: "workspaces",
+		key: "mila-sp-output-guard", // gitleaks:allow — a flag key, not a secret
+		safety: true,
+		specs: { on: "mila-sp-output-guard.spec.ts", off: "mila-sp-output-guard.spec.ts" },
 		scope: "account",
-		specs: { on: "workspaces.spec.ts" },
 		codeDefault: "off",
+		selfHost: "off",
 		class: "feature",
 		owner: "chat",
 		gates:
-			"the settings nav 'Workspace' tab and page reachability (workspacesGate.ts) — seeing your own workspace and its settings. Does NOT gate creating an additional workspace or inviting anyone; see workspace-org-creation below (CUR-957 split this flag)",
+			"the chat turn's check of its finished answer by the Mila suicide-prevention classifier (milaSpOutputGuard.ts, detectors/milaSp.ts, config MILA_SP_GUARD in web/config/safetyScreen.ts, read in routes/chat/conversation/[id]/+server.ts). Only an English or French answer is checked, after it has streamed in full; it is never held, cut or rewritten. On a hit (p(unsafe) >= 0.5 on any 510-token window) the answer stays, the crisis card shows under it, and every later turn in that conversation is refused (Conversation.crisisEndedAt, 403). An endpoint failure or timeout fails OPEN. Separate from OUTPUT_MODERATION",
 		whenAbsent:
-			"the workspace settings tab and page are dark — nav tab hidden, page 404s. The feature has no other gate",
-		ticket: "CUR-913",
+			"OFF — no answer is checked and no conversation is ended by it. A conversation already ended stays ended, since the refusal reads the saved stamp, not the flag",
+		ticket: "CUR-4766",
 	},
 	{
-		key: "hedge-on-first-token",
+		key: "guard-history-cap",
+		safety: true,
 		scope: "account",
 		codeDefault: "off",
+		selfHost: "off",
 		class: "fix",
-		owner: "chat",
-		expires: "2026-12-31",
+		owner: "trust-and-safety",
+		expires: "2027-03-31",
 		gates:
-			"whether a second attempt at the SAME inference lane starts on a timer as well as on a thrown error (failover.ts, CUR-1344). A lane that accepts the connection and then produces nothing never throws, so without the timer the retry ladder does not run and the turn-level watchdog ends the whole turn instead. On, the second attempt starts once `hedgeDelayMs` passes with no first chunk and runs ALONGSIDE the first rather than replacing it, whichever produces a first chunk wins, and the loser is cancelled at that moment (Envoy hedge_on_per_try_timeout, gRPC A6 hedgingPolicy). A gRPC-shaped token bucket stops hedging during a broad outage",
+			"the chat turn's input screen reading only the newest user message whole plus the end of the earlier ones, up to SCREEN_HISTORY_CAP (4,000 chars) in total, in place of every user message (capScreenHistory in guardScreenTypes.ts, read in chat/prepareTurnMedia.ts). A newest message of 4,000 chars or more is screened alone. A message further back is not screened again; it passed on its own turn. Production on the product lead's word (CUR-4765)",
 		whenAbsent:
-			"attempts run strictly in sequence, each starting only after the previous one has failed — byte-identical to the pre-CUR-1344 ladder, including the hang it cannot see. The empty-completion half of CUR-1344 is NOT gated by this key and applies either way; only the hedging is",
-		ticket: "CUR-1344",
+			"OFF — every turn screens the finalText of every user message, so a long chat splits into several 12,000-char windows and waits on each",
+		ticket: "CUR-4764",
+		specs: { on: "long-history-decline.spec.ts", off: "long-history-decline.spec.ts" },
 	},
 	{
 		key: "hedge-tool-rounds",
 		scope: "account",
 		codeDefault: "off",
+		selfHost: "on",
 		class: "fix",
 		owner: "chat",
 		expires: "2026-12-31",
 		gates:
-			"whether a tool turn's later round (the request after a search or a calculation, calculateTool.ts `sendRound`) sends a second copy of its request on the same lane once `TOOL_ROUND_HEDGE_AFTER_MS` (12s) passes with no response headers (CUR-4372). Those rounds go out after the lane is committed, so hedge-on-first-token never sees them, and a request that hangs without throwing waited out the whole 45s turn and ended in an error. Its own key so it can be turned off without losing round one's hedge; each hedge is one extra request against the provider's shared rate limit",
+			"whether a tool turn's later round (the request after a search or a calculation, calculateTool.ts `sendRound`) sends a second copy of its request on the same lane once `TOOL_ROUND_HEDGE_AFTER_MS` (12s) passes with no response headers (CUR-4372). Those rounds go out after the lane is committed, so the first-chunk hedge (failover.ts) never sees them, and a request that hangs without throwing waited out the whole 45s turn and ended in an error. Its own key so it can be turned off without losing round one's hedge; each hedge is one extra request against the provider's shared rate limit",
 		whenAbsent:
 			"a later round's request waits for its headers until the turn's 45s cap, exactly as before CUR-4372. The round-request start and failure log lines are not gated and log either way",
 		ticket: "CUR-4372",
 	},
 	{
-		key: "failover-on-silent-lane",
-		scope: "account",
-		specs: { on: "silent-primary-failover.spec.ts", off: "silent-primary-failover.spec.ts" },
-		codeDefault: "off",
-		class: "fix",
-		owner: "chat",
-		expires: "2026-12-31",
-		gates:
-			"whether a lane with a backup behind it gets a first-chunk deadline (failover.ts `failoverAfterMs`, 12s, CUR-2316). A primary that never sends headers throws nothing, so the ladder waited on it until the output screen's 25s deadline ended the turn with \"at capacity\" while the backup lane sat unused (prod, 09-28 and 09-29, CUR-2315). On, the silent lane's attempts are aborted at the deadline and the turn moves to the next lane with the usual failover announcement. The last lane never gets a deadline",
-		whenAbsent:
-			"only a thrown error or an empty completion moves a turn to the backup lane, exactly as before CUR-2316, including the stall it cannot see. Production enablement is CUR-2317",
-		ticket: "CUR-2316",
-	},
-	{
 		key: "side-call-own-lane",
 		scope: "deployment",
 		codeDefault: "off",
+		selfHost: { onWhenEnv: ["MISTRAL_MODELS"] },
 		class: "feature",
 		owner: "chat",
 		expires: "2026-12-31",
@@ -683,6 +653,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		key: "provenance-assisted-by",
 		scope: "account",
 		codeDefault: "off",
+		selfHost: "on",
 		class: "feature",
 		owner: "chat",
 		gates:
@@ -696,6 +667,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		scope: "account",
 		specs: { on: "math-routing.spec.ts" },
 		codeDefault: "off",
+		selfHost: { onWhenEnv: ["ARITHMETIC_ROUTE_MODEL", "SECOND_OPINION_BASE_URL", "SECOND_OPINION_API_KEY"] },
 		class: "feature",
 		owner: "chat",
 		gates:
@@ -705,35 +677,10 @@ export const FLAG_KEYS = defineFlagKeys([
 		ticket: "CUR-2198",
 	},
 	{
-		key: "native-calculate-tool",
-		scope: "account",
-		codeDefault: "off",
-		class: "feature",
-		owner: "chat",
-		gates:
-			"the native `calculate` tool on the answer (endpoints/openai/calculateTool.ts, CUR-2273): offered with tool_choice auto to a model whose config sets supportsTools, each call evaluated by evaluateArithmetic and fed back as a tool message for up to 3 rounds, each expression and result shown under the answer (never stamped checked), and the persona's calc-first paragraph (CALCULATE_FIRST_CLAUSE). On with a model that sets no supportsTools logs a warning and offers nothing",
-		whenAbsent:
-			"no tool and no calc-first paragraph: the answer is the model's prose, exactly as before. Enabling it in production is CUR-2279",
-		ticket: "CUR-2273",
-	},
-	{
-		key: "search-intent-embedding-gate",
-		scope: "account",
-		specs: { on: "identity-search.spec.ts" },
-		codeDefault: "off",
-		class: "migration",
-		owner: "chat",
-		expires: "2026-12-31",
-		gates:
-			"whether the search-trigger decision is made by an embedding comparison (search/searchIntent.ts, CUR-1297) instead of the LLM logprob margin. A MIGRATION gate, not a standing choice between two supported gates: the logprob path it replaced read logprobs swiss-ai/apertus-v1.5-70b does not return and was deleted in CUR-2108. With this flag off, \"margin\" has no decider: every turn searches and logs a failopen: search-decision departure (CUR-2109). Delete this key once the rollout holds",
-		whenAbsent:
-			"under PUBLIC_SEARCH_TRIGGER=margin every turn searches, each logged as a failopen: search-decision departure (CUR-2108, CUR-2109). Off until rolled out and watched — flipping it is a prod decision, not this ticket's",
-		ticket: "CUR-1297",
-	},
-	{
 		key: "repetition-guard",
 		scope: "account",
 		codeDefault: "off",
+		selfHost: "off",
 		class: "fix",
 		owner: "chat",
 		expires: "2026-12-31",
@@ -748,12 +695,13 @@ export const FLAG_KEYS = defineFlagKeys([
 		scope: "account",
 		specs: { on: "workspaces.spec.ts" },
 		codeDefault: "off",
+		selfHost: "off",
 		class: "feature",
 		owner: "chat",
 		gates:
 			"creating an ADDITIONAL workspace and inviting anyone into one (workspacesGate.ts) — the 'Create another workspace'/'Invite by email' UI and better-auth's organization plugin routes (routes/chat/api/auth/[...all]) — both read this so a hidden option and a reachable route can't disagree. Split from `workspaces` (CUR-957) because seeing your own workspace is a personal-account concept, safe for anyone signed in, while org creation is a privilege Current AI grants to partners after a conversation",
 		whenAbsent:
-			"creation/invite UI hidden, organization routes 404 — the personal workspace view (gated on `workspaces` alone) still works. This is the intended production state until cycle 4's real partner-gate exists",
+			"creation/invite UI hidden, organization routes 404 — the personal workspace view (on for everyone signed in) still works. This is the intended production state until cycle 4's real partner-gate exists",
 		ticket: "CUR-957",
 	},
 	{
@@ -761,6 +709,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		scope: "account",
 		specs: { on: "language-response.spec.ts" },
 		codeDefault: "off",
+		selfHost: "on",
 		class: "feature",
 		owner: "chat",
 		gates:
@@ -774,6 +723,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		scope: "account",
 		specs: { on: "answer-language-named.spec.ts", off: "answer-language-named.spec.ts" },
 		codeDefault: "off",
+		selfHost: "on",
 		class: "fix",
 		owner: "chat",
 		expires: "2026-12-31",
@@ -787,6 +737,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		key: "entity-name-correction",
 		scope: "account",
 		codeDefault: "on",
+		selfHost: "on",
 		class: "fix",
 		owner: "chat",
 		expires: "2026-12-31",
@@ -800,6 +751,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		key: "source-credibility-filter",
 		scope: "account",
 		codeDefault: "off",
+		selfHost: "on",
 		class: "feature",
 		owner: "chat",
 		expires: "2026-12-31",
@@ -813,6 +765,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		key: "search-query-language",
 		scope: "account",
 		codeDefault: "off",
+		selfHost: "on",
 		class: "fix",
 		owner: "chat",
 		expires: "2026-12-31",
@@ -827,6 +780,9 @@ export const FLAG_KEYS = defineFlagKeys([
 		scope: "account",
 		specs: { on: "custodial-storage.spec.ts" },
 		codeDefault: "off",
+		// Any chosen store, local and s3 as much as hf. custodialStorageGate.ts still
+		// withholds the surface when that store's own settings are incomplete.
+		selfHost: { onWhenEnv: ["CUSTODIAL_STORAGE_BACKEND"] },
 		class: "feature",
 		owner: "chat",
 		gates:
@@ -840,6 +796,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		scope: "account",
 		specs: { on: "thunderbolt-export.spec.ts", off: "thunderbolt-export.spec.ts" },
 		codeDefault: "off",
+		selfHost: "on",
 		class: "feature",
 		owner: "chat",
 		gates:
@@ -848,23 +805,11 @@ export const FLAG_KEYS = defineFlagKeys([
 		ticket: "CUR-2407",
 	},
 	{
-		key: "thunderbolt-sync",
-		scope: "account",
-		specs: { on: "thunderbolt-sync.spec.ts", off: "thunderbolt-sync.spec.ts" },
-		codeDefault: "off",
-		class: "feature",
-		owner: "chat",
-		gates:
-			"live two-way sync with the Thunderbolt sandbox (CUR-4312): the OAuth consent page and Settings → Connections, every /chat/api/v2/sync/* route (changes SSE and push), the conversation and message tombstones and updatedAt bumps the sync reads. Not the \"Written in Thunderbolt\" mark, which shows on any pushed row whatever the flag. Production enable: CUR-4313",
-		whenAbsent:
-			"the sync routes answer 404, no connections row or consent page, no tombstones written, and a message delete or rename leaves updatedAt alone as before. Off when PostHog is unreachable",
-		ticket: "CUR-4312",
-	},
-	{
 		key: "new-device-notice",
 		scope: "account",
 		specs: { on: "new-device-notice.spec.ts", off: "new-device-notice.spec.ts" },
 		codeDefault: "off",
+		selfHost: { onWhenEnv: ["RESEND_API_KEY"] },
 		class: "feature",
 		owner: "chat",
 		gates:
@@ -878,6 +823,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		scope: "account",
 		specs: { on: "storage-locations.spec.ts", off: "storage-locations.spec.ts" },
 		codeDefault: "off",
+		selfHost: { onWhenEnv: ["HF_BUCKETS_TOKEN", "HF_BUCKETS_REPO"] },
 		class: "feature",
 		owner: "chat",
 		gates:
@@ -887,29 +833,17 @@ export const FLAG_KEYS = defineFlagKeys([
 		ticket: "CUR-2930",
 	},
 	{
-		key: "chunked-uploads",
-		scope: "account",
-		specs: { on: "chunked-uploads.spec.ts", off: "chunked-uploads.spec.ts" },
-		codeDefault: "off",
-		class: "feature",
-		owner: "chat",
-		gates:
-			"chunked uploads in My files (CUR-1780): a file over the 4.4 MB single-request ceiling, up to 20 MB, is sent in chunks to /chat/api/storage/chunks, staged in upload_chunks, and reassembled and checked whole by chunks/complete before any bucket write. Read only behind custodial-storage-view",
-		whenAbsent:
-			"dark: My files names and enforces the 4.4 MB ceiling, and both chunk routes answer 404. Production enable: CUR-4201",
-		ticket: "CUR-1780",
-	},
-	{
 		key: "document-attachments",
 		// Per account: a PDF or DOCX is opened in-process only for a selected (team) account, in chat
-		// and in My files, until the sandboxed parser lands (CUR-2780).
+		// and in My files, until the sandboxed parser lands.
 		scope: "account",
 		specs: { on: "document-attachments.spec.ts", off: "document-attachments.spec.ts" },
 		codeDefault: "off",
+		selfHost: "off",
 		class: "feature",
 		owner: "chat",
 		gates:
-			"PDF and DOCX chat attachments read to text on the server and screened with the turn (documentAttachmentsGate.ts, prepareTurnMedia.ts), offered only when multimodal and guard-primary are also on; any PDF or DOCX, in chat or My files, opened to hash-scan its pictures (embeddedImageScan.ts)",
+			"PDF and DOCX chat attachments read to text on the server and screened with the turn (documentAttachmentsGate.ts, prepareTurnMedia.ts), offered only when multimodal is also on; any PDF or DOCX, in chat or My files, opened to hash-scan its pictures (embeddedImageScan.ts)",
 		whenAbsent:
 			"dark — the composer offers no PDF or DOCX, and one that arrives anyway is refused unopened, in chat and in My files",
 		ticket: "CUR-987",
@@ -921,6 +855,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		scope: "account",
 		specs: { on: "custodial-storage.spec.ts", off: "custodial-storage.spec.ts" },
 		codeDefault: "off",
+		selfHost: "on",
 		class: "fix",
 		owner: "chat",
 		expires: "2026-12-31",
@@ -936,6 +871,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		scope: "account",
 		specs: { on: "document-attachments.spec.ts", off: "document-attachments.spec.ts" },
 		codeDefault: "off",
+		selfHost: "off",
 		class: "feature",
 		owner: "chat",
 		gates:
@@ -948,6 +884,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		key: "folkways-adapter",
 		scope: "deployment",
 		codeDefault: "env",
+		selfHost: { onWhenEnv: ["FOLKWAYS_ENABLED", "FOLKWAYS_URL"] },
 		class: "feature",
 		owner: "chat",
 		gates:
@@ -961,13 +898,14 @@ export const FLAG_KEYS = defineFlagKeys([
 		scope: "account",
 		class: "feature",
 		codeDefault: "off",
+		selfHost: "off",
 		owner: "chat",
 		gates:
 			"whether the MCP client advertises the `elicitation` capability at all (mcp/elicitationConfig.ts, CUR-1017) — a server never sees the capability to use it while this is off, so nothing downstream of it can fire either",
 		whenAbsent:
 			"the capability is never advertised, same as before CUR-1017. No live MCP server would exercise it today in any case — the one configured Space is TTS-only",
 		ticket: "CUR-1017",
-		// elicitationConfig.ts reads this key (CUR-1017). Registering it here, and in flagKeys.spec.ts's
+		// elicitationConfig.ts reads this key. Registering it here, and in flagKeys.spec.ts's
 		// GATE_CONSTANTS, is what lets refreshFlags reconcile it against PostHog and report it missing
 		// when PostHog has no `mcp-elicitation` flag.
 	},
@@ -976,6 +914,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		scope: "account",
 		class: "feature",
 		codeDefault: "off",
+		selfHost: "off",
 		owner: "chat",
 		gates:
 			"whether the tools of the operator-configured MCP servers (MCP_SERVERS, mcp/servers.ts), and of servers a signed-in person added in Settings → Connectors (CUR-4016), are offered on a chat turn: in the tool loop for a model that calls tools, through the router pre-pass otherwise. A tool not marked readOnlyHint runs only after the person allows it",
@@ -983,13 +922,14 @@ export const FLAG_KEYS = defineFlagKeys([
 			"no configured server is contacted and no tool of theirs is offered",
 		ticket: "CUR-3026",
 		specs: { on: "mcp-servers.spec.ts", off: "mcp-servers.spec.ts" },
-		// Production enable is its own ticket (CUR-3028), and the flip is the product leads'.
+		// Production enable is its own ticket, and the flip is the product leads'.
 	},
 	{
 		key: "one-chat-sandbox",
 		scope: "account",
 		class: "feature",
 		codeDefault: "off",
+		selfHost: { onWhenEnv: ["AGENT_SERVICE_URL", "AGENT_SERVICE_TOKEN"] },
 		owner: "chat",
 		gates:
 			"whether a native chat turn gets the conversation's sandbox as MCP tools (sandbox__run_code, run_command, read_file, write_file, list_files; mcp/sandboxServer.ts), served by agent-service at /mcp/ with no network. They run without a confirmation card unless the person set one to ask or never in Settings → Connectors",
@@ -1003,6 +943,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		scope: "account",
 		class: "feature",
 		codeDefault: "off",
+		selfHost: { onWhenEnv: ["AGENT_SERVICE_URL", "AGENT_SERVICE_TOKEN"] },
 		owner: "chat",
 		gates:
 			"whether a native turn that has the sandbox also gets hand_off_to_agent and check_agent_task (mcp/handoffKit.ts): after the person confirms on a card, the task goes to an agent-service /run in the same workdir, and its answer comes back into the turn",
@@ -1016,6 +957,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		scope: "account",
 		class: "fix",
 		codeDefault: "on",
+		selfHost: "on",
 		owner: "chat",
 		expires: "2026-12-31",
 		gates:
@@ -1029,6 +971,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		scope: "account",
 		class: "fix",
 		codeDefault: "on",
+		selfHost: "on",
 		owner: "chat",
 		expires: "2026-12-31",
 		gates:
@@ -1042,6 +985,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		scope: "account",
 		class: "fix",
 		codeDefault: "off",
+		selfHost: "on",
 		owner: "chat",
 		expires: "2026-12-31",
 		gates:
@@ -1062,6 +1006,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		scope: "account",
 		class: "fix",
 		codeDefault: "off",
+		selfHost: "on",
 		owner: "chat",
 		expires: "2026-12-31",
 		gates:
@@ -1071,22 +1016,11 @@ export const FLAG_KEYS = defineFlagKeys([
 		ticket: "CUR-2135",
 	},
 	{
-		key: "readable-extract",
-		scope: "account",
-		class: "feature",
-		codeDefault: "off",
-		owner: "chat",
-		gates:
-			"main-text HTML extraction with Mozilla Readability (rag/readableExtract.ts) for uploaded HTML files, admin URL ingest, and a direct-read fallback in fetchLinkedPage when Firecrawl is absent or can't read a pasted link — Readability text under 600 chars falls back to the regex extractor and logs `short-fallback`",
-		whenAbsent:
-			"every caller uses the regex extractor (rag/htmlExtract.ts), which keeps nav, cookie banners and footers; a pasted link Firecrawl can't read gets no text",
-		ticket: "CUR-2152",
-	},
-	{
 		key: "length-first-brevity",
 		scope: "account",
 		class: "fix",
 		codeDefault: "off",
+		selfHost: "off",
 		owner: "chat",
 		expires: "2026-12-31",
 		gates:
@@ -1100,6 +1034,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		scope: "deployment",
 		class: "fix",
 		codeDefault: "off",
+		selfHost: "off",
 		owner: "site",
 		expires: "2026-12-31",
 		gates:
@@ -1116,6 +1051,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		scope: "account",
 		class: "feature",
 		codeDefault: "off",
+		selfHost: "on",
 		owner: "chat",
 		gates:
 			"'Auto' as a model choice: the Auto row in the composer's model menu, the live language and effort read of the draft, and Auto as the choice that resolves a new chat's model (autoRoutingGate.ts, shipped in the layout data as autoRoutingEnabled and read by ChatLanding.svelte and ChatComposerFrame.svelte)",
@@ -1129,9 +1065,10 @@ export const FLAG_KEYS = defineFlagKeys([
 		specs: { on: "agent-run-outlives-the-request.spec.ts", off: "agent-outlives-the-tab.spec.ts" },
 		class: "feature",
 		codeDefault: "off",
+		selfHost: "off",
 		owner: "chat",
 		gates:
-			"An agent run outliving the chat request (agentRunHandoffGate.ts, shipped in the layout data as agentRunHandoffEnabled). On, an agent turn asks agent-service for its whole 300s attempt instead of 150s, hands the run to the page about 15s before the route's watchdog (the answer is stored interrupted with the run open), and the page that sent it re-attaches until the run ends, for up to every attempt the service may make",
+			"An agent run outliving the chat request (agentRunHandoffGate.ts, read when a run is submitted and stored on it as agentRun.handoff). On, an agent turn asks agent-service for its whole 300s attempt instead of 150s, hands the run to the page about 15s before the route's watchdog (the answer is stored interrupted with the run open), and the page that sent it re-attaches until the run ends, for up to every attempt the service may make",
 		whenAbsent:
 			"OFF: an agent run is asked to stop at 150s and the turn ends at the 155s watchdog, as before. Fails closed if PostHog is unreachable. Enabling it in production is CUR-4685",
 		ticket: "CUR-4410",
@@ -1142,6 +1079,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		specs: { on: "auto-repick.spec.ts", off: "auto-repick.spec.ts" },
 		class: "feature",
 		codeDefault: "off",
+		selfHost: "on",
 		owner: "chat",
 		gates:
 			"Auto picking again inside a turn its first choice did not answer (autoRepickGate.ts, shipped in the layout data as autoRepickEnabled). On, a model Auto chose gives up after 20s of silence instead of the 45s watchdog, and when an Auto turn fails on a 429 or on silence before any text the conversation page runs Auto again without that model and resends the question over the failed answer, with Auto's note naming the model it replaced. A hand-picked model is never re-picked",
@@ -1154,6 +1092,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		scope: "account",
 		class: "feature",
 		codeDefault: "off",
+		selfHost: { onWhenEnv: ["CLEF_BASE_URL", "CLEF_API_KEY"] },
 		owner: "chat",
 		gates:
 			"Auto's hosted draft read (clefRoutingGate.ts): after a pause in typing the composer posts the draft to /chat/api/routing/classify, which asks Clef on the Potluck router (CLEF_BASE_URL) for language, task size and skills, and merges that over the local read (routing/clef.ts). Shipped in the layout data as clefRoutingEnabled. Needs auto-routing on as well",
@@ -1166,6 +1105,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		scope: "account",
 		class: "probe",
 		codeDefault: "off",
+		selfHost: "off",
 		owner: "chat",
 		expires: "2026-12-31",
 		gates:
@@ -1178,6 +1118,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		scope: "account",
 		class: "feature",
 		codeDefault: "off",
+		selfHost: { onWhenEnv: ["REPORT_SLACK_WEBHOOK"] },
 		owner: "chat",
 		gates:
 			"posting a saved answer report to Slack (a link to its admin-page anchor, never the answer) and to Linear (one issue per reporter per two minutes, later reports add a count) — reportFanout.ts, called from the report route after saveReport",
@@ -1190,6 +1131,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		scope: "account",
 		specs: { on: "past-chat-search.spec.ts", off: "memory-coming-soon.spec.ts" },
 		codeDefault: "off",
+		selfHost: "on",
 		class: "feature",
 		owner: "chat",
 		gates:
@@ -1198,8 +1140,82 @@ export const FLAG_KEYS = defineFlagKeys([
 			"dark: no switch in Personalization, no tool on any turn, and the prompt says the model sees this conversation only, as before CUR-4576. Production enable: CUR-4581",
 		ticket: "CUR-4576",
 	},
+	{
+		key: "stream-follow",
+		scope: "deployment",
+		specs: { on: "stream-resumes-mid-answer.spec.ts", off: "stream-resumes-mid-answer.spec.ts" },
+		codeDefault: "off",
+		selfHost: "off",
+		class: "feature",
+		owner: "chat",
+		gates:
+			"a plain turn recording what its stream sent into generation_events (chat/generationLog.ts) and GET /chat/conversation/[id]/generation/[generationId] answering a follow (404 when off); the page follows a dropped turn through it before falling back to the saved-copy poller (CUR-4716)",
+		whenAbsent:
+			"dark: no turn writes the log, the follow route answers 404, and a dropped stream waits for the saved copy as in CUR-4714. Production enable: its own ticket, on the product lead's word",
+		ticket: "CUR-4716",
+	},
+	{
+		key: "share-links",
+		scope: "account",
+		specs: { on: "share-link.spec.ts", off: "share-link.spec.ts" },
+		codeDefault: "off",
+		selfHost: "off",
+		class: "feature",
+		owner: "chat",
+		gates:
+			"read-only share links (shareLinksGate.ts): the \"Share chat\" row in a conversation's menu, the share API (api/v2/conversations/[id]/share, api/v2/shares), the Shared links list in Settings → Data & privacy, and the signed-out viewer at /r/<id>, which reads the deployment snapshot (CUR-2632)",
+		whenAbsent:
+			"dark: no Share chat row, the share API and the viewer answer 404, and existing links stop opening until it is back on. Production enable: CUR-4882",
+		ticket: "CUR-2632",
+	},
+	{
+		key: "history-key-enrollment",
+		scope: "account",
+		specs: { on: "history-key-enrollment.spec.ts", off: "history-key-enrollment.spec.ts" },
+		codeDefault: "off",
+		selfHost: "off",
+		class: "feature",
+		owner: "chat",
+		gates:
+			"enrolling and unlocking the conversation-history key in the browser (historyKeyGate.ts, stage 2 of CUR-4137): a guest's silent device key on the first turn, the signed-in recovery step (recovery key, passkey where PRF works, or accepting loss), the unlock prompt in a browser with no device key, and Settings → Account → Your key. Withheld, with an error logged, on a deployment with no custodial storage (CUR-4939)",
+		whenAbsent:
+			"dark: no device key is made, no recovery step or unlock prompt shows, and Your key is not in Settings. Nothing is sealed before stage 3, so history reads as it does today. Production enable: stage 6 of CUR-4137, on the product owner's word",
+		ticket: "CUR-4939",
+	},
+	{
+		key: "conversation-expiry",
+		// Deployment: the sweep runs in a cron with no account, and every visitor on one deployment lives
+		// under the same retention rule, so one answer per deployment is the only coherent one.
+		scope: "deployment",
+		specs: { on: "conversation-expiry.spec.ts", off: "conversation-expiry.spec.ts" },
+		codeDefault: "off",
+		// A self-hosted install keeps conversations until their owner deletes them (the self-host
+		// default); `ALPHA_FLAGS=+conversation-expiry` opts one in.
+		selfHost: "off",
+		class: "feature",
+		owner: "chat",
+		gates:
+			"conversation expiry (conversationExpiry.ts): the daily cleanup cron deleting every conversation (signed in or a guest's, pinned and sealed included) and every My files file 30 days after it was created (or after launch day, for one that predates it), the composer's preview line linking export and self-hosting, each chat's days-left badge, and from day 23 the delete-date banner with Export and Continue in a new chat (POST conversations/[id]/continue). Off, the cron refuses to delete, clears the launch marker, keeps the older guest sweep by last activity, and logs counts by age only",
+		whenAbsent:
+			"off: no signed-in conversation or file is deleted by age, guests keep the 30-days-since-last-activity sweep, no line, badge or banner shows, Continue answers 404, and the cron only logs what it would delete. Production enable is its own ticket, on the product owner's word",
+		ticket: "CUR-4990",
+	},
+	{
+		key: "history-seal-writes",
+		scope: "account",
+		specs: { on: "history-seal-writes-flag.spec.ts", off: "history-seal-writes-flag.spec.ts" },
+		codeDefault: "off",
+		selfHost: "off",
+		class: "feature",
+		owner: "chat",
+		gates:
+			"sealing conversation writes to the owner's history key (sealedTurn.ts `conversationSealWritesOn`, stage 4 of CUR-4137): each new turn, title and preprompt, the backfill, the Open WebUI import and sealing a person's existing chats when they enroll. A chat already sealed keeps sealing with the flag off (CUR-4983). On with no custodial storage, a write fails loudly with `history-seal-no-storage` (CUR-5015)",
+		whenAbsent:
+			"off: new chats are written in plaintext as before; already sealed chats stay sealed. Production enable is CUR-5016, on the product owner's word",
+		ticket: "CUR-5015",
+	},
 	// Deliberately NOT here: `disable_fallbacks` on the answer lane (gatewayFallbackGate.ts,
-	// CUR-1729). It reads no PostHog flag, for the reason a flag would have to be created to be
+	//). It reads no PostHog flag, for the reason a flag would have to be created to be
 	// useful: a preview-only release condition switches it OFF in production and ships the defect
 	// back (flagEnabledOr falls back only on a key PostHog does not define at all), and a
 	// production group at 100% is a production flag decision. Unconditional on the answer lane is
@@ -1213,7 +1229,7 @@ export const FLAG_KEYS = defineFlagKeys([
 /**
  * Every key this registry declares, as a type. `setFlagOverrides` (e2e/scenarios/helpers/flagOverride.ts)
  * takes `Partial<Record<FlagKey, boolean>>`, so a spec forcing a key that left this list is a type
- * error instead of a setup that silently does nothing (CUR-4588).
+ * error instead of a setup that silently does nothing.
  */
 export type FlagKey = (typeof FLAG_KEYS)[number]["key"];
 

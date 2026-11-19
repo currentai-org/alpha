@@ -5,7 +5,7 @@ const HOOK_LIFECYCLE = new Set(["chatui.preview.ready", "chatui.preview.loaded",
 /**
  * `left` turns true once a preview frame navigates away from its srcdoc, so the component
  * can show a notice in the frame's place. Construct it during component init: it resets when the frame
- * remounts (a fresh srcdoc load starts the count over) and when the previewed document changes. (CUR-3527)
+ * remounts (a fresh srcdoc load starts the count over) and when the previewed document changes.
  */
 export class PreviewLeave {
 	left = $state(false);

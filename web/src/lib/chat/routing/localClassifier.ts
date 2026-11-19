@@ -3,12 +3,12 @@
  * loaded on first use (so none weighs on the chat's first paint):
  *
  *   - the low-resource detector behind the answer-level "I can't answer reliably in X yet" notice
- *     (`languageFallback.ts`, CUR-742/1841) — Quechua, Yucatec Maya, Tzeltal, Yoruba; no false
+ *     (`languageFallback.ts`) — Quechua, Yucatec Maya, Tzeltal, Yoruba; no false
  *     positives on held-out Tatoeba sentences of five words or more;
  *   - `eld` (Efficient Language Detector, extrasmall database), an n-gram detector built for short
  *     text over 60 languages. It decides whenever both the word lists and franc name one of its
  *     languages: it separates French from Catalan, Spanish, Italian and Dutch where the word lists
- *     confuse them, and passes all of `catalanSpanish.spec.ts` (CUR-4080);
+ *     confuse them, and passes all of `catalanSpanish.spec.ts`;
  *   - `franc`, a character n-gram detector over ~190 languages, for the long tail eld lacks
  *     (Galician, Indonesian, Swahili, Pashto…). It is unreliable on short text (a 7-word Portuguese
  *     question scores Wolof first), so its confidence is scaled by length and by its margin over the
@@ -57,7 +57,7 @@ const ELD_KNOWS = new Set(Object.values(ELD_LANGUAGES));
 /**
  * Below this relative gap between eld's top two scores its pick is a coin toss (Catalan and Spanish
  * drafts made only of words both share land at 0.01–0.03), so the word lists and franc decide as before.
- * The narrowest right French read in the CUR-4080 probe had a gap of 0.048.
+ * The narrowest right French read in the probe had a gap of 0.048.
  */
 const ELD_MIN_GAP = 0.035;
 

@@ -5,7 +5,7 @@ import { answerShapeEntry } from './helpers/chatEntry';
 import { startChattingPastWelcome } from './helpers/welcome';
 
 // Arabic, Urdu and Pashto are launch languages, and the chat laid their messages out left to
-// right (CUR-1917): in an Arabic question "AI Potluck؟" sat at the start of the line, and full stops in the
+// right: in an Arabic question "AI Potluck؟" sat at the start of the line, and full stops in the
 // answer landed at the left edge of the next line. Each message and each answer block now takes its
 // direction from its own text. These follow the ticket's three tests, in one conversation so the last
 // can show an English message beside the right-to-left ones still reads left to right.
@@ -46,7 +46,7 @@ test(
 	{ tag: '@CUR-1917' },
 	async ({ page }) => {
 		// Three live turns in one test: passes took 33-60s, and a slow preview ran past the 90s
-		// default while answer 3 was still streaming (CUR-2088). send() still fails any single
+		// default while answer 3 was still streaming. send still fails any single
 		// answer that takes over 90s, so a hung turn is caught and named.
 		test.setTimeout(240_000);
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });

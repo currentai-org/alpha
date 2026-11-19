@@ -5,9 +5,8 @@
 	import { getLocale } from '$lib/paraglide/runtime.js';
 	import { base } from '$lib/chat/paths';
 	import { orgs, type CatalogModel } from '$lib/chat/routing/catalog';
-	import { fromIso1, localLanguageName } from '$lib/chat/routing/languages';
+	import { fromIso1, localLanguageName, parentLanguage } from '$lib/chat/routing/languages';
 	import { specialists, type languageCoverage } from '$lib/chat/routing/coverage';
-	import type { EmbeddedIntent } from '$lib/chat/types/EmbeddedIntent';
 	import { Button } from '@aipotluck/alpha-ds';
 	import LanguageDataActions from '$lib/chat/components/language-data/LanguageDataActions.svelte';
 	import OrgLogo from './OrgLogo.svelte';
@@ -29,9 +28,7 @@
 	let {
 		coverage,
 		placeholder = false,
-		live,
-		embeddedDemo = false,
-		onEmbeddedNavigate
+		live
 	}: {
 		/** The served models' languages, split at the router's dependable line (routing/coverage.ts). */
 		coverage: ReturnType<typeof languageCoverage>;
@@ -39,8 +36,6 @@
 		placeholder?: boolean;
 		/** Auto's read of the draft: the language it detected and the model it chose. */
 		live?: { tag: string; model: CatalogModel };
-		embeddedDemo?: boolean;
-		onEmbeddedNavigate?: (intent?: EmbeddedIntent) => void;
 	} = $props();
 
 	const locale = getLocale();
@@ -69,6 +64,11 @@
 	const helpLanguage = $derived(live?.tag ?? fromIso1(locale.split('-')[0]));
 	const helpHref = $derived(
 		`${base}/settings/contribute${helpLanguage && helpLanguage !== 'eng' ? `?language=${encodeURIComponent(helpLanguage)}` : ''}`
+	);
+
+	// The public leaderboard, opened on the language Auto read, else on the visitor's own.
+	const scoresHref = $derived(
+		`${base}/languages${live ? `?language=${encodeURIComponent(parentLanguage(live.tag) ?? live.tag)}` : ''}`
 	);
 
 	// "Māori, Quechua and 3 more": a short sentence, never a second list.
@@ -145,7 +145,7 @@
 		</div>
 	{/if}
 
-	{#if live && !embeddedDemo}
+	{#if live}
 		<section class="flex flex-col gap-2.5 border-t border-line-surface pt-4" aria-labelledby="languages-help-heading" data-languages-contribute>
 			<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
 				<h3 id="languages-help-heading" class="type-body text-fg-1">
@@ -174,12 +174,7 @@
 					<a
 						href={helpHref}
 						class="whitespace-nowrap text-fg-1 underline decoration-line-3 underline-offset-2 hover:decoration-fg-1"
-						data-languages-help
-						onclick={(e) => {
-							if (!embeddedDemo) return;
-							e.preventDefault();
-							onEmbeddedNavigate?.({ kind: 'app', label: m.chat_waysToContribute() });
-						}}>{m.product_languagesHelp()}</a
+						data-languages-help>{m.product_languagesHelp()}</a
 					>
 				</span>
 			</p>
@@ -187,5 +182,13 @@
 		<p class="type-caption text-fg-3" data-languages-source>
 			{placeholder ? m.product_languagesSourcePlaceholder() : m.product_languagesSource()}
 		</p>
+		<a
+			href={scoresHref}
+			target="_blank"
+			rel="noopener"
+			class="inline-flex items-center gap-1 self-start type-caption text-fg-1 underline decoration-line-3 underline-offset-2 hover:decoration-fg-1"
+			data-languages-scores
+			>{m.product_languagesScores()} <RiArrowRightLine aria-hidden="true" class="size-3.5" /></a
+		>
 	</div>
 </div>

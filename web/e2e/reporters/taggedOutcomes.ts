@@ -1,7 +1,7 @@
 // journey-gallery.yml's "Fail the job if the scenario suite itself failed" step reads only
 // Playwright's own process exit code, which is 0 as long as every test eventually passed or was
 // skipped — retries and skips are computed by Playwright and then discarded, the same defect
-// flakyTests.ts (CUR-1509) already fixed for flakiness alone. A SKIPPED tagged test is invisible
+// flakyTests.ts already fixed for flakiness alone. A SKIPPED tagged test is invisible
 // everywhere else in this pipeline too: journeyArtifacts.ts only writes a recording's meta.json when
 // a video attachment exists, and a skipped test never produces one — so a skip leaves no trace this
 // repo's own reporters, or the gallery they feed, ever see.

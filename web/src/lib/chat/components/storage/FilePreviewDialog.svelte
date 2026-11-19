@@ -1,11 +1,12 @@
 <script lang="ts">
 	import RiChat3Line from '~icons/ri/chat-3-line';
 	import { Button, Dialog, Inline } from '@aipotluck/alpha-ds';
+	import { m } from '$lib/paraglide/messages.js';
 	import { imageObjectUrl, previewKind, TEXT_PREVIEW_BYTES } from './previewKind';
 
 	// Clicking a My files row opens the file here instead of downloading it. Images and
 	// plain text are drawn in place (previewKind.ts says why that is safe); anything else says so
-	// and offers the download. (CUR-3289)
+	// and offers the download.
 	interface Props {
 		open?: boolean;
 		name: string;
@@ -60,28 +61,28 @@
 			<Dialog.Title>{name}</Dialog.Title>
 			<div class="flex flex-col gap-4">
 				{#if kind.kind === 'none'}
-					<p class="m-0 type-body text-fg-2">This kind of file can't be shown here yet. Download it to open it.</p>
+					<p class="m-0 type-body text-fg-2">{m.storage_previewNone()}</p>
 				{:else if failed}
-					<p class="m-0 type-body text-fg-2" role="alert">This file couldn't be loaded. Try again, or download it.</p>
+					<p class="m-0 type-body text-fg-2" role="alert">{m.storage_previewFailed()}</p>
 				{:else if imageUrl}
 					<img src={imageUrl} alt={name} class="max-h-96 w-full object-contain" />
 				{:else if text !== null}
 					<pre
 						class="m-0 max-h-96 overflow-auto whitespace-pre-wrap type-caption text-fg-1">{text}</pre>
 					{#if truncated}
-						<p class="m-0 type-caption text-fg-3">Showing the first 64 KB. Download it for the rest.</p>
+						<p class="m-0 type-caption text-fg-3">{m.storage_previewTruncated()}</p>
 					{/if}
 				{:else}
-					<p class="m-0 type-caption text-fg-3">Loading…</p>
+					<p class="m-0 type-caption text-fg-3">{m.storage_previewLoading()}</p>
 				{/if}
 				<Inline justify="end" gap="2">
 					{#if chatHref}
 						<a href={chatHref} class="inline-flex items-center gap-1 type-caption text-fg-2 underline underline-offset-2">
-							<RiChat3Line class="size-3.5" />Open the chat it came from
+							<RiChat3Line class="size-3.5" />{m.storage_previewOpenChat()}
 						</a>
 					{/if}
 					<span class="flex-1"></span>
-					<Button variant="secondary" onclick={onDownload}>Download</Button>
+					<Button variant="secondary" onclick={onDownload}>{m.storage_previewDownload()}</Button>
 				</Inline>
 			</div>
 			<Dialog.Close />

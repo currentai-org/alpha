@@ -1,7 +1,7 @@
 /**
  * Everyone behind one venue IP shares Better Auth's per-IP sign-in cap, so production's
  * rule must allow far more than the built-in 3 per window, keep each window, and leave the preview
- * test carve-out (returns false) working. (CUR-4594)
+ * test carve-out (returns false) working.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
@@ -25,7 +25,7 @@ function req(header?: string): Request {
 	});
 }
 
-describe("venueSignInRule (CUR-4594)", () => {
+describe("venueSignInRule", () => {
 	it("raises the 10 s sign-in max well above the built-in 3 per IP in production, keeping the window", async () => {
 		process.env.VERCEL_ENV = "production";
 		const { venueSignInRule, SIGN_IN_SHARED_IP_MULTIPLIER } = await import("./betterAuth");

@@ -8,7 +8,7 @@ import { chatEntry } from './helpers/chatEntry';
 import { STORAGE_POLL_INTERVALS } from './helpers/storagePoll';
 
 // Hugging Face caps our one storage token at 3,000 Hub calls per 5 minutes, and when it
-// throttles us the storage route used to answer 500 (CUR-3120). The `storage_hub_rate_limited` fault answers an
+// throttles us the storage route used to answer 500. The `storage_hub_rate_limited` fault answers an
 // upload the way Hugging Face does, through the real route, so this reads what a person sees: the
 // busy line, a row that still offers Try again, and a retry that stores the file once it clears.
 
@@ -81,7 +81,7 @@ test(
 );
 
 // Deleting one chat lists its bucket folder first, and a throttled listing used to end the
-// DELETE in a 500 with a generic "Couldn't delete" toast (CUR-3666). Under the same fault the rail now says
+// DELETE in a 500 with a generic "Couldn't delete" toast. Under the same fault the rail now says
 // storage is busy, the chat stays, and the same Delete works once the limit clears.
 const CHAT_DELETE = /\/api\/v2\/conversations\/[a-f0-9]{24}$/;
 
@@ -147,7 +147,7 @@ test(
 );
 
 // The My files page lists the bucket while it renders, and a throttled listing used to read
-// as "The list didn't load" (CUR-3680). Under the fault the page names the throttle and keeps Try again, and the
+// as "The list didn't load". Under the fault the page names the throttle and keeps Try again, and the
 // same button loads the list once the page's own request no longer carries the fault.
 test(
 	'when Hugging Face throttles storage, My files says storage is busy and Try again loads the list',
@@ -176,7 +176,7 @@ test(
 );
 
 // Forget everything deletes the person's files first, and a throttled delete used to answer
-// "try again" with no word on why, so an immediate retry failed for minutes (CUR-3680). It now says storage is
+// "try again" with no word on why, so an immediate retry failed for minutes. It now says storage is
 // busy, clears nothing, and the same Try again clears everything once the limit lifts.
 const WIPE = /\/chat\/api\/v2\/conversations$/;
 

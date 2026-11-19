@@ -3,7 +3,7 @@
  * call-to-action and the sidebar's "Get involved" card. "Share a dataset" goes to the Mozilla Data
  * Collective's "Contribute your language" page, which lays out the ways to contribute and pre-fills
  * its dataset search from `utm_term`, matched semantically, so a language code or a name both work.
- * Its upload form sits behind sign-in and a hand-reviewed uploader request. (CUR-3232)
+ * Its upload form sits behind sign-in and a hand-reviewed uploader request.
  */
 
 /** Mozilla Data Collective: community-governed datasets, with terms set by whoever shares them. */
@@ -13,12 +13,6 @@ export const MOZILLA_DATA_COLLECTIVE = {
 	contributeLanguage: 'https://mozilladatacollective.com/contribute-language',
 	datasets: 'https://mozilladatacollective.com/datasets',
 	community: 'https://community.mozilladatacollective.com/'
-} as const;
-
-/** Mozilla Common Voice: record or validate sentences in your language. */
-export const COMMON_VOICE = {
-	home: 'https://commonvoice.mozilla.org',
-	languages: 'https://commonvoice.mozilla.org/en/languages'
 } as const;
 
 /** Apertus, Alpha's main model: open weights and training data from the Swiss AI Initiative. */

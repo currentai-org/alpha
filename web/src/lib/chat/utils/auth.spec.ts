@@ -27,7 +27,7 @@ describe("requireAuthUser — sign-in must be MANDATORY, not merely offered, to 
 		pageData.user = null;
 	});
 
-	it("does not redirect when sign-in is merely configured but not mandatory (CUR-246's env=preview case)", () => {
+	it("does not redirect when sign-in is merely configured but not mandatory (the env=preview case)", () => {
 		pageData.loginEnabled = true;
 		pageData.automaticLogin = false;
 		expect(requireAuthUser()).toBe(false);

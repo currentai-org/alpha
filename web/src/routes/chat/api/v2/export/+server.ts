@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { error, redirect, type RequestHandler } from "@sveltejs/kit";
 import { base } from "$lib/chat/paths";
 import { collections } from "$lib/chat/server/database";
@@ -24,8 +27,10 @@ import mimeTypes from "mime-types";
 import { logger } from "$lib/chat/server/logger";
 import { humanEvalExport } from "$lib/chat/server/db/humanEval";
 import { resolveFaultInjection } from "$lib/chat/server/textGeneration/faultInjection";
+import { tagNames } from "$lib/chat/server/db/conversationTags";
+import { generationEventsForConversations } from "$lib/chat/server/db/generationEvents";
 
-// The ZIP is written for the person who asked for it (CUR-1836): README.md, one readable markdown
+// The ZIP is written for the person who asked for it: README.md, one readable markdown
 // file per conversation with each answer's provenance, the files they stored with us, and a JSON
 // copy built from named fields. exportFormat.ts decides what each file says; this route gathers the
 // records and the bytes.
@@ -35,7 +40,7 @@ export const GET: RequestHandler = async ({ locals, request }) => {
 
 	if (await nextExportAt(user._id)) {
 		// The Account page's Download is a plain link, so a page loaded before an export from another
-		// tab still offers it, and a 429 here would replace that page with a bare error (CUR-3849).
+		// tab still offers it, and a 429 here would replace that page with a bare error.
 		// Sent back instead, the page reads the hour from the server and says it in the row.
 		if (request?.headers.get("sec-fetch-mode") === "navigate") {
 			redirect(303, `${base}/settings/account`);
@@ -53,12 +58,12 @@ export const GET: RequestHandler = async ({ locals, request }) => {
 	// The files the person stored with us are theirs whether or not the storage view is on for them
 	// today, the same reasoning wipeCustodialFiles gives for deletion. Listed before the conversations
 	// because a chat attachment kept in Alpha storage is in this listing too: it goes in once, under
-	// files/, and its conversation points there (CUR-3327).
+	// files/, and its conversation points there.
 	const prefix = userPrefix(accountId);
 	let stored: { path: string }[] = [];
 	if (custodialStorageConfigured()) {
 		// `storage_listing_down` (preview only, see faultInjection.ts) fails the listing here,
-		// so a spec can open the ZIP this branch produces. (CUR-2798)
+		// so a spec can open the ZIP this branch produces.
 		const listingDown = (await resolveFaultInjection(request)) === "storage_listing_down";
 		const listing = listingDown
 			? Promise.reject(new Error("fault injection: storage_listing_down"))
@@ -73,6 +78,7 @@ export const GET: RequestHandler = async ({ locals, request }) => {
 	const storedKeys = new Set(stored.map((entry) => entry.path.slice(prefix.length)));
 
 	const conversations = await collections.conversations.find({ ...authCondition(locals) }).toArray();
+	const tags = await tagNames(accountId);
 	const exported = [];
 	for (const conversation of conversations) {
 		stats.nConversations++;
@@ -91,7 +97,7 @@ export const GET: RequestHandler = async ({ locals, request }) => {
 					}
 					const file = await downloadFile(ref.value, conversation._id, {
 						ownerId: conversation.userId?.toString(),
-						// A guest's files the sign-in move left behind are still under guests/ (CUR-2183).
+						// A guest's files the sign-in move left behind are still under guests/.
 						guestSessionId: conversation.userId ? conversation.formerGuestSessionId : conversation.sessionId,
 						name: ref.name,
 						mime: ref.mime,
@@ -110,9 +116,16 @@ export const GET: RequestHandler = async ({ locals, request }) => {
 		}
 
 		zipfile.addBuffer(Buffer.from(conversationMarkdown(conversation, filesByMessage)), readableName(conversation));
-		exported.push(exportedConversation(conversation, filesByMessage));
+		exported.push(exportedConversation(conversation, filesByMessage, tags));
 	}
 	zipfile.addBuffer(Buffer.from(JSON.stringify(exportEnvelope(accountId, exported), null, 2)), "conversations.json");
+
+	// An answer streaming now, or finished in the last two minutes, still has its streamed text in
+	// stream-follow's log. It is this person's data while it exists, so it goes in as sent.
+	const streamed = await generationEventsForConversations(conversations.map((c) => c._id.toString()));
+	if (streamed.length) {
+		zipfile.addBuffer(Buffer.from(JSON.stringify(streamed, null, 2)), "streaming-answers.json");
+	}
 
 	// One unreadable file is named in the README rather than failing the whole export.
 	for (const entry of stored) {
@@ -139,6 +152,7 @@ export const GET: RequestHandler = async ({ locals, request }) => {
 				files: stats.nStoredFiles,
 				filesSkipped: Math.max(stats.nStoredSkipped, 0),
 				listingFailed: stats.nStoredSkipped < 0,
+				streamingAnswers: streamed.length > 0,
 			})
 		),
 		"README.md"

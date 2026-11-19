@@ -3,8 +3,8 @@ import type { Page } from '@playwright/test';
 // The journey grader keeps a frame of a screen only if it stayed up for at least 0.5s
 // (MIN_HOLD_SECONDS in scripts/critique-journey.mjs), and it samples about one frame a second. A
 // spec that asserts a dialog and confirms it in the same breath leaves that dialog on screen for
-// tens of milliseconds, so the step passes and the grader reports it "claimed but not seen"
-// (CUR-2289). 1.2s clears the floor with room for a slow CI encoder
+// tens of milliseconds, so the step passes and the grader reports it "claimed but not seen".
+// 1.2s clears the floor with room for a slow CI encoder
 // and stays under the 2s at which the grader starts reading a screen as stuck.
 const READABLE_HOLD_MS = 1_200;
 const RECORDING = process.env.SCENARIO_VIDEO === '1';
@@ -17,7 +17,7 @@ const RECORDING = process.env.SCENARIO_VIDEO === '1';
  * a person reads before choosing. Anything the test is waiting FOR still gets an `expect`.
  */
 export async function holdForRecording(page: Page): Promise<void> {
-	// Nothing records unless SCENARIO_VIDEO is set (playwright.config.ts, SOL-196), so nothing needs holding.
+	// Nothing records unless SCENARIO_VIDEO is set (playwright.config.ts), so nothing needs holding.
 	if (!RECORDING) return;
 	await page.waitForTimeout(READABLE_HOLD_MS);
 }
@@ -28,8 +28,8 @@ export async function holdForRecording(page: Page): Promise<void> {
  *
  * @remarks Without it the grader sees only the result. Opening a deleted chat's old link raises
  * "That conversation isn't available in this session.", and with no visible cause the grader filed
- * it as an unprompted error (CUR-2664). The banner comes down after the hold: left up, it covered
- * the product for 18 s of A3's 68 s demo reel (CUR-2986). Pass `at: 'top'` when the step happens
+ * it as an unprompted error. The banner comes down after the hold: left up, it covered
+ * the product for 18 s of A3's 68 s demo reel. Pass `at: 'top'` when the step happens
  * at the bottom of the screen, such as a tap on a pill under the message box, so the banner does
  * not cover it.
  */

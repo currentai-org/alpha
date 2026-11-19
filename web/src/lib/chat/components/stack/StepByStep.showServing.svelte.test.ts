@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import type { Message } from "$lib/chat/types/Message";
 
 // "Show the model and host" off must keep every model and host out of the step text, not just
-// the write step: a calculation or a helper record that still named one would undo the setting. (CUR-549)
+// the write step: a calculation or a helper record that still named one would undo the setting.
 const answer = (): Message =>
 	({
 		id: "m1",
@@ -41,7 +41,7 @@ describe("X-ray's step by step with the serving switch", () => {
 		const calc = container.querySelector('[data-step-id="calculator"]')?.textContent ?? "";
 		const helper = container.querySelector('[data-step-id="assist-math-route"]')?.textContent ?? "";
 		expect(calc).toContain("Mistral Large 3");
-		// A helper step names its model and host by display name, as the receipt does. (CUR-3563)
+		// A helper step names its model and host by display name, as the receipt does.
 		expect(helper).toContain("Mistral Small 4");
 		expect(helper).toContain("running on Mistral AI");
 	});

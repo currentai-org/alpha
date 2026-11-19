@@ -4,9 +4,9 @@ import { test, expect } from './helpers/test';
 
 // The settings group used to set `ssr = false`, so a reload, a typed URL or a return from an
 // OAuth provider got an empty shell (about 2 KB, no visible text) and painted nothing for 1-2s until the
-// client bundle loaded (CUR-908). The journey critique measured that blank on A3's "Forget everything" walk and
+// client bundle loaded. The journey critique measured that blank on A3's "Forget everything" walk and
 // A4's Appearance reload on every graded run. Four pages were switched back one ticket at a time
-// (CUR-2009, CUR-2146, CUR-1975, CUR-1769) while the group default stayed.
+// while the group default stayed.
 //
 // This reads the server's own HTML, before any script runs, so a page that slips back to client-only
 // fails here whatever the browser does afterwards. Each page is one a guest can open with no flag.

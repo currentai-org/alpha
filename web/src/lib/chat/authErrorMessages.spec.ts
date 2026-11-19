@@ -23,7 +23,7 @@ describe("friendlyAuthErrorMessage", () => {
 });
 
 describe("friendlyPasskeyError", () => {
-	it("tells a visitor whose passkey ceremony failed to sign in another way, naming each offered method, never the bare 'Auth cancelled' (CUR-2924)", () => {
+	it("tells a visitor whose passkey ceremony failed to sign in another way, naming each offered method, never the bare 'Auth cancelled'", () => {
 		for (const code of ["AUTH_CANCELLED", "ERROR_CEREMONY_ABORTED", "ERROR_PASSTHROUGH_SEE_CAUSE_PROPERTY"]) {
 			const message = friendlyPasskeyError({ code, message: "Auth cancelled" }, ["Google", "GitHub", "Hugging Face"]);
 			expect(message).not.toMatch(/auth cancelled/i);
@@ -33,7 +33,7 @@ describe("friendlyPasskeyError", () => {
 		}
 	});
 
-	it("names only email when the deployment offers no other provider (CUR-2924)", () => {
+	it("names only email when the deployment offers no other provider", () => {
 		expect(friendlyPasskeyError({ code: "AUTH_CANCELLED" }, [])).toMatch(/sign in with email below\.$/);
 	});
 

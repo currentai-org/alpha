@@ -7,6 +7,7 @@ import globals from 'globals';
 import ts from 'typescript-eslint';
 import { noDiscardedEffectRoot } from './eslint-rules/no-discarded-effect-root.js';
 import { noChatPathLiteral } from './eslint-rules/no-chat-path-literal.js';
+import { noHostEnvRead, RUNTIME_ENV_MODULE } from './eslint-rules/no-host-env-read.js';
 import alphaDs, {
 	internal as alphaDsInternal,
 	strict as alphaDsStrict
@@ -20,7 +21,7 @@ const gitignorePath = path.resolve(import.meta.dirname, '.gitignore');
  * drops it from the ratchet baseline).
  */
 export const DESIGN_SYSTEM_STRICT = [
-	// The system's own examples and catalog, as packages/alpha-ds/eslint.config.js sees them (CUR-4479).
+	// The system's own examples and catalog, as packages/alpha-ds/eslint.config.js sees them.
 	'src/**/examples/**/*.svelte',
 	'src/catalog/**/*.{ts,svelte}',
 	'src/routes/designsystem/**/*.{ts,svelte}',
@@ -52,11 +53,13 @@ export const DESIGN_SYSTEM_STRICT = [
 	'src/lib/chat/components/chat/GuestRetentionNotice.svelte',
 	'src/lib/chat/components/ChatSearchDialog.svelte',
 	'src/lib/chat/components/stack/StackXRayLayerCard.svelte',
-	'src/lib/chat/components/stack/XRayComposerPanel.svelte'
+	'src/lib/chat/components/stack/XRayComposerPanel.svelte',
+	'src/lib/chat/components/leaderboard/*.svelte',
+	'src/routes/alpha/languages/+page.svelte'
 ];
 
 /** The design system's own sources, where recipes may use arbitrary values and inline geometry.
- *  Package-relative: packages/alpha-ds/eslint.config.js lints them with this config (CUR-4479). */
+ *  Package-relative: packages/alpha-ds/eslint.config.js lints them with this config. */
 const ALPHA_DS_INTERNAL = ['src/{components,primitives,patterns,internal,theme}/**/*.{ts,svelte}'];
 
 export default defineConfig(
@@ -93,7 +96,7 @@ export default defineConfig(
 			// A leading underscore already means "deliberately unused" in this repo — 31 files use it,
 			// on mock signatures that must keep their arity, on positional params before the one that
 			// matters, and on caught errors that are genuinely being swallowed. The rule was reporting
-			// all of them, which is the rule failing to read a convention rather than reporting defects (CUR-219).
+			// all of them, which is the rule failing to read a convention rather than reporting defects.
 			// Encoded here instead of deleting
 			// bindings that callers depend on.
 			//
@@ -112,7 +115,7 @@ export default defineConfig(
 			// Discarding the dispose function `$effect.root(() => {...})` returns leaks the root: Svelte
 			// marks it EFFECT_PRESERVED specifically so it outlives the component, so nothing tears it
 			// down unless the caller invokes that function (BackgroundGenerationPoller.svelte's
-			// onDestroy(disposeRoot), CUR-1157). No eslint-plugin-svelte rule catches THAT shape (none
+			// onDestroy(disposeRoot)). No eslint-plugin-svelte rule catches THAT shape (none
 			// references $effect.root or dispose), but the identical footgun for a store's own
 			// unsubscribe function has one, off by default. Its legitimate hits are a module-level store
 			// synced to localStorage for the whole session (agentMode.ts/speakMode.ts/webSearchMode.ts),
@@ -120,7 +123,7 @@ export default defineConfig(
 			'svelte/no-ignored-unsubscribe': 'error',
 
 			// `require-atomic-updates` (core ESLint, off by default) is not enabled. It targets the same
-			// shape of bug as CUR-1157 -- state mutated by something the code didn't wait for -- but
+			// shape of bug -- state mutated by something the code didn't wait for -- but
 			// produces many hits here, and the ones checked (writeMessage's `finally` cleanup,
 			// +server.ts's `turnStopped = true`, messageUpdates.ts's `priorRetriableStatus`) is a plain
 			// unconditional write after an unrelated earlier `await`, not a stale read-then-write. The
@@ -145,7 +148,7 @@ export default defineConfig(
 				parser: ts.parser
 			}
 		},
-		// CUR-1157: $effect.root(...) is ordinary JS/TS syntax (a MemberExpression call), so this
+		// $effect.root(...) is ordinary JS/TS syntax (a MemberExpression call), so this
 		// rule needs no Svelte-template awareness -- it just needs the <script> block's AST, which
 		// svelte-eslint-parser already delegates to ts.parser above for every file this block covers.
 		// Local, inline plugin (no separate package) -- see eslint-rules/no-discarded-effect-root.js.
@@ -155,13 +158,23 @@ export default defineConfig(
 		}
 	},
 	{
-		// CUR-4448: chat code builds its own paths from $lib/chat/paths, because `/chat` is the root on
-		// the chat surface. Set to error (CUR-4463).
+		// chat code builds its own paths from $lib/chat/paths, because `/chat` is the root on
+		// the chat surface. Set to error.
 		files: ['src/lib/chat/**/*.{ts,js,svelte}', 'src/routes/chat/**/*.{ts,js,svelte}'],
 		ignores: ['src/lib/chat/paths.ts', '**/*.spec.ts', '**/*.test.ts', '**/*.svelte.test.ts'],
 		plugins: { 'chat-paths': { rules: { 'no-chat-path-literal': noChatPathLiteral } } },
 		rules: {
 			'chat-paths/no-chat-path-literal': 'error'
+		}
+	},
+	{
+		// Host-neutral plan, sub-issue 1: the deployment's identity (VERCEL_ENV, VERCEL_GIT_COMMIT_REF,
+		// VERCEL_URL, ...) is read only in src/lib/server/runtimeEnv.js. eslint-rules/no-host-env-read.js
+		// says why and what it leaves out; eslint.scripts.config.js applies the same entries to scripts/.
+		files: ['src/**/*.{ts,js,svelte}', 'svelte.config.js', 'vite.config.ts'],
+		ignores: [RUNTIME_ENV_MODULE, '**/*.spec.ts', '**/*.test.ts', '**/*.svelte.test.ts'],
+		rules: {
+			'no-restricted-syntax': ['error', ...noHostEnvRead]
 		}
 	},
 	{
@@ -188,7 +201,7 @@ export default defineConfig(
 	},
 	{
 		// The chat subtree began as a fork of HuggingFace chat-ui, but most of its files are now our own
-		// work, so it is linted like the rest of the repo (CUR-219). Only the rules below are changed,
+		// work, so it is linted like the rest of the repo. Only the rules below are changed,
 		// and one rule is genuinely inapplicable and stays off. Scoped by path rather than by wholesale
 		// ignore so that a new fork-specific exception has to be named and justified in this block.
 		files: ['src/lib/chat/**', 'src/routes/chat/**'],
@@ -218,7 +231,7 @@ export default defineConfig(
 		}
 	},
 	{
-		// CUR-1003: suggestions.ts holds candidate starters, graded or not. The shelf a visitor sees is
+		// suggestions.ts holds candidate starters, graded or not. The shelf a visitor sees is
 		// starterShelf.ts, which drops any candidate without a passing live grade, so reading the
 		// candidates anywhere else puts an ungraded prompt back in front of visitors.
 		files: ['src/**/*.ts', 'src/**/*.svelte'],
@@ -230,7 +243,7 @@ export default defineConfig(
 			'no-restricted-imports': [
 				'error',
 				{
-					// The date-fns barrel costs ~4 s to load, which every spec that touches auth would pay (CUR-2446). Kept in this block because a second no-restricted-imports block for
+					// The date-fns barrel costs ~4 s to load, which every spec that touches auth would pay. Kept in this block because a second no-restricted-imports block for
 					// the same files would replace this one in flat config rather than merge with it.
 					paths: [
 						{
@@ -266,7 +279,7 @@ export default defineConfig(
 		}
 	},
 	{
-		// A recorded journey must not resize its own viewport mid-test (CUR-1764).
+		// A recorded journey must not resize its own viewport mid-test.
 		//
 		// Playwright fixes a video's frame size when the context is created. `page.setViewportSize()`
 		// afterwards resizes the PAGE and leaves the FRAME alone, so every subsequent frame is the page
@@ -293,7 +306,7 @@ export default defineConfig(
 				{
 					// The details object (second argument of test() and test.x()) takes tag, annotation and
 					// lock. Playwright drops a `timeout:` there without a word, so the test keeps the config's
-					// budget while its author believes it has more (CUR-2433).
+					// budget while its author believes it has more.
 					selector:
 						"CallExpression:matches([callee.name='test'], [callee.object.name='test']) > ObjectExpression:nth-child(2) > Property[key.name='timeout']",
 					message:
@@ -301,7 +314,7 @@ export default defineConfig(
 				},
 				{
 					// What a spec types into the page is filmed, and the reels are shown to people, so a
-					// ticket id there reads as test scaffolding on screen (CUR-2961). Keep the id in the
+					// ticket id there reads as test scaffolding on screen. Keep the id in the
 					// test's title or tag. Text joined with `+` is caught too; a label passed through a
 					// helper first is not.
 					selector:
@@ -331,7 +344,7 @@ export default defineConfig(
 		}
 	},
 	{
-		// CUR-2675: a spec that takes `test` from '@playwright/test' skips helpers/test.ts's asset cache
+		// a spec that takes `test` from '@playwright/test' skips helpers/test.ts's asset cache
 		// and warm-ping stub, and refetches every content-hashed chunk on every page load of the preview.
 		files: ['e2e/scenarios/*.spec.ts'],
 		rules: {

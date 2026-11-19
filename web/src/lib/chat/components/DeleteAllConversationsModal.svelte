@@ -4,7 +4,7 @@
 	import RiDeleteBinFill from "~icons/ri/delete-bin-fill";
 	import { deleteAllAnchor } from "$lib/chat/stores/deleteAll";
 	import { onMount } from "svelte";
-	import type { WipeSummary } from "$lib/chat/types/WipeSummary";
+	import type { WipeSummary, WipePreview } from "$lib/chat/types/WipeSummary";
 	import { page } from "$app/state";
 	import { trackEvent } from "$lib/analytics";
 	import { apiErrorMessage } from "$lib/chat/APIClient";
@@ -20,7 +20,7 @@
 		/** Fired when the user dismisses the post-wipe panel (do the store reset + navigation here). */
 		onfinish?: () => void;
 		/** "data" is Forget everything: the account stays. "account" is Delete account, which also removes the
-		 *  account and its sign-in methods and asks for a typed confirmation first (CUR-1420). */
+		 *  account and its sign-in methods and asks for a typed confirmation first. */
 		mode?: "data" | "account";
 	}
 
@@ -36,7 +36,7 @@
 	let cancelButtonEl: HTMLButtonElement | undefined = $state();
 
 	// Whether this wipe will also delete the account: only the account page's "Delete account" asks for
-	// that, and only a signed-in person has one (CUR-1420). Known before the wipe runs, so the confirm
+	// that, and only a signed-in person has one. Known before the wipe runs, so the confirm
 	// names it up front instead of only disclosing it on the done panel.
 	let signedIn = $derived(!!page.data.user);
 	let willDeleteAccount = $derived(mode === "account" && signedIn);
@@ -52,7 +52,7 @@
 
 	// The wipe forgets linked buckets but never touches them; they're the person's own. Read
 	// them when the modal opens so the confirm can name what stays, and so the done panel still knows
-	// after the rows are gone. Not available (flag off, signed out) reads as none. (CUR-2932)
+	// after the rows are gone. Not available (flag off, signed out) reads as none.
 	let linkedStorage = $state<LocationSummary[]>([]);
 	$effect(() => {
 		if (!open || !signedIn) return;
@@ -95,7 +95,7 @@
 			phase = "done";
 			trackEvent("data_erased", { logged_in: !!page.data.user });
 		} catch (e) {
-			// The server's own sentence ("nothing was cleared") when it sent one, otherwise a generic line. (CUR-2822)
+			// The server's own sentence ("nothing was cleared") when it sent one, otherwise a generic line.
 			errorMsg = apiErrorMessage(
 				e,
 				"Something went wrong and your data may not be fully cleared. Please try again."
@@ -108,37 +108,64 @@
 		close();
 	}
 
-	// Honest, plain-language list of what was cleared. Copy is provisional. Only nonzero buckets are shown so the panel doesn't list "0 contributions".
-	let clearedLines = $derived(
-		summary
-			? [
-					summary.conversations > 0
-						? `${summary.conversations} conversation${summary.conversations === 1 ? "" : "s"}`
-						: null,
-					summary.settings > 0 ? "your saved settings" : null,
-					summary.messageEvents > 0
-						? `${summary.messageEvents} usage record${summary.messageEvents === 1 ? "" : "s"}`
-						: null,
-					summary.contributions > 0
-						? `${summary.contributions} form submission${summary.contributions === 1 ? "" : "s"}`
-						: null,
-					summary.localInferenceEndpoints > 0 ? "your local inference server settings" : null,
-					summary.storageLocations > 0
-						? "the links to your own storage buckets (the files in them stay in your account)"
-						: null,
-					summary.custodialFiles && summary.custodialFiles > 0
-						? `${summary.custodialFiles} uploaded file${summary.custodialFiles === 1 ? "" : "s"}`
-						: null,
-					summary.safetyEvents > 0
-						? `${summary.safetyEvents} record${summary.safetyEvents === 1 ? "" : "s"} of messages we declined to answer`
-						: null,
-					summary.agentServiceTasksDeleted && summary.agentServiceTasksDeleted > 0
-						? `${summary.agentServiceTasksDeleted} agent task${summary.agentServiceTasksDeleted === 1 ? "" : "s"}`
-						: null,
-					summary.accountDeleted ? "your account and sign-in methods" : null,
-				].filter((x): x is string => x !== null)
-			: []
-	);
+	// What the wipe will remove, counted before anything is deleted, so the confirm lists the same buckets
+	// and counts the receipt will. null while loading or when the count failed, in which case
+	// the confirm keeps its generic sentence.
+	let preview = $state<WipePreview | null>(null);
+	let previewState = $state<"idle" | "loading" | "ready" | "failed">("idle");
+	$effect(() => {
+		if (!open || phase !== "confirm") return;
+		const account = willDeleteAccount ? "?account=delete" : "";
+		let stale = false;
+		previewState = "loading";
+		fetch(`${base}/api/v2/conversations/wipe-preview${account}`)
+			.then((r) => (r.ok ? (r.json() as Promise<WipePreview>) : Promise.reject(new Error(String(r.status)))))
+			.then((p) => {
+				if (stale) return;
+				preview = p;
+				previewState = "ready";
+			})
+			.catch(() => {
+				if (stale) return;
+				preview = null;
+				previewState = "failed";
+			});
+		return () => {
+			stale = true;
+		};
+	});
+
+	// Honest, plain-language list of what is cleared. One function for the confirm and the receipt, so
+	// the two panels cannot word the same bucket differently. Only nonzero buckets are shown so the panel doesn't list "0 contributions".
+	function linesFor(s: WipePreview | WipeSummary | null): string[] {
+		if (!s) return [];
+		const full = s as Partial<WipeSummary> & { agentHistoryPossible?: boolean };
+		const n = (v: number | undefined) => v ?? 0;
+		return [
+			s.conversations > 0 ? `${s.conversations} conversation${s.conversations === 1 ? "" : "s"}` : null,
+			s.settings > 0 ? "your saved settings" : null,
+			s.messageEvents > 0 ? `${s.messageEvents} usage record${s.messageEvents === 1 ? "" : "s"}` : null,
+			s.contributions > 0 ? `${s.contributions} form submission${s.contributions === 1 ? "" : "s"}` : null,
+			s.localInferenceEndpoints > 0 ? "your local inference server settings" : null,
+			s.storageLocations > 0
+				? "the links to your own storage buckets (the files in them stay in your account)"
+				: null,
+			n(full.custodialFiles) > 0
+				? `${full.custodialFiles} uploaded file${full.custodialFiles === 1 ? "" : "s"}`
+				: null,
+			s.safetyEvents > 0
+				? `${s.safetyEvents} record${s.safetyEvents === 1 ? "" : "s"} of messages we declined to answer`
+				: null,
+			n(full.agentServiceTasksDeleted) > 0
+				? `${full.agentServiceTasksDeleted} agent task${full.agentServiceTasksDeleted === 1 ? "" : "s"}`
+				: "agentHistoryPossible" in s && s.agentHistoryPossible
+					? "any agent task history"
+					: null,
+			s.accountDeleted ? "your account and sign-in methods" : null,
+		].filter((x): x is string => x !== null);
+	}
+	let clearedLines = $derived(linesFor(summary));
+	let previewLines = $derived(linesFor(preview));
 
 	onMount(() => {
 		setTimeout(() => {
@@ -170,7 +197,7 @@
 				<div class="flex flex-col gap-2 type-body text-fg-2">
 					<p>We do not want to keep your data.</p>
 					<!-- A signed-in person's records are tied to their account, not anonymous, and the wipe
-					     reaches past this device (CUR-2411). -->
+					     reaches past this device. -->
 					<p>
 						{#if signedIn}
 							This clears your chats, settings and usage records from this device and from our
@@ -186,6 +213,22 @@
 							your Hugging Face account with its files. Alpha only loses access to it.
 						</p>
 					{/if}
+					{#if previewState === "loading"}
+						<p class="type-caption text-fg-3" data-testid="wipe-preview-loading">Counting what we hold…</p>
+					{:else if previewState === "ready"}
+						<div data-testid="wipe-preview">
+							{#if previewLines.length}
+								<p>We will delete and remove from our servers:</p>
+								<ul class="list-disc space-y-1 pl-5">
+									{#each previewLines as line (line)}
+										<li>{line}</li>
+									{/each}
+								</ul>
+							{:else}
+								<p>There is nothing tied to you to clear right now.</p>
+							{/if}
+						</div>
+					{/if}
 					<p class="font-medium text-fg-1">This action cannot be undone.</p>
 				</div>
 
@@ -197,7 +240,7 @@
 				{/if}
 
 				<!-- Destructive per spec: a normal bordered button, Text 1 label, only the fill icon in Accent 2.
-				     CUR-2348: the confirm repeats the verb of the control that opened it ("Forget everything"),
+				     the confirm repeats the verb of the control that opened it ("Forget everything"),
 				     so a permanent action reads as the one the person asked for. -->
 				<div class="flex gap-2">
 					<Button variant="destructive" block class="flex-1" onclick={confirmDelete} disabled={phase === "working" || !canConfirm}>
@@ -212,7 +255,7 @@
 				<div class="flex flex-col gap-2.5 type-body text-fg-2">
 					{#if clearedLines.length}
 						<p>We deleted and removed from our servers:</p>
-						<ul class="list-disc space-y-1 pl-5">
+						<ul data-testid="wipe-receipt" class="list-disc space-y-1 pl-5">
 							{#each clearedLines as line (line)}
 								<li>{line}</li>
 							{/each}

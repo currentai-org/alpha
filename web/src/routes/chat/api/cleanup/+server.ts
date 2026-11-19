@@ -9,27 +9,25 @@
  */
 import { type RequestHandler } from "@sveltejs/kit";
 import { json } from "$lib/chat/server/api/utils/json";
-import { dev } from "$app/environment";
-import { env } from "$env/dynamic/private";
+import { cronAuthorized } from "$lib/chat/server/cronAuth";
 import { cleanupExpired } from "$lib/chat/server/db/cleanup";
 import { sweepUncollectedPairings } from "$lib/chat/server/managedInference/sweepUncollectedPairings";
 import { sweepExpiredGuestFiles } from "$lib/chat/server/storage/custodialStorage";
 import { RETENTION_MS } from "$lib/chat/constants/retention";
 import { logger } from "$lib/chat/server/logger";
-
-function authorized(request: Request): boolean {
-	const secret = env.CRON_SECRET;
-	if (!secret) return dev; // open in dev only; refuse in prod when unconfigured
-	const header = request.headers.get("authorization");
-	return header === `Bearer ${secret}`;
-}
+import { ensureFlagsPolled } from "$lib/chat/server/flags";
+import {
+	conversationExpiryEnabled,
+	countExpiringConversations,
+	sweepExpiredConversations,
+} from "$lib/chat/server/conversationExpiry";
 
 export const GET: RequestHandler = async ({ request }) => {
-	if (!authorized(request)) {
+	if (!(await cronAuthorized(request))) {
 		return json({ error: "unauthorized" }, { status: 401 });
 	}
 	// Before cleanupExpired, which deletes the expired pairing rows this reads. Its own step
-	// for the same reason as the guest files below: a failure is logged, and the rest still runs. (CUR-4110)
+	// for the same reason as the guest files below: a failure is logged, and the rest still runs.
 	const uncollectedPairings = await sweepUncollectedPairings().catch((e) => {
 		logger.error({ err: e instanceof Error ? e.message : String(e) }, "[cleanup] uncollected pairing sweep failed");
 		return { error: true as const };
@@ -37,11 +35,15 @@ export const GET: RequestHandler = async ({ request }) => {
 	if ("endpointsRemoved" in uncollectedPairings && uncollectedPairings.endpointsRemoved > 0) {
 		logger.info(uncollectedPairings, "[cleanup] removed managed endpoints whose pairing was never collected");
 	}
-	const counts = await cleanupExpired();
+	// Conversation expiry reads a deployment flag; with it on, it deletes guest conversations
+	// from their creation, and cleanupExpired's older guest sweep by `updatedAt` stands down.
+	await ensureFlagsPolled();
+	const expiryOn = conversationExpiryEnabled();
+	const counts = await cleanupExpired(new Date(), { guestConversations: !expiryOn });
 	const total = Object.values(counts).reduce((a, b) => a + b, 0);
 	logger.info({ counts, total }, "TTL cleanup");
 	// Guest attachments in the bucket, 30 days from upload. Its own step, so a bucket failure
-	// is logged and the database cleanup above still reports. (CUR-2183)
+	// is logged and the database cleanup above still reports.
 	const guestFiles = await sweepExpiredGuestFiles(RETENTION_MS).catch((e) => {
 		logger.error({ err: e instanceof Error ? e.name : String(e) }, "[cleanup] guest file sweep failed");
 		return { error: true as const };
@@ -49,5 +51,16 @@ export const GET: RequestHandler = async ({ request }) => {
 	if (guestFiles && "failed" in guestFiles && (guestFiles.failed || guestFiles.undated)) {
 		logger.warn(guestFiles, "[cleanup] guest file sweep left files behind");
 	}
-	return json({ ok: true, deleted: counts, total, guestFiles: guestFiles ?? null, uncollectedPairings });
+	// Conversation expiry: every conversation and My files file past its date. Deletes only
+	// with the `conversation-expiry` flag on for this deployment; with it off the run refuses and logs what
+	// it WOULD delete, as counts by age, never an id or a title. Its own step, so a failure here leaves the
+	// rest of the report intact.
+	const conversationExpiry = await sweepExpiredConversations(new Date(), () => expiryOn)
+		.then(async (sweep) => ({ sweep, counts: await countExpiringConversations() }))
+		.catch((e) => {
+			logger.error({ err: e instanceof Error ? e.message : String(e) }, "[cleanup] conversation expiry failed");
+			return { error: true as const };
+		});
+	logger.info({ conversationExpiry }, "[cleanup] conversation expiry");
+	return json({ ok: true, deleted: counts, total, guestFiles: guestFiles ?? null, uncollectedPairings, conversationExpiry });
 };

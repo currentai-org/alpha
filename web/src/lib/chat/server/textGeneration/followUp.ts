@@ -1,4 +1,4 @@
-// The follow-up read (CUR-1957): one forced tool call that says whether the latest message only makes
+// The follow-up read: one forced tool call that says whether the latest message only makes
 // sense with an earlier turn ("Which ones do you recommend?") and restates it as a standalone question.
 // The answer model gets that reading as a note beside the person's unchanged message.
 //

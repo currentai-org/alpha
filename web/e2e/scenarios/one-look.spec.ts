@@ -7,10 +7,9 @@ import { journeyStep } from './helpers/journeyStep';
 import { startChattingPastWelcome } from './helpers/welcome';
 
 // F5 ("Alpha looks and behaves the same everywhere") — "How Alpha looks, one design system":
-// type sizes, spacing, colours, icons and settings screens all coming from one place
-// (CUR-507).
+// type sizes, spacing, colours, icons and settings screens all coming from one place.
 //
-// WRITTEN AGAINST CUR-972's "Done when", NOT ITS "Tests". The ticket for this
+// WRITTEN AGAINST the "Done when", NOT ITS "Tests". The ticket for this
 // ("Chat, settings and workspace look and behave like one product") carries both, and the two are
 // different kinds of thing. Its Tests are moderated sessions — sit someone who has never seen Alpha
 // in front of it and record where they look first. That is real and it is UX research; it cannot
@@ -31,12 +30,12 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // resolve, and that two surfaces built at different times resolve them to the same value.
 //
 // Vercel's preview toolbar is not part of that one design system, and the journey critic kept
-// grading it as ours (CUR-2148). It is off for previews in the Vercel project's settings now, and
+// grading it as ours. It is off for previews in the Vercel project's settings now, and
 // this file deliberately sends no `x-vercel-skip-toolbar` header: the absence assertion at the end of
 // the first test is what goes red if the setting is ever turned back on, and an opt-out here would
 // hide exactly that.
 test(
-	'chat and settings are the same product: one control group, one type scale, one set of colours, one section heading style (CUR-3954)',
+	'chat and settings are the same product: one control group, one type scale, one set of colours, one section heading style',
 	{ tag: '@F5' },
 	async ({ page }) => {
 		test.setTimeout(90_000);
@@ -58,11 +57,11 @@ test(
 		// across the screen. Named controls, because F3's sibling claim is that they are named — and
 		// because a class-based selector would pass on a control that no screen reader can find.
 		//
-		// READ FROM THE CHAT SURFACE, NOT FROM <html> (CUR-1974). The chat window scopes `.dark` onto
+		// READ FROM THE CHAT SURFACE, NOT FROM <html>. The chat window scopes `.dark` onto
 		// its own card (chatTheme.ts) and never onto <html>, and the settings dialog is portalled onto
 		// <body>, outside that card, taking its dark palette only from Modal's own `dark` prop. Reading
 		// `document.documentElement` would be wrong: there both screens resolve the LIGHT `:root`
-		// values, so it would compare light to light and stay green through a navy modal (CUR-1702). The
+		// values, so it would compare light to light and stay green through a navy modal. The
 		// element read here is the one that actually paints the chat's background.
 		const chatSurface = page.locator('.chat-root', { has: composer });
 		const chatTokens = await chatSurface.evaluate((el) => {
@@ -94,14 +93,14 @@ test(
 			// manage. Asserting it here would make a signed-in precondition the spec never establishes.
 			//
 			// The accessible name rather than the visible label: the word "Application" is itself on
-			// CUR-972's list of things that read wrong to a person, so this pins reachability and
+			// the list of things that read wrong to a person, so this pins reachability and
 			// deliberately not the wording, which is free to be fixed without breaking the journey.
 			await expect(
 				page.getByRole('link', { name: 'Personalization' }),
 				'the settings nav did not offer the Personalization entry within 30s, so the screens the demo moves between are not reachable from each other'
 			).toBeVisible({ timeout: 30_000 });
 
-			// Step 4b. The panel has actually rendered its controls (CUR-1809).
+			// Step 4b. The panel has actually rendered its controls.
 			//
 			// Everything above this line is satisfied before the panel body exists. The nav link lives in
 			// the dialog's sidebar, which mounts first, and the token read below comes off `:root`
@@ -116,7 +115,7 @@ test(
 			// invisible to them (docs/journeys/README.md).
 			//
 			// Roles rather than copy, for the same reason step 4 above gives: the labels here are on
-			// CUR-972's list of wording that may yet change, and a spec that goes red on a rename is a
+			// the list of wording that may yet change, and a spec that goes red on a rename is a
 			// spec somebody deletes. Settings opens on Personalization: its
 			// instruction box and the switches beside it are the control group. Settings is a page in the
 			// app's main column now (Claude Desktop's shape), not a dialog.
@@ -139,7 +138,7 @@ test(
 			//
 			// Both halves are needed. The tokens catch a dialog that lost its dark scope; `background`
 			// catches one still in dark scope but painting something other than the token, which is
-			// exactly CUR-1702 — `dark:bg-gray-800` on Modal.svelte, a navy the tokens never mention.
+			// exactly — `dark:bg-gray-800` on Modal.svelte, a navy the tokens never mention.
 			const settingsTokens = await settingsDialog.evaluate((el) => {
 				const s = getComputedStyle(el);
 				return {
@@ -158,12 +157,12 @@ test(
 
 		// Step 3, walked. A person moves between settings pages, and the step compares them, so the
 		// recording needs a second page to compare against. With only one, the grader
-		// files the step as claimed but not seen (CUR-2259). Signed out, the pages on
+		// files the step as claimed but not seen. Signed out, the pages on
 		// offer are Personalization, Appearance and Data & privacy; Appearance is the one built from
 		// different controls (a radio group of themes), which is where drift would show. The settings
 		// nav in the side rail is how a person moves between pages.
 		// A settings section heading is the same kind of thing on every page, so it is drawn the
-		// same way. Both pages must match, not a bold sans title on one and a small mono label on the other (CUR-3954).
+		// same way. Both pages must match, not a bold sans title on one and a small mono label on the other.
 		const sectionHeading = () =>
 			settingsDialog
 				.getByRole('heading', { level: 2 })
@@ -206,7 +205,7 @@ test(
 			).toBeVisible({ timeout: 30_000 });
 		});
 
-		// Checked last, after two page loads have had time to run the toolbar's own script (CUR-2148).
+		// Checked last, after two page loads have had time to run the toolbar's own script.
 		await expect(
 			page.locator('vercel-live-feedback'),
 			'Vercel’s preview toolbar is on screen, and the journey critic grades it as our own UI'
@@ -214,7 +213,7 @@ test(
 	}
 );
 
-// PHONE WIDTH IS SET HERE, NOT INSIDE THE TEST, AND THE REASON IS THE RECORDING (CUR-1764).
+// PHONE WIDTH IS SET HERE, NOT INSIDE THE TEST, AND THE REASON IS THE RECORDING.
 //
 // Playwright fixes a video's frame size when the CONTEXT is created and never changes it again, so
 // `page.setViewportSize()` mid-test does not resize the recording — it scales the page down into the
@@ -223,7 +222,7 @@ test(
 // to 390x844 leaves the panel occupying columns 2-205 of an 800x450 frame. Seventy-four per cent of
 // every frame after the resize was recorder padding that never existed in the browser.
 //
-// The PM critic reads frames. It files that padding as a product defect (CUR-1764) —
+// The PM critic reads frames. It files that padding as a product defect —
 // "a narrow fixed-width card floating in the center with large blank gray margins on both sides",
 // "a small round icon control sitting half outside the right edge, floating into the grey background
 // area" — about the frames, correctly. `test.use` applies the viewport at context
@@ -241,7 +240,7 @@ test.describe('phone width', () => {
 		{ tag: '@F5' },
 		async ({ page }) => {
 			test.setTimeout(60_000);
-			// CUR-972's Done-when is silent on width, but its test 5 is "all of the above in a phone
+			// The Done-when is silent on width, but its test 5 is "all of the above in a phone
 			// browser" and the demo list's design-system item is a production claim about how Alpha
 			// looks, which is mostly how it looks on a phone.
 			const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });

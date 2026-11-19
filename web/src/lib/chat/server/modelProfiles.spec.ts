@@ -28,8 +28,8 @@ describe("reasoningOffFields is keyed by model AND provider, not provider alone"
 describe("measuredReasoningOff sends only a measured switch, never the thinking guess", () => {
 	const STG = "https://router.stg.aipotluck.org/v1";
 
-	it("turns Large 4 off with reasoning_effort none on the staging router (CUR-4281)", () => {
-		expect(measuredReasoningOff("mistralai/mistral-large-2610", STG)).toEqual({ reasoning_effort: "none" });
+	it("sends Large 4 no off switch on the staging router, which now refuses reasoning_effort none", () => {
+		expect(measuredReasoningOff("mistralai/mistral-large-2610", STG)).toEqual({});
 	});
 
 	it("sends nothing for a pair nobody measured, since thinking disabled hangs the staging router", () => {
@@ -74,6 +74,23 @@ describe("acceptedEffort never sends an effort the serving pair rejects", () => 
 	});
 });
 
+describe("Mistral Large 4 on the production gateway", () => {
+	const GATEWAY = "https://api-internal.publicai.co/v1";
+	const LARGE_4 = "mistralai/mistral-large-2610";
+
+	it("sends a none request as low, because the gateway answers 400 to reasoning_effort none", () => {
+		expect(acceptedEffort(LARGE_4, GATEWAY, "none")).toBe("low");
+	});
+
+	it("keeps low, medium and high as asked", () => {
+		for (const e of ["low", "medium", "high"] as const) expect(acceptedEffort(LARGE_4, GATEWAY, e)).toBe(e);
+	});
+
+	it("adds no reasoning-off field to an unstreamed side call, since the gateway has no off switch", () => {
+		expect(measuredReasoningOff(LARGE_4, GATEWAY)).toEqual({});
+	});
+});
+
 describe("splitWireId", () => {
 	it("splits on the last colon and lower-cases the provider", () => {
 		expect(splitWireId("zai-org/GLM-5.2:Scaleway")).toEqual({
@@ -84,7 +101,7 @@ describe("splitWireId", () => {
 	});
 });
 
-describe("rolesNeedFlattening (CUR-2145)", () => {
+describe("rolesNeedFlattening", () => {
 	it("keeps flattening Apertus 70B, the prod default, because Featherless refuses the system role", () => {
 		expect(rolesNeedFlattening("swiss-ai/apertus-v1.5-70b")).toBe(true);
 		expect(rolesNeedFlattening("swiss-ai/Apertus-v1.5-70B")).toBe(true);
@@ -95,11 +112,11 @@ describe("rolesNeedFlattening (CUR-2145)", () => {
 		expect(rolesNeedFlattening("zai-org/GLM-5.2:scaleway")).toBe(false);
 	});
 
-	it("stops flattening Mistral Large 3, develop's default, whose probe row follows the system role 3/3 (CUR-2330)", () => {
+	it("stops flattening Mistral Large 3, develop's default, whose probe row follows the system role 3/3", () => {
 		expect(rolesNeedFlattening("mistral-large-2512")).toBe(false);
 	});
 
-	it("sends Mistral Large 3 no reasoning-off field: its API answers 422 to `thinking` and 400 to any effort (CUR-2330)", () => {
+	it("sends Mistral Large 3 no reasoning-off field: its API answers 422 to `thinking` and 400 to any effort", () => {
 		expect(reasoningOffFields("mistral-large-2512", "gateway:api.mistral.ai")).toEqual({});
 	});
 
@@ -114,20 +131,20 @@ describe("rolesNeedFlattening (CUR-2145)", () => {
 		expect(rolesNeedFlattening("swiss-ai/Apertus-8B-Instruct:publicai")).toBe(true);
 	});
 
-	it("does not flatten an Apertus id with no harness row: rows are exact, so a name that only looks like Apertus gets nothing (CUR-2697)", () => {
+	it("does not flatten an Apertus id with no harness row: rows are exact, so a name that only looks like Apertus gets nothing", () => {
 		expect(rolesNeedFlattening("swiss-ai/apertus-70b-instruct")).toBe(false);
 		expect(rolesNeedFlattening("swiss-ai/Apertus-v1.5-8B-Thinking")).toBe(false);
 	});
 });
 
-describe("replyLanguageRuleFits (CUR-2294)", () => {
+describe("replyLanguageRuleFits", () => {
 	it("withholds the reply-language sentence from Mistral Large 3, however the id is spelled on the wire", () => {
 		for (const id of ["mistral-large-2512", "Mistral-Large-2512", "mistral-large-2512:mistral"]) {
 			expect(replyLanguageRuleFits(id), id).toBe(false);
 		}
 	});
 
-	it("withholds it from mistral-small-2603, the plan model that writes the prose under a checked ledger (CUR-2530)", () => {
+	it("withholds it from mistral-small-2603, the plan model that writes the prose under a checked ledger", () => {
 		for (const id of ["mistral-small-2603", "Mistral-Small-2603", "mistral-small-2603:mistral"]) {
 			expect(replyLanguageRuleFits(id), id).toBe(false);
 		}

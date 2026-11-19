@@ -12,7 +12,7 @@ import {
 	signInInboxNote
 } from './helpers/personaDriver';
 
-// The seventh persona, aimed at A1 (CUR-2676). See persona-chaos-monkey.spec.ts for the shared
+// The seventh persona, aimed at A1. See persona-chaos-monkey.spec.ts for the shared
 // reasoning: no product assertions, the recording is the output, the PM critic judges it.
 //
 // SIGNED OUT AT THE START, because the anonymous-to-signed-in carry-over is half of what it tests.

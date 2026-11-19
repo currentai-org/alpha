@@ -1,5 +1,6 @@
 // e2e-product: @site
 import { test, expect, type Page } from './helpers/test';
+import { pageDataNode } from './helpers/pageData';
 
 // The gap map and the full dataset are two views of one dataset that share a header —
 // a breadcrumb back to the map intro, a toggle between the two views, and four figures, each
@@ -115,16 +116,41 @@ test.describe('the gap map and full dataset share one header', { tag: '@G1' }, (
 
 	test('a figure link takes you to its page', async ({ page }) => {
 		await open(page, GAP_MAP);
+		// A switch fetches the other view's page data and renders it before the URL changes. That data
+		// carries each product's names, scores and category, not the notes and sources behind each
+		// score: about 1.2 MB for the whole catalog, where the full rows came to 6 MB. Chromium gives
+		// the test neither the body nor a size for that response, so the check requests the same URL
+		// again and measures what it serves.
+		const MAX_VIEW_DATA_BYTES = 2_500_000;
+		const viewData = (path: string) =>
+			page.waitForResponse((r) => new URL(r.url()).pathname.endsWith(`${path}/__data.json`));
+		const expectArrived = async (view: string, data: ReturnType<typeof viewData>) => {
+			await expect(
+				page.getByRole('navigation', { name: 'Map views' }).getByRole('link', { name: view })
+			).toHaveAttribute('aria-current', 'page');
+			const url = (await data).url();
+			const res = await page.request.get(url);
+			expect(res.status(), `${url} answered ${res.status()}`).toBe(200);
+			const bytes = (await res.body()).length;
+			expect(bytes, `${url} is ${bytes} bytes`).toBeLessThan(MAX_VIEW_DATA_BYTES);
+		};
+
+		// Each wait is armed just before its click, which hovers the link and starts the fetch.
+		const datasetData = viewData(DATASET);
 		await page
 			.getByTestId('map-header')
 			.getByRole('link', { name: /Assessed products/ })
 			.click();
 		await expect(page).toHaveURL(new RegExp(`${DATASET}$`), { timeout: 20_000 });
+		await expectArrived('Full dataset', datasetData);
+
+		const gapMapData = viewData(GAP_MAP);
 		await page
 			.getByTestId('map-header')
 			.getByRole('link', { name: /Open\(ish\) products/ })
 			.click();
 		await expect(page).toHaveURL(new RegExp(`${GAP_MAP}$`), { timeout: 20_000 });
+		await expectArrived('Open source Gap Map', gapMapData);
 	});
 
 	test('See all assessed products opens the dataset on that category, in view, with the others collapsed', async ({
@@ -188,16 +214,11 @@ async function openProductPanel(page: Page) {
 async function cmsBlockTypes(page: Page, path: string): Promise<string[]> {
 	const res = await page.request.get(`${path}/__data.json`);
 	expect(res.ok(), `${path}/__data.json answered ${res.status()}`).toBe(true);
-	const { nodes } = (await res.json()) as { nodes: ({ type: string; data: unknown[] } | null)[] };
-	for (const node of nodes) {
-		if (node?.type !== 'data') continue;
-		const flat = node.data as Record<string, number>[];
-		if (!flat[0] || typeof flat[0] !== 'object' || !('page' in flat[0])) continue;
-		const doc = flat[flat[0].page] as Record<string, number>;
-		const blocks = (flat[doc.blocks] as unknown as number[] | undefined) ?? [];
-		return blocks.map((i) => flat[flat[i].blockType] as unknown as string);
-	}
-	throw new Error(`${path}/__data.json carries no page data`);
+	const flat = pageDataNode(await res.json(), 'page');
+	if (!flat) throw new Error(`${path}/__data.json carries no page data`);
+	const doc = flat[flat[0].page] as Record<string, number>;
+	const blocks = (flat[doc.blocks] as unknown as number[] | undefined) ?? [];
+	return blocks.map((i) => flat[flat[i].blockType] as unknown as string);
 }
 
 /**
@@ -369,6 +390,60 @@ test.describe('the shared header on a 375px phone', { tag: '@G1' }, () => {
 					description: `${path}: no row has labels of different heights at 375px; alignment held trivially`
 				});
 		});
+
+		// The test above passes trivially when today's captions all fit on one line. This one makes
+		// the left caption of each row wrap, as "Total products mapped" did on the dataset,
+		// so the row has to hold its numbers on one top edge with labels of different heights.
+		test(`${path}: a caption that wraps leaves its neighbour's number on the same line`, async ({
+			page
+		}) => {
+			await open(page, path);
+			const kpis = page.getByTestId('map-header').getByTestId('map-kpi');
+			await expect(kpis).toHaveCount(4);
+			const measure = () =>
+				kpis.evaluateAll((els) =>
+					els.map((el) => ({
+						label: el.querySelector('dt')!.textContent!.trim(),
+						numberTop: Math.round(el.querySelector('dd')!.getBoundingClientRect().top),
+						labelHeight: Math.round(el.querySelector('dt')!.getBoundingClientRect().height)
+					}))
+				);
+			// A longer caption on the left cell of each row: the same text node, so its link and type
+			// styles stay as rendered.
+			await kpis.evaluateAll((els) => {
+				for (const el of [els[0], els[2]]) {
+					const dt = el.querySelector('dt')!;
+					const walker = document.createTreeWalker(dt, NodeFilter.SHOW_TEXT);
+					let last: Text | null = null;
+					while (walker.nextNode())
+						if (walker.currentNode.textContent!.trim()) last = walker.currentNode as Text;
+					last!.textContent = `${last!.textContent!.trim()} across every layer of the stack`;
+				}
+			});
+			const figures = await measure();
+			for (const [left, right] of [figures.slice(0, 2), figures.slice(2, 4)]) {
+				expect(
+					left.labelHeight,
+					`"${left.label}" did not wrap at 375px, so this row tests nothing`
+				).toBeGreaterThan(right.labelHeight);
+				expect(
+					right.numberTop,
+					`the number above "${right.label}" sits lower than the one above "${left.label}" when "${left.label}" wraps`
+				).toBe(left.numberTop);
+			}
+
+			// Control: without the cells' top alignment (justify-end on a flex-col-reverse cell), the
+			// same wrapped caption does push a number down. If this ever holds level, the wrap above
+			// no longer exercises the layout, and the assertion before it proves nothing.
+			await kpis.evaluateAll((els) => {
+				for (const el of els) el.classList.remove('justify-end');
+			});
+			const unaligned = await measure();
+			expect(
+				unaligned[1].numberTop,
+				'with the top alignment removed, a wrapped caption still left the row level, so the wrap is not a real test'
+			).not.toBe(unaligned[0].numberTop);
+		});
 	}
 });
 
@@ -385,7 +460,7 @@ const expandedIn = (page: Page, scope: string) =>
 
 const scrollY = (page: Page) => page.evaluate(() => window.scrollY);
 
-// CUR-3907 (Gap Map item 3, Dataset item 11), CUR-4271: a product or org page's back link returns
+// (Gap Map item 3, Dataset item 11),: a product or org page's back link returns
 // to the map view, product or org page the visitor came from, as they left it. From anywhere else
 // it is the fixed Gap Map link, never a history step that could leave the site.
 test.describe('Back from a product or org page', { tag: '@G1' }, () => {
@@ -396,7 +471,7 @@ test.describe('Back from a product or org page', { tag: '@G1' }, () => {
 	}) => {
 		// This test checks where each link leads, so it runs under reduced motion. With motion allowed,
 		// the page being left stays in the DOM through the view transition, and ScrollSmoother's lag
-		// moves a link after Playwright scrolls to it, so a click can miss for the whole timeout (CUR-4303).
+		// moves a link after Playwright scrolls to it, so a click can miss for the whole timeout.
 		// smooth-scroll.spec.ts and page-transition.spec.ts cover the motion.
 		await page.emulateMedia({ reducedMotion: 'reduce' });
 		await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -501,7 +576,7 @@ test.describe('Back from a product or org page', { tag: '@G1' }, () => {
 	});
 
 	// The org link sits inside a row that opens the product, and must still reach
-	// SvelteKit's router; a full page load leaves the org page's back link no view to return to (CUR-4271).
+	// SvelteKit's router; a full page load leaves the org page's back link no view to return to.
 	test("a row's organization link opens the org page, whose back link returns to the dataset with its filter", async ({
 		page
 	}) => {
@@ -595,7 +670,9 @@ test.describe('Back from a product or org page', { tag: '@G1' }, () => {
 		expect(await page.evaluate(() => history.length), 'the back link pushed a new entry').toBe(
 			entries
 		);
-		await expect(header()).toContainText('↑');
+		// Back (history.back()) changes the URL before the gap map's data has loaded and rendered,
+		// so the header waits as long as openHydrated does.
+		await expect(header()).toContainText('↑', { timeout: 30_000 });
 	});
 
 	test('the back link names the product or org page the visitor came from, and steps back through each in turn', async ({

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { taskModel, models } from "$lib/chat/server/models";
 import { logger } from "$lib/chat/server/logger";
 import { AGENT_MODEL_ID } from "$lib/chat/server/chat/resolveAgentRoute";
@@ -13,7 +16,7 @@ import { rolesNeedFlattening } from "./modelProfiles";
  *  and the turn's own watchdog fires at 45s (`GENERATION_TIMEOUT_MS`). So a side-call still running
  *  after this ceiling is, by construction, work whose result nobody can use.
  *
- *  The ceiling exists because bounding the callers one at a time does not hold (CUR-1655 bounded two
+ *  The ceiling exists because bounding the callers one at a time does not hold (bounded two
  *  of them). A side-call generation can finish well after its turn was declared dead, with the
  *  output-screen summary showing a long screen phase that screened nothing and released nothing:
  *  an abandoned in-flight side-call keeps the upstream async iterator from returning `done`, which
@@ -24,9 +27,9 @@ import { rolesNeedFlattening } from "./modelProfiles";
 const DEFAULT_SIDE_CALL_TIMEOUT_MS = 15_000;
 
 /**
- * A side call to a model some deployment of which refuses non-user roles goes out as ONE user message
- * (CUR-1294). Production's TASK_MODEL is Apertus, pooled across Infomaniak and Featherless, and a
- * system role sent to the Featherless deployment is answered as Qwen SEA-LION, so the side call is
+ * A side call to a model some deployment of which refuses non-user roles goes out as ONE user message.
+ * A TASK_MODEL may be pooled across several hosts, and a
+ * system role sent to one such deployment can be answered as another model, so the side call is
  * shed and comes back empty. The answer lane flattens in endpointOai, gated to the answer marker, so
  * this covers the side calls; the two that flatten themselves (the search classifier and the title)
  * arrive here already in this shape and pass through unchanged.
@@ -51,7 +54,7 @@ function shapeForModel(
 	return { messages: [{ from: "user", content: only.content }], preprompt: undefined };
 }
 
-/** Side-call model ids already reported as unregistered, so each warns once per instance (CUR-2264). */
+/** Side-call model ids already reported as unregistered, so each warns once per instance. */
 const substitutedSideCallIds = new Set<string>();
 
 export async function* generateFromDefaultEndpoint({
@@ -62,6 +65,7 @@ export async function* generateFromDefaultEndpoint({
 	provider,
 	reasoningEffort,
 	disableThinking,
+	skipGatewayCache,
 	isMultimodal,
 	signal,
 	timeoutMs = DEFAULT_SIDE_CALL_TIMEOUT_MS,
@@ -82,25 +86,26 @@ export async function* generateFromDefaultEndpoint({
 	/** Forwarded to the endpoint as `reasoning_effort`. NOT expressible through generateSettings — that
 	 *  object is read key-by-key in endpointOai and reasoning_effort is not one of the keys it copies.
 	 *  Callers fanning out to reasoning models need this: on a substantive question a reasoning model
-	 *  spends its entire token budget thinking and returns no answer at all (CUR-149). */
+	 *  spends its entire token budget thinking and returns no answer at all. */
 	reasoningEffort?: "none" | "minimal" | "low" | "medium" | "high";
 	/** Forwarded as `thinking: {type: "disabled"}` — see EndpointParameters.disableThinking. */
 	disableThinking?: boolean;
+	/** Forwarded to the endpoint; see EndpointParameters.skipGatewayCache. */
+	skipGatewayCache?: boolean;
 	/** Send the user messages' image files as image parts. Left undefined, the model's own registration
 	 *  decides (`modelTakesImagesNow`). The second-opinion panel sets it per panelist, since its models
-	 *  are registered without a catalog read (CUR-4670). */
+	 *  are registered without a catalog read. */
 	isMultimodal?: boolean;
 	/** Cancels the underlying HTTP request. Every endpoint already accepts one — `abortSignal` on
 	 *  EndpointParameters (endpoints/types.ts:25), threaded into each fetch by endpointOai — and this
 	 *  function passes it through, so a side-call here can be cancelled.
 	 *
 	 *  That is load-bearing, not tidiness. Racing this call against a timer and walking away leaves the
-	 *  generation in flight: getReturnFromGenerator loops `await generator.next()` with no abort, so the
+	 *  generation in flight: getReturnFromGenerator loops `await generator.next` with no abort, so the
 	 *  upstream async iterator never returns `done`, and screenStream's producer then never finishes —
-	 *  its consumer parks forever and the turn dies at the watchdog having shown the user nothing
-	 *  (CUR-1655, CUR-1657).
+	 *  its consumer parks forever and the turn dies at the watchdog having shown the user nothing.
 	 *
-	 *  A `gen.return()` from the caller is NOT a substitute — it queues behind the in-flight next() and
+	 *  A `gen.return` from the caller is NOT a substitute — it queues behind the in-flight next and
 	 *  cannot interrupt a pull that never settles. This is the handle that can. */
 	signal?: AbortSignal;
 	/** Overrides the ceiling above for a caller whose own deadline is legitimately longer — the
@@ -109,15 +114,15 @@ export async function* generateFromDefaultEndpoint({
 	timeoutMs?: number;
 	/** Told when the call failed and the "" it returns is a stand-in, not a reply: "ceiling" when the
 	 *  deadline cut it, "error" for anything else. For a caller that must tell a failed call from a model
-	 *  that answered with nothing — the title's source says which (CUR-2031). `status` is the HTTP
+	 *  that answered with nothing — the title's source says which. `status` is the HTTP
 	 *  status when the provider refused the request (the SDK's APIError carries it), so a 400 for a model
-	 *  the lane cannot serve reads as a refusal rather than as a model that said nothing (CUR-2107). */
+	 *  the lane cannot serve reads as a refusal rather than as a model that said nothing. */
 	onFailure?: (kind: "ceiling" | "error", status?: number) => void;
 	/** Told which lane the call went to: `requestedModel` as soon as the model resolves, so a call that
 	 *  never returns still names it, then whatever provenance the gateway's headers carried (`backend`
 	 *  on the LiteLLM gateway). The endpoint yields that near the end of the stream and this function
-	 *  otherwise drops it, so a caller timing its own side-call could not say which lane was slow
-	 *  (CUR-2140). Called more than once; merge the fields. */
+	 *  otherwise drops it, so a caller timing its own side-call could not say which lane was slow.
+	 *  Called more than once; merge the fields. */
 	onServed?: (served: {
 		requestedModel?: string;
 		backend?: string;
@@ -135,7 +140,7 @@ export async function* generateFromDefaultEndpoint({
 		// Choose endpoint based on provided modelId, else fall back to taskModel. A modelId the registry
 		// doesn't hold is a misconfiguration (a side-call env var naming an unregistered model), and the
 		// task model still serves it, because a side call is best-effort and must not fail the turn. It
-		// logs both ids at warn so the swap can be found in Axiom (CUR-2319, CUR-2264). Once per id per
+		// logs both ids at warn so the swap can be found in Axiom. Once per id per
 		// instance: the misconfiguration is the same on every call, and a title per turn would bury the
 		// line it exists to surface.
 		const found = modelId ? models.find((m) => m.id === modelId) : undefined;
@@ -151,7 +156,7 @@ export async function* generateFromDefaultEndpoint({
 		// answer the user reads; see the answer-marker field on EndpointParameters). A caller that
 		// passes the turn's serving model through (e.g. searchDecision's `servingModel?.id`) can resolve here to
 		// the agent model on an agent-routed turn. endpointAgent has no notion of a side-call: it
-		// always submits a full, independent /run task and ignores preprompt/generateSettings (CUR-542)
+		// always submits a full, independent /run task and ignores preprompt/generateSettings
 		// — so a 3-token yes/no classifier or a 24-token title would instead get a second, unrelated
 		// agent run as its "answer". Redirect to taskModel instead of ever handing the agent model a
 		// call it can't serve as a side-call.
@@ -166,6 +171,7 @@ export async function* generateFromDefaultEndpoint({
 			provider,
 			reasoningEffort,
 			disableThinking,
+			...(skipGatewayCache ? { skipGatewayCache } : {}),
 			...(isMultimodal !== undefined ? { isMultimodal } : {}),
 			abortSignal,
 			locals,
@@ -192,7 +198,7 @@ export async function* generateFromDefaultEndpoint({
 			};
 		}
 	} catch (error) {
-		// A task-model failure is logged rather than swallowed (CUR-219). Callers still get ""
+		// A task-model failure is logged rather than swallowed. Callers still get ""
 		// because every one of them treats an empty result as "no summary/title available", which is the
 		// right behaviour; the failure still leaves a trace.
 		// Name the ceiling explicitly, so a hung side-call leaves one greppable line behind.

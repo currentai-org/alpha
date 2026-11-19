@@ -77,7 +77,7 @@ export interface ThemeSeeds {
 }
 
 /**
- * Alpha — brutalist. Dark mode is the CF spec verbatim (#181818 / #121212 / #2F2F2F, white ink,
+ * Alpha — brutalist. Dark mode is the Alpha design spec verbatim (#181818 / #121212 / #2F2F2F, white ink,
  * white rules at 10/30/50%). Light mode is the Potluck website: paper ground, white cards that
  * float, dark-blue ink, hard ink rules.
  */

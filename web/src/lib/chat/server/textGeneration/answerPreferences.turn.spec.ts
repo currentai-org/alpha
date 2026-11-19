@@ -4,12 +4,12 @@
  * turnRequest.characterization.spec.ts pins the defaults with. For each setting this names where the
  * clause landed: the scaffolded Apertus turn (fenced user turn or persona), the scaffolded minimal plan
  * (guards-only system prompt), the native Large 3 turn (system prompt, since its user turn carries the
- * fence alone), and the endpoint's `replyLanguage` parameter, which the agent reads. Since CUR-4015 the
+ * fence alone), and the endpoint's `replyLanguage` parameter, which the agent reads. The
  * model's harnessProfiles.ts row alone picks its plan, so each path is the model whose row makes it:
  * Apertus the persona plan, ALIA the minimal plan, Large 3 the native plan.
  *
  * With the defaults the request is byte-identical to the request built with no answer at all, which is
- * the one the characterization snapshots record. (CUR-3929)
+ * the one the characterization snapshots record.
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { ObjectId } from "bson";
@@ -32,7 +32,7 @@ vi.mock("./worldModel", async (importOriginal) => ({
 	WORLD_MODEL_PREPASS: false,
 	maybeWorldModelNote: async () => null,
 }));
-// CUR-2237's per-model weak-language note sits behind `low-resource-per-model`, and Clef reads the
+// The per-model weak-language note sits behind `low-resource-per-model`, and Clef reads the
 // message's language. Both off unless a case turns them on, so no other case reaches Clef.
 let lowResourcePerModel = false;
 let clefReads: string | null | undefined;
@@ -150,7 +150,7 @@ const PATHS = [
 
 // The row decides the plan, so a row change would move a case to another path with every assertion
 // below still reading its old name. This pins each name to the plan it runs.
-describe("each path runs the plan its name says (CUR-3929, CUR-4015)", () => {
+describe("each path runs the plan its name says", () => {
 	it("Apertus is scaffolded persona, ALIA scaffolded minimal, Large 3 native", () => {
 		const plan = (p: (typeof PATHS)[number]) => resolveHarness({ id: p.modelId, supportsTools: true });
 		expect([PATHS[0], PATHS[1], PATHS[2]].map((p) => [plan(p).kind, plan(p).prompt])).toEqual([
@@ -161,7 +161,7 @@ describe("each path runs the plan its name says (CUR-3929, CUR-4015)", () => {
 	});
 });
 
-describe("the defaults send the same request as no answer at all (CUR-3929)", () => {
+describe("the defaults send the same request as no answer at all", () => {
 	for (const p of PATHS) {
 		it(`${p.name}`, async () => {
 			answer = undefined;
@@ -174,7 +174,7 @@ describe("the defaults send the same request as no answer at all (CUR-3929)", ()
 	}
 });
 
-describe("where each setting lands on each path (CUR-3929)", () => {
+describe("where each setting lands on each path", () => {
 	it("tone plain: scaffolded Apertus carries it in the persona {style} and in the fenced turn", async () => {
 		answer = { ...ANSWER_DEFAULTS, tone: "plain" };
 		const r = await requestFor(PATHS[0]);
@@ -196,7 +196,7 @@ describe("where each setting lands on each path (CUR-3929)", () => {
 		}
 	});
 
-	it("self-reference person: the persona head and the person few-shot on Apertus, a system sentence on minimal and native, the honesty invariant on all three (CUR-3930)", async () => {
+	it("self-reference person: the persona head and the person few-shot on Apertus, a system sentence on minimal and native, the honesty invariant on all three", async () => {
 		answer = { ...ANSWER_DEFAULTS, selfReferenceAsPerson: true };
 		const apertus = await requestFor(PATHS[0]);
 		expect(apertus.preprompt).toContain(`${SELF_REFERENCE_CLAUSE_PERSON}: `);
@@ -244,7 +244,8 @@ describe("where each setting lands on each path (CUR-3929)", () => {
 		expect(native.userTurn).toBe(`<Q_FENCE>\nHow does VAT work?\n</Q_FENCE>\n\n${DIGEST_RULES.short}`);
 	});
 
-	// Detailed keeps today's carriers and gains the digest rule after the fence, as short has. (CUR-4288)
+	// Detailed lands in the fenced user turn and the native system prompt, and gains the digest rule after
+	// the fence, as short does.
 	it("detailed: the fenced user turn on both scaffolded paths, the system prompt on native, and the native user turn is the fence and the detailed rule", async () => {
 		answer = { ...ANSWER_DEFAULTS, answerLength: "detailed" };
 		for (const p of [PATHS[0], PATHS[1]]) {
@@ -285,7 +286,7 @@ describe("where each setting lands on each path (CUR-3929)", () => {
 		expect(native.replyLanguage).toBe("pt");
 	});
 
-	it("a fixed language is the last line of a native turn, after the digest, so a style rule after the fence is never the most recent instruction (CUR-4414)", async () => {
+	it("a fixed language is the last line of a native turn, after the digest, so a style rule after the fence is never the most recent instruction", async () => {
 		const sentence = fixedLanguageSentence("Portuguese");
 		answer = { ...ANSWER_DEFAULTS, answerLanguage: "pt", tone: "plain" };
 		const plain = await requestFor({ modelId: MEDIUM, harness: "native" });
@@ -296,12 +297,11 @@ describe("where each setting lands on each path (CUR-3929)", () => {
 		expect(bare.userTurn).toBe(`<Q_FENCE>\nHow does VAT work?\n</Q_FENCE>\n\n${sentence}`);
 	});
 
-	it("the plain tone rule quotes no opener for the model to copy word for word (CUR-4413)", () => {
+	it("the plain tone rule quotes no opener for the model to copy word for word", () => {
 		const quoted = [...DIGEST_RULES.plainTone.matchAll(/["“]([^"”]*)["”]/g)].map((m) => m[1]);
 		expect(quoted).toEqual(["it's", "you'll", "you", "it is important to note", "in summary"]);
 	});
 
-	// CUR-549
 	it("format prose: the fenced user turn on both scaffolded paths, in place of the bullets rule; the system prompt on native, with the digest rule after the fence", async () => {
 		answer = { ...ANSWER_DEFAULTS, answerFormat: "prose" };
 		for (const p of [PATHS[0], PATHS[1]]) {
@@ -316,8 +316,8 @@ describe("where each setting lands on each path (CUR-3929)", () => {
 	});
 
 	// The explain-terms setting no longer appears on the page. A row saved earlier keeps
-	// `explainTerms: true`; it must change nothing a model sees (CUR-4288).
-	it("a stored explainTerms, off the page under rule 4.6, sends the same request as no answer at all on every path (CUR-4288)", async () => {
+	// `explainTerms: true`; it must change nothing a model sees.
+	it("a stored explainTerms, off the page under rule 4.6, sends the same request as no answer at all on every path", async () => {
 		for (const p of PATHS) {
 			answer = undefined;
 			const without = await requestFor(p);
@@ -326,7 +326,7 @@ describe("where each setting lands on each path (CUR-3929)", () => {
 		}
 	});
 
-	// EMOJIS_HELPFUL_CLAUSE stays where it was, and the digest rule (memo 7.18) follows the fence. (CUR-4288)
+	// EMOJIS_HELPFUL_CLAUSE stays in the system prompt, and the digest rule follows the fence.
 	it("emojis helpful: the clause stays in the system prompt on every path, and the digest rule comes right after the fence, the whole native user turn after the question", async () => {
 		answer = { ...ANSWER_DEFAULTS, emojis: "helpful" };
 		for (const p of PATHS) {
@@ -364,15 +364,15 @@ describe("where each setting lands on each path (CUR-3929)", () => {
 		answer = { ...ANSWER_DEFAULTS, answerLanguage: "pt" };
 		const fixed = await requestFor({ modelId: ALIA, harness: "scaffolded", browserLanguage: "es" });
 		expect(fixed.preprompt).not.toContain("The person's browser is set to");
-		// ALIA's row makes the minimal plan (CUR-4015), whose carrier for a fixed language is the fenced turn.
+		// ALIA's row makes the minimal plan, whose carrier for a fixed language is the fenced turn.
 		expect(fixed.userTurn).toContain(fixedLanguageSentence("Portuguese"));
 	});
 });
 
-// Plan 3.2: a fixed answer language wins on every path. Apertus's row names Amharic as a language it
-// drifts out of (CUR-2237), so an Amharic message gets a note asking for an Amharic answer, which would
+// A fixed answer language wins on every path. Apertus's row names Amharic as a language it
+// drifts out of, so an Amharic message gets a note asking for an Amharic answer, which would
 // contradict the language the person fixed.
-describe("the weak-language note under a fixed answer language (CUR-3929, CUR-2237)", () => {
+describe("the weak-language note under a fixed answer language", () => {
 	const AMHARIC = "ቫት እንዴት ይሰራል?";
 
 	it("a fixed answer language leaves out the weak-language note, so the turn names one language", async () => {
@@ -393,9 +393,9 @@ describe("the weak-language note under a fixed answer language (CUR-3929, CUR-22
 	});
 });
 
-// Plan 3.2 and 4.9.11 item 8: the same holds for the note that asks a model built for the message's
-// language (CUR-3898; ALIA lists Spanish) to answer in it.
-describe("the message-language note under a fixed answer language (CUR-3929, CUR-3898)", () => {
+// The same holds for the note that asks a model built for the message's language (ALIA lists Spanish)
+// to answer in it.
+describe("the message-language note under a fixed answer language", () => {
 	const SPANISH = "¿Cómo funciona el impuesto sobre el valor añadido en España para una pequeña empresa?";
 
 	it("a fixed answer language leaves out the message-language note, so the turn names one language", async () => {
@@ -409,8 +409,8 @@ describe("the message-language note under a fixed answer language (CUR-3929, CUR
 	});
 });
 
-// Plan 4.9.3 (revision 9): one fixed rule per set value, after the closing fence of the latest user turn.
-describe("the answer-settings digest (CUR-3929)", () => {
+// The digest is one fixed rule per set value, after the closing fence of the latest user turn.
+describe("the answer-settings digest", () => {
 	const DIGEST_PATHS = [
 		{ name: "scaffolded persona Apertus", modelId: APERTUS, harness: "scaffolded" },
 		{ name: "scaffolded persona Bielik", modelId: BIELIK, harness: "scaffolded" },
@@ -545,7 +545,7 @@ describe("the answer-settings digest (CUR-3929)", () => {
 
 // With suggestions off, the locality note must not invite the person's country on
 // ALIA and Bielik in any arm. Suggestions off asks for nothing back, so the note drops its invitation.
-describe("the locality note under suggestions off (CUR-3929)", () => {
+describe("the locality note under suggestions off", () => {
 	it("suggestions off: a locality question's fenced turn carries the note without the invitation; suggestions on keeps today's note", async () => {
 		localityHit = true;
 		try {
@@ -563,8 +563,8 @@ describe("the locality note under suggestions off (CUR-3929)", () => {
 		}
 	});
 
-	// The persona plan carries its own locality sentence in the system prompt, on every turn. (CUR-4290)
-	it("suggestions off: the scaffolded persona's system prompt on Apertus and Bielik invites no context, on a locality question too (CUR-4290)", async () => {
+	// The persona plan carries its own locality sentence in the system prompt, on every turn.
+	it("suggestions off: the scaffolded persona's system prompt on Apertus and Bielik invites no context, on a locality question too", async () => {
 		localityHit = true;
 		try {
 			for (const modelId of [APERTUS, BIELIK]) {

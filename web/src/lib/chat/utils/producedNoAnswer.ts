@@ -4,7 +4,7 @@
 // same posture as stripThink.ts. The component owns the `loading` / status / message.from gating and
 // calls this only for the block content itself.
 //
-// THE FAILURE THIS GUARDS AGAINST (CUR-113): a thinking model opens `<think>`, reasons, never closes the
+// THE FAILURE THIS GUARDS AGAINST: a thinking model opens `<think>`, reasons, never closes the
 // tag and never writes an answer. The whole output is reasoning, so every visible block is empty and the
 // turn would render as a finished message with a blank body: no error, no notice, nothing to retry.
 //

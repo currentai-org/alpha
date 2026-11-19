@@ -9,10 +9,9 @@ import { openStepByStep } from './helpers/xray';
 import { openComposerTool, toolGroup } from './helpers/composerMenu';
 import { startChattingPastWelcome } from './helpers/welcome';
 
-// A turn on develop is written by one model and helped by others (CUR-984): the search decision and the
-// math-route planner each run on a model of their own. X-ray's "Step by step" used to name only the
-// writer. With provenance-assisted-by on, the turn stores each helper as routerMetadata.assistedBy and
-// the step list names it with the host it ran on.
+// A turn is written by one model and helped by others: the search decision and the math-route planner
+// each run on a model of their own. With provenance-assisted-by on, the turn stores each helper as
+// routerMetadata.assistedBy and X-ray's "Step by step" names it with the host it ran on.
 //
 // The turn uses Auto web search on a question about current events, so the search decision has to run
 // and the turn reaches the web. The spec reads the helpers off the stored message rather than
@@ -22,11 +21,11 @@ import { startChattingPastWelcome } from './helpers/welcome';
 //
 // The safety screen and the title read the first message too, and a follow-up that needs its
 // search query rewritten adds the rewrite model, so each must be stored with the host its own call
-// reported (CUR-3563). A helper whose call reported no host is shown as "not recorded", never a configured host.
+// reported. A helper whose call reported no host is shown as "not recorded", never a configured host.
 //
 // The search decision is a side call only on the scaffolded harness. A native turn's model decides for
-// itself (CUR-2275), so the turn is pinned to a model without tools, which always gets the scaffolded
-// plan (CUR-4015).
+// itself, so the turn is pinned to a model without tools, which always gets the scaffolded
+// plan.
 
 type Assist = { role: string; model: string; provider?: string; backend?: string };
 type Stored = {

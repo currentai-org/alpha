@@ -30,4 +30,16 @@ describe.sequential("getAccountUsage", () => {
 
 		expect(totals).toEqual({ conversations: 3, messages: 6, userMessages: 3, characters: 15 });
 	});
+
+	it("counts a sealed message's characters from its stored length, since its content is stored empty", async () => {
+		const locals = createTestLocals();
+		const sealedQuestion: Message = { ...msg("user", ""), sealed: "c2VhbGVk", sealedRev: 0, chars: 11 };
+		await createTestConversation(locals, {
+			messages: [msg("system", ""), sealedQuestion, msg("user", "hello")],
+		});
+
+		const { totals } = await getAccountUsage(locals);
+
+		expect(totals.characters).toBe(16);
+	});
 });

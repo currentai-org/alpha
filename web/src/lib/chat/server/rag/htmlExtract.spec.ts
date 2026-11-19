@@ -52,7 +52,7 @@ describe("extractTextFromHtml", () => {
 		expect(text).toBe("One\nTwo");
 	});
 
-	// htmlparser2 parses the page, so markup a tag regex mishandles comes out as text. (CUR-4068)
+	// htmlparser2 parses the page, so markup a tag regex mishandles comes out as text.
 	it("reads nested inline tags, a numeric entity and a CDATA block as clean text", () => {
 		const html =
 			"<p>Open <b>models <i>for&#160;all</i></b> &#8212; <a href='/x' title='a > b'>today</a></p><![CDATA[ hidden ]]><p>Next</p>";

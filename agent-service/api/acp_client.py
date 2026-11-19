@@ -10,7 +10,7 @@ Reached ONLY when `AGENT_ACP=1` in `api/app.py`; the surrounding best-of-N / non
 machinery in `app.py._run` is unchanged — only the per-attempt transport is swapped. Kept in its own
 module so the default (flag-off) path never imports `acp`.
 
-CUR-760: `request_permission` composes an always-confirm tool-effect list with WHATEVER resolved policy
+`request_permission` composes an always-confirm tool-effect list with WHATEVER resolved policy
 it is handed — including "allow" (bare, or a `staged` caller's earned trusted tier) — so a genuinely
 risky action still pauses for a human even for a fully-trusted caller. See `_ALWAYS_CONFIRM_KINDS` and
 `request_permission` below for what is on the list, what is deliberately not, and why.
@@ -45,7 +45,7 @@ from acp.schema import (
 
 _SUMMARY_MAX = 200   # cap any redacted summary/step string that crosses the SSE boundary
 _STEP_CLIP = 80
-_STDERR_MAX = 500    # CUR-653: bounded tail, same denomination as _detect_run_failure's [-300:] in app.py
+_STDERR_MAX = 500    # bounded tail, same denomination as _detect_run_failure's [-300:] in app.py
 
 _LOG = bool(int(os.environ.get("AGENT_LOG_JSON", "1")))
 
@@ -85,8 +85,8 @@ async def _drain_stderr(proc, task_id: str, attempt: int, nonce) -> None:
     """Read the hermes acp child's stderr to EOF so the pipe never backs up, and log a bounded,
     nonce-scrubbed tail once it closes (normally at EOF, or via `finally` on cancellation).
 
-    The tail goes to the ops log only, so a failure inside the child (a syntax error vs. an HTTP 400
-    underneath) can be diagnosed afterwards. It doesn't change what reaches the client."""
+    The tail gives an investigation (a syntax error vs. an HTTP 400 underneath) something to read when the
+    child fails. It doesn't change what reaches the client; this is purely an ops-log tail."""
     if proc.stderr is None:
         return
     chunks: list[bytes] = []
@@ -126,13 +126,13 @@ def _selected(option_id: str) -> RequestPermissionResponse:
 
     Built as the real AllowedOutcome rather than the bare dict these three call sites each wrote out:
     pydantic coerces the dict fine at runtime, but the dict is a `dict[str, str]` to a type checker and
-    so is unverifiable against the schema it is standing in for (CUR-1227)."""
+    so is unverifiable against the schema it is standing in for."""
     return RequestPermissionResponse(outcome=AllowedOutcome(outcome="selected", option_id=option_id))
 
 
 # Keys an execute-kind tool call may carry its shell command under, most specific first. An ALLOWLIST
 # rather than a dump of raw_input: the redaction discipline above holds for every other key, so a
-# credential sitting elsewhere in the same raw_input still never crosses (CUR-1405). Hermes has been
+# credential sitting elsewhere in the same raw_input still never crosses. Hermes has been
 # seen using "command"; the rest are here because the ACP schema types raw_input as free-form `Any`
 # and an unrecognised key must degrade to today's behaviour, not to a dump.
 _COMMAND_KEYS = ("command", "cmd", "shell_command", "script")
@@ -141,10 +141,11 @@ _COMMAND_KEYS = ("command", "cmd", "shell_command", "script")
 def _execute_command_text(tool_call) -> str:
     """The actual shell command an execute-kind call proposes, or "" when it can't be identified.
 
-    `tool_call.title` is Hermes' own summary and it omits arguments: `apt update && apt install -y pandoc`
-    arrives as the string `apt && apt`, which is not a command and cannot be reasoned about. The command
-    belongs in `summary`, which is already the field the UI renders under the title, and already bounded
-    by _clip.
+    `tool_call.title` is Hermes' own summary and it drops arguments — a real
+    `apt update && apt install -y pandoc` arrived as the string `apt && apt`, which is not a command
+    and cannot be reasoned about. A person asked to authorise that is being asked to authorise a
+    blank. The command belongs in `summary`, which is already the field the UI renders under the
+    title, and already bounded by _clip.
     """
     raw = getattr(tool_call, "raw_input", None)
     if not isinstance(raw, dict):
@@ -160,17 +161,17 @@ def _execute_command_text(tool_call) -> str:
 
 
 def _describe_tool_call(confirm_id: str, tool_call) -> dict:
-    """CUR-218: what a human needs to see to actually decide allow/deny. Deliberate, scoped exception
+    """What a human needs to see to actually decide allow/deny. Deliberate, scoped exception
     to the tool_call/tool_result redaction above ("tool KIND + step index only") — a confirmation the
     human is supposed to act on has to show them what's being asked. Still bounded through _clip, same
     as everything else that crosses this boundary — never a raw dump of raw_input/raw_output."""
     kind = str(getattr(tool_call, "kind", "") or "")
     title = _clip(getattr(tool_call, "title", ""), _SUMMARY_MAX)
     summary = ""
-    # For an execute call the command outranks anything the content blocks carry — the
+    # for an execute call the command outranks anything the content blocks carry — the
     # `terminal` branch below yields `terminal:<id>`, an id that tells the reader nothing at all. Falls
     # through to the old behaviour when no command key is recognised, so an unknown shape is no worse
-    # than it is today. (CUR-1405)
+    # than it is today.
     if kind == "execute":
         command = _execute_command_text(tool_call)
         if command:
@@ -193,7 +194,7 @@ def _describe_tool_call(confirm_id: str, tool_call) -> dict:
     return {"confirm_id": confirm_id, "kind": kind, "title": title, "summary": summary}
 
 
-# The tool kinds that always pause for a human (CUR-760). The deny_writes branch of `request_permission`
+# The tool kinds that always pause for a human. The deny_writes branch of `request_permission`
 # reads the same tuple, so the deny path and the always-confirm path share one fact instead of two copies
 # that could drift.
 #
@@ -203,22 +204,23 @@ def _describe_tool_call(confirm_id: str, tool_call) -> dict:
 # `request_permission` for edits, and it only ever proposes kind="edit" (write_file, patch). "delete" is
 # a defensive placeholder in case a future Hermes build adds a real delete-kind proposal.
 #
-# "execute" (terminal, process, execute_code) is proposed by deploy/hermes/0002-acp-confirm-execute.patch
-# (CUR-975), which adds acp_adapter/execute_approval.py (mirroring edit_approval.py's
+# "execute" (terminal, process, execute_code) is proposed by deploy/hermes/0002-acp-confirm-execute.patch,
+# which adds acp_adapter/execute_approval.py (mirroring edit_approval.py's
 # maybe_require_edit_approval). It calls request_permission(kind="execute") from model_tools.py's single
 # dispatch chokepoint before terminal/process/execute_code run, which covers the nested case too, since
 # execute_code's own sandbox RPC re-enters that same chokepoint. Toolset EXCLUSION (app.py's
 # `_deny_writes_toolsets`) is still the deny_writes floor: an untrusted caller never sees these tools at
 # all, so this per-call pause only engages for a resolved "allow" (bare, or a `staged` caller's earned
-# trusted tier), the same class edit/delete pause for. A caller can therefore see two separate prompts for one dangerous shell command (Hermes's own
+# trusted tier), the same class edit/delete pause for. A caller can therefore see two separate prompts
+# for one dangerous shell command (Hermes's own
 # pattern-matched dangerous-command confirm, unrelated to ACP, plus this one) — extra friction, not a
 # gap; left as a known consequence rather than merged, since unifying them risks the dangerous-command
 # gate's own test coverage.
 _ALWAYS_CONFIRM_KINDS = ("edit", "delete", "execute")
 
-# approval_mode="auto" decides an _ALWAYS_CONFIRM_KINDS call instead of asking a person about every
-# one (CUR-3142). An everyday request such as a budget in a spreadsheet would otherwise raise a card
-# per script, each the agent creating the file it had just been asked for. The sandbox is what makes
+# approval_mode="auto" decides an _ALWAYS_CONFIRM_KINDS call instead of asking a person
+# about every one: an everyday request (a budget in a spreadsheet) would otherwise raise a card for
+# each piece of raw Python the agent runs to create the file it was asked for. The sandbox is what makes
 # deciding safe: bwrap leaves only this attempt's work dir writable, and egress is default-deny
 # (agent-app.toml AGENT_EGRESS), so the worst an approved call can do is change or remove files in
 # that dir. Auto mode therefore asks only about the second of those.
@@ -228,8 +230,8 @@ _ALWAYS_CONFIRM_KINDS = ("edit", "delete", "execute")
 #   execute/delete: handed to `auto_reviewer`, an injected async callable (app.py builds it on the
 #            task's gateway nonce) returning {"decision": "run"|"ask", "plain": "<one sentence>"}.
 # Anything the reviewer cannot answer (raises, times out, returns another shape) asks; an HTTP error from the
-# gateway is retried once first (CUR-4630). deny_writes is
-# untouched: an untrusted caller still fails closed and never reaches the reviewer.
+# gateway is retried once first. deny_writes is
+# unchanged: an untrusted caller still fails closed and never reaches the reviewer.
 APPROVAL_MODES = ("ask", "auto")
 _SENSITIVE_PARTS = frozenset({".git", ".ssh", ".hermes", ".env"})
 
@@ -256,19 +258,34 @@ def _edit_stays_in(work: str, tool_call) -> bool:
 
 
 class _AttemptClock:
-    """Same-loop mutable deadline (CUR-218). pause()/resume() are reentrant with a depth counter —
+    """Same-loop mutable deadline. pause()/resume() are reentrant with a depth counter —
     up to _MAX_TOOL_WORKERS (8, in hermes-agent) tool calls can be running, and thus awaiting
     confirmation, concurrently for one attempt, and the compute deadline must stay paused until the
     LAST one resolves, not the first. Banks the exact remaining compute budget on pause and restores
     the identical remaining budget on resume, so a confirm wait's duration never eats into the
-    attempt's actual compute timeout — this is pause/resume, not a guessed extension."""
+    attempt's actual compute timeout — this is pause/resume, not a guessed extension.
 
-    def __init__(self, loop: asyncio.AbstractEventLoop, timeout_secs: float) -> None:
+    The exemption is for a wait a person answered. A pause window in which any confirmation timed out
+    unanswered is charged to the attempt like compute and left out of `total_paused`: nobody was
+    there, and reimbursing silence would let a run whose cards nobody answers hold its sandbox, running with
+    its whole guest memory, well past its task ceiling."""
+
+    def __init__(self, loop: asyncio.AbstractEventLoop, timeout_secs: float,
+                 hard_timeout_secs: float | None = None) -> None:
         self._loop = loop
         self.deadline = loop.time() + timeout_secs
+        # The task's hard limit: pause() never touches it, so a confirmation wait cannot carry the
+        # attempt past it. inf when the caller set none.
+        self.hard_deadline = float("inf") if hard_timeout_secs is None else loop.time() + hard_timeout_secs
         self._pause_depth = 0
         self._banked: float | None = None
+        self._forfeit = False      # some confirmation in the current pause window timed out unanswered
         self.total_paused = 0.0   # accumulated actual paused seconds, for the caller's wall-clock reimbursement
+
+    def ends_at(self) -> float:
+        """When this attempt must stop: its compute deadline (inf while a card is open) or the task's hard limit,
+        whichever is first."""
+        return min(self.deadline, self.hard_deadline)
 
     def pause(self) -> None:
         if self._pause_depth == 0:
@@ -277,20 +294,30 @@ class _AttemptClock:
             self.deadline = float("inf")
         self._pause_depth += 1
 
-    def resume(self) -> None:
+    def resume(self, *, forfeit: bool = False) -> None:
+        """End one confirmation's wait. `forfeit` says it timed out with no answer, which charges the whole
+        pause window once the last open confirmation resolves."""
+        if forfeit and self._banked is not None:
+            self._forfeit = True
         self._pause_depth = max(0, self._pause_depth - 1)
         if self._pause_depth == 0 and self._banked is not None:
-            self.total_paused += self._loop.time() - self._pause_started
-            self.deadline, self._banked = self._loop.time() + self._banked, None
+            now = self._loop.time()
+            window = now - self._pause_started
+            if self._forfeit:
+                self.deadline = now + max(0.0, self._banked - window)
+            else:
+                self.total_paused += window
+                self.deadline = now + self._banked
+            self._banked, self._forfeit = None, False
 
 
 _WATCHDOG_TICK_SECS = 1.0   # the longest the watchdog sleeps before re-reading the deadline
 
 
 async def _deadline_watchdog(clock: _AttemptClock, loop: asyncio.AbstractEventLoop) -> None:
-    while (remaining := clock.deadline - loop.time()) > 0:  # noqa: ASYNC110 — an Event cannot do this:
+    while (remaining := clock.ends_at() - loop.time()) > 0:  # noqa: ASYNC110 — an Event cannot do this:
         # Sliced, never the whole remainder: a wake during a confirmation's pause reads inf, and a sleep(inf)
-        # never saw the resume() that set the deadline back, so the attempt ran on with no clock (CUR-4535).
+        # would never see the resume() that sets the deadline back, so the attempt would run on with no clock.
         await asyncio.sleep(min(remaining, _WATCHDOG_TICK_SECS))
 
 
@@ -300,7 +327,7 @@ _TEARDOWN_SECS = 10.0   # each step of ending a remote attempt (cancel, close) g
 @contextlib.asynccontextmanager
 async def _agent_connection(client, command: str, args: list[str], env: dict, work: str, open_stdio):
     """An ACP connection to `hermes acp`. With no `open_stdio` it is the launch agent mode has always done,
-    bwrap prefix and all. With one (CUR-4450), the sandbox backend starts the process from the bare Hermes argv
+    bwrap prefix and all. With one, the sandbox backend starts the process from the bare Hermes argv
     and owns where it runs, and only the ACP connection over its streams is built here."""
     if open_stdio is None:
         async with acp.spawn_agent_process(client, command, *args,  # pyright: ignore[reportArgumentType]
@@ -312,7 +339,7 @@ async def _agent_connection(client, command: str, args: list[str], env: dict, wo
         try:
             yield conn, proc
         finally:
-            # A guest that stopped reading would hold this close, and the task's slot with it (CUR-4535).
+            # A guest that stopped reading would hold this close, and the task's slot with it.
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(conn.close(), _TEARDOWN_SECS)
 
@@ -343,16 +370,19 @@ def _write_acp_config(attempt_home: str, model: str, provider: str) -> None:
         lines.append(f'  provider: "{provider}"')
     lines.append(f'  default: "{model}"')
     # app._write_hermes_home_config has already written this file (the `agent:` enforcement keys, or the
-    # copied global config), so merge into it; replacing it would drop both enforcement nudges (CUR-2163).
+    # copied global config), so merge into it; replacing it would drop both enforcement nudges.
     # Hermes fetches its model catalog (two public URLs) and the models.dev registry during
-    # `initialize`/`session/new`. Under the egress fence DNS lookups get no answer, so each fetch waits
-    # out its timeout: about 60 s before the first model call on every attempt. The catalog has a
+    # `initialize`/`session/new`. Fly's egress fence blackholes DNS, so each fetch waits out its timeout:
+    # a long wait before the first model call on every attempt. The catalog has a
     # switch; models.dev has only a URL override, so point it at a refused loopback port and Hermes
     # falls back at once. Neither feeds the gateway-routed model we name above.
     lines += ["model_catalog:", "  enabled: false", "models_dev:", f'  url: "{_MODELS_DEV_OFFLINE_URL}"']
+    # Hermes titles each session with a side call that sends `reasoning: {enabled: false}`,
+    # which the gateway rejects for Large 4. Nothing shows a visitor that title, so skip the call.
+    lines += ["auxiliary:", "  title_generation:", "    enabled: false"]
     path = Path(attempt_home, "config.yaml")
     kept = path.read_text() if path.exists() else ""
-    for key in ("model", "model_catalog", "models_dev"):
+    for key in ("model", "model_catalog", "models_dev", "auxiliary"):
         kept = _without_top_level_block(kept, key)
     path.write_text(kept + "\n".join(lines) + "\n")
 
@@ -375,12 +405,13 @@ def _without_top_level_block(text: str, key: str) -> str:
 
 
 def _write_acp_toolsets(attempt_home: str, toolsets: str) -> None:
-    """Hand `hermes acp` its toolset through config, since the env var does not reach it (CUR-2118).
+    """Hand `hermes acp` its toolset through config, since the env var no longer reaches it.
 
-    Hermes resolves an ACP session's toolsets from `platform_toolsets.acp` in config.yaml
-    (NousResearch/hermes-agent acp_adapter/session.py `_make_agent`), so this block carries the
-    comma-separated HERMES_ACP_TOOLSETS value, including app._deny_writes_toolsets' narrowed list. Empty
-    means unset: no block, and Hermes picks its own `hermes-acp` default. A set value
+    Up to the v2026.8.31 pin, deploy/hermes/0001 taught `hermes acp` to read HERMES_ACP_TOOLSETS. From
+    v2026.9.24 upstream resolves an ACP session's toolsets from `platform_toolsets.acp` in config.yaml
+    (NousResearch/hermes-agent acp_adapter/session.py `_make_agent`), so 0001 is gone and this block
+    carries the same comma-separated value, including app._deny_writes_toolsets' narrowed list. Empty
+    means unset: no block, and Hermes picks its own `hermes-acp` default exactly as before. A set value
     replaces any earlier `platform_toolsets:` block whole, other platforms' lists included; nothing but
     `acp` runs under this HERMES_HOME."""
     names = [n.strip() for n in toolsets.split(",") if n.strip()]
@@ -431,8 +462,8 @@ class _AgentClient:
                  approval_mode: str = "ask",
                  auto_reviewer: Callable[[dict], Awaitable[dict]] | None = None) -> None:
         self.work = str(Path(work).resolve())
-        # See APPROVAL_MODES. "auto" without a reviewer still decides edits by path and asks
-        # about everything else, so a wiring miss costs cards, never an unreviewed shell command. (CUR-3142)
+        # see APPROVAL_MODES. "auto" without a reviewer still decides edits by path and asks
+        # about everything else, so a wiring miss costs cards, never an unreviewed shell command.
         self.approval_mode = approval_mode if approval_mode in APPROVAL_MODES else "ask"
         self.task_id = ""                    # set by _acp_run; stamps the acp.permission log line
         self.auto_reviewer = auto_reviewer
@@ -449,11 +480,11 @@ class _AgentClient:
         self.text_parts: list[str] = []
         self._step = 0
         self._steps: dict = {}                # tool_call_id -> stable step index (across start/update)
-        # Passed in, not read from env here. Under ACP_PERMISSION_POLICY="staged" the resolved
+        # passed in, not read from env here. Under ACP_PERMISSION_POLICY="staged" the resolved
         # value differs per caller (app.py:_resolve_permission_policy), and this instance is constructed
         # fresh per attempt already knowing which task it belongs to — the caller has the answer this
         # class needs, so it hands it over instead of this __init__ re-deriving a global that no longer
-        # has a single value to re-derive. (CUR-470)
+        # has a single value to re-derive.
         self.permission_policy = permission_policy
         self.permission_calls = 0             # observability / test hook
         self.early_exit = False               # set True by _acp_run's debounce right before it cancels
@@ -462,7 +493,7 @@ class _AgentClient:
         # resolving from policy. _pending_confirms is keyed by confirm_id (uuid4, task-scoped rather
         # than attempt-local — see request_permission below); on_confirmation_open/close let app.py's
         # _run mutate Task.state/pending_confirmations without acp_client.py importing State from app.py
-        # (app.py imports acp_client, not the reverse — a module-level import back would cycle). (CUR-218)
+        # (app.py imports acp_client, not the reverse — a module-level import back would cycle).
         self.confirm_timeout_secs = confirm_timeout_secs
         self._pending_confirms: dict[str, asyncio.Future] = {}
         self.on_confirmation_open: Callable[[dict], None] | None = None
@@ -473,19 +504,19 @@ class _AgentClient:
         # redaction the tool_call frame observes below, and nothing here widens it.
         #
         # "Actually ran" is load-bearing: committed at tool_call_update's status=="completed" branch, NOT
-        # at the tool_call proposal, so a denied/timed-out confirm never joins this set (CUR-705; see both
+        # at the tool_call proposal, so a denied/timed-out confirm never joins this set (see both
         # branches' comments).
         self.tool_kinds: set[str] = tool_kinds if tool_kinds is not None else set()
-        # Kinds with an outstanding (not yet recovered) call failure this attempt (CUR-574). Same redaction
+        # Kinds with an outstanding (not yet recovered) call failure this attempt. Same redaction
         # level as tool_kinds (kind strings only, never which call or why). A tool_call_update with a real
         # completion status does arrive for execute-kind calls, including a turn's last one, so a failed
         # call shows up here. _call_kind below is what turns a completion status back into a kind, since
         # tool_call_update carries only the id, not the kind that was started.
         #
-        # A later call of the SAME kind completing discards that kind again (CUR-772; see the
+        # A later call of the SAME kind completing discards that kind again (see the
         # tool_call_update handler below) — a fail-then-retry-succeed sequence should not still read as
         # "never ran," since the model did get a real measurement of that kind before answering. A kind
-        # with no successful retry stays in the set and still flags, which is the CUR-574 case.
+        # with no successful retry stays in the set and still flags, which is the case.
         self.tool_failures: set[str] = tool_failures if tool_failures is not None else set()
         self._call_kind: dict = {}            # tool_call_id -> kind, set at tool_call time
 
@@ -498,8 +529,8 @@ class _AgentClient:
             self._buf.emit(etype, data)
 
     def _log_permission(self, kind: str, decision: str, by: str, reason: str = "") -> None:
-        """One retained line per permission decision (CUR-4595), so a run of denied writes leaves a record of
-        who denied them and why. Kind and verdict only, no path or command: those are the person's content."""
+        """One retained log line per permission decision, so a run of denied writes leaves a record of who
+        denied them and why. Kind and verdict only, no path or command: those are the person's content."""
         rec = {"ts": round(time.time(), 3), "event": "acp.permission", "task_id": self.task_id,
                "attempt": self._attempt, "kind": kind,
                "decision": decision, "by": by, "reason": reason, "approval_mode": self.approval_mode,
@@ -508,7 +539,7 @@ class _AgentClient:
         logsink.emit(rec)
 
     def emit_policy(self, decision: dict) -> None:
-        """CUR-471: fired PROACTIVELY by our side, once, right after construction — unlike
+        """Fired PROACTIVELY by our side, once, right after construction — unlike
         `plan`/`tool_call`/`tool_result`, which are reactions to what Hermes's ACP session reports,
         `policy` describes our own caller's trust state, which Hermes has no concept of and so can
         never surface through `session_update`. Stamps `attempt` itself, matching how `plan`/
@@ -572,7 +603,7 @@ class _AgentClient:
             # (request_permission's deny path returns without the agent calling the tool). Adding it here
             # would leave a kind that never ran in the set, and every downstream check that reads
             # tool_kinds (_wrote_code_without_running_it's "edit" branch, the groundedness judge's
-            # `not tool_kinds` gate) would read it as "something ran" (CUR-705). The web side's toolKinds
+            # `not tool_kinds` gate) would read it as "something ran". The web side's toolKinds
             # tracking in endpointAgent.ts follows the same rule. The commit happens in tool_call_update
             # below; this only records WHICH kind a call id maps to (needed for tool_failures too).
             #
@@ -607,13 +638,13 @@ class _AgentClient:
                 if kind_of_call:
                     self.tool_failures.add(kind_of_call)
             elif status == "completed":
-                # This kind just ran for real, so an earlier failure of the SAME kind no longer
+                # this kind just ran for real, so an earlier failure of the SAME kind no longer
                 # means "never measured" — discard it. Only this kind; a failure of a different kind is
-                # untouched, and a kind with no successful retry stays flagged (CUR-574's own case). (CUR-772)
+                # untouched, and a kind with no successful retry stays flagged.
                 kind_of_call = self._call_kind.get(tcid)
                 if kind_of_call:
                     self.tool_failures.discard(kind_of_call)
-                    # CUR-705, round three: commit HERE, not at the tool_call proposal above — see that
+                    # commit HERE, not at the tool_call proposal above — see that
                     # branch's own comment. A denied/timed-out confirm never reaches this branch at all
                     # (no tool_call_update ever arrives for it), so it correctly never joins tool_kinds.
                     self.tool_kinds.add(kind_of_call)
@@ -633,8 +664,8 @@ class _AgentClient:
         # What reaches here: Hermes asks for permission from `maybe_require_edit_approval` (write_file,
         # patch(mode=replace)) and, with deploy/hermes/0002-acp-confirm-execute.patch,
         # acp_adapter/execute_approval.py's maybe_require_execute_approval at the same model_tools.py
-        # chokepoint, so a `terminal`/`process`/`execute_code` call arrives too, with kind="execute"
-        # (CUR-975). Under deny_writes that is moot in practice: app.py's `_model_env` filters those tool
+        # chokepoint, so a `terminal`/`process`/`execute_code` call arrives too, with kind="execute".
+        # Under deny_writes that is moot in practice: app.py's `_model_env` filters those tool
         # names out of the toolset before the subprocess starts (`_deny_writes_toolsets`), so an untrusted
         # caller never gets far enough to propose one, and this callback denying "execute" is defense in
         # depth, not the operative gate. See _permission_state in app.py for how the two add up.
@@ -642,15 +673,16 @@ class _AgentClient:
         # `execute_code`'s RPC does NOT bypass this: a write_file issued from inside the sandbox reaches
         # the gate and is refused.
         #
-        # `confirm` composes with WHATEVER policy this attempt resolved to (CUR-760). `staged` sets a
+        # `confirm` composes with WHATEVER policy this attempt resolved to. `staged` sets a
         # caller's toolset FLOOR (which tools exist at all, enforced upstream by _model_env), but a floor
         # alone leaves no per-action gate once a caller crosses into "allow", so a trusted caller would get
-        # a free pass on an edit/delete-kind call. _ALWAYS_CONFIRM_KINDS closes that gap at this single chokepoint, for every resolved
+        # a free pass on an edit/delete-kind call. _ALWAYS_CONFIRM_KINDS closes that gap at this single
+        # chokepoint, for every resolved
         # policy that would otherwise auto-allow: bare ACP_PERMISSION_POLICY=allow, and `staged`'s
         # trusted tier (which resolves to "allow" — see app.py's _permission_decision). `confirm` itself
         # already pauses unconditionally above, so this is a no-op there. `deny_writes` is deliberately
         # UNCHANGED below: a new/untrusted caller already fails CLOSED on these kinds outright, and
-        # softening that into "ask a human" would widen what deny_writes promises: a caller below their
+        # softening that into "ask a human" would widen what deny_writes promises, so a caller below their
         # floor keeps failing closed.
         self.permission_calls += 1
         kind = str(getattr(tool_call, "kind", "") or "")
@@ -676,7 +708,7 @@ class _AgentClient:
         return _selected(oid)
 
     async def _auto_verdict(self, kind: str, tool_call) -> dict:
-        """CUR-3142: decide one call under approval_mode="auto". Returns {"decision", "plain", "by"},
+        """Decide one call under approval_mode="auto". Returns {"decision", "plain", "by"},
         where `by` says what decided ("path" or "reviewer") so the trace can show it. Fails toward
         asking: no reviewer, a reviewer error, or an answer of any other shape is decision "ask"."""
         if kind == "edit":
@@ -696,16 +728,16 @@ class _AgentClient:
                 out = await self.auto_reviewer(action)
                 break
             except Exception as exc:  # noqa: BLE001 — a reviewer failure asks the person; it never allows
-                # An error the gateway answered (an HTTP status, such as the router's intermittent
+                # an error the gateway answered (an HTTP status, such as the router's intermittent
                 # 404) is tried once more before asking, since an ask opens a card that can outlast the chat
                 # turn. A timeout is not retried: a second wait of AGENT_AUTO_REVIEW_TIMEOUT_SECS costs the
-                # turn more than the card does. (CUR-4630)
+                # turn more than the card does.
                 retry = review_try == 1 and getattr(exc, "response", None) is not None
                 rec = {"ts": round(time.time(), 3), "event": "acp.auto_review_failed", "attempt": self._attempt,
                        "error": type(exc).__name__, "review_try": review_try, "retrying": retry}
                 status = getattr(getattr(exc, "response", None), "status_code", None)
                 if isinstance(status, int):
-                    rec["status"] = status    # CUR-4667: a 404, a 429 and a 500 need different fixes
+                    rec["status"] = status    # a 404, a 429 and a 500 need different fixes
                 print(json.dumps(rec), flush=True)
                 logsink.emit(rec)
                 if not retry:
@@ -718,7 +750,7 @@ class _AgentClient:
         return {"decision": "ask", "plain": plain, "by": "reviewer"}
 
     async def _request_confirmation(self, options, tool_call, plain: str | None = None) -> RequestPermissionResponse:
-        """CUR-218: pause and wait for a real human answer, bounded by confirm_timeout_secs (fail
+        """Pause and wait for a real human answer, bounded by confirm_timeout_secs (fail
         CLOSED — a timeout is a deny, not an allow). confirm_id is uuid4, not an attempt-local counter:
         each attempt gets a fresh _AgentClient/registry, so a counter would restart at 1 every attempt
         and a stale UI could POST an attempt-1 id into attempt-2's window and hit the wrong live
@@ -728,34 +760,33 @@ class _AgentClient:
         self._pending_confirms[confirm_id] = fut
         desc = _describe_tool_call(confirm_id, tool_call)
         if plain:
-            desc["plain"] = plain     # CUR-3142: the reviewer's one sentence; the card leads with it
+            desc["plain"] = plain     # the reviewer's one sentence; the card leads with it
+        reason = ""   # bound before the try: the outer finally reads it even if on_confirmation_open raises
         if self._clock is not None:
             self._clock.pause()   # exempt this wait from the attempt's compute deadline — see _AttemptClock
-        # Everything from pause() to resume() is ONE try/finally. Pausing, or calling
-        # on_confirmation_open(), before the try block would let an exception FROM on_confirmation_open
-        # (it calls _persist(task), real sqlite I/O) skip resume() entirely and leave the attempt's
-        # deadline frozen at inf forever.
+        # Everything from pause() to resume() is ONE try/finally, not two: an exception FROM
+        # on_confirmation_open (it calls _persist(task), real sqlite I/O) must not skip resume(), or the
+        # attempt's deadline stays frozen at inf forever.
         try:
             if self.on_confirmation_open is not None:
                 self.on_confirmation_open(desc)
-            # The real deadline (this attempt's confirm_timeout_secs) crosses the ACP boundary (CUR-1094), so
-            # the client can count down from it instead of showing a static "times out eventually" line.
-            # A duration, not an absolute timestamp — the Python and Node clocks aren't the same
+            # The real deadline (this attempt's confirm_timeout_secs) crosses the ACP boundary so the
+            # client has something to count down from. A duration, not an absolute timestamp — the Python and Node clocks aren't the same
             # clock, so the web side stamps its own receipt-time deadline from this value instead of
             # trusting an epoch computed here.
             self._emit("awaiting_confirmation",
                         {**desc, "attempt": self._attempt, "timeout_secs": self.confirm_timeout_secs})
             # Bound BEFORE the try, because the `finally` below reads both names and only the
             # try body and the `except TimeoutError` handler assign them. Any OTHER exception through
-            # this block reached that finally with both unbound and raised UnboundLocalError IN PLACE OF
-            # the real one — and the exception that actually arrives here is asyncio.CancelledError,
+            # this block would otherwise reach that finally with both unbound and raise UnboundLocalError IN
+            # PLACE OF the real one — and the exception that actually arrives here is asyncio.CancelledError,
             # raised into this coroutine when the acp TaskSupervisor tears the session down with a
             # confirmation still open (the agent process dying mid-confirmation is the live shape; the
             # DELETE path resolves these futures explicitly via _cancel_soon and never hits it).
             # Swallowing a CancelledError and substituting a name error is the worst version of that:
             # the attempt's real ending is gone and the cancel does not read as a cancel. Fail CLOSED on
-            # the default, same as a timeout. Pyright reports the possibly unbound names; ty and mypy model this
-            # finally as reachable only from the two binding paths and report nothing at any rule setting. (CUR-1227)
+            # the default, same as a timeout. Type checkers model this finally as reachable only from the
+            # two binding paths and do not flag the unbound names.
             decision, reason = "deny", "aborted"
             try:
                 decision = await asyncio.wait_for(fut, timeout=self.confirm_timeout_secs)
@@ -770,15 +801,16 @@ class _AgentClient:
                            {"confirm_id": confirm_id, "decision": decision, "reason": reason, "attempt": self._attempt})
         finally:
             if self._clock is not None:
-                self._clock.resume()   # runs no matter what happened above — every exit path must
-                                        # resume, or the deadline is frozen forever
+                # runs no matter what happened above — every exit path must resume, or the deadline is frozen
+                # forever. An unanswered card's wait is charged to the attempt, never reimbursed.
+                self._clock.resume(forfeit=reason == "timeout")
         self._log_permission(str(getattr(tool_call, "kind", "") or ""), decision, "person", reason)
         if decision == "allow":
-            # At the pinned Hermes SHA (deploy/Dockerfile's HERMES_SHA), for an edit-approval-gated call (CUR-468),
+            # At the pinned Hermes SHA (deploy/Dockerfile's HERMES_SHA), for an edit-approval-gated call,
             # Hermes's own edit_approval.py sends exactly ONE tool_call notification — the
             # "Preparing write..." proposal that opens this confirmation — and, once approved, performs
-            # the real write and moves straight to the model's next turn. No matching
-            # tool_call_update(status=completed) arrives for that id, so the normal "commit at completion"
+            # the real write and moves straight to the model's next turn. It never sends a matching
+            # tool_call_update(status=completed) for that id, so the normal "commit at completion"
             # path above (session_update's status=="completed" branch) is structurally unreachable for
             # this call shape: the file lands on disk while tool_kinds stays empty and
             # self._call_kind[tcid] never resolves. The consequence is real, not cosmetic: a spec-less turn (task._verify_spec is None — the
@@ -787,7 +819,7 @@ class _AgentClient:
             # said yes and the write succeeded. Crediting the kind HERE, on an explicit allow, is the
             # only synchronization point this Hermes build ever gives us for this flow. Deny/timeout are
             # deliberately excluded: an unapproved call never runs, and crediting it would count a tool
-            # that never ran (CUR-705).
+            # that never ran.
             kind = str(getattr(tool_call, "kind", "") or "")
             self.tool_failures.discard(kind)
             self.tool_kinds.add(kind)
@@ -826,7 +858,7 @@ class _AgentClient:
 
 
 def build_mcp_servers(cfg, env, task_id: str = "") -> list[HttpMcpServer]:
-    """ACP `mcpServers` for new_session from an mcp_config.McpConfig (CUR-3025).
+    """ACP `mcpServers` for new_session from an mcp_config.McpConfig.
 
     Header values are read from `env` here, at session time. A server whose header env var is unset is
     left out and logged rather than sent without its credential: an unauthenticated call to a config
@@ -847,6 +879,12 @@ def build_mcp_servers(cfg, env, task_id: str = "") -> list[HttpMcpServer]:
     return out
 
 
+def prompt_blocks(text: str, images: list[tuple[str, str]]) -> list:
+    """One ACP prompt: the turn's text, then each image as `(mime, base64 data)`. Hermes advertises
+    `prompt_capabilities.image` and turns an image block into an OpenAI `image_url` part."""
+    return [acp.text_block(text), *(acp.image_block(data, mime) for mime, data in images)]
+
+
 async def _acp_run(work: str, attempt_home: str, prompt: str, nonce, timeout_secs: float, buf, task, *,
                    sandbox_prefix: list[str], hermes_bin: str, model_env: dict,
                    model: str, provider: str, attempt: int,
@@ -861,6 +899,7 @@ async def _acp_run(work: str, attempt_home: str, prompt: str, nonce, timeout_sec
                    permission_policy: str = "allow",
                    policy_detail: dict | None = None,
                    confirm_timeout_secs: float = 45.0,
+                   hard_timeout_secs: float | None = None,
                    approval_mode: str = "ask",
                    auto_reviewer: Callable[[dict], Awaitable[dict]] | None = None,
                    on_confirmation_open: Callable[[dict], None] | None = None,
@@ -868,6 +907,7 @@ async def _acp_run(work: str, attempt_home: str, prompt: str, nonce, timeout_sec
                    open_stdio: Callable[[list[str], dict], contextlib.AbstractAsyncContextManager] | None = None,
                    session_cwd: str | None = None,
                    mcp_servers: list[HttpMcpServer] | None = None,
+                   images: list[tuple[str, str]] | None = None,
                    ) -> tuple[str, str | None, int | None]:
     """Drive one `hermes acp` session end to end. Returns (final_text, stop_reason, returncode).
 
@@ -889,9 +929,9 @@ async def _acp_run(work: str, attempt_home: str, prompt: str, nonce, timeout_sec
 
     `repair_check` receives the turn's own answer text (`client.text`, the same value this function
     ultimately returns) — needed so it can catch a claim the model made in prose with nothing behind it
-    on disk (CUR-226), not only a file the trace shows was never run.
+    on disk, not only a file the trace shows was never run.
 
-    `repair_exhausted_answer` (CUR-705, inert if None): when the give-up branch's last repair_check still
+    `repair_exhausted_answer` (inert if None): when the give-up branch's last repair_check still
     fails AND this attempt never once called "edit" (client.tool_kinds — no real write, ever, this whole
     attempt, repair turns included since tool_kinds is cumulative), this REPLACES client.text with the
     given string instead of shipping the model's own reply. Reaching that condition means the model had
@@ -900,18 +940,18 @@ async def _acp_run(work: str, attempt_home: str, prompt: str, nonce, timeout_sec
     _wrote_code_without_running_it already uses — an attempt with a real (even if failed, or read-only)
     tool call is a different, lesser bug and keeps its own text.
 
-    `on_confirmation_open`/`on_confirmation_close` (CUR-218, inert unless `permission_policy="confirm"`):
+    `on_confirmation_open`/`on_confirmation_close` (inert unless `permission_policy="confirm"`):
     plain callables built by the CALLER (app.py's `_run`), not by this function — they need `State`/
     `_TERMINAL` from `app.py`, which this module cannot import (app.py imports acp_client, not the
     reverse). Forwarded onto the client below; see `_request_confirmation` for what they're called with.
 
-    `mcp_servers` (CUR-3025, inert if empty): ACP MCP server entries from `build_mcp_servers`, passed on
+    `mcp_servers` (inert if empty): ACP MCP server entries from `build_mcp_servers`, passed on
     new_session. The caller decides whether this task gets them at all (app.py `_task_mcp_servers`)."""
     _write_acp_config(attempt_home, model, provider)
     _write_acp_toolsets(attempt_home, model_env.get("HERMES_ACP_TOOLSETS", ""))
-    # On E2B, Hermes names its edits by guest path (/home/user/work/...), so the path check that
-    # auto-approves an in-folder write has to measure against the guest's folder (CUR-4595); measured
-    # against this machine's scratch, every such write would read as "outside" and go to a confirmation.
+    # on E2B, Hermes names its edits by guest path (/home/user/work/...), so the path check that
+    # auto-approves an in-folder write has to measure against the guest's folder; against this machine's
+    # scratch every such write would read as "outside" and go to a confirmation.
     client = _AgentClient(session_cwd or work, buf, attempt, emit_token=emit_token, token_max_frames=token_max_frames,
                           tool_kinds=tool_kinds, tool_failures=tool_failures,
                           permission_policy=permission_policy, confirm_timeout_secs=confirm_timeout_secs,
@@ -936,7 +976,7 @@ async def _acp_run(work: str, attempt_home: str, prompt: str, nonce, timeout_sec
             # prompt_task and a pending request_permission call are SIBLING tasks under the
             # acp library's own TaskSupervisor, not nested — cancelling prompt_task has no direct effect
             # on a confirmation someone is awaiting. Resolve those explicitly rather than relying on the
-            # implicit TaskSupervisor.shutdown() cascade when the session closes. (CUR-218)
+            # implicit TaskSupervisor.shutdown() cascade when the session closes.
             for fut in list(client._pending_confirms.values()):
                 if not fut.done():
                     fut.set_result("canceled")
@@ -972,33 +1012,36 @@ async def _acp_run(work: str, attempt_home: str, prompt: str, nonce, timeout_sec
         resp = None
         clock: _AttemptClock | None = None   # set below; guarded in `finally` in case init/new_session raises first
         try:
-            # The attempt's clock covers the handshake too. A guest Hermes that never answers `initialize`
-            # would hold its agent slot forever (CUR-4535).
-            clock = _AttemptClock(loop, timeout_secs)
+            # The attempt's clock covers the handshake too. An unanswered `initialize` must not hold the agent slot past the attempt clock.
+            clock = _AttemptClock(loop, timeout_secs, hard_timeout_secs)
             await asyncio.wait_for(conn.initialize(protocol_version=1, client_capabilities=caps),
-                                   max(0.0, clock.deadline - loop.time()))
+                                   max(0.0, clock.ends_at() - loop.time()))
             # A guest Hermes starts every `terminal` command in the session's cwd. `work` is this machine's
-            # folder, which does not exist in a sandbox, so a remote run passes the guest's own (CUR-4595).
+            # folder, which does not exist in a sandbox, so a remote run passes the guest's own.
             # operator-configured MCP servers ride new_session; Hermes registers them and adds an
-            # `mcp-<name>` toolset per server. Empty means the exact call this line made before MCP existed. (CUR-3025)
+            # `mcp-<name>` toolset per server. Empty means the exact call this line made before MCP existed.
             new_session = (conn.new_session(cwd=session_cwd or work, mcp_servers=list(mcp_servers)) if mcp_servers
                            else conn.new_session(cwd=session_cwd or work))
-            sess = await asyncio.wait_for(new_session, max(0.0, clock.deadline - loop.time()))
+            sess = await asyncio.wait_for(new_session, max(0.0, clock.ends_at() - loop.time()))
             # ONE deadline for the whole attempt, not one per turn. A repair turn is another `prompt` on
             # the same session, and giving each its own `timeout_secs` would hand an attempt N times the
             # wall clock it was granted — the same denomination error _remaining_timeout was written to
             # fix one level up, and it would be invisible here because each individual turn looks bounded.
             #
-            # The deadline lives in an _AttemptClock, not a bare float (CUR-218). A pending request_permission
-            # confirmation is a SIBLING task (see _cancel_soon above), not nested inside prompt_task's await
-            # chain, so a fixed compute deadline would silently kill a human-confirmation wait. _AttemptClock
-            # makes the deadline mutable so request_permission's confirm branch can pause it for exactly as long as
+            # A pending request_permission confirmation is a SIBLING task (see _cancel_soon
+            # above), not nested inside prompt_task's await chain, so a human-confirmation wait would
+            # otherwise get silently killed by the compute deadline. _AttemptClock makes the
+            # deadline mutable so request_permission's confirm branch can pause it for exactly as long as
             # the wait actually takes and resume with the identical remaining budget — see _AttemptClock.
             client._clock = clock   # _request_confirmation pauses/resumes this directly — see there
             turn_text, turns_left = prompt, max(0, repair_turns if repair_check else 0)
+            # the photos the person attached ride the first turn as image blocks, which Hermes
+            # hands the model as image input. A repair turn is text only: the photos are already in context.
+            first_images = list(images or [])
             while True:
-                prompt_task = loop.create_task(
-                    conn.prompt(prompt=[acp.text_block(turn_text)], session_id=sess.session_id))
+                blocks = prompt_blocks(turn_text, first_images)
+                first_images = []
+                prompt_task = loop.create_task(conn.prompt(prompt=blocks, session_id=sess.session_id))
                 # The race, worked through explicitly rather than left as a bare wait_for: a watchdog
                 # task sleeping against clock.deadline (mutable — request_permission pauses/resumes it)
                 # races prompt_task. Whichever end state — the happy path (prompt_task wins), the
@@ -1016,9 +1059,8 @@ async def _acp_run(work: str, attempt_home: str, prompt: str, nonce, timeout_sec
                     prompt_task.cancel()      # deadline fired — mirrors what wait_for did internally on timeout
                 try:
                     resp = await prompt_task
-                # A real deadline firing raises CancelledError here, while a wait_for timeout raises
-                # TimeoutError, so this except tuple has to catch both; narrowing it to just TimeoutError
-                # would drop the deadline case.
+                # A real deadline firing raises CancelledError here (a wait_for would raise TimeoutError),
+                # so this except tuple must catch both; narrowing it to TimeoutError would miss the deadline.
                 except (TimeoutError, asyncio.CancelledError):
                     try:
                         # tell Hermes to stop before we reap; bounded, since a paused guest never reads it
@@ -1029,21 +1071,21 @@ async def _acp_run(work: str, attempt_home: str, prompt: str, nonce, timeout_sec
                         raise                  # caller's honest-failure path; early-exit falls through clean
                     break
                 # The turn ended because the model decided it was done. That decision is not authority —
-                # a forced tool choice can make it spend its one required call on `task_complete` and stop
-                # with an empty directory. Ask the task's OWN acceptance test instead, and if it disagrees, say so and keep the session.
+                # a forced tool choice can make it spend its one required call on
+                # `task_complete` and stop with an empty directory. Ask the task's
+                # OWN acceptance test instead, and if it disagrees, say so and keep the session.
                 #
                 # Same session, deliberately. The cross-attempt repair in app.py hands the files to a
                 # FRESH agent that has never seen them; this hands them back to the one that wrote them,
                 # with its own reasoning still in context. Hermes' HERMES_DONE_VERIFY does the same job
-                # one layer down and needs a hand-written `expect_file` to do it, and a gate becomes the spec: the
-                # model can write only that file and stop. This one reads the spec that already decides the
-                # verdict.
+                # one layer down and needs a hand-written `expect_file` to do it, which is its own trap:
+                # a model can satisfy a hand-written file check and stop. A gate becomes the spec. This one reads the spec that already decides the verdict.
                 if client.early_exit or task._canceled:
                     break
                 if turns_left <= 0 or clock.deadline - loop.time() <= 0:
-                    # Giving up either way (CUR-574) — the repair BUDGET is spent, or the wall clock ran
-                    # out — but the turn that just ended has never itself been checked, and it is the turn
-                    # that used the last of the budget or time, so it still gets one check.
+                    # giving up either way — the repair BUDGET is spent, or the wall clock ran
+                    # out — but the turn that just ended has not itself been checked, so the answer that
+                    # used the last of the budget or the last of the time still gets scrutiny.
                     # There is nothing left to retry with, so this does not feed turn_text/turns_left the
                     # way the normal branch below does — it only keeps the verdict, on task.unrun_detail,
                     # for _done_payload to hand the client instead of leaving it to re-derive a second,
@@ -1058,11 +1100,11 @@ async def _acp_run(work: str, attempt_home: str, prompt: str, nonce, timeout_sec
                             # becomes client-visible. This one crosses the _run/_acp_run boundary unscrubbed
                             # without it.
                             task.unrun_detail = _scrub(detail, nonce)
-                            # Out of repair turns, the check still disagrees, and this attempt
+                            # out of repair turns, the check still disagrees, and this attempt
                             # never once called "edit" — the model's own text at this point is confident
                             # prose with zero real grounding behind it (see repair_exhausted_answer's own
                             # doc). Replace it rather than ship it with only a
-                            # caveat flag above it that the client renders separately from this text. (CUR-705)
+                            # caveat flag above it that the client renders separately from this text.
                             if repair_exhausted_answer is not None and "edit" not in client.tool_kinds:
                                 client.text_parts.clear()
                                 client.text_parts.append(repair_exhausted_answer)
@@ -1077,12 +1119,12 @@ async def _acp_run(work: str, attempt_home: str, prompt: str, nonce, timeout_sec
                 turns_left -= 1
                 turn_text = repair_turn_prompt(detail)
                 client.text_parts.clear()      # the final answer is the LAST turn's, not a concatenation
-                # Unlike tool_kinds (deliberately cumulative — file state genuinely persists
+                # unlike tool_kinds (deliberately cumulative — file state genuinely persists
                 # across repair turns, so "something executed" should stay true for the rest of the
                 # attempt), a FAILURE is this turn's fact, not the attempt's. Without this, one execute
                 # call failing early would keep tripping the failed-tool check on every repair turn after
                 # it, even once the model retries and the next turn is fully grounded — burning the whole
-                # repair budget on a stale record instead of judging what the turn actually just did. (CUR-574)
+                # repair budget on a stale record instead of judging what the turn actually just did.
                 client.tool_failures.clear()
                 if buf is not None:
                     buf.emit("repair", {"attempt": attempt, "turns_left": turns_left})

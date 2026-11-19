@@ -8,7 +8,7 @@ vi.mock("$lib/chat/server/logger", () => ({ logger: { warn, info: vi.fn(), error
 
 const { pickerSpec } = await import("./primaryModel");
 
-describe("pickerSpec (CUR-3484)", () => {
+describe("pickerSpec", () => {
 	beforeEach(() => {
 		for (const k of Object.keys(cfg)) delete cfg[k];
 	});
@@ -27,6 +27,12 @@ describe("pickerSpec (CUR-3484)", () => {
 	it("keeps MODEL_ALLOWLIST as the override off Vercel, so an eval still pins one model", () => {
 		cfg.MODEL_ALLOWLIST = "zai-org/GLM-5.2";
 		expect(pickerSpec({})).toBe("zai-org/GLM-5.2");
+	});
+
+	it("a self-host in production mode (ALPHA_EDITION=selfhost) keeps its own MODEL_ALLOWLIST, never our picker", () => {
+		cfg.MODEL_ALLOWLIST = "qwen2.5-0.5b-instruct";
+		expect(pickerSpec({ DEPLOY_ENV: "production", ALPHA_EDITION: "selfhost" })).toBe("qwen2.5-0.5b-instruct");
+		expect(pickerSpec({ DEPLOY_ENV: "production", ALPHA_EDITION: "hosted" })).toBe(PICKER.production.join(","));
 	});
 
 	it("returns empty off Vercel with nothing set, leaving the default to models.ts as before", () => {

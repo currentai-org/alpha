@@ -14,7 +14,7 @@
 	// border, so the border's inner edge and the icon box's edge sit on solid colour. Clipped at the
 	// padding edge instead, the three would all end on one row, and when ScrollSmoother's transform
 	// leaves the button between device pixels the page shows through as a light line along the box's
-	// top or bottom edge (CUR-4031).
+	// top or bottom edge.
 	const CHEVRON = `relative h-auto items-stretch justify-start gap-0 overflow-hidden border-2 bg-clip-border p-0 ${SITE_TYPE} no-underline hover:no-underline`;
 
 	export const buttonVariants = tv({

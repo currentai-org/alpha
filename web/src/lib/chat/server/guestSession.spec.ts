@@ -3,7 +3,7 @@ import { isMintedGuestToken, mintGuestToken } from "./guestSession";
 
 const SECRET = "test-secret-not-a-real-one";
 
-describe("guest session tokens (CUR-3191)", () => {
+describe("guest session tokens", () => {
 	it("accepts a value it minted under the same secret", () => {
 		expect(isMintedGuestToken(mintGuestToken(SECRET), SECRET)).toBe(true);
 	});

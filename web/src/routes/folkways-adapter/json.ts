@@ -1,5 +1,5 @@
 // Folkways adapter — the one JSON response its routes send. The body type refuses a secret-named
-// field the way the chat API's `json` does (CUR-2643).
+// field the way the chat API's `json` does.
 
 import type { NoSecretFields } from '$lib/chat/server/api/utils/noSecretFields';
 

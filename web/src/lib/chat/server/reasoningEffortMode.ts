@@ -1,4 +1,4 @@
-// Should THIS turn ask the model for a reasoning effort? (CUR-700)
+// Should THIS turn ask the model for a reasoning effort?
 //
 // The per-user `reasoningOverrides` setting is a toggle the user set for a model at some point in the
 // past — it says nothing about whether the model IN THIS REQUEST can actually use it. A model whose

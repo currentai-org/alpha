@@ -9,7 +9,7 @@
 //
 // Failure is recovered per key: a key whose request failed goes back to the value the server last
 // acknowledged, unless the pending patch holds a newer value for that same key, since that value's own
-// request goes out next. Pure: no Svelte, no fetch, so it is unit-tested on its own. (CUR-3929)
+// request goes out next. Pure: no Svelte, no fetch, so it is unit-tested on its own.
 
 type WireBody = Record<string, unknown>;
 

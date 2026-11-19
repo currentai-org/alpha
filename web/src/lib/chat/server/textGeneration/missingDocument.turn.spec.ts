@@ -1,9 +1,9 @@
 /**
- * A turn that names a document nobody gave is answered with a fixed note and no model call
- * (CUR-1835). The turn must carry a FixedReply stamp, so the receipt doesn't credit a model that never ran.
+ * A turn that names a document nobody gave is answered with a fixed note and no model call. The turn
+ * must carry a FixedReply stamp, so the receipt doesn't credit a model that never ran.
  *
  * Drives the real textGenerationWithoutTitle with the same edge stubs as readAloudHeldClip.spec.ts.
- * `generate` records whether it was reached, so the "no model call" half is checked as well. (CUR-2124)
+ * `generate` records whether it was reached, so the "no model call" half is checked as well.
  */
 import { describe, expect, it, vi } from "vitest";
 import { ObjectId } from "bson";
@@ -66,7 +66,7 @@ async function run(userText: string, harness?: { kind: "native" }): Promise<Mess
 	return out;
 }
 
-describe("the missing-document reply is stamped as a fixed reply (CUR-2124)", () => {
+describe("the missing-document reply is stamped as a fixed reply", () => {
 	it("stamps FixedReply 'missing-document' before the answer, and never calls the model", async () => {
 		state.generateCalls = 0;
 		const updates = await run("Translate the letter below into French.");
@@ -89,7 +89,7 @@ describe("the missing-document reply is stamped as a fixed reply (CUR-2124)", ()
 });
 
 // The native harness skips the scaffolded pre-passes, so this guard must also run on a native
-// turn, or the model writes its own reply to a request for a document nobody gave. (CUR-2275)
+// turn, or the model would write its own reply to a request for a document nobody gave.
 describe("the missing-document reply holds on a native turn", () => {
 	it("answers with the stamped fixed note and never calls the model", async () => {
 		state.generateCalls = 0;

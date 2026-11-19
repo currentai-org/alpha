@@ -8,13 +8,13 @@
 //   - projectContext.json the "about AI Potluck" blurb (same file grounding.ts's PROJECT_CONTEXT reads)
 //   - policyContext.json  how to delete your data in the product. Never a paraphrase of a published
 //                         policy: those pages reach retrieval from the CMS (policyPageSync.ts), and a
-//                         hand copy here outranks them while saying something else (CUR-4296)
+//                         hand copy here outranks them while saying something else
 //
 //   node scripts/build-rag-index.mjs            # rebuild the index
 //   node scripts/build-rag-index.mjs --entities # rebuild catalog-entities.json from the gap-map DB
 //   node scripts/build-rag-index.mjs --check    # assert present, dim-consistent, chunks in sync (CI)
 //
-// Catalog entities (CUR-888) live in a second file, catalog-entities.json: one chunk per product and
+// Catalog entities live in a second file, catalog-entities.json: one chunk per product and
 // per organization the site gives a page, each carrying that page's url so a citation links to it.
 // They come from the gap-map database (GAP_MAP_DATABASE_URL), not a committed file, because that is
 // where the catalog lives now. The June exemplars.json list they replace named 303 repos, of which
@@ -25,7 +25,7 @@
 //
 // --check is offline. That works because chunk TEXT is a pure function of the committed source JSON —
 // only the VECTORS need the embedding endpoint. So the check re-derives every chunk from source and
-// compares it to what the index holds. Before CUR-74 it only asserted presence / non-empty / dim, none
+// compares it to what the index holds. it only asserted presence / non-empty / dim, none
 // of which move when a source doc is edited: the vectors then describe text that no longer exists, and
 // that fails OPEN at runtime — no error, just retrieval scoring the wrong phrasings. Same drift guard
 // build-guard-vectors.mjs already had.
@@ -124,7 +124,7 @@ function categoryChunks() {
 // stack-map.json carries serving tokens ({modelShort}, {servedCheckpoint}, {cscsServingNote},
 // {routingProvider}) that servingProvenance.ts fills per render from whichever lane is configured. The
 // index is built once, so it has no lane to fill them from, and indexed raw they reached citations as
-// "{modelShort} (Model)" (CUR-2138). Which model and host served a turn is known only at answer time,
+// "{modelShort} (Model)". Which model and host served a turn is known only at answer time,
 // and the per-turn provenance facts already carry it, so serving text stays out of the index.
 const TEMPLATE_TOKEN = /\{[A-Za-z_]+\}/;
 
@@ -203,7 +203,7 @@ function projectChunk() {
 		return [];
 	}
 	const ctx = readJson(PROJECT_CONTEXT);
-	// RETRIEVAL-ONLY alias prefix (CUR-43). Deictic questions — "what is this site", "who are you" —
+	// RETRIEVAL-ONLY alias prefix. Deictic questions — "what is this site", "who are you" —
 	// share no vocabulary with a blurb that opens "AI Potluck is the open, map-grounded chat from
 	// Current AI", so they cosine BELOW the floor and retrieve nothing: measured 0.293 against
 	// RAG_MIN_SCORE 0.35, while "What is AI Potluck?" scores 0.826. That is not a threshold problem —
@@ -301,7 +301,7 @@ const MAX_CHUNK_CHARS = 420;
  * Split into sentences at a terminator followed by whitespace; a segment with no terminator (a
  * comma-run list) falls through to `pack`. A split, not a global match: the match form it replaced
  * skipped any text it could not match, so "Mistral Large 3.0 with 41B active" came out as
- * "0 with 41B active" (CUR-888).
+ * "0 with 41B active".
  */
 const splitSentences = (text) => text.split(/(?<=[.!?])\s+/);
 
@@ -382,7 +382,7 @@ function splitOversized(chunks) {
 }
 
 /**
- * One chunk per catalog product and organization that has a page, with that page's url (CUR-888).
+ * One chunk per catalog product and organization that has a page, with that page's url.
  * "Has a page" is the site's own rule, so a citation never links to a 404: a product needs all three
  * score rows and a known category (the same condition as queries.ts's product count), and every
  * organization except "unknown" gets one (gapMapPayload.ts's listedOrgSlugs).
@@ -642,7 +642,7 @@ async function main() {
 		// dim alone does NOT identify the model — plenty of models emit 384 dimensions, so vectors from
 		// the old model survive every shape assertion above while queries get embedded by the new one.
 		// Retrieval degrades to noise with no error, and every threshold tuned against the old vectors
-		// (RAG_MIN_SCORE, the CUR-43 cosine bands) silently stops meaning anything.
+		// (RAG_MIN_SCORE, the cosine bands) silently stops meaning anything.
 		if (idx.model !== MODEL) {
 			console.error(
 				`build-rag-index: model mismatch — index was built with "${idx.model}", RAG_EMBEDDING_MODEL resolves to "${MODEL}".\n` +
@@ -651,7 +651,7 @@ async function main() {
 			);
 			process.exit(1);
 		}
-		// The genuine staleness gate (CUR-74). Everything above still passes on an index whose vectors
+		// The genuine staleness gate. Everything above still passes on an index whose vectors
 		// describe deleted or rewritten text — this is the check that can actually see that.
 		refuseUnfilledTokens(idx.chunks, "rag-index.json");
 		const drift = chunkDrift(idx.chunks, buildChunks());

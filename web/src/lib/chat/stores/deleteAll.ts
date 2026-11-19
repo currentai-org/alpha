@@ -7,7 +7,7 @@ import { writable } from "svelte/store";
 // drilling through +layout.svelte).
 export const deleteAllOpen = writable<boolean>(false);
 
-// Which of the two actions the open modal performs (CUR-1420). "data" is "Forget everything": a
+// Which of the two actions the open modal performs. "data" is "Forget everything": a
 // signed-in person's data goes and their account stays. "account" is "Delete account" on the account
 // page, which also removes the account and its sign-in methods. Every opener sets it, so a stale value
 // from a previous opening can never turn a data wipe into an account deletion.
@@ -21,8 +21,7 @@ export const deleteAllMode = writable<"data" | "account">("data");
 // destroys the confirmation panel before it has been read. `deleteAllConversations()` already
 // defers its OWN navigation for exactly that reason; this covers the navigations that arrive from
 // somewhere else. The live case is a turn still streaming when the visitor hits "forget
-// everything": its post-turn resync fires seconds later against a row that is deliberately gone
-// (CUR-1642).
+// everything": its post-turn resync fires seconds later against a row that is deliberately gone.
 //
 // Read it wherever a conversation refresh is about to run. By the time the load reaches its catch
 // block the request has already been spent, so the redirect there is too late a place to guard.
@@ -37,13 +36,13 @@ export const deleteAllAnchor = writable<HTMLElement | undefined>(undefined);
 // navigation home has finished. The conversation page renders no messages while it is set, because
 // the transcript behind the receipt has just been deleted: leaving it up would show the deleted prompt
 // and its interrupted answer under "Your data has been cleared", and again for a beat after Done
-// while the navigation home loads (CUR-1924). Raised only on success, so a failed wipe leaves the
+// while the navigation home loads. Raised only on success, so a failed wipe leaves the
 // conversation, which still exists, on screen.
 export const wipeCommitted = writable<boolean>(false);
 
 // Set once a wipe has run in this page session. The wipe deletes settings too, including the mark that
 // the welcome was seen, so the reset home would render the empty chat and then, once the reloaded settings
-// arrive, the welcome splash over it: empty chat, splash, empty chat (CUR-2270). The person has just
+// arrive, the welcome splash over it: empty chat, splash, empty chat. The person has just
 // used the app, so the splash stays down for the rest of this page session. Nothing is written back to
 // the server, so a reload or a later visit still gets the welcome, as a visitor whose data was forgotten
 // should.

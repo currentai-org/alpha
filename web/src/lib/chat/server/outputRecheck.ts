@@ -1,4 +1,4 @@
-// Output re-check on a hit (CUR-3975). The output screen judges each batch of an answer on its own: a
+// Output re-check on a hit. The output screen judges each batch of an answer on its own: a
 // few hundred characters, 200 characters of the text before it, and no question. Shieldstral reads that
 // fragment strictly, so an answer that quotes a stereotype in order to criticise it ("a robot decides
 // girls are not good at maths… that is not fair") scores high on chat-block-toxic and is cut,
@@ -17,6 +17,12 @@
 // the review plane still sees what the first screen said.
 //
 // It runs wherever the output screen runs, so OUTPUT_MODERATION governs both.
+//
+// When the first screen ran on Zentropi S1 (the route passes its S1 judge as `s1`), the re-check asks S1
+// too, on the output phase, with the question as `user_context` and the whole answer as
+// `assistant_response`, so the question is never judged as if the assistant had written it.
+// A rule counts as cleared only when S1's merged state for it is "N": every S1 policy mapped to that rule
+// scored under its threshold. One unknown policy leaves the rule unknown, and the block stands.
 
 import { logger as defaultLogger } from "$lib/chat/server/logger";
 import { ASKER_CONTEXT_CAP, getGuardVerdict, withEntries, type GuardScreenDeps } from "$lib/chat/server/guardGate";
@@ -24,6 +30,7 @@ import { withAskerContext } from "$lib/chat/server/guardPolicyCore.mjs";
 import { GUARD_WINDOW_CHARS, loadGuardPolicy, type GuardPolicy } from "$lib/chat/server/guardPolicy";
 import { textOnlyGuardInput, type JudgeFn } from "$lib/chat/server/guardScreenTypes";
 import { SHIELDSTRAL_MODEL, shieldstralJudge } from "$lib/chat/server/detectors/shieldstral";
+import type { S1UnitJudge } from "$lib/chat/server/detectors/s1";
 import { isSupportRule } from "$lib/chat/server/ruleLabel";
 import type { OutputScreenResult } from "$lib/chat/server/moderation";
 
@@ -69,6 +76,8 @@ export async function recheckOutputBlock(
 	batch: string,
 	first: OutputScreenResult,
 	deps: Pick<GuardScreenDeps, "judge" | "logger"> & {
+		/** The S1 judge the first output screen used, or absent when that screen ran on Shieldstral. */
+		s1?: S1UnitJudge;
 		askerText?: string;
 		policy?: GuardPolicy | null;
 		timeoutMs?: number;
@@ -80,9 +89,16 @@ export async function recheckOutputBlock(
 	const log: MinimalLogger = deps.logger ?? defaultLogger;
 	const now = deps.now ?? (() => Date.now());
 	const started = now();
+	const s1 = deps.s1;
 	const done = (outcome: RecheckOutcome, result: OutputScreenResult) => {
 		log.info(
-			{ outcome, rules: keys, ms: Math.round(now() - started), chars: prior.length + batch.length },
+			{
+				outcome,
+				rules: keys,
+				judge: s1 ? "s1" : "shieldstral",
+				ms: Math.round(now() - started),
+				chars: prior.length + batch.length,
+			},
 			"[output-recheck] batch"
 		);
 		return result;
@@ -115,15 +131,30 @@ export async function recheckOutputBlock(
 		if (o.answer.kind === "score" && !o.answer.yes) scoredNo.add(query);
 		return o;
 	};
+	// S1 answers a rule id with its merged state over the S1 policies mapped to it. Only "N" (each policy
+	// scored under its threshold) is recorded; "U" and a rule S1 does not answer stay unrecorded. The gate
+	// sizes an S1 operation from rules-s1.json's own deadline, so the re-check's bound aborts S1's calls here.
+	const s1Stop = new AbortController();
+	const scoredS1: S1UnitJudge | undefined = s1
+		? async (text, phase, ctx) => {
+				const r = await s1(text, phase, { ...ctx, opSignal: AbortSignal.any([ctx.opSignal, s1Stop.signal]) });
+				for (const rule of rules) if (r.rules.get(rule.key) === "N") scoredNo.add(rule.query);
+				return r;
+			}
+		: undefined;
 	const bounded = { ...asked, shield: { ...asked.shield, operationDeadlineMs: timeoutMs } };
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	const expired = new Promise<null>((resolve) => {
-		timer = setTimeout(() => resolve(null), timeoutMs);
+		timer = setTimeout(() => {
+			s1Stop.abort();
+			resolve(null);
+		}, timeoutMs);
 		timer.unref?.();
 	});
 	try {
 		const g = await Promise.race([
-			getGuardVerdict(textOnlyGuardInput(doc), {
+			// S1 reads {user_context: question, assistant_response: answer}; Shieldstral reads one joined doc.
+			getGuardVerdict(textOnlyGuardInput(scoredS1 ? answer : doc), {
 				judge: scoredOnly,
 				logger: deps.logger,
 				screen: "output",
@@ -132,6 +163,7 @@ export async function recheckOutputBlock(
 				deadlineClosesContent: false,
 				timeoutMs,
 				deadlineCapMs: timeoutMs,
+				...(scoredS1 ? { s1: scoredS1, s1UserContext: asker } : {}),
 			}).catch(() => null),
 			expired,
 		]);
@@ -141,6 +173,7 @@ export async function recheckOutputBlock(
 		return done("cleared", { blocked: false, kind: null, hits: first.hits });
 	} finally {
 		clearTimeout(timer);
+		s1Stop.abort();
 	}
 }
 

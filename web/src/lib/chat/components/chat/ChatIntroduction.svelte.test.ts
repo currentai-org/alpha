@@ -20,9 +20,9 @@ function fakeModel(id: string): Model {
 }
 
 // Before a turn, where a catalog model runs is a forecast that pooling and fallbacks make
-// wrong, so the greeting names no host for one and points at the answer's own record instead. (CUR-2364)
-// A local model's turns never leave the user's own server, so that one is stated. (CUR-1194)
-describe("ChatIntroduction's serving line states only what config can't get wrong (CUR-2364, CUR-1194)", () => {
+// wrong, so the greeting names no host for one and points at the answer's own record instead.
+// A local model's turns never leave the user's own server, so that one is stated.
+describe("ChatIntroduction's serving line states only what config can't get wrong", () => {
 	it("names no host for a catalog model and points at X-ray's per-answer record", async () => {
 		await render(ChatIntroduction, {
 			currentModel: fakeModel("swiss-ai/apertus-v1.5-70b"),
@@ -80,8 +80,8 @@ describe("ChatIntroduction names no model while Auto is choosing", () => {
 });
 
 // The picked model's measured weak spot is one quiet line on the empty state, since its
-// Settings page is developer-only. Nothing is shown for a model with none, or while Auto is choosing. (CUR-3911)
-describe("ChatIntroduction shows the picked model's known weak spot, and only that model's (CUR-3911)", () => {
+// Settings page is developer-only. Nothing is shown for a model with none, or while Auto is choosing.
+describe("ChatIntroduction shows the picked model's known weak spot, and only that model's", () => {
 	const weakSpot = "Often answers in Spanish when asked in Catalan.";
 
 	it("shows the weak-spot line for a picked model that has one", async () => {
@@ -110,7 +110,7 @@ describe("ChatIntroduction shows the picked model's known weak spot, and only th
 // Potluck Run is found through five quick clicks on the empty state's mark. The game covers the
 // window without unmounting the chat under it, so the composer (ChatIntroduction's children) keeps
 // what was typed, and focus goes back to the mark on the way out. The game's own screens are in
-// src/lib/potluck-run/PotluckRun.svelte.test.ts (SOL-206).
+// src/lib/potluck-run/PotluckRun.svelte.test.ts.
 // e2e-moved: scenarios/potluck-run.spec.ts › five clicks open a start screen that waits for Start; the run then moves, and Back to chat returns with the draft intact
 // e2e-moved: scenarios/potluck-run.spec.ts › on the start screen, the sound toggle and Back to chat answer clicks, not just Start
 describe("ChatIntroduction opens Potluck Run on five clicks of the mark", () => {

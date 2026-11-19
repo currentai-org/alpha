@@ -17,9 +17,9 @@ import { startChattingPastWelcome } from './helpers/welcome';
 //
 // The file name carries a nonce minted here, so a pass cannot come from an earlier run's workdir.
 // Reachable by a minted @example.org account on preview for the reason agent-file-download.spec.ts
-// gives (`agent-mode-access`, CUR-1611); the flags are forced through the override cookie.
+// gives (`agent-mode-access`); the flags are forced through the override cookie.
 // @preview-only: the override cookie is not wired on production, and agent mode is off there.
-// `@real-agent` (SOL-212): only agent-service decides what runs without a card, and the in-process
+// `@real-agent`: only agent-service decides what runs without a card, and the in-process
 // stand-in has no approval path, so these run on develop's push run against the develop agent pair
 // and a PR's run leaves them out.
 
@@ -64,13 +64,12 @@ async function openTrace(turn: ReturnType<Page['locator']>) {
 
 test(
 	'auto mode makes and changes a file with no approval card, lists both in the trace, and asks in plain words before a delete',
-	{ tag: ['@preview-only', '@A7', '@CUR-3142', '@CUR-4486', '@real-agent'] },
+	{ tag: ['@preview-only', '@A7', '@CUR-3142', '@CUR-4486', '@CUR-4709', '@real-agent'] },
 	async ({ page, context, baseURL }) => {
 		// Three agent turns, each a sandbox and several model rounds.
 		test.setTimeout(600_000);
 		await setFlagOverrides(context, baseURL!, {
 			'agent-mode': true,
-			'agent-confirm-ui': true,
 			'agent-auto-mode': true
 		});
 		const composer = await agentOn(page);
@@ -120,7 +119,28 @@ test(
 			headline,
 			'the delete card leads with a command line instead of a plain sentence'
 		).not.toMatch(/\brm\b|os\.remove|unlink|Approve (terminal|execute_code)/);
-		await page.getByRole('button', { name: 'Deny', exact: true }).last().click();
+
+		// once someone presses Allow, the card collapses to one resolved line, and that line
+		// must still lead with the plain sentence the open card showed, never the raw HTML-escaped call.
+		const plain = headline.replace(/^\s*This turn wants to:\s*/, '').trim();
+		expect(plain, 'the delete card has no plain sentence to carry into its resolved line').not.toBe(
+			''
+		);
+		const confirmCard = page.locator('[data-agent-confirm-card]').last();
+		await confirmCard.getByRole('button', { name: 'Allow', exact: true }).click();
+		const resolved = confirmCard.getByText(/— Allowed\.$/);
+		await expect(resolved, 'pressing Allow did not resolve the delete card').toBeVisible({
+			timeout: 30_000
+		});
+		const resolvedLine = ((await resolved.textContent()) ?? '').trim();
+		expect(
+			resolvedLine.startsWith(plain),
+			`the resolved line "${resolvedLine}" does not start with the plain sentence "${plain}"`
+		).toBe(true);
+		expect(
+			resolvedLine,
+			'the resolved line shows the raw command or its HTML entities'
+		).not.toMatch(/&amp;|&gt;|&lt;|Approve (terminal|execute_code)/);
 	}
 );
 
@@ -141,10 +161,26 @@ async function askEveryStep(page: Page) {
 	expect((await saved).ok(), 'the switch did not save').toBe(true);
 }
 
+// What the make-a-file turn did first. A write that ran without a card and a turn that never got as far
+// as asking are different failures: the first is the defect these tests exist for, the second is not
+// one, so each fails with its own message.
+type FirstOutcome = 'card' | 'ran-without-card' | 'ended-without-card' | 'still-running';
+
+async function firstOutcome(page: Page, turn: ReturnType<Page['locator']>): Promise<FirstOutcome> {
+	if (await page.getByText(CARD).first().isVisible()) return 'card';
+	if ((await turn.getByText(/ran without asking:/).count()) > 0) return 'ran-without-card';
+	if (!(await turnDone(turn).isVisible())) return 'still-running';
+	// The trace panel closes when the turn ends and then holds no text; open it before reading.
+	await openTrace(turn).catch(() => undefined);
+	return (await turn.getByText(/ran without asking:/).count()) > 0
+		? 'ran-without-card'
+		: 'ended-without-card';
+}
+
 async function makeFileOpensACard(
 	page: Page,
 	composer: ReturnType<Page['getByLabel']>,
-	why: string
+	who: string
 ) {
 	const nonce = randomBytes(6).toString('hex');
 	const made = await send(
@@ -152,27 +188,42 @@ async function makeFileOpensACard(
 		composer,
 		`Create a text file named plan-${nonce}.txt whose only line is: potluck ${nonce}`
 	);
-	await expect(page.getByText(CARD).first(), why).toBeVisible({ timeout: 240_000 });
+	const seen: { outcome: FirstOutcome } = { outcome: 'still-running' };
+	await expect
+		.poll(async () => (seen.outcome = await firstOutcome(page, made)), {
+			timeout: 240_000,
+			intervals: [1_000]
+		})
+		.not.toBe('still-running')
+		// Still running at the deadline is an outcome too; the assertion below names it.
+		.catch(() => undefined);
+	const failures: Record<Exclude<FirstOutcome, 'card'>, string> = {
+		'ran-without-card': `${who}, and a write ran without an approval card: the trace lists it as "ran without asking"`,
+		'ended-without-card': `${who}, and the turn ended with no approval card and no write in its trace: the agent never asked to write`,
+		'still-running': `${who}, and after 240s there was no approval card and no write in the trace: the agent had not asked to write yet, or its card never reached the page`
+	};
+	const { outcome } = seen;
+	expect(outcome, outcome === 'card' ? '' : failures[outcome]).toBe('card');
+	// visible in the DOM is not seen: a card below the fold times out to Deny unnoticed.
+	await expect(
+		page.locator('[data-agent-confirm-card]').first(),
+		'the approval card opened out of sight and the chat did not scroll to it'
+	).toBeInViewport({ timeout: 5_000 });
 	await expect(made.getByText(/ran without asking:/)).toHaveCount(0);
 	await page.getByRole('button', { name: 'Deny', exact: true }).first().click();
 }
 
 test(
 	'a person who turns on Ask before every step gets an approval card for making a file',
-	{ tag: ['@preview-only', '@A7', '@CUR-3142', '@CUR-4486', '@real-agent'] },
+	{ tag: ['@preview-only', '@A7', '@CUR-3142', '@CUR-4486', '@CUR-4669', '@real-agent'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(300_000);
 		await setFlagOverrides(context, baseURL!, {
 			'agent-mode': true,
-			'agent-confirm-ui': true,
 			'agent-auto-mode': true
 		});
 		const composer = await agentOn(page, () => askEveryStep(page));
-		await makeFileOpensACard(
-			page,
-			composer,
-			'the person asked before every step and a write ran without a card'
-		);
+		await makeFileOpensACard(page, composer, 'the person asked before every step');
 	}
 );
 
@@ -183,15 +234,10 @@ test(
 		test.setTimeout(300_000);
 		await setFlagOverrides(context, baseURL!, {
 			'agent-mode': true,
-			'agent-confirm-ui': true,
 			'agent-auto-mode': false
 		});
 		const composer = await agentOn(page);
-		await makeFileOpensACard(
-			page,
-			composer,
-			'the kill switch is off and a write ran without a card, so it cannot stop auto mode'
-		);
+		await makeFileOpensACard(page, composer, 'the agent-auto-mode kill switch is off');
 	}
 );
 
@@ -207,7 +253,6 @@ test(
 		test.setTimeout(480_000);
 		await setFlagOverrides(context, baseURL!, {
 			'agent-mode': true,
-			'agent-confirm-ui': true,
 			'agent-auto-mode': true
 		});
 		const composer = await agentOn(page, () => askEveryStep(page));

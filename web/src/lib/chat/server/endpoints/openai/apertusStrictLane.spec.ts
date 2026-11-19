@@ -105,7 +105,7 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-describe("every Apertus call (CUR-2092, flag retired in CUR-2853)", () => {
+describe("every Apertus call ( flag retired in )", () => {
 	it("pins the answer lane's role-shaped call to the role-capable deployment and refuses substitution", async () => {
 		const calls = stubGateway();
 		await call({ preprompt: "You are Alpha.", answer: true });
@@ -174,7 +174,7 @@ describe("roleCapableDeployment", () => {
 	});
 });
 
-describe("Apertus strict lane, body substitution on the pinned deployment (CUR-2144)", () => {
+describe("Apertus strict lane, body substitution on the pinned deployment", () => {
 	// servedGroupFor maps back only the deployment id this lane pinned. A body naming any other model has
 	// to stay unmapped, or the substitution check goes blind on exactly the lane that exists to refuse it.
 	it("a pinned strict-lane answer whose body names another model is refused as substitution", async () => {

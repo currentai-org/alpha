@@ -4,11 +4,10 @@ sandboxed `hermes acp` when AGENT_ACP=1 (streaming-spec §3/§7.1).
 
 Covers the parts that need no live Hermes: message accumulation, session_update -> redacted SSE frames
 (the two-tier audit contract — no raw_input/title/locations may cross), the request_permission gate
-(default-allow == old --yolo; deny_writes rejects edits; CUR-760: edit/delete always pauses for confirm
+(default-allow == old --yolo; deny_writes rejects edits; edit/delete always pauses for confirm
 regardless of resolved policy, deny_writes excepted), the fs handlers' sandbox containment
 (fail-closed on escape), the argv split, config synthesis, and the AGENT_EARLY_EXIT debounce (2
-consecutive verify() passes before signaling, wired to fire only on a completed tool_call_update). The
-live end-to-end drive of `hermes acp` through these handlers is scripts/acp_inbound_smoke.py.
+consecutive verify() passes before signaling, wired to fire only on a completed tool_call_update).
 
 Importing this pulls in `agent-client-protocol` (a dev dep; in production it lives in the Hermes venv).
 """
@@ -56,7 +55,7 @@ def test_message_accumulation():
 # --------------------------------------------------------------------------- answer-text streaming
 def test_a_tool_call_starting_clears_the_narration_that_preceded_it():
     """A turn that loops through many tool calls must not return every aside the model said before each
-    call joined into one wall of near-duplicate one-liners ahead of the real final answer (CUR-542).
+    call joined into one wall of near-duplicate one-liners ahead of the real final answer.
     Mirrors the repair-turn `.clear()` (same file, the while
     loop in `_acp_run`): a new tool call is the same kind of boundary — whatever text accumulated before
     it is not the turn's answer, because more work is about to happen."""
@@ -70,9 +69,8 @@ def test_a_tool_call_starting_clears_the_narration_that_preceded_it():
 
 
 def test_multiple_tool_call_rounds_each_clear_in_turn():
-    """A long tool-heavy turn has several rounds, not one — each round's leftover narration must not
-    survive into the next, or a long tool-heavy turn just relocates the bug from 'never clears' to
-    'clears once and then re-accumulates across the rest.'"""
+    """With several tool-call rounds, each round's leftover narration must not survive into the next:
+    a long tool-heavy turn must not clear once and then re-accumulate across the rest."""
     c = acp_client._AgentClient(work="/tmp", buf=None, attempt=1)
     _run(c.session_update("s", _u("agent_message_chunk", content=types.SimpleNamespace(text="First, I'll read the file."))))
     _run(c.session_update("s", _u("tool_call", kind="read", tool_call_id="t1", status="in_progress")))
@@ -85,7 +83,7 @@ def test_multiple_tool_call_rounds_each_clear_in_turn():
 
 
 def test_a_message_streamed_in_chunks_with_no_tool_call_between_them_still_concatenates():
-    """The fix must not overcorrect: chunks belonging to ONE message, with no tool call interleaved,
+    """Clearing must not overcorrect: chunks belonging to ONE message, with no tool call interleaved,
     are still deltas of the same answer and must still join — nothing clears unless a tool_call fires."""
     c = acp_client._AgentClient(work="/tmp", buf=None, attempt=1)
     _run(c.session_update("s", _u("agent_message_chunk", content=types.SimpleNamespace(text="The answer "))))
@@ -94,8 +92,8 @@ def test_a_message_streamed_in_chunks_with_no_tool_call_between_them_still_conca
 
 
 def test_flag_off_emits_no_token_frame():
-    """The test that matters most, because it is the fallback: with emit_token off the frame stream is
-    byte-identical to a stream without token frames, and .text is unaffected either way."""
+    """The regression that matters most, because it is the fallback: with emit_token off the frame stream is
+    byte-identical to what it was before token streaming existed, and .text is unaffected either way."""
     buf = _CapBuf()
     c = acp_client._AgentClient(work="/tmp", buf=buf, attempt=1)          # default: emit_token=False
     _run(c.session_update("s", _u("agent_message_chunk", content=types.SimpleNamespace(text="Hello, "))))
@@ -195,7 +193,7 @@ def test_tool_step_index_is_stable_per_call_id():
 
 
 def test_tool_failures_tracks_kind_not_call_id():
-    """CUR-574: a tool_call_update with status=="failed" adds the call's KIND (looked up via the id ->
+    """A tool_call_update with status=="failed" adds the call's KIND (looked up via the id ->
     kind map set at tool_call time) to tool_failures — the fact _wrote_code_without_running_it needed
     and couldn't get from tool_kinds alone, since that set never distinguished success from failure."""
     buf = _CapBuf()
@@ -220,10 +218,10 @@ def test_tool_failures_tracks_kind_not_call_id():
 
 
 def test_tool_failures_discards_kind_on_later_success_of_same_kind():
-    """CUR-772: execute fails, the model retries, the retry succeeds — tool_failures must not still
+    """Execute fails, the model retries, the retry succeeds — tool_failures must not still
     say "execute never ran," or the honesty caveat fires on a turn whose answer IS grounded in a real
-    measurement. A failure of a DIFFERENT kind, and a same-kind failure with no successful retry
-    (CUR-574's own case), must both still flag."""
+    measurement. A failure of a DIFFERENT kind, and a same-kind failure with no successful retry,
+    must both still flag."""
     buf = _CapBuf()
     fails: set[str] = set()
     c = acp_client._AgentClient(work="/tmp", buf=buf, attempt=1, tool_failures=fails)
@@ -243,7 +241,7 @@ def test_tool_failures_discards_kind_on_later_success_of_same_kind():
     _run(c.session_update("s", _u("tool_call_update", tool_call_id="t4", status="completed")))
     assert fails == {"edit"}, "an execute success does not clear a DIFFERENT kind's failure"
 
-    # No successful retry of the failed kind — stays flagged (CUR-574's case, unchanged).
+    # No successful retry of the failed kind — stays flagged.
     fails.clear()
     _run(c.session_update("s", _u("tool_call", kind="execute", tool_call_id="t5", status="in_progress")))
     _run(c.session_update("s", _u("tool_call_update", tool_call_id="t5", status="failed")))
@@ -267,7 +265,7 @@ def test_tool_failures_redaction_matches_tool_kinds():
         assert leak not in blob, f"raw arg leaked into SSE frame: {leak!r}"
 
 
-# ── tool_kinds commits on COMPLETION, not proposal (CUR-705) ─────────────────────────────────────────
+# ── tool_kinds commits on COMPLETION, not proposal ─────────────────────────────────────────
 # The shape: an edit proposed, the confirm denied on timeout, the model gives up and hands back a script
 # instead. If self.tool_kinds held "edit" from the bare proposal, the groundedness judge would never
 # fire. The web side's toolKinds tracking (endpointAgent.ts) follows the same rule. These tests drive
@@ -292,7 +290,7 @@ def test_tool_kinds_commits_when_tool_call_update_reports_completed():
 
 
 def test_failed_tool_call_update_does_not_join_tool_kinds():
-    """A tool call that ran and FAILED is a different, lesser bug (TOOL_FAILED_PREFIX's own territory in
+    """A tool call that ran and FAILED is a different, lesser case (TOOL_FAILED_PREFIX's territory in
     app.py) — not "never ran", but also not "ran cleanly". Only status=="completed" commits to
     tool_kinds; "failed" must not, or a broken call reads identically to a successful one downstream."""
     c = acp_client._AgentClient(work="/tmp", buf=None, attempt=1)
@@ -319,7 +317,7 @@ def test_id_less_tool_call_keeps_the_eager_add_as_an_acknowledged_fallback():
     behavior for exactly this one edge case — a narrow, acknowledged exception, not a gap."""
     c = acp_client._AgentClient(work="/tmp", buf=None, attempt=1)
     _run(c.session_update("s", _u("tool_call", kind="think", tool_call_id=None, status="in_progress")))
-    assert c.tool_kinds == {"think"}, "id-less calls still count immediately, same as before this fix"
+    assert c.tool_kinds == {"think"}, "id-less calls still count immediately"
 
 
 # --------------------------------------------------------------------------- plan frame
@@ -347,7 +345,7 @@ def test_usage_frame():
     assert buf.frames == [("usage", {"tokens": 1234})], "usage forwards the token tally only"
 
 
-# --------------------------------------------------------------------------- policy frame (CUR-471)
+# --------------------------------------------------------------------------- policy frame
 def test_emit_policy_stamps_the_attempt_and_forwards_the_decision_verbatim():
     """Unlike plan/tool_call/usage (reactions to session_update), emit_policy is called directly by
     _acp_run right after construction — this is the boundary that actually needs a test; the two-line
@@ -378,8 +376,8 @@ def _opt(kind, oid):
 
 def test_permission_default_allow():
     """Default policy picks the allow option — behaviorally identical to the old --yolo, but observed.
-    kind="read": any kind outside _ALWAYS_CONFIRM_KINDS proves the point; "execute" is on that list
-    (CUR-975) and would hang this test waiting for a confirm nobody answers."""
+    kind="read": any kind outside _ALWAYS_CONFIRM_KINDS proves the point; "execute" moved onto that list
+    when it moved onto the always-confirm kinds and would hang this test waiting for a confirm nobody answers."""
     c = acp_client._AgentClient(work="/tmp", buf=None, attempt=1)  # no permission_policy arg -> "allow"
     c.permission_policy = "allow"
     opts = [_opt("reject_once", "no"), _opt("allow_once", "yes")]
@@ -399,19 +397,18 @@ def test_permission_deny_writes_rejects_edits():
     assert read.outcome.option_id == "yes", "a read is still allowed under deny_writes"
 
 
-# --------------------------------------------------------------------------- confirm x staged (CUR-760)
-def test_always_confirm_kinds_is_the_short_named_list_the_ticket_asked_for():
+# --------------------------------------------------------------------------- confirm x staged
+def test_always_confirm_kinds_is_the_short_named_list():
     """Documentation-as-test: the actual list a reviewer needs to check is this tuple, not a scattered
-    set of `in (...)` literals. Pins it to CUR-217's write-effect pair plus CUR-975's execute addition so
+    set of `in (...)` literals. Pins it to the write-effect pair plus execute so
     a future edit that silently widens or narrows it fails a test, not just a code review."""
     assert acp_client._ALWAYS_CONFIRM_KINDS == ("edit", "delete", "execute")
 
 
 def test_permission_allow_still_pauses_for_confirm_on_an_always_confirm_kind():
-    """CUR-760's core case: a trusted caller (resolved policy="allow", whether from bare
-    ACP_PERMISSION_POLICY=allow or a `staged` caller's earned trusted tier — this class only ever sees
-    the resolved string) still gets paused for a human decision on an edit/delete-kind call. Without
-    that, "allow" would short-circuit straight to yes with no pause at all."""
+    """A trusted caller (resolved policy="allow", whether from bare ACP_PERMISSION_POLICY=allow or a
+    `staged` caller's earned trusted tier — this class only ever sees the resolved string) still gets
+    paused for a human decision on an edit/delete-kind call; "allow" never short-circuits straight to yes."""
     for kind, decision, want in (("edit", "allow", "yes"), ("delete", "deny", "no")):
         c = acp_client._AgentClient(work="/tmp", buf=_CapBuf(), attempt=1, permission_policy="allow")
         opts = [_opt("reject_once", "no"), _opt("allow_once", "yes")]
@@ -429,11 +426,10 @@ def test_permission_allow_still_pauses_for_confirm_on_an_always_confirm_kind():
 
 
 def test_permission_allow_proceeds_without_confirm_on_everything_else():
-    """The DoD's other half: "and proceeds without it on everything else" — a trusted/allow caller's
-    non-listed tool kinds still resolve immediately, no pause, exactly as before. A short
+    """A trusted/allow caller's non-listed tool kinds resolve immediately, with no pause. A short
     confirm_timeout_secs makes a regression (accidentally routing these through the pause) fail fast
-    instead of hanging ~45s. "execute" is on _ALWAYS_CONFIRM_KINDS (CUR-975) — see
-    test_permission_allow_still_pauses_for_confirm_on_an_always_confirm_kind below for its own coverage."""
+    instead of hanging. "execute" is on _ALWAYS_CONFIRM_KINDS; see
+    test_permission_allow_still_pauses_for_confirm_on_an_always_confirm_kind below for its coverage."""
     for kind in ("read", "search", "fetch", "other", "think", "move", "switch_mode"):
         c = acp_client._AgentClient(work="/tmp", buf=_CapBuf(), attempt=1, permission_policy="allow",
                                     confirm_timeout_secs=0.01)
@@ -461,7 +457,7 @@ def test_permission_deny_writes_keeps_failing_closed_no_confirm_pause():
 
 
 def test_permission_allow_still_pauses_for_confirm_on_execute_kind():
-    """The core case of CUR-975, symmetric with test_permission_allow_still_pauses_for_confirm_on_an_
+    """The core case, symmetric with test_permission_allow_still_pauses_for_confirm_on_an_
     always_confirm_kind above but for "execute" specifically: a trusted caller (resolved policy="allow")
     that issues a terminal/process/execute_code call — now proposed via
     deploy/hermes/0002-acp-confirm-execute.patch's maybe_require_execute_approval — still gets paused for
@@ -503,17 +499,16 @@ def test_permission_confirm_policy_still_confirms_kinds_outside_the_always_confi
 
 
 def test_a_cancel_during_a_pending_confirmation_stays_a_cancel_and_is_not_masked():
-    """CUR-1227. Names the contract, not the behavior: what must survive this block is the CancelledError
+    """Names the contract, not the behavior: what must survive this block is the CancelledError
     itself. _request_confirmation's `finally` emits a confirm_result carrying `decision`/`reason`, and
-    those two names are assigned only by the try body and the `except TimeoutError` handler — so
-    without a default bound before the try, any other exception through the wait would reach that finally
-    with both unbound and raise UnboundLocalError in their place, destroying the real reason the attempt ended. The live shape is the
-    agent process dying with a confirmation open: the acp TaskSupervisor cancels this coroutine as the
-    session tears down. (The DELETE path does not hit it — _cancel_soon resolves every pending future
-    with "canceled" explicitly, so the designed cancel binds both names.)
+    those two names must be bound before the try, so any exception through the wait (not only the
+    `except TimeoutError` handler) reaches that finally with both bound, rather than raising
+    UnboundLocalError and destroying the real reason the attempt ended. The shape is the agent process
+    dying with a confirmation open: the acp TaskSupervisor cancels this coroutine as the session tears
+    down. (The DELETE path resolves every pending future with "canceled" explicitly, so it binds both names.)
 
     Deleting the `decision, reason = "deny", "aborted"` line above the try makes this fail with
-    UnboundLocalError."""
+    UnboundLocalError instead of passing."""
     c = acp_client._AgentClient(work="/tmp", buf=_CapBuf(), attempt=1, permission_policy="confirm")
     opts = [_opt("reject_once", "no"), _opt("allow_once", "yes")]
 
@@ -534,14 +529,12 @@ def test_a_cancel_during_a_pending_confirmation_stays_a_cancel_and_is_not_masked
 
 
 def test_confirm_allow_credits_tool_kinds_with_no_completion_event_ever_arriving():
-    """CUR-468: at the pinned Hermes SHA, Hermes's edit-approval flow sends exactly ONE tool_call
-    notification — the "Preparing write..." proposal that opens the confirmation — and, once approved,
-    no matching tool_call_update(completed), even though the file is written. The normal "commit at completion" path
-    (session_update's status=="completed" branch) is therefore structurally unreachable for this call
-    shape, and a spec-less turn (task._verify_spec is None — the real chat-surface/synthesize=True case,
-    not just a bare script) whose only tool call was an approved edit would report FAILED "agent made no
-    tool calls" despite the human saying yes and the write succeeding. No session_update of any kind is
-    delivered here — this asserts the credit happens off the confirm decision alone."""
+    """Hermes's edit-approval flow sends exactly ONE tool_call notification — the "Preparing write..."
+    proposal that opens the confirmation — and never a matching tool_call_update(completed) once approved.
+    The normal "commit at completion" path (session_update's status=="completed" branch) is therefore
+    unreachable for this call shape, and a spec-less turn (task._verify_spec is None — the chat-surface/
+    synthesize=True case) whose only tool call was an approved edit must still count as having made a tool
+    call. No session_update of any kind is delivered here: the credit happens off the confirm decision alone."""
     c = acp_client._AgentClient(work="/tmp", buf=_CapBuf(), attempt=1, permission_policy="confirm",
                                 tool_failures={"edit"})
     opts = [_opt("reject_once", "no"), _opt("allow_once", "yes")]
@@ -560,9 +553,8 @@ def test_confirm_allow_credits_tool_kinds_with_no_completion_event_ever_arriving
 
 
 def test_confirm_deny_never_credits_tool_kinds():
-    """The other half of CUR-468's fix: an unapproved call never runs, so crediting it on deny/timeout
-    would reintroduce the exact fabrication gap CUR-705 round three closed on the tool_call proposal
-    itself. Both exit paths of _request_confirmation (a human "deny" and a timeout) must leave
+    """An unapproved call never runs, so crediting it on deny/timeout would let a bare tool_call
+    proposal count as work done. Both exit paths of _request_confirmation (a human "deny" and a timeout) must leave
     tool_kinds untouched."""
     for decision in ("deny", None):  # None -> let it time out
         c = acp_client._AgentClient(work="/tmp", buf=_CapBuf(), attempt=1, permission_policy="confirm",
@@ -583,18 +575,16 @@ def test_confirm_deny_never_credits_tool_kinds():
 
 
 def test_permission_policy_constructor_arg_threads_through_and_defaults_to_allow():
-    """CUR-470: the constructor is handed the already-resolved value now (app.py's
-    _resolve_permission_policy), not left to re-derive it from ACP_PERMISSION_POLICY itself — under
-    "staged" there is no single global value left to re-derive. The default has to stay "allow" so
-    every one of this file's ~18 other _AgentClient(...) call sites, none of which pass this arg,
-    keep behaving exactly as before."""
+    """The constructor is handed the already-resolved value (app.py's _resolve_permission_policy), not
+    left to re-derive it from ACP_PERMISSION_POLICY — under "staged" there is no single global value.
+    The default stays "allow" so an _AgentClient(...) built without this arg behaves as plain allow."""
     c = acp_client._AgentClient(work="/tmp", buf=None, attempt=1)
-    assert c.permission_policy == "allow", "omitted -> allow, matching every pre-CUR-470 construction"
+    assert c.permission_policy == "allow", "omitted -> allow"
     c = acp_client._AgentClient(work="/tmp", buf=None, attempt=1, permission_policy="deny_writes")
     assert c.permission_policy == "deny_writes", "passed explicitly -> threads straight through"
 
 
-# --------------------------------------------------------------------------- _AttemptClock (CUR-218)
+# --------------------------------------------------------------------------- _AttemptClock
 class _FakeLoop:
     """A controllable loop.time() — real-time sleeps would make "banks the exact remaining budget"
     either slow or flaky. advance() moves the fake clock deterministically."""
@@ -638,7 +628,7 @@ def test_attempt_clock_reentrant_pause_stays_frozen_until_last_resume():
 
 def test_the_watchdog_fires_after_a_confirmation_pause_that_outlasts_the_original_deadline(monkeypatch):
     """The watchdog wakes at the first deadline while a confirmation holds the clock paused, so it reads inf.
-    Once the confirmation resolves it must still fire on the banked budget, not sleep forever (CUR-4535)."""
+    Once the confirmation resolves it must still fire on the banked budget, not sleep forever."""
     monkeypatch.setattr(acp_client, "_WATCHDOG_TICK_SECS", 0.02)
 
     async def scenario() -> float:
@@ -664,7 +654,87 @@ def test_attempt_clock_resume_without_pause_is_noop():
     assert clock._pause_depth == 0, "depth cannot go negative"
 
 
-# --------------------------------------------------------------------------- confirm policy (CUR-218)
+def test_an_unanswered_confirmation_is_charged_to_the_attempt_and_never_reimbursed():
+    """A timed-out wait on an unanswered card is not banked like a human's: silence costs the attempt's
+    clock, so unanswered cards cannot hold a sandbox past the task ceiling."""
+    loop = _FakeLoop(100.0)
+    clock = acp_client._AttemptClock(loop, timeout_secs=300.0)
+    loop.advance(100.0)                    # 200 s of compute left
+    clock.pause()
+    loop.advance(180.0)                    # the card's whole window passes with no answer
+    clock.resume(forfeit=True)
+    assert clock.deadline == loop.time() + 20.0, "the 180 s wait came out of the attempt's 200 s"
+    assert clock.total_paused == 0.0, "nothing for app.py to add back to the task's start"
+    clock.pause()
+    loop.advance(180.0)                    # a second unanswered card outlasts what is left
+    clock.resume(forfeit=True)
+    assert clock.deadline == loop.time(), "out of clock: the watchdog ends the attempt on its next tick"
+
+
+def test_an_unanswered_card_charges_the_window_it_shared_with_an_answered_one():
+    """Two cards open at once and one goes unanswered: nobody was there for the window, so it is charged."""
+    loop = _FakeLoop(0.0)
+    clock = acp_client._AttemptClock(loop, timeout_secs=300.0)
+    clock.pause()
+    clock.pause()
+    loop.advance(60.0)
+    clock.resume(forfeit=True)
+    clock.resume()                         # the answered one closes last
+    assert clock.deadline == loop.time() + 240.0 and clock.total_paused == 0.0
+
+
+def test_a_timed_out_confirmation_leaves_nothing_to_reimburse_and_an_answered_one_still_does():
+    """Through request_permission itself: the timeout path forfeits, the human path keeps its exemption."""
+    async def ask(answer: str | None) -> float:
+        c = acp_client._AgentClient(work="/tmp", buf=_CapBuf(), attempt=1, permission_policy="confirm",
+                                    confirm_timeout_secs=0.05)
+        clock = acp_client._AttemptClock(asyncio.get_running_loop(), timeout_secs=10.0)
+        c._clock = clock
+        task = asyncio.ensure_future(c.request_permission([_opt("allow_once", "yes")], "s", _tool_call()))
+        await asyncio.sleep(0.02)
+        if answer is not None:
+            c._pending_confirms[next(iter(c._pending_confirms))].set_result(answer)
+        await task
+        return clock.total_paused
+
+    assert _run(ask(None)) == 0.0, "an unanswered card is charged, so the task ceiling holds"
+    assert _run(ask("allow")) > 0.0, "a person's answer is still exempt from the clock"
+
+
+def test_a_card_wait_cannot_carry_an_attempt_past_the_tasks_hard_limit():
+    """The compute deadline pauses for an open card, the task's hard limit never does. With 300 s of
+    attempt clock and 100 s left before the hard limit, a card left open 150 s ends the attempt at the hard limit."""
+    loop = _FakeLoop(0.0)
+    clock = acp_client._AttemptClock(loop, timeout_secs=300.0, hard_timeout_secs=100.0)
+    clock.pause()
+    loop.advance(150.0)
+    assert clock.deadline == float("inf"), "the attempt clock is still paused for the card"
+    assert clock.ends_at() == 100.0 <= loop.time(), "the hard limit passed during the wait and still holds"
+
+
+def test_without_a_hard_limit_the_attempt_ends_on_its_own_clock_only():
+    loop = _FakeLoop(0.0)
+    clock = acp_client._AttemptClock(loop, timeout_secs=10.0)
+    assert clock.ends_at() == 10.0
+
+
+def test_the_watchdog_ends_an_attempt_at_the_hard_limit_while_a_card_holds_its_clock_paused(monkeypatch):
+    """A card opened and nobody answers. The paused attempt clock reads inf, so a watchdog reading only it
+    would sleep through the card; the hard limit ends the attempt anyway."""
+    monkeypatch.setattr(acp_client, "_WATCHDOG_TICK_SECS", 0.02)
+
+    async def scenario() -> float:
+        loop = asyncio.get_running_loop()
+        clock = acp_client._AttemptClock(loop, timeout_secs=10.0, hard_timeout_secs=0.1)
+        clock.pause()                        # a card opens at once and stays open
+        started = loop.time()
+        await asyncio.wait_for(acp_client._deadline_watchdog(clock, loop), 2.0)
+        return loop.time() - started
+
+    assert asyncio.run(scenario()) < 0.5, "fired at the 0.1 s hard limit, plus at most a tick"
+
+
+# --------------------------------------------------------------------------- confirm policy
 def _tool_call(kind="edit", title="edit result.txt", content=None):
     return types.SimpleNamespace(kind=kind, title=title, content=content or [],
                                   raw_input={"secret": "should never cross the SSE boundary"},
@@ -749,10 +819,9 @@ def test_confirm_open_close_callbacks_fire_with_matched_confirm_id():
 
 
 def test_confirm_clock_resumes_even_when_on_confirmation_open_raises():
-    """The bug this test exists to catch: an earlier version paused the clock and called
-    on_confirmation_open() BEFORE the try/finally that resumes it, so an exception from that callback
-    (it calls _persist(task) in app.py — real sqlite I/O) would leave the attempt's deadline frozen at
-    inf forever. Every exit path must resume, including this one."""
+    """The clock is paused and on_confirmation_open() is called INSIDE the try/finally that resumes it, so
+    an exception from that callback (it calls _persist(task) in app.py — real sqlite I/O) cannot leave the
+    attempt's deadline frozen at inf. Every exit path must resume, including this one."""
     c = acp_client._AgentClient(work="/tmp", buf=_CapBuf(), attempt=1, permission_policy="confirm",
                                 confirm_timeout_secs=0.01)
     loop = asyncio.new_event_loop()
@@ -784,8 +853,8 @@ def test_confirm_awaiting_and_result_frames_carry_expected_fields():
     assert opened["attempt"] == 3 and closed["attempt"] == 3
     assert opened["confirm_id"] == closed["confirm_id"]
     assert closed["reason"] == "timeout" and closed["decision"] == "deny"
-    # The client had no way to render an honest countdown without this — assert the exact
-    # configured value, not just "a number", so a future default-value change is caught here too. (CUR-1094)
+    # the client had no way to render an honest countdown without this — assert the exact
+    # configured value, not just "a number", so a future default-value change is caught here too.
     assert opened["timeout_secs"] == 0.01
 
 
@@ -810,7 +879,7 @@ def test_describe_tool_call_bounds_summary_length():
     assert len(desc["summary"]) <= acp_client._SUMMARY_MAX, "bounded through _clip like every other frame"
 
 
-# ------------------------------------------------- CUR-1405: an execute confirm shows the real command
+# ------------------------------------------------- an execute confirm shows the real command
 def _exec_call(raw_input, title="apt && apt"):
     """An execute-kind call whose `title` is Hermes' argument-dropping summary — the observed shape."""
     return types.SimpleNamespace(
@@ -822,9 +891,8 @@ def _exec_call(raw_input, title="apt && apt"):
 def test_execute_confirm_shows_the_command_not_just_the_binary_names():
     """The whole point of the confirmation: the string a human authorises must BE the command.
 
-    A dialog showing `apt && apt` for a real
-    `apt update && apt install -y pandoc` would get two package installs approved by someone who could
-    not have known they were installs. A pass here means the arguments survived; it does NOT mean the
+    A dialog that shows `apt && apt` for `apt update && apt install -y pandoc` asks a person to
+    approve two package installs they cannot see. A pass here means the arguments survived; it does NOT mean the
     title improved, because the title is Hermes' and we don't own it.
     """
     real = "apt update && apt install -y pandoc"
@@ -835,7 +903,7 @@ def test_execute_confirm_shows_the_command_not_just_the_binary_names():
 
 def test_execute_confirm_prefers_the_command_over_the_opaque_terminal_id():
     """Regression guard on the ORDER, not just the presence: the content blocks carry a `terminal`
-    entry that resolves to `terminal:term_7`, which tells a reader nothing.
+    entry that resolves to `terminal:term_7`, which is what shipped before and tells a reader nothing.
     An execute call must never fall back to it while a command is available."""
     desc = acp_client._describe_tool_call("cid", _exec_call({"command": "rm -rf ./build"}))
     assert desc["summary"] == "rm -rf ./build"
@@ -985,10 +1053,9 @@ def test_write_acp_config(tmp_path):
 
 
 def test_the_model_block_keeps_the_enforcement_keys_written_before_it(tmp_path):
-    """CUR-2163. Every Fly attempt runs app._write_hermes_home_config (CUR-1155's `agent:` block) and then
-    _write_acp_config (the `model:` block) on the SAME config.yaml. The second writer used to replace the
-    file, so Apertus lost both enforcement nudges on every attempt that had a model set, which is all of
-    them on Fly. Parsed with a real YAML loader because a duplicated top-level key would pass a substring
+    """Every Fly attempt runs app._write_hermes_home_config and then
+    _write_acp_config (the `model:` block) on the SAME config.yaml. The second writer must merge into the
+    file, not replace it, so both enforcement nudges survive on every attempt that has a model set. Parsed with a real YAML loader because a duplicated top-level key would pass a substring
     check and still lose one block at load time."""
     import yaml
     from app import _write_hermes_home_config
@@ -1017,6 +1084,18 @@ def test_a_fenced_attempt_never_waits_on_hermes_public_metadata_fetches(tmp_path
     assert text.count("models_dev:") == 1 and text.count("model_catalog:") == 1
 
 
+def test_an_attempt_makes_no_session_title_call(tmp_path):
+    """Hermes' title call sends `reasoning: {enabled: false}`, which the gateway rejects
+    for Large 4. The attempt config turns titles off; written twice, the block stays single."""
+    import yaml
+
+    acp_client._write_acp_config(str(tmp_path), "org/Model-X", "huggingface")
+    acp_client._write_acp_config(str(tmp_path), "org/Model-X", "huggingface")
+    text = (tmp_path / "config.yaml").read_text()
+    assert yaml.safe_load(text)["auxiliary"] == {"title_generation": {"enabled": False}}
+    assert text.count("auxiliary:") == 1
+
+
 class _StopBeforeSpawn(Exception):
     pass
 
@@ -1042,10 +1121,10 @@ def _acp_run_until_spawn(tmp_path, monkeypatch, model_env: dict) -> dict:
 
 
 def test_hermes_acp_is_told_the_fly_toolset_through_config(tmp_path, monkeypatch):
-    """CUR-2118. From Hermes v2026.9.24 an ACP session takes its toolsets from `platform_toolsets.acp`,
+    """From Hermes v2026.9.24 an ACP session takes its toolsets from `platform_toolsets.acp`,
     and the HERMES_ACP_TOOLSETS patch (0001) is gone. Without this block Hermes resolves its own
-    `hermes-acp` default: 13 toolsets including browser, vision and memory, per
-    that release's own resolver. All three writers' blocks have to survive into the one file."""
+    `hermes-acp` default: 13 toolsets including browser, vision and memory, as that release's own
+    resolver computes it. All three writers' blocks have to survive into the one file."""
     cfg = _acp_run_until_spawn(tmp_path, monkeypatch,
                                {"HERMES_ACP_TOOLSETS": "file,terminal,todo,code_execution"})
     assert cfg["platform_toolsets"] == {"acp": ["file", "terminal", "todo", "code_execution"]}
@@ -1054,7 +1133,7 @@ def test_hermes_acp_is_told_the_fly_toolset_through_config(tmp_path, monkeypatch
 
 
 def test_deny_writes_narrowed_toolset_reaches_hermes_rather_than_the_fly_default(tmp_path, monkeypatch):
-    """CUR-217's floor: under deny_writes/confirm _model_env hands the subprocess `file,todo`. That value,
+    """its floor: under deny_writes/confirm _model_env hands the subprocess `file,todo`. That value,
     not the machine-wide one, is what must land in the config Hermes reads, or terminal and
     code_execution come back by the config door."""
     cfg = _acp_run_until_spawn(tmp_path, monkeypatch, {"HERMES_ACP_TOOLSETS": "file,todo"})
@@ -1107,16 +1186,13 @@ def test_the_model_does_not_get_to_declare_itself_done():
     assert "session_id=sess.session_id" in code, "SAME session — the point is the model keeps its context"
     assert "ok, detail = repair_check(client.text)" in code, \
         "the task's own acceptance test decides, not the model — and it needs the answer text to catch a" \
-        " claim with nothing behind it (CUR-226)"
+        " claim with nothing behind it"
     assert "turns_left -= 1" in code and "if turns_left <= 0" in code, "bounded"
     assert "if ok:" in code, "a passing check ends the turn rather than prompting again"
     # ONE deadline across every turn. Per-turn `timeout_secs` would hand an attempt N times the wall
-    # clock it was granted, and each turn would still look individually bounded — the same denomination
-    # error _remaining_timeout fixed one level up (see 0d2eb92). CUR-218 made the deadline a mutable
-    # _AttemptClock (pausable for a human confirmation wait) instead of a bare float, so the marker this
-    # test looks for changed shape — the invariant (one clock, shared by the wait and the loop guard,
-    # never a fresh per-turn timeout) is unchanged and still asserted below.
-    assert "_AttemptClock(loop, timeout_secs)" in code, "one clock object for the whole attempt"
+    # clock it was granted, and each turn would still look individually bounded. The deadline is a mutable
+    # _AttemptClock (pausable for a human confirmation wait) rather than a bare float; the invariant is one
+    # clock, shared by the wait and the loop guard, never a fresh per-turn timeout.
     assert "timeout=timeout_secs" not in code, "no turn may claim the whole attempt budget for itself"
     assert "_deadline_watchdog(clock, loop)" in code, "the wait races against the SAME clock, not a fresh timeout"
     assert "clock.deadline - loop.time() <= 0" in code, "the repair-turn loop guard reads that same mutable deadline"
@@ -1125,8 +1201,8 @@ def test_the_model_does_not_get_to_declare_itself_done():
 
 
 def test_tool_failures_reset_between_repair_turns():
-    """CUR-574: unlike tool_kinds (deliberately cumulative across repair turns
-    — file state genuinely persists), tool_failures must be cleared per TURN, not just per attempt. Read
+    """Unlike tool_kinds (deliberately cumulative across repair turns
+    — file state persists), tool_failures must be cleared per TURN, not just per attempt. Read
     order matters: repair_check(client.text) has to see THIS turn's failures before the clear, or a
     failure would never be judged at all."""
     src = inspect.getsource(acp_client._acp_run)
@@ -1140,13 +1216,12 @@ def test_tool_failures_reset_between_repair_turns():
 
 
 def test_the_final_repair_turn_still_gets_checked_when_the_budget_or_the_clock_runs_out():
-    """CUR-574 (repair-loop gap): breaking on `turns_left <= 0` OR on the deadline expiring, in both
-    cases before calling repair_check again, would leave the ONE turn that spent the last of the budget,
-    or the last of the wall clock, with zero scrutiny. There is nothing left to retry with either way, but
-    the verdict is still worth keeping: see Task.unrun_detail, set here instead of silently discarded,
-    so a client doesn't need its own copy of this heuristic to know the delivered answer went unchecked.
-    Both triggers are asserted together because they share the one guarded check below them — a check that
-    covered only one would leave the other blind."""
+    """When the loop breaks on `turns_left <= 0` OR on the deadline expiring, it calls repair_check once
+    more first, so the turn that spent the last of the budget or of the wall clock is still scrutinised.
+    There is nothing left to retry with either way, but the verdict is kept in Task.unrun_detail rather
+    than discarded, so a client doesn't need its own copy of this heuristic to know the delivered answer
+    went unchecked. Both triggers are asserted together because they share the one guarded check below
+    them."""
     src = inspect.getsource(acp_client._acp_run)
     body = src.split("conn.initialize(", 1)[1]
     code = "\n".join(ln for ln in body.splitlines() if ln.strip() and not ln.lstrip().startswith("#"))
@@ -1155,9 +1230,9 @@ def test_the_final_repair_turn_still_gets_checked_when_the_budget_or_the_clock_r
     guard_at = code.index("if repair_check is not None:")
     # The exact call, not just the assignment: repair_check's `detail` can come from _verify()'s check_cmd,
     # run inside the sandbox — the same nonce-in-environment exposure every OTHER consumer of that text
-    # (last_verify_detail, judge_reason, attempt_rejections, the repair-turn prompt) already scrubs before
-    # it becomes client-visible. Searching for the specific call, not the bare assignment, means a future
-    # revert to unscrubbed `task.unrun_detail = detail` fails this assertion instead of passing it unnoticed.
+    # (last_verify_detail, judge_reason, attempt_rejections, the repair-turn prompt) scrubs before
+    # it becomes client-visible. Searching for the specific call, not the bare assignment, means an
+    # unscrubbed `task.unrun_detail = detail` fails this assertion.
     store_at = code.index("task.unrun_detail = _scrub(detail, nonce)")
     assert early_exit_at < give_up_at, \
         "an early-exit/canceled turn is already settled elsewhere — must not fall into this branch at all"
@@ -1171,9 +1246,9 @@ def test_the_final_repair_turn_still_gets_checked_when_the_budget_or_the_clock_r
 
 def test_exhausted_repair_replaces_ungrounded_text_instead_of_only_flagging_it():
     """The give-up branch above stores a failing verdict on task.unrun_detail (the client's caveat flag)
-    and must also replace client.text, the model's own reply: otherwise a turn with zero "edit" calls can
+    and must also replace client.text, the model's own reply: otherwise a turn with zero "edit" calls could
     tell the user a file "has been created" with invented figures, and the caveat banner above that text
-    is the only signal anything was wrong (CUR-705). This proves the replacement is wired INSIDE the same guarded
+    is the only signal anything was wrong. This proves the replacement is wired INSIDE the same guarded
     block the verdict-store test above pins down, gated on tool_kinds having no "edit" — a real (even
     failed, or read-only) tool call this attempt is a different, lesser bug and must keep its own text."""
     src = inspect.getsource(acp_client._acp_run)
@@ -1204,10 +1279,10 @@ def test_acp_client_scrub_matches_app_pys_and_is_direct_behavior_not_just_source
 
 
 def test_a_repair_turn_can_actually_clear_the_last_turns_text(tmp_path):
-    """`_AgentClient.text` is a read-only property over `text_parts`. Assigning to it in the
-    between-turn reset raises AttributeError inside the ACP loop and turns all three attempts into
-    `hermes exit 1`. Tests that assert SOURCE STRUCTURE cannot tell a writable attribute from a property,
-    so this one runs it."""
+    """`_AgentClient.text` is a read-only property over `text_parts`, so the between-turn reset must clear
+    the backing list; assigning to `text` would raise AttributeError inside the ACP loop. The tests around
+    this loop assert SOURCE STRUCTURE, which cannot tell a writable attribute from a property, so this one
+    runs it."""
     c = acp_client._AgentClient(str(tmp_path), None, 1)
     c.text_parts.extend(["first turn ", "answer"])
     assert c.text == "first turn answer"
@@ -1222,8 +1297,7 @@ def test_a_repair_turn_can_actually_clear_the_last_turns_text(tmp_path):
 
 def test_repair_exhausted_replacement_actually_swaps_the_text(tmp_path):
     """Companion to the source-structure test above, same reason: structure cannot tell a genuine swap
-    from a no-op, and `.text` has no setter (see the sibling test above — the same class of mistake this
-    guards against). Uses app.py's REAL constant, not a stand-in, so a future edit to its wording still
+    from a no-op, and `.text` has no setter (see the sibling test above). Uses app.py's REAL constant, not a stand-in, so a future edit to its wording still
     exercises the actual value that ships."""
     import app
     c = acp_client._AgentClient(str(tmp_path), None, 1)
@@ -1240,7 +1314,7 @@ def test_repair_exhausted_replacement_actually_swaps_the_text(tmp_path):
     assert c.text == app._REPAIR_EXHAUSTED_ANSWER
 
 
-# --------------------------------------------------------------------------- CUR-653: hermes stderr drain
+# --------------------------------------------------------------------------- hermes stderr drain
 class _FakeStderr:
     """Stand-in for the asyncio.StreamReader on proc.stderr — yields each queued chunk, then EOF (b"")."""
 
@@ -1256,8 +1330,7 @@ def _fake_proc(chunks: list[bytes]):
 
 
 def test_drain_stderr_logs_the_full_tail_on_a_normal_eof(monkeypatch):
-    """The child's stderr is created and immediately discarded today (CUR-653) — this is the fix:
-    drain to EOF, then log once rather than per line (this is an ops tail, not a live stream)."""
+    """The child's stderr is drained, not discarded: drain to EOF, then log once rather than per line (this is an ops tail, not a live stream)."""
     logged = []
     monkeypatch.setattr(acp_client, "_log_stderr_tail", lambda *a: logged.append(a))
     _run(acp_client._drain_stderr(_fake_proc([b"SyntaxError: ", b"unexpected EOF"]), "task-1", 2, None))
@@ -1340,7 +1413,7 @@ def test_acp_run_wires_the_stderr_drain_into_the_spawn_and_the_finally():
 
 
 def test_a_backend_launch_gets_the_bare_hermes_argv_and_the_model_env(tmp_path, monkeypatch):
-    """CUR-4450: with `open_stdio` the sandbox backend starts Hermes and owns where it runs, so it gets
+    """With `open_stdio` the sandbox backend starts Hermes and owns where it runs, so it gets
     `hermes acp` with no bwrap prefix, and acp's own launch is never used."""
     from app import _write_hermes_home_config
 
@@ -1379,7 +1452,7 @@ def test_a_backend_launch_refuses_a_bwrap_prefix_beside_it(tmp_path):
 
 
 def test_a_remote_attempt_writes_its_hermes_home_into_the_sandbox_and_leaves_none_here(tmp_path, monkeypatch):
-    """CUR-4482: on a remote backend the attempt's config reaches the guest through `backend.write`, the local
+    """On a remote backend the attempt's config reaches the guest through `backend.write`, the local
     copy is gone before Hermes starts, and the guest's env carries no credential of ours."""
     import app
     from sandbox_backend import Handle, Tier
@@ -1417,13 +1490,13 @@ def test_a_remote_attempt_writes_its_hermes_home_into_the_sandbox_and_leaves_non
     assert seen["argv"] == ["hermes", "acp", "--accept-hooks"]
     assert seen["env"]["HERMES_HOME"] == "/home/user/work/hermes-home-t-1"
     assert seen["env"]["HF_BASE_URL"] == "https://gw.example/v1"
-    # The gateway authenticates the guest by the task's own nonce, since Embed never rewrites headers. (CUR-4500)
+    # the gateway authenticates the guest by the task's own nonce, since Embed never rewrites headers.
     assert seen["env"]["HF_TOKEN"] == "task-nonce-1"
     assert "unit-admin" not in set(seen["env"].values())
     assert not [k for k in seen["env"] if app._SECRET_ENV_RE.search(k) and k != "HF_TOKEN"]
 
 
-# --------------------------------------------------------------------------- auto mode (CUR-3142)
+# --------------------------------------------------------------------------- auto mode
 def _diff(path):
     return types.SimpleNamespace(type="diff", path=path, new_text="x")
 
@@ -1453,8 +1526,8 @@ def test_auto_mode_asks_about_an_edit_that_leaves_the_folder_or_names_a_sensitiv
 
 
 def test_on_e2b_an_edit_named_by_its_guest_path_runs_and_the_client_measures_against_the_guest(tmp_path, monkeypatch):
-    """CUR-4595: Hermes in the guest names writes as /home/user/work/<file>. Measured against this machine's scratch,
-    every one would read as leaving the folder and go to a card."""
+    """Hermes in the guest names writes as /home/user/work/<file>. Those paths are measured against the
+    guest's folder; against this machine's scratch every one would read as leaving the folder."""
     guest = "/home/user/work"
     c = acp_client._AgentClient(work=guest, buf=_CapBuf(), attempt=1, confirm_timeout_secs=0.01, approval_mode="auto")
     opts = [_opt("reject_once", "no"), _opt("allow_once", "yes")]
@@ -1462,7 +1535,7 @@ def test_on_e2b_an_edit_named_by_its_guest_path_runs_and_the_client_measures_aga
     assert resp.outcome.option_id == "yes"
     local = _auto_client(tmp_path)
     resp = _run(local.request_permission(opts, "s", _tool_call(kind="edit", content=[_diff(f"{guest}/plan-1.txt")])))
-    assert resp.outcome.option_id == "no", "against the local scratch the same guest path is outside, the bug's shape"
+    assert resp.outcome.option_id == "no", "against the local scratch the same guest path is outside"
 
     built = []
 
@@ -1538,7 +1611,8 @@ class _GatewayStatusError(Exception):
 
 
 def test_a_reviewer_404_is_tried_once_more_and_its_second_answer_decides_with_no_card(tmp_path):
-    """CUR-4630: a review call that answers 404 would open a card that outlasts the chat turn. One gateway error is retried; the retry's verdict decides, so no card opens."""
+    """A review call can answer 404, and each one opened a card that
+    outlasted the chat turn. One gateway error is retried; the retry's verdict decides, so no card opens."""
     calls = []
 
     async def reviewer(action):
@@ -1574,7 +1648,7 @@ def test_a_reviewer_that_fails_twice_or_times_out_still_asks_and_never_runs(tmp_
 
 
 def test_a_failed_review_log_line_names_the_gateway_status_so_a_404_and_a_429_read_apart(tmp_path, capsys):
-    """CUR-4667: acp.auto_review_failed carried only the exception's class, so every gateway answer looked
+    """Acp.auto_review_failed carried only the exception's class, so every gateway answer looked
     the same. Each failed try now names the status the gateway gave."""
     calls = []
 
@@ -1610,8 +1684,8 @@ def test_ask_mode_is_unchanged_an_in_folder_edit_still_opens_a_card(tmp_path):
 
 
 def test_a_guest_hermes_that_never_answers_initialize_times_out_on_the_attempts_wall_clock(tmp_path):
-    """CUR-4535. The attempt clock covers the handshake, so a guest that never answers `initialize`
-    cannot hold its agent slot forever."""
+    """The attempt clock starts before the handshake, so a guest that never answers `initialize` cannot
+    hold its agent slot forever."""
     import time
 
     from app import _write_hermes_home_config
@@ -1703,8 +1777,8 @@ def _run_against_a_guest_that_records_its_cwd(tmp_path, **kw) -> list[str]:
 
 
 def test_a_guest_session_starts_in_the_guests_own_folder_not_this_machines(tmp_path):
-    """CUR-4595. Every remote session was opened with this machine's /tmp/agent-run-* folder as its cwd, which
-    does not exist in the sandbox, so every `terminal` call failed with `cd: … No such file or directory`."""
+    """A remote session opens with the guest's folder as its cwd, not this machine's /tmp/agent-run-* folder,
+    which does not exist in the sandbox."""
     assert _run_against_a_guest_that_records_its_cwd(tmp_path, session_cwd="/home/user/work") == ["/home/user/work"]
 
 
@@ -1713,7 +1787,7 @@ def test_a_local_session_still_starts_in_the_work_folder(tmp_path):
 
 
 def test_every_permission_decision_leaves_one_retained_log_line_without_the_path(tmp_path, monkeypatch, capsys):
-    """CUR-4595: denied writes on develop left no record of who denied them; each decision now logs kind and verdict."""
+    """Each permission decision logs its kind and verdict, so a denied write leaves a record of who denied it."""
     sent = []
     monkeypatch.setattr(acp_client.logsink, "emit", sent.append)
     c = _auto_client(tmp_path)

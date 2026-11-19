@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { attachmentNote } from "./classifierPrompt";
 
-describe("attachmentNote (CUR-3192)", () => {
+describe("attachmentNote", () => {
 	it("is undefined with nothing attached, so a plain turn's prompt is unchanged", () => {
 		expect(attachmentNote([])).toBeUndefined();
 	});

@@ -1,5 +1,5 @@
 /**
- * The CLI's one-click pairing handoff (CUR-4110, schema.ts's `local_inference_pairings`).
+ * The CLI's one-click pairing handoff (schema.ts's `local_inference_pairings`).
  *
  * Three steps, each one atomic statement so concurrent requests cannot double-provision or
  * double-collect:

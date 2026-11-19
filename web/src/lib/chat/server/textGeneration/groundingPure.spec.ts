@@ -12,7 +12,7 @@ import {
 // line, and it stays green when someone rewords the guard while the behaviour it buys regresses.
 // Nothing there asserts behaviour, because prompt text cannot.
 //
-// This file covers the four exports that DO have input→output contracts and had no test at all.
+// This file covers the four exports that DO have input→output contracts.
 // Each one below is anchored to a specific failure the source comments name, so "can it go red" is
 // answered by the failure it is named for, not by any failure at all.
 
@@ -121,7 +121,7 @@ describe("buildServingNote() — the in-prompt serving claim, derived not hardco
 	it("on a NON-sovereign host, names no institution for the model to repeat, not even to deny it", () => {
 		// A note saying "NOT running on CSCS … CSCS is the production-serving TARGET" gets answered "I
 		// run on public compute provided by CSCS". A name in the prompt is a name in the answer, so the contract
-		// is that none appears, and no sovereign claim either. (CUR-1879)
+		// is that none appears, and no sovereign claim either.
 		const note = buildServingNote({
 			providerLabel: "Infomaniak",
 			isSovereign: false,
@@ -140,7 +140,7 @@ describe("buildServingNote() — the in-prompt serving claim, derived not hardco
 		expect(note).not.toMatch(/NOT running on CSCS/);
 	});
 
-	it("with NO serving facts, names no institution, no target and no country it could claim (CUR-1879)", () => {
+	it("with NO serving facts, names no institution, no target and no country it could claim", () => {
 		// The absent-facts path is the one that runs when resolveServing cannot determine a provider.
 		// Failing open to "sovereign" here would assert the strongest claim on the least evidence. A
 		// country may appear only inside a "do not" clause, as a claim the model is told not to make.

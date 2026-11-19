@@ -31,7 +31,7 @@ async function status(p: Promise<unknown>): Promise<number | "pass"> {
 	}
 }
 
-describe("requireAdminPermission (CUR-3990, CUR-3992)", () => {
+describe("requireAdminPermission", () => {
 	it("passes a signed-in person whose role holds the permission", async () => {
 		expect(await status(requireAdminPermission({ cookies: cookieJar(), locals: locals({ role: "editor" }) }, { tuning: "save" }))).toBe("pass");
 	});
@@ -49,7 +49,7 @@ describe("requireAdminPermission (CUR-3990, CUR-3992)", () => {
 		expect(await status(requireAdminPermission({ cookies: cookieJar(), locals: locals() }, { console: "view" }))).toBe(401);
 	});
 
-	it("401s a signed-out browser still holding a shared-password admin cookie from before CUR-3992", async () => {
+	it("401s a signed-out browser still holding a shared-password admin cookie from before", async () => {
 		const cookies = cookieJar();
 		cookies.set("admin", `ops.${Date.now() + 60_000}.${"a".repeat(64)}`, { path: "/" });
 		expect(await status(requireAdminPermission({ cookies, locals: locals() }, { reports: "read" }))).toBe(401);

@@ -1,4 +1,4 @@
-"""Operator-configured MCP servers for agent mode (CUR-3025).
+"""Operator-configured MCP servers for agent mode.
 
 `AGENT_MCP_SERVERS` is a JSON list; each entry names one remote MCP server the agent may call:
 
@@ -38,7 +38,7 @@ _ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _HEADER_NAME_RE = re.compile(r"^[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
 _LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1"}
 # SSE is refused at config time. Hermes 29112bef's ACP adapter (`_register_session_mcp_servers`,
-# acp_adapter/server.py:1126) passes every non-stdio ACP server on as {"url", "headers"} without the
+# acp_adapter/server.py:1126) turns every non-stdio ACP server into {"url", "headers"} and drops the
 # transport, and tools/mcp_tool.py picks SSE only from a `transport: sse` key that path never sets — so an
 # SSE server sent over ACP would be dialled as Streamable HTTP and fail to connect, with only a warning in
 # Hermes' own log. Saying so at config time beats a server that silently never shows up.

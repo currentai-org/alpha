@@ -1,9 +1,9 @@
-// Operator-configured MCP servers (CUR-3026). `MCP_SERVERS` is a JSON list of
+// Operator-configured MCP servers. `MCP_SERVERS` is a JSON list of
 // `{ name, url, headers: { HeaderName: "ENV_VAR_NAME" }, pins?: { toolName: "<sha256>" } }`: the JSON names which env var holds each
 // header's value and never the value itself, so a secret lives in Doppler like every other secret and
 // the list can be read in a log or a ticket without leaking one.
 //
-// This list is the flag-gated source of MCP tools, offered through the tool loop (CUR-3989).
+// This list is the flag-gated source of MCP tools, offered through the tool loop.
 import { config } from "$lib/chat/server/config";
 import { flagEnabledOr } from "$lib/chat/server/flags";
 import { logger } from "$lib/chat/server/logger";
@@ -28,10 +28,10 @@ export type McpServerConfig = {
 	origin: string;
 	/** The fetch this server's transport uses. Origin-scoped (originScopedFetch). */
 	fetch: FetchLike;
-	/** Tool name to the SHA-256 the operator approved (CUR-3985). When set, only tools whose current
+	/** Tool name to the SHA-256 the operator approved. When set, only tools whose current
 	 *  listing hashes to its pin are offered; see `toolSha256` in serverTools.ts. */
 	pins?: Record<string, string>;
-	/** This server's MCP progress on a call means it is waiting for a free sandbox (agent-service's (CUR-4584)
+	/** This server's MCP progress on a call means it is waiting for a free sandbox (agent-service's
 	 *  /mcp/ on a full host), so the live line says so while the call is pending. */
 	progressIsSandboxWait?: boolean;
 	/** Most one call may take, past the SDK's 60 s default. The sandbox may wait about a minute for a slot. */

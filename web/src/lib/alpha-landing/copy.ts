@@ -6,16 +6,13 @@
  * Product facts stay honest — only claim what the demo or live Alpha can show today.
  */
 
-import { RETENTION_DAYS } from '$lib/chat/constants/retention';
-import { CHAT_HOST } from '$lib/chat/paths';
-import { DATA_HOME, MODEL_HOSTS, orgs } from '$lib/chat/routing/catalog';
-import { MOZILLA_DATA_COLLECTIVE } from '$lib/chat/contribute';
-
-// Who runs Apertus, from the catalog rather than typed here, so the FAQ moves with a host change.
-const apertusHost = orgs[MODEL_HOSTS['apertus-70b']];
-const APERTUS_HOST = apertusHost.region
-	? `${apertusHost.name} in ${apertusHost.region}`
-	: apertusHost.name;
+import {
+	APERTUS_HOST,
+	CHAT_HOST,
+	CHATS_STORED_BY,
+	GUEST_RETENTION_DAYS,
+	MOZILLA_DATA_COLLECTIVE_HOME
+} from './chatFacts';
 
 export type Inline = { kind: 'text'; text: string } | { kind: 'link'; text: string; href: string };
 
@@ -76,12 +73,6 @@ export const sectionsIntro = {
 	body: 'Many chat tools hide which AI replied and what happens to your messages. Alpha is built around everyday choices — your language, your data, how it looks and behaves — and an X-ray on every answer so you are not guessing.'
 } as const;
 
-/** The caption over the live preview. */
-export const preview = {
-	eyebrow: 'The real app, on sample chats',
-	link: 'Open the full demo'
-} as const;
-
 /** The bold look's ribbon under the hero: short facts the page goes on to show, each with an icon. */
 export const ticker = [
 	{ id: 'open', text: 'Open models' },
@@ -102,24 +93,9 @@ export const closing = {
 	body: 'Some of what Alpha needs is code. Much of it is data in more languages, people willing to test it in the real world, and partners to run open models. If one of these is yours, come build it with us.',
 	actions: [
 		{ label: 'Try Alpha', href: '/chat' },
-		{ label: 'Share data in your language', href: MOZILLA_DATA_COLLECTIVE.home }
+		{ label: 'Share data in your language', href: MOZILLA_DATA_COLLECTIVE_HOME }
 	],
 	more: { label: 'See other ways to contribute', href: '/contribute' }
-} as const;
-
-export const stage = {
-	label: 'Try the demo — send a message to sign up',
-	interactLabel: 'Click to use the demo',
-	interactHint: 'Scroll the page freely — click when you want to explore Alpha.',
-	prompt: 'Which open projects work on speech, and what can you actually say about them?',
-	answer:
-		'I can name projects our catalog lists, and I will not invent details the sources do not support. The summary under this reply shows what Alpha checked for this answer.',
-	trace: [
-		{ label: 'AI used', value: 'Apertus' },
-		{ label: 'Run on', value: 'Shared Alpha service' },
-		{ label: 'Sources', value: 'Project catalog' },
-		{ label: 'Web search', value: 'Not this turn' }
-	]
 } as const;
 
 export const features: Feature[] = [
@@ -209,7 +185,7 @@ export const faq: FaqGroup[] = [
 				paragraphs: [
 					[
 						t('Alpha is a chat assistant from Current AI, live at '),
-						a(`${CHAT_HOST}/chat`, '/chat'),
+						a(CHAT_HOST ? `${CHAT_HOST}/chat` : '/chat', '/chat'),
 						t(
 							'. You ask questions and get answers, like other AI chats — but every answer comes from an open model made and run by organisations it names, and every answer has an X-ray showing how it was made.'
 						)
@@ -222,7 +198,7 @@ export const faq: FaqGroup[] = [
 				paragraphs: [
 					[
 						t(
-							`No. You can start chatting as a guest; guest conversations are deleted automatically after ${RETENTION_DAYS} days. Create an account when you want to keep your history and your settings across devices.`
+							`No. You can start chatting as a guest; guest conversations are deleted automatically after ${GUEST_RETENTION_DAYS} days. Create an account when you want to keep your history and your settings across devices.`
 						)
 					]
 				]
@@ -246,7 +222,7 @@ export const faq: FaqGroup[] = [
 			{
 				id: 'who-sees',
 				question: 'Who can see my conversations?',
-				paragraphs: [[t(`${DATA_HOME.chats} We don’t train AI on them.`)]]
+				paragraphs: [[t(`${CHATS_STORED_BY} We don’t train AI on them.`)]]
 			},
 			{
 				id: 'delete',

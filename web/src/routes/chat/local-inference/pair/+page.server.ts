@@ -15,12 +15,15 @@
 // back from sign-in, a browser that sends no such header) gets a confirm button naming the device,
 // which posts to the action below behind SvelteKit's origin check. That keeps the common case one
 // click without letting a web page pair a device for someone. A link opened from a desktop mail
-// client also arrives as `none`; nothing in the browser can tell that apart from the CLI. (CUR-4110)
+// client also arrives as `none`; nothing in the browser can tell that apart from the CLI.
+// An account at its managed-server cap is refused with a 409 that the page reports as the cap it hit,
+// naming the number and pointing at settings, rather than as a generic failure.
 import type { Actions, PageServerLoad, RequestEvent } from "./$types";
-import { error, fail, redirect } from "@sveltejs/kit";
+import { error, fail, isHttpError, redirect } from "@sveltejs/kit";
 import { base } from "$lib/chat/paths";
 import { logger } from "$lib/chat/server/logger";
 import { localInferenceEndpointsEnabled } from "$lib/chat/server/localEndpointsGate";
+import { MAX_MANAGED_ENDPOINTS_PER_ACCOUNT } from "$lib/chat/server/localEndpointLimits";
 import { managedInferenceEnabled, managedLocalInferenceEndpointsEnabled } from "$lib/chat/server/managedInferenceGate";
 import { provisionManagedEndpoint } from "$lib/chat/server/managedInference/provision";
 import { stubProvisioningDeps } from "$lib/chat/server/managedInference/e2eStub";
@@ -64,8 +67,16 @@ async function pair(event: RequestEvent, userId: string, pairingId: string, labe
 	} catch (err) {
 		// Give the id back so the same link can be retried once whatever failed is fixed.
 		await releasePairing(userId, pairingId);
+		// The account's managed-server cap, not a fault: say so, and leave the link retryable so
+		// removing a server in settings frees it.
+		if (isHttpError(err, 409)) {
+			logger.info({ userId }, "[managedInference] pairing link refused: managed endpoint cap reached");
+			return { state: "limit", max: MAX_MANAGED_ENDPOINTS_PER_ACCOUNT };
+		}
 		logger.error(
-			{ err: err instanceof Error ? err.message : String(err) },
+			{
+				err: isHttpError(err) ? `${err.status} ${err.body.message}` : err instanceof Error ? err.message : String(err),
+			},
 			"[managedInference] pairing link failed to provision"
 		);
 		return { state: "failed" };

@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2018- The Hugging Face team
+SPDX-License-Identifier: Apache-2.0
+Modified by Current AI from huggingface/chat-ui.
+-->
 <script lang="ts">
 	import MarkdownRenderer from "./MarkdownRenderer.svelte";
 	import BlockWrapper from "./BlockWrapper.svelte";
@@ -11,17 +16,17 @@
 		/** Why this turn's answer is predicted rather than measured, when it is. Set from
 		 *  message.unrunCode, which the agent endpoint emits from the SAME check that prepends the
 		 *  "wrote files but never ran anything" caveat to the answer — so the header below and that
-		 *  sentence cannot contradict each other. Undefined is the ordinary case; it is NOT a claim that (CUR-1341)
+		 *  sentence cannot contradict each other. Undefined is the ordinary case; it is NOT a claim that
 		 *  tools ran, and nothing here should read it as one. */
 		unrunReason?: UnrunCodeReason;
 	}
 
 	let { content, loading = false, unrunReason = undefined }: Props = $props();
-	// A reasoning model narrates the injection fence by its nonce; the visitor never reads it. (CUR-3164)
-	// With the nonce gone, the sentence restating the fence ("wrapped in markers") goes too. (CUR-3945)
+	// A reasoning model narrates the injection fence by its nonce; the visitor never reads it.
+	// With the nonce gone, the sentence restating the fence ("wrapped in markers") goes too.
 	let shown = $derived(scrubFenceNarration(scrubFenceNonce(content, loading), loading));
 	// When the scrub leaves nothing, the reasoning was all our own prompt plumbing. A finished
-	// turn then shows no panel, since an empty "Working" header promises reasoning there is none of. (CUR-3945)
+	// turn then shows no panel, since an empty "Working" header promises reasoning there is none of.
 	let hasContent = $derived(loading || shown.trim().length > 0);
 
 	// Three header states, not two. "Computing…"/"Computed" are untouched — see the comment in the
@@ -29,15 +34,15 @@
 	// output was computed, which is false on a turn whose answer opens with "This turn wrote files but
 	// never ran anything, so any output shown below is predicted rather than measured." The header is
 	// what a reader who never expands the block walks away with, so it was the louder of the two claims
-	// and the wrong one (CUR-1341).
+	// and the wrong one.
 	//
 	// "Predicted" borrows the caveat's own word rather than inventing a second vocabulary for the same
 	// fact. A structural failure is a different claim — the run tried and did not finish, rather than
 	// the agent overclaiming what it did — and gets its own label, matching the split the answer prefix
 	// already makes between STRUCTURAL_FAILURE_NOTICE and UNRUN_CODE_NOTICE.
-	// "Working" is the panel's label (CUR-2079). Every reasoning model's think block
+	// "Working" is the panel's label. Every reasoning model's think block
 	// renders here, and nothing in this component knows whether a tool ran, so "Computed" put a claim of
-	// calculation over a plain capital-city answer. (CUR-3940)
+	// calculation over a plain capital-city answer.
 	let headerLabel = $derived(
 		loading
 			? "Working…"
@@ -92,7 +97,7 @@
 			class:thinking-shimmer={loading}
 		>
 			<!-- "Working", not "Reasoning" or "Thinking" — the house non-anthropomorphic stance for
-			     user-visible copy (CUR-2079). The internal type is still
+			     user-visible copy. The internal type is still
 			     MessageReasoningUpdate, and that mismatch is deliberate rather than an oversight to tidy
 			     up. The ellipsis marks streaming because the header stays visible after the block
 			     auto-collapses. The other two labels live in headerLabel above, which has the reasoning. -->

@@ -56,7 +56,7 @@ describe('scanTargetForMime', () => {
 	});
 });
 
-describe('scanFileForCsam on a PDF (CUR-987)', () => {
+describe('scanFileForCsam on a PDF', () => {
 	it('finds a seeded match in an image drawn as an XObject', async () => {
 		const { scan, calls } = seededScanner();
 		await expect(scanFileForCsam(blob(fixture('xobject.pdf')), 'a.pdf', 'pdf', { scan, logger: quietLog })).resolves.toEqual(MATCH);
@@ -105,7 +105,7 @@ describe('scanFileForCsam on a PDF (CUR-987)', () => {
 	});
 });
 
-describe('scanFileForCsam on a DOCX (CUR-987)', () => {
+describe('scanFileForCsam on a DOCX', () => {
 	it("finds a seeded match among word/media's pictures", async () => {
 		const { scan, calls } = seededScanner();
 		const file = docx({ 'word/media/image1.png': await solidPng([10, 20, 30]), 'word/media/image2.png': NOISE_PNG });
@@ -171,7 +171,7 @@ describe('scanFileForCsam on an image or text', () => {
 	});
 });
 
-describe('a PDF over the page limit (CUR-3837)', () => {
+describe('a PDF over the page limit', () => {
 	it('is refused with the page-limit notice before the scanner sees anything', async () => {
 		const bytes = readFileSync(fileURLToPath(new URL('../../../../../e2e/scenarios/fixtures/too-many-pages.pdf', import.meta.url)));
 		const { scan, calls } = seededScanner();

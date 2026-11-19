@@ -99,7 +99,7 @@ describe('docs track the code — the catalog is only useful if it is current', 
 
 describe('search', () => {
 	it('ranks a name prefix first', () => {
-		expect(search('acc')[0].slug).toBe('accordion');
+		expect(search('alert')[0].slug).toBe('alert-dialog');
 	});
 	it('finds by keyword (modal → dialog)', () => {
 		expect(search('modal').map((e) => e.slug)).toContain('dialog');

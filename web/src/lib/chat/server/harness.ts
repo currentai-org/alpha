@@ -1,17 +1,17 @@
 // Which harness a turn runs under, decided once per turn and read by every seam.
 //
-// The scaffolded path serves models that do not reliably trigger a tool (CUR-2060, CUR-2092):
+// The scaffolded path serves models that do not reliably trigger a tool:
 // retrieval, search and arithmetic are decided by side calls before the answer, the prompt carries
 // ~3.8k tokens of steering. A model that calls tools well needs none of that. "native" is the other
 // shape: a short system prompt, RAG, web search and calculate offered as tools the model calls itself,
-// and its own decoding defaults. The base guards are the same under both (CUR-2697): CSAM scan, input
+// and its own decoding defaults. The base guards are the same under both: CSAM scan, input
 // and output screening, the injection fence, the identity and account lock, the honesty stream, and
 // provenance.
 //
-// One fact decides it: the model's row in harnessProfiles.ts names the tricks it carries (CUR-2697).
+// One fact decides it: the model's row in harnessProfiles.ts names the tricks it carries.
 // Large 3's row carries none, Apertus's all four, and the plan is built from that list. The plan is the
-// same in every environment and for every person (CUR-4015): no flag and no environment check, so
-// switching to Apertus in the picker keeps the crutches it needs and nothing else moves a turn. (CUR-2420)
+// same in every environment and for every person: no flag and no environment check, so
+// switching to Apertus in the picker keeps the crutches it needs and nothing else moves a turn.
 
 import { ALL_TRICKS, tricksFor, type HarnessTrick } from "$lib/chat/server/harnessProfiles";
 import { evalLayers, markEvalLayerApplied } from "$lib/chat/server/evalLayers";
@@ -37,13 +37,13 @@ const NATIVE: HarnessPlan = {
 	retrieval: "tools",
 	mathRouting: false,
 	// The honesty stream holds base guards every model gets (the crisis-line reorder, fabricated URL and
-	// citation checks), so native runs it too (CUR-2697). It intervened on 0 of 30 native search turns at
-	// no time cost (CUR-2697 eval), so it costs nothing when the model behaves.
+	// citation checks), so native runs it too. It intervened on 0 of 30 native search turns at
+	// no time cost (eval), so it costs nothing when the model behaves.
 	streamGuards: true,
 	decoding: "model",
 };
 
-/** Whether a turn sends no decoding overrides, leaving the model's own defaults (CUR-2420). A turn with
+/** Whether a turn sends no decoding overrides, leaving the model's own defaults. A turn with
  *  no plan keeps GROUNDED_DECODING. */
 export function usesModelDecoding(plan: HarnessPlan | undefined): boolean {
 	return plan?.decoding === "model";
@@ -65,10 +65,10 @@ export function planFromTricks(tricks: ReadonlySet<HarnessTrick>): HarnessPlan {
 type TurnModel = { id?: string; name?: string; supportsTools?: boolean };
 
 /**
- * The tricks this model's row names (CUR-2697). A model that cannot call tools also takes pre-turn
+ * The tricks this model's row names. A model that cannot call tools also takes pre-turn
  * retrieval, since the native shape's retrieval is tools it would have to call. A row that names none
  * was vetted with tools only, so without them it gets every trick; a row that names some keeps the
- * rest off (CUR-3898: a model listed without tools gets the persona back, CUR-3835).
+ * rest off (a model listed without tools gets the persona back).
  */
 function modelTricks(model: TurnModel): ReadonlySet<HarnessTrick> {
 	const row = tricksFor(model.id ?? model.name);
@@ -81,7 +81,7 @@ export function resolveHarness(model: TurnModel): HarnessPlan {
 	return planFromTricks(modelTricks(model));
 }
 
-/** The plan for this turn's model, the same in every environment and for every person (CUR-4015). */
+/** The plan for this turn's model, the same in every environment and for every person. */
 export function harnessForTurn(model: TurnModel): HarnessPlan {
 	const tricks = modelTricks(model);
 	// The layer test's per-trick switch: the row minus the named tricks. The gate behind it keeps it off

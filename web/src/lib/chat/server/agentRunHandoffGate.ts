@@ -11,8 +11,10 @@ export const AGENT_RUN_HANDOFF_FLAG = "agent-run-handoff";
  * behaviour before it existed, exactly: a run is asked to stop at 150s and the turn ends at the 155s
  * watchdog. Sync, never throws, fallback OFF.
  *
- * Deployment-wide, and shipped to the browser in the layout data as `agentRunHandoffEnabled`, so the
- * server's handoff and the page's follow read one answer.
+ * Deployment-wide, and read once per run, when it is submitted: the answer is stored on the run
+ * (agentRun.handoff) and every later request and the page read that, never this flag. Each
+ * instance holds its own flag snapshot, and two reads at different times on different instances
+ * disagreed during a flip.
  */
 export function agentRunHandoffEnabled(): boolean {
 	return flagEnabledOr(AGENT_RUN_HANDOFF_FLAG, () => false);

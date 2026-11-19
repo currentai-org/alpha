@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 
-// The agent endpoint names its token's env var; resolveAgentRoute reads the value at call time (CUR-2640).
+// The agent endpoint names its token's env var; resolveAgentRoute reads the value at call time.
 vi.mock("$lib/chat/server/config", () => {
 	const cfg: Record<string, string> = { AGENT_SERVICE_TOKEN: "tok-123" };
 	const config = new Proxy(cfg, { get: (t, prop) => (prop in t ? Reflect.get(t, prop) : "") });
@@ -164,7 +164,7 @@ describe("resolveAgentRoute", () => {
 		expect(d.model).toBe(selected);
 	});
 
-	it("auto + an attached image → the selected model, never the agent, which can't read images (CUR-454)", async () => {
+	it("auto + an attached image → the selected model, never the agent, which can't read images", async () => {
 		const fetchImpl = vi
 			.fn()
 			.mockResolvedValue(jsonResponse({ agentic: true, reason: "requires image analysis" }));
@@ -253,7 +253,7 @@ describe("resolveAgentRoute", () => {
 		expect(fetchImpl).not.toHaveBeenCalled();
 	});
 
-	describe("CUR-1260: failure reason is classified into a closed set, and counted", () => {
+	describe("failure reason is classified into a closed set, and counted", () => {
 		it("takeAgentRouteFailureCount reads and resets in one call", async () => {
 			takeAgentRouteFailureCount();
 			const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({}, false, 500));
@@ -336,8 +336,8 @@ describe("resolveAgentRoute", () => {
 });
 
 // A forced "on" that falls back to plain chat logs its route and reason too. Every on/auto
-// turn logs its route and reason, whichever way it went. (CUR-905)
-describe("CUR-2830: only an auto route check that got no verdict is marked failed", () => {
+// turn logs its route and reason, whichever way it went.
+describe("only an auto route check that got no verdict is marked failed", () => {
 	const auto = (fetchImpl: typeof fetch) =>
 		resolveAgentRoute({ selected, models, agentMode: "auto", prompt: "x", fetchImpl });
 
@@ -354,7 +354,7 @@ describe("CUR-2830: only an auto route check that got no verdict is marked faile
 		}
 	});
 
-	it("leaves failed unset when the agent's input screen refuses the prompt, since the service answered (CUR-4056)", async () => {
+	it("leaves failed unset when the agent's input screen refuses the prompt, since the service answered", async () => {
 		const refused = {
 			ok: false,
 			status: 403,
@@ -390,7 +390,7 @@ describe("CUR-2830: only an auto route check that got no verdict is marked faile
 	});
 });
 
-describe("CUR-905: every on/auto decision is logged with its reason", () => {
+describe("every on/auto decision is logged with its reason", () => {
 	afterEach(() => vi.restoreAllMocks());
 
 	const fallbacks = [

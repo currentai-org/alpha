@@ -1,4 +1,4 @@
-// Reads and writes for human evaluation (A2, CUR-1914). The rules live in humanEval/; this file only
+// Reads and writes for human evaluation. The rules live in humanEval/; this file only
 // moves rows.
 
 import { and, desc, eq, gte, sql } from "drizzle-orm";

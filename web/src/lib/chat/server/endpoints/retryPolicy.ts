@@ -1,4 +1,4 @@
-// When a failed model request is worth sending again, and how long to wait first (CUR-2432). One place
+// When a failed model request is worth sending again, and how long to wait first. One place
 // for the rules, so the layers that retry do not disagree about them or keep separate budgets.
 //
 // The rules follow the OpenAI SDK's own retry logic (openai/client.js shouldRetry and
@@ -15,6 +15,7 @@ import { jitteredDelay } from "$lib/chat/utils/backoff";
 
 type Failed = { status?: unknown; statusCode?: unknown; name?: unknown; headers?: unknown };
 
+/** The HTTP status an error carries (`status`, else `statusCode`), or undefined. */
 export function statusOf(err: unknown): number | undefined {
 	if (typeof err !== "object" || err === null) return undefined;
 	const { status, statusCode } = err as Failed;
@@ -23,24 +24,55 @@ export function statusOf(err: unknown): number | undefined {
 	return undefined;
 }
 
+/** How much of an upstream's error text a log line keeps. */
+const UPSTREAM_ERROR_TEXT_CHARS = 300;
+
+/**
+ * The upstream's own error text, cut to UPSTREAM_ERROR_TEXT_CHARS, for a failure log line, so the log
+ * says why a host refused a call where a bare status (a 402, say) does not. It reads only the error
+ * the host sent back (the SDK's message, built from the response body), never the request, so a
+ * visitor's message is not logged. Undefined when the failure carries no text.
+ */
+export function upstreamErrorText(err: unknown): string | undefined {
+	const message = err instanceof Error ? err.message : typeof err === "string" ? err : undefined;
+	const text = message?.trim();
+	if (!text) return undefined;
+	return text.length > UPSTREAM_ERROR_TEXT_CHARS ? `${text.slice(0, UPSTREAM_ERROR_TEXT_CHARS)}…` : text;
+}
+
 /** An upstream 429: the SDK's RateLimitError, or anything else carrying that status. */
 export function isRateLimited(err: unknown): boolean {
 	return statusOf(err) === 429;
 }
 
-/** An upstream gateway timeout (504): the host gave up waiting on the model, so the model did not answer (CUR-4345). */
+/** An upstream gateway timeout (504): the host gave up waiting on the model, so the model did not answer. */
 export function isUpstreamTimeout(err: unknown): boolean {
 	return statusOf(err) === 504;
 }
 
 /**
  * An upstream answer that says the model is not being served at all right now: a 404 (the router has no
- * working entry for it, CUR-4629) or any 5xx. Unlike a 400, our request was not the problem, so a model
+ * working entry for it) or any 5xx. Unlike a 400, our request was not the problem, so a model
  * failing this way counts toward its busy mark and Auto routes around it (modelBusy.ts).
  */
 export function isHardUpstreamFailure(err: unknown): boolean {
 	const status = statusOf(err);
 	return status === 404 || (status !== undefined && status >= 500 && status <= 599);
+}
+
+/**
+ * A stream that the host opened and then ended in an error event: the gateway's
+ * `finish_reason: error` arrives as an in-band `error` payload, which the SDK throws as an APIError
+ * carrying the payload's `code` and no HTTP `status`. A 5xx code, or a dropped connection, qualifies;
+ * a 429 has its own handling and a cancelled request is never one.
+ */
+export function isStreamEndedInError(err: unknown): boolean {
+	if (isAbort(err)) return false;
+	const code = Number((err as { code?: unknown } | null)?.code);
+	const status = statusOf(err) ?? (Number.isInteger(code) ? code : undefined);
+	if (status !== undefined) return status >= 500 && status <= 599;
+	const name = typeof err === "object" && err !== null ? (err as Failed).name : undefined;
+	return name === "APIConnectionError";
 }
 
 /** A cancelled request: the turn was stopped or a watchdog fired, so nothing should resend it. */
@@ -80,7 +112,7 @@ function retryAfterMs(err: unknown, now: number = Date.now()): number | undefine
 	return Number.isFinite(at) ? Math.max(0, at - now) : undefined;
 }
 
-/** What an upstream 429 said, for the log line that records it (SOL-200): the wait the host asked for
+/** What an upstream 429 said, for the log line that records it: the wait the host asked for
  *  and the body the SDK kept, cut to UPSTREAM_BODY_MAX characters. Without the body nobody can tell a
  *  provider's account limit from a gateway's per-key one. */
 const UPSTREAM_BODY_MAX = 500;
@@ -115,7 +147,7 @@ export type RetryPolicy = {
 };
 
 /**
- * A tool round's policy. A per-minute cap (Mistral's key allows 30 a minute, CUR-2307) does not clear
+ * A tool round's policy. A per-minute rate cap does not clear
  * in the 100–300ms the lane retry waits, so the first wait is up to a second and the second up to two.
  * Full jitter can pick a short wait; that is the trade for not sending every waiting turn back at once.
  */

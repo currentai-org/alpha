@@ -2,8 +2,8 @@
  * The account menu names the workspace new conversations count toward. The session's
  * activeOrganizationId is only a pointer, so these tests seed real organization/member rows and
  * check the name is read through the person's own membership: a workspace they left, or one that
- * was deleted under them (CUR-2835), names nothing. The session and the flag are stubbed; the
- * membership join is the contract, so it runs against the real tables. (CUR-3014)
+ * was deleted under them, names nothing. The session and the flag are stubbed; the
+ * membership join is the contract, so it runs against the real tables.
  */
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import { eq, inArray } from "drizzle-orm";
@@ -11,12 +11,11 @@ import { getDb } from "$lib/chat/server/db/client";
 import { member, organization, user } from "$lib/chat/server/db/schema";
 import { createTestLocals } from "$lib/chat/server/api/__tests__/testHelpers";
 
-const { getSession, flagOn } = vi.hoisted(() => ({
+const { getSession } = vi.hoisted(() => ({
 	getSession: vi.fn(),
-	flagOn: vi.fn(() => true),
 }));
 vi.mock("$lib/chat/server/betterAuth", () => ({ getAuth: () => ({ api: { getSession } }) }));
-vi.mock("$lib/chat/server/workspacesGate", () => ({ workspacesEnabled: flagOn, workspaceOrgCreationEnabled: () => false }));
+vi.mock("$lib/chat/server/workspacesGate", () => ({ workspaceOrgCreationEnabled: () => false }));
 
 const { workspaceScopeFor } = await import("$lib/chat/server/currentWorkspace");
 const currentWorkspaceFor = async (locals: App.Locals, h: Headers) =>
@@ -36,9 +35,8 @@ function activeIs(organizationId: string | null) {
 	});
 }
 
-describe.sequential("currentWorkspaceFor (CUR-3014)", () => {
+describe.sequential("currentWorkspaceFor", () => {
 	beforeEach(async () => {
-		flagOn.mockReturnValue(true);
 		getSession.mockReset();
 		const db = getDb();
 		const now = new Date();
@@ -77,13 +75,6 @@ describe.sequential("currentWorkspaceFor (CUR-3014)", () => {
 	it("names nothing with no active workspace", async () => {
 		activeIs(null);
 		expect(await currentWorkspaceFor(signedIn(), headers)).toBeNull();
-	});
-
-	it("never reads the session when the workspaces flag is off", async () => {
-		flagOn.mockReturnValue(false);
-		activeIs(orgA);
-		expect(await currentWorkspaceFor(signedIn(), headers)).toBeNull();
-		expect(getSession).not.toHaveBeenCalled();
 	});
 
 	it("never reads the session for a guest", async () => {

@@ -1,6 +1,6 @@
 // guardGate — Shieldstral-1.0-3B as the SYNC input gate.
 //
-// When the `guard-primary` flag is ON, every chat turn's synchronous input screen runs against ONE
+// Every chat turn's synchronous input screen runs against ONE
 // self-hosted Shieldstral endpoint (OpenAI /v1/chat/completions — a per-question yes/no judge with a
 // renormalised yes/no logprob score) and Coop exists only as the REVIEW plane (moderation.ts
 // reportHitToCoop — hit-only /api/v1/report, never a re-detection). Policy is
@@ -24,15 +24,15 @@
 // TIME/WORKER BUDGET: per-call timeout 8s; whole-operation deadline from shield.operationDeadlineMs,
 // grown per round of calls for a long input (guardOperationDeadlineMs), never past MAX_INPUT_SCREEN_MS.
 // A multi-unit input runs on fewer workers (LONG_SCREEN_CONCURRENCY), so one long paste leaves the
-// shared guard room for other people's short turns (CUR-3749).
+// shared guard room for other people's short turns.
 // ONE operation-level AbortController is armed at start; each call's signal is
 // AbortSignal.any([opSignal, AbortSignal.timeout(8s)]); a job whose turn comes after the deadline
 // resolves UNKNOWN WITHOUT starting a request. ONE global worker pool (shield.concurrency) is shared
 // across every unit and query — not per-stage pools.
 //
-// CONFIG vs FLAG (invariant 5): the flag decides on/off; GUARD_SHADOW_URL is the address. Flag ON with
-// the URL missing is a LOUD misconfiguration — error log, UNKNOWN verdict, unhealthy probe — never a
-// silent off. (The env var is named for the shadow guard it first served; it is an OpenAI chat/completions
+// CONFIG (invariant 5): GUARD_SHADOW_URL is the address, never a toggle. A hosted build with the URL
+// missing is a LOUD misconfiguration — error log, UNKNOWN verdict, unhealthy probe — never a silent
+// off. Only a self-host edition with no classifier answers unscreened (selfHostWithoutScreen). (The env var is named for the shadow guard it first served; it is an OpenAI chat/completions
 // base — see guardShadow.ts's env block.)
 //
 // Raw model output never reaches the user (invariant 3): the categories surfaced downstream are the
@@ -42,11 +42,11 @@
 import { isTestDeployment } from "$lib/chat/server/deployEnv";
 import { MAX_INPUT_SCREEN_MS } from "$lib/chat/utils/deadlineLadder";
 import { withAskerContext } from "$lib/chat/server/guardPolicyCore.mjs";
-import { ensureFlagsPolled, flagEnabledOr } from "$lib/chat/server/flags";
+import { flagEnabledOr } from "$lib/chat/server/flags";
 import { logger as defaultLogger } from "$lib/chat/server/logger";
 import { failOpenDeparture } from "$lib/chat/server/failOpen";
 import type { ChildSafetyResult, ContentPolicyResult, OutputScreenResult } from "$lib/chat/server/moderation";
-import { isCoopConfigured, outputModerationEnabled, outputModerationRequested } from "$lib/chat/server/moderation";
+import { isCoopConfigured, isSelfHostEdition, outputModerationEnabled, outputModerationRequested } from "$lib/chat/server/moderation";
 import type { ScreeningFacts } from "$lib/chat/server/textGeneration/persona";
 import {
 	loadGuardPolicy,
@@ -61,10 +61,8 @@ import {
 	shieldstralConfigured,
 	SHIELDSTRAL_MODEL,
 } from "$lib/chat/server/detectors/shieldstral";
-import { makeCopeSecondOpinion, makeZentropiJudge, zentropiConfigured } from "$lib/chat/server/detectors/zentropi";
 import { makeS1Judge, s1Configured, s1RuleIdsFor, S1_RULES, type S1UnitJudge } from "$lib/chat/server/detectors/s1";
-import { readAfricanLanguage } from "$lib/chat/server/textGeneration/languageFallback";
-import { S1_JUDGE, ZENTROPI_JUDGE, type RoutedLanguage } from "../../../../config/safetyScreen";
+import { S1_JUDGE } from "../../../../config/safetyScreen";
 import {
 	guardInputIsEmpty,
 	textOnlyGuardInput,
@@ -90,9 +88,9 @@ import {
 // in crisis is never shown "goes against our content policy" instead of the support resources. The
 // block-hit merge order is the (concurrent) resolution order, so precedence must be explicit, not
 // positional.
-// `-passive` (CUR-1840) catches the writer saying they don't want to be alive, with no method named,
+// `-passive` catches the writer saying they don't want to be alive, with no method named,
 // and carries the same supportive copy, so it shares the precedence.
-// `-intent` (CUR-3915) catches the writer saying they want to end their life or hurt themselves, and
+// `-intent` catches the writer saying they want to end their life or hurt themselves, and
 // `-eating` asks for disordered-eating methods, which the method-only `chat-block-self-harm` misses.
 const SELF_HARM_KEYS = new Set([
 	"chat-block-self-harm",
@@ -105,7 +103,7 @@ const SELF_HARM_KEYS = new Set([
 const GUARD_TIMEOUT_MS = 8000;
 // The operation deadline grows with the work: one round is `concurrency` calls, and a round is given
 // this long. shield.operationDeadlineMs stays the floor, so a one-chunk message keeps its 20s. A 100k
-// paste is 9 chunks × 14 rules = 126 calls, and the cap is the ladder's MAX_INPUT_SCREEN_MS (CUR-3749).
+// paste is 9 chunks × 14 rules = 126 calls, and the cap is the ladder's MAX_INPUT_SCREEN_MS.
 // A round gets 5 s: finished 100k screens run up to 2.8 s a round and one-chunk screens beside a
 // scenario suite run 1.8-3.2 s, so 3 s leaves no slack. The 5 s round grows only mid-sized inputs: a 100k paste is already at the cap.
 const GUARD_ROUND_MS = 5000;
@@ -113,7 +111,7 @@ const GUARD_ROUND_MS = 5000;
 // starts the generation clock when the screen ends, and the ladder budgets this much for the screen.
 const GUARD_DEADLINE_CAP_MS = MAX_INPUT_SCREEN_MS;
 // Workers for an input of more than one unit. The guard is one GPU shared by every turn, and a 100k
-// paste on six workers held it long enough that 1-chunk screens running beside it timed out (CUR-3749). 126 calls on 4 workers is 32 rounds, which
+// paste on six workers held it long enough that 1-chunk screens running beside it timed out. 126 calls on 4 workers is 32 rounds, which
 // GUARD_ROUND_MS puts past the cap.
 const LONG_SCREEN_CONCURRENCY = 4;
 
@@ -140,22 +138,22 @@ export function guardOperationDeadlineMs(
 }
 
 // ── flag gate ──────────────────────────────────────────────────────────────────────────────────────
-// Registered in flagKeys.ts, pinned by flagKeys.spec.ts. Default OFF — kill switch is flag OFF
-// (wholesale return to Coop, no redeploy). No Coop fallback on a guard error: the fail modes above are
-// the whole degradation story.
+// Registered in flagKeys.ts, pinned by flagKeys.spec.ts. No turn reads it: the guard screens every chat
+// turn (resolveTurnPolicy). It stays defined while an older build that reads it can still be served.
+// No Coop fallback on a guard error: the fail modes above are the whole degradation story.
 export const GUARD_PRIMARY_FLAG = "guard-primary";
 
 export function guardPrimaryEnabled(): boolean {
 	return flagEnabledOr(GUARD_PRIMARY_FLAG, () => false);
 }
 
-/** The kill switch for answer-plus-card (CUR-3915). The distress rules (`-intent`, `-passive`,
+/** The kill switch for answer-plus-card. The distress rules (`-intent`, `-passive`,
  *  `-hedged`) are `log` rules: the person gets Alpha's answer with the Support resources card on top.
  *  ON turns each of them back into a block, so distress gets the support message and no answer, as
  *  before. Registered in flagKeys.ts. */
 export const SELF_HARM_DISTRESS_DECLINES_FLAG = "self-harm-distress-declines";
 
-/** The rule flags on for this request's visitor, for the chat turn's input screen (CUR-2111). */
+/** The rule flags on for this request's visitor, for the chat turn's input screen. */
 export function inputScreenFlags(): Set<string> {
 	return new Set([SELF_HARM_DISTRESS_DECLINES_FLAG].filter((k) => flagEnabledOr(k, () => false)));
 }
@@ -164,89 +162,69 @@ export function guardPrimaryConfigured(): boolean {
 	return shieldstralConfigured();
 }
 
-/** The chat turn's input screen asks Zentropi instead of Shieldstral when the typed text is
- *  Amharic, Yoruba, Hausa or Kiswahili. Registered in flagKeys.ts. Default OFF: every turn screens with (CUR-4340)
- *  Shieldstral. */
-export const ZENTROPI_AFRICAN_FLAG = "zentropi-african-routing";
-
-function zentropiAfricanRoutingEnabled(): boolean {
-	return flagEnabledOr(ZENTROPI_AFRICAN_FLAG, () => false);
-}
-
-let zentropiJudge: JudgeFn | undefined;
-let copeSecondOpinion: JudgeFn | undefined;
-
-/** The CoPE judges for this turn's input screen, or undefined for Shieldstral alone. Only when the flag
- *  is on, the scorer ranks the typed text as one of the routed languages, Shieldstral is addressed (an
- *  injected judge skips the gate's own misconfig check, and Shieldstral answers every call Zentropi does
- *  not) and the CoPE endpoint's key is set. A sure read gets CoPE as the `judge`; a near-miss read keeps
- *  Shieldstral and gets CoPE as `alsoJudge`, a second screen whose hits are added (CUR-4423). Flag on with
- *  the key unset is a loud misconfiguration, never a silent off. Reached through inputJudgesFor.
- *  @internal exported for its routing tests */
-export function inputJudgeFor(
-	typedTurnText: string,
-	log: MinimalLogger = defaultLogger
-): { judge: JudgeFn; lang: RoutedLanguage } | { alsoJudge: JudgeFn; lang: RoutedLanguage } | undefined {
-	if (!zentropiAfricanRoutingEnabled()) return undefined;
-	const read = readAfricanLanguage(typedTurnText);
-	if (!read || !shieldstralConfigured()) return undefined;
-	const { lang } = read;
-	if (!zentropiConfigured()) {
-		log.error(
-			{ gateSource: "guard", judge: "zentropi", lang },
-			`[guard] zentropi-african-routing is ON but ${ZENTROPI_JUDGE.provider.api_key_env} is unset — screening with Shieldstral`
-		);
-		return undefined;
-	}
-	if (read.sure) {
-		log.info({ gateSource: "guard", judge: "zentropi", lang }, "[guard] input screen judge: zentropi");
-		zentropiJudge ??= makeZentropiJudge();
-		return { judge: zentropiJudge, lang };
-	}
-	log.info(
-		{ gateSource: "guard", judge: "shieldstral+zentropi", lang },
-		"[guard] input screen judges: shieldstral, and zentropi as a second opinion (language not sure)"
-	);
-	copeSecondOpinion ??= makeCopeSecondOpinion();
-	return { alsoJudge: copeSecondOpinion, lang };
-}
-
 /** With this flag on, Zentropi S1 judges every text chunk of the chat turn's input screen (and
- *  output screen, when OUTPUT_MODERATION is on) against rules-s1.json, and the CoPE routing above is not (CUR-4527)
- *  used for that turn. Registered in flagKeys.ts. Default OFF: no code path changes. */
+ *  output screen, when OUTPUT_MODERATION is on) against rules-s1.json. Registered in
+ *  flagKeys.ts. Default OFF: no code path changes. */
 export const S1_SAFETY_JUDGE_FLAG = "s1-safety-judge";
+
+/** Is the judge that screens chat text configured? Follows the screen's own judge selection: with
+ *  `s1-safety-judge` on, text goes to S1 alone (runGuardScreen), so a configured Shieldstral does not
+ *  count. Pictures are always Shieldstral's (guardPrimaryConfigured). */
+export function textScreenConfigured(): boolean {
+	return flagEnabledOr(S1_SAFETY_JUDGE_FLAG, () => false) ? s1Configured() : shieldstralConfigured();
+}
+
+let warnedNoScreen = false;
+
+/** A self-host edition (ALPHA_EDITION=selfhost) with no text classifier configured. Its operator runs
+ *  Alpha unscreened by choice, so a turn answers instead of failing closed, and the first call says so
+ *  once at warn level (boot calls it, logGuardPostureAtBoot). A hosted or unset edition never takes
+ *  this path: with no classifier it fails closed. */
+export function selfHostWithoutScreen(log: Pick<MinimalLogger, "warn"> = defaultLogger): boolean {
+	if (!isSelfHostEdition() || textScreenConfigured()) return false;
+	if (!warnedNoScreen) {
+		warnedNoScreen = true;
+		log.warn(
+			{ gateSource: "guard" },
+			`[guard] SELF-HOST, NO SCREEN: ALPHA_EDITION=selfhost with no safety classifier for chat text (GUARD_SHADOW_URL for Shieldstral, or ${S1_JUDGE.provider.api_key_env} and ${S1_JUDGE.provider.api_base_env} with s1-safety-judge on) — every turn reaches the model unscreened. The operator owns screening; set a classifier to turn it on (selfhost/README.md).`
+		);
+	}
+	return true;
+}
+
+/** Called once from server init beside logCoopPostureAtBoot, so a self-host with no classifier says so
+ *  in the boot log, before the first turn. */
+export function logGuardPostureAtBoot(): void {
+	selfHostWithoutScreen();
+}
 
 let s1Judge: S1UnitJudge | undefined;
 
-/** The S1 judge for this turn's screens, or undefined when the flag is off. Flag on with the key unset is
- *  a loud misconfiguration: the judge still runs, every call is unknown and the turn fails closed. Only
- *  the chat route calls this. */
+/** The S1 judge for this turn's screens, or undefined when the flag is off. Flag on with the key or the
+ *  endpoint unset is a loud misconfiguration: the judge still runs, every call is unknown and the turn
+ *  fails closed. Only the chat route calls this. */
 export function s1JudgeFor(log: MinimalLogger = defaultLogger): S1UnitJudge | undefined {
 	if (!flagEnabledOr(S1_SAFETY_JUDGE_FLAG, () => false)) return undefined;
 	if (!s1Configured())
 		log.error(
 			{ gateSource: "guard", judge: "s1" },
-			`[guard] s1-safety-judge is ON but ${S1_JUDGE.provider.api_key_env} is unset — every S1 call is unknown`
+			`[guard] s1-safety-judge is ON but ${S1_JUDGE.provider.api_key_env} or ${S1_JUDGE.provider.api_base_env} is unset — every S1 call is unknown`
 		);
 	s1Judge ??= makeS1Judge();
 	return s1Judge;
 }
 
-/** The judge deps for the chat turn's input screen. Flag `s1-safety-judge` on: the S1 judge, and no CoPE
- *  routing. Off: exactly what inputJudgeFor gives, as before CUR-4527. */
+/** The judge deps for the chat turn's input screen. Flag `s1-safety-judge` on: the S1 judge. Off: none,
+ *  so Shieldstral judges every language. */
 export function inputJudgesFor(
-	typedTurnText: string,
 	log: MinimalLogger = defaultLogger,
 	opts: { allowS1?: boolean } = {}
-): Pick<GuardScreenDeps, "judge" | "alsoJudge" | "s1"> {
+): Pick<GuardScreenDeps, "s1"> {
 	const s1 = opts.allowS1 === false ? undefined : s1JudgeFor(log);
 	if (s1) {
 		log.info({ gateSource: "guard", judge: "s1" }, "[guard] input screen judge: s1");
 		return { s1 };
 	}
-	const routed = inputJudgeFor(typedTurnText, log);
-	if (routed && "judge" in routed) return { judge: routed.judge };
-	if (routed && "alsoJudge" in routed) return { alsoJudge: routed.alsoJudge };
 	return {};
 }
 
@@ -264,7 +242,7 @@ export function guardChunkCount(textLength: number): number {
  *  [i·stride, i·stride + window). Overlap means a hazard spanning a boundary sits whole in one chunk.
  *  The screened part is the corpus's END, not its start: the corpus joins user messages oldest first,
  *  so the turn the model is about to answer is last, and a history longer than the cap would push it
- *  out of a prefix entirely (CUR-3525). History that falls off the front was screened on its own turn. */
+ *  out of a prefix entirely. History that falls off the front was screened on its own turn. */
 export function guardChunkTexts(text: string): string[] {
 	const screened = text.length > GUARD_CORPUS_CAP ? text.slice(-GUARD_CORPUS_CAP) : text;
 	const n = guardChunkCount(screened.length);
@@ -282,7 +260,7 @@ function screenPart(done: number, calls: number, parts: number): number {
 // ── the screening operation ────────────────────────────────────────────────────────────────────────
 export type GuardScreenDeps = {
 	logger?: MinimalLogger;
-	/** Where a log-action hit is counted (CUR-3915). Only the chat turn's input screen passes one
+	/** Where a log-action hit is counted. Only the chat turn's input screen passes one
 	 *  (`countGuardHitsSafe`), so a count is messages: the shadow, the agent's screening endpoint, rechecks
 	 *  and upload screens see the same message again and count nothing. */
 	countLogHits?: (ruleKeys: string[]) => unknown;
@@ -293,11 +271,7 @@ export type GuardScreenDeps = {
 	 *  the factory, never here. When a judge is injected, the gate skips its `shieldstralConfigured()`
 	 *  misconfig check (the injected judge owns its own reachability). */
 	judge?: JudgeFn;
-	/** A second detector, run as its own screen beside this one: own worker pool, own deadline, text units
-	 *  only. Its hits are added; its unknowns and faults never reach this screen, and it cannot hold up this
-	 *  screen's own calls (CUR-4423). Only a near-miss routed-language input turn passes one (inputJudgeFor). */
-	alsoJudge?: JudgeFn;
-	/** The S1 detector (CUR-4527): judges each TEXT unit once against rules-s1.json and answers every rule
+	/** The S1 detector: judges each TEXT unit once against rules-s1.json and answers every rule
 	 *  it covers on this screen. Image units keep the per-rule judge. rules.json rules S1 does not cover are
 	 *  not asked on text units. */
 	s1?: S1UnitJudge;
@@ -309,11 +283,11 @@ export type GuardScreenDeps = {
 	/** Test seam for the memoized policy: `null` simulates a failed load (→ loud UNKNOWN). */
 	policy?: GuardPolicy | null;
 	/** Whether a content query our own operation deadline left unanswered on a multi-unit input closes
-	 *  the turn as couldn't-check (CUR-3531). Default true; the output screen passes false and keeps
+	 *  the turn as couldn't-check. Default true; the output screen passes false and keeps
 	 *  content fail-open on every UNKNOWN. */
 	deadlineClosesContent?: boolean;
 	/** Fault seam for `input_screen_unfinished`: end the operation as soon as every child query has
-	 *  answered, so the content queries go unasked the way a slow guard leaves them (CUR-3531). */
+	 *  answered, so the content queries go unasked the way a slow guard leaves them. */
 	abortAfterChildTier?: boolean;
 	/** Time allowed per round of `concurrency` calls when sizing the operation deadline. Tests pass 0 to
 	 *  hold the deadline at the policy floor. */
@@ -323,19 +297,19 @@ export type GuardScreenDeps = {
 	/** Ceiling on the grown deadline. Defaults to MAX_INPUT_SCREEN_MS; the route passes less for a turn
 	 *  whose generation clock won't wait for the screen (screenDeadlineCapMs). */
 	deadlineCapMs?: number;
-	/** Called as a multi-unit screen moves through its parts, for the "Checking safety" line (CUR-3749).
+	/** Called as a multi-unit screen moves through its parts, for the "Checking safety" line.
 	 *  `part` is 1-based and only grows; a one-unit screen never calls it. */
 	onProgress?: (part: number, parts: number) => void;
 	/** Which screen this operation is. A rule limited by `guard.screens` runs only on its own; absent is
-	 *  the input screen, and the output screen passes "output" (CUR-2111). */
+	 *  the input screen, and the output screen passes "output". */
 	screen?: "input" | "output";
 	/** Flags this caller evaluated as on for the visitor. A rule with `guard.flag` runs only when its key
-	 *  is here, so every caller that never evaluates the flag leaves the rule off (CUR-2111). */
+	 *  is here, so every caller that never evaluates the flag leaves the rule off. */
 	enabledFlags?: ReadonlySet<string>;
 };
 
 /** The rules this operation asks: the ones meant for its screen, minus any whose flag is off for the
- *  visitor (CUR-2111).
+ *  visitor.
  *  @internal exported for the S1 coverage test */
 export function rulesForScreen(entries: GuardRule[], deps: Pick<GuardScreenDeps, "screen" | "enabledFlags">): GuardRule[] {
 	const screen = deps.screen ?? "input";
@@ -355,7 +329,7 @@ export function rulesForScreen(entries: GuardRule[], deps: Pick<GuardScreenDeps,
 export type GuardScreen = {
 	status: "safe" | "unsafe" | "unknown";
 	/** A CHILD-tier query (or a unit the preparer could not produce) went unanswered. Only this closes
-	 *  child safety; a content-tier UNKNOWN fails open like every other content verdict (CUR-2301). */
+	 *  child safety; a content-tier UNKNOWN fails open like every other content verdict. */
 	childUnknown: boolean;
 	blockHits: GuardRule[];
 	logHits: GuardRule[];
@@ -371,9 +345,9 @@ export type GuardScreen = {
 	 *  failed identity assertion (an OpenAI-compatible server always reports `model`). */
 	servedModelMissing: boolean;
 	/** A CONTENT query on a multi-unit input came back UNKNOWN after our own operation deadline fired.
-	 *  Padding a paste is enough to cause this, so it is the sender's doing, never an outage (CUR-3531). */
+	 *  Padding a paste is enough to cause this, so it is the sender's doing, never an outage. */
 	contentDeadlineUnasked?: boolean;
-	/** The first call that reported a model, as its own response recorded it (CUR-3563). Absent when no
+	/** The first call that reported a model, as its own response recorded it. Absent when no
 	 *  call reported one. */
 	served?: ServedCall;
 	/** Block rule keys that every image unit answered a clear "no" to. A rule is listed only once each
@@ -405,46 +379,9 @@ class Semaphore {
 }
 
 /** ONE screening operation over the whole prepared input. Never rejects. This is the shared path the
- *  sync gate (getGuardVerdict), the shadow (guardShadow.ts), and the health probe (probeGuardHealth)
- *  all run. With `deps.alsoJudge`, a second screen runs beside it and its hits are added
- *  (withSecondOpinion); without one, this is exactly the single screen. */
+ *  sync gate (getGuardVerdict) and the health probe (probeGuardHealth) both run. */
 export async function runGuardScreen(input: GuardScreenInput, deps: GuardScreenDeps = {}): Promise<GuardScreen> {
-	const { alsoJudge, countLogHits, ...rest } = deps;
-	if (!alsoJudge) return screenOnce(input, deps);
-	// Two independent operations, each with its own pool and deadline, so the second cannot hold a worker
-	// or a deadline of the first. The second gets text units only (CoPE is text only) and no progress line.
-	const [own, second] = await Promise.all([
-		screenOnce(input, rest),
-		screenOnce({ ...input, images: [], failedUnits: [] }, { ...rest, judge: alsoJudge, onProgress: undefined }),
-	]);
-	const screen = withSecondOpinion(own, second);
-	// Counted once, on the merged hits, so one message still adds one per rule (CUR-3915).
-	if (screen.logHits.length > 0 && countLogHits) await countLogHits(screen.logHits.map((r) => r.key));
-	return screen;
-}
-
-/** `own` with `second`'s hits added. Never less strict than `own`: it only adds hits, and only moves the
- *  status to unsafe. When own's unknowns already decline the turn as couldn't-check (an unanswered child
- *  query, or a content query our deadline left unasked), own stands unchanged: a block built on a second-
- *  opinion hit could be lifted by the violence re-check, and that decline cannot. Every other field is
- *  own's; second's unknowns, transport faults and missing model ids come from a detector whose absence
- *  leaves own as it is. `served` names the second opinion when it answered. */
-function withSecondOpinion(own: GuardScreen, second: GuardScreen): GuardScreen {
-	if (own.status === "unknown" && (own.childUnknown || own.contentDeadlineUnasked)) return own;
-	const add = (mine: GuardRule[], theirs: GuardRule[]) => [
-		...mine,
-		...theirs.filter((r) => !mine.some((m) => m.key === r.key)),
-	];
-	const blockHits = add(own.blockHits, second.blockHits);
-	const served = second.served ?? own.served;
-	return {
-		...own,
-		status: blockHits.length > 0 ? "unsafe" : own.status,
-		blockHits,
-		logHits: add(own.logHits, second.logHits),
-		servedModels: [...new Set([...own.servedModels, ...second.servedModels])],
-		...(served ? { served } : {}),
-	};
+	return screenOnce(input, deps);
 }
 
 async function screenOnce(input: GuardScreenInput, deps: GuardScreenDeps): Promise<GuardScreen> {
@@ -463,12 +400,12 @@ async function screenOnce(input: GuardScreenInput, deps: GuardScreenDeps): Promi
 	// The misconfig check applies ONLY to the default judge — an injected judge (tests, the shadow) owns
 	// its own reachability, and an unreachable one simply returns UNKNOWN outcomes.
 	const judge = deps.judge ?? shieldstralJudge;
-	// An S1 screen of text alone needs no Shieldstral endpoint; an image unit still does (CUR-4527).
+	// An S1 screen of text alone needs no Shieldstral endpoint; an image unit still does.
 	if (!deps.judge && !shieldstralConfigured() && !(deps.s1 && input.images.length === 0)) {
-		// Loud misconfiguration, never a silent off (invariant 5): the flag said ON, the address is missing.
+		// Loud misconfiguration, never a silent off (invariant 5): the guard screens every turn, the address is missing.
 		log.error(
 			{ gateSource: "guard" },
-			"[guard] guard-primary is ON but GUARD_SHADOW_URL is unset — screening UNKNOWN (child fails closed) until the endpoint is configured."
+			"[guard] GUARD_SHADOW_URL is unset — screening UNKNOWN (child fails closed) until the endpoint is configured."
 		);
 		return UNKNOWN_SCREEN(0, false);
 	}
@@ -483,12 +420,12 @@ async function screenOnce(input: GuardScreenInput, deps: GuardScreenDeps): Promi
 
 	const shield = policy.shield;
 	// EVERY category query runs on EVERY unit — no umbrella gate (plan "Drop the gate, run all"). Child
-	// rules are queued first for every unit (CUR-2301): the pool is FIFO, so on a long paste the child
+	// rules are queued first for every unit: the pool is FIFO, so on a long paste the child
 	// verdicts land inside the deadline and the content queries take whatever budget is left. A 100k-char
 	// paste is 9 chunks × 14 rules = 126 calls at concurrency 6, which runs past 20s in file order.
 	const asked = rulesForScreen(policy.entries, deps);
 	const rules = [...asked.filter((r) => r.tier === "child"), ...asked.filter((r) => r.tier !== "child")];
-	// S1 answers the rules it covers on this screen, one request group per text chunk (CUR-4527).
+	// S1 answers the rules it covers on this screen, one request group per text chunk.
 	const s1 = deps.s1;
 	const s1Phase = deps.screen ?? "input";
 	const s1Ids = s1 ? s1RuleIdsFor(s1Phase) : undefined;
@@ -524,7 +461,7 @@ async function screenOnce(input: GuardScreenInput, deps: GuardScreenDeps): Promi
 		(rule.action === "block" ? blockByKey : logByKey).set(rule.key, rule);
 	};
 	// Per block rule, how many image units answered a clear "no". A rule counts as cleared only when
-	// every image did; the violence re-check reads that to re-judge a text-only block as text (CUR-3258).
+	// every image did; the violence re-check reads that to re-judge a text-only block as text.
 	const imageClearCount = new Map<string, number>();
 
 	const baseConcurrency = deps.concurrency ?? shield.concurrency;
@@ -621,7 +558,7 @@ async function screenOnce(input: GuardScreenInput, deps: GuardScreenDeps): Promi
 
 	const blockHits = [...blockByKey.values()];
 	const logHits = [...logByKey.values()];
-	// Log-action categories are counted, in mixed block+log verdicts too, and never logged (CUR-3915). The
+	// Log-action categories are counted, in mixed block+log verdicts too, and never logged. The
 	// self-harm distress rules are log hits, and any per-hit line can be joined back to the person by its
 	// time and serverless instance. So a hit adds one to its rule's count for the UTC day, and nothing else.
 	// Only a screen given `countLogHits` counts (see GuardScreenDeps), so one message adds one.
@@ -672,7 +609,7 @@ export type GuardGateVerdict = {
 	 *  block verdict only; absent means not recorded, which the violence re-check treats as not cleared. */
 	imageCleared?: string[];
 	/** A child query went unanswered on a verdict a content block decided, which therefore says nothing of
-	 *  it. Set on a content-block verdict only, so the output re-check never lifts it (CUR-3975). */
+	 *  it. Set on a content-block verdict only, so the output re-check never lifts it. */
 	childUnknown?: boolean;
 };
 
@@ -727,7 +664,7 @@ export async function getGuardVerdict(
 	if (screen.status === "unknown" && screen.contentDeadlineUnasked && deps.deadlineClosesContent !== false) {
 		// A content query was still queued when OUR deadline fired, on an input long enough to need more
 		// than one unit. The sender controls that length, so allowing here would let a padded paste skip
-		// the content rules queued last (CUR-3531). Close as couldn't-check, the same decline and badge a
+		// the content rules queued last. Close as couldn't-check, the same decline and badge a
 		// child UNKNOWN gets; nothing was detected, so no hit is reported.
 		(deps.logger ?? defaultLogger).warn(
 			{ gateSource: "guard", chunks: screen.chunks, transportOk: screen.transportOk },
@@ -750,7 +687,7 @@ export async function getGuardVerdict(
 			deps.logger ?? defaultLogger
 		);
 		// A child query went unanswered → child fails CLOSED, marked `unscreened` so the person is told the
-		// screen couldn't run rather than that a classifier flagged them (CUR-2301). Only content queries
+		// screen couldn't run rather than that a classifier flagged them. Only content queries
 		// unanswered → content fails OPEN and child stands as screened. The same two rules the Coop
 		// owner-points state (invariant 1).
 		return {
@@ -773,8 +710,8 @@ export async function getGuardVerdict(
 	};
 }
 
-// ── CUR-1139: deterministic test-only block, for probing the output-block path on demand ───────────
-// Under guard-primary (100% rollout) screenModelOutput's Coop-sync path is dormant — CUR-1138's own
+// ──: deterministic test-only block, for probing the output-block path on demand ───────────
+// Under guard-primary (100% rollout) screenModelOutput's Coop-sync path is dormant — the
 // keepalive fix runs against screenOutputWithGuard here, and the guard's ruleset is live and external,
 // so there is no stable real trigger phrase to probe the first-batch-block path against a real preview
 // deploy on demand. This is that lever, made structurally incapable of the two things that would turn
@@ -782,7 +719,7 @@ export async function getGuardVerdict(
 // is not something a test switch gets to simulate — the return below hardcodes content_policy, no
 // parameter reaches kind), and hits is always [] so makeOutputFinalizer's `if (hits.size > 0)` never
 // fires reportHitToCoop — no synthetic hit reaches Coop's real review queue. Gated on BOTH an env var
-// (never set in prod Doppler) AND a declared preview or development deployment in code (isTestDeployment, CUR-1881), same double gate
+// (never set in production) AND a declared preview or development deployment in code (isTestDeployment), same double gate
 // fuzzOverrideEnabled() uses (flags.ts) — an operational promise alone is not the enforcement.
 const COOP_TEST_OVERRIDE_SENTINEL = "__CUR1139_FORCE_CONTENT_BLOCK__";
 
@@ -799,14 +736,14 @@ function coopTestOverrideVerdict(text: string): OutputScreenResult | null {
 	return { blocked: true, kind: "content_policy", category: "cur-1139-test-override", hits: [] };
 }
 
-// ── the asker's own message as context for the output privacy rule (CUR-1837) ──────────────────────
+// ── the asker's own message as context for the output privacy rule ──────────────────────
 // The output screen judges answer chunks on their own, so a CV header built from the details the person
 // just typed ("Sam Rivera / 12 Elm Road / sam@…") scores 0.932 on the privacy rule and is withheld.
 // With the person's message in front of the same chunk it scores 0.165, while answers that expose
 // someone else (an ex's new address, a neighbour's bank details, a stranger's SSN) stay ≥ 0.989
 // (Shieldstral output instruct).
 //
-// The fraud rule gets it too (CUR-2422). Asked how a foreigner gets a Brazilian CPF, an answer opening
+// The fraud rule gets it too. Asked how a foreigner gets a Brazilian CPF, an answer opening
 // with "you can get one whatever your residence status, even as a tourist" scores 0.349–0.500 on that
 // first chunk alone and is declined. With the question in front it scores 0.020. The same
 // context lifts answers that only read as fraud once you know what was asked: a phishing email scores
@@ -859,7 +796,7 @@ export async function screenOutputWithGuard(
 	const asker = deps.askerText?.trim().slice(0, ASKER_CONTEXT_CAP) ?? "";
 	const contextRules = asker && policy ? policy.entries.filter((r) => ASKER_CONTEXT_KEYS.has(r.key)) : [];
 	// S1 reads every answer chunk as a {user_context, assistant_response} record, so it needs no split by
-	// rule: one screen, the asker's message as context (CUR-4527).
+	// rule: one screen, the asker's message as context.
 	const g = deps.s1
 		? await getGuardVerdict(textOnlyGuardInput(text), {
 				...deps, deadlineClosesContent: false, screen: "output", instruct, s1UserContext: asker,
@@ -913,19 +850,18 @@ export type TurnPolicy = {
 };
 
 export async function resolveTurnPolicy(overrides?: { useGuardPrimary?: boolean }): Promise<TurnPolicy> {
-	// Vercel Cron (the warm leg that refreshes the flag snapshot) runs on Production only —
-	// never on Preview — so a Preview instance that never happens to hit one of the OTHER gated paths
-	// (modelGates.ts's resolveRegistryGates, the arithmetic-fact gate) first would read guardPrimaryEnabled
-	// as its permanent false fallback forever. Poll on demand, same as those two, but only when we're
-	// actually about to READ the live flag — a caller pinning useGuardPrimary via overrides (every test,
-	// the guard-shadow probe) needs no poll at all. (CUR-1142)
-	if (overrides?.useGuardPrimary === undefined) await ensureFlagsPolled();
-	const useGuardPrimary = overrides?.useGuardPrimary ?? guardPrimaryEnabled();
+	// The guard screens every turn; no flag is read here. `overrides.useGuardPrimary: false` is a test
+	// seam that keeps the Coop branch's own specs running until that branch is deleted.
+	const useGuardPrimary = overrides?.useGuardPrimary ?? true;
 	// Output moderation runs through the SAME detector as the input gate,
 	// switched by the OUTPUT_MODERATION env var (parsed in moderation.ts; read its value per environment
-	// there). Under guard-primary requested-ON is enough — the guard screen's OWN loud UNKNOWN withholds
-	// the answer when GUARD_SHADOW_URL is unset (never a silent off, invariant 5). The flag-OFF Coop branch keeps the isCoopConfigured() AND (via outputModerationEnabled).
-	const output = useGuardPrimary ? outputModerationRequested() : outputModerationEnabled();
+	// there). On the guard requested-ON is enough — the guard screen's OWN loud UNKNOWN withholds
+	// the answer when its classifier is unset (never a silent off, invariant 5), except on a self-host
+	// with no classifier, which answers unscreened (selfHostWithoutScreen). The Coop branch keeps the
+	// isCoopConfigured() AND (via outputModerationEnabled).
+	const output = useGuardPrimary
+		? outputModerationRequested() && !selfHostWithoutScreen()
+		: outputModerationEnabled();
 	return Object.freeze({
 		useGuardPrimary,
 		outputModerationEnabled: output,
@@ -933,7 +869,7 @@ export async function resolveTurnPolicy(overrides?: { useGuardPrimary?: boolean 
 		// configured-check, so the persona cannot tell users no screen runs while the guard screens every
 		// turn (or the inverse lie when Coop is configured but the guard is not).
 		screeningFacts: Object.freeze({
-			content: useGuardPrimary ? guardPrimaryConfigured() : isCoopConfigured(),
+			content: useGuardPrimary ? textScreenConfigured() : isCoopConfigured(),
 			output,
 		}),
 	});
@@ -959,12 +895,12 @@ export type GuardProbe = {
 	servedModels: string[];
 };
 
-/** Probe the REAL screening path with two fixtures. Three assertions, each injurable on its own:
+/** Probe the REAL Shieldstral screening path with two fixtures. Three assertions, each injurable on its own:
  *  transport (every call HTTP 2xx + readable body), parse (benign screens safe, AND the violative
  *  fixture blocks on chat-block-violence — the live category exercise), and served-model
  *  identity asserted on EVERY response. An endpoint that reports NO model id — or a different base id on
  *  ANY call — is UNHEALTHY: this probe is the ONLY identity assertion the guard gate has, so "absent ⇒
- *  healthy" would let a substituted endpoint hide by stripping the field (the CUR-113 shape). Returns
+ *  healthy" would let a substituted endpoint hide by stripping the field (the shape). Returns
  *  null when no endpoint is configured; the warm leg turns that into the loud-misconfig alert when the
  *  flag says ON. */
 export async function probeGuardHealth(deps: GuardScreenDeps = {}): Promise<GuardProbe | null> {
@@ -972,15 +908,56 @@ export async function probeGuardHealth(deps: GuardScreenDeps = {}): Promise<Guar
 	if (!deps.judge && !shieldstralConfigured()) return null;
 	const benign = await runGuardScreen(textInput(GUARD_PROBE_BENIGN), deps);
 	const violative = await runGuardScreen(textInput(GUARD_PROBE_VIOLATIVE), deps);
+	// One adapter, one expected id — the probe asserts the served model IS Shieldstral.
+	return probeVerdict(benign, violative, SHIELDSTRAL_MODEL);
+}
 
-	const transportOk = benign.transportOk && violative.transportOk;
+/** The S1 twin of probeGuardHealth: the same two fixtures through runGuardScreen with `s1` as
+ *  the judge, the path a chat turn's text screen takes while `s1-safety-judge` is on, and the same three
+ *  assertions. The fixtures are text only, so Shieldstral is never called. Identity compares against
+ *  S1_JUDGE.model, the id detectors/s1.ts reports for a chunk once any of its calls answered with
+ *  S1_JUDGE.requestModel. That id covers the whole chunk, so it cannot show one call answered by another
+ *  model, and a block found by the other calls still holds the parse check green. The detector logs each
+ *  unanswered call with its `reason`, its only per-call record, so the probe reads those lines too: a
+ *  `served_model_mismatch` (another model id, or none) fails identity, and any other reason fails
+ *  transport, since every call must be answered. Returns null when the S1 key or endpoint is unset; the
+ *  warm leg turns that into its loud-misconfig alert. */
+export async function probeS1Health(s1: S1UnitJudge, deps: GuardScreenDeps = {}): Promise<GuardProbe | null> {
+	if (!s1Configured()) return null;
+	const log = deps.logger ?? defaultLogger;
+	const faults = { unanswered: false, wrongModel: false };
+	const tapped: MinimalLogger = {
+		info: (o, m) => {
+			const f = o as { judge?: unknown; reason?: unknown } | null;
+			if (f?.judge === "s1" && typeof f.reason === "string") {
+				if (f.reason === "served_model_mismatch") faults.wrongModel = true;
+				else faults.unanswered = true;
+			}
+			log.info(o, m);
+		},
+		warn: (o, m) => log.warn(o, m),
+		error: (o, m) => log.error(o, m),
+	};
+	const benign = await runGuardScreen(textInput(GUARD_PROBE_BENIGN), { ...deps, s1, logger: tapped });
+	const violative = await runGuardScreen(textInput(GUARD_PROBE_VIOLATIVE), { ...deps, s1, logger: tapped });
+	return probeVerdict(benign, violative, S1_JUDGE.model, faults);
+}
+
+/** The three probe assertions over the two fixture screens, against one expected served-model id.
+ *  `faults` carries per-call failures a screen's own fields cannot show (the S1 probe's). */
+function probeVerdict(
+	benign: GuardScreen,
+	violative: GuardScreen,
+	expectedModel: string,
+	faults: { unanswered: boolean; wrongModel: boolean } = { unanswered: false, wrongModel: false }
+): GuardProbe {
+	const transportOk = benign.transportOk && violative.transportOk && !faults.unanswered;
 	const parseOk = benign.status === "safe" && violative.blockHits.some((r) => r.key === GUARD_PROBE_CATEGORY);
 
 	const base = (s: string) => s.split(":")[0].trim().toLowerCase();
-	// One adapter, one expected id — the probe asserts the served model IS Shieldstral (CUR-113).
-	const expected = base(SHIELDSTRAL_MODEL);
+	const expected = base(expectedModel);
 	const served = [...new Set([...benign.servedModels, ...violative.servedModels])];
-	const anyMissing = benign.servedModelMissing || violative.servedModelMissing;
+	const anyMissing = benign.servedModelMissing || violative.servedModelMissing || faults.wrongModel;
 	const identityAsserted = served.length > 0;
 	const identityOk = identityAsserted && !anyMissing && served.every((m) => base(m) === expected);
 

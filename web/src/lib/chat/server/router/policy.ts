@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { readFile } from "node:fs/promises";
 import { config } from "$lib/chat/server/config";
 import type { Route } from "./types";

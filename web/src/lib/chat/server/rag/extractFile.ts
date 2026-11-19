@@ -10,7 +10,7 @@
 //   • DOCX → mammoth (extractRawText). .docx only, not legacy .doc.
 //   • CSV/TSV → papaparse (header rows → "col: value; …" lines, one row per chunk-unit, no overlap).
 //   • JSON/JSONL → JSON.parse / line-parse → labeled "key: value" blocks.
-//   • HTML → extractReadableHtml: Readability with `readable-extract` on, the regex extractor otherwise (CUR-2152).
+//   • HTML → extractReadableHtml: Readability, or the regex extractor when it finds too little.
 //   • TXT/Markdown → UTF-8 decode (Markdown kept raw — headings/lists carry retrieval signal).
 //
 // The byte/text caps and the file-type sniff keep a hostile upload from blowing the function budget.
@@ -158,9 +158,9 @@ async function pdfToText(bytes: Uint8Array): Promise<string> {
 				const { extractText, getDocumentProxy } = await import("unpdf");
 				// unpdf refuses a Node Buffer ("provide binary data as `Uint8Array`"), and a chat
 				// attachment decoded from base64 is one, often a view into Node's shared pool. A plain
-				// copy is the only shape it accepts from every caller (CUR-987).
+				// copy is the only shape it accepts from every caller.
 				const pdf = await getDocumentProxy(new Uint8Array(bytes));
-				// Refused before any page is read; the timeout above stops waiting but not the parse (CUR-3837).
+				// Refused before any page is read; the timeout above stops waiting but not the parse.
 				const pages = pdf.numPages;
 				if (pages > MAX_PDF_PAGES) {
 					await pdf.loadingTask.destroy();

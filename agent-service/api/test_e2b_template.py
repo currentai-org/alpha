@@ -1,4 +1,4 @@
-"""The E2B guest image runs the same Hermes as the service image (CUR-4482)."""
+"""The E2B guest image runs the same Hermes as the service image."""
 
 import re
 from pathlib import Path
@@ -32,7 +32,7 @@ def _pins(text: str) -> dict[str, str]:
 
 
 def test_the_sandbox_image_installs_every_file_library_at_the_service_pin():
-    """A task on E2B can write Excel, Word and PDF as a task on bwrap can (CUR-4106): every library the agent
+    """A task on E2B can write Excel, Word and PDF as a task on bwrap can: every library the agent
     prompt names is installed in the guest image, at requirements.txt's version."""
     image = _pins((DEPLOY / "e2b-template" / "guest-libraries.txt").read_text())
     service = _pins((DEPLOY.parent / "requirements.txt").read_text())

@@ -21,8 +21,8 @@ export const UPSTREAM_UNANSWERED_ANNOTATION = 'upstream-unanswered';
 export const TIMED_OUT_SUFFIX = ' took too long to respond. Please try again.';
 
 /**
- * The opening of the generic sentence, which the watchdog shows when one of our own steps stalled
- * (CUR-4107). That is our failure, so it never counts as an upstream that did not answer.
+ * The opening of the generic sentence, which the watchdog shows when one of our own steps stalled.
+ * That is our failure, so it never counts as an upstream that did not answer.
  */
 export const OWN_STALL_PREFIX = 'The request';
 
@@ -79,7 +79,7 @@ export function measuredDefault(
  * - `upstream-unanswered`: the page named a model that never answered, so the turn was never measured.
  * - `non-default-model:<ids>`: every chat the test started was on a model outside `blocking`.
  * - `upstream-down:<ids>`: every chat the test started was on a model whose direct call failed before
- *   the suite (upstream-probe.mjs, SOL-367). This one holds even when `allModelsBlock` is set: the probe
+ *   the suite (upstream-probe.mjs). This one holds even when `allModelsBlock` is set: the probe
  *   bypassed our code, so the failure is the host's, whatever the push changed.
  *
  * `allModelsBlock` is set when the promotion's diff changes model config or the harness, so that no

@@ -1,8 +1,8 @@
 /**
- * Read-aloud picks its voice from the language of the answer (CUR-3151). French, Portuguese
- * and Spanish answers were read in the Space's one American English voice. Read-aloud now asks
- * Kokoro, through Hugging Face's router, for the answer's language's own voice (CUR-3989). The detector half runs the
- * real detectors on real sentences; the maybeRunMcpTool half checks the clip each answer gets.
+ * Read-aloud picks its voice from the language of the answer: it asks Kokoro, through Hugging Face's
+ * router, for the answer's language's own voice, so a French answer is never read in an English one.
+ * The detector half runs the real detectors on real sentences; the maybeRunMcpTool half checks the
+ * clip each answer gets.
  */
 import { describe, expect, it, beforeEach, vi } from "vitest";
 import { KOKORO_VOICES, readAloudVoice, voiceAccent, voiceForLanguage } from "./readAloudLanguage";
@@ -35,7 +35,7 @@ const YO = "Ẹ kú àárọ̀. Báwo ni ẹ ṣe wà? Mo fẹ́ mọ̀ nípa ì
 // rather than read in an Italian voice, because franc's first pick can refuse it.
 const YO_ANSWER = "Ẹ kú àárọ̀! Dáadáa, mo lè sọ fún ọ nípa ìtàn ìlú Ìbàdàn ní èdè Yorùbá.\n\nÌbàdàn jẹ́ ìlú ńlá àti àgbáyé ní gbéṣẹ́ gúúsù Nigeria. Ìtàn ìlú Ìbàdàn bẹ̀rẹ̀ ní àṣàlẹ̀ ìjọba Òyó̀, ní àkókò ìjọba aláàfin Ṣàngó, ẹni tí ó ṣe àṣẹ ní ìlú Òyó̀. Nígbà tí ìjọba Òyó̀ ń bẹ̀rẹ̀ sí wáyé, àwọn ọmọ Òyó̀ tí wọ́n ń ṣe àgbẹ̀ṣẹ́ ńlẹ̀ ńlọ sí àárín-àjò ṣe ùnṣẹ́ láti dá ìlú Ìbàdàn.\n\nNí ọdún 1829, **Lágẹ́lú** àti **Jágun**, àwọn ọmọ Òyó̀ àti àwọn ológun, wọ́n ṣe ìdílé sí ìhà ìgbẹ́kẹ́lẹ́ tí wọ́n ń pè ní \"Èbú-Òdàn\". Nígbà tí wọ́n dà ààwọn ìgbẹ́kẹ́lẹ́ wọ̀nyí jọ, wọ́n ṣe ìlú Ìbàdàn. \"Ìbàdàn\" jẹ́ orúkọ tí wọ́n fi ń pè ààyè náà, tí ó túmọ̀ sí \"ìlú tí ó wà ní ìbà ìdàńdún\" (ìbà = ààrò, ìdàńdún = ààyè tí ó rọ̀).\n\nÌbàdàn ńlá ní àṣìṣe àgbáyé nítorí àwọn ìjẹ́lú àti àwọn àṣọ̀àlàyé tí ó ṣẹlẹ̀ níbi. Ní ọdún 1840, ìlú Ìbàdàn di ìjọba aládùúgbò̩, tí ó ṣàkóso àwọn ìlú mẹ́wàáḿẹ́fà ní àárín-àjò. **Ọlúṣẹ́**, **Ọlúọ̀gbọ̀n**, àti **Báṣọ̀rún Ògúnmọ́lá** jẹ́ àwọn olórí àkọkò náà tí wọ́n ṣe ìdásílẹ̀ ìlú Ìbàdàn.\n\nNí ọdún 1893, ìjọba Bírítísì ṣàkóso ìlú Ìbàdàn lọ́wọ́ àwọn aláàfin Òyó̀, tí wọ́n sì ṣe ìdílé sí ìlú náà. Nígbà náà, Ìbàdàn di ìlú ńlá ní ìpínlẹ̀ Òyọ́, tí ó sì ń ṣe àṣẹ àgbáyé ní gbogbo orílẹ̀ ìwọ̀-oòrùn Nigeria.";
 
-describe("readAloudVoice — the voice follows the language of the answer (CUR-3151)", () => {
+describe("readAloudVoice — the voice follows the language of the answer", () => {
 	it.each([
 		["French", FR, "fr"],
 		["Portuguese", PT, "pt"],
@@ -125,7 +125,7 @@ describe("readAloudVoice — an answer with too few letters to detect is never r
 		).toMatchObject({ ok: true, code: "es" });
 	});
 
-	it("refuses in German's name when a German question gets a short answer, rather than reading it in English unasked (CUR-3989)", async () => {
+	it("refuses in German's name when a German question gets a short answer, rather than reading it in English unasked", async () => {
 		for (const browser of [undefined, "de", "en"]) {
 			expect(await readAloudVoice("Ja, 4.", "Ist das richtig? Antworte bitte kurz.", browser)).toMatchObject({ ok: false });
 		}
@@ -146,7 +146,7 @@ describe("speakableText — what the voice hears", () => {
 		expect(speakableText("Avant.\n\n```js\nconst a = 1;\n```\n\nAprès.")).toBe("Avant.\nAprès.");
 	});
 
-	// Chatterbox voices an emoji as a sound, a laugh for 😂. (CUR-3987)
+	// A voice reads an emoji as a sound, a laugh for 😂.
 	it("drops emoji, including joined, skin-toned and flag sequences, so none is voiced as a sound", () => {
 		const md = "Bonne question 😂 ! Voici 👩🏽‍💻 la réponse 🇫🇷 ✔️\n\n- Étape 1 🚀";
 		expect(speakableText(md)).toBe("Bonne question ! Voici la réponse\nÉtape 1");
@@ -177,9 +177,9 @@ describe("voiceForLanguage — Kokoro's voice for a detected tag", () => {
 		expect(KOKORO_VOICES[code as keyof typeof KOKORO_VOICES]).toBe(voice);
 	});
 
-	it("gives every voice the language prefix of the code it reads, so pronunciation follows the answer (CUR-3989)", () => {
+	it("gives every voice the language prefix of the code it reads, so pronunciation follows the answer", () => {
 		// Kokoro pronounces by the voice's first letter: a=American English, e=Spanish, f=French, h=Hindi,
-		// i=Italian, j=Japanese, p=Portuguese, z=Chinese. An English voice on a French code is the bug.
+		// i=Italian, j=Japanese, p=Portuguese, z=Chinese. An English voice on a French code would mispronounce it.
 		const prefix: Record<string, string> = { en: "a", es: "e", fr: "f", hi: "h", it: "i", ja: "j", pt: "p", zh: "z" };
 		for (const [code, voice] of Object.entries(KOKORO_VOICES)) expect([code, voice[0]]).toEqual([code, prefix[code]]);
 	});
@@ -221,7 +221,7 @@ describe("maybeRunMcpTool — read-aloud reads the answer in its language, or sa
 		const url = (res as { result: string }).result;
 		expect(url).toMatch(/^\/chat\/api\/speech\/[\w.-]+\.mp3$/);
 		// The segment is random base64url, so a short word like "CDD" turns up in it about once in
-		// 1,000 runs (CUR-4121). Check the decoded bytes for the whole text, and the URL for a word long
+		// 1,000 runs. Check the decoded bytes for the whole text, and the URL for a word long
 		// enough that chance never spells it.
 		const segment = url.split("/").pop()!.replace(/\.mp3$/, "");
 		const sealedBytes = Buffer.from(segment.slice(segment.indexOf(".") + 1), "base64url");
@@ -255,7 +255,7 @@ describe("maybeRunMcpTool — read-aloud reads the answer in its language, or sa
 		expect(openSpeechClip((res as { result: string }).result.split("/").pop()!)).toMatchObject({ language: "en" });
 	});
 
-	it("offers the German answer in the English voice without playing it: the clip is a fallback, not the audio (CUR-3989)", async () => {
+	it("offers the German answer in the English voice without playing it: the clip is a fallback, not the audio", async () => {
 		const { maybeRunMcpTool } = await import("./index");
 		const res = await maybeRunMcpTool("Read this aloud", { conversationId: CONV, synthesizeText: DE });
 		expect(res).toMatchObject({ skipped: true, unsupportedLanguage: "German" });
@@ -265,7 +265,7 @@ describe("maybeRunMcpTool — read-aloud reads the answer in its language, or sa
 		expect(openSpeechClip(fallback!.split("/").pop()!)).toEqual({ text: DE, language: "en", conversation: CONV.toString() });
 	});
 
-	it("names the Brazilian accent on a Portuguese clip, and no accent on a French one (CUR-3989)", async () => {
+	it("names the Brazilian accent on a Portuguese clip, and no accent on a French one", async () => {
 		const { maybeRunMcpTool } = await import("./index");
 		const pt = await maybeRunMcpTool("Read this aloud", { conversationId: CONV, synthesizeText: PT });
 		expect(pt).toMatchObject({ tool: "read_aloud", voice: "Brazilian Portuguese" });
@@ -305,7 +305,7 @@ describe("synthesizeSpeech — the router request", () => {
 		});
 	});
 
-	it("refuses a clip in a language with no voice rather than reading it in another voice (CUR-3989)", async () => {
+	it("refuses a clip in a language with no voice rather than reading it in another voice", async () => {
 		mockConfig.HF_TOKEN = "hf_test";
 		const fetchMock = vi.fn().mockResolvedValue(new Response("x"));
 		vi.stubGlobal("fetch", fetchMock);

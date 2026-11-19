@@ -11,7 +11,7 @@ import { agentOption, openAgentTools, toolsButton } from './helpers/agentTool';
 import { journeyStep } from './helpers/journeyStep';
 import { startChattingPastWelcome } from './helpers/welcome';
 
-// A7, the round trip CUR-546 exists for: the agent writes a file, and the person takes it away.
+// A7, the round trip exists for: the agent writes a file, and the person takes it away.
 //
 // Before this spec nothing downloaded an agent's file end to end. The route
 // (`chat/conversation/[id]/agent-artifact/[...filename]/+server.ts`) had unit coverage for its path
@@ -23,14 +23,14 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // this run asked the agent to write.
 //
 // Reachable by a signed-in `@example.org` account on preview because `agent-mode-access` grants that
-// domain there (CUR-1611). `agent-mode` and `agent-artifact-download` are forced through the override
-// cookie; both are already 100% on preview, so the cookie pins them rather than turning them on.
+// domain there. `agent-mode` is forced through the override cookie; it is already 100% on
+// preview, so the cookie pins it rather than turning it on.
 
 // @preview-only for the same reason as everyday-jobs.spec.ts: the override cookie is not wired on
 // production, and agent mode is off there.
 test(
 	'a file the agent writes can be downloaded from the turn, and the bytes are the ones it was asked for',
-	{ tag: ['@preview-only', '@A7', '@CUR-546', '@CUR-4398'] },
+	{ tag: ['@preview-only', '@A7', '@CUR-546', '@CUR-4398', '@agent-knob:workdir_cleared'] },
 	async ({ page, context, baseURL }) => {
 		// An agent turn runs a sandbox and several model rounds; three minutes is the observed ceiling
 		// on develop with room to spare, not a padded guess at an unknown.
@@ -42,8 +42,7 @@ test(
 		});
 
 		await setFlagOverrides(context, baseURL!, {
-			'agent-mode': true,
-			'agent-artifact-download': true
+			'agent-mode': true
 		});
 		await signInAsFreshUser(page);
 
@@ -122,7 +121,7 @@ test(
 		});
 
 		const link = await journeyStep(page, 'A7', 6, async () => {
-			// The section renderArtifacts appends, and its retention line. Since CUR-4398 the turn saves the
+			// The section renderArtifacts appends, and its retention line. the turn saves the
 			// file with the conversation, so the line promises no window, and the reply carries the saved
 			// copy as a file of its own.
 			await expect(
@@ -131,7 +130,7 @@ test(
 			).toBeVisible();
 			await expect(
 				answer.getByText('Saved with this conversation, so you can download them any time.'),
-				'files are listed without the saved line: either `agent-artifact-download` read as off when the turn rendered, or the file was not saved and only the live workdir holds it'
+				'files are listed without the saved line: the file was not saved and only the live workdir holds it'
 			).toBeVisible();
 			await expect(
 				answer.locator('[data-attachment-row]').getByRole('button', { name: `Open ${filename}` }),
@@ -146,6 +145,9 @@ test(
 			return link;
 		});
 
+		// The stand-in runs with `workdir_cleared`: by now its workdir holds nothing for this file, the
+		// way a real one is gone once the agent restarts or idles out. The link answers only if it serves
+		// the copy the turn saved, so the bytes below come from that copy.
 		const [download] = await Promise.all([page.waitForEvent('download'), link.click()]);
 		expect(download.suggestedFilename()).toBe(filename);
 		const path = await download.path();

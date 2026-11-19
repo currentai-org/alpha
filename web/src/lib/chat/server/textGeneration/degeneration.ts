@@ -1,13 +1,12 @@
-// Detect a generation that stopped saying anything and kept emitting (CUR-149).
+// Detect a generation that stopped saying anything and kept emitting.
 //
 // A collapsed generation looks like this tail of a two-train arithmetic answer, which streamed on
 // and ended mid-token on `\( m`:
 //
 //   = **\mathbf{+}\,{\color{gray} { }}\) **\mathbf{+}\,\boxed{\mathbf{ }}\) wait compute numeric
 //
-// and the turn logged `outcome: complete` with `interrupted` unset. Nothing in telemetry tells it
-// apart from a good answer, which is the actual defect — the wreck reaching the user is bad, the
-// wreck being INVISIBLE is what makes it unfixable.
+// Such a turn ends with `outcome: complete` and `interrupted` unset, so nothing else in telemetry
+// tells it apart from a good answer. This probe makes the collapse visible.
 //
 // ── WHY NOT A SYMBOL RATIO OR A REPETITION RATIO ─────────────────────────────────────────────────
 //
@@ -36,9 +35,8 @@
 //
 // Structural collapse in markup, and only that. A degeneration that loops in plain prose ("Wait —
 // recalc. Better way: Wait — recalc.") trips nothing here, and the repeated-shingle numbers above
-// say a naive repetition metric will not catch it either. Validated against one recorded case,
-// which is enough to justify the signal's mechanism and not enough to justify a tuned threshold —
-// so the threshold is 1, the smallest number that means "this happened at all".
+// say a naive repetition metric will not catch it either. The signal rests on its mechanism, not on
+// a tuned threshold, so the threshold is 1, the smallest number that means "this happened at all".
 //
 // This module OBSERVES. It does not mutate the answer. Whether a tripped probe should replace the
 // text with an honest "I couldn't work this through" is a product decision with a real cost when it
@@ -46,7 +44,7 @@
 
 /** Fenced blocks are excised before measuring: a shell heredoc or a brace-heavy snippet is content,
  *  not collapse, and judging code as prose is the fastest way to a false positive. Exported —
- *  repetitionGuard.ts (CUR-1104) excises the same two spans for the same reason before its own
+ *  repetitionGuard.ts excises the same two spans for the same reason before its own
  *  n-gram measurement, rather than re-deriving a second copy of "what counts as prose here". */
 export const FENCE_RE = /(?:^|\n)[ \t]*(?:```|~~~)[\s\S]*?(?:\n[ \t]*(?:```|~~~)|$)/g;
 

@@ -10,7 +10,7 @@ const AS_RENDERED =
 
 describe('phrase', () => {
 	// Asserted first, and in the direction that proves this helper is load-bearing rather than
-	// decorative. A regex without this helper cannot match a sentence the page renders correctly (CUR-1598). If
+	// decorative. A regex without this helper cannot match a sentence the page renders correctly. If
 	// this ever starts returning true the helper has stopped being necessary, and that is worth
 	// failing over.
 	it('a literal space finds nothing once the template wraps — the reason this file exists', () => {

@@ -11,15 +11,14 @@ import {
 import { openHome, clickIntoChat, TOUR_RECAST } from './show';
 import { turnDone } from '../scenarios/helpers/turn';
 
-// The F2 walkthrough (CUR-3056): Alpha answers reliably, and a visitor can always see which model
+// The F2 walkthrough: Alpha answers reliably, and a visitor can always see which model
 // answered. One guest, one sitting: the model picker, "Who made you?" shown the moment it is sent, the
 // footer under each answer, X-ray's "Where it ran", the conversation's title in the side rail, a sum
 // worked out with the calculator, a searched answer with its sources, and an over-long message refused
-// in the composer (CUR-3078 added everything after "Where it ran"). CUR-4226 added the live line naming the model mid-turn, a question about today's date, the menu naming
+// in the composer (added everything after "Where it ran"). added the live line naming the model mid-turn, a question about today's date, the menu naming
 // both models on a switch within one family, and X-ray's "Auto chose" step on an Auto turn.
 //
-// native-calculate-tool is on for env=preview in PostHog, so a guest on develop gets the calculator
-// without an override.
+// The calculator needs no flag, so a guest on develop gets it without an override.
 //
 // It is filmed for people. model-picker.spec.ts and xray-where-it-ran.spec.ts hold the assertions;
 // the expects here are only the ones a viewer would notice going wrong.
@@ -154,7 +153,7 @@ test('F2: Alpha answers, and you can always see which model did', async ({ page 
 	await zoom(railLink, 1.6);
 	await waitForNarration();
 
-	// Today's date, given to the model (CUR-2276, CUR-3880). The runner's browser is on UTC, and so is
+	// Today's date, given to the model. The runner's browser is on UTC, and so is
 	// the weekday the answer is checked against.
 	await narrate('Alpha also knows what day it is, so it does not answer from its training date.');
 	const weekday = new Date().toLocaleDateString('en-GB', { weekday: 'long', timeZone: 'UTC' });
@@ -198,14 +197,14 @@ test('F2: Alpha answers, and you can always see which model did', async ({ page 
 	await click(composer);
 	await composer.fill(`Please summarise this: ${'lorem ipsum '.repeat(1_050)}`.trim());
 	await composer.press('Enter');
-	// The refusal names the count and the limit, "Message too long: 12,610 characters, …" (CUR-3695).
+	// The refusal names the count and the limit, "Message too long: 12,610 characters, …".
 	const tooLong = page.getByText(/^Message too long:/);
 	await expect(tooLong).toBeVisible({ timeout: 30_000 });
 	await zoom(tooLong, 1.6);
 	await waitForNarration();
 	await composer.fill('');
 
-	// Switching mid-chat to another model of the same family names both models (CUR-4357)
+	// Switching mid-chat to another model of the same family names both models
 	await narrate('Switch models mid-conversation, and the menu says exactly what changes.');
 	await click(trigger);
 	if (await yourself.isVisible({ timeout: 5_000 }).catch(() => false)) await click(yourself);
@@ -226,7 +225,7 @@ test('F2: Alpha answers, and you can always see which model did', async ({ page 
 	await zoom(switchNote, 1.6);
 	await waitForNarration();
 
-	// Back to Auto: X-ray's Step by step says Alpha chose the model, and why (CUR-3944, CUR-4021)
+	// Back to Auto: X-ray's Step by step says Alpha chose the model, and why
 	await click(page.getByRole('menuitemradio', { name: /^Auto/ }).first());
 	await page.keyboard.press('Escape');
 	await narrate('On Auto, Alpha picks the model for each question, and X-ray says which and why.');

@@ -30,13 +30,13 @@ export interface AgentRouteDecision {
 	route: "selected" | "agent";
 	reason: string;
 	/** Auto asked /route and got no verdict (non-OK, timeout, network, unreadable body), so the
-	 *  selected model answers a turn nobody judged ordinary. The route puts a note on that answer; a (CUR-2830)
+	 *  selected model answers a turn nobody judged ordinary. The route puts a note on that answer; a
 	 *  "direct" verdict leaves this unset and stays silent. */
 	failed?: true;
 }
 
 /** A closed set, not the raw error text — "log the reason, not just that it happened" only
- *  means something if the reason can be counted and grouped, and a raw `err` field can't. Module- (CUR-1260)
+ *  means something if the reason can be counted and grouped, and a raw `err` field can't. Module-
  *  private: nothing outside this file needs the type, only the `reason` string it feeds. */
 type RouteFailureReason = "http_error" | "timeout" | "network" | "parse_error" | "unknown";
 
@@ -58,7 +58,7 @@ function classifyRouteFailure(err: unknown): RouteFailureReason {
 // errorCount: an in-process counter, read-and-reset by the warm cron so the value is a rate over one tick, not an
 // unbounded total. Kept local to this module (not folded into errorTracking.ts's generic exception
 // counter) because a route-classifier fallback is an intentional fail-open path, not an unhandled
-// exception — conflating the two rates would hide either signal inside the other. (CUR-1260)
+// exception — conflating the two rates would hide either signal inside the other.
 let routeFailureCount = 0;
 
 /** Read and RESET the count. Call once per warm tick. */
@@ -72,7 +72,7 @@ export function takeAgentRouteFailureCount(): number {
  * Every turn with the Agent control on or auto logs the decision and its reason, including the
  * turns that fall back to the selected model. A forced "on" that
  * answered with plain chat would otherwise leave no trace in any log search. A forced "on" that falls back logs at warn:
- * the person asked for the agent and did not get it. (CUR-905)
+ * the person asked for the agent and did not get it.
  */
 export async function resolveAgentRoute(
 	opts: Parameters<typeof decideAgentRoute>[0]
@@ -99,22 +99,22 @@ async function decideAgentRoute(opts: {
 	models: ProcessedModel[];
 	agentMode: AgentMode | undefined;
 	prompt: string | undefined;
-	/** Per-user access gate (CUR-121). `false` means THIS request's user is not cleared for agent mode,
+	/** Per-user access gate. `false` means THIS request's user is not cleared for agent mode,
 	 *  so deny before any routing intent is honoured — a non-tester can't force-on or auto-route even by
 	 *  POSTing `agentMode:"on"`. `undefined` (the default) is ungated, preserving behaviour for callers
 	 *  and tests that don't scope by user. This is the turn-resolution half of the fail-closed surface;
 	 *  the UI toggle and model list gate the same identity upstream. */
 	agentAllowed?: boolean;
-	/** The turn attaches a document the chat path will read to text (CUR-987). The agent builds its
+	/** The turn attaches a document the chat path will read to text. The agent builds its
 	 *  task from message text alone (endpointAgent.ts `buildTaskPrompt`), so it never sees that text;
 	 *  in auto mode such a turn stays on the selected model. A forced-on turn is the user's choice
 	 *  and still goes to the agent. */
 	carriesDocument?: boolean;
 	/** This turn attaches an image. The agent endpoint forwards text only, so an image turn the
-	 *  classifier sends to the agent loses its image (CUR-454). */
+	 *  classifier sends to the agent loses its image. */
 	hasImage?: boolean;
 	/** The person set web search to Always. The agent cannot search: its sandbox has no network and its
-	 *  endpoint drops the chat's retrieved evidence (CUR-574), so a search-Always turn it took would answer
+	 *  endpoint drops the chat's retrieved evidence, so a search-Always turn it took would answer
 	 *  saying it could not reach the web. In auto mode such a turn stays on the selected model, which
 	 *  searches first and can still run code through the chat's sandbox tools. A forced-on turn is the
 	 *  person's choice and still goes to the agent. */
@@ -151,7 +151,7 @@ async function decideAgentRoute(opts: {
 
 	// auto never hands an image turn to the agent: it can't see the image, and the classifier reads the
 	// prompt alone, so "what colour is the circle?" reads as image analysis and would go
-	// there (CUR-454).
+	// there.
 	if (opts.hasImage) {
 		return { model: selected, route: "selected", reason: "auto: image turn, which the agent can't read" };
 	}
@@ -186,7 +186,7 @@ async function decideAgentRoute(opts: {
 		});
 		// /route runs the agent service's own input screen first and answers 403 "blocked by
 		// moderation" when it refuses. The service was reached and gave a verdict, so the turn goes to the
-		// selected model's path, where the chat's own screen decides, with no "agent wasn't reachable" note. (CUR-4056)
+		// selected model's path, where the chat's own screen decides, with no "agent wasn't reachable" note.
 		if (res.status === 403) {
 			const body = await res.text().catch(() => "");
 			if (body.includes("blocked by moderation")) {

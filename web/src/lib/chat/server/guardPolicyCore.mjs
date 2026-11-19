@@ -13,7 +13,7 @@
 // reserved `_shield` block with the global knobs (every category query runs unconditionally — no
 // umbrella gate, per Step-0 calibration). Every category is now
 // expressible (the v1 guardExempt set existed mostly because Llama Guard had no matching slot);
-// the one deliberate exemption left is chat-block-prompt (CUR-54: injection defense is structural).
+// the one deliberate exemption left is chat-block-prompt (injection defense is structural).
 //
 // What lives here:
 //   • validateGuardPolicy    — every rule the policy file must satisfy before the guard enforces it,
@@ -29,7 +29,7 @@
 
 /** v2 enforcement actions. `block` declines the turn; `log` allows it and logs the detection. */
 export const GUARD_ACTIONS = ["block", "log"];
-/** The screens a rule can be limited to with `guard.screens` (CUR-2111). */
+/** The screens a rule can be limited to with `guard.screens`. */
 const GUARD_SCREENS = ["input", "output"];
 
 const CHILD_NS = "chat-block-child";
@@ -57,9 +57,9 @@ export function tierForKey(key) {
  * @property {"child" | "content"} tier derived from the key namespace, materialized here
  * @property {number | undefined} threshold optional per-rule score threshold (else _shield.categoryThreshold)
  * @property {Array<"input" | "output">} [screens] which screens ask this rule's question; absent
- *   means both. "input" alone keeps a question about the writer off the assistant's own answer (CUR-2111)
+ *   means both. "input" alone keeps a question about the writer off the assistant's own answer
  * @property {string} [flag] a flag key that must be on for the visitor before the input screen
- *   asks this rule; only a caller that evaluated it for the visitor can turn the rule on (CUR-2111)
+ *   asks this rule; only a caller that evaluated it for the visitor can turn the rule on
  */
 
 /**
@@ -250,7 +250,7 @@ export function validateGuardPolicy(rules) {
 
 /**
  * The document the OUTPUT privacy rule judges: the person's own message in front of the answer chunk,
- * so details they typed about themselves are read as theirs (CUR-1837). Shared with
+ * so details they typed about themselves are read as theirs. Shared with
  * scripts/output-asker-context-calibration.mjs so the probe scores exactly the text the gate sends.
  * @param {string} askerText
  * @param {string} answer

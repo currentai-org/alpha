@@ -14,7 +14,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // Two ways a person hands Alpha something to read — a long paste and a link — and the sidebar that
 // covered the sign-in form.
 //
-// The CUR-1898 half of that report (a remote image in an answer loading unasked) has no browser test
+// The half of that report (a remote image in an answer loading unasked) has no browser test
 // here: user messages don't pass through the markdown renderer, so only a model steered into writing
 // an image could exercise it, and that isn't something a spec can arrange on demand. marked.spec.ts
 // pins the renderer contract instead.
@@ -36,7 +36,7 @@ async function openChat(page: Page, entry: string = answerShapeEntry()): Promise
 async function finishedAnswer(page: Page, why: string) {
 	await page.waitForURL(/\/chat\/conversation\/[a-f0-9]+/, { timeout: 30_000 });
 	const answer = page.locator('[data-message-role="assistant"]').last();
-	// Retry, not the copy button, which can show before the turn ends (CUR-2133).
+	// Retry, not the copy button, which can show before the turn ends.
 	await expect(turnDone(answer), why + warmupContext()).toBeVisible({
 		timeout: 60_000
 	});
@@ -85,11 +85,10 @@ test(
 	}
 );
 
-// A paste of a Jane Austen excerpt of 100,008 characters got
-// "flagged by a child-safety classifier". The input screen ran 9 chunks × 14 rules past its 20s
-// deadline, the unanswered queries read as UNKNOWN, and child safety fails closed on UNKNOWN, so the
-// decline named a classifier that had returned no verdict. A long paste of ordinary prose has to come
-// back as an answer, or at worst as a plain "couldn't check this", never as a child-safety flag.
+// A paste of about 100,000 characters of ordinary prose runs the input screen past its 20s
+// deadline (9 chunks × 14 rules). Unanswered queries read as UNKNOWN and child safety fails closed on
+// UNKNOWN, so a decline there would name a classifier that returned no verdict. A long paste of ordinary
+// prose has to come back as an answer, or at worst as a plain "couldn't check this", never as a child-safety flag.
 const PRIDE_AND_PREJUDICE = [
 	'It is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife.',
 	'However little known the feelings or views of such a man may be on his first entering a neighbourhood, this truth is so well fixed in the minds of the surrounding families, that he is considered the rightful property of some one or other of their daughters.',
@@ -276,7 +275,7 @@ test(
 // to prove it was read. So this asks who the page quotes: Octavia Field Reid is named near the end of
 // the Ada Lovelace Institute's release, far outside any snippet, and the model can't know her from
 // the URL. Our own pages won't do here: the model knows them from community sources and can summarise
-// one without reading it. This is the same page CUR-2032's test below depends on. Web search defaults
+// one without reading it. This is the same page the test below depends on. Web search defaults
 // to off, and a link is read only when it isn't off, so this sets auto the way a person would leave it.
 //
 // If this goes red on the Field Reid assertion, open the page first: it is a third-party page, and a
@@ -349,7 +348,7 @@ async function linkReadOnSecondSend({ page }: Fixtures, native: boolean): Promis
 		try {
 			// Only on the first load: the test switches the control itself for the second turn.
 			if (!sessionStorage.getItem('cur2032-seeded')) {
-				// Both keys: since CUR-2030 an "off" under the old key alone reads as the old default
+				// Both keys: an "off" under the old key alone reads as the old default
 				// and starts on auto, and the choice key is what records someone picking off.
 				localStorage.setItem('ap:webSearchChoice', 'off');
 				localStorage.setItem('ap:webSearchMode', 'off');

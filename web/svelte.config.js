@@ -4,7 +4,11 @@ import adapterStatic from '@sveltejs/adapter-static';
 import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 import dotenv from 'dotenv';
 import { execSync } from 'node:child_process';
+import { originOf } from './src/lib/cspOrigin.js';
+import { functionRegionsFor } from './src/lib/functionRegion.js';
 import { CSP_REPORT_GROUP, cspReportEndpoint } from './src/lib/cspReportEndpoint.js';
+import { gitSha } from './src/lib/server/runtimeEnv.js';
+import { readDeploymentFile } from './config/deployment.mjs';
 
 dotenv.config({ path: './.env.local', override: true, quiet: true });
 dotenv.config({ path: './.env', quiet: true });
@@ -13,22 +17,15 @@ dotenv.config({ path: './.env', quiet: true });
 // Buffer/streams/sharp/satori). ADAPTER=node/static for other hosts.
 const adapterChoice = process.env.ADAPTER ?? 'vercel';
 
-// Vercel function region(s), comma-separated, read at build time from the deployment's own config
-// (CUR-4534). Unset keeps Vercel's default (iad1), so only a config that names one moves.
-const functionRegions = (process.env.FUNCTION_REGION ?? '')
-	.split(',')
-	.map((r) => r.trim())
-	.filter(Boolean);
+// Vercel function region(s), read at build time. FUNCTION_REGION wins when set; unset, the
+// functions go beside the Neon database DATABASE_URL names, so a PR preview on its Frankfurt branch
+// stops crossing the Atlantic on every query. No mapped region keeps Vercel's default.
+const functionRegions = functionRegionsFor(process.env);
 
-function originOf(url) {
-	try {
-		return url ? new URL(url).origin : undefined;
-	} catch {
-		return undefined;
-	}
-}
+// Unset or unusable -> undefined, and every list below drops it (src/lib/cspOrigin.js).
+const cmsOrigin = originOf(process.env.PUBLIC_CMS_PAYLOAD_URL);
 
-// CUR-1898: where the site may load images and media from. A model answer can be steered by a page
+// where the site may load images and media from. A model answer can be steered by a page
 // it read, and an image it names is fetched with no click, carrying whatever the model put in the
 // URL. The renderer already turns a remote image into a link; this is the browser-side backstop.
 // Each host is one the app itself points at, never one a model answer could choose.
@@ -36,9 +33,10 @@ const imageSources = [
 	"'self'",
 	'data:',
 	'blob:',
-	// Payload media (the CMS's S3 bucket behind its CDN), and the CMS itself for its file route.
-	'https://content.aipotluck.org',
-	originOf(process.env.PUBLIC_CMS_PAYLOAD_URL),
+	// Payload media (the CMS's bucket behind its CDN, the deployment file's mediaOrigins), and the CMS
+	// itself for its file route.
+	...(readDeploymentFile().mediaOrigins ?? []),
+	cmsOrigin,
 	// Model logos (huggingface.co/api/avatars redirects to cdn-avatars) and model thumbnails.
 	'https://huggingface.co',
 	'https://cdn-avatars.huggingface.co',
@@ -52,7 +50,7 @@ const imageSources = [
 	// PostHog's own capture uses fetch/sendBeacon, which img-src does not govern.
 ].filter(Boolean);
 
-// CUR-3187: every origin the browser fetches from or loads a script from, enumerated from the
+// every origin the browser fetches from or loads a script from, enumerated from the
 // client code. PostHog: its ingest host (PUBLIC_POSTHOG_HOST, which preview sets to the same-origin
 // /rs proxy and production leaves on the default) and its assets host for lazy scripts.
 // huggingface.co: HuggingChat mode's profile read. The CMS: Live Preview's data fetch. Tally: the
@@ -73,7 +71,7 @@ const connectSources = [
 		'https://us.i.posthog.com',
 		'https://us-assets.i.posthog.com',
 		'https://huggingface.co',
-		originOf(process.env.PUBLIC_CMS_PAYLOAD_URL),
+		cmsOrigin,
 		'https://tally.so',
 		plausibleOrigin
 	])
@@ -102,7 +100,7 @@ function getGitCommitSHA() {
 }
 
 function getCurrentCommitSHA() {
-	return process.env.VERCEL_GIT_COMMIT_SHA?.trim() || getGitCommitSHA() || 'unknown';
+	return gitSha()?.trim() || getGitCommitSHA() || 'unknown';
 }
 
 process.env.PUBLIC_VERSION ??= process.env.npm_package_version;
@@ -162,7 +160,7 @@ const config = {
 				'img-src': imageSources,
 				// Read-aloud plays a clip it fetched itself, from a blob: URL (loadAudioClip.ts).
 				'media-src': ["'self'", 'data:', 'blob:'],
-				// CUR-3187: no <base href> may repoint relative URLs, and a form may submit only here, to
+				// no <base href> may repoint relative URLs, and a form may submit only here, to
 				// the Contribute dialog's Tally form (a GET in a new tab), or on to huggingface.co.
 				// Chrome checks form-action against every redirect a submission follows, and Settings →
 				// Storage's Connect Hugging Face form GETs our connect route, which 303s to Hugging Face's
@@ -170,8 +168,7 @@ const config = {
 				// button does nothing.
 				'base-uri': ["'self'"],
 				'form-action': ["'self'", 'https://tally.so', 'https://huggingface.co'],
-				// Enforced once seven days of CSP reports showed nothing legitimate outside these lists
-				// (CUR-3188).
+				// Enforced once seven days of CSP reports showed nothing legitimate outside these lists.
 				'connect-src': connectSources,
 				'script-src': scriptSources,
 				// Without its own list worker-src falls back to script-src, which has no blob:, and a
@@ -179,7 +176,7 @@ const config = {
 				// (previewSrcdoc.ts allows `worker-src blob:` for them).
 				'worker-src': ["'self'", 'blob:'],
 				// An artifact script can navigate its own srcdoc frame anywhere, and only the
-				// embedding page's frame-src can stop that (CUR-3188). The app frames nothing else but the notebooks
+				// embedding page's frame-src can stop that. The app frames nothing else but the notebooks
 				// block's OSO marimo pages and the Tally popup, whose embed widget (lib/tally.ts) opens the
 				// form in a tally.so iframe; srcdoc frames make no fetch, so frame-src leaves the artifact
 				// previews themselves alone. Every notebook src on the production CMS is www.oso.xyz, which
@@ -195,10 +192,7 @@ const config = {
 					? {}
 					: {
 							// Also allow the Payload CMS admin origin, for its Live Preview iframe.
-							'frame-ancestors': [
-								'https://huggingface.co',
-								...(process.env.PUBLIC_CMS_PAYLOAD_URL ? [process.env.PUBLIC_CMS_PAYLOAD_URL] : [])
-							]
+							'frame-ancestors': ['https://huggingface.co', ...(cmsOrigin ? [cmsOrigin] : [])]
 						})
 			}
 		},
@@ -213,7 +207,7 @@ const config = {
 				throw new Error(message);
 			},
 			// A prerenderable route that produced no pages is normally a bug and fails the build.
-			// The chat surface (APP_SURFACE=chat, CUR-4448) is the exception for routes outside /chat:
+			// The chat surface (APP_SURFACE=chat) is the exception for routes outside /chat:
 			// `reroute` maps every crawled path into the /chat tree, so a site route such as /roadmap-v2
 			// is unreachable there by design. Read from the env here because src/lib/surface.ts's
 			// APP_SURFACE comes from Vite's `define`, which config time does not have; vite.config.ts

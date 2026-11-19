@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 /**
  * Client-owned conversations sidebar store.
  *
@@ -8,7 +11,7 @@
  * There is NO module-level mutable $state, so concurrent SSR requests do not
  * share data.
  *
- * Seeding strategy: +layout.svelte calls init() whenever data.conversations
+ * Seeding strategy: +layout.svelte calls init whenever data.conversations
  * reference changes. The store performs a last-write-wins merge from the
  * server — local optimistic mutations (delete/rename/title) are intentionally
  * overwritten on the next server resync. This is acceptable because:
@@ -23,7 +26,7 @@
  * its source, so a resync can only ever erase it, and the post-turn refresh
  * runs right after the Title update in almost every turn. The store remembers
  * the source per id alongside the title it described, and every list
- * replacement re-applies it where that title is still the one shown (CUR-1971).
+ * replacement re-applies it where that title is still the one shown.
  */
 
 import { browser } from "$app/environment";
@@ -37,8 +40,12 @@ export const CONVERSATIONS_CONTEXT_KEY = "conversationsStore";
 interface ConversationListItem {
 	_id: { toString(): string };
 	title: string;
+	sealedTitle?: string;
+	sealedTitleRev?: number;
 	updatedAt: Date | string;
 	model?: string;
+	pinned?: boolean;
+	tags?: string[];
 }
 
 export class ConversationsStore {
@@ -62,15 +69,15 @@ export class ConversationsStore {
 	 *
 	 * `keepPrepended` is for a list the layout loaded earlier and hands over late. The shell's first
 	 * load can resolve after the landing page has already prepended a conversation it just created,
-	 * and since the layout no longer reruns on the move to that conversation (CUR-2350), nothing
+	 * and since the layout no longer reruns on the move to that conversation, nothing
 	 * brings the entry back until the post-turn refresh. Keeping it leaves the new conversation in
-	 * the rail for its whole first turn (CUR-2391). Every other caller, a wipe included, replaces
+	 * the rail for its whole first turn. Every other caller, a wipe included, replaces
 	 * the list outright.
 	 */
 	init(conversations: ConvSidebar[], { keepPrepended = false } = {}): void {
 		// A navigation that reruns only the root layout (New chat's goto) hands back the chat layout's
 		// page-load list, the very array applied before. Applied again it would undo every refresh
-		// since and drop each chat made after the page loaded (CUR-2545). A fresh load is a new array.
+		// since and drop each chat made after the page loaded. A fresh load is a new array.
 		if (keepPrepended && conversations === this.#layoutList) return;
 		if (keepPrepended) this.#layoutList = conversations;
 		this.#list = this.#withTitleSources(this.#settlePrepended(conversations, keepPrepended));
@@ -103,7 +110,7 @@ export class ConversationsStore {
 		if (idx === -1) return;
 		// A new array, not an element write: the side rail can hold its own copy of the list (NavMenu
 		// reassigns its prop when infinite scroll runs), and a copy only follows a new array. Written in
-		// place, a title reaches the header and leaves the rail on "New Chat" until the refresh (CUR-2379).
+		// place, a title reaches the header and leaves the rail on "New Chat" until the refresh.
 		this.#list = this.#list.map((conv, i) => (i === idx ? { ...conv, ...patch } : conv));
 	}
 
@@ -148,7 +155,10 @@ export class ConversationsStore {
 			const freshList: ConvSidebar[] = data.conversations.map((conv) => ({
 				id: conv._id.toString(),
 				title: conv.title.trim(),
+				...(conv.sealedTitle ? { sealedTitle: conv.sealedTitle, sealedTitleRev: conv.sealedTitleRev } : {}),
 				model: conv.model ?? defaultModel,
+				pinned: conv.pinned === true,
+				tags: conv.tags ?? [],
 				// A timestamp that is replaced, never mutated in place.
 				// eslint-disable-next-line svelte/prefer-svelte-reactivity
 				updatedAt: new Date(conv.updatedAt),

@@ -55,14 +55,14 @@ describe('ReportProblemDialog', () => {
 	});
 
 	// On screen means inside the window and the topmost thing at its centre, so a control the
-	// dialog's own scroll has clipped, or one past the window's bottom edge, does not count. (CUR-3399)
+	// dialog's own scroll has clipped, or one past the window's bottom edge, does not count.
 	function onScreen(el: HTMLElement) {
 		const r = el.getBoundingClientRect();
 		const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
 		return r.top >= 0 && r.bottom <= window.innerHeight && !!hit && el.contains(hit);
 	}
 
-	it('keeps Send report and its error on screen when a filled-in form is taller than a short window (CUR-3399)', async () => {
+	it('keeps Send report and its error on screen when a filled-in form is taller than a short window', async () => {
 		await page.viewport(1280, 576);
 		vi.stubGlobal('fetch', vi.fn(async () => new Response('unreachable', { status: 500 })));
 		try {

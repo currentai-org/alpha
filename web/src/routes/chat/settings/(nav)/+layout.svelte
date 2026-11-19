@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2018- The Hugging Face team
+SPDX-License-Identifier: Apache-2.0
+Modified by Current AI from huggingface/chat-ui.
+-->
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages.js';
 	import { tick } from "svelte";
@@ -32,12 +37,12 @@
 	let { data, children }: Props = $props();
 
 	// Warm the "Back to app" destination's data as soon as we know it, so leaving settings
-	// has nothing left to fetch. Best-effort: a failed preload only means a slower return. (CUR-1132)
+	// has nothing left to fetch. Best-effort: a failed preload only means a slower return.
 	$effect(() => {
 		if ($settingsReturnTo) preloadData($settingsReturnTo).catch(() => {});
 	});
 
-	// Bare /settings redirects to Personalization in its load (+page.ts, CUR-2115), so it never paints an empty
+	// Bare /settings redirects to Personalization in its load (+page.ts), so it never paints an empty
 	// body. On mobile there is no sidebar in view, so /settings?sections IS the section list
 	// (+page.svelte) and each section opens as its own page with a back button — the iOS/Claude mobile
 	// settings shape. A desktop that lands on the list anyway goes to Personalization: its sidebar lists them.
@@ -66,7 +71,7 @@
 
 	// Same signal as the /models gallery page — a search with no results is a gap-map
 	// candidate. `surface` distinguishes the two pickers in analytics without splitting the event
-	// name (same underlying question either way: "what did someone look for and not find"). (CUR-422)
+	// name (same underlying question either way: "what did someone look for and not find").
 	let noResultsTimer: ReturnType<typeof setTimeout> | undefined;
 	$effect(() => {
 		const query = modelFilter.trim();
@@ -216,7 +221,7 @@
 															<img src={model.logoUrl} alt="" loading="lazy" decoding="async" class="size-3.5 flex-none border border-line-2" />
 														{:else}
 															<!-- An alignment spacer with no border: a bordered empty square down a list of names reads as
-														     an unchecked checkbox (CUR-1772). -->
+														     an unchecked checkbox. -->
 															<span class="size-3.5 flex-none"></span>
 														{/if}
 														<span class="min-w-0 flex-1 truncate">{pickerDisplayName(model)}</span>

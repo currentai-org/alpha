@@ -1,5 +1,5 @@
 /**
- * The signed-in person's own earlier chats, read for past-chat search (CUR-4576).
+ * The signed-in person's own earlier chats, read for past-chat search.
  *
  * Scoped by `user_id` alone. A guest has no account, so there is no owner to read for and the caller
  * never gets here; a guest's `session_id` is deliberately not an owner this reads. The conversation the

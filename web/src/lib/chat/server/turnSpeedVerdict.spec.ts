@@ -18,7 +18,7 @@ function replay() {
 const SPELL_START = Date.parse("2026-10-12T22:00:00Z");
 const SPELL_END = Date.parse("2026-10-13T00:00:00Z");
 
-describe("turnSpeedVerdict replayed over prod's turns, 28 Sep to 13 Oct (CUR-2243)", () => {
+describe("turnSpeedVerdict replayed over prod's turns, 28 Sep to 13 Oct", () => {
 	const verdicts = replay();
 
 	it("reads slow during 12 Oct 22:00Z, when guests waited a median 12s for Large 3 and 22s for Medium", () => {

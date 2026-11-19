@@ -3,8 +3,8 @@
 // (persona.ts) and the `answer-style` section (promptSections.ts) say the same words. This module
 // imports nothing from the prompt builders, so both of them can import it.
 //
-// A clause here renders only when the person set a non-default value. The default prompt on every path
-// keeps today's bytes, which persona.spec.ts and the turnRequest snapshots pin. (CUR-3929)
+// A clause here renders only when the person set a non-default value, so the default prompt on every
+// path is unchanged by this module; persona.spec.ts and the turnRequest snapshots pin it.
 import {
 	type AnswerPreferences,
 	fixedLanguage,
@@ -23,10 +23,9 @@ const TONE_CLAUSE_FORMAL = `formal, measured and precise, in the register of a p
 export const PLAIN_LANGUAGE_CLAUSE = `Write in plain language: short sentences, everyday words, and no jargon; when a specialist term cannot be avoided, say what it means in a few words.`;
 
 /**
- * Answer length, replacing the brevity sentence of the fenced turn. `normal` is that sentence as it
- * stands today and stays in grounding.ts with its measurements; these two are the other choices. Each
- * keeps the "asks for a specific length" escape, since a person who set Short still gets the
- * 1,500-word guide they asked for (CUR-1842).
+ * Answer length, replacing the brevity sentence of the fenced turn. `normal` is that sentence, which
+ * lives in grounding.ts; these two are the other choices. Each keeps the "asks for a specific length"
+ * escape, so a person who set Short and then asks for a 1,500-word guide still gets the full guide.
  */
 export const LENGTH_SENTENCES: Readonly<Record<Exclude<Length, "normal">, string>> = {
 	short: `Keep the answer short: at most three sentences, or a list of at most three items, with no preamble and no closing summary. When your message asks for a specific length or a long document, write it at that length, in full.`,
@@ -37,21 +36,21 @@ export const LENGTH_SENTENCES: Readonly<Record<Exclude<Length, "normal">, string
  * The answer's format, replacing the fenced turn's bullets sentence ("Put each list item and
  * any section label on its own line, and prefer plain bullet points over numbered sections."), which
  * `auto` keeps in grounding.ts byte for byte. Each keeps the "asks for" escape: a person who set Prose
- * and then asks for a checklist gets the checklist. (CUR-549)
+ * and then asks for a checklist gets the checklist.
  */
 export const FORMAT_SENTENCES: Readonly<Record<Exclude<Format, "auto">, string>> = {
 	prose: `Write in prose: full sentences in short paragraphs, with no bullet points, numbered lists or section labels, unless your message asks for a list.`,
 	bullets: `Shape the answer as a list: one point per line as a plain bullet, no numbered sections, with at most one short lead-in sentence, unless your message asks for a single sentence or a piece of text to use as it is.`,
 };
 
-/** Emojis "when they help". `never`, the default, adds no clause: today's prompt has no emoji (CUR-549)
- *  rule and the answer gets none. */
+/** Emojis "when they help". `never`, the default, adds no clause: the default prompt has no emoji
+ *  rule, and the answer gets none. */
 export const EMOJIS_HELPFUL_CLAUSE = `You may use an emoji where it carries meaning or warmth, at most one or two in an answer, never in a formal or technical passage.`;
 
 /** Suggestions off. A safety referral is kept on purpose: crisis_referral.py measures it. */
 export const NO_SUGGESTIONS_SENTENCE = `Answer the question and stop. Add no suggestions, no next steps, and no questions back, unless the message asks for advice. A safety referral is not a suggestion and stays.`;
 
-/** A fixed answer language, replacing every "same language as the message" rule (plan rule 3.2). */
+/** A fixed answer language, replacing every "same language as the message" rule. */
 export function fixedLanguageSentence(name: string): string {
 	return `Write your ENTIRE reply in ${name}, whatever language the message is written in — every sentence of it, including any sentence about who or what you are.`;
 }
@@ -63,7 +62,7 @@ export function toneClauseFor(tone: Tone): string | undefined {
 
 /**
  * The shape sentences a non-default row adds: length when not normal, the no-suggestions sentence when
- * suggestions are off, the format when not auto (CUR-549), the fixed-language sentence when the
+ * suggestions are off, the format when not auto, the fixed-language sentence when the
  * language is fixed. Empty on the defaults.
  */
 export function answerShapeFor(prefs: AnswerPreferences): string[] {
@@ -77,8 +76,8 @@ export function answerShapeFor(prefs: AnswerPreferences): string[] {
 }
 
 /**
- * The whole-sentence voice clauses a non-default row adds after the tone: plain language and emojis
- * (CUR-549). The persona appends them as {style} extras; the guards-only and native
+ * The whole-sentence voice clauses a non-default row adds after the tone: plain language and emojis.
+ * The persona appends them as {style} extras; the guards-only and native
  * system prompts carry them through `answerVoiceFor`, so every path says the same words.
  */
 export function voiceExtrasFor(prefs: AnswerPreferences): string[] {
@@ -93,8 +92,6 @@ export function voiceExtrasFor(prefs: AnswerPreferences): string[] {
  * persona.ts's `SELF_REFERENCE_CLAUSE_MACHINE` ("You are a machine and you sound like one"). It asks for
  * a warmer conversational first-person register and nothing more: `IDENTITY_HONESTY_INVARIANT` follows
  * it on every path, so Alpha still never claims feelings, experiences or humanity.
- *
- * Wording approved by trust and safety (CUR-3930).
  */
 export const SELF_REFERENCE_CLAUSE_PERSON = `You are a machine, and you talk the way a thoughtful person would: in a warm, conversational first-person voice ("I'd suggest", "I think the simplest route is"), never flat or clinical, while staying honest that you are an AI`;
 
@@ -121,9 +118,8 @@ export function answerVoiceFor(prefs: AnswerPreferences): string[] {
 
 /**
  * The voice sentences the scaffolded fenced user turn carries (grounding.ts guardFor): the tone as a
- * sentence, then plain language. Neither moves the answer from the system prompt alone (CUR-3929),
- * so the persona's {style} keeps them as well. Empty on the
- * defaults.
+ * sentence, then plain language. Neither moves the answer from the system prompt alone, so the
+ * persona's {style} keeps them as well. Empty on the defaults.
  */
 export function fencedVoiceFor(prefs: AnswerPreferences): string[] {
 	const out: string[] = [];
@@ -134,12 +130,11 @@ export function fencedVoiceFor(prefs: AnswerPreferences): string[] {
 }
 
 /**
- * The digest rules (CUR-3929), one fixed rule per SET value of five settings.
+ * The digest rules: one fixed rule per set value of five settings, and no rule for a default value.
  * The digest goes after the fence of the latest user turn (grounding.ts), the last text the model
- * reads. The formal rule has an impersonal voice (CUR-4287).
- * A default value has no rule. CUR-4288 adds the format rules (prose, bullets), beside the
- * FORMAT_SENTENCES carriers, which stay, the detailed rule, beside LENGTH_SENTENCES.detailed,
- * which stays, and the emojis rule, beside EMOJIS_HELPFUL_CLAUSE, which stays. Known gap: some
+ * reads. The formal rule asks for an impersonal voice. The format rules (prose, bullets), the detailed
+ * rule and the emojis rule carry the same settings as FORMAT_SENTENCES, LENGTH_SENTENCES.detailed
+ * and EMOJIS_HELPFUL_CLAUSE, which are still sent earlier in the prompt. Known gap: some
  * models read a tax answer as formal and add an emoji to "How does VAT work?".
  */
 export type DigestRule =
@@ -170,7 +165,7 @@ export const DIGEST_RULES: Readonly<Record<DigestRule, string>> = {
  * language, length, suggestions, format, emojis), one per line, with no heading. A rule in `omit` (the model's
  * harnessProfiles.ts `digestOmit`) is left out.
  *
- * @returns undefined when no rule applies, so a default turn keeps today's bytes
+ * @returns undefined when no rule applies, so a default turn's prompt gains nothing
  */
 export function answerDigestFor(prefs: AnswerPreferences, omit?: ReadonlySet<DigestRule>): string | undefined {
 	const rules: DigestRule[] = [];

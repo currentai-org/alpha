@@ -3,12 +3,11 @@ import { MessageUpdateType } from "$lib/chat/types/MessageUpdate";
 // NOTE: generateFromDefaultEndpoint is imported DYNAMICALLY inside correctEntityQuery — same reason
 // queryRewrite.ts defers it: keeps sanitizeCorrection importable by tests without booting the model layer.
 
-// Entity-name typo correction (CUR-877) — a PARALLEL branch of retrieveWeb's engine fan-out
-// (openSearch.ts), not a sequential pre-check like contextualizeQuery (queryRewrite.ts). A misspelled
-// proper noun breaks both the model's own recall AND Firecrawl's lexical search identically — real
-// Firecrawl calls confirmed "goad pistilli" returns zero overlapping results against the real Giada
-// Pistilli's clean top-1 hit for the correctly-spelled name (CUR-875). A sequential correction step
-// would add its own model-call latency to EVERY search; firing it alongside the other engines instead
+// Entity-name typo correction — a PARALLEL branch of retrieveWeb's engine fan-out (openSearch.ts),
+// not a sequential pre-check like contextualizeQuery (queryRewrite.ts). A misspelled proper noun
+// breaks both the model's own recall AND Firecrawl's lexical search: a misspelled name can share no
+// results with the correctly spelled one, whose top hit is the right page. A sequential correction
+// step would add its own model-call latency to EVERY search; firing it alongside the other engines instead
 // hides that cost inside the budget Firecrawl's own round-trip already spends. A returned correction
 // gets its own concurrent Firecrawl request (see openSearch.ts), judged by the same reranker already
 // scoring every other engine's results — dedupe() there already collapses any URL overlap with the
@@ -22,7 +21,7 @@ const TIMED_OUT = Symbol("entity-correction-timeout");
 // generateFromDefaultEndpoint takes no AbortSignal, so nothing else can cut this call off once
 // started — race it against a timer instead of letting a stalled model call hold retrieveWeb's whole
 // Promise.allSettled hostage. Raising this does NOT change worst-case turn latency: this branch runs
-// inside openSearch.ts's firecrawl-corrected engine, under the SAME firecrawlCap (9000ms default) the
+// inside openSearch.ts's firecrawl-corrected engine, under the SAME firecrawlCap (11000ms default) the
 // primary Firecrawl call already bounds the whole retrieval by — so this only ever narrows how much of
 // that existing budget the correction call gets to use before giving up, never widens the turn's ceiling.
 // A shorter value is too short for a cold serverless instance's first call on a slow tier. The
@@ -54,12 +53,12 @@ export function sanitizeCorrection(raw: string, original: string): string | unde
  */
 /** Who asked. The title path (`title.ts`) re-runs this on a conversation's first turn whether or not
  *  that turn searched, so a log line that cannot say which caller it came from cannot size either
- *  one (CUR-2140). */
+ *  one. */
 export type EntityCorrectionCaller = "search" | "title";
 
 /** What one call came to. `none` is the model saying NONE; `unusable` is any other answer
  *  sanitizeCorrection rejects (an echo, an over-long reply). Both skip the extra request. Every outcome is
- *  logged, so the timeout share has a denominator (CUR-2140). */
+ *  logged, so the timeout share has a denominator. */
 type CorrectionOutcome = "found" | "none" | "unusable" | "empty" | "timeout" | "error";
 
 export async function correctEntityQuery(
@@ -76,7 +75,7 @@ export async function correctEntityQuery(
 	let firstTokenAt: number | undefined;
 	let served: { requestedModel?: string; backend?: string; model?: string; provider?: string } = {};
 	let failed: "ceiling" | "error" | undefined;
-	// One line per call, every path (CUR-2140). `firstTokenMs` absent on a timeout means nothing
+	// One line per call, every path. `firstTokenMs` absent on a timeout means nothing
 	// streamed inside the budget, a stall; present means the model was producing and slow to finish.
 	// `requestedModel` is always there; `backend` only arrives with the gateway's headers at the end of
 	// the stream, so a timed-out call never carries one, and a lane that sends none (the HF router)
@@ -102,12 +101,12 @@ export async function correctEntityQuery(
 		const { generateFromDefaultEndpoint } = await import(
 			"$lib/chat/server/generateFromDefaultEndpoint"
 		);
-		// Two bounds, cutting different things — CUR-1655.
+		// Two bounds, cutting different things.
 		//   signal  cancels the underlying HTTP request, so the generation genuinely STOPS. This is the
 		//           one that matters: the drain below loops `await generator.next()` with no abort, so
 		//           without it an abandoned drain keeps the upstream async iterator from ever returning
 		//           `done`, screenStream's producer never finishes, and the whole turn dies at the
-		//           watchdog having shown the user nothing (CUR-1657).
+		//           watchdog having shown the user nothing.
 		//   race    guarantees THIS function returns within the budget whatever the endpoint does —
 		//           including a hang before any fetch is issued, which a request signal cannot reach.
 		// Holding `gen` also lets us close the generator itself; that is the weakest of the three (it
@@ -154,7 +153,7 @@ export async function correctEntityQuery(
 		}
 		// The signal and the timer share one budget, so either can land first. When the signal wins,
 		// generateFromDefaultEndpoint swallows the abort and returns "", which would read as a model
-		// that said nothing and log no timeout at all (CUR-2140).
+		// that said nothing and log no timeout at all.
 		if (raw === TIMED_OUT || (signal.aborted && !raw)) {
 			// Belt-and-braces behind the signal above: close the generator too, the same move as
 			// failover.ts's abandon(). On its own this is NOT enough: the drain pulls again the instant a
@@ -166,14 +165,14 @@ export async function correctEntityQuery(
 			// An abandoned drain keeps the upstream async iterator from ever returning `done`, so
 			// screenStream's producer never sets sourceDone and its consumer parks on an unbounded wait:
 			// nothing is screened, no token is released, and output screening is the first-token gate.
-			// A turn that logs the timeout below without this dies at the 45s watchdog far more often than
-			// one with neither this nor a hedge (CUR-1657).
+			// Without the signal and this close, a timed-out correction can leave the turn waiting until the
+			// generation watchdog ends it.
 			// "" not undefined: this generator is AsyncGenerator<MessageUpdate, string, undefined>, so its
 			// return value is typed string — and "" is already what generateFromDefaultEndpoint itself
 			// returns on its own failure path, so the closed generation resolves exactly like a failed one.
 			void Promise.resolve(gen.return("")).catch(() => {});
-			// No query text in the log (house rule, see rag/localStore.ts) — a length is enough
-			// to see the timeout happen without shipping the user's search text to Axiom. (CUR-914)
+			// No query text in the log (the same rule as rag/localStore.ts): a length is enough to see the
+			// timeout happen without sending the user's search text to the log store.
 			logger.warn(
 				{ queryLength: q.length },
 				"[search] entity-name correction timed out — skipping correction branch"
@@ -183,13 +182,10 @@ export async function correctEntityQuery(
 		}
 		const text = String(raw ?? "");
 		const corrected = sanitizeCorrection(text, q);
-		// The only success signal this branch has ever emitted was its own absence — a timeout or
-		// error warns, but a real correction returned nothing to distinguish "found a typo, dispatched
-		// a corrected search" from "judged nothing wrong" in prod logs. Both are silent verdicts;
-		// this one is the interesting one to see happen.
+		// A found correction logs its own line, so the logs tell "found a typo, dispatched a corrected
+		// search" apart from "judged nothing wrong".
 		if (corrected) {
-			// No query text in the log (house rule) — lengths only, same reasoning as the
-			// timeout branch above. (CUR-914)
+			// No query text in the log: lengths only, for the same reason as the timeout branch above.
 			logger.info(
 				{ originalLength: q.length, correctedLength: corrected.length },
 				"[search] entity-name correction found — dispatching corrected query"

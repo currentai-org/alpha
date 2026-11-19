@@ -68,7 +68,7 @@ describe("correctEntityQuery", () => {
 		expect(out).toBe("who is giada pistilli");
 	});
 
-	it("logs the success case by LENGTH only, never the raw query text (CUR-914 house rule)", async () => {
+	it("logs the success case by LENGTH only, never the raw query text ( house rule)", async () => {
 		const { logger } = await import("$lib/chat/server/logger");
 		vi.doMock("$lib/chat/server/generateFromDefaultEndpoint", () => ({
 			// eslint-disable-next-line require-yield -- stubs the generator's RETURN value; no streamed tokens needed
@@ -84,7 +84,7 @@ describe("correctEntityQuery", () => {
 		expect(JSON.stringify(vi.mocked(logger.info).mock.calls)).not.toContain("goad pistilli");
 	});
 
-	it("a NONE verdict logs no success line but does log its own outcome, so the timeout share has a denominator (CUR-2140)", async () => {
+	it("a NONE verdict logs no success line but does log its own outcome, so the timeout share has a denominator", async () => {
 		const { logger } = await import("$lib/chat/server/logger");
 		vi.doMock("$lib/chat/server/generateFromDefaultEndpoint", () => ({
 			// eslint-disable-next-line require-yield -- stubs the generator's RETURN value; no streamed tokens needed
@@ -109,13 +109,13 @@ describe("correctEntityQuery", () => {
 	});
 
 	it(
-		"CLOSES the abandoned generation when the timer wins, rather than leaving it draining (CUR-1655)",
+		"CLOSES the abandoned generation when the timer wins, rather than leaving it draining",
 		async () => {
 			// The contract this pins is not "the caller returns undefined" — the test below already
 			// passes on that with the generation still running. It is that the losing generation gets
 			// closed, which is the part that decides whether the turn survives: an abandoned drain keeps
 			// the upstream async iterator from ever returning `done`, and screenStream's consumer then
-			// parks forever waiting for a producer that never finishes (CUR-1657).
+			// parks forever waiting for a producer that never finishes.
 			let unwound = false;
 			vi.doMock("$lib/chat/server/generateFromDefaultEndpoint", () => ({
 				generateFromDefaultEndpoint: async function* () {
@@ -163,7 +163,7 @@ describe("correctEntityQuery", () => {
 	);
 });
 
-/** The one per-call line CUR-2140 adds; undefined if the call wrote none. */
+/** The one outcome line each call writes; undefined if the call wrote none. */
 async function outcomeLine(): Promise<Record<string, unknown> | undefined> {
 	const { logger } = await import("$lib/chat/server/logger");
 	const calls = vi
@@ -173,7 +173,7 @@ async function outcomeLine(): Promise<Record<string, unknown> | undefined> {
 	return calls[0]?.[0] as Record<string, unknown> | undefined;
 }
 
-describe("correctEntityQuery — one outcome line on every call (CUR-2140)", () => {
+describe("correctEntityQuery — one outcome line on every call", () => {
 	afterEach(() => {
 		vi.restoreAllMocks();
 		vi.doUnmock("$lib/chat/server/generateFromDefaultEndpoint");
@@ -243,7 +243,7 @@ describe("correctEntityQuery — one outcome line on every call (CUR-2140)", () 
 		"a call the abort signal cuts first still logs as timeout, with no first-token time when nothing streamed",
 		async () => {
 			// generateFromDefaultEndpoint's real behaviour on its caller's signal: swallow the abort and
-			// return "". It can win the race, so the timeout must still be logged rather than read as silence (CUR-2140).
+			// return "". It can win the race, so the timeout must still be logged rather than read as silence.
 			vi.doMock("$lib/chat/server/generateFromDefaultEndpoint", () => ({
 				// eslint-disable-next-line require-yield -- stalls until aborted, then returns the stand-in
 				generateFromDefaultEndpoint: async function* (opts: { signal?: AbortSignal }) {

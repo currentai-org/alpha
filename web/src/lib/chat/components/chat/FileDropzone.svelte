@@ -1,4 +1,9 @@
 <!--
+SPDX-FileCopyrightText: 2018- The Hugging Face team
+SPDX-License-Identifier: Apache-2.0
+Modified by Current AI from huggingface/chat-ui.
+-->
+<!--
   @component
   Stands in for the composer while files are dragged over the chat. It only shows where a drop will
   land: ChatWindow's window-level drop handler attaches the files wherever they are let go.

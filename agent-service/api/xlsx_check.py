@@ -1,9 +1,10 @@
-"""What is wrong with the charts in an Excel file the agent made, read from the file alone (CUR-4600).
+"""What is wrong with the charts in an Excel file the agent made, read from the file alone.
 
 A chart in a workbook is two cell ranges, categories and values, and the model writes both by hand. Two defects
-go unnoticed without a check: categories A2:A5 against values B2:B4, so one row has no bar,
-and values B1:B5, so the header row is plotted and every bar shows the previous row's figure. Both files opened
-and looked finished. This module reads each chart's ranges against the sheet they point at and names the defect,
+pass unnoticed when nothing checks them: a chart whose category range and value range differ in length
+(categories A2:A5 against values B2:B4) leaves a row without a bar, and a value range that starts at the
+header (B1:B5) plots the header row and shifts every bar to the previous row's figure. Both files open
+and look finished. This module reads each chart's ranges against the sheet they point at and names the defect,
 so the in-session repair turn can hand it back to the model before it answers.
 
 Deterministic and model-free. openpyxl (already a runtime dependency) parses the workbook and its charts; the

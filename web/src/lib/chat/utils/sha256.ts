@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 export async function sha256(input: string): Promise<string> {
 	const utf8 = new TextEncoder().encode(input);
 	const hashBuffer = await crypto.subtle.digest("SHA-256", utf8);

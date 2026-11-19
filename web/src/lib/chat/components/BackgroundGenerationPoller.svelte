@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2018- The Hugging Face team
+SPDX-License-Identifier: Apache-2.0
+Modified by Current AI from huggingface/chat-ui.
+-->
 <script lang="ts">
 	import { onDestroy } from "svelte";
 	import { browser, dev } from "$app/environment";
@@ -32,7 +37,7 @@
 	// instance's root effect keeps running and reacts to the shared backgroundGenerationEntries store
 	// right alongside the new one, opening a second EventSource nobody asked for. In a test this shows as
 	// two "opening SSE stream" logs for one addBackgroundGeneration() call, even with cleanup()
-	// between cases (CUR-1157).
+	// between cases.
 	const disposeRoot = $effect.root(() => {
 		if (!browser) return;
 

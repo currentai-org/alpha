@@ -5,7 +5,7 @@
 
 	/**
 	 * Dev servers only (account menu → Feature flags). Lists every registered flag with a fuzzy filter
-	 * and forces any of them on or off for this browser through the `fuzz_override` cookie (CUR-1044).
+	 * and forces any of them on or off for this browser through the `fuzz_override` cookie.
 	 * "Default" drops the override, so the flag answers as PostHog says. The server only honours the
 	 * cookie with FUZZ_OVERRIDE_ENABLED set (`pnpm dev:local` sets it); the dialog says when it isn't.
 	 */

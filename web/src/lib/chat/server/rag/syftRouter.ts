@@ -12,6 +12,7 @@
 // explicit markers and the system prompt frames it as untrusted DATA; only paths that exist in the
 // scoped catalog survive validation (a hallucinated/arbitrary path never reaches the metered call).
 
+import { APP_USER_AGENT } from "$lib/chat/constants/app";
 import { config } from "$lib/chat/server/config";
 import { firstKey } from "$lib/chat/server/env/firstKey";
 import { primaryModelId } from "$lib/chat/server/primaryModel";
@@ -327,7 +328,7 @@ async function callRouterModel(opts: {
 				"content-type": "application/json",
 				authorization: `Bearer ${key}`,
 				// The HF router WAF 403s the OpenAI SDK's default UA; mirror the endpoint's override.
-				"User-Agent": "aipotluck.org",
+				"User-Agent": APP_USER_AGENT,
 				// This is a SERVER-side call with no per-user billing context, so — like the embeddings path
 				// (embeddingBillTo) — bill to a configured org. WITHOUT this the HF Inference-Providers router
 				// 403s a token that lacks its own provider access ("insufficient permissions to call Inference
@@ -506,7 +507,7 @@ export async function routeEndpoints(
 			{ allowEmpty: true }
 		);
 	// Org to bill the routing call to (X-HF-Bill-To), sent only on the HF router lane, the same rule the
-	// main chat path applies through hfBillToHeader (CUR-1877). Off HF we resolve to "" (⇒ header omitted)
+	// main chat path applies through hfBillToHeader. Off HF we resolve to "" (⇒ header omitted)
 	// and skip the firstKey read entirely (no misleading "fell back to HF_BILL_TO" warn).
 	const billTo = onHfRouter
 		? firstKey(["RAG_ROUTER_BILL_TO", "HF_BILL_TO"], "ragRouterBillTo", { allowEmpty: true })

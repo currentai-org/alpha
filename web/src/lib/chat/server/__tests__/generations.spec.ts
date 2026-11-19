@@ -60,7 +60,7 @@ describe("generations idempotency", () => {
 		expect(after?.messageId).toBe("msgRetry"); // re-claim adopts the new attempt's message id
 	});
 
-	// A new turn waits on this before building on an answer whose turn has not saved. (CUR-2667)
+	// A new turn waits on this before building on an answer whose turn has not saved.
 	it("answersInFlight is true only while a generation writing one of the named answers is in flight", async () => {
 		const conv = `conv-${Math.random().toString(36).slice(2)}`;
 		const id = genId("inflight");

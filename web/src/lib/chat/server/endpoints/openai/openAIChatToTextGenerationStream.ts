@@ -1,8 +1,12 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import type { TextGenerationStreamOutput } from "@huggingface/inference";
+import { toolCallId } from "../../toolCallId";
 import type OpenAI from "openai";
 import type { Stream } from "openai/streaming";
 import { logger } from "$lib/chat/server/logger";
-import { ThinkFilter, UntaggedReasoningHold, dropsReasoning } from "./thinkFilter";
+import { ThinkFilter, UntaggedReasoningHold, dropsReasoning, thinkChars } from "./thinkFilter";
 import { type InlineTool, InlineToolReferenceStrip, TOOL_REF_CLOSE, TOOL_REF_OPEN } from "./inlineToolReference";
 import { opensReasoningUntagged } from "../../harnessProfiles";
 
@@ -14,7 +18,7 @@ import { opensReasoningUntagged } from "../../harnessProfiles";
 // the final chunk's token text, does not carry it through output moderation: generate.ts takes its
 // `generated_text` branch on that same chunk and `continue`s without ever yielding the token, and
 // screenStream.ts rebuilds the answer body from Stream tokens alone, so the client receives the answer
-// with no notice (CUR-149).
+// with no notice.
 export const TRUNCATION_NOTICE =
 	'\n\n_(Stopped at the length limit. Say "continue" for the rest.)_';
 
@@ -35,22 +39,20 @@ export function withTruncationNotice(text: string, truncated: boolean | undefine
 /**
  * A message's or delta's `content` as text, whatever shape the host sent. OpenAI sends a string; Mistral
  * can send a list of parts, `{type: "text", text}` beside `{type: "thinking", thinking: [...parts]}`.
- * Read as a string, that list crashed the stream on `.trim()` and the answer never finished (CUR-2340,
- * 19 `content.trim is not a function` on one preview's scenario run). Thinking parts come back as
- * reasoning, so the caller's own reasoning handling decides whether the visitor sees them.
+ * Read as a string, that list would crash the stream on `.trim()` and the answer would never finish.
+ * Thinking parts come back as reasoning, so the caller's own reasoning handling decides whether the visitor sees them.
  *
  * A `{type: "reference", reference_ids}` part is a citation. Mistral Large 3 sends one in place of the
  * `[n]` our prompt asks for whenever the request declares a tool, keeping our numbering, so it is
- * written back as `[n]`. Dropping it left every grounded Large 3 answer with no inline citations. A
- * reference whose id is a tool's name is a call written into the answer (CUR-2777): it is marked for
+ * written back as `[n]`; dropping it would leave a grounded Large 3 answer with no inline citations. A
+ * reference whose id is a tool's name is a call written into the answer: it is marked for
  * InlineToolReferenceStrip, which drops it with the arguments that follow.
  */
 let loggedListContent = false;
 function contentText(value: unknown): { text: string; thinking: string } {
 	if (typeof value === "string") return { text: value, thinking: "" };
 	if (!Array.isArray(value)) return { text: "", thinking: "" };
-	// Once per instance, the part types only: the line that shows this path ran, not just that the
-	// crash stopped (CUR-2340).
+	// Once per instance, the part types only: the line shows that this path ran.
 	if (!loggedListContent) {
 		loggedListContent = true;
 		const types = value.map((p) => (p && typeof p === "object" ? String((p as { type?: unknown }).type) : typeof p));
@@ -79,8 +81,8 @@ function contentText(value: unknown): { text: string; thinking: string } {
  * Transform a stream of OpenAI.Chat.ChatCompletion into a stream of TextGenerationStreamOutput
  */
 /** How many images a request carries and how many characters of text, read off the
- *  wire messages. A photo turn's prefill runs longer than a text turn's, and the first-chunk allowance (CUR-4003)
- *  cannot be set per shape until the finish line says which shape each turn was. */
+ *  wire messages. A photo turn's prefill runs longer than a text turn's, so the finish line records
+ *  which shape each turn was and the first-chunk allowance can be judged per shape. */
 export type TurnShape = { imageParts: number; promptChars: number };
 
 export function turnShapeOf(messages: ReadonlyArray<{ content?: unknown }>): TurnShape {
@@ -97,27 +99,25 @@ export function turnShapeOf(messages: ReadonlyArray<{ content?: unknown }>): Tur
 	return { imageParts, promptChars };
 }
 
-/** A tool call id for a call the model typed as text, in the only shape Mistral accepts: 9 of [a-zA-Z0-9]. */
-function inlineCallId(): string {
-	const alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-	return Array.from({ length: 9 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join("");
-}
-
 export async function* openAIChatToTextGenerationStream(
 	completionStream: Stream<OpenAI.Chat.Completions.ChatCompletionChunk>,
 	getRouterMetadata?: () => { route?: string; model?: string; provider?: string; backend?: string; lane?: string },
 	/** When the request left, so the finish line can say where the time went. Defaults to now. */
 	sentAt: number = Date.now(),
-	/** The request offered a tool, so assemble its tool_calls deltas and hand them back as one (CUR-2273)
-	 *  `toolCalls` output in place of a final answer. Off, tool_calls deltas are ignored as before. */
+	/** The request offered a tool, so assemble its tool_calls deltas and hand them back as one
+	 *  `toolCalls` output in place of a final answer. Off, tool_calls deltas are ignored. */
 	collectToolCalls = false,
-	/** The model id this request asked for. A provider that reports the same model under its (CUR-1683)
+	/** The model id this request asked for. A provider that reports the same model under its
 	 *  own short name ("glm-5.2" for "zai-org/GLM-5.2") is recorded under this id instead. */
 	requestedModel?: string,
-	/** The tools this request declared, so a call typed into the answer as text is dropped. (CUR-2777) */
+	/** The tools this request declared, so a call typed into the answer as text is dropped. */
 	toolNames: readonly InlineTool[] = [],
-	/** What the request carried, so time to first chunk can be split by photo vs text turn. (CUR-4003) */
-	shape?: TurnShape
+	/** What the request carried, so time to first chunk can be split by photo vs text turn. */
+	shape?: TurnShape,
+	/** This stream is the visitor's answer, so a GLM answer's reasoning goes into the collapsed Working
+	 *  panel like every other thinking model's instead of being dropped. Side calls leave it false and
+	 *  keep the drop. */
+	keepReasoning = false
 ) {
 	let firstChunkAt: number | undefined;
 	let generatedText = "";
@@ -127,17 +127,18 @@ export async function* openAIChatToTextGenerationStream(
 	let nullNameToolArgs = "";
 	let metadataYielded = false;
 	let thinkOpen = false;
-	// A GLM answer goes out without its reasoning (CUR-1933). Decided from the body's own model id or
-	// the lane's served-model seed, whichever names GLM first; both are known by the first chunk.
+	// A GLM side call goes out without its reasoning. Decided from the body's own model id or the lane's
+	// served-model seed, whichever names GLM first; both are known by the first chunk. The visitor's
+	// answer keeps it, so it lands in the collapsed Working panel and never in the answer.
 	let dropReasoning = false;
 	const thinkFilter = new ThinkFilter();
-	// A model whose reasoning opens with no tag has it held until its bare `</think>` (CUR-2470).
-	// Decided on the first chunk, from the requested id or the body's own.
+	// A model whose reasoning opens with no tag has it wrapped in a `<think>` block up to its bare
+	// `</think>` (UntaggedReasoningHold). Decided on the first chunk, from the requested id or the body's own.
 	let untaggedHold: UntaggedReasoningHold | undefined;
 	let untaggedDecided = false;
-	// The first chunk the hold keeps back is flagged once, so the client can show that ALIA
-	// is reasoning instead of a blank wait. Only the flag travels: the held text has not been through
-	// output screening, which reads content tokens alone. (CUR-3942)
+	// A first chunk the hold keeps back, while it could still open `<think>` or `<answer>`, is flagged
+	// once, so the client can show a reasoning indicator instead of a blank wait. Only the flag travels:
+	// the held text has not been through output screening, which reads content tokens alone.
 	let heldSignalled = false;
 	// Tool calls arrive in pieces keyed by index: id and name on the first delta, the arguments split
 	// across the rest (OpenAI), or the whole call in one delta (Mistral). Both assemble the same way.
@@ -149,12 +150,12 @@ export async function* openAIChatToTextGenerationStream(
 	// cross-model backup lane even when the host sends no provider header), or the LiteLLM backend host.
 	// The `backend` case is what lets identity persist on a HEALTHY gateway turn (no X-Router-Model
 	// header, body echoes the group): without it the served backend is captured in endpointOai.ts and
-	// dropped here, so nothing downstream can assert WHICH lane answered (CUR-114/115).
+	// dropped here, so nothing downstream can assert WHICH lane answered.
 	// `x-litellm-model-api-base` is the only header that names the real backend.
 	//
 	// The HF router names only the provider in its headers. The model that served is in the body's own
 	// `model` field, so a provider-only report takes it from there; without it a turn on a pinned HF
-	// lane persisted a provider and no served model (CUR-1683). Scaleway reports GLM-5.2 as "glm-5.2",
+	// lane would persist a provider and no served model. Scaleway reports GLM-5.2 as "glm-5.2",
 	// so a body id naming the requested model's last path segment is recorded under the requested id;
 	// any other body id is a different model and is recorded as reported.
 	const lastSegment = (id: string) => id.split("/").at(-1)?.toLowerCase();
@@ -221,8 +222,8 @@ export async function* openAIChatToTextGenerationStream(
 			}
 		}
 		// The headers were read before the first chunk (endpointOai.ts), so provenance goes out with it.
-		// Held to the end, it was lost whenever the stream was cancelled early: output screening's phase
-		// deadline cancels the source mid-answer, and that turn persisted no served model (CUR-2343).
+		// Held to the end, it would be lost whenever the stream is cancelled early: output screening's
+		// phase deadline cancels the source mid-answer, and that turn would persist no served model.
 		if (!metadataYielded) {
 			const headerMetadata = headerMetadataOutput(completion.model || undefined);
 			if (headerMetadata) yield headerMetadata;
@@ -230,8 +231,7 @@ export async function* openAIChatToTextGenerationStream(
 		// Usage counts (from stream_options.include_usage), surfaced so the caller can log token cost +
 		// the prefix-cache hit ratio. Two wire shapes exist and BOTH must be handled:
 		//
-		//   trailing — a final chunk with empty choices and populated usage. The convention, and what
-		//     this code assumed exclusively.
+		//   trailing — a final chunk with empty choices and populated usage. The usual convention.
 		//   merged   — usage attached to the SAME chunk that carries finish_reason "stop". The HF router
 		//     serving zai-org/GLM-5.2-FP8 does this.
 		//
@@ -240,19 +240,17 @@ export async function* openAIChatToTextGenerationStream(
 		// the FINAL TEXT of every merged-shape stream, not merely its accounting: tokens still stream,
 		// but consumers waiting on the final get nothing — generateFromDefaultEndpoint returns ""
 		// and generate.ts never emits a FinalAnswer. The second-opinion panel's GLM panelist would fail
-		// and, because the aggregator is the same model, the verdict would stay the neutral placeholder
-		// (CUR-153).
+		// and, because the aggregator is the same model, the verdict would stay the neutral placeholder.
 		//
 		// Which shape you get is a property of the BACKEND, not the model, so tolerate both here rather
-		// than special-casing a model id anywhere upstream. For example, zai-org/GLM-5.2-FP8 has been seen to
-		// send the merged shape, and zai-org/GLM-5.2 usually sends a trailing usage chunk but sometimes the
-		// merged shape (with a trailing usage chunk as well, so two usage chunks in one stream).
+		// than special-casing a model id anywhere upstream. For example, zai-org/GLM-5.2-FP8 can send the
+		// merged shape, and zai-org/GLM-5.2 usually sends a trailing usage chunk but sometimes the merged
+		// shape (with a trailing usage chunk as well, so two usage chunks in one stream).
 		//
 		// Do not reason from "FP8 merges, plain GLM-5.2 doesn't". The HF router fans out across providers, so
 		// a model id does not pin a serving backend and the shape can differ between two calls a minute
-		// apart. That is why the tolerate-both branch below is needed: FALLBACK_MODEL_ID is zai-org/GLM-5.2,
-		// the cross-model backup lane that serves ORDINARY CHAT TURNS when the primary fails, and that lane
-		// can hand us the merged shape.
+		// apart, so any GLM lane on the router, ordinary chat turns included, can hand back the merged
+		// shape. That is why the tolerate-both branch below is needed.
 		let mergedUsage: TextGenerationStreamOutput | undefined;
 		if (completion.usage) {
 			const promptDetails = completion.usage.prompt_tokens_details as
@@ -361,7 +359,7 @@ export async function* openAIChatToTextGenerationStream(
 			}
 		}
 
-		if (!dropReasoning) {
+		if (!dropReasoning && !keepReasoning) {
 			dropReasoning =
 				dropsReasoning(completion.model) || dropsReasoning(getRouterMetadata?.()?.model);
 		}
@@ -408,7 +406,7 @@ export async function* openAIChatToTextGenerationStream(
 		}
 		// A round that ends in a tool call is not the answer's last chunk, and the next round opens its
 		// own stream. Close the reasoning here, or the answer the next round writes lands inside it
-		// (CUR-3748: "<think>…Let's call calculate.42").
+		// ("<think>…Let's call calculate.42").
 		if (toolFinish && thinkOpen) {
 			combined += "</think>";
 			thinkOpen = false;
@@ -420,7 +418,7 @@ export async function* openAIChatToTextGenerationStream(
 		// as text and nothing else. The strip drops it, the round ends with no visible text, and the
 		// turn reads "couldn't answer". A round whose only output was such a call ends in
 		// that call instead, so the tool loop runs it. With any visible text the call stays dropped and
-		// unrun: the answer around it has already streamed. (CUR-4495)
+		// unrun: the answer around it has already streamed.
 		if (
 			last &&
 			collectToolCalls &&
@@ -429,7 +427,7 @@ export async function* openAIChatToTextGenerationStream(
 			generatedText.replace(/<think>[\s\S]*?(<\/think>|$)/g, "").trim() === ""
 		) {
 			for (const [i, c] of toolRefStrip.dropped.entries())
-				toolCalls.set(i, { id: inlineCallId(), name: c.name, arguments: c.arguments });
+				toolCalls.set(i, { id: toolCallId(), name: c.name, arguments: c.arguments });
 			logger.warn(
 				{ model: completion.model, tools: toolRefStrip.dropped.map((c) => c.name).join(",") },
 				"[generation] round wrote only an inline tool call; running it as a tool call"
@@ -451,16 +449,23 @@ export async function* openAIChatToTextGenerationStream(
 			// WHY the generation ended, recorded once per turn at the only place that sees it. Nothing
 			// downstream carries this: `interrupted` is computed from token.special (always true on the
 			// final chunk, so a capped answer reports false), and `[turn] outcome` says `complete` for a
-			// natural stop and a hard token cap alike. A user reading an answer that ends mid-word had
-			// no counterpart in any log (CUR-149).
+			// natural stop and a hard token cap alike. Without this line, an answer that ends mid-word
+			// would have no counterpart in any log.
 			logger.info(
 				{
 					// The model AS THE BACKEND NAMES IT on the chunk. Without it this line could say a
 					// generation was capped but not which of four panelists it was, which is exactly the
-					// question a fanout route raises (CUR-149).
+					// question a fanout route raises.
 					model: completion.model,
 					finishReason: choices?.[0]?.finish_reason,
 					chars: generatedText.length,
+					// Reasoning shares the output cap with the answer. Counted from the finished text's
+					// think blocks, so in-content reasoning (ALIA) is measured like a separate field (Large 4), less an
+					// answer the untagged hold copied into the block; reasoning a GLM answer drops is counted as stripped.
+					reasoningChars:
+						thinkChars(generatedText) -
+						(untaggedHold?.copiedChars ?? 0) +
+						(dropReasoning ? thinkFilter.stripped : 0),
 					truncated,
 					// Length only: the reasoning restates the prompt, so its text is not logged either.
 					...(dropReasoning ? { reasoningStripped: thinkFilter.stripped } : {}),
@@ -476,11 +481,11 @@ export async function* openAIChatToTextGenerationStream(
 		}
 		// The headers were read before the first chunk, so provenance is known by now. It goes out ahead
 		// of the final token, which is what becomes FinalAnswer: the conversation route persists the turn
-		// on FinalAnswer, and metadata that trailed it was missing from that write (CUR-2078).
+		// on FinalAnswer, and metadata that trailed it would be missing from that write.
 		// A provider can send its last content delta on the same chunk as finish_reason. generate.ts
 		// turns the final chunk into FinalAnswer without streaming its text, and output screening builds
 		// the answer from streamed text alone, so that delta would be dropped: "17 × 23 = 391." would
-		// leave "17 × 23" (CUR-2081). Stream it as an ordinary token first.
+		// leave "17 × 23". Stream it as an ordinary token first.
 		if (last && combined) {
 			yield {
 				token: { id: tokenId++, text: combined, logprob: 0, special: false },
@@ -504,10 +509,10 @@ export async function* openAIChatToTextGenerationStream(
 		yield output;
 		if (toolFinish) {
 			// Medium 3.5 sometimes sends the name padded ("\t\t web_search"). Kept verbatim, the
-			// kit matched no tool and the next round replayed the name, which LiteLLM refuses with a 400
-			// that ends the turn. Trimmed here, dispatch and replay both see the declared name. The raw
-			// name is logged so the model's side of it stays measurable, and a name that matches no
-			// declared tool even after trimming is logged too (the kit answers it "no tool named"). (CUR-4362)
+			// kit would match no tool and the next round would replay the name, which LiteLLM refuses
+			// with a 400 that ends the turn. Trimmed here, dispatch and replay both see the declared name.
+			// The raw name is logged so the model's side of it stays measurable, and a name that matches no
+			// declared tool even after trimming is logged too (the kit answers it "no tool named").
 			const declared = new Set(toolNames.map((t) => (typeof t === "string" ? t : t.name)));
 			const raw = [...toolCalls.entries()].sort(([a], [b]) => a - b).map(([, c]) => c);
 			const calls = raw.map((c) => ({ ...c, name: c.name.trim() }));
@@ -544,7 +549,7 @@ export async function* openAIChatToTextGenerationStream(
 		// Tools removed: ignore tool_calls deltas
 	}
 
-	// A stream that ended with no finishing chunk still releases whatever it was holding (CUR-2470).
+	// A stream that ended with no finishing chunk still releases whatever it was holding.
 	const held = untaggedHold?.flush();
 	if (held) {
 		generatedText += held;

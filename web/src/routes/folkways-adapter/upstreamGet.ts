@@ -1,5 +1,5 @@
 // Folkways adapter — shared GET passthrough to the real gateway, used by `v1/models` (the catalog)
-// and `v1/model/info` (deployment info, CUR-2092). Both proxy one path upstream unchanged.
+// and `v1/model/info` (deployment info). Both proxy one path upstream unchanged.
 //
 // Env:
 //   FOLKWAYS_CATALOG_BASE_URL   (default https://api-internal.publicai.co/v1) — the REAL

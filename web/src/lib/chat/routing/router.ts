@@ -64,6 +64,11 @@ export interface RoutingConfig {
 	 * (`capacityCostFor`), so a model with a small request budget is spent on the tasks that need it.
 	 */
 	capacityCost: number;
+	/**
+	 * How far a model's language score may sit below the best measured score among the available
+	 * models before Auto stops choosing it for a confidently detected language (`withinLanguageMargin`).
+	 */
+	languageMargin: number;
 }
 
 export const DEFAULT_ROUTING: RoutingConfig = {
@@ -73,7 +78,8 @@ export const DEFAULT_ROUTING: RoutingConfig = {
 	weakSupport: 0.5,
 	gapConfidence: 0.55,
 	continuity: 0.06,
-	capacityCost: 0.15
+	capacityCost: 0.15,
+	languageMargin: 0.1
 };
 
 /**
@@ -91,7 +97,7 @@ export interface ModelScore {
 	model: CatalogModel;
 	/** Live and served by the registry right now — the only models that can answer. */
 	available: boolean;
-	/** Served, but busy right now (CUR-4043); Auto skips it while another model is available. */
+	/** Served, but busy right now; Auto skips it while another model is available. */
 	busy: boolean;
 	/** Has a row in the benchmark table. Auto only picks a model that is available AND benchmarked. */
 	benchmarked: boolean;
@@ -126,7 +132,7 @@ export interface RouteChoice {
 	model: CatalogModel;
 	/** The benchmarked model that would suit best, when it differs from `model` because it isn't available. */
 	ideal?: CatalogModel;
-	/** The best served model Auto skipped because it is busy right now (CUR-4043), when it outscores `model`. */
+	/** The best served model Auto skipped because it is busy right now, when it outscores `model`. */
 	busy?: CatalogModel;
 	/** Short reason chips: "Catalan", "Medium task". */
 	reasons: string[];
@@ -153,7 +159,7 @@ export interface RouteOptions {
 	/** Catalog id of the model that answered the previous turn, when the chat has started. */
 	stickTo?: string;
 	/**
-	 * Gateway ids of served models that are busy right now (CUR-4043): Auto skips them while any other
+	 * Gateway ids of served models that are busy right now: Auto skips them while any other
 	 * model is available, and keeps its normal pick when every one is busy.
 	 */
 	busy?: string[];
@@ -170,7 +176,7 @@ export function targetFor(analysis: DraftAnalysis, config: RoutingConfig = DEFAU
  * Auto leans toward the most capable model it can use: the strongest available model scores 1 and the
  * rest by the square root of their share of its intelligence — steep enough that the strongest model
  * wins any language it handles well, gentle enough that a specialist with a clear edge in its own
- * language (ALIA for Catalan, Bielik for Polish) still does. Being stronger than a task needs costs nothing; being
+ * language (ALIA for Catalan) still does. Being stronger than a task needs costs nothing; being
  * weaker than its floor costs `underCost` per point.
  *
  * @param strongest intelligence of the strongest available model (the scale's ceiling when none).
@@ -190,7 +196,7 @@ export function intelligenceFit(
  * the stronger, scarcer model only when it is predicted to need it), a model pays `capacityCost` in
  * proportion to how far its requests-a-minute fall short of the roomiest available model's, on a log
  * scale, and the cost fades as the classifier grows sure the task is large. Large 3's 150 a minute
- * against Medium's 4,000 is the case this exists for (CUR-4035, CUR-4574). A model with no known budget, or
+ * against Medium's 4,000 is the case this exists for. A model with no known budget, or
  * none to compare against, pays nothing.
  *
  * @param roomiest the highest requests-a-minute among served models that have a figure.
@@ -301,8 +307,14 @@ export function route(analysis: DraftAnalysis, servedIds: string[], opts: RouteO
 	const config = opts.config ?? DEFAULT_ROUTING;
 	const scores = scoreModels(analysis, servedIds, opts);
 	const shares = sharesForDraft(analysis, opts.benchmarks ?? SHIPPED_BENCHMARKS, config);
-	// What Auto chooses among: served, and benchmarked so the scores mean something.
-	const available = scores.filter((s) => s.available && s.benchmarked);
+	// What Auto chooses among: served, benchmarked so the scores mean something, and not measurably
+	// worse in the draft's language than another of them.
+	const available = withinLanguageMargin(
+		scores.filter((s) => s.available && s.benchmarked),
+		analysis,
+		config,
+		shares.language ?? 0
+	);
 	const pick = available[0];
 	if (!pick) return undefined;
 
@@ -312,7 +324,7 @@ export function route(analysis: DraftAnalysis, servedIds: string[], opts: RouteO
 	const target = targetFor(analysis, config);
 
 	// A model scoped to large tasks is no better fit for a smaller one: Medium answering a short question is the
-	// choice, not a compromise, so the note never suggests Large 4 for it (CUR-4574).
+	// choice, not a compromise, so the note never suggests Large 4 for it.
 	const outOfScope = (model: CatalogModel) => model.autoPick === 'large-tasks' && size !== 'L';
 	const top = scores.find((s) => s.benchmarked && !outOfScope(s.model)) ?? pick;
 	const ideal = top.model.id !== pick.model.id && top.total > pick.total ? top.model : undefined;
@@ -334,7 +346,7 @@ export function route(analysis: DraftAnalysis, servedIds: string[], opts: RouteO
 	}
 
 	// Another model of the pick's family in the picker, Auto's to choose or not: Large 3 and Large 4 sit beside
-	// Medium on every site, so "Mistral answers" would not say which of the three did (CUR-4354, CUR-392).
+	// Medium on every site, so "Mistral answers" would not say which of the three did.
 	const familyShared = catalog.some(
 		(m) =>
 			m.id !== pick.model.id &&
@@ -366,6 +378,27 @@ export function route(analysis: DraftAnalysis, servedIds: string[], opts: RouteO
 	};
 }
 
+/**
+ * A measured language gap is a fact about the answer, and no lead in reasoning makes up for it: in a
+ * confidently detected language, a model measured more than `languageMargin` below the best measured
+ * available model is out of Auto's choice, even the one that answered the last turn. Without this,
+ * Medium 3.5's rating (14) outweighs its measured Amharic (0.25 against Apertus 70B's 0.42) on a short
+ * Amharic draft. A model unmeasured in the language is never ruled out here; it ranks as before,
+ * and a language weight of 0 (the routing lab) takes language out of the choice entirely.
+ */
+function withinLanguageMargin(
+	candidates: ModelScore[],
+	analysis: DraftAnalysis,
+	config: RoutingConfig,
+	languageShare: number
+): ModelScore[] {
+	if (languageShare <= 0 || shownLanguage(analysis, config) === 'und') return candidates;
+	const measured = candidates.filter((s) => s.languageVia === 'measured').map((s) => s.language);
+	if (!measured.length) return candidates;
+	const floor = Math.max(...measured) - config.languageMargin;
+	return candidates.filter((s) => s.languageVia !== 'measured' || s.language >= floor - 1e-9);
+}
+
 // Each sentence is whole per task size, so a language can agree its words with "task" in its own way.
 const LEAD: Record<Difficulty, () => string> = { S: m.routing_leadS, M: m.routing_leadM, L: m.routing_leadL };
 const LEAD_LANGUAGE: Record<Difficulty, (p: { language: string }) => string> = {
@@ -394,7 +427,7 @@ function explain(
 	const name = localLanguageName(tag, getLocale());
 	const size = analysis.difficulty.value;
 	// With a second model of the same family on offer, the family alone ("Mistral answers") doesn't say
-	// which one answered; the reason that follows says which one did (CUR-4354).
+	// which one answered; the reason that follows says which one did.
 	const family = familyShared ? pick.model.name : pick.model.family;
 
 	const lead = tag === 'und' ? LEAD[size]() : LEAD_LANGUAGE[size]({ language: name });
@@ -423,11 +456,11 @@ function explain(
 	if (busy) text += ` ${m.routing_busy({ model: busy.name })}`;
 	// Two models of one family need the model's own name, or the sentence reads "Mistral would suit this
 	// even better" under an answer Mistral just gave.
-	// A busy ideal already has its sentence: Auto does choose it, just not while it is busy (CUR-4541).
+	// A busy ideal already has its sentence: Auto does choose it, just not while it is busy.
 	if (ideal && ideal.id !== busy?.id) {
 		const named = ideal.family === pick.model.family ? ideal.name : ideal.family;
 		// A model in the picker that Auto doesn't choose (autoPick false) is available to pick by hand, so
-		// "isn't available in Alpha yet" would be wrong beside the menu that lists it (CUR-4354).
+		// "isn't available in Alpha yet" would be wrong beside the menu that lists it.
 		text += ` ${idealPickable ? m.routing_idealPickable({ model: ideal.name }) : m.routing_ideal({ family: named })}`;
 	}
 	return text;

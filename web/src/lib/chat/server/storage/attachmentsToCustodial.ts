@@ -33,8 +33,8 @@ import type { StorageLocation } from "$lib/chat/server/storage/locations/types";
 // bucket never holds a turn up: each write has BUCKET_WRITE_TIMEOUT_MS, and a write that times out or
 // fails (a throttled Hub token, any Hub error, a guest's full quota) puts that file in the
 // conversation's files table instead, which downloadFile.ts reads when the bucket has no copy. A
-// signed-in person's full quota refuses the turn instead (CUR-3235).
-// With the flag off (or no bucket on the deployment), attachments go to the table as before. (CUR-2172, CUR-2183)
+// signed-in person's full quota refuses the turn instead.
+// With the flag off (or no bucket on the deployment), attachments go to the files table.
 
 /** The last path segment of an attachment's name, or undefined when there is no usable one. */
 function storedName(name: string): string | undefined {
@@ -83,7 +83,7 @@ export function attachmentPath(
  * The key, relative to the owner's prefix, of a message attachment kept in Alpha storage: the path
  * downloadFile.ts reads it from. Undefined for one kept in a linked location, or one whose name or sha
  * cannot be a path. The export and its summary match it against the account's file listing, so one
- * object is not taken once as an attachment and again as a stored file (CUR-3327).
+ * object is not taken once as an attachment and again as a stored file.
  */
 export function storedAttachmentKey(
 	conversationId: string,
@@ -144,7 +144,7 @@ async function bucketOwner(conv: Conversation): Promise<{ userId: string } | { g
  * The linked location a signed-in person's chat attachments go to, or undefined for Alpha
  * storage. Their default decides it, as it does for an upload on My files. Chat has no picker, so
  * "Ask every time" means Alpha storage here, and a default whose bucket stopped answering is logged
- * and sends the file to Alpha storage: a broken link never costs the person their turn. (CUR-2930)
+ * and sends the file to Alpha storage: a broken link never costs the person their turn.
  */
 export async function linkedAttachmentLocation(
 	conv: Conversation,
@@ -175,7 +175,7 @@ export async function linkedAttachmentLocation(
  *
  * A write that fails or passes BUCKET_WRITE_TIMEOUT_MS sends that file to the files table, and every
  * file after it goes straight there, so one stalled bucket costs a turn one deadline, not one per file.
- * @throws StorageQuotaExceededError when a signed-in person's My files is full (CUR-3235), and what the
+ * @throws StorageQuotaExceededError when a signed-in person's My files is full, and what the
  * files table throws.
  */
 export async function storeChatAttachments(
@@ -232,7 +232,7 @@ export async function storeChatAttachments(
 				// A full My files is the person's to sort out, not a failure to route around. The
 				// composer checks it when the file is attached, so this is the race between attach and send,
 				// and parseRequest refuses the turn with the quota line. A guest still falls back until
-				// guests get an attach-time allowance of their own. (CUR-3235)
+				// guests get an attach-time allowance of their own.
 				if (e instanceof StorageQuotaExceededError && "userId" in owner) throw e;
 				bucketFailed = fallbackReason(e);
 				logger.warn(

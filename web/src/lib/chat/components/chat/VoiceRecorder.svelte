@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2018- The Hugging Face team
+SPDX-License-Identifier: Apache-2.0
+Modified by Current AI from huggingface/chat-ui.
+-->
 <script lang="ts">
 	import { onMount, onDestroy } from "svelte";
 	import CarbonClose from "~icons/carbon/close";
@@ -13,7 +18,7 @@
 		oncancel: () => void;
 		onconfirm: (audioBlob: Blob) => void;
 		onsend: (audioBlob: Blob) => void;
-		/** `blocked` says why the Dictate button can't work until something changes, shown on the button itself (CUR-3403). */
+		/** `blocked` says why the Dictate button can't work until something changes, shown on the button itself. */
 		onerror: (message: string, blocked?: string) => void;
 	}
 
@@ -49,7 +54,7 @@
 	}
 
 	// The first of these the browser can record is used; the transcribe endpoint takes all three. A
-	// browser without WebM recording (older Safari) records mp4, where asking it for WebM threw (CUR-2802).
+	// browser without WebM recording (older Safari) records mp4, where asking it for WebM threw.
 	const RECORDING_TYPES = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
 
 	async function startRecording() {

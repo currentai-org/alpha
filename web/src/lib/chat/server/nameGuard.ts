@@ -90,7 +90,7 @@ const isName = (w: string | undefined, served: ReadonlySet<string>): w is string
 	!served.has(w.toLowerCase());
 
 // The words of whichever model actually served this turn, read from identity.ts, so its own name is
-// never mistaken for an adopted one (CUR-2274). IDENTITY_SAFE above only knows Apertus, so on a Mistral
+// never mistaken for an adopted one. IDENTITY_SAFE above only knows Apertus, so on a Mistral
 // Large 3 turn "I am Mistral Large 3" was flagged, and neutralizeAdoptedName then rewrote "Mistral" to
 // "this system" in every later turn's context.
 function servedIdentityWords(servedModelId: string | undefined): ReadonlySet<string> {

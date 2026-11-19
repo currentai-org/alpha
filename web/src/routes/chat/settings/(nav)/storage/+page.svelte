@@ -1,6 +1,6 @@
 <script lang="ts">
 	// Settings → Storage holds the storage settings (usage, locations, linking a bucket, where
-	// files are kept). The files are on /chat/storage, the rail's Files page, which this page links to. (CUR-4363)
+	// files are kept). The files are on /chat/storage, the rail's Files page, which this page links to.
 	import StorageSettingsPanel from '$lib/chat/components/storage/StorageSettingsPanel.svelte';
 	import type { PageData } from './$types';
 

@@ -107,7 +107,7 @@ export const DEFAULT_GENERATION_TIMEOUT_MS = 45_000;
 
 /**
  * How long a generation may go with NO new content token before the watchdog treats it as stalled —
- * the PRIMARY trigger (CUR-58). `genTimeoutMs` above stays as the backstop: a lane emitting a token
+ * the PRIMARY trigger. `genTimeoutMs` above stays as the backstop: a lane emitting a token
  * every 20s must still die at the total cap eventually, or it rides silently to the platform kill
  * (PLATFORM_MAX_DURATION_MS) with no terminal write. Silence-awareness narrows WHEN the existing
  * abort fires; it does not replace the ceiling that decides whether it ever does.
@@ -116,7 +116,7 @@ export const DEFAULT_GENERATION_TIMEOUT_MS = 45_000;
  * total cap is: "no token for 45s" is exactly as suspicious on an agent turn as an ordinary one — the
  * two turn kinds differ in how long the WHOLE job can legitimately run (13-26 sequential model calls
  * vs one), not in how long a single stretch of silence is tolerable. For an ordinary turn (total cap
- * also 45s) this is a no-op: the two thresholds coincide, matching CUR-58's own evidence that every
+ * also 45s) this is a no-op: the two thresholds coincide, matching the evidence that every
  * real firing there was already silence from the first token, never a slow-but-streaming turn caught
  * mid-flight. The actual gain is on agent turns, where the total backstop is up to 155s
  * (MAX_SAFE_GENERATION_TIMEOUT_MS): a genuinely stuck agent turn is now caught at 45s of true silence
@@ -157,7 +157,7 @@ export const MAX_SAFE_GENERATION_TIMEOUT_MS =
 	GENERATION_STALE_MS - HARD_UNWIND_GRACE_MS - 2 * EMERGENCY_CLEANUP_BUDGET_MS;
 
 /**
- * The longest the input safety screen may run (guardGate.ts's operation-deadline cap, CUR-3749).
+ * The longest the input safety screen may run (guardGate.ts's operation-deadline cap).
  *
  * The route starts the generation watchdog's clock when the screen ends rather than when the
  * stream opens, so a long paste's screen no longer eats the 45s an ordinary turn has to answer. The
@@ -177,7 +177,7 @@ export const MAX_INPUT_SCREEN_MS = 100_000;
  * An agent turn and an ordinary turn have nothing in common on this axis. Ordinary turns top out
  * around 22s; an agent turn is 13–26 SEQUENTIAL model calls, so the 45s ordinary default would kill 7 in
  * 11 successful agent trials after the work is finished and its side-effects verified, and the user
- * would see a failure on a task the agent completed (CUR-144). That is why this is its own number.
+ * would see a failure on a task the agent completed. That is why this is its own number.
  *
  * Production agent runs over 30 days (Axiom `agent-service`, `run.finished`, 122 runs):
  *
@@ -212,15 +212,15 @@ export const DEFAULT_AGENT_GENERATION_TIMEOUT_MS = MAX_SAFE_GENERATION_TIMEOUT_M
  * A local model's first turn against a cold instance pays real, unbounded model-LOAD time (weights
  * into memory) before it can produce a single byte — indistinguishable, to a plain total-time
  * watchdog, from a genuinely hung connection. DEFAULT_GENERATION_TIMEOUT_MS (45s) is sized against
- * measured PRIMARY-GATEWAY traffic (p99 ~20s, CUR-1194 audit) and has nothing to do with a self-hosted
+ * measured PRIMARY-GATEWAY traffic (p99 ~20s, audit) and has nothing to do with a self-hosted
  * box's own hardware or a cold daemon's load time — a real cold start on ordinary consumer hardware
- * measured well past 45s with zero bytes back (see the CUR-1194 timeout investigation). Reuses the
+ * measured well past 45s with zero bytes back (see the timeout investigation). Reuses the
  * SAME ceiling agent turns already get rather than inventing a new number: it's the largest value the
  * ladder can safely allow without revisiting GENERATION_STALE_MS (see MAX_SAFE's own derivation above).
  *
  * Deliberately does NOT get its own SILENCE default the way the total cap does here: the silence
  * watchdog's activity clock (`state.lastActivityAt`, streamUpdate.ts) is bumped by every processed
- * MessageUpdate INCLUDING this app's own textGeneration/index.ts keepAlive() pulse, which fires every
+ * MessageUpdate INCLUDING this app's own textGeneration/index.ts keepAlive pulse, which fires every
  * 100ms independent of upstream state. That means the silence trigger practically never fires before
  * the total one on ANY turn (the local-model timeout fires with `trigger: "total"`, not
  * "silence") — raising SILENCE_TIMEOUT_MS's default for local turns would change nothing observable
@@ -319,7 +319,7 @@ export const AGENT_HANDOFF_WALL_CLOCK_SECS = AGENT_SERVICE_ATTEMPT_CEILING_SECS;
 /**
  * How long before the route's watchdog an agent turn stops reading the run and hands it off to the
  * page. The run goes on in agent-service; the turn stores the answer as interrupted with the run's
- * handle still open, and the page re-attaches to it (CUR-993, CUR-3875).
+ * handle still open, and the page re-attaches to it.
  *
  * Three cleanup budgets: the endpoint notices the mark within one 4s heartbeat of the agent stream,
  * and the terminal path after it (AGENT_TERMINAL_TAIL_MS) and the persist need to land before the
@@ -348,13 +348,13 @@ export const MAX_INVOCATION_MS =
 /**
  * How long a turn whose watchdog is `genTimeoutMs` may wait on its input screen before the
  * generation clock starts: up to MAX_INPUT_SCREEN_MS, and never so long that screen plus generation
- * passes MAX_SAFE_GENERATION_TIMEOUT_MS (CUR-3749).
+ * passes MAX_SAFE_GENERATION_TIMEOUT_MS.
  */
 export function screenAllowanceMs(genTimeoutMs: number): number {
 	return Math.max(0, Math.min(MAX_INPUT_SCREEN_MS, MAX_SAFE_GENERATION_TIMEOUT_MS - genTimeoutMs));
 }
 
-/** The guard screen's cap before CUR-3749. A turn whose generation clock gets no screen allowance
+/** The guard screen's cap. A turn whose generation clock gets no screen allowance
  *  (agent and local turns default to MAX_SAFE) keeps it, so a long paste costs their watchdog no more
  *  than it did. */
 const UNEXTENDED_SCREEN_CAP_MS = 60_000;
@@ -404,7 +404,7 @@ export function resolveGenerationTimeoutMs(
 
 /**
  * A model's own floor under the deployment-wide generation timeout (harnessProfiles.ts `generationTimeoutMs`,
- * CUR-4403). Raises the timeout to the floor and never lowers it; null keeps the deployment-wide value as it was.
+ *). Raises the timeout to the floor and never lowers it; null keeps the deployment-wide value as it was.
  * The result goes through the same MAX_SAFE clamp as an env value, so the ladder still holds.
  */
 export function withModelFloor(
@@ -416,7 +416,7 @@ export function withModelFloor(
 }
 
 /**
- * Should the PRIMARY (silence) watchdog treat this generation as stalled right now? (CUR-1085)
+ * Should the PRIMARY (silence) watchdog treat this generation as stalled right now?
  *
  * `awaitingConfirmation` is the one legitimate reason for a real stretch of zero tokens that isn't a
  * stall: agent-service paused a tool call on ACP_PERMISSION_POLICY=confirm and is waiting on a human's
@@ -443,19 +443,19 @@ export function isSilentStall(params: {
 
 /**
  * How recent the last content token must be for a turn to count as still streaming when its total
- * cap arrives (CUR-4009). Twice the silence poll interval: a lane writing a long answer slowly sends
+ * cap arrives. Twice the silence poll interval: a lane writing a long answer slowly sends
  * tokens far more often than this, and a lane that has gone quiet for longer is left to the cap.
  */
 const STREAMING_RECENT_MS = 2 * SILENCE_CHECK_INTERVAL_MS;
 
 /**
- * Whether a turn is still writing its answer at the moment its total cap fires (CUR-4009). Such a turn
+ * Whether a turn is still writing its answer at the moment its total cap fires. Such a turn
  * gets the rest of the ladder's room instead of being cut mid-sentence; the silence watchdog still
  * ends it if the tokens stop. Model output only, so an agent's heartbeat or a turn that never produced
  * a token is not mistaken for an answer in progress.
  *
- * `lastModelOutputAt` is the model's last raw chunk, read before the honesty and screening buffers
- * (CUR-4188). Some models' untagged reasoning is held until `</think>`, and a reply with none is held whole,
+ * `lastModelOutputAt` is the model's last raw chunk, read before the honesty and screening buffers.
+ * Some models' untagged reasoning is held until `</think>`, and a reply with none is held whole,
  * so a turn can stream for 37 s without one visible token; `lastTokenAt` alone would cut it at the cap.
  */
 export function isStillStreaming(params: {
@@ -469,7 +469,7 @@ export function isStillStreaming(params: {
 }
 
 /**
- * The oldest an agent run can be while a page still re-attaches to it (CUR-3875): agent-service's own
+ * The oldest an agent run can be while a page still re-attaches to it: agent-service's own
  * one-attempt ceiling (`AGENT_WALL_CLOCK_SECS`, 300s, for a caller that asks for no less) plus the
  * terminal tail. By then the service has ended the run, so the next attach replays its final answer
  * and a further one would show nothing new.

@@ -11,7 +11,7 @@ vi.mock("$lib/chat/server/logger", () => ({
 // between — the model-identity/empty-index/dim-mismatch cases each need a DIFFERENT env/data shape,
 // and a single top-level vi.mock would apply file-wide and make the other branches unreachable. This
 // also gives each test a fresh copy of the module-level warnedEmptyIndex/warnedModelMismatch flags
-// (CUR-879's warn-once-per-process state), which a shared module instance would leak across tests.
+// (the warn-once-per-process state), which a shared module instance would leak across tests.
 beforeEach(() => {
 	logError.mockClear();
 	logWarn.mockClear();
@@ -36,7 +36,7 @@ describe("localStore — model-identity guard", () => {
 	// embeddingModel() to return a DIFFERENT id must make queryLocalStore skip the store entirely
 	// — BEFORE it calls embedText — so a same-dimension index from a different model can never
 	// produce silently-wrong cosine hits. The mock also means this test makes no network call.
-	it("skips retrieval and logs once per process when the active embedding model != the index's model (CUR-879)", async () => {
+	it("skips retrieval and logs once per process when the active embedding model != the index's model", async () => {
 		vi.doMock("./env", async (importOriginal) => {
 			const actual = await importOriginal<typeof import("./env")>();
 			return { ...actual, embeddingModel: () => "some/other-embedding-model" };
@@ -55,7 +55,7 @@ describe("localStore — model-identity guard", () => {
 	});
 });
 
-describe("localStore — empty index (CUR-879)", () => {
+describe("localStore — empty index", () => {
 	it("returns [] and logs once per process when the committed index has no chunks", async () => {
 		vi.doMock("./data/rag-index.json", () => ({
 			default: { model: "m", dim: 3, builtAt: "2026-01-01T00:00:00Z", chunks: [] },
@@ -71,7 +71,7 @@ describe("localStore — empty index (CUR-879)", () => {
 	});
 });
 
-describe("localStore — per-query embedding failures (CUR-879)", () => {
+describe("localStore — per-query embedding failures", () => {
 	it("warns (not error — a live per-call event, not a static config fact) when the query embedding call fails", async () => {
 		vi.doMock("./embed", () => ({ embedText: vi.fn().mockResolvedValue(null) }));
 		const { queryLocalStore } = await import("./localStore");
@@ -92,7 +92,7 @@ describe("localStore — per-query embedding failures (CUR-879)", () => {
 	});
 });
 
-describe("localStore — catalog entity chunks (CUR-888)", () => {
+describe("localStore — catalog entity chunks", () => {
 	// A three-dimension index with one category chunk and an entity file with one product, so the
 	// query vector decides which one ranks first.
 	function mockStore(entityModel: string) {
@@ -150,7 +150,7 @@ describe("localStore — catalog entity chunks (CUR-888)", () => {
 	});
 });
 
-describe("localStore — authored and catalog chunks rank in separate top-Ks (CUR-2429)", () => {
+describe("localStore — authored and catalog chunks rank in separate top-Ks", () => {
 	// Six catalog entities all nearer the query than the one authored chunk. Ranked as one pool with
 	// K=5, the authored chunk is sixth and never returned.
 	it("returns the nearest authored chunk even when more than K catalog entities outscore it", async () => {

@@ -3,7 +3,7 @@ import type { MessageFile } from "$lib/chat/types/Message";
 
 // One encode per attached File. A send from a new chat encodes on the landing page so its stand-in
 // bubble shows the files, and the conversation page then reuses the same encodes, so neither bubble
-// is ever on screen without its files (CUR-3402) and the handover has no encode to wait on (CUR-3506).
+// is ever on screen without its files and the handover has no encode to wait on.
 const encodes = new WeakMap<File, Promise<MessageFile>>();
 
 function encodeOne(file: File): Promise<MessageFile> {

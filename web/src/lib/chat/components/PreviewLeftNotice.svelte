@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Button } from "@aipotluck/alpha-ds";
 
-	/** Shown in place of a preview frame that navigated away from its own document (CUR-3527). */
+	/** Shown in place of a preview frame that navigated away from its own document. */
 	let { onrun }: { onrun: () => void } = $props();
 </script>
 

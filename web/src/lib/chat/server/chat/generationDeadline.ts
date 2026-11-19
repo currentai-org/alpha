@@ -14,7 +14,7 @@
  */
 
 /**
- * The reason the route's generation watchdog and hard deadline abort a turn with (CUR-4660).
+ * The reason the route's generation watchdog and hard deadline abort a turn with.
  *
  * Its name is "AbortError", so every check that reads an abort by name treats it as before. An
  * endpoint that must tell the watchdog ending a turn from a person pressing Stop reads it off the
@@ -62,7 +62,7 @@ export async function raceGenerationDeadline<T>(work: Promise<T>, deadlineMs: nu
 }
 
 /**
- * A generation deadline whose clock starts when the input screen ends (CUR-3749).
+ * A generation deadline whose clock starts when the input screen ends.
  *
  * Armed when the watchdog is, before the turn has its screen verdict. While the screen runs, the
  * deadline sits `allowanceMs` past `baseMs`, so a long paste's screen can't run the turn out of time.
@@ -70,10 +70,10 @@ export async function raceGenerationDeadline<T>(work: Promise<T>, deadlineMs: nu
  * allowance) and re-arms every timer scheduled on it, so a screen that took 2s leaves the turn
  * `baseMs` from then, and one that hung past the allowance gets no more than the allowance.
  *
- * The time a person spends answering a confirm card is not generation time either (CUR-3983).
+ * The time a person spends answering a confirm card is not generation time either.
  * `setHumanWaiting(true)` holds the deadline open for as long as the wait lasts, and
  * `setHumanWaiting(false)` adds what it really took. A turn still streaming at its deadline can take
- * what room is left with `extendWhileStreaming()` (CUR-4009). Screen, human waits and streaming
+ * what room is left with `extendWhileStreaming()`. Screen, human waits and streaming
  * together never extend the deadline past `roomMs`, so a caller passing MAX_SAFE − baseMs keeps the
  * ladder's invariant.
  */
@@ -113,7 +113,7 @@ export class ScreenAwareDeadline {
 	}
 
 	/**
-	 * The turn is still streaming as its deadline arrives (CUR-4009): give it all the room left, once,
+	 * The turn is still streaming as its deadline arrives: give it all the room left, once,
 	 * and re-arm every timer. A long answer on a slow lane is not a stall, and the silence watchdog
 	 * still ends one that stops. Staying inside `roomMs` keeps the ladder's invariant. Returns the
 	 * milliseconds added, 0 when there was no room or the extension was already taken.
@@ -143,7 +143,7 @@ export class ScreenAwareDeadline {
 		return this.humanMs + (this.humanWaitStartedAt !== undefined ? this.humanRoomLeftMs() : 0);
 	}
 
-	/** Time a still-streaming turn was given past its deadline (CUR-4009). */
+	/** Time a still-streaming turn was given past its deadline. */
 	get streamExtensionMs(): number {
 		return this.streamMs;
 	}

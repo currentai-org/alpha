@@ -69,7 +69,7 @@ async function askPanel() {
 const question = (modelId: string) => calls.find((c) => c.modelId === modelId)?.messages.at(-1);
 const CANNOT_SEE = /attached a file .* that you cannot see\. Do not say that nothing was attached/;
 
-describe("POST /chat/api/second-opinion — the question's attachments reach the panel (CUR-4670)", () => {
+describe("POST /chat/api/second-opinion — the question's attachments reach the panel", () => {
 	beforeEach(() => {
 		calls.length = 0;
 		gate.multimodal = true;

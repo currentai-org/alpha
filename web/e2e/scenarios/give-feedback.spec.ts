@@ -9,7 +9,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // "Give feedback" sits beside "Report a problem" in the account menu's Help group and opens
 // the feedback form (Tally) in a new tab. Report is for what is broken; feedback is "I liked this" or "I
 // wish it did that", so the two stay separate entries. Walked as a guest and signed in, the two ways
-// a visitor meets the menu (CUR-2890).
+// a visitor meets the menu.
 
 const TALLY = /^https:\/\/tally\.so\//;
 

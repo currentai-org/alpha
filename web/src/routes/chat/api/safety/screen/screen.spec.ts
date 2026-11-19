@@ -9,12 +9,23 @@
 // to the sign-in page, which every test's own status assertion rules out. The route then owns its own gate — 401 wrong/absent bearer, 503 unset, 413 over
 // cap — and is a PURE detector that never reports to Coop.
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import S1_RULES_JSON from "$lib/chat/server/rules-s1.json";
+// The public snapshot ships rules-s1.json with only its `_s1` settings: the S1 policies are not
+// published there, so the specs below that assert what S1 decides under a policy skip on it.
+const S1_POLICIES_PUBLISHED = Object.keys(S1_RULES_JSON).some((key) => key !== "_s1");
 import { GUARD_CORPUS_CAP } from "$lib/chat/server/guardScreenTypes";
 import type { GuardScreen } from "$lib/chat/server/guardGate";
 
 const h = vi.hoisted(() => ({
 	db: { accesses: 0 },
+	// A set verdict stubs the screen; null runs the real runGuardScreen over the fake detectors below.
 	screen: { current: null as GuardScreen | null },
+	// `polled` false is a cold instance: until ensureFlagsPolled runs, s1-safety-judge reads its off fallback.
+	flags: { s1: false, polled: false },
+	// Every Shieldstral question asked, and the ones it answers yes to.
+	shield: { asked: [] as string[], yes: new Set<string>() },
+	// Every S1 call, and the rules.json ids S1 answers yes for.
+	s1: { calls: [] as Array<{ phase: string; userContext?: string }>, pass: new Set<string>() },
 }));
 
 // DB tripwire: any property read throws, so a single DB touch on this path fails the test loudly.
@@ -67,7 +78,59 @@ vi.mock("$app/environment", () => ({ dev: false, building: false }));
 // The detector itself: real toHits, stubbed runGuardScreen (offline, controllable verdict).
 vi.mock("$lib/chat/server/guardGate", async (orig) => {
 	const actual = await orig<typeof import("$lib/chat/server/guardGate")>();
-	return { ...actual, runGuardScreen: vi.fn(async () => h.screen.current) };
+	return {
+		...actual,
+		runGuardScreen: vi.fn(async (...args: Parameters<typeof actual.runGuardScreen>) =>
+			h.screen.current ?? actual.runGuardScreen(...args)
+		),
+	};
+});
+
+vi.mock("$lib/chat/server/flags", async (orig) => {
+	const actual = await orig<typeof import("$lib/chat/server/flags")>();
+	return {
+		...actual,
+		ensureFlagsPolled: vi.fn(async () => {
+			h.flags.polled = true;
+		}),
+		flagEnabledOr: vi.fn((flag: string, fallback: () => boolean) =>
+			flag === "s1-safety-judge" && h.flags.polled ? h.flags.s1 : fallback()
+		),
+	};
+});
+
+// Shieldstral, offline: records each rule question and answers yes only to those in h.shield.yes.
+vi.mock("$lib/chat/server/detectors/shieldstral", async (orig) => {
+	const actual = await orig<typeof import("$lib/chat/server/detectors/shieldstral")>();
+	return {
+		...actual,
+		shieldstralConfigured: () => true,
+		shieldstralJudge: vi.fn(async (_target: unknown, query: string) => {
+			h.shield.asked.push(query);
+			const yes = h.shield.yes.has(query);
+			return { answer: { kind: "score", score: yes ? 0.9 : 0.1, yes }, httpOk: true, servedModel: actual.SHIELDSTRAL_MODEL };
+		}),
+	};
+});
+
+// S1, offline: records the phase and asker context, and answers every rule of that phase.
+vi.mock("$lib/chat/server/detectors/s1", async (orig) => {
+	const actual = await orig<typeof import("$lib/chat/server/detectors/s1")>();
+	return {
+		...actual,
+		s1Configured: () => true,
+		makeS1Judge: () => async (_text: string, phase: "input" | "output", ctx: { userContext?: string }) => {
+			h.s1.calls.push({ phase, userContext: ctx.userContext });
+			const ids = [...actual.s1RuleIdsFor(phase)];
+			return {
+				rules: new Map(ids.map((id) => [id, h.s1.pass.has(id) ? ("P" as const) : ("N" as const)])),
+				httpOk: true,
+				servedModel: "zentropi-ai/cope-b-s1",
+				calls: 1,
+				escalated: false,
+			};
+		},
+	};
 });
 
 const SAFE: GuardScreen = {
@@ -87,6 +150,12 @@ const fetchSpy = vi.fn(async (..._args: unknown[]) => new Response("{}", { statu
 beforeEach(() => {
 	h.db.accesses = 0;
 	h.screen.current = SAFE;
+	h.flags.s1 = false;
+	h.flags.polled = false;
+	h.shield.asked = [];
+	h.shield.yes = new Set();
+	h.s1.calls = [];
+	h.s1.pass = new Set();
 	vi.clearAllMocks();
 	vi.stubGlobal("fetch", fetchSpy);
 	vi.stubEnv("SAFETY_SCREEN_TOKEN", "test-screen-token");
@@ -222,13 +291,91 @@ describe("POST /chat/api/safety/screen — through the hook (zero HF, zero DB, z
 			authorization: "Bearer test-screen-token",
 			body: { text: "answer text", surface: "agent-output" },
 		});
-		expect(runGuardScreen).toHaveBeenLastCalledWith(expect.anything(), { instruct: outputInstruct });
+		expect(runGuardScreen).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ instruct: outputInstruct }));
 
 		await throughHook({
 			authorization: "Bearer test-screen-token",
 			body: { text: "prompt text", surface: "agent-input" },
 		});
 		// input-shaped → deps.instruct undefined → runGuardScreen falls back to shield.instruct.
-		expect(runGuardScreen).toHaveBeenLastCalledWith(expect.anything(), { instruct: undefined });
+		expect(runGuardScreen).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ instruct: undefined }));
+	});
+});
+
+// the screen runs in the surface's phase, and S1 judges when s1-safety-judge is on. These run the
+// REAL runGuardScreen and rules.json over the offline detectors above.
+describe("POST /chat/api/safety/screen — which judge, and which phase's rules", () => {
+	const screenText = async (text: string, surface: string) => {
+		const res = await throughHook({ authorization: "Bearer test-screen-token", body: { text, surface } });
+		expect(res.status).toBe(200);
+		return res.json();
+	};
+	const queryOf = async (key: string) => {
+		const { loadGuardPolicy } = await import("$lib/chat/server/guardPolicy");
+		const rule = loadGuardPolicy()?.entries.find((r) => r.key === key);
+		if (!rule) throw new Error(`${key} is not in rules.json`);
+		return rule.query;
+	};
+
+	beforeEach(() => {
+		h.screen.current = null;
+	});
+
+	it.each(["agent-output", "agent-artifacts"])(
+		"flag off: an input-only rule (chat-block-hate-advocacy) is never asked on %s, so 'promotion ok' is safe",
+		async (surface) => {
+			const advocacy = await queryOf("chat-block-hate-advocacy");
+			h.shield.yes = new Set([advocacy]);
+			expect(await screenText("promotion ok", surface)).toEqual({ status: "safe", hits: [] });
+			expect(h.shield.asked).not.toContain(advocacy);
+			// Shieldstral still judged the output rules: the screen ran, it just ran the output screen's set.
+			expect(h.shield.asked).toContain(await queryOf("chat-block-violence"));
+			expect(h.s1.calls).toHaveLength(0);
+			await assertBypassedTheHook();
+		}
+	);
+
+	it("flag off: agent-input still runs the input-only rules on Shieldstral (a hit blocks with its rules.json id)", async () => {
+		const advocacy = await queryOf("chat-block-hate-advocacy");
+		h.shield.yes = new Set([advocacy]);
+		expect(await screenText("some prompt", "agent-input")).toEqual({
+			status: "unsafe",
+			hits: [{ key: "chat-block-hate-advocacy", action: "block", tier: "content" }],
+		});
+		expect(h.s1.calls).toHaveLength(0);
+	});
+
+	// Skipped on the public snapshot, whose rules-s1.json has no S1 policies.
+	it.skipIf(!S1_POLICIES_PUBLISHED)("flag on, read on a cold instance: S1 judges agent-output in the output phase, Shieldstral is not asked, and the response stays { status, hits } with rules.json ids", async () => {
+		h.flags.s1 = true;
+		h.s1.pass = new Set(["chat-block-violence"]);
+		expect(await screenText("an answer", "agent-output")).toEqual({
+			status: "unsafe",
+			hits: [{ key: "chat-block-violence", action: "block", tier: "content" }],
+		});
+		expect(h.s1.calls).toEqual([{ phase: "output", userContext: undefined }]);
+		expect(h.shield.asked).toHaveLength(0);
+		const { logger } = await import("$lib/chat/server/logger");
+		expect(logger.info).toHaveBeenCalledWith(expect.stringContaining("judge=s1 served=zentropi-ai/cope-b-s1"));
+		await assertBypassedTheHook();
+	});
+
+	it("flag on: agent-artifacts goes to S1 in the output phase and a clean file is safe", async () => {
+		h.flags.s1 = true;
+		expect(await screenText("promotion ok", "agent-artifacts")).toEqual({ status: "safe", hits: [] });
+		expect(h.s1.calls).toEqual([{ phase: "output", userContext: undefined }]);
+		expect(h.shield.asked).toHaveLength(0);
+	});
+
+	// Skipped on the public snapshot, whose rules-s1.json has no S1 policies.
+	it.skipIf(!S1_POLICIES_PUBLISHED)("flag on: agent-input goes to S1 in the input phase, so its input-only log rules are answered", async () => {
+		h.flags.s1 = true;
+		h.s1.pass = new Set(["chat-block-self-harm-intent"]);
+		expect(await screenText("a prompt", "agent-input")).toEqual({
+			status: "safe",
+			hits: [{ key: "chat-block-self-harm-intent", action: "log", tier: "content" }],
+		});
+		expect(h.s1.calls).toEqual([{ phase: "input", userContext: undefined }]);
+		expect(h.shield.asked).toHaveLength(0);
 	});
 });

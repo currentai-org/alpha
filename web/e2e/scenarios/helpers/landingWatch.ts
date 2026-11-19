@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 
-// The new-chat landing can flash for a frame (CUR-1594) between
+// The new-chat landing can flash for a frame between
 // sign-in completing and the person's conversation coming back, which reads as the conversation being
 // lost. A poll misses a single frame, so this installs a MutationObserver as an init script: it runs in
 // every document the page loads from here on and reports through a binding that survives navigation.

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { FlagKey } from '../../src/lib/chat/server/flagKeys';
 import { assertKnownFlagKeys } from '../scenarios/helpers/flagOverride';
 
-describe('setFlagOverrides key check (CUR-4588)', () => {
+describe('setFlagOverrides key check', () => {
 	it('throws on a key flagKeys.ts no longer registers, instead of forcing a flag that does nothing', () => {
 		// The shape document-attachments.spec.ts carried: a retired key reaching the helper through a
 		// map the type cannot see into.

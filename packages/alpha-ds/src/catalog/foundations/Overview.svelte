@@ -24,7 +24,7 @@
 		],
 		[
 			'Surfaces decide',
-			'Placement rules from the CF spec (one tier up, Border 3 on Background 3) resolve from the surface a part sits on.'
+			'Placement rules from the design spec (one tier up, Border 3 on Background 3) resolve from the surface a part sits on.'
 		]
 	];
 </script>

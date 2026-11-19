@@ -1,9 +1,13 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 // MCP client — connect to an MCP server (e.g. an HF Gradio Space's /gradio_api/mcp/sse),
 // list its tools as OpenAI-shaped function schemas, and call them. Thin wrapper over the
-// official @modelcontextprotocol/client (SDK v2, CUR-1017 — the split successor to the single
+// official @modelcontextprotocol/client (SDK v2, the split successor to the single
 // @modelcontextprotocol/sdk package). The tool DECISION is made elsewhere by a bare-prompt
 // router (the persona suppresses in-context tool-choice by design — see
 // docs/mcp-restoration-scope.md); this module is just the transport + invocation.
+import { APP_USER_AGENT } from "$lib/chat/constants/app";
 import {
 	Client,
 	SSEClientTransport,
@@ -17,10 +21,10 @@ import { elicitationEnabled } from "./elicitationConfig";
 import type OpenAI from "openai";
 
 // A 2026-era server can answer a call with `input_required` instead of a result — it needs more
-// input before it can finish, and its own request ends immediately (CUR-1017). Nothing is waiting
+// input before it can finish, and its own request ends immediately. Nothing is waiting
 // anywhere once this comes back, so the caller decides what to do with it (index.ts parks it).
 // A tool that fails reports it as a normal result with `isError: true` and the reason in its text
-// blocks (MCP spec, "Error Handling"), so a call that resolved is not a call that worked (CUR-2645).
+// blocks (MCP spec, "Error Handling"), so a call that resolved is not a call that worked.
 export type McpCallResult =
 	| { kind: "text"; text: string }
 	| { kind: "error"; text: string }
@@ -36,8 +40,8 @@ export type McpConnection = {
 	close(): Promise<void>;
 };
 
-/** `onProgress` hears each progress message the server sends while the call runs. (CUR-4584) */
-/** `signal` ends the request when the turn is aborted or its budget runs out. (CUR-4627) */
+/** `onProgress` hears each progress message the server sends while the call runs. */
+/** `signal` ends the request when the turn is aborted or its budget runs out. */
 export type McpCallOptions = { onProgress?: (message: string) => void; timeoutMs?: number; signal?: AbortSignal };
 
 /** Connect, handshake, and list tools. Caller owns close(). Throws on connect/list failure.
@@ -49,7 +53,7 @@ export async function connectMcp(
 	opts?: {
 		headers?: Record<string, string>;
 		timeoutMs?: number;
-		/** The fetch every request goes through. An operator-configured server passes an (CUR-3026)
+		/** The fetch every request goes through. An operator-configured server passes an
 		 *  origin-scoped fetch, so its headers never follow a redirect to another origin. */
 		fetch?: (url: string | URL, init?: RequestInit) => Promise<Response>;
 	}
@@ -61,10 +65,10 @@ export async function connectMcp(
 	// clean decline.
 	const capabilities = elicitationEnabled() ? { elicitation: { form: {}, url: {} } } : {};
 	const client = new Client(
-		{ name: "aipotluck.org", version: "0.1.0" },
+		{ name: APP_USER_AGENT, version: "0.1.0" },
 		{
 			capabilities,
-			// SDK v2 (CUR-1017) defaults to 'legacy' — never negotiating, always the 2025 handshake.
+			// SDK v2 defaults to 'legacy' — never negotiating, always the 2025 handshake.
 			// Probe instead: try the current protocol first, fall back to legacy on a server that
 			// doesn't answer it.
 			versionNegotiation: { mode: "auto" },
@@ -138,7 +142,7 @@ export async function connectMcp(
 		async call(name, args, callOpts) {
 			const onProgress = callOpts?.onProgress;
 			// Ask for input_required as DATA rather than letting the driver block on it — a
-			// 2026-era prompt is answered out of band, not inside this call (CUR-1017).
+			// 2026-era prompt is answered out of band, not inside this call.
 			const res = await client.callTool(
 				{ name, arguments: stripPlaceholderArgs(args) },
 				{

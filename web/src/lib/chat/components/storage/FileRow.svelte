@@ -11,7 +11,7 @@
 	import { Button } from '@aipotluck/alpha-ds';
 	import { imageObjectUrl, previewKind } from './previewKind';
 
-	// CUR-1276, from files-components.jsx's FileRow. Delete is set apart at the far end with an
+	// from files-components.jsx's FileRow. Delete is set apart at the far end with an
 	// Accent 2 glyph and its own aria-label — a redundant signal beyond colour, since fill vs line is
 	// not one everyone reads. status is client-only bookkeeping: the server has no notion of
 	// "uploading" or "error", only files that made it into a listing or didn't.
@@ -29,15 +29,15 @@
 		onRetry?: () => void;
 		onRemove?: () => void;
 		onDownload?: () => void;
-		/** Copy or move to another location. No button when there is nowhere else to go. (CUR-2931) */
+		/** Copy or move to another location. No button when there is nowhere else to go. */
 		onTransfer?: () => void;
-		/** When the bucket took the file, as an ISO timestamp. (CUR-3289) */
+		/** When the bucket took the file, as an ISO timestamp. */
 		added?: string;
-		/** The chat a file attached in chat came from. (CUR-3289) */
+		/** The chat a file attached in chat came from. */
 		chatHref?: string;
-		/** The file's bytes, fetched for a thumbnail once the row scrolls into view. (CUR-3289) */
+		/** The file's bytes, fetched for a thumbnail once the row scrolls into view. */
 		thumbnailUrl?: string;
-		/** Open the file in place. The thumbnail and the name both do it. (CUR-3289) */
+		/** Open the file in place. The thumbnail and the name both do it. */
 		onOpen?: () => void;
 	}
 	let {
@@ -149,7 +149,7 @@
 					{#if chatHref}
 						<a
 							href={chatHref}
-							aria-label={`Open the chat ${name} came from`}
+							aria-label={m.storage_openChatFrom({ name })}
 							class="inline-flex items-center gap-1 text-fg-2 underline underline-offset-2 hover:text-fg-1"
 						>
 							<RiChat3Line class="size-3.5" />From a chat

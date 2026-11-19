@@ -15,7 +15,7 @@ import { flagEnabledOr } from "$lib/chat/server/flags";
 // its latency want measuring on the develop preview before prod ever sees it, which is the whole
 // argument for a flag with a release condition instead of a string in Doppler.
 //
-// ── Cold start fails closed (CUR-891) ───────────────────────────────────────────────────────────
+// ── Cold start fails closed ───────────────────────────────────────────────────────────
 // A cold-start fallback that mirrored the env predicate LLM_SUMMARIZATION evaluated would only matter
 // in the narrow cold-start window (a fresh process, or local dev with no PostHog key), because once
 // PostHog has polled successfully even once, `flagEnabledOr` keeps serving that last-known value

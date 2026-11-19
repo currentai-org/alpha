@@ -1,10 +1,13 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { describe, it, expect } from "vitest";
 import { normalizeElicitationRequest, validateElicitationContent } from "./elicitationSchema";
 import type { ElicitationField } from "$lib/chat/types/McpElicitation";
 
 // Every value here is authored by an MCP server, i.e. untrusted. These tests exist to
 // prove the normalizer and the answer-validator actually reject what they claim to, not just that
-// they accept a well-formed payload. (CUR-1017)
+// they accept a well-formed payload.
 
 describe("normalizeElicitationRequest — server-authored form schema", () => {
 	it("accepts a plain string field and reports it required", () => {

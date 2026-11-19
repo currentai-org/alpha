@@ -28,7 +28,7 @@ describe("extractInlineToolCallArgs", () => {
 		expect(extractInlineToolCallArgs(undefined, "calculateTime")).toBeUndefined();
 	});
 
-	// brackets, braces and escaped quotes inside a string argument are text, not structure. (CUR-2151)
+	// Brackets, braces and escaped quotes inside a string argument are text, not structure.
 	it("keeps a string argument whole when it contains ], }, [ and an escaped quote", () => {
 		const reasoning = 'the list [a, b] ends here] and {x} } then a "quote"';
 		const content = `Sure.<|tools_prefix|>[{"calculateTime": {"baseTime": "09:30", "reasoning": ${JSON.stringify(reasoning)}}}]<|tools_suffix|>`;

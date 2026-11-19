@@ -1,6 +1,6 @@
 // The FALLBACK for the read-aloud (TTS) feature switch — no longer the switch itself.
 //
-// Since CUR-225 the operative gate is `readAloudEnabled()` in server/readAloudGate.ts, a PostHog flag
+// the operative gate is `readAloudEnabled` in server/readAloudGate.ts, a PostHog flag
 // that falls back to this const. Editing this value still changes behaviour, but only where PostHog
 // has not defined the key; the flag wins when it has. Do not treat a `true` here as "the feature is
 // on" without checking the flag, and do not add a third switch — the whole point of that ticket was

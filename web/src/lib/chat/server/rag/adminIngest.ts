@@ -1,4 +1,4 @@
-// Admin ingest-from-url (Phase 3): fetch a public URL and extract reviewable text to PRE-FILL the
+// Admin ingest-from-url: fetch a public URL and extract reviewable text to PRE-FILL the
 // create form — a human approves it before anything is saved. Uses ssrfStrictFetch from urlSafety
 // (validates resolved IPs + every redirect hop, AND blocks cluster-internal ranges like 10/8 and
 // IPv6 ULA — stricter than the default ssrfSafeFetch, which allows internal LBs), NOT the public

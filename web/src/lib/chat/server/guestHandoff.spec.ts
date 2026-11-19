@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Cookies } from "@sveltejs/kit";
 
-vi.mock("$lib/chat/server/config", () => ({ config: { BETTER_AUTH_SECRET: "test-secret-for-handoff" } }));
+const config = vi.hoisted((): Record<string, string | undefined> => ({}));
+vi.mock("$lib/chat/server/config", () => ({ config }));
 // The real auth module, so the "owns no data" decision is the one the app makes; only the cookie
 // write is a spy, and the database is the same shape auth.guestCookie.spec.ts mocks.
 vi.mock("$lib/chat/server/database", () => ({
@@ -19,7 +20,8 @@ vi.mock("$lib/chat/server/auth", async (importOriginal) => ({
 	refreshSessionCookie: (...args: unknown[]) => refreshSessionCookie(...args),
 }));
 
-const { acceptGuestHandoff, guestHandoffPage } = await import("$lib/chat/server/guestHandoff");
+const { acceptGuestHandoff } = await import("$lib/chat/server/guestHandoff");
+const { guestHandoffPage } = await import("$lib/chat/server/guestHandoffPage");
 const { collections } = await import("$lib/chat/server/database");
 const { sha256 } = await import("$lib/chat/utils/sha256");
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -38,16 +40,16 @@ function jar(values: Record<string, string>): Cookies {
 }
 
 async function handoffForm(token = GUEST, now = Date.now()) {
-	const page = guestHandoffPage(jar({ "hf-chat": token }), new URL("https://alpha.aipotluck.org/chat/conversation/c1?x=1"), now)!;
+	const page = guestHandoffPage(jar({ "hf-chat": token }), new URL("https://alpha.example.test/chat/conversation/c1?x=1"), now)!;
 	const html = await page.text();
 	const value = (name: string) => html.match(new RegExp(`name="${name}" value="([^"]*)"`))![1].replace(/&amp;/g, "&");
 	return { page, html, h: value("h"), next: value("next") };
 }
 
-function post(fields: Record<string, string>, origin: string | null = "https://www.aipotluck.org") {
+function post(fields: Record<string, string>, origin: string | null = "https://www.example.test") {
 	const headers = new Headers({ "content-type": "application/x-www-form-urlencoded" });
 	if (origin) headers.set("origin", origin);
-	return new Request("https://alpha.aipotluck.org/chat/guest-handoff", {
+	return new Request("https://alpha.example.test/chat/guest-handoff", {
 		method: "POST",
 		headers,
 		body: new URLSearchParams(fields),
@@ -55,6 +57,8 @@ function post(fields: Record<string, string>, origin: string | null = "https://w
 }
 
 beforeEach(() => {
+	for (const k of Object.keys(config)) delete config[k];
+	config.BETTER_AUTH_SECRET = "test-secret-for-handoff";
 	refreshSessionCookie.mockReset();
 	sessionsFindOne.mockReset().mockResolvedValue(null);
 	conversationsFindOne.mockReset().mockResolvedValue(null);
@@ -68,7 +72,7 @@ async function owns(find: typeof conversationsFindOne, token: string) {
 }
 
 // A guest's conversations belong to a host-only cookie; this carries it from www or chat. to
-// alpha without putting the session in a URL. (CUR-4439)
+// alpha without putting the session in a URL.
 describe("guest handoff", () => {
 	it("gives alpha the guest's own cookie value and lands them on the page they were opening", async () => {
 		const { h, next } = await handoffForm();
@@ -84,21 +88,21 @@ describe("guest handoff", () => {
 		expect(page.headers.get("cache-control")).toBe("no-store");
 		// no-referrer would make the browser send Origin: null, which alpha refuses.
 		expect(page.headers.get("referrer-policy")).toBe("strict-origin");
-		expect(page.headers.get("content-security-policy")).toContain("form-action https://alpha.aipotluck.org");
+		expect(page.headers.get("content-security-policy")).toContain("form-action https://alpha.example.test");
 	});
 
 	it("sets nothing from a post by any other site, so nobody can plant their session in a visitor, and still lands them", async () => {
 		const { h, next } = await handoffForm();
-		for (const origin of ["https://evil.example", "https://alpha.aipotluck.org", null]) {
+		for (const origin of ["https://evil.example", "https://alpha.example.test", null]) {
 			const result = await acceptGuestHandoff(post({ h, next }, origin), jar({}));
 			expect(result, String(origin)).toEqual({ next: "/chat/conversation/c1?x=1", outcome: "bad-origin" });
 		}
 		expect(refreshSessionCookie).not.toHaveBeenCalled();
 	});
 
-	it("accepts a post from chat.aipotluck.org, the old chat host", async () => {
+	it("accepts a post from chat.example.test, the old chat host", async () => {
 		const { h, next } = await handoffForm();
-		const result = await acceptGuestHandoff(post({ h, next }, "https://chat.aipotluck.org"), jar({}));
+		const result = await acceptGuestHandoff(post({ h, next }, "https://chat.example.test"), jar({}));
 		expect(result.outcome).toBe("adopted");
 	});
 
@@ -130,7 +134,7 @@ describe("guest handoff", () => {
 	});
 
 	// A guest who opened alpha once before the switch holds an empty session there, and
-	// keeping it would cost them every conversation they had on www. (CUR-4445)
+	// keeping it would cost them every conversation they had on www.
 	it("replaces an alpha guest session that owns nothing with the one handed over from www", async () => {
 		const { h, next } = await handoffForm();
 		const cookies = jar({ "hf-chat": "empty-alpha-guest" });
@@ -171,6 +175,49 @@ describe("guest handoff", () => {
 	});
 
 	it("builds no page for a visitor with no guest cookie", () => {
-		expect(guestHandoffPage(jar({}), new URL("https://alpha.aipotluck.org/chat"))).toBeNull();
+		expect(guestHandoffPage(jar({}), new URL("https://alpha.example.test/chat"))).toBeNull();
+	});
+
+	// www drops BETTER_AUTH_SECRET once it serves no chat; the handoff then seals with a key of its own,
+	// and alpha opens values sealed either way while the two are moved over.
+	describe("its own sealing key", () => {
+		const HANDOFF = "test-handoff-only-secret";
+
+		it("seals with GUEST_HANDOFF_SECRET on a www that holds no BETTER_AUTH_SECRET, and alpha holding both opens it", async () => {
+			delete config.BETTER_AUTH_SECRET;
+			config.GUEST_HANDOFF_SECRET = HANDOFF;
+			const { h, next } = await handoffForm();
+			config.BETTER_AUTH_SECRET = "test-secret-for-handoff";
+			expect((await acceptGuestHandoff(post({ h, next }), jar({}))).outcome).toBe("adopted");
+			expect(refreshSessionCookie).toHaveBeenCalledWith(expect.anything(), GUEST);
+		});
+
+		it("still opens a value a www without GUEST_HANDOFF_SECRET sealed under BETTER_AUTH_SECRET", async () => {
+			const { h, next } = await handoffForm();
+			config.GUEST_HANDOFF_SECRET = HANDOFF;
+			expect((await acceptGuestHandoff(post({ h, next }), jar({}))).outcome).toBe("adopted");
+		});
+
+		it("keeps sealing under BETTER_AUTH_SECRET on a www given GUEST_HANDOFF_SECRET before alpha has it", async () => {
+			config.GUEST_HANDOFF_SECRET = HANDOFF;
+			const { h, next } = await handoffForm();
+			delete config.GUEST_HANDOFF_SECRET;
+			expect((await acceptGuestHandoff(post({ h, next }), jar({}))).outcome).toBe("adopted");
+		});
+
+		it("sets nothing from a value sealed under a secret alpha does not hold", async () => {
+			delete config.BETTER_AUTH_SECRET;
+			config.GUEST_HANDOFF_SECRET = "a-secret-alpha-never-had";
+			const { h, next } = await handoffForm();
+			config.GUEST_HANDOFF_SECRET = HANDOFF;
+			config.BETTER_AUTH_SECRET = "test-secret-for-handoff";
+			expect((await acceptGuestHandoff(post({ h, next }), jar({}))).outcome).toBe("unreadable");
+			expect(refreshSessionCookie).not.toHaveBeenCalled();
+		});
+
+		it("builds no page on a www holding neither secret, so the visitor gets the plain 308", () => {
+			delete config.BETTER_AUTH_SECRET;
+			expect(guestHandoffPage(jar({ "hf-chat": GUEST }), new URL("https://alpha.example.test/"))).toBeNull();
+		});
 	});
 });

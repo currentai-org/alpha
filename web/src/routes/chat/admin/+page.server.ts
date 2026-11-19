@@ -12,5 +12,6 @@ export const load: PageServerLoad = async ({ locals, cookies }) => {
 	return {
 		needsLogin: !(await isAdminPermitted({ cookies, locals }, { console: "view" })),
 		signedIn: Boolean(locals.user),
+		role: locals.user?.role ?? null,
 	};
 };

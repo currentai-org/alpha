@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ObjectId } from "bson";
 
@@ -121,7 +124,7 @@ describe.sequential("POST /conversation/[id]/stop-generating", () => {
 		);
 	});
 
-	// Smooth mode was still revealing an answer the server had already stored in full. (CUR-2306)
+	// Smooth mode was still revealing an answer the server had already stored in full.
 	describe("an answer that finished on the server before the stop arrived", () => {
 		const ANSWER = "The whole answer, of which the reader had only seen the start.";
 

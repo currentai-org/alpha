@@ -4,7 +4,7 @@
  *
  * Same 120000ms bump as that sibling file, same cause: the first dynamic `import("./betterAuth")` in
  * this file pulls in the whole module graph (better-auth, drizzle-adapter, etc.), which can exceed the
- * default 30s timeout on a loaded shared host, including under `git push`'s pre-push gate. (CUR-550)
+ * default 30s timeout on a loaded shared host, including under `git push`'s pre-push gate.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -15,7 +15,7 @@ const infoMock = vi.fn();
 const errorMock = vi.fn();
 vi.mock("$lib/chat/server/logger", () => ({
 	logger: { info: infoMock, error: errorMock, warn: vi.fn() },
-	// The refused sends are security lines; one mock keeps the assertions on either logger. (CUR-4143)
+	// The refused sends are security lines; one mock keeps the assertions on either logger.
 	securityLogger: { info: infoMock, error: errorMock, warn: vi.fn() },
 }));
 
@@ -31,7 +31,7 @@ vi.stubGlobal("fetch", fetchMock);
 
 // The per-inviting-user counter lives in its own module (real DB access,
 // message_events) — mocked here the same way config/logger are, rather than exercised for real, since
-// this whole file's premise is no live DB. (CUR-912)
+// this whole file's premise is no live DB.
 const workspaceInviteState = { allowed: true };
 // Mirrors the real function's own no-userId contract (always allowed when there's nothing to key on) —
 // otherwise this mock would diverge from the thing it's standing in for.
@@ -39,7 +39,7 @@ const workspaceInviteAllowedMock = vi.fn(async (userId?: string) =>
 	userId ? workspaceInviteState.allowed : true
 );
 const recordWorkspaceInviteSendMock = vi.fn(async () => {});
-// The site-wide ceiling, same premise. (CUR-3194)
+// The site-wide ceiling, same premise.
 const siteInviteState = { allowed: true };
 const siteInviteAllowedMock = vi.fn(async () => siteInviteState.allowed);
 const recordSiteInviteSendMock = vi.fn(async () => {});
@@ -51,16 +51,18 @@ vi.mock("$lib/chat/server/db/workspaceInviteRate", () => ({
 	recordSiteInviteSend: recordSiteInviteSendMock,
 }));
 
-// Live pending invitations already held by the target address. (CUR-4167)
+// Live pending invitations already held by the target address.
 const pendingState = { count: 0 as number | null };
 const pendingInvitationCountMock = vi.fn(async () => pendingState.count);
 vi.mock("$lib/chat/server/pendingInvitations", () => ({ pendingInvitationCount: pendingInvitationCountMock }));
 
 const captureMock = vi.fn();
+const tripMock = vi.fn(async () => {});
+vi.mock("$lib/chat/server/alerting", () => ({ recordRateLimitTrip: tripMock }));
 vi.mock("$lib/chat/server/errorTracking", () => ({ captureServerException: captureMock }));
 
 // The DB-backed target-email backstop, also real-DB-backed, also mocked here. Defaults to
-// "always allowed" so it doesn't interfere with tests exercising the in-memory limiters it backstops. (CUR-920)
+// "always allowed" so it doesn't interfere with tests exercising the in-memory limiters it backstops.
 const targetEmailRateState = { allowed: true };
 const targetEmailSendAllowedMock = vi.fn(async () => targetEmailRateState.allowed);
 const recordTargetEmailSendMock = vi.fn(async () => {});
@@ -97,7 +99,7 @@ beforeEach(() => {
 	recordOtpSourceSendMock.mockClear();
 });
 
-describe("sendWorkspaceInvitationEmail (CUR-550)", () => {
+describe("sendWorkspaceInvitationEmail", () => {
 	it("in dev, logs the stub (with the accept URL) and never calls fetch when RESEND_API_KEY is unset", async () => {
 		env.dev = true;
 		const { sendWorkspaceInvitationEmail } = await import("./betterAuth");
@@ -132,7 +134,7 @@ describe("sendWorkspaceInvitationEmail (CUR-550)", () => {
 	}, 120000);
 
 	// workspaces.spec.ts invites a fresh e2e-<uuid>@example.org on every run. A real send would
-	// spend one of Resend's daily sends on an address with a null MX. (CUR-1930)
+	// spend one of Resend's daily sends on an address with a null MX.
 	it("never calls Resend or touches a rate limiter for an invite to the reserved example.org domain", async () => {
 		cfg.RESEND_API_KEY = "re_test_key";
 		const { sendWorkspaceInvitationEmail } = await import("./betterAuth");
@@ -214,7 +216,7 @@ describe("sendWorkspaceInvitationEmail (CUR-550)", () => {
 
 		// The OTP limiter allows only 3 sends per address — exhaust it, then confirm the invitation
 		// limiter (separate instance, higher cap) is untouched by that. example.com, not .org — the
-		// latter is a reserved domain CUR-1254 short-circuits sendVerificationOTP for entirely, which
+		// latter is a reserved domain that sendVerificationOTP short-circuits entirely, which
 		// would defeat this test's premise of actually exhausting the limiter via real sends.
 		await sendVerificationOTP({ email: "d@example.com", otp: "111111", type: "sign-in" });
 		await sendVerificationOTP({ email: "d@example.com", otp: "111111", type: "sign-in" });
@@ -232,7 +234,7 @@ describe("sendWorkspaceInvitationEmail (CUR-550)", () => {
 		);
 	}, 120000);
 
-	it("blocks a send when the DB-backed target-email backstop reports the cap reached (CUR-920), independently of the in-memory limiter and the per-user counter", async () => {
+	it("blocks a send when the DB-backed target-email backstop reports the cap reached, independently of the in-memory limiter and the per-user counter", async () => {
 		cfg.RESEND_API_KEY = "re_test_key";
 		targetEmailRateState.allowed = false; // the in-memory limiter alone would allow this send
 		const { sendWorkspaceInvitationEmail } = await import("./betterAuth");
@@ -254,7 +256,7 @@ describe("sendWorkspaceInvitationEmail (CUR-550)", () => {
 	}, 120000);
 
 	// A stranger chooses the workspace name, so it must not lead the email, and the person
-	// receiving it must be able to see who sent it. (CUR-3194)
+	// receiving it must be able to see who sent it.
 	it("keeps the workspace name out of the subject and names the inviter in the body", async () => {
 		cfg.RESEND_API_KEY = "re_test_key";
 		fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ id: "r" }), { status: 200 }));
@@ -273,7 +275,7 @@ describe("sendWorkspaceInvitationEmail (CUR-550)", () => {
 	}, 120000);
 });
 
-describe("refuseOverInviteCaps (CUR-2835, CUR-3194)", () => {
+describe("refuseOverInviteCaps", () => {
 	it("refuses once the site-wide ceiling is reached, reports it, and records nothing", async () => {
 		siteInviteState.allowed = false;
 		const { refuseOverInviteCaps } = await import("./betterAuth");
@@ -282,6 +284,7 @@ describe("refuseOverInviteCaps (CUR-2835, CUR-3194)", () => {
 			body: { message: expect.stringContaining("as many workspace invitations as it can today") },
 		});
 		expect(captureMock).toHaveBeenCalledTimes(1);
+		expect(tripMock).toHaveBeenCalledWith("invite-site-ceiling", expect.objectContaining({ limitName: expect.any(String) }));
 		expect(recordWorkspaceInviteSendMock).not.toHaveBeenCalled();
 		expect(recordSiteInviteSendMock).not.toHaveBeenCalled();
 	}, 120000);
@@ -305,7 +308,7 @@ describe("refuseOverInviteCaps (CUR-2835, CUR-3194)", () => {
 		expect(recordSiteInviteSendMock).toHaveBeenCalledTimes(1);
 	}, 120000);
 
-	it("an address holding 5 pending invites refuses a 6th, the reserved test domain included (CUR-4167)", async () => {
+	it("an address holding 5 pending invites refuses a 6th, the reserved test domain included", async () => {
 		const { refuseOverInviteCaps } = await import("./betterAuth");
 		pendingState.count = 4;
 		await expect(refuseOverInviteCaps({ id: "user-1" }, "e2e-1@example.org")).resolves.toBeUndefined();

@@ -10,7 +10,7 @@ import { backendDisplay, backendHost } from "$lib/chat/servingProvenance";
 import { CHAT_HOST } from "$lib/chat/paths";
 import { servingRecorded } from "$lib/chat/utils/routerMetadata";
 
-// What the data export writes (CUR-1836). The account page promises "a ZIP of your conversations
+// What the data export writes. The account page promises "a ZIP of your conversations
 // and files, with where each answer came from inside it", so the ZIP is written for the person who
 // asked for it: a README saying what each file is, one readable markdown file per conversation with
 // each answer's provenance in the words the chat itself shows, and a JSON copy built from named
@@ -18,7 +18,7 @@ import { servingRecorded } from "$lib/chat/utils/routerMetadata";
 // `organizationId`, `userAgent` and the full timings block into a file meant for the person.
 //
 // No credential ever goes in the ZIP: not a session token, an OAuth access, refresh or id token, a
-// storage or connector credential, or a tunnel secret, even the person's own (CUR-4183). A ZIP gets
+// storage or connector credential, or a tunnel secret, even the person's own. A ZIP gets
 // forwarded and uploaded elsewhere, and a token in it signs whoever holds it in as that person.
 // `export.spec.ts` seeds a value in every credential column and fails if any reaches a file here; a
 // new column named like a credential fails it too until the spec seeds or exempts it.
@@ -32,7 +32,7 @@ type ExportedMessage = {
 	content: string;
 	createdAt?: string;
 	interrupted?: boolean;
-	/** Set on every answer: this text was written by a model (EU AI Act Art. 50 marking, CUR-996). */
+	/** Set on every answer: this text was written by a model (EU AI Act Art. 50 marking). */
 	aiGenerated?: true;
 	/** The same fact in IPTC's digital-source-type vocabulary, which other software already reads. */
 	digitalSourceType?: typeof TRAINED_ALGORITHMIC_MEDIA;
@@ -53,6 +53,8 @@ export type ExportedConversation = {
 	updatedAt?: string;
 	/** Path of this conversation's readable copy inside the ZIP. */
 	readable: string;
+	/** The names of the tags the person put on this chat, when it has any. */
+	tags?: string[];
 	messages: ExportedMessage[];
 };
 
@@ -74,7 +76,7 @@ function provenanceLine(message: Message, conversationModelId: string): string {
 			}`
 		: "from training · no live sources";
 
-	// Judge each answer against the model it was asked of, not the conversation's latest pick. (CUR-3234)
+	// Judge each answer against the model it was asked of, not the conversation's latest pick.
 	const requestedModelId = message.requestedModel ?? conversationModelId;
 	const modelId = servedModelId(message.routerMetadata, requestedModelId);
 	if (!modelId) {
@@ -94,7 +96,7 @@ function provenanceLine(message: Message, conversationModelId: string): string {
 
 /**
  * The backend as a person may keep and share it: the institution's name, or the bare host for one we
- * have not named. Never the base URL, whose path can carry a provider account id (CUR-2186).
+ * have not named. Never the base URL, whose path can carry a provider account id.
  */
 function exportedBackend(backendBaseURL?: string): string | undefined {
 	return backendDisplay(backendBaseURL) ?? (backendHost(backendBaseURL) || undefined);
@@ -124,7 +126,7 @@ export function readableName(conversation: Pick<Conversation, "_id" | "title" | 
 
 // An agent answer keeps its step log in a <think> block at the head of its content, and a reasoning
 // model can leave that block unclosed. The chat folds it away (ChatMessage.svelte), so the readable
-// copy drops it too; conversations.json keeps the content whole (CUR-4359). Only an answer's leading
+// copy drops it too; conversations.json keeps the content whole. Only an answer's leading
 // block goes: a person asking about the tag, or an answer quoting it, keeps every word.
 function withoutLeadingThink(message: Message): string {
 	const text = message.content.trim();
@@ -162,7 +164,9 @@ export function conversationMarkdown(
 
 export function exportedConversation(
 	conversation: Conversation,
-	filesByMessage: Map<string, string[]> = new Map()
+	filesByMessage: Map<string, string[]> = new Map(),
+	/** The account's tags, id to name: a chat stores ids, and the export says names. */
+	tagNames: Map<string, string> = new Map()
 ): ExportedConversation {
 	return {
 		id: conversation._id.toString(),
@@ -171,6 +175,7 @@ export function exportedConversation(
 		createdAt: iso(conversation.createdAt),
 		updatedAt: iso(conversation.updatedAt),
 		readable: readableName(conversation),
+		...(conversation.tags?.length ? { tags: conversation.tags.map((id) => tagNames.get(id) ?? id) } : {}),
 		messages: conversation.messages
 			.filter((m) => m.from !== "system")
 			.map((m) => ({
@@ -200,7 +205,7 @@ export function exportedConversation(
 }
 
 // conversations.json names its own format and version, and the account it came from, so an import can
-// refuse a file it cannot read, or one from someone else, before writing anything (CUR-4180). The shape
+// refuse a file it cannot read, or one from someone else, before writing anything. The shape
 // borrows Thunderbolt's export envelope (`format`, `schemaVersion`, `exportedAt`); none of its code.
 export const EXPORT_FORMAT = "alpha-export";
 export const EXPORT_SCHEMA_VERSION = 1;
@@ -282,6 +287,8 @@ export function readme(counts: {
 	listingFailed?: boolean;
 	/** Set when the person has taken part in human evaluation. */
 	humanEvalRatings?: number;
+	/** An answer was streaming, or had just finished, when this export ran. */
+	streamingAnswers?: boolean;
 }): string {
 	return [
 		"# Your AI Potluck data",
@@ -298,7 +305,7 @@ export function readme(counts: {
 				: `- \`files/\` holds the ${counts.files} file${counts.files === 1 ? "" : "s"} you stored with us. Files you uploaded keep the folders you put them in. A file you attached in a chat is under \`files/conversations/\`, and that conversation's readable file names its path under the message it came with.`,
 		...(counts.filesSkipped
 			? [
-					`- ${counts.filesSkipped} stored file${counts.filesSkipped === 1 ? "" : "s"} could not be read when this export ran and ${counts.filesSkipped === 1 ? "is" : "are"} missing here. Export again later, or download ${counts.filesSkipped === 1 ? "it" : "them"} from Your files (${CHAT_HOST}/chat/storage).`,
+					`- ${counts.filesSkipped} stored file${counts.filesSkipped === 1 ? "" : "s"} could not be read when this export ran and ${counts.filesSkipped === 1 ? "is" : "are"} missing here. Export again later, or download ${counts.filesSkipped === 1 ? "it" : "them"} from Your files${CHAT_HOST ? ` (${CHAT_HOST}/chat/storage)` : ""}.`,
 				]
 			: []),
 		`- \`conversations.json\` holds the same conversations in a form other software can read. It opens with \`"format": "${EXPORT_FORMAT}"\` and \`"schemaVersion": ${EXPORT_SCHEMA_VERSION}\`, so a program reading it knows which layout it is, and the list itself is under \`conversations\`.`,
@@ -306,6 +313,11 @@ export function readme(counts: {
 		...(counts.humanEvalRatings !== undefined
 			? [
 					`- \`human-evaluation.json\` holds the languages you evaluate models in, the level you declared, when you agreed to how ratings are used, and your ${counts.humanEvalRatings} rating${counts.humanEvalRatings === 1 ? "" : "s"}, each with the request and answer you rated.`,
+				]
+			: []),
+		...(counts.streamingAnswers
+			? [
+					"- `streaming-answers.json` holds the text of an answer that was still streaming, or had finished in the two minutes before this export ran, exactly as it was sent to your browser. Alpha keeps it only so a dropped connection can pick the answer up again, and deletes it two minutes after the answer ends.",
 				]
 			: []),
 		"",

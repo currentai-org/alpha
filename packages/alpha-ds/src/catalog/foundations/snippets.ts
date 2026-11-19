@@ -27,7 +27,7 @@ export const FOUNDATION_SNIPPETS: Record<string, Record<string, Snippet>> = {
 theme/         ThemeProvider · mode (light | dark | system) · portal host
 internal/      cn/tv (token-aware merge) · positioner · field context · popup skin
 components/    <name>/  Parts.svelte · <name>.recipe.ts · index.ts · <name>.docs.ts · examples/
-primitives/    Surface · Stack · Inline · Grid · Center · Frame · VisuallyHidden
+primitives/    Surface · Stack · Inline · Grid · VisuallyHidden
 patterns/      AppShell · Sidebar · ThreadHeader · Composer · Message · EmptyState · PageHeader
 catalog/       registry (docs by convention) · UI for /designsystem
 lint/          eslint plugin: alpha-ds/*`

@@ -1,10 +1,10 @@
 /**
- * Better Auth's BROWSER client (CUR-434) — pairs with the server instance in
+ * Better Auth's BROWSER client — pairs with the server instance in
  * server/betterAuth.ts. Client-side only: never import this from server code (it pulls in
  * @simplewebauthn/browser's WebAuthn calls, which need `navigator.credentials`).
  *
  * No `baseURL` passed — confirmed against the installed package's own client/config.mjs:
- * with `baseURL` unset, `getBaseURL()` falls through to `window.location.origin`, and since this is
+ * with `baseURL` unset, `getBaseURL` falls through to `window.location.origin`, and since this is
  * always browser code that's exactly the right origin. Only `basePath` needs to match the server's
  * `basePath: AUTH_BASE_PATH` (betterAuth.ts) and the catch-all route's own location
  * (routes/chat/api/auth/[...all]/+server.ts).
@@ -25,7 +25,7 @@ import { AUTH_BASE_PATH } from "$lib/chat/paths";
 // simplewebauthn aborts the previous ceremony when a new one starts, but only once the previous one
 // has reached navigator.credentials.get, which happens just after its options request answers. The
 // passkey client gives no hook on that request, so these global ones count it in flight, and
-// passkeyOptionsSettled() lets the button wait until none is. (CUR-2695)
+// passkeyOptionsSettled lets the button wait until none is.
 const AUTHENTICATE_OPTIONS_PATH = "/passkey/generate-authenticate-options";
 const OPTIONS_WAIT_CAP_MS = 5_000;
 let optionsInFlight = 0;
@@ -55,7 +55,7 @@ export function passkeyOptionsSettled(): Promise<void> {
 }
 
 export const authClient = createAuthClient({
-	// Pinned like the server's basePath (CUR-4448): Better Auth answers only under AUTH_BASE_PATH.
+	// Pinned like the server's basePath: Better Auth answers only under AUTH_BASE_PATH.
 	basePath: AUTH_BASE_PATH,
 	fetchOptions: {
 		onRequest(context) {
@@ -65,7 +65,7 @@ export const authClient = createAuthClient({
 			if (isAuthenticateOptions(context.request.url)) optionsAnswered();
 		},
 	},
-	// organizationClient (CUR-550) needs no options — creatorRole/roles live server-side only
+	// organizationClient needs no options — creatorRole/roles live server-side only
 	// (betterAuth.ts); this just gives the dynamic path-proxy `authClient.organization.*` its shape.
 	plugins: [passkeyClient(), emailOTPClient(), organizationClient()],
 });

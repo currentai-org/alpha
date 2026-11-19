@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages.js';
 	import { getLocale } from '$lib/paraglide/runtime.js';
-	// Account management over Better Auth's client (CUR-580): it ships listAccounts/linkSocial/
+	// Account management over Better Auth's client: it ships listAccounts/linkSocial/
 	// unlinkAccount/listSessions/revokeSession and the passkey plugin's
 	// listUserPasskeys/deletePasskey/addPasskey, and this page calls them.
 	// Every method below is the generic path-proxy (better-auth/dist/client/proxy.mjs) rather than a
@@ -15,6 +15,8 @@
 	import { Button, DangerRow, Input, Surface } from "@aipotluck/alpha-ds";
 	import { page } from "$app/state";
 	import { base } from "$lib/chat/paths";
+	import { historyKeyring } from "$lib/chat/crypto/historyKeyring.svelte";
+	import { exportRoute, summaryState, type ExportSummaryState } from "$lib/chat/utils/exportRoute";
 	import { authClient } from "$lib/chat/authClient";
 	import { deleteAllOpen, deleteAllAnchor, deleteAllMode } from "$lib/chat/stores/deleteAll";
 	import { friendlyAuthErrorMessage } from "$lib/chat/authErrorMessages";
@@ -28,7 +30,6 @@
 	import RiDeleteBinFill from "~icons/ri/delete-bin-fill";
 	import RiComputerLine from "~icons/ri/computer-line";
 	import RiDownload2Line from "~icons/ri/download-2-line";
-	import RiLinksLine from "~icons/ri/links-line";
 	import RiLogoutBoxLine from "~icons/ri/logout-box-line";
 
 	import type { PageData } from "./$types";
@@ -71,7 +72,7 @@
 	}
 
 	// Start from what +page.server.ts read, so the page arrives with its content. The
-	// browser fetches only a section the server could not read. (CUR-2710)
+	// browser fetches only a section the server could not read.
 	const initial = data.initial;
 	type SessionResult = { session?: { token?: string } | null; user?: { email?: string | null; name?: string | null } | null } | null;
 	const initialSession: SessionResult = initial.session.ok ? (initial.session.value as SessionResult) : null;
@@ -100,7 +101,7 @@
 	// with error.message === error.code's own text ("Session is not fresh"), which is not fit for the
 	// screen. Anyone signed in more than a day (the normal case; sessions last a week) hits this every
 	// time, so it needs its own actionable state rather than folding into sessionsError's generic
-	// string (CUR-963).
+	// string.
 	let sessionsNeedsReauth = $state(sessionsStartNotFresh);
 	let currentSessionToken = $state<string | null>(initialSession?.session?.token ?? null);
 	// The address this account signs in with, shown as typed: the page named every linked provider
@@ -109,7 +110,7 @@
 	// The name this account shows on its account menu and to people in a shared workspace.
 	// An email-code account starts with none, and a provider account starts with the provider's.
 	// An account created without a name can carry its email in the name slot; that is not a name
-	// anyone chose, so the field starts empty and the email shows as the placeholder. (CUR-1176)
+	// anyone chose, so the field starts empty and the email shows as the placeholder.
 	const chosenName = (s: SessionResult) => {
 		const name = s?.user?.name ?? "";
 		return name === (s?.user?.email ?? null) ? "" : name;
@@ -124,10 +125,10 @@
 	let actionError = $state("");
 
 	// "see what Alpha has kept for you, and delete it in two steps". This trigger is the only
-	// one that deletes the account (CUR-1420): it opens the shared wipe modal in "account" mode, which
+	// one that deletes the account: it opens the shared wipe modal in "account" mode, which
 	// asks for a typed confirmation and sends `?account=delete`, so the wipe also removes passkeys,
 	// linked providers and sessions. "Forget everything" opens the same modal in "data" mode and leaves
-	// the account in place. (CUR-434)
+	// the account in place.
 	let deleteAccountBtnEl = $state<HTMLElement>();
 	function openDeleteAccount() {
 		deleteAllAnchor.set(deleteAccountBtnEl);
@@ -175,14 +176,14 @@
 	// newly-created — there's no lighter "step up" endpoint for it. Same dual sign-out this app already
 	// uses elsewhere (NavMenu.svelte's handleLogout) so it's correct regardless of which auth system
 	// this visitor's session came from, then round-trips back here via login's existing `next` param
-	// (CUR-960) so a fresh sign-in lands the visitor right back on this list. (CUR-963)
+	// so a fresh sign-in lands the visitor right back on this list.
 	async function reauthenticate() {
 		if (reauthenticating) return;
 		reauthenticating = true;
 		actionError = "";
 		// Better Auth answers a refused sign-out with { error } rather than throwing. Going on to /login
 		// with the session still live would bounce straight back here (login's `next`), the same button
-		// and no word of why, so a refusal stops here and says so (CUR-4011).
+		// and no word of why, so a refusal stops here and says so.
 		const result = await authClient.signOut().catch((e: unknown) => ({ error: e }));
 		if (result?.error) {
 			reauthenticating = false;
@@ -200,7 +201,7 @@
 		// email shared, etc.) falls through to Better Auth's default -- the bare app root with a
 		// ?error=<code> query string and no page there to read it. So it round-trips back to this
 		// page; read the code once, show it, then strip the query string so a refresh
-		// doesn't re-show a stale error. (CUR-850)
+		// doesn't re-show a stale error.
 		const errorCode = page.url.searchParams.get("error");
 		if (errorCode) {
 			actionError = friendlyAuthErrorMessage(errorCode);
@@ -287,7 +288,7 @@
 	}
 
 	// addPasskey() passes a `name` so each credential renders distinctly instead of as the same
-	// literal "Passkey" fallback (line ~365) (CUR-649). No rename-after-creation call exists in Better
+	// literal "Passkey" fallback (line ~365). No rename-after-creation call exists in Better
 	// Auth's client SDK, so whatever name is set here is the only shot. Simpler than an
 	// AAGUID-registry lookup: prompt, pre-filled with a suggested browser + OS + date name, editable or
 	// clearable before the ceremony starts. A cancelled prompt (null) skips registration entirely; an
@@ -346,7 +347,7 @@
 				: null
 	);
 
-	// The Thunderbolt file's own window (CUR-2407): ten minutes, kept apart from the ZIP's hour.
+	// The Thunderbolt file's own window: ten minutes, kept apart from the ZIP's hour.
 	let thunderboltExportedAt = $state<Date | null>(null);
 	let thunderboltLockedUntil = $derived(
 		data.nextThunderboltExportAt
@@ -356,12 +357,84 @@
 				: null
 	);
 
+	// The Open WebUI file's window, ten minutes like Thunderbolt's.
+	let openWebUiExportedAt = $state<Date | null>(null);
+	let openWebUiLockedUntil = $derived(
+		data.nextOpenWebUiExportAt
+			? new Date(data.nextOpenWebUiExportAt)
+			: openWebUiExportedAt
+				? new Date(openWebUiExportedAt.getTime() + 10 * 60 * 1000)
+				: null
+	);
+
 	// What the ZIP will hold, said on the row before anyone downloads it, so a person can see
 	// their conversations, files and each answer's provenance are in it without unzipping anything.
-	// Until the counts arrive (or if they can't be read) the row keeps its general description. (CUR-2395)
-	let exportSummary = $state<{ conversations: number; answers: number; files: number } | null>(
+	// Until the counts arrive (or if they can't be read) the row keeps its general description.
+	let exportSummary = $state<{ conversations: number; answers: number; files: number; sealed?: number } | null>(
 		null
 	);
+
+	// A sealed conversation's text opens only with the person's history key, which the server does not
+	// hold, so with any sealed conversation each download goes through the browser: it fetches the file,
+	// opens the sealed conversations here and writes their text in before saving. It refuses
+	// rather than saving a file without those words.
+	let sealedExportBusy = $state<string | null>(null);
+	async function heldIdentity(): Promise<string | null> {
+		// The device key opens the history key a moment after the page loads.
+		for (let i = 0; i < 50 && !historyKeyring.identity; i++) await new Promise((r) => setTimeout(r, 100));
+		return historyKeyring.identity;
+	}
+	// Where the summary stands. No download takes the plain link until it says nothing is sealed: a click
+	// before it answers waits for it, and a failed summary refuses with a reason (exportRoute.ts).
+	let summaryStatus = $state<ExportSummaryState>({ status: "loading" });
+	let summarySettled: Promise<ExportSummaryState> = new Promise(() => {});
+	async function exportClick(
+		e: MouseEvent,
+		kind: "zip" | "open-webui" | "thunderbolt",
+		href: string,
+		onDownload: () => void
+	) {
+		let route = exportRoute(summaryStatus);
+		if (route === "plain") {
+			// After the click's own navigation has started the download; swapping the link out
+			// synchronously could cancel it.
+			setTimeout(onDownload, 0);
+			return;
+		}
+		e.preventDefault();
+		if (sealedExportBusy) return;
+		sealedExportBusy = kind;
+		actionError = "";
+		try {
+			if (route === "wait") route = exportRoute(await summarySettled);
+			if (route === "refuse") {
+				throw new Error(
+					"We couldn't check whether any of your chats are sealed, so nothing was downloaded. Reload the page and try again."
+				);
+			}
+			if (route === "plain") {
+				window.location.assign(href);
+				onDownload();
+				return;
+			}
+			const [{ buildSealedExport, SealedExportError }, { downloadBlob }] = await Promise.all([
+				import("$lib/chat/utils/sealedExport"),
+				import("$lib/chat/utils/downloadBlob")
+			]);
+			try {
+				const { blob, filename } = await buildSealedExport(kind, href, `${base}/api/v2/export/sealed`, await heldIdentity());
+				downloadBlob(blob, filename);
+				onDownload();
+			} catch (err) {
+				if (err instanceof SealedExportError && err.reason === "locked") historyKeyring.askToUnlock();
+				throw err;
+			}
+		} catch (err) {
+			actionError = err instanceof Error ? err.message : String(err);
+		} finally {
+			sealedExportBusy = null;
+		}
+	}
 	// The page is server-rendered, so "Add a passkey" is on screen before its click handler exists;
 	// held disabled until then, a click that early is refused visibly instead of silently doing nothing.
 	let hydrated = $state(false);
@@ -369,11 +442,14 @@
 		hydrated = true;
 	});
 	onMount(() => {
-		if (!page.data.dataExportEnabled) return;
-		fetch(`${base}/api/v2/export/summary`)
+		summarySettled = fetch(`${base}/api/v2/export/summary`)
 			.then((r) => (r.ok ? r.json() : null))
-			.then((summary) => (exportSummary = summary))
-			.catch(() => {});
+			.then((summary) => {
+				exportSummary = summary;
+				return summaryState(summary);
+			})
+			.catch(() => summaryState(null))
+			.then((state) => (summaryStatus = state));
 	});
 </script>
 
@@ -396,8 +472,8 @@
 	{/if}
 
 	{#if !ready}
-		<!-- CUR-703: shown only while the browser fetches a section +page.server.ts could not read
-		     (CUR-2710 moved the four Better Auth reads to the server). -->
+		<!-- shown only while the browser fetches a section +page.server.ts could not read
+		     (that change moved the four Better Auth reads to the server). -->
 		<div class="flex flex-col gap-4" aria-hidden="true">
 			{#each Array.from({ length: 3 }) as _, i (i)}
 				<div class="flex flex-col gap-2">
@@ -414,7 +490,7 @@
 			{/each}
 		</div>
 	{:else}
-		<!-- Display name (CUR-1176) -->
+		<!-- Display name -->
 		<section class="flex flex-col gap-2">
 			<h3 class="type-caption text-fg-2 uppercase">
 				<label for="account-display-name">{m.account_displayName()}</label>
@@ -448,8 +524,8 @@
 			<h3 class="type-caption text-fg-2 uppercase">{m.account_linkedProviders()}</h3>
 			<Surface level="2" border="auto">
 				<!-- Email code signs in any account with an address and nothing can remove it, so it is listed
-				     first, without a button, and an email-code-only account never shows "Nothing linked yet."
-				     (CUR-3049). -->
+				     first, without a button, and an email-code-only account never shows "Nothing linked yet.".
+				     -->
 				{#if signedInEmail}
 					<div
 						data-testid="sign-in-method-email"
@@ -479,8 +555,8 @@
 									<div class="truncate type-body text-fg-1">{meta.label}</div>
 									<div class="type-caption text-fg-3">{m.account_linkedOn({ date: fmtDate(account.createdAt) })}</div>
 									<!-- The reason Unlink is off is shown here, not only in the button's title, which a disabled
-									     button rarely shows and touch never does (CUR-2899). It names the real rule, the last
-									     provider (CUR-2794), since the email-code row above says it can always sign in (CUR-3144). -->
+									     button rarely shows and touch never does. It names the real rule, the last
+									     provider, since the email-code row above says it can always sign in. -->
 									{#if (accounts?.length ?? 0) <= 1}
 										<div id="unlink-last-reason-{account.id}" class="type-caption text-fg-3">
 											{m.account_lastSignInReason()}
@@ -557,6 +633,15 @@
 			</Surface>
 		</section>
 
+		<!-- Your key: the ways into the conversation-history key -->
+		<!-- Loaded only with the flag on: it carries age-encryption, which no other visitor needs. -->
+		{#if page.data.historyKeyEnabled && page.data.user?.id}
+			{@const userId = page.data.user.id}
+			{#await import("$lib/chat/components/historyKey/YourKeySection.svelte") then { default: YourKeySection }}
+				<YourKeySection {userId} />
+			{/await}
+		{/if}
+
 		<!-- Active sessions -->
 		<section class="flex flex-col gap-2">
 			<h3 class="type-caption text-fg-2 uppercase">{m.account_activeSessions()}</h3>
@@ -583,8 +668,8 @@
 								<RiComputerLine class="size-4 flex-none" />
 								<div class="min-w-0">
 									<!-- The raw user agent ("Mozilla/5.0 (Windows NT 10.0…") would make two of a person's own
-									     browsers look identical, so a platform label leads and the full string stays as the tooltip
-									     (CUR-2735). -->
+									     browsers look identical, so a platform label leads and the full string stays as the tooltip.
+									     -->
 									<div
 										class="truncate type-body text-fg-1"
 										title={sessionRow.userAgent ?? undefined}
@@ -611,12 +696,68 @@
 			</Surface>
 		</section>
 
-		<!-- CUR-434: what's kept + delete-in-two-steps. Conversations are the only stored data today —
-		     document/file storage is out of scope until CUR-414 lands a storage path to show. -->
-		<section class="flex flex-col gap-2">
+		<!-- A single-file download (Thunderbolt, Open WebUI). A plain link, like the ZIP's: the response carries
+		     its own Content-Disposition. Inside the route's ten-minute window the row says when instead, since a
+		     second click would land back here with nothing said. -->
+		{#snippet fileExportRow(row: {
+			kind: "open-webui" | "thunderbolt";
+			href: string;
+			title: string;
+			help: string;
+			aria: string;
+			lockedUntil: Date | null;
+			locked: (time: string) => string;
+			lockedTestId: string;
+			onDownload: () => void;
+		})}
+			{#if row.lockedUntil}
+				<div
+					class="flex items-center justify-between gap-3 border-b border-line-surface px-3 py-3"
+					data-testid={row.lockedTestId}
+				>
+					<div class="min-w-0">
+						<div class="truncate type-body text-fg-1">{row.title}</div>
+						<div class="type-caption text-fg-3" role="status">
+							{row.locked(row.lockedUntil.toLocaleTimeString(getLocale(), { hour: "2-digit", minute: "2-digit" }))}
+						</div>
+					</div>
+					<Button size="sm" casing="sentence" disabled>
+						<RiDownload2Line aria-hidden="true" />
+						<span>{m.account_download()}</span>
+					</Button>
+				</div>
+			{:else}
+				<a
+					href={row.href}
+					data-sveltekit-reload
+					class="group flex items-center justify-between gap-3 border-b border-line-surface px-3 py-3 no-underline"
+					aria-label={row.aria}
+					aria-busy={sealedExportBusy === row.kind}
+					onclick={(e) => {
+						void exportClick(e, row.kind, row.href, row.onDownload);
+					}}
+				>
+					<div class="min-w-0">
+						<div class="truncate type-body text-fg-1">{row.title}</div>
+						<div class="type-caption text-fg-3">{row.help}</div>
+					</div>
+					<span
+						class="inline-flex h-control-sm flex-none items-center gap-2 border border-line-surface bg-surface-raised px-2.5 type-body text-fg-2 transition-control group-hover:text-fg-1 group-hover:tint-hover rounded-sharp"
+					>
+						<RiDownload2Line aria-hidden="true" class="size-4" />
+						<span>{m.account_download()}</span>
+					</span>
+				</a>
+			{/if}
+		{/snippet}
+
+		<!-- what's kept + delete-in-two-steps. Conversations are the only stored data today —
+		     document/file storage is out of scope until that change lands a storage path to show. -->
+		<!-- `#your-data` is where conversation expiry's "Export yours" links land. -->
+		<section id="your-data" class="flex scroll-mt-4 flex-col gap-2">
 			<h3 class="type-caption text-fg-2 uppercase">{m.account_yourData()}</h3>
 			<Surface level="2" border="auto">
-				{#if page.data.dataExportEnabled && exportLockedUntil}
+				{#if exportLockedUntil}
 					<!-- One export an hour. Said here, with the time, rather than letting a second click land
 					     on the route's bare 429 page, which has no way back into the app. -->
 					<div
@@ -634,19 +775,18 @@
 							<span>{m.account_download()}</span>
 						</Button>
 					</div>
-				{:else if page.data.dataExportEnabled}
-					<!-- CUR-1681. A plain link rather than a fetch: the response is a ZIP with its own
+				{:else}
+					<!-- A plain link rather than a fetch: the response is a ZIP with its own
 					     Content-Disposition, so the browser handles the download and there is no progress
-					     state to invent. Gated on the same boolean the endpoint reads. One export an hour. -->
+					     state to invent. One export an hour. -->
 					<a
 						href={`${base}/api/v2/export`}
 						data-sveltekit-reload
 						class="group flex items-center justify-between gap-3 border-b border-line-surface px-3 py-3 no-underline"
 						aria-label={m.account_downloadAria()}
-						onclick={() => {
-							// After the click's own navigation has started the download; swapping the link
-							// out synchronously could cancel it.
-							setTimeout(() => (exportedAt = new Date()), 0);
+						aria-busy={sealedExportBusy === "zip"}
+						onclick={(e) => {
+							void exportClick(e, "zip", `${base}/api/v2/export`, () => (exportedAt = new Date()));
 						}}
 					>
 						<div class="min-w-0">
@@ -673,70 +813,33 @@
 						</span>
 					</a>
 				{/if}
-				{#if page.data.thunderboltExportEnabled && thunderboltLockedUntil}
-					<!-- Same reason as the ZIP's locked row: a second click inside the window would land
-					     back here with nothing said. -->
-					<div
-						class="flex items-center justify-between gap-3 border-b border-line-surface px-3 py-3"
-						data-testid="thunderbolt-row-locked"
-					>
-						<div class="min-w-0">
-							<div class="truncate type-body text-fg-1">{m.account_thunderboltTitle()}</div>
-							<div class="type-caption text-fg-3" role="status">
-								{m.account_thunderboltLocked({ time: thunderboltLockedUntil.toLocaleTimeString(getLocale(), { hour: "2-digit", minute: "2-digit" }) })}
-							</div>
-						</div>
-						<Button size="sm" casing="sentence" disabled>
-							<RiDownload2Line aria-hidden="true" />
-							<span>{m.account_download()}</span>
-						</Button>
-					</div>
-				{:else if page.data.thunderboltExportEnabled}
-					<!-- CUR-2407. The same plain-link download as the ZIP above, gated on the boolean
-					     api/v2/export/thunderbolt reads. A .json of its own because Thunderbolt's import
-					     picker takes nothing else. -->
-					<a
-						href={`${base}/api/v2/export/thunderbolt`}
-						data-sveltekit-reload
-						class="group flex items-center justify-between gap-3 border-b border-line-surface px-3 py-3 no-underline"
-						aria-label={m.account_thunderboltAria()}
-						onclick={() => {
-							setTimeout(() => (thunderboltExportedAt = new Date()), 0);
-						}}
-					>
-						<div class="min-w-0">
-							<div class="truncate type-body text-fg-1">{m.account_thunderboltTitle()}</div>
-							<div class="type-caption text-fg-3">{m.account_thunderboltHelp()}</div>
-						</div>
-						<span
-							class="inline-flex h-control-sm flex-none items-center gap-2 border border-line-surface bg-surface-raised px-2.5 type-body text-fg-2 transition-control group-hover:text-fg-1 group-hover:tint-hover rounded-sharp"
-						>
-							<RiDownload2Line aria-hidden="true" class="size-4" />
-							<span>{m.account_download()}</span>
-						</span>
-					</a>
+				{#if page.data.thunderboltExportEnabled}
+					<!-- A .json of its own because Thunderbolt's import picker takes nothing else. -->
+					{@render fileExportRow({
+						kind: "thunderbolt",
+						href: `${base}/api/v2/export/thunderbolt`,
+						title: m.account_thunderboltTitle(),
+						help: m.account_thunderboltHelp(),
+						aria: m.account_thunderboltAria(),
+						lockedUntil: thunderboltLockedUntil,
+						locked: (time) => m.account_thunderboltLocked({ time }),
+						lockedTestId: 'thunderbolt-row-locked',
+						onDownload: () => (thunderboltExportedAt = new Date())
+					})}
 				{/if}
-				{#if page.data.thunderboltSyncEnabled}
-					<!-- CUR-4312: live two-way sync. Connecting starts in Thunderbolt; this row leads to the
-					     Connections page that lists it and disconnects it. -->
-					<a
-						href={`${base}/settings/connections`}
-						class="group flex items-center justify-between gap-3 border-b border-line-surface px-3 py-3 no-underline"
-						aria-label={m.account_thunderboltSyncAria()}
-						data-testid="thunderbolt-sync-row"
-					>
-						<div class="min-w-0">
-							<div class="truncate type-body text-fg-1">{m.account_thunderboltSyncTitle()}</div>
-							<div class="type-caption text-fg-3">{m.account_thunderboltSyncHelp()}</div>
-						</div>
-						<span
-							class="inline-flex h-control-sm flex-none items-center gap-2 border border-line-surface bg-surface-raised px-2.5 type-body text-fg-2 transition-control group-hover:text-fg-1 group-hover:tint-hover rounded-sharp"
-						>
-							<RiLinksLine aria-hidden="true" class="size-4" />
-							<span>{m.product_connections()}</span>
-						</span>
-					</a>
-				{/if}
+				<!-- Open WebUI's own chat file, so a person who came from Open WebUI can go back. Shown to
+				     every signed-in account, like the ZIP above. -->
+				{@render fileExportRow({
+					kind: "open-webui",
+					href: `${base}/api/v2/export/open-webui`,
+					title: m.account_openWebUiTitle(),
+					help: m.account_openWebUiHelp(),
+					aria: m.account_openWebUiAria(),
+					lockedUntil: openWebUiLockedUntil,
+					locked: (time) => m.account_openWebUiLocked({ time }),
+					lockedTestId: 'open-webui-row-locked',
+					onDownload: () => (openWebUiExportedAt = new Date())
+				})}
 				<DangerRow
 					title={m.account_deleteTitle()}
 					bind:ref={deleteAccountBtnEl}

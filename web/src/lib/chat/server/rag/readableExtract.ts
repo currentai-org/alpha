@@ -1,4 +1,4 @@
-// Main-text extraction with Mozilla Readability, behind the `readable-extract` flag (CUR-2152).
+// Main-text extraction with Mozilla Readability.
 //
 // htmlExtract.ts strips tags and keeps everything else, so nav, cookie banners and footers ride along
 // into an uploaded file's text, an admin-ingested page, and (when Firecrawl can't read it) a linked
@@ -13,20 +13,11 @@
 // `textContent`, which runs adjacent blocks together with no separator; the regex pass supplies the
 // block newlines and entity decoding the rest of the pipeline already expects.
 //
-// Readability and linkedom load on first use, so a deployment with the flag off never pays their
+// Readability and linkedom load on first use, so a process that never extracts HTML never pays their
 // ~25 ms import.
 
-import { flagEnabledOr } from "$lib/chat/server/flags";
 import { logger } from "$lib/chat/server/logger";
 import { extractTextFromHtml } from "./htmlExtract";
-
-/** PostHog flag key. Owner: chat. See CUR-2152. */
-export const READABLE_EXTRACT_FLAG = "readable-extract";
-
-/** Default off: a new extractor for every upload and ingest is a rollout, not a fix to a live defect. */
-export function readableExtractEnabled(): boolean {
-	return flagEnabledOr(READABLE_EXTRACT_FLAG, () => false);
-}
 
 /** Under this, Readability found a fragment (a disclaimer, one heading) and the page's text is elsewhere. */
 const SHORT_CHARS = 600;
@@ -36,15 +27,14 @@ const MAX_READABLE_BYTES = 1_500_000;
 export type ReadableCaller = "upload" | "admin-ingest" | "linked-page";
 type Outcome = "readability" | "short-fallback" | "too-large" | "null-fallback" | "error-fallback";
 
-/** `{ title, text }` from an HTML string: Readability's main text when the flag is on and it finds
- *  enough of it, the regex extractor's text otherwise. Never throws. Readability's text also carries
- *  `publishedTime`, the page's own date when it states one (CUR-4147). */
+/** `{ title, text }` from an HTML string: Readability's main text when it finds enough of it, the
+ *  regex extractor's text otherwise. Never throws. Readability's text also carries `publishedTime`,
+ *  the page's own date when it states one. */
 export async function extractReadableHtml(
 	html: string,
 	caller: ReadableCaller
 ): Promise<{ title: string; text: string; publishedTime?: string }> {
 	const regex = () => extractTextFromHtml(html);
-	if (!readableExtractEnabled()) return regex();
 
 	const t0 = Date.now();
 	const log = (outcome: Outcome, readableChars?: number) =>

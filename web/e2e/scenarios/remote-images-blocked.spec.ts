@@ -3,7 +3,7 @@
 import { test, expect, type Page } from './helpers/test';
 
 // A page the model read can steer its answer, and any image that answer names is
-// fetched the moment the answer renders, carrying whatever the model put in the URL (CUR-1898). The renderer
+// fetched the moment the answer renders, carrying whatever the model put in the URL. The renderer
 // turns a remote image into a link (marked.spec.ts); the page's img-src/media-src CSP is the
 // backstop for anything that slips past it. These check the backstop on the deployed build: every
 // image the page itself loads comes from a host the policy names, and an image pointed anywhere

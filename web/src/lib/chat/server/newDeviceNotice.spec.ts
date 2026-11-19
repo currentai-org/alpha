@@ -1,6 +1,6 @@
-// The new-device notice decides from message_events rows keyed on the browser's device cookie
-// (CUR-4231), then sends through Resend. Both are mocked here with in-memory stand-ins, so this pins the decision and the
-// failure posture; new-device-notice.spec.ts drives the real thing on a preview. (CUR-4181)
+// The new-device notice decides from message_events rows keyed on the browser's device cookie,
+// then sends through Resend. Both are mocked here with in-memory stand-ins, so this pins the decision and the
+// failure posture; new-device-notice.spec.ts drives the real thing on a preview.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const cfg: Record<string, string> = {};
@@ -89,7 +89,7 @@ beforeEach(() => {
 	db.email = "ada@example.com";
 });
 
-describe("noticeNewDevice (CUR-4181)", { timeout: 60_000 }, () => {
+describe("noticeNewDevice", { timeout: 60_000 }, () => {
 	it("sends nothing for an account's first device, since there is nothing to compare it with", async () => {
 		await signIn(MAC_CHROME);
 		expect(resendCalls()).toHaveLength(0);
@@ -184,7 +184,7 @@ function cookieContext(jar: Map<string, string>) {
 	return { ctx, set };
 }
 
-describe("deviceIdForSignIn (CUR-4231)", () => {
+describe("deviceIdForSignIn", () => {
 	it("mints a token for a browser with no cookie and gives the same id on its next sign-in", async () => {
 		const { deviceIdForSignIn } = await import("./newDeviceNotice");
 		const jar = new Map<string, string>();

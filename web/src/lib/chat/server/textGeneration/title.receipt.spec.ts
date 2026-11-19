@@ -1,6 +1,6 @@
 /**
  * The titling model reads the visitor's first message, so the turn's receipt names it, with
- * where it ran taken from the call's own response. A call that failed names nobody. (CUR-3563)
+ * where it ran taken from the call's own response. A call that failed names nobody.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MessageUpdateType, type MessageUpdate } from "$lib/chat/types/MessageUpdate";
@@ -53,7 +53,7 @@ const receipt = (updates: MessageUpdate[]) =>
 		| { assistedBy?: Array<Record<string, string>> }
 		| undefined;
 
-describe("a model-written title names its model and recorded host on the receipt (CUR-3563)", () => {
+describe("a model-written title names its model and recorded host on the receipt", () => {
 	beforeEach(() => {
 		call.served = undefined;
 		call.fail = false;

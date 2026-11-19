@@ -6,7 +6,7 @@ import postgres from 'postgres';
 import { signInWithRole, type StaffRole } from './helpers/adminRole';
 import { sslFor } from './helpers/db';
 
-// CUR-3991 (under CUR-927): each staff role reaches the admin routes its grants allow and is refused
+//: each staff role reaches the admin routes its grants allow and is refused
 // the rest, signed in as a person rather than through the shared password. The role holder is a
 // fresh example.org user seeded in the preview's own database, so this runs on every PR preview.
 //
@@ -97,7 +97,7 @@ test(
 			'an editor opened a report'
 		).toBe(303);
 
-		// The portal opens to the panel list, with no sign-in prompt in its place (CUR-3992).
+		// The portal opens to the panel list, with no sign-in prompt in its place.
 		await page.goto('/chat/admin');
 		await expect(page.getByRole('link', { name: /^Tuning\b/ })).toBeVisible();
 		await expect(page.locator('[data-staff-sign-in]')).toHaveCount(0);
@@ -177,7 +177,7 @@ test(
 );
 
 test(
-	'a browser holding a shared-password admin cookie from before CUR-3992 is signed out everywhere',
+	'a browser holding a shared-password admin cookie from before is signed out everywhere',
 	{ tag: ['@admin-roles', '@preview-only'] },
 	async ({ playwright, baseURL }) => {
 		// The shape the retired login issued: `<user>.<expiry>.<hmac>`, unexpired. Its proof cannot be

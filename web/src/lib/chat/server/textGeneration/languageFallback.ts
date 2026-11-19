@@ -1,15 +1,16 @@
 /**
- * A curated, pre-generation detector for a fixed, small set of languages where answers go wrong
- * (CUR-742): Quechua and Yucatec Maya get the English capability blurb, and Tzeltal leaks internal
- * scaffolding (CUR-674). It grows as failures are found and is not built for the long tail, the same
+ * A curated, pre-generation detector for a fixed, small set of languages where the models answer
+ * badly: a Quechua or Yucatec Maya message tends to get the English capability blurb back, and a
+ * Tzeltal one tends to get internal prompt scaffolding. The set grows as such languages are found and
+ * is not built for the long tail, the same
  * posture as `detectWikiLang` (searchUtil.ts), which documents the tradeoff for the adjacent
  * search-language problem.
  *
  * No off-the-shelf language-ID library: `franc` covers Quechua (quz/quy/qug) but neither Yucatec Maya
  * nor Tzeltal in any of its 163 languages, so it would solve one of three targets. The n-gram tier
- * below (CUR-1841) uses trigram profiles built for every target and its neighbours from the UDHR
+ * below uses trigram profiles built for every target and its neighbours from the UDHR
  * corpus instead, so one method covers every target. The word list still answers first; see "The
- * trigram tier" further down for why and how well it does.
+ * trigram tier" further down for why.
  *
  * Word list provenance: every word below is drawn from a cited source, not written from memory. Two
  * provenances:
@@ -18,20 +19,20 @@
  *   that language, official OHCHR translations archived by the "UDHR in Unicode" project at
  *   unicode.org/udhr (via the Wayback Machine). Picked by frequency and distinctiveness from the
  *   corpus. Exact source per language cited below.
- * - The conversational tier (quz and yua only, CUR-1737): the UDHR is legal-register prose with no
+ * - The conversational tier (quz and yua only): the UDHR is legal-register prose with no
  *   greeting, no second-person verb form and no request, the whole register a chat opener uses, so the
- *   base tier alone does not fire on ordinary conversation (zero hits on five ordinary openers across
- *   all four languages). Sourced from each language's Wikivoyage phrasebook "Basics" section instead,
- *   which is written in that register. Cited per language below. **Tzeltal has no addition**: no
- *   Wikivoyage phrasebook page exists for it, and neither Omniglot's Tzeltal page, Wiktionary
- *   (its "Tzeltal lemmas" category holds 32 nature, kinship and animal entries, no greeting or verb of
- *   request) nor Glosbe carries a conversational Tzeltal wordlist; every candidate source was the same
- *   UDHR text already in the base tier. Left unaddressed rather than invented.
- * - Inflected forms (quz, yua; CUR-1680): Quechua and Yucatec Maya inflect the same root into a
+ *   base tier alone does not fire on ordinary conversation. Sourced from each language's Wikivoyage
+ *   phrasebook "Basics" section instead, which is written in that register. Cited per language below.
+ *   **Tzeltal has no addition**: no Wikivoyage phrasebook page exists for it, and neither Omniglot's
+ *   Tzeltal page, Wiktionary (its "Tzeltal lemmas" category holds nature, kinship and animal entries,
+ *   no greeting or verb of request) nor Glosbe carries a conversational Tzeltal wordlist; every
+ *   candidate source was the same UDHR text already in the base tier. Left unaddressed rather than invented.
+ * - Inflected forms (quz, yua): Quechua and Yucatec Maya inflect the same root into a
  *   different surface word per person, mood and register, so a fixed word list only matches the one
  *   inflected form it contains. `imaynallam` does not match `imaynatam`; `yanapaway` (imperative) does
  *   not match `yanapawankiman` (conditional, "you would help me"). Three more attested forms cover
- *   CUR-674's prompts without inventing an inflection from memory:
+ *   common Quechua and Maya requests the conversational tier misses, without inventing an inflection
+ *   from memory:
  *   - `napaykullayki` (quz): a second, verbatim "Hello." (formal) entry on the same Wikivoyage Quechua
  *     phrasebook page cited above, printed next to `rimaykullayki` as an alternate.
  *   - `yanapawankiman` (quz): not a phrasebook entry, so built by rule rather than by memory. Vanenos'
@@ -54,7 +55,6 @@
 
 import { chromeLanguage } from "$lib/chat/chromeCopy";
 import languageProfiles from "$lib/chat/server/data/language-profiles.json";
-import { ZENTROPI_JUDGE, type RoutedLanguage } from "../../../../../config/safetyScreen";
 import { trigrams } from "./trigrams";
 
 // Apostrophe-like marks vary by source transcription (U+02BC MODIFIER LETTER APOSTROPHE in the Yucatec
@@ -80,7 +80,7 @@ const LOW_RESOURCE_LANG_WORDS: Record<string, string[]> = {
 		"manan",
 		"atinchu",
 		"kausay",
-		// Conversational tier (CUR-1737). Source: en.wikivoyage.org/wiki/Quechua_phrasebook, "Basics"
+		// Conversational tier. Source: en.wikivoyage.org/wiki/Quechua_phrasebook, "Basics"
 		// section. Every word below is copied verbatim from that page's example phrases, not typed from
 		// memory. "imaynallam" and "yanapaway" match a probe like "Imaynallam kashanki? ... Yanapaway
 		// papa tarpuymanta."; they are the source's "How are you?" and "Help!" entries.
@@ -92,7 +92,7 @@ const LOW_RESOURCE_LANG_WORDS: Record<string, string[]> = {
 		"yanapaway", // "Help!"
 		"sulpayki", // "Thank you." (formal)
 		"arí", // "Yes."
-		// Inflected forms (CUR-1680; provenance in the file header): one more Wikivoyage entry and one
+		// Inflected forms (provenance in the file header): one more Wikivoyage entry and one
 		// rule-derived form, which together match "Napaykullayki. ¿Imaynatam yanapawankiman?" where the
 		// conversational tier above does not.
 		"napaykullayki", // "Hello." (formal, alternate to rimaykullayki)
@@ -109,7 +109,7 @@ const LOW_RESOURCE_LANG_WORDS: Record<string, string[]> = {
 		"tiʼal",
 		"wíinik",
 		"unaj",
-		// Conversational tier (CUR-1737). Source: en.wikivoyage.org/wiki/Yucatec_Maya_phrasebook,
+		// Conversational tier. Source: en.wikivoyage.org/wiki/Yucatec_Maya_phrasebook,
 		// "Basics" section, verbatim. "bix" and "beel" match a probe like "Bix a beel? Ba'ax ka
 		// wa'alik?"; the source's informal "Hello."/"How are you?" entry is "Bix a beel".
 		"bix", // "Hello."/"How are you?" opener
@@ -120,7 +120,7 @@ const LOW_RESOURCE_LANG_WORDS: Record<string, string[]> = {
 		"áantaj", // "Help!"
 		"k'aaba", // "name", from "What is your name?"
 		"óolal", // from "Nib óolal" — "Thank you."
-		// Inflected forms (CUR-1680; see file header). Matches "Bix jeʼel a wáantken?", which hits only
+		// Inflected forms (see file header). Matches "Bix jeʼel a wáantken?", which hits only
 		// "bix" under the conversational tier above, one short of the 2-hit threshold.
 		"je'el", // "is it possible" / "can" — opens the page's own "je'el u páajtal...?" construction
 	],
@@ -130,7 +130,7 @@ const LOW_RESOURCE_LANG_WORDS: Record<string, string[]> = {
 	// No conversational tier here, unlike quz and yua. No Tzeltal phrasebook, Wiktionary
 	// word list or dictionary meeting this file's citation bar exists (Omniglot's sample text is the
 	// same UDHR Article 1 already in the base tier). The tier is left out rather than typed from
-	// memory, which this file's header forbids. Tzeltal conversational coverage is a known gap. (CUR-1737)
+	// memory, which this file's header forbids. Tzeltal conversational coverage is a known gap.
 	tzh: ["winiketik", "spisil", "yu'un", "sk'an", "rerecho", "lumetik", "bit'il", "mach'a"],
 };
 
@@ -154,11 +154,11 @@ function detectByWordList(text: string): string | null {
 	return null;
 }
 
-// ── The trigram tier (CUR-1841) ──────────────────────────────────────────────────────────────────
+// ── The trigram tier ────────────────────────────────────────────────────────────────────────────
 // The word list matches only the exact inflected forms it holds, and Quechua and Yucatec Maya inflect
-// every root into a different surface word per person, mood and register. On held-out Tatoeba
-// sentences (tatoeba.org, never used to build anything here) it catches 3 of 631 Quechua, 1 of 33
-// Yucatec Maya and 0 of 116 Yoruba.
+// every root into a different surface word per person, mood and register, so on held-out Tatoeba
+// sentences (tatoeba.org, never used to build anything here) it catches only a small fraction of the
+// Quechua and Yucatec Maya ones.
 //
 // So a sentence the list misses is scored against character-trigram profiles of every language in
 // `data/language-profiles.json` (built by scripts/gen-language-profiles.mts from the same UDHR corpus
@@ -166,14 +166,10 @@ function detectByWordList(text: string): string | null {
 // what the list cannot do. It fires only when the nearest language is a target, it beats the nearest
 // non-target by MIN_MARGIN, and the text has MIN_WORDS words.
 //
-// Both thresholds were chosen on odd-numbered Tatoeba lines and reported on even-numbered ones:
-//   all lengths:      Quechua 148/316, Yoruba 38/58, Yucatec 11/17; 1 false positive in 2,257
-//                     sentences across 16 control languages
-//   five words or more (closer to a chat message): Quechua 88/106, Yoruba 23/27, Yucatec 10/11;
-//                     0 false positives in 3,105
-// A false positive costs more than a miss: it hands someone writing in Swahili or Finnish a canned
-// "I can't answer" where they would otherwise get an answer. The false positives in tuning were sentences
-// of five words or fewer, which is what MIN_WORDS is for.
+// Both thresholds were chosen on odd-numbered Tatoeba lines and checked on even-numbered ones, with
+// sentences in control languages counted as false positives. A false positive costs more than a miss:
+// it hands someone writing in Swahili or Finnish a canned "I can't answer" where they would otherwise
+// get an answer. False positives come from very short sentences, which is what MIN_WORDS is for.
 const MIN_MARGIN = 0.5;
 const MIN_WORDS = 3;
 // Below this many trigrams there is too little text to score at all.
@@ -188,8 +184,8 @@ const TRIGRAM_TARGETS: Record<string, string> = {
 	qug: "quz",
 	yua: "yua",
 	tzh: "tzh",
-	// Yoruba is a served launch language (A2; CUR-1920, CUR-2699), so its profile is a control: Yoruba
-	// text lands on it and gets no notice. Its serving quality is CUR-1104's.
+	// Yoruba is a language the app serves, so its profile is a control: Yoruba
+	// text lands on it and gets no notice.
 };
 
 type RawProfiles = Record<string, { grams: string; counts: number[] }>;
@@ -204,7 +200,7 @@ function buildProfiles(raw: RawProfiles): Profiles {
 	});
 }
 
-const RAW = languageProfiles as { profiles: RawProfiles; routingProfiles: RawProfiles };
+const RAW = languageProfiles as { profiles: RawProfiles };
 const PROFILES = buildProfiles(RAW.profiles);
 
 /** The target the nearest profile counts as, and how far it beats the nearest profile of any other
@@ -244,30 +240,14 @@ export function detectLowResourceLanguage(text: string): string | null {
 	return detectByWordList(text) ?? detectByTrigrams(text, TRIGRAM_TARGETS, PROFILES);
 }
 
-// The input screen's language routing (CUR-4340): the same scorer and thresholds, over every profile
-// above plus Amharic and its Tigrinya control from `routingProfiles`, with the routed languages in
-// web/config/safetyScreen.ts as the targets. Yoruba, Hausa and Kiswahili are controls above and
-// targets here. Ethiopic script alone does not route: Tigrinya and Tigre share it.
-const ROUTING_PROFILES: Profiles = [...PROFILES, ...buildProfiles(RAW.routingProfiles)];
-
-/** The routed language (am, yo, ha, sw) the scorer ranks first, and whether it clears MIN_MARGIN
- *  (`sure`). Pure, no network call. A sure turn screens with CoPE; a turn read as one but not sure is a
- *  near-miss, screened by Shieldstral with CoPE as a second opinion: "where can I buy drugs" in Amharic
- *  (margin 0.39) and in Hausa (0.24) both are (CUR-4423). Null, exactly where the scorer has no routed
- *  language on top, screens with Shieldstral alone. */
-export function readAfricanLanguage(text: string): { lang: RoutedLanguage; sure: boolean } | null {
-	const rank = rankByTrigrams<RoutedLanguage>(text, ZENTROPI_JUDGE.routedLanguages, ROUTING_PROFILES);
-	return rank ? { lang: rank.target, sure: rank.margin >= MIN_MARGIN } : null;
-}
-
 type NoticeLanguage = ReturnType<typeof chromeLanguage>;
 
 /**
  * The notice in the visitor's interface language, the same language as the status line above
  * it (chromeCopy.ts). The notice's whole job is to be legible to the person, so a Spanish browser
  * that wrote in Yucatec Maya must not get it in English. Each version suggests English plus
- * the interface language; the English one suggests English or Spanish. Written by the team, not
- * reviewed by a native speaker, like the rest of chromeCopy.ts. (CUR-1579)
+ * the interface language; the English one suggests English or Spanish. Written by the maintainers
+ * and not reviewed by a native speaker, like the rest of chromeCopy.ts.
  */
 const NOTICES: Record<NoticeLanguage, { text: (name: string) => string; names: Partial<Record<string, string>> }> = {
 	en: {
@@ -340,7 +320,7 @@ function noticeLanguage(content: string): string | null {
 /**
  * Whether this conversation has already shown the notice. It ends by offering to try anyway,
  * so whatever the person sends next — "yes, try anyway", or a reply in the language itself — is their
- * answer to that offer, and a second notice would just repeat the question they answered. (CUR-1841)
+ * answer to that offer, and a second notice would just repeat the question they answered.
  */
 export function lowResourceNoticeAlreadyShown(
 	messages: ReadonlyArray<{ from: string; content: string }>
@@ -349,7 +329,7 @@ export function lowResourceNoticeAlreadyShown(
 }
 
 /**
- * The history the model sees once the notice has been shown (CUR-1841). Left verbatim, the notice reads
+ * The history the model sees once the notice has been shown. Left verbatim, the notice reads
  * to the model as something it said, and on a "try anyway" turn a model can copy it word for word
  * instead of attempting an answer. A short note that the offer was made keeps the context and gives it
  * nothing to copy.
@@ -370,12 +350,11 @@ export function withLowResourceNoticeSummarized<T extends { from: string; conten
 
 /**
  * The pre-stored, honest fallback — never generated, so it can't hallucinate or leak scaffolding text
- * the way asking the model to draft its own disclaimer does (CUR-674).
+ * the way asking the model to draft its own disclaimer does.
  *
  * Written in the visitor's interface language (NOTICES above), never in the low-resource language
  * itself: see this file's header for why the UDHR corpus can ground the WORD LIST above but not a
- * first-person sentence. NOT reviewed by a speaker of any of these three languages — do not let this
- * ship without that sign-off (CUR-742).
+ * first-person sentence. No native speaker has reviewed these notices yet.
  */
 export function lowResourceFallbackMessage(lang: string, uiLang?: string | null): string {
 	const notice = NOTICES[chromeLanguage(uiLang)];

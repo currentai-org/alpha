@@ -43,7 +43,7 @@ describe("deployEnv", () => {
 	// The manifest declares DEPLOY_ENV, so an unconfigured deployment can see it as "" (the
 	// scaffold's blank placeholder) rather than absent. A `??` chain would stop at that "" and never
 	// reach VERCEL_ENV — the same silent-dark-feature failure this module exists to catch, just from
-	// a blank string instead of a typo. (CUR-142)
+	// a blank string instead of a typo.
 	it("falls back to VERCEL_ENV when DEPLOY_ENV is blank, not just when it's absent", () => {
 		setEnv("DEPLOY_ENV", "");
 		setEnv("VERCEL_ENV", "production");

@@ -4,7 +4,7 @@ import { expect, test } from './helpers/test';
 import { CHAT_ENTRY } from './helpers/chatEntry';
 import { setFlagOverrides } from './helpers/flagOverride';
 
-// CUR-4692: the Language panel used to name the served model with the highest language score, so it
+// the Language panel used to name the served model with the highest language score, so it
 // showed GLM for Pashto and Apertus for English — pairings Auto never makes. It now asks `route()`.
 // The pairing is on `data-auto-pick` / `data-model` (catalog ids), not the cycling line, so the check
 // does not wait on the 2.6s rotation.

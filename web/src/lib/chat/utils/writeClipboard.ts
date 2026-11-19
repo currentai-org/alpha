@@ -1,6 +1,6 @@
 // One copy path for every Copy control. The Clipboard API first; when it is missing (an
 // insecure context) or refuses (a blocked permission, an embed), the old execCommand path. Resolves
-// false only when both refuse, so the caller can say it couldn't copy instead of doing nothing. (CUR-2823)
+// false only when both refuse, so the caller can say it couldn't copy instead of doing nothing.
 export async function writeClipboard(text: string): Promise<boolean> {
 	if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
 		try {

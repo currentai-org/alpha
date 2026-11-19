@@ -4,7 +4,7 @@ import { stripThink, droppedUnclosedThink } from "./stripThink";
 // Why this distinction earns a function: three different facts (budget spent reasoning, model said
 // nothing, call threw) must not collapse into one silent `null`. The first is a structural failure: at
 // 1024 tokens a reasoning panelist cannot answer a substantive question, so the panel reads "empty"
-// for every question worth asking it while a short question still lands (CUR-149).
+// for every question worth asking it while a short question still lands.
 describe("droppedUnclosedThink — tells a capped reasoner apart from a silent one", () => {
 	it("TRUE when the budget ran out mid-reasoning: an unclosed block is all there was", () => {
 		expect(droppedUnclosedThink("<think>still working through the four parts and then")).toBe(true);

@@ -6,7 +6,7 @@
 	import OrgMention from '../provenance/OrgMention.svelte';
 
 	/**
-	 * "Where your last message went" (CUR-4580): one line per hop the answer's message passed through,
+	 * "Where your last message went": one line per hop the answer's message passed through,
 	 * read from what the turn recorded. A place nobody published, or a fact the turn did not record, says
 	 * so in words; a hop outside Europe carries a tag.
 	 */

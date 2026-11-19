@@ -3,6 +3,7 @@
 // pulls the model/router graph in via decideRagSources, which is why these can't be unit-
 // tested there; here they are import-clean.
 
+import { DEPLOYMENT } from "$lib/deployment";
 import type { RagContext, RagSource } from "$lib/chat/types/Rag";
 import { formatRagEngine } from "$lib/chat/utils/formatRagEngine";
 
@@ -40,16 +41,23 @@ export function withDeadline<T>(
 }
 
 /** Said beside every catalog entry in the prompt. A catalog entry describes some other project, and
- *  the model otherwise reads "OpenAI Web Search" as an account of its own search tool (CUR-3304). */
+ *  the model otherwise reads "OpenAI Web Search" as an account of its own search tool. */
 const CATALOG_ENTRY_NOTE =
 	"(Catalog entry about another project listed in the AI Potluck catalog. It describes that project, never this app or its own tools.)";
 
-/** A catalog entry is a source whose page is one of our catalog `/product/…` or `/org/…` pages. */
+/** Stands in for this site's own host when a source URL is relative. */
+const RELATIVE_HOST = "relative.invalid";
+
+/** A catalog entry is a source whose page is one of our catalog `/product/…` or `/org/…` pages: a
+ *  relative URL, or one on the installation's own domain. */
 function isCatalogEntry(s: Pick<RagSource, "url">): boolean {
 	if (!s.url) return false;
 	try {
-		const u = new URL(s.url, "https://www.aipotluck.org");
-		return /(^|\.)aipotluck\.org$/.test(u.hostname) && /^\/(product|org)\/[^/]+\/?$/.test(u.pathname);
+		const u = new URL(s.url, `https://${RELATIVE_HOST}`);
+		const apex = DEPLOYMENT.apexDomain;
+		const ours =
+			u.hostname === RELATIVE_HOST || (apex !== null && (u.hostname === apex || u.hostname.endsWith(`.${apex}`)));
+		return ours && /^\/(product|org)\/[^/]+\/?$/.test(u.pathname);
 	} catch {
 		return false;
 	}

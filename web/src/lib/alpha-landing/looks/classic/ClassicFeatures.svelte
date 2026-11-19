@@ -8,13 +8,13 @@
 	);
 	const sectionsIntro = $derived(readContent().sectionsIntro);
 	import { ThemeProvider } from '@aipotluck/alpha-ds';
-	import LanguageBento from '$lib/chat/components/bentos/LanguageBento.svelte';
-	import DataBento from '$lib/chat/components/bentos/DataBento.svelte';
-	import FootprintBento from '$lib/chat/components/bentos/FootprintBento.svelte';
-	import ThemeBento from '$lib/chat/components/bentos/ThemeBento.svelte';
-	import InstructionsBento from '$lib/chat/components/bentos/InstructionsBento.svelte';
-	import ModelBento from '$lib/chat/components/bentos/ModelBento.svelte';
-	import XRayBento from '$lib/chat/components/bentos/XRayBento.svelte';
+	import LanguageBento from '../../bentos/LanguageBento.svelte';
+	import DataBento from '../../bentos/DataBento.svelte';
+	import FootprintBento from '../../bentos/FootprintBento.svelte';
+	import ThemeBento from '../../bentos/ThemeBento.svelte';
+	import InstructionsBento from '../../bentos/InstructionsBento.svelte';
+	import ModelBento from '../../bentos/ModelBento.svelte';
+	import XRayBento from '../../bentos/XRayBento.svelte';
 
 	// Each section: its copy plus one or more interactive bentos built from the app's real pieces.
 	// `split` puts one bento beside the copy; `grid` puts the copy on top and the bentos in a row.

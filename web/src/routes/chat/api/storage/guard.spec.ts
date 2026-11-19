@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { logger } from '$lib/chat/server/logger';
-import { HmaUnreachableError } from '$lib/chat/server/storage/csamScan';
+import { CsamScannerUnconfiguredError, HmaUnreachableError } from '$lib/chat/server/storage/csamScan';
 import { ImageScreenUnavailableError, TooManyImagesToScreenError } from '$lib/chat/server/storage/uploadImageGuard';
 import { UnscannableFileError } from '$lib/chat/server/storage/embeddedImageScan';
-import { FileTooLargeError } from '$lib/chat/server/storage/custodialStorage';
+import { CsamMatchError, FileTooLargeError } from '$lib/chat/server/storage/custodialStorage';
 import { storageFailure } from './guard';
 
 // storageFailure maps the error to an HTTP error and throws it; the log line is what is under test.
@@ -17,12 +17,14 @@ function refuse(e: unknown): void {
 
 afterEach(() => vi.restoreAllMocks());
 
-describe('storageFailure logs the refusing check (CUR-4658)', () => {
+describe('storageFailure logs the refusing check', () => {
 	it.each([
 		['csam-hash', new HmaUnreachableError('HTTP 502'), 'HTTP 502'],
 		['image-screen', new ImageScreenUnavailableError('no answer from the screen'), 'no answer from the screen'],
 		['embedded-images', new UnscannableFileError('pdf did not open'), 'pdf did not open'],
-		['image-screen-count', new TooManyImagesToScreenError(31), '31']
+		['image-screen-count', new TooManyImagesToScreenError(31), '31'],
+		['csam-match', new CsamMatchError(), 'upload rejected'],
+		['csam-unconfigured', new CsamScannerUnconfiguredError(), 'CSAM_SCAN_BASE_URL is unset']
 	])('names the %s check and its reason, so a refused upload can be traced to the check that refused it', (check, err, reason) => {
 		const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {});
 		refuse(err);

@@ -1,4 +1,4 @@
-// The warm cron's model probe (CUR-4042). Without it, a model is marked busy only after three
+// The warm cron's model probe. Without it, a model is marked busy only after three
 // visitors in a row have failed on it, so the first visitors to reach a dead model always fail, and at
 // low traffic the mark is never set. The probe sends each picker model one tiny turn every few
 // minutes and marks it busy, or clears the mark, from the result. Nobody has to fail first.
@@ -6,10 +6,10 @@
 // A probe is a real turn in miniature: the model's own `getEndpoint()`, so the same lanes, failover,
 // hedging and last-lane give-up a visitor's turn gets, with the first-token deadline the conversation
 // route's watchdog gives that model (turnDeadlines.ts). It goes red for what a visitor would hit: a 429,
-// a gateway timeout or 5xx, a 404 (the router has no working entry for the model, CUR-4629), a lane that
+// a gateway timeout or 5xx, a 404 (the router has no working entry for the model), a lane that
 // sends nothing in time, an empty completion, or the model's own lanes giving up so that another model
-// answers in its place. Any other 4xx is our request's fault, says nothing about the model, and is logged
-// without a verdict. The probe's request is fixed and answers on a served model, so a 404 to it means
+// answers in its place, or a 402 (the host will not bill the call). Any other 4xx is our
+// request's fault, says nothing about the model, and is logged without a verdict. The probe's request is fixed and answers on a served model, so a 404 to it means
 // the model is not being served, not that we asked wrongly.
 //
 // Cost: PROBE_EVERY_MINUTES apart per model, so 1440 / 4 = 360 probes per model per day, each a
@@ -29,7 +29,7 @@ import { logger } from "$lib/chat/server/logger";
 import { noteAnswered, noteFailed } from "$lib/chat/server/modelBusy";
 import { firstTokenDeadlineMs } from "$lib/chat/server/turnDeadlines";
 import { NoFirstChunkError } from "$lib/chat/server/endpoints/failover";
-import { isHardUpstreamFailure } from "$lib/chat/server/endpoints/retryPolicy";
+import { isHardUpstreamFailure, upstreamErrorText } from "$lib/chat/server/endpoints/retryPolicy";
 import type { Endpoint } from "$lib/chat/server/endpoints/types";
 import { DEFAULT_ANSWER_RESERVE } from "$lib/chat/server/endpoints/openai/endpointOai";
 import { sameServedModel } from "../../../../config/picker";
@@ -48,8 +48,11 @@ export interface ProbeTarget {
 
 type ProbeVerdict =
 	| { ok: true; ms: number; served?: string; identity: "match" | "mismatch" | "unknown" }
-	| { ok: false; ms: number; reason: string }
-	| { ok: null; ms: number; reason: string };
+	| { ok: false; ms: number; reason: string; upstream?: string }
+	| { ok: null; ms: number; reason: string; upstream?: string };
+
+/** The status every lane of a probed model throws under a spec's fault, or null for none. */
+export type ProbeRefusal = 429 | 402 | null;
 
 /** The models due on this minute's tick: model `i` of the id-sorted list runs when the minute since the
  *  epoch falls in its slot. @internal exported for its unit tests */
@@ -69,18 +72,20 @@ export function countsAsDown(e: unknown): boolean {
 	if (e instanceof NoFirstChunkError) return true;
 	const status = statusOf(e);
 	if (status === undefined) return true; // a dropped connection or a thrown network error
-	return status === 429 || isHardUpstreamFailure(e);
+	// a 402 is the host refusing to bill this model's calls ("Pay-as-you go is not enabled for
+	// provider scaleway yet."), which every visitor turn on it hits until someone fixes the account.
+	return status === 429 || status === 402 || isHardUpstreamFailure(e);
 }
 
 /**
  * @internal exported for its unit tests.
  * One probe of `model`: send a tiny turn and wait for its first chunk, no longer than a visitor's turn
- * would. `refuse` (the `every_lane_rate_limited` fault, preview only) makes every lane throw a 429 before
- * any request leaves.
+ * would. `refuse` (preview only) makes every lane throw before any request leaves: 429 under the
+ * `every_lane_rate_limited` fault, 402 under `every_lane_payment_required`.
  */
 export async function probeModel(
 	model: ProbeTarget,
-	{ refuse = false, deadlineMs = firstTokenDeadlineMs(model.id) }: { refuse?: boolean; deadlineMs?: number } = {}
+	{ refuse = null, deadlineMs = firstTokenDeadlineMs(model.id) }: { refuse?: ProbeRefusal; deadlineMs?: number } = {}
 ): Promise<ProbeVerdict> {
 	const started = Date.now();
 	const controller = new AbortController();
@@ -102,7 +107,8 @@ export async function probeModel(
 			abortSignal: controller.signal,
 			// The answer path's request, so the gateway treats it as a turn would (no cross-model fallback).
 			servesUserAnswer: true,
-			...(refuse ? { rateLimitEveryLane: true } : {}),
+			...(refuse === 429 ? { rateLimitEveryLane: true } : {}),
+			...(refuse === 402 ? { paymentRequiredEveryLane: true } : {}),
 		});
 		let served: string | undefined;
 		for await (const out of stream) {
@@ -117,7 +123,10 @@ export async function probeModel(
 		const ms = Date.now() - started;
 		if (timedOut) return { ok: false, ms, reason: `no-first-chunk-${deadlineMs}ms` };
 		const reason = statusOf(e) !== undefined ? `http-${statusOf(e)}` : e instanceof Error ? e.message : String(e);
-		return countsAsDown(e) ? { ok: false, ms, reason } : { ok: null, ms, reason };
+		// The host's own words, so a refusal explains itself in the logs.
+		const upstream = upstreamErrorText(e);
+		const detail = { ms, reason, ...(upstream && upstream !== reason ? { upstream } : {}) };
+		return countsAsDown(e) ? { ok: false, ...detail } : { ok: null, ...detail };
 	} finally {
 		clearTimeout(timer);
 		controller.abort(); // closes the stream at its first chunk
@@ -128,7 +137,7 @@ export async function probeModel(
  *  answer clears the mark. */
 export async function probeAndRecord(
 	model: ProbeTarget,
-	opts: { refuse?: boolean; scope?: string; deadlineMs?: number } = {}
+	opts: { refuse?: ProbeRefusal; scope?: string; deadlineMs?: number } = {}
 ): Promise<ProbeVerdict> {
 	const verdict = await probeModel(model, opts);
 	const fields = { leg: "model-probe", model: model.id, ...verdict, ...(opts.scope ? { scope: opts.scope } : {}) };

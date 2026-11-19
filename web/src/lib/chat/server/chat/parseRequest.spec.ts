@@ -123,7 +123,7 @@ beforeEach(() => {
 	multimodal.enabled = false;
 	fileSize.bytes = 3_000_000;
 	// A configured scanner that finds nothing, unless a test overrides it to exercise the
-	// unconfigured/match/unreachable paths (CUR-2382: there is no "skipped" any more).
+	// unconfigured/match/unreachable paths (there is no "skipped" status).
 	scanner.configured = true;
 	scanCsamHash.mockReset().mockResolvedValue({ status: "clean" });
 	recordCsamMatch.mockReset().mockResolvedValue(undefined);
@@ -157,7 +157,7 @@ describe("parseChatRequest", () => {
 		});
 	});
 
-	it("resolves a request with no web search mode to off, so no path reads it as on (CUR-3293)", async () => {
+	it("resolves a request with no web search mode to off, so no path reads it as on", async () => {
 		const out = await parseChatRequest({ request: makeRequest({ inputs: "hi" }), conv, locals: makeLocals() });
 		expect(out.webSearchMode).toBe("off");
 		const auto = await parseChatRequest({
@@ -174,6 +174,51 @@ describe("parseChatRequest", () => {
 		await expect(
 			parseChatRequest({ request: req, conv, locals: makeLocals() })
 		).rejects.toMatchObject({ status: 400 });
+	});
+
+	describe("a malformed data field answers 400, not a thrown 500", () => {
+		async function rejection(data: string | unknown) {
+			const fd = new FormData();
+			fd.set("data", typeof data === "string" ? data : JSON.stringify(data));
+			const req = { formData: async () => fd } as unknown as Request;
+			const { logger } = await import("$lib/chat/server/logger");
+			const warn = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
+			warn.mockClear();
+			const err = await parseChatRequest({ request: req, conv, locals: makeLocals() }).then(
+				() => null,
+				(e: unknown) => e
+			);
+			return { err, warn };
+		}
+
+		it("answers 400, not 500, when webSearchMode is not one of off/auto/always, and names the field", async () => {
+			const { err, warn } = await rejection({ inputs: "hi", webSearchMode: "sometimes" });
+			expect(err).toMatchObject({ status: 400, body: { message: expect.stringContaining("webSearchMode") } });
+			expect(warn).toHaveBeenCalledWith({ fields: ["webSearchMode"] }, expect.any(String));
+		});
+
+		it("answers 400, not a thrown ZodError, when id is not a UUID, and never echoes the value", async () => {
+			const { err, warn } = await rejection({ inputs: "hi", id: "not-a-uuid-secret" });
+			expect(err).toMatchObject({ status: 400, body: { message: expect.stringContaining("id") } });
+			expect(JSON.stringify(err)).not.toContain("not-a-uuid-secret");
+			expect(JSON.stringify(warn.mock.calls)).not.toContain("not-a-uuid-secret");
+		});
+
+		it("answers 400, not a thrown SyntaxError, when the data field is invalid JSON", async () => {
+			const { err, warn } = await rejection("{not json");
+			expect(err).toMatchObject({ status: 400 });
+			expect(warn).toHaveBeenCalledTimes(1);
+		});
+
+		it("does not capture an exception for a malformed body, since it is the caller's mistake", async () => {
+			const errorTracking = await import("$lib/chat/server/errorTracking");
+			const capture = vi.spyOn(errorTracking, "captureServerException");
+			const { logger } = await import("$lib/chat/server/logger");
+			const logError = vi.spyOn(logger, "error");
+			await rejection({ inputs: "hi", id: "nope" });
+			expect(capture).not.toHaveBeenCalled();
+			expect(logError).not.toHaveBeenCalled();
+		});
 	});
 
 	it("attaches the per-turn MCP selection and timezone to locals", async () => {
@@ -203,7 +248,7 @@ describe("parseChatRequest", () => {
 		).rejects.toMatchObject({ status: 415 });
 	});
 
-	describe("CUR-4400: guests cannot use agent mode, on every deployment", () => {
+	describe("guests cannot use agent mode, on every deployment", () => {
 		it("refuses a guest's agent-mode-on turn with 403 and the sign-in line, even where no sign-in is offered", async () => {
 			signIn.offered = false;
 			await expect(
@@ -266,7 +311,7 @@ describe("parseChatRequest", () => {
 			).resolves.toBeDefined();
 		});
 
-		it("CUR-4400: refuses a guest's file on preview or production even with sign-in off", async () => {
+		it("refuses a guest's file on preview or production even with sign-in off", async () => {
 			multimodal.enabled = true;
 			signIn.offered = false;
 			for (const env of ["preview", "production"]) {
@@ -288,7 +333,7 @@ describe("parseChatRequest", () => {
 	});
 
 	// A long paste becomes a clipboard-typed file in the composer, and counting it as an
-	// attachment would fail every send after one where this gate is shut. (CUR-1895)
+	// attachment would fail every send after one where this gate is shut.
 	const b64 = (s: string | Buffer) => Buffer.from(s).toString("base64");
 	const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d, 0x49, 0x48, 0x44, 0x52]);
 
@@ -347,7 +392,7 @@ describe("parseChatRequest", () => {
 		expect(uploadFile).not.toHaveBeenCalled();
 	});
 
-	it("throws 413 naming the count, and stores nothing, when a message carries one file over the cap, all of them pastes (CUR-3530)", async () => {
+	it("throws 413 naming the count, and stores nothing, when a message carries one file over the cap, all of them pastes", async () => {
 		multimodal.enabled = true;
 		const pastes = Array.from(
 			{ length: CHAT_ATTACHMENTS_MAX_COUNT + 1 },
@@ -363,7 +408,7 @@ describe("parseChatRequest", () => {
 		expect(scanCsamHash).not.toHaveBeenCalled();
 	});
 
-	it("accepts a message carrying exactly the file count, pastes included (CUR-3530)", async () => {
+	it("accepts a message carrying exactly the file count, pastes included", async () => {
 		multimodal.enabled = true;
 		const pastes = Array.from(
 			{ length: CHAT_ATTACHMENTS_MAX_COUNT },
@@ -387,7 +432,7 @@ describe("parseChatRequest", () => {
 		expect(scanCsamHash).not.toHaveBeenCalled(); // no image attachment, nothing to scan
 	});
 
-	it("hands the store every fresh attachment with a long paste marked as one, and never a hash reference (CUR-2183)", async () => {
+	it("hands the store every fresh attachment with a long paste marked as one, and never a hash reference", async () => {
 		multimodal.enabled = true;
 		const signedIn = { _id: "c1", userId: "u1" } as unknown as Conversation;
 		const attached = new File(["aGVsbG8="], "base64;notes.txt", { type: "text/plain" });
@@ -409,7 +454,7 @@ describe("parseChatRequest", () => {
 		]);
 	});
 
-	it("stores real bytes labelled as a paste as an attachment under their sniffed type, so the reader looks where they are (CUR-2183)", async () => {
+	it("stores real bytes labelled as a paste as an attachment under their sniffed type, so the reader looks where they are", async () => {
 		multimodal.enabled = true;
 		const png = Buffer.from("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8ffff3f0005fe02fe0def46b80000000049454e44ae426082", "hex");
 		const labelled = new File([png.toString("base64")], "base64;Pasted Content", { type: "application/vnd.chatui.clipboard" });
@@ -450,7 +495,7 @@ describe("parseChatRequest", () => {
 		});
 	});
 
-	it("scans a b64 upload by its real bytes, not its declared Content-Type (CUR-1449) — a PNG labeled application/octet-stream must still reach scanCsamHash", async () => {
+	it("scans a b64 upload by its real bytes, not its declared Content-Type — a PNG labeled application/octet-stream must still reach scanCsamHash", async () => {
 		multimodal.enabled = true;
 		// A real (if trivial) 1x1 transparent PNG — the bare 8-byte PNG signature
 		// alone is NOT enough for file-type's sniffer; it needs a real IHDR chunk too.
@@ -464,7 +509,7 @@ describe("parseChatRequest", () => {
 		expect(scanCsamHash).toHaveBeenCalledTimes(1);
 	});
 
-	it("scans each picture inside a PDF attachment, and refuses the turn with 422 when one matches (CUR-987)", async () => {
+	it("scans each picture inside a PDF attachment, and refuses the turn with 422 when one matches", async () => {
 		multimodal.enabled = true;
 		scanCsamHash.mockResolvedValue({ status: "match", bankName: "test-bank", bankContentId: 7, distance: "0" });
 		await expect(
@@ -478,7 +523,7 @@ describe("parseChatRequest", () => {
 		expect(uploadFile).not.toHaveBeenCalled();
 	});
 
-	it("drops a PDF whose picture cannot be decoded, keeps the turn's other files, and says why (CUR-987, fail closed)", async () => {
+	it("drops a PDF whose picture cannot be decoded, keeps the turn's other files, and says why ( fail closed)", async () => {
 		multimodal.enabled = true;
 		const text = new File(["aGVsbG8="], "base64;notes.txt", { type: "text/plain" });
 		const out = await parseChatRequest({
@@ -492,7 +537,7 @@ describe("parseChatRequest", () => {
 		expect(uploadFile.mock.calls[0][0].name).toBe("notes.txt");
 	});
 
-	it("drops a PDF over the page limit with the page-limit line, not the picture line, and keeps the turn's other files (CUR-3837)", async () => {
+	it("drops a PDF over the page limit with the page-limit line, not the picture line, and keeps the turn's other files", async () => {
 		multimodal.enabled = true;
 		const text = new File(["aGVsbG8="], "base64;notes.txt", { type: "text/plain" });
 		const out = await parseChatRequest({
@@ -510,7 +555,7 @@ describe("parseChatRequest", () => {
 		expect(uploadFile.mock.calls[0][0].name).toBe("notes.txt");
 	});
 
-	it("drops a PDF unopened, never stored unscanned, when document-attachments does not select the account (CUR-987)", async () => {
+	it("drops a PDF unopened, never stored unscanned, when document-attachments does not select the account", async () => {
 		multimodal.enabled = true;
 		documents.enabled = false;
 		const text = new File(["aGVsbG8="], "base64;notes.txt", { type: "text/plain" });
@@ -525,7 +570,7 @@ describe("parseChatRequest", () => {
 		expect(uploadFile.mock.calls[0][0].name).toBe("notes.txt");
 	});
 
-	it("stores only the text of a PDF, never its bytes or its picture, under document-text-only (CUR-987)", async () => {
+	it("stores only the text of a PDF, never its bytes or its picture, under document-text-only", async () => {
 		multimodal.enabled = true;
 		documents.enabled = false;
 		documents.textOnly = true;
@@ -546,7 +591,7 @@ describe("parseChatRequest", () => {
 		expect(await stored.text()).toBe("Quarterly garden report. The picture below is the figure for this quarter.");
 	});
 
-	it("drops a picture-only PDF with its own line under document-text-only, since no text is left to keep (CUR-987)", async () => {
+	it("drops a picture-only PDF with its own line under document-text-only, since no text is left to keep", async () => {
 		multimodal.enabled = true;
 		documents.enabled = false;
 		documents.textOnly = true;
@@ -562,7 +607,7 @@ describe("parseChatRequest", () => {
 		expect(uploadFile.mock.calls[0][0].name).toBe("notes.txt");
 	});
 
-	it("drops every file, stores nothing, and still answers the text when the CSAM scanner is unreachable (CUR-2382)", async () => {
+	it("drops every file, stores nothing, and still answers the text when the CSAM scanner is unreachable", async () => {
 		multimodal.enabled = true;
 		scanCsamHash.mockRejectedValue(new HmaUnreachableError(new Error("connect timeout")));
 		const image = new File(["aGVsbG8="], "base64;photo.png", { type: "image/png" });
@@ -576,7 +621,7 @@ describe("parseChatRequest", () => {
 		expect(out.newPrompt).toBe("hi");
 		expect(out.attachmentNotice).toBe(UPLOAD_NOT_SCANNED_MESSAGE);
 		expect(uploadFile).not.toHaveBeenCalled();
-		// Both dropped files are named for the sent message; the stored one is not. (CUR-3405)
+		// Both dropped files are named for the sent message; the stored one is not.
 		expect(out.leftOutFiles).toEqual([
 			{ name: "photo.png", mime: "image/png" },
 			{ name: "notes.txt", mime: "text/plain" },
@@ -587,7 +632,7 @@ describe("parseChatRequest", () => {
 		]);
 	});
 
-	it("the csam_scanner_down fault refuses a turn's image as an unreachable scanner does, without calling the scanner (CUR-2382)", async () => {
+	it("the csam_scanner_down fault refuses a turn's image as an unreachable scanner does, without calling the scanner", async () => {
 		multimodal.enabled = true;
 		resolveFaultInjection.mockResolvedValue("csam_scanner_down");
 		const image = new File(["aGVsbG8="], "base64;photo.png", { type: "image/png" });
@@ -603,7 +648,7 @@ describe("parseChatRequest", () => {
 		expect(out.uploadedFiles).toEqual([]);
 	});
 
-	it("refuses every attached file, even text, and never calls the scanner when none is configured (CUR-2382 fail closed)", async () => {
+	it("refuses every attached file, even text, and never calls the scanner when none is configured ( fail closed)", async () => {
 		multimodal.enabled = true;
 		scanner.configured = false;
 		const image = new File(["aGVsbG8="], "base64;photo.png", { type: "image/png" });
@@ -619,7 +664,7 @@ describe("parseChatRequest", () => {
 		expect(scanCsamHash).not.toHaveBeenCalled();
 	});
 
-	it("keeps a long paste as message text when no scanner is configured, with no notice (CUR-1895 still holds under CUR-2382)", async () => {
+	it("keeps a long paste as message text when no scanner is configured, with no notice ( still holds under )", async () => {
 		scanner.configured = false;
 		const paste = new File([b64("A pasted article. ".repeat(300))], "base64;Pasted Content", {
 			type: "application/vnd.chatui.clipboard",
@@ -633,7 +678,7 @@ describe("parseChatRequest", () => {
 		expect(uploadFile).toHaveBeenCalledTimes(1);
 	});
 
-	describe("the type allowlist: only what the composer offers is stored (CUR-3832)", () => {
+	describe("the type allowlist: only what the composer offers is stored", () => {
 		const bytes = (hex: string, name: string, type: string) =>
 			new File([Buffer.from(hex, "hex").toString("base64")], `base64;${name}`, { type });
 
@@ -703,8 +748,8 @@ describe("parseChatRequest", () => {
 
 	// The bucket's own failures (throttling, a timeout) never reach here, since
 	// storeChatAttachments sends those files to the files table; its spec holds that contract. A
-	// signed-in person's full quota does reach here (CUR-3235). (CUR-2183)
-	describe("the attachment store, as parseChatRequest calls it (CUR-2183)", () => {
+	// signed-in person's full quota does reach here.
+	describe("the attachment store, as parseChatRequest calls it", () => {
 		const text = () => new File(["aGVsbG8="], "base64;notes.txt", { type: "text/plain" });
 
 		it("lets any other store failure through as itself, never as a stored file", async () => {
@@ -715,7 +760,7 @@ describe("parseChatRequest", () => {
 			).rejects.toThrow("bucket down");
 		});
 
-		it("answers 413 with the My files line when the account is full, so the client drops the file and keeps the text (CUR-3235)", async () => {
+		it("answers 413 with the My files line when the account is full, so the client drops the file and keeps the text", async () => {
 			multimodal.enabled = true;
 			storeChatAttachments.mockRejectedValue(new StorageQuotaExceededError(250_000_000, 3));
 			await expect(
@@ -726,7 +771,7 @@ describe("parseChatRequest", () => {
 			});
 		});
 
-		describe("the 24-hour attachment allowance (CUR-3235)", () => {
+		describe("the 24-hour attachment allowance", () => {
 			const guestConv = { _id: "c1", sessionId: "guest-session" } as unknown as Conversation;
 
 			it("answers 413 with the guest allowance line and stores nothing when the guest has no files left", async () => {
@@ -746,7 +791,7 @@ describe("parseChatRequest", () => {
 				expect(allowance.record).not.toHaveBeenCalled();
 			});
 
-			it("with the attachment-allowance flag off, stores and counts a file past the allowance instead of refusing it (CUR-3600)", async () => {
+			it("with the attachment-allowance flag off, stores and counts a file past the allowance instead of refusing it", async () => {
 				multimodal.enabled = true;
 				allowance.enforced = false;
 				allowance.left.mockResolvedValue({ files: 0, bytes: 0 });
@@ -755,7 +800,7 @@ describe("parseChatRequest", () => {
 				expect(allowance.record).toHaveBeenCalledWith({ guestSessionId: "guest-session" }, [5]);
 			});
 
-			it("counts a guest by network too, and refuses with the network line when the network ran out (CUR-3600)", async () => {
+			it("counts a guest by network too, and refuses with the network line when the network ran out", async () => {
 				multimodal.enabled = true;
 				allowance.left.mockResolvedValue({ files: 0, bytes: 0, network: true, resetsAt: new Date(Date.now() + 2 * 3_600_000) });
 				await expect(
@@ -772,7 +817,7 @@ describe("parseChatRequest", () => {
 				expect(allowance.left).toHaveBeenCalledWith({ guestSessionId: "guest-session", ipHash: "hash:203.0.113.5" });
 			});
 
-			it("logs a refusal at send with guest and network, so the network ceiling is set from real refusals (CUR-3600)", async () => {
+			it("logs a refusal at send with guest and network, so the network ceiling is set from real refusals", async () => {
 				const { logger } = await import("$lib/chat/server/logger");
 				const info = vi.spyOn(logger, "info");
 				multimodal.enabled = true;
@@ -791,6 +836,25 @@ describe("parseChatRequest", () => {
 				await parseChatRequest({ request: makeRequest({ inputs: "hi" }, [text()]), conv: accountConv, locals: makeLocals() });
 				expect(allowance.left).toHaveBeenCalledWith({ userId: "u1" });
 				expect(allowance.record).toHaveBeenCalledWith({ userId: "u1" }, [5]);
+			});
+
+			it("counts a file the files table took and a file the bucket took alike, so a bucket fallback is never uncounted", async () => {
+				multimodal.enabled = true;
+				allowance.left.mockResolvedValue({ files: 5, bytes: 1_000 });
+				// The first file reaches the bucket; the bucket then stalls and the second goes to the
+				// files table, as storeChatAttachments does on a timeout.
+				storeChatAttachments.mockImplementation(async (_conv: Conversation, files: { file: File }[]) => [
+					{ type: "hash", value: "a".repeat(64), mime: "text/plain", name: files[0].file.name },
+					await uploadFile(files[1].file),
+				]);
+				const second = new File(["aGVsbG8gMg=="], "base64;more.txt", { type: "text/plain" });
+				await parseChatRequest({
+					request: makeRequest({ inputs: "hi" }, [text(), second]),
+					conv: guestConv,
+					locals: makeLocals(),
+				});
+				expect(uploadFile).toHaveBeenCalledTimes(1);
+				expect(allowance.record).toHaveBeenCalledWith({ guestSessionId: "guest-session" }, [5, 7]);
 			});
 
 			it("lets the file through when the count failed, since the allowance fails open", async () => {

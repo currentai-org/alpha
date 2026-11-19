@@ -7,17 +7,20 @@ import { ERROR_MESSAGES } from "$lib/chat/stores/errors";
 import type { MessageEvent } from "$lib/chat/types/MessageEvent";
 import { error } from "@sveltejs/kit";
 import { recordRateLimitTrip } from "$lib/chat/server/alerting";
+import { chatTurnRoom, chatTurnsUsedText, recordChatTurn } from "$lib/chat/server/db/chatTurnAllowance";
 
 /**
  * Enforce the per-turn request limits before a generation runs. Records the turn for
  * rate-limit bookkeeping and applies three independent guardrails:
  *
  *   1. Per-SESSION per-minute limit — the fair, NAT-safe primary limit. A guest's session is a
- *      signed value the server minted (guestSession.ts, CUR-3191), so a made-up cookie no longer
- *      starts a fresh budget.
+ *      signed value the server minted (guestSession.ts), so a made-up cookie does not
+ *      start a fresh budget.
  *   2. Per-IP per-minute ceiling — ON by default as a high abuse backstop (see DEFAULT_IP_MULTIPLIER).
  *      It bounds a caller who drops the cookie to be minted a new session on every send.
- *   3. Service-wide DAILY request cap — a cost/abuse backstop for the limited compute budget. It
+ *   3. Per-ACCOUNT daily turn cap, when the caller passes `dailyTurns` (the chat send route does;
+ *      chatTurnAllowance.ts). Fails open.
+ *   4. Service-wide DAILY request cap — a cost/abuse backstop for the limited compute budget. It
  *      FAILS CLOSED: when the count cannot be read the turn gets a 503 that says why.
  *
  * The bookkeeping insert and the two per-minute counts fail open: a DB blip must never take down a
@@ -30,8 +33,8 @@ import { recordRateLimitTrip } from "$lib/chat/server/alerting";
  *
  * Sized for a room, not a person. A conference or live demo puts a few hundred visitors behind one
  * conference NAT address; 300 of them each sending once in the same minute is 300, under 500. A
- * script that rotates sessions from one address is held to 500 a minute where it had no bound.
- * RATE_LIMIT_IP_MULTIPLIER still overrides it, and 0 turns the ceiling off. (CUR-3191)
+ * script that rotates sessions from one address is held to 500 a minute.
+ * RATE_LIMIT_IP_MULTIPLIER still overrides it, and 0 turns the ceiling off.
  */
 const DEFAULT_IP_MULTIPLIER = 25;
 
@@ -55,13 +58,19 @@ function ipMultiplier(): number {
 export async function enforceRequestRateLimits(opts: {
 	userId: MessageEvent["userId"];
 	clientAddress: string;
-	/** The per-session limit and window in place of `messagesPerMinute` and a minute. Set only by the
-	 *  route's `session_rate_limit_low` fault (CUR-2804), so a spec can trip the limit and outwait it. */
+	/** The per-session limit and window in place of `messagesPerMinute` and a minute. Set by the
+	 *  route's `session_rate_limit_low` fault, so a spec can trip the limit and outwait it,
+	 *  and by the local inference endpoint routes, whose budget is not a chat rate. */
 	perSession?: { limit: number; windowMs: number };
-	/** Which count this request joins. "conversationCreate" (CUR-3529) is the create route's own
+	/** Which count this request joins. "conversationCreate" is the create route's own
 	 *  budget at the same per-session and per-IP rates: kept apart from turns so a create never spends
-	 *  the turn it precedes, and left out of the daily cap, which counts model calls. */
-	event?: "message" | "conversationCreate";
+	 *  the turn it precedes, and left out of the daily cap, which counts model calls. The two
+	 *  "localEndpoint" kinds are likewise their own counts, outside the daily cap. */
+	event?: "message" | "conversationCreate" | "localEndpointCreate" | "localEndpointStatus";
+	/** The turns this account may send in any 24 hours (chatTurnsPerDay, or the `daily_turn_cap_low`
+	 *  fault's lower number). Only the chat send route passes it, so search, speech and the other
+	 *  routes that share the per-minute "message" count never spend an account's turns. */
+	dailyTurns?: number;
 }): Promise<void> {
 	const { userId, clientAddress } = opts;
 	const type = opts.event ?? "message";
@@ -79,7 +88,7 @@ export async function enforceRequestRateLimits(opts: {
 	const windowMs = opts.perSession?.windowMs ?? 60_000;
 	const recorded = recordEvent({ type, userId, ipHash }, windowMs, "rate-limit");
 	// The fault's override waits for this send's own row, so the count below always includes it. Left
-	// to race, a limit of one refused the second send only when the insert won (CUR-2804).
+	// to race, a limit of one would refuse the second send only when the insert won.
 	if (opts.perSession) await recorded;
 	else void recorded;
 
@@ -94,20 +103,20 @@ export async function enforceRequestRateLimits(opts: {
 		if (perSession !== null && perSession > perSessionLimit) {
 			// fire-and-forget, same posture as the bookkeeping insert above — alerting on abuse
 			// must never add latency to (or block) the 429 already being sent. userId is an opaque
-			// session/user id, not a raw IP or email; fine to include in the alert for correlation. (CUR-1134)
+			// session/user id, not a raw IP or email; fine to include in the alert for correlation.
 			void recordRateLimitTrip(`chat-rate-limit:session:${userId}`, {
 				limitName: "per-session/minute",
 				identity: String(userId),
 			});
 			// Say how long, so the composer can hold Send and count down instead of leaving a
 			// live button whose every press (recorded above) pushes the window further out. A wait that
-			// can't be read falls back to the whole window, never to no wait (CUR-3410). (CUR-3216)
+			// can't be read falls back to the whole window, never to no wait.
 			const retryAfterSeconds =
 				(await secondsUntilRoom({ type, userId }, perSessionLimit, "rate-limit:session")) ||
 				Math.ceil(windowMs / 1000);
 			error(429, { message: ERROR_MESSAGES.rateLimited, retryAfterSeconds });
 		}
-		// Per-IP ceiling, ON by default (CUR-3191) and deliberately loose: a conference or
+		// Per-IP ceiling, ON by default and deliberately loose: a conference or
 		// lecture-hall NAT puts hundreds of phones behind ONE address, so this is a room-sized abuse
 		// backstop and never the per-person rate. Sizing is on DEFAULT_IP_MULTIPLIER.
 		const multiplier = ipMultiplier();
@@ -120,12 +129,12 @@ export async function enforceRequestRateLimits(opts: {
 			const perIp = await countLiveEvents({ type, ipHash }, "rate-limit:ip");
 			if (perIp !== null && perIp > perSessionLimit * multiplier) {
 				// ipHash only, never the raw client IP — same domain-separated hash already
-				// stored on the message event. (CUR-1134)
+				// stored on the message event.
 				void recordRateLimitTrip(`chat-rate-limit:ip:${ipHash}`, {
 					limitName: "per-IP/minute",
 					identity: `ip-hash ${ipHash.slice(0, 12)}…`,
 				});
-				// A room at an event gets a held Send and a countdown too, not a live button. (CUR-3410)
+				// A room at an event gets a held Send and a countdown too, not a live button.
 				const retryAfterSeconds =
 					(await secondsUntilRoom({ type, ipHash }, perSessionLimit * multiplier, "rate-limit:ip")) ||
 					Math.ceil(windowMs / 1000);
@@ -134,11 +143,29 @@ export async function enforceRequestRateLimits(opts: {
 		}
 	}
 
+	// Per-ACCOUNT daily turn cap: one account's share of the day, so a single heavy sender
+	// cannot spend the service-wide cap below for everyone. Checked before the global count records
+	// this turn, so a refused turn spends nothing of the day. Counted only for accepted turns: a
+	// press past the cap is refused without pushing the window out. Fails open on a count error.
+	if (opts.dailyTurns && type === "message") {
+		const room = await chatTurnRoom(userId, opts.dailyTurns);
+		if (!room.ok) {
+			void recordRateLimitTrip(`chat-rate-limit:daily-turns:${userId}`, {
+				limitName: "per-account daily turns",
+				identity: String(userId),
+			});
+			// No retryAfterSeconds: the composer counts that down in seconds, and this wait is hours.
+			// The wait is in the words instead.
+			error(429, chatTurnsUsedText(opts.dailyTurns, room.retryAfterSecs));
+		}
+		void recordChatTurn(userId);
+	}
+
 	// Service-wide DAILY request cap — a cost/abuse guardrail for the limited CSCS/HF compute budget,
 	// distinct from the per-user/per-IP per-minute limit above. Counts requests in a rolling 24h window
 	// via a dedicated "globalDaily" messageEvent (the table + cleanup already GC by expiresAt). The DB
 	// count is approximate (the best-fit for serverless — no Redis): a brief overshoot under concurrency
-	// is acceptable for a soft cap. A count that fails is FAIL-CLOSED (CUR-3191): the cap is the spend
+	// is acceptable for a soft cap. A count that fails is FAIL-CLOSED: the cap is the spend
 	// backstop, and a store that cannot answer this one count is the same store every turn already
 	// needs for the conversation it writes to, so refusing here costs little a DB failure had not
 	// already cost. The 503 says what happened, so it reads as a pause rather than a broken app.
@@ -152,7 +179,7 @@ export async function enforceRequestRateLimits(opts: {
 		}
 		if (dailyCount >= globalDailyCap) {
 			logger.warn({ dailyCount, globalDailyCap }, "[rate-limit] global daily request cap reached");
-			// Single global key — the daily cap has no per-offender identity, it IS the alert. (CUR-1134)
+			// Single global key — the daily cap has no per-offender identity, it IS the alert.
 			void recordRateLimitTrip("chat-rate-limit:daily-cap", {
 				limitName: "global daily request cap",
 				identity: `${dailyCount}/${globalDailyCap} requests today`,
@@ -172,7 +199,7 @@ export async function enforceRequestRateLimits(opts: {
  * history costs the guard about nine times what a short turn does. The extra rows join the turn's own
  * per-session and per-IP rows, which every server instance counts, so the next turn over the limit is
  * refused whichever instance answers. Recorded after the screen and never awaited by the turn: the
- * charge lands on the next turn, and a failed write fails open like the rest of this file. (CUR-3532)
+ * charge lands on the next turn, and a failed write fails open like the rest of this file.
  */
 export async function chargeScreeningCost(opts: {
 	userId: MessageEvent["userId"];

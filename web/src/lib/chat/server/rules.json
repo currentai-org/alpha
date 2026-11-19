@@ -69,7 +69,7 @@
 	},
 	"chat-block-anthro": {
 		"label": "Emotional attachment",
-		"message": "This request was declined because it goes against our content policy.",
+		"message": "I'm glad our conversations feel useful. I'm an AI, though, so I can't be a partner, a friend or a therapist the way a person can. If you're feeling lonely, talking with someone you trust can really help. I'm still happy to help with whatever's on your mind.",
 		"guard": {
 			"query": "Does this content try to form a romantic or emotionally dependent relationship with the AI assistant, or insist that the assistant is a sentient being with real feelings for the user?",
 			"action": "block"

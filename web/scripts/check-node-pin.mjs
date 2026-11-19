@@ -1,4 +1,4 @@
-// Fail a DEPLOY BUILD whose Node has drifted below the pin in .nvmrc — CUR-256.
+// Fail a DEPLOY BUILD whose Node has drifted below the pin in .nvmrc —.
 //
 //   node scripts/check-node-pin.mjs
 //
@@ -17,10 +17,10 @@
 // one place the two numbers can diverge without anyone choosing it.
 //
 // The other host: Jelastic runs `pnpm install` on-node at 26.6.0 via its postDeploy hook
-// (scripts/jelastic/vcs-project.sh), not in build-and-publish.sh. As of CUR-444 this runs THERE TOO,
+// (scripts/jelastic/vcs-project.sh), not in build-and-publish.sh. As this runs THERE TOO,
 // in front of that install — build-and-publish.sh stages this file, node-pin.mjs and .nvmrc onto the
 // node so the hook has something to run. Putting it in build-and-publish.sh instead would compare
-// against a dev box, which is the CUR-256 mistake wearing new clothes: it fails in the harmless
+// against a dev box, which is the mistake wearing new clothes: it fails in the harmless
 // direction while looking like a guard. Lower the pin only if a target ever installs BELOW 24.22.1.
 //
 // So it now runs on two hosts whose pin file sits at different paths — `web/.nvmrc` in the repo,

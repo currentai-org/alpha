@@ -1,31 +1,11 @@
-// Is the agent confirmation UI (CUR-218) on? A tool call paused under ACP_PERMISSION_POLICY=confirm
-// needs a human answer within agent-service's own timeout (fails CLOSED to deny on its own — nothing
-// here has to enforce that), and this flag gates whether the chat side renders a real Allow/Deny
-// affordance for it and accepts a click.
-//
-// A NEW flag, not a reuse of `agent-mode` — same reasoning as `agent-artifact-download`: a bug in this
-// path shouldn't force disabling agent mode entirely to contain it. It also composes with a SEPARATE,
-// agent-service-owned switch this repo doesn't control: ACP_PERMISSION_POLICY stays off "confirm" until
-// agent-service turns it on, so today the `awaiting_confirmation` event this flag gates can't fire in
-// prod regardless of this flag's value. That is a real, independent gate, not a reason to skip this
-// one: this flag guards a genuinely new interactive surface (an in-chat Allow/Deny control, not just a
-// rendering choice) on top of agent-service's own gate.
-//
-// Fallback is OFF: when PostHog has never been polled, the confirm UI stays off until the flag
-// explicitly opens it. A gated feature defaults closed.
+// How much an agent turn does without asking. The Allow/Deny card itself needs no gate of
+// its own: the `agent-confirm-ui` flag that once gated it was retired once it was on everywhere, and
+// agent-mode / agent-mode-access already decide who reaches an agent turn at all.
 
 import { flagEnabledOr } from "$lib/chat/server/flags";
 import { logger } from "$lib/chat/server/logger";
 
-/** PostHog flag key. Owner: chat. */
-export const AGENT_CONFIRM_UI_FLAG = "agent-confirm-ui";
-
-/** Should the chat surface render/accept the agent confirmation Allow/Deny UI? Sync, never throws. */
-export function agentConfirmUiEnabled(): boolean {
-	return flagEnabledOr(AGENT_CONFIRM_UI_FLAG, () => false);
-}
-
-/** PostHog flag key for agent auto mode (CUR-3142). A kill switch: 0% puts everyone in ask mode. */
+/** PostHog flag key for agent auto mode. A kill switch: 0% puts everyone in ask mode. */
 export const AGENT_AUTO_MODE_FLAG = "agent-auto-mode";
 
 /**

@@ -1,5 +1,5 @@
-// The chat's chrome in the visitor's language: the live request log while an answer is being made
-// (CUR-1575), and the open-gap card and "How this was made" link under a finished one (CUR-2394).
+// The chat's chrome in the visitor's language: the live request log while an answer is being made,
+// and the open-gap card and "How this was made" link under a finished one.
 //
 // The language is the one the visitor's browser asks for first (`Accept-Language`, read once in the
 // chat layout's server load), not the language of any one message, which is how the big chat apps
@@ -23,18 +23,18 @@ interface ChromeCopy {
 	gapNeeds: (ask: string) => string;
 	gapAction: string;
 	howMade: string;
-	/** The caption under a reply the server wrote as a fixed string, with no model (CUR-1579). */
+	/** The caption under a reply the server wrote as a fixed string, with no model. */
 	fixedNotice: string;
-	/** The button under the low-resource notice, and the message it sends for the visitor. (CUR-1841) */
+	/** The button under the low-resource notice, and the message it sends for the visitor. */
 	tryAnyway: string;
 	tryAnywayMessage: string;
-	/** The caption under a finished answer nothing reported a model for (CUR-1606). */
+	/** The caption under a finished answer nothing reported a model for. */
 	noProvenance: string;
 	/** The empty composer. */
 	placeholder: string;
 	/** The card's sentence for a gap, keyed by its stack-map node id, written for the person who asked
 	 *  rather than for a contributor: "The open stack still needs a Google-scale open web search index"
-	 *  read as roadmap copy under an answer about a mountain (CUR-2885). */
+	 *  read as roadmap copy under an answer about a mountain. */
 	gapLines: Record<string, string>;
 	// The live request log (liveRequestLabels.ts).
 	theModel: string;
@@ -46,13 +46,13 @@ interface ChromeCopy {
 	screeningDocuments: string;
 	screeningWeb: string;
 	screeningDocumentsWeb: string;
-	/** Which part of a long input the safety screen is on, shown after the screening line. (CUR-3749) */
+	/** Which part of a long input the safety screen is on, shown after the screening line. */
 	screeningPart: (part: number, parts: number) => string;
 	searching: string;
-	/** A native turn's search_catalog call, alone or beside web_search. (CUR-2275) */
+	/** A native turn's search_catalog call, alone or beside web_search. */
 	searchingDocuments: string;
 	searchingDocumentsWeb: string;
-	/** A new code sandbox is waiting for a free slot on a full host. (CUR-4584) */
+	/** A new code sandbox is waiting for a free slot on a full host. */
 	waitingSandbox: string;
 	thinking: (model: string) => string;
 	writing: (model: string) => string;

@@ -1,7 +1,7 @@
 /**
  * French builds everyday questions on la, de, est and un, which the Catalan and Spanish word lists
  * also count, so the word lists alone read short French as Catalan or Spanish and Auto sent it to
- * ALIA (CUR-4080). The first three are drafts that routed wrongly; the rest are 20 everyday French
+ * ALIA. The first three are drafts that routed wrongly; the rest are 20 everyday French
  * questions.
  */
 import { describe, expect, it } from 'vitest';

@@ -4,7 +4,7 @@ import { resolveApiCorsOrigin } from "./corsOrigin";
 // resolveApiCorsOrigin matches against the request's own origin as well as the static PUBLIC_ORIGIN,
 // because an ephemeral per-PR preview's Origin header never equals the value shared by every preview
 // deployment. A same-origin API caller there must get Access-Control-Allow-Origin naming its own host,
-// not a stale develop.aipotluck.org (CUR-1172).
+// not the static origin every preview shares.
 describe("resolveApiCorsOrigin", () => {
 	it("allows everything in dev", () => {
 		expect(resolveApiCorsOrigin("https://anything.example", [], { dev: true })).toBe("*");

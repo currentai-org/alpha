@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Forget everything and Delete account wipe the person's bucket files first. When Hugging Face throttles
-// the storage token, the answer is busy with the window's Retry-After, not "try again" now (CUR-3680).
+// the storage token, the answer is busy with the window's Retry-After, not "try again" now.
 vi.mock("$lib/chat/server/db/wipeUserData", () => ({ wipeUserData: vi.fn() }));
 
 import { HubApiError } from "@huggingface/hub";

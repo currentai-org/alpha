@@ -22,7 +22,7 @@
 //
 // Every threshold is per 15 minutes. Scheduled runs are about 2 hours apart, not four an hour, so the
 // scheduled run passes --since, the previous run's start (axiom-alert.yml). Every check
-// reads from there in 15m bins and goes over when any one bin passes its bar (CUR-4169); bins sit on
+// reads from there in 15m bins and goes over when any one bin passes its bar; bins sit on
 // the clock's quarter hours, so a burst straddling one is split across two. A manual --window read is
 // one total. server-errors is the check most likely to trip (model
 // substitution shedding, a role naming a model its provider does not serve, stream errors), then
@@ -30,10 +30,10 @@
 // could not be read" line is a warn, not an error, so it does not count toward server-errors.
 // Env:    AXIOM_ALERT_QUERY_TOKEN (required — needs query:read on BOTH `aipotluck-eu` and `vercel-eu`, see below),
 //         GITHUB_OUTPUT (optional): `over` gets the sorted keys over threshold and `what` one line
-//         naming them. axiom-alert.yml hands both to the shared poster, which posts on a change only
-//         (CUR-2713); this script never posts to Slack itself, so --dry-run only skips that output.
+//         naming them. axiom-alert.yml hands both to the shared poster, which posts on a change only;
+//         this script never posts to Slack itself, so --dry-run only skips that output.
 //
-// NO SHARED AXIOM_DATASET (CUR-1415). Each check below names its own dataset, because the checks
+// NO SHARED AXIOM_DATASET. Each check below names its own dataset, because the checks
 // genuinely want different ones and a single module-level default is silently wrong for at least one
 // of them whichever way it is set:
 //   - server-errors needs `aipotluck-eu` (our own pino `level`, vocabulary info/warn/error/fatal, a
@@ -41,7 +41,7 @@
 //     log field (vocabulary info/warning), so the check would not error; it would silently match
 //     zero rows forever.
 //   - http-5xx and empty-answers read `aipotluck-eu`, scoped by its `env` column, so the Vercel drain
-//     can be retired (CUR-2591). Both lose what the app's own stream loses while its ingest is down;
+//     can be retired. Both lose what the app's own stream loses while its ingest is down;
 //     log-ingest below is what reports that.
 //   - log-ingest and email-send still read `vercel-eu`: each has to keep counting while app-side ingest
 //     is broken, which a check reading that same stream cannot do.
@@ -86,7 +86,7 @@ const CHECKS = [
 		key: "server-errors",
 		label: "server errors",
 		threshold: 3,
-		// PRODUCTION ONLY, like http-5xx below (CUR-4358). A line that is expected and handled logs at
+		// PRODUCTION ONLY, like http-5xx below. A line that is expected and handled logs at
 		// warn at its source rather than being excluded here, so this stays "every error our code logged".
 		apl: `['aipotluck-eu'] | where env == 'production' | where level in ('error','fatal')`,
 		runbook:
@@ -96,10 +96,10 @@ const CHECKS = [
 		key: "http-5xx",
 		label: "HTTP 5xx responses",
 		threshold: 3,
-		// The app's own request lines, where status_code is a column (CUR-2591). It sees what the
+		// The app's own request lines, where status_code is a column. It sees what the
 		// drain sees except while app-side ingest is down. A failure at the edge or in the adapter
 		// never produces an app line, so it is invisible here: Better Stack's page check is what sees
-		// the site down. PRODUCTION ONLY (CUR-1690), since the alert line says "prod".
+		// the site down. PRODUCTION ONLY, since the alert line says "prod".
 		apl: `['aipotluck-eu'] | where env == 'production' | where toint(column_ifexists('status_code', int(null))) >= 500`,
 		runbook:
 			"Requests our app answered with a 5xx. Check the latest deploy first, then group the errors in PostHog error tracking.",
@@ -111,7 +111,7 @@ const CHECKS = [
 		// PRODUCTION ONLY, and that filter is the check, not decoration. hedgeGuard fires constantly on
 		// preview during eval runs, so an unfiltered version would alert on our own testing and get
 		// muted. The guard name sits in the `mutations` array of the "[honesty] final-only mutations"
-		// line, not in `message` (CUR-2591).
+		// line, not in `message`.
 		apl: `['aipotluck-eu'] | where env == 'production' | where message == '[honesty] final-only mutations' | where tostring(column_ifexists('mutations', '')) contains 'groundedHedgeReplacement'`,
 		runbook:
 			"The model returned citations with no prose and hedgeGuard swapped in the sources pointer — the user got no answer. Suspect a RAG corpus or prompt-budget change: on 2026-08-04 raising the curated snippet cap 480->1200 produced this on 3 of 6 runs. Check what last shipped to the RAG index, then reproduce with `pnpm eval:policy-grounding`.",
@@ -122,7 +122,7 @@ const CHECKS = [
 		threshold: 0,
 		// axiomStream.ts writes `[axiom] ingest <status> for dataset …` to stderr for every rejected
 		// batch, and the drain carries stderr here. A token without ingest scope produces these on every
-		// batch and leaves the app's own log search empty until someone reads them (CUR-1690).
+		// batch and leaves the app's own log search empty until someone reads them.
 		//
 		// 4xx ONLY, and that is what makes a threshold of zero safe. A 4xx is a token or dataset name
 		// that is wrong, which never fixes itself. `[axiom] ingest unreachable` is a network blip that
@@ -135,7 +135,7 @@ const CHECKS = [
 		key: "email-send",
 		label: "sign-in and invitation emails Resend refused",
 		threshold: 0,
-		// CUR-1252. Email is the only route into an account, and Resend's plan caps sends at 100/day.
+		// Email is the only route into an account, and Resend's plan caps sends at 100/day.
 		// betterAuth.ts logs "[auth] Resend send failed" (OTP) and
 		// "[auth] Resend send failed (workspace invite)" at error level; `contains` reads both. Read from
 		// the drain rather than `aipotluck`, so it still counts while app-side ingest is down (see
@@ -148,7 +148,7 @@ const CHECKS = [
 	{
 		key: "search-refusals",
 		label: "search engine refusals (402/403/429)",
-		// CUR-2597. One line per engine or reranker, with its own bar: a paid one refusing us (Firecrawl out of
+		// One line per engine or reranker, with its own bar: a paid one refusing us (Firecrawl out of
 		// credit, a revoked key) never fixes itself, so one is the alert; free OpenAlex and arXiv
 		// answer 429 in short bursts under load, so each gets a bar of 5. Status reads from the logged field, falling
 		// back to the `<url> → <status>` message lines.

@@ -1,6 +1,7 @@
 #!/bin/sh
-# WG_PRIVATE_KEY (a secret) and WG_ENDPOINT, WG_HOST_PUBLIC_KEY (env) come from the E2B host's WireGuard setup. Each further host in the pool adds WG_ENDPOINT_<n> and WG_HOST_PUBLIC_KEY_<n>
-# for slot n, from 2 with none skipped (CUR-4528).
+# WG_PRIVATE_KEY (Fly secret) and WG_ENDPOINT, WG_HOST_PUBLIC_KEY (fly.toml env) come from scripts/e2b-wg-keys.py
+# and `terraform output wg_endpoint`. Each further host in the pool adds WG_ENDPOINT_<n> and WG_HOST_PUBLIC_KEY_<n>
+# for slot n, from 2 with none skipped.
 set -eu
 umask 077
 mkdir -p /etc/wireguard

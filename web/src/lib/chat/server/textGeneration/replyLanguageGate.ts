@@ -1,7 +1,7 @@
 import { flagEnabledOr } from "$lib/chat/server/flags";
 
 // Gates the in-language reply rule that `guardFor()` injects into the user turn — "write your ENTIRE
-// reply in the same language as the message inside the markers above" (CUR-1430).
+// reply in the same language as the message inside the markers above".
 //
 // DEFAULT-ON, and the reasoning is the same as entity-name-correction's rather than
 // low-resource-language-fallback's. This flag repairs a defect: replies can come back in English to a question asked in another language. A rollout gate defaulting off
@@ -17,15 +17,15 @@ import { flagEnabledOr } from "$lib/chat/server/flags";
 // The A/B this exists for: set the preview group to 0% for the control arm, back to 100% for the
 // treatment arm, and leave production at 100% throughout.
 
-/** PostHog flag key. Owner: chat. See CUR-1430. */
+/** PostHog flag key. Owner: chat. */
 export const REPLY_LANGUAGE_FLAG = "reply-language-rule";
 
 /**
  * Is the in-language reply rule on for this deployment? Sync, never throws.
  *
  * Fallback is ON: with no flag created, every deployment gets the rule, which is the correct resting
- * state for a fix to a live defect. Turning it off restores the pre-CUR-1430 prompt, where the only
- * language instruction was one clause in the system role that read "(default English)".
+ * state for a fix to a live defect. Turning it off drops the rule from the user turn, which leaves
+ * the persona's request for the user's language, in the weaker system role, as the only one.
  */
 export function replyLanguageRuleEnabled(): boolean {
 	return flagEnabledOr(REPLY_LANGUAGE_FLAG, () => true);

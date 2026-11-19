@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { sameServedModel } from "../../../../config/picker";
 
 // A served-model check must accept another host's name for the same weights and still fail a
-// different model, or it either pages on a deliberate second host or goes blind to a substitution. (CUR-4343)
+// different model, or it either pages on a deliberate second host or goes blind to a substitution.
 describe("sameServedModel", () => {
 	it("reads Scaleway's mistral-medium-3.5-128b as the mistral-medium-2604 that was asked for", () => {
 		expect(sameServedModel("mistral-medium-2604", "mistral-medium-3.5-128b")).toBe(true);

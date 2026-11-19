@@ -3,7 +3,7 @@
 
 Run:  make test   (pytest + coverage; see pyproject.toml)
 
-Covers the pure functions where the subtle bugs live,
+Covers the pure functions where the subtle bugs live (the adversarial-hardening fixes + prior guards),
 plus the frozen chat<->agent wire contract. Fast, deterministic, free — the layer the bash
 integration tests can't be (they need a funded token + live upstream).
 
@@ -11,6 +11,7 @@ State note: several tests mutate module-level config on `app` / `proxy` (caps, p
 singleton) and restore it inline, mirroring the production code's globals. Tests run in definition
 order (pytest default), and each section saves/restores what it touches.
 """
+import ast
 import base64
 import errno
 import inspect
@@ -21,6 +22,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import textwrap
 import threading
 import time
 import types
@@ -37,12 +39,13 @@ from fastapi import HTTPException
 
 # --------------------------------------------------------------------------- helpers
 def _run_pipeline_src() -> str:
-    """`_run` plus the four helpers CUR-1229 split out of it, concatenated in EXECUTION order.
+    """`_run` plus the four helpers split out of it, concatenated in EXECUTION order.
 
     The tripwires below assert control-flow facts no behavioural test can force deterministically — an
-    ordering between two statements, a call being wired at all. `_run` is split across helpers (one
-    oversized function makes pyright report `Code is too complex to analyze` and check nothing inside
-    it), so they read the pipeline rather than one function's source.
+    ordering between two statements, a call being wired at all. Splitting a 935-line `_run` (pyright
+    reported `Code is too complex to analyze` and silently checked NOTHING inside it) moved that text
+    between functions without changing a line of it, so they read the pipeline rather than one
+    function's source.
 
     Execution order, not file order, is what keeps an `index(A) < index(B)` assertion meaning what it
     says: `_resolve_workdir` runs first, then `_run`'s own body — the attempt loop, which calls
@@ -125,8 +128,8 @@ def test_a_lowered_wall_clock_shrinks_the_task_ceiling_not_just_one_attempt():
 def test_the_wall_clock_a_failure_names_is_the_one_that_stopped_it():
     """A structural message that interpolates the module constant while the loop enforces the task's own
     value tells a caller about a limit that did not stop it — the caller lowered its deadline to 150, hit
-    it, and reads '300s task ceiling exceeded'. A check pointing at a fiction is a known failure;
-    a failure message is the same failure with a smaller blast radius and a longer life, because
+    it, and reads '300s task ceiling exceeded'. This repo has paid for a check pointing at a fiction
+    before; a failure message is the same failure with a smaller blast radius and a longer life, because
     nothing contradicts it.
 
     Source-level, deliberately: the alternative is driving a real task to exhaustion to read one f-string,
@@ -145,7 +148,7 @@ def test_a_caller_stated_deadline_reaches_the_task_and_a_raise_attempt_does_not(
     """End to end through the request model, because every layer between them is somewhere the value can be
     dropped silently: a field parsed and never read, a clamp applied to a local nobody assigns. The raise
     case is the one with teeth — wall_clock_secs is a caller-supplied bound on OUR resources, so the same
-    rule the step and spend caps live under applies here (an unclamped max_steps=10_000_000 would otherwise be accepted)."""
+    rule the step and spend caps live under applies here (an absurd max_steps must be clamped)."""
     _wall = app.WALL_CLOCK_SECS
     try:
         app.WALL_CLOCK_SECS = 300
@@ -168,8 +171,9 @@ def test_the_stated_deadline_actually_lands_on_the_task(monkeypatch):
     part. A field can validate, clamp correctly, and then be assigned to a local that nothing reads — the
     endpoint builds the Task eight lines later and every one of those lines is a chance to drop it.
 
-    Replacing req.wall_clock_secs with None at the call site must turn this red; a test that calls
-    _effective_caps directly would stay green. A test that names the wiring in its docstring and exercises the helper is
+    Written after a mutation caught the gap: replacing req.wall_clock_secs with None at the call site left
+    the whole suite green, because the test that CLAIMED to check this end to end was calling
+    _effective_caps directly. A test that names the wiring in its docstring and exercises the helper is
     worse than no test — it reads as coverage."""
     monkeypatch.setattr(app, "_run", lambda task: None)          # don't launch a real agent
     monkeypatch.setattr(app, "moderate", lambda *a, **k: None)
@@ -184,6 +188,32 @@ def test_the_stated_deadline_actually_lands_on_the_task(monkeypatch):
         assert app.TASKS[resp3.id]._wall_clock == 300, "silence still means the server ceiling"
     finally:
         app.WALL_CLOCK_SECS = _wall
+
+
+def test_a_preamble_is_screened_apart_from_the_task_and_the_task_runs_on_both(monkeypatch):
+    """Chat's identity line glued to an ordinary file request was blocked as fraud by the input
+    screen, though each passes alone. Drives POST /run and records every moderate() call: the preamble and
+    the task are each screened whole, on their own, and the stored task carries preamble then task."""
+    monkeypatch.setattr(app, "_run", lambda task: None)
+    seen = []
+    monkeypatch.setattr(app, "moderate", lambda text, stage, user, task_id=None: seen.append((text, stage)))
+    resp = app.run(app.RunRequest(prompt="Write a.txt.", preamble="You are the agent."), user="preamble-test-user")
+    assert ("Write a.txt.", "input") in seen, "the task is screened as its own unit"
+    assert ("You are the agent.", "input") in seen, "the preamble is screened as its own unit"
+    assert not any("You are the agent." in t and "Write a.txt." in t for t, _ in seen), \
+        "nothing screens the two glued together"
+    assert app.TASKS[resp.id].prompt == "You are the agent.\n\nWrite a.txt.", "the agent gets both, preamble first"
+    seen.clear()
+    resp2 = app.run(app.RunRequest(prompt="Write a.txt."), user="preamble-test-user")
+    assert seen == [("Write a.txt.", "input")] and app.TASKS[resp2.id].prompt == "Write a.txt.", \
+        "without a preamble the run is unchanged"
+
+
+def test_a_preamble_counts_toward_the_prompt_cap():
+    """The joined prompt is what the agent runs, so it is what the cap bounds."""
+    with pytest.raises(app.HTTPException) as e:
+        app.run(app.RunRequest(prompt="x" * (app.MAX_PROMPT_CHARS - 10), preamble="p" * 100), user="cap-test-user")
+    assert e.value.status_code == 413
 
 
 def test_the_run_loop_asks_the_task_for_its_deadline_not_the_module():
@@ -220,7 +250,7 @@ def test_detect_run_failure():
 
 
 def test_a_finished_turn_killed_by_our_own_teardown_is_not_a_failure_but_an_unfinished_one_still_is():
-    """CUR-2730: teardown allows 2s, then SIGTERMs. A finished attempt that exits -15 was retried until
+    """Teardown allows 2s, then SIGTERMs. A finished attempt that exits -15 was retried until
     retries filled every concurrency slot."""
     finished = app._teardown_exit(-15, "end_turn")
     assert app._detect_run_failure(finished, "wrote receipt.txt", "", True, 3) is None, \
@@ -246,10 +276,9 @@ def test_a_finished_e2b_turn_killed_at_teardown_exits_minus_one_and_is_not_a_fai
 def test_failure_reason_names_the_attempts_that_did_the_work():
     """The durable reason must not be whichever attempt happened to run last.
 
-    The shape: a long-horizon trial runs attempts of 14 and 17 model calls that both
-    end `end_turn` cleanly and lose on correctness, then a third attempt gets what is left of the
-    shared deadline and dies at 3 calls. `error` and `summary` must not say "wall-clock cap (300s) exceeded",
-    which is true of the attempt that did the least and false as an account of the run."""
+    When two attempts end `end_turn` cleanly and lose on correctness, and a third gets what is left of the
+    shared deadline and dies early, `error` and `summary` must not say only "wall-clock cap (300s) exceeded":
+    that is true of the attempt that did the least and false as an account of the run."""
     rej = ["migrated file missing .bak", "rollback left v2 rows"]
     got = app._failure_reason(hard_spec=True, verified=False, last_structural="wall-clock cap (300s) exceeded",
                               attempts=3, best_of=3, rejections=rej)
@@ -291,7 +320,7 @@ def test_concurrency_slot_cap():
 
 
 def test_a_full_slot_refusal_tells_the_caller_when_to_retry(monkeypatch):
-    """CUR-3893: a 429 for a full slot carries Retry-After, so a caller can wait and resubmit instead of
+    """A 429 for a full slot carries Retry-After, so a caller can wait and resubmit instead of
     failing the turn. The daily limits are not retryable and must not carry it."""
     from starlette.testclient import TestClient
     _s = (app.AUTH_DISABLED, app.MODERATION_DISABLED)
@@ -319,7 +348,7 @@ def test_validate_verify():
 
 
 def test_validate_verify_expect_sorted_by_and_columns():
-    """_validate_verify: the two CUR-596 primitives each require expect_file, same pattern as expect_contains."""
+    """_validate_verify: the two value-consistency primitives each require expect_file, same pattern as expect_contains."""
     assert raises400(lambda: app._validate_verify(app.VerifySpec(expect_sorted_by="x"))), \
         "expect_sorted_by without expect_file -> 400"
     assert raises400(lambda: app._validate_verify(app.VerifySpec(expect_columns=["x"]))), \
@@ -343,7 +372,7 @@ def test_verify_path_traversal_guard():
 
 
 def test_verify_expect_sorted_by():
-    """_verify expect_sorted_by (CUR-596): ascending/descending, out-of-order, missing column, numeric vs
+    """_verify expect_sorted_by: ascending/descending, out-of-order, missing column, numeric vs
     string comparison, the mixed-type crash bug two persona passes caught, and the headerless case."""
     with tempfile.TemporaryDirectory() as work:
         Path(work, "asc.csv").write_text("month,total\nJan,1\nFeb,2\nMar,3\n")
@@ -384,8 +413,8 @@ def test_verify_expect_sorted_by():
             "the short row (physically row 3: header, Jan, Feb) is flagged by position, not skipped"
 
         # float("nan")/float("inf") both PARSE successfully but NaN comparisons are always False, so a
-        # NaN cell sitting next to a genuine inversion would otherwise report "sorted":
-        # Jan(100) then Feb(nan) then Mar(50) is NOT ascending
+        # NaN cell sitting next to a genuine inversion would otherwise report "sorted" — verified this
+        # actually broke the un-fixed version: Jan(100) then Feb(nan) then Mar(50) is NOT ascending
         # (100 > 50), but keys[Feb]>keys[Jan] and keys[Mar]>keys[Feb] both read as "not less than" once
         # nan is in the comparison, silently passing.
         Path(work, "nan.csv").write_text("month,total\nJan,100\nFeb,nan\nMar,50\n")
@@ -394,7 +423,7 @@ def test_verify_expect_sorted_by():
 
 
 def test_verify_expect_columns():
-    """_verify expect_columns (CUR-596): declarative, LLM-free header-presence check."""
+    """_verify expect_columns: declarative, LLM-free header-presence check."""
     with tempfile.TemporaryDirectory() as work:
         Path(work, "cols.csv").write_text("month,total_revenue\nJan,250\n")
         ok, _ = app._verify(work, app.VerifySpec(expect_file="cols.csv", expect_columns=["month", "total_revenue"]))
@@ -406,8 +435,8 @@ def test_verify_expect_columns():
 
 
 def test_a_failing_check_reports_what_it_said_not_only_that_it_failed():
-    """_verify (check_cmd detail). A bare `check_cmd exit 1` does not say which assertion missed, so the
-    check's own output is kept."""
+    """_verify (check_cmd detail). A failing check must not read just `check_cmd exit 1` with
+    nothing else, for a check whose whole output names the assertion that missed."""
     with tempfile.TemporaryDirectory() as work:
         ok, detail = app._verify(work, app.VerifySpec(
             check_cmd="echo 'AssertionError: want hello-world, got Hello-World' >&2; exit 1"))
@@ -445,7 +474,7 @@ def test_a_throttled_attempt_is_checked_before_it_is_thrown_away():
     assert "expect_file or spec.check_cmd" in code, "artifact specs only — count specs read a truncated answer"
     assert "may_judge" not in code, "no judge on this path: the grant was just revoked by the throttle"
     assert 'verify_method = True, "execution"' in code, "salvage is execution-verified, not a weaker pass " \
-        "(the fallback when consistency_active is off — the exact wording CUR-596 item 2 also uses for " \
+        "(the fallback when consistency_active is off — the exact wording the best-of-N path also uses for " \
         "its own vote-eligible salvage sample)"
     # Clearing the throttle and ending the loop stayed with the CALLER when the branch was extracted —
     # the helper reports `salvaged`, _run decides what that means for the loop.
@@ -471,12 +500,12 @@ def test_only_a_content_asserting_spec_lets_the_last_attempt_s_files_survive():
     assert carries(app.VerifySpec(expect_file="out.txt", expect_contains="hello"))
     assert carries(app.VerifySpec(expect_file="out.txt", expect_lines=20))
     # expect_sorted_by/expect_columns are content-asserting by the same logic — a file that's
-    # unsorted or missing a column fails on those exact bytes and fails again unchanged. (CUR-596)
+    # unsorted or missing a column fails on those exact bytes and fails again unchanged.
     assert carries(app.VerifySpec(expect_file="out.csv", expect_sorted_by="total"))
     assert carries(app.VerifySpec(expect_file="out.csv", expect_columns=["month", "total"]))
     # The derive step can invent both a filename and expect_columns for a task that names no output
     # file, which is content-asserting by the rule above and hands the repair loop a phantom contract.
-    # An autoderived spec is a model's guess, so it resets regardless of which fields it carries (CUR-705).
+    # An autoderived spec is a model's guess, so it resets regardless of which fields it carries.
     columny = app.VerifySpec(expect_file="out.csv", expect_columns=["month", "total"])
     assert app._repair_carries_scratch(columny, autoderived=True) is False, \
         "an autoderived guess never carries, even with expect_columns attached"
@@ -506,7 +535,7 @@ def test_the_repair_prompt_carries_the_task_and_the_check_s_complaint(tmp_path):
 
 
 def test_hermes_home_config_forces_tool_use_enforcement_when_no_global_config(tmp_path):
-    """CUR-1155: this image ships no ~/.hermes/config.yaml, so without this every task ran under
+    """This image ships no ~/.hermes/config.yaml, so without this every task ran under
     Hermes' "auto" default on BOTH gates — neither TOOL_USE_ENFORCEMENT_MODELS nor
     EXECUTION_GUIDANCE_MODELS names Apertus, so it got neither nudge."""
     home = tmp_path / "hermes-home"
@@ -519,8 +548,8 @@ def test_hermes_home_config_forces_tool_use_enforcement_when_no_global_config(tm
 
 
 def test_hermes_home_gets_an_identity_that_asks_for_no_verified_report_cur4055(tmp_path):
-    """CUR-4055: Hermes' default identity asks finished work to report "what's verified", which produces
-    "Verified:" / "Verificado:" lines in answers. SOUL.md replaces it."""
+    """Hermes' default identity asks finished work to report "what's verified", which is where
+    "Verified:" / "Verificado:" came from after the task-prompt note deployed. SOUL.md replaces it."""
     home = tmp_path / "hermes-home"
     home.mkdir()
     app._write_hermes_home_config(str(home), tmp_path / "no-such-config.yaml")
@@ -531,8 +560,8 @@ def test_hermes_home_gets_an_identity_that_asks_for_no_verified_report_cur4055(t
 
 
 def test_identity_requires_unsourced_figures_be_labelled_illustrative_in_the_file_and_answer_cur4499(tmp_path):
-    """A rent/commute spreadsheet built from "# Sample data" must not ship with an answer presenting the
-    figures as facts (CUR-4499). The agent has no web tool, so it cannot always source a figure; the contract is that
+    """A rent/commute spreadsheet built from "# Sample data" shipped with an answer presenting the
+    figures as facts. The agent has no web tool, so it cannot always source a figure; the contract is that
     an unsourced figure is labelled where a reader of the FILE sees it, and in the answer, not that the
     model refuses. Asserts on the SOUL.md Hermes actually reads. Whether the model obeys is a live check."""
     home = tmp_path / "hermes-home"
@@ -568,9 +597,9 @@ def test_hermes_home_config_respects_a_real_global_config_instead(tmp_path):
 
 
 def test_the_files_the_agent_made_come_back_with_the_answer(tmp_path, monkeypatch):
-    """CUR-195. The agent writes `revenue_data.csv` and says so, and the file is deleted when the turn
-    ends. `_collect_artifacts` is the route out of the sandbox, so what it drops is what a person
-    silently never sees."""
+    """A file the agent writes (e.g. `revenue_data.csv`) must still exist when the answer naming it
+    reaches the reader. `_collect_artifacts` is the route out of the sandbox, so
+    what it drops is what a person silently never sees."""
     monkeypatch.setattr(app, "ARTIFACT_MAX_FILES", 20)
     monkeypatch.setattr(app, "ARTIFACT_MAX_BYTES", 64)
     monkeypatch.setattr(app, "ARTIFACT_TOTAL_BYTES", 4096)
@@ -637,11 +666,11 @@ def test_an_artifact_cap_says_so_instead_of_quietly_shortening_the_list(tmp_path
 
 
 def test_collect_artifacts_since_excludes_a_prior_turns_file(tmp_path):
-    """CUR-1117. In a continued session (CUR-196) `work` survives across turns, so an unscoped walk
-    resurfaces a PRIOR turn's real file as if THIS turn produced it. Example: a user asks for a
-    prime-sum script, the model claims "written, executed, verified... result: 4227" with zero tool
-    calls, and the app would render a real code block for the PREVIOUS turn's hello_world.py right
-    underneath that claim, giving a fabrication real-looking corroboration. `since` is `turn_start_wall` from
+    """In a continued session `work` survives across turns, so an unscoped walk
+    resurfaces a PRIOR turn's real file as if THIS turn produced it. Real-world hit: a user asked for a
+    prime-sum script, the model fabricated "written, executed, verified... result: 4227" with zero tool
+    calls, and the app rendered a real code block for the PREVIOUS turn's hello_world.py right underneath
+    the fabrication — a fabrication got real-looking corroboration. `since` is `turn_start_wall` from
     `_run`, captured before this turn's first tool call can run."""
     work = tmp_path / "work"
     work.mkdir()
@@ -665,8 +694,7 @@ def test_collect_artifacts_since_excludes_a_prior_turns_file(tmp_path):
 
 
 def test_artifact_bodies_go_through_their_own_moderation_gate():
-    """Post-check moderation covers the FULL output AND every artifact, as TWO SEPARATE calls:
-    chat's own screenOutputStream already re-screens the answer text as it streams back
+    """Post-check moderation covers the FULL output AND every artifact, as TWO SEPARATE calls: chat's own screenOutputStream already re-screens the answer text as it streams back
     (+server.ts:1659-1677), but never sees a downloaded artifact's full bytes — only artifacts is worth
     Coop's real cost, which is why they're no longer bundled into one "output"-stage call. Artifacts are
     model-generated content bound for the same reader, so if they bypassed moderation entirely, "put it
@@ -674,11 +702,11 @@ def test_artifact_bodies_go_through_their_own_moderation_gate():
     the pipeline.
 
     Specifically `_artifact_text_for_moderation`, NOT `artifacts[].text` (`_collect_artifacts`'s own
-    output) — that was the CUR-546 gap: `_collect_artifacts` caps per-file/total bytes and file count for
-    the inline JSON preview, so a file past those caps was never moderated even though
-    GET /sessions/{id}/artifacts/{filename} could serve it whole regardless."""
+    output): `_collect_artifacts` caps per-file/total bytes and file count for
+    the inline JSON preview, so a file past those caps would go unmoderated even though
+    GET /sessions/{id}/artifacts/{filename} serves it whole regardless."""
     src = _run_pipeline_src()
-    collect = src.index("_collect_artifacts(work, since=turn_start_wall)")
+    collect = src.index("_collect_artifacts(work, since=turn_start_wall,")
     answer_mod = src.index('moderate(full_output, "output", task.user')
     artifact_mod = src.index("_artifact_text_for_moderation(work)", answer_mod)
     assert collect < answer_mod < artifact_mod, \
@@ -690,8 +718,8 @@ def test_artifact_bodies_go_through_their_own_moderation_gate():
 
 
 def test_artifact_text_for_moderation_sees_past_the_inline_preview_caps(tmp_path, monkeypatch):
-    """The actual bug: content past ARTIFACT_MAX_FILES, or bigger than ARTIFACT_MAX_BYTES/TOTAL_BYTES,
-    used to be invisible to moderation. Set those inline-preview caps deliberately tiny and confirm the
+    """Content past ARTIFACT_MAX_FILES, or bigger than ARTIFACT_MAX_BYTES/TOTAL_BYTES, must still be
+    visible to moderation. Sets those inline-preview caps deliberately tiny and confirms the
     moderation reader still sees everything anyway — it must not share those caps."""
     monkeypatch.setattr(app, "ARTIFACT_MAX_FILES", 1)
     monkeypatch.setattr(app, "ARTIFACT_MAX_BYTES", 4)
@@ -721,8 +749,8 @@ def test_artifact_text_for_moderation_skips_binary_without_raising(tmp_path):
 
 
 def test_a_pdf_with_no_nul_byte_is_binary_to_the_artifact_screen_cur4106(tmp_path):
-    """A reportlab PDF writes ASCII85 streams, so it has no NUL byte. Read as text, the encoded image data is slow
-    to screen and can exceed the guard's timeout, which fails the turn closed."""
+    """A reportlab PDF writes ASCII85 streams, so it has no NUL byte. Read as text, the guard spent 30 s
+    on 15 KB of encoded image against a 25 s timeout, and every PDF turn failed closed as an outage."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -760,9 +788,9 @@ def test_only_a_character_cut_at_the_cap_reads_leniently_cur4106(tmp_path):
 
 
 def test_artifacts_stage_moderation_block_is_wrapped_to_quarantine(monkeypatch):
-    """CUR-836: a blocked artifact left in `work` stays downloadable (the route never checks
-    moderation status), and stays there for the NEXT turn in the same session (CUR-196 keeps the workdir
-    alive) to re-moderate and re-block until the 4h idle reaper. The fix has to run between the
+    """A blocked artifact must not stay in `work`: it would remain downloadable (the route never checks
+    moderation status) and be re-moderated and re-blocked by every later turn of the session until the idle
+    reaper. The quarantine has to run between the
     STAGE_ARTIFACTS moderate() call and its exception leaving `_run` — asserts that shape directly, same
     style as test_artifact_bodies_go_through_their_own_moderation_gate above."""
     src = _run_pipeline_src()
@@ -806,13 +834,13 @@ def test_quarantine_blocked_artifacts_supports_nested_files(tmp_path):
 
 
 def test_quarantined_files_vanish_from_both_moderation_and_the_download_route(tmp_path):
-    """The two halves of 'done' in CUR-836: the next turn's re-moderation no longer sees the blocked
+    """The two halves of 'done' in the next turn's re-moderation no longer sees the blocked
     file (so it can't re-block on the same content forever), and the download route 404s on it (returns
     None, same as any nonexistent file) — both for free, because the file no longer exists at its old
     path and the quarantine directory is excluded from both walks.
 
     Both files here get quarantined together, and that's the correct scope, not a missed refinement:
-    STAGE_ARTIFACTS moderates one concatenated blob of every artifact's text in a single call (CUR-546),
+    STAGE_ARTIFACTS moderates one concatenated blob of every artifact's text in a single call,
     so a block carries no per-file attribution — there is no signal saying which file caused it, only
     that the turn's artifacts as a whole didn't pass. Quarantining exactly the set that was sent to that
     call is the only scope the mechanism can support without adding a moderation call per file."""
@@ -865,9 +893,9 @@ def test_the_sandbox_rations_as_well_as_namespaces(monkeypatch, tmp_path):
             assert nxt[:3] == ["/bin/sh", "-c", 'exec "$@" 9<"$0"'], "prlimit must exec the seccomp loader"
             nxt = nxt[4:]
         assert nxt[0].endswith("bwrap"), "prlimit must exec bwrap, with nothing else in between"
-    # RLIMIT_AS is deliberately absent — peak address space on a real turn is 1.28GB against
-    # 985MB of RAM, so any cap that would prevent an OOM also kills legitimate work. Asserted so nobody
-    # "fixes" its absence without re-checking.
+    # RLIMIT_AS is deliberately absent — a real turn's peak address space exceeds the machine's RAM, so any
+    # cap that would prevent an OOM also kills legitimate work. Asserted so nobody
+    # "fixes" its absence without re-measuring.
     assert not any(a.startswith("--as") for a in argv), \
         "RLIMIT_AS caps virtual reservations, not residency — see _rlimit_prefix before adding it"
 
@@ -880,9 +908,8 @@ def test_the_app_never_follows_a_symlink_the_agent_planted_in_its_own_scratch(tm
     write inside it — from OUTSIDE bwrap, as the uid that owns /srv and /data. Following a symlink there
     hands an attacker the app's own privileges without ever escaping the sandbox.
 
-    A `verify.check_cmd` of `ln -sfn /data/PWNPROOF.txt raw.log` would make the
-    service write the model's text to /data. `/srv/api/app.py` is writable by the same uid, so the same
-    primitive is remote code execution on the next restart. No cooperation from the model required."""
+    Contract: a `verify.check_cmd` that writes through a symlink must not escape the workdir. The app's own
+    source is writable by the same uid, so an escape would be code execution on the next restart."""
     outside = tmp_path / "outside.txt"
     outside.write_text("must not change")
     work = tmp_path / "work"
@@ -926,8 +953,8 @@ def test_the_app_never_follows_a_symlink_the_agent_planted_in_its_own_scratch(tm
 
 
 def test_egress_is_reported_as_observed_not_as_configured(monkeypatch):
-    """CUR-207. A comment saying the K8s NetworkPolicy handles egress is a claim about manifests we
-    don't deploy. A config value saying `AGENT_EGRESS=allowlist` is the
+    """The hole survived for months because a comment said the K8s NetworkPolicy handled it, and
+    that comment governs manifests we don't deploy. A config value saying `AGENT_EGRESS=allowlist` is the
     same class of claim. So /healthz carries BOTH, and the probe has to be able to contradict the config."""
     # Three states, not two. A boolean would have to resolve an unrunnable probe one way, and both ways are
     # wrong: "filtered" hides a real hole, "open" pages someone over a DNS blip.
@@ -980,9 +1007,9 @@ def test_check_output_crossing_out_of_the_sandbox_never_carries_the_nonce():
 
 
 def test_a_retry_repairs_the_last_attempt_instead_of_restarting_from_an_empty_room():
-    """The loop head in _run. Best-of-N wiped the scratch and re-sent the original prompt, so three
-    attempts were three independent draws, even when the retained
-    workdir held a package needing a json.dump and one changed predicate. Source assertion for the same
+    """The loop head in _run. A retry keeps the scratch and repairs it rather than wiping it and re-sending
+    the original prompt, which would make N attempts N independent draws even when the retained
+    workdir is one small fix from passing. Source assertion for the same
     reason as the salvage test: _run needs a live subprocess."""
     src = _run_pipeline_src()
     head = src.split("for attempts in range(1, best_of + 1):", 1)[1].split("attempt_home =", 1)[0]
@@ -1025,7 +1052,7 @@ def test_repair_turn_text_tells_the_model_the_reply_is_not_for_it():
     """_acp_run clears text_parts on every repair turn, so the model's reply to _repair_turn_text is the
     answer the user sees verbatim. Without a note saying who reads that reply, the model answers the
     acceptance check instead ("I see the issue..."). Every branch must carry the note that redirects it,
-    not just the common case (CUR-705)."""
+    not just the common case."""
     cases = [
         "fib.txt has 19 lines, want 20",
         app.UNRUN_DETAIL_PREFIX + "sieve.py",
@@ -1043,7 +1070,7 @@ def test_repair_exhausted_answer_is_wired_into_the_acp_call_and_names_no_invente
     """_repair_turn_text asks the model to fix itself; this constant ships instead of the model's own
     text when it never did, across every repair chance. It must be plain and honest, and must not itself
     assert anything the system hasn't verified: a template that claimed a specific number would just move
-    the fabrication one level up (CUR-705)."""
+    the fabrication one level up."""
     assert app._REPAIR_EXHAUSTED_ANSWER.strip(), "must be non-empty — an empty string is not a replacement"
     for word in ("June", "May", "April", "output.txt", "$"):
         assert word not in app._REPAIR_EXHAUSTED_ANSWER, \
@@ -1053,8 +1080,8 @@ def test_repair_exhausted_answer_is_wired_into_the_acp_call_and_names_no_invente
 
 
 def test_code_that_does_not_compile_is_named_as_such_before_any_other_check(tmp_path):
-    """_syntax_errors. `check_cmd`
-    reports a file that does not parse as ModuleNotFoundError from the failed import, which reads as "never wrote it" and sends
+    """_syntax_errors. A run can end with a file that does not parse. `check_cmd`
+    reports that as ModuleNotFoundError from the failed import, which reads as "never wrote it" and sends
     the repair turn to argue about a missing module rather than an unterminated string."""
     w = tmp_path
     (w / "good.py").write_text("def f():\n    return 1\n")
@@ -1085,9 +1112,11 @@ def test_code_that_does_not_compile_is_named_as_such_before_any_other_check(tmp_
 
 
 def test_the_agent_is_shown_a_caller_s_acceptance_test_and_never_a_derived_one():
-    """_check_appendix. An instruction to test is not a test: a model told to run each step before moving
-    on may never run anything. Showing the whole check output gives it something to act on, for a caller
-    who wrote one. A DERIVED spec is a model's guess about the prompt, and showing it
+    """_check_appendix. The `notes-package` fixture already says "run each one before moving to the next"
+    and the toolset already carries code_execution, and in the long-horizon runs the model never ran
+    anything. An instruction to test is not a test. The one line of check output that leaked back between
+    attempts produced the only correct `parse_note` all day, which is the argument for showing the whole
+    thing — to a caller who wrote one. A DERIVED spec is a model's guess about the prompt, and showing it
     back would promote that guess to the task definition."""
     caller = app.VerifySpec(check_cmd="python3 -c 'import notes; assert notes.VERSION == 2'")
     shown = app._check_appendix(caller, autoderived=False)
@@ -1115,21 +1144,21 @@ def test_the_agent_is_shown_a_caller_s_acceptance_test_and_never_a_derived_one()
 
 def test_the_agent_is_told_where_its_output_has_to_land_on_every_task():
     """Asked to "create a file called hello.txt" with no location named, a model may write /tmp/hello.txt
-    while `_verify` looks under the workdir, costing about 20 model calls and 70k tokens against 3 calls
-    and 8k when the prompt says where.
+    while `_verify` looks under the workdir, costing many extra model calls and tokens; the same file
+    costs far fewer when the prompt says where.
 
-    The agent is spawned with cwd=work and the sandbox binds it, so the ENVIRONMENT is correct; the
-    model has to be told. Every fixture prompt names the working directory and every caller-supplied
-    spec gets _check_appendix, which names it too, so the uncovered path is a person typing an ordinary
-    sentence.
+    The agent is spawned with cwd=work and the sandbox binds it, so the environment is correct —
+    the model has to be told. Every fixture prompt names the working directory and every caller-supplied
+    spec got _check_appendix, which names it too, so the only uncovered path was a person typing an
+    ordinary sentence. That is the dogfood path.
 
     Unconditional is the point: gate this on a spec existing, or on the spec being caller-written, and the
     chat turn (auto-derived, always) is exactly the case it never reaches."""
     assert "/tmp" in app.WORKDIR_NOTE, "name the wrong answer; 'use a relative path' alone did not land"
     assert "RELATIVE" in app.WORKDIR_NOTE
     # _workdir_note always returns WORKDIR_NOTE as a prefix (bare, or with a continuation/expiry note
-    # appended) — never conditioned on it, never replacing it. Confirmed directly against the function
-    # rather than the call site alone, since CUR-196 moved the constant behind a wrapper. continued=False
+    # appended) — never conditioned on it, never replacing it. Checked directly against the function
+    # rather than the call site alone, because the constant sits behind a wrapper. continued=False
     # takes the early-return branch, so the path argument is never touched — safe to pass a bogus one.
     assert app._workdir_note("/nonexistent-path-for-source-check", continued=False, expired=False)[0] == app.WORKDIR_NOTE
     run = inspect.getsource(app._run)
@@ -1141,7 +1170,8 @@ def test_the_agent_is_told_where_its_output_has_to_land_on_every_task():
     assert "_select_attempt(\n                task.prompt," in run
 
     # And the one check complaint the model cannot act on: it wrote the file, and it is being told the
-    # file is missing. Absent a location, the only coherent reading left to it is that the CHECK is broken.
+    # file is missing. Absent a location, the only coherent reading left to it is that the CHECK is broken
+    # — so the model can only conclude the CHECK is broken.
     missing = app._repair_turn_text("expect_file not found: hello.txt")
     assert "/tmp" in missing and "working directory" in missing
     other = app._repair_turn_text("expect_contains failed: wanted 'banana'")
@@ -1152,7 +1182,7 @@ def test_the_agent_is_told_where_its_output_has_to_land_on_every_task():
 
 def test_workdir_note_example_cannot_be_copied_as_a_literal_filename():
     """An example filename in WORKDIR_NOTE gets copied verbatim as the agent's actual output filename
-    regardless of task content, for example a rewritten benefits letter landing as hello.txt (CUR-571). Same discipline
+    regardless of task content: a rewritten benefits letter lands as hello.txt. Same discipline
     as CAPABILITY_NOTE: pin the fix at the prompt-text level, not just intent."""
     assert "hello.txt" not in app.WORKDIR_NOTE, \
         "a real-looking filename example is exactly what the model was copying"
@@ -1167,7 +1197,7 @@ def test_workdir_note_example_cannot_be_copied_as_a_literal_filename():
 def test_capability_note_steers_self_description_away_from_tool_names():
     """Asked what this mode can do, the agent tends to answer in its own tool names (write_file, patch,
     terminal(), search_files) and never mention translating, summarizing, or reading a document, the jobs
-    a non-technical caller will actually try (CUR-542). Unconditional, like WORKDIR_NOTE: the question can
+    a non-technical caller will actually try. Unconditional, like WORKDIR_NOTE: the question can
     land on any turn."""
     assert "write_file" in app.CAPABILITY_NOTE and "terminal" in app.CAPABILITY_NOTE, \
         "names the exact vocabulary to avoid, not just a vague 'be less technical'"
@@ -1189,7 +1219,7 @@ def test_capability_note_is_scoped_to_actual_capability_questions():
     """CAPABILITY_NOTE is appended to every task.prompt whether or not a capability question was asked,
     so its guidance ("you do not need to run anything to answer it") sits directly above an unrelated real
     task on every turn. Without a scope sentence, a model can answer an ordinary request with the
-    capability blurb verbatim (CUR-671). This pins the sentence that tells the model the paragraph doesn't
+    capability blurb verbatim. This pins the sentence that tells the model the paragraph doesn't
     apply outside an actual self-description question."""
     assert "only applies when" in app.CAPABILITY_NOTE and "literally asking what you can do" in app.CAPABILITY_NOTE, \
         "must name its own scope, not just describe what a capability answer should look like"
@@ -1200,7 +1230,7 @@ def test_capability_note_is_scoped_to_actual_capability_questions():
 def test_capability_note_answers_in_the_persons_language_not_its_own_wording():
     """Greetings such as Quechua's "Napaykullayki. ¿Imaynatam yanapawankiman?" or Yucatec Maya's "Bix jeʼel
     a wáantken?" do read as capability questions, and a model can answer them by reciting this note's own
-    English sentences, ignoring LANGUAGE_NOTE (CUR-674). Copying the instruction text carries the
+    English sentences, ignoring LANGUAGE_NOTE. Copying the instruction text carries the
     instruction's language with it wherever LANGUAGE_NOTE sits, and reordering the notes trades one
     language failure for another. So the sentence telling the model to answer in prose also names the
     language and rules out reciting itself."""
@@ -1212,7 +1242,7 @@ def test_capability_note_answers_in_the_persons_language_not_its_own_wording():
 
 def test_computation_note_pushes_arithmetic_through_a_tool_instead_of_mental_math():
     """Without this note a model answers "What is 8734 * 6219?" from its own arithmetic, wrongly and with
-    no tool call (CUR-764). The fabrication banner only catches a turn that wrote a file and never ran it;
+    no tool call. The fabrication banner only catches a turn that wrote a file and never ran it;
     a turn that never touched a file has nothing for that check to see. So the note biases the choice
     itself, unconditional like CAPABILITY_NOTE/WORKDIR_NOTE."""
     assert "run it through the terminal or code-execution tool" in app.COMPUTATION_NOTE, \
@@ -1228,7 +1258,7 @@ def test_computation_note_pushes_arithmetic_through_a_tool_instead_of_mental_mat
 def test_computation_note_generalizes_beyond_arithmetic_cur765():
     """Beyond arithmetic, the note names aggregation, sorting/ranking, exact string counting, and
     statistics explicitly rather than leaving them to the trailing catch-all: a generic "or anything
-    else..." clause does not stop wrong totals or wrongly ranked months in a revenue task (CUR-765)."""
+    else..." clause does not stop wrong totals or wrongly ranked months in a revenue task."""
     for phrase in (
         "aggregation over data you were given",
         "sorting or ranking by a numeric or date field",
@@ -1239,7 +1269,7 @@ def test_computation_note_generalizes_beyond_arithmetic_cur765():
 
 
 def test_computation_note_hard_triggers_on_stakes_framing_cur765():
-    """CUR-671 showed a user framing the answer as high-stakes ("this goes to 400 people", "are you
+    """A user framing the answer as high-stakes ("this goes to 400 people", "are you
     sure") changes nothing about whether a tool gets used — this is a different trigger from the
     mechanically-checkable-category list above (it's about what the person said, not the task type), so
     it needs its own clause rather than being assumed to follow from the categories."""
@@ -1249,8 +1279,8 @@ def test_computation_note_hard_triggers_on_stakes_framing_cur765():
 
 
 def test_the_sandbox_python_can_write_and_read_an_excel_file_cur4106(tmp_path):
-    """CUR-4106: an Excel request needs openpyxl and pandas importable in the sandbox; without them the
-    agent falls back to CSVs and an answer that never says Excel failed. The
+    """Asked for an Excel file, the agent's first two scripts failed at import and its third was
+    titled "without openpyxl"; the person got CSVs and an answer that never said Excel had failed. The
     sandbox runs on the image's Python, installed from requirements.txt, which this venv installs too."""
     import pandas as pd
     path = tmp_path / "totals.xlsx"
@@ -1260,8 +1290,9 @@ def test_the_sandbox_python_can_write_and_read_an_excel_file_cur4106(tmp_path):
 
 
 def test_the_sandbox_python_can_put_a_chart_in_excel_word_and_pdf_cur4106(tmp_path):
-    """CUR-4106: the sandbox needs the libraries to put a bar chart in a workbook, a chart in a PDF note and
-    one in a Word file. Each file must carry the chart itself, not just exist."""
+    """Asked for a bar chart in the workbook, the agent answered "Done." over an xlsx with no chart
+    part; asked for a PDF note with a chart, it wrote Markdown and said matplotlib was absent; asked for Word,
+    it wrote a .txt. Each file must carry the chart itself, not just exist."""
     import zipfile
 
     import matplotlib
@@ -1305,21 +1336,21 @@ def test_the_sandbox_python_can_put_a_chart_in_excel_word_and_pdf_cur4106(tmp_pa
 
 
 def test_computation_note_names_the_document_libraries_and_never_asks_for_installs_cur4106():
-    """CUR-4106: an answer must never tell the person to run `sudo apt-get install pandoc`."""
+    """The French answer told a coordinator to run `sudo apt-get install pandoc`."""
     for lib in ("openpyxl.chart", "matplotlib", "python-docx", "reportlab"):
         assert lib in app.COMPUTATION_NOTE
     assert "Never ask the person to install software or run commands" in app.COMPUTATION_NOTE
 
 
 def test_computation_note_rounds_money_and_owns_a_format_fallback_cur4106():
-    """CUR-4106: pandas sums are rounded before they reach a CSV (not 1299.5300000000002), and a format fallback is mentioned."""
+    """Pandas sums went to CSV as 1299.5300000000002, and the Excel fallback went unmentioned."""
     assert "round them to the currency's usual decimals" in app.COMPUTATION_NOTE
     assert "could not produce the file format the person asked for, say so" in app.COMPUTATION_NOTE
 
 
 def test_language_note_tells_the_model_what_language_to_answer_in():
     """Without a named target language, a task written in French, Portuguese, Italian, Arabic or Chinese
-    can come back in English (CUR-672). Unconditional, same shape as WORKDIR_NOTE/CAPABILITY_NOTE."""
+    can come back in English. Unconditional, same shape as WORKDIR_NOTE/CAPABILITY_NOTE."""
     assert "same language the person used" in app.LANGUAGE_NOTE
     run = inspect.getsource(app._run)
     assert "+ LANGUAGE_NOTE" in run, "must reach agent_prompt on every task, not just a flagged one"
@@ -1327,8 +1358,8 @@ def test_language_note_tells_the_model_what_language_to_answer_in():
 
 def test_no_verification_claim_note_forbids_the_model_signing_its_own_answer_verified():
     """A model can sign its own answer "Verified: ... balanced teams" when the only check that ran
-    confirmed the file existed with the right columns, which cannot see whether a grouping is balanced
-    (CUR-4055). This note is the prompt-level half of the fix (the judge gate is the other). Same
+    confirmed the file existed with the right columns, which cannot see whether a grouping is balanced.
+    This note is the prompt-level half of the guard (the judge gate is the other). Same
     unconditional shape as the notes above, so it reaches agent_prompt on every turn."""
     note = app.NO_VERIFICATION_CLAIM_NOTE
     assert "verified" in note and "confirmed" in note, "names the claims it forbids, not just 'be honest'"
@@ -1341,7 +1372,7 @@ def test_no_verification_claim_note_forbids_the_model_signing_its_own_answer_ver
 def test_source_fidelity_note_pins_dates_and_status_as_fixed():
     """In every language, including English, a rewrite of an official notice can invent a fact not in
     the source (an "application" where the source only names an eligibility under review) and move a
-    deadline from "28 days from the date of the notification" to "28 days from today" (CUR-672). This
+    deadline from "28 days from the date of the notification" to "28 days from today". This
     note is the prompt-level guard against both."""
     assert "keep it relative to that same event" in app.SOURCE_FIDELITY_NOTE, \
         "names the exact failure (deadline recomputed relative to today) not just 'be accurate'"
@@ -1353,7 +1384,7 @@ def test_source_fidelity_note_pins_dates_and_status_as_fixed():
 def test_source_fidelity_note_pins_the_kind_of_claim_not_just_its_status():
     """Keeping a claim's status ("under review", not "granted") does not keep its kind: the source's
     "direito" (a right/entitlement) can still come back as a "pedido" (an application), as German
-    "Anspruch" can come back as "Antrag" (CUR-676). Status and category are different axes."""
+    "Anspruch" can come back as "Antrag". Status and category are different axes."""
     assert "right or entitlement" in app.SOURCE_FIDELITY_NOTE and "application" in app.SOURCE_FIDELITY_NOTE, \
         "names the exact failure (entitlement reworded as application) not just 'be accurate'"
     assert "source's own term" in app.SOURCE_FIDELITY_NOTE
@@ -1363,7 +1394,7 @@ def test_source_fidelity_note_plain_language_does_not_license_a_category_swap():
     """A plain-language rewrite instruction pushes the model toward the more common word, which in
     German names the wrong category: "Anspruch" (entitlement) comes back as "Antrag" (application). The
     same content reproduced faithfully keeps the term, so the cause is the instruction, not the language
-    or near-miss pairs alone (CUR-687).
+    or near-miss pairs alone.
 
     The abstract rule (the first two assertions) does not hold on its own; the concrete worked example
     (the third) is what makes it hold. Keep all three assertions.
@@ -1372,16 +1403,16 @@ def test_source_fidelity_note_plain_language_does_not_license_a_category_swap():
         "must say what a plain-language instruction does and doesn't license, not just 'be accurate'"
     assert "more familiar word just because it's easier to say" in app.SOURCE_FIDELITY_NOTE
     assert '"Anspruch"' in app.SOURCE_FIDELITY_NOTE and '"Antrag"' in app.SOURCE_FIDELITY_NOTE, \
-        "the abstract rule alone held only 1/3 on live re-test — the concrete example is what closed it 3/3"
+        "the abstract rule alone is not enough — the concrete example is what makes it hold"
 
 
 def test_category_notes_name_every_portuguese_synonym_seen_live_not_just_one():
     """One named synonym doesn't close the space: with only "pedido" named, the model reaches for an
-    unnamed one, "solicitação", and "requerimento" carries the same risk (CUR-962). So every Portuguese
+    unnamed one, "solicitação", and "requerimento" carries the same risk. So every Portuguese
     synonym is named.
 
     Both notes carry the list: CATEGORY_RECAP_NOTE is the last-read note, which is where the fix has to
-    live (CUR-752), and SOURCE_FIDELITY_NOTE carries the fuller worked example, as it does for German.
+    live, and SOURCE_FIDELITY_NOTE carries the fuller worked example, as it does for German.
     Either alone regresses."""
     for term in ('"solicitação"', '"pedido"', '"requerimento"'):
         assert term in app.SOURCE_FIDELITY_NOTE, f"{term} missing from the Portuguese worked example"
@@ -1391,28 +1422,27 @@ def test_category_notes_name_every_portuguese_synonym_seen_live_not_just_one():
     assert "+ CATEGORY_RECAP_NOTE" in run, "must reach agent_prompt on every task"
 
 
-# The SHA the date anchor below was actually observed under. Bumping HERMES_SHA without re-running the
+# The SHA the date anchor below was verified under. Bumping HERMES_SHA without re-running the
 # probe is the thing this pin exists to stop, so the two must be edited together, deliberately.
-# 818c13be (v0.21.6): an ACP session's prompt, built in-process by upstream's build_system_prompt,
-# renders "Conversation started: <weekday>, <date> (<timezone>)", and the line vanishes with
-# _bot_chat_timeless_prompt forced on. The live probe runs on the preview that this pin's develop merge
-# deploys (CUR-2118).
+# 818c13be (v0.21.6): an ACP session's prompt, built in-process by upstream's
+# build_system_prompt, rendered "Conversation started: Thursday, October 08, 2026 (PDT, UTC-07:00)",
+# and the line vanished with _bot_chat_timeless_prompt forced on. The live probe runs against the
+# deployed agent app built from the pinned SHA.
 _HERMES_SHA_DATE_ANCHOR_VERIFIED = "818c13be1dc4fd28987e1e881a9408224afd4535"
 
 
 def test_the_wall_clock_anchor_is_inherited_from_hermes_not_owned_here():
-    """None of the seven *_NOTE constants states the current date, yet a prose deadline question reaches
-    the model anchored (CUR-1217): on BOTH transports, with zero tool calls, a lapsed-deadline question
-    resolves to the correct end date.
+    """None of the *_NOTE constants states the current date, and none needs to. On both transports,
+    with zero tool calls, the agent states today's date and resolves a lapsed deadline correctly.
     The anchor comes from one layer up — Hermes renders `Conversation started: {%A, %B %d, %Y}` into
     its own system prompt unconditionally (agent/system_prompt.py ~line 995 at the SHA below), plus a
     "Today's date (as of the last context rebuild)" line once a session crosses midnight.
 
-    So there is no NOW_NOTE. A second date in this prompt would duplicate a working anchor in a file
-    where note ORDER decides which instruction holds (CUR-706, CUR-752).
+    So no NOW_NOTE was added. A second date in this prompt would duplicate a working anchor in a file
+    where note ORDER matters, for no gain.
 
-    The property is inherited and otherwise unasserted. It rides a pinned upstream SHA
-    (CUR-748), and upstream has a live path that deliberately drops
+    What IS exposed is that the property is inherited and unasserted. It rides a pinned upstream SHA
+    that can be bumped, and upstream has a path that deliberately drops
     the date line (`_bot_chat_timeless_prompt`). Nothing here would notice. This pin is the cheap half
     of the guard — it cannot see upstream, only force a human to look; scripts/date_anchor_probe.py is
     the half that actually measures it."""
@@ -1420,7 +1450,7 @@ def test_the_wall_clock_anchor_is_inherited_from_hermes_not_owned_here():
     assert f'HERMES_SHA="{_HERMES_SHA_DATE_ANCHOR_VERIFIED}"' in dockerfile, (
         "HERMES_SHA moved. The agent's only wall-clock anchor is Hermes' own system prompt, which "
         "this repo does not own and does not otherwise test. Re-run `scripts/date_anchor_probe.py --base "
-        "<the develop pair>` with AGENT_SMOKE_TOKEN set to that pair's token, once develop runs the new SHA, then "
+        "<the agent pair>` with AGENT_SMOKE_TOKEN set to that pair's token, once it runs the new SHA, then "
         "update _HERMES_SHA_DATE_ANCHOR_VERIFIED to match."
     )
 
@@ -1436,9 +1466,9 @@ def _date_probe():
 
 def test_date_probe_legs_go_red_for_the_failure_each_one_names():
     """A probe whose checkers cannot go red is decoration, and these three decide whether a live
-    production behaviour is called healthy. Each case below is an answer this probe would have to
+    behaviour is called healthy. Each case below is an answer this probe would have to
     reject, paired with the leg that must reject it. The PASS strings are real answers
-    from the preview, not invented ones — a checker that rejects reality is the other way to be
+    from a deployed agent, not invented ones — a checker that rejects reality is the other way to be
     useless."""
     p = _date_probe()
     today = f"{datetime.now(UTC):%B} {datetime.now(UTC).day}, {datetime.now(UTC).year}"
@@ -1459,9 +1489,9 @@ def test_date_probe_legs_go_red_for_the_failure_each_one_names():
                      "this letter to send any comments or information.")
     assert p._relative(real_relative)[0], "must accept the real answer"
     assert not p._relative("You have until 12 October 2026 to send comments.")[0], \
-        "CUR-676's drift: a relative deadline converted to a computed absolute date"
+        "its drift: a relative deadline converted to a computed absolute date"
     assert not p._relative("You have 28 days from today to send comments about this letter.")[0], \
-        "CUR-672's other half: the countdown re-anchored to the reader instead of the notice"
+        "its other half: the countdown re-anchored to the reader instead of the notice"
     assert not p._relative("Send us your comments soon.")[0], "the anchor dropped entirely"
 
 
@@ -1470,11 +1500,11 @@ def test_repair_turns_engage_only_where_a_content_check_can_refute_the_model():
     file named right", so it stays out: refusing to accept termination on it would bounce the model against
     a check that was never going to disagree.
 
-    NO spec is a different case and is in. That is the chat path (synthesize:true sends none); falling on
-    the deny side of the same predicate would leave REPAIR_TURNS, _repair_turn_text and _syntax_errors
-    unreachable on the only path a user touches. _repair_carries_scratch answers a question about
-    cross-attempt scratch retention; in-session repair never resets the scratch, so borrowing it here would
-    be the wrong predicate."""
+    NO spec is a different case and is included. That is the chat path (synthesize:true sends none); if it
+    fell on the deny side of the predicate, REPAIR_TURNS, _repair_turn_text and
+    _syntax_errors would be unreachable on the only path a user touches. _repair_carries_scratch answers a
+    question about cross-attempt scratch retention; in-session repair never resets the scratch, so it is the
+    wrong predicate here."""
     run = _run_pipeline_src()
     gate = run.split("repair_check: Callable[[str], tuple[bool, str]] | None = None", 1)[1].split("def _in_session_repair_check", 1)[0]
     assert "_repair_carries_scratch(_repair_spec, task._verify_autoderived)" in gate, \
@@ -1536,7 +1566,7 @@ def test_parse_derived_spec():
     assert _pd('{"expect_file": "/etc/passwd"}') is None, "absolute path rejected"
     assert _pd('{"expect_file": "../../etc/passwd"}') is None, "parent traversal rejected"
     assert _pd('{"expect_file": "a/../../b"}') is None, "traversal mid-path rejected"
-    # expect_sorted_by / expect_columns (CUR-596) — safe to derive, unlike check_cmd above
+    # expect_sorted_by / expect_columns — safe to derive, unlike check_cmd above
     _s = _pd('{"expect_file": "top3.csv", "expect_sorted_by": "total_revenue", "expect_sorted_desc": true}')
     assert _s is not None and _s.expect_sorted_by == "total_revenue" and _s.expect_sorted_desc is True, \
         "expect_sorted_by/expect_sorted_desc parsed from model output"
@@ -1628,7 +1658,7 @@ def test_judge_result_failclosed_and_verdicts():
 
 
 def test_judge_file_excerpt():
-    """_judge_file_excerpt (CUR-596): bounded, read-only, uses the SAME path guard as _verify, kill switch."""
+    """_judge_file_excerpt: bounded, read-only, uses the SAME path guard as _verify, kill switch."""
     with tempfile.TemporaryDirectory() as work:
         Path(work, "top3.csv").write_text("month,total_revenue\nMar,380\n")
         spec = app.VerifySpec(expect_file="top3.csv", expect_sorted_by="total_revenue")
@@ -1650,8 +1680,8 @@ def test_judge_file_excerpt():
 
         # Source-level tripwire: _judge_file_excerpt must read via _read_artifact (a BOUNDED read, cap
         # applied during the read itself), not target.read_text() (materializes the WHOLE file first).
-        # The latter lets a sparse `truncate -s 20G` file in the scratch dir exhaust a 1GB machine's
-        # memory, on the one path AGENT_JUDGE_EXCERPT_BYTES is supposed to bound.
+        # The latter lets a sparse `truncate -s 20G` file in the scratch dir exhaust a 1 GB machine's
+        # memory on the one path AGENT_JUDGE_EXCERPT_BYTES is supposed to bound.
         import inspect
         src = inspect.getsource(app._judge_file_excerpt)
         assert "content, truncated = _read_artifact(" in src, \
@@ -1659,7 +1689,7 @@ def test_judge_file_excerpt():
 
 
 def test_format_judge_excerpt_marks_truncation_when_caller_already_cut_it():
-    """_format_judge_excerpt's `truncated` param (CUR-596 follow-up): when a caller (e.g.
+    """_format_judge_excerpt's `truncated` param: when a caller (e.g.
     _judge_file_excerpt, now backed by the bounded _read_artifact) has already cut content short before
     calling this, the "(truncated)" note must still appear — content that's already within max_bytes
     would otherwise never trip this function's OWN length-based truncation detection, silently losing
@@ -1705,7 +1735,7 @@ def test_judge_file_excerpt_truncation_increments_metric():
 
 
 def test_judge_result_work_parameter():
-    """_judge_result's `work` parameter (CUR-596): omitting it is byte-identical to before it existed;
+    """_judge_result's `work` parameter: omitting it is byte-identical to before it existed;
     setting it threads a bounded excerpt into the judge's user message."""
     seen = {}
 
@@ -1732,7 +1762,7 @@ def test_judge_failure_names_the_http_status_not_just_the_exception_class():
     every operational judge failure into one string. Since this seat fails CLOSED, that made a wrong
     token indistinguishable from a model that got worse — best-of-N burns every attempt against the
     same 401 and the turn ends unverified with nothing naming the cause. MODEL_VERIFIER_TOKEN is a
-    credential that can expire or be rotated, so a 401 is an expected failure.
+    borrowed key on someone else's change window, so this is the expected failure, not an exotic one.
     """
     class _Resp:
         def __init__(self, code): self.status_code = code
@@ -1799,21 +1829,21 @@ def test_one_judge_call_cannot_outlast_the_turn_it_is_judging():
     attempt, so at BEST_OF=3 judging alone could spend 270s against the chat side's 155s agent-generation
     ceiling — the whole turn dies while the judging is still, technically, within its timeout.
 
-    20s comes from that budget. Turns run 30-34s end to end
-    INCLUDING their judge call, so three attempts is ~90s of agent work and ~65s is left for judging.
+    20s comes from that budget: a turn takes ~30-34s end to end including its judge call, so three attempts
+    is ~90s of agent work and ~65s is left for judging.
 
-    It stays far above the observed spread (1.4-3.2s) on purpose, because
+    It stays far above the typical judge latency (1.4-3.2s) on purpose, because
     `_judge_result` fails CLOSED: a timeout is a rejection, and a rejection costs a whole extra agent
     attempt. Cutting a slow-but-working judge is more expensive than waiting for it. The cut is aimed at
-    the pathological call — one in eighteen took 77s — not the merely slow one."""
+    the pathological call, not the merely slow one."""
     assert app.JUDGE_TIMEOUT_SECS * 3 < 155, \
         "BEST_OF judge calls must fit inside the chat side's agent-generation ceiling"
     assert app.JUDGE_TIMEOUT_SECS > 3.2 * 3, \
-        "and stay well clear of the measured spread — a fail-closed timeout REJECTS the attempt"
+        "and stay well clear of typical judge latency — a fail-closed timeout REJECTS the attempt"
     src = inspect.getsource(app._run)
     assert "timeout=JUDGE_TIMEOUT_SECS" in src, "the constant has to reach the call, not just exist"
     assert "timeout=90.0" not in src, "the old unbounded-in-practice value is gone"
-    # Visible where a run comparing itself to prod can see it: this moves verification OUTCOMES, so two
+    # Visible where a run comparing itself to the deployed config can see it: this moves verification OUTCOMES, so two
     # runs at different values are measuring different things.
     assert app.healthz()["judge_timeout_s"] == app.JUDGE_TIMEOUT_SECS
     pc = _prodcheck()
@@ -1825,10 +1855,12 @@ def test_the_judge_is_told_what_the_check_already_settled_so_it_grades_the_resid
     """_judge_scope. The judge runs only AFTER the artifact check passed, so re-grading what that check
     proved is asking a model to re-derive from prose what we already know from disk.
 
-    Without it, a judge can reject a correct answer to "create hello.txt containing banana, then tell me
-    what it says" (file on disk containing banana, answer saying so) for "missing the output format
-    requested". Best-of-N retries do not absorb that: at temperature 0 the retries are the same answer
-    and draw the same rejection, so a per-answer over-rejection rate is the per-TASK rate."""
+    Measured cost of not doing this: Ministral-3-14B rejected three consecutive correct answers to
+    "create hello.txt containing banana, then tell me what it says" — the file on disk, containing
+    banana, and an answer saying so — for "missing the output format requested (e.g. 'It says: banana')".
+    docs/model-tradeoffs.md put that judge at 3/5 specificity and accepted it because best-of-N "absorbs
+    over-rejection as a harmless retry", which assumes INDEPENDENT attempts; at temperature 0 the retries
+    are the same answer and draw the same rejection, so 2-in-5 per answer is 2-in-5 per TASK, not 6%."""
     spec = app.VerifySpec(expect_file="hello.txt", expect_contains="banana")
     scope = app._judge_scope(spec)
     assert "hello.txt" in scope and "'banana'" in scope, "name the settled facts, not just that some exist"
@@ -1836,8 +1868,9 @@ def test_the_judge_is_told_what_the_check_already_settled_so_it_grades_the_resid
     assert "form you" in scope, "the observed failure was FORM, so the instruction has to name form"
     assert app._judge_scope(None) == "", "no spec, nothing settled, today's prompt unchanged"
     assert app._judge_scope(app.VerifySpec()) == "", "a spec asserting nothing settles nothing"
-    # A passed expect_sorted_by/expect_columns check must be named too: the judge also receives a raw
-    # excerpt of this file, and omitting these leaves it free to re-derive sort/column correctness.
+    # a passed expect_sorted_by/expect_columns check must be named too — the judge also gets a raw excerpt
+    # of this exact file, and omitting these would leave it free to re-derive sort/column correctness
+    # and over-reject a correct answer.
     sorted_scope = app._judge_scope(app.VerifySpec(expect_file="top3.csv", expect_sorted_by="total_revenue",
                                                     expect_sorted_desc=True))
     assert "total_revenue" in sorted_scope and "descending" in sorted_scope
@@ -1861,11 +1894,11 @@ def test_the_judge_is_told_what_the_check_already_settled_so_it_grades_the_resid
     # mechanism inert while every test above still passed.
     sel = inspect.getsource(app._select_attempt)
     assert "effective_spec = None if overruled else spec" in sel, \
-        "the spec must reach the judge when it PASSED — and must not when it was overruled (CUR-193), " \
+        "the spec must reach the judge when it PASSED — and must not when it was overruled, " \
         "since a check that just failed has settled nothing to scope the judge with"
     assert "_judge_result(prompt, result_text, judge_call, effective_spec, work=work)" in sel, \
         "the judge call must use the overrule-resolved spec, not the raw one — a caller cannot invoke " \
-        "_judge_result directly with the pre-overrule spec and still get CUR-193's scoping right"
+        "_judge_result directly with the pre-overrule spec and still get its scoping right"
 
 
 def test_select_attempt():
@@ -1890,7 +1923,7 @@ def test_select_attempt():
         # chat turn (may_judge): artifact is NECESSARY before the judge runs (judge must NOT be called)
         acc, vm, reason = app._select_attempt("p", work, "ans", bad, True, _judge_must_not_run)
         assert acc is False and vm is None and reason, "missing artifact rejects BEFORE the judge"
-    # chat turn, no spec at all -> the judge does NOT get an unchecked vote (CUR-744). A prose riddle
+    # chat turn, no spec at all -> the judge does NOT get an unchecked vote. A prose riddle
     # with nothing derivable is a judge with zero grounding, which can false-accept a wrong answer to a
     # puzzle such as the 8-ball weighing problem.
     acc, vm, reason = app._select_attempt("p", "/tmp", "the answer", None, True, _judge_must_not_run)
@@ -1898,11 +1931,11 @@ def test_select_attempt():
 
 
 def test_select_attempt_threads_work_into_the_judge_excerpt():
-    """_select_attempt (CUR-596): `work` (its own 2nd positional param) reaches _judge_result, so the
+    """_select_attempt: `work` (its own 2nd positional param) reaches _judge_result, so the
     judge sees the same file _verify just confirmed exists.
 
     An OVERRULED spec never reaches the judge: an ungrounded judge vote (spec=None passed to
-    _judge_result) can false-accept a wrong answer (CUR-744). Overruled means the effective spec is None,
+    _judge_result) can false-accept a wrong answer. Overruled means the effective spec is None,
     which is never "grounded", so the attempt falls through to accept-UNVERIFIED and
     `_judge_pass_and_record` must never be called — checked directly, not just inferred from empty output."""
     seen = {}
@@ -1912,7 +1945,7 @@ def test_select_attempt_threads_work_into_the_judge_excerpt():
         return {"content": '{"pass": true, "reason": "good"}'}
 
     def _judge_must_not_run(_messages):
-        raise AssertionError("judge called on an overruled (ungrounded) spec — CUR-744 regression")
+        raise AssertionError("judge called on an overruled (ungrounded) spec")
 
     with tempfile.TemporaryDirectory() as work:
         Path(work, "top3.csv").write_text("month,total_revenue\nMar,380\n")
@@ -1922,7 +1955,7 @@ def test_select_attempt_threads_work_into_the_judge_excerpt():
         assert "top3.csv" in seen["content"] and "Mar,380" in seen["content"], \
             "the judge's actual message carries the excerpt of the file _verify just confirmed"
 
-        # An overruled (auto-derived, failed) spec no longer reaches the judge at all (CUR-744).
+        # An overruled (auto-derived, failed) spec no longer reaches the judge at all.
         bad = app.VerifySpec(expect_file="missing.csv", expect_sorted_by="x")
         acc, vm, reason = app._select_attempt("p", work, "ans", bad, True, _judge_must_not_run,
                                               spec_autoderived=True)
@@ -1931,13 +1964,13 @@ def test_select_attempt_threads_work_into_the_judge_excerpt():
 
 
 def test_select_attempt_accepts_on_execution_when_grounded_but_result_text_is_empty():
-    """_select_attempt (CUR-774): a grounded, PASSING artifact-backed spec with an empty result_text
+    """_select_attempt: a grounded, PASSING artifact-backed spec with an empty result_text
     accepts on "execution" and never calls the judge. An empty answer isn't a verdict against work that
     already checked out on disk — `_judge_result`'s own blanket empty->False (correct for a caller with
     nothing else behind it, see test_judge_result_failclosed_and_verdicts) must not reach a caller that
-    does. Shape: the ACP transport clears its accumulated answer text on every new tool_call, and a
-    turn ending on a tool_result with no trailing wrap-up never refills it, so the result is empty
-    despite a passed check."""
+    does. Shape: the ACP transport clears its accumulated answer text on every new tool_call and a
+    turn ending on a tool_result with no trailing wrap-up never refills it, so a real passed
+    check must not be rejected as "empty result"."""
     def _judge_must_not_run(_m):
         raise AssertionError("judge called on empty result_text despite a passed artifact-backed spec")
 
@@ -1958,9 +1991,9 @@ def test_select_attempt_accepts_on_execution_when_grounded_but_result_text_is_em
 
 
 def test_consistency_eligible():
-    """_consistency_eligible (CUR-596 item 2): only a spec asserting CSV STRUCTURE (expect_sorted_by or
+    """_consistency_eligible: only a spec asserting CSV STRUCTURE (expect_sorted_by or
     expect_columns) has a computed value worth comparing across best-of-N attempts — narrower than "any
-    file-shaped, non-check_cmd spec" (an earlier version): expect_file+expect_contains alone (a plain-text
+    file-shaped, non-check_cmd spec": expect_file+expect_contains alone (a plain-text
     report, a log excerpt, prose) has no tabular structure, and running csv.reader over it anyway produces
     a "signature" driven by incidental comma placement rather than actual content."""
     assert app._consistency_eligible(None) is False, "no spec -> nothing to compare"
@@ -1988,16 +2021,16 @@ def test_normalized_rows_ordered_vs_unordered():
     assert app._normalized_rows(a, ordered=True) == app._normalized_rows(a, ordered=True)
 
     # A trailing (or any) blank row is a formatting artifact, never real tabular content — csv.reader
-    # yields [] for it, and keeping that as a real row would make two attempts writing the
-    # identical table, one with an extra blank line at the end, register as disagreeing.
+    # yields [] for it, and an un-fixed version kept that as a real row, so two attempts writing the
+    # identical table but one with an extra blank line at the end registered as disagreeing.
     with_blank = "month,total\nJan,250\nFeb,260\n\n"
     without_blank = "month,total\nJan,250\nFeb,260\n"
     assert app._normalized_rows(with_blank, ordered=True) == app._normalized_rows(without_blank, ordered=True), \
         "a trailing blank row must not register as real content"
 
     # io.StringIO does not translate embedded newlines, so a quoted multi-line cell keeps its literal
-    # \r\n or \n — the SAME value written by a CRLF-emitting path vs an LF-emitting path parses to
-    # different cell content unless normalised, purely from line-ending style.
+    # \r\n or \n — the SAME value written by a CRLF-emitting path vs an LF-emitting path parsed to
+    # different cell content on an un-fixed version, purely from line-ending style.
     crlf = 'month,note\nJan,"line1\r\nline2"\n'
     lf = 'month,note\nJan,"line1\nline2"\n'
     assert app._normalized_rows(crlf, ordered=True) == app._normalized_rows(lf, ordered=True), \
@@ -2042,8 +2075,8 @@ def test_attempt_signature():
 def test_majority_signature():
     """_majority_signature: (majority_sig, disagreement_detail). Fewer than 2 samples -> (None, None),
     nothing to compare. A strict majority (>half) settles it and names WHICH value won — the caller needs
-    that to know which sample to actually serve, not just whether they agreed (serving whichever attempt ran last
-    would ignore the value the majority held). A tie or 3-way split has no majority and names the split instead."""
+    that to know which sample to actually serve, not just whether they agreed (the caller must serve a
+    sample holding the majority value, not whichever attempt ran last). A tie or 3-way split has no majority and names the split instead."""
     assert app._majority_signature([]) == (None, None)
     assert app._majority_signature(["a"]) == (None, None), "one sample -> nothing to confirm or deny against"
     assert app._majority_signature(["a", "a"]) == ("a", None), "unanimous -> that value, no disagreement"
@@ -2057,7 +2090,7 @@ def test_majority_signature():
 
 
 def test_snapshot_and_restore_scratch_round_trip():
-    """_snapshot_scratch/_restore_scratch (CUR-596 item 2): copying a scratch dir's contents out and back
+    """_snapshot_scratch/_restore_scratch: copying a scratch dir's contents out and back
     must reproduce it exactly — this is what stands between a losing confirmation attempt and silently
     reporting the wrong attempt's files as the answer."""
     with tempfile.TemporaryDirectory() as work:
@@ -2083,10 +2116,10 @@ def test_snapshot_and_restore_scratch_round_trip():
 
 
 def test_corpus_snapshot_text_scrubs_nonce_before_truncating():
-    """_corpus_snapshot_text (CUR-596 item 2 review fix): scrubs the nonce from each file's FULL content
+    """_corpus_snapshot_text: scrubs the nonce from each file's FULL content
     before the byte cap is applied, not after. Scrubbing an already-truncated result (the original order)
     risks the nonce straddling the truncation cut and leaving an unredacted fragment in the durable,
-    exportable verify_corpus table — the same CUR-574 bug class, reintroduced via truncation order."""
+    exportable verify_corpus table — the same bug class, reintroduced via truncation order."""
     with tempfile.TemporaryDirectory() as work:
         nonce = "sekret-nonce-abc123"
         Path(work, "out.txt").write_text(f"before {nonce} after")
@@ -2100,11 +2133,12 @@ def test_corpus_snapshot_text_scrubs_nonce_before_truncating():
 
 
 def test_restore_scratch_removes_a_symlink_the_clear_step_could_not_before():
-    """_restore_scratch's clear step (CUR-596): a top-level symlink must actually be
+    """_restore_scratch's clear step: a top-level symlink must actually be
     removed, and the copy-back that follows must never write THROUGH a surviving one. Path.is_dir()
-    FOLLOWS a symlink, so deciding is_dir()-vs-unlink() with it would route a symlink-to-a-directory into
-    shutil.rmtree, which refuses to operate on a symlink and raises; the surrounding except swallows that
-    and leaves the link in place for the copy-back step to write straight through."""
+    FOLLOWS a symlink to answer "is the target a directory" — using it to decide is_dir()-vs-unlink() on
+    the symlink ITSELF (the un-fixed version) routed a symlink-to-a-directory into shutil.rmtree, which
+    refuses to operate on a symlink and raises — silently swallowed by the surrounding except, leaving
+    the link in place for the copy-back step to write straight through."""
     with tempfile.TemporaryDirectory() as work, tempfile.TemporaryDirectory() as outside:
         Path(outside, "sentinel.txt").write_text("should never be touched")
         os.symlink(outside, Path(work, "escape_link"))          # a top-level symlink TO A DIRECTORY
@@ -2122,11 +2156,11 @@ def test_restore_scratch_removes_a_symlink_the_clear_step_could_not_before():
 
 
 def test_restore_scratch_clears_a_stale_hermes_home_prefixed_FILE():
-    """_restore_scratch's clear step (CUR-596): must exclude hermes-home DIRECTORIES
+    """_restore_scratch's clear step: must exclude hermes-home DIRECTORIES
     only, matching _snapshot_scratch's own _artifact_paths-based filter — a top-level FILE named with
     that prefix is a legitimate, servable artifact (per _resolve_artifact_path's own convention), not
-    session state. Using _scratch_artifacts here would exclude files AND directories
-    with that prefix, so a stale one from a losing attempt would survive every restore untouched."""
+    session state. The un-fixed version used _scratch_artifacts, which excluded files AND directories
+    with that prefix, so a stale one from a losing attempt survived every restore untouched."""
     with tempfile.TemporaryDirectory() as work:
         Path(work, "top3.csv").write_text("month,total_revenue\nMar,380\n")
         snap = app._snapshot_scratch(work)          # the WINNER's snapshot has no hermes-home-* file
@@ -2147,16 +2181,15 @@ def test_run_wires_consistency_check_and_cleans_up_on_every_exit(tmp_path):
     reintroduce: the flag not actually gating the behavior, EVERY accepted vmethod being captured (not
     just execution-confirmed ones — a judge-overruled FIRST attempt must not finalize the task without
     sampling), a None-sig sample winning over a real one, the served answer coming from whoever ran last
-    instead of the computed winner, a restore that reads `work` instead of physically fixing it (desyncing
-    from the artifact-download route — CUR-546), state mutating on a canceled task, and an abandoned snapshot
+    instead of the computed winner, a restore that reads `work` instead of physically fixing it, state mutating on a canceled task, and a leaked snapshot
     temp dir on a path that isn't the loop's own inline cleanup."""
     src = _run_pipeline_src()
     assert "VALUE_CONSISTENCY_CHECK and best_of > 1 and _consistency_eligible(task._verify_spec)" in src, \
         "consistency_active must stay gated on the flag, best_of>1, AND spec eligibility — dropping any " \
         "one of the three would make this fire when it shouldn't (e.g. best_of=1, byte-identical-by-design)"
     # The capture is UNCONDITIONAL once sampling is on: asserted against the append's own guard rather
-    # than against the words "if consistency_active", which a refactor can invert into an early return.
-    # Gating the append on vmethod is the regression —
+    # than against the words "if consistency_active", which is written as an early return in
+    # _record_accepted_attempt. Gating the append on vmethod would be the regression —
     # a judge-overruled FIRST attempt finalizing the task without sampling — so assert the append is
     # reached with nothing but the sampling flag between it and the accept.
     capture = inspect.getsource(app._record_accepted_attempt)
@@ -2180,7 +2213,7 @@ def test_run_wires_consistency_check_and_cleans_up_on_every_exit(tmp_path):
         "still be crowned the winner over a genuinely-confirmed-but-losing one"
     assert "_restore_scratch(ws, _winner[\"snapshot\"])" in src, \
         "restoration must be physical (fixes `work` on disk) AND from the computed WINNER, not the last " \
-        "sample by list order — the artifact-download route and moderation both read `work` live (CUR-546)"
+        "sample by list order — the artifact-download route and moderation both read `work` live"
     assert 'task.judge_reason = _winner["judge_reason"]' in src and 'task.unrun_detail = _winner["unrun_detail"]' in src, \
         "judge_reason/unrun_detail must be restored from the SAME winner as work/stdout/verified — " \
         "left as the loop's literal final iteration, they can describe a defect the served answer doesn't have"
@@ -2195,17 +2228,20 @@ def test_run_wires_consistency_check_and_cleans_up_on_every_exit(tmp_path):
         "failure, a moderation HTTPException) skips the loop's own inline cleanup entirely"
     # A gateway-grant failure always `break`s into the shared post-loop tail, never `return`s: the tail
     # runs the consistency vote/restore either way and populates task.result/unrun_detail on the way to
-    # any FAILED outcome (CUR-855). The grant itself lives in _grant_attempt_budget, which reports a
+    # any FAILED outcome. The grant itself lives in _grant_attempt_budget, which reports a
     # reason; the control-flow decision (break, never return) stays with _run, and that is what this
     # asserts.
     assert "model gateway unavailable" in inspect.getsource(app._grant_attempt_budget), \
         "the reported reason must still name the gateway, not a generic failure"
-    grant_except = (inspect.getsource(app._run).split("if grant_failure:", 1)[1]
-                    .split("# CUR-855/846 (F3)", 1)[0])
-    # Comments stripped first — this branch's own comment explains why it breaks RATHER THAN returning,
-    # so a naive substring search finds the word it is asserting the absence of.
-    grant_except = "\n".join(ln for ln in grant_except.splitlines() if not ln.lstrip().startswith("#"))
-    assert "break" in grant_except and "return" not in grant_except, (
+    # The `if grant_failure:` branch is found by its structure (an `if` on that name inside _run), not by a
+    # neighbouring comment, and read as syntax: the branch's comment explains why it breaks RATHER THAN
+    # returning, so a substring search would find the word it is asserting the absence of.
+    grant_ifs = [n for n in ast.walk(ast.parse(textwrap.dedent(inspect.getsource(app._run))))
+                 if isinstance(n, ast.If) and isinstance(n.test, ast.Name) and n.test.id == "grant_failure"]
+    assert len(grant_ifs) == 1, f"expected one `if grant_failure:` branch in _run, found {len(grant_ifs)}"
+    grant_branch = [node for stmt in grant_ifs[0].body + grant_ifs[0].orelse for node in ast.walk(stmt)]
+    assert (any(isinstance(n, ast.Break) for n in grant_branch)
+            and not any(isinstance(n, ast.Return) for n in grant_branch)), (
         "a per-attempt gateway-grant failure must fall through to the shared post-loop tail — which still "
         "runs the consistency vote/restore first — instead of hard-returning directly, whether or not it "
         "already had verified samples to fall back on")
@@ -2215,29 +2251,29 @@ def test_run_wires_consistency_check_and_cleans_up_on_every_exit(tmp_path):
 
 
 def test_a_derived_spec_advises_the_judge_and_a_caller_spec_binds_it():
-    """CUR-193. A caller-written spec is a CONTRACT and its failure is final. An auto-derived spec is a
+    """A caller-written spec is a CONTRACT and its failure is final. An auto-derived spec is a
     model's guess, and letting a guess veto the correctness authority inverts the hierarchy.
 
-    The failure this pins: `_derive_verify_spec` can invent `expect_count`, which counts
-    separator-delimited items and so measures VERBOSITY. "What is 17 * 23?" derives
-    `{expect_count: 1, sep: ","}`, really "contains no commas", and a free-form turn fails on it on
-    every attempt, because retrying does not make a model terser.
+    The bug this pins: `_derive_verify_spec` kept inventing `expect_count`, which counts
+    separator-delimited items and so measures VERBOSITY. "What is 17 * 23?" derived
+    `{expect_count: 1, sep: ","}` — really "contains no commas" — and five of eight free-form turns
+    failed on it, each burning all three attempts, because retrying does not make a model terser.
 
     The overrule must not become a false-accept path: a failed, overruled, autoderived count spec would
     otherwise hand the judge a spec=None vote, same as no spec at all, and an ungrounded judge can get a
-    letter-counting riddle wrong (CUR-744). So a failed-and-overruled spec falls through to
+    letter-counting riddle wrong. So a failed-and-overruled spec falls through to
     accept-UNVERIFIED: no false reject, no false accept. A PASSING count-only spec is still not trusted
     as JUDGE grounding, but it still earns "execution" on its own, as the real, deterministic check that
     ran and passed. Only the judge's vote is withheld."""
     def _judge_must_not_run(_m):
-        raise AssertionError("the judge got a vote with no real grounding (CUR-744 regression)")
+        raise AssertionError("the judge got a vote with no real grounding")
 
-    # The exact derived spec from the live failure: one comma-separated item, i.e. no commas allowed.
+    # The derived spec in question: one comma-separated item, i.e. no commas allowed.
     verbose = app.VerifySpec(expect_count=1, expect_sep=",")
     chatty = "17 * 23 = 391, which you can check by doing 17 * 20 = 340, plus 17 * 3 = 51."
 
     # Derived + failed (chatty has 3 comma-separated segments, not 1): overruled, but a count-only spec
-    # is never real grounding (CUR-744) -- accept unverified rather than let an ungrounded judge decide.
+    # is never real grounding -- accept unverified rather than let an ungrounded judge decide.
     acc, vm, reason = app._select_attempt("q", "/tmp", chatty, verbose, True, _judge_must_not_run,
                                           spec_autoderived=True)
     assert (acc, vm, reason) == (True, None, ""), \
@@ -2245,12 +2281,12 @@ def test_a_derived_spec_advises_the_judge_and_a_caller_spec_binds_it():
         "hand an ungrounded judge a vote either -- accept unverified"
 
     # Same failing spec, but the CALLER wrote it. A caller's contract binds regardless of grounding —
-    # unchanged by CUR-744.
+    # unchanged.
     acc, vm, reason = app._select_attempt("q", "/tmp", chatty, verbose, True, _judge_must_not_run,
                                           spec_autoderived=False)
     assert acc is False and vm is None and reason, "a caller's contract still rejects, before the judge"
 
-    # Derived + PASSED (terse has exactly 1 item): the shape check is genuinely true. CUR-744 still
+    # Derived + PASSED (terse has exactly 1 item): the shape check is genuinely true. This still
     # withholds the JUDGE's vote (expect_count measures shape, not content) but a real check that ran
     # and passed earns "execution" credit on its own -- the same credit the non-judge path gives it.
     terse = "391"
@@ -2261,12 +2297,13 @@ def test_a_derived_spec_advises_the_judge_and_a_caller_spec_binds_it():
 
 
 def test_a_passing_caller_count_spec_does_not_mark_the_task_failed():
-    """Regression guard (CUR-744). _select_attempt's "not grounded"
-    branch must not unconditionally return (True, None, "") -- since `_failure_reason`'s hard_spec branch (a
+    """_select_attempt's "not grounded" branch must not unconditionally return (True, None, "") --
+    `_failure_reason`'s hard_spec branch (a
     caller-written, non-autoderived spec) reads verified=False as a genuine failure. A caller-written
-    expect_count-only spec that PASSED must leave verified True; otherwise the task ends FAILED with
-    "best-of-N exhausted" although the caller's contract was satisfied and no judge was needed. Composes
-    the two real functions, not a mock of either, since the hazard is in their interaction."""
+    expect_count-only spec that genuinely PASSED was routed straight into that branch: verified stayed
+    False, and the task ended FAILED with a misleading "best-of-N exhausted", even though the caller's
+    own contract was satisfied and no judge was ever needed. Composes the two real functions, not a mock
+    of either, since the bug was specifically in their interaction, not in either one alone."""
     def _judge_must_not_run(_m):
         raise AssertionError("judge called on a caller's own passing contract")
 
@@ -2285,7 +2322,7 @@ def test_a_passing_caller_count_spec_does_not_mark_the_task_failed():
 
 def test_reconcile_verification_strips_the_badge_when_unrun_detail_is_set():
     """A completed task can carry unrun_detail AND verify_method=="execution" at once, badging a wrong
-    answer as executed (CUR-902). The two fields are set at several independent points in _run; this is
+    answer as executed. The two fields are set at several independent points in _run; this is
     the one late guard that reconciles them, called once rather than duplicated after every assignment
     site."""
     t = app.Task(id="t", prompt="p", user="u")
@@ -2298,7 +2335,7 @@ def test_reconcile_verification_strips_the_badge_when_unrun_detail_is_set():
 
 def test_reconcile_verification_leaves_a_genuine_verification_alone():
     """The guard must not clobber the ordinary case — a task that actually ran and verified, with no
-    unrun_detail at all, is not what CUR-902 is about."""
+    unrun_detail at all, is a different case."""
     t = app.Task(id="t", prompt="p", user="u")
     t.verified, t.verify_method = True, "execution"
     app._reconcile_verification(t)
@@ -2307,7 +2344,7 @@ def test_reconcile_verification_leaves_a_genuine_verification_alone():
 
 
 def test_run_calls_reconcile_verification_after_the_fail_branch_before_the_summary():
-    """Source inspection, same reason as this file's other _run-structural tests: _run needs
+    """Confirmed by source inspection, same reason as this file's other _run-structural tests: _run needs
     a real Hermes subprocess to drive past this point, which nothing here attempts. Position matters --
     it has to run after every assignment site (including the `if fail:` branch's own unrun_detail write)
     and before task.summary reads task.verified, or a stale value could still leak into the badge."""
@@ -2345,7 +2382,7 @@ def test_best_of_gates():
 
 def test_use_acp():
     """_use_acp: single-path default is ACP; transport="oneshot" is the only opt-out. See the function's
-    docstring for why this replaced an earlier synthesize-based per-request heuristic (simplicity)."""
+    docstring for why transport is a single-path default rather than a per-request heuristic."""
     assert app._use_acp(None) is True, "default (no override) -> ACP"
     assert app._use_acp("acp") is True, "explicit acp -> ACP"
     assert app._use_acp("oneshot") is False, "explicit oneshot -> the one opt-out"
@@ -2373,7 +2410,8 @@ def test_run_threads_use_acp_not_bare_agent_acp():
 
 def test_run_transport_routing_end_to_end():
     """Real _run() invocations (not just the pure _use_acp unit test or the source-string tripwire
-    above), so RunRequest.transport is covered end to end. Calls _run() directly with a constructed Task (skipping the HTTP+background-thread
+    above) — the ACP-routing review's biggest gap was that RunRequest.transport had zero coverage
+    beyond those two. Calls _run() directly with a constructed Task (skipping the HTTP+background-thread
     layer, which only adds JSON/threading plumbing already covered by other endpoint tests) and stubs
     both real transports to fast, offline no-ops: HERMES_BIN -> /bin/true (a real Popen that ignores its
     args and exits instantly) for oneshot, and acp_client._acp_run -> an async no-op for ACP. Gateway off
@@ -2433,10 +2471,10 @@ def test_run_early_exit_bypasses_failure_detection():
         acp_client._acp_run = _real_acp_run
 
 
-# --------------------------------------------------------------------------- CUR-218 confirm wiring
+# --------------------------------------------------------------------------- confirm wiring
 def _confirm_run_env():
     """Same stub shape as test_run_transport_routing_end_to_end above, but forced onto the ACP path —
-    CUR-218's on_confirmation_open/close closures only exist there. Returns the fake acp_client._acp_run
+    its on_confirmation_open/close closures only exist there. Returns the fake acp_client._acp_run
     for the caller to reassign before each call (its body differs per test)."""
     import acp_client
     saved = (app.HERMES_BIN, app.AGENT_ACP, app.MODEL_PROXY_URL, app.SANDBOX_REQUIRED)
@@ -2505,7 +2543,7 @@ def test_confirmation_close_only_reverts_once_every_open_one_drains():
 
 
 def test_confirm_state_clobber_guard_close_does_not_undo_cancel():
-    """DELETE /run/{id} sets
+    """The bug this design's own verification pass found (not a hypothetical): DELETE /run/{id} sets
     State.CANCELED synchronously, before task._acp_cancel() even schedules the actual cancellation.
     A confirmation resolving as "canceled" in that window must not flip state back to WORKING."""
     acp_client, restore = _confirm_run_env()
@@ -2550,7 +2588,7 @@ def test_confirm_state_clobber_guard_open_does_not_undo_cancel():
 
 
 def test_run_threads_the_resolved_staged_tier_into_the_acp_client(monkeypatch):
-    """The other half of the wiring proof (CUR-760): acp_client._AgentClient.request_permission (covered
+    """The other half of the wiring proof: acp_client._AgentClient.request_permission (covered
     exhaustively as a pure unit in test_acp_client.py — see test_permission_allow_still_pauses_for_
     confirm_on_an_always_confirm_kind et al.) only composes correctly if _run actually hands it the
     per-caller RESOLVED policy, not the bare "staged" mode name. This is the plumbing half: a new caller
@@ -2589,11 +2627,10 @@ def test_run_threads_the_resolved_staged_tier_into_the_acp_client(monkeypatch):
          app.store.caller_history) = saved
 
 
-# --------------------------------------------------------------------------- client-visible tier (CUR-761)
+# --------------------------------------------------------------------------- client-visible tier
 def test_run_sets_task_tier_for_a_client_to_read(monkeypatch):
-    """CUR-761: the gap the ticket named — _permission_decision's tier/tasks_done/tasks_required reached
-    the model-facing prompt note and the toolset config, but never anything a poller/webhook consumer
-    could see. _run must now set task.tier/tasks_done/tasks_required (which _status_of/_done_payload
+    """_permission_decision's tier/tasks_done/tasks_required feed the model-facing prompt note and the
+    toolset config, and must also be visible to a poller/webhook consumer. _run must set task.tier/tasks_done/tasks_required (which _status_of/_done_payload
     then read — see test_status_and_done_payload_carry_the_tier_fields below) for every task, not only
     under staged: a non-staged policy's "uniform" tier is itself a fact worth a client being able to read
     (there's nothing to disclose, and the field says so honestly) rather than the field just being absent."""
@@ -2636,9 +2673,8 @@ def test_task_tier_defaults_to_not_yet_decided():
 
 
 def test_status_and_done_payload_carry_the_tier_fields():
-    """Both client-visible shapes must carry the SAME tier fields — _done_payload's own docstring names
-    exactly this drift as a bug that already happened once (verify_method missing from the replay
-    frame); tier/tasks_done/tasks_required must not repeat it."""
+    """Both client-visible shapes must carry the SAME tier fields — _done_payload's docstring warns
+    about the two shapes drifting apart (verify_method missing from the replay frame)."""
     t = app.Task(id="tr-tier-payload", prompt="hi", user="u", tier="new", tasks_done=1, tasks_required=3)
     status = app._status_of(t).model_dump(mode="json")
     assert (status["tier"], status["tasks_done"], status["tasks_required"]) == ("new", 1, 3)
@@ -2647,10 +2683,10 @@ def test_status_and_done_payload_carry_the_tier_fields():
 
 
 def test_status_and_done_payload_carry_transport_used():
-    """_done_payload must carry `transport_used` (CUR-773), as `_status_of` does; a field present in one
-    and missing from the other is the drift _done_payload's docstring warns about. A consumer of the live
-    SSE `done` frame, the only shape endpointAgent.ts watches, needs a real field; inferring the
-    transport from state:working's timing is wrong because that fires before transport is chosen."""
+    """_done_payload must carry `transport_used` as `_status_of` does (the two shapes must not drift, as
+    _done_payload's docstring notes). A consumer of the live SSE `done` frame — the
+    only shape endpointAgent.ts actually watches — needs a real field to read rather than guessing
+    from state:working's timing, which fires before transport is chosen."""
     t = app.Task(id="tr-transport-payload", prompt="hi", user="u")
     t.transport_used = "acp"
     assert app._status_of(t).model_dump(mode="json")["transport_used"] == "acp"
@@ -2658,7 +2694,7 @@ def test_status_and_done_payload_carry_transport_used():
 
 
 def test_status_and_done_payload_carry_machine_id(monkeypatch):
-    """CUR-895: TASKS + the SQLite mirror both live on whichever Fly machine ran the task, and a
+    """TASKS + the SQLite mirror both live on whichever Fly machine ran the task, and a
     multi-machine deploy has no session affinity by default — a follow-up request (poll/stream/confirm/
     cancel) can land on a machine that never saw the task and 404. Both client-visible shapes must carry
     the serving machine so a caller can pin its own follow-up via `Fly-Force-Instance-Id`, same drift
@@ -2679,11 +2715,11 @@ def test_machine_id_is_none_off_fly(monkeypatch):
 
 
 def test_done_payload_carries_error():
-    """StatusResponse.error and _done_payload (the live SSE `done` frame, the only shape endpointAgent.ts
-    actually reads) must both carry the error (CUR-856). A moderation block or screen failure on the
+    """_done_payload — the live SSE `done` frame,
+    the only shape endpointAgent.ts actually reads — must carry StatusResponse.error. A moderation block/outage on the
     agent's OWN artifacts (task.result stays None on that path) is FAILED with no result AND no error,
     which endpointAgent.ts renders as a bare "could not finish this task (FAILED)" with no hint that a
-    safety check fired. Same drift class the tier/transport_used/machine_id tests above already guard."""
+    safety check fired. Same two-shape consistency the tier/transport_used/machine_id tests above guard."""
     t = app.Task(id="tr-error-payload", prompt="hi", user="u")
     t.error = "blocked by moderation (artifacts): sexual"
     assert app._status_of(t).model_dump(mode="json")["error"] == "blocked by moderation (artifacts): sexual"
@@ -2728,11 +2764,11 @@ def test_confirm_wait_reimburses_the_task_level_wall_clock(monkeypatch):
 
 
 def test_run_threads_real_may_judge_into_select_attempt():
-    """_run's _select_attempt call must pass the computed `may_judge` gate, not a
-    hard-coded False, which would leave the judge/AGENT_VERIFIER_MODEL permanently dead
-    code even though _best_of_gates computes it correctly.
+    """Regression guard: _run's _select_attempt call must pass the computed `may_judge` gate, not a
+    hard-coded False — which would leave the judge/AGENT_VERIFIER_MODEL as permanently dead
+    code (even though _best_of_gates computes the gate correctly).
     _select_attempt/_best_of_gates are fully covered as pure functions elsewhere; _run itself has no
-    unit test (real subprocess integration, validated live) — this is a cheap source-level tripwire so a
+    unit test (real subprocess integration) — this is a cheap source-level tripwire so a
     future edit can't silently reintroduce a hard-coded False without a test failing."""
     import inspect
     src = inspect.getsource(app._run)
@@ -2741,17 +2777,18 @@ def test_run_threads_real_may_judge_into_select_attempt():
         "_select_attempt's may_judge arg isn't the computed `may_judge` gate — "
         "this hard-codes the judge off (or on) regardless of _best_of_gates")
     assert "task._verify_spec, False, _judge_call)" not in src, (
-        "_select_attempt is still hard-coding may_judge=False — the exact regression this guards against")
-    # Same failure mode one argument over (CUR-193): hard-coding spec_autoderived=False would make every
+        "_select_attempt is hard-coding may_judge=False — the regression this guards against")
+    # Same failure mode one argument over: hard-coding spec_autoderived=False would make every
     # derived spec bind like a caller's contract again, silently restoring the veto this removed.
     assert "spec_autoderived=task._verify_autoderived" in src, (
         "spec_autoderived isn't threaded from the task — a derived spec would veto the judge again, "
-        "which is what marked correct answers unverified on 5 of 8 free-form turns")
+        "which marks correct answers unverified on free-form turns")
 
 
 def test_run_guards_the_consistency_vote_winner_against_a_none_vmethod():
-    """CUR-744. An overruled _select_attempt returns vmethod=None (accept-unverified) rather than
-    "judge", so the AGENT_VALUE_CONSISTENCY_CHECK majority-vote winner (_winner["vmethod"]) can be None. Both
+    """An overruled _select_attempt returns vmethod=None (accept-
+    unverified), so the AGENT_VALUE_CONSISTENCY_CHECK
+    majority-vote winner (_winner["vmethod"]) can be None. Both
     Task.verify_method and StatusResponse.verify_method are plain `str = ""` fields, never Optional —
     Task is a dataclass so `task.verify_method = None` succeeds silently at assignment, and only surfaces
     as a pydantic ValidationError later, on the next GET /run/{id} for that task. Dormant today
@@ -2769,15 +2806,15 @@ def test_run_guards_the_consistency_vote_winner_against_a_none_vmethod():
 
 
 def test_run_emits_attempt_rejected_at_the_rejection_point():
-    """CUR-767. AGENT_BEST_OF>1 means more than one attempt can stream its own `token` frames (each
+    """AGENT_BEST_OF>1 means more than one attempt can stream its own `token` frames (each
     tagged `attempt` by acp_client._AgentClient, constructed fresh per attempt) — a client that only
     infers a new attempt from a rising `attempt` number on the next token frame shows a rejected
     attempt's stale prose for however long the next attempt's model call takes to produce its first
     token. `attempt_rejected` closes that: fired the moment an attempt is rejected, immediately after the
     reason is recorded, well before any new attempt starts. Source-level tripwire, same reason as the two
     guards above — deep inside _run's real subprocess loop, this rejection path has no artificial
-    backoff of its own to anchor a timing assertion against (unlike the earlier structural-failure
-    branch, which does — a different case, not this one)."""
+    backoff of its own to anchor a timing assertion against (unlike the structural-failure
+    branch, which does)."""
     import inspect
     src = inspect.getsource(app._run)
     assert 'buf.emit("attempt_rejected", {"attempt": attempts, "reason": reason or "rejected"})' in src, (
@@ -2789,7 +2826,7 @@ def test_run_emits_attempt_rejected_at_the_rejection_point():
     emit_idx = src.index('buf.emit("attempt_rejected"')
     between = src[append_idx:emit_idx]
     assert 0 < emit_idx - append_idx < 1500, (
-        "attempt_rejected has drifted far from where the rejection is actually recorded — check it's "
+        "attempt_rejected is far from where the rejection is actually recorded — check it's "
         "still firing at the moment of rejection, not deferred somewhere later in the loop")
     assert "continue" not in between and "break" not in between, (
         "attempt_rejected is emitted after the loop has already moved on to another iteration or exited "
@@ -2797,7 +2834,7 @@ def test_run_emits_attempt_rejected_at_the_rejection_point():
 
 
 def test_structural_kind_maps_no_tool_calls():
-    """CUR-766's structural-failure string gets its own closed-set kind, same as every other
+    """The "no tool calls" structural-failure string gets its own closed-set kind, same as every other
     _detect_run_failure/ad-hoc structural string — lets ops distinguish "the model wrote nothing" from
     "the model wrote prose but touched nothing" in run.attempt's structural_kind field."""
     assert app._structural_kind("agent made no tool calls (spec-less turn)") == "no_tool_calls"
@@ -2823,7 +2860,7 @@ def _no_tool(reply="I cannot send emails.", *, review=None, classify=True, **kw)
 
 
 def test_a_spec_less_agentic_attempt_that_narrates_work_is_retried_cur766():
-    """CUR-766: a spec-less agentic turn that called no tool and claims work is a structural failure, so
+    """A spec-less agentic turn that called no tool and claims work is a structural failure, so
     best_of retries it instead of accepting attempt 1."""
     (structural, verdict), _ = _no_tool("Saved the letter as letter.docx.", review=lambda b: _verdict_msg("narrated"))
     assert structural and structural.startswith(app.NO_TOOL_STRUCTURAL) and verdict == ""
@@ -2835,7 +2872,7 @@ def test_an_attempt_that_hands_over_code_it_could_have_run_is_retried_cur766():
 
 
 def test_an_honest_refusal_is_accepted_on_the_first_attempt_cur4599():
-    """CUR-4599: "I cannot send emails" was re-asked until attempts ran out and the task ended FAILED."""
+    """"I cannot send emails" was re-asked until attempts ran out and the task ended FAILED."""
     (structural, verdict), seen = _no_tool(review=lambda b: _verdict_msg("declined"))
     assert structural is None and verdict == "declined"
     body = seen[0]
@@ -2863,7 +2900,7 @@ def test_a_review_that_fails_or_returns_junk_retries_as_before_cur4599():
 def test_the_no_tool_check_never_fires_or_spends_a_call_outside_cur766s_shape():
     """Each precondition short-circuits before the router or the review is asked: a tool call was seen, a
     spec exists, the coarse transport (which reports no tool calls at all), an early exit after a verified
-    result (CUR-1314), or a prompt the router calls non-agentic (CUR-940)."""
+    result, or a prompt the router calls non-agentic."""
     for kw in ({"tool_kinds": {"terminal": 1}}, {"spec_less": False}, {"use_acp": False},
                {"acp_stop": "early_exit"}, {"classify": False}):
         (structural, verdict), seen = _no_tool(**kw)
@@ -2871,10 +2908,10 @@ def test_the_no_tool_check_never_fires_or_spends_a_call_outside_cur766s_shape():
 
 
 def test_classify_agentic_fails_open_to_direct_so_the_gate_degrades_safely():
-    """If the classifier itself is down, CUR-940's gate must not silently disable CUR-766 in the other
-    direction (always agentic:true would restore the exact bug this fixes) NOR hang the turn — it must
-    fail open to agentic:False, same as every other _classify_agentic caller, which simply reverts this
-    one check to its pre-CUR-766 behavior rather than blocking on a degraded router."""
+    """If the classifier itself is down, its gate must not silently disable the no-tool-call review in the other
+    direction (always agentic:true) NOR hang the turn — it must
+    fail open to agentic:False, same as every other _classify_agentic caller, which simply skips
+    this one check rather than blocking on a degraded router."""
     saved = app.MODEL_PROXY_URL
     app.MODEL_PROXY_URL = ""  # the documented fail-open trigger: no gateway -> no safe classify
     try:
@@ -2892,21 +2929,21 @@ def test_classify_agentic_still_calls_cur766s_own_repro_agentic_live():
     """The one thing every other test in this block can't cover, because they're all source-string
     tripwires on inspect.getsource(app._run), never an actual call to _classify_agentic: if the
     classifier misjudges a genuinely tool-requiring prompt as non-agentic, the no-tool-call gate lets a
-    narrated, undone task through with nothing left to catch it (CUR-940, CUR-766). The prompt below is
-    the anchor for "must still say yes": a live, billed call, deliberately opt-in (see the skipif above),
+    narrated, undone task through with nothing left to catch it. The prompt below is
+    the anchor for "must say yes": a live, billed call, deliberately opt-in (see the skipif above),
     not part of the default offline suite."""
     decision = app._classify_agentic(
         "I have a CSV with columns date, product, revenue... make yourself some test data first so "
         "you can prove it works"
     )
     assert decision["agentic"] is True, (
-        f"CUR-766's own repro must still classify as agentic, or CUR-940's gate silently reopens it: {decision}")
+        f"a tool-requiring prompt must classify as agentic, or the no-tool-call gate silently reopens: {decision}")
 
 
 def test_a_structural_failure_still_ships_whatever_output_was_produced():
     """A structural failure must set task.result before failing, or whatever the agent said in
     full_output is discarded and the client renders a bare "could not finish" even when the agent (or
-    the repair-exhaustion substitute in acp_client.py) produced a real, if unverified, answer (CUR-855).
+    the repair-exhaustion substitute in acp_client.py) produced a real, if unverified, answer.
     Source-level tripwire, same reasoning as test_run_retries_a_spec_less_attempt_that_made_no_tool_calls:
     this lives inside _run's real subprocess/asyncio loop with no isolated pure function to test directly."""
     src = _run_pipeline_src()
@@ -2924,7 +2961,7 @@ def test_a_structural_failure_still_ships_whatever_output_was_produced():
 
 
 def test_a_structural_failure_fills_the_honesty_caveat_without_clobbering_a_sharper_one():
-    """CUR-855/846. Populating task.result on a structural failure is only half the job: the
+    """populating task.result on a structural failure is only half the fix — the
     client's honesty banner (endpointAgent.ts's serviceFlagged) gates on task.unrun_detail being
     non-blank, and that field is set by an unrelated content heuristic (repair_check's own pattern match,
     or the best-of consistency vote's VALUE_DISAGREEMENT_PREFIX) that won't fire on most structural
@@ -2932,8 +2969,7 @@ def test_a_structural_failure_fills_the_honesty_caveat_without_clobbering_a_shar
     but not the caveat that's supposed to accompany it (docs/roadmap.md R7 is the same gap one layer
     earlier). `or` rather than `=` so a sharper verdict already set this attempt is never overwritten —
     positional only; test_a_sharper_verdict_survives_a_gateway_failure_on_the_next_attempt below is the
-    behavioral proof that the `or` has something to protect by the time this line runs (see that
-    test's docstring)."""
+    behavioral proof that the `or` has something to protect by the time this line runs."""
     src = _run_pipeline_src()
     fail_idx = src.index("\n    if fail:\n")
     unrun_idx = src.index('task.unrun_detail = task.unrun_detail or f"{STRUCTURAL_FAILURE_PREFIX}{fail}"')
@@ -2943,11 +2979,11 @@ def test_a_structural_failure_fills_the_honesty_caveat_without_clobbering_a_shar
         "task.unrun_detail must be filled (falling back to the tagged `fail` reason) inside the "
         "`if fail:` branch, before task.state is set to FAILED, or the client's honesty caveat won't "
         "reliably fire on a structural failure that shipped real content")
-    # CUR-855/846: a structural failure is a DIFFERENT shape from the other four
+    # a structural failure is a DIFFERENT shape from the other four
     # unrun_detail prefixes (the agent overclaiming) — it's the infrastructure not finishing, which
     # endpointAgent.ts's one fixed "predicted rather than measured" sentence would misdescribe. Tagging
-    # with its own prefix (rather than the bare `fail` string) lets the client branch to different,
-    # honest copy instead of asserting something false.
+    # with its own prefix (rather than the bare `fail` string) is what
+    # lets the client branch to different, honest copy instead of asserting something false.
     assert "STRUCTURAL_FAILURE_PREFIX" in src[fail_idx:].split("return", 1)[0], (
         "the fallback must be tagged with STRUCTURAL_FAILURE_PREFIX, not the bare `fail` string — a "
         "structural failure isn't the same claim as the other four unrun_detail shapes and must not "
@@ -2955,8 +2991,8 @@ def test_a_structural_failure_fills_the_honesty_caveat_without_clobbering_a_shar
 
 
 def test_an_answer_never_shows_the_sandbox_directory_cur4104(tmp_path, monkeypatch):
-    """CUR-4104: an answer must not read "Ambos archivos están en el directorio de trabajo
-    (/tmp/agent-run-…)". The stub runs where the agent runs and prints its own directory the same way;
+    """An answer such as "Ambos archivos están en el directorio de trabajo
+    (/tmp/agent-run-…)" must not show the sandbox directory. The stub runs where the agent runs and prints its own directory the same way;
     the result keeps the file's name, and the directory as a sentence's object reads "./" rather than
     leaving "o." with nothing after it."""
     _fast_run_env(monkeypatch, tmp_path)
@@ -2990,7 +3026,7 @@ def test_hide_workdir_keeps_file_names_and_every_sentence_whole_cur4104():
 
 
 def test_a_structural_failure_ships_real_content_end_to_end(tmp_path, monkeypatch):
-    """CUR-855/846, behavioral rather than positional: drives a real app._run() through a HERMES_BIN stub
+    """behavioral rather than positional: drives a real app._run() through a HERMES_BIN stub
     that produces genuine output and then exits nonzero — a real structural failure
     (_detect_run_failure's "hermes exit N") with real content sitting in stdout, the exact shape the
     source-tripwire tests above assert on by line order. Confirms the actual Task object: FAILED, but
@@ -2999,8 +3035,8 @@ def test_a_structural_failure_ships_real_content_end_to_end(tmp_path, monkeypatc
     _fast_run_env(monkeypatch, tmp_path)
     app.store = store_mod.Store(":memory:")
     monkeypatch.setattr(app, "MODERATION_DISABLED", True)  # isolate this test to the `if fail:` path —
-    # the moderation-block interaction has its own test right below (unconfigured moderation fails
-    # closed by default; see test_a_moderation_block_on_an... ).
+    # the moderation-block interaction has its own test right below
+    # (unconfigured moderation fails closed by default; see test_a_moderation_block_on_an... ).
     stub = tmp_path / "hermes-stub.sh"
     stub.write_text("#!/bin/sh\necho 'a real, if unverified, answer'\nexit 1\n")
     stub.chmod(0o755)
@@ -3021,13 +3057,13 @@ def test_a_structural_failure_ships_real_content_end_to_end(tmp_path, monkeypatc
 
 
 def test_a_moderation_block_on_an_already_failed_attempt_keeps_the_real_reason(tmp_path, monkeypatch):
-    """CUR-855/846: moderation now runs unconditionally, including on a structural failure's content, so
+    """Moderation now runs unconditionally, including on a structural failure's content, so
     a moderation block must not silently replace an already-known structural reason with a bare
     moderation message — that would be a net loss of information on a turn that was already going to
     report FAILED. Uses moderation's own real fail-closed default (no COOP_URL/COOP_API_KEY configured,
-    MODERATION_DISABLED left False) as the trigger;
-    test_a_structural_failure_ships_real_content_end_to_end sets MODERATION_DISABLED to stay off this
-    path."""
+    MODERATION_DISABLED left False) as the trigger — found for free when
+    test_a_structural_failure_ships_real_content_end_to_end originally hit exactly this path before
+    MODERATION_DISABLED was added there."""
     _fast_run_env(monkeypatch, tmp_path)
     app.store = store_mod.Store(":memory:")
     stub = tmp_path / "hermes-stub.sh"
@@ -3052,11 +3088,11 @@ def test_a_gateway_failure_after_a_rejected_attempt_still_ships_that_content():
     per-attempt gateway-grant failure inside the best-of loop is another. `stdout` is never reset between
     attempts (initialized once before the loop), so if attempt 1 produces real content and is rejected (a
     deterministic verify miss, not a structural one) and attempt 2's gateway grant then fails before it
-    runs, attempt 1's still-live stdout must still ship (CUR-855). Drives a real _run() with the same manual-save-restore
+    runs, attempt 1's still-live stdout must still ship. Drives a real _run() with the same manual-save-restore
     gateway-stub pattern as test_canceled_task_keeps_the_tokens_its_attempts_actually_spent (no
     monkeypatch/tmp_path fixture — that test already established SCRATCH_ROOT needs no override here).
 
-    MODERATION_DISABLED=True is deliberate, not an oversight: this test isolates the
+    MODERATION_DISABLED=True is deliberate: this test isolates the
     CONTROL-FLOW fix (does the shared tail correctly get reached and ship content) from moderation's own
     reliability, which is a separate concern with its own coverage (see the guard-mode tests below).
     Moderation now runs against SAFETY_SCREEN_URL, a DIFFERENT dependency from the fake
@@ -3083,7 +3119,7 @@ def test_a_gateway_failure_after_a_rejected_attempt_still_ships_that_content():
 
     async def _fake_acp_run(*a, **kw):
         # Never writes output.txt -> _verify's expect_file check misses -> attempt 1 is REJECTED, not a
-        # structural failure, which is what exercises the accept/reject retry path rather than CUR-766's
+        # structural failure, which is what exercises the accept/reject retry path rather than the no-tool-call review's
         # own zero-tool-call check (a different mechanism, already covered above).
         return "attempt one's real, if wrong, answer", None, 0
 
@@ -3110,15 +3146,16 @@ def test_a_gateway_failure_after_a_rejected_attempt_still_ships_that_content():
 
 
 def test_a_sharper_verdict_survives_a_gateway_failure_on_the_next_attempt():
-    """CUR-855/846. `task.unrun_detail = task.unrun_detail or ...` only protects a
-    sharper verdict if one is still THERE when that line runs, so task.unrun_detail resets to ""
-    right before an attempt is about to run, not at the top of every attempt: an attempt that breaks
-    (wall-clock stop, gateway-grant failure) before it executes must not wipe attempt 1's own
-    repair_check verdict, or the caveat would describe attempt 2's failure instead of the content
-    actually being shipped (api/app.py, alongside the CUR-855/846 comment there). This
+    """`task.unrun_detail = task.unrun_detail or ...` only protects a
+    sharper verdict if one is still THERE when that line runs — so task.unrun_detail must not reset to
+    "" at the top of an attempt that then breaks (wall-clock stop, gateway-grant
+    failure) before it executes. Otherwise attempt 1's repair_check verdict is wiped before attempt 2's
+    break reaches the `or`, and the caveat describes attempt 2's
+    failure, not attempt 1's content — the content actually being shipped. The reset therefore happens at
+    right before an attempt is about to run (api/app.py, alongside the matching comment there). This
     test sets task.unrun_detail directly inside the attempt-1 stub, standing in for what a real
     repair_check verdict (set deep inside acp_client._acp_run's own repair-exhaustion path,
-    api/acp_client.py) would leave, and confirms attempt 2's gateway failure does not clobber
+    api/acp_client.py:682-689) would leave, and confirms attempt 2's gateway failure does not clobber
     it."""
     import acp_client
     _saved = (app.HERMES_BIN, app.AGENT_ACP, app.MODEL_PROXY_URL, app.SANDBOX_REQUIRED,
@@ -3164,14 +3201,14 @@ def test_a_sharper_verdict_survives_a_gateway_failure_on_the_next_attempt():
 
 
 def test_a_sharper_verdict_survives_the_wall_clock_stopping_the_next_attempt():
-    """CUR-855/846. The wall-clock `if stop: break` (api/app.py, right above the
+    """The wall-clock `if stop: break` (api/app.py, right above the
     gateway-grant try/except) has the identical stale-content shape as the gateway-grant failure above —
-    it also breaks before an attempt executes. Forces
+    it also breaks before an attempt executes — and had no test coverage at all before this. Forces
     _remaining_timeout to stop on attempt 2 specifically; real wall-clock timing would be flaky to drive
     deterministically here. Whether shipping a judge/verify-rejected answer as a FAILED turn's result is
-    the right product call is a separate question — this test only proves the mechanism does what the
-    rest of this path does: ship real content instead of silently discarding it, correctly marked
-    unverified."""
+    the right product call is a separate, open question (opus review flagged it) — this test only proves
+    the mechanism does what the rest of this fix already does elsewhere: ship real content instead of
+    silently discarding it, correctly marked unverified."""
     import acp_client
     _saved = (app.HERMES_BIN, app.AGENT_ACP, app.MODEL_PROXY_URL, app.SANDBOX_REQUIRED,
               app.MODERATION_DISABLED, app.PROXY_ADMIN_KEY, app.BEST_OF,
@@ -3219,15 +3256,15 @@ def test_a_sharper_verdict_survives_the_wall_clock_stopping_the_next_attempt():
 
 
 def test_a_cancel_check_narrows_the_race_before_shipping_content():
-    """CUR-855/846. Artifact collection and two moderate() calls — real I/O and network
+    """Artifact collection and two moderate() calls — real I/O and network
     round-trips, potentially tens of seconds under retry/backoff — sit between the
-    cancel check (right after the attempt loop ends) and the terminal write on the failure path. A cancel landing in that window must still win: report
+    cancel check (right after the attempt loop ends) and the terminal write. A cancel landing in that window must still win: report
     CANCELED, not a FAILED turn with content attached that the caller told us to stop shipping. Source
     tripwire — reliably WINNING a real race against real I/O isn't something a behavioral test can force
     deterministically, same reasoning as this file's other control-flow tests on _run."""
     src = _run_pipeline_src()
     fail_computed_idx = src.index("attempts=attempts, best_of=best_of, rejections=task.attempt_rejections)")
-    collect_idx = src.index("artifacts, artifacts_dropped = _collect_artifacts(work, since=turn_start_wall)")
+    collect_idx = src.index("artifacts, artifacts_dropped = _collect_artifacts(work, since=turn_start_wall,")
     check = 'if task._canceled:\n        task.summary = task.summary or "canceled"\n        return'
     second_check_idx = src.find(check, fail_computed_idx)
     assert fail_computed_idx < second_check_idx < collect_idx, (
@@ -3245,8 +3282,9 @@ def test_remaining_timeout():
 
 
 def test_an_attempt_cannot_eat_the_budget_its_successors_need():
-    """A per-TASK clock with a per-ATTEMPT spend cap would make best-of-3 a fiction: attempt 1 could take
-    the whole 300s task budget, leaving attempt 2 a single model call and attempt 3 none."""
+    """The clock was per TASK while the spend cap was per ATTEMPT, and the mismatch made best-of-3 a
+    fiction: on schema-migration, attempt 1 took 307s of a 300s task budget, attempt 2
+    got a single model call and attempt 3 got none. The task paid for three attempts and ran one."""
     t, stop = app._remaining_timeout(0.0, 0.0, 300, best_of=3)
     assert (t, stop) == (300.0, False), "attempt 1 gets one full cap, not the whole task ceiling"
     # Attempt 1 ran long. Attempt 2 must still get a full attempt, which is the whole point.
@@ -3266,8 +3304,9 @@ def test_an_attempt_cannot_eat_the_budget_its_successors_need():
 def test_an_attempt_running_out_of_clock_does_not_end_the_task():
     """`_remaining_timeout` is per-attempt, so `_run`'s timeout branch must move on to the next attempt
     rather than `break`: a `break` (correct only for a per-TASK clock) lets one long attempt kill the
-    task with its siblings' budget untouched, which would cut trials short even when attempt 1 had
-    answered in prose, the case a second attempt exists to rescue.
+    task with its siblings' budget untouched. On the long-horizon set that cut a third or more of trials
+    short, including one that had answered in prose on attempt 1, which is precisely the case a second
+    attempt exists to rescue.
 
     Two properties, because fixing either alone leaves the bug. The budget must survive the timeout, and
     the loop must go back and spend it."""
@@ -3298,10 +3337,9 @@ def test_an_attempt_running_out_of_clock_does_not_end_the_task():
 
 
 def test_healthz_names_both_denominations_of_every_cap():
-    """"wall_clock_s: 300" and "spend_cap: 150000" are differently-denominated: one
-    bounds a task, the other an attempt, and from the two bare numbers a reader cannot tell which is which. A task can bill
-    more tokens than a per-attempt cap reads without violating anything, so /healthz states the task
-    ceiling."""
+    """"wall_clock_s" and "spend_cap" describe differently-denominated things — one
+    bounds a task, the other an attempt — so /healthz must name both denominations of each, or a task
+    could bill more tokens than a per-attempt cap reads without violating anything."""
     h = app.healthz()
     assert h["wall_clock_task_s"] == app.WALL_CLOCK_SECS * max(1, app.BEST_OF), \
         "the task ceiling must be stated, not left for the reader to multiply"
@@ -3329,7 +3367,7 @@ def test_the_readme_cannot_describe_an_unpatched_image_while_patches_ship():
         f"the README claims an unpatched image while {[p.name for p in patches]} ship"
     for p in patches:
         # Added lines only: a context line is upstream's own code, and a rebase that moves one next to a
-        # hunk must not demand the README document a variable this patch never introduced (CUR-2118).
+        # hunk must not demand the README document a variable this patch never introduced.
         added = "\n".join(ln[1:] for ln in p.read_text().splitlines()
                           if ln.startswith("+") and not ln.startswith("+++"))
         for var in sorted(set(re.findall(r"HERMES_[A-Z0-9_]+", added))):
@@ -3380,10 +3418,10 @@ def test_prodcheck_reads_the_build_out_of_the_same_probe_it_reads_the_knobs_from
 def test_the_harness_watches_a_trial_for_as_long_as_the_task_may_run():
     """floor.py's poll budget must come from the app's own /healthz, not from a copy of its inputs.
 
-    Reading `AGENT_WALL_CLOCK_SECS + 300` from the harness process's shell is the wrong process (the app
-    runs on a dict `start()` builds) and the wrong denomination, since the clock is per-attempt. A task
-    may run `WALL_CLOCK_SECS * BEST_OF`, so a 900s task needs more than a 600s watcher; otherwise every
-    slow trial returns UNRESOLVED with the model blamed for the harness giving up."""
+    It read `AGENT_WALL_CLOCK_SECS + 300` out of the harness process's shell — the wrong process (the app
+    runs on a dict `start()` builds) and, after the clock went per-attempt, the wrong denomination. A task
+    may now run `WALL_CLOCK_SECS * BEST_OF`, so a 900s task got a 600s watcher and every slow trial would
+    have returned UNRESOLVED with the model blamed for the harness giving up."""
     import importlib.util
     spec = importlib.util.spec_from_file_location(
         "floor_mod", Path(__file__).resolve().parents[1] / "eval" / "floor.py")
@@ -3514,7 +3552,7 @@ def _fake_gateway(monkeypatch, calls: list, agentic: bool = True):
 
 
 def test_a_route_verdict_names_the_backend_that_answered_even_when_served_from_the_memo(monkeypatch):
-    """CUR-2154: which upstream answered a route call was only on the gateway's own log line, joined to the
+    """Which upstream answered a route call was only on the gateway's own log line, joined to the
     decision by timestamp. The decision carries it now, and a memo hit carries the backend recorded when the
     verdict was made, so a cached verdict still says where it came from."""
     calls: list = []
@@ -3533,7 +3571,7 @@ def test_a_route_verdict_names_the_backend_that_answered_even_when_served_from_t
 
 
 def test_route_fresh_skips_the_memo_for_an_operator_and_is_ignored_for_anyone_else(monkeypatch):
-    """CUR-2154: a nightly eval reading verdicts from the memo grades its own cache. `fresh`
+    """An eval reading verdicts from the memo grades its own cache, so `fresh`
     lets our own smoke credential force a model call; for an invitee it must change nothing, or any caller
     could spend a gateway call per turn that the memo exists to save. Logged either way, with the backend."""
     from starlette.testclient import TestClient
@@ -3575,8 +3613,9 @@ def test_a_posted_deadline_reaches_the_store(monkeypatch):
     """The seam, end to end, because the unit tests cover it in pieces and the pieces are where it breaks:
     POST /run body -> RunRequest.wall_clock_secs -> Task._caller_wall_clock -> store.create -> the count.
 
-    Four files carry this number off an in-process counter. Any one of them not wiring
-    through leaves /healthz reporting 0."""
+    Four files changed to move this number off an in-process counter. Any one of them silently not wiring
+    through leaves /healthz reporting 0 again, which is the exact bug being fixed and which looked correct
+    for an afternoon."""
     from starlette.testclient import TestClient
     _s = (app.AUTH_DISABLED, app.MODERATION_DISABLED)
     app.AUTH_DISABLED, app.MODERATION_DISABLED = True, True
@@ -3601,10 +3640,10 @@ def test_a_posted_deadline_reaches_the_store(monkeypatch):
 
 
 def test_run_and_poll_echo_the_serving_machine_id(monkeypatch):
-    """CUR-895 end to end via the real endpoints: POST /run's response and a subsequent GET /run/{id}
+    """End to end via the real endpoints: POST /run's response and a subsequent GET /run/{id}
     must both carry the machine that served them, so a caller can pin its OWN next request with
-    Fly-Force-Instance-Id instead of getting a 404 on the first poll with nothing pointing at
-    cross-machine routing."""
+    Fly-Force-Instance-Id. Without it a poll routed to another machine returns 404, with no signal that
+    cross-machine routing is the cause."""
     from starlette.testclient import TestClient
     _s = (app.AUTH_DISABLED, app.MODERATION_DISABLED, app.FLY_MACHINE_ID)
     app.AUTH_DISABLED, app.MODERATION_DISABLED, app.FLY_MACHINE_ID = True, True, "3d8d9djklxyz01"
@@ -3622,7 +3661,7 @@ def test_run_and_poll_echo_the_serving_machine_id(monkeypatch):
 
 
 def test_run_refuses_a_guest_when_the_deployment_requires_an_account(monkeypatch):
-    """CUR-4402: with AGENT_REQUIRE_ACCOUNT on, POST /run without X-Agent-Account: user is a 403 and starts
+    """With AGENT_REQUIRE_ACCOUNT on, POST /run without X-Agent-Account: user is a 403 and starts
     nothing; with it, the run starts. With AGENT_REQUIRE_ACCOUNT=0 the header is not needed."""
     from starlette.testclient import TestClient
     monkeypatch.setattr(app, "AUTH_DISABLED", True)
@@ -3642,7 +3681,7 @@ def test_run_refuses_a_guest_when_the_deployment_requires_an_account(monkeypatch
 
 
 def test_require_account_is_on_unless_turned_off_or_in_the_dev_bypass():
-    """CUR-4402: a deployment that sets nothing refuses guests; only AGENT_REQUIRE_ACCOUNT=0 or the
+    """A deployment that sets nothing refuses guests; only AGENT_REQUIRE_ACCOUNT=0 or the
     dev auth bypass turns that off. Read at import, so each case imports app in a fresh interpreter."""
     import subprocess
     def read(**env):
@@ -3741,8 +3780,8 @@ def test_proxy_no_cache_is_opt_in_and_prefix_safe():
 
 
 def test_proxy_unstreamed_extra_reaches_only_large_4s_stream_false_calls_on_the_wire():
-    """CUR-4604/CUR-4605: router.stg sends an unstreamed Large 4 call to Bedrock Large 3 (or 400s a forced tool
-    call) unless reasoning is off (CUR-4551). Large 4's unstreamed fields must reach the wire for the app's
+    """router.stg sends an unstreamed Large 4 call to Bedrock Large 3 (or 400s a forced tool
+    call) unless reasoning is off. Large 4's unstreamed fields must reach the wire for the app's
     stream=false calls, must NOT touch Hermes' streamed calls, and must never reach Large 3, which answers 400
     to any reasoning_effort."""
     import asyncio
@@ -3808,10 +3847,10 @@ def test_load_verifier_reads_bill_to_from_env(monkeypatch):
 
 def test_proxy_backend_provenance_reads_the_response_not_the_config():
     """Where the model ran comes off the response header, because the base URL we dialed does not know.
-    A gateway can serve a request from a different country than its base URL suggests.
+    A gateway can serve a model from a different country than the base URL we dialed suggests.
 
     The load-bearing assertion is the three-state one: absent header -> None, never False and never True.
-    Collapsing unknown into either direction hides where the model ran."""
+    Collapsing unknown into either direction hides a backend nobody checked."""
     assert proxy._backend_of({}) == "", "no header -> no claim"
     assert proxy._backend_of({proxy.BACKEND_HEADER: "https://llmlab.plgrid.pl/api/v1"}) == "llmlab.plgrid.pl"
     assert proxy._backend_of({proxy.BACKEND_HEADER: "not a url"}) == "", "unparseable -> no claim, no raise"
@@ -3822,7 +3861,7 @@ def test_proxy_backend_provenance_reads_the_response_not_the_config():
     assert proxy._backend_swiss("api.swissai.svc.cscs.ch") is True, \
         "our DIRECT id — absent from the chat app's allowlist, which only ever saw gateway traffic"
 
-    assert proxy._backend_swiss("maas.phoeniqs.com") is True, "Apertus 1.5 70B's Swiss host (CUR-4545)"
+    assert proxy._backend_swiss("maas.phoeniqs.com") is True, "Apertus 1.5 70B's Swiss host"
 
     # A host that merely ends in an allowed suffix is not that host.
     assert proxy._backend_swiss("api.inference.cscs.ch.evil.example") is False
@@ -3857,7 +3896,7 @@ def test_proxy_grant_clamp():
 
 
 def test_the_public_gateway_port_has_no_admin_routes_and_opens_only_to_a_granted_nonce():
-    """CUR-4480: sandboxes off Fly reach the gateway's public port. A valid admin key there grants nothing,
+    """Sandboxes off Fly reach the gateway's public port. A valid admin key there grants nothing,
     and a nonce granted on the private port is live on the public one."""
     from fastapi.testclient import TestClient
     proxy.PROXY_ADMIN_KEY = "unit-admin"
@@ -3912,8 +3951,8 @@ def test_router_rewrite_model_and_headers():
 
 
 def test_tool_choice_is_forced_only_when_the_model_has_a_way_to_stop():
-    """ROUTER _force_tool_choice. "required" is what makes prose impossible — on this endpoint,
-    the `folded` control goes 0/3 tool_calls under "auto" and 3/3 under "required". It also removes the
+    """ROUTER _force_tool_choice. "required" is what makes prose impossible — the `folded` control
+    emits tool_calls reliably under "required" and not under "auto". It also removes the
     loop's only natural termination, so it is safe exactly when Hermes' synthetic `task_complete` tool is
     in the request. That precondition is checked against the request itself rather than left to whoever
     sets the env vars, because getting it wrong means every task runs to the wall clock."""
@@ -3947,9 +3986,9 @@ def test_tool_choice_is_forced_only_when_the_model_has_a_way_to_stop():
 
 
 def test_request_meta_fingerprints_the_cacheable_prefix_without_leaking_it():
-    """CSCS serves a repeated prefix without re-prefilling it: 0.38s to first token against 0.82s for a
-    novel prefix in a warm-up control, with the gap scaling with prefix size.
-    At ~9.8k tokens of tool schemas per call that is most of a second, every call. One varying byte near
+    """The backend serves a repeated prefix without re-prefilling it, so first token is faster than for a
+    novel prefix, and the gap scales with prefix size. With ~9.8k tokens of tool schemas per call that is
+    most of a second, every call. One varying byte near
     the front destroys it while every other number in the log stays identical, so the digest is the only
     way that failure is visible. The digest must never carry the text it covers."""
     tools = [{"type": "function", "function": {"name": "write_file", "parameters": {}}}]
@@ -3974,8 +4013,9 @@ def test_request_meta_fingerprints_the_cacheable_prefix_without_leaking_it():
 
 
 def test_failover_log_names_the_trial_and_attempt_but_never_the_nonce(capsys):
-    """A failover line with no identity is unattributable: nothing says which trial ate which stall. The
-    attempt number matters for the
+    """A failover line with no identity is unattributable. A run can log two
+    `destream:exc:ReadTimeout` events across 111 model calls, with two trials over the wall clock and no
+    way to tell which trial ate which stall — or whether one ate both. The attempt number matters for the
     same reason: a 120s stall on attempt 1 that succeeds on attempt 2 divides into the same per-call
     average as one slow serve. The nonce is the gateway bearer token and must never reach the log."""
     nonce = "nonce-forensics-abcdef"
@@ -4056,7 +4096,7 @@ def test_router_failover_policy():
     assert _served3.name == "alpha" and _r3.status_code == 400, "no-mask: a 400 commits to the primary"
     assert len(_fc3.calls) == 1, "no-mask: the second provider was never tried"
 
-    # 4) every provider overloaded → the LAST provider is retried in place (CUR-1201), then its final
+    # 4) every provider overloaded → the LAST provider is retried in place, then its final
     # error is returned unmasked once SAME_PROVIDER_RETRY_ATTEMPTS is spent
     _real_sleep = proxy.asyncio.sleep
     proxy.asyncio.sleep = lambda _s: _real_sleep(0)                # don't actually wait in a unit test
@@ -4066,7 +4106,7 @@ def test_router_failover_policy():
         assert _served4.name == "beta" and _r4.status_code == 503, "exhausted: last provider's 503 is surfaced"
         assert len(_fc4.calls) == 3, "exhausted: alpha tried once, beta retried to its full budget"
 
-        # 4b) the last provider's first 504 is transient (CUR-1201) — a same-provider
+        # 4b) the last provider's first 504 is transient — a same-provider
         # retry within budget must recover, not surface the 504 to the caller as a blank turn
         proxy.PROVIDERS = [_A]
         _fc4b = _FakeClient([504, 200])
@@ -4123,7 +4163,7 @@ def test_store_durable_record():
 
 
 def test_store_verify_corpus():
-    """CUR-596 item 2: verify_corpus is a durable, independent log — the labeled corpus CUR-654 needs
+    """verify_corpus is a durable, independent log — the labeled corpus a later critic needs
     before it can start, not just fire-and-discard through attempt_rejections/unrun_detail (both
     in-memory, both dead with the process)."""
     s = store_mod.Store(":memory:")
@@ -4134,7 +4174,7 @@ def test_store_verify_corpus():
 
 
 def test_store_prune_corpus():
-    """prune_corpus (CUR-596/CUR-654): its own retention, independent of prune()'s terminal-task-only
+    """prune_corpus: its own retention, independent of prune()'s terminal-task-only
     logic — every verify_corpus row is already a completed observation the moment it's written, so age
     alone decides, unlike a task that might still be RUNNING."""
     s = store_mod.Store(":memory:")
@@ -4177,7 +4217,7 @@ def test_store_column_allowlist_and_prune():
         s3.create("z1", "u", "SUBMITTED")
         assert False, "duplicate id -> error (no silent clobber)"
     except sqlite3.IntegrityError:   # NOT `except Exception` — that swallows the assert above,
-        pass                         # and the test passes even when create() clobbers (CUR-1226)
+        pass                         # and the test passes even when create() clobbers
     s3.update("z1", state="COMPLETED")
     s3.create("z2", "u", "WORKING")                              # non-terminal: prune must NOT touch it
     d = s3.prune(-1)                                             # cutoff in the future -> all terminal rows are "old"
@@ -4187,8 +4227,8 @@ def test_store_column_allowlist_and_prune():
 
 def test_a_database_that_predates_the_artifacts_column_gets_it(tmp_path):
     """`CREATE TABLE IF NOT EXISTS` is a no-op against a table that already exists, so a column added to
-    _SCHEMA reaches a fresh dev box and never reaches an existing deployment's tasks.db. The
-    migration is the only thing standing between a fresh database and every write raising."""
+    _SCHEMA reaches a fresh database and never an existing tasks.db. The
+    migration is the only thing standing between "works on my machine" and every write raising."""
     db = str(tmp_path / "old.db")
     old = sqlite3.connect(db)
     old.executescript("CREATE TABLE tasks (id TEXT PRIMARY KEY, user TEXT NOT NULL, state TEXT NOT NULL, "
@@ -4209,10 +4249,10 @@ def test_a_database_that_predates_the_artifacts_column_gets_it(tmp_path):
 
 
 def test_a_database_that_predates_unrun_detail_gets_it(tmp_path):
-    """CUR-855/846: the same migration gap test_a_database_that_predates_the_artifacts_column_gets_it
-    guards for `artifacts`, but for `unrun_detail` — the newest column, added to carry the client's
+    """The same migration gap test_a_database_that_predates_the_artifacts_column_gets_it
+    guards for `artifacts`, but for `unrun_detail` — the column that carries the client's
     honesty caveat through eviction/restart. Same mechanism, same reason it needs its own test: _SCHEMA
-    reaching a fresh dev box proves nothing about prod's tasks.db, which predates this column too."""
+    reaching a fresh database proves nothing about an existing tasks.db."""
     db = str(tmp_path / "old.db")
     old = sqlite3.connect(db)
     old.executescript("CREATE TABLE tasks (id TEXT PRIMARY KEY, user TEXT NOT NULL, state TEXT NOT NULL, "
@@ -4234,7 +4274,7 @@ def test_a_database_that_predates_unrun_detail_gets_it(tmp_path):
 
 
 def test_rows_that_predate_caller_wall_clock_read_as_never_asked(tmp_path):
-    """The existing-database case, not the fresh-box case. Rows written before this column existed
+    """The existing-database case, not the fresh-database case. Rows written before this column existed
     are backfilled with NULL by ALTER TABLE. That has to mean "this caller did not state a deadline"
     rather than crashing the count or being mistaken for a stated zero — otherwise the first reading after
     the migration is wrong in the direction that looks like adoption."""
@@ -4284,11 +4324,11 @@ def test_artifacts_survive_eviction_and_restart():
 
 
 def test_unrun_detail_survives_eviction_and_restart():
-    """CUR-855/846: the same eviction/restart gap test_artifacts_survive_eviction_and_restart guards for
+    """The same eviction/restart gap test_artifacts_survive_eviction_and_restart guards for
     task.artifacts, but for task.unrun_detail — the field the client's honesty caveat (serviceFlagged)
-    gates on. A FAILED task with real content reconstructed after eviction/restart must come
-    back with unrun_detail intact, or the caveat banner goes dark on exactly the content it exists
-    to flag."""
+    gates on. Before this fix, a FAILED task with real content reconstructed after eviction/restart came
+    back with result intact but unrun_detail silently blank, and the caveat banner went dark on exactly
+    the content it exists to flag."""
     app.store = store_mod.Store(":memory:")
     app.store.create("ud1", "u", "SUBMITTED")
     t = app.Task(id="ud1", prompt="p", user="u", state=app.State.FAILED,
@@ -4313,8 +4353,8 @@ def test_unrun_detail_survives_eviction_and_restart():
 
 
 def test_healthz_tasks_live_excludes_terminal_tasks():
-    """CUR-1310: TASKS' own doc comment says it retains 'non-terminal + recently-terminal' tasks, so
-    len(TASKS) was never what tasks_live's name promises — it counts completed tasks too, and nothing
+    """TASKS' own doc comment says it retains 'non-terminal + recently-terminal' tasks, so
+    len(TASKS) is not what tasks_live's name promises — it counts completed tasks too, and nothing
     evicts them until the table hits MAX_TASKS. A terminal task sitting in TASKS must not inflate the
     live count; a non-terminal one — still holding a real worker thread, present in _RUN_START — must."""
     app.store = store_mod.Store(":memory:")
@@ -4330,7 +4370,7 @@ def test_healthz_tasks_live_excludes_terminal_tasks():
         app._RUN_START["hz-working"] = 0.0   # a genuinely live task's worker thread is still running
         body = app.healthz()
         assert body["tasks_live"] == before_live + 1, \
-            "a COMPLETED task in TASKS must not count as live — that's the bug this field existed to fix"
+            "a COMPLETED task in TASKS must not count as live"
         assert body["tasks_retained"] == before_retained + 2, \
             "the raw table size is still reported, just not under the name that implies liveness"
     finally:
@@ -4341,11 +4381,11 @@ def test_healthz_tasks_live_excludes_terminal_tasks():
 
 
 def test_reap_stuck_tasks_terminalizes_orphans_and_healthz_degrades():
-    """CUR-1310: a task whose worker thread already exited (no _RUN_START entry) but whose state never
+    """A task whose worker thread already exited (no _RUN_START entry) but whose state never
     reached _TERMINAL is not coming back — every path through _run terminalizes state before its finally
     pops _RUN_START and releases the slot. _reap_stuck_tasks must fail it so tasks_live stops climbing on
     a task nothing will ever finish, and /healthz must say so rather than reading 'ok' with a task wedged
-    in AWAITING_CONFIRMATION forever — this is the fail-loud half CUR-1310's own 'prove it' bar names:
+    in AWAITING_CONFIRMATION forever — the fail-loud half:
     /healthz reports unhealthy, not ok, once something is actually stuck."""
     app.store = store_mod.Store(":memory:")
     orphan = app.Task(id="hz-orphan", prompt="p", user="u", state=app.State.AWAITING_CONFIRMATION)
@@ -4373,7 +4413,7 @@ def test_reap_stuck_tasks_terminalizes_orphans_and_healthz_degrades():
 
 
 def test_reap_stuck_tasks_increments_a_durable_counter():
-    """CUR-1320: /healthz's tasks_stuck and the run.reaped_orphan log line both go quiet again within
+    """/healthz's tasks_stuck and the run.reaped_orphan log line both go quiet again within
     one 60s sweep, so a leak that reaps-and-clears between polls left no trace anywhere durable. The
     fix is agent_run_reaped_orphan_total — this proves it actually moves, not just that the log line
     fires (already covered above)."""
@@ -4416,7 +4456,7 @@ def test_reap_stuck_tasks_leaves_genuinely_running_tasks_alone():
 
 
 def test_reap_stuck_tasks_does_not_clobber_a_state_that_changed_mid_sweep():
-    """CUR-1310. _reap_stuck_tasks snapshots the orphan list under _TASKS_LOCK, then
+    """_reap_stuck_tasks snapshots the orphan list under _TASKS_LOCK, then
     mutates + persists each one OUTSIDE the lock, one at a time — so a concurrent DELETE /run/{id},
     which sets state=CANCELED synchronously on the HTTP thread per that endpoint's own comment, can land
     on a later task in the snapshot after an earlier one has already been processed. Without a re-check
@@ -4453,13 +4493,13 @@ def test_reap_stuck_tasks_does_not_clobber_a_state_that_changed_mid_sweep():
 
 
 def test_reap_stuck_tasks_does_not_orphan_a_task_still_starting_up(monkeypatch):
-    """CUR-1330. Registering _RUN_START from _run()'s own first line would set it on the spawned
-    worker thread, only after the task is already visible in TASKS via _store_task. Between those two
-    events (OS thread-scheduling latency) a sweep could see a task with its launch genuinely in flight
-    and reap it as an orphan, because presence in _RUN_START is the only signal _reap_stuck_tasks has
-    for "still starting."
+    """_RUN_START's entry must not be set only from _run()'s first line (on the spawned
+    worker thread) after the task is already visible in TASKS via _store_task. Between those two
+    events (real OS thread-scheduling latency, not a hypothetical) a sweep could see a task with its
+    launch genuinely in flight and reap it as an orphan, because presence in _RUN_START is the only
+    signal _reap_stuck_tasks has for "still starting."
 
-    So the /run endpoint registers _RUN_START itself, before _store_task, and the task is
+    Fixed by registering _RUN_START in the /run endpoint itself, before _store_task, so the task is
     never visible in TASKS without a matching entry. Proven here by stubbing _run to a no-op — the
     worker thread never reaches its first line, the worst case of the race — then sweeping immediately
     after submit: the task must already be in _RUN_START and must survive the sweep."""
@@ -4488,13 +4528,13 @@ def test_reap_stuck_tasks_does_not_orphan_a_task_still_starting_up(monkeypatch):
 
 
 def test_run_pops_run_start_when_the_launch_fails_after_store_task(monkeypatch):
-    """CUR-1331. _RUN_START is registered ahead of _store_task, so a task is never visible
-    in TASKS without a matching entry; the /run endpoint's except block must therefore pop _RUN_START
-    along with releasing the concurrency slot and user reservation. If _store_task already ran
+    """_RUN_START moved registration ahead of _store_task, so a task is never visible
+    in TASKS without a matching entry — but the /run endpoint's own except block released the
+    concurrency slot and user reservation without popping _RUN_START. If _store_task already ran
     (task.id in TASKS, non-terminal) and then threading.Thread(...).start() itself raises — real under
-    thread exhaustion — a leftover _RUN_START entry has no worker behind it.
-    _reap_stuck_tasks selects on membership with no age-out, so that task would be permanently
-    invisible to it.
+    thread exhaustion — the task is left holding a live _RUN_START entry with no worker behind it.
+    _reap_stuck_tasks selects on membership with no age-out, so that task was permanently invisible to
+    it: worse than its race, which at least self-resolved.
 
     Forced deterministically: threading.Thread is subclassed so only the specific start() call targeting
     app._run raises — not every thread in the process. A blanket patch on Thread.start breaks Starlette's
@@ -4668,7 +4708,7 @@ def test_two_visitors_of_one_caller_cannot_read_each_others_tasks():
 
 
 def test_the_caller_ceiling_sums_every_subject_so_rotating_the_header_buys_nothing():
-    """The regression that would make this change a NET LOSS: if the ceiling were checked per subject, a
+    """If the ceiling were checked per subject, a
     caller could mint a fresh allowance per request and the cap it replaced would be gone."""
     app.store = store_mod.Store(":memory:")
     app._USER_INFLIGHT.clear()
@@ -4691,7 +4731,7 @@ def test_the_caller_ceiling_sums_every_subject_so_rotating_the_header_buys_nothi
 
 def test_the_visitor_allowance_bites_only_when_a_subject_was_named():
     """Applying the (smaller) per-visitor number to a bare caller would silently lower the ceiling for
-    every caller that does not send the header — a failure for the direct API, caused by a fairness knob."""
+    every caller that does not send the header — an outage for the direct API, caused by a fairness knob."""
     app.store = store_mod.Store(":memory:")
     app._USER_INFLIGHT.clear()
     app.RATE_WINDOW_SECS = 86400
@@ -4715,7 +4755,7 @@ def test_the_visitor_allowance_bites_only_when_a_subject_was_named():
 
 
 def test_a_team_account_chat_names_is_not_stopped_at_the_25th_task_and_a_visitor_still_is():
-    """CUR-4620: chat gives a team account 1,000 tasks a day and says so in X-Agent-Subject-Daily-Tasks. The
+    """Chat gives a team account 1,000 tasks a day and says so in X-Agent-Subject-Daily-Tasks. The
     backstop must not stop that account at the visitor number first, must never let the header LOWER or
     switch off the allowance, and must still check the caller ceiling ahead of it."""
     app.store = store_mod.Store(":memory:")
@@ -4771,7 +4811,7 @@ def test_inflight_aggregates_at_the_caller_level_too():
 
 
 def test_one_visitor_cannot_hold_more_than_its_share_of_live_slots():
-    """CUR-2194: the daily allowance counts tasks started, so without this one visitor with a few tabs open
+    """The daily allowance counts tasks started, so without this one visitor with a few tabs open
     could hold every MAX_CONCURRENCY slot. A named subject at SUBJECT_MAX_CONCURRENCY is refused with a
     retryable 429 whose body chat does not read as the daily limit, and the slot it took is given back."""
     app.store = store_mod.Store(":memory:")
@@ -4844,7 +4884,7 @@ def test_caller_prefix_match_does_not_over_match_on_sql_wildcards():
 
 
 def test_caller_history_is_empty_for_a_caller_with_no_rows():
-    """CUR-470's accrual signal has to distinguish 'never seen' from 'seen, but recent' — a caller with
+    """its accrual signal has to distinguish 'never seen' from 'seen, but recent' — a caller with
     zero rows must not be mistaken for one whose first task was just created."""
     s = store_mod.Store(":memory:")
     hist = s.caller_history("nobody")
@@ -4881,7 +4921,7 @@ def test_caller_history_prefix_match_does_not_over_match_on_sql_wildcards():
 
 
 def test_migrate_caller_folds_old_history_into_new_subject():
-    """CUR-761: signing in must RAISE a caller's trust ceiling, never zero it — an anonymous session's
+    """Signing in must RAISE a caller's trust ceiling, never zero it — an anonymous session's
     task rows re-key onto the signed-in subject and its history folds in via caller_history's live
     aggregate, no separate merge step needed."""
     s = store_mod.Store(":memory:")
@@ -4939,7 +4979,7 @@ def test_migrate_caller_no_op_on_missing_or_identical_subjects():
 
 
 def test_is_trusted_needs_both_age_and_volume():
-    """CUR-470 v1, time-based only: neither signal alone is enough, and an unseen caller is never trusted."""
+    """neither signal alone is enough, and an unseen caller is never trusted."""
     saved = (app.TRUST_ACCRUAL_SECS, app.TRUST_MIN_TASKS, app.store.caller_history)
     app.TRUST_ACCRUAL_SECS, app.TRUST_MIN_TASKS = 86400, 3
     try:
@@ -4959,7 +4999,7 @@ def test_is_trusted_needs_both_age_and_volume():
 
 
 def test_is_trusted_accepts_a_prefetched_hist_without_querying_again():
-    """CUR-471: _permission_decision fetches caller_history once and hands it to _is_trusted — confirm
+    """_permission_decision fetches caller_history once and hands it to _is_trusted — confirm
     the pre-fetched value is actually used, not silently ignored in favor of a fresh query."""
     saved = (app.TRUST_ACCRUAL_SECS, app.TRUST_MIN_TASKS, app.store.caller_history)
     app.TRUST_ACCRUAL_SECS, app.TRUST_MIN_TASKS = 86400, 3
@@ -5019,7 +5059,7 @@ def test_policy_note_is_empty_except_for_the_new_tier():
     assert "1/3" in note, "carries the real numbers, not a placeholder"
 
 
-# ------------------------------------------- CUR-1405: the sandbox note states MEASURED containment only
+# ------------------------------------------- the sandbox note states MEASURED containment only
 def _with_observed(egress, dns, euid):
     """Swap the two probe globals and geteuid for one call, restoring both afterwards."""
     saved = (app._EGRESS_OBSERVED, app._DNS_OBSERVED, os.geteuid)
@@ -5058,16 +5098,16 @@ def test_sandbox_note_reports_each_half_independently():
 
 
 def test_sandbox_note_is_appended_after_the_policy_note_not_into_the_ordered_tail():
-    """Moving a note within the CAPABILITY/COMPUTATION/SOURCE_FIDELITY/LANGUAGE/CATEGORY_RECAP tail can
-    fix one language leak and cause another (CUR-706, CUR-752). This pins that the sandbox note sits
-    BEFORE that tail, so all five keep their position. Asserts on the
+    """Moving a note within the CAPABILITY/COMPUTATION/SOURCE_FIDELITY/LANGUAGE/CATEGORY_RECAP tail
+    can fix one language leak and cause another. This pins that the sandbox note
+    lands BEFORE that tail, so all five keep their relative order. Asserts on the
     composed prompt, never on the source line that composes it."""
     tail = [app.CAPABILITY_NOTE, app.COMPUTATION_NOTE, app.SOURCE_FIDELITY_NOTE,
             app.LANGUAGE_NOTE, app.CATEGORY_RECAP_NOTE]
     composed = "TASK" + app._policy_note({"tier": "new", "tasks_done": 1, "tasks_required": 3}) \
         + _with_observed("filtered", "filtered", 10001) + "".join(tail)
     positions = [composed.index(t) for t in tail]
-    assert positions == sorted(positions), "the five tail notes stay in their measured order"
+    assert positions == sorted(positions), "the five tail notes stay in order"
     assert composed.index("no general network access") < positions[0], "sandbox note precedes the tail"
     assert composed.index("new/unaccrued caller") < composed.index("no general network access"), \
         "and sits immediately after the policy note, the other capability-truth note"
@@ -5097,7 +5137,7 @@ def test_resolve_permission_policy_resolves_staged_per_caller():
     app.ACP_PERMISSION_POLICY = "staged"
     try:
         # _permission_decision calls _is_trusted(user, hist) — accept the same shape a real
-        # caller uses so this mock doesn't drift from the function it stands in for. (CUR-471)
+        # caller uses so this mock doesn't drift from the function it stands in for.
         app._is_trusted = lambda user, hist=None: user == "trusted-caller"
         assert app._resolve_permission_policy("trusted-caller") == "allow"
         assert app._resolve_permission_policy("new-caller") == "deny_writes"
@@ -5106,7 +5146,7 @@ def test_resolve_permission_policy_resolves_staged_per_caller():
 
 
 def test_model_env_reacts_to_the_passed_policy_not_only_the_global():
-    """CUR-470: under staged, the global ACP_PERMISSION_POLICY is "staged" itself, never "deny_writes" —
+    """Under staged, the global ACP_PERMISSION_POLICY is "staged" itself, never "deny_writes" —
     _model_env has to react to the resolved per-caller value it's handed, not to the mode name."""
     _saved_policy = app.ACP_PERMISSION_POLICY
     os.environ["HERMES_ACP_TOOLSETS"] = "file,terminal,todo,code_execution"
@@ -5145,16 +5185,15 @@ def test_permission_state_and_effective_toolsets_report_staged_honestly():
 
 def test_permission_state_names_the_always_confirm_composition_under_staged():
     """/healthz's staged-policy string must not describe "trusted: allow" as if that tier were
-    unconditional: edit/delete still pauses for a human (CUR-760). Same reason deny_writes' report names
-    its own uncovered tools instead of just its name (CUR-217)."""
+    unconditional: edit/delete still pauses for a human. Same reason deny_writes' report names
+    its own uncovered tools instead of just its name."""
     reported, _ = app._permission_state("staged", "file,terminal,todo,code_execution")
     assert "edit" in reported and "delete" in reported and "confirm" in reported, reported
     assert "trusted tier" in reported, "must name which tier this applies to, not a vague blanket claim"
 
 
 def test_prodcheck_compares_the_new_trust_thresholds():
-    """Matching this file's own convention (AGENT_REPAIR_TURNS has been in COMPARED since the day the
-    feature landed) — a harness under staged with different thresholds than prod measures a different
+    """Matching this file's convention (AGENT_REPAIR_TURNS is in COMPARED) — a harness under staged with different thresholds than prod measures a different
     regime on the same fixtures, same failure COMPARED exists to catch."""
     pc = _prodcheck()
     assert "AGENT_TRUST_ACCRUAL_SECS" in pc.COMPARED
@@ -5184,9 +5223,9 @@ def test_a_renamed_quota_var_still_reads_the_old_name_and_says_which():
 
 
 def test_healthz_renders_stream_fields_in_prodchecks_vocabulary():
-    """`stream_tokens` must be bare on/off with the cap as its own field. A value like
-    "on(max 400/attempt)" makes prodcheck report a STALE DEPLOY, since it compares config "1"
-    against that string."""
+    """`stream_tokens` must be bare on/off with the cap as its own field. Rendering
+    "on(max 400/attempt)" would make prodcheck report a STALE DEPLOY by comparing config "1"
+    against that string — a false alarm on a check whose whole value is being believed."""
     body = app.healthz()
     assert body["stream_tokens"] in ("on", "off"), \
         f"stream_tokens must be on/off, not {body['stream_tokens']!r} — prodcheck compares it to a config value"
@@ -5194,12 +5233,11 @@ def test_healthz_renders_stream_fields_in_prodchecks_vocabulary():
 
 
 def test_healthz_reports_repair_turns_so_the_running_app_can_be_asked():
-    """AGENT_REPAIR_TURNS is in prodcheck's COMPARED, so the two config FILES are checked against each
-    other, which cannot see a value inherited from a code default. A /healthz field carries it so
-    `stale_deploy_lines` has something to compare and the RUNNING app is asked.
+    """prodcheck compares the two config FILES for AGENT_REPAIR_TURNS, which says nothing about the
+    RUNNING app. /healthz reports the value, so `stale_deploy_lines` can compare what the app runs.
 
-    Bare int, matching `best_of`: prodcheck's normaliser has to compare it to a config string without new
-    vocabulary, which avoids false STALE DEPLOY alarms."""
+    Bare int, matching `best_of`: prodcheck's normaliser compares it to a config string without new
+    vocabulary, and a rendered string raises a false STALE DEPLOY alarm."""
     body = app.healthz()
     assert body["repair_turns"] == app.REPAIR_TURNS, "/healthz must report the value the app actually runs"
     assert isinstance(body["repair_turns"], int), \
@@ -5230,10 +5268,9 @@ def test_a_caller_stated_deadline_is_counted_not_just_applied():
 
 
 def test_the_deadline_count_is_durable_because_this_app_scales_to_zero():
-    """`caller_deadlines` must not read an in-process counter on an app configured with
-    `min_machines_running = 0`: it resets on every scale-to-zero, so /healthz would report 0 beside a
-    durable tasks_total even when callers send wall_clock_secs, and prodcheck would print "no caller has
-    ever sent a deadline".
+    """`caller_deadlines` comes from the durable store, not an in-process counter: the app runs with
+    `min_machines_running = 0`, and a counter would reset to 0 on every scale-to-zero while callers keep
+    sending wall_clock_secs.
 
     Two properties are pinned here. Surviving a restart is the obvious one. The subtler one is that the
     column stores what the caller ASKED for and NULL when it asked nothing — storing the EFFECTIVE wall
@@ -5256,14 +5293,14 @@ def test_the_deadline_count_is_durable_because_this_app_scales_to_zero():
 
 
 def test_the_deadline_counter_says_requests_because_that_is_what_it_counts():
-    """The counter is named `agent_runs_…` and paired against `tasks_total`, but `_effective_caps` runs in
-    the /run handler BEFORE the budget, moderation and concurrency gates. A request that stated a deadline
-    and was then refused 403 would raise the count while creating no task — so a deployment where every
-    such request was blocked would report adoption and go quiet, which is the one outcome the counter
-    exists to prevent.
+    """Caught reviewing the diff that introduced it: the counter was named `agent_runs_…` and paired
+    against `tasks_total`, but `_effective_caps` runs in the /run handler BEFORE the budget, moderation
+    and concurrency gates. A request that stated a deadline and was then refused 403 would raise the count
+    while creating no task — so a fleet where every such request was blocked would report adoption and go
+    quiet, which is the one outcome the counter exists to prevent.
 
-    Requests is the right population for the question, so the name is chosen to match rather than the
-    increment moved. This test pins the ordering the name depends on."""
+    Requests is the right population for the question, so the name moved rather than the increment. This
+    test pins the ordering the name now depends on."""
     assert "agent_requests_caller_deadline_total" in inspect.getsource(app._effective_caps), \
         "the metric must say requests"
     assert "agent_runs_caller_deadline_total" not in inspect.getsource(app), \
@@ -5329,7 +5366,7 @@ def test_model_env_secret_split():
 
 
 def test_model_env_filters_the_toolset_under_deny_writes_only():
-    """CUR-217: _model_env is the actual enforcement point — it decides what HERMES_ACP_TOOLSETS the
+    """_model_env is the actual enforcement point — it decides what HERMES_ACP_TOOLSETS the
     next `hermes acp` subprocess is even told exists. Under `allow` (today's live policy) it must be a
     no-op; under `deny_writes` it must strip terminal/code_execution before the subprocess ever sees them,
     since Hermes never calls request_permission for those two (the callback can't deny a call that's
@@ -5364,7 +5401,7 @@ def _built_seccomp(tmp_path) -> Path | None:
 
 
 def test_the_sandbox_loads_the_syscall_filter_and_its_own_user_namespace(monkeypatch, tmp_path):
-    """CUR-4478. The prefix opens the filter as fd 9 for bwrap, gives the sandbox a user namespace of its
+    """The prefix opens the filter as fd 9 for bwrap, gives the sandbox a user namespace of its
     own with nesting disabled, and a required sandbox with no filter file refuses rather than runs open."""
     if not shutil.which("bwrap"):
         pytest.skip("bwrap not installed")
@@ -5387,7 +5424,7 @@ def test_the_sandbox_loads_the_syscall_filter_and_its_own_user_namespace(monkeyp
 
 
 def test_code_in_the_sandbox_gets_eperm_from_namespaces_and_io_uring(monkeypatch, tmp_path):
-    """CUR-4478, against the real filter and a real bwrap: what the filter exists to stop fails with EPERM
+    """against the real filter and a real bwrap: what the filter exists to stop fails with EPERM
     inside, and ordinary Python still runs."""
     if not shutil.which("bwrap"):
         pytest.skip("bwrap not installed")
@@ -5456,8 +5493,8 @@ def test_model_flags():
 
 
 def test_the_image_refuses_to_start_when_no_deploy_surface_sets_agent_model(tmp_path):
-    """CUR-527. An image that bakes a default AGENT_MODEL lets a manifest that forgot the variable boot a
-    model the proxy does not serve while the badge names it. Runs a real
+    """The image must not bake a default AGENT_MODEL: a manifest that
+    forgot the variable would boot a model the proxy does not serve while the badge named it. Runs a real
     `import app` under the ENV the Dockerfile bakes, parsed from the build file rather than restated here,
     so a default creeping back into the image turns this red. The control run with the model set shows
     the refusal is about the missing model and not something else in that environment."""
@@ -5489,7 +5526,7 @@ def test_the_image_refuses_to_start_when_no_deploy_surface_sets_agent_model(tmp_
 
 
 def test_the_image_refuses_to_start_with_the_secrets_boundary_off(tmp_path):
-    """CUR-3199. An unset AGENT_MODEL_PROXY_URL was the boundary's off switch: the app booted, handed the
+    """An unset AGENT_MODEL_PROXY_URL was the boundary's off switch: the app booted, handed the
     agent the real model token, and said so only in /healthz. Same harness as the AGENT_MODEL test above:
     a real `import app` under the ENV the Dockerfile bakes, with a control run showing the refusal is
     about the missing gateway."""
@@ -5552,7 +5589,7 @@ def test_proxy_request_meta_secret_free():
 
 # --------------------------------------------------------------------------- model<->toolset/verifier coupling
 def test_model_toolset_mismatch_warns(capsys):
-    """Mistral + terminal-only logs the measured dead-loop warning; Mistral + coding stays silent."""
+    """Mistral + terminal-only logs the dead-loop warning; Mistral + coding stays silent."""
     app._check_model_coupling("mistralai/Mistral-Small-4-119B-2603", "terminal", None)
     out = capsys.readouterr().out
     assert '"event": "config.model_toolset_mismatch"' in out, "terminal-only Mistral must warn"
@@ -5629,7 +5666,7 @@ def test_since_slices_and_matches_the_scan_it_replaced():
             retained = b.since(-1)[0]
             base = retained[0][0] if retained else 0
             for after in range(-3, base + app.SSE_MAX_EVENTS + 3):
-                want = [e for e in retained if e[0] > after]     # the predicate `since` used to run
+                want = [e for e in retained if e[0] > after]     # the reference predicate for `since`
                 got = b.since(after)[0]
                 assert got == want, f"total={total} after={after}: {got} != {want}"
     finally:
@@ -5682,7 +5719,7 @@ def test_sse_endpoint():
 def test_healthz_provenance():
     """HEALTHZ exposes api-version + served model + compute provider; StatusResponse carries provenance.
 
-    Exercises the static-fallback path of _effective_compute_provider() (CUR-1107) — no live proxy
+    Exercises the static-fallback path of _effective_compute_provider() — no live proxy
     reading has been observed, so the configured AGENT_COMPUTE_PROVIDER is the honest answer. The
     live-preferred path is test_compute_provider_refresh_polls_proxy_healthz below."""
     _hm, _hcp, _live = app.AGENT_MODEL, app.AGENT_COMPUTE_PROVIDER, app._LIVE_COMPUTE_PROVIDER
@@ -5710,10 +5747,10 @@ def test_healthz_provenance():
 
 
 def test_compute_provider_refresh_polls_proxy_healthz():
-    """CUR-1107: the badge's actual source is a live reading polled from the proxy's own /healthz (which
+    """The badge's actual source is a live reading polled from the proxy's own /healthz (which
     sees every real call via proxy._record_backend), not the static AGENT_COMPUTE_PROVIDER env var —
-    that static value is a human-typed intent that can drift from where live traffic runs.
-    Polling makes the badge self-correct."""
+    that static value is a human-typed intent that can disagree with where live traffic actually runs.
+    This is the mechanism that makes the badge self-correct instead of needing a human to notice."""
     import httpx as _httpx
     _saved_get, _saved_mpu = _httpx.get, app.MODEL_PROXY_URL
     _saved_live, _saved_static = app._LIVE_COMPUTE_PROVIDER, app.AGENT_COMPUTE_PROVIDER
@@ -5753,7 +5790,7 @@ def test_compute_provider_refresh_polls_proxy_healthz():
 
 
 def test_proxy_record_backend_latches_last_served():
-    """CUR-1107, the other half: proxy._record_backend fires on every real model call (main loop,
+    """the other half: proxy._record_backend fires on every real model call (main loop,
     derive, judge, router alike — see its own docstring), so _LAST_SERVED reflects whoever actually
     served last, and the proxy's /healthz publishes it for the app to poll."""
     _saved = proxy._LAST_SERVED
@@ -5773,8 +5810,8 @@ def test_proxy_record_backend_latches_last_served():
 
 
 def test_proxy_verifier_call_does_not_overwrite_the_badge_latch():
-    """CUR-2434: the verifier route sits outside the reported chain, so its call must leave the executor's
-    latched provider in place. Latching it would badge a Mistral-only task with the verifier's host."""
+    """The verifier route sits outside the reported chain, so its call must leave the executor's
+    latched provider in place. Latching it badged a Mistral-only task with the verifier's host."""
     _saved_latch, _saved_verifier = proxy._LAST_SERVED, proxy.VERIFIER
     try:
         proxy.VERIFIER = proxy.Provider(name="verifier", base_url="https://router.huggingface.co/v1")
@@ -5792,7 +5829,7 @@ def test_proxy_verifier_call_does_not_overwrite_the_badge_latch():
 
 
 def test_a_pinned_hf_route_reports_the_provider_the_response_names_and_flags_a_mismatch():
-    """CUR-1932: the agent pins GLM-5.2 to Scaleway through HF's `model:provider` suffix. The pin is what we
+    """The agent pins GLM-5.2 to Scaleway through HF's `model:provider` suffix. The pin is what we
     asked for; `x-inference-provider` is what answered. The badge must carry the second, and a disagreement
     must land in the log as pin_ok=false rather than pass as the configured name."""
     _saved = proxy._LAST_SERVED
@@ -5821,7 +5858,7 @@ def test_a_pinned_hf_route_reports_the_provider_the_response_names_and_flags_a_m
 
 
 def test_a_chain_provider_bills_hf_calls_to_the_org_when_configured():
-    """CUR-1932: the HF-routed executor authenticates as a token owned by a person, so without X-HF-Bill-To
+    """The HF-routed executor authenticates as a token owned by a person, so without X-HF-Bill-To
     its spend lands on that person. Before this, only the verifier route read a bill-to setting."""
     _keys = ["MODEL_PROVIDERS", "PROVIDER_HF_BASE", "PROVIDER_HF_TOKEN", "PROVIDER_HF_MODEL", "PROVIDER_HF_BILL_TO"]
     _saved_env = {k: os.environ.get(k) for k in _keys}
@@ -5846,7 +5883,7 @@ def test_a_chain_provider_bills_hf_calls_to_the_org_when_configured():
 def test_frozen_wire_contract():
     """CONTRACT: frozen wire shapes (streaming-spec.md "Contract (BINDING)" — P2), locked at api=1.
 
-    CUR-218's AWAITING_CONFIRMATION is a deliberate, documented exception to "changed enum membership
+    its AWAITING_CONFIRMATION is a deliberate, documented exception to "changed enum membership
     bumps the version": it is reachable ONLY when ACP_PERMISSION_POLICY=confirm, which nothing sets —
     not the code default ("allow"), not fly/agent-app.toml — so no live consumer's exhaustive
     state-handling can observe it unless an operator deliberately opts in, which this plan does not do
@@ -5860,8 +5897,7 @@ def test_frozen_wire_contract():
     assert {s.value for s in app._TERMINAL} == {"COMPLETED", "FAILED", "CANCELED"}, \
         "terminal set is exactly COMPLETED/FAILED/CANCELED — AWAITING_CONFIRMATION is NOT terminal"
     assert set(app.RunResponse.model_fields) == {"id", "state", "machine_id"}, \
-        "RunResponse fields are frozen {id, state, machine_id} — machine_id added 2026-09-05 " \
-        "(CUR-895), additive optional (no api bump, see streaming-spec.md)"
+        "RunResponse fields are frozen {id, state, machine_id} — additive optional (no api bump, see streaming-spec.md)"
     assert set(app.StatusResponse.model_fields) == {
         "id", "state", "result", "result_truncated", "error", "summary",
         "verified", "verify_method", "verify_autoderived", "verify_check", "judge_reason",
@@ -5869,12 +5905,7 @@ def test_frozen_wire_contract():
         "transport_used", "artifacts", "artifacts_dropped", "expired", "pending_confirmations",
         "unrun_detail", "session_continued", "tier", "tasks_done", "tasks_required", "machine_id",
         "served_models"}, \
-        "StatusResponse fields are frozen (the canonical poll/cancel/webhook shape) — transport_used " \
-        "added 2026-07-03, the four verdict-grounds fields 2026-07-25, the two artifact fields " \
-        "2026-07-29 (CUR-195), expired 2026-08-20 (CUR-196), pending_confirmations 2026-08-20 " \
-        "(CUR-218), unrun_detail 2026-08-21 (CUR-574), session_continued 2026-08-29 (CUR-705), " \
-        "tier/tasks_done/tasks_required 2026-08-30 (CUR-761), machine_id 2026-09-05 (CUR-895), and " \
-        "served_models 2026-10-26 (CUR-4603), " \
+        "StatusResponse fields are frozen (the canonical poll/cancel/webhook shape) — " \
         "all additive optional (no api bump, see streaming-spec.md)"
     assert app.API_VERSION == 1, "additive optional fields, and the documented AWAITING_CONFIRMATION " \
         "carve-out, do NOT bump the api version"
@@ -5991,10 +6022,10 @@ def _prodcheck():
 
 
 def test_prodcheck_catches_the_four_mistakes_that_actually_happened():
-    """Regression guard: an eval run can measure a config prod does not ship while looking clean, by
-    inheriting AGENT_ACP (legacy oneshot transport), never setting AGENT_TOOLSETS (2 tool schemas
-    instead of 25), or hardcoding the wall clock. Printing the resolved config only helps if someone
-    reads it — this refuses to run, so encode the exact failures."""
+    """Eval runs must not measure a config prod does not ship while looking like a clean run. Each of
+    four mistakes must be caught: the harness inheriting AGENT_ACP (legacy oneshot transport), not setting
+    AGENT_TOOLSETS (2 tool schemas instead of 25), and hardcoding the wall clock. Printing the resolved
+    config only helps if someone reads it — this refuses to run, so encode the exact failures."""
     pc = _prodcheck()
     prod = pc.prod_env()
     ok = {k: prod[k] for k in pc.COMPARED if k in prod}
@@ -6016,10 +6047,9 @@ def test_prodcheck_catches_the_four_mistakes_that_actually_happened():
 
 
 def test_prodcheck_tracks_a_hermes_flag_in_whichever_direction_prod_moved():
-    """A run with HERMES_LEAN_PROMPT=1 must not be reported as "matches prod on every compared knob" when
-    that knob is not compared. Both Hermes flags are compared, but they sit on opposite sides of the same
-    rule: asserting "prod must not ship it" for both goes stale once a flag ships, as
-    HERMES_ACP_TOOLSETS did. The rule is about MATCHING prod, not about a flag being exotic."""
+    """A run with HERMES_LEAN_PROMPT=1 must not read as "matches
+    prod on every compared knob" when that knob is not compared. Both Hermes flags are compared, but they
+    sit on opposite sides of the same rule: a flag may be shipped or not shipped by prod. The rule is about MATCHING prod, not about a flag being exotic."""
     pc = _prodcheck()
     prod = pc.prod_env()
     ok = {k: prod[k] for k in pc.COMPARED if k in prod}
@@ -6045,9 +6075,10 @@ def test_prodcheck_tracks_a_hermes_flag_in_whichever_direction_prod_moved():
 
 
 def test_prodcheck_reads_the_proxy_config_not_just_the_app_config():
-    """A harness proxy with PROXY_DESTREAM=1 against a deployed one without it changes whether SSE frames
-    arrive during a model call or all at once after it, so prodcheck reads the proxy config as well as
-    the app config. Both fly configs are the reference, and a key in both with different values is an error
+    """The harness proxy runs PROXY_DESTREAM=1 and the deployed one does not, which changes whether SSE
+    frames arrive during a model call or all at once after it. prodcheck must not say "matches prod on every
+    compared knob" when the knob lives in a file it never
+    opens. Both fly configs are the reference, and a key in both with different values is an error
     rather than a precedence rule."""
     pc = _prodcheck()
     assert pc.PROXY_TOML.is_file(), "the proxy config is half the model boundary — it must be read"
@@ -6204,8 +6235,8 @@ def test_conccheck_threshold_is_the_break_even_not_a_taste():
 
 def test_operator_subs_compare_by_membership_not_by_string():
     """Prod's exempt list names prod's operator and the harness's names the harness's; neither can name
-    the other's. Requiring equality would 429 a whole run on submit and score fixtures
-    as capability failures. Adding is fine, dropping is not — a harness that exempts LESS than prod
+    the other's. Requiring equality 429'd a whole long-horizon run on submit and scored three fixtures
+    0/3 as capability failures. Adding is fine, dropping is not — a harness that exempts LESS than prod
     rations traffic prod admits, and then measures a stricter service than the one we ship."""
     pc = _prodcheck()
     prod = pc.prod_env()
@@ -6247,7 +6278,7 @@ def test_floor_exempts_its_own_synthetic_user():
 
 
 def test_modelcheck_counts_only_the_shapes_prod_actually_sends():
-    """`folded` fails on a HEALTHY endpoint — 0/3 while system and stream are 3/3. If it
+    """`folded` fails on a HEALTHY endpoint — measured 0/3 while system and stream were 3/3. If it
     counted toward the exit code the probe would be permanently red, and a check that is always red is
     one people stop reading. Prod sends a system turn, streamed; those are the ones that decide."""
     mc = _modelcheck()
@@ -6260,8 +6291,8 @@ def test_modelcheck_counts_only_the_shapes_prod_actually_sends():
 
 
 def test_modelcheck_reads_tool_calls_from_both_response_shapes():
-    """The streamed form arrives as deltas and legally includes frames with an empty `choices` list,
-    which the parser must accept rather than crash and report nothing while the endpoint is fine."""
+    """The streamed form arrives as deltas and legally includes frames with an empty `choices` list —
+    an early probe crashed on exactly that and reported nothing while the endpoint was fine."""
     mc = _modelcheck()
     assert mc._called(json.dumps({"choices": [{"message": {"tool_calls": [{"function": {"name": "f"}}]}}]}), False)
     assert not mc._called(json.dumps({"choices": [{"message": {"content": '{"path": "out.txt"}'}}]}), False)
@@ -6276,8 +6307,8 @@ def test_modelcheck_reads_tool_calls_from_both_response_shapes():
 
 
 def test_dogfood_refuses_a_run_when_tool_calling_is_down():
-    """A run started while tool calling is broken scores every trial as the model missing the task — the
-    most expensive way to learn it."""
+    """A run started against a tool-call regression scores every trial as the model missing the task —
+    the most expensive way to learn it — so the probe must refuse the run first."""
     import importlib.util
     import inspect
     spec = importlib.util.spec_from_file_location(
@@ -6309,7 +6340,7 @@ def test_prod_smoke_reads_its_token_without_printing_it(monkeypatch):
     monkeypatch.setenv("AGENT_SMOKE_TOKEN", "aa.bb==.cc")
     assert ps._token() == "aa.bb==.cc", "a JWT's own '=' padding must survive"
 
-    # CUR-1224 moved the HTTP layer into scripts/probe_poll.py, shared with date_anchor_probe. The
+    # The HTTP layer moved into scripts/probe_poll.py, shared with date_anchor_probe. The
     # guarantee is unchanged and now has two homes, so both are checked: a token that stops being
     # printed here and starts being printed there is the same leak.
     shared = Path(__file__).resolve().parents[1] / "scripts" / "probe_poll.py"
@@ -6331,9 +6362,10 @@ def _probe_poll():
 
 
 def test_probe_budget_comes_from_the_service_not_from_a_number_we_picked():
-    """CUR-1224. A probe polling for 400s while /healthz reports wall_clock_task_s 900 (best_of 3 x
-    wall_clock_s 300) lets any task needing a second attempt outlive the probe watching it, and the probe
-    would call that a failure: a deploy gate that goes red on a healthy service. The fallback is deliberately LARGE for the same reason:
+    """Prod_smoke polled for 400s while /healthz reported wall_clock_task_s 900 (best_of 3 x
+    wall_clock_s 300). Any task needing a second attempt outlived the probe watching it, and the probe
+    called that a failure — a deploy gate that goes red on a healthy service, which is that
+    shape rather than a safer version of it. The fallback is deliberately LARGE for the same reason:
     giving up early invents a failure, where waiting too long only costs time."""
     pp = _probe_poll()
     assert pp.default_timeout({"wall_clock_task_s": 900}) > 900, "must leave room for queueing"
@@ -6345,8 +6377,7 @@ def test_probe_budget_comes_from_the_service_not_from_a_number_we_picked():
 
 
 def test_probe_answers_the_confirmations_cur760_opens_or_it_can_only_fail():
-    """Edit/delete/execute ALWAYS pause for a human answer, on every tier, `trusted` included (CUR-760,
-    CUR-975), and prod_smoke's fixture writes a file. A probe that never answers the confirmation cannot
+    """Edit/delete/execute ALWAYS pause for a human answer, on every tier, `trusted` included, and prod_smoke's fixture writes a file. A probe that never answers the confirmation cannot
     pass: the task fails `expect_file not found: out.txt` on every attempt. A check that can only go red
     is as dead an instrument as one that can only go green.
 
@@ -6495,7 +6526,8 @@ def test_first_token_bound_retries_a_silent_upstream_transparently():
 
 def test_first_token_bound_reports_a_persistently_silent_upstream_as_504():
     """Exhausting the retries must surface as an error, not as a 200 carrying an empty body. An empty 200
-    reaches the agent as a model that answered with nothing rather than as an upstream failure."""
+    is a shape a gateway can produce for upstream failures, and it reaches the agent as
+    a model that answered with nothing rather than as an outage."""
     r, client, _out = _ttft_case([None, None], nonce="ttft-dead")
     assert r.status_code == 504, f"a permanently silent upstream must not be dressed as success (got {r.status_code})"
     assert client.opens == 2, "bounded at FIRST_TOKEN_ATTEMPTS rather than looping"
@@ -6542,8 +6574,8 @@ def test_first_token_bound_is_declared_where_prodcheck_can_see_it():
 # --------------------------------------------------------------------------- verdict grounds on the wire
 def test_done_frame_and_status_carry_the_same_verdict_grounds():
     """One constructor for both emitters. The replay done frame (a client reconnecting
-    after the live buffer is gone) must carry verify_method too, so a task describes itself the same
-    way whenever it is asked."""
+    after the live buffer is gone) must include verify_method, so the same task describes itself
+    the same way whenever you ask."""
     t = app.Task(id="vg", prompt="list 20 colours", user="u", state=app.State.COMPLETED,
                  result="a, b, c", summary="completed", verified=True, verify_method="execution+judge",
                  judge_reason="answer lists 20 comma-separated items",
@@ -6586,21 +6618,24 @@ def test_spec_fields_reports_only_what_was_actually_asserted():
 
 
 def test_execution_alone_is_unreachable_once_the_judge_is_on_for_artifact_backed_specs():
-    """The load-bearing fact behind shipping verify_autoderived, narrowed twice now by CUR-744. A chat
+    """The load-bearing fact behind shipping verify_autoderived, narrowed twice now. A chat
     turn WITH an ARTIFACT-BACKED spec (expect_file or check_cmd, caller-written or derived) gets
     may_judge=True, so _select_attempt always takes the judge branch there — "execution" alone, the value
     meaning no model was in the loop, cannot occur on THAT path. A consumer rendering "verified by
     execution" as the deterministic tier would be describing a state its users can never reach there.
 
-    This applies to artifact-backed specs only. For a shape-only spec that genuinely passed (not
-    overruled), _select_attempt returns "execution" WITHOUT the judge, the same credit the non-judge path
-    gives it: "not grounded" withholds the judge's vote, not credit for a real check that passed.
-    Otherwise a passing expect_count-only spec would fall to unverified and _failure_reason would read
-    that as a genuine failure and mark the whole task FAILED. So "execution alone" is reachable with
-    judge on, for exactly the shape-only, non-artifact-backed case."""
+    This is now explicitly narrowed to artifact-backed specs, not specs in general. its first pass
+    made "execution alone" unreachable for ANY spec once may_judge=True (matching this test's original,
+    broader name) — but that broke a real caller: a passing expect_count-only spec fell all the way to
+    unverified, and _failure_reason then read that as a genuine failure and marked the whole task FAILED.
+    Fixed same-day, in code review: a shape-only spec that genuinely passed (not overruled) now gets
+    "execution" WITHOUT the judge, same credit the non-judge path already gives it — "not grounded" only
+    withholds the judge's vote, it does not withhold credit for a real check that actually passed. So
+    "execution alone" IS reachable with judge on now, for exactly the shape-only, non-artifact-backed
+    case — deliberately, not a regression."""
     _pass = lambda *a, **k: {"content": '{"pass": true, "reason": "fine"}'}
     def _must_not_run(*a, **k):
-        raise AssertionError("judge called with no artifact-backed grounding — CUR-744 regression")
+        raise AssertionError("judge called with no artifact-backed grounding")
     with tempfile.TemporaryDirectory() as work:
         Path(work, "out.txt").write_text("text\n")
         ok, method, _r = app._select_attempt("p", work, "text", app.VerifySpec(expect_file="out.txt"),
@@ -6609,7 +6644,7 @@ def test_execution_alone_is_unreachable_once_the_judge_is_on_for_artifact_backed
     ok2, method2, _r2 = app._select_attempt("p", "/tmp", "text", app.VerifySpec(expect_count=1),
                                             may_judge=True, judge_call=_must_not_run)
     assert ok2 and method2 == "execution", \
-        "shape-only spec that PASSED -> execution credit, no judge vote (not unverified -- CUR-744 fix)"
+        "shape-only spec that PASSED -> execution credit, no judge vote (not unverified)"
     ok3, method3, _r3 = app._select_attempt("p", "/tmp", "a,b", app.VerifySpec(expect_count=2),
                                             may_judge=False, judge_call=None)
     assert ok3 and method3 == "execution", "execution alone also reachable the ordinary way: judge OFF"
@@ -6617,8 +6652,8 @@ def test_execution_alone_is_unreachable_once_the_judge_is_on_for_artifact_backed
 
 def test_prodcheck_prefers_the_deployed_config_over_the_template():
     """`fly/agent-app.toml` carries `app = "REPLACE-agent-app"` and deploys nothing. Reading it and
-    calling the result prod would report "matches prod on every compared knob" while /healthz reports
-    different values."""
+    calling the result prod would let config changes be believed live while /healthz reports the
+    old values, with "matches prod on every compared knob" printing clean throughout."""
     pc = _prodcheck()
     import tomllib
     assert 'REPLACE' in pc.FLY_TOML.read_text(), \
@@ -6637,7 +6672,7 @@ def test_prodcheck_prefers_the_deployed_config_over_the_template():
 
 def test_prodcheck_source_admits_when_it_is_reading_a_template():
     """The fallback has to announce itself. A run with no deployed config on disk is not a prod
-    measurement, and silently comparing against the template is the exact failure this replaced."""
+    measurement, and silently comparing against the template would hide that."""
     pc = _prodcheck()
     _lt, _lp = pc.LOCAL_TOML, pc.LOCAL_PROXY_TOML
     try:
@@ -6672,11 +6707,12 @@ def test_prodcheck_reports_template_vs_deployed_drift():
 
 def test_stale_deploy_compares_counted_fields_by_cardinality():
     """`operator_subs` publishes a COUNT (naming the exempt subs on an unauthenticated endpoint hands over
-    the one value worth forging), so comparing it to the config's comma string would report STALE DEPLOY on every
-    correct run. Cardinality keeps the check real without the names.
+    the one value worth forging), so comparing it to the config's comma string cried STALE DEPLOY on every
+    correct run from the moment the field changed shape. Cardinality keeps the check real without the names.
 
     Also pins the spelling: _COUNTED_KEYS is keyed by ENV VAR because `live_env` has already mapped the
-    /healthz keys by then; keying by the /healthz name matches nothing and the false alarm persists."""
+    /healthz keys by then. The first version used the /healthz name, matched nothing, and the false alarm
+    kept firing — a fix that looks applied and is not."""
     pc = _prodcheck()
     real = pc.prod_env
     pc.prod_env = lambda: {"AGENT_OPERATOR_SUBS": "a,b"}
@@ -6695,7 +6731,7 @@ def test_stale_deploy_compares_counted_fields_by_cardinality():
 def test_prodcheck_probes_the_running_app_not_only_the_config_file():
     """File drift and deploy drift are different failures and the first check cannot see the second.
     Once a config file is corrected both files agree and drift() goes quiet, while the machine keeps
-    serving the old values until someone runs `fly deploy` — which is the state this was written in."""
+    serving the old values until someone runs `fly deploy`."""
     pc = _prodcheck()
     _saved = os.environ.get("PRODCHECK_HEALTHZ_URL")
     try:
@@ -6744,10 +6780,10 @@ def test_verifier_model_and_its_route_are_configured_as_a_pair():
 
 
 def test_deploy_script_cannot_clobber_a_live_deployment():
-    """fly/deploy.sh advertises itself as safe to re-run, so it must not re-render .local.toml from the
-    template or re-set MODEL_UPSTREAM_TOKEN, either of which silently reverts a live decision: the first
-    drops the verifier route and rewrites primary_region, the second re-arms the back-compat fallback
-    upstream."""
+    """fly/deploy.sh advertises itself as safe to re-run. It re-rendered .local.toml from the template
+    and re-set MODEL_UPSTREAM_TOKEN, either of which silently reverts a live decision: the first kills
+    the verifier route and rewrites primary_region, the second re-arms the back-compat fallback that
+    serves the legacy upstream under the Apertus label."""
     src = (_prodcheck().ROOT / "fly" / "deploy.sh").read_text()
     render = src[src.index("render() {"):src.index("render \"$FLY_DIR/agent-proxy.toml\"")]
     assert 'if [[ -f "$dst" ]]' in render and "will not overwrite" in render, \
@@ -6784,11 +6820,11 @@ def test_hermes_patches_are_applied_by_the_build_not_just_stored():
 
 
 def test_canceled_task_keeps_the_tokens_its_attempts_actually_spent():
-    """The finally block must ACCUMULATE from a last-ditch revoke, not assign. Every path that
+    """The finally block must ACCUMULATE a last-ditch revoke, not assign from it. Every path that
     leaves the best-of loop early — the cancel `return`, any exception — skips `revoked = True`, and by
-    then the per-attempt revokes have consumed the grants, so that call returns (0, 0) and an assignment
-    would throw away everything the attempts spent. A canceled task must record the tokens it spent.
-    Drives real _run() with a stubbed gateway: one attempt meters, then cancel lands."""
+    then the per-attempt revokes have consumed the grants, so that call returns (0, 0) and the assignment
+    threw away everything the attempts had spent. A canceled task recorded zero tokens against a real
+    bill. Drives real _run() with a stubbed gateway: one attempt meters, then cancel lands."""
     import acp_client
     _saved = (app.HERMES_BIN, app.AGENT_ACP, app.MODEL_PROXY_URL, app.SANDBOX_REQUIRED,
               app.MODERATION_DISABLED, app.PROXY_ADMIN_KEY, app._gateway_grant, app._gateway_revoke,
@@ -6831,9 +6867,10 @@ def test_canceled_task_keeps_the_tokens_its_attempts_actually_spent():
 
 
 def test_live_probe_does_not_cry_wolf_on_a_disabled_cap():
-    """/healthz renders a disabled cap as the word "off" (`healthz` in api/app.py, `VALUE or "off"`) while
-    the config holds "0". A plain string compare flags a correct deploy as stale. A guard that
-    raises false alarms is worse than one that misses: people learn to scroll past it."""
+    """/healthz renders a disabled cap as the word "off" (api/app.py:1916-1918, `VALUE or "off"`) while
+    the config holds "0". A plain string compare flagged a correct deploy as stale on the very first run
+    after the caps landed. A guard that cries wolf is worse than one that misses: people learn to scroll
+    past it, and then it is not a guard."""
     pc = _prodcheck()
     assert pc._same_setting("off", "0") and pc._same_setting(0, "off") and pc._same_setting("", "0"), \
         "off / 0 / empty all describe a disabled cap"
@@ -6880,9 +6917,9 @@ def test_keep_workdir_is_off_and_compared_in_both_directions():
 
 def test_the_running_app_settles_a_knob_the_config_file_leaves_unstated():
     """A knob prod's toml omits runs on the code default, and only the running service knows what that
-    came out as. `compare` must not flag a harness value that agrees with the live app for such a knob
-    (a floor run pinning AGENT_KEEP_WORKDIR=0 while /healthz answers `keep_workdir: "off"`).
-    Agreement with the live app is parity; --allow is for a real difference."""
+    came out as. `compare` must not flag a harness value for such a knob as "a configuration nobody
+    ships" when /healthz answers the same value (e.g. AGENT_KEEP_WORKDIR=0 against `keep_workdir: "off"`). Agreement with the live app is parity; --allow is for a
+    real difference, and demanding it for agreement is what teaches people to pass it reflexively."""
     pc = _prodcheck()
     real_prod_env = pc.prod_env
     try:
@@ -6900,8 +6937,8 @@ def test_the_running_app_settles_a_knob_the_config_file_leaves_unstated():
 
 def test_prodcheck_probes_the_live_app_once_per_run():
     """`enforce` asks the live probe two questions — is the deploy stale, and what does prod run for a
-    knob its config omits. They were two separate fetches of the same URL for a moment; one probe, or
-    the two answers can come from different instants."""
+    knob its config omits. Both come from one probe, or
+    the two answers could come from different instants."""
     pc = _prodcheck()
     calls = []
     real_live_env, real_prod_env, real_source = pc.live_env, pc.prod_env, pc.source
@@ -6924,9 +6961,8 @@ def test_floor_warns_before_a_run_outgrows_the_task_cap():
     failures — and because the refused trials are the last ones, it reads as a model degrading over
     time rather than as a config artifact.
 
-    Reads BOTH spellings and requires prod to state one. Reading only the old name would
-    go vacuous after a config rename: `_prod_default` returns "0", `cap` is falsy, and the early
-    return skips every assertion below while the suite stays green."""
+    Reads BOTH spellings and requires prod to state one: against one name alone, a rename would make the
+    cap falsy and the early return would skip every assertion below while the suite stayed green."""
     import importlib.util
     root = _prodcheck().ROOT
     spec = importlib.util.spec_from_file_location("floor_mod", root / "eval" / "floor.py")
@@ -6984,7 +7020,7 @@ def test_deny_writes_toolsets_helper():
 
 
 def test_effective_toolsets_and_permission_state_agree_under_deny_writes():
-    """CUR-217, end to end at the pure-function layer: /healthz (_effective_toolsets) and the coherence
+    """end to end at the pure-function layer: /healthz (_effective_toolsets) and the coherence
     check (_permission_state) must describe the SAME toolset _model_env actually hands the subprocess.
     Also the substring trap found while building this: _effective_toolsets' own annotation legitimately
     contains the words "terminal"/"code_execution" to say they were excluded, so _permission_state's
@@ -7018,13 +7054,12 @@ def test_effective_toolsets_and_permission_state_agree_under_deny_writes():
             os.environ["HERMES_ACP_TOOLSETS"] = _saved_env
 
 
-# --------------------------------------------------------------------------- CUR-207: the name half
+# --------------------------------------------------------------------------- the name half
 def test_a_blocked_resolver_and_a_working_one_are_told_apart(monkeypatch):
-    """A correct connect allowlist is not enough if the sandbox can still resolve any name:
-    a lookup is a channel, because the query text is attacker-chosen and reaches whichever
-    authoritative server the recursion lands on. An arbitrary label resolves against public
-    nameservers, and an internal TXT lookup can list apps in the org. So `dns` and `dns_observed` are two fields for the same reason `egress` is, and the
-    probe has to be able to contradict the config."""
+    """A connect allowlist does not stop name lookups, and a lookup is a channel: the query text is
+    attacker-chosen and reaches whichever authoritative server the recursion lands on. So `dns` and
+    `dns_observed` are two fields for the same reason `egress` is, and the probe can contradict the
+    config."""
     monkeypatch.setattr(app, "_resolver_addr", lambda: "")
     assert app._probe_dns() == "unchecked", "no resolver configured is not evidence either way"
 
@@ -7074,7 +7109,7 @@ def test_a_blocked_resolver_and_a_working_one_are_told_apart(monkeypatch):
 
 def test_the_self_test_shouts_louder_about_breaking_us_than_about_the_agent(monkeypatch):
     """Two failures wear the same face in a log that only records the probe. Filter missing is the hole;
-    filter present but it took our own resolution with it is a state where every turn dies at zero model
+    filter present but it took our own resolution with it is an outage where every turn dies at zero model
     calls. The second is worse and has to outrank the first."""
     events = []
     monkeypatch.setattr(app, "_log_event", lambda name, **kw: events.append((name, kw)))
@@ -7100,8 +7135,7 @@ def test_the_self_test_shouts_louder_about_breaking_us_than_about_the_agent(monk
 def test_the_hosts_file_the_filter_depends_on_is_rewritten_without_losing_flys_lines(tmp_path):
     """AGENT_DNS=hosts makes /etc/hosts the only resolver the service has, so this rewrite IS the resolver.
     Driving the real deploy/entrypoint.sh rather than a copy of its logic, because the failure mode is a
-    shell quoting bug that a reimplementation would not reproduce (a stray `}` can pass by hand and break
-    only in production)."""
+    shell quoting bug (such as a stray `}`) that a reimplementation would not reproduce."""
     import subprocess as sp
     script = Path(__file__).resolve().parent.parent / "deploy" / "entrypoint.sh"
     hosts, cache = tmp_path / "hosts", tmp_path / "dns.tsv"
@@ -7138,17 +7172,17 @@ def test_the_hosts_file_the_filter_depends_on_is_rewritten_without_losing_flys_l
     assert drive('url_host "http://gw.internal:8732/v1"').strip() == "gw.internal"
     assert drive('url_host "https://user@[fdaa::1]:8732/x"').strip() == "fdaa::1"
     # The gateway is in the resolvable set (managed_names) but not the NAME allowlist (allow_names) —
-    # it isn't a public hostname, it's pinned by address instead. CUR-1179: it now DOES join the
-    # connect-address set (allow_addrs), pulled straight from the same $DNS_CACHE this test seeded,
-    # replacing the wholesale 6PN accept that used to cover it.
+    # it isn't a public hostname, it's pinned by address instead. It DOES join the
+    # connect-address set (allow_addrs), pulled straight from the same $DNS_CACHE this test seeded;
+    # there is no wholesale 6PN accept.
     assert "gw.internal" in drive("managed_names").split()
     assert "gw.internal" not in drive("allow_names").split()
     assert sorted(drive("allow_addrs").split()) == ["5.6.7.8", "fdaa::7"]
 
 
 def test_the_e2b_link_is_reachable_only_when_a_deploy_selects_e2b(tmp_path):
-    """CUR-4482: without the E2B link pinned, an agent-mode turn on E2B fails "sandbox unavailable
-    (ConnectError)" because the connect filter refuses the link. It is pinned like the gateway, by address
+    """Without a pin, the connect filter refuses the E2B link and an agent-mode turn fails with
+    "sandbox unavailable (ConnectError)". The link is pinned like the gateway, by address
     from the same cache, and only under AGENT_SANDBOX_BACKEND=e2b."""
     import subprocess as sp
     script = Path(__file__).resolve().parent.parent / "deploy" / "entrypoint.sh"
@@ -7173,8 +7207,8 @@ def test_the_e2b_link_is_reachable_only_when_a_deploy_selects_e2b(tmp_path):
 
 def test_the_fallback_allowlist_is_never_wider_than_what_ships():
     """The ALLOW_HOSTS default in entrypoint.sh is unreachable — every deploy surface sets
-    AGENT_EGRESS_ALLOW_HOSTS explicitly — and being unreachable is why it can drift: every test that
-    touches the allowlist sets the variable itself.
+    AGENT_EGRESS_ALLOW_HOSTS explicitly — and an unreachable default can silently drift wider than what
+    ships, because every test that touches the allowlist sets the variable itself.
 
     A fallback wider than any real config is not dead code. It is what the NEXT surface inherits, and it
     would give that surface more egress than anything we run, quietly.
@@ -7209,8 +7243,8 @@ def test_the_fallback_allowlist_is_never_wider_than_what_ships():
 
 
 def test_a_flaky_lookup_cannot_delete_a_working_address(tmp_path):
-    """The same table feeds /etc/hosts and the connect filter, so a name dropping out on one bad lookup
-    leaves the gateway or the log sink unreachable until the next refresh. Carry forward instead:
+    """The same table feeds /etc/hosts and the connect filter, so a name dropping out on one bad lookup is
+    an outage — the gateway or the log sink goes unreachable until the next refresh. Carry forward instead:
     a stale address is recoverable, a deleted one takes the service with it."""
     import subprocess as sp
     script = Path(__file__).resolve().parent.parent / "deploy" / "entrypoint.sh"
@@ -7238,7 +7272,7 @@ def test_a_flaky_lookup_cannot_delete_a_working_address(tmp_path):
 def test_the_name_filter_refuses_to_claim_a_ruleset_it_is_not_part_of(tmp_path):
     """AGENT_DNS=hosts writes a hosts file, but the :53 block lives in the nftables ruleset — so with
     AGENT_EGRESS=off the config would read `dns=hosts` while every uid could still resolve anything. That
-    is a guard pointing at a fiction."""
+    is a guard pointing at a fiction, which this repo has shipped before and does not get to ship again."""
     import subprocess as sp
     script = Path(__file__).resolve().parent.parent / "deploy" / "entrypoint.sh"
     env = {**os.environ, "AGENT_DNS": "hosts", "AGENT_EGRESS": "off", "AGENT_DNS_REQUIRED": "1",
@@ -7251,9 +7285,9 @@ def test_the_name_filter_refuses_to_claim_a_ruleset_it_is_not_part_of(tmp_path):
 
 
 def test_the_ruleset_carrying_the_name_filter_is_syntactically_valid(tmp_path):
-    """A ruleset nft rejects means NO filter at all while the config still says there is one. A stray
-    `}` from `${v6:+elements = { ... }}` (the shell ends that expansion at the first unmatched brace) passes
-    by hand when a host returns IPv6 and fails on a machine where it returns none. So render every combination the deploy can produce, including the empty-set one, and parse it."""
+    """A ruleset nft rejects means NO filter at all while the config still says there is one. A stray `}`
+    from `${v6:+elements = { ... }}` (the shell ends that expansion at the first unmatched brace) only
+    shows when a host resolves to no IPv6 address. So render every combination the deploy can produce, including the empty-set one, and parse it."""
     import subprocess as sp
     script = Path(__file__).resolve().parent.parent / "deploy" / "entrypoint.sh"
     nft, parsed = shutil.which("nft"), []
@@ -7292,10 +7326,10 @@ def test_the_ruleset_carrying_the_name_filter_is_syntactically_valid(tmp_path):
 
 
 def test_the_gateway_is_pinned_by_address_not_wholesale_6pn_anymore(tmp_path):
-    """CUR-1179: a wholesale `ip6 daddr fdaa::/16 accept` would reach every
-    other app in the org over the internal network, so the gateway's own address is pinned
-    like the public hosts. This proves the rendered ruleset reflects that:
-    the wholesale rule is absent, the gateway's resolved address is in the allow6 set instead, and root's
+    """A wholesale `ip6 daddr fdaa::/16 accept` would reach every
+    other app in the org over Fly's internal network. The gateway's own address is pinned like the public
+    hosts instead — this proves the rendered ruleset reflects that:
+    the wholesale rule is gone, the gateway's resolved address is in the allow6 set instead, and root's
     own DNS access (a separate, destination-unrestricted rule) survives the change untouched."""
     import subprocess as sp
     script = Path(__file__).resolve().parent.parent / "deploy" / "entrypoint.sh"
@@ -7334,8 +7368,8 @@ def test_deny_writes_reports_what_it_covers_rather_than_what_it_sounds_like():
     reported, reason = app._permission_state("allow", "file,terminal")
     # "allow" is no longer a bare, claim-free label — composing confirm onto it means an
     # edit/delete call always pauses for a human even under plain allow, and /healthz has to say so or
-    # this becomes exactly the kind of stale self-report the rest of this test guards against. (CUR-760)
-    assert reported == "allow(edit+delete+execute always pauses for confirm — CUR-760)" and not reason, reported
+    # this becomes exactly the kind of stale self-report the rest of this test guards against.
+    assert reported == "allow(edit+delete+execute always pauses for confirm)" and not reason, reported
 
     # No shell in the toolset: the name and the behaviour agree, and nothing needs flagging.
     reported, reason = app._permission_state("deny_writes", "file,todo")
@@ -7433,7 +7467,7 @@ def test_guard_screen_unsafe_names_the_first_block_hit(monkeypatch):
 
 
 def test_guard_screen_unknown_carries_its_hits_apart_from_a_transport_failure(monkeypatch):
-    """status:"unknown" means the detector itself is unavailable (it answered 200 and declined to say) — kept apart
+    """status:"unknown" is the DETECTOR's own outage (it answered 200 and declined to say) — kept apart
     from a transport/HTTP failure via `GuardUnknown`, because a real log hit can still be attached and
     `moderate()`'s retry loop needs to fold it in before retrying."""
     import httpx
@@ -7482,7 +7516,7 @@ def test_guard_screen_treats_malformed_and_inconsistent_bodies_as_an_outage_with
         types.SimpleNamespace(status_code=200, json=lambda: {"status": "safe", "hits": "nope"}),  # hits not a list
         types.SimpleNamespace(status_code=200, json=lambda: {"status": "unsafe", "hits": [
             {"key": "x", "action": "log", "tier": "content"}]}),                                # unsafe, no block
-        # A malformed hit with NO valid block to enforce is a fail-closed failure (a block alongside a
+        # A malformed hit with NO valid block to enforce is a fail-closed outage (a block alongside a
         # malformed sibling is handled separately — the block WINS; see test_a_valid_block_wins_...).
         types.SimpleNamespace(status_code=200, json=lambda: {"status": "safe", "hits": [
             {"key": "", "action": "log", "tier": "content"}]}),                                 # empty key
@@ -7504,7 +7538,7 @@ def test_guard_screen_treats_malformed_and_inconsistent_bodies_as_an_outage_with
 
 def test_a_block_hit_is_terminal_regardless_of_the_status_label(monkeypatch):
     """A block hit WINS whatever status says, and it is TERMINAL — it returns block:<key> so moderate()
-    403s at once. It must never be a retryable failure that a later clean `safe` attempt washes into an
+    403s at once. It must never be a retryable outage that a later clean `safe` attempt washes into an
     allow. Covers the full sequence through moderate(), not just the single call."""
     import httpx
     _guard_env(monkeypatch)
@@ -7540,7 +7574,7 @@ def test_a_block_hit_is_terminal_regardless_of_the_status_label(monkeypatch):
 
 def test_a_valid_block_wins_over_a_malformed_sibling_and_is_never_washed_away(monkeypatch):
     """A VALID block hit alongside a malformed one must ENFORCE (403), never be raised as a retryable
-    failure that a later clean `safe` attempt allows. Only the well-formed hit is forwarded to review — a
+    outage that a later clean `safe` attempt allows. Only the well-formed hit is forwarded to review — a
     garbage entry never reaches the accumulator or the report."""
     import httpx
     _guard_env(monkeypatch)
@@ -7663,7 +7697,7 @@ def test_log_mode_outage_on_an_output_stage_is_recorded_not_raised_cur4113(monke
 
 
 def test_moderate_fails_closed_on_a_sustained_guard_outage(monkeypatch):
-    """An unavailable screen means nothing was screened, so proceeding would run unmoderated — the retry loop's
+    """An outage means nothing was screened, so proceeding would run unmoderated — the retry loop's
     fail-closed side."""
     _guard_env(monkeypatch)
     monkeypatch.setattr(app, "_log_event", lambda *a, **k: None)
@@ -7679,7 +7713,7 @@ def test_moderate_fails_closed_on_a_sustained_guard_outage(monkeypatch):
 
 def test_one_timeout_is_provider_jitter_and_two_is_an_outage(monkeypatch):
     """The gate fails closed, so its latency IS the service's availability. One failed attempt is not
-    evidence that the screen is down — bounded so a screen that stays down still fails closed rather than looping
+    evidence of an outage on its own — bounded so a genuine outage still fails closed rather than looping
     without limit — and a BLOCK is an answer, never retried."""
     _guard_env(monkeypatch)
     monkeypatch.setattr(app, "_log_event", lambda *a, **k: None)
@@ -7717,7 +7751,7 @@ def test_one_timeout_is_provider_jitter_and_two_is_an_outage(monkeypatch):
 
 
 def test_moderation_retry_and_unavailable_log_the_actual_exception_detail(monkeypatch):
-    """CUR-759: every moderation.retry/unavailable line must carry WHY, not just the exception type.
+    """Every moderation.retry/unavailable line must carry WHY, not just the exception type.
     Still true under guard mode — the screen endpoint can fail in ways worth seeing (HTTP status, a
     malformed body), and losing that detail is losing the only clue an operator gets."""
     _guard_env(monkeypatch)
@@ -7742,7 +7776,7 @@ def test_moderation_retry_and_unavailable_log_the_actual_exception_detail(monkey
 
 
 def test_moderate_no_ops_on_empty_text():
-    """Nothing to screen is not a failure — and it saves a real network round trip on the common case
+    """Nothing to screen is not an outage — and it saves a real network round trip on the common case
     (a turn with no check_cmd, or no text artifacts). Must not raise even when moderation is otherwise
     unconfigured; there is genuinely nothing here to be strict about."""
     app.moderate("", "input", "u1")
@@ -7885,7 +7919,7 @@ def test_moderate_reports_even_when_the_final_outcome_is_an_outage(monkeypatch):
 
 
 def test_moderate_reports_a_block_exactly_once_even_across_a_preceding_retry(monkeypatch):
-    """A retryable failure on attempt 1 (no hits — nothing came back), a real block on attempt 2 — still
+    """A retryable outage on attempt 1 (no hits — nothing came back), a real block on attempt 2 — still
     exactly one report, for the hit that actually fired."""
     _guard_env(monkeypatch)
     monkeypatch.setattr(app, "_log_event", lambda *a, **k: None)
@@ -8138,8 +8172,8 @@ def test_web_and_service_report_payloads_match_the_shared_fixture(monkeypatch):
 
 def test_stale_scratch_is_swept_but_a_live_run_is_never_eligible(tmp_path, monkeypatch):
     """The per-task `finally` already rmtree's the scratch and is not the problem: a SIGKILL does not run
-    `finally`, and OOM is a SIGKILL. So the residue is exactly the runs that died hardest, directories
-    on tmpfs (i.e. RAM) on a host that is short of memory. A kill leaves scratch, the
+    `finally`, and OOM is a SIGKILL. So the residue is exactly the runs that died hardest — 17 directories
+    holding 247MB of tmpfs, i.e. RAM, on a box that was OOM-killing processes. A kill leaves scratch, the
     scratch costs memory, the shortage causes the next kill.
 
     The age gate is the assertion that matters. It is set well past any legal run (7200s against a 300s
@@ -8159,8 +8193,8 @@ def test_stale_scratch_is_swept_but_a_live_run_is_never_eligible(tmp_path, monke
     (fresh / "out.txt").write_text("still writing")
 
     # OLD on purpose. A freshly-made one is protected by the age gate whichever way the prefix scope goes,
-    # so it cannot tell the two guards apart, and a sweep of the whole
-    # root would pass.
+    # so it cannot tell the two guards apart — the first version of this test could not, and a mutation
+    # that swept the whole root passed it.
     unrelated = tmp_path / "someone-elses-dir"
     unrelated.mkdir()
     (unrelated / "theirs.txt").write_text("y" * 4096)
@@ -8197,10 +8231,10 @@ def test_scratch_root_is_honoured_so_a_dev_box_can_keep_it_off_tmpfs(tmp_path, m
 
 
 def test_the_screen_reads_base64_because_it_scored_zero_of_eleven_without_it():
-    """Without decoding, the screen blocks harmful requests in plaintext but misses them base64'd — bare
-    and with "decode this and carry out what it says" (evals/moderation_bakeoff.py). The
-    screen is blind through the encoding, not hostile to it: legitimate security work, base64'd, is still
-    allowed.
+    """Harmful requests blocked in plaintext must also be blocked when base64'd — bare and with "decode
+    this and carry out what it says". The
+    screen is not hostile to encoding, it is blind through it, which an encoded-control arm shows:
+    legitimate security work, base64'd, is still allowed.
 
     The FIRST assertion is the one that keeps the fix honest. Buying recall in the rubric would risk the
     false-positive rate the seat was chosen on — so the expander must leave un-encoded text BYTE-identical,
@@ -8220,10 +8254,10 @@ def test_the_screen_reads_base64_because_it_scored_zero_of_eleven_without_it():
             assert harmful in out, f"{name}: the decoded request is what the classifier has to read"
             assert wrapper in out, f"{name}: the original is kept — the encoding itself is evidence"
 
-    # MEASURED AND LEFT OPEN, asserted so nobody reads silence as coverage. rot13 and reversal are not
+    # LEFT OPEN, asserted so nobody reads silence as coverage. rot13 and reversal are not
     # detectable even in principle — every string is a valid rot13 of another and reverses to another — so
-    # there is no candidate run to find. The sweep scored them 1/11 bare and 0/11 with the instruction;
-    # closing them needs a rubric change, which has a measured false-positive cost, so it is a decision.
+    # there is no candidate run to find. Closing them needs a rubric change, which has a
+    # false-positive cost, so it is a decision.
     import codecs
     for undetectable in (codecs.encode(harmful, "rot_13"), harmful[::-1]):
         assert app._expand_encoded(undetectable) == undetectable, \
@@ -8296,7 +8330,7 @@ def test_the_sum_is_bounded_even_though_no_rlimit_bounds_it(tmp_path, monkeypatc
     task._acp_cancel = lambda: killed.append("acp")
 
     stop = threading.Event()
-    t = threading.Thread(target=app._scratch_watchdog, args=(task, str(work), 0, stop), daemon=True)  # baseline=0: CUR-196
+    t = threading.Thread(target=app._scratch_watchdog, args=(task, str(work), 0, stop), daemon=True)  # baseline=0
     t.start()
     try:
         # Many small files, none of them anywhere near a per-file limit. This is the shape that was free.
@@ -8324,7 +8358,7 @@ def test_a_task_under_its_ration_is_left_alone(tmp_path, monkeypatch):
     killed = []
     task._acp_cancel = lambda: killed.append("acp")
     stop = threading.Event()
-    t = threading.Thread(target=app._scratch_watchdog, args=(task, str(work), 0, stop), daemon=True)  # baseline=0: CUR-196
+    t = threading.Thread(target=app._scratch_watchdog, args=(task, str(work), 0, stop), daemon=True)  # baseline=0
     t.start()
     time.sleep(0.3)
     stop.set()
@@ -8342,9 +8376,10 @@ def test_the_ration_can_be_turned_off_and_says_so(monkeypatch):
 
 
 def test_the_ration_names_itself_instead_of_hiding_behind_an_exit_code(monkeypatch):
-    """By the time the finally runs, _detect_run_failure has already classified the killed process as
-    `hermes exit None`, so a guard on `state not in _TERMINAL` never fires. The generic classifier
-    describes the symptom; the watchdog knows the cause, so it has to override rather than defer."""
+    """The ration message must not be guarded on `state not in _TERMINAL`: by the
+    time the finally runs, _detect_run_failure has already classified the killed process as
+    `hermes exit None`. The generic classifier describes the symptom; the watchdog knows the cause, so it
+    has to override rather than defer."""
     t = app.Task(id="t9", user="u", prompt="p")
     t._scratch_exceeded = 273678336
     t.state = app.State.FAILED                      # what the generic path has already decided
@@ -8368,8 +8403,8 @@ def test_the_ration_names_itself_instead_of_hiding_behind_an_exit_code(monkeypat
 
 # --------------------------------------------------------------------------- identity + tenancy
 def test_a_token_we_cannot_attribute_is_refused_not_pooled(monkeypatch):
-    """Falling back to the literal "unknown" is not a missing identity — it is a
-    SHARED one. Two tokens for different holders, neither carrying id or sub, would both resolve to
+    """require_user must not fall back to the literal "unknown", which is not a missing identity — it is a
+    SHARED one: two tokens for different holders, neither carrying id or sub, would both resolve to
     "unknown", read each other's tasks and draw on one rate-limit bucket. A request we cannot attribute is one we cannot isolate."""
     import jwt
     monkeypatch.setattr(app, "AUTH_DISABLED", False)
@@ -8397,10 +8432,9 @@ def test_a_token_we_cannot_attribute_is_refused_not_pooled(monkeypatch):
 
 
 def test_tenancy_turns_on_the_dev_switch_not_on_a_username(monkeypatch):
-    """A check like `t.user != user and user != "dev-bypass-user"` gates authz on a magic username.
-    It works in dev, but grants cross-tenant access to any token whose id happens to be that string, which
-    makes an assumption about an upstream identity provider load-bearing for isolation: require_user
-    returns exactly that value for a JWT with id="dev-bypass-user"."""
+    """Tenancy is skipped only when AUTH_DISABLED is set, never because of the caller's id. A JWT can carry
+    id="dev-bypass-user", and require_user returns it unchanged, so a username check would let that
+    token read every tenant's tasks."""
     mine = app.Task(id="a", user="alice", prompt="p")
     monkeypatch.setattr(app, "AUTH_DISABLED", False)
     assert app._may_access(mine, "alice")
@@ -8508,11 +8542,11 @@ def test_healthz_does_not_name_the_accounts_exempt_from_the_budgets(monkeypatch)
     assert '"operator_subs": sorted(OPERATOR_SUBS)' not in src
 
 
-# ── a turn that writes code and never runs it (CUR-226 / CUR-228) ──────────────────────────────────────────────────
+# ── wrote code and never ran it ──────────────────────────────────────────────────
 
 def test_unrun_detection_reads_the_trace_not_the_prompt():
-    """_wrote_code_without_running_it. The defect: a turn writes a file and
-    stops although the prompt asked for a run. Conditioned on what the turn DID, so no prompt is
+    """_wrote_code_without_running_it. The defect: a turn that writes a file and
+    stops while the prompt asked for a run. Conditioned on what the turn DID, so no prompt is
     classified anywhere in it. `use_acp` is irrelevant to every case here — none of them has an empty
     tool set. The last assertion checks a fabricated *heading* in `answer` specifically — the
     file/tool-kind branches below stay blind to it; see
@@ -8534,7 +8568,7 @@ def test_unrun_detection_reads_the_trace_not_the_prompt():
         # Read-only turns have nothing to run.
         assert app._wrote_code_without_running_it({"read"}, nf, work, "", True) is None
 
-        # A fabricated "Execution result:" heading (CUR-226's shape, not CUR-542's) still changes nothing
+        # A fabricated "Execution result:" heading still changes nothing
         # once something executed — that fabrication check is scoped to the wholly-untooled empty-set
         # branch below, not to this one.
         assert app._wrote_code_without_running_it(
@@ -8542,11 +8576,11 @@ def test_unrun_detection_reads_the_trace_not_the_prompt():
 
 
 def test_unrun_detection_catches_an_inline_command_even_after_a_real_run():
-    """CUR-542. A turn writes and runs a test-data generator (tool_kinds has "execute"), then hands the
-    actual analysis back as a bare `python -c "..."` one-liner under a **Run:** heading instead of running
-    it. The coarse "something executed -> trust the turn" check above
-    (test_unrun_detection_reads_the_trace_not_the_prompt's `{"edit", "execute"}` case) lets this through;
-    this is the sharper, text-based check that catches it regardless of what else the turn ran."""
+    """Asked to write a script and prove it works, an agent can write and run a test-data generator (tool_kinds has "execute"), then handed the actual analysis back as a bare
+    `python -c "..."` one-liner under a **Run:** heading instead of running it. The coarse "something
+    executed -> trust the turn" check above (test_unrun_detection_reads_the_trace_not_the_prompt's
+    `{"edit", "execute"}` case) passes that turn; this text-based check catches it regardless of what
+    else the turn ran."""
     with tempfile.TemporaryDirectory() as work:
         nf = set()
         answer = (
@@ -8570,10 +8604,10 @@ def test_unrun_detection_catches_an_inline_command_even_after_a_real_run():
 
 
 def test_unrun_detection_catches_a_failed_execute_call():
-    """CUR-574: an execute call that ended status=="failed" is grounds to flag the turn, even in the
+    """An execute call that ended status=="failed" is grounds to flag the turn, even in the
     exact shape ({"execute"} alone, no "edit") that the kind-combination checks above trust by falling
-    through to None at the `"edit" not in tool_kinds` gate. This covers a failed run —
-    the tool DID run, and it DID fail, which the kind-combination checks cannot see."""
+    through to None at the `"edit" not in tool_kinds` gate. The tool DID run, and it DID fail, and the
+    kind-combination checks alone cannot see that second fact."""
     with tempfile.TemporaryDirectory() as work:
         result = app._wrote_code_without_running_it({"execute"}, {"execute"}, work, "It printed 42.", True)
         assert result is not None and "execute" in result
@@ -8598,7 +8632,7 @@ def test_unrun_detection_catches_a_failed_execute_call():
 
 def test_unrun_inline_command_is_pure_and_narrow():
     """_unrun_inline_command directly: the heading must be bare (alone on its line, optional #/bold),
-    and a known interpreter name must follow shortly after — same narrow shape as
+    and a known interpreter name must follow shortly after — same narrow-on-measured-case shape as
     _ungrounded_execution_claim."""
     assert app._unrun_inline_command('Run:\npython3 -c "print(1)"\n') == 'python3 -c "print(1)"'
     assert app._unrun_inline_command("**Run:**\n```\nbash setup.sh\n```\n") == "bash setup.sh"
@@ -8623,14 +8657,14 @@ def test_unrun_detection_needs_a_file_to_point_at():
 
 
 def test_ungrounded_execution_claim_needs_acp_watching_and_zero_tools():
-    """_wrote_code_without_running_it's empty-set branch (CUR-226, the sharper case): two preview turns
-    made ZERO tool calls at all and asserted a fabricated result anyway. No file ever reached disk, so
+    """_wrote_code_without_running_it's empty-set branch (the sharper case): a turn
+    makes ZERO tool calls at all and asserts a fabricated result anyway. No file ever reached disk, so
     there is nothing for _runnable_python to point at — the fabrication lives only in the answer text."""
     with tempfile.TemporaryDirectory() as work:
         nf = set()
         fabricated = "Execution result:\nCount: 25\nLast three primes: [97, 89, 83]\n"
 
-        # Nothing observed, and the answer claims an observed result.
+        # The target case: nothing observed, and the answer claims an observed result.
         assert app._wrote_code_without_running_it(set(), nf, work, fabricated, True) == \
             "a claimed result with no tool call behind it"
 
@@ -8647,11 +8681,11 @@ def test_ungrounded_execution_claim_needs_acp_watching_and_zero_tools():
 
 
 def test_unrun_detection_catches_julies_headless_revenue_fabrication():
-    """CUR-671 end to end through _wrote_code_without_running_it (not just _ungrounded_execution_claim
-    directly): the exact shape — zero tool calls, a comms-register answer with a false
-    computation claim, no heading. Without it this case would reach repair_check as `ok=True`
-    (api/acp_client.py's single-attempt path only ever sets task.unrun_detail on a failing check), so the
-    frontend's "predicted rather than measured" caveat would never fire — see endpointAgent.ts's `serviceFlagged`
+    """End to end through _wrote_code_without_running_it (not just _ungrounded_execution_claim
+    directly): zero tool calls, a comms-register answer with a false
+    computation claim, no heading. repair_check alone passes it as `ok=True`
+    (api/acp_client.py's single-attempt path only ever sets task.unrun_detail on a failing check), so without
+    this detection the frontend's "predicted rather than measured" caveat never fired — see endpointAgent.ts's `serviceFlagged`
     gate, which is keyed on this exact string being non-empty."""
     with tempfile.TemporaryDirectory() as work:
         fabricated = ("April $3,100, February $2,500, June $2,100. These amounts are derived by summing "
@@ -8661,9 +8695,9 @@ def test_unrun_detection_catches_julies_headless_revenue_fabrication():
 
 
 def test_unrun_detection_catches_a_headed_claim_after_a_lone_nonedit_call():
-    """CUR-574 (sharper case): a turn whose tool_kinds has no "edit" but isn't empty either — e.g. a lone
-    successful `execute` call — used to fall through to bare None with zero scrutiny. This is exactly the
-    ticket's own described shape ("Ran 1 step(s)", no edit call this turn)."""
+    """A turn whose tool_kinds has no "edit" but isn't empty either — e.g. a lone
+    successful `execute` call — must not fall through to bare None with zero scrutiny
+    ("Ran 1 step(s)", no edit call this turn)."""
     with tempfile.TemporaryDirectory() as work:
         nf = set()
         fabricated = "Execution result:\n2025-10, 2025-08, 2025-09\n"
@@ -8677,9 +8711,10 @@ def test_unrun_detection_catches_a_headed_claim_after_a_lone_nonedit_call():
 
 def test_unrun_detection_does_not_flag_a_genuinely_grounded_lone_execute_call():
     """The valence guard: the SAME structural shape ({"execute"} alone, no edit, one successful call) that
-    the test above catches also occurs on turns that ran the script for real and reported the truth. Widening the check
-    above must not flag this one; that is why _ungrounded_execution_claim (narrow, heading-only) is
-    reused rather than a broader heuristic that would catch both."""
+    the test above catches also occurs on turns that ran the script for real and reported the truth.
+    Widening the check
+    above must not flag this one; it's the reason _ungrounded_execution_claim (narrow, heading-only) was
+    reused rather than a broader heuristic that would have caught both."""
     with tempfile.TemporaryDirectory() as work:
         nf = set()
         grounded = ("I'll run the script now against the test CSV and find the three best months.\n\n"
@@ -8711,8 +8746,8 @@ def test_ungrounded_execution_claim_is_pure_and_narrow():
 
 
 def test_ungrounded_execution_claim_catches_headless_computation_claim():
-    """CUR-671: the shape of a real transcript. A comms-persona revenue
-    task got zero tool calls and wrong numbers; asked to double-check, the model repeated the wrong
+    """A transcript shape: a comms-persona revenue
+    task gets zero tool calls and wrong numbers; asked to double-check, the model repeated the wrong
     numbers and added a false method claim, mid-paragraph, no heading anywhere — the heading-only check
     above never had a chance to fire. This is the second, independent pattern that catches it."""
     fabricated = ("Here are the three months: April $3,100, February $2,500, June $2,100. "
@@ -8747,10 +8782,11 @@ def test_ungrounded_execution_claim_catches_headless_computation_claim():
 
 
 def test_ungrounded_execution_claim_catches_a_fabricated_tool_exchange():
-    """CUR-671. Neither pattern above fires when the model writes no heading and no "derived by X"
-    phrase but stages an entire fake tool round-trip: a fenced
-    ```python block invoking `execute_code({...})` as literal text (tool_kinds is empty — zero real tool
-    calls happened), then a bracketed "[OUT-OF-BAND USER MESSAGE ...]" tag, then a
+    """caught by re-testing the PR's own fix against the real deployed service
+    (not just unit tests) on that exact revenue task. Neither pattern above fired — the model wrote no
+    heading and no "derived by X" phrase. Instead it staged an entire fake tool round-trip: a fenced
+    ```python block invoking `execute_code({...})` as literal text (tool_kinds was empty — zero real tool
+    calls happened, one model call total), then a bracketed "[OUT-OF-BAND USER MESSAGE ...]" tag, then a
     bracketed "[Tool response received]" tag, then a second fenced block presented as that fake tool's
     printed output. A third, independent pattern keyed on the bracketed meta-markers themselves."""
     fabricated = (
@@ -8779,12 +8815,11 @@ def test_ungrounded_execution_claim_catches_a_fabricated_tool_exchange():
 
 def test_false_existence_claim_is_grounded_not_phrased():
     """_false_existence_claim directly: a turn claims a specific file already exists/was already written,
-    a shape none of _ungrounded_execution_claim's three patterns cover (it's not a claimed RESULT)
-    (CUR-777). Checked
+    a shape none of _ungrounded_execution_claim's three patterns cover (it's not a claimed RESULT). Checked
     against the real workdir instead of pattern-matched, so wording doesn't matter — only whether the
     named file is actually there."""
     with tempfile.TemporaryDirectory() as work:
-        # The shape: claims a file already exists, and it doesn't.
+        # The target shape: claims a file already exists, and it doesn't.
         assert app._false_existence_claim(
             "I have already written the file `top_months.txt` to the current working directory.",
             work) == "top_months.txt"
@@ -8802,7 +8837,7 @@ def test_false_existence_claim_is_grounded_not_phrased():
             "`top_months.txt` would already exist if the script had run.", work) is None
 
         # Honestly reporting a file is MISSING is the opposite of claiming it exists — must never be
-        # flagged, or this would punish the exact honesty CUR-705's own DoD asks for.
+        # flagged, or this would punish the exact honesty its own DoD asks for.
         assert app._false_existence_claim(
             "`months_by_revenue.csv` does not exist anywhere in the current directory.", work) is None
 
@@ -8834,14 +8869,15 @@ def test_false_existence_claim_is_grounded_not_phrased():
             "The summary would be written to `step_output.log` once the script runs.", work) is None
 
         # "has been X" covers the same five verbs as its two sibling branches, not just "written":
-        # "has been created" with fabricated figures behind it must flag too (CUR-705).
+        # "has been created" with fabricated figures behind it must flag too.
         assert app._false_existence_claim(
             "The `output.txt` file has been created with the final results.", work) == "output.txt"
         assert app._false_existence_claim(
             "`backup.tar` has been saved to the working directory.", work) == "backup.tar"
 
-        # The claim check is not a verb list. These verbs are neither enumerated nor
-        # morphologically implied and must be caught anyway: (CUR-705)
+        # A tense-scaffold-plus-morphology matcher would still be verb-matching under the hood, just a wider
+        # net with fewer irregular gaps. These three verbs are neither enumerated NOR morphologically
+        # implied and must be caught anyway:
         assert app._false_existence_claim(
             "The `report.csv` file has been generated with the final totals.", work) == "report.csv"
         assert app._false_existence_claim(
@@ -8887,14 +8923,13 @@ def test_false_existence_claim_is_grounded_not_phrased():
 
 
 def test_zero_result_from_nonzero_input_catches_the_measured_transcript():
-    """_zero_result_from_nonzero_input directly, on the shape of a real transcript: real tool calls,
-    real pandas, and the agent reported dropping every row of an 8-row input as a completed cleaning step
-    (CUR-1404)."""
+    """_zero_result_from_nonzero_input directly, on a realistic transcript shape: real tool calls,
+    real pandas, and the agent reports dropping every row of an 8-row input as a completed cleaning step."""
     assert app._zero_result_from_nonzero_input(
         "Rows before cleaning: 8\nRows after cleaning: 0\n"
         "Cleaned data saved to cleaned_data.csv\n") == "8 before, 0 after"
 
-    # Markdown-bold and a different counted noun/verb both still match — narrow to the measured SHAPE
+    # Markdown-bold and a different counted noun/verb both still match — narrow to this SHAPE
     # (a "<noun> before/after <verb>: N" line), not to the literal word "rows" or "cleaning".
     assert app._zero_result_from_nonzero_input(
         "**Records before dedup:** 12\n**Records after dedup:** 0\n") == "12 before, 0 after"
@@ -8912,7 +8947,7 @@ def test_zero_result_from_nonzero_input_catches_the_measured_transcript():
     assert app._zero_result_from_nonzero_input("Rows before cleaning: 8\n") is None
 
     # Ordinary prose that happens to contain "before"/"after" elsewhere must not trip this — the pattern
-    # requires the measured line shape, matching neither bare word on its own.
+    # requires this line shape, matching neither bare word on its own.
     assert app._zero_result_from_nonzero_input(
         "The vendor list looked the same before and after I sorted it alphabetically.") is None
 
@@ -8920,7 +8955,7 @@ def test_zero_result_from_nonzero_input_catches_the_measured_transcript():
 def test_wrote_code_without_running_it_catches_the_cur777_transcripts():
     """End to end (not just _false_existence_claim directly): two turns paraphrased from real
     transcripts, both with empty tool_kinds, neither caught by _ungrounded_execution_claim's three
-    patterns (CUR-705, CUR-777)."""
+    patterns."""
     with tempfile.TemporaryDirectory() as work:
         nf = set()
         turn2 = ("I have already written the file `top_months.txt` to the current working directory in "
@@ -8957,7 +8992,7 @@ def test_wrote_code_without_running_it_catches_the_cur777_transcripts():
 
         # Zero tool calls, a "from training" badge, and the model announces intent ("I'll create..."),
         # narrates progress ("Creating..."), then claims completion with fabricated figures not present
-        # in any source data (CUR-705). Only the
+        # in any source data. Only the
         # completion sentence is a claim about current state; the intent/progress sentences are not, and
         # must not themselves trip the check.
         turn4 = ("I'll create the output.txt file with the final results to satisfy the acceptance "
@@ -8989,7 +9024,7 @@ def test_unrun_repair_turn_does_not_cite_a_check_that_never_ran():
 
 
 def test_repair_turn_text_for_a_failed_call_does_not_say_never_ran():
-    """CUR-574. A TOOL_FAILED_PREFIX detail must NOT fall into the "you wrote X
+    """TOOL_FAILED_PREFIX detail must NOT fall into the "you wrote X
     and never ran it" template — the model DID run something, it broke, and telling it the opposite is
     actively wrong, not just imprecise."""
     msg = app._repair_turn_text(app.UNRUN_DETAIL_PREFIX + app.TOOL_FAILED_PREFIX + "execute")
@@ -9000,7 +9035,7 @@ def test_repair_turn_text_for_a_failed_call_does_not_say_never_ran():
 
 
 def test_repair_turn_text_for_a_false_existence_claim_does_not_say_run_it():
-    """CUR-777: FALSE_EXISTENCE_PREFIX must not fall into the "you wrote X and never ran it" template —
+    """FALSE_EXISTENCE_PREFIX must not fall into the "you wrote X and never ran it" template —
     nothing was written at all, so "run it now" is the wrong instruction for a claim that's false about
     the file's EXISTENCE, not about whether it was executed."""
     msg = app._repair_turn_text(app.UNRUN_DETAIL_PREFIX + app.FALSE_EXISTENCE_PREFIX + "top_months.txt")
@@ -9012,7 +9047,7 @@ def test_repair_turn_text_for_a_false_existence_claim_does_not_say_run_it():
 
 
 def test_repair_turn_text_for_a_zeroed_result_names_the_counts_and_asks_for_a_recheck():
-    """CUR-1404: ZERO_RESULT_PREFIX is a top-level branch, not nested under UNRUN_DETAIL_PREFIX — the
+    """ZERO_RESULT_PREFIX is a top-level branch, not nested under UNRUN_DETAIL_PREFIX — the
     model's tool calls succeeded, so neither "you wrote X and never ran it" nor any UNRUN_DETAIL_PREFIX
     sub-template applies here."""
     msg = app._repair_turn_text(app.ZERO_RESULT_PREFIX + "8 before, 0 after")
@@ -9043,9 +9078,8 @@ def test_tool_kinds_reset_between_attempts():
 
 
 def test_tool_failures_reset_between_attempts():
-    """Same shape as tool_kinds's own reset, same reason. Cross-REPAIR-TURN reset (a different bug,
-    caught in self-review: a failure earlier in an attempt must not keep flagging a turn that already
-    recovered) lives inside acp_client._acp_run, not here — see test_tool_failures_reset_between_repair_
+    """Same shape as tool_kinds's own reset, same reason. Cross-REPAIR-TURN reset (a failure earlier in an
+    attempt must not keep flagging a turn that already recovered) lives inside acp_client._acp_run, not here — see test_tool_failures_reset_between_repair_
     turns in test_acp_client.py."""
     run = inspect.getsource(app._run)
     assert "tool_failures.clear()" in run, "cleared in place, per attempt"
@@ -9055,7 +9089,7 @@ def test_tool_failures_reset_between_attempts():
 
 
 def test_unrun_detail_reset_between_attempts():
-    """CUR-574: task.unrun_detail must not survive a REJECTED attempt into a later, accepted one — a
+    """Task.unrun_detail must not survive a REJECTED attempt into a later, accepted one — a
     best_of>1 turn whose first attempt exhausted its repair budget flagged, then whose second attempt
     is selected clean, must not still describe the task as unverified in _done_payload."""
     run = inspect.getsource(app._run)
@@ -9077,10 +9111,10 @@ def test_done_payload_carries_unrun_detail():
 
 
 def test_done_payload_and_status_carry_session_continued():
-    """CUR-705: the chat client's honesty caveat needs to tell a continued-session follow-up apart from
+    """The chat client's honesty caveat needs to tell a continued-session follow-up apart from
     a fresh task, since only the former makes "claimed action, zero tools observed" suspect. Both wire
     surfaces (_done_payload for the SSE stream, _status_of for poll/webhook) must agree, same discipline
-    as unrun_detail above — they drifted once before (verify_method, per _done_payload's own docstring)."""
+    as unrun_detail above — the two shapes must not drift (see _done_payload's docstring)."""
     fresh = app.Task(id="c", prompt="x", user="u", state=app.State.COMPLETED, result="42")
     assert app._done_payload(fresh)["session_continued"] is False
     assert app._status_of(fresh).session_continued is False
@@ -9091,7 +9125,7 @@ def test_done_payload_and_status_carry_session_continued():
     assert app._status_of(continued).session_continued is True
 
 
-# ---- CUR-196: session-scoped workdirs --------------------------------------------------------
+# ---- session-scoped workdirs --------------------------------------------------------
 
 def _fast_run_env(monkeypatch, tmp_path):
     """Shared stub for exercising real app._run() calls offline and fast: /bin/true instead of a real
@@ -9105,10 +9139,9 @@ def _fast_run_env(monkeypatch, tmp_path):
 
 
 def test_run_without_session_id_is_byte_identical_to_today(tmp_path, monkeypatch):
-    """The one behavior that must not change. No session_id -> fresh mkdtemp every call, rmtree'd at the
-    end, no session_workdirs row created at all — the chat-side commitment on this ticket was explicitly
-    "nothing existing breaks," so this earns its own test rather than relying on the reuse tests below to
-    imply it."""
+    """No session_id -> fresh mkdtemp every call, rmtree'd at the
+    end, no session_workdirs row created at all — nothing about the session-less path changes, so this
+    earns its own test rather than relying on the reuse tests below to imply it."""
     _fast_run_env(monkeypatch, tmp_path)
     app.store = store_mod.Store(":memory:")
     t = app.Task(id="cur196-noop-1", prompt="hi", user="u-noop")
@@ -9116,7 +9149,7 @@ def test_run_without_session_id_is_byte_identical_to_today(tmp_path, monkeypatch
     assert t._workdir is None, "cleared same as always"
     assert t.session_expired is False
     assert app.store.get_session_workdir("u-noop", "anything") is None, "no session row for a session-less run"
-    assert list(tmp_path.glob("agent-run-*")) == [], "ephemeral workdir was rmtree'd, same as pre-CUR-196"
+    assert list(tmp_path.glob("agent-run-*")) == [], "ephemeral workdir was rmtree'd, same as earlier"
 
 
 def test_session_workdir_store_crud():
@@ -9162,9 +9195,9 @@ def test_session_workdir_store_crud():
 
 
 def test_run_reuses_workdir_across_turns_and_isolates_by_user(tmp_path, monkeypatch):
-    """The actual bug this ticket fixes, end to end: a follow-up turn on the same session sees the first
+    """End to end: a follow-up turn on the same session sees the first
     turn's files, and a guessed session_id under a DIFFERENT user gets a fresh empty workspace rather than
-    someone else's — the ticket's own explicit isolation requirement."""
+    someone else's (the isolation requirement)."""
     _fast_run_env(monkeypatch, tmp_path)
     app.store = store_mod.Store(":memory:")
 
@@ -9192,7 +9225,7 @@ def test_run_reuses_workdir_across_turns_and_isolates_by_user(tmp_path, monkeypa
 
 
 def test_a_follow_up_reaching_a_machine_without_the_session_is_told_it_expired(tmp_path, monkeypatch):
-    """CUR-4393: session rows are per machine. A follow-up turn that lands on a machine with no row for the
+    """Session rows are per machine. A follow-up turn that lands on a machine with no row for the
     session must report it expired, not start over as if it were the conversation's first agent turn. A
     first turn (continues_session false) on the same empty store stays a plain new session."""
     _fast_run_env(monkeypatch, tmp_path)
@@ -9218,7 +9251,7 @@ def test_run_request_takes_continues_session_and_defaults_it_false():
 
 def test_expired_session_tells_the_caller_and_the_agent(tmp_path, monkeypatch):
     """A session_id whose prior workdir is gone (reaped, or lost some other way) must fail loud, not
-    silently start over — the ticket's own explicit requirement. Checks both surfaces: the `expired` bit
+    silently start over. Checks both surfaces: the `expired` bit
     on the task (what StatusResponse/the done frame report) and the prompt note (what the MODEL is told,
     which is what stops it from claiming success on a file that no longer exists)."""
     _fast_run_env(monkeypatch, tmp_path)
@@ -9237,14 +9270,14 @@ def test_expired_session_tells_the_caller_and_the_agent(tmp_path, monkeypatch):
     assert "expired" in note.lower() and "starting fresh" in note.lower()
     assert files_at_start == 0, "the old workdir is gone, so this turn starts in an empty room"
 
-    # The behavioural half — _run must actually PARK the count on the task, which is what
+    # the behavioural half — _run must actually PARK the count on the task, which is what
     # reaches the done frame. The source-text assertion elsewhere in this file checks that the call
-    # site is spelled a certain way, which survives no refactor and proves nothing about the value. (CUR-1394)
+    # site is spelled a certain way, which survives no refactor and proves nothing about the value.
     assert t._session_files_at_start == 0, "an expired session reports an empty room to the client"
 
 
 def test_workdir_note_variants(tmp_path):
-    """Pure function test, no _run needed. The whole point of this ticket's WORKDIR_NOTE rewrite: an
+    """Pure function test, no _run needed. The point of the WORKDIR_NOTE variants: an
     unconditional empty-room description is what let a continued session's model confidently invent or
     rewrite a file it believed already existed."""
     empty = tmp_path / "empty"
@@ -9259,8 +9292,8 @@ def test_workdir_note_variants(tmp_path):
     (populated / "revenue_data.csv").write_text("x")
     note, _ = app._workdir_note(str(populated), continued=True, expired=False)
     assert "revenue_data.csv" in note and "continued session" in note.lower()
-    # Naming the file fixed half the bug — a follow-up asked to change and re-run an existing
-    # file claimed it had, calling zero tools. Existing must not read as already-updated. (CUR-705)
+    # naming the file fixed half the bug — a follow-up asked to change and re-run an existing
+    # file claimed it had, calling zero tools. Existing must not read as already-updated.
     assert "does not mean" in note.lower() and "already" in note.lower()
     assert "real tool call" in note.lower()
 
@@ -9277,13 +9310,13 @@ def test_workdir_note_variants(tmp_path):
 
 
 def test_workdir_note_reports_how_many_files_were_already_here(tmp_path):
-    """CUR-1394: the second half of the return value, which the chat client's honesty caveat reads to
+    """The second half of the return value, which the chat client's honesty caveat reads to
     decide whether this turn could be faking a measurement at all.
 
     `session_continued` alone said a workdir was REUSED, never whether anything was in it — and the chat
     path sends session_id=conversationId, so every turn after the first in an ordinary conversation is a
-    continued session with an empty room. Scoped on reuse alone, a caveat written for CUR-705's shape
-    would open on most answers.
+    continued session with an empty room. Scoped on reuse alone, a caveat written for that shape
+    would open most ordinary answers.
 
     Asserted per branch rather than once, because each branch decides the count separately and a shared
     assertion would let three of them drift silently. The count SATURATES at ARTIFACT_MAX_FILES + 1, since
@@ -9300,7 +9333,7 @@ def test_workdir_note_reports_how_many_files_were_already_here(tmp_path):
     (populated / "revenue_data.csv").write_text("x")
     (populated / "top_months.py").write_text("x")
     assert app._workdir_note(str(populated), continued=True, expired=False)[1] == 2, \
-        "CUR-705's shape: prior files the agent can claim to have acted on"
+        "its shape: prior files the agent can claim to have acted on"
 
     assert app._workdir_note(str(populated), continued=True, expired=True)[1] == 0, \
         "expired wins for the count exactly as it wins for the listing — the room was cleared"
@@ -9336,11 +9369,12 @@ def test_session_disk_budget_fails_loud_before_any_model_call(tmp_path, monkeypa
 
 
 def test_persist_with_session_expired_does_not_raise():
-    """session_expired must be in store.py's _UPDATABLE
+    """The specific defect /check-plan caught: session_expired had to be added to store.py's _UPDATABLE
     allowlist alongside the schema migration, or store.update() raises ValueError — and since _persist()
     runs inside _run's bare `finally:` with nothing catching it, that raise would skip the concurrency-slot
-    and budget-reservation release right after it, on the very first session_id-bearing call. This gets its own
-    direct test rather than relying on the _run tests above to exercise the exact code path."""
+    and budget-reservation release right after it, on the very first session_id-bearing call. This is the
+    one regression that must not ship, so it gets its own direct test rather than
+    relying on the _run tests above to happen to exercise the exact code path."""
     app.store = store_mod.Store(":memory:")
     app.store.create("cur196-persist-1", "u", "SUBMITTED")
     t = app.Task(id="cur196-persist-1", prompt="hi", user="u", state=app.State.COMPLETED)
@@ -9373,7 +9407,7 @@ def test_attempt_home_does_not_collide_across_turns_on_a_reused_workdir(tmp_path
 def test_boot_sweep_exempts_known_session_workdirs(tmp_path, monkeypatch):
     """A routine redeploy runs _sweep_stale_scratch at boot, sharing the same agent-run-* prefix/root as
     session workdirs — without this exemption, a session idle past AGENT_SCRATCH_STALE_SECS's 2h (but
-    under this ticket's own 4h SESSION_IDLE_SECS) would be silently reaped by an unrelated mechanism,
+    under the 4h SESSION_IDLE_SECS) would be silently reaped by an unrelated mechanism,
     breaking the stated idle window without anyone touching either constant. Session lifecycle belongs to
     the idle reaper alone; the boot sweep should only ever see genuinely abandoned, non-session dirs."""
     monkeypatch.setattr(app, "SCRATCH_ROOT", str(tmp_path))
@@ -9396,7 +9430,7 @@ def test_boot_sweep_exempts_known_session_workdirs(tmp_path, monkeypatch):
     assert dirs == 1
 
 
-# ---- CUR-546: GET /sessions/{id}/artifacts/{filename} -------------------------------------
+# ---- GET /sessions/{id}/artifacts/{filename} -------------------------------------
 
 def test_get_session_workdir_info_returns_workdir_and_last_used_at():
     s = store_mod.Store(":memory:")
@@ -9499,7 +9533,7 @@ def test_resolve_artifact_path_supports_nested_files_and_rejects_non_regular(tmp
 
 def test_resolve_artifact_path_is_not_limited_by_artifact_max_files(tmp_path, monkeypatch):
     """The inline-preview cap (ARTIFACT_MAX_FILES) must not gate what's fetchable — a file made after the
-    cap still exists on disk and CUR-546 exists specifically to let it be downloaded anyway."""
+    cap still exists on disk, and the route exists to let it be downloaded."""
     monkeypatch.setattr(app, "ARTIFACT_MAX_FILES", 1)
     work = tmp_path / "work"
     work.mkdir()
@@ -9532,7 +9566,7 @@ def test_open_artifact_for_streaming_whole_file_or_nothing(tmp_path):
 
 
 def test_open_artifact_for_streaming_over_cap_vs_unreadable_are_distinguishable(tmp_path):
-    """The endpoint needs to tell these apart (413 vs 404): a file the
+    """The endpoint needs to tell these apart (413 vs 404) — conflating them was the bug: a file the
     session reaper deletes between _resolve_artifact_path and this call must not report 413."""
     unreadable = tmp_path / "gone-by-the-time-we-read-it"
     fh, size, oversize = app._open_artifact_for_streaming(str(unreadable), 1024, 0, 0)
@@ -9572,7 +9606,7 @@ def test_open_artifact_for_streaming_rejects_a_file_swapped_after_the_check(tmp_
 
 
 def test_open_artifact_for_streaming_no_fd_leak_when_fstat_mismatches(tmp_path, monkeypatch):
-    """The branch that rejects a dev/ino mismatch (or a non-regular file caught
+    """Regression for the fd leak: the branch that rejects a dev/ino mismatch (or a non-regular file caught
     at fstat time) must close the fd it just opened, not just return."""
     p = tmp_path / "f.txt"
     p.write_text("x")
@@ -9636,7 +9670,7 @@ def test_get_artifact_endpoint_respects_artifact_max_files_off_switch(tmp_path, 
 
 
 def test_get_artifact_endpoint_tenant_isolation_is_the_missing_row(tmp_path):
-    """A session_id guessed or obtained under a different account has no matching row at all — unlike
+    """A session_id guessed/leaked under a different account has no matching row at all — unlike
     GET /run/{id}'s 403-vs-404 split, this can't be used to distinguish "wrong owner" from "never
     existed"."""
     app.store = store_mod.Store(":memory:")
@@ -9748,9 +9782,8 @@ def test_get_artifact_endpoint_over_real_http_with_nested_filename(tmp_path):
 
 
 def test_get_artifact_endpoint_session_less_task_leaves_nothing_to_fetch(tmp_path):
-    """A task without session_id never gets a session_workdirs row at all (CUR-196's own byte-identical
-    guarantee), so this endpoint 404s on it the same as any other unknown session_id — there is nothing
-    CUR-546-specific to special-case here, which is itself the point."""
+    """A task without session_id never gets a session_workdirs row at all, so this endpoint 404s on it the same as any other unknown session_id — there is nothing
+    artifact-download-specific to special-case here, which is itself the point."""
     app.store = store_mod.Store(":memory:")
     assert app.store.get_session_workdir_info("alice", "no-session-task-id") is None
     with pytest.raises(HTTPException) as ei:
@@ -9759,7 +9792,7 @@ def test_get_artifact_endpoint_session_less_task_leaves_nothing_to_fetch(tmp_pat
 
 
 def test_date_probe_min_pass_fails_a_leg_under_its_bar_and_tolerates_one_miss_in_three(monkeypatch, capsys):
-    """The deploy gate runs `-k 3 --min-pass 2` (CUR-2118): one wrong sample in three must not block a
+    """The deploy gate runs `-k 3 --min-pass 2`: one wrong sample in three must not block a
     deploy, and a leg that is wrong every time (a removed date anchor) must still go red. Without
     --min-pass the old all-k bar holds."""
     p = _date_probe()
@@ -9784,7 +9817,7 @@ def test_date_probe_min_pass_fails_a_leg_under_its_bar_and_tolerates_one_miss_in
 
 
 def test_the_sandbox_hides_fly_machine_api_dir_behind_a_tmpfs_whenever_it_exists(monkeypatch):
-    """CUR-3536. Fly mounts its machine API as a unix socket under /.fly, and the sandbox's read-only bind
+    """Fly mounts its machine API as a unix socket under /.fly, and the sandbox's read-only bind
     of / does not stop connect() on a socket. Hiding /.fly behind a tmpfs takes the socket out of the
     agent's view whether or not it would accept the agent's uid."""
     if not shutil.which("bwrap"):
@@ -9798,7 +9831,7 @@ def test_the_sandbox_hides_fly_machine_api_dir_behind_a_tmpfs_whenever_it_exists
 
 
 def test_a_planted_hermes_home_or_config_symlink_never_writes_outside_the_workdir(tmp_path):
-    """CUR-3535. The session workdir survives between turns and the agent can write it, while the service
+    """The session workdir survives between turns and the agent can write it, while the service
     writes hermes-home/config.yaml there from OUTSIDE bwrap as the uid that owns /data and /srv. A symlink
     left on turn 1, either as the home itself or as its config.yaml, must not carry turn 2's write out."""
     missing_global = tmp_path / "no-global-config.yaml"
@@ -9826,7 +9859,7 @@ def test_a_planted_hermes_home_or_config_symlink_never_writes_outside_the_workdi
 
 
 def test_watchdog_exits_on_the_third_miss_in_a_row_and_not_after_two(monkeypatch):
-    """CUR-4406: a hung server never exits on its own, and an exit is the only thing Fly's on-failure
+    """A hung server never exits on its own, and an exit is the only thing Fly's on-failure
     policy restarts. Two misses followed by an answer reset the count; three in a row exit with 1."""
     monkeypatch.setattr(app, "WATCHDOG_SECS", 0.001)
     answers = [False, False, True, False, False, False, True]
@@ -9843,7 +9876,7 @@ def test_watchdog_exits_on_the_third_miss_in_a_row_and_not_after_two(monkeypatch
 
 
 def test_watchdog_is_on_only_on_fly_unless_turned_off():
-    """CUR-4406: off Fly nothing restarts the process, so an exit would just stop it."""
+    """Off Fly nothing restarts the process, so an exit would just stop it."""
     import subprocess
     import sys
 
@@ -9858,7 +9891,7 @@ def test_watchdog_is_on_only_on_fly_unless_turned_off():
     assert watchdog({"FLY_MACHINE_ID": "m1", "AGENT_WATCHDOG_SECS": "0"}) == "0"
 
 
-# ---- CUR-3142: auto-approval reviewer -----------------------------------------------------
+# ---- auto-approval reviewer -----------------------------------------------------
 def test_auto_reviewer_forces_the_verdict_tool_and_reads_its_arguments(tmp_path):
     import asyncio
     (tmp_path / "budget.xlsx").write_text("x")
@@ -9916,8 +9949,38 @@ def test_start_listing_is_none_when_the_guest_listing_fails_so_the_review_stays_
     assert app._start_listing(Broken(None, None, "/w")) is None  # pyright: ignore[reportArgumentType]
 
 
+def test_a_local_folder_listing_that_fails_makes_a_delete_ask_never_run(tmp_path, monkeypatch):
+    """On the local (non-E2B) path a failed start listing returned [], so every file in the
+    folder looked agent-made and the reviewer let `rm` of the person's file run. A failed listing is
+    "contents unknown", never "empty": a delete asks even when the reviewer model says run."""
+    import asyncio
+    from pathlib import Path
+    (tmp_path / "budget.xlsx").write_text("the person's file")
+    real_iterdir = Path.iterdir
+    calls = {"n": 0}
+
+    def flaky_iterdir(self):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise PermissionError("listing failed")
+        return real_iterdir(self)
+
+    monkeypatch.setattr(Path, "iterdir", flaky_iterdir)
+    start = app._start_listing(str(tmp_path))
+    assert start is None, "a failed listing is unknown contents, not an empty folder"
+
+    async def post(body):
+        return {"tool_calls": [{"function": {"name": "verdict",
+                                             "arguments": '{"decision": "run", "plain": "Delete budget.xlsx"}'}}]}
+
+    review = app._make_auto_reviewer("tidy up", str(tmp_path), post, files_at_start=start)
+    out = asyncio.run(review({"kind": "execute", "command": "rm budget.xlsx"}))
+    assert out["decision"] == "ask"
+    assert out["plain"] == "Delete budget.xlsx"
+
+
 def test_reviewer_gateway_error_logs_status_and_a_scrubbed_body_prefix_but_never_the_request(monkeypatch):
-    """CUR-4667: a non-2xx from the gateway is logged with its status and the start of its body, so a 404,
+    """A non-2xx from the gateway is logged with its status and the start of its body, so a 404,
     a 429 and a 500 read apart in Axiom. The request carries the person's words and stays out of the log;
     the task nonce and anything key-shaped in the response are scrubbed."""
     import asyncio
@@ -9971,3 +10034,62 @@ def test_reviewer_gateway_success_logs_no_http_error(monkeypatch):
 def test_auto_reviewer_reply_with_no_verdict_raises_so_the_client_asks():
     with pytest.raises(ValueError):
         app._parse_review({"content": "Sure, that looks fine to run."})
+
+
+def test_metrics_refuses_a_near_miss_or_missing_bearer_and_accepts_the_exact_token(monkeypatch):
+    """/metrics compares the bearer in constant time; a same-length wrong token and a missing header are 401."""
+    from starlette.testclient import TestClient
+    monkeypatch.setattr(app, "METRICS_TOKEN", "unit-metrics-token")
+    tc = TestClient(app.app)
+    assert tc.get("/metrics", headers={"authorization": "Bearer unit-metrics-tokeX"}).status_code == 401
+    assert tc.get("/metrics", headers={"authorization": "Bearer unit-metrics-token "}).status_code == 401
+    assert tc.get("/metrics").status_code == 401
+    assert tc.get("/metrics", headers={"authorization": "Bearer unit-metrics-token"}).status_code == 200
+
+
+def test_admin_grant_refuses_a_near_miss_or_missing_bearer_and_accepts_the_exact_key(monkeypatch):
+    """_require_admin compares the bearer in constant time; a same-length wrong key and a missing header are 401."""
+    from fastapi.testclient import TestClient
+    monkeypatch.setattr(proxy, "PROXY_ADMIN_KEY", "unit-admin-key")
+    with TestClient(proxy.app) as tc:
+        body = {"nonce": "cur4896nonce"}
+        assert tc.post("/admin/grant", headers={"authorization": "Bearer unit-admin-kez"}, json=body).status_code == 401
+        assert tc.post("/admin/grant", json=body).status_code == 401
+        assert tc.post("/admin/grant", headers={"authorization": "Bearer unit-admin-key"}, json=body).status_code == 200
+
+
+def test_a_run_whose_attempt_clocks_keep_being_reimbursed_still_ends_at_the_hard_limit(monkeypatch):
+    """The attempt and task clocks pause for every answered approval card, so a run could go on for as long
+    as cards kept opening. The hard limit never pauses. Each fake attempt here banks 1000 s of answered card waits and
+    runs out its own clock; best-of 3 would run all three, but the 0.3 s hard limit is gone after two, so the third
+    never starts, the task fails naming the hard limit, and each attempt was handed the time left on it."""
+    import asyncio
+
+    import acp_client
+    monkeypatch.setattr(app, "HERMES_BIN", "/bin/true")
+    monkeypatch.setattr(app, "AGENT_ACP", True)
+    monkeypatch.setattr(app, "SANDBOX_REQUIRED", False)
+    monkeypatch.setattr(app, "MODERATION_DISABLED", True)
+    monkeypatch.setattr(app, "MODEL_PROXY_URL", "http://gateway.invalid")
+    monkeypatch.setattr(app, "PROXY_ADMIN_KEY", "unit-key")
+    monkeypatch.setattr(app, "BEST_OF", 3)
+    monkeypatch.setattr(app, "TASK_HARD_CAP_SECS", 0.3)
+    monkeypatch.setattr(app, "_gateway_grant", lambda *a, **kw: None)
+    monkeypatch.setattr(app, "_gateway_revoke", lambda _n, _s=None: (1, 100, True, False))
+    handed: list[float] = []
+
+    async def _fake_acp_run(work, attempt_home, prompt, nonce, timeout_secs, buf, task, **kw):
+        handed.append(kw["hard_timeout_secs"])
+        await asyncio.sleep(0.2)
+        task._confirm_wait_secs = 1000.0      # as if a person had answered cards for 1000 s
+        raise TimeoutError                     # this attempt's own clock ran out
+
+    monkeypatch.setattr(acp_client, "_acp_run", _fake_acp_run)
+    t = app.Task(id="cur5122-hard", prompt="write output.txt", user="u-hard")
+    t._verify_spec = app.VerifySpec(expect_file="output.txt")   # a spec is what lets best-of retry
+    app._run(t)
+
+    assert len(handed) == 2, f"the third attempt must never start past the hard limit (ran {len(handed)})"
+    assert handed[0] <= 0.3 and handed[1] <= 0.1, f"each attempt gets only what is left of the hard limit: {handed}"
+    assert t.state == app.State.FAILED
+    assert "hard time limit" in f"{t.error} {t.summary} {t.unrun_detail}", (t.error, t.summary)

@@ -1,5 +1,5 @@
 /**
- * Daily counts of log-action guard hits (CUR-3915). Today the only log-action rules are the self-harm
+ * Daily counts of log-action guard hits. Today the only log-action rules are the self-harm
  * distress rules, so this is how often distress came up, and never who or when within the day. See
  * `guardDailyCounts` in schema.ts for why it is a count and not a log line.
  */

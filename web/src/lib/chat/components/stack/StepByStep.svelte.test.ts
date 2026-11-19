@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { Message } from '$lib/chat/types/Message';
 
 // A maths answer captioned "Worked out with a calculator" must list a calculator step in X-ray's Step
-// by step, which lists only what happened (CUR-3943).
+// by step, which lists only what happened.
 const answer = (calculations?: Message['calculations']): Message =>
 	({
 		id: 'm1',
@@ -21,7 +21,7 @@ const calculatorStep = (container: HTMLElement) => container.querySelector('[dat
 const writeStep = (container: HTMLElement) => container.querySelector('[data-step-id="write"]');
 
 // A Large 3 turn answered by Mistral Medium says "(backup)" in its footer, and X-ray's Step by step
-// must say the same instead of reading as if Medium had been picked (CUR-3968).
+// must say the same instead of reading as if Medium had been picked.
 const backupAnswer = (reason: 'unavailable' | 'skipped'): Message =>
 	({
 		...answer(),
@@ -29,7 +29,7 @@ const backupAnswer = (reason: 'unavailable' | 'skipped'): Message =>
 		failover: { from: 'mistral-large-2512', to: 'mistral-medium-2604', reason }
 	}) as unknown as Message;
 
-describe("X-ray's step by step after a failover (CUR-3968)", () => {
+describe("X-ray's step by step after a failover", () => {
 	it('names the picked model as not answering and the served one as the backup', async () => {
 		const { container } = await render(StepByStep, { message: backupAnswer('unavailable') });
 		const text = writeStep(container)?.textContent ?? '';
@@ -76,8 +76,8 @@ describe("X-ray's step by step", () => {
 	});
 });
 
-// Apertus was told by name to answer in Hausa, and X-ray says so. (CUR-2237)
-describe("X-ray's step by step when the answer was asked for in a language (CUR-2237)", () => {
+// Apertus was told by name to answer in Hausa, and X-ray says so.
+describe("X-ray's step by step when the answer was asked for in a language", () => {
 	const languageStep = (container: HTMLElement) => container.querySelector('[data-step-id="answer-language"]');
 
 	it('says the answer was asked for in Hausa on a turn that named it', async () => {
@@ -92,8 +92,8 @@ describe("X-ray's step by step when the answer was asked for in a language (CUR-
 	});
 });
 
-// The second-opinion step named how many models were asked but never where any of them ran. (CUR-3563)
-describe("X-ray's step by step after a second opinion (CUR-3563)", () => {
+// The second-opinion step named how many models were asked but never where any of them ran.
+describe("X-ray's step by step after a second opinion", () => {
 	const opinion = (modelShort: string, extra: Record<string, string> = {}) => ({
 		model: modelShort.toLowerCase(),
 		modelShort,
@@ -117,8 +117,8 @@ describe("X-ray's step by step after a second opinion (CUR-3563)", () => {
 });
 
 // A photo question answered from the photo must not read, in Step by step, "Nothing was looked up,
-// so this is from what the AI learned in training" while This answer names the photo it read (CUR-4353).
-describe("X-ray's step by step on a question with a file attached (CUR-4353)", () => {
+// so this is from what the AI learned in training" while This answer names the photo it read.
+describe("X-ray's step by step on a question with a file attached", () => {
 	it('names the attached file as what the answer worked from, and never says nothing was looked up', async () => {
 		const { container } = await render(StepByStep, { message: answer(), attachedFiles: ['red-maple.jpg'] });
 		const text = writeStep(container)?.textContent ?? '';

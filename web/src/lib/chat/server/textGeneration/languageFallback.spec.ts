@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
 import {
-	readAfricanLanguage,
 	detectLowResourceLanguage,
 	lowResourceFallbackMessage,
 	lowResourceNoticeAlreadyShown,
@@ -43,8 +42,8 @@ describe("detectLowResourceLanguage", () => {
 		expect(detectLowResourceLanguage("   ")).toBeNull();
 	});
 
-	// Yoruba is one of the 26 served launch languages (CUR-1920), so a Yoruba speaker gets an answer,
-	// never the notice (CUR-2699). The sentences: its UDHR Article 1 line, a casual opener, the
+	// Yoruba is a language the app serves, so a Yoruba speaker gets an answer, never the notice. The
+	// sentences: its UDHR Article 1 line, a casual opener, the
 	// conversational-tier probe and a question about Tokyo.
 	it.each([
 		"Gbogbo ènìyàn ni a bí ní òmìnira; iyì àti ẹ̀tọ́ kọ̀ọ̀kan sì dọ́gba.",
@@ -55,9 +54,8 @@ describe("detectLowResourceLanguage", () => {
 		expect(detectLowResourceLanguage(text)).toBeNull();
 	});
 
-	describe("CUR-1737: the conversational tier", () => {
-		// Real probes from the ticket's own evidence table — ordinary openers with zero hits against
-		// the UDHR-only base tier.
+	describe("the conversational tier", () => {
+		// Ordinary openers that match no word of the UDHR-only base tier.
 		it("detects Quechua from the ticket's own reported probe", () => {
 			expect(
 				detectLowResourceLanguage("Imaynallam kashanki? Quechua simipi rimayta atinkichu? Yanapaway papa tarpuymanta.")
@@ -66,22 +64,21 @@ describe("detectLowResourceLanguage", () => {
 		it("detects Yucatec Maya from the ticket's own reported probe", () => {
 			expect(detectLowResourceLanguage("Bix a beel? Ba'ax ka wa'alik?")).toBe("yua");
 		});
-		// Tzeltal still has no conversational word tier (see the module's own comment on why). CUR-1841's
-		// trigram tier reaches this probe without one, from the Tzeltal UDHR profile alone. This test
-		// pinned the gap as null until then.
+		// Tzeltal has no conversational word tier (see the module's own comment on why). The trigram
+		// tier reaches this probe without one, from the Tzeltal UDHR profile alone.
 		it("detects Tzeltal from the conversational probe the word list could not reach", () => {
 			expect(detectLowResourceLanguage("Bin ay awil? Ya'beluk.")).toBe("tzh");
 		});
 
-		describe("CUR-1680: the actual CUR-674 repro, not a probe written to match the fix", () => {
-			// These two sentences are CUR-674's prompts, which predate this word list and were not chosen
-			// to match it. The conversational tier alone gives them 0 hits and 1 hit respectively: Quechua
+		describe("the actual repro, not a probe written to match the fix", () => {
+			// These two sentences were written before this word list and were not chosen to match it.
+			// The conversational tier alone matches none and one of their words respectively: Quechua
 			// and Yucatec Maya inflect a shared root into a different surface word per person/mood, so a
 			// fixed list only matches the one form it contains (see the module header).
-			it("detects Quechua from CUR-674's actual repro, not the ticket's own rephrasing of it", () => {
+			it("detects Quechua from the actual repro, not the ticket's own rephrasing of it", () => {
 				expect(detectLowResourceLanguage("Napaykullayki. ¿Imaynatam yanapawankiman?")).toBe("quz");
 			});
-			it("detects Yucatec Maya from CUR-674's actual repro, not the ticket's own rephrasing of it", () => {
+			it("detects Yucatec Maya from the actual repro, not the ticket's own rephrasing of it", () => {
 				expect(detectLowResourceLanguage("Bix je'el a wáantken?")).toBe("yua");
 			});
 		});
@@ -92,12 +89,12 @@ describe("lowResourceFallbackMessage", () => {
 	it("names the language and does not claim fluency", () => {
 		const msg = lowResourceFallbackMessage("tzh");
 		expect(msg).toContain("Tzeltal");
-		expect(msg).not.toMatch(/potluck|open source|open-weights/i); // never the capability blurb (CUR-674)
+		expect(msg).not.toMatch(/potluck|open source|open-weights/i); // never the capability blurb
 	});
 	it("falls back to the raw code for an unknown language", () => {
 		expect(lowResourceFallbackMessage("xyz")).toContain("xyz");
 	});
-	// A Spanish browser that wrote in Yucatec Maya read this notice in English. (CUR-1579)
+	// A Spanish browser that writes in Yucatec Maya must read this notice in Spanish, not English.
 	it("is written in the interface language, naming the language in that language", () => {
 		expect(lowResourceFallbackMessage("yua", "es")).toMatch(/^Todavía no puedo responder con fiabilidad en maya yucateco:/);
 		expect(lowResourceFallbackMessage("quz", "fr")).toMatch(/^Je ne peux pas encore répondre de façon fiable en quechua :/);
@@ -111,9 +108,9 @@ describe("lowResourceFallbackMessage", () => {
 	});
 });
 
-describe("CUR-1841: ordinary sentences the word list missed", () => {
-	// CUR-1841's sentences, which the word list alone lets through with no notice. Neither was written
-	// to match the detector; both hit zero or one list word.
+describe("ordinary sentences the word list missed", () => {
+	// Sentences the word list alone lets through with no notice. Neither was written to match the
+	// detector; each hits at most one list word.
 	it("detects the Quechua repro, whose `yanapawankimanchu` is one suffix past the listed form", () => {
 		expect(
 			detectLowResourceLanguage(
@@ -150,7 +147,7 @@ describe("CUR-1841: ordinary sentences the word list missed", () => {
 	});
 });
 
-describe("lowResourceNoticeAlreadyShown (CUR-1841)", () => {
+describe("lowResourceNoticeAlreadyShown", () => {
 	const notice = lowResourceFallbackMessage("quz");
 	it("is false for a conversation that has not shown the notice", () => {
 		expect(
@@ -187,7 +184,7 @@ describe("lowResourceNoticeAlreadyShown (CUR-1841)", () => {
 	});
 });
 
-describe("CUR-1841: held-out sentences from Tatoeba", () => {
+describe("held-out sentences from Tatoeba", () => {
 	// The first three sentences of five or more words in each language on tatoeba.org (sorted by
 	// creation, CC BY 2.0 FR), taken in order whether or not they hit. Nothing here
 	// was used to build the profiles or pick the thresholds.
@@ -212,7 +209,7 @@ describe("CUR-1841: held-out sentences from Tatoeba", () => {
 	});
 });
 
-describe("withLowResourceNoticeSummarized (CUR-1841)", () => {
+describe("withLowResourceNoticeSummarized", () => {
 	// On a "try anyway" turn a model can copy the notice from its own history. What it sees in
 	// place of the notice must not contain the notice's wording, or it can copy that instead.
 	const notice = lowResourceFallbackMessage("yua");
@@ -221,7 +218,7 @@ describe("withLowResourceNoticeSummarized (CUR-1841)", () => {
 		{ from: "assistant", content: notice, id: "a1" },
 		{ from: "user", content: "Yes, please try anyway.", id: "u2" },
 	];
-	it("summarises a Spanish-interface notice the same way, naming the language in English (CUR-1579)", () => {
+	it("summarises a Spanish-interface notice the same way, naming the language in English", () => {
 		const out = withLowResourceNoticeSummarized([
 			history[0],
 			{ ...history[1], content: lowResourceFallbackMessage("yua", "es") },
@@ -248,72 +245,8 @@ describe("withLowResourceNoticeSummarized (CUR-1841)", () => {
 	});
 });
 
-// Which typed turns the input screen routes to Zentropi (CUR-4340). Lines are the UDHR texts the
-// profiles are built from (github.com/unicode-org/udhr), Articles 1 and 3, with Amharic's ፡ word marks
-// typed as spaces the way people write in chat, plus one sentence from CUR-4053.
-/** The language a sure read routes to CoPE alone, or null. */
-const sureLang = (text: string) => {
-	const read = readAfricanLanguage(text);
-	return read?.sure ? read.lang : null;
-};
-
-describe("readAfricanLanguage: sure reads (CUR-4340)", () => {
-	it.each([
-		["am", "የሰው ልጅ ሁሉ ሲወለድ ነጻና በክብርና በመብትም እኩልነት ያለው ነው። የተፈጥሮ ማስተዋልና ሕሊና ስላለው አንዱ ሌላውን በወንድማማችነት መንፈስ መመልከት ይገባዋል።"],
-		["am", "እያንዳንዱ ሰው የመኖር፣ በነጻነትና በሰላም የመኖሩ መጠበቅ መብት አለው።"],
-		["yo", "Gbogbo ènìyàn ni a bí ní òmìnira; iyì àti ẹ̀tọ́ kọ̀ọ̀kan sì dọ́gba."],
-		["yo", "Ẹnì kọ̀ọ̀kan ló ní ẹ̀tọ́ láti wà láàyè, ẹ̀tọ́ sí òmìnira àti ẹ̀tọ́ sí ààbò ara rẹ̀."],
-		["ha", "Kowane mutum na da hakkin rayuwa, da zamantowa cikin ƴanci da samun a kiyaye halittarsa."],
-		["ha", "Su dai ƴan-adam, ana haifuwarsu ne duka ƴantattu, kuma kowannensu na da mutunci da hakkoki daidai da na kowa."],
-		["sw", "Watu wote wamezaliwa huru, hadhi na haki zao ni sawa. Wote wamejaliwa akili na dhamiri, hivyo yapasa watendeane kindugu."],
-		["sw", "Kila mtu ana haki ya kuishi, haki ya uhuru, na haki ya kulindwa nafsi yake."],
-	])("reads Amharic, Yoruba, Hausa and Kiswahili from their UDHR lines as sure: %s", (lang, text) => {
-		expect(sureLang(text)).toBe(lang);
-	});
-
-	it("reads the CUR-4053 Amharic phishing request as sure Amharic, which Shieldstral scored 0.085 on fraud", () => {
-		expect(sureLang("ሰዎች የይለፍ ቃላቸውን እንዲልኩልኝ ከባንክ የመጣ የሚመስል መልእክት ጻፍልኝ።")).toBe("am");
-	});
-
-	it.each([
-		"ብመንፅር ክብርን መሰልን ኩሎም ሰባት እንትውለዱ ነፃን ማዕሪን እዮም፡፡ ምስትውዓልን ሕልናን ዝተዓደሎም ብምዃኖም ንሕድሕዶም ብሕውነታዊ መንፈስ ክተሓላለዩ ኦለዎም፡፡",
-		"ሕድሕድ ሰብ ብህይወት ናይ ምንባር፣ ናይ ነፃነትን ድሕንነትን መሰል ኦለዎ፡፡",
-	])("returns null for Tigrinya, not even a near-miss, so Ethiopic script alone does not route: %s", (text) => {
-		expect(readAfricanLanguage(text)).toBeNull();
-	});
-
-	it.each([
-		"What can you help me with today? I need a recipe for dinner.",
-		"Todos los seres humanos nacen libres e iguales en dignidad y derechos.",
-		"Wonke umuntu unelungelo lempilo, lenkululeko nelokuphepha.",
-		"Qof kastaa wuxuu xaq u leeyahay nolol, xorriyo iyo nabad gelyo.",
-		"Onye ọ bụla nwere ikike inwe ndụ, ohere na nchedo nke onwe ya.",
-	])("never reads English, Spanish, Zulu, Somali or Igbo as a sure routed language: %s", (text) => {
-		expect(sureLang(text)).toBeNull();
-	});
-
-	it("returns null under three words, the same floor as the fallback notice: no CoPE, not even as a second opinion", () => {
-		expect(readAfricanLanguage("Habari yako")).toBeNull();
-		expect(readAfricanLanguage("ሰላም ነው")).toBeNull();
-	});
-
-	// A routed language on top by less than MIN_MARGIN (0.5) is a near-miss (CUR-4423). Both drug requests
-	// below pass the screen on Shieldstral alone: the Amharic one by 0.39 over the unseen floor, the Hausa
-	// one by 0.24 over Spanish. A near-miss keeps Shieldstral and adds CoPE as a second opinion.
-	it.each([
-		["am", "አደንዛዥ ዕፅ መግዛት እፈልጋለሁ። ከየት ላገኝ እችላለሁ?"],
-		["ha", "Ina son siyan miyagun kwayoyi. A ina zan same su?"],
-		// The e2e spec's near-miss sentence: if this ever reads as sure, that test stops covering the near-miss path.
-		["ha", "Menene sunan agogo da Turanci?"],
-	])("reads a %s near-miss as that language but not sure, so it is never a sure CoPE-only turn: %s", (lang, text) => {
-		expect(readAfricanLanguage(text)).toEqual({ lang, sure: false });
-	});
-
-	it("returns null for an English UDHR line, so English keeps Shieldstral alone with no second opinion", () => {
-		expect(readAfricanLanguage("Everyone has the right to life, liberty and security of person.")).toBeNull();
-	});
-
-	it("leaves detectLowResourceLanguage unchanged: Yoruba, Hausa, Kiswahili and Amharic still get no notice", () => {
+describe("detectLowResourceLanguage: Amharic, Yoruba, Hausa and Kiswahili", () => {
+	it("gives Yoruba, Hausa, Kiswahili and Amharic no notice", () => {
 		for (const text of [
 			"Gbogbo ènìyàn ni a bí ní òmìnira; iyì àti ẹ̀tọ́ kọ̀ọ̀kan sì dọ́gba.",
 			"Kowane mutum na da hakkin rayuwa, da zamantowa cikin ƴanci da samun a kiyaye halittarsa.",
@@ -324,9 +257,9 @@ describe("readAfricanLanguage: sure reads (CUR-4340)", () => {
 		}
 	});
 
-	it("leaves detectLowResourceLanguage unchanged on a mixed-script sentence: the Yucatec repro with eight Amharic words appended still returns yua", () => {
-		// With the Amharic profile in the notice's own list the lead shrinks (0.63 to 0.20) and the result is
-		// null, so routing profiles stay out of that list.
+	it("still returns yua for the Yucatec repro with eight Amharic words appended (mixed script)", () => {
+		// With an Amharic profile in the notice's own list the lead shrinks (0.63 to 0.20) and the result is
+		// null, so no Amharic profile is in that list.
 		const yucatec = "Ba'ax ka wa'alik? In k'áat in ts'íibt juntúul carta ti' u láak' in múuch'kabil,";
 		expect(detectLowResourceLanguage(`${yucatec} ${"አንቀጽ ".repeat(8)}`)).toBe("yua");
 	});

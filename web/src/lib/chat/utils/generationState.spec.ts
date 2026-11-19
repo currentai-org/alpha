@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { describe, expect, test } from "vitest";
 
 import type { Message } from "$lib/chat/types/Message";
@@ -11,6 +14,7 @@ import {
 	agentRunToReattach,
 	classifyWatchdogFire,
 	deriveMessageStatus,
+	streamClosedBeforeAnswer,
 	GENERATION_STALE_MS,
 	handedOffAgentRun,
 	isAssistantGenerationTerminal,
@@ -172,8 +176,8 @@ describe("deriveMessageStatus", () => {
 
 // ChatMessage's `isProcessStreaming` used bare `!loading` to decide when to stop rendering
 // the reasoning panel as still-in-progress. `loading` settles a beat before the final content lands
-// in `message.updates` (same race as CUR-708 below) — the header flipped to "Computed" while the
-// body still held the streamed placeholder, until reload. These pin the composition that fixes it. (CUR-903)
+// in `message.updates` (same race below) — the header flipped to "Computed" while the
+// body still held the streamed placeholder, until reload. These pin the composition that fixes it.
 describe("isTurnStillRunning", () => {
 	test("true while the client fetch is in flight, regardless of message state", () => {
 		expect(isTurnStillRunning(true, undefined)).toBe(true);
@@ -290,7 +294,7 @@ describe("isGenerationStale", () => {
 // (it would orphan the live stream's write target and paint the previous turn's answer under the new
 // prompt). The page passes `localTurnSyncHold` tracked, so releasing the hold re-runs the effect — these
 // tables pin the pure decision at each state.
-// CUR-1660. This is the one question `cacheFallbackHere` cannot answer, and the reason the veto
+// This is the one question `cacheFallbackHere` cannot answer, and the reason the veto
 // above could not tell "the server never got this turn" from "the server has a finished answer you
 // were never shown". Each case below is a state the real page reaches.
 describe("serverSnapshotHasAnswer", () => {
@@ -424,7 +428,7 @@ describe("shouldSyncMessagesFromData", () => {
 	// The client aborts 8.0s after the server's keepalives stop and paints the connection-lost
 	// message, while the server finishes and persists the real answer anyway. With the veto
 	// unconditional the page would keep showing "<model> is working…" over
-	// an answer a reload renders at once (CUR-1660).
+	// an answer a reload renders at once.
 	test("lifts the cache-fallback veto once the snapshot actually carries a finished answer", () => {
 		expect(
 			shouldSyncMessagesFromData({
@@ -460,7 +464,7 @@ describe("shouldSyncMessagesFromData", () => {
 	});
 
 	// The resync re-mints message ids, which would destroy and re-create a ReportButton
-	// mid-submission and silently discard its acknowledgement. See reportHold.ts. (CUR-1583)
+	// mid-submission and silently discard its acknowledgement. See reportHold.ts.
 	test("vetoes a data refresh while a report submission is on screen", () => {
 		expect(
 			shouldSyncMessagesFromData({ ...base, dataChanged: true, reportActionPending: true })
@@ -511,6 +515,40 @@ describe("classifyWatchdogFire", () => {
 	});
 });
 
+// a phone that locks mid-answer closes the stream cleanly. That turn must be recovered,
+// and no turn that already ended some other way may be.
+describe("streamClosedBeforeAnswer", () => {
+	const closedMidAnswer = {
+		firstContentSeen: true,
+		finalAnswerSeen: false,
+		isAborted: false,
+		stopRequested: false,
+		requestRefused: false,
+		turnErrored: false,
+		watchdogFired: false,
+	};
+
+	test("recovers a stream that ended cleanly with half an answer on screen (THE BUG)", () => {
+		expect(streamClosedBeforeAnswer(closedMidAnswer)).toBe(true);
+	});
+
+	test("leaves alone every turn that ended by a path with its own handling", () => {
+		for (const ended of [
+			{ finalAnswerSeen: true },
+			{ firstContentSeen: false },
+			{ isAborted: true },
+			{ stopRequested: true },
+			{ requestRefused: true },
+			{ turnErrored: true },
+			{ watchdogFired: true },
+		]) {
+			expect(streamClosedBeforeAnswer({ ...closedMidAnswer, ...ended }), JSON.stringify(ended)).toBe(
+				false
+			);
+		}
+	});
+});
+
 // The gate on "No answer was produced for this message." Named for the CONTRACT, not the return
 // value: every one of these says which turns may be told they produced nothing, because a test
 // called "returns false while running" would still pass if the notice never rendered at all.
@@ -531,7 +569,7 @@ describe("shouldShowEmptyAnswerNotice", () => {
 		).toBe(false);
 	});
 
-	test("still fires on a FINISHED turn whose whole output was reasoning (CUR-113)", () => {
+	test("still fires on a FINISHED turn whose whole output was reasoning", () => {
 		// The failure the notice was built for must survive the fix above: a terminal turn that left
 		// the user a blank bubble still has to say so.
 		expect(
@@ -598,7 +636,7 @@ describe("shouldShowEmptyAnswerNotice", () => {
 	});
 });
 
-describe("agentRunToReattach (CUR-993)", () => {
+describe("agentRunToReattach", () => {
 	const answer = (over: Partial<Message>): Message =>
 		({ id: "a", from: "assistant", content: "Stopped early.", ...over }) as Message;
 	const question = { id: "q", from: "user", content: "run it" } as Message;
@@ -624,7 +662,7 @@ describe("agentRunToReattach (CUR-993)", () => {
 	});
 });
 
-describe("reattachView (CUR-3875)", () => {
+describe("reattachView", () => {
 	const shown = { content: "Paragraph one.\n\nParagraph two." };
 	const stream = { type: MessageUpdateType.Stream, token: "Paragraph one." } as MessageUpdate;
 	const interruptedEnd = {
@@ -676,7 +714,7 @@ describe("reattachView (CUR-3875)", () => {
 	});
 });
 
-describe("agentRunReattachDeadline (CUR-3875)", () => {
+describe("agentRunReattachDeadline", () => {
 	test("counts the run's ceiling from when its answer was first written, not from now", () => {
 		const createdAt = new Date("2026-10-12T20:00:00Z");
 		expect(agentRunReattachDeadline({ createdAt }, Date.parse("2026-10-12T20:02:00Z"))).toBe(
@@ -693,7 +731,8 @@ describe("agentRunReattachDeadline (CUR-3875)", () => {
 });
 
 describe("handedOffAgentRun", () => {
-	const run = { type: MessageUpdateType.AgentRun, taskId: "t1" } as MessageUpdate;
+	const run = { type: MessageUpdateType.AgentRun, taskId: "t1", handoff: true } as MessageUpdate;
+	const unmarkedRun = { type: MessageUpdateType.AgentRun, taskId: "t1" } as MessageUpdate;
 	const interruptedEnd = { type: MessageUpdateType.FinalAnswer, text: "", interrupted: true } as MessageUpdate;
 	const cleanEnd = { type: MessageUpdateType.FinalAnswer, text: "done", interrupted: false } as MessageUpdate;
 	const error = { type: MessageUpdateType.Status, status: MessageUpdateStatus.Error, message: "x" } as MessageUpdate;
@@ -709,9 +748,16 @@ describe("handedOffAgentRun", () => {
 		expect(handedOffAgentRun([interruptedEnd])).toBe(false);
 		expect(handedOffAgentRun(undefined)).toBe(false);
 	});
+
+	// the page follows on the server's stored word alone. The live check failed because the
+	// page's own flag copy, read at tab load, said off while the server handed the run off.
+	test("the run's stored handoff bit alone decides a follow: an interrupted run not submitted to hand off is never followed", () => {
+		expect(handedOffAgentRun([unmarkedRun, interruptedEnd])).toBe(false);
+		expect(handedOffAgentRun([run, interruptedEnd])).toBe(true);
+	});
 });
 
-describe("stoppedTurnMissingFromSnapshot (CUR-3018)", () => {
+describe("stoppedTurnMissingFromSnapshot", () => {
 	const question = { from: "user", id: "user-1", content: "q", children: [] } as unknown as Message;
 
 	test("keeps the local turn when a Stop before any reply reads back a snapshot without the question", () => {

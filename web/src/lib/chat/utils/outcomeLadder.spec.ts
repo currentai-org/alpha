@@ -26,7 +26,7 @@ describe("classifyTurnOutcome", () => {
 		expect(turn({})).toBe("complete");
 	});
 
-	describe("the empty rung (CUR-445)", () => {
+	describe("the empty rung", () => {
 		it("reports empty, not complete, when a guard shipped 256 characters the model did not write", () => {
 			// The defect exactly: content changed, so the route's own empty-output check never fired,
 			// and every downstream reader saw a healthy turn.
@@ -45,19 +45,19 @@ describe("classifyTurnOutcome", () => {
 		});
 
 		it("does not treat SHORT as empty — a two-character answer is complete", () => {
-			// CUR-443 measures brevity and deliberately sets no floor. A ladder that treated "short"
+			// measures brevity and deliberately sets no floor. A ladder that treated "short"
 			// as "empty" would smuggle one in here, fitted to n=1.
 			expect(turn({ modelChars: 2 })).toBe("complete");
 		});
 
 		it("still reports error for a turn nothing substituted for — the user saw nothing, and that is an error", () => {
 			// No FinalAnswer ever reached the guard, so the route's string comparison found the content
-			// unchanged and set hasError. That path is untouched by CUR-445 and must stay untouched.
+			// unchanged and set hasError. That path is untouched and must stay untouched.
 			expect(turn({ modelChars: 0, hasError: true })).toBe("error");
 		});
 	});
 
-	describe("the outputScreenTimedOut rung (CUR-1727)", () => {
+	describe("the outputScreenTimedOut rung", () => {
 		it("reports timedOut, not complete, for a phase-deadline trip whose own decline text is the only content", () => {
 			// The defect exactly: on a phase-deadline trip with nothing screened, screenStream.ts writes its
 			// own canned decline string into the message, and that string's own length gives modelChars a
@@ -106,7 +106,7 @@ describe("classifyTurnOutcome", () => {
 			);
 		});
 
-		it("declined beats complete — a refused user did not get an answer (CUR-35)", () => {
+		it("declined beats complete — a refused user did not get an answer", () => {
 			expect(turn({ declineKind: "content_policy" })).toBe("declined");
 		});
 	});

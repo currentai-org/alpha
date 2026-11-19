@@ -8,7 +8,7 @@ import { turnDone } from './helpers/turn';
 const START_CHATTING = /start chatting/i;
 
 // When the fact check removes claims no source supports, X-ray's "Step by step"
-// says how many, and nothing under the answer does (CUR-2927). `groundcheck_removes_claim` streams the canned reply
+// says how many, and nothing under the answer does. `groundcheck_removes_claim` streams the canned reply
 // and runs groundcheck on it with a stub detector and reviser that delete one word, so the count comes
 // from the real acceptance guards and the stamp the route saves, with no model or detector call. The
 // row is read after a reload, so it comes from the stored message rather than the live stream.

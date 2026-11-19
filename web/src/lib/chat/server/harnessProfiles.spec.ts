@@ -8,7 +8,7 @@ const { contextTokensFor, firstChunkMsFor, generationTimeoutMsFor, silentGiveUpM
 	await import("./harnessProfiles");
 const qualification = (await import("./data/model-qualification.json")).default as { checks: Record<string, unknown> };
 
-describe("harness profiles (CUR-2697)", () => {
+describe("harness profiles", () => {
 	it("has a row for every model with a qualification record, so nothing MODEL_ALLOWLIST can offer falls to the plain harness unseen", () => {
 		error.mockClear();
 		for (const id of Object.keys(qualification.checks)) replyLanguageRuleFits(id);
@@ -21,7 +21,7 @@ describe("harness profiles (CUR-2697)", () => {
 		expect(restatesRuleAfterFence("mistral-large-2512")).toBe(false);
 	});
 
-	it("keeps the reply-language sentence for Large 4 (preview), since Large 3's measurement is not Large 4's (CUR-3027)", () => {
+	it("keeps the reply-language sentence for Large 4 (preview), since Large 3's measurement is not Large 4's", () => {
 		error.mockClear();
 		expect(replyLanguageRuleFits("mistral-large-2610")).toBe(true);
 		expect(contextTokensFor("mistral-large-2610")).toBe(524_288);
@@ -48,7 +48,7 @@ describe("harness profiles (CUR-2697)", () => {
 		expect(error).not.toHaveBeenCalled();
 	});
 
-	it("puts every Apertus row, and nothing else, on the strict lane and the unprobed flatten (CUR-2697)", () => {
+	it("puts every Apertus row, and nothing else, on the strict lane and the unprobed flatten", () => {
 		const apertus = Object.keys(qualification.checks).filter((id) => id.toLowerCase().startsWith("swiss-ai/"));
 		expect(apertus.length).toBeGreaterThan(0);
 		for (const id of Object.keys(qualification.checks)) {
@@ -73,7 +73,7 @@ describe("harness profiles (CUR-2697)", () => {
 	});
 });
 
-describe("contextTokensFor (CUR-2893)", () => {
+describe("contextTokensFor", () => {
 	it("gives Mistral its published 262144 and every self-hosted lane the measured 32000 floor", () => {
 		expect(contextTokensFor("mistral-large-2512")).toBe(262_144);
 		expect(contextTokensFor("Mistral-Small-2603:mistral")).toBe(262_144);
@@ -88,14 +88,14 @@ describe("contextTokensFor (CUR-2893)", () => {
 	});
 });
 
-describe("firstChunkMsFor (CUR-3487)", () => {
+describe("firstChunkMsFor", () => {
 	it("gives SEA-LION 4.8 an allowance above its measured 16s prefill and under the screen's 25s", () => {
 		const ms = firstChunkMsFor("aisingapore/Nemotron-SEA-LION-v4.8-120B-A12B");
 		expect(ms).toBeGreaterThan(16_000);
 		expect(ms).toBeLessThan(25_000);
 	});
 
-	it("gives Apertus 1.5 70B 30s, past its lane's 9.8s p90, so neither the hedge nor the move-on fires before it (CUR-4403)", () => {
+	it("gives Apertus 1.5 70B 30s, past its lane's 9.8s p90, so neither the hedge nor the move-on fires before it", () => {
 		expect(firstChunkMsFor("swiss-ai/apertus-v1.5-70b")).toBe(30_000);
 	});
 
@@ -108,7 +108,7 @@ describe("firstChunkMsFor (CUR-3487)", () => {
 	});
 });
 
-describe("silentGiveUpMsFor (CUR-3939)", () => {
+describe("silentGiveUpMsFor", () => {
 	it("gives the models measured fast on production a give-up past the 8s hedge and under the 45s watchdog", () => {
 		for (const id of ["swiss-ai/apertus-v1.5-8b", "mistral-large-2512", "zai-org/GLM-5.2", "speakleash/Bielik-11B-v3.0-Instruct"]) {
 			const ms = silentGiveUpMsFor(id);
@@ -117,7 +117,7 @@ describe("silentGiveUpMsFor (CUR-3939)", () => {
 		}
 	});
 
-	it("gives Apertus 1.5 70B a give-up past its own 30s hedge and under its own 60s watchdog (CUR-4403)", () => {
+	it("gives Apertus 1.5 70B a give-up past its own 30s hedge and under its own 60s watchdog", () => {
 		const id = "swiss-ai/apertus-v1.5-70b";
 		expect(silentGiveUpMsFor(id)).toBe(45_000);
 		expect(silentGiveUpMsFor(id)!).toBeGreaterThan(firstChunkMsFor(id)!);
@@ -137,7 +137,7 @@ describe("silentGiveUpMsFor (CUR-3939)", () => {
 	});
 
 	// A missing row on a user's local endpoint or the agent route is expected, and an error line
-	// for it counted toward axiom-alert's server-errors. A catalog id with no row must still log at error. (CUR-4358)
+	// for it counted toward axiom-alert's server-errors. A catalog id with no row must still log at error.
 	it("logs a missing row at error for an unknown catalog id, at warn for a local endpoint or the agent route", () => {
 		error.mockClear();
 		warn.mockClear();
@@ -152,14 +152,17 @@ describe("silentGiveUpMsFor (CUR-3939)", () => {
 	});
 });
 
-describe("generationTimeoutMsFor (CUR-4403)", () => {
-	it("gives Apertus 1.5 70B a 60s watchdog floor, past the fleet's 45s", () => {
+describe("generationTimeoutMsFor", () => {
+	it("gives Apertus 1.5 70B and ALIA a 60s watchdog floor, past the fleet's 45s", () => {
 		expect(generationTimeoutMsFor("swiss-ai/apertus-v1.5-70b")).toBe(60_000);
 		expect(generationTimeoutMsFor("swiss-ai/Apertus-v1.5-70B:phoeniqs")).toBe(60_000);
+		expect(generationTimeoutMsFor("BSC-LT/ALIA-40b-instruct")).toBe(60_000);
 	});
 
 	it("returns null, so the fleet watchdog applies unchanged, for every other catalog model and an unlisted one", () => {
-		const others = Object.keys(qualification.checks).filter((id) => id.toLowerCase() !== "swiss-ai/apertus-v1.5-70b");
+		const others = Object.keys(qualification.checks).filter(
+			(id) => !["swiss-ai/apertus-v1.5-70b", "bsc-lt/alia-40b-instruct"].includes(id.toLowerCase())
+		);
 		expect(others.length).toBeGreaterThan(3);
 		for (const id of [...others, "swiss-ai/apertus-v1.5-70b-thinking", "someone/new-model"])
 			expect(generationTimeoutMsFor(id), id).toBeNull();
@@ -167,7 +170,7 @@ describe("generationTimeoutMsFor (CUR-4403)", () => {
 	});
 });
 
-describe("autoRepickGiveUpFor — Auto waits as long as each model's healthy first word takes (CUR-4539)", () => {
+describe("autoRepickGiveUpFor — Auto waits as long as each model's healthy first word takes", () => {
 	it("waits 40s for ALIA, 25s for the SEA-LION rows and the 20s default for Medium, Large 3 and an unknown model", async () => {
 		const { autoRepickGiveUpFor } = await import("./autoRepickGate");
 		expect(autoRepickGiveUpFor("BSC-LT/ALIA-40b-instruct")).toBe(40_000);

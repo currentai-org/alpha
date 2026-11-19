@@ -43,7 +43,7 @@ describe("loadAudioClip", () => {
 		);
 	});
 
-	it("aborts and rejects once the request outlives timeoutMs (a stalled load, CUR-851)", async () => {
+	it("aborts and rejects once the request outlives timeoutMs (a stalled load )", async () => {
 		vi.useFakeTimers();
 		const fetchMock = vi.fn(
 			(_url: string, init?: { signal?: AbortSignal }) =>

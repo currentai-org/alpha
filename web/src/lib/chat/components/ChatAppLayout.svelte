@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages.js';
-	import type { EmbeddedIntent } from '$lib/chat/types/EmbeddedIntent';
 	import { untrack } from 'svelte';
 	import { beforeNavigate } from '$app/navigation';
 	import { AppShell, Toast, useToastManager } from '@aipotluck/alpha-ds';
@@ -13,29 +12,29 @@
 		conversations,
 		conversationsLoading = false,
 		isNavCollapsed = $bindable(false),
-		embeddedDemo = false,
-		embeddedActiveConversationId,
-		onEmbeddedNavigate,
 		ondeleteConversation,
 		onrenameConversation,
+		onpinConversation,
+		onarchiveConversation,
+		ontagConversation,
 		currentError,
 		children
 	}: {
 		conversations: ConvSidebar[];
 		conversationsLoading?: boolean;
 		isNavCollapsed?: boolean;
-		embeddedDemo?: boolean;
-		embeddedActiveConversationId?: string;
-		onEmbeddedNavigate?: (intent?: EmbeddedIntent) => void;
 		ondeleteConversation?: (id: string) => void;
 		onrenameConversation?: (id: string, title: string) => void;
+		onpinConversation?: (id: string, pinned: boolean) => void;
+		onarchiveConversation?: (id: string) => void;
+		ontagConversation?: (id: string, names: string[]) => Promise<boolean>;
 		currentError?: string;
 		children?: import('svelte').Snippet;
 	} = $props();
 
 	// The chat's error goes to the app's toast stack (bottom right on desktop, the top on phones).
 	// ChatShell owns how long it stays; closing it clears the error. The welcome shows the error in its
-	// own column while it is up (CUR-2883).
+	// own column while it is up.
 	const toasts = useToastManager();
 	$effect(() => {
 		const message = currentError && !welcomeOnScreen.open ? currentError : undefined;
@@ -73,18 +72,18 @@
 		<NavMenu
 			{conversations}
 			loading={conversationsLoading}
-			{embeddedDemo}
-			{embeddedActiveConversationId}
-			{onEmbeddedNavigate}
 			{ondeleteConversation}
 			{onrenameConversation}
+			{onpinConversation}
+			{onarchiveConversation}
+			{ontagConversation}
 		/>
 	</AppShell.Sidebar>
 
 	<AppShell.Main>
 		{@render children?.()}
 		<!-- Phones: below the site and thread headers, so a toast never covers the title or the session
-		     footprint, where "Forget everything" lives (CUR-2160). Desktop: above a docked composer, which
+		     footprint, where "Forget everything" lives. Desktop: above a docked composer, which
 		     publishes --toast-clearance (ChatWindow), so a toast never covers Send. -->
 		<Toast.Viewport position="corner" class="max-md:top-header max-md:mt-site-header" />
 	</AppShell.Main>

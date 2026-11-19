@@ -1,4 +1,4 @@
-"""CUR-3025, live: a real `hermes acp` session calls two tools on a stub MCP server.
+"""live: a real `hermes acp` session calls two tools on a stub MCP server.
 
 Skipped unless AGENT_MCP_LIVE_HERMES_PY names a Python that has the pinned Hermes installed with the
 `[acp,mcp]` extras (the offline suite's venv has neither Hermes nor `mcp`). Everything runs on loopback
@@ -29,7 +29,7 @@ def test_a_hermes_session_calls_two_mcp_tools_and_answers_from_their_results(tmp
 
 
 def test_without_mcp_servers_on_new_session_the_same_run_fails(tmp_path):
-    """The injury: identical run, no servers passed. If this ever passes, the test above proves nothing."""
+    """The control: identical run, no servers passed. If this ever passes, the test above proves nothing."""
     r = _probe(tmp_path, "--no-mcp")
     assert r.returncode == 1, r.stdout[-3000:]
     assert "NO_MCP_TOOLS_OFFERED" in r.stdout

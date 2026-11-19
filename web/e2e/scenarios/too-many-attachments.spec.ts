@@ -1,6 +1,6 @@
 // e2e-product: @chat
 // e2e-area: @turn
-// A turn accepted any number of file parts (CUR-3530). Long pastes are left out of the byte cap, so a
+// A turn accepted any number of file parts. Long pastes are left out of the byte cap, so a
 // request under the platform body limit could carry hundreds of them, each one a storage write. The
 // spec starts a real chat, then posts that conversation a turn with one paste over the count, the way
 // a script would, and expects the 413 and the sentence a person would read.
@@ -29,7 +29,7 @@ test(
 		await composer.press('Enter');
 		await page.waitForURL(/\/conversation\/[a-f0-9]+/, { timeout: 30_000 });
 		const convPath = new URL(page.url()).pathname;
-		// A turn sent while the first is still saving is refused on its own account (CUR-2667).
+		// A turn sent while the first is still saving is refused on its own account.
 		await expect(turnDone(page.locator('[data-message-role="assistant"]').last())).toBeVisible({
 			timeout: 60_000
 		});

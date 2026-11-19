@@ -17,7 +17,7 @@ import { chatEntry } from './helpers/chatEntry';
 import { expectReadOnlyFormerChat, viewFormerWorkspace } from './helpers/formerWorkspace';
 import { startChattingPastWelcome } from './helpers/welcome';
 
-// @preview-only: workspaces are reached here by forcing three flags through the fuzz override
+// @preview-only: org creation is reached here by forcing its flag through the fuzz override
 // cookie, which production deliberately does not wire. Scoped at the runner rather than skipped in
 // the body — see sign-in.spec.ts's note on why a skip is the wrong shape.
 test(
@@ -25,7 +25,6 @@ test(
 	{ tag: ['@preview-only', '@A8'] },
 	async ({ page, context, baseURL }) => {
 		await setFlagOverrides(context, baseURL!, {
-			workspaces: true,
 			'workspace-org-creation': true
 		});
 		const email = freshTestEmail();
@@ -43,7 +42,7 @@ test(
 			await page.waitForURL(/\/chat\/settings\/workspace/, { timeout: 30_000 });
 			// Real network round-trips (getSession + organization.list()) block this heading, same shape as
 			// sign-in.spec.ts's OTP wait — Playwright's 5s default underestimates that chain against a cold
-			// per-PR preview. First attempt at 15s (CUR-1163) still wasn't enough: two independent CI runs
+			// per-PR preview. First attempt at 15s still wasn't enough: two independent CI runs
 			// timed out at 15000ms with the render landing at 17.5s/18.5s BOTH times, not a one-off cold-start
 			// (unlike chat-message-send.spec.ts's sibling failure in the same runs, which passed clean on
 			// retry — that one's a genuine one-shot cold start; this one consistently needs more room). 30s
@@ -51,7 +50,7 @@ test(
 			await expect(page.getByRole('heading', { name: 'Create a workspace' })).toBeVisible({
 				timeout: 30_000
 			});
-			// The empty form is the step's own screen; typing into it at once left no frame of it (CUR-2289).
+			// The empty form is the step's own screen; typing into it at once left no frame of it.
 			await holdForRecording(page);
 		});
 
@@ -61,7 +60,7 @@ test(
 			await nameInput.fill(name);
 
 			// Between the create succeeding and the reloaded list arriving, the page must still
-			// read as "creating this workspace" (CUR-1560). The grader saw the field blank to its placeholder there,
+			// read as "creating this workspace". The grader saw the field blank to its placeholder there,
 			// and before that a bare "+ New workspace" with an empty list. That window is a few hundred ms
 			// on a warm preview, too short to assert on, so the list reload that follows the create is held
 			// until the assertions below have run.
@@ -95,7 +94,7 @@ test(
 				'the form collapsed to "+ New workspace" before the new workspace was listed'
 			).toBeHidden();
 			// Unrouting while the held list request is still pending makes Playwright let it go itself, so
-			// the handler's own continue then throws (CUR-3373). Let it answer first.
+			// the handler's own continue then throws. Let it answer first.
 			const listAnswered = page.waitForResponse((r) =>
 				r.url().includes('/api/auth/organization/list')
 			);
@@ -118,13 +117,11 @@ test(
 			});
 		});
 
-		// CUR-1699: invite/remove/usage (CUR-550, Done) have never been exercised — continuing in the
-		// same test rather than a fresh one, since `createWorkspace()` already calls `selectOrg()` (see
-		// +page.svelte:301-303), so the admin view with these sections is already loaded here with no
-		// second sign-in or creation needed. Not CUR-964/965/966: those gate WHO can reach step 1 and are
-		// still In Review/Todo; invite/usage exist regardless of that gate.
-		// A8 step 3. Each of these screens went by in a few hundred ms, so the grader never saw the
-		// address typed, listed as pending, or cancelled (CUR-2386). Each gets a hold once asserted.
+		// Invite, cancel and usage continue in the same test: `createWorkspace()` already selects the new
+		// org, so its admin view with these sections is loaded, with no second sign-in or creation.
+		// Who may create a workspace is gated separately; invite and usage exist either way.
+		// A8 step 3. Each screen passes in a few hundred ms, so each gets a recording hold once asserted,
+		// letting a reviewer see the address typed, listed as pending, and cancelled.
 		const inviteeEmail = freshTestEmail();
 		const inviteField = page.getByPlaceholder('name@example.org');
 		const pendingRow = page.getByText(inviteeEmail, { exact: true });
@@ -152,7 +149,7 @@ test(
 		});
 
 		// Filling the invite field scrolled the settings panel down, and cancelling shortened
-		// it, so the recording ended with the member row cut off under the tab row (CUR-1885). The journey critic
+		// it, so the recording ended with the member row cut off under the tab row. The journey critic
 		// kept filing that as a layout bug. A person who just created a workspace looks at it from the
 		// top, so the test goes back there and checks that the row naming them as admin is whole
 		// inside the scroll area.
@@ -191,17 +188,16 @@ test(
 	}
 );
 
-// A8 steps 6-8, CUR-553: a person can belong to several workspaces,
-// "always see which one they are in", and switch. CUR-827: an admin can delete everything the
+// A8 steps 6-8,: a person can belong to several workspaces,
+// "always see which one they are in", and switch. an admin can delete everything the
 // workspace holds, at once. Switching goes through Better Auth's own active organization, so the
 // reload below is what proves the switch reached the server rather than only this page's state.
 test(
-	'a person in two workspaces always sees which one is current, switching survives a reload, and deleting the current one lands them in Personal, and a new workspace is listed only once it is the Current one (CUR-3462, CUR-3948)',
+	'a person in two workspaces always sees which one is current, switching survives a reload, and deleting the current one lands them in Personal, and a new workspace is listed only once it is the Current one',
 	{ tag: ['@preview-only', '@A8'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(120_000);
 		await setFlagOverrides(context, baseURL!, {
-			workspaces: true,
 			'workspace-org-creation': true
 		});
 		await signInAsFreshUser(page, freshTestEmail());
@@ -223,7 +219,7 @@ test(
 		const row = (name: string) => page.getByRole('button', { name });
 		const isCurrent = (name: string) => row(name).getByText('Current', { exact: true });
 		// The sidebar's account row names the current workspace, so the chat says where new
-		// conversations count without opening Settings (CUR-3014).
+		// conversations count without opening Settings.
 		const accountStatus = accountButton(page).locator('[data-account-status]');
 
 		await expect(page.getByRole('heading', { name: 'Create a workspace' })).toBeVisible({
@@ -231,7 +227,7 @@ test(
 		});
 		await nameInput.fill(first);
 		// After Create the new row lit up at once while Personal kept Current and the heading,
-		// for the ~2 s the new workspace's detail took to load (graded recordings caught it) (CUR-3462).
+		// for the ~2 s the new workspace's detail took to load (graded recordings caught it).
 		// Hold that load: nothing is highlighted until the new workspace is Current.
 		{
 			let releaseDetail!: () => void;
@@ -252,7 +248,7 @@ test(
 			await detailAsked;
 			expect((await listAnswered).status(), 'the reloaded workspace list failed').toBe(200);
 			// The reloaded list was shown on its own, so the new row sat there unmarked while
-			// Personal was still Current (CUR-3948). It now arrives in the same step as the Current mark.
+			// Personal was still Current. It now arrives in the same step as the Current mark.
 			// Sampled for a second while the detail is held: a retrying toHaveCount(0) would pass in the
 			// moment before the list rendered.
 			for (let sample = 0; sample < 10; sample++) {
@@ -306,7 +302,7 @@ test(
 			).toHaveText(second, { timeout: 15_000 });
 			// The create form sits below the workspace list, so after Create the screen still
 			// showed the new workspace's members and Danger zone, and the grader never saw both rows with
-			// one Current badge (CUR-2581). The hold films the list instead.
+			// one Current badge. The hold films the list instead.
 			await page
 				.getByRole('heading', { name: 'Your workspaces', exact: true })
 				.scrollIntoViewIfNeeded();
@@ -318,7 +314,7 @@ test(
 		// Step 7. One click switches, the badge follows, and a reload keeps it.
 		await journeyStep(page, 'A8', 7, async () => {
 			// The badge moved as soon as the switch answered, while the name, rules and
-			// members below still showed the old workspace until its detail loaded (CUR-3373). Hold that load: the
+			// members below still showed the old workspace until its detail loaded. Hold that load: the
 			// badge waits with the panel, and both change together.
 			let releaseDetail!: () => void;
 			const detailHeld = new Promise<void>((resolve) => (releaseDetail = resolve));
@@ -344,7 +340,7 @@ test(
 			).toBeVisible();
 			await expect(isCurrent(first)).toHaveCount(0);
 			// The clicked row lit up at once while Current stayed on the other row, so for the
-			// length of the detail load the list named two workspaces (CUR-3462). The highlight waits with the badge.
+			// length of the detail load the list named two workspaces. The highlight waits with the badge.
 			// `bg-white/15` is the highlight the person sees; the row has no other selected state.
 			await expect(
 				row(first),
@@ -392,7 +388,7 @@ test(
 		});
 
 		// Step 8. Delete the current workspace. The confirm asks for its name, and afterwards the person
-		// is in Personal, told why, and no team workspace is picked for them (CUR-3022).
+		// is in Personal, told why, and no team workspace is picked for them.
 		await journeyStep(page, 'A8', 8, async () => {
 			await page.getByRole('button', { name: 'Delete workspace…' }).click();
 			await page.getByPlaceholder(first, { exact: true }).fill(first);
@@ -428,7 +424,7 @@ test(
 );
 
 // Under Personal the panel below the list describes no team workspace, so the list and the
-// panel never name different workspaces, and a line says where the person is (CUR-3373).
+// panel never name different workspaces, and a line says where the person is.
 const PERSONAL_PANEL_COPY =
 	"You're in your personal workspace. Choose a workspace above to see its members and rules.";
 async function expectPersonalPanel(
@@ -447,8 +443,8 @@ async function expectPersonalPanel(
 	await expect(page.getByRole('heading', { name: 'Workspace rules' })).toHaveCount(0);
 }
 
-// A session starts with no active workspace, which the chat calls "Personal workspace" (CUR-3020).
-// Opening Settings → Workspace took that for a workspace deleted under the person (CUR-2835) and
+// A session starts with no active workspace, which the chat calls "Personal workspace".
+// Opening Settings → Workspace took that for a workspace deleted under the person and
 // made their first workspace current, so looking at the page moved them out of Personal.
 test(
 	'opening Settings → Workspace leaves a person in their personal workspace, and they can switch in and back',
@@ -456,7 +452,6 @@ test(
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(120_000);
 		await setFlagOverrides(context, baseURL!, {
-			workspaces: true,
 			'workspace-org-creation': true
 		});
 		await signInAsFreshUser(page, freshTestEmail());
@@ -506,7 +501,7 @@ test(
 
 		// The workspace's name above the list showed for a team and vanished under Personal,
 		// so each switch moved the list 44 px and the row under the pointer that had just clicked became
-		// the other one, lit by its hover while Current sat elsewhere (CUR-3462). The list stays where it was.
+		// the other one, lit by its hover while Current sat elsewhere. The list stays where it was.
 		const listTop = async () => (await row('Personal workspace').boundingBox())!.y;
 		const before = await listTop();
 
@@ -519,7 +514,7 @@ test(
 
 		// Current stays on the team until the switch and the shell reload land, and the
 		// Personal row said nothing meanwhile, so the pointer's hover fill on it read as a second
-		// selection beside the team's Current (a graded recording caught it) (CUR-3462). Hold the switch.
+		// selection beside the team's Current (a graded recording caught it). Hold the switch.
 		let releaseSwitch!: () => void;
 		const switchHeld = new Promise<void>((resolve) => (releaseSwitch = resolve));
 		const setActive = '**/chat/api/auth/organization/set-active*';
@@ -565,7 +560,7 @@ test(
 	}
 );
 
-// Switching workspace took a trip to Settings → Workspace (CUR-3097). The account menu's Workspace row
+// Switching workspace took a trip to Settings → Workspace. The account menu's Workspace row
 // now opens a flyout listing Personal and each workspace, and one click switches.
 test(
 	'a person switches workspace from the account menu, and the switch survives a reload',
@@ -573,7 +568,6 @@ test(
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(120_000);
 		await setFlagOverrides(context, baseURL!, {
-			workspaces: true,
 			'workspace-org-creation': true
 		});
 		await signInAsFreshUser(page, freshTestEmail());
@@ -608,7 +602,7 @@ test(
 		await expect(option(flyout, name)).toHaveAttribute('aria-checked', 'false');
 
 		// A switch replaces the chat list behind the menu, so the menu gets out of the way once
-		// it lands, unlike Mode and Theme, where the person previews and may pick again (CUR-3174).
+		// it lands, unlike Mode and Theme, where the person previews and may pick again.
 		const settingsItem = page.getByRole('menuitem', { name: 'Settings', exact: true });
 		await option(flyout, name).click();
 		await expect(accountStatus, 'the account row still names the old workspace').toHaveText(name, {
@@ -640,7 +634,7 @@ test(
 		});
 
 		// A switch that fails keeps the menu open, with the reason, so the person can see it and retry.
-		// The failure is a dropped request (CUR-3206): a refusal naming membership, staged on the
+		// The failure is a dropped request: a refusal naming membership, staged on the
 		// workspace this account owns, read in the recording as the product doubting its own data.
 		await page.route('**/chat/api/auth/organization/set-active', (route) => route.abort('failed'));
 		flyout = await workspaceFlyout(page, { timeout: 30_000 });
@@ -653,7 +647,7 @@ test(
 		await expect(accountStatus, 'a failed switch still changed the account row').toHaveText(
 			'Personal workspace'
 		);
-		// The check stays with the workspace the person is in, not the one that refused (CUR-3407).
+		// The check stays with the workspace the person is in, not the one that refused.
 		await expect(
 			option(flyout, name),
 			'a failed switch left the check on the workspace it never reached'
@@ -673,14 +667,13 @@ test(
 );
 
 // While a menu switch ran, every row went disabled and grey with nothing saying why, so the
-// menu read as frozen (CUR-4237). The clicked row now says "Switching…" and the others keep their contrast.
+// menu read as frozen. The clicked row now says "Switching…" and the others keep their contrast.
 test(
-	'a switch from the account menu labels the clicked row Switching… and leaves the other rows enabled (CUR-4237)',
+	'a switch from the account menu labels the clicked row Switching… and leaves the other rows enabled',
 	{ tag: ['@preview-only', '@A8', '@CUR-4237'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(120_000);
 		await setFlagOverrides(context, baseURL!, {
-			workspaces: true,
 			'workspace-org-creation': true
 		});
 		await signInAsFreshUser(page, freshTestEmail());
@@ -728,7 +721,7 @@ test(
 );
 
 // Every workspace listed the same conversations, so switching changed the label and the
-// usage count but never the history (CUR-3023). Chats are made and titled through the API, so no model turn
+// usage count but never the history. Chats are made and titled through the API, so no model turn
 // runs; the switches go through the page a person uses.
 test(
 	"each workspace lists only its own conversations, and a deleted workspace's chats sit under Former: <name>, read-only, not in Personal",
@@ -736,7 +729,6 @@ test(
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(150_000);
 		await setFlagOverrides(context, baseURL!, {
-			workspaces: true,
 			'workspace-org-creation': true
 		});
 		await signInAsFreshUser(page, freshTestEmail());
@@ -816,7 +808,7 @@ test(
 			'switching back to the team still lists the Personal chat'
 		).toHaveCount(0);
 
-		// Deleting the workspace detaches its conversations rather than deleting them (CUR-3040). They
+		// Deleting the workspace detaches its conversations rather than deleting them. They
 		// sit together under "Former: <name>", read-only, instead of mixing into Personal unmarked.
 		await auth('delete', { organizationId: team.id });
 		await auth('set-active', { organizationId: null });
@@ -836,7 +828,7 @@ test(
 		await railLink(teamChat).click();
 		await expectReadOnlyFormerChat(page, name);
 
-		// CUR-3040's www walk: after viewing the former workspace, the account row still said Personal
+		// The www walk: after viewing the former workspace, the account row still said Personal
 		// over its chats, and choosing Personal in the account menu changed nothing, reload included.
 		await page.goto(chatEntry(), { waitUntil: 'load' });
 		const accountStatus = accountButton(page).locator('[data-account-status]');
@@ -861,14 +853,13 @@ test(
 );
 
 // The line saying why a person landed in Personal lived inside the workspace list, so a
-// person who deleted their last workspace lost the list and the reason with it (CUR-3022).
+// person who deleted their last workspace lost the list and the reason with it.
 test(
 	'deleting your last workspace lands you in Personal and still says why',
 	{ tag: ['@preview-only', '@A8'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(120_000);
 		await setFlagOverrides(context, baseURL!, {
-			workspaces: true,
 			'workspace-org-creation': true
 		});
 		await signInAsFreshUser(page, freshTestEmail());
@@ -915,15 +906,14 @@ test(
 );
 
 // The settings group disables SSR, so a fresh open of this page (a reload, a typed URL)
-// arrived as an empty shell and painted white until the client bundle loaded (CUR-1975). Read the raw server
-// response rather than the page, as application-settings.spec.ts does for CUR-2009: a browser
+// arrived as an empty shell and painted white until the client bundle loaded. Read the raw server
+// response rather than the page, as application-settings.spec.ts does: a browser
 // assertion passes either way once hydration catches up, so only the HTML can tell the two apart.
 test(
 	'Workspace settings arrive server-rendered, so a fresh open paints the page without waiting on the client bundle',
 	{ tag: ['@preview-only', '@A8'] },
 	async ({ page, context, baseURL }) => {
 		await setFlagOverrides(context, baseURL!, {
-			workspaces: true,
 			'workspace-org-creation': true
 		});
 		const email = freshTestEmail();
@@ -944,7 +934,7 @@ test(
 		);
 
 		// The checks above read HTML and leave the browser on the welcome dialog, so the
-		// gallery's recording never showed the page this test is named after (CUR-2969). Open it on screen too.
+		// gallery's recording never showed the page this test is named after. Open it on screen too.
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });
 		await page.addLocatorHandler(welcomeDialog, async () => {
 			await startChattingPastWelcome(welcomeDialog);
@@ -956,7 +946,7 @@ test(
 	}
 );
 
-// A8 step 4, the invitee's half (CUR-2731). Every test above invites an address and then cancels it,
+// A8 step 4, the invitee's half. Every test above invites an address and then cancels it,
 // so no account had ever opened an invitation and joined. The admin's half goes through Better Auth's
 // own routes, since the first test already walks it on screen. The invitee opens the link the email
 // carries, accepts, and lands in the workspace as a Member beside the admin.
@@ -964,7 +954,7 @@ test(
 	'an invited person opens the invitation link, accepts, and joins the workspace as a Member',
 	{ tag: ['@preview-only', '@A8'] },
 	async ({ page, context, baseURL }) => {
-		const flags = { workspaces: true, 'workspace-org-creation': true };
+		const flags = { 'workspace-org-creation': true };
 		const origin = { origin: new URL(baseURL!).origin };
 		await setFlagOverrides(context, baseURL!, flags);
 		const adminEmail = freshTestEmail();
@@ -1004,7 +994,7 @@ test(
 		await holdForRecording(page);
 
 		// The button went back to an idle Accept while the settings page loaded, inviting a
-		// second click (CUR-3281). Hold that load, so the gap between the accept and the arrival is visible.
+		// second click. Hold that load, so the gap between the accept and the arrival is visible.
 		let releaseSettings!: () => void;
 		const settingsHeld = new Promise<void>((resolve) => (releaseSettings = resolve));
 		const settingsData = '**/chat/settings/workspace/__data.json*';
@@ -1056,14 +1046,14 @@ test(
 	}
 );
 
-// An invitee already signed in saw nothing in Alpha, so accepting meant finding the email (CUR-4167).
+// An invitee already signed in saw nothing in Alpha, so accepting meant finding the email.
 // Two workspaces invite the same person; they accept one from the account menu without the link,
 // and decline the other in Settings → Workspace, where it stays gone after a reload.
 test(
-	'CUR-4167: a signed-in invitee sees pending invites in the account menu, accepts one there and declines one in Settings',
+	'a signed-in invitee sees pending invites in the account menu, accepts one there and declines one in Settings',
 	{ tag: ['@preview-only', '@A8'] },
 	async ({ page, context, baseURL }) => {
-		const flags = { workspaces: true, 'workspace-org-creation': true };
+		const flags = { 'workspace-org-creation': true };
 		const origin = { origin: new URL(baseURL!).origin };
 		await setFlagOverrides(context, baseURL!, flags);
 		const adminEmail = freshTestEmail();
@@ -1150,7 +1140,7 @@ test(
 	}
 );
 
-// A8 step 3, "gives each one of two roles" (CUR-1685). The invitee joins through Better Auth's own
+// A8 step 3, "gives each one of two roles". The invitee joins through Better Auth's own
 // routes in a second context, since the test above walks accepting on screen. The admin then makes
 // them an admin and back from the member list, and each change is read again after a reload, so a
 // role the page only showed locally fails here.
@@ -1158,7 +1148,7 @@ test(
 	'an admin makes a member an admin and back from the member list, and the role survives a reload',
 	{ tag: ['@preview-only', '@A8'] },
 	async ({ page, context, browser, baseURL }) => {
-		const flags = { workspaces: true, 'workspace-org-creation': true };
+		const flags = { 'workspace-org-creation': true };
 		const origin = { origin: new URL(baseURL!).origin };
 		await setFlagOverrides(context, baseURL!, flags);
 		await signInAsFreshUser(page, freshTestEmail());
@@ -1208,8 +1198,8 @@ test(
 		const inviteeRole = (role: 'Admin' | 'Member') =>
 			page.getByText(`${inviteeEmail} · ${role}`, { exact: true });
 		// The rows came back in whatever order the server gave, so a role change could move
-		// the member above the admin, and the grader read the swap as the role reverting (CUR-2768) or
-		// the member vanishing (CUR-3171) (CUR-2906). Rows keep their join order: the admin who made it, first.
+		// the member above the admin, and the grader read the swap as the role reverting or
+		// the member vanishing. Rows keep their join order: the admin who made it, first.
 		const adminStaysFirst = (when: string) =>
 			expect(
 				page.getByTestId('workspace-member').first(),
@@ -1254,11 +1244,10 @@ test(
 	}
 );
 
-// Production's shape is `workspaces` on and `workspace-org-creation` off, and every test
-// above forces the second one on, so until these two nothing drove the screen production would serve (CUR-2174).
-// The override turns org creation off on a preview where PostHog has it on. CUR-957's tests 1-3.
+// production's shape is `workspace-org-creation` off, and every test
+// above forces the second one on, so until these two nothing drove the screen production would serve.
+// The override turns org creation off on a preview where PostHog has it on. The tests 1-3.
 const PRODUCTION_SHAPE = {
-	workspaces: true,
 	'workspace-org-creation': false
 };
 
@@ -1301,7 +1290,7 @@ test(
 	}
 );
 
-// CUR-957's test 4: the screen hiding the controls proves nothing if the routes behind them still
+// The test 4: the screen hiding the controls proves nothing if the routes behind them still
 // answer. The same calls are then repeated with org creation on, so a refusal here is the gate and
 // not a wrong path that would be refused either way. The invitation page is checked by what a person
 // sees here; the test below checks its status.
@@ -1347,7 +1336,7 @@ test(
 // A /chat page streams its response, because the chat layout returns the sidebar's conversations as
 // a promise, and SvelteKit 2.x built a streamed response without the page's status, so a page that
 // threw `error(404)` rendered Not found and answered 200. `patches/@sveltejs__kit@2.70.3.patch` passes
-// the status through, as SvelteKit 3 does (CUR-2605); this test goes red if a SvelteKit bump drops it.
+// the status through, as SvelteKit 3 does; this test goes red if a SvelteKit bump drops it.
 test(
 	'with org creation off, the invitation page answers HTTP 404, not only a page that says Not found',
 	{ tag: ['@preview-only', '@A9'] },
@@ -1364,7 +1353,7 @@ test(
 	}
 );
 
-// A8 step 16 (CUR-3024). Better Auth keeps the active workspace on the session, and logging out
+// A8 step 16. Better Auth keeps the active workspace on the session, and logging out
 // deletes the session, so every sign-in used to land in Personal and someone who works in a team
 // workspace had to switch back each morning. The second sign-in walks the real email-code flow:
 // signInAsFreshUser mints its session through the test-only auth instance, which would never run
@@ -1378,7 +1367,6 @@ test(
 		if (!databaseUrl)
 			throw new Error('SCENARIO_DATABASE_URL is not set — global-setup.ts should have caught this');
 		await setFlagOverrides(context, baseURL!, {
-			workspaces: true,
 			'workspace-org-creation': true
 		});
 		const email = freshTestEmail();

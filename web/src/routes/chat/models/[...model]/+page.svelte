@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2018- The Hugging Face team
+SPDX-License-Identifier: Apache-2.0
+Modified by Current AI from huggingface/chat-ui.
+-->
 <script lang="ts">
 	import { page } from "$app/state";
 	import { base } from "$lib/chat/paths";
@@ -7,7 +12,8 @@
 
 	import ChatWindow from "$lib/chat/components/chat/ChatWindow.svelte";
 	import NoModelsAvailable from "$lib/chat/components/NoModelsAvailable.svelte";
-	import { findCurrentModel } from "$lib/chat/utils/models";
+	import { findCurrentModel, servedPick } from "$lib/chat/utils/models";
+	import { m } from "$lib/paraglide/messages.js";
 	import { useSettingsStore } from "$lib/chat/stores/settings";
 	import { useConversationsStore } from "$lib/chat/stores/conversations.svelte";
 	import LinkPromptGate from "$lib/chat/components/LinkPromptGate.svelte";
@@ -26,11 +32,11 @@
 	const settings = useSettingsStore();
 	let modelId = $derived(page.params.model ?? "");
 	// The URL's model is only the starting pick. onMount writes it to the settings, and from
-	// then on the composer's picker, which writes the settings too, decides the model, as on /chat. (CUR-3295)
+	// then on the composer's picker, which writes the settings too, decides the model, as on /chat.
 	let pageModelApplied = $state(false);
 	let activeModelId = $derived(pageModelApplied ? $settings.activeModel || modelId : modelId);
 	// findCurrentModel falls back to models[0], undefined when models is empty — see
-	// routes/chat/conversation/[id]/+page.svelte's identical guard for the full mechanism. (CUR-1141)
+	// routes/chat/conversation/[id]/+page.svelte's identical guard for the full mechanism.
 	let currentModel = $derived(findCurrentModel(data.models, activeModelId));
 	const publicConfig = usePublicConfig();
 	let modelPath = $derived(
@@ -48,7 +54,18 @@
 			files,
 			settings: $settings,
 			convsStore,
-			pickModel: () => currentModel?.id ?? modelId,
+			// The picked model or nothing: when the registry doesn't list the pick, `currentModel` is the
+			// list's first model, shown in its place, and sending there answered from a model nobody
+			// picked. The send stops and says so instead, as the landing page's does.
+			pickModel: () => {
+				const served = servedPick(data.models, activeModelId);
+				if (served) return served;
+				throw new Error(
+					m.chat_pickedModelUnavailable({
+						model: catalogByGatewayId(activeModelId)?.name ?? activeModelId,
+					})
+				);
+			},
 			setLoading: (on) => (loading = on),
 		});
 	}
@@ -56,7 +73,7 @@
 	onMount(() => {
 		settings.instantSet({ activeModel: modelId });
 		// The link's model is picked as if from the picker, so a device left on Auto shows the
-		// model this page sends to rather than Auto, and its answer claims no Auto choice it never made. (CUR-4021)
+		// model this page sends to rather than Auto, and its answer claims no Auto choice it never made.
 		const picked = catalogByGatewayId(modelId)?.id;
 		if (picked) modelPickRequest.set(picked);
 		pageModelApplied = true;
@@ -103,7 +120,7 @@
 {:else}
 	<NoModelsAvailable />
 {/if}
-<!-- CUR-2644: a deep link's prompt and attachments wait for the visitor to confirm. -->
+<!-- a deep link's prompt and attachments wait for the visitor to confirm. -->
 <LinkPromptGate
 	attach={(loaded) => (files = loaded)}
 	fill={(prompt) => {

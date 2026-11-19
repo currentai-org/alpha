@@ -1,7 +1,7 @@
-// CUR-1886. Send the user's answer with real roles first, and fall back to the flattened shape only
+// Send the user's answer with real roles first, and fall back to the flattened shape only
 // when that attempt fails.
 //
-// Why: flattenForApertus.ts (CUR-1294) sends the whole conversation as one user message, so every
+// Why: flattenForApertus.ts sends the whole conversation as one user message, so every
 // earlier answer reaches the model as `[ASSISTANT] …` text inside the question, and the model treats
 // that text as material to reuse. The flattened shape opens a later answer with the earlier answer's
 // text (the "second answer starts with the first answer" failure and the cross-turn "I'm a machine
@@ -12,22 +12,22 @@
 // (gatewayFallbackGate.ts, already sent on this lane) keeps a rejected request inside the model group
 // rather than handing it to SEA-LION, but the gateway may not retry it on the other deployment, so a
 // role-shaped request can come back as the other deployment's 400. So
-// apertusStrictLane.ts (CUR-2092) pins the native attempt to the role-accepting deployment, and if
+// apertusStrictLane.ts pins the native attempt to the role-accepting deployment, and if
 // that attempt fails the flattened resend reaches either deployment.
 //
 // A workaround with the same delete condition as flatten: when the gateway serves roles on every
-// deployment (CUR-1209, CUR-1048), delete this module and flattenForApertus.ts together.
+// deployment, delete this module and flattenForApertus.ts together.
 
 import { isRateLimited } from "../retryPolicy";
 
 /**
- * How long the native attempt runs alone before the flattened request is sent alongside it (CUR-2012).
+ * How long the native attempt runs alone before the flattened request is sent alongside it.
  *
  * A streaming response sends its headers with the first token, so this is a wait on the model itself.
- * Native attempts that served on production took p50 1.5s, p90 3.5s, and 11 of 145 took over 5s. A
- * plain cutoff at this value would discard a quarter of good attempts; the hedge keeps them racing
- * instead. Failed attempts hang for the full timeout (15s under a plain cutoff), so their cost is
- * about 3s plus the flattened request's own first token.
+ * A healthy native attempt can take longer than this to send headers. A plain cutoff at this value
+ * would discard those good attempts, so the hedge keeps both requests racing instead. A failing
+ * attempt can hang until the full request timeout, so the hedge bounds its cost to this delay plus the
+ * flattened request's own first token.
  */
 const NATIVE_HEDGE_AFTER_MS = 3_000;
 
@@ -102,7 +102,7 @@ export async function withNativeFirst<M, T>(opts: {
 				(err) => {
 					flatDone = true;
 					if (signal?.aborted) return fail(err);
-					// Both shapes failed: surface the flattened error, as the old resend did.
+					// Both shapes failed: surface the flattened request's error.
 					if (nativeDone) fail(err);
 				}
 			);
@@ -125,7 +125,7 @@ export async function withNativeFirst<M, T>(opts: {
 				// A rate limit surfaces as itself for the caller's busy handling; a flattened request
 				// the hedge already sent keeps racing, since it was sent for a different reason.
 				// A 429 says the lane is over its rate. The roles were never judged, so a flattened copy only
-				// spends the next slot of the same budget (CUR-2330).
+				// spends the next slot of the same budget.
 				if (!flatStarted && isRateLimited(err)) return fail(err);
 				if (!flatStarted) startFlat(describe(err));
 				else if (flatDone) fail(nativeError);

@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const cfg: Record<string, string | undefined> = {};
 vi.mock('$lib/chat/server/config', () => ({ config: cfg }));
 
-const { mistralKeyEnv, mistralChatLane, parseWireIds, ticketBranchAllowlist } = await import(
+const { mistralKeyEnv, mistralChatLane, onRouterLane, parseWireIds, ticketBranchAllowlist } = await import(
 	'./mistralKey'
 );
 
@@ -49,7 +49,7 @@ describe('ticketBranchAllowlist', () => {
 		expect(ticketBranchAllowlist(SPEC, 'main', 'mistral-small-2603')).toBe(SPEC);
 	});
 
-	it('offers no MISTRAL_MODELS id the picker leaves out on a per-ticket branch, so Large 3 stays off it (CUR-4683)', () => {
+	it('offers no MISTRAL_MODELS id the picker leaves out on a per-ticket branch, so Large 3 stays off it', () => {
 		cfg.MISTRAL_MODELS = 'mistral-large-2512,mistral-small-2603,mistral-medium-2604,mistral-large-2610';
 		const picker = 'mistral-medium-2604,mistral-large-2610,swiss-ai/apertus-v1.5-70b';
 		expect(ticketBranchAllowlist(picker, 'dev/cur-1-thing', 'mistral-small-2603')).toBe(
@@ -64,7 +64,7 @@ describe('ticketBranchAllowlist', () => {
 	});
 });
 
-describe('mistralChatLane (CUR-2928)', () => {
+describe('mistralChatLane', () => {
 	beforeEach(() => {
 		for (const k of Object.keys(cfg)) delete cfg[k];
 		cfg.MISTRAL_BASE_URL = 'https://api.mistral.ai/v1';
@@ -92,6 +92,40 @@ describe('mistralChatLane (CUR-2928)', () => {
 			apiKey: 'ci-workspace',
 			wireIds: { 'mistral-large-2610': 'mistral-large-4-0' },
 		});
+	});
+
+	it('calls the router with MISTRAL_CHAT_CI_API_KEY on a per-ticket preview, so CI usage shows on its own key', () => {
+		cfg.MISTRAL_CHAT_BASE_URL = 'https://router.example.test/v1';
+		cfg.MISTRAL_CHAT_API_KEY = 'router-dev';
+		cfg.MISTRAL_CHAT_CI_API_KEY = 'router-ci';
+		expect(mistralChatLane('dev/cur-1-thing')).toMatchObject({
+			baseURL: 'https://router.example.test/v1',
+			apiKey: 'router-ci',
+			keyEnv: 'MISTRAL_CHAT_CI_API_KEY',
+		});
+		expect(onRouterLane(mistralChatLane('dev/cur-1-thing'))).toBe(true);
+	});
+
+	it('reads only the two router keys as the router lane, so the warm probe and version list treat a CI-keyed lane as the router', () => {
+		expect(onRouterLane({ keyEnv: 'MISTRAL_CHAT_API_KEY' })).toBe(true);
+		expect(onRouterLane({ keyEnv: 'MISTRAL_CHAT_CI_API_KEY' })).toBe(true);
+		expect(onRouterLane({ keyEnv: 'MISTRAL_API_KEY' })).toBe(false);
+		expect(onRouterLane({ keyEnv: 'MISTRAL_API_KEY_CI' })).toBe(false);
+	});
+
+	it('keeps develop, main and an unknown branch on MISTRAL_CHAT_API_KEY when the CI router key is set', () => {
+		cfg.MISTRAL_CHAT_BASE_URL = 'https://router.example.test/v1';
+		cfg.MISTRAL_CHAT_API_KEY = 'router-dev';
+		cfg.MISTRAL_CHAT_CI_API_KEY = 'router-ci';
+		for (const branch of ['develop', 'main', '']) {
+			expect(mistralChatLane(branch)).toMatchObject({ apiKey: 'router-dev', keyEnv: 'MISTRAL_CHAT_API_KEY' });
+		}
+	});
+
+	it('keeps a per-ticket preview on MISTRAL_CHAT_API_KEY while the CI router key is unset, so merging changes nothing', () => {
+		cfg.MISTRAL_CHAT_BASE_URL = 'https://router.example.test/v1';
+		cfg.MISTRAL_CHAT_API_KEY = 'router-dev';
+		expect(mistralChatLane('dev/cur-1-thing')).toMatchObject({ apiKey: 'router-dev', keyEnv: 'MISTRAL_CHAT_API_KEY' });
 	});
 
 	it('stays on La Plateforme, unchanged, while either router var is unset', () => {

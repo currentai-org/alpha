@@ -1,6 +1,6 @@
 // e2e-product: @chat
 // e2e-area: @turn
-// CUR-2625 — journey C2 (docs/journeys/c2-work-with-an-answer.md): Stop, Retry, Copy and Edit, the
+// journey C2 (docs/journeys/c2-work-with-an-answer.md): Stop, Retry, Copy and Edit, the
 // answer controls a visitor brings from Claude or ChatGPT. Each is driven and its effect read back:
 // the stopped text stays, Retry leaves a 2 / 2 counter, the clipboard holds the answer, and an edited
 // question keeps its first version one click away. Runs as a visitor, since Edit only asks for
@@ -34,7 +34,7 @@ test(
 		await page.addLocatorHandler(welcome, async () => {
 			await welcome.getByRole('button', { name: /start chatting/i }).click();
 		});
-		// A PR run's replayed reply arrives whole at once, so Stop was gone before the click (CUR-4027);
+		// A PR run's replayed reply arrives whole at once, so Stop was gone before the click;
 		// the first reply is held after one sentence there, and Retry's reply is a fresh one.
 		const held = await holdAnswerForStop(page);
 		await page.goto(answerShapeEntry(), { waitUntil: 'commit' });
@@ -50,7 +50,7 @@ test(
 			const stop = page.getByRole('button', { name: 'Stop generating' });
 			await expect(stop, 'the reply never started streaming').toBeVisible({ timeout: 30_000 });
 			// With output screening on, text arrives a sentence chunk at a time or all at the end,
-			// so wait for any text and stop at once (CUR-2749). Waiting for a length either stalled short of it or let
+			// so wait for any text and stop at once. Waiting for a length either stalled short of it or let
 			// the reply finish before the click.
 			await expect
 				.poll(() => answerText(page).then((t) => t.length), {
@@ -66,7 +66,7 @@ test(
 			const atStop = await answerText(page);
 			const answer = page.locator('[data-message-role="assistant"]').last();
 			// A stopped reply carries the interrupted notice, and the notice's Retry is the
-			// turn's only one (CUR-2864); the toolbar drops its copy while a notice shows.
+			// turn's only one; the toolbar drops its copy while a notice shows.
 			const retry = answer.getByRole('alert').getByRole('button', { name: 'Retry', exact: true });
 			await expect(retry, 'a stopped reply offers no Retry').toBeVisible({ timeout: 30_000 });
 			await expect(
@@ -90,7 +90,7 @@ test(
 			await expect(copy, 'the retried reply never finished').toBeVisible({ timeout: 120_000 });
 			const retried = await answerText(page);
 			// The counter sits in the answer's footer, below the fold under a long reply, so bring it on
-			// screen; CUR-2667's grader read a recording that never showed it as "no counter".
+			// screen; the grader read a recording that never showed it as "no counter".
 			const counter = answer.getByText(/^\s*\d+\s*\/\s*\d+\s*$/);
 			await counter.scrollIntoViewIfNeeded();
 			await expect(counter, 'Retry left no version counter').toHaveText(/2\s*\/\s*2/);
@@ -162,7 +162,7 @@ test(
 
 		// Step 5: the counter's previous arrow brings the first question back, with its own replies as
 		// they were: the retried one it was left on at 2 / 2, and the stopped one a step behind it.
-		// CUR-3329's grader expected the stopped reply up front; step 2 left the retry selected.
+		// The grader expected the stopped reply up front; step 2 left the retry selected.
 		await journeyStep(page, 'C2', 5, async () => {
 			await question.hover();
 			await question.getByRole('button', { name: 'Previous version' }).click();
@@ -188,7 +188,7 @@ test(
 	}
 );
 
-// CUR-2824 — C2 row 6: Stop pressed before any of the reply arrived. `latency_30s` holds the turn 30s
+// C2 row 6: Stop pressed before any of the reply arrived. `latency_30s` holds the turn 30s
 // before its first token, so the press lands in the empty window every time instead of racing the
 // stream. With nothing to keep, the bubble must say the reply was stopped and offer Retry, never the
 // failure line "No answer was produced". Preview-only, like the fault.
@@ -231,7 +231,7 @@ test(
 	}
 );
 
-// CUR-3018 — C2 row 6 on a cold instance: Stop pressed before the server has saved the question.
+// C2 row 6 on a cold instance: Stop pressed before the server has saved the question.
 // `question_save_delayed` holds the question's first write for 8s, so the press lands before it every
 // time. The pane used to go blank a moment after the stopped notice showed, because the post-stop
 // refresh loaded a snapshot without the turn; and a reload showed no stopped notice, because nothing
@@ -355,7 +355,7 @@ test(
 	}
 );
 
-// CUR-2971 — C2 row 6, pressed on /chat itself: Stop in the moment between Enter and the new
+// C2 row 6, pressed on /chat itself: Stop in the moment between Enter and the new
 // conversation's page taking over. That press used to reach no handler, so the full answer arrived
 // anyway. The conversation create is held until Stop has been pressed, so the press always lands on
 // the landing page, and `latency_30s` keeps any answer from arriving inside the assertion window.
@@ -411,7 +411,7 @@ test(
 	}
 );
 
-// CUR-2823 — C2 row 3, refused: a browser or embed that blocks the clipboard. Both the Clipboard API and
+// C2 row 3, refused: a browser or embed that blocks the clipboard. Both the Clipboard API and
 // the old execCommand path refuse here, so the only honest outcome is the control saying it couldn't
 // copy. The footer used to swallow the rejection and leave the Copy button as it was.
 test(

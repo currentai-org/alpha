@@ -1,5 +1,5 @@
 // What a prompt section is and how a list of them renders. It imports nothing, so both
-// persona.ts and promptSections.ts can build section lists from it without importing each other. (CUR-3892)
+// persona.ts and promptSections.ts can build section lists from it without importing each other.
 
 /**
  * How often a section's text changes: `static` never between deploys, `deployment` with this

@@ -29,7 +29,7 @@
 	onMount(load);
 
 	// "Forget everything" runs from this page and its receipt opens over it. Without a reload the panel
-	// behind the receipt kept the pre-wipe counts, so the page contradicted the receipt (CUR-2666).
+	// behind the receipt kept the pre-wipe counts, so the page contradicted the receipt.
 	// wipeCommitted turns true once the server has confirmed the delete.
 	$effect(() => {
 		if ($wipeCommitted) load();

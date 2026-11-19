@@ -1,5 +1,5 @@
 // Loaded into the app's own process by scripts/sign-in-local.sh (`node --import`), never imported by
-// anything under src/ (CUR-1552). Better Auth compiles Google's and GitHub's token, profile and key
+// anything under src/. Better Auth compiles Google's and GitHub's token, profile and key
 // URLs in, so on the local sign-in leg this wraps `fetch` and sends exactly those URLs to the mock
 // provider running beside the app. Every other request goes out untouched, and the provider code that
 // runs is the code that ships.

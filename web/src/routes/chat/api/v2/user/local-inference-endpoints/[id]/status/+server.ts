@@ -8,7 +8,7 @@
  *  Managed: two-stage check. (1) Is the Pangolin tunnel itself open? Closed -> plain offline (red
  *  dot) -- expected state for a paired device that's turned off, not an error. (2) Tunnel open -> is
  *  the inference server actually answering behind it? A closed tunnel makes stage 2 meaningless, so
- *  it only runs once stage 1 confirms the tunnel is up. (CUR-1267)
+ *  it only runs once stage 1 confirms the tunnel is up.
  *  Direct: single check -- is the server itself answering. No tunnel, so no stage 1. */
 import { error, type RequestHandler } from "@sveltejs/kit";
 import { superjsonResponse } from "$lib/chat/server/api/utils/superjsonResponse";
@@ -19,20 +19,23 @@ import { getLocalEndpointForUserAndId } from "$lib/chat/server/db/localInference
 import { getSiteStatus, PangolinApiError } from "$lib/chat/server/managedInference/pangolinClient";
 import { checkLocalEndpointModels, headersRecord } from "$lib/chat/server/localModels";
 import { logger } from "$lib/chat/server/logger";
+import { limitEndpointStatus } from "$lib/chat/server/localEndpointLimits";
 
 // Endpoint ids we've already logged a "site not found" error for, this process's
 // lifetime -- the Settings UI polls every ~10s, and this state doesn't change on its own (it needs
 // a human to remove/re-pair the row), so logging on every poll would spam the stream for no new
-// information. Same "warn once" idiom as syftClient.ts's warnedUnconfigured. (CUR-1267)
+// information. Same "warn once" idiom as syftClient.ts's warnedUnconfigured.
 const warnedSiteNotFound = new Set<string>();
 
 const STALE_SITE_MESSAGE = "This server's Pangolin tunnel no longer exists — remove and re-pair it.";
 const TUNNEL_UNRESPONSIVE_MESSAGE =
 	"The Pangolin tunnel is open, but the inference server behind it didn't respond.";
 
-export const GET: RequestHandler = async ({ locals, params }) => {
+export const GET: RequestHandler = async ({ locals, params, getClientAddress }) => {
 	const userId = requireUserId(locals);
 	if (!localInferenceEndpointsEnabled()) error(404, "Not found");
+	// Every check reaches the stored URL, so it goes through the shared limiter.
+	await limitEndpointStatus(userId, getClientAddress());
 
 	const row = await getLocalEndpointForUserAndId(userId, params.id ?? "");
 	if (!row) error(404, "Not found");

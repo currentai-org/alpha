@@ -1,4 +1,4 @@
-// A bare `$effect.root(() => {...})` statement discards the dispose function it returns (CUR-1157). Svelte's own compiler marks that root
+// A bare `$effect.root( => {...})` statement discards the dispose function it returns. Svelte's own compiler marks that root
 // EFFECT_PRESERVED specifically so it survives the enclosing component's own destroy cascade (see
 // svelte.dev/docs/svelte/$effect#$effect.root: "a non-tracked scope that doesn't auto-cleanup") --
 // the caller has to invoke the returned function itself (typically via onDestroy), or the effect,

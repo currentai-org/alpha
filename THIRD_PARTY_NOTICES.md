@@ -10,23 +10,22 @@ from scratch by Current AI: where it came from, its licence, and where it sits.
 | Path | Licence | Why |
 | --- | --- | --- |
 | `LICENSE` (root) | MIT | Current AI's own code |
-| `web/src/lib/chat/`, `web/src/routes/chat/` and the shared app files named in "Hugging Face chat-ui" below | Apache-2.0 | Derived from Hugging Face chat-ui. Its licence is `web/LICENSE.chat-ui` |
+| The files in `web/src/lib/chat/`, `web/src/routes/chat/` and the shared app files named in "Hugging Face chat-ui" below that descend from it, marked by an SPDX header or listed at the end of this file | Apache-2.0 | Derived from Hugging Face chat-ui. Its licence is `web/LICENSE.chat-ui` |
 | `agent-service/` | MIT (`agent-service/LICENSE`) | Current AI's own code, same terms as the root |
 | `agent-service/deploy/hermes/*.patch` | MIT | Patches to Nous Research's hermes-agent. Licence text: `agent-service/deploy/hermes/LICENSE.hermes` |
 
-`web/package.json` therefore declares `MIT AND Apache-2.0`: the chat subtree is a chat-ui derivative, the rest
+`web/package.json` therefore declares `MIT AND Apache-2.0`: part of the chat subtree is a chat-ui derivative, the rest
 is Current AI's.
 
 ## Forked and adapted code
 
 | What | Source | Licence | Where |
 | --- | --- | --- | --- |
-| Chat application | [huggingface/chat-ui](https://github.com/huggingface/chat-ui), forked at commit `caaf90712ce966f45c0ad171f17f0b619861b0c3`, Copyright 2018- The Hugging Face team. The upstream repository carries no NOTICE file. | Apache-2.0 | `web/src/lib/chat/**`, `web/src/routes/chat/**`, and `web/src/app.html`, `web/src/app.d.ts`, `web/src/ambient.d.ts`, `web/src/styles/main.css`, `web/package.json`, `web/vite.config.ts`, `web/tsconfig.json`, `web/scripts/setups/*`. Files were changed from upstream (storage, auth, model routing, provenance and many other changes); `web/UPSTREAM.md` records the fork point and the path map. Licence text: `web/LICENSE.chat-ui` |
+| Chat application | [huggingface/chat-ui](https://github.com/huggingface/chat-ui), forked at commit `caaf90712ce966f45c0ad171f17f0b619861b0c3`, Copyright 2018- The Hugging Face team. The upstream repository carries no NOTICE file. | Apache-2.0 | those files of `web/src/lib/chat/`, `web/src/routes/chat/`, and the shared `web/src/app.html`, `web/src/app.d.ts`, `web/src/ambient.d.ts`, `web/src/styles/main.css`, `web/package.json`, `web/vite.config.ts`, `web/tsconfig.json`, `web/scripts/setups/*`. Files were changed from upstream (storage, auth, model routing, provenance and many other changes); `web/UPSTREAM.md` records the fork point and the path map. Each of these files that can hold a comment starts with an SPDX header (`Apache-2.0`, `Modified by Current AI from huggingface/chat-ui`) as Apache-2.0 section 4(b) asks; the files that cannot (JSON, images and the like) are listed at the end of this file. Licence text: `web/LICENSE.chat-ui` |
 | Markdown block splitter | [vercel/streamdown](https://github.com/vercel/streamdown) `parse-blocks.tsx`, Copyright 2023 Vercel, Inc. | Apache-2.0 | `web/src/lib/chat/utils/parseBlocks.ts` (upstream header kept) |
 | Tool-run summary table | [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) `summarizeToolRun`, Copyright (c) 2025 Nous Research | MIT (text below) | `web/src/lib/chat/utils/trace/toolRunSummary.ts` |
 | ACP edit-approval patch | hermes-agent, Copyright (c) 2025 Nous Research | MIT (text below) | `agent-service/deploy/hermes/0002-acp-confirm-execute.patch` |
 | SvelteKit status patch | [sveltejs/kit](https://github.com/sveltejs/kit) 2.70.3 | MIT | `web/patches/@sveltejs__kit@2.70.3.patch` |
-| Accept-header negotiation | acceptmarkdown.com's published SvelteKit recipe (`parseAccept`, `preferredType`, `appendVaryAccept`) | Not stated on the source page | `web/src/hooks.server.ts` |
 | Guest-library list for the code sandbox | e2b-dev/code-interpreter `template/requirements.txt` | Apache-2.0 | `agent-service/deploy/e2b-template/guest-libraries.txt` (a list of package names) |
 
 ## Prompt and evaluation text taken from elsewhere
@@ -43,19 +42,26 @@ is Current AI's.
 | Inter, Noto Serif, Plus Jakarta Sans, Cormorant Garamond, DM Mono, DM Sans | npm `@fontsource*` packages, installed from the lockfile, not copied into this tree | SIL OFL-1.1 | Imported by `web/src/app.css` |
 | Icon font built from `shared/icons/svg` | Built by `shared/icons/build.mjs` with the fantasticon tool | Drawn for Current AI by its design studio; Current AI's own work | `web/static/fonts/icons/aipotluck-icons.woff2` |
 
-## Logos and trademarks
+## Trademarks
 
-These are trademarks or brand assets, not code. They are included only to name or credit the organisation
-and are not licensed under the MIT licence. Nothing here grants a right to use them.
+All product names, logos and brands named or shown in this repository are the property of their respective
+owners. Use of these names, logos and brands is for identification purposes only and does not imply
+endorsement of, sponsorship by or affiliation with their owners. They are trademarks or brand assets, not
+code: neither the MIT licence nor the Apache-2.0 licence covers them, and this repository claims no licence or
+permission to use them and grants none.
 
 - Organisation marks in `web/static/logos/` (swiss-ai, bsc, ai-singapore, speakleash, zhipu, mistral, cohere,
   huggingface, openrouter, cloudflare, featherless, infomaniak, cscs, phoeniqs, common-voice,
-  mozilla-data-collective). `web/static/logos/README.md` records where each was fetched. Each belongs to its
-  organisation.
+  mozilla-data-collective). Each appears beside the name of the organisation it identifies, as a nominative
+  reference. `web/static/logos/README.md` lists each file with the organisation that owns the mark and
+  records where it was fetched.
 - Hugging Face and chat-ui marks: the icons in `web/static/chatui/`. The chat-ui code licence does not extend to Hugging Face's marks.
 - Current AI and AI Potluck names, logos and illustrations: `web/src/lib/assets/` (`current-ai-*`,
   `aipotluck*`, `alpha-wordmark.svg`), `web/static/ai-potluck-logo.svg`, the `*-og*.png` share images, the
   favicons and web-app icons. Current AI keeps all rights in these.
+
+A rights holder who objects to the use of a mark can ask for it to be removed by opening an issue on this
+repository.
 
 ## Scraped and generated data
 
@@ -109,3 +115,15 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## Chat-ui files without a header
+
+These files are covered by the chat-ui row above but cannot carry a comment, so they have no per-file
+notice. Every other chat-ui file starts with an SPDX header that says it was modified.
+
+<details><summary><code>.json</code> files (2)</summary>
+
+- `web/package.json`
+- `web/tsconfig.json`
+
+</details>

@@ -11,7 +11,7 @@ import { formatUpdateDate } from '../../src/lib/utils/formatUpdateDate';
 //
 // WHAT THIS SPEC WILL NOT DO. It stops before the products behind a category verdict, because there
 // is nothing to drive: opening a category renders the gap and the maturity stage and links to no
-// product page at all (CUR-1591), while the product pages themselves exist and answer 200. Step 5 of
+// product page at all, while the product pages themselves exist and answer 200. Step 5 of
 // docs/journeys/g1-find-a-gap.md is written into the table and deliberately unasserted — a spec that
 // quietly dropped the step would make the gap invisible, which is the failure this whole loop is for.
 //
@@ -20,7 +20,7 @@ import { formatUpdateDate } from '../../src/lib/utils/formatUpdateDate';
 // red on the map working exactly as intended. What must not change is that a category states how many
 // products it was judged from: without that, "no leading option" and "nobody has looked yet" render
 // identically, and those are the two states a builder is choosing between. The row counts what it
-// draws; the category panel carries the assessed total, closed products included (CUR-732).
+// draws; the category panel carries the assessed total, closed products included.
 
 const MAP_LANDING = '/map';
 const MAP_METHOD = '/map/methodology';
@@ -53,7 +53,7 @@ test(
 			await intoMap.click();
 			await page.waitForURL(new RegExp(`${MAP_LANDING}$`), { timeout: 30_000 });
 			// The h1 is CMS copy ("We are mapping open source AI, and looking for the gaps" since
-			// CUR-3904), so this asserts what it has to say, not its wording.
+			//), so this asserts what it has to say, not its wording.
 			const premise = page.getByRole('heading', { level: 1 }).first();
 			await expect(
 				premise,
@@ -76,7 +76,7 @@ test(
 
 		// The landing and the map page each state the map's version and last update. They read the
 		// same dataset, so they must agree: the landing said "V0.3 - Last update: 5 Sept" while the
-		// map one click on said "0.3.0 - last updated 25 Sept" (CUR-1631). The landing reads
+		// map one click on said "0.3.0 - last updated 25 Sept". The landing reads
 		// "Gap map 0.3.0 – Updated 3 weeks ago", with the exact date on its <time>.
 		const versionLine = /Version\s+\S+\s*[-–]\s*last update/i;
 		const landingStamp = page
@@ -125,7 +125,7 @@ test(
 		// Step 4. A category names its stage and its gaps, and says what closing one would take.
 		await journeyStep(page, 'G1', 4, async () => {
 			// Click the category's own caption, not the row's centre: the row also holds its product
-			// squares, and a click on one of those opens that product's panel instead (CUR-732).
+			// squares, and a click on one of those opens that product's panel instead.
 			await categories.first().getByText(CATEGORY).click();
 			await expect(
 				page.getByText(/\d+\s+assessed/i).first(),
@@ -170,7 +170,7 @@ test(
 	{ tag: '@G1' },
 	async ({ page }) => {
 		// "Product view on the develop branch". Reached by URL rather than by clicking, because
-		// nothing on the map links here (CUR-1591) — which is itself the finding, not a shortcut.
+		// nothing on the map links here — which is itself the finding, not a shortcut.
 		const res = await page.goto('/product/pytorch', { waitUntil: 'domcontentloaded' });
 		test.skip(
 			res?.status() === 404,

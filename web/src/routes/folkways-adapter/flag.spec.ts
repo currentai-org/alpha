@@ -15,7 +15,7 @@ import { adapterGate } from './flag';
 const req = (authorization?: string) =>
 	new Request('http://adapter/v1/models', { headers: authorization ? { authorization } : {} });
 
-// Driven through adapterGate rather than callerAuthorized directly (CUR-1626 un-exported it): the
+// Driven through adapterGate rather than callerAuthorized directly (un-exported it): the
 // claim worth pinning is what the ROUTE answers a caller, not what a predicate returns. The flag is
 // on throughout, so a 401 here can only be the credential check.
 describe('adapterGate auth (fail closed: the host key is the adapter password)', () => {
@@ -46,7 +46,7 @@ describe('adapterGate auth (fail closed: the host key is the adapter password)',
 });
 
 // A positive test that only asserts "a disabled adapter refuses the request" would also pass for a
-// bare 404 (CUR-1626). The response has to hold a pair of distinctions, so each test below names one
+// bare 404. The response has to hold a pair of distinctions, so each test below names one
 // and fails if the two states it separates collapse back together.
 describe('adapterGate (a disabled route and a missing route must not answer the same)', () => {
 	const authed = () =>

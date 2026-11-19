@@ -3,10 +3,11 @@ import { randomUUID } from "node:crypto";
 import { describe, it, expect, afterAll } from "vitest";
 
 import { cleanupE2eArtifacts, isE2eEmail, runPatterns } from "../cleanup-e2e-artifacts.mjs";
+import { tourEmail } from "../lib/tourPersonas.mjs";
 
 // An e2e sign-in leaves two identities, Better Auth's `user` row and the legacy shadow
 // `users` row the auth bridge mints, with its settings and conversations. These run the real cleanup
-// against the stateful project's Postgres. (CUR-2529)
+// against the stateful project's Postgres.
 const sql = postgres(process.env.DATABASE_URL ?? "", { max: 1 });
 afterAll(() => sql.end({ timeout: 5 }));
 
@@ -37,7 +38,7 @@ async function remaining(a: Awaited<ReturnType<typeof seedAccount>>) {
 	return row;
 }
 
-describe("cleanup-e2e-artifacts (CUR-2529)", () => {
+describe("cleanup-e2e-artifacts", () => {
 	it("removes an e2e account's shadow user, settings, sessions and conversations, keeps its report detached, and leaves a real account alone", async () => {
 		const e2e = await seedAccount(`e2e-${randomUUID()}@example.org`);
 		const real = await seedAccount(`person-${randomUUID()}@realmail.test`);
@@ -98,7 +99,7 @@ describe("cleanup-e2e-artifacts (CUR-2529)", () => {
 	});
 
 	// A run cancelled by a newer push never reaches its verdict job's cleanup, so the next
-	// run sweeps each cancelled predecessor's accounts before its own shards start. (CUR-2918)
+	// run sweeps each cancelled predecessor's accounts before its own shards start.
 	it("sweeps several cancelled runs' fresh accounts and keeps a fresh account from a run it was not named", async () => {
 		const cancelledA = await seedAccount(`e2e-r444-${randomUUID()}@example.org`, new Date());
 		const cancelledB = await seedAccount(`e2e-r555-${randomUUID()}@currentai.org`, new Date());
@@ -109,6 +110,22 @@ describe("cleanup-e2e-artifacts (CUR-2529)", () => {
 		expect((await remaining(cancelledA)).ba).toBe(0);
 		expect((await remaining(cancelledB)).ba).toBe(0);
 		expect(await remaining(live)).toMatchObject({ ba: 1, shadow: 1, sessions: 1 });
+	});
+
+	// The walkthrough tours sign in as named personas, not e2e-*, and nothing deleted those accounts:
+	// about 950 piled up in the shared preview database, holding their bucket files past the reaper.
+	it("deletes a walkthrough tour's persona account once it is past the age floor and keeps one a take may still be using", async () => {
+		const oldTake = await seedAccount(tourEmail("sam.rivera"), HOURS_AGO(4));
+		const invitee = await seedAccount(tourEmail("sam.okafor"), HOURS_AGO(4));
+		const liveTake = await seedAccount(tourEmail("jo.lindqvist"), new Date());
+		const lookalike = await seedAccount(`demo.backup.${randomUUID().slice(0, 5)}@example.org`, HOURS_AGO(4));
+
+		await cleanupE2eArtifacts(sql);
+
+		expect(await remaining(oldTake)).toMatchObject({ ba: 0, shadow: 0, settings: 0, sessions: 0, conversations: 0 });
+		expect((await remaining(invitee)).ba).toBe(0);
+		expect(await remaining(liveTake)).toMatchObject({ ba: 1, shadow: 1, sessions: 1 });
+		expect(await remaining(lookalike)).toMatchObject({ ba: 1, shadow: 1, sessions: 1 });
 	});
 
 	it("removes a shadow user whose Better Auth user an earlier run already deleted", async () => {
@@ -132,6 +149,10 @@ describe("cleanup-e2e-artifacts (CUR-2529)", () => {
 		expect(isE2eEmail("mock-oidc-e2e@example.org")).toBe(true);
 		expect(isE2eEmail("e2e-1234@example.org.evil.test")).toBe(false);
 		expect(isE2eEmail("someone@example.org")).toBe(false);
+		expect(isE2eEmail(tourEmail("priya.natarajan"))).toBe(true);
+		expect(isE2eEmail("sam.rivera@example.org")).toBe(false);
+		expect(isE2eEmail("sam.rivera.ab12c@realmail.test")).toBe(false);
+		expect(isE2eEmail("sam.rivera.ab12c@example.org.evil.test")).toBe(false);
 		expect(isE2eEmail(null)).toBe(false);
 	});
 });

@@ -17,7 +17,7 @@ afterEach(() => {
 	env.token = "t";
 });
 
-describe("deleteAgentSessions (CUR-4484)", () => {
+describe("deleteAgentSessions", () => {
 	it("asks agent-service to delete the conversations' sandboxes under the visitor's own subject", async () => {
 		const fetchMock = vi.fn(async () => Response.json({ workdirs_deleted: 1, sandboxes_deleted: 2 }));
 		vi.stubGlobal("fetch", fetchMock);
@@ -46,7 +46,7 @@ describe("deleteAgentSessions (CUR-4484)", () => {
 	});
 });
 
-describe("deleteAgentServiceData (CUR-1722)", () => {
+describe("deleteAgentServiceData", () => {
 	it("asks agent-service to delete the visitor's whole history and returns the task count", async () => {
 		const fetchMock = vi.fn(async () => Response.json({ tasks_deleted: 4, workdirs_deleted: 1 }));
 		vi.stubGlobal("fetch", fetchMock);

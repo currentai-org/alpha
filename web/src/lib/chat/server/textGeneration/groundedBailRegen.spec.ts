@@ -1,12 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-// The flag plane, controllable. Default implementation is the real contract for an unpolled PostHog —
-// call the caller's fallback — matching flagEnabledOr's own default-OFF-until-configured shape.
-const flagEnabledOr = vi.fn((_key: string, fallback: () => boolean) => fallback());
-vi.mock("$lib/chat/server/flags", () => ({
-	flagEnabledOr: (k: string, f: () => boolean) => flagEnabledOr(k, f),
-}));
-
 // Full-replacement mock, required not optional: textGeneration/index.ts boots the model catalog at
 // import time outside CI's hermetic mode (models.ts; groundedBailRegen imports from the same module).
 const textGenerationWithoutTitle = vi.fn();
@@ -16,11 +9,7 @@ vi.mock("./index", () => ({
 
 import { logger } from "$lib/chat/server/logger";
 import { MessageUpdateType, type MessageUpdate } from "$lib/chat/types/MessageUpdate";
-import {
-	GROUNDED_BAIL_REGEN_FLAG,
-	groundedBailRegenEnabled,
-	runGroundedBailRegen,
-} from "./groundedBailRegen";
+import { runGroundedBailRegen } from "./groundedBailRegen";
 import type { TextGenerationContext } from "./types";
 
 async function* src(events: MessageUpdate[]): AsyncGenerator<MessageUpdate> {
@@ -44,20 +33,12 @@ const ctx = {
 } as unknown as TextGenerationContext;
 
 beforeEach(() => {
-	flagEnabledOr.mockClear();
 	textGenerationWithoutTitle.mockReset();
 	vi.spyOn(logger, "warn").mockImplementation(() => undefined as never);
 });
 afterEach(() => {
 	vi.useRealTimers();
 	vi.restoreAllMocks();
-});
-
-describe("groundedBailRegenEnabled", () => {
-	it("reads the grounded-bail-regen flag, defaulting to off", () => {
-		expect(groundedBailRegenEnabled()).toBe(false);
-		expect(flagEnabledOr).toHaveBeenCalledWith(GROUNDED_BAIL_REGEN_FLAG, expect.any(Function));
-	});
 });
 
 describe("runGroundedBailRegen", () => {

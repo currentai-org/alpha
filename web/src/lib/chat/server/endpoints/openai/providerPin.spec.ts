@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-// A lane names its key's env var; resolveClassifierLane reads the value from config (CUR-2640).
+// A lane names its key's env var; resolveClassifierLane reads the value from config.
 vi.mock("$lib/chat/server/config", () => {
 	const cfg: Record<string, string> = { OWN_KEY: "own-key", BLANK_KEY: "  " };
 	const config = new Proxy(cfg, { get: (t, prop) => (prop in t ? Reflect.get(t, prop) : "") });
@@ -18,7 +18,7 @@ const BASE = "swiss-ai/Apertus-70B-Instruct-2509";
 /** The LiteLLM gateway — `config.OPENAI_BASE_URL`, the lane ordinary catalog models are built on. */
 const GATEWAY = "https://api-internal.publicai.co/v1";
 /** A per-model host — reachable ONLY as an endpoint override; nothing global points here. The compare
- *  panel is the live example (SECOND_OPINION_BASE_URL), and CSCS direct was another until CUR-243. */
+ *  panel is an example (SECOND_OPINION_BASE_URL). */
 const OWN_HOST = "https://api.swissai.svc.cscs.ch/v1";
 /** A lane's own wire id, as opposed to the registration's internal id. endpointOai sends this verbatim
  *  and it deliberately bypasses the provider pin, which is the case the tests below are about. */
@@ -52,10 +52,9 @@ describe("describeServingLane — what the [ttft] log says about where a turn we
 	it("names the model's OWN host, not the global gateway, when the model overrides its endpoint", () => {
 		// The contract this function exists for: report the model's own endpoint, never the global.
 		// Reading config.OPENAI_BASE_URL logs a host a turn never touched whenever a model overrides its
-		// endpoint. No live config overrides one now, so this scenario is injected rather than reproduced
-		// from deployed values: the contract is what makes the [ttft] log trustworthy the next time any
-		// model overrides its endpoint, and the compare panel already does. A test that only reproduced the
-		// deployed values would stop guarding anything the moment the deployment changed.
+		// endpoint. The scenario is injected rather than reproduced from deployed values, so the test
+		// keeps guarding the [ttft] log whatever the deployment overrides. A test that only reproduced
+		// the deployed values would stop guarding anything the moment the deployment changed.
 		const { baseHost } = describeServingLane(
 			{ id: "own-lane-model", endpoints: [{ type: "openai", baseURL: OWN_HOST, modelId: OWN_WIRE_ID }] },
 			GATEWAY,
@@ -80,9 +79,9 @@ describe("describeServingLane — what the [ttft] log says about where a turn we
 	it("mirrors the wire on an EMPTY lane id — reports what was sent, not what would have worked", () => {
 		// Locks `??` against `||`. endpointOai sends `laneModelId ?? resolveProviderModelId(...)`, so an
 		// empty lane id goes on the wire as an empty model. Falling back to the pinned id here would make
-		// the log describe a request we did not make — the exact class of bug this function fixes. No
-		// current config produces "" (both call sites guard on truthiness); this pins the operator so a
-		// later one can't quietly reintroduce the divergence.
+		// the log describe a request that was never made. Both call sites guard on truthiness, so no
+		// config produces ""; this test pins the operator so a later change can't quietly make the log
+		// and the wire disagree.
 		const { resolvedModelId } = describeServingLane(
 			{ id: BASE, endpoints: [{ type: "openai", baseURL: OWN_HOST, modelId: "" }] },
 			GATEWAY,
@@ -93,7 +92,7 @@ describe("describeServingLane — what the [ttft] log says about where a turn we
 
 	it("leaves an ordinary catalog model unchanged — gateway host, provider-pinned id", () => {
 		// Catalog models build endpoints[0] FROM config.OPENAI_BASE_URL and set no lane modelId
-		// (modelsCatalog.ts), so the fix must be a no-op for the overwhelming majority of turns.
+		// (modelsCatalog.ts), so for them this must report exactly the configured values.
 		const { baseHost, resolvedModelId } = describeServingLane(
 			{ id: BASE, endpoints: [{ type: "openai", baseURL: GATEWAY }] },
 			GATEWAY,
@@ -158,7 +157,7 @@ describe("describeServingLane — what the [ttft] log says about where a turn we
 
 describe("resolveClassifierLane — the search classifier follows the model serving the turn", () => {
 	/** A registration carrying its OWN lane — own host, own key (by env var name), own wire id. `maybeAddCompareModels`
-	 *  builds the first two today; a MODELS override supplies the third. A per-request model swap
+	 *  builds the first two; a MODELS override supplies the third. A per-request model swap
 	 *  is the shape this exercises. */
 	const ownLaneModel = {
 		id: "own-lane-model",
@@ -168,9 +167,9 @@ describe("resolveClassifierLane — the search classifier follows the model serv
 	const catalogModel = { id: BASE, endpoints: [{ type: "openai", baseURL: GATEWAY }] };
 
 	it("sends the SERVING model's own host, key and wire id — not the gateway the default lives on", () => {
-		// The bug: the classifier read defaultModel.id + config.OPENAI_BASE_URL, so a turn's content
-		// came from one host while its search decision was made by another model on the gateway.
-		// Nothing errored — both globals were stale together, so the request was coherent and wrong.
+		// A classifier that read defaultModel.id + config.OPENAI_BASE_URL would take a turn's search
+		// decision from another model on the gateway while its content came from this host. Nothing would
+		// error: both globals are stale together, so the request is coherent and wrong.
 		const lane = resolveClassifierLane(ownLaneModel, GATEWAY, "publicai");
 		expect(lane.baseURL).toBe(OWN_HOST);
 		expect(lane.apiKey).toBe("own-key");
@@ -195,6 +194,18 @@ describe("resolveClassifierLane — the search classifier follows the model serv
 	it("does NOT pin a provider on an own lane — `:publicai` is an HF-router suffix, not a model name", () => {
 		const keyed = { id: BASE, endpoints: [{ type: "openai", baseURL: OWN_HOST, apiKeyEnv: "OWN_KEY" }] };
 		expect(resolveClassifierLane(keyed, GATEWAY, "publicai").modelId).toBe(BASE);
+	});
+
+	it("never returns a visitor-registered local endpoint's URL as the lane, so our key can't follow it there", () => {
+		const local = {
+			id: "local:e1:llama",
+			endpoints: [
+				{ type: "openai", baseURL: "https://attacker.example/v1", modelId: "llama", routerProvider: "local" },
+			],
+		};
+		const lane = resolveClassifierLane(local, GATEWAY, "publicai");
+		expect(lane.baseURL).toBe(GATEWAY);
+		expect(lane.ownLane).toBe(false);
 	});
 
 	it("falls back to the global lane for an agent endpoint — it cannot answer a logprob call", () => {
@@ -233,25 +244,25 @@ describe("wireModelId pins a table model on every HF-router call, whatever the c
 			...over,
 		});
 
-	it("refuses an unpinned GLM id with no provider, with auto, and over the default pin (CUR-2112)", () => {
+	it("refuses an unpinned GLM id with no provider, with auto, and over the default pin", () => {
 		expect(() => wire({})).toThrow(/zai-org\/GLM-5\.3 has no HF provider pin/);
 		expect(() => wire({ provider: "auto" })).toThrow(/no HF provider pin/);
 		expect(() => wire({ defaultProvider: "publicai" })).toThrow(/no HF provider pin/);
 		expect(() => wire({ laneModelId: "zai-org/GLM-5.3" })).toThrow(/no HF provider pin/);
 	});
 
-	it("pins GLM-5.2-FP8 to zai-org, the known exception until CUR-2321", () => {
+	it("pins GLM-5.2-FP8 to zai-org, the known exception until", () => {
 		expect(wire({ baseModelId: "zai-org/GLM-5.2-FP8", provider: "auto" })).toBe("zai-org/GLM-5.2-FP8:zai-org");
 	});
 
-	it("pins GLM-5.2 to scaleway, the EU provider chosen on terms", () => {
-		expect(wire({ baseModelId: "zai-org/GLM-5.2", provider: "auto" })).toBe("zai-org/GLM-5.2:scaleway");
+	it("pins GLM-5.2 to featherless-ai, never deepinfra, which the router now passes through OpenRouter", () => {
+		expect(wire({ baseModelId: "zai-org/GLM-5.2", provider: "auto" })).toBe("zai-org/GLM-5.2:featherless-ai");
 	});
 
-	it("pins the second-opinion panel's Qwen to scaleway and Gemma to featherless-ai, never the router's pick (CUR-2599)", () => {
-		expect(wire({ baseModelId: "Qwen/Qwen3.6-35B-A3B", provider: "auto" })).toBe("Qwen/Qwen3.6-35B-A3B:scaleway");
+	it("pins the second-opinion panel's Qwen to deepinfra and Gemma to featherless-ai, never the router's pick", () => {
+		expect(wire({ baseModelId: "Qwen/Qwen3.6-35B-A3B", provider: "auto" })).toBe("Qwen/Qwen3.6-35B-A3B:deepinfra");
 		expect(wire({ baseModelId: "Qwen/Qwen3.6-35B-A3B", defaultProvider: "publicai" })).toBe(
-			"Qwen/Qwen3.6-35B-A3B:scaleway"
+			"Qwen/Qwen3.6-35B-A3B:deepinfra"
 		);
 		expect(wire({ baseModelId: "google/gemma-4-31B-it", provider: "auto" })).toBe(
 			"google/gemma-4-31B-it:featherless-ai"
@@ -264,7 +275,7 @@ describe("wireModelId pins a table model on every HF-router call, whatever the c
 	});
 
 	it("pins a lane modelId too, and leaves one that already names a provider alone", () => {
-		expect(wire({ laneModelId: "zai-org/GLM-5.2" })).toBe("zai-org/GLM-5.2:scaleway");
+		expect(wire({ laneModelId: "zai-org/GLM-5.2" })).toBe("zai-org/GLM-5.2:featherless-ai");
 		expect(wire({ laneModelId: "zai-org/GLM-5.3:scaleway" })).toBe("zai-org/GLM-5.3:scaleway");
 	});
 
@@ -281,7 +292,7 @@ describe("wireModelId pins a table model on every HF-router call, whatever the c
 	});
 });
 
-describe("describeServingLane never throws over an unpinned GLM id (CUR-2112)", () => {
+describe("describeServingLane never throws over an unpinned GLM id", () => {
 	it("reports the bare id, leaving the refusal to the call itself", () => {
 		const glm = { id: "zai-org/GLM-5.3", endpoints: [{ type: "openai", baseURL: "https://router.huggingface.co/v1" }] };
 		expect(describeServingLane(glm, GATEWAY, "publicai")).toEqual({

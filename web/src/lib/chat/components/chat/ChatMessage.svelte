@@ -1,7 +1,12 @@
+<!--
+SPDX-FileCopyrightText: 2018- The Hugging Face team
+SPDX-License-Identifier: Apache-2.0
+Modified by Current AI from huggingface/chat-ui.
+-->
 <script lang="ts">
 	import { messageTooLongMessage } from '$lib/chat/utils/messageTooLong';
 	import type { Message } from '$lib/chat/types/Message';
-	import { getContext, untrack } from 'svelte';
+	import { untrack } from 'svelte';
 	import { detectCrisisSignal } from '$lib/chat/crisis';
 	import CrisisResources from './CrisisResources.svelte';
 
@@ -16,6 +21,7 @@
 	import LeftOutFile from './LeftOutFile.svelte';
 
 	import MarkdownRenderer from './MarkdownRenderer.svelte';
+	import SealedMessageNotice from './SealedMessageNotice.svelte';
 	import MediaAudioPlayer from '../players/MediaAudioPlayer.svelte';
 	import { page } from '$app/state';
 	import { get } from 'svelte/store';
@@ -54,6 +60,7 @@
 	import PastChatsNotice from './PastChatsNotice.svelte';
 	import AgentRouteNotice from './AgentRouteNotice.svelte';
 	import SearchUnfinishedNotice from './SearchUnfinishedNotice.svelte';
+	import SearchEmptyNotice from './SearchEmptyNotice.svelte';
 	import WritePolicyNotice from './WritePolicyNotice.svelte';
 	import AgentConfirmPrompt from './AgentConfirmPrompt.svelte';
 	import UrlNotice from './UrlNotice.svelte';
@@ -79,7 +86,6 @@
 	import { reconcileFinalAnswerText } from '$lib/chat/utils/finalAnswerReconciliation';
 	import { textDirection } from '$lib/chat/utils/textDirection';
 	import { m } from '$lib/paraglide/messages.js';
-	import { syncClientById } from '../../../../../config/thunderbolt';
 	import { citationSourceList, parseVisitorSources } from '$lib/chat/utils/visitorSources';
 	import { citationOrder } from '$lib/chat/utils/trace/citedIndices';
 
@@ -112,7 +118,7 @@
 		// next message is scoped to it. ChatWindow owns the draft, so it does the insert.
 		onquote?: (text: string) => void;
 		// Sends a message as the visitor. The low-resource notice ends by offering to try
-		// anyway, and this is the button that takes the offer, so nobody has to type the reply. (CUR-1841)
+		// anyway, and this is the button that takes the offer, so nobody has to type the reply.
 		onsend?: (text: string) => void;
 		// 1-indexed position of this message among the conversation's rendered turns (ChatWindow's
 		// `{#each messages as message, idx}`). Analytics-only — carried down to the provenance/
@@ -148,7 +154,7 @@
 	// never opens XRAY onto a panel that isn't there.
 	let secondOpinionOffered = $derived(facts.answered && !facts.declined && !facts.verified);
 
-	// The model this answer was asked of (CUR-3234). An answer from before a mid-chat switch keeps the
+	// The model this answer was asked of. An answer from before a mid-chat switch keeps the
 	// model it was sent to; answers persisted before the field shipped fall back to the conversation's.
 	let turnModelId = $derived(message.requestedModel ?? modelId);
 
@@ -157,16 +163,10 @@
 		isServedByBackup(message.routerMetadata, turnModelId, message.failover)
 	);
 
-	// The model id the persistent badge below the answer names, if any (CUR-125, corrected — see
+	// The model id the persistent badge below the answer names, if any (corrected — see
 	// servedModelId's own comment for why a bare `.model` check suppressed the badge on the ordinary,
 	// correctly-served case).
-	// An answer a sync client wrote (CUR-4312) was not served here, so no Alpha model is named on it.
-	// A turn a sync client wrote shows like Alpha's own; hovering it says where it came from and that
-	// Alpha did not screen it.
-	let syncedFrom = $derived(syncClientById(message.origin));
-	let syncedTitle = $derived(
-		syncedFrom ? m.chat_writtenInTitle({ app: syncedFrom.label }) : undefined
-	);
+	// An answer written outside Alpha (a stored `origin`) was not served here, so no Alpha model is named on it.
 
 	let badgeModelId = $derived(
 		message.origin ? undefined : servedModelId(message.routerMetadata, turnModelId)
@@ -223,7 +223,7 @@
 	// Additive crisis-resource card: if the prompt this answer responds to trips an unambiguous
 	// self-harm signal, lead the reply with real help (src/lib/crisis.ts — client-side, stores nothing,
 	// never blocks the model). Gated to assistant turns so it sits with the supportive response. A turn a
-	// self-harm rule declined shows it too, since the server's verdict reaches wording this check misses (CUR-2111).
+	// self-harm rule declined shows it too, since the server's verdict reaches wording this check misses.
 	const showCrisisResources = $derived(
 		message.from === 'assistant' &&
 			(message.moderation?.support === true || detectCrisisSignal(question))
@@ -344,7 +344,7 @@
 
 	// Set when this answer is reported as not working in the person's language.
 	let languageReported = $state(false);
-	/** The visitor asked to hear an answer with no voice for its language in the English voice (CUR-3989). */
+	/** The visitor asked to hear an answer with no voice for its language in the English voice. */
 	let englishFallbackRequested = $state(false);
 
 	// Strip think blocks and artifact tags for clipboard copy (always, regardless of detection)
@@ -353,10 +353,10 @@
 	);
 
 	// The open-gap card and the footer's "How this was made" follow the language the visitor's browser
-	// asks for (chromeCopy.ts, CUR-2394), like the live request log above them.
+	// asks for (chromeCopy.ts), like the live request log above them.
 	const chromeLang = $derived(page.data.uiLang ?? 'en');
 
-	// The passages search_past_chats returned, which ride in the turn's `rag` stamp. (CUR-4576)
+	// The passages search_past_chats returned, which ride in the turn's `rag` stamp.
 	const pastChatSources = $derived((message.rag?.sources ?? []).filter((s) => s.engine === 'PastChat'));
 
 	// Feed RAG + open-web sources to the markdown renderer so inline [n] citation markers become
@@ -370,11 +370,11 @@
 			message.rag?.sources?.map((s) => ({ n: s.n, title: s.title, link: s.url ?? '' })) ?? [];
 		const web =
 			message.webSearch?.sources?.map((s) => ({ n: s.n, title: s.title, link: s.url ?? '' })) ?? [];
-		// The visitor's own numbered sources hold [1]..[k] (visitorSources.ts, CUR-3844). With no title or
+		// The visitor's own numbered sources hold [1]..[k] (visitorSources.ts). With no title or
 		// link, each renders as its own plain [n], never as a link to one of ours.
 		const visitorCount = parseVisitorSources(question).length;
 		const list = citationSourceList(visitorCount, [...rag, ...web]);
-		// Cited pages are numbered first, in the order the answer cites them (CUR-3933); the renderer sees
+		// Cited pages are numbered first, in the order the answer cites them; the renderer sees
 		// one block at a time, so the order is read here from the whole answer. A visitor's own [1]..[k]
 		// keep their numbers, so their answers are left in retrieval order.
 		if (visitorCount) return list;
@@ -553,7 +553,7 @@
 	// A finished turn that produced NO answer has to say so. The failure this closes: a thinking model
 	// opens <think>, reasons, never closes the tag and never writes an answer — so the
 	// entire output is reasoning, every visible block is empty, and the turn would render as a finished
-	// message with a blank body (CUR-113).
+	// message with a blank body.
 	//
 	// Deliberately CAUSE-AGNOSTIC. It asks "did this finished turn leave the user with anything?", not
 	// "was there an unclosed think tag" — so it equally covers an all-whitespace answer, a stream that
@@ -575,13 +575,13 @@
 		shouldShowEmptyAnswerNotice({ message, noAnswer: hasNothingToShow, loading })
 	);
 
-	// The live request log's own gate. CUR-3557: its active line already reads "Making the audio…"
+	// The live request log's own gate. its active line already reads "Making the audio…"
 	// while the voice is made, so the in-message placeholder below stands down while it shows.
 	const showsLiveLog = $derived(isLast && (loading || deriveMessageStatus(message) === 'running'));
 
 	// The server holds ALIA's untagged reasoning back until its bare `</think>`, so the turn
 	// has no content for 5-36 s. A held-reasoning status opens the reasoning panel for that wait; the
-	// reasoning itself replaces it once released, as the opening `<think>` block of the content. (CUR-3942)
+	// reasoning itself replaces it once released, as the opening `<think>` block of the content.
 	const showsHeldReasoning = $derived(
 		showsLiveLog &&
 			!message.content.trim() &&
@@ -596,24 +596,24 @@
 	// An empty turn that was stopped (the visitor's Stop, or the stuck-generation watchdog;
 	// both mark it interrupted) gets a line naming the stop. "No answer was produced" reads as a failure
 	// when the visitor pressed Stop during "Working on it…". The wording names no actor, since the
-	// watchdog sets the same flag. (CUR-2824)
+	// watchdog sets the same flag.
 	const stoppedBeforeAnswer = $derived(
 		showsEmptyAnswerNotice && deriveMessageStatus(message) === 'incomplete'
 	);
 
 	// Honest-degradation surface: when a generation ended without a clean finish (user stop, or a
 	// stream that died after partial tokens), say so over the preserved partial content rather than
-	// letting it look complete. `error` gets its own notice below (CUR-1748); this is the
+	// letting it look complete. `error` gets its own notice below; this is the
 	// `incomplete` state — a clean stop with no failure status, not a break.
 	//
 	// Suppressed when the turn produced NOTHING — "the answer above may be cut off" is a false
-	// statement when there is no answer above, and that is exactly the CUR-113 shape. Interrupted and
+	// statement when there is no answer above, and that is exactly the shape. Interrupted and
 	// empty are mutually exclusive by construction, so the two notices can never both render.
 	const showsInterruptedNotice = $derived(
 		!loading && deriveMessageStatus(message) === 'incomplete' && !hasNothingToShow
 	);
 
-	// An `error` turn needs its own notice in the bubble (CUR-1748). Any compose-area treatment lives
+	// An `error` turn needs its own notice in the bubble. Any compose-area treatment lives
 	// outside the message bubble, and `showsEmptyAnswerNotice` and `showsInterruptedNotice` both
 	// explicitly exclude `error` (see their own comments), so a watchdog-killed generation
 	// (genTimeoutMs, ~45s) would leave this bubble with nothing. A timed-out turn sends an empty
@@ -633,17 +633,17 @@
 	// Each of the three notices carries its own Retry, so the footer drops its copy while one shows:
 	// one Retry per turn, which offline-mid-answer and chat-message-send assert.
 	// An input screen that didn't finish declines with "send it again"; its notice carries the
-	// Retry for that, so the footer's icon drops here too. (CUR-3739)
+	// Retry for that, so the footer's icon drops here too.
 	const showsUnscreenedNotice = $derived(!loading && !!message.moderation?.unscreened);
 	const showsDegradationNotice = $derived(
 		showsErrorNotice || showsInterruptedNotice || showsEmptyAnswerNotice || showsUnscreenedNotice
 	);
 
-	// The footer's provenance line. "Finished" is showsProvenanceReceipt, not `!loading` (CUR-1674),
+	// The footer's provenance line. "Finished" is showsProvenanceReceipt, not `!loading`,
 	// with `loading` scoped to the last message so an earlier answer keeps its line while a newer turn
-	// streams (CUR-1978). A fixed server string names no model (CUR-1579); a finished answer nothing
-	// reported a model for says so rather than going silent (CUR-1606) — except on an errored turn,
-	// where the error notice already settles it (CUR-2201).
+	// streams. A fixed server string names no model; a finished answer nothing
+	// reported a model for says so rather than going silent — except on an errored turn,
+	// where the error notice already settles it.
 	const receiptReady = $derived(showsProvenanceReceipt({ message, loading: isLast && loading }));
 	const footerProvenance = $derived<'fixed' | 'unavailable' | undefined>(
 		!receiptReady || message.moderation?.flagged
@@ -689,7 +689,7 @@
 	// documented above `showsEmptyAnswerNotice`); a bare `!loading` would flip this to the nested branch
 	// while `blocks` still holds only the streamed placeholder, leaving the header reading "Computed"
 	// over a stale body. Treat the turn as still running until `deriveMessageStatus` agrees, as
-	// LiveRequestLog does, not just until the client fetch settles. (CUR-903)
+	// LiveRequestLog does, not just until the client fetch settles.
 	let isProcessStreaming = $derived.by(() => {
 		if (!isLast || !isTurnStillRunning(loading, message)) return false;
 		const last = blocks.at(-1);
@@ -712,7 +712,6 @@
 	const proseClasses =
 		'chat-answer prose max-w-none text-smd dark:prose-invert prose-pre:bg-gray-800 prose-img:my-0 prose-img:cursor-pointer prose-img:rounded-lg';
 
-	const embeddedDemo = getContext<boolean | undefined>('alpha:embedded-demo') ?? false;
 	let editMode = $derived(editMsdgId === message.id);
 	// Why the edit box refused to send, shown in the box itself. A refusal from the server
 	// arrives through refusedEdit, which reopens this box with the text the person wrote. It is read
@@ -720,7 +719,7 @@
 	// remounts this message reopens it the same way.
 	// The box is filled once each time it opens, so the effect tracks only editMode and the textarea. A
 	// later update to the message (a title arriving, the reload after a fast answer) must not write the
-	// original text back over what the person is typing. (CUR-2825)
+	// original text back over what the person is typing.
 	let editRefusal = $state<string | null>(null);
 	$effect(() => {
 		const el = editContentEl;
@@ -733,8 +732,8 @@
 			el.focus();
 		});
 	});
-	// Our own message limit's wait (CUR-3216) holds this box's Send as it holds the
-	// composer's, and the box counts it down. ChatWindow clears the hold when the wait ends. (CUR-3410)
+	// Our own message limit's wait holds this box's Send as it holds the
+	// composer's, and the box counts it down. ChatWindow clears the hold when the wait ends.
 	let heldNow = $state(Date.now());
 	const editHeldSeconds = $derived(
 		editMode && $sendHeldUntil ? Math.max(0, Math.ceil(($sendHeldUntil - heldNow) / 1000)) : 0
@@ -747,7 +746,10 @@
 	});
 </script>
 
-{#if message.from === 'assistant'}
+{#if message.sealedState}
+	<!-- A sealed message that did not open here: the notice replaces the whole message. -->
+	<SealedMessageNotice state={message.sealedState} from={message.from} messageId={message.id} />
+{:else if message.from === 'assistant'}
 	<div
 		class="group relative flex w-full max-w-full items-start justify-start leading-relaxed"
 		data-message-id={message.id}
@@ -763,7 +765,6 @@
 
 		<div
 			class="relative flex w-full min-w-0 flex-col gap-2 wrap-break-word text-fg-1 prose-pre:my-2"
-			title={syncedTitle}
 		>
 			{#if showCrisisResources}
 				<!-- Leads the reply: real help is the first thing a person in distress sees. -->
@@ -868,12 +869,12 @@
 			     re-render. Surfaced from message.mcp.audio; the spoken text is the message body above.
 			     Held until the turn finishes: a read-aloud turn keeps its text back to the end, so a clip can
 			     land first, and a play button under an empty reply still saying "Making the audio…" offered
-			     audio for an answer nobody could see yet (CUR-2048). -->
+			     audio for an answer nobody could see yet. -->
 			{#if page.data.readAloudEnabled && message.mcp?.audio && !(isLast && isTurnStillRunning(loading, message))}
 				<div data-exclude-from-copy>
 					<MediaAudioPlayer src={message.mcp.audio} />
 					{#if message.mcp.voice}
-						<!-- The language has regional variants and the voice speaks one of them (CUR-3989). -->
+						<!-- The language has regional variants and the voice speaks one of them. -->
 						<p class="mt-1 type-small text-fg-3" data-read-aloud-voice>
 							{m.message_readAloudVoice({ voice: message.mcp.voice })}
 						</p>
@@ -895,7 +896,7 @@
 				<!-- Honest cold-start surface: an open component (the TTS voice, or a tool) was cold and didn't
 				     respond in time, so the answer is shown without it. Visible IN the message — not just the
 				     collapsed trace — because a silent miss reads as broken. Amber = degraded, not an error.
-				     CUR-2268: said in what the visitor lost, not in backend words. The one configured Space is
+				     said in what the visitor lost, not in backend words. The one configured Space is
 				     the read-aloud voice, so with read-aloud on the skip is the audio. -->
 				<div data-exclude-from-copy data-mcp-skipped>
 					<span
@@ -917,7 +918,7 @@
 					</span>
 					{#if page.data.readAloudEnabled && message.mcp.unsupportedLanguage && message.mcp.fallbackAudio}
 						<!-- No voice for this language: the English voice reads it only when asked, since a wrong
-						     accent played unasked is the failure read-aloud avoids (CUR-3989). -->
+						     accent played unasked is the failure read-aloud avoids. -->
 						{#if englishFallbackRequested}
 							<div class="mt-2">
 								<MediaAudioPlayer src={message.mcp.fallbackAudio} />
@@ -944,7 +945,7 @@
 
 			<!-- Shared shape for every honest-degradation notice below: role="alert"/aria-live so screen
 			     readers announce it, retry through the same regenerate path. Three call sites (interrupted,
-			     empty-answer, error) differ only in their guard and their copy, so the markup is one snippet (CUR-1748). -->
+			     empty-answer, error) differ only in their guard and their copy, so the markup is one snippet. -->
 			{#snippet degradationNotice(text: string, statusLink = false)}
 				<div
 					role="alert"
@@ -956,8 +957,8 @@
 							type="button"
 							class="ml-1 underline underline-offset-2 transition-control hover:text-fg-1"
 							onclick={() => onretry?.({ id: message.id })}>{m.message_retry()}</button
-						>{/if}{#if statusLink}<a
-							href="https://status.aipotluck.org"
+						>{/if}{#if statusLink && page.data.statusPageUrl}<a
+							href={page.data.statusPageUrl}
 							target="_blank"
 							rel="noreferrer"
 							class="ml-3 inline-flex items-center gap-0.5 underline underline-offset-2 transition-control hover:text-fg-1"
@@ -977,8 +978,8 @@
 
 			<!-- The turn finished having produced no answer at all (reasoning-only output, an empty
 			     stream, whitespace). Saying nothing here leaves a blank bubble that reads as a bug or, worse,
-			     as the model having nothing to say. See hasNothingToShow (CUR-113). An answer that came back
-			     empty without the visitor stopping it points at the status page too (CUR-4062). -->
+			     as the model having nothing to say. See hasNothingToShow. An answer that came back
+			     empty without the visitor stopping it points at the status page too. -->
 			{#if showsEmptyAnswerNotice}
 				{@render degradationNotice(
 					stoppedBeforeAnswer ? m.message_stoppedBeforeAnswer() : m.message_noAnswer(),
@@ -986,24 +987,24 @@
 				)}
 			{/if}
 
-			<!-- CUR-1748: the turn ended with an explicit error (a watchdog kill, a capacity limit, a
+			<!-- the turn ended with an explicit error (a watchdog kill, a capacity limit, a
 			     dependency failure) rather than a clean finish. A timeout can fire after real text already
 			     streamed, so this does not require hasNothingToShow the way the empty-answer notice does.
 			     Uses the update's own message so the copy stays accurate to what actually happened ("took
 			     too long", "at capacity", etc.) rather than one generic string for every cause. -->
-			<!-- CUR-3739: the decline above already says why, so the notice is just its Retry, which
+			<!-- the decline above already says why, so the notice is just its Retry, which
 			     regenerates the stored turn with its photo or file. -->
 			{#if showsUnscreenedNotice}
 				{@render degradationNotice('')}
 			{/if}
 
 			{#if showsErrorNotice}
-				<!-- CUR-2201: a failed turn is the moment someone wonders whether Alpha is down, so the
+				<!-- a failed turn is the moment someone wonders whether Alpha is down, so the
 				     notice points at the status page beside Retry. -->
 				{@render degradationNotice(errorNoticeMessage ?? m.message_somethingWrong(), true)}
 			{/if}
 
-			<!-- CUR-2273: the expressions the model sent to the calculate tool and what code got for each,
+			<!-- the expressions the model sent to the calculate tool and what code got for each,
 			     directly under the answer so the setup behind a number can be read. Live as well as after
 			     the turn: each expression lands before the model writes the sentence that uses it. -->
 			{#if message.calculations?.length}
@@ -1025,14 +1026,14 @@
 			{#if showsProvenanceReceipt( { message, loading: isLast && loading } ) && message.moderation?.flagged}
 				<SafetyBadge
 					kind={message.moderation.kind}
-					ruleLabel={message.moderation.ruleLabel}
+					ruleLabel={message.moderation.ruleLabels?.join(", ") ?? message.moderation.ruleLabel}
 					unscreened={message.moderation.unscreened}
 				/>
-				<!-- CUR-3902: a policy decline can be challenged. Not a self-harm reply, which offers support
+				<!-- a policy decline can be challenged. Not a self-harm reply, which offers support
 				     rather than a limit, and not an unscreened hold, which declined nothing. A child-safety
 				     decline keeps it: a false positive there needs a person most of all, and the reviewer
 				     already sees the stored conversation, so the note adds little. -->
-				{#if !message.moderation.support && !message.moderation.unscreened && !embeddedDemo}
+				{#if !message.moderation.support && !message.moderation.unscreened}
 					<DeclineChallenge messageId={message.id} />
 				{/if}
 			{/if}
@@ -1059,7 +1060,7 @@
 				<SafetyNotice message={message.safetyNotice.message} />
 			{/if}
 
-			<!-- CUR-4384: the model Auto chose first never started, so Auto asked another; say so on the answer. -->
+			<!-- the model Auto chose first never started, so Auto asked another; say so on the answer. -->
 			{#if message.autoRoute?.repickedFrom}
 				<div data-auto-repicked>
 					<AnswerNote
@@ -1073,37 +1074,42 @@
 				</div>
 			{/if}
 
-			<!-- CUR-2382: the files sent with this turn could not be scanned, so none was stored. -->
+			<!-- the files sent with this turn could not be scanned, so none was stored. -->
 			{#if message.attachmentNotice && !loading}
 				<AttachmentNotice message={message.attachmentNotice.message} />
 			{/if}
 
-			<!-- CUR-3291: a stored file could not be read back this turn, so the answer did not use it. -->
+			<!-- a stored file could not be read back this turn, so the answer did not use it. -->
 			{#if message.unreadFilesNotice && !loading}
 				<AttachmentNotice message={message.unreadFilesNotice} detail={null} />
 			{/if}
 
-			<!-- CUR-4091: a web search ran and didn't finish, so the answer was written without web sources. -->
+			<!-- a web search ran and didn't finish, so the answer was written without web sources. -->
 			{#if message.searchAttempt?.failed && !message.webSearch && !loading}
 				<SearchUnfinishedNotice />
 			{/if}
 
-			<!-- CUR-2830: Agent was on Auto and the route check failed, so the selected model answered. -->
+			<!-- a web search finished and found nothing worth citing, so the answer is the model's alone. -->
+			{#if message.searchAttempt?.searched && !message.searchAttempt.failed && !message.webSearch && !loading}
+				<SearchEmptyNotice />
+			{/if}
+
+			<!-- Agent was on Auto and the route check failed, so the selected model answered. -->
 			{#if message.agentRouteFailed && !loading}
 				<AgentRouteNotice />
 			{/if}
 
-			<!-- CUR-4576: the answer searched the person's own earlier chats; the note names each one. -->
+			<!-- the answer searched the person's own earlier chats; the note names each one. -->
 			{#if pastChatSources.length && !loading}
 				<PastChatsNotice sources={pastChatSources} />
 			{/if}
 
-			<!-- CUR-2893: older exchanges were left out so the chat fit the model's context. -->
+			<!-- older exchanges were left out so the chat fit the model's context. -->
 			{#if message.historyLeftOut && !loading}
 				<HistoryNotice />
 			{/if}
 
-			<!-- Write-permission advisory (CUR-471): the agent's writes were resolved to deny_writes for
+			<!-- Write-permission advisory: the agent's writes were resolved to deny_writes for
 			     this turn (most often a new/staged account still accruing trust). The answer above is
 			     still real — this just explains a capability the turn didn't have. -->
 			{#if message.writePolicy && !loading}
@@ -1114,7 +1120,7 @@
 				/>
 			{/if}
 
-			<!-- Agent confirmation gate (CUR-218): deliberately NOT gated on `!loading` like every notice
+			<!-- Agent confirmation gate: deliberately NOT gated on `!loading` like every notice
 			     here — a paused tool call needs a real human answer inside agent-service's own timeout
 			     window, which is now, not after the turn finishes. Renders once per open/resolved entry
 			     (a turn can pause more than once). -->
@@ -1156,7 +1162,7 @@
 				<GapInvite {gap} lang={chromeLang} />
 			{/if}
 
-			<!-- CUR-1841: the low-resource notice offers to try anyway. Retry would only bring the same notice
+			<!-- the low-resource notice offers to try anyway. Retry would only bring the same notice
 			     back, so this sends the visitor's yes, and the server answers the next turn with an attempt. -->
 			{#if onsend && isLast && !loading && message.fixedReply?.kind === 'low-resource-language'}
 				<div class="pt-2">
@@ -1172,7 +1178,7 @@
 			{/if}
 
 			<!-- `loading` is the page's flag for whichever turn is live, so it is scoped to the last message:
-			     an earlier answer keeps its footer (and its provenance line) while a newer turn streams (CUR-1978). -->
+			     an earlier answer keeps its footer (and its provenance line) while a newer turn streams. -->
 			{#if servingRecorded(message.routerMetadata) || (!(isLast && loading) && message.content)}
 				<AnswerFooter
 					messageId={message.id}
@@ -1191,15 +1197,14 @@
 					secondOpinion={secondOpinionOffered}
 				>
 					{#snippet report()}
-						<!-- Report a problem — on every completed answer; the Terms page points here.
-						     Not in the /alpha demo: its answers are samples, not Alpha's to be reported. -->
-						{#if !embeddedDemo}<ReportButton
-								messageId={message.id}
-								{turnNumber}
-								onreported={(reason) => {
-									if (reason === 'language') languageReported = true;
-								}}
-							/>{/if}
+						<!-- Report a problem — on every completed answer (docx P0); the Terms page points here. -->
+						<ReportButton
+							messageId={message.id}
+							{turnNumber}
+							onreported={(reason) => {
+								if (reason === 'language') languageReported = true;
+							}}
+						/>
 					{/snippet}
 					{#snippet alternatives()}
 						{#if alternativeIds.length > 1 && editMsdgId === null}
@@ -1238,7 +1243,7 @@
 		<ImageLightbox src={lightboxSrc} onclose={() => (lightboxSrc = null)} />
 	{/if}
 {/if}
-{#if message.from === 'user'}
+{#if message.from === 'user' && !message.sealedState}
 	<div
 		class="group relative w-full items-start justify-start gap-4"
 		data-message-id={message.id}
@@ -1251,7 +1256,7 @@
 		     left-aligned outlined card. Filled-right (sent) vs outlined-left (received) is the
 		     spatial grammar every first-in-class chat uses — and fixes the old inversion where the
 		     user's plain text started further LEFT than the reply. Edit mode stays full-width. -->
-		<div class="flex w-full flex-col items-end gap-2" title={syncedTitle}>
+		<div class="flex w-full flex-col items-end gap-2">
 			{#if message.files?.length}
 				<Attachment.Row aria-label="Attached files" class="w-auto max-w-full">
 					{#each message.files as file (file.value)}
@@ -1271,7 +1276,7 @@
 				{#if !editMode}
 					<!-- The bubble reads the way most of its letters do, so an Arabic, Urdu or Pashto question
 					     reads right to left with its question mark at the end, even when it opens with a
-					     Latin name (CUR-1917, textDirection.ts). -->
+					     Latin name (textDirection.ts). -->
 					<p
 						dir={textDirection(message.content)}
 						class="w-fit max-w-4/5 rounded-sharp bg-surface-3 px-4 py-2.5 text-wrap wrap-break-word whitespace-break-spaces text-fg-1"
@@ -1347,9 +1352,9 @@
 			</div>
 			<!-- Edit / Copy sit just below the bubble, inset from its corner, each on a solid chip so they
 			     stay legible. They stay in the layout and the tab order, fading in on hover, when the
-			     message holds focus, and always on a touch screen, where there is no hover (CUR-1849).
+			     message holds focus, and always on a touch screen, where there is no hover.
 			     The row is in the flow, not pinned over the bubble's bottom edge, so nothing is drawn on
-			     the message (CUR-4264); its height is reserved even while hidden or streaming, so the
+			     the message; its height is reserved even while hidden or streaming, so the
 			     conversation does not jump when the buttons come back. -->
 			<div class="flex min-h-6 w-full items-center justify-end gap-1 pr-3">
 				{#if alternatives.length > 1 && editMsdgId === null}

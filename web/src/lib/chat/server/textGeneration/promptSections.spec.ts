@@ -7,8 +7,7 @@ import { ATTACHED_DOCUMENT_NOTE } from "./grounding";
 
 // The native prompt's sections, in the order they render. A change here is a change to what
 // every native model is told, so it shows up as a diff on this list as well as on the
-// turnRequest snapshots. The date renders last (CUR-3918); CUR-3892 moves every other `turn` section
-// after the last `static` one. (CUR-3899)
+// turnRequest snapshots. The date renders last.
 describe("NATIVE_SECTIONS", () => {
 	it("renders these sections in this order, each with its stability class", () => {
 		expect(NATIVE_SECTIONS.map((s) => `${s.id}:${s.stability}`)).toEqual([
@@ -48,7 +47,7 @@ describe("NATIVE_SECTIONS", () => {
 
 // The guards-only (minimal) prompt's sections, in the order they render. It shares the base
 // guard list with the native prompt, so `answer-style` has to sit here too, or the five answer settings
-// reach every native model and no scaffolded one on its minimal path (plan 4.3's carrier table). (CUR-3929)
+// reach every native model and no scaffolded one on its minimal path.
 describe("GUARDS_ONLY_SECTIONS", () => {
 	it("renders these sections in this order, each with its stability class", () => {
 		expect(GUARDS_ONLY_SECTIONS.map((s) => `${s.id}:${s.stability}`)).toEqual([
@@ -69,7 +68,7 @@ describe("GUARDS_ONLY_SECTIONS", () => {
 });
 
 // The native model decides its own searches, so on a photo turn it gets the rule the scaffolded
-// turn's search decider gets (CUR-3192). Without it a model can search the web for a logo it was shown. (CUR-4015)
+// turn's search decider gets. Without it a model can search the web for a logo it was shown.
 describe("the photo search rule", () => {
 	const ctx = {
 		modelId: "mistral-large-2512",
@@ -93,7 +92,7 @@ describe("the photo search rule", () => {
 });
 
 // A native turn never runs hardenLastUserTurn, so the note asking the answer to name the attached
-// document rides the system prompt instead; without it the note reached no turn with search on. (CUR-4102)
+// document rides the system prompt instead; without it the note would reach no native turn.
 describe("the attached document note", () => {
 	const said = (extra: object) =>
 		renderSections(NATIVE_SECTIONS, {
@@ -116,7 +115,7 @@ describe("the attached document note", () => {
 	});
 });
 
-// The scaffolded turn's persona, the prompt production sends. (CUR-3900)
+// The scaffolded turn's persona, the prompt production sends.
 describe("PERSONA_SECTIONS", () => {
 	it("renders these sections in this order, each with its stability class", () => {
 		expect(PERSONA_SECTIONS.map((s) => `${s.id}:${s.stability}`)).toEqual([
@@ -130,7 +129,7 @@ describe("PERSONA_SECTIONS", () => {
 
 // Two turns on different days to the same model send the same prompt up to the date, so a
 // provider can cache everything before it. The persona keeps its date first, because a date moved last
-// can leave a model answering a Tokyo guest's date question a day late. (CUR-3918)
+// can leave a model answering a Tokyo guest's date question a day late.
 describe("the date", () => {
 	const base = { modelId: "mistral-large-2512", account: { loginOffered: true, signedIn: false } } as const;
 

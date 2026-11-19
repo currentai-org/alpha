@@ -49,7 +49,7 @@
 	</header>
 
 	{#if data.needsLogin}
-		<StaffSignIn signedIn={data.signedIn} />
+		<StaffSignIn signedIn={data.signedIn} role={data.role} panel="the admin console" />
 	{:else}
 		<div class="grid gap-3 sm:grid-cols-2">
 			{#each panels as p (p.href)}

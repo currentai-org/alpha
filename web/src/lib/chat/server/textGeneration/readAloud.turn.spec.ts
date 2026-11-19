@@ -2,7 +2,7 @@
 // the one read-aloud implementation in textGenerationWithoutTitle. The contract: with read-aloud off
 // nothing changes and no clip is made; with "always" the answer's own text is read and the player
 // arrives before the answer is final; on a "read this aloud" turn the clip runs alongside the answer,
-// the held prose never streams, and a model that declines gets its own words and no clip. (CUR-2734, CUR-2697)
+// the held prose never streams, and a model that declines gets its own words and no clip.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ObjectId } from "bson";
 import {
@@ -91,7 +91,7 @@ describe("read-aloud off", () => {
 });
 
 describe("speak mode always", () => {
-	// The text does not wait for the clip; the final goes out first and the player follows. (CUR-3810)
+	// The text does not wait for the clip; the final goes out first and the player follows.
 	it("reads the answer's text, sending the final answer before the clip so the text never waits for audio", async () => {
 		tts.mockResolvedValue(clip("Lima."));
 		const out = await run(ctx("What is the capital of Peru?", "always"), "Lima.");
@@ -132,8 +132,8 @@ describe("a read-aloud request", () => {
 		expect(out.some((u) => u.type === MessageUpdateType.Mcp)).toBe(false);
 		expect(out.at(-1)).toMatchObject({ text: "I'm sorry, I won't read that." });
 	});
-	// With the Space retired, nothing extracts the words from "say … aloud", so the model's own
-	// answer is read once it exists, and the model is asked for the answer, not a confirmation. (CUR-3989)
+	// Nothing extracts the words from "say … aloud", so the model's own answer is read once it
+	// exists, and the model is asked for the answer, not a confirmation.
 	it("reads the model's answer when the request carries no text to speak", async () => {
 		tts.mockResolvedValue(clip("Bonjour."));
 		const out = await run(ctx("say good morning in French aloud", "auto"), "Bonjour.");

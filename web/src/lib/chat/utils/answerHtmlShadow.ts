@@ -1,4 +1,4 @@
-// Shadow pass for rendered answer HTML (CUR-4130).
+// Shadow pass for rendered answer HTML.
 //
 // `marked.ts` stays the sanitizer of record: its output is what the reader sees. This module runs
 // DOMPurify over that same output in the browser and reports what DOMPurify WOULD have removed,

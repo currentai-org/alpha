@@ -9,7 +9,7 @@ import { warmupContext } from './helpers/warmup';
 import { startChattingPastWelcome } from './helpers/welcome';
 
 // "Which model are you, and who runs you?" answered from the system prompt's own provenance
-// facts and still showed "searched the web · 7 sources" (CUR-2038). Under the margin
+// facts and still showed "searched the web · 7 sources". Under the margin
 // strategy the embedding gate is the only decider, and its nearest exemplar was the fresh "How do you
 // find out which model is newest?". Two self-identity phrasings are now evergreen exemplars in the
 // train split (evals/search-decision/cases.jsonl), so the gate answers these from what it knows.
@@ -23,9 +23,11 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // be sent before the gate decides, or a declined turn flashes it anyway.
 // A DOM observer installed before the page loads records every line the live log renders,
 // since they are gone by the time the turn ends. A web line must appear only on a turn that searches
-// the web, and a turn that looks only in our own documents says so instead (CUR-2223).
+// the web, and a turn that looks only in our own documents says so instead.
 //
-// Preview-only: the gate flag is forced through the fuzz_override cookie, which production refuses.
+// Preview-only: written when the gate's `search-intent-embedding-gate` flag had to be forced through
+// the fuzz_override cookie, which production refuses. That flag is retired; the multilingual tests
+// below still force `identity-provider-stamp`.
 
 type Stored = {
 	id: string;
@@ -100,9 +102,8 @@ async function askOnce(
 test(
 	'asked which model it is and who runs it, Alpha does not search the web',
 	{ tag: ['@preview-only', '@CUR-2038'] },
-	async ({ page, context, baseURL }) => {
+	async ({ page }) => {
 		test.setTimeout(120_000);
-		await setFlagOverrides(context, baseURL!, { 'search-intent-embedding-gate': true });
 		const { stored, text, liveLines, searchingShown } = await askOnce(
 			page,
 			'Which model are you, and who runs you?'
@@ -126,16 +127,15 @@ test(
 );
 
 // X-ray's "This answer" receipt read "Searched the web but found nothing reliable" on a turn
-// whose stored searchAttempt was {searched: false}: the decider declined and no search ran (CUR-2657). The turn
+// whose stored searchAttempt was {searched: false}: the decider declined and no search ran. The turn
 // has to carry a declined attempt for this to test anything, so that is asserted first. The gate runs
-// only on the scaffolded harness; a native turn lets the model decide and stores no attempt (CUR-2734),
-// so the turn is pinned to a model without tools, which always gets the scaffolded plan (CUR-4015).
+// only on the scaffolded harness; a native turn lets the model decide and stores no attempt,
+// so the turn is pinned to a model without tools, which always gets the scaffolded plan.
 test(
 	"when the gate declines a search, X-ray's receipt says it decided against one, never that one ran",
 	{ tag: ['@preview-only', '@CUR-2657'] },
-	async ({ page, context, baseURL }) => {
+	async ({ page }) => {
 		test.setTimeout(120_000);
-		await setFlagOverrides(context, baseURL!, { 'search-intent-embedding-gate': true });
 		const { stored } = await askOnce(
 			page,
 			'Which model are you, and who runs you?',
@@ -164,14 +164,13 @@ test(
 	}
 );
 
-// A QA question about where the product runs searched on 9 of 10 turns (CUR-2135), the gate's
+// A QA question about where the product runs searched on 9 of 10 turns, the gate's
 // nearest exemplars being fresh "where is X running" lookups.
 test(
 	'asked who serves it and where the answer runs, Alpha does not search the web',
 	{ tag: ['@preview-only', '@CUR-2135'] },
-	async ({ page, context, baseURL }) => {
+	async ({ page }) => {
 		test.setTimeout(120_000);
-		await setFlagOverrides(context, baseURL!, { 'search-intent-embedding-gate': true });
 		const turn = await askOnce(page, 'Who serves you, and where does this answer run?');
 		expect(
 			{ searched: turn.stored.searchAttempt?.searched ?? false, grounding: turn.stored.webSearch },
@@ -187,7 +186,7 @@ test(
 	}
 );
 
-// Asked in French (CUR-2135), the same question searched every time and was
+// Asked in French, the same question searched every time and was
 // answered about a Quebec campaign named "Quel modèle es-tu ?". The gate's exemplars are English; the
 // multilingual self-identity verdict now vetoes the search, so the stamp flag is forced on with it.
 // Spanish did not search before the fix, so it passes either way.
@@ -201,7 +200,6 @@ for (const [lang, question] of [
 		async ({ page, context, baseURL }) => {
 			test.setTimeout(120_000);
 			await setFlagOverrides(context, baseURL!, {
-				'search-intent-embedding-gate': true,
 				'identity-provider-stamp': true
 			});
 			const turn = await askOnce(page, question);
@@ -223,9 +221,8 @@ for (const [lang, question] of [
 test(
 	'asked for this week’s news, Alpha still searches the web',
 	{ tag: ['@preview-only', '@CUR-2038'] },
-	async ({ page, context, baseURL }) => {
+	async ({ page }) => {
 		test.setTimeout(120_000);
-		await setFlagOverrides(context, baseURL!, { 'search-intent-embedding-gate': true });
 		const { stored, liveLines, searchingShown } = await askOnce(
 			page,
 			"What's the latest news on the EU AI Act?"
@@ -241,16 +238,15 @@ test(
 	}
 );
 
-// The original report (CUR-2038): a letter request showed "Searching the open web". Its margin sat
+// The original report: a letter request showed "Searching the open web". Its margin sat
 // at +0.007 against the -0.0179 threshold, and a sales-tax total at +0.064, so both searched. Everyday
 // drafts and arithmetic totals now have evergreen exemplars, and a tax-RATE lookup a fresh one so that
 // "what is the sales tax in Texas" still searches. Neither question below is one of those exemplars.
 test(
 	'asked to write a letter that needs no lookup, Alpha does not search the web',
 	{ tag: ['@preview-only', '@CUR-2038'] },
-	async ({ page, context, baseURL }) => {
+	async ({ page }) => {
 		test.setTimeout(120_000);
-		await setFlagOverrides(context, baseURL!, { 'search-intent-embedding-gate': true });
 		const turn = await askOnce(
 			page,
 			'Write a letter to my landlord asking him to fix the heating.'
@@ -272,7 +268,6 @@ test(
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(120_000);
 		await setFlagOverrides(context, baseURL!, {
-			'search-intent-embedding-gate': true,
 			'math-routing': true
 		});
 		// The planner runs only on the scaffolded harness, so pin a model without tools, as
@@ -301,9 +296,8 @@ test(
 test(
 	'asked about a product in our catalog, Alpha says it is searching our documents, not the web',
 	{ tag: ['@preview-only', '@CUR-2223'] },
-	async ({ page, context, baseURL }) => {
+	async ({ page }) => {
 		test.setTimeout(120_000);
-		await setFlagOverrides(context, baseURL!, { 'search-intent-embedding-gate': true });
 		const { stored, liveLines, searchingShown } = await askOnce(
 			page,
 			'What does OpenGuardrails do?'

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { error } from "@sveltejs/kit";
 
 /**
@@ -11,7 +14,7 @@ export function requireAuth(locals: App.Locals): void {
 
 /**
  * requireAuth() alone accepts a bare guest session — fine for content that has a guest/session-scoped
- * case (conversations, settings, ...). Some features (CUR-1262's local inference endpoints) don't: a
+ * case (conversations, settings, ...). Some features (local inference endpoints) don't: a
  * guest has no account to attach a local server to at all. Use this instead of requireAuth() for those,
  * and use the returned id as the row's userId — the same shadow `users.id` authCondition()/every other
  * per-user table keys on, never Better Auth's own `user.id` directly.

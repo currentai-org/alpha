@@ -1,7 +1,7 @@
 const HOUR_MS = 60 * 60 * 1000;
 
 /**
- * When a `@real-screen` run refreshes a stored guard verdict live (SOL-267). A verdict comes due 1 to 3
+ * When a `@real-screen` run refreshes a stored guard verdict live. A verdict comes due 1 to 3
  * days after it was recorded and then refreshes only in its own hour of the quietest window of
  * production traffic, 02:00-06:00 UTC.
  * Both come from a hash of the key, so verdicts recorded in one run come due on different days and

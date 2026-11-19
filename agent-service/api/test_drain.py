@@ -1,4 +1,4 @@
-"""CUR-4598: a deploy's stop signal must not kill the tasks this machine is running.
+"""A deploy's stop signal must not kill the tasks this machine is running.
 
 Each test starts the real server the image runs (serve.py) as its own process, starts a task whose agent
 is a stub that takes a few seconds and writes a file, and sends the process SIGTERM mid-task, which is what
@@ -100,7 +100,7 @@ def _wait_running(base: str, task_id: str) -> None:
         time.sleep(0.1)
 
 
-def test_a_task_running_at_the_stop_signal_finishes_with_its_answer_and_file_cur4598(server):
+def test_a_task_running_at_the_stop_signal_finishes_with_its_answer_and_file(server):
     """The contract: SIGTERM mid-task does not end the task. Its stream carries `done` COMPLETED with the
     answer, its file still downloads afterwards (a new request, the way chat saves it), a new /run is told
     to retry rather than refused at the socket, and the process exits on its own once the task is done."""
@@ -130,7 +130,7 @@ def test_a_task_running_at_the_stop_signal_finishes_with_its_answer_and_file_cur
     assert "shutdown.drained" in log.read_text()
 
 
-def test_a_task_outlasting_the_drain_ends_as_a_restart_with_a_done_frame_not_a_dropped_stream_cur4598(server):
+def test_a_task_outlasting_the_drain_ends_as_a_restart_with_a_done_frame_not_a_dropped_stream(server):
     """The contract when a task runs past AGENT_DRAIN_SECS: its stream still gets a `done` frame, FAILED
     with interrupted="restart" (what chat turns into "the service restarted, try again"), before the
     process exits, and the durable record says the same for a reader after the restart."""

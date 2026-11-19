@@ -1,6 +1,6 @@
 // Folkways adapter — the observe pipeline and the helpers both chat routes share.
 //
-// Moved out of v1/chat/completions/+server.ts (CUR-3186) so the Mistral route
+// Moved out of v1/chat/completions/+server.ts so the Mistral route
 // (mistral/v1/chat/completions/+server.ts) runs the SAME observe code — prompts report, per-turn
 // trace, safety report — rather than a copy. A +server.ts may export only its handlers, so shared
 // code has to live in a plain module. Module-level memos (last reported prompt hash, last safety
@@ -197,7 +197,7 @@ async function postObserveTrace(fields: {
 		);
 		if (!res.ok) console.error(`[folkways-adapter] observe trace returned ${res.status}`);
 		// The positive record that a trace landed: Folkways' trace list needs a console login, and a
-		// missing error line says nothing about whether the POST ran (CUR-3186).
+		// missing error line says nothing about whether the POST ran.
 		else
 			console.info(
 				`[folkways-adapter] observe trace posted ${res.status} lane=${String(fields.detail.lane ?? 'gateway')} model=${fields.servedModel}`

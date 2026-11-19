@@ -1,8 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { tokenSetToSessionOauth, type OIDCTokens } from "$lib/chat/server/auth";
 
-// Written for the openid-client v5 -> v6 migration (CUR-211), and specifically for the one change in
-// it that a type error would NOT have caught.
+// Covers the one change between openid-client v5 and v6 that a type error would NOT catch.
 //
 // v5's TokenSet carried `expires_at`, an absolute unix timestamp. v6 removed that field and returns
 // `expires_in` — relative seconds — plus an `expiresIn()` helper. Both spellings are plausible to a

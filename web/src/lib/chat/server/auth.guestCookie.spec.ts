@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // accepted, and each new value started a fresh per-session rate-limit budget.
 //
 // Mirrors auth.anonSessionMint.spec.ts's DB mocking, plus a config mock so the signing secret can be
-// present or absent per test. (CUR-3191)
+// present or absent per test.
 const { mockConfig } = vi.hoisted(() => ({ mockConfig: {} as Record<string, string> }));
 vi.mock("$lib/chat/server/config", () => ({
 	config: new Proxy(
@@ -60,7 +60,7 @@ beforeEach(() => {
 	sessionsFindOne.mockReset().mockResolvedValue(null);
 });
 
-describe("guest cookies (CUR-3191)", () => {
+describe("guest cookies", () => {
 	it("re-mints a made-up cookie with nothing saved under it, so a new value never starts a new budget", async () => {
 		const made = "attacker-chosen-value-1";
 		const result = await authenticateRequest(new Headers(), cookieOf(made), url);

@@ -1,9 +1,16 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
+import { DEPLOYMENT } from "$lib/deployment";
 import { error } from "@sveltejs/kit";
 import { logger, securityLogger } from "$lib/chat/server/logger.js";
 import { isValidUrlStrict, ssrfStrictFetch } from "$lib/chat/server/urlSafety";
 import { fetchUrlAllowed } from "$lib/chat/server/db/fetchUrlRate";
 import { readCappedBytes } from "$lib/chat/server/readCappedBody";
 import { CHAT_ATTACHMENTS_MAX_BYTES, chatAttachmentsTooLargeMessage } from "$lib/chat/constants/uploadLimits";
+
+/** Names the installation and, when it has one, the site a fetched page's operator can look up. */
+const ATTACHMENT_FETCHER_UA = `${DEPLOYMENT.userAgent}-attachment-fetcher/1.0${DEPLOYMENT.siteHost ? ` (+https://${DEPLOYMENT.siteHost})` : ""}`;
 
 const FETCH_TIMEOUT = 30000; // 30 seconds
 const MAX_REDIRECTS = 5;
@@ -19,7 +26,7 @@ const SECURITY_HEADERS: HeadersInit = {
 /**
  * Fetch a URL a visitor attached by link, for the composer (loadAttachmentsFromUrls.ts).
  *
- * CUR-3191 hardening. Only a caller with a session the server already issued is served: a request
+ * hardening. Only a caller with a session the server already issued is served: a request
  * that had to mint one (no cookie, or a value the server never issued) gets a 401, and hooks/handle.ts
  * sets no cookie on this path. Each session and each IP is limited (db/fetchUrlRate.ts). The fetch uses
  * the strict SSRF guard, which also refuses the cluster-internal ranges (10/8, IPv6 ULA) the default
@@ -102,7 +109,7 @@ async function fetchFollowingSafeRedirects(targetUrl: string, signal: AbortSigna
 			signal,
 			redirect: "manual",
 			headers: {
-				"User-Agent": "aipotluck.org-attachment-fetcher/1.0 (+https://www.aipotluck.org)",
+				"User-Agent": ATTACHMENT_FETCHER_UA,
 			},
 		});
 		if (response.status < 300 || response.status >= 400) return response;

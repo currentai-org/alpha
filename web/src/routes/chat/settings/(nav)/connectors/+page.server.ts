@@ -1,10 +1,10 @@
-// Settings → Connectors (CUR-3984): the MCP servers this chat reaches, each tool on them, and the
+// Settings → Connectors: the MCP servers this chat reaches, each tool on them, and the
 // person's choice for each one. Gated on the same `mcp-servers` read the turn makes, before anything
 // else, so the page does not exist where the tools are never offered. Open to a guest, whose choices are
 // kept by session like the rest of their settings.
 //
 // A signed-in person can also add a server of their own by URL with an optional bearer token, and
-// remove it (CUR-4016). Its token is sealed before it is stored and never comes back to the page.
+// remove it. Its token is sealed before it is stored and never comes back to the page.
 import { error, fail } from "@sveltejs/kit";
 import type { Actions, PageServerLoad } from "./$types";
 import { configuredMcpServers, mcpServersEnabled } from "$lib/chat/server/mcp/servers";

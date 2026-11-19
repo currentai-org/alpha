@@ -3,7 +3,7 @@ import { badgeLabel, findingCounts, NEXT_STEP } from "../journeyGallery";
 
 const note = { area: "layout", severity: "minor" as const, observation: "a decorative graphic overlaps the nav" };
 
-describe("badgeLabel (CUR-1707)", () => {
+describe("badgeLabel", () => {
 	it("counts the minor notes on a clean card, so a skimmer who trusts the badge still sees them", () => {
 		expect(badgeLabel({ state: "clean", findings: [], pm: { watched: true, reason: null, findings: [note, note] } })).toBe(
 			"Clean · 2 notes"
@@ -32,7 +32,7 @@ const step = (n: number, conclusion: "product" | "doc" | "unseen" | "not-run" | 
 });
 const annoying = { ...note, severity: "annoying" as const };
 
-describe("a findings badge separates breakage from what nobody checked (CUR-2896)", () => {
+describe("a findings badge separates breakage from what nobody checked", () => {
 	it("counts a product step and a filed critique as broken, and a doc error and an unseen step apart from it", () => {
 		const j = {
 			state: "findings" as const,

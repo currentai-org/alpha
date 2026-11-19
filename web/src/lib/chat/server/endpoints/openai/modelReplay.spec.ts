@@ -39,7 +39,7 @@ const body = (fence: string, today: string) =>
 	});
 const SSE = 'data: {"choices":[{"delta":{"content":"Zurich."}}]}\n\ndata: [DONE]\n\n';
 const sse = (text = SSE, status = 200) =>
-	new Response(text, { status, headers: { "content-type": "text/event-stream", "x-litellm-model-group": "m", "set-cookie": "a=b" } });
+	new Response(text, { status, headers: { "content-type": "text/event-stream", "x-litellm-model-group": "mistral-large-2512", "set-cookie": "a=b" } });
 const REFUSAL_TTL_MS = 10 * 60 * 1000; // modelReplay.ts: a recorded 429 is replayed for ten minutes
 const settle = () => new Promise((r) => setTimeout(r, 20));
 
@@ -80,7 +80,7 @@ describe("requestParts: which part of a missed request changed", () => {
 	});
 });
 
-describe("model replay keys (SOL-92)", () => {
+describe("model replay keys", () => {
 	it("gives two turns of the same question the same key though their fence nonce and date line differ", () => {
 		const a = body("Q_1a2b3c4d", "Tuesday, 6 October 2026 (Asia/Seoul)");
 		const b = body("Q_9f8e7d6c", "Monday, 5 October 2026 (America/Los_Angeles)");
@@ -97,7 +97,7 @@ describe("model replay keys (SOL-92)", () => {
 		expect(replayKey("/v1/chat/completions", a)).not.toBe(replayKey("/v1/completions", a));
 	});
 
-	it("gives two runs of a spec whose prompt carries a Date.now() stamp the same key, and leaves a shorter number alone (SOL-181)", () => {
+	it("gives two runs of a spec whose prompt carries a Date.now() stamp the same key, and leaves a shorter number alone", () => {
 		const a = body("Q_1a2b3c4d", "Tuesday, 6 October 2026 (UTC)").replace("Where do you run?", "Why two tides? 1791853934211");
 		const b = a.replace("1791853934211", "1791854002750");
 		expect(replayKey("/v1/chat/completions", a)).toBe(replayKey("/v1/chat/completions", b));
@@ -106,7 +106,7 @@ describe("model replay keys (SOL-92)", () => {
 	});
 });
 
-describe("replayOrRecord (SOL-92)", () => {
+describe("replayOrRecord", () => {
 	it("on a miss calls the live model, hands back its whole body, and records it with only the kept headers", async () => {
 		const live = vi.fn(async () => sse());
 		const init = { method: "POST", body: body("Q_1a2b3c4d", "Tuesday, 6 October 2026 (UTC)") };
@@ -119,7 +119,7 @@ describe("replayOrRecord (SOL-92)", () => {
 		expect(recorded().map(([k]) => k)).toEqual([`${SCOPE}:${key}`, `${SCOPE}:${loose}`]);
 		const doc = recorded()[0][1];
 		expect(doc).toMatchObject({ requestHash: key, status: 200, body: SSE, path: "/v1/chat/completions" });
-		expect(doc.headers).toEqual({ "content-type": "text/event-stream", "x-litellm-model-group": "m" });
+		expect(doc.headers).toEqual({ "content-type": "text/event-stream", "x-litellm-model-group": "mistral-large-2512" });
 	});
 
 	it("on a hit makes no live call, streams the recorded body and headers, and marks the response as replayed", async () => {
@@ -185,6 +185,117 @@ describe("replayOrRecord (SOL-92)", () => {
 			expect(res.headers.get("x-inference-provider")).toBe("scaleway");
 		});
 
+		// The key uses the app's id, so after a pin moves from one provider to another the request still
+		// finds the old provider's recording, which would show "served via" the old provider.
+		const pinnedBody = (provider: string) =>
+			JSON.stringify({ ...JSON.parse(init().body), model: `zai-org/GLM-5.2:${provider}` });
+		const servedBy = (provider: string) => {
+			const key = replayKey("/v1/chat/completions", keyedBody(pinnedBody("featherless-ai"), "zai-org/GLM-5.2"));
+			shared.set(`develop:${key}`, {
+				requestHash: key,
+				path: "/v1/chat/completions",
+				host: "router.huggingface.co",
+				status: 200,
+				headers: { "content-type": "text/event-stream", "x-inference-provider": provider },
+				body: SSE,
+				recordedAt: "2026-10-10T00:00:00Z",
+			});
+		};
+		const featherlessLive = () =>
+			vi.fn(async () => new Response(SSE, { headers: { "content-type": "text/event-stream", "x-inference-provider": "featherless-ai" } }));
+		const pinnedInit = () => ({ method: "POST", body: pinnedBody("featherless-ai") });
+
+		it("re-records a recording served by another provider than the request now pins, when the run records misses", async () => {
+			servedBy("scaleway");
+			const live = featherlessLive();
+			const res = await replayOrRecord(HF_URL, pinnedInit(), live, {}, "new_episodes", { appModelId: "zai-org/GLM-5.2" });
+			expect(live).toHaveBeenCalledOnce();
+			expect(res.headers.get("x-inference-provider")).toBe("featherless-ai");
+		});
+
+		// A PR's scenario run is in mock mode, which never records, so the provider check has to run in
+		// mock mode too, or a call pinned to one provider would replay "served via" another.
+		it("never replays a recording served by another provider than the pin in mock mode, and calls live without recording instead", async () => {
+			servedBy("featherless-ai");
+			const live = vi.fn(async () => new Response(SSE, { headers: { "content-type": "text/event-stream", "x-inference-provider": "deepinfra" } }));
+			const res = await replayOrRecord(HF_URL, { method: "POST", body: pinnedBody("deepinfra") }, live, {}, "mock", { appModelId: "zai-org/GLM-5.2" });
+			expect(live).toHaveBeenCalledOnce();
+			expect(res.headers.get("x-inference-provider")).toBe("deepinfra");
+			expect(res.headers.get("x-model-mock")).toBeNull();
+			await settle();
+			expect(recorded()).toHaveLength(0);
+		});
+
+		// A gateway can group a model under a hash id. A recording that replays that group after the lane
+		// moves to a gateway that groups the model by name would have every answer shed by the substitution
+		// guard.
+		const MEDIUM = "mistralai/mistral-medium-3-5";
+		const mediumBody = () => JSON.stringify({ ...JSON.parse(init().body), model: MEDIUM });
+		const groupedAs = (group: string) => {
+			const key = replayKey("/v1/chat/completions", keyedBody(mediumBody(), "mistral-medium-2604"));
+			shared.set(`develop:${key}`, {
+				requestHash: key,
+				path: "/v1/chat/completions",
+				host: "api-internal.publicai.co",
+				status: 200,
+				headers: { "content-type": "text/event-stream", "x-litellm-model-group": group },
+				body: SSE,
+				recordedAt: "2026-11-01T00:00:00Z",
+			});
+		};
+		const mediumLive = () => vi.fn(async () => new Response(SSE, { headers: { "content-type": "text/event-stream", "x-litellm-model-group": MEDIUM } }));
+		const MEDIUM_URL = "https://api-internal.publicai.co/v1/chat/completions";
+
+		it("re-records a recording whose gateway group names another model than the request, when the run records misses", async () => {
+			groupedAs("c837af998700a05bfabfd37326374b1ea08566b837557dd4ceed069edadad2bd");
+			const live = mediumLive();
+			const res = await replayOrRecord(MEDIUM_URL, { method: "POST", body: mediumBody() }, live, {}, "new_episodes", { appModelId: "mistral-medium-2604" });
+			expect(live).toHaveBeenCalledOnce();
+			expect(res.headers.get("x-litellm-model-group")).toBe(MEDIUM);
+		});
+
+		it("never replays a recording grouped under another model in mock mode, and calls live without recording instead", async () => {
+			groupedAs("c837af998700a05bfabfd37326374b1ea08566b837557dd4ceed069edadad2bd");
+			const live = mediumLive();
+			const res = await replayOrRecord(MEDIUM_URL, { method: "POST", body: mediumBody() }, live, {}, "mock", { appModelId: "mistral-medium-2604" });
+			expect(live).toHaveBeenCalledOnce();
+			expect(res.headers.get("x-model-mock")).toBeNull();
+			await settle();
+			expect(recorded()).toHaveLength(0);
+		});
+
+		it("still replays a recording whose group names the requested model, in any case", async () => {
+			groupedAs("MistralAI/Mistral-Medium-3-5");
+			const live = mediumLive();
+			const res = await replayOrRecord(MEDIUM_URL, { method: "POST", body: mediumBody() }, live, {}, "mock", { appModelId: "mistral-medium-2604" });
+			expect(live).not.toHaveBeenCalled();
+			expect(res.headers.get(REPLAY_HEADER)).toBe("2026-11-01T00:00:00Z");
+		});
+
+		it("never replays that recording through the loose key either", async () => {
+			const loose = looseReplayKey("/v1/chat/completions", keyedBody(pinnedBody("deepinfra"), "zai-org/GLM-5.2"));
+			shared.set(`develop:${loose}`, {
+				requestHash: loose,
+				path: "/v1/chat/completions",
+				host: "router.huggingface.co",
+				status: 200,
+				headers: { "content-type": "text/event-stream", "x-inference-provider": "featherless-ai" },
+				body: SSE,
+				recordedAt: "2026-10-10T00:00:00Z",
+			});
+			const live = vi.fn(async () => new Response(SSE, { headers: { "content-type": "text/event-stream", "x-inference-provider": "deepinfra" } }));
+			const res = await replayOrRecord(HF_URL, { method: "POST", body: pinnedBody("deepinfra") }, live, {}, "mock", { appModelId: "zai-org/GLM-5.2" });
+			expect(live).toHaveBeenCalledOnce();
+			expect(res.headers.get("x-inference-provider")).toBe("deepinfra");
+		});
+
+		it("replays a recording served by the provider the request pins, with no live call", async () => {
+			servedBy("featherless-ai");
+			const live = featherlessLive();
+			await replayOrRecord(HF_URL, pinnedInit(), live, {}, "new_episodes", { appModelId: "zai-org/GLM-5.2" });
+			expect(live).not.toHaveBeenCalled();
+		});
+
 		it("still replays that recording in a run that must make no live call", async () => {
 			withoutProvider();
 			const live = hfLive();
@@ -203,7 +314,7 @@ describe("replayOrRecord (SOL-92)", () => {
 		recordedAt: "2026-10-11T00:00:00Z",
 	});
 
-	it("a recording another branch's run left on develop is this run's hit, with no live call (SOL-148)", async () => {
+	it("a recording another branch's run left on develop is this run's hit, with no live call", async () => {
 		const init = { method: "POST", body: body("Q_1a2b3c4d", "Tuesday, 6 October 2026 (UTC)") };
 		const c = cassetteFor(init.body, "from develop");
 		shared.set(`develop:${c.requestHash}`, c);
@@ -213,7 +324,7 @@ describe("replayOrRecord (SOL-92)", () => {
 		expect(await res.text()).toBe("from develop");
 	});
 
-	it("reads this branch's own recording ahead of develop's (SOL-148)", async () => {
+	it("reads this branch's own recording ahead of develop's", async () => {
 		const init = { method: "POST", body: body("Q_1a2b3c4d", "Tuesday, 6 October 2026 (UTC)") };
 		const mine = cassetteFor(init.body, "mine");
 		shared.set(`develop:${mine.requestHash}`, cassetteFor(init.body, "develop's"));
@@ -221,7 +332,7 @@ describe("replayOrRecord (SOL-92)", () => {
 		expect(await (await replayOrRecord(URL_, init, async () => sse())).text()).toBe("mine");
 	});
 
-	it("a run's miss is the next run's hit: the second identical request makes no live call (SOL-148)", async () => {
+	it("a run's miss is the next run's hit: the second identical request makes no live call", async () => {
 		const live = vi.fn(async () => sse());
 		const first = { method: "POST", body: body("Q_1a2b3c4d", "Tuesday, 6 October 2026 (UTC)") };
 		await (await replayOrRecord(URL_, first, live)).text();
@@ -232,7 +343,8 @@ describe("replayOrRecord (SOL-92)", () => {
 	});
 
 	it("keys a call on the app's model id, so an env change to the wire id still replays the recording (MISTRAL_CHAT_MODEL_MAP)", async () => {
-		const live = vi.fn(async () => sse());
+		// api.mistral.ai sends no gateway group, so nothing in the recording names the old wire id.
+		const live = vi.fn(async () => new Response(SSE, { headers: { "content-type": "text/event-stream" } }));
 		const asWire = (wire: string) => ({
 			method: "POST",
 			body: JSON.stringify({ ...JSON.parse(body("Q_1a2b3c4d", "Tuesday, 6 October 2026 (UTC)")), model: wire }),
@@ -246,7 +358,8 @@ describe("replayOrRecord (SOL-92)", () => {
 	});
 
 	it("still replays a recording keyed on the wire id before appModelId existed, in a PR's mock run that never records", async () => {
-		const live = vi.fn(async () => sse());
+		// api.mistral.ai sends no gateway group, so nothing in the recording names the old wire id.
+		const live = vi.fn(async () => new Response(SSE, { headers: { "content-type": "text/event-stream" } }));
 		const init = { method: "POST", body: JSON.stringify({ ...JSON.parse(body("Q_1a2b3c4d", "Tuesday, 6 October 2026 (UTC)")), model: "mistralai/mistral-medium-3-5" }) };
 		await (await replayOrRecord(URL_, init, live, {}, "new_episodes")).text();
 		await settle();
@@ -271,7 +384,7 @@ describe("replayOrRecord (SOL-92)", () => {
 		expect(replayKey("/v1/chat/completions", keyedBody(b, "mistral-large-2512"))).toBe(replayKey("/v1/chat/completions", b));
 	});
 
-	it("none mode fails a miss without calling the model, so a run can prove it made no live call (SOL-148)", async () => {
+	it("none mode fails a miss without calling the model, so a run can prove it made no live call", async () => {
 		const live = vi.fn(async () => sse());
 		const init = { method: "POST", body: body("Q_1a2b3c4d", "Tuesday, 6 October 2026 (UTC)") };
 		const res = await replayOrRecord(URL_, init, live, {}, "none");
@@ -282,7 +395,7 @@ describe("replayOrRecord (SOL-92)", () => {
 		expect(recorded()).toHaveLength(0);
 	});
 
-	it("mock mode answers a streamed miss with the mock answer in the SDK's stream shape, calls no model and records nothing (SOL-208)", async () => {
+	it("mock mode answers a streamed miss with the mock answer in the SDK's stream shape, calls no model and records nothing", async () => {
 		const live = vi.fn(async () => sse());
 		const sent = JSON.stringify({ ...JSON.parse(body("Q_1a2b3c4d", "Tuesday, 6 October 2026 (UTC)")), stream: true });
 		const res = await replayOrRecord(URL_, { method: "POST", body: sent }, live, {}, "mock");
@@ -299,7 +412,7 @@ describe("replayOrRecord (SOL-92)", () => {
 		expect(recorded()).toHaveLength(0);
 	});
 
-	it("mock mode streams its answer in more chunks than stream_truncates_midway lets through, so the fault still cuts a mocked turn (SOL-208)", async () => {
+	it("mock mode streams its answer in more chunks than stream_truncates_midway lets through, so the fault still cuts a mocked turn", async () => {
 		const sent = JSON.stringify({ ...JSON.parse(body("Q_1a2b3c4d", "Tuesday, 6 October 2026 (UTC)")), stream: true });
 		const res = await replayOrRecord(URL_, { method: "POST", body: sent }, vi.fn(async () => sse()), {}, "mock");
 		const contentChunks = (await res.text())
@@ -313,7 +426,7 @@ describe("replayOrRecord (SOL-92)", () => {
 		expect(recorded()).toHaveLength(0);
 	});
 
-	it("mock mode answers a non-streamed miss with a whole chat completion (SOL-208)", async () => {
+	it("mock mode answers a non-streamed miss with a whole chat completion", async () => {
 		const live = vi.fn(async () => sse());
 		const res = await replayOrRecord(URL_, { method: "POST", body: body("Q_1a2b3c4d", "Tuesday, 6 October 2026 (UTC)") }, live, {}, "mock");
 		expect(live).not.toHaveBeenCalled();
@@ -322,7 +435,7 @@ describe("replayOrRecord (SOL-92)", () => {
 		expect(completion.choices[0].finish_reason).toBe("stop");
 	});
 
-	it("mock mode still replays a recording when one matches, ahead of the mock (SOL-208)", async () => {
+	it("mock mode still replays a recording when one matches, ahead of the mock", async () => {
 		const init = { method: "POST", body: body("Q_1a2b3c4d", "Tuesday, 6 October 2026 (UTC)") };
 		await replayOrRecord(URL_, init, async () => sse(), {}, "new_episodes");
 		await settle();
@@ -333,7 +446,7 @@ describe("replayOrRecord (SOL-92)", () => {
 		expect(await res.text()).toBe(SSE);
 	});
 
-	it("mock mode fails a miss it cannot answer generically, a forced tool call or a JSON schema, as none mode does, and never goes live (SOL-208)", async () => {
+	it("mock mode fails a miss it cannot answer generically, a forced tool call or a JSON schema, as none mode does, and never goes live", async () => {
 		const live = vi.fn(async () => sse());
 		const base = JSON.parse(body("Q_1a2b3c4d", "Tuesday, 6 October 2026 (UTC)"));
 		for (const extra of [
@@ -349,7 +462,7 @@ describe("replayOrRecord (SOL-92)", () => {
 		expect(live).not.toHaveBeenCalled();
 	});
 
-	it("mock mode answers a miss that forces a tool it offers with a mock call to that tool, its query the last user message, and never goes live (CUR-4083)", async () => {
+	it("mock mode answers a miss that forces a tool it offers with a mock call to that tool, its query the last user message, and never goes live", async () => {
 		const live = vi.fn(async () => sse());
 		const base = JSON.parse(body("Q_1a2b3c4d", "Tuesday, 6 October 2026 (UTC)"));
 		const forced = {
@@ -387,7 +500,7 @@ describe("replayOrRecord (SOL-92)", () => {
 		expect(live).not.toHaveBeenCalled();
 	});
 
-	it("mock mode answers an unrecorded Firecrawl search or scrape with an empty result and never calls Firecrawl, so a PR run spends no credit (SOL-219)", async () => {
+	it("mock mode answers an unrecorded Firecrawl search or scrape with an empty result and never calls Firecrawl, so a PR run spends no credit", async () => {
 		const live = vi.fn(async () => new Response("{}"));
 		const search = await replayOrRecord(
 			"https://api.firecrawl.dev/v2/search",
@@ -410,7 +523,7 @@ describe("replayOrRecord (SOL-92)", () => {
 		expect(live).not.toHaveBeenCalled();
 	});
 
-	it("new_episodes mode records a Firecrawl search once and replays it without a second live call (SOL-219)", async () => {
+	it("new_episodes mode records a Firecrawl search once and replays it without a second live call", async () => {
 		const init = { method: "POST", body: JSON.stringify({ query: "firecrawl replay probe", limit: 5 }) };
 		const answer = JSON.stringify({ success: true, data: { web: [{ url: "https://example.org", title: "t", description: "d" }] } });
 		const live = vi.fn(async () => new Response(answer, { headers: { "content-type": "application/json" } }));
@@ -421,7 +534,7 @@ describe("replayOrRecord (SOL-92)", () => {
 		expect(await again.text()).toBe(answer);
 	});
 
-	// The keyless open-web engines are GETs whose whole request is the query string. (SOL-262)
+	// The keyless open-web engines are GETs whose whole request is the query string.
 	it("mock mode calls an unrecorded engine, rerank or embedding request live, records none of them, and replays a recorded one", async () => {
 		const live = vi.fn(async () => new Response(JSON.stringify({ results: [{ title: "live" }] }), { headers: { "content-type": "application/json" } }));
 		const opts = { liveOnMiss: true };
@@ -442,7 +555,7 @@ describe("replayOrRecord (SOL-92)", () => {
 		expect(recorded()).toEqual([]);
 	});
 
-	// The search-intent and self-identity embedders post the same body to "/" on two hosts. (SOL-269)
+	// The search-intent and self-identity embedders post the same body to "/" on two hosts.
 	it("two embedders posting one body to two hosts each replay their own recording, never the other model's vector", async () => {
 		const init = { method: "POST", body: JSON.stringify({ inputs: "Quel modèle es-tu, et qui le fait tourner ?" }) };
 		const opts = { liveOnMiss: true };
@@ -503,7 +616,7 @@ describe("replayOrRecord (SOL-92)", () => {
 		expect(recorded()).toEqual([]);
 	});
 
-	it("all mode calls the live model over this branch's recording and develop's and a bundled one, and records over its own (SOL-166)", async () => {
+	it("all mode calls the live model over this branch's recording and develop's and a bundled one, and records over its own", async () => {
 		const init = { method: "POST", body: body("Q_1a2b3c4d", "Tuesday, 6 October 2026 (UTC)") };
 		const bad = cassetteFor(init.body, "the failing first draw");
 		shared.set(`${SCOPE}:${bad.requestHash}`, bad);
@@ -521,7 +634,7 @@ describe("replayOrRecord (SOL-92)", () => {
 		expect(live).toHaveBeenCalledOnce();
 	});
 
-	it("records the upstream host and asks the store by it, so another branch's answer is read only from the same upstream (SOL-180)", async () => {
+	it("records the upstream host and asks the store by it, so another branch's answer is read only from the same upstream", async () => {
 		const init = { method: "POST", body: body("Q_1a2b3c4d", "Tuesday, 6 October 2026 (UTC)") };
 		await (await replayOrRecord(URL_, init, async () => sse())).text();
 		await settle();
@@ -576,7 +689,7 @@ describe("replayOrRecord (SOL-92)", () => {
 		expect(recorded(), "the answer that arrived after the deadline was never recorded").toHaveLength(2);
 	});
 
-	it("hands back a stream the upstream closed mid-answer but never records it, so no branch replays it as whole (SOL-180)", async () => {
+	it("hands back a stream the upstream closed mid-answer but never records it, so no branch replays it as whole", async () => {
 		const init = { method: "POST", body: body("Q_1a2b3c4d", "Tuesday, 6 October 2026 (UTC)") };
 		const cut = 'data: {"choices":[{"delta":{"content":"Zur"},"finish_reason":null}]}\n\n';
 		expect(await (await replayOrRecord(URL_, init, async () => sse(cut))).text()).toBe(cut);
@@ -588,7 +701,7 @@ describe("replayOrRecord (SOL-92)", () => {
 		expect(recorded(), "a stream with a finish reason and no [DONE] is whole").toHaveLength(2);
 	});
 
-	it("records a 429 only with an expiry ten minutes out, so it is never replayed to every later run (CUR-3982)", async () => {
+	it("records a 429 only with an expiry ten minutes out, so it is never replayed to every later run", async () => {
 		const init = { method: "POST", body: body("Q_1a2b3c4d", "Tuesday, 6 October 2026 (UTC)") };
 		const before = Date.now();
 		const res = await replayOrRecord(URL_, init, async () => sse("busy", 429));
@@ -601,7 +714,7 @@ describe("replayOrRecord (SOL-92)", () => {
 		expect(until - Date.now()).toBeLessThanOrEqual(REFUSAL_TTL_MS);
 	});
 
-	it("a 429 whose Retry-After names a shorter wait is kept only that long, so a per-minute blip clears for the retry (CUR-3996)", async () => {
+	it("a 429 whose Retry-After names a shorter wait is kept only that long, so a per-minute blip clears for the retry", async () => {
 		const init = { method: "POST", body: body("Q_1a2b3c4d", "Tuesday, 6 October 2026 (UTC)") };
 		const before = Date.now();
 		await replayOrRecord(URL_, init, async () => new Response("busy", { status: 429, headers: { "retry-after": "2" } }));
@@ -611,14 +724,14 @@ describe("replayOrRecord (SOL-92)", () => {
 		expect(until - Date.now()).toBeLessThanOrEqual(2000);
 	});
 
-	it("a Retry-After longer than ten minutes is capped at ten (CUR-3996)", async () => {
+	it("a Retry-After longer than ten minutes is capped at ten", async () => {
 		const init = { method: "POST", body: body("Q_1a2b3c4d", "Tuesday, 6 October 2026 (UTC)") };
 		await replayOrRecord(URL_, init, async () => new Response("busy", { status: 429, headers: { "retry-after": "86400" } }));
 		const [[, c]] = recorded();
 		expect(Date.parse(String(c.refusedUntil)) - Date.now()).toBeLessThanOrEqual(REFUSAL_TTL_MS);
 	});
 
-	it("a request the model refused moments ago is answered 429 from the store, with no second live call (CUR-3982)", async () => {
+	it("a request the model refused moments ago is answered 429 from the store, with no second live call", async () => {
 		const init = { method: "POST", body: body("Q_1a2b3c4d", "Tuesday, 6 October 2026 (UTC)") };
 		const live = vi.fn(async () => sse("busy", 429));
 		await (await replayOrRecord(URL_, init, live)).text();
@@ -629,7 +742,7 @@ describe("replayOrRecord (SOL-92)", () => {
 		expect(live).toHaveBeenCalledOnce();
 	});
 
-	it("a bundled good cassette answers in place of an unexpired 429 from the store (CUR-3996)", async () => {
+	it("a bundled good cassette answers in place of an unexpired 429 from the store", async () => {
 		const init = { method: "POST", body: body("Q_1a2b3c4d", "Tuesday, 6 October 2026 (UTC)") };
 		await (await replayOrRecord(URL_, init, async () => sse("busy", 429))).text();
 		const bundled = cassetteFor(init.body, "bundled");
@@ -641,13 +754,13 @@ describe("replayOrRecord (SOL-92)", () => {
 		expect(live).not.toHaveBeenCalled();
 	});
 
-	it("all mode never records a 429, so a refused retry cannot replace a good recording (CUR-3982)", async () => {
+	it("all mode never records a 429, so a refused retry cannot replace a good recording", async () => {
 		const init = { method: "POST", body: body("Q_1a2b3c4d", "Tuesday, 6 October 2026 (UTC)") };
 		await (await replayOrRecord(URL_, init, async () => sse("busy", 429), {}, "all")).text();
 		expect(recorded()).toHaveLength(0);
 	});
 
-	it("an unreachable store is a miss: the turn goes live in new_episodes mode and fails in none mode (SOL-148)", async () => {
+	it("an unreachable store is a miss: the turn goes live in new_episodes mode and fails in none mode", async () => {
 		storeDown = true;
 		const init = { method: "POST", body: body("Q_1a2b3c4d", "Tuesday, 6 October 2026 (UTC)") };
 		const live = vi.fn(async () => sse());
@@ -657,7 +770,7 @@ describe("replayOrRecord (SOL-92)", () => {
 	});
 });
 
-describe("replay across deployments whose system prompt differs (SOL-208)", () => {
+describe("replay across deployments whose system prompt differs", () => {
 	const onDevelop = body("Q_1a2b3c4d", "Tuesday, 6 October 2026 (UTC)");
 	const onPr = onDevelop.replace("The latest message", "Screening is off on this preview. The latest message");
 
@@ -715,7 +828,7 @@ describe("replay across deployments whose system prompt differs (SOL-208)", () =
 	});
 });
 
-describe("replay of a tool-using turn across runs (SOL-217)", () => {
+describe("replay of a tool-using turn across runs", () => {
 	const PATH = "/v1/chat/completions";
 	const toolTurn = (o: { ids?: [string, string]; results?: [string, string]; description?: string; args?: string } = {}) => {
 		const [a, b] = o.ids ?? ["call_abc", "call_def"];
@@ -774,7 +887,7 @@ describe("replay of a tool-using turn across runs (SOL-217)", () => {
 		expect(toolLooseReplayKey(PATH, JSON.stringify(fewer))).not.toBe(toolLooseReplayKey(PATH, toolTurn()));
 	});
 
-	it("in mock mode still replays a recording stored under the SOL-208 key, which a request offering tools never shares with the tool key", async () => {
+	it("in mock mode still replays a recording stored under the key, which a request offering tools never shares with the tool key", async () => {
 		const turn = toolTurn();
 		expect(toolLooseReplayKey(PATH, turn)).not.toBe(looseReplayKey(PATH, turn));
 		shared.set(`develop:${looseReplayKey(PATH, turn)}`, { requestHash: "x", path: PATH, host: "api.mistral.ai", status: 200, headers: {}, body: SSE, recordedAt: "2026-10-14T00:00:00Z" });

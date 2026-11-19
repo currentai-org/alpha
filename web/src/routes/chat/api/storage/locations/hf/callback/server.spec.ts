@@ -8,7 +8,10 @@ const db = vi.hoisted(() => ({
 }));
 const { provisionAlphaBucket } = vi.hoisted(() => ({ provisionAlphaBucket: vi.fn() }));
 
+const logger = vi.hoisted(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }));
+
 vi.mock('$lib/chat/server/db/storageLocations', () => db);
+vi.mock('$lib/chat/server/logger', () => ({ logger }));
 vi.mock('../../../guard', () => ({ requireLocationsAccess: vi.fn().mockResolvedValue('acct') }));
 vi.mock('$lib/chat/server/storage/locations/connectState', () => ({
 	CONNECT_COOKIE: 'hf_connect',
@@ -30,6 +33,8 @@ vi.mock('$lib/chat/server/storage/locations/registry', async (importOriginal) =>
 }));
 
 import { GET } from './+server';
+
+const HF_CONNECT_REFRESHED = '[storage-locations] Hugging Face connect refreshed a linked bucket';
 import { BucketTakenError } from '$lib/chat/server/storage/locations/hfOAuth';
 
 /** Run the callback and return where it redirected. */
@@ -53,7 +58,7 @@ beforeEach(() => {
 	db.listStorageLocations.mockResolvedValue([]);
 });
 
-describe('Hugging Face connect callback (CUR-3326)', () => {
+describe('Hugging Face connect callback', () => {
 	it('says the bucket was already linked when Connect lands on a bucket this account has, rather than reporting a new link', async () => {
 		db.listStorageLocations.mockResolvedValue([
 			{ id: 'loc-1', config: { repo: 'someone/alpha-files', grant: 'oauth' } }
@@ -64,7 +69,22 @@ describe('Hugging Face connect callback (CUR-3326)', () => {
 		expect(db.createStorageLocation).not.toHaveBeenCalled();
 	});
 
-	it('refreshes the linked bucket when Connect names it in another case, since Hugging Face names ignore case (CUR-4234)', async () => {
+	it('logs a repeat Connect with the count of rows linked to that bucket, and no bucket or user name, for the production query', async () => {
+		db.listStorageLocations.mockResolvedValue([
+			{ id: 'loc-1', config: { repo: 'someone/alpha-files', grant: 'oauth' } },
+			{ id: 'loc-2', config: { repo: 'someone/other', grant: 'oauth' } }
+		]);
+		await callback();
+		expect(logger.info).toHaveBeenCalledWith({ linkedRows: 1 }, HF_CONNECT_REFRESHED);
+	});
+
+	it('writes no refresh line for a new link', async () => {
+		db.createStorageLocation.mockResolvedValue({ id: 'loc-new' });
+		await callback();
+		expect(logger.info).not.toHaveBeenCalledWith(expect.anything(), HF_CONNECT_REFRESHED);
+	});
+
+	it('refreshes the linked bucket when Connect names it in another case, since Hugging Face names ignore case', async () => {
 		provisionAlphaBucket.mockResolvedValue('someone/ALPHA-FILES');
 		db.listStorageLocations.mockResolvedValue([
 			{ id: 'loc-1', config: { repo: 'someone/alpha-files', grant: 'oauth' } }
@@ -74,14 +94,14 @@ describe('Hugging Face connect callback (CUR-3326)', () => {
 		expect(db.createStorageLocation).not.toHaveBeenCalled();
 	});
 
-	it('says the name is taken and hands it back when the bucket exists and Alpha did not make it (CUR-4234)', async () => {
+	it('says the name is taken and hands it back when the bucket exists and Alpha did not make it', async () => {
 		provisionAlphaBucket.mockRejectedValue(new BucketTakenError('taken'));
 		const to = await callback();
 		expect(to).toMatch(/\?connect_error=taken&bucket=alpha-files$/);
 		expect(db.createStorageLocation).not.toHaveBeenCalled();
 	});
 
-	it('reports a new link as connected, naming the new location so the page can offer to move files there (CUR-2941)', async () => {
+	it('reports a new link as connected, naming the new location so the page can offer to move files there', async () => {
 		db.createStorageLocation.mockResolvedValue({ id: 'loc-new' });
 		const to = await callback();
 		expect(to).toMatch(/\?connected=1&location=loc-new$/);

@@ -1,16 +1,13 @@
 /**
  * A new session starts in the workspace the person last chose. The choice is kept on the
  * user row, and it is only handed back while the person is still a member of that workspace, so a
- * deleted workspace or a removal lands in Personal (CUR-3022). The flag is stubbed; the membership
- * join is the contract, so it runs against the real tables. (CUR-3024)
+ * deleted workspace or a removal lands in Personal. The membership join is the contract,
+ * so it runs against the real tables.
  */
-import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
+import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { eq, inArray } from "drizzle-orm";
 import { getDb } from "$lib/chat/server/db/client";
 import { member, organization, user } from "$lib/chat/server/db/schema";
-
-const { flagOn } = vi.hoisted(() => ({ flagOn: vi.fn(() => true) }));
-vi.mock("$lib/chat/server/workspacesGate", () => ({ workspacesEnabled: flagOn }));
 
 const { rememberActiveWorkspace, workspaceToResume } = await import("$lib/chat/server/resumeWorkspace");
 
@@ -27,9 +24,8 @@ async function lastChosen() {
 	return row?.id;
 }
 
-describe.sequential("resumeWorkspace (CUR-3024)", () => {
+describe.sequential("resumeWorkspace", () => {
 	beforeEach(async () => {
-		flagOn.mockReturnValue(true);
 		const db = getDb();
 		const now = new Date();
 		await db.insert(user).values({ id: userId, name: "Ada", email: `${userId}@example.org` });
@@ -78,14 +74,6 @@ describe.sequential("resumeWorkspace (CUR-3024)", () => {
 	});
 
 	it("resumes Personal (null) for someone who never chose a workspace", async () => {
-		expect(await workspaceToResume(userId)).toBeNull();
-	});
-
-	it("neither records nor resumes anything when the workspaces flag is off", async () => {
-		await rememberActiveWorkspace(userId, orgA);
-		flagOn.mockReturnValue(false);
-		await rememberActiveWorkspace(userId, null);
-		expect(await lastChosen()).toBe(orgA);
 		expect(await workspaceToResume(userId)).toBeNull();
 	});
 });

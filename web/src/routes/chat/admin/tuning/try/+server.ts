@@ -5,8 +5,6 @@ import { error } from "@sveltejs/kit";
 import { json } from "$lib/chat/server/api/utils/json";
 import { z } from "zod";
 import { requireAdminPermission } from "$lib/chat/server/adminAuth";
-import { config } from "$lib/chat/server/config";
-import { createOpenAIClient } from "$lib/chat/server/openaiClient";
 import { defaultModel } from "$lib/chat/server/models";
 import { buildPersonaPrompt, resolveDecoding } from "$lib/chat/server/textGeneration/persona";
 import type { RequestHandler } from "./$types";
@@ -30,27 +28,28 @@ export const POST: RequestHandler = async ({ request, locals, cookies }) => {
 	const dec = resolveDecoding(); // v1: default decoding (persona is what's being tuned)
 
 	try {
-		const client = await createOpenAIClient({
-			baseURL: config.OPENAI_BASE_URL,
-			apiKey: config.OPENAI_API_KEY || config.HF_TOKEN || "sk-",
-			// Same reasoning as the mini-eval route next door: admin-only, bounded so a hung gateway
-			// surfaces as an error rather than a spinner (CUR-1345).
-			timeout: 60_000,
-			defaultHeaders: { "User-Agent": "aipotluck.org" },
+		// The model's own endpoint, the one a chat turn calls: its lanes send the wire id the host
+		// knows (`mistral-medium-2604` is our picker id, not a name the gateway accepts) and use the
+		// lane's own base URL and key. Unlike generateFromDefaultEndpoint, a failure throws,
+		// so the operator sees the refusal instead of an empty answer.
+		const endpoint = await defaultModel.getEndpoint();
+		const stream = await endpoint({
+			messages: [{ from: "user", content: query }],
+			preprompt: system,
+			generateSettings: dec,
+			abortSignal: AbortSignal.timeout(60_000), // a hung gateway surfaces as an error, not a spinner
+			locals,
 		});
-		const res = await client.chat.completions.create({
-			model,
-			messages: [
-				{ role: "system", content: system },
-				{ role: "user", content: query },
-			],
-			temperature: dec.temperature,
-			frequency_penalty: dec.frequency_penalty,
-			presence_penalty: dec.presence_penalty,
-			max_tokens: dec.max_tokens,
-			stream: false,
-		});
-		return json({ answer: res.choices?.[0]?.message?.content ?? "", system });
+		let streamed = "";
+		let answer = "";
+		for await (const out of stream) {
+			if (out.generated_text) {
+				answer = out.generated_text;
+				break;
+			}
+			streamed += out.token?.text ?? "";
+		}
+		return json({ answer: answer || streamed, system });
 	} catch (e) {
 		throw error(502, e instanceof Error ? e.message : "model call failed");
 	}

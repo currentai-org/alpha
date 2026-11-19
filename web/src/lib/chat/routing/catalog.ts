@@ -36,9 +36,11 @@ export type OrgId =
 	| 'plgrid'
 	| 'phoeniqs'
 	| 'featherless'
+	| 'deepinfra'
 	| 'huggingface'
 	| 'cloudflare'
 	| 'openrouter'
+	| 'cip'
 	| 'mozilla-data-collective'
 	| 'common-voice';
 
@@ -169,7 +171,7 @@ export const orgs: Record<OrgId, Org> = {
 		logo: '/logos/phoeniqs.png',
 		name: 'Phoeniqs',
 		// Phoenix Technologies AG, Pfäffikon SZ (its imprint), on an IP block RIPE registers in CH to that
-		// company (CUR-4545).
+		// company.
 		blurb: 'The AI cloud of Phoenix Technologies, a Swiss company. It runs Apertus 1.5 70B for Alpha.',
 		region: 'Switzerland',
 		url: 'https://phoeniqs.com'
@@ -178,9 +180,17 @@ export const orgs: Record<OrgId, Org> = {
 		id: 'featherless',
 		logo: '/logos/featherless.png',
 		name: 'Featherless',
-		blurb: 'An American host for open models, one of the backends the inference gateway can send a turn to.',
+		blurb: 'An American host for open models. It runs GLM 5.2 and Gemma 4 for Alpha, and is one of the backends the inference gateway can send a turn to.',
 		region: 'United States',
 		url: 'https://featherless.ai'
+	},
+	deepinfra: {
+		id: 'deepinfra',
+		name: 'DeepInfra',
+		// docs.deepinfra.com/account/data-privacy: inputs and outputs are not stored, no training.
+		blurb: 'An American host for open models. It keeps no copy of what is sent.',
+		region: 'United States',
+		url: 'https://deepinfra.com'
 	},
 	huggingface: {
 		id: 'huggingface',
@@ -218,6 +228,12 @@ export const orgs: Record<OrgId, Org> = {
 		name: 'OpenRouter',
 		blurb: 'A service that connects to many model hosts through one door.',
 		url: 'https://openrouter.ai'
+	},
+	cip: {
+		id: 'cip',
+		name: 'Collective Intelligence Project',
+		blurb: 'Runs weval, where the language benchmarks behind Alpha’s per-language scores are run.',
+		url: 'https://www.cip.org'
 	}
 };
 
@@ -230,7 +246,7 @@ export const orgs: Record<OrgId, Org> = {
 
 /**
  * Where Alpha keeps what you give it. Every screen that says where your data lives reads these words,
- * so they cannot drift apart. Only what is true today (CUR-415): conversations and settings sit in
+ * so they cannot drift apart. Only what is true today: conversations and settings sit in
  * Alpha's own Postgres (`server/db/client.ts`); only the files a person uploads sit with Hugging Face,
  * in a bucket Current AI holds (`server/storage/custodialStorage.ts`). Plain constants rather than the
  * admin-editable copy CMS, because a privacy statement has to stay tied to the code.
@@ -242,9 +258,9 @@ export const DATA_HOME = {
 	chatsLead: 'Stored by Current AI',
 	chatsWhere: 'in Alpha’s own database',
 	/** Files a person uploads. */
-	// The wording names Current AI and says who that is. (CUR-2070)
+	// The wording names Current AI and says who that is.
 	files: 'Files you upload are stored with Hugging Face, in storage held by Current AI, the nonprofit that runs Alpha.',
-	/** The same, once the person has linked a bucket of their own (CUR-3386): its files are theirs, not ours. */
+	/** The same, once the person has linked a bucket of their own: its files are theirs, not ours. */
 	filesWithLinkedBucket:
 		'Files in Alpha storage are stored with Hugging Face, in storage held by Current AI, the nonprofit that runs Alpha. A bucket you linked is yours: its files stay in your own Hugging Face account.',
 	/** Who holds uploaded files, for screens that credit them with a logo. */
@@ -259,7 +275,7 @@ export const DATA_HOME = {
  *
  * Swiss means the org's `region` is Switzerland, and that region is only ever set once verified. That
  * is the claim "sovereign public compute in Switzerland" rests on, so a host earns it here by its org,
- * never by being nameable (CUR-996): Featherless and AI Singapore have rows and are not Swiss.
+ * never by being nameable: Featherless and AI Singapore have rows and are not Swiss.
  *
  * `service` names the org's product on that host, when the host is one service among the org's.
  * Hosts are measured backends, not plans: `MODEL_HOSTS` says who is meant to run a model, this
@@ -270,18 +286,18 @@ export const DATA_HOME = {
 export const BACKEND_HOSTS: Record<string, { org: OrgId; service?: string }> = {
 	'api.inference.cscs.ch': { org: 'cscs' },
 	// CSCS's own inference API, which agent-service dials directly (PROVIDER_CSCS_BASE,
-	// agent-service/fly/agent-proxy.toml). The chat's direct CSCS lane is retired (CUR-162).
+	// agent-service/fly/agent-proxy.toml). The chat's direct CSCS lane is retired.
 	'api.swissai.svc.cscs.ch': { org: 'cscs' },
 	'api.infomaniak.com': { org: 'infomaniak' },
-	// Apertus 1.5 70B's host, as its turns record it on www and alpha (CUR-4545).
+	// Apertus 1.5 70B's host, as its turns record it on www and alpha.
 	'maas.phoeniqs.com': { org: 'phoeniqs' },
 	'api.featherless.ai': { org: 'featherless' },
 	'api.sea-lion.ai': { org: 'ai-singapore' },
 	'api.mistral.ai': { org: 'mistral', service: 'La Plateforme' },
-	// ALIA's and Bielik's hosts, as their turns record them on www (CUR-3941).
+	// ALIA's and Bielik's hosts, as their turns record them on www.
 	'api.nextbit256.com': { org: 'nextbit' },
 	'llmlab.plgrid.pl': { org: 'plgrid' },
-	// The staging router answers Mistral Medium 3.5 from here as well as from La Plateforme (CUR-4343).
+	// The staging router answers Mistral Medium 3.5 from here as well as from La Plateforme.
 	'api.scaleway.ai': { org: 'scaleway' }
 };
 
@@ -317,7 +333,7 @@ export const SWISS_BACKEND_HOSTS: readonly string[] = Object.keys(BACKEND_HOSTS)
  */
 const PLANNED_HOSTS: Record<string, OrgId> = {
 	// The gateway serves the 70B from one provider, Phoeniqs (gateway request log;
-	// `server/harnessProfiles.ts`, CUR-4403).
+	// `server/harnessProfiles.ts`).
 	'apertus-70b': 'phoeniqs',
 	'apertus-8b': 'infomaniak',
 	'alia-40b': 'nextbit',
@@ -339,6 +355,7 @@ const PLANNED_HOSTS: Record<string, OrgId> = {
 const HF_PROVIDER_ORGS: Readonly<Record<string, OrgId>> = {
 	scaleway: 'scaleway',
 	'featherless-ai': 'featherless',
+	deepinfra: 'deepinfra',
 	'zai-org': 'zhipu'
 };
 
@@ -368,12 +385,11 @@ export interface CatalogModel {
 	alsoGood?: string[];
 	status: ModelStatus;
 	/**
-	 * False for a model a person may pick by hand that Auto never chooses or measures against (CUR-1683).
+	 * False for a model a person may pick by hand that Auto never chooses or measures against.
 	 * `'own-languages'` lets Auto choose it only for a draft in one of its `languages`: SEA-LION v4.8
-	 * and GLM 5.2 are rated above Medium overall, so unscoped they would take every English draft too
-	 * (CUR-4283).
+	 * and GLM 5.2 are rated above Medium overall, so unscoped they would take every English draft too.
 	 * `'large-tasks'` lets Auto choose it only for a draft the classifier reads as large: Large 4 is rated
-	 * far above Medium, so unscoped it would take every draft and Medium would stop being the default (CUR-4574).
+	 * far above Medium, so unscoped it would take every draft and Medium would stop being the default.
 	 */
 	autoPick?: false | 'own-languages' | 'large-tasks';
 	/**
@@ -384,7 +400,7 @@ export interface CatalogModel {
 	requestsPerMinute?: number;
 	/**
 	 * False for a model registered so a CI ticket-branch preview can serve on it, and never offered to a
-	 * visitor: the picker lists it only in a conversation it is already serving (CUR-2763).
+	 * visitor: the picker lists it only in a conversation it is already serving.
 	 */
 	offered?: false;
 	/** One line on why you'd want this model, in plain words. */
@@ -396,6 +412,11 @@ export interface CatalogModel {
 	 * Image input still opens only where the `multimodal` gate is on.
 	 */
 	readsImages: boolean;
+	/**
+	 * False for a model that ignores a `tool_choice` naming one tool: it writes text and calls nothing.
+	 * Such a round asks for any tool (`"required"`) instead (calculateTool.ts `wireToolChoice`).
+	 */
+	namedToolChoice?: false;
 }
 
 const models: Omit<CatalogModel, 'provider'>[] = [
@@ -458,7 +479,7 @@ const models: Omit<CatalogModel, 'provider'>[] = [
 	},
 	{
 		// Served by the publicai gateway and the staging router (both list it and answer a test chat).
-		// Auto may pick it: benchmarks.json rates it from its base model and SEA-HELM (CUR-4283).
+		// Auto may pick it: benchmarks.json rates it from its base model and SEA-HELM.
 		id: 'sea-lion-nemotron-120b',
 		name: 'SEA-LION v4.8 (Nemotron) 120B',
 		family: 'SEA-LION',
@@ -512,7 +533,7 @@ const models: Omit<CatalogModel, 'provider'>[] = [
 		alsoGood: ['en'],
 		status: 'live',
 		// Auto's pick for Chinese only, at every task size: its measured Chinese (0.92) edges Large 4's
-		// gateway run (0.89), within both runs' 95% ranges (CUR-392).
+		// gateway run (0.89), within both runs' 95% ranges.
 		autoPick: 'own-languages',
 		strength: 'A large open model, strongest in Chinese and English reasoning.',
 		// Image input: refused, "glm-5.2 is not a multimodal model" (Hugging Face; GLM 5.3 too).
@@ -528,11 +549,11 @@ const models: Omit<CatalogModel, 'provider'>[] = [
 		languages: ['*'],
 		alsoGood: ['en', 'fr', 'de', 'es', 'it', 'pt'],
 		status: 'live',
-		// On no site's picker (web/config/picker.ts, CUR-4683), and never Auto's pick: Large 4 takes large
-		// drafts and Medium the rest, Medium also while Large 4 is busy (CUR-392).
+		// On no site's picker (web/config/picker.ts), and never Auto's pick: Large 4 takes large
+		// drafts and Medium the rest, Medium also while Large 4 is busy.
 		autoPick: false,
-		// Through the staging router (web/config/picker.ts), shared by www, develop and CI (CUR-4035). Taken from
-		// the rate-limit header the router returns for Mistral (CUR-4574).
+		// Through the staging router (web/config/picker.ts), shared by www, develop and CI. Taken from
+		// the rate-limit header the router returns for Mistral.
 		requestsPerMinute: 150,
 		strength: 'A strong European model for demanding questions in major European languages.',
 		// Image input: both probes read an image on the router and preview's Mistral lane.
@@ -540,8 +561,8 @@ const models: Omit<CatalogModel, 'provider'>[] = [
 	},
 	{
 		// The staging router serves it as `mistralai/mistral-large-2610` and asks Mistral for
-		// `mistral-large-4` (CUR-3027). Offered by hand on every site, second after Medium, the default.
-		// Auto picks it for a large task only (CUR-4574). Chat turns stream, and streamed calls get
+		// `mistral-large-4`. Offered by hand on every site, second after Medium, the default.
+		// Auto picks it for a large task only. Chat turns stream, and streamed calls get
 		// Large 4 itself.
 		id: 'mistral-large-4',
 		name: 'Mistral Large 4',
@@ -553,16 +574,18 @@ const models: Omit<CatalogModel, 'provider'>[] = [
 		alsoGood: ['en', 'fr', 'de', 'es', 'it', 'pt'],
 		status: 'live',
 		autoPick: 'large-tasks',
-		// Taken from the rate-limit header the router returns for Mistral (CUR-4574).
+		// Taken from the rate-limit header the router returns for Mistral.
 		requestsPerMinute: 4000,
 		strength: 'Mistral’s newest and largest model.',
-		// Image input: the model list reports vision, but both routers answer
-		// with Large 3 in its place, text included, so image reading is not observed.
+		// A tool forced by name is not reliably called on the staging router (0 of 3 streamed calls);
+		// with "required" or "auto" it was (6 of 6).
+		namedToolChoice: false,
+		// Image input: Mistral's `/models` reports vision. Not yet confirmed end to end on the routers.
 		readsImages: true
 	},
 	{
-		// Every site's default (CUR-4002), Large 3's backup on the direct lane (CUR-2460) and the arithmetic
-		// route (CUR-3313).
+		// Every site's default, Large 3's backup on the direct lane and the arithmetic
+		// route.
 		id: 'mistral-medium',
 		name: 'Mistral Medium 3.5',
 		family: 'Mistral',
@@ -573,7 +596,7 @@ const models: Omit<CatalogModel, 'provider'>[] = [
 		alsoGood: ['en', 'fr', 'de', 'es', 'it', 'pt'],
 		status: 'live',
 		// Through the staging router (web/config/picker.ts). Taken from the rate-limit header the
-		// router returns for Mistral (CUR-4574).
+		// router returns for Mistral.
 		requestsPerMinute: 4000,
 		strength: 'The mid-sized Mistral: quick, good in many languages, and the model Alpha starts on.',
 		// Image input: both probes read an image as `mistralai/mistral-medium-3-5`, preview's id for it.
@@ -613,7 +636,7 @@ const models: Omit<CatalogModel, 'provider'>[] = [
 /**
  * Who runs each model, keyed by catalog id. A model the Hugging Face router pins to one provider
  * (`HF_PROVIDER_PIN`, the choice of who receives visitor text) takes that provider's org, so re-pinning
- * it moves X-ray's "where it runs" line with it: GLM 5.2 runs at Scaleway (CUR-2112).
+ * it moves X-ray's "where it runs" line with it: GLM 5.2 runs at Featherless.
  */
 export const MODEL_HOSTS: Record<string, OrgId> = {
 	...PLANNED_HOSTS,
@@ -631,7 +654,7 @@ export const catalog: CatalogModel[] = models.map((m) => ({ ...m, provider: MODE
 /**
  * The key a served id and a catalog `gatewayId` are matched on: lower case, without the publisher
  * prefix. Lanes name one checkpoint differently — Mistral's own API serves `mistral-large-2512`, the
- * LiteLLM router (CUR-1380) `mistralai/mistral-large-2512` — and both are the same catalog entry.
+ * LiteLLM router `mistralai/mistral-large-2512` — and both are the same catalog entry.
  */
 export function servedKey(id: string): string {
 	const lower = id.toLowerCase();
@@ -639,7 +662,7 @@ export function servedKey(id: string): string {
 }
 
 // Another host's name for the same weights resolves to our entry: Scaleway serves Medium 3.5 as
-// `mistral-medium-3.5-128b`, and X-ray must not read "Not in Alpha's catalogue yet" for it (CUR-3313).
+// `mistral-medium-3.5-128b`, and X-ray must not read "Not in Alpha's catalogue yet" for it.
 export function catalogByGatewayId(gatewayId: string | undefined): CatalogModel | undefined {
 	if (!gatewayId) return undefined;
 	const byKey = (id: string) => catalog.find((m) => m.gatewayId && servedKey(m.gatewayId) === id);
@@ -650,7 +673,7 @@ export function catalogByGatewayId(gatewayId: string | undefined): CatalogModel 
 /**
  * The catalog entry a served id is built on: itself, or for a reasoning variant (`…-70b-thinking`,
  * preview's backup lane) the checkpoint it varies. For what the two share, such as the maker. The
- * variant keeps its own name through `identity.ts`, so `catalogByGatewayId` stays exact (CUR-1873).
+ * variant keeps its own name through `identity.ts`, so `catalogByGatewayId` stays exact.
  */
 export function catalogBaseOf(gatewayId: string | undefined): CatalogModel | undefined {
 	return catalogByGatewayId(gatewayId) ?? catalogByGatewayId(gatewayId?.replace(/-thinking$/i, ''));

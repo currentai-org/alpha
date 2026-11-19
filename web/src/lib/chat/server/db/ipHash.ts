@@ -80,7 +80,7 @@ export function hashIp(
 	return peppered(raw && networkOf(raw), domain);
 }
 
-// Same secret-peppered, domain-separated HMAC as hashIp (CUR-920), but for a target email
+// Same secret-peppered, domain-separated HMAC as hashIp, but for a target email
 // address. An email is a stronger direct identifier than an IP (which is why hashIp exists at all —
 // see the header comment above), so targetEmailRate.ts must never persist the raw address either.
 export function hashTargetEmail(email: string): string | null {

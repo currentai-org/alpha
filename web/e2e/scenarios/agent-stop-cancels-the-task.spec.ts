@@ -6,6 +6,7 @@ import { chatEntry } from './helpers/chatEntry';
 import { setFlagOverrides } from './helpers/flagOverride';
 import { signInAsFreshUser } from './helpers/session';
 import { agentOption, openAgentTools, toolsButton } from './helpers/agentTool';
+import { installFaultInjectionHeader } from './helpers/faultInjection';
 import { startChattingPastWelcome } from './helpers/welcome';
 
 // Stop on an agent turn said "Stopped before any answer arrived", but the task ran on, a
@@ -15,7 +16,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 //
 // The contract: once Stop is pressed, the stored answer holds its task with the handle closed, and
 // opening the conversation again after the run would have finished shows the turn still stopped, with
-// no file and no "Working on it…". The scenario stand-in (fakeAgentService.ts, SOL-212) finishes a run
+// no file and no "Working on it…". The scenario stand-in (fakeAgentService.ts) finishes a run
 // 35s after it starts and writes the file the prompt names, so a reload that re-attaches shows it.
 //
 // Reachable by a signed-in `@example.org` account on preview, as in agent-file-download.spec.ts.
@@ -48,8 +49,7 @@ test(
 			await startChattingPastWelcome(welcomeDialog);
 		});
 		await setFlagOverrides(context, baseURL!, {
-			'agent-mode': true,
-			'agent-artifact-download': true
+			'agent-mode': true
 		});
 		await signInAsFreshUser(page);
 
@@ -163,6 +163,143 @@ test(
 
 		const [after] = await storedAnswers(page, conversationId);
 		expect(after?.interrupted, 'the stopped answer is no longer stored interrupted').toBe(true);
+		expect(
+			after?.content ?? '',
+			'the stopped answer was stored with the file the run made'
+		).not.toContain(filename);
+	}
+);
+
+// Stop from the view the page re-attached to. With `agent-run-handoff` on and a 20s watchdog the
+// first request hands the run off about 15s early, and the same page opens a second request that follows
+// the run (the POST count rises to 2). Stop pressed there has to do what Stop on the original request
+// does: cancel the task, close its handle, and keep nothing the run would still have written, so a
+// reload after the run would have ended shows no file and no receipt line.
+test(
+	'Stop on the re-attached view of a handed-off agent run cancels its task and keeps nothing the run would have written',
+	{ tag: ['@preview-only', '@CUR-993', '@CUR-4410'] },
+	async ({ page, context, baseURL }) => {
+		test.setTimeout(240_000);
+
+		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });
+		await page.addLocatorHandler(welcomeDialog, async () => {
+			await startChattingPastWelcome(welcomeDialog);
+		});
+		await setFlagOverrides(context, baseURL!, {
+			'agent-mode': true,
+			'agent-run-handoff': true
+		});
+		await signInAsFreshUser(page);
+		await installFaultInjectionHeader(page, 'agent_turn_deadline_20s');
+
+		await page.goto(chatEntry(), { waitUntil: 'commit' });
+		const composer = page.getByLabel('Message AI Potluck');
+		await composer.click({ timeout: 30_000 });
+		await expect(
+			toolsButton(page),
+			'the agent control is not offered for a minted @example.org account (`agent-mode-access`, CUR-1611)'
+		).toHaveAccessibleName(/\bagent\b/i, { timeout: 30_000 });
+		await openAgentTools(page, { timeout: 15_000 });
+		await agentOption(page, 'On').click();
+		await page.keyboard.press('Escape');
+
+		// Every POST to the conversation: the send, then each request that follows the run.
+		const counter = { sends: 0 };
+		page.on('request', (r) => {
+			if (r.method() === 'POST' && /\/conversation\/[a-f0-9]+$/.test(new URL(r.url()).pathname))
+				counter.sends++;
+		});
+
+		const nonce = randomBytes(6).toString('hex');
+		const filename = `reattach-stopped-${nonce}.txt`;
+		await composer.fill(
+			`Create a text file named ${filename} whose only content is the line: potluck ${nonce}`
+		);
+		await composer.press('Enter');
+		const sentAt = Date.now();
+		await page.waitForURL(/\/conversation\/[a-f0-9]+/, { timeout: 30_000 });
+		const conversationId = page.url().match(/\/conversation\/([a-f0-9]+)/)?.[1] ?? '';
+		if (!conversationId) throw new Error(`could not read a conversation id out of ${page.url()}`);
+
+		await expect
+			.poll(() => counter.sends, {
+				message:
+					'the page never opened a second request to follow the run, so Stop would be pressed on the original request and this spec measured nothing',
+				timeout: 60_000,
+				intervals: [500]
+			})
+			.toBeGreaterThanOrEqual(2);
+
+		const stop = page.getByRole('button', { name: 'Stop generating' });
+		await expect(
+			stop,
+			'the re-attached view offers no Stop while the run is still going'
+		).toBeVisible({ timeout: 15_000 });
+		const stopResponse = page.waitForResponse(
+			(r) =>
+				r.request().method() === 'POST' &&
+				r.url().endsWith(`/conversation/${conversationId}/stop-generating`),
+			{ timeout: 30_000 }
+		);
+		await stop.click();
+		expect((await stopResponse).status(), 'stop-generating did not answer 200').toBe(200);
+
+		let stopped: StoredMessage | undefined;
+		await expect
+			.poll(
+				async () => {
+					stopped = (await storedAnswers(page, conversationId)).at(-1);
+					return {
+						task: Boolean(stopped?.agentRun?.taskId),
+						closed: stopped?.agentRun?.closed === true
+					};
+				},
+				{
+					message:
+						'Stop on the re-attached view never closed the answer’s agent task, so it did not cancel the run and a reload re-attaches',
+					timeout: 30_000,
+					intervals: [1_000]
+				}
+			)
+			.toEqual({ task: true, closed: true });
+
+		// Come back once a run that kept going would have finished and saved its file.
+		await expect
+			.poll(() => Date.now() - sentAt >= PAST_THE_RUN_MS, {
+				message: 'the clock never passed the stand-in run length',
+				timeout: PAST_THE_RUN_MS + 5_000,
+				intervals: [1_000]
+			})
+			.toBe(true);
+		await page.goto(`/chat/conversation/${conversationId}`, { waitUntil: 'commit' });
+		const reloaded = page.locator('[data-message-role="assistant"]').last();
+		await expect(reloaded).toBeVisible({ timeout: 30_000 });
+
+		// Watched for 15s, because a re-attach starts a moment after the page loads.
+		const watchedFrom = Date.now();
+		let seen = '';
+		await expect
+			.poll(
+				async () => {
+					const text = (await reloaded.textContent({ timeout: 5_000 }).catch(() => '')) ?? '';
+					if (
+						/Working on it|Files this turn produced/.test(text) ||
+						text.includes(`potluck ${nonce}`)
+					)
+						seen = text.trim().slice(0, 200);
+					return seen !== '' || Date.now() - watchedFrom >= 15_000;
+				},
+				{
+					message: 'the reloaded turn could not be watched for 15s',
+					timeout: 30_000,
+					intervals: [1_000]
+				}
+			)
+			.toBe(true);
+		expect(seen, 'after the reload the stopped turn re-attached to its task').toBe('');
+
+		const after = (await storedAnswers(page, conversationId)).at(-1);
+		expect(after?.agentRun?.closed, 'the stopped answer’s task handle reopened').toBe(true);
 		expect(
 			after?.content ?? '',
 			'the stopped answer was stored with the file the run made'

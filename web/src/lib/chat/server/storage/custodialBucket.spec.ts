@@ -1,9 +1,9 @@
-// "real tests trying to escape another user's prefix, not just the happy path." The
-// happy-path tests exist to pin the layout; the escape tests are the actual point of this file.
+// The escape tests are the point of this file: real attempts to reach another user's prefix, not just
+// the happy path. The happy-path tests exist to pin the layout.
 //
-// The path-traversal test below (CUR-928) goes red for the failure it names: reverting
+// The path-traversal test below goes red for the failure it names: reverting
 // assertOwnership's normalize-first call fails it and only it. The exposure is real, since
-// /chat/storage (CUR-1276) is a live route on a single shared credential. (CUR-412)
+// /chat/storage is a live route on a single shared credential.
 import { describe, it, expect } from "vitest";
 import {
 	userPrefix,
@@ -97,7 +97,7 @@ describe("resolveUserPath — escape attempts (the actual point of this file)", 
 	});
 
 	it("a raw string PREFIX match is not enough — 'users/<id>extra/...' must not pass as <id>'s own path", () => {
-		// This is CUR-412's own "checking the path template is not enough" made concrete: a naive
+		// Checking the path template is not enough: a naive
 		// `path.startsWith('users/' + userId)` check (no trailing slash) would wrongly accept this.
 		const decoyPath = `users/${ME}extra-suffix/secret.txt`;
 		expect(decoyPath.startsWith(`users/${ME}`)).toBe(true); // the naive check would wrongly pass
@@ -131,7 +131,7 @@ describe("assertOwnership — the per-request check, independent of path structu
 		expect(() => assertOwnership("../escape", "users/ME/file.txt")).toThrow(InvalidUserIdError);
 	});
 
-	it("rejects an unnormalized '..' traversal that resolves into a DIFFERENT user's folder, even though the raw string's first segment is the caller's own id (CUR-928)", () => {
+	it("rejects an unnormalized '..' traversal that resolves into a DIFFERENT user's folder, even though the raw string's first segment is the caller's own id", () => {
 		// path.posix.resolve/normalize collapses this to `users/${OTHER}/documents/tax.pdf` — what a
 		// normalizing backend actually serves — but a regex match against the RAW string captures
 		// `${ME}` as the owning segment, since `[^/]+` stops at the first `/` regardless of what

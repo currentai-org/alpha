@@ -9,7 +9,7 @@ export function formatRagEngine(source: Pick<RagSource, "engine" | "sourceName">
 	if (source.engine === "SyftHub" && source.sourceName) {
 		return `SyftHub:${source.sourceName}`;
 	}
-	// The person's own earlier chats, named the way the note under the answer names them. (CUR-4576)
+	// The person's own earlier chats, named the way the note under the answer names them.
 	if (source.engine === "PastChat") return "your past chats";
 	return source.engine;
 }

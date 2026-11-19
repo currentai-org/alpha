@@ -1,5 +1,5 @@
 // After a build: one sandbox from the template proves Hermes and the run-code libraries are there and the guest
-// env holds nothing of ours (CUR-4482). The sandbox is killed whatever happens.
+// env holds nothing of ours. The sandbox is killed whatever happens.
 import { Sandbox } from 'e2b'
 
 const alias = process.env.E2B_TEMPLATE_ALIAS || 'hermes'

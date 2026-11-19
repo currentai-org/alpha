@@ -5,8 +5,10 @@
 // kept the sent text as a bubble under "Working on it…", counting forever, and the text was gone.
 // Preview-only: `conversation_limit_reached` refuses as if this visitor held the cap (faultInjection.ts),
 // since reaching the real one means making 100 chats.
-import { test, expect } from './helpers/test';
+import postgres from 'postgres';
+import { test, expect, type Page } from './helpers/test';
 import { chatEntry } from './helpers/chatEntry';
+import { composerHydrated } from './helpers/composer';
 import {
 	CONVERSATION_CREATE_PATH,
 	installFaultInjectionHeader,
@@ -15,8 +17,11 @@ import {
 import { journeyStep } from './helpers/journeyStep';
 import { recordMeasurement } from './helpers/measurement';
 import { captionForRecording } from './helpers/recording';
+import { sslFor } from './helpers/db';
 import { freshTestEmail, signInWithEmailOtp } from './helpers/signIn';
 import { turnDone } from './helpers/turn';
+import { setFlagOverrides } from './helpers/flagOverride';
+import { accountButton, workspaceFlyout } from './helpers/accountMenu';
 
 // The fault speaks as a visitor holding exactly the cap (USAGE_LIMITS conversations: 100).
 const LIMIT_MESSAGE =
@@ -47,7 +52,7 @@ test(
 			const composer = page.getByLabel('Message AI Potluck');
 			await composer.click({ timeout: 30_000 });
 			await composer.fill(question);
-			// CUR-2875's bar is one second from sending to the message. Every stamp is on the page's own
+			// The bar is one second from sending to the message. Every stamp is on the page's own
 			// clock: Enter's keydown (the send as the person makes it, before any model routing runs), the
 			// create request's start and end from Resource Timing, and the moment the toast carrying the
 			// limit text enters the DOM. Timing from the test side would add the assertion's polling
@@ -147,7 +152,7 @@ test(
 
 		// With room again (the person deleted a chat), the same text sends as a normal new chat. This sits
 		// outside row 18's span, and waits for the reply, because the recording used to end on this send's
-		// "Working on it…", which reads as the very defect row 18 names (CUR-2951).
+		// "Working on it…", which reads as the very defect row 18 names.
 		const { fault, composer, question } = step;
 		fault.disarm();
 		await captionForRecording(
@@ -171,7 +176,7 @@ test(
 );
 
 // The cap counts a signed-in account's chats the same way, and on www a signed-in account at 100 got no
-// toast at all while the console logged the refusal (CUR-2875, comment 6244e6bd). The guest case above
+// toast at all while the console logged the refusal (comment 6244e6bd). The guest case above
 // never drove that path.
 test(
 	'a signed-in account at the conversation limit is told so and keeps what they typed',
@@ -189,6 +194,9 @@ test(
 		await installFaultInjectionHeader(page, 'conversation_limit_reached', CONVERSATION_CREATE_PATH);
 		await page.goto(chatEntry(), { waitUntil: 'commit' });
 		await installCannedReplies(page);
+		// The prod profile enters on /chat/models/<id>, whose load awaits a subscribe POST before the page
+		// hydrates; signed in, that ran ~2 s past an Enter pressed at once, and the press was dropped.
+		await composerHydrated(page);
 
 		const question = `A1 signed-in limit ${Date.now()}: what goes in a tenancy deposit claim?`;
 		const composer = page.getByLabel('Message AI Potluck');
@@ -209,5 +217,183 @@ test(
 		).toContainText(LIMIT_MESSAGE, { timeout: 5_000 });
 		await expect(composer, 'the typed text was lost').toHaveValue(question);
 		await expect(page.locator('[data-message-type="user"]')).toHaveCount(0);
+	}
+);
+
+// A miss seen on production was a signed-in account at the cap with a workspace selected,
+// which neither case above drives. This one picks a workspace from the account menu, as a person does,
+// then sends into the refusal twice: once at once, and again after the held toast's 20 s timer
+// (ChatShell.svelte) has taken the first one down.
+test(
+	'a signed-in account at the conversation limit with a workspace selected is told so on the first Enter and again after the toast clears',
+	{ tag: ['@A1', '@CUR-2875', '@preview-only'] },
+	async ({ page, context, baseURL }) => {
+		test.setTimeout(150_000);
+		const databaseUrl = process.env.SCENARIO_DATABASE_URL;
+		if (!databaseUrl)
+			throw new Error('SCENARIO_DATABASE_URL is not set — global-setup.ts should have caught this');
+		await setFlagOverrides(context, baseURL!, { 'workspace-org-creation': true });
+		const welcome = page.getByRole('dialog', { name: 'Welcome to Alpha' });
+		await page.addLocatorHandler(welcome, async () => {
+			await welcome.getByRole('button', { name: /start chatting/i }).click();
+		});
+		await signInWithEmailOtp(page, databaseUrl, freshTestEmail());
+
+		const workspace = `E2E Limit Workspace ${Date.now()}`;
+		const post = async (path: string, data: object) => {
+			const res = await page.request.post(`/chat/api/auth/organization/${path}`, {
+				data,
+				headers: { origin: new URL(baseURL!).origin }
+			});
+			expect(res.status(), `${path} answered ${res.status()}: ${await res.text()}`).toBe(200);
+		};
+		await post('create', { name: workspace, slug: workspace.toLowerCase().replace(/\W+/g, '-') });
+		// Back in Personal, so the menu below is what selects the workspace.
+		await post('set-active', { organizationId: null });
+
+		await installFaultInjectionHeader(page, 'conversation_limit_reached', CONVERSATION_CREATE_PATH);
+		await page.goto(chatEntry(), { waitUntil: 'commit' });
+		await installCannedReplies(page);
+		await composerHydrated(page);
+
+		const accountStatus = accountButton(page).locator('[data-account-status]');
+		await expect(accountStatus).toHaveText('Personal workspace', { timeout: 30_000 });
+		const flyout = await workspaceFlyout(page, { timeout: 30_000 });
+		await flyout.getByRole('menuitemradio', { name: workspace, exact: true }).click();
+		await expect(
+			accountStatus,
+			'choosing the workspace from the menu did not select it'
+		).toHaveText(workspace, { timeout: 15_000 });
+		await composerHydrated(page);
+
+		const question = `A1 workspace limit ${Date.now()}: what notice does a landlord owe before entry?`;
+		const composer = page.getByLabel('Message AI Potluck');
+		const toast = page.getByTestId('chat-error-toast');
+		await composer.click({ timeout: 30_000 });
+		await composer.fill(question);
+		const sendIntoRefusal = async (when: string) => {
+			const refusal = page.waitForResponse(
+				(r) =>
+					CONVERSATION_CREATE_PATH.test(new URL(r.url()).pathname) &&
+					r.request().method() === 'POST'
+			);
+			await composer.press('Enter');
+			expect(
+				(await refusal).status(),
+				`${when}: the create request was not refused; the fault never reached the server`
+			).toBe(429);
+			await expect(
+				toast,
+				`${when}: an account at the cap with a workspace selected was refused with nothing on screen`
+			).toContainText(LIMIT_MESSAGE, { timeout: 5_000 });
+			await expect(composer, `${when}: the typed text was lost`).toHaveValue(question);
+			await expect(page.locator('[data-message-type="user"]')).toHaveCount(0);
+		};
+
+		await sendIntoRefusal('first Enter');
+		await expect(
+			toast,
+			'the limit toast never cleared, so the second send below would not show a fresh one'
+		).toHaveCount(0, { timeout: 30_000 });
+		await sendIntoRefusal('Enter after the held toast cleared');
+	}
+);
+
+/** Starts an empty conversation through the API, as the page's current visitor, and returns its id. */
+async function createChat(page: Page, model: string | undefined): Promise<string> {
+	const created = await page.request.post('/chat/conversation', { data: { model } });
+	expect(created.ok(), `POST /chat/conversation answered ${created.status()}`).toBe(true);
+	return ((await created.json()) as { conversationId: string }).conversationId;
+}
+
+// sign-in moves every guest conversation onto the account with no cap check, so a guest with
+// chats who signs into an account near the cap lands past it. The cap stays on accounts (Q1, 10-20),
+// so the next new chat is refused, and the refusal names the real count and how many to delete. No
+// fault here: the account's chats are real rows and the carry-over is the real sign-in. The account's
+// first 98 rows are copies of one chat made through the API, because the create route's rate limit
+// stops a spec making 99 that way.
+test(
+	'a guest with chats who signs into an account near the cap is refused the next new chat, told the count and how many to delete',
+	{ tag: ['@A1', '@CUR-2891', '@preview-only'] },
+	async ({ page }) => {
+		test.setTimeout(180_000);
+		const databaseUrl = process.env.SCENARIO_DATABASE_URL;
+		if (!databaseUrl)
+			throw new Error('SCENARIO_DATABASE_URL is not set — global-setup.ts should have caught this');
+		const welcome = page.getByRole('dialog', { name: 'Welcome to Alpha' });
+		await page.addLocatorHandler(welcome, async () => {
+			await welcome.getByRole('button', { name: /start chatting/i }).click();
+		});
+		const email = freshTestEmail();
+		const sql = postgres(databaseUrl, { ssl: sslFor(databaseUrl), max: 1 });
+		try {
+			// The account: 99 conversations, one under the cap of 100.
+			await signInWithEmailOtp(page, databaseUrl, email);
+			const models = (await (await page.request.get('/chat/api/models')).json()) as {
+				id?: string;
+				name?: string;
+			}[];
+			const model = models[0]?.id ?? models[0]?.name;
+			const seed = await createChat(page, model);
+			await sql`
+				insert into conversations (id, user_id, created_at, updated_at, doc)
+				select substr(md5(random()::text || n::text), 1, 24), user_id, now(), now(), doc
+				from conversations, generate_series(1, 98) as n
+				where id = ${seed}
+			`;
+			const [{ userId }] = await sql<{ userId: string }[]>`
+				select user_id as "userId" from conversations where id = ${seed}
+			`;
+			const held = async () =>
+				Number(
+					(
+						await sql<
+							{ n: string }[]
+						>`select count(*) as n from conversations where user_id = ${userId}`
+					)[0].n
+				);
+			expect(await held(), 'the account was not seeded to one under the cap').toBe(99);
+
+			// Signed out, the same browser is a new guest, who starts two chats.
+			await page.context().clearCookies();
+			await page.goto(chatEntry(), { waitUntil: 'commit' });
+			await createChat(page, model);
+			await createChat(page, model);
+
+			// Signing in carries both onto the account: 101 against a cap of 100.
+			await signInWithEmailOtp(page, databaseUrl, email);
+			await expect
+				.poll(held, { message: "sign-in did not carry the guest's two chats onto the account" })
+				.toBe(101);
+
+			await page.goto(chatEntry(), { waitUntil: 'commit' });
+			await installCannedReplies(page);
+			// An Enter before hydration is dropped with no request (see the signed-in test above).
+			await composerHydrated(page);
+			const question = `A1 carried past the cap ${Date.now()}: how do I split a shared electricity bill?`;
+			const composer = page.getByLabel('Message AI Potluck');
+			await composer.click({ timeout: 30_000 });
+			await composer.fill(question);
+			const refusal = page.waitForResponse(
+				(r) =>
+					CONVERSATION_CREATE_PATH.test(new URL(r.url()).pathname) &&
+					r.request().method() === 'POST'
+			);
+			await composer.press('Enter');
+			expect(
+				(await refusal).status(),
+				'an account carried past the cap by sign-in was let start a new chat'
+			).toBe(429);
+			await expect(
+				page.getByTestId('chat-error-toast'),
+				'the refusal does not name the count and how many to delete'
+			).toContainText(
+				'You have 101 conversations and the limit is 100. Delete 2 to start a new one.',
+				{ timeout: 5_000 }
+			);
+			await expect(composer, 'the typed text was lost').toHaveValue(question);
+		} finally {
+			await sql.end({ timeout: 5 });
+		}
 	}
 );

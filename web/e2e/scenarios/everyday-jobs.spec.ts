@@ -21,10 +21,10 @@ import { startChattingPastWelcome } from './helpers/welcome';
 //
 // A7 had no journey at all. This file exists so that absence stops being invisible: the gallery
 // reports A7 as `not-run` rather than leaving silence where a reader deciding what is ready would
-// look. A board has to be able to tell "nothing was done" from "nothing was wired" (CUR-706); a
+// look. A board has to be able to tell "nothing was done" from "nothing was wired"; a
 // journey missing from docs/journeys/ has exactly that defect, one level down.
 //
-// WHY THIS SIGNS IN (CUR-1644). An anonymous visitor skipping on `agentEnabled: false` would report
+// WHY THIS SIGNS IN. An anonymous visitor skipping on `agentEnabled: false` would report
 // agent mode as off on the deployment, which is not a fact about the deployment.
 // `agentModeEnabledForUser` (`src/lib/chat/server/agentMode.ts`) denies a caller with no account
 // outright, so that skip would fire on every deployment, even one with agent mode fully armed. A
@@ -34,7 +34,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // THE THIRD GATE. Signing in removes the account gate, and forcing `agent-mode` through the override
 // cookie removes the deployment-level one. `agent-mode-access` is read per account through
 // `flagEnabledForUser`, which calls PostHog directly and never consults the override cookie. Since
-// CUR-1611 it has a release condition for `@example.org` accounts on preview only, which is the
+// it has a release condition for `@example.org` accounts on preview only, which is the
 // domain this suite mints, so the control is expected and its absence fails the spec.
 //
 // WHAT THIS COVERS: steps 1 through 3 of the journey doc — the control is
@@ -42,7 +42,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // it by one step with the label following. Steps 4 through 6 (the turn runs as work, it can be
 // stopped, the account is auditable) have no assertions here on purpose. Writing them against a
 // surface nobody can currently reach would make this spec's first real run the first test of its
-// own selectors, which is the shape CUR-1335 is about — a wiring mistake there reads exactly like
+// own selectors, which is the shape that change is about — a wiring mistake there reads exactly like
 // the failure the check is named for.
 
 // @preview-only: reaches the agent control by forcing flags through the fuzz override cookie, which
@@ -75,7 +75,7 @@ test(
 			'sign-in did not take, so the agent-control check below would be about a missing account again rather than about the flag — the exact CUR-1644 defect this spec was rewritten to remove'
 		).toHaveAccessibleName(/signed in as /i, { timeout: 30_000 });
 
-		// Asserted, not skipped (CUR-1611). `agent-mode-access` carries a release condition, email ending
+		// Asserted, not skipped. `agent-mode-access` carries a release condition, email ending
 		// `@example.org` AND `env` = preview, so the minted account this suite signs in with is granted on
 		// every preview and on no production deployment. A skip here would turn a lost condition into
 		// silence; a failure names it.
@@ -108,12 +108,12 @@ test(
 		// Step 3. One tap, one step: choosing the next mode makes it the chosen one. The next mode is
 		// derived from the observed one, since hardcoding "Auto" would only pass from a fresh default.
 		// Each side of the tap is held for the recording: without a before and an after on screen, the
-		// grader cannot tell a tap that moved the mode from one that did nothing (CUR-2337).
+		// grader cannot tell a tap that moved the mode from one that did nothing.
 		const NEXT: Record<string, AgentMode> = { Off: 'Auto', Auto: 'On', On: 'Off' };
 		// The Tools menu scrolls, and the Agent group sits below Web search, so the held "before" frame
 		// showed Web search's choice with Agent's cropped out, and the click then scrolled the panel
 		// itself, which the grader read as a jump rather than a tap. Scrolled into view first, the
-		// before and after differ only in which Agent row is chosen (CUR-2337).
+		// before and after differ only in which Agent row is chosen.
 		await journeyStep(page, 'A7', 3, async () => {
 			await agentGroup(page).scrollIntoViewIfNeeded();
 			await holdForRecording(page);

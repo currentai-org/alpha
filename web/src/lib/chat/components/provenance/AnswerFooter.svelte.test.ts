@@ -5,8 +5,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import AnswerFooter from './AnswerFooter.harness.svelte';
 
 // Under a Spanish visitor's fixed notice, the open-gap card, "How this was made" and the caption
-// saying no model wrote the reply all follow the browser language (CUR-2394).
-describe('AnswerFooter — captions follow the browser language (CUR-2394)', () => {
+// saying no model wrote the reply all follow the browser language.
+describe('AnswerFooter — captions follow the browser language', () => {
 	afterEach(cleanup);
 
 	it('says no model wrote a fixed reply in Spanish for a Spanish browser', async () => {
@@ -32,8 +32,8 @@ describe('AnswerFooter — captions follow the browser language (CUR-2394)', () 
 });
 
 // A model with no catalog entry of its own (a reasoning variant) still shows its maker in full, never
-// the bare abbreviation "SNAI" (CUR-1873).
-describe('AnswerFooter — a reasoning variant names its maker in full (CUR-1873)', () => {
+// the bare abbreviation "SNAI".
+describe('AnswerFooter — a reasoning variant names its maker in full', () => {
 	afterEach(cleanup);
 
 	it('credits the Thinking backup to the Swiss National AI Institute, not "SNAI", and keeps its own name', async () => {
@@ -49,9 +49,48 @@ describe('AnswerFooter — a reasoning variant names its maker in full (CUR-1873
 	});
 });
 
+// A turn nothing identified a model for shows no provider icon at all, never an icon beside an empty
+// label that reads as a broken badge.
+describe('AnswerFooter — an unidentified model shows no nameless provider icon', () => {
+	afterEach(cleanup);
+
+	it('renders no provider icon and no provenance button when no model was identified', async () => {
+		const { container } = await render(AnswerFooter, { messageId: 'm1', content: 'x' });
+		await expect.element(page.getByRole('button', { name: "Where it's weak" })).toBeInTheDocument();
+		expect(container.querySelectorAll('[data-org-logo]')).toHaveLength(0);
+		expect(container.querySelectorAll('[data-how-made]')).toHaveLength(0);
+	});
+
+	it('never shows a provider icon without a name beside it, for an id no catalog knows', async () => {
+		const { container } = await render(AnswerFooter, {
+			messageId: 'm1',
+			content: 'x',
+			modelId: 'unknown-lab/unlisted-model-7b'
+		});
+		await expect.element(page.getByRole('button', { name: "Where it's weak" })).toBeInTheDocument();
+		const howMade = container.querySelector('[data-how-made]');
+		if (howMade?.querySelector('[data-org-logo]')) {
+			expect(howMade.querySelector('[data-provenance="line"]')?.textContent?.trim()).toBeTruthy();
+		}
+		for (const logo of container.querySelectorAll('[data-org-logo]')) {
+			expect(logo.closest('[data-how-made]')?.querySelector('[data-provenance="line"]')?.textContent?.trim()).toBeTruthy();
+		}
+	});
+
+	it('names the provider and model beside the icon when the model is known', async () => {
+		const { container } = await render(AnswerFooter, {
+			messageId: 'm1',
+			content: 'x',
+			modelId: 'swiss-ai/apertus-v1.5-70b'
+		});
+		await expect.element(page.getByText(/^Swiss National AI Institute · Apertus 1\.5 70B$/)).toBeInTheDocument();
+		expect(container.querySelectorAll('[data-how-made] [data-org-logo]')).toHaveLength(1);
+	});
+});
+
 // Each copy keeps a handle on its reset timer, so a refused copy's 3 s timer cannot cut short the
-// "Copied" of a successful copy made after it (CUR-2920).
-describe('AnswerFooter — a later copy keeps its own "Copied" (CUR-2920)', () => {
+// "Copied" of a successful copy made after it.
+describe('AnswerFooter — a later copy keeps its own "Copied"', () => {
 	afterEach(() => {
 		vi.useRealTimers();
 		vi.restoreAllMocks();
@@ -86,8 +125,8 @@ describe('AnswerFooter — a later copy keeps its own "Copied" (CUR-2920)', () =
 });
 
 // The Second opinion action shows only where X-ray's Step by step offers one, and opens X-ray there
-// on this answer (CUR-4187).
-describe('AnswerFooter — Second opinion opens X-ray on this answer (CUR-4187)', () => {
+// on this answer.
+describe('AnswerFooter — Second opinion opens X-ray on this answer', () => {
 	afterEach(cleanup);
 
 	it('offers no Second opinion action on an answer Step by step offers none for', async () => {
@@ -106,5 +145,38 @@ describe('AnswerFooter — Second opinion opens X-ray on this answer (CUR-4187)'
 		expect(get(stackOpen)).toBe(true);
 		expect(get(xrayMessageId)).toBe('m7');
 		expect(get(xraySecondOpinion)).toBe(true);
+	});
+});
+
+// Each answer says where its own turn ran, read from its routing record: a router can send one model
+// to several hosts, so the footer names the host this turn recorded and none when it recorded none.
+describe('AnswerFooter — names the host this turn ran on', () => {
+	afterEach(cleanup);
+
+	it('names Scaleway in France for a Mistral Medium turn the router sent to Scaleway', async () => {
+		const { container } = await render(AnswerFooter, {
+			messageId: 'm1',
+			content: 'x',
+			modelId: 'mistral-medium-2604',
+			backend: 'https://api.scaleway.ai/abc/v1'
+		});
+		await expect.element(page.getByText('Ran on Scaleway (France).')).toBeInTheDocument();
+		expect(container.querySelector('[data-answer-ran-on]')?.textContent).not.toContain('La Plateforme');
+	});
+
+	it('names La Plateforme for a turn that recorded Mistral’s own API', async () => {
+		await render(AnswerFooter, {
+			messageId: 'm1',
+			content: 'x',
+			modelId: 'mistral-medium-2604',
+			backend: 'https://api.mistral.ai/v1'
+		});
+		await expect.element(page.getByText('Ran on Mistral AI La Plateforme (France).')).toBeInTheDocument();
+	});
+
+	it('names no host when the turn recorded none', async () => {
+		const { container } = await render(AnswerFooter, { messageId: 'm1', content: 'x', modelId: 'mistral-medium-2604' });
+		await expect.element(page.getByText(/Mistral Medium/)).toBeInTheDocument();
+		expect(container.querySelector('[data-answer-ran-on]')).toBeNull();
 	});
 });

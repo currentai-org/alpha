@@ -24,7 +24,7 @@ export interface CitationGuardResult {
 }
 
 // Spans we must not touch (a [n] inside is not a citation): code, URLs. A fence the stream never
-// closed (the model hit its length cap mid-block) runs to the end of the text (CUR-3874).
+// closed (the model hit its length cap mid-block) runs to the end of the text.
 const PROTECTED_SPAN = /```[\s\S]*?(?:```|$(?![\s\S]))|`[^`]*`|https?:\/\/\S+/g;
 // A citation marker = optional single leading space + [digits], NOT immediately followed by "(" or
 // ":" (that would be a markdown link or reference definition, not an inline citation).
@@ -87,7 +87,7 @@ export function stripInlineCitations(text: string, visitorCount = 0): CitationGu
 			const isMarker = j > i + 1 && s[j] === "]"; // [<digits>]
 			const next = s[j + 1];
 			const isLinkOrRef = next === "(" || next === ":"; // [n](url) / [n]: ref — not a citation
-			// The visitor's own pasted sources are backed by their message (visitorSources.ts, CUR-3844).
+			// The visitor's own pasted sources are backed by their message (visitorSources.ts).
 			const markerN = Number(s.slice(i + 1, j));
 			const isVisitors = isMarker && markerN >= 1 && markerN <= visitorCount;
 			if (isMarker && !isLinkOrRef && !isVisitors) {
@@ -98,7 +98,7 @@ export function stripInlineCitations(text: string, visitorCount = 0): CitationGu
 				const lineStart = k < 0 || s[k] === "\n";
 				if (!lineStart) {
 					// Drop the emphasis wrapped around the marker with it, so "Source **[1]**." leaves no
-					// empty "****" in the prose (CUR-3844).
+					// empty "****" in the prose.
 					let after = j + 1;
 					const wrap = ["**", "__", "*", "_"].find((w) => out.endsWith(w) && s.startsWith(w, after));
 					if (wrap) {
@@ -146,7 +146,7 @@ export function stripUnbackedSourceClaims(
 	const { masks, masked } = maskProtected(original);
 	// Remove fabricated "for sources, see [n]" promise sentences, then strip leftover INLINE [n] citations
 	// (the scan keeps line-start list markers).
-	// A sentence pointing only at the visitor's own numbered sources keeps its promise (CUR-3844).
+	// A sentence pointing only at the visitor's own numbered sources keeps its promise.
 	const afterPromise = masked.replace(SOURCE_PROMISE_SENTENCE, (sentence) =>
 		[...sentence.matchAll(/\[(\d+)\]/g)].every((m) => Number(m[1]) >= 1 && Number(m[1]) <= visitorCount)
 			? sentence
@@ -164,10 +164,10 @@ export function stripUnbackedSourceClaims(
 	) {
 		return { stripped: false, cleaned: original };
 	}
-	// Source wording with nothing to remove leaves the answer exactly as written (CUR-3874).
+	// Source wording with nothing to remove leaves the answer exactly as written.
 	if (afterPromise === masked && !inline.stripped) return { stripped: false, cleaned: original };
 	// Tidy connectors/whitespace a partial strip can leave behind ("check  or ."), while code and URLs
-	// are still masked, so a code block's indentation is never collapsed (CUR-3874).
+	// are still masked, so a code block's indentation is never collapsed.
 	const tidied = inline.cleaned
 		.replace(/\b(?:check|see|refer to|consult)\s+(?:or|and|,)?\s*(?=[.!?\n]|$)/gi, "")
 		.replace(/[ \t]{2,}/g, " ")

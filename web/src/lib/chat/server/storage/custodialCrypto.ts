@@ -1,10 +1,9 @@
-// The one place a custodial object is opened, and the keys writes seal to (CUR-4115).
-// Design: docs/plans/custodial-file-encryption.md ("The seam", "Key hierarchy").
+// The one place a custodial object is opened, and the keys writes seal to.
 //
 // A sealed object is an age v1 file (`age-encryption`, audited noble underneath) encrypted to its
 // owner's hybrid recipient. The owner's identity is itself an age file in the same bucket, at
 // `_keys/<user|guest>/<id>.age`, encrypted to a master this deployment holds: an age identity, or an
-// AWS KMS key (CUR-4136). Nothing here defines bytes of its own apart from the tombstone marker and
+// AWS KMS key. Nothing here defines bytes of its own apart from the tombstone marker and
 // the KMS key object's three text lines, neither of which is cryptographic.
 //
 // Anything that does not start with age's magic line is legacy plaintext and passes through
@@ -12,7 +11,7 @@
 // has no key object: nothing of theirs was ever sealed, so it is a file they uploaded. Refusing plaintext is a later
 // deployment switch (design step 4), set only on the new sealed-only EU buckets.
 //
-// The owner comes from a `Grant`, never from the object's path: a path-check bypass (CUR-3180) then
+// The owner comes from a `Grant`, never from the object's path: a path-check bypass then
 // hands this module another person's ciphertext with the wrong identity, and age refuses
 // it as "no identity matched" instead of decrypting it cleanly.
 //
@@ -28,7 +27,7 @@ import { kmsDecrypt, kmsEncrypt, kmsRegion } from "./custodialKms";
 
 const AGE_MAGIC = new TextEncoder().encode("age-encryption.org/v1\n");
 
-/** What a wipe writes over an owner's key object and their recipient file (CUR-4117), the recipient
+/** What a wipe writes over an owner's key object and their recipient file, the recipient
  *  first, since writes read only that. A write refuses an owner whose recipient reads as this, and key
  *  creation refuses one whose key object does, so a turn landing after a wipe cannot mint a fresh key. */
 export const KEY_TOMBSTONE = "alpha-custodial-key-tombstone\n";
@@ -131,7 +130,7 @@ function isSealed(head: Uint8Array): boolean {
 }
 
 /** The masters this deployment holds, by kid, and which one new key objects go to. Two backends share
- *  one kid namespace, and call sites never touch either directly (CUR-4136):
+ *  one kid namespace, and call sites never touch either directly:
  *  - `CUSTODIAL_MASTER_IDENTITIES`, JSON `{"<kid>": "AGE-SECRET-KEY-PQ-1..."}`: age identities in env,
  *    for previews and a single-host install.
  *  - `CUSTODIAL_MASTER_KMS_KEYS`, JSON `{"<kid>": "arn:aws:kms:..."}`: AWS KMS keys, so the hosted site
@@ -285,7 +284,7 @@ export async function ownerRecipient(grant: Grant, bucket: KeyBucket, lock: Owne
 	const started = Date.now();
 	const masters = masterSet();
 	// Minted before the lock, because the lock's transaction holds a database connection for as long as
-	// it runs (CUR-4431). A key that loses the race to another instance is dropped unused.
+	// it runs. A key that loses the race to another instance is dropped unused.
 	const minted = masters.active ? await mintKey(grant, { ...masters, active: masters.active }) : null;
 	const lockAsked = Date.now();
 	const made = await lock(ownerLockName(grant), async () => {
@@ -360,7 +359,7 @@ function logKeyCreated(grant: Grant, kid: string, key: MintedKey, started: numbe
 	);
 }
 
-/** Give an owner whose key was tombstoned a new one (CUR-4415), for a wipe that keeps the account
+/** Give an owner whose key was tombstoned a new one, for a wipe that keeps the account
  *  ("Forget everything"). The tombstone has already destroyed the old key, so nothing sealed under it
  *  opens again; the new identity is unrelated to it. The recipient file is written last: until then it
  *  still reads as the tombstone, so a write cannot start against a key object that is half made. */
@@ -374,7 +373,7 @@ export async function replaceOwnerKey(grant: Grant, bucket: KeyBucket, lock: Own
 	logKeyCreated(grant, masters.active, minted, started, lockAsked);
 }
 
-/** Destroy an owner's key (CUR-4117): the recipient file first, since writes read only that, then the
+/** Destroy an owner's key: the recipient file first, since writes read only that, then the
  *  key object. Written whether or not the owner ever had a key, so a write that starts after this is
  *  refused either way, and under the creation lock, so a key being made right now cannot land on top. */
 export async function tombstoneOwnerKey(grant: Grant, bucket: KeyBucket, lock: OwnerLock): Promise<void> {

@@ -1,5 +1,6 @@
 import { Agent, fetch as undiciFetch } from "undici";
 import { mistralChatLane } from "$lib/chat/server/mistralKey";
+import { noteReplayBypass } from "$lib/chat/server/replayBypass";
 
 /**
  * How long an idle connection to the Mistral router stays in our pool.
@@ -37,6 +38,8 @@ export async function upstreamFetch(input: string | URL | Request, init?: Reques
 	if (input instanceof Request) return fetch(input, init);
 	const url = input.toString();
 	if (!onRouterOrigin(url)) return fetch(url, init);
+	// The router path skips global fetch, so the bypass guard (replayBypass.ts) is asked here instead.
+	noteReplayBypass(url);
 	return (await undiciFetch(url, {
 		...(init as Parameters<typeof undiciFetch>[1]),
 		dispatcher: routerAgent,

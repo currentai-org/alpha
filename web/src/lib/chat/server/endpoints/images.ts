@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import type { Sharp } from "sharp";
 import sharp from "sharp";
 import type { MessageFile } from "$lib/chat/types/Message";
@@ -47,9 +50,9 @@ export function makeImageProcessor<TMimeType extends string = string>(
 
 		const buffer = Buffer.from(value, "base64");
 		// The declared mime is the client's word and sharp decodes by content, so SVG sent as image/png
-		// would reach librsvg. Upstream chat-ui blocks the SVG loader process-wide (ee96b400); here that
-		// would also break embeddedImageScan, which rasterises SVG inside Office files on purpose, so
-		// this call refuses anything whose bytes aren't a raster image instead (CUR-4037).
+		// would reach librsvg. Blocking the SVG loader for the whole process would
+		// also break embeddedImageScan, which rasterises SVG inside Office files on purpose, so this call
+		// refuses anything whose bytes aren't a raster image instead.
 		const { fileTypeFromBuffer } = await import("file-type");
 		const sniffed = (await fileTypeFromBuffer(buffer))?.mime;
 		if (!sniffed?.startsWith("image/") || sniffed === "image/svg+xml") {

@@ -5,7 +5,7 @@ import { test, expect, type Page } from './helpers/test';
 // A2's recordings showed a French or Spanish visitor a French placeholder and status line
 // inside English chrome: "New chat", "Search chats", the Get involved card, "Not signed in" and the
 // "Deletes in 30 days" badge. Those now follow the browser's language through the interface
-// catalogs (`messages/*.json`, CUR-2394). The English test is the control: it pins the labels the
+// catalogs (`messages/*.json`). The English test is the control: it pins the labels the
 // other specs and the gallery read.
 
 async function openChat(page: Page) {
@@ -24,7 +24,7 @@ test.describe('the chrome in a French browser', () => {
 	test.use({ locale: 'fr-FR' });
 
 	test(
-		'CUR-2866: a French browser gets the sidebar, Get involved card, account row and retention badge in French',
+		'a French browser gets the sidebar, Get involved card, account row and retention badge in French',
 		{ tag: ['@CUR-2866', '@A2'] },
 		async ({ page }) => {
 			test.setTimeout(120_000);
@@ -54,7 +54,7 @@ test.describe('the chrome in an English browser', () => {
 	test.use({ locale: 'en-US' });
 
 	test(
-		'CUR-2866: an English browser keeps the English sidebar labels the other specs read',
+		'an English browser keeps the English sidebar labels the other specs read',
 		{ tag: ['@CUR-2866', '@A2'] },
 		async ({ page }) => {
 			await openChat(page);

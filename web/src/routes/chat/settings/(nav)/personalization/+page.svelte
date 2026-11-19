@@ -31,9 +31,9 @@
 	// Settings → Personalization. Replaces the per-model "Models" page: with Auto choosing the model,
 	// instructions belong to the person, not to a model — they are stored once (customPrompts["*"])
 	// and read by the server on every turn, so an edit reaches chats already open (turnPreferences.ts,
-	// CUR-1443). The server always keeps Alpha's own persona first; these can only add context.
+	//). The server always keeps Alpha's own persona first; these can only add context.
 	const settings = useSettingsStore();
-	// Layout data's `pastChatSearchEnabled` (signed in, past-chat-search flag on). (CUR-4576)
+	// Layout data's `pastChatSearchEnabled` (signed in, past-chat-search flag on).
 	const pastChatsOffered = $derived(page.data.pastChatSearchEnabled === true);
 	// Shown to anyone agent mode is open to: auto mode is the default, and this is the way back to a card per step.
 	const agentOffered = $derived(page.data.agentEnabled === true);
@@ -41,7 +41,7 @@
 	// The structured answer settings (answerPreferences.ts). Each row shows the resolved
 	// value, a Default badge while the row is unset, and a Reset that unsets it. Every change saves at
 	// once through the store's serial lane (answerSaveLane.ts), so the pill and the badge answer before
-	// the request does. CUR-3930 added the sixth row, how Alpha refers to itself. (CUR-3929)
+	// the request does. added the sixth row, how Alpha refers to itself.
 	const prefs = $derived(resolveAnswerPreferences($settings));
 	type RowKey = AnswerPreferenceKey;
 	const unset = (key: RowKey) => isDefault($settings, key);
@@ -77,11 +77,11 @@
 	};
 	// The preset the rows match over PRESET_FIELDS, or custom. Picking one writes exactly those
 	// fields in one request through the same lane, so it queues behind any write in flight and ahead
-	// of any later one. Language, suggestions and the receipt are never touched. (CUR-549)
+	// of any later one. Language, suggestions and the receipt are never touched.
 	const preset = $derived(activePreset(prefs));
 	const pickPreset = (name: string) => settings.setFields(PRESETS[name as PresetName]);
 	// The boolean `selfReferenceAsPerson` shown as two named choices, since "off" is not a
-	// state a person would name; the honesty line under the label holds in both. (CUR-3930)
+	// state a person would name; the honesty line under the label holds in both.
 	const SELF_REFERENCE_OPTIONS = ["machine", "person"] as const;
 	type SelfReference = (typeof SELF_REFERENCE_OPTIONS)[number];
 	const selfReferenceLabels: Record<SelfReference, () => string> = {
@@ -292,7 +292,7 @@
 
 	<section class="flex flex-col gap-3" aria-labelledby="memory-heading">
 		<div class="flex flex-col gap-1">
-			<!-- Section headings read the same on every settings page: a label, then a caption (CUR-3954). -->
+			<!-- Section headings read the same on every settings page: a label, then a caption. -->
 			<h2 id="memory-heading" class="flex items-center gap-2 type-label text-fg-1">
 				{m.settings_memoryTitle()}
 				{#if !pastChatsOffered}<Badge>{m.settings_comingSoon()}</Badge>{/if}
@@ -302,9 +302,9 @@
 			</p>
 		</div>
 		<!-- Disabled, not decorative: a control that accepts a choice and ignores it is the thing
-		     CUR-1060 removed. These say plainly that memory doesn't exist yet. -->
+		     that change removed. These say plainly that memory doesn't exist yet. -->
 		<div data-surface="2" class="flex flex-col divide-y divide-line-surface border border-line-2 bg-surface-2 px-4 rounded-card">
-			<!-- CUR-4576: past-chat search, the one memory control that works. Off by default; shown only
+			<!-- past-chat search, the one memory control that works. Off by default; shown only
 			     to a signed-in account with the past-chat-search flag on. -->
 			{#if pastChatsOffered}
 				<div class="flex items-center justify-between gap-4 py-4" data-testid="past-chats-search-row">

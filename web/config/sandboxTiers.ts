@@ -1,4 +1,4 @@
-// Usage tiers for run-code in chat (CUR-4578). Every account can run code from its first message; what
+// Usage tiers for run-code in chat. Every account can run code from its first message; what
 // grows with use is how much. An account starts on the first tier and moves up as its runs pile up over
 // days, the way API tiers work at Anthropic or Mistral. A safety decline on the account holds it on the
 // first tier for `declineHoldDays`. The tiers are read in `server/mcp/sandboxAllowance.ts`; change the
@@ -12,13 +12,13 @@
 //   the short window costs a resume, and it is what lets one 56-slot host serve a room: a 10-minute window
 //   would hold 56 people per ten minutes and refuse a new account a second conversation for ten.
 // - `maxLive` never above 2: agent-service refuses a third live sandbox for any account
-//   (`E2B_ACCOUNT_MAX_LIVE`, CUR-4553). Raising a tier past it needs that raised first.
+//   (`E2B_ACCOUNT_MAX_LIVE`). Raising a tier past it needs that raised first.
 // - `runsPerDay` 40 on the first tier: one sandbox turn may make 16 calls (`SANDBOX_MAX_CALLS`) and the
 //   agent eval's multi-step tasks took about 12, so 40 is three heavy turns or ten light ones a day.
 // - `testAccountsMaxLive` 2: e2e suites sign in as disposable `e2e-…` accounts, and every one of
 //   them together may hold 2 live sandboxes. Develop's host fits 4, so a burst of CI runs leaves the
 //   other 2 for staff. A run on the in-process `sandbox_stub` touches no host and is not counted.
-// - The capacity math behind these for the 56-sandbox production host is on CUR-4578.
+// - The capacity math behind these for the 56-sandbox production host is.
 
 import { z } from "zod";
 

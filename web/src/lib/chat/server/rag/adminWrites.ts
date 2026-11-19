@@ -1,4 +1,4 @@
-// Admin write/lifecycle for the RAG upload feature (Phase 2): create(draft) / update(metadata) /
+// Admin write/lifecycle for the RAG upload feature: create(draft) / update(metadata) /
 // activate / retire, each writing an immutable rag_document_audit row. Mutations are TRANSACTIONAL
 // so the denormalized rag_chunks.active flag stays consistent with the parent status.
 //
@@ -158,7 +158,7 @@ export async function createRagDocument(
 	input: CreateRagDocumentInput,
 	byUser: string | null
 ): Promise<{ doc: RagDocumentRow; duplicateChunkCount: number }> {
-	// Before embedding, so a refused upload costs no embedding call (CUR-2634).
+	// Before embedding, so a refused upload costs no embedding call.
 	const residue = commentResidueReason(input.text);
 	if (residue) throw new RagWriteError(residue);
 	const embedded = await embedChunks(input.text); // may throw — nothing persisted yet

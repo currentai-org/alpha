@@ -3,7 +3,7 @@
  * reassembled in index order whatever order its chunks arrived in, and only when every chunk is there
  * and they add up to the announced size; taking an upload removes its chunks whether or not it was
  * whole; one account cannot stage more than the cap, nor take another account's chunks; and the sweep
- * drops only uploads abandoned past the TTL. (CUR-1780)
+ * drops only uploads abandoned past the TTL.
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { like } from "drizzle-orm";
@@ -29,7 +29,7 @@ const UPLOAD = "specupload0001";
 
 const bytes = (fill: number, length: number) => Buffer.alloc(length, fill);
 
-describe.sequential("upload chunks (CUR-1780)", () => {
+describe.sequential("upload chunks", () => {
 	afterEach(async () => {
 		await getDb().delete(uploadChunks).where(like(uploadChunks.ownerId, "spec-upload-chunks-%"));
 	});

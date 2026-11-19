@@ -1,5 +1,10 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { runInBackground, nodeRequestContext } from "./vercelBackground";
+import {
+	runInBackground,
+	nodeRequestContext,
+	keepAlive,
+	drainBackground,
+} from "./vercelBackground";
 
 const REQ_CTX = Symbol.for("@vercel/request-context");
 
@@ -19,9 +24,10 @@ function deferred() {
 	return { promise, resolve, reject };
 }
 
-afterEach(() => {
+afterEach(async () => {
 	delete (globalThis as Record<symbol, unknown>)[REQ_CTX];
 	vi.unstubAllEnvs();
+	await drainBackground(1_000); // every test settles its own work; this clears the registry between them
 });
 
 describe("nodeRequestContext — Node request-context symbol read", () => {
@@ -98,5 +104,66 @@ describe("runInBackground — the warm work must survive the response on Vercel"
 		await runInBackground(Promise.reject(new Error("leg failed")));
 		// the SCHEDULED promise is the caught one — waitUntil must never receive a rejecting promise
 		await expect(scheduled[0]).resolves.toBeUndefined();
+	});
+});
+
+// on a plain Node host there is no waitUntil, so work is held for the SIGTERM drain.
+describe("shutdown registry — background work off Vercel is held until it settles", () => {
+	it("holds runInBackground work with no waitUntil, and drainBackground waits for it to finish", async () => {
+		const d = deferred();
+		let finished = false;
+		await runInBackground(d.promise.then(() => (finished = true)));
+		expect((await drainBackground(0)).left).toBe(1);
+		setTimeout(d.resolve, 50);
+		await expect(drainBackground(5_000)).resolves.toEqual({ left: 0 });
+		expect(finished).toBe(true);
+		expect((await drainBackground(0)).left).toBe(0);
+	});
+
+	it("holds keepAlive work with no waitUntil, and a rejection still counts as settled", async () => {
+		const d = deferred();
+		keepAlive(d.promise);
+		expect((await drainBackground(0)).left).toBe(1);
+		d.reject(new Error("report failed"));
+		await expect(drainBackground(5_000)).resolves.toEqual({ left: 0 });
+	});
+
+	it("drainBackground gives up at its timeout and reports what was left running", async () => {
+		const d = deferred();
+		await runInBackground(d.promise);
+		const started = Date.now();
+		await expect(drainBackground(100)).resolves.toEqual({ left: 1 });
+		expect(Date.now() - started).toBeLessThan(1_000);
+		d.resolve();
+		await drainBackground(1_000);
+	});
+
+	it("waits for work scheduled while it was already draining", async () => {
+		const first = deferred();
+		const second = deferred();
+		await runInBackground(first.promise);
+		const drained = drainBackground(5_000);
+		first.resolve();
+		await Promise.resolve();
+		await runInBackground(second.promise);
+		setTimeout(second.resolve, 50);
+		await expect(drained).resolves.toEqual({ left: 0 });
+	});
+
+	it("Vercel unchanged: work handed to a waitUntil is never held here, from runInBackground or keepAlive", async () => {
+		const waitUntil = vi.fn();
+		installNodeContext({ waitUntil });
+		const d = deferred();
+		await runInBackground(d.promise);
+		keepAlive(d.promise);
+		expect(waitUntil).toHaveBeenCalledTimes(2);
+		expect((await drainBackground(0)).left).toBe(0);
+		d.resolve();
+	});
+
+	it("Vercel with no waitUntil still awaits inline and holds nothing", async () => {
+		vi.stubEnv("VERCEL", "1");
+		await runInBackground(Promise.resolve());
+		expect((await drainBackground(0)).left).toBe(0);
 	});
 });

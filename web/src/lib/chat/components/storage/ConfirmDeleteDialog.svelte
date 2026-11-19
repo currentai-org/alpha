@@ -4,7 +4,7 @@
 	import RiErrorWarningFill from '~icons/ri/error-warning-fill';
 	import RiDeleteBinFill from '~icons/ri/delete-bin-fill';
 
-	// CUR-1276. Focus opens on Cancel (not Delete — a default focus on the destructive action
+	// Focus opens on Cancel (not Delete — a default focus on the destructive action
 	// invites an accidental delete); Escape cancels unless a delete is in flight.
 	// The destructive action keeps a Border 2 outline and a Text 1 label with only its glyph in
 	// Accent 2 — this design system has no accent-filled button (see design-system.md).

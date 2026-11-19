@@ -1,12 +1,12 @@
 /**
- * The instrument for folding the native turn into the scaffolded one. Production only ever
- * runs the scaffolded turn (harness.ts), so every step that moves a scaffolded piece into a named trick
- * has to leave the request that turn sends byte for byte as it is. This drives the real
+ * Pins the request each turn kind sends the model endpoint. The harness is chosen per model from its
+ * row in harnessProfiles.ts (harness.ts), so a change that moves a piece of the turn into or out of a
+ * named trick must leave every other model's request byte for byte as it is. This drives the real
  * textGenerationWithoutTitle into a recording endpoint and pins what each turn kind hands it: the system
  * prompt, the messages, the decoding settings, the tool names and the backup-lane rewrites.
  *
- * A snapshot change in a later PR is the claim under review: the scaffolded files may only change in a
- * PR that says why production's turn moves, and the native files change as native gains guards. (CUR-2697)
+ * A snapshot change is the claim under review: a change to these snapshots should say which model's
+ * turn moves and why.
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { ObjectId } from "bson";
@@ -131,7 +131,7 @@ const CASES = [
 	},
 ] as const;
 
-describe("what each turn kind sends the model endpoint (CUR-2697)", () => {
+describe("what each turn kind sends the model endpoint", () => {
 	for (const c of CASES) {
 		it(`${c.name}: the request matches its recorded snapshot`, async () => {
 			const request = await requestFor(c);
@@ -145,8 +145,7 @@ describe("what each turn kind sends the model endpoint (CUR-2697)", () => {
 		expect(native).not.toBe(scaffolded);
 	});
 
-	// CUR-2697 step 2: the plan's fields decide the request, not the turn kind, so a model's row can later
-	// pick each one. Each test flips one field and names the request part that must move with it.
+	// The plan's fields decide the request, not the turn kind, so a model's row can pick each one. Each test flips one field and names the request part that must move with it.
 	const parse = (r: string) => JSON.parse(r) as { preprompt: string; generateSettings: Record<string, unknown> };
 
 	it("a scaffolded plan with decoding \"model\" sends no sampling overrides, only the answer cap", async () => {
@@ -164,12 +163,31 @@ describe("what each turn kind sends the model endpoint (CUR-2697)", () => {
 		expect(flipped.generateSettings).toEqual(scaffolded.generateSettings);
 	});
 
-	// ALIA reasons before it answers, in the same token budget, and can run out at 1,024. (CUR-4241)
+	// ALIA reasons before it answers, in the same token budget, and can run out at 1,024.
 	it("ALIA's grounded turn keeps the grounded sampling but caps at the answer reserve; Apertus keeps 1,024", async () => {
 		const apertus = parse(await requestFor({ modelId: APERTUS, harness: "scaffolded", text: "Who are you?" }));
 		const alia = parse(await requestFor({ modelId: ALIA, harness: "scaffolded", text: "Who are you?" }));
 		expect(apertus.generateSettings).toEqual(GROUNDED_DECODING);
 		expect(alia.generateSettings).toEqual({ ...GROUNDED_DECODING, max_tokens: DEFAULT_ANSWER_RESERVE });
+	});
+
+	// Large 4 reasons in the same cap as its answer and can run out at 4,096, searched or not.
+	it("Large 4's native turn caps at the answer reserve plus its reasoning allowance; Large 3 keeps the reserve", async () => {
+		for (const webSearchMode of ["off", "auto"] as const) {
+			const large4 = parse(
+				await requestFor({ modelId: "mistral-large-2610", harness: "native", text: "Plan two days in Barcelona", webSearchMode })
+			);
+			expect(large4.generateSettings).toEqual({ max_tokens: DEFAULT_ANSWER_RESERVE + 12_288 });
+		}
+		const large3 = parse(await requestFor({ modelId: LARGE_3, harness: "native", text: "Plan two days in Barcelona" }));
+		expect(large3.generateSettings).toEqual({ max_tokens: DEFAULT_ANSWER_RESERVE });
+	});
+
+	it("Large 4 on a grounded turn keeps the grounded sampling and its reasoning allowance", async () => {
+		const large4 = parse(
+			await requestFor({ modelId: "mistral-large-2610", harness: "scaffolded", text: "Plan two days in Barcelona" })
+		);
+		expect(large4.generateSettings).toEqual({ ...GROUNDED_DECODING, max_tokens: DEFAULT_ANSWER_RESERVE + 12_288 });
 	});
 
 	it("a tuning-panel max_tokens still wins over ALIA's raised cap", async () => {
@@ -191,7 +209,7 @@ describe("what each turn kind sends the model endpoint (CUR-2697)", () => {
 		expect(minimal.preprompt).toContain(IDENTITY_AND_ACCOUNT_LOCK);
 	});
 
-	// CUR-2697 step 3: the base guards hold on every harness. An earlier answer that adopted a name
+	// The base guards hold on every harness. An earlier answer that adopted a name
 	// (the name guard stamped it) goes back to the model with the name neutralized, on both kinds.
 	for (const harness of ["scaffolded", "native"] as const) {
 		it(`a ${harness} turn sends an earlier answer's adopted name back neutralized`, async () => {
@@ -216,8 +234,8 @@ describe("what each turn kind sends the model endpoint (CUR-2697)", () => {
 // layer-1 guard the turn owns. Each model runs under the plan it really gets (Large 3 tools, Apertus
 // pipeline). The guards that run around the turn rather than in it (CSAM scan, input and output
 // screening, groundcheck) are not plan-gated in the route; the honesty stream, which holds the crisis
-// reorder, is, so both plans must keep `streamGuards` on. (CUR-2697)
-describe("every layer-1 guard runs on both a Large 3 and an Apertus turn (CUR-2697)", () => {
+// reorder, is, so both plans must keep `streamGuards` on.
+describe("every layer-1 guard runs on both a Large 3 and an Apertus turn", () => {
 	const MODELS = [
 		{ label: "Large 3", modelId: LARGE_3, harness: "native" },
 		{ label: "Apertus", modelId: APERTUS, harness: "scaffolded" },

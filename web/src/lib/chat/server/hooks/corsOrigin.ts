@@ -2,7 +2,7 @@ import { isHostLocalhost } from "$lib/chat/server/isURLLocal";
 
 /**
  * Decide the Access-Control-Allow-Origin value for an `/api/*` response. Pure and exported for
- * testing (CUR-1172 sibling) — `validOrigins` must include the request's own host, not just static
+ * testing. `validOrigins` must include the request's own host, not just static
  * config, or a same-origin caller on a deployment PUBLIC_ORIGIN doesn't name (every ephemeral per-PR
  * preview) gets denied incorrectly. Returns undefined when the origin isn't recognized — deny by
  * default, never echo back a stale, mismatched static value.

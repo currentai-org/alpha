@@ -63,19 +63,20 @@ for (const viewport of [
 				}
 			});
 			await context.addCookies([{ name: 'PARAGLIDE_LOCALE', value: 'en', url: baseURL as string }]);
-			// Enter through the public product, just as a first-time visitor does.
+			// Enter through the public product, just as a first-time visitor does: the landing page's
+			// main button opens the real chat (the /alpha demo is retired).
 			await page.goto('/alpha');
-			await page.locator('[data-hero-try-demo]').click();
-			await expect(page).toHaveURL(/\/alpha\/demo/);
+			await page.locator('[data-hero-cta]').click();
+			await expect(page).toHaveURL(/\/chat\/?$/);
+			const chatUrl = page.url();
 			const composer = page.locator('textarea[data-chat-input]');
 			await expect(composer).toBeEditable();
-			expect(runtimeErrors, 'public landing and demo entry hydrate without runtime errors').toEqual(
+			expect(runtimeErrors, 'public landing and chat entry hydrate without runtime errors').toEqual(
 				[]
 			);
 			const draft = 'Keep this draft: café, mañana, Straße.';
 			await composer.fill(draft);
 			const messages = page.locator('[data-message-id]');
-			await expect(messages.first()).toBeVisible();
 			const conversation = await messages.evaluateAll((nodes) =>
 				nodes.map((node) => node.getAttribute('data-message-id'))
 			);
@@ -108,10 +109,9 @@ for (const viewport of [
 							(await context.cookies()).find((cookie) => cookie.name === 'PARAGLIDE_LOCALE')?.value
 					)
 					.toBe(language.locale);
-				// Target the menu so Escape dismisses it without invoking the demo's exit shortcut.
 				await page.getByRole('menuitem', { name: language.settings, exact: true }).press('Escape');
 				await expect(page.locator('[data-interface-language]')).toBeHidden();
-				await expect(page).toHaveURL(/\/alpha\/demo/);
+				await expect(page).toHaveURL(chatUrl);
 				await expect(page.getByRole('link', { name: language.newChat, exact: true })).toBeVisible();
 				// The home page is not translated, so it keeps its one English URL in every language.
 				await expect(page.locator('[data-sidebar-home]:visible')).toHaveAttribute('href', '/');
@@ -124,7 +124,7 @@ for (const viewport of [
 			await page.locator('[data-interface-locale="fr"]').click();
 			await expect(composer).toHaveValue(draft);
 			await expect(page.locator('html')).toHaveAttribute('lang', 'fr');
-			const response = await context.request.get('/alpha/demo');
+			const response = await context.request.get(chatUrl);
 			expect(response.ok()).toBe(true);
 			expect(await response.text()).toMatch(/<html\b[^>]*lang="fr"/);
 			await page.reload();

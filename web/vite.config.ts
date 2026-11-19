@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { readFileSync, promises } from 'node:fs';
 import { dirname, resolve as resolvePath, sep } from 'node:path';
 import type { Plugin } from 'vite';
@@ -9,27 +12,45 @@ import Icons from 'unplugin-icons/vite';
 import { defineConfig } from 'vitest/config';
 import { playwright } from '@vitest/browser-playwright';
 import { config } from 'dotenv';
+import { deployEnvName, productionUrl } from './src/lib/server/runtimeEnv.js';
+import { readDeploymentFile } from './config/deployment.mjs';
+import { NEUTRAL_DEPLOYMENT } from './src/lib/deployment';
 
 config({ path: './.env.local', quiet: true });
 
 const { version } = JSON.parse(readFileSync('./package.json', 'utf-8'));
 
 // Canonical site origin, baked in at build for absolute URLs (e.g. og:image) on
-// prerendered pages. Vercel sets VERCEL_PROJECT_PRODUCTION_URL on every deploy.
-const siteOrigin = process.env.VERCEL_PROJECT_PRODUCTION_URL
-	? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-	: '';
+// prerendered pages. PRODUCTION_URL, else VERCEL_PROJECT_PRODUCTION_URL, which Vercel sets on every
+// deploy (src/lib/server/runtimeEnv.js).
+const productionHost = productionUrl();
+const siteOrigin = productionHost ? `https://${productionHost}` : '';
 
-// CUR-4448: which app this build serves (src/lib/surface.ts). Deployment identity like INSTANCE, read
+// which app this build serves (src/lib/surface.ts). Deployment identity like INSTANCE, read
 // at build time so the server and client bundles agree on `base` and `reroute`. Unset is `site`; an
 // unknown value fails the build rather than guessing which app to ship.
 const appSurface = (() => {
 	const raw = process.env.APP_SURFACE?.trim() ?? '';
 	if (raw === '' || raw === 'site') return 'site';
-	if (raw === 'chat') return 'chat';
+	if (raw === 'chat' || raw === 'site-only') return raw;
 	throw new Error(
-		`APP_SURFACE="${raw}" is neither "site" nor "chat"; refusing to guess which app to build`
+		`APP_SURFACE="${raw}" is not "site", "chat" or "site-only"; refusing to guess which app to build`
 	);
+})();
+
+// The installation's hosts and identity (src/lib/deployment.ts), from its deployment file. A key the
+// file misspells fails the build rather than silently taking the neutral default. Unit tests read
+// config/deployment.test.json, a split site/chat installation on reserved example.test hosts, so they
+// exercise the same paths wherever they run.
+const deployment = (() => {
+	const file = readDeploymentFile(
+		process.env.VITEST
+			? { DEPLOYMENT_CONFIG: process.env.DEPLOYMENT_CONFIG || 'config/deployment.test.json' }
+			: process.env
+	);
+	const unknown = Object.keys(file).filter((key) => !(key in NEUTRAL_DEPLOYMENT));
+	if (unknown.length) throw new Error(`deployment file has unknown keys: ${unknown.join(', ')}`);
+	return file;
 })();
 
 // Specs that need a live DB + auth context — excluded from hermetic CI unless TEST_LIVE=true.
@@ -46,32 +67,54 @@ const STATEFUL_SERVER_SPECS = [
 	'src/lib/chat/server/api/__tests__/conversations-message.spec.ts',
 	'src/lib/chat/server/api/__tests__/misc.spec.ts',
 	'src/lib/chat/server/db/__tests__/cleanup.spec.ts',
-	// CUR-4116: the owner-key lock, against real Postgres advisory locks.
+	// decline counts leave out probe-marked safety_events rows, on real SQL.
+	'src/lib/chat/server/db/__tests__/safetyEventsProbe.spec.ts',
+	// signed-in conversation expiry deletes only past its date, and nothing with the flag off.
+	'src/lib/chat/server/db/__tests__/conversationExpiry.spec.ts',
+	// the owner-key lock, against real Postgres advisory locks.
 	'src/lib/chat/server/db/__tests__/advisoryLock.spec.ts',
 	'src/lib/chat/server/db/__tests__/deleteConversations.spec.ts',
+	'src/lib/chat/server/db/__tests__/generationEvents.spec.ts',
 	'src/lib/chat/server/db/__tests__/wipeUserData.spec.ts',
+	// the confirm panel's counts against the wipe's own receipt, on real rows.
+	'src/lib/chat/server/db/__tests__/wipeScope.spec.ts',
 	'src/lib/chat/server/db/__tests__/nullByteSanitize.spec.ts',
 	'src/lib/chat/server/db/__tests__/concurrentWrites.spec.ts',
 	'src/lib/chat/server/db/__tests__/eventWindow.spec.ts',
+	// the burn-rate windows' FILTER clauses, against real turn_outcomes rows.
+	'src/lib/chat/server/db/__tests__/turnOutcomeWindows.spec.ts',
 	'src/lib/chat/server/db/__tests__/searchConversations.spec.ts',
-	// CUR-4576: past-chat search never reads another account's chats, against the real schema.
+	// chat tags, their PATCH, the filter list and the sidebar filter, against the real schema.
+	'src/lib/chat/server/db/__tests__/conversationTags.spec.ts',
+	// past-chat search never reads another account's chats, against the real schema.
 	'src/lib/chat/server/db/__tests__/pastChats.spec.ts',
+	// share links, their revoke, and every wipe path ending them, against real Postgres.
+	'src/lib/chat/server/share/__tests__/sharedConversations.spec.ts',
 	'src/lib/chat/server/db/__tests__/ownReports.spec.ts',
 	'src/lib/chat/server/db/__tests__/guardDailyCounts.spec.ts',
 	'src/lib/chat/server/db/__tests__/localInferencePairings.spec.ts',
 	'src/lib/chat/server/db/__tests__/uploadChunks.spec.ts',
-	// CUR-4312: sync tokens, push idempotency and tombstones, against real Postgres.
-	'src/lib/chat/server/sync/__tests__/sync.spec.ts',
+	// the Open WebUI importer's accounts, rerun idempotence and parity, against real Postgres.
+	'src/lib/chat/server/openWebUiImport/__tests__/importer.spec.ts',
+	// the Open WebUI Postgres source reader agrees with the SQLite one, against real Postgres.
+	'src/lib/chat/server/openWebUiImport/__tests__/readPostgres.spec.ts',
+	// the history seal backfill and the unsealed count, against real Postgres.
+	'src/lib/chat/server/chat/sealBackfill.spec.ts',
+	// two owners' history keys stay apart on the real key bucket and advisory lock.
+	'src/routes/chat/api/v2/keys/history/history-key.stateful.spec.ts',
 	'src/lib/chat/server/endpoints/openai/replayStore.spec.ts',
 	'src/lib/chat/server/betterAuth.accountMerge.spec.ts',
 	'src/lib/chat/server/betterAuth.selfInvite.spec.ts',
+	// the mail a real invite sends, through the plugin and the app's own hook.
+	'src/lib/chat/server/betterAuth.invitationMail.spec.ts',
 	'src/lib/chat/server/__tests__/generations.spec.ts',
-	// CUR-4629: a probe or turn marks a model down and Auto routes around it, against real alert_state.
+	// a probe or turn marks a model down and Auto routes around it, against real alert_state.
 	'src/lib/chat/server/__tests__/autoSkipsDownModel.spec.ts',
 	'src/lib/chat/server/__tests__/conversation-stop-generating.spec.ts',
 	'src/lib/chat/server/__tests__/workspaceUsage.spec.ts',
 	'src/lib/chat/server/__tests__/accountUsage.spec.ts',
 	'src/lib/chat/server/__tests__/currentWorkspace.spec.ts',
+	'src/lib/chat/server/__tests__/activeWorkspaceId.spec.ts',
 	'src/lib/chat/server/rag/__tests__/adminStoreScope.spec.ts',
 	'src/lib/chat/server/__tests__/resumeWorkspace.spec.ts',
 	'src/lib/chat/server/layoutData.spec.ts',
@@ -97,7 +140,7 @@ const STATEFUL_SERVER_SPECS = [
 	// scripts/ path cannot be double-collected by the parallel project.
 	'scripts/__tests__/verifiers.spec.ts',
 	'scripts/__tests__/dbMigrateParity.spec.ts',
-	// CUR-2529: runs the e2e cleanup against real tables.
+	// runs the e2e cleanup against real tables.
 	'scripts/__tests__/cleanupE2eArtifacts.spec.ts',
 	// Included in the stateful project only when TEST_LIVE=true (see include below).
 	...NON_HERMETIC_SERVER_SPECS
@@ -105,7 +148,7 @@ const STATEFUL_SERVER_SPECS = [
 
 const liveSpecs = 'src/**/*.live.spec.ts';
 const svelteSpecs = 'src/**/*.svelte.{test,spec}.{js,ts}';
-// CUR-4479: the design system's specs run here, with the app's $app and ~icons, since the package
+// the design system's specs run here, with the app's $app and ~icons, since the package
 // has no SvelteKit of its own.
 const alphaDsSpecs = '../packages/alpha-ds/src/**/*.{test,spec}.{js,ts}';
 const alphaDsSvelteSpecs = '../packages/alpha-ds/src/**/*.svelte.{test,spec}.{js,ts}';
@@ -124,10 +167,10 @@ function loadTTFAsArrayBuffer() {
 	};
 }
 
-// Copy edit mode (src/lib/i18n/copyEdit): on every build except Vercel production, imports of
-// `$lib/paraglide/messages.js` get messagesProxy.ts, the same `m` routed through the editor. Production
-// keeps Paraglide's module, so none of the mode's code ships there.
-const copyEditEnabled = process.env.VERCEL_ENV !== 'production';
+// Copy edit mode (src/lib/i18n/copyEdit): on every build except a production one (DEPLOY_ENV, else
+// VERCEL_ENV), imports of `$lib/paraglide/messages.js` get messagesProxy.ts, the same `m` routed through
+// the editor. Production keeps Paraglide's module, so none of the mode's code ships there.
+const copyEditEnabled = deployEnvName() !== 'production';
 
 function copyEditMessages(): Plugin {
 	const proxy = resolvePath('src/lib/i18n/copyEdit/messagesProxy.ts');
@@ -159,10 +202,11 @@ export default defineConfig({
 		__APP_VERSION__: JSON.stringify(version),
 		__SITE_ORIGIN__: JSON.stringify(siteOrigin),
 		__APP_SURFACE__: JSON.stringify(appSurface),
+		__DEPLOYMENT__: JSON.stringify(deployment),
 		__COPY_EDIT__: JSON.stringify(copyEditEnabled)
 	},
 	build: {
-		// CUR-1510: 'hidden' emits .map files without a `//# sourceMappingURL` comment in the shipped
+		// 'hidden' emits .map files without a `//# sourceMappingURL` comment in the shipped
 		// chunk, so a browser never fetches them and they're never publicly reachable even if the
 		// upload/delete step below fails. scripts/upload-posthog-sourcemaps.mjs takes it from there:
 		// tag each chunk with an id, send the maps to PostHog so captured exceptions get readable
@@ -187,7 +231,7 @@ export default defineConfig({
 		coverage: {
 			provider: 'v8',
 			include: ['src/lib/chat/server/**'],
-			// `json` writes coverage-final.json, which scripts/patch-coverage.mjs reads (SOL-107).
+			// `json` writes coverage-final.json, which scripts/patch-coverage.mjs reads.
 			reporter: ['text-summary', 'json-summary', 'json'],
 			// Baselined for vitest 4, which uses AST-based remapping instead of v8-to-istanbul and removed
 			// coverage.ignoreEmptyLines, so lines without runtime code do not pad the denominator. The older
@@ -202,7 +246,7 @@ export default defineConfig({
 			// to make the gate pass. `functions` has a 4.7-point margin (70.66% against 66), so the next
 			// real drop there trips it, which is the point of leaving it where it is.
 			//
-			// A PR's unit job runs only the specs its diff reaches (UNIT_SELECTED, SOL-261), which
+			// A PR's unit job runs only the specs its diff reaches (UNIT_SELECTED), which
 			// measures a slice of the codebase, so it skips the floors and is judged on patch coverage.
 			// Develop pushes run every spec and enforce them.
 			thresholds:
@@ -243,16 +287,16 @@ export default defineConfig({
 								// passes `--project=<one>`, so no CI job can reach the two-project case. The one
 								// caller that does is Stryker's dry run (mutation-nightly.yml, which runs the
 								// whole workspace with VITEST_BROWSER=true); it fails on exactly this when server-fast
-								// sets maxWorkers (CUR-1347), reporting zero mutants rather
-								// than a config error (CUR-1336). Reproduce with two specs and no --project:
+								// sets maxWorkers, reporting zero mutants rather
+								// than a config error. Reproduce with two specs and no --project:
 								//   VITEST_BROWSER=true npx vitest run <a .svelte.test.ts> <a server spec>
 								// Browser instances are far heavier than a node worker, so sharing a worker
 								// budget with server-fast was never what we wanted either.
 								sequence: { groupOrder: 1 },
 								// One spec file at a time, because each concurrent file costs its own browser
 								// context. Uncapped the suite peaked at 4077 MB (2183 MB of it headless Chrome)
-								// in 44.9s; at one worker, 3048 MB (Chrome 1034 MB) in 37.0s, same 105 tests
-								// (CUR-2249). VITEST_CLIENT_MAX_WORKERS overrides it for a roomier machine.
+								// in 44.9s; at one worker, 3048 MB (Chrome 1034 MB) in 37.0s, same 105 tests.
+								// VITEST_CLIENT_MAX_WORKERS overrides it for a roomier machine.
 								maxWorkers: Number(process.env.VITEST_CLIENT_MAX_WORKERS) || 1,
 								// No `environment: 'browser'` — vitest 4 rejects it outright ("To enable Browser
 								// Mode, use test.browser.enabled instead"). It was always redundant with the
@@ -275,7 +319,7 @@ export default defineConfig({
 								exclude: ['src/lib/chat/server/**'],
 								setupFiles: ['./scripts/setups/vitest-setup-client.ts'],
 								// Browser mode defaults to 15s (vitest resolves `testTimeout ??= browser.enabled ?
-								// 15e3 : 5e3`), so the 30s here is explicit and matches ci-local.sh (CUR-2204).
+								// 15e3 : 5e3`), so the 30s here is explicit and matches ci-local.sh.
 								// local-inference-tab's fully mocked tests pass 11/11 alone and time out
 								// at 15s inside a loaded pre-push. 30s matches server-fast; ci-local.sh's pressure
 								// retry is what handles a freeze longer than that.
@@ -297,7 +341,7 @@ export default defineConfig({
 					// developer machines are the ones without headroom: `ci:local` also runs a build this
 					// repo caps at 4GB. On an 8-core host an unbounded pool takes free memory down to a few
 					// hundred MiB and can OOM-kill a pre-push run, where 2 workers hold flat near 2.2Gi.
-					// 4 is the number CI runs safely (CUR-1347).
+					// 4 is the number CI runs safely.
 					//
 					// Env-overridable so a session on a loaded box can trade wall-clock for headroom;
 					// CI's coverage step sets it to 2. Never name it VITEST_MAX_WORKERS: vitest applies
@@ -313,7 +357,7 @@ export default defineConfig({
 					// double-collection: the one scripts/ spec that needs Postgres
 					// (scripts/__tests__/verifiers.spec.ts) is in STATEFUL_SERVER_SPECS, which the
 					// exclude below already spreads — so widening the include cannot pull it in.
-					// e2e/__tests__ holds the hermetic half of Playwright helper logic (CUR-1530's
+					// e2e/__tests__ holds the hermetic half of Playwright helper logic (the
 					// persona action validator). It is deliberately OUTSIDE e2e/scenarios, which is
 					// playwright.config.ts's `testDir` and matches every *.spec.ts under it — a vitest
 					// spec placed in there would be collected by Playwright too, fail on a missing
@@ -387,7 +431,7 @@ export default defineConfig({
 					environment: 'node',
 					// The throwaway local container's URL (`docker start aipotluck-dev-pg`), the same value
 					// ci.yml's unit job sets. It is not a secret, so a fresh worktree needs no .env for it.
-					// A real DATABASE_URL from the shell or Doppler still wins (SOL-236).
+					// A real DATABASE_URL from the shell or Doppler still wins.
 					env: {
 						DATABASE_URL:
 							process.env.DATABASE_URL ||

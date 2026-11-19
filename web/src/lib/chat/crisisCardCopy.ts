@@ -2,7 +2,7 @@
 // (`lang`) but the UI catalogs (paraglide: en, es, fr, de) do not carry. These are card-only: adding
 // ca/it/pt as UI locales would put an untranslated app around a translated card.
 //
-// These translations have not yet been reviewed by a native speaker of each language (CUR-4103).
+// These translations have not yet been reviewed by a native speaker of each language.
 // Portuguese uses the European tu.
 
 /** Every string the card shows, by its catalog key. */

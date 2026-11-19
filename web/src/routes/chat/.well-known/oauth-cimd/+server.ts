@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { AUTH_BASE_PATH, HF_LOGIN_CALLBACK_PATH, base } from "$lib/chat/paths";
 import { OIDConfig } from "$lib/chat/server/auth";
 import { config } from "$lib/chat/server/config";
@@ -35,7 +38,7 @@ export const GET = ({ url }) => {
 				// betterAuth.ts's genericOAuth HF provider, a second consumer of this same
 				// CLIENT_ID='__CIMD__' identity; unlisted, HF rejects its callback as an unregistered
 				// redirect_uri. One per host sign-in answers on, so chat.aipotluck.org's callback is
-				// registered too (CUR-1067). client_id stays on PUBLIC_ORIGIN: HF identifies the app by
+				// registered too. client_id stays on PUBLIC_ORIGIN: HF identifies the app by
 				// this document's URL.
 				...huggingFaceCallbackOrigins(url.origin).map((origin) =>
 					new URL(`${AUTH_BASE_PATH}/callback/huggingface`, origin).toString()

@@ -13,7 +13,7 @@ import { superjsonResponse } from "./superjsonResponse";
 // useful to do with a Promise except await it, and awaiting it silently would make an async handler
 // LOOK correct while hiding the missing `await` from the next reader. So the contract is enforced in
 // the type, and this spec is where that enforcement is proven to still exist.
-describe("superjsonResponse — rejects a Promise at the type level (CUR-255)", () => {
+describe("superjsonResponse — rejects a Promise at the type level", () => {
 	it("REFUSES to compile when handed an un-awaited value", () => {
 		const later = async () => ({ flags: { a: true } });
 

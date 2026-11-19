@@ -1,6 +1,6 @@
 /**
  * The first-token median alert's decision, kept free of the DB and the logger so a replay of real turns
- * and the unit tests run the same code the cron does (CUR-2243).
+ * and the unit tests run the same code the cron does.
  *
  * The turn-outcome rate alert sees a pool that stops answering: the watchdogs end those turns
  * `timedOut`. It cannot see one that still answers, slowly: every turn can complete while guests wait

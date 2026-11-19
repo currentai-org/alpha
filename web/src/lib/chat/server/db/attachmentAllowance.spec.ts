@@ -32,7 +32,7 @@ beforeEach(() => {
 	warn.mockReset();
 });
 
-describe("attachmentAllowanceLeft (CUR-3235)", () => {
+describe("attachmentAllowanceLeft", () => {
 	it("subtracts every live row's file and bytes from the guest allowance, and resets when the oldest expires", async () => {
 		vi.useFakeTimers({ now: new Date("2026-10-09T12:00:00Z") });
 		rows([
@@ -51,7 +51,7 @@ describe("attachmentAllowanceLeft (CUR-3235)", () => {
 		});
 	});
 
-	it("gives a guest the network's room when the network's guests have spent more than this session could (CUR-3600)", async () => {
+	it("gives a guest the network's room when the network's guests have spent more than this session could", async () => {
 		const net = ATTACHMENT_ALLOWANCE.guestNetwork;
 		find.mockImplementation((q: { ipHash?: string }) => ({
 			toArray: async () =>
@@ -114,7 +114,7 @@ describe("attachmentAllowanceLeft (CUR-3235)", () => {
 	});
 });
 
-describe("fitsAllowance (CUR-3235)", () => {
+describe("fitsAllowance", () => {
 	it("refuses a batch one file over what is left, and a batch one byte over", () => {
 		expect(fitsAllowance({ files: 2, bytes: 100 }, [1, 1])).toBe(true);
 		expect(fitsAllowance({ files: 2, bytes: 100 }, [1, 1, 1])).toBe(false);
@@ -122,7 +122,7 @@ describe("fitsAllowance (CUR-3235)", () => {
 	});
 });
 
-describe("recordAttachments (CUR-3235)", () => {
+describe("recordAttachments", () => {
 	it("records one row per file with its size, expiring one day out", async () => {
 		vi.useFakeTimers({ now: new Date("2026-10-09T12:00:00Z") });
 		await recordAttachments({ guestSessionId: "s" }, [10, 20]);
@@ -144,7 +144,7 @@ describe("recordAttachments (CUR-3235)", () => {
 		]);
 	});
 
-	it("records a guest's network on each row, so the network count sees it (CUR-3600)", async () => {
+	it("records a guest's network on each row, so the network count sees it", async () => {
 		await recordAttachments({ guestSessionId: "s", ipHash: "net" }, [10]);
 		expect(insertOne.mock.calls[0][0]).toMatchObject({ type: "chatAttachment", userId: "s", ipHash: "net" });
 	});
@@ -155,7 +155,7 @@ describe("recordAttachments (CUR-3235)", () => {
 	});
 });
 
-describe("attachmentAllowanceEnforced (CUR-3600)", () => {
+describe("attachmentAllowanceEnforced", () => {
 	it("refuses only when PostHog says so: a flag PostHog never answered leaves the allowance counting, not refusing", () => {
 		flagEnabledOr.mockImplementation((_key: string, fallback: () => boolean) => fallback());
 		expect(attachmentAllowanceEnforced()).toBe(false);

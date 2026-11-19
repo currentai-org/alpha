@@ -1,7 +1,7 @@
 <script lang="ts">
 	// What a person sees after opening the pairing link from aipotluck-local-client. The
 	// server load decides the outcome (+page.server.ts); this page only renders it. A confirmed pair
-	// comes back as the action's result in `form`, which wins over the load's own "confirm". (CUR-4110)
+	// comes back as the action's result in `form`, which wins over the load's own "confirm".
 	import { m } from "$lib/paraglide/messages.js";
 	import { enhance } from "$app/forms";
 	import RiCheckboxCircleLine from "~icons/ri/checkbox-circle-line";
@@ -27,6 +27,8 @@
 				return m.pairLink_unavailable();
 			case "failed":
 				return m.pairLink_failed();
+			case "limit":
+				return m.pairLink_limit({ max: outcome.max });
 			default:
 				return null;
 		}
@@ -79,6 +81,11 @@
 				<RiErrorWarningLine class="size-6 text-fg-2" aria-hidden="true" />
 				<h1 class="type-heading text-fg-1">{m.pairLink_pageTitle()}</h1>
 				<p class="text-small text-fg-2" role="alert">{errorText}</p>
+				{#if outcome.state === "limit"}
+					<Button href={`${base}/settings/local-inference`} class="self-start">
+						{m.pairLink_openSettings()}
+					</Button>
+				{/if}
 			</Stack>
 		{/if}
 	</Surface>

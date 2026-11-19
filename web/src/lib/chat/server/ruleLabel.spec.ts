@@ -7,6 +7,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
 	ACTION_LABELS,
+	blockedRuleLabels,
 	isSupportRule,
 	resolveActionLabel,
 	resolveActionMessage,
@@ -65,13 +66,13 @@ describe("resolveActionMessage", () => {
 		);
 	});
 
-	it("a policy decline names who set the limit and the rule (CUR-3205)", () => {
+	it("a policy decline names who set the limit and the rule", () => {
 		expect(resolveActionMessage("chat-block-violence")).toBe(
 			"This request was declined because it goes against our content policy.\n\nCurrent AI set this limit (rule: Violent content)."
 		);
 	});
 
-	it("crisis-support copy carries no policy attribution, so a person in crisis reads only the support (CUR-3205)", () => {
+	it("crisis-support copy carries no policy attribution, so a person in crisis reads only the support", () => {
 		for (const key of ["chat-block-self-harm", "chat-block-self-harm-passive"]) {
 			const text = resolveActionMessage(key) ?? "";
 			expect(text).toMatch(/findahelpline\.com/);
@@ -79,7 +80,26 @@ describe("resolveActionMessage", () => {
 		}
 	});
 
-	it("chat-block-prompt has curated decline copy (CUR-831: it used to fall through to the generic content-policy text)", () => {
+	it("a self-harm decline reads in the person's language with no who-set-this-limit line", () => {
+		const es = resolveActionMessage("chat-block-self-harm", "es") ?? "";
+		expect(es).toMatch(/^Puede que estés pasando por algo doloroso/);
+		expect(es).toContain("[findahelpline.com](https://findahelpline.com)");
+		expect(es).not.toContain("Current AI");
+		expect(resolveActionMessage("chat-block-self-harm", "en")).toMatch(
+			/^You might be going through something painful right now/
+		);
+	});
+
+	it("the emotional-attachment decline is the warm copy alone, with no policy attribution, in the person's language", () => {
+		const en = resolveActionMessage("chat-block-anthro") ?? "";
+		expect(en).toMatch(/^I'm glad our conversations feel useful\. I'm an AI/);
+		expect(en).not.toContain("set this limit");
+		const it = resolveActionMessage("chat-block-anthro", "it") ?? "";
+		expect(it).toMatch(/^Mi fa piacere che le nostre conversazioni ti siano utili\./);
+		expect(it).not.toContain("Current AI");
+	});
+
+	it("chat-block-prompt has curated decline copy ( it used to fall through to the generic content-policy text)", () => {
 		expect(resolveActionLabel("chat-block-prompt")).toBe("Prompt injection");
 		expect(resolveActionMessage("chat-block-prompt")).toMatch(/override this assistant's instructions/i);
 	});
@@ -121,7 +141,7 @@ describe("ruleLabelCatalog (public client catalog)", () => {
 });
 
 describe("isSupportRule", () => {
-	it("is true for each self-harm rule, so its decline brings the Support resources card (CUR-2111)", () => {
+	it("is true for each self-harm rule, so its decline brings the Support resources card", () => {
 		for (const key of ["chat-block-self-harm", "chat-block-self-harm-passive", "chat-block-self-harm-hedged"]) {
 			expect(isSupportRule(key), key).toBe(true);
 		}
@@ -137,5 +157,48 @@ describe("isSupportRule", () => {
 	it("holds with the rule-label kill switch off, since the card is crisis support, not a label", () => {
 		vi.stubEnv("COOP_SURFACE_RULE_LABEL", "false");
 		expect(isSupportRule("chat-block-self-harm-hedged")).toBe(true);
+	});
+});
+
+// a decline names every content rule that blocked it, not the first by list position.
+describe("blockedRuleLabels and the multiple-rules attribution line", () => {
+	const block = (key: string, tier: "child" | "content" = "content") => ({ key, action: "block" as const, tier });
+
+	it("lists every labeled content block, deduplicated, the shown rule's label first", () => {
+		const hits = [block("chat-block-violence"), block("chat-block-drugs"), block("chat-block-fraud"), block("chat-block-violence")];
+		expect(blockedRuleLabels(hits, "chat-block-drugs")).toEqual(["Drug content", "Violent content", "Illegal activity"]);
+	});
+
+	it("leaves out log hits, child hits and unlabeled actions", () => {
+		const hits = [
+			block("chat-block-violence"),
+			{ key: "chat-block-self-harm-intent", action: "log" as const, tier: "content" as const },
+			block("chat-block-child-grooming", "child"),
+			block("chat-block-unmapped"),
+		];
+		expect(blockedRuleLabels(hits, "chat-block-violence")).toEqual(["Violent content"]);
+	});
+
+	it("a self-harm decline names only its own rule, even when another content rule co-fired", () => {
+		expect(blockedRuleLabels([block("chat-block-self-harm"), block("chat-block-violence")], "chat-block-self-harm")).toEqual([
+			"Support needed",
+		]);
+	});
+
+	it("is empty when the shown rule has no reviewed label, or the kill switch is off", () => {
+		expect(blockedRuleLabels([block("chat-block-violence")], "chat-block-unmapped")).toEqual([]);
+		vi.stubEnv("COOP_SURFACE_RULE_LABEL", "false");
+		expect(blockedRuleLabels([block("chat-block-violence"), block("chat-block-drugs")], "chat-block-violence")).toEqual([]);
+	});
+
+	it("names \"Multiple Safety Rules\" in the attribution line when more than one rule blocked, in the person's language", () => {
+		expect(resolveActionMessage("chat-block-drugs", "en", true)).toBe(
+			"This request was declined because it goes against our content policy.\n\nCurrent AI set this limit (rule: Multiple Safety Rules)."
+		);
+		expect(resolveActionMessage("chat-block-drugs", "es", true)).toBe(
+			"Esta solicitud se rechazó porque va en contra de nuestra política de contenido.\n\nCurrent AI estableció este límite (regla: Varias reglas de seguridad)."
+		);
+		// One rule keeps its own name.
+		expect(resolveActionMessage("chat-block-drugs")).toContain("(rule: Drug content).");
 	});
 });

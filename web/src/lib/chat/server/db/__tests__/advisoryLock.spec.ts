@@ -2,7 +2,7 @@
  * An owner's first sealed write makes their key under this lock, so two instances writing
  * for one owner at once cannot mint two keys. Run against the real database with a pool of several
  * connections, because with the deployed pool of one, a second caller waits for the connection and the
- * test would pass whether the lock held or not. (CUR-4116)
+ * test would pass whether the lock held or not.
  */
 process.env.PG_POOL_MAX = "4";
 

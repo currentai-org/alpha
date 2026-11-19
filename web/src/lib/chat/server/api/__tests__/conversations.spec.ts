@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { describe, expect, it, afterEach } from "vitest";
 import superjson from "superjson";
 import { collections } from "$lib/chat/server/database";
@@ -245,10 +248,10 @@ describe.sequential("DELETE /api/v2/conversations", () => {
 	});
 });
 
-// Each workspace keeps its own conversations. CUR-3040: chats from a workspace the person
+// Each workspace keeps its own conversations. Chats from a workspace the person
 // left, or that was deleted, list under that former workspace and no longer in Personal. The
 // membership read that builds the scope in production is covered by the workspaces e2e scenarios;
-// the former-workspace reads below run against the real tables. (CUR-3023)
+// the former-workspace reads below run against the real tables.
 describe.sequential("getLayoutConversations scoped by workspace", () => {
 	const TEAM = "cur3023-team";
 	const LEFT = "cur3023-left";

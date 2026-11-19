@@ -11,8 +11,8 @@ const { resolveFeatureFacts, featuresClause } = await import("./persona");
 
 // The prompt may name only what this visitor's composer shows. The composer drops the whole
 // attach control when no upload scanner is configured (layoutData.ts), so the prompt must too, or the
-// model offers a guest an upload button that isn't there. (CUR-3200)
-describe("resolveFeatureFacts (CUR-3200)", () => {
+// model offers a guest an upload button that isn't there.
+describe("resolveFeatureFacts", () => {
 	beforeEach(() => Object.assign(gates, { scanner: true, multimodal: true, dictation: true, images: true, documents: true, readAloud: true }));
 
 	it("offers images and documents only when the composer's attach control exists (scanner configured)", () => {
@@ -34,7 +34,7 @@ describe("resolveFeatureFacts (CUR-3200)", () => {
 			readAloudMode: "auto",
 		});
 		Object.assign(gates, { scanner: false, dictation: false, images: false, documents: false, readAloud: false });
-		// Every feature off leaves one sentence: that files can't be added here (CUR-3976).
+		// Every feature off leaves one sentence: that files can't be added here.
 		expect(featuresClause({ ...resolveFeatureFacts({ multimodal: true }), webSearch: undefined })).toMatch(/^This conversation can't take files\b[^]*paste/);
 	});
 
@@ -49,8 +49,8 @@ describe("resolveFeatureFacts (CUR-3200)", () => {
 
 // The prompt must not say "This app offers text files … attached to a message" to visitors
 // whose composer has no attach control, or the model sends them to a paperclip. The text-file sentence
-// follows every gate the server refuses a file on, and a visitor without the control is told to paste. (CUR-3976)
-describe("never offers a file control the composer doesn't show (CUR-3976)", () => {
+// follows every gate the server refuses a file on, and a visitor without the control is told to paste.
+describe("never offers a file control the composer doesn't show", () => {
 	const signedIn = { loginOffered: true, signedIn: true };
 	const guest = { loginOffered: true, signedIn: false };
 	const PAPERCLIP_DENIED = /Never tell them to click a paperclip/;
@@ -93,15 +93,15 @@ describe("never offers a file control the composer doesn't show (CUR-3976)", () 
 
 // The facts come from what the composer shows this visitor: the listed registry and the turn's
 // web search mode. Large 3 must not claim it "currently offers only Mistral Large 3" beside a model button
-// listing Apertus, or that it can't browse while the Tools menu has web search on. (CUR-3240)
-describe("resolveFeatureFacts model choice and web search (CUR-3240)", () => {
+// listing Apertus, or that it can't browse while the Tools menu has web search on.
+describe("resolveFeatureFacts model choice and web search", () => {
 	const listed = [
 		{ id: "mistral-large-2512", displayName: "Mistral Large 3" },
 		{ id: "swiss-ai/apertus-v1.5-70b", displayName: "Apertus 1.5 70B" },
 		{ id: "potluck-agent", displayName: "Agent", unlisted: true },
 	];
 
-	it("marks the native turn's facts as having search_catalog, and the pipeline turn's as not (CUR-3889)", () => {
+	it("marks the native turn's facts as having search_catalog, and the pipeline turn's as not", () => {
 		expect(resolveFeatureFacts({ id: "m" }, { catalogTool: true }).catalogTool).toBe(true);
 		expect(resolveFeatureFacts({ id: "m" }, {}).catalogTool).toBeUndefined();
 	});
@@ -112,7 +112,7 @@ describe("resolveFeatureFacts model choice and web search (CUR-3240)", () => {
 	});
 
 	// Each model is credited to its own maker, not to Current AI. The makers come from
-	// identity.ts, the same source as each model's own "made by" line. (CUR-3889)
+	// identity.ts, the same source as each model's own "made by" line.
 	it("carries each listed model's maker from identity.ts, and none where identity.ts only guesses", () => {
 		const facts = resolveFeatureFacts(
 			{ id: "mistral-large-2512" },
@@ -133,7 +133,7 @@ describe("resolveFeatureFacts model choice and web search (CUR-3240)", () => {
 			languages: "broadly multilingual; also good in English, French, German, Spanish, Italian and Portuguese",
 			size: "675 billion parameters",
 		});
-		// ALIA's served repo is gated (401), so it carries no card; neither does an unknown model (CUR-3913).
+		// ALIA's served repo is gated (401), so it carries no card; neither does an unknown model.
 		expect(facts.otherModels).toEqual([
 			{
 				name: "Apertus 1.5 70B",
@@ -156,7 +156,7 @@ describe("resolveFeatureFacts model choice and web search (CUR-3240)", () => {
 	});
 
 	// Without the catalog's languages the model cannot say which model suits Catalan, and without
-	// each card's parameter count it can read a version number (GLM 5.2) as a size. Both go in the list. (CUR-4007)
+	// each card's parameter count it can read a version number (GLM 5.2) as a size. Both go in the list.
 	it("names the model built for each language, and gives each card's parameter count rather than the version", () => {
 		const facts = resolveFeatureFacts(
 			{ id: "mistral-large-2512" },
@@ -173,7 +173,7 @@ describe("resolveFeatureFacts model choice and web search (CUR-3240)", () => {
 		expect(clause).toMatch(/ALIA 40B \(made by the Barcelona Supercomputing Center \(BSC\), open weights, 40 billion parameters, built for Spanish, Catalan, Galician and Basque;/);
 		expect(clause).toMatch(/Bielik 11B v3 \([^)]*built for Polish[;,)]/);
 		expect(clause).not.toMatch(/Bielik[^)]*Catalan/);
-		// A www turn: Large 3 called itself "built for French but strong in English".
+		// Large 3 is listed as broadly multilingual, so it does not describe itself as built for one language.
 		expect(clause).toMatch(/Mistral Large 3 \([^)]*broadly multilingual/);
 		expect(clause).not.toMatch(/Mistral[^()]*\([^)]*built for/);
 		expect(clause).toMatch(/recommend the one listed as built for it/);
@@ -182,7 +182,7 @@ describe("resolveFeatureFacts model choice and web search (CUR-3240)", () => {
 		expect(clause).toMatch(/For a model with no count listed, say you have no verified size and point to its model card/);
 	});
 
-	it("reads web search from the turn's mode, and says nothing about search when the turn carries none (CUR-3293)", () => {
+	it("reads web search from the turn's mode, and says nothing about search when the turn carries none", () => {
 		expect(resolveFeatureFacts({}, { webSearchMode: "off" }).webSearch).toBe("off");
 		expect(resolveFeatureFacts({}, {}).webSearch).toBeUndefined();
 	});

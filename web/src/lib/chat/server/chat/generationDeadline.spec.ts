@@ -69,7 +69,7 @@ describe("boundedSettle", () => {
 });
 
 // A long paste's screen must not count against the 45s generation watchdog: the clock starts
-// when the screen ends, so a turn whose screen took 40s still gets the full budget to answer. (CUR-3749)
+// when the screen ends, so a turn whose screen took 40s still gets the full budget to answer.
 describe("ScreenAwareDeadline — the generation clock starts when the screen ends", () => {
 	const withFakeTimers = async (fn: () => Promise<void>) => {
 		vi.useFakeTimers();
@@ -135,7 +135,7 @@ describe("ScreenAwareDeadline — the generation clock starts when the screen en
 			expect(onFire).toHaveBeenCalledTimes(1);
 		}));
 
-	// An open confirm card holds the clock, inside the room the ladder leaves under MAX_SAFE. (CUR-3983)
+	// An open confirm card holds the clock, inside the room the ladder leaves under MAX_SAFE.
 	it("a 60s confirm wait moves the deadline 60s later than the same turn with no wait", () =>
 		withFakeTimers(async () => {
 			const deadline = new ScreenAwareDeadline(45_000, 100_000, Date.now, 110_000);
@@ -222,7 +222,7 @@ describe("ScreenAwareDeadline — the generation clock starts when the screen en
 		}));
 });
 
-describe("ScreenAwareDeadline.extendWhileStreaming — a turn still streaming at 45s runs to the ceiling (CUR-4009)", () => {
+describe("ScreenAwareDeadline.extendWhileStreaming — a turn still streaming at 45s runs to the ceiling", () => {
 	const withFakeTimers = async (fn: () => Promise<void>) => {
 		vi.useFakeTimers();
 		try {
@@ -258,7 +258,7 @@ describe("ScreenAwareDeadline.extendWhileStreaming — a turn still streaming at
 		expect(deadline.extendWhileStreaming()).toBe(0);
 	});
 
-	// On the real clock a millisecond can tick between the two remainingMs() reads (CUR-4009 flake).
+	// On the real clock a millisecond can tick between the two remainingMs() reads, so this runs on fake timers.
 	it("an agent turn with no room gets no extension (0 ms), so its deadline is unchanged", () =>
 		withFakeTimers(async () => {
 			const deadline = new ScreenAwareDeadline(155_000, 0, Date.now, 0);

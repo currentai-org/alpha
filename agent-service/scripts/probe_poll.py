@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Poll a submitted task to a terminal state, answering its confirmation prompts on the way.
 
-WHY THIS IS SHARED RATHER THAN COPIED INTO EACH PROBE (CUR-1224). Two hazards make a probe report
-something other than the service's health, and every probe in this directory is exposed to both:
+WHY THIS IS SHARED RATHER THAN COPIED INTO EACH PROBE. Two separate mistakes each make a probe report
+something other than the service's health, and every probe in this directory is equally exposed to
+both:
 
 1. CONFIRMATIONS. `edit`, `delete` and `execute` ALWAYS pause for a human answer, on every tier,
-   `trusted` included, regardless of the resolved policy (CUR-760, CUR-975). `prod_smoke.py`'s fixture
+   `trusted` included, regardless of the resolved policy. `prod_smoke.py`'s fixture
    writes a file, so a probe that never answers cannot pass: the write pauses, nobody answers, and the
    task fails `expect_file not found: out.txt` on every attempt. A check that can only go red is as dead
    an instrument as one that can only go green. Blanket-allowing is correct HERE and nowhere near a UI: the
@@ -14,7 +15,7 @@ something other than the service's health, and every probe in this directory is 
 2. THE POLL BUDGET. `/healthz` reports `wall_clock_task_s: 900` (three attempts at `wall_clock_s:
    300`). A fixed budget shorter than that (400s, say) makes any task needing a second attempt outlive
    the probe watching it, and the probe calls that a failure. A deploy gate that false-fails on a
-   healthy service is no safer (CUR-1222), so the budget is read from the service
+   healthy service is no safer, so the budget is read from the service
    rather than guessed at.
 """
 from __future__ import annotations
@@ -34,9 +35,9 @@ def request(url: str, token: str | None = None, body: dict | None = None, timeou
     headers = {"content-type": "application/json"}
     if token:
         headers["authorization"] = f"Bearer {token}"
-        headers["x-agent-account"] = "user"  # CUR-4402: agent-service refuses a run that names no account
+        headers["x-agent-account"] = "user"  # agent-service refuses a run that names no account
     if machine_id:
-        headers["Fly-Force-Instance-Id"] = machine_id      # CUR-895: no session affinity by default
+        headers["Fly-Force-Instance-Id"] = machine_id      # pin to the task's machine: no session affinity by default
     req = urllib.request.Request(url, data=data, method="POST" if data else "GET", headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:

@@ -10,7 +10,7 @@
  *
  * agent-service holds no credential for this database, and keeps its own ceiling of two live
  * sandboxes per account (`E2B_ACCOUNT_MAX_LIVE`), so a read that fails here costs a few extra runs and
- * nothing more. Every function throws on a database error; `sandboxAllowance.ts` decides what that means. (CUR-4578)
+ * nothing more. Every function throws on a database error; `sandboxAllowance.ts` decides what that means.
  */
 import { collections } from "$lib/chat/server/database";
 import { accountDeclinedSince } from "$lib/chat/server/db/safetyEvents";

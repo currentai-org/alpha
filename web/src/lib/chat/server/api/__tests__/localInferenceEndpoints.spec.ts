@@ -42,6 +42,7 @@ function create(locals: App.Locals, body: unknown) {
 		POST({
 			locals,
 			request: new Request("http://localhost/x", { method: "POST", body: JSON.stringify(body) }),
+			getClientAddress: () => "127.0.0.1",
 		} as never)
 	);
 }
@@ -50,7 +51,7 @@ function remove(locals: App.Locals, id: string) {
 	return call<{ success: boolean }>(() => DELETE({ locals, params: { id } } as never));
 }
 
-// This whole feature is gated on localInferenceEndpointsEnabled(), a PostHog flag since CUR-3175
+// This whole feature is gated on localInferenceEndpointsEnabled(), a PostHog flag
 // (localEndpointsGate.spec.ts covers the gate itself in isolation), so these tests drive its answer
 // directly: ON by default, OFF where a test says so. Same convention as localModels.spec.ts.
 const gateMock = vi.hoisted(() => ({ enabled: true }));
@@ -58,7 +59,7 @@ vi.mock("$lib/chat/server/localEndpointsGate", () => ({
 	localInferenceEndpointsEnabled: () => gateMock.enabled,
 }));
 
-describe("api/v2/user/local-inference-endpoints — CUR-1262", () => {
+describe("api/v2/user/local-inference-endpoints", () => {
 	beforeEach(async () => {
 		gateMock.enabled = true;
 		await cleanupTestData();
@@ -147,7 +148,7 @@ describe("api/v2/user/local-inference-endpoints — CUR-1262", () => {
 			expect(body?.headers).toEqual([]);
 		});
 
-		it("persists custom headers and returns them on both create and list (CUR-1291)", async () => {
+		it("persists custom headers and returns them on both create and list", async () => {
 			const { locals } = await createTestUser();
 			const { status, body: created } = await create(locals, {
 				label: "local",
@@ -236,7 +237,7 @@ describe("api/v2/user/local-inference-endpoints — CUR-1262", () => {
 			expect(status).toBe(400);
 		});
 
-		// On a hosted deployment a private address names our own network, not the visitor's. (CUR-3387)
+		// On a hosted deployment a private address names the deployment's own network, not the visitor's.
 		it.each(["http://localhost:11434", "http://192.168.1.50:11434", "http://[::ffff:a9fe:a9fe]"])(
 			"400s private address %s on preview and stores nothing, pointing at managed servers",
 			async (baseUrl) => {

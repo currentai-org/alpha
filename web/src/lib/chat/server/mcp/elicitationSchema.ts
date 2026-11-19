@@ -1,6 +1,9 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 // Normalizes and validates MCP elicitation payloads — every value here is authored by the MCP
-// server, so nothing is trusted. Ported closely from huggingface/chat-ui's elicitationSchema.ts
-// (CUR-1017); trimmed of upstream's `allowOther`/`setBudgetUsd` extras, which are tied to features
+// server, so nothing is trusted. Ported closely from huggingface/chat-ui's elicitationSchema.ts,
+// trimmed of upstream's `allowOther`/`setBudgetUsd` extras, which are tied to features
 // (a free-text "other" option, ML-assistant budget grants) that don't exist on this codebase.
 import type { ElicitationField, ElicitationRequestPayload, ElicitationValue } from "$lib/chat/types/McpElicitation";
 

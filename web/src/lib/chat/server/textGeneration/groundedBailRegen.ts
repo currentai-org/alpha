@@ -1,4 +1,3 @@
-import { flagEnabledOr } from "$lib/chat/server/flags";
 import { logger } from "$lib/chat/server/logger";
 import { MessageUpdateType } from "$lib/chat/types/MessageUpdate";
 import { textGenerationWithoutTitle } from "./index";
@@ -7,21 +6,15 @@ import type { TextGenerationContext } from "./types";
 // On a grounded turn whose whole answer bails to a hedge/refusal, a static pointer to whatever was
 // retrieved is the wrong answer when the model would have answered correctly without searching (for
 // "what model are you and who made you?" with web search on, two irrelevant sources come back, the
-// model hedges, and the pointer is to a YouTube link) (CUR-148). Current
+// model hedges, and the pointer is to a YouTube link). Current
 // practice for this exact failure (Corrective RAG's relevance-graded fallback; Google Research's
 // "sufficient context" finding that topically-related sources can still be insufficient to answer) is
 // to re-answer from the model's own knowledge rather than cite sources it already declined to use —
 // but only with an honest marker that a search ran and came up empty, never a silent swap. See
 // hedgeGuard.ts's buildGroundedHedgeReplacement (the fallback-of-fallback this regen sits in front of)
-// and requestTrace.ts's groundedHedgeNotice (the on-screen disclosure).
+// and the on-screen disclosure that goes with it.
 
-export const GROUNDED_BAIL_REGEN_FLAG = "grounded-bail-regen";
-
-export function groundedBailRegenEnabled(): boolean {
-	return flagEnabledOr(GROUNDED_BAIL_REGEN_FLAG, () => false);
-}
-
-// Generous but bounded: this is a rare fallback path (rare, and the count is a floor, per CUR-148), so paying one full extra round-trip's latency is an acceptable
+// Generous but bounded: this is a rare fallback path, so paying one full extra round-trip's latency is an acceptable
 // trade for not shipping a citation pointer to sources the model already declined to use. A SEPARATE,
 // short deadline — rather than reusing the turn's own generation watchdog, which was armed for the
 // FIRST generation and may already be close to firing — so this fallback never silently inherits a
@@ -43,7 +36,7 @@ const REGEN_TIMEOUT_MS = 15_000;
  * turn already in flight.
  *
  * Returns undefined on any failure (timeout, abort, no FinalAnswer, thrown error) — the caller decides
- * what "no answer" falls back to (today: the static sources-pointer via buildGroundedHedgeReplacement).
+ * what "no answer" falls back to (the static sources-pointer via buildGroundedHedgeReplacement).
  */
 export async function runGroundedBailRegen(
 	ctx: TextGenerationContext,
@@ -58,12 +51,12 @@ export async function runGroundedBailRegen(
 }
 
 // A recital regen asks the same turn again, sources and all, so its budget has to cover a whole slow
-// answer: the slowest offered model's first token alone is about 21 s at p75 (CUR-3886).
+// answer: the slowest offered model's first token alone can take tens of seconds.
 const RECITAL_REGEN_TIMEOUT_MS = 60_000;
 
 /**
  * Ask the same turn again, grounding kept, after its answer opened by reciting the fenced turn's
- * preamble (CUR-3886). Buffered and bounded like the grounded-bail regen; undefined on any failure.
+ * preamble. Buffered and bounded like the grounded-bail regen; undefined on any failure.
  */
 export async function runRecitalRegen(
 	ctx: TextGenerationContext,

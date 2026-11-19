@@ -33,7 +33,7 @@ export type ModelIdentity = {
 // agreement: "The Swiss National AI Institute (SNAI) is a partnership between the two Swiss Federal
 // Institutes of Technology, ETH Zurich and EPFL." The acronym is identical either way, so a wrong noun
 // goes unnoticed — and this string is what the model says about ITSELF on "who made you",
-// the first question a new user asks. Change it only against the card, not from memory (CUR-152).
+// the first question a new user asks. Change it only against the card, not from memory.
 const SWISSAI = "the Swiss National AI Institute (SNAI)";
 
 // Apertus is one of the few FULLY-open models — open weights, open training
@@ -73,7 +73,7 @@ function versionSuffix(served?: string): string {
 }
 
 // The gateway serves a reasoning variant of a checkpoint under its own id (`…-70b-thinking`). Without
-// this the two read as the same model in the picker (CUR-1683).
+// this the two read as the same model in the picker.
 function variantSuffix(served?: string): string {
 	return /-thinking$/i.test(served ?? "") ? " Thinking" : "";
 }
@@ -128,7 +128,7 @@ export function isLocalModelId(id?: string): boolean {
 
 // Ollama's shorthand for pulling a GGUF straight from a Hugging Face repo is
 // `hf.co/<owner>/<repo name>[:<quantization tag>]` -- long enough on its own to clip in a picker
-// list, and doubly so once CUR-1262's own `{endpointLabel}:{servedModelId}` display-name prefix
+// list, and doubly so once the `{endpointLabel}:{servedModelId}` display-name prefix
 // sits in front of it. The owner segment carries no information a person picking a model needs;
 // this drops exactly that segment (wherever it appears in the string) and leaves everything else,
 // including the quantization tag, untouched.
@@ -157,7 +157,7 @@ export function resolveModelIdentity(rawId?: string): ModelIdentity {
 		return apertus(served);
 	}
 
-	// Mistral Large 3, served by Mistral AI's own API as `mistral-large-2512` (CUR-2274). The wire id has no
+	// Mistral Large 3, served by Mistral AI's own API as `mistral-large-2512`. The wire id has no
 	// org and no size, so the headline and the card are pinned rather than derived from it. On
 	// huggingface.co, mistralai/Mistral-Large-3-675B-Instruct-2512 is public and ungated,
 	// license apache-2.0. Open weights, not fully open: the training data is not published.
@@ -173,7 +173,7 @@ export function resolveModelIdentity(rawId?: string): ModelIdentity {
 		};
 	}
 
-	// Mistral Large 4, in public preview (CUR-3027). The staging router serves it as
+	// Mistral Large 4, in public preview. The staging router serves it as
 	// `mistral-large-2610` and asks Mistral for `mistral-large-4`. Until the weights are on Hugging Face, no openness or
 	// card is claimed.
 	if (lo.includes("mistral-large-2610") || lo.includes("mistral-large-4")) {
@@ -188,7 +188,7 @@ export function resolveModelIdentity(rawId?: string): ModelIdentity {
 	}
 
 	// Mistral Small 4, served as `mistral-small-2603`: the side-call model, and the default on per-ticket
-	// previews (CUR-2716). mistralai/Mistral-Small-4-119B-2603 is public,
+	// previews. mistralai/Mistral-Small-4-119B-2603 is public,
 	// ungated, license apache-2.0.
 	if (lo.includes("mistral-small-2603") || lo.includes("mistral-small-4")) {
 		return {
@@ -202,7 +202,7 @@ export function resolveModelIdentity(rawId?: string): ModelIdentity {
 		};
 	}
 
-	// Mistral Medium 3.5, the direct lane's backup (CUR-2460), served as `mistral-medium-2604`; Mistral's
+	// Mistral Medium 3.5, the direct lane's backup, served as `mistral-medium-2604`; Mistral's
 	// /v1/models lists `mistral-medium-3.5` among that id's aliases. mistralai/Mistral-Medium-3.5-128B is public,
 	// ungated, license "other" with no name given.
 	if (lo.includes("mistral-medium-2604") || lo.includes("mistral-medium-3")) {
@@ -217,7 +217,7 @@ export function resolveModelIdentity(rawId?: string): ModelIdentity {
 		};
 	}
 
-	// `mistral-large-latest` and its siblings: the name the staging router asks Mistral for (CUR-2928),
+	// `mistral-large-latest` and its siblings: the name the staging router asks Mistral for,
 	// recorded when the dated version behind it was not confirmed as ours. The maker is certain and the
 	// checkpoint is not, so no openness or card is claimed, and the answer does not read as a backup.
 	const latest = lo.match(/mistral-(large|medium|small)-latest/);
@@ -262,7 +262,7 @@ export function resolveModelIdentity(rawId?: string): ModelIdentity {
 	}
 
 	// Gemma (Google) and Qwen (Alibaba) sit on the second-opinion panel only, so no catalog entry names
-	// them; without these the panel's takes were headed by the checkpoint, "gemma-4-31B-it" (CUR-2203).
+	// them; without these the panel's takes were headed by the checkpoint, "gemma-4-31B-it".
 	if (lo.startsWith("google/gemma-")) {
 		const m = /^gemma-(\d+(?:\.\d+)?)-(\d+B)/i.exec(served ?? "");
 		return {
@@ -288,7 +288,7 @@ export function resolveModelIdentity(rawId?: string): ModelIdentity {
 
 	// ALIA (Barcelona Supercomputing Center). The article and acronym follow the SNAI line above, so the
 	// persona reads "developed by the Barcelona Supercomputing Center (BSC)". The generic
-	// branch below names "an open source community", which ALIA must not repeat as its maker (CUR-3836).
+	// branch below names "an open source community", which ALIA must not repeat as its maker.
 	if (lo.includes("alia-40b") || lo.startsWith("bsc-lt/")) {
 		return {
 			short: catalogByGatewayId(normalizedId)?.name ?? "ALIA 40B",
@@ -303,7 +303,7 @@ export function resolveModelIdentity(rawId?: string): ModelIdentity {
 	// Generic fallback: a readable name from the id without a training-data story we can't vouch for. A
 	// model in the routing catalog keeps the catalog's name, which is the one the picker shows, so the
 	// landing line and the picker agree, and the catalog's maker, which is the one the answer footer
-	// credits (Bielik → SpeakLeash, CUR-3836). Only a model the catalog doesn't know gets the generic maker.
+	// credits (Bielik → SpeakLeash). Only a model the catalog doesn't know gets the generic maker.
 	// An HF-routed id can carry its provider pin ("…-Instruct:plgrid", hfProviderPin.ts); the catalog
 	// lists the bare checkpoint.
 	const entry = catalogByGatewayId(normalizedId) ?? catalogByGatewayId(normalizedId?.replace(/:[^/:]*$/, ""));
@@ -333,19 +333,23 @@ export function resolveModelIdentity(rawId?: string): ModelIdentity {
 
 // Friendly names for known HF inference providers (the raw header value is a
 // slug). Public AI is the sovereign-inference provider serving Apertus here.
-// "local" (CUR-1194) is the venue tag endpointOai.ts's routerProvider param stamps for a per-user LAN
+// "local" is the venue tag endpointOai.ts's routerProvider param stamps for a per-user LAN
 // endpoint — without this entry it would fall through to the "Public AI" default below, which is
 // correct for every gateway-routed lane but false for a turn that never left the user's own network.
 const PROVIDER_NAMES: Record<string, string> = {
 	publicai: "Public AI",
 	local: "Local",
 	// The routerProvider the Mistral lane stamps. It names the lane, not the host: the staging router
-	// serves Mistral Medium 3.5 from Scaleway too, so the recorded backend says where it ran (CUR-4347). (CUR-2274)
+	// serves Mistral Medium 3.5 from Scaleway too, so the recorded backend says where it ran.
 	mistral: "Mistral AI",
 	openrouter: "OpenRouter",
+	// GLM 5.2's pin. Title-cased as it stands, the id read "Featherless-Ai".
+	"featherless-ai": "Featherless",
+	// Qwen 3.6's pin. Title-cased as it stands, the id read "Deepinfra".
+	deepinfra: "DeepInfra",
 };
 
-// The model id the provenance badge should show (CUR-125). `routerMetadata.model` is the only
+// The model id the provenance badge should show. `routerMetadata.model` is the only
 // VERIFIED override — a router hop or a cross-model backup lane reporting what actually served,
 // which beats the request. Its absence is not evidence nothing served: the primary CSCS/gateway lane
 // reports its serving backend (`.backend`) on every healthy turn and never sends a model-override
@@ -353,7 +357,7 @@ const PROVIDER_NAMES: Record<string, string> = {
 // on that ordinary, correctly-served case. So fall back to the requested model id whenever ANY router
 // signal came back (`.backend` or `.provider`) — proof a real response returned through an identifiable
 // path, so the requested model is what answered. Only routerMetadata being entirely absent — the
-// "no idea what served this" case (CUR-113) — suppresses the badge.
+// "no idea what served this" case — suppresses the badge.
 export function servedModelId(
 	routerMetadata: { model?: string; provider?: string; backend?: string } | undefined,
 	requestedModelId: string | undefined
@@ -367,11 +371,11 @@ export function servedModelId(
 // "(backup)". Derived, never hardcoded to a model: the served id differs from the requested one.
 // `:provider` pin suffixes are stripped first (the same checkpoint through a pinned lane is not a
 // backup), a router (Omni) serve always differs by design and carries `route`, and a same-maker
-// substitution is an intended swap (Apertus 1.5, CUR-127), so only a cross-maker stand-in counts.
-// A stored failover record (CUR-2239) settles it outright: it is written only when the primary did not
+// substitution is an intended swap (Apertus 1.5), so only a cross-maker stand-in counts.
+// A stored failover record settles it outright: it is written only when the primary did not
 // answer and another model did, which is a backup whatever the makers, as with Apertus 70B covered by
-// the gateway's Infomaniak Apertus group (CUR-2293).
-// Shared by the chat badge and the data export (CUR-1836), so the two cannot word it differently.
+// the gateway's Infomaniak Apertus group.
+// Shared by the chat badge and the data export, so the two cannot word it differently.
 export function servedByBackup(
 	routerMetadata:
 		| { model?: string; route?: string; assistedBy?: readonly { role: string; model: string }[] }
@@ -381,7 +385,7 @@ export function servedByBackup(
 ): boolean {
 	if (failover?.to) return true;
 	const base = (id: string) => id.split(":")[0];
-	// The arithmetic route hands the turn to the planner's model on purpose (CUR-3316), so the model
+	// The arithmetic route hands the turn to the planner's model on purpose, so the model
 	// it names wrote the answer by design, and no lane failed.
 	const key = (id: string) => base(id.toLowerCase()).split("/").pop();
 	const served = routerMetadata?.model;
@@ -400,7 +404,7 @@ export function servedByBackup(
 // The third slot of the provenance badge is the ACTUAL inference provider that
 // served the answer (read per-request from the HF router's x-inference-provider
 // header), not a hardcoded compute box — so the badge can't claim a datacenter
-// the request didn't hit. CUR-3562: with no provider captured it returns nothing, and the caller
+// the request didn't hit. with no provider captured it returns nothing, and the caller
 // leaves the segment out. A default label here would be a forecast from config, which reads as the
 // turn's record and is wrong whenever a direct lane or a fallback served the turn.
 export function providerDisplay(provider?: string): string | undefined {

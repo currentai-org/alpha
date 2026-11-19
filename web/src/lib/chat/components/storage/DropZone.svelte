@@ -2,7 +2,7 @@
 	import { m } from '$lib/paraglide/messages.js';
 	import RiFileUploadLine from '~icons/ri/file-upload-line';
 
-	// CUR-1276, from files-components.jsx's DropZone. Always visible — never revealed on hover or
+	// from files-components.jsx's DropZone. Always visible — never revealed on hover or
 	// drag, and the accepted types + size cap are stated before anyone picks a file. Radius 2 (10px):
 	// same tier as the chat input, per the design's own note that both are "places you put content
 	// in" — see design-system.md on when 10px applies.

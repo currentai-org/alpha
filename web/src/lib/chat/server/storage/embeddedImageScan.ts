@@ -1,6 +1,6 @@
 /**
  * The known-abuse image check for every file a person gives us, including the pictures inside a PDF
- * or an Office file (CUR-987). A photo is scanned as itself. A PDF or DOCX has each embedded image
+ * or an Office file. A photo is scanned as itself. A PDF or DOCX has each embedded image
  * decoded, re-encoded as PNG and scanned, so a picture cannot get past the check by arriving inside
  * a document. Chat attachments (parseRequest.ts) and My files (custodialStorage.ts) both call this.
  *
@@ -17,9 +17,9 @@ import { createHash } from "node:crypto";
 import type sharp from "sharp";
 import { MAX_PDF_PAGES } from "$lib/chat/constants/ragUpload";
 import { logger as defaultLogger } from "$lib/chat/server/logger";
-import { scanCsamHash, type CsamScanResult } from "./csamScan";
+import { csamScanSkipped, scanCsamHash, unscannedByOperatorChoice, type CsamScanResult } from "./csamScan";
 
-/** Chat's line for a PDF or DOCX from an account `document-attachments` does not select (CUR-987). */
+/** Chat's line for a PDF or DOCX from an account `document-attachments` does not select. */
 export const DOCUMENTS_NOT_ACCEPTED_MESSAGE = "PDF and Word files can't be added here yet, so this one wasn't added.";
 
 export const UNSCANNABLE_FILE_MESSAGE = "This file has a picture in it we couldn't check, so it wasn't added.";
@@ -80,7 +80,7 @@ export type EmbeddedScanDeps = {
 	sharpImpl?: typeof sharp;
 	logger?: Pick<typeof defaultLogger, "info" | "warn">;
 	now?: () => number;
-	/** Receives each distinct picture the walk decoded (PNG bytes), for a second screen. (CUR-3201) */
+	/** Receives each distinct picture the walk decoded (PNG bytes), for a second screen. */
 	collected?: Buffer[];
 };
 
@@ -104,6 +104,7 @@ export async function scanFileForCsam(
 	deps: EmbeddedScanDeps = {}
 ): Promise<CsamScanResult> {
 	const scan = deps.scan ?? scanCsamHash;
+	if (!deps.scan && csamScanSkipped()) return unscannedByOperatorChoice(name);
 	if (target === null) return { status: "clean" };
 	if (target === "image") return scan(content, name);
 
@@ -189,7 +190,7 @@ async function collectFromPdf(bytes: Uint8Array, ctx: Ctx): Promise<void> {
 		throw new UnscannableFileError("pdf did not open");
 	}
 	try {
-		// Refused before any page is read: opening is cheap, but reading pages is not (CUR-3837).
+		// Refused before any page is read: opening is cheap, but reading pages is not.
 		if (pdf.numPages > MAX_PDF_PAGES) {
 			throw new UnscannableFileError(`pdf has ${pdf.numPages} pages`, PDF_TOO_LONG_MESSAGE);
 		}

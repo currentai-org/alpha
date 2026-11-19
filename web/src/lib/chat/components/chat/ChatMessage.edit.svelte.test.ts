@@ -8,8 +8,12 @@ import { refusedEdit } from "$lib/chat/stores/refusedEdit";
 import { sendHeldUntil } from "$lib/chat/stores/errors";
 
 // The edit box reads the length cap off page.data, which has no SvelteKit router behind it here, so
-// $app/state is a bare object carrying only the fields ChatMessage reads.
-vi.mock("$app/state", () => ({ page: { data: { messageLengthLimit: 20 }, params: {} } }));
+// $app/state is a bare object carrying only the fields ChatMessage and its children read
+// (navigating: the approval card's scroll action).
+vi.mock("$app/state", () => ({
+	page: { data: { messageLengthLimit: 20 }, params: {} },
+	navigating: { to: null },
+}));
 
 const question: Message = {
 	from: "user",
@@ -17,7 +21,7 @@ const question: Message = {
 	content: "What is the capital of France?",
 };
 
-describe("ChatMessage — an edit over the length cap (CUR-2825)", () => {
+describe("ChatMessage — an edit over the length cap", () => {
 	afterEach(() => {
 		cleanup();
 	});
@@ -83,8 +87,8 @@ describe("ChatMessage — an edit over the length cap (CUR-2825)", () => {
 	// Our own message limit says how long its window has left, and the page holds Send for
 	// that long (sendHeldUntil). The edit box must not keep its Send live beside "wait a minute": a press only
 	// meets the same refusal and pushes the window further out. edit-refused.spec.ts test 3 drives this
-	// through the page live; this pins the edit box's own half (SOL-206). (CUR-3410)
-	it("holds the edit box Send while our message limit's wait runs, counts it down, then gives Send back (CUR-3410)", async () => {
+	// through the page live; this pins the edit box's own half.
+	it("holds the edit box Send while our message limit's wait runs, counts it down, then gives Send back", async () => {
 		refusedEdit.set({
 			id: question.id,
 			text: "And of Spain?",

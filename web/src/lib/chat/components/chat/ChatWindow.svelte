@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2018- The Hugging Face team
+SPDX-License-Identifier: Apache-2.0
+Modified by Current AI from huggingface/chat-ui.
+-->
 <script lang="ts">
 	import { m } from '$lib/paraglide/messages.js';
 	import { messageTooLongMessage } from '$lib/chat/utils/messageTooLong';
@@ -52,7 +57,6 @@
 	import { downloadConversationMarkdown } from '$lib/chat/utils/exportConversation';
 	import VoiceRecorder from './VoiceRecorder.svelte';
 	import type { Model } from '$lib/chat/types/Model';
-	import type { EmbeddedIntent } from '$lib/chat/types/EmbeddedIntent';
 	import type { ReasoningEffort } from '$lib/chat/types/Settings';
 	import FileDropzone from './FileDropzone.svelte';
 	import file2base64 from '$lib/chat/utils/file2base64';
@@ -83,12 +87,15 @@
 	import SystemPromptModal from '../SystemPromptModal.svelte';
 	import ChatIntroduction from './ChatIntroduction.svelte';
 	import GuestRetentionNotice from './GuestRetentionNotice.svelte';
+	import ConversationExpiryBanner from './ConversationExpiryBanner.svelte';
+	import { SELF_HOST_URL, expiryWarningShows } from '$lib/chat/constants/retention';
 	import UploadedFile from './UploadedFile.svelte';
 	import { compactPastedLinks, expandLinks } from '$lib/chat/utils/composerLinks';
 	import { useSettingsStore } from '$lib/chat/stores/settings';
 	import { welcomeReplay } from '$lib/chat/stores/welcomeReplay.svelte';
 	import { error, errorHeld, isRateLimitMessage, sendHeldUntil } from '$lib/chat/stores/errors';
 	import ModelSwitch from './ModelSwitch.svelte';
+	import PhoneAccountAvatar from '$lib/chat/components/PhoneAccountAvatar.svelte';
 	import SessionFootprint from '$lib/chat/components/SessionFootprint.svelte';
 	import { routerExamples } from '$lib/chat/constants/routerExamples';
 	import type { RouterFollowUp, RouterExample } from '$lib/chat/constants/routerExamples';
@@ -115,8 +122,12 @@
 		loading?: boolean;
 		pending?: boolean;
 		shared?: boolean;
-		/** The former workspace a read-only chat was in; it replaces the composer with why. (CUR-3040) */
+		/** The former workspace a read-only chat was in; it replaces the composer with why. */
 		formerWorkspace?: string | null;
+		/** The Mila output guard ended this conversation; a status line replaces the composer. */
+		crisisEnded?: boolean;
+		/** When conversation expiry deletes this chat; null when it never does. */
+		expiresAt?: Date | null;
 		currentModel: Model;
 		models: Model[];
 		preprompt?: string | undefined;
@@ -126,10 +137,6 @@
 		onretry?: (payload: { id: Message['id']; content?: string }) => void;
 		onshowAlternateMsg?: (payload: { id: Message['id'] }) => void;
 		draft?: string;
-		embeddedDemo?: boolean;
-		onDemoForgetEverything?: () => void;
-		/** Demo only: where a click on an app-only destination is reported. */
-		onEmbeddedNavigate?: (intent?: EmbeddedIntent) => void;
 	}
 
 	// The open conversation's title, provided by ChatShell (falls back when mounted elsewhere).
@@ -147,6 +154,8 @@
 		pending = false,
 		shared = false,
 		formerWorkspace = null,
+		crisisEnded = false,
+		expiresAt = null,
 		currentModel,
 		models,
 		preprompt = undefined,
@@ -155,10 +164,7 @@
 		onmessage,
 		onstop,
 		onretry,
-		onshowAlternateMsg,
-		embeddedDemo = false,
-		onDemoForgetEverything,
-		onEmbeddedNavigate
+		onshowAlternateMsg
 	}: Props = $props();
 
 	let isReadOnly = $derived(!models.some((model) => model.id === currentModel.id));
@@ -223,7 +229,7 @@
 	let isRecording = $state(false);
 	// After the browser can't record or the microphone is refused, the Dictate button
 	// dims and its hover text says why, rather than looking live beside a toast saying it isn't.
-	// A recording that goes through clears it, so allowing the microphone and pressing again works. (CUR-3403)
+	// A recording that goes through clears it, so allowing the microphone and pressing again works.
 	let dictationBlocked = $state<string | undefined>();
 	let isTranscribing = $state(false);
 	let isTouchDevice = $derived(browser && navigator.maxTouchPoints > 0);
@@ -240,7 +246,7 @@
 	let draftLooksRecent = $derived(isRecencyQueryDenoised(draft));
 	// Send looked ready while the draft was over the length cap, so a person had no cue that
 	// pressing it would only be refused. It now dims like a disabled control but stays clickable
-	// (aria-disabled, not disabled), so a click still lands on the refusal that says how much to cut. (CUR-2703)
+	// (aria-disabled, not disabled), so a click still lands on the refusal that says how much to cut.
 	let draftOverLimit = $derived.by(() => {
 		const limit = page.data.messageLengthLimit;
 		return typeof limit === 'number' && limit > 0 && draft.length > limit;
@@ -300,7 +306,7 @@
 
 
 	// While our own message limit's window runs, Send is held and the composer counts it
-	// down. A press inside the window is refused and recorded, so it would only push the window out. (CUR-3216)
+	// down. A press inside the window is refused and recorded, so it would only push the window out.
 	let heldNow = $state(Date.now());
 	const heldSeconds = $derived(
 		$sendHeldUntil ? Math.max(0, Math.ceil(($sendHeldUntil - heldNow) / 1000)) : 0
@@ -327,12 +333,12 @@
 		// Guard on the trimmed draft, not just `!draft`: a whitespace-only draft ("   \n") is
 		// truthy, so a bare `!draft` let the send button submit blank turns (Enter already trims).
 		if (requireAuthUser() || loading || !draft.trim() || heldSeconds > 0) return;
-		// Still inside the tap, before any await, so iOS lets the answer's read-aloud play later. (CUR-4666)
+		// Still inside the tap, before any await, so iOS lets the answer's read-aloud play later.
 		if (page.data.readAloudEnabled && get(speakMode) !== 'off') primeAudioForAutoplay();
 		attachmentRefusal.set(undefined);
 		// A photo chosen a moment ago may still be shrinking or waiting on My files' headroom, and it
 		// reaches `files` only when both end. Sending now would send the text without it, so wait; a
-		// second Enter meanwhile is the same send (CUR-3197).
+		// second Enter meanwhile is the same send.
 		if (attachmentsPending()) {
 			if (waitingForPhotos) return;
 			waitingForPhotos = true;
@@ -350,7 +356,7 @@
 		// Refuse an over-long message here, with the server's own words, rather than send it.
 		// Sending would render it as a user bubble under "The model is working…" until the 400 arrived and
 		// rolled it back into the composer. The draft is left in place, and the next send clears the
-		// held reason (writeMessage). parseRequest still enforces the cap for any other client. (CUR-1921)
+		// held reason (writeMessage). parseRequest still enforces the cap for any other client.
 		const limit = page.data.messageLengthLimit;
 		if (typeof limit === 'number' && limit > 0 && draft.length > limit) {
 			error.set(messageTooLongMessage(draft.length, limit));
@@ -401,12 +407,12 @@
 		// Read before any await: the browser empties the list once the handler yields.
 		const dropped = Array.from(e.dataTransfer?.files ?? []);
 		if (dropped.length === 0) return;
-		// A drop adds to what is already attached, as a paste or the picker does (CUR-3235).
-		// An avif, bmp, tiff or HEIC this browser can open becomes a JPEG first (CUR-3073).
+		// A drop adds to what is already attached, as a paste or the picker does.
+		// An avif, bmp, tiff or HEIC this browser can open becomes a JPEG first.
 		const incoming = await convertImages(dropped, mimeOffered(activeMimeTypes, 'image/jpeg'));
 		const refused = incoming.find((file) => !mimeOffered(activeMimeTypes, file.type));
 		if (refused) {
-			// Named in words, never as raw MIME types. (CUR-2839)
+			// Named in words, never as raw MIME types.
 			const label = fileTypeLabel(refused.type, refused.name);
 			const photo = photoTypesHint(refused, mimeOffered(activeMimeTypes, 'image/jpeg'));
 			attachmentRefusal.set({
@@ -467,17 +473,17 @@
 		}
 		if (clipboardFiles.length !== 0) {
 			e.preventDefault();
-			// An avif, bmp, tiff or HEIC this browser can open becomes a JPEG first (CUR-3073).
+			// An avif, bmp, tiff or HEIC this browser can open becomes a JPEG first.
 			const pastedFiles = await convertImages(clipboardFiles, mimeOffered(activeMimeTypes, 'image/jpeg'));
 
 			const filteredFiles = pastedFiles.filter((file) => mimeOffered(activeMimeTypes, file.type));
 
-			// A refused file gets a reason, the way a refused drop does (CUR-2949).
+			// A refused file gets a reason, the way a refused drop does.
 			const refused = pastedFiles.filter((file) => !filteredFiles.includes(file));
 			const signedIn = Boolean(page.data.user);
 			const imageInputEnabled = page.data.imageInputEnabled === true;
 			const loginEnabled = page.data.loginEnabled === true;
-			// Whether signing in would help is asked only now, for a guest whose photo was refused. (CUR-3015)
+			// Whether signing in would help is asked only now, for a guest whose photo was refused.
 			const askSignIn =
 				!signedIn && loginEnabled && !imageInputEnabled && refused.some((file) => file.type.startsWith('image/'));
 			// Not awaited: the accepted files below must not wait on that answer.
@@ -511,7 +517,7 @@
 	};
 
 	// The near-limit line belongs to the files on the composer; once they are sent or
-	// removed it no longer describes anything. (CUR-3235)
+	// removed it no longer describes anything.
 	$effect(() => {
 		if (files.length === 0) attachmentWarning.set(undefined);
 	});
@@ -532,7 +538,7 @@
 			return undefined;
 		})()
 	);
-	// The empty composer speaks the language the browser asks for, like the live status line. (CUR-1575)
+	// The empty composer speaks the language the browser asks for, like the live status line.
 	const composerPlaceholder = $derived(chromeCopy(page.data.uiLang).placeholder);
 	let lastIsError = $derived(
 		!loading &&
@@ -608,7 +614,7 @@
 
 	// Shared conversations containing artifacts usually exist to show one off:
 	// open the most recent artifact on load, on its code tab, so its script runs
-	// only once the viewer picks Preview (CUR-3187). Desktop only, since on mobile the
+	// only once the viewer picks Preview. Desktop only, since on mobile the
 	// panel is a fullscreen overlay that would hide the conversation entirely.
 	// Declared after the conversation-switch effect so its reset() can never
 	// close the panel after this opens it within the same flush.
@@ -648,7 +654,7 @@
 	// itself (e.g. GuestRetentionNotice mounting above it) can fire it with a still-stale scrollHeight —
 	// landing on the wrong absolute position and racing this effect's own correction. Gating on
 	// spacerHeight alone leaves the just-sent message pinned ~150px above the fold,
-	// permanently, on exactly that mount (CUR-1576). Keeping followBottom off for the entire phase removes the race
+	// permanently, on exactly that mount. Keeping followBottom off for the entire phase removes the race
 	// instead of trying to win it — this effect's own scrollTop re-pin (below) is the only writer left.
 	let anchoredTop = $derived(spacerActive > 0);
 
@@ -661,7 +667,7 @@
 	// where we're currently scrolled to. Unlike deriving a target from scrollHeight, this
 	// doesn't depend on the spacer's rendered height matching this tick's computation, so
 	// it can't drift when a reply arrives in one large chunk that jumps straight past the
-	// spacer's floor within a single resize tick (CAI-77).
+	// spacer's floor within a single resize tick.
 	function getLastUserMsgScrollTop(): number | null {
 		if (!chatContainer) return null;
 		const userMsgs = chatContainer.querySelectorAll('[data-message-type="user"]');
@@ -709,7 +715,7 @@
 		// touching messagesEl at all — messagesEl alone can't see that. The banner
 		// shrinks containerHeight (252->225) the instant it appears, and with only messagesEl observed the
 		// just-sent user message ends up pinned 180px above the now-shorter viewport, permanently,
-		// since nothing re-fires to correct it (CUR-1576).
+		// since nothing re-fires to correct it.
 		//
 		// Re-pin scrollTop to the user message's fixed absolute offset on every
 		// resize tick WHILE THE TURN IS STILL LOADING ONLY. `spacerActive` stays
@@ -722,11 +728,11 @@
 		// turn. Checked per-tick rather than gating the
 		// effect itself, so the synchronous computeSpacerHeight() call below
 		// still runs immediately when spacerActive is set, same tick as
-		// forceReattach++ (see the comment above this effect) (CAI-77).
+		// forceReattach++ (see the comment above this effect).
 		//
 		// The re-pin also stops for the rest of the turn once the reader scrolls the conversation
 		// themselves: without that, every streamed chunk pulled a reader who had scrolled down to keep
-		// reading back to the top of the answer (CUR-2526). The effect re-runs on the next send
+		// reading back to the top of the answer. The effect re-runs on the next send
 		// (spacerActive changes), which resets this, so the following turn pins as usual. Only real
 		// input counts (wheel, touch, scroll keys, a scrollbar drag), since this observer's own
 		// scrollTop writes and the browser's clamping also fire scroll events.
@@ -778,11 +784,11 @@
 	// existing `welcomeModalSeen` setting; returning visitors / loaded histories
 	// don't see it. A shared conversation view (near-always has messages already)
 	// can never satisfy this gate — AiDisclosureBanner below is that path's own,
-	// lighter Art. 50 disclosure instead (CUR-996).
+	// lighter Art. 50 disclosure instead.
 	let chatInputRef = $state<ReturnType<typeof ChatInput>>();
-	// Not after a wipe in this same page session (CUR-2270, see wipedThisSession).
+	// Not after a wipe in this same page session (see wipedThisSession).
 	// Held from the moment the welcome starts to close until its close animation ends: the seen mark is
-	// saved at the start (CUR-4348), and on its own it would unmount the welcome mid-animation, before
+	// saved at the start, and on its own it would unmount the welcome mid-animation, before
 	// it hands over.
 	let welcomeLeaving = $state(false);
 	let showWelcome = $derived(
@@ -799,7 +805,7 @@
 	// room added below the block for it to scroll into, until the heading reaches the top; past that
 	// the box moves rather than the greeting leaving the screen. Positions are read in the column's content
 	// coordinates, so the scroll itself never reads as the box moving. The rest position is re-read
-	// whenever nothing is attached, and after a window resize. (CUR-3617)
+	// whenever nothing is attached, and after a window resize.
 	let landingEl = $state<HTMLDivElement>();
 	// Space kept between the column's top edge and the greeting's heading when the column scrolls.
 	const HEADING_GAP = 12;
@@ -850,7 +856,7 @@
 			if (left < 0) el.style.marginTop = `${-left}px`;
 			// Scroll no further than puts the greeting's heading at the column's top edge. Holding the box
 			// still past that point hid the heading under the top bar, so the rest of the drop moves the
-			// box instead (CUR-3617).
+			// box instead.
 			const heading = el.querySelector('h2');
 			const headingLimit = heading
 				? contentTop(heading) - scroller.getBoundingClientRect().top - HEADING_GAP
@@ -886,7 +892,7 @@
 	// The empty-state's own retention line (ChatIntroduction) disappears the moment a guest
 	// sends their first message — exactly when they'd have something to lose. This covers the gap:
 	// anonymous, not viewing someone else's shared conversation, and a conversation actually exists
-	// (sent or pending) rather than the still-empty composer, where ChatIntroduction already covers it. (CUR-643)
+	// (sent or pending) rather than the still-empty composer, where ChatIntroduction already covers it.
 	let showGuestRetentionNotice = $derived(
 		!page.data.user && !shared && (messages.length > 0 || pending)
 	);
@@ -920,7 +926,6 @@
 		// page by then keeps what they clicked; only focus left on the welcome or nowhere moves here.
 		const focused = document.activeElement;
 		if (!focused || focused === document.body || focused.closest('[data-welcome]')) chatInputRef?.focusComposer();
-		if (embeddedDemo) return;
 		tour.showHint();
 		if (!compact.current && !shell.collapsed) return;
 		toasts.add({
@@ -986,7 +991,7 @@
 
 	// The settings page's "Reasoning effort" switch only sets the boolean gate below —
 	// this is the selector its own copy promises ("Show a Low / Medium / High selector in the
-	// chat footer"), the only place reasoningEffortOverrides ever gets written. (CUR-680)
+	// chat footer"), the only place reasoningEffortOverrides ever gets written.
 	let showReasoningEffort = $derived(
 		($settings.reasoningOverrides?.[currentModel.id] ?? currentModel.supportsReasoning) === true
 	);
@@ -1000,8 +1005,8 @@
 		}));
 	}
 
-	// Text files always, PDF/DOCX where the server reads them (CUR-987), images when the model takes
-	// them, nothing at all where the server refuses every upload (CUR-2382): see offeredMimeTypes.
+	// Text files always, PDF/DOCX where the server reads them, images when the model takes
+	// them, nothing at all where the server refuses every upload: see offeredMimeTypes.
 	let activeMimeTypes = $derived(
 		offeredMimeTypes({
 			attachmentsEnabled: page.data.attachmentsEnabled === true,
@@ -1116,13 +1121,13 @@
 		}
 	});
 
-	// A refused edit reopens its own message's edit box, which takes the text and reason. (CUR-2825)
+	// A refused edit reopens its own message's edit box, which takes the text and reason.
 	$effect(() => {
 		if ($refusedEdit) editMsdgId = $refusedEdit.id;
 	});
 
 	// A button that answers for the visitor (the low-resource notice's "Try anyway") sends
-	// through the composer's own path, so it is tracked and guarded like a typed message. (CUR-1841)
+	// through the composer's own path, so it is tracked and guarded like a typed message.
 	function sendAsVisitor(text: string) {
 		if (requireAuthUser() || loading) return;
 		draft = text;
@@ -1167,7 +1172,7 @@
 	}
 
 	/** The recording's text, or undefined with the reason already in the error banner. A recording over
-	 *  the limit is refused here, before the upload, with the sentence the server would send (CUR-2631). */
+	 *  the limit is refused here, before the upload, with the sentence the server would send. */
 	async function transcribe(audioBlob: Blob): Promise<string | undefined> {
 		if (audioBlob.size > VOICE_RECORDING_MAX_BYTES) {
 			$error = voiceRecordingTooLargeMessage();
@@ -1184,7 +1189,7 @@
 				return undefined;
 			}
 			// A timeout and a rate limit carry a sentence written for the visitor ("try a shorter
-			// recording"); any other failure's body is upstream text, so it keeps the generic line (CUR-2801).
+			// recording"); any other failure's body is upstream text, so it keeps the generic line.
 			if (response.status === 429 || response.status === 504) {
 				const body = await response.json().catch(() => null);
 				$error = body?.message || 'Transcription failed. Please try again.';
@@ -1311,20 +1316,22 @@
 					<h2 class="truncate type-body font-medium text-fg-1">{threadTitle.title || m.product_newChat()}</h2>
 				{/if}
 				<!-- Guests: a small "deletes in N days" badge beside the title; tap for the details. -->
-				{#if showGuestRetentionNotice}
+				{#if expiresAt && !shared}
+					<!-- Under conversation expiry, signed in or a guest: the badge counts down to this chat's date. -->
+					<GuestRetentionNotice {expiresAt} />
+				{:else if showGuestRetentionNotice}
 					<GuestRetentionNotice />
 				{/if}
 			{/snippet}
 			{#snippet actions()}
 				<!-- XRAY moved to the composer (an X-ray pill beside Private); the header keeps the footprint,
 				     top-right at every size — the compact trigger on phones, the full one on larger screens. -->
-				<div class="hidden md:block"><SessionFootprint forget={false} {embeddedDemo} {onDemoForgetEverything} /></div>
-				<div class="md:hidden"><SessionFootprint compact forget={false} {embeddedDemo} {onDemoForgetEverything} /></div>
+				<div class="hidden md:block"><SessionFootprint forget={false} /></div>
+				<div class="md:hidden"><SessionFootprint compact forget={false} /></div>
+				<PhoneAccountAvatar />
 			{/snippet}
 		</ThreadHeader>
-		{#if !embeddedDemo}
-			<GuidedTour />
-		{/if}
+		<GuidedTour />
 		{#if showWelcome}
 			<WelcomeModal onTakeTour={handleWelcomeTour} onStartChatting={handleWelcomeStart} onDismiss={dismissWelcome} />
 		{:else if shared}
@@ -1341,7 +1348,7 @@
 			bind:this={chatContainer}
 		>
 			<!-- New chat: the Bold /alpha drift and build fields as one, theme-aware, behind the greeting. -->
-			{#if emptyState && !shared && !embeddedDemo}
+			{#if emptyState && !shared}
 				<ChatBackdrop />
 			{/if}
 			<!-- @container: descendants adapt to the actual column width (it shrinks when a side
@@ -1436,7 +1443,7 @@
 			     of how tall the composer grows. -->
 			<div class="relative z-sticky flex w-full shrink-0 flex-col items-center bg-surface pt-2 pb-3 md:pb-4">
 				{#if scrollButtonVisible}
-					<!-- CUR-1630: the jump button floats over the answer while the reader is scrolled up, and the
+					<!-- the jump button floats over the answer while the reader is scrolled up, and the
 					     scroller's own edge fade is only a quarter opaque at its height, so it hid words that were
 					     still readable. This strip is solid across its lower half, which covers the text beneath
 					     the button; its upper half dissolves into the answer. Desktop only, like the button. -->
@@ -1490,8 +1497,14 @@
 		<!-- The composer's accessory row (privacy + XRAY pills) wraps the form, so its panels match the
 		     composer's width, and hands the model picker into the composer's toolbar. Absent on
 		     read-only / shared views, which can't send. A former workspace's chat gets neither, only
-		     the reason it can't be continued. -->
-		{#if formerWorkspace}
+		     the reason it can't be continued. A conversation the Mila output guard ended gets a status
+		     line and a way to a new chat; the support card stays on the answer above. -->
+		{#if crisisEnded}
+			<div class="mx-auto flex w-full max-w-3xl flex-col items-center gap-3 px-4 py-4 text-center" role="status" data-testid="conversation-ended">
+				<p class="type-body text-fg-2">{m.chat_conversationEnded()}</p>
+				<Button href={`${base}/`} variant="secondary" size="sm" casing="sentence">{m.product_startChat()}</Button>
+			</div>
+		{:else if formerWorkspace}
 			<p class="mx-auto w-full max-w-3xl px-4 py-4 text-center type-body text-fg-2" role="status">
 				This chat was in {formerWorkspace}, which you're no longer part of, so it's read-only.
 			</p>
@@ -1505,14 +1518,26 @@
 				started={messages.length > 0}
 				{messages}
 				{loading}
-				{embeddedDemo}
-				{onEmbeddedNavigate}
 				photoAttached={(files ?? []).some((file) => file.type.startsWith('image/'))}
 			>
 				{#snippet children(modelPicker)}
 					{@render composerForm(modelPicker)}
 				{/snippet}
 			</ChatComposerFrame>
+			{#if page.data.conversationExpiryDays && page.data.user}
+				<!-- Conversation expiry: under every composer, so nobody gets comfortable keeping
+				     long history here, with the way out one click away. -->
+				<p class="pt-2 text-center type-caption text-fg-2" data-testid="conversation-expiry-line">
+					{m.chat_expiryLine({ days: page.data.conversationExpiryDays })}
+					<a href={`${base}/settings/account#your-data`} class="underline underline-offset-2 hover:text-fg-1"
+						>{m.chat_expiryExport()}</a
+					>
+					·
+					<a href={SELF_HOST_URL} rel="noopener" target="_blank" class="underline underline-offset-2 hover:text-fg-1"
+						>{m.chat_expirySelfHost()}</a
+					>
+				</p>
+			{/if}
 		{/if}
 	{/snippet}
 
@@ -1529,7 +1554,7 @@
 					/>
 				{/await}
 			{/each}
-			<!-- CUR-2905: a large photo takes seconds to shrink before it has a card of its own, so the
+			<!-- a large photo takes seconds to shrink before it has a card of its own, so the
 			     composer says it arrived. -->
 			{#each { length: $preparingPhotos } as _, i (i)}
 				<Attachment.Card
@@ -1546,6 +1571,11 @@
 	{#snippet composerForm(modelPicker?: Snippet)}
 		<!-- What the composer refused, or a photo the chosen model won't read, said on its top edge:
 		     it belongs to this message, not to the app-wide toast. -->
+		<!-- From day 23 under conversation expiry: the date this chat goes, with Export and Continue in a
+		     new chat. -->
+		{#if expiresAt && !shared && page.params.id && expiryWarningShows(expiresAt, new Date())}
+			<ConversationExpiryBanner conversationId={page.params.id} {expiresAt} leafId={messages.at(-1)?.id} />
+		{/if}
 		{#if $attachmentRefusal}
 			{@const refusal = $attachmentRefusal}
 			<ComposerAccessory.Notice
@@ -1632,8 +1662,8 @@
 				<FileDropzone />
 			{:else}
 				<div class="flex w-full flex-1 border-none bg-transparent" class:paste-glow={pastedLongContent}>
-					<!-- CUR-1921: the failed turn's own notice says what went wrong and carries the one Retry.
-					     CUR-4490: the composer stays open beside it, so someone whose question failed can reword it
+					<!-- the failed turn's own notice says what went wrong and carries the one Retry.
+					     the composer stays open beside it, so someone whose question failed can reword it
 					     instead of being sent back to the same Retry. -->
 					<ChatInput
 						bind:this={chatInputRef}

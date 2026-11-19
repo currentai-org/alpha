@@ -101,6 +101,35 @@ export interface FlatProductRow extends ScoredProduct {
 	categoryStage: { name: string; num: number };
 }
 
+/**
+ * The part of a product the gap map and full dataset views render: names, links, the four scores
+ * and the category fields. Each view's page data carries one of these per product, without the
+ * notes and sources behind each score, which only the product page shows.
+ */
+export type MapProductRow = Pick<
+	FlatProductRow,
+	| 'id'
+	| 'slug'
+	| 'product'
+	| 'org'
+	| 'org_slug'
+	| 'description'
+	| 'overall_score'
+	| 'maturity'
+	| 'tier'
+	| 'categoryId'
+	| 'categoryLabel'
+	| 'categoryDescription'
+	| 'categoryLayerLabel'
+	| 'categoryLayerId'
+	| 'categoryGaps'
+	| 'categoryStage'
+> & {
+	openness: Pick<FlatProductRow['openness'], 'score' | 'bucket' | 'class'>;
+	capability: Pick<FlatProductRow['capability'], 'score'>;
+	adoption: Pick<FlatProductRow['adoption'], 'level'>;
+};
+
 export interface GapMapCategory {
 	label: string;
 	arc: string; // human-readable layer label

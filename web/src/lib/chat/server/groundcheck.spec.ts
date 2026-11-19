@@ -270,7 +270,7 @@ describe("parseReviseArgs", () => {
 	});
 });
 
-describe("groundcheckFaultCheck (CUR-2927)", () => {
+describe("groundcheckFaultCheck", () => {
 	it("removes one claim from the canned reply through the real guards, so the fault stamps a count of 1", async () => {
 		const answer =
 			"This is a canned reply: no model wrote it. It stands in for an answer in specs that check the chat itself.\n\n- one list item\n- another list item\n";
@@ -282,7 +282,7 @@ describe("groundcheckFaultCheck (CUR-2927)", () => {
 });
 
 describe("groundcheckAnswer", () => {
-	it("counts each accepted deletion as one removed claim, across sentences (CUR-2927)", async () => {
+	it("counts each accepted deletion as one removed claim, across sentences", async () => {
 		const one = "Lucie 7B is a French model from OpenLLM-France [1].";
 		const answer = `${one} ${one}`;
 		const second = answer.lastIndexOf("French model");
@@ -337,7 +337,7 @@ describe("groundcheckAnswer", () => {
 		expect(res).toEqual({ outcome: "kept", text: answer });
 	});
 
-	it("keeps a true year the only dated source gets wrong, rather than shipping \"in during\" (CUR-2874)", async () => {
+	it("keeps a true year the only dated source gets wrong, rather than shipping \"in during\"", async () => {
 		const answer = "Tokyo became the capital of Japan in 1868 during the Meiji Restoration [1].";
 		const res = await groundcheckAnswer(
 			{
@@ -377,7 +377,7 @@ describe("groundcheckAnswer", () => {
 	});
 
 	// The dough-recipe answer from violence-idiom-answered.spec.ts, as captured on develop with its one
-	// source, whose snippet is the blog post's introduction and lists nothing (CUR-2680).
+	// source, whose snippet is the blog post's introduction and lists nothing.
 	it("keeps a recipe's ingredient lines the source never lists, and still deletes a step about the sourced dough", async () => {
 		const recipeSource = [
 			"[1] The Best Homemade Pizza Dough Recipe: My all-time favorite homemade pizza dough recipe, this recipe has been tried and tested week after week. Back in 2011, I tried the pizza dough recipe from Artisan Pizza and Flatbread in Five Minutes a Day.",
@@ -465,7 +465,7 @@ describe("groundcheckAnswer", () => {
 	});
 
 	// The chat renders a marker for a url-less source as [<title>], so a marker beside the
-	// title showed the name twice, and two chunks of one document listed it twice more. (CUR-2614)
+	// title showed the name twice, and two chunks of one document listed it twice more.
 	it("lists each source title once, with no citation marker the chat would render as a second copy", () => {
 		const text = groundcheckEmptiedText([
 			{ n: 1, title: "About AI Potluck" },
@@ -633,7 +633,7 @@ describe("groundcheckAnswer", () => {
 	});
 
 	it("keeps a true sentence (outcome kept, unmarked 1) when the reviser empties more than the detector marked", async () => {
-		// "potluck" is in the sources, so the unrelated guard cannot hold this one. (CUR-2692)
+		// "potluck" is in the sources, so the unrelated guard cannot hold this one.
 		const potluckContext = ["[1] AI Potluck is Current AI's sprint to build an open-source alternative to closed AI."];
 		const answer = "A potluck is a gathering where each participant contributes a dish to share.";
 		const info = vi.fn();
@@ -706,9 +706,9 @@ describe("groundcheckEvidence", () => {
 	});
 });
 
-// A book list (CUR-4489). A source names two of the books; the detector marks every other title, and
+// A book list. A source names two of the books; the detector marks every other title, and
 // the reviser can empty the title sentence it was handed.
-describe("groundcheckAnswer on a list (CUR-4489)", () => {
+describe("groundcheckAnswer on a list", () => {
 	const books = ["[1] O Cavaleiro da Dinamarca, de Sophia de Mello Breyner Andresen. Os Maias, de Eça de Queirós."];
 	const ask = "Dá-me 5 livros de autores portugueses para adolescentes.";
 	/** Marks each `titles` entry and empties the unit holding it. */

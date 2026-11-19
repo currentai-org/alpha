@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { unseenSteps, type JourneyCard } from "../journeyGallery";
 
 /**
- * CUR-2245. The board's summary sentence names every step a passing test claims and no frame shows,
+ * The board's summary sentence names every step a passing test claims and no frame shows,
  * so a reader sees them without opening each card. What breaks this is an `inconclusive` step (the
  * doc already says nothing walks it) counted as unseen, or an unseen one on a later card dropped.
  */

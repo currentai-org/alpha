@@ -12,7 +12,7 @@ const { calls, ragModel, slow } = vi.hoisted(() => ({
 const later = <T,>(value: T) =>
 	slow.ms ? new Promise<T>((resolve) => setTimeout(() => resolve(value), slow.ms)) : value;
 
-// CUR-2135. Only the network is stubbed. Exemplars about the assistant sit on one axis and near misses
+// Only the network is stubbed. Exemplars about the assistant sit on one axis and near misses
 // on the other, so a query placed on an axis has a known margin and the real threshold decides.
 const SELF_AXIS = [1, 0, 0];
 const NOT_SELF_AXIS = [0, 1, 0];
@@ -52,7 +52,7 @@ const { logger } = await import("$lib/chat/server/logger");
 /** Start and read at once, so the budget runs from the start. */
 const isSelfIdentityQuestion = (text: string) => startSelfIdentityVerdict(text)();
 
-/** The model the threshold was measured in (CUR-2135). */
+/** The model the threshold was measured in. */
 const PINNED = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2";
 
 describe("isSelfIdentityQuestion", () => {
@@ -159,7 +159,7 @@ describe("isSelfIdentityQuestion", () => {
 	});
 });
 
-describe("readIdentityWithin names why a search decision got no veto (CUR-2135)", () => {
+describe("readIdentityWithin names why a search decision got no veto", () => {
 	const verdict = (v: Partial<import("./selfIdentity").SelfIdentityVerdict>) => async () => ({
 		isSelf: false,
 		ok: true,

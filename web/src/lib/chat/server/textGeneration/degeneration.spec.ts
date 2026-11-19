@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { measureDegeneration } from "./degeneration";
 
-// The CUR-149 acceptance probe, running in the ordinary suite rather than as a live-model eval so it
-// can go red on a pull request.
+// The degeneration probe, run in the ordinary suite rather than as a live-model eval so it can go
+// red on a pull request.
 //
 // The tail below is VERBATIM from a real degenerate answer (two-train arithmetic, ended mid-token
 // on `\( m`). Keeping the real text rather than a synthesised one matters: a fixture invented
@@ -31,7 +31,7 @@ const LEGIT: Record<string, string> = {
 	"japanese": `セマフォは、共有リソースに同時にアクセスできるスレッドの数を制限する同期プリミティブです。`,
 };
 
-describe("measureDegeneration — the CUR-149 probe", () => {
+describe("measureDegeneration — the probe", () => {
 	it("flags the verbatim incident output that prod logged as a clean completion", () => {
 		const v = measureDegeneration(WRECK);
 		expect(v.degenerate).toBe(true);

@@ -1,6 +1,6 @@
 // The speech-to-text call either answers in under 2s or stalls for good, so one long abort only
 // makes a stall cost more. Each attempt gets ATTEMPT_MS (about 8x the slowest healthy answer
-// observed, 1,940ms), and a stalled first attempt is retried once (CUR-2328).
+// observed, 1,940ms), and a stalled first attempt is retried once.
 const ATTEMPT_MS = 15_000;
 const ATTEMPTS = 2;
 
@@ -50,7 +50,7 @@ export async function fetchWithStallRetry(
 }
 
 /**
- * The type the transcriber is sent. CUR-2802: it answers `audio/mp4` with a 400 ("Content type
+ * The type the transcriber is sent. it answers `audio/mp4` with a 400 ("Content type
  * \"audio/mp4\" not supported") but takes the same container as `audio/m4a`, and Safari records
  * only mp4. The codec parameter is dropped with it, since the transcriber lists m4a bare.
  */

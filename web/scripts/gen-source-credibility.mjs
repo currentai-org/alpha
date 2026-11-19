@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Regenerates src/lib/chat/search/sourceCredibilityHosts.ts from its two public sources (CUR-2423):
+// Regenerates src/lib/chat/search/sourceCredibilityHosts.ts from its two public sources:
 //
 //   - Wikipedia's perennial sources list (WP:RSP, CC BY-SA 4.0): every row rated generally unreliable
 //     or deprecated. Rows scoped to a topic or a date range ("Fox News (politics and science)", "CNET
@@ -12,6 +12,7 @@
 //
 // Run: node scripts/gen-source-credibility.mjs   (network; writes the module and prints counts)
 
+import { readDeploymentFile } from "../config/deployment.mjs";
 import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -56,7 +57,13 @@ const USER_POSTED = [
 ];
 
 // RSP rows that name no usable host, or a host whose rating is about Wikipedia's own citing practice.
-const RSP_SKIP = new Set(["gnis-class", "gns-class", "ScienceDirect topic", "Religious scriptures texts", "Red Ventures"]);
+const RSP_SKIP = new Set([
+	"gnis-class",
+	"gns-class",
+	"ScienceDirect topic",
+	"Religious scriptures texts",
+	"Red Ventures",
+]);
 
 // Hosts our own engines query directly (searchWikipedia, searchArxiv, …). Never filtered: a rating about
 // citing them on Wikipedia says nothing about using them as evidence here. Generation fails if one
@@ -65,8 +72,12 @@ const ENGINE_HOSTS = ["wikipedia.org", "wikinews.org", "wikidata.org", "arxiv.or
 
 const HOST_RE = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/;
 
+// Names the installation and its contact (config/deployment.json), as the sites fetched here ask.
+const deployment = readDeploymentFile();
+const USER_AGENT = `${deployment.crawlerAgent ?? "Alpha/0.1"}${deployment.contactEmail ? ` (${deployment.contactEmail})` : ""}`;
+
 async function text(url) {
-	const res = await fetch(url, { headers: { "user-agent": "AIPotluck/0.1 (contact@aipotluck.org)" } });
+	const res = await fetch(url, { headers: { "user-agent": USER_AGENT } });
 	if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
 	return res.text();
 }
@@ -126,4 +137,6 @@ export const USER_POSTED_HOSTS: readonly string[] = ${JSON.stringify([...userPos
 export const LOW_CREDIBILITY_HOSTS: readonly string[] = ${JSON.stringify(low, null, "\t")};
 `
 );
-console.log(`wrote ${OUT}: ${userPosted.size} user-posted, ${low.length} low-credibility (${rspLow.length} RSP rows, ${iffy.length} Iffy domains)`);
+console.log(
+	`wrote ${OUT}: ${userPosted.size} user-posted, ${low.length} low-credibility (${rspLow.length} RSP rows, ${iffy.length} Iffy domains)`
+);

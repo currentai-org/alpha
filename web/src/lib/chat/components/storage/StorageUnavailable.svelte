@@ -3,10 +3,10 @@
 	import RiErrorWarningFill from '~icons/ri/error-warning-fill';
 	import RiRefreshLine from '~icons/ri/refresh-line';
 
-	// CUR-1276, from files-components.jsx's Unavailable. The list couldn't be read — this never
+	// from files-components.jsx's Unavailable. The list couldn't be read — this never
 	// claims the files are gone, only that Alpha couldn't show them right now.
 	// `busy` is the server's own line when the storage host throttled the storage token, which says
-	// why and how long better than "didn't load" does. (CUR-3680)
+	// why and how long better than "didn't load" does.
 	interface Props {
 		onReload: () => void;
 		busy?: string | null;

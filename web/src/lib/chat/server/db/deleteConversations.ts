@@ -18,7 +18,7 @@ import { deleteCustodialFolders } from "../storage/custodialStorage";
 
 /**
  * @param ownerId the signed-in owner of every conversation named, whose My files copies of their
- * attachments (`conversations/<id>/`, CUR-2172) go with them (CUR-2183). Deleted BEFORE the rows: a
+ * attachments (`conversations/<id>/`) go with them. Deleted BEFORE the rows: a
  * bucket failure throws and leaves the conversations in place to delete again, rather than reporting
  * them gone while their files remain. Omitted by the account wipe, which deletes the person's whole
  * prefix itself.
@@ -26,7 +26,7 @@ import { deleteCustodialFolders } from "../storage/custodialStorage";
  * them, the same way. Ignored when `ownerId` is given.
  *
  * Whatever the caller passes, a conversation that began as a guest's also loses the copies the
- * sign-in move left under `guests/<formerGuestSessionId>/` (a failed or over-quota move, CUR-3292).
+ * sign-in move left under `guests/<formerGuestSessionId>/` (a failed or over-quota move).
  * Read here from the rows, so the routes and the account wipe can't each forget it.
  */
 export async function deleteConversationsCascade(
@@ -51,13 +51,13 @@ export async function deleteConversationsCascade(
 	// graceful interrupted final answer instead of an error. Fire before the delete transaction so
 	// the generation's own cleanup has the best chance of racing against a still-live row; if it
 	// loses that race its write is a no-op (Mongo-shaped `updateOne` on a missing document), not a
-	// failure. (CUR-1619/CUR-1620/CUR-1773)
+	// failure.
 	for (const id of conversationIds) {
 		AbortRegistry.getInstance().abort(id);
 	}
 	// The conversations' code sandboxes and agent workdirs go with them. Started here and
 	// awaited after the rows, so a slow agent-service adds no time to the delete transaction. Imported
-	// on demand: the helper pulls in the agent endpoint, which nothing else here needs. (CUR-4484)
+	// on demand: the helper pulls in the agent endpoint, which nothing else here needs.
 	const visitor = ownerId ?? guestSessionId;
 	const agentCleanup = visitor
 		? import("../deleteAgentServiceData").then((m) => m.deleteAgentSessions(visitor, conversationIds)).catch(() => undefined)
@@ -78,12 +78,21 @@ export async function deleteConversationsCascade(
 		await tx
 			.delete(schema.abortedGenerations)
 			.where(inArray(schema.abortedGenerations.conversationId, conversationIds));
-		// mcp_elicitations (CUR-1017) can hold a real user answer (content), not just a transient
+		// mcp_elicitations can hold a real user answer (content), not just a transient
 		// marker like abortedGenerations above — delete outright rather than leave it to the TTL
 		// sweep, same treatment as files/generations.
 		await tx
 			.delete(schema.mcpElicitations)
 			.where(inArray(schema.mcpElicitations.conversationId, conversationIds));
+		// stream-follow's event log holds the answer text while it streams: delete outright.
+		await tx
+			.delete(schema.generationEvents)
+			.where(inArray(schema.generationEvents.conversationId, conversationIds));
+		// Share links end with their conversation: a deleted chat must not stay readable
+		// through a link sent before. The FK cascades too; deleting here keeps it explicit.
+		await tx
+			.delete(schema.sharedConversations)
+			.where(inArray(schema.sharedConversations.conversationId, conversationIds));
 		const deleted = await tx
 			.delete(schema.conversations)
 			.where(inArray(schema.conversations.id, conversationIds))

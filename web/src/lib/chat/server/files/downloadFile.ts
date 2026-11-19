@@ -1,4 +1,7 @@
-import { error } from "@sveltejs/kit";
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
+import { error, isHttpError } from "@sveltejs/kit";
 import { fileTypeFromBuffer } from "file-type";
 import mimeTypes from "mime-types";
 import type { Conversation } from "$lib/chat/types/Conversation";
@@ -19,7 +22,7 @@ import { resolveLocation } from "$lib/chat/server/storage/locations/registry";
 import { CustodialCryptoError, type KeyStore } from "$lib/chat/server/storage/custodialCrypto";
 
 /** Who owns the conversation, and the attachment's name from its message reference. With both, the
- * person's My files copy is read first (CUR-2183). A guest's conversation has no owner and names its
+ * person's My files copy is read first. A guest's conversation has no owner and names its
  * session instead, whose copy is under guests/<sessionId>/. A conversation moved to an account at sign-in
  * passes both: the owner's copy is read first, then the copy the move left under the former session. */
 export type AttachmentOwner = {
@@ -27,11 +30,11 @@ export type AttachmentOwner = {
 	guestSessionId?: string;
 	name?: string;
 	mime?: string;
-	/** The reference's linked location (CUR-2930); the copy is read there and nowhere else. */
+	/** The reference's linked location; the copy is read there and nowhere else. */
 	location?: MessageFile["location"];
-	/** Preview-only (faultInjection.ts): every bucket read answers as a throttled Hub does (CUR-3291). */
+	/** Preview-only (faultInjection.ts): every bucket read answers as a throttled Hub does. */
 	fault?: "storage_hub_read_rate_limited";
-	/** The turn's own key store (`turnKeyStore`), shared by every read in the turn (CUR-4116). */
+	/** The turn's own key store (`turnKeyStore`), shared by every read in the turn. */
 	keys?: KeyStore;
 };
 
@@ -40,14 +43,13 @@ export type AttachmentOwner = {
  *
  * Null rather than an error for every miss (no bucket, no copy, a copy whose bytes no longer hash to
  * the reference), because attachments stored before `custodial-storage-view` selected their owner are
- * still in the conversation's files table, and the caller falls back to it until CUR-2183 drops it. A
+ * still in the conversation's files table, and the caller falls back to it until that change drops it. A
  * bucket that answers with an error is read once more, then logged and reported as `unreadable`: a
- * rate limit or 5xx is not a miss, and a bucket-only attachment has no table row to fall back to
- * (CUR-3291).
+ * rate limit or 5xx is not a miss, and a bucket-only attachment has no table row to fall back to.
  *
  * A long paste is kept in the conversation's pastes folder, out of My files. The reference's mime is
  * the client's word, so it only picks the folder; the bytes found there decide the mime. One read per
- * attachment, since every turn re-reads every attachment against a rate-limited token (CUR-3120).
+ * attachment, since every turn re-reads every attachment against a rate-limited token.
  */
 /** A bucket copy that errored twice, with the last error, so the caller can tell a throttle from a storage failure. */
 class Unreadable {
@@ -59,6 +61,11 @@ class Unreadable {
 export class AttachmentReadError extends Error {
 	override name = "AttachmentReadError";
 }
+
+/** True only for the 404 downloadFile throws when no copy of the attachment exists anywhere: the file was
+ * deleted (from My files, say). Any other error, the 403 for another conversation's file included, is not
+ * a missing file. */
+export const isAttachmentMissing = (e: unknown): boolean => isHttpError(e, 404);
 
 /** How long a throttled or failed read waits before its one retry, so the retry is not part of the same burst. */
 const RETRY_AFTER_MS = 300;
@@ -88,7 +95,7 @@ async function readCopy(
 	try {
 		blob = await read();
 	} catch (first) {
-		// A sealed copy that won't open is tampering or a lost key (CUR-4115). Falling back to the files
+		// A sealed copy that won't open is tampering or a lost key. Falling back to the files
 		// table would hide both, and a retry reads the same bytes, so it is unreadable at once.
 		if (first instanceof CustodialCryptoError) return new Unreadable(first);
 		if (!transientHubError(first)) {

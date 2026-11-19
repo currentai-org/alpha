@@ -38,11 +38,11 @@ const FRAGMENT_OPENER =
 
 // Bare replies and standalone imperatives. These carry NO topic at all, so searching them verbatim
 // cannot do anything but retrieve on the wrong sense of the word — and unlike a dangling pronoun,
-// there is no referential token for REFERENTIAL to catch. Searched verbatim (CUR-151), "yes"
+// there is no referential token for REFERENTIAL to catch. Searched verbatim, "yes"
 // retrieves the band Yes, "try now" a product review of TryNow, "search again" a dance track, and
 // "double check on the web" a paper on web-search association measures. The model then answers from
-// conversation context and correctly cites none of them, which the zero-citation metric scores as
-// the model disobeying its citation instruction.
+// conversation context and correctly cites none of them, which reads as the model ignoring its
+// citation instruction.
 const BARE_REPLY_OR_IMPERATIVE =
 	/^(yes|yeah|yep|no|nope|ok|okay|sure|thanks|thank you|please|again|now|do it|go ahead|try (?:it|now|again)|search (?:it|now|again)|look (?:it up|again)|check (?:it|now|again|online)|double[- ]check|verify|confirm|fact[- ]check|source(?:s)?(?: it)?|cite|next|previous|back)\b[\s.!?]*$/i;
 
@@ -94,7 +94,7 @@ export function contentTokenCount(query: string): number {
  * a self-contained query ("what is the biggest dinosaur"). Over-triggering is cheap (the rewrite
  * falls back to the original); under-triggering leaves the junk-source bug, so we bias toward true.
  *
- * Pronoun and continuation rules alone don't deliver that bias (CUR-151): on turns that searched,
+ * Pronoun and continuation rules alone don't deliver that bias: on turns that searched,
  * retrieved sources, and cited none of them, those two rules rarely fire, and one fire is a FALSE
  * positive ("…and is he the current manager of Liverpool", where "he" resolves inside the same
  * sentence).
@@ -167,7 +167,7 @@ export async function contextualizeQuery(
 	query: string,
 	history: RewriteTurn[],
 	locals: App.Locals | undefined,
-	/** Told where the rewrite ran, from the call's own response, once it has answered (CUR-3563). Not
+	/** Told where the rewrite ran, from the call's own response, once it has answered. Not
 	 *  called when the rewrite was skipped, timed out or failed. */
 	onAnswered?: (served: RewriteServed) => void
 ): Promise<string> {
@@ -215,7 +215,7 @@ export async function contextualizeQuery(
 			if (rewriteTimer) clearTimeout(rewriteTimer);
 		}
 		if (raw === TIMED_OUT) {
-			// CUR-914 house rule: lengths only, never the query text.
+			// Lengths only, never the query text.
 			logger.warn(
 				{ queryLength: q.length, timeoutMs: REWRITE_TIMEOUT_MS },
 				"[search] query contextualization timed out — using the raw query"

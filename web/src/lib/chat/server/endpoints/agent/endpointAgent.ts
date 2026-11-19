@@ -12,7 +12,6 @@ import { endedByWatchdog } from "$lib/chat/server/chat/generationDeadline";
 import { resolveModelIdentity } from "$lib/chat/identity";
 import { languageName } from "$lib/chat/answerPreferences";
 import { CLIENT_INSTRUCTIONS_MAX_CHARS } from "$lib/chat/server/clientInstructions";
-import { agentArtifactDownloadEnabled } from "$lib/chat/server/agentArtifactDownload";
 import type { Endpoint, TextGenerationStreamOutputSimplified } from "../types";
 import type { UnrunCodeReason } from "$lib/chat/types/MessageUpdate";
 import { getRequestContext } from "$lib/chat/server/requestContext";
@@ -20,9 +19,10 @@ import { FAKE_AGENT_BASE, fakeAgentFetch, isFakeAgentTaskId } from "./fakeAgentS
 import { agentTaskRoom, agentTasksPerDay, agentTasksUsedText, recordAgentTask } from "$lib/chat/server/db/agentTaskAllowance";
 import { isTeamAccount } from "$lib/chat/server/teamAccount";
 import { keepAgentFiles, type SavedAgentFile } from "./agentFiles";
+import { agentRunFiles } from "./agentAttachments";
 
 /**
- * Agent endpoint — Story B (agent answers inside Gap Chat).
+ * Agent endpoint: agent mode answers inside the chat.
  *
  * Instead of calling an OpenAI model, this drives the Public AI **agent service** (the hosted
  * Apertus-hybrid backend): POST /run to submit the task, then stream GET /run/{id}/events (SSE) and
@@ -39,7 +39,7 @@ import { keepAgentFiles, type SavedAgentFile } from "./agentFiles";
  *     tool_result{ok,step,summary} · token* · usage · done
  *   - ACP OFF: state{working} · usage{tokens[,steps]} · done — NO per-tool frames
  * `state{working}` fires unconditionally on BOTH paths, at task start, before agent-service has even
- * chosen a transport (CUR-773) — it is a coarse liveness ping, never a per-transport signal. `done`
+ * chosen a transport — it is a coarse liveness ping, never a per-transport signal. `done`
  * carries `transport_used` ("acp"|"oneshot") for that; see `AgentEvent.transport_used`.
  * This endpoint handles BOTH: it narrates tool steps when they arrive, and falls back to a usage-derived
  * step/token summary so the coarse path still renders a non-empty <think> block instead of a bare shell.
@@ -53,9 +53,9 @@ import { keepAgentFiles, type SavedAgentFile } from "./agentFiles";
  * auto-derived server-side for chat turns, so the backend runs best-of-N rather than a single attempt.
  */
 /** How long a turn keeps asking again while agent-service answers "server at capacity", on its
- *  Retry-After, before it says so. The same bound agent-service waits for a free sandbox (CUR-4584). */
+ *  Retry-After, before it says so. The same bound agent-service waits for a free sandbox. */
 const AGENT_CAPACITY_WAIT_MS = 60_000;
-/** agent-service's 503 body while its machine drains running tasks for a deploy. (CUR-4598) */
+/** agent-service's 503 body while its machine drains running tasks for a deploy. */
 const AGENT_RESTARTING = /restarting for an update/;
 const AGENT_RESTARTING_TEXT =
 	"The agent service is restarting for an update. Please send your message again in a minute.";
@@ -69,7 +69,7 @@ export const endpointAgentParametersSchema = z.object({
 	type: z.literal("agent"),
 	/** Base URL of the agent service (e.g. https://…fly.dev or http://127.0.0.1:8731). */
 	baseURL: z.string().url(),
-	/** The env var the service token lives in (CUR-2640); the registry stores only this name. */
+	/** The env var the service token lives in; the registry stores only this name. */
 	apiKeyEnv: z.string().optional(),
 	/** Per-user / per-deployment bearer token for the agent service (empty when its auth is disabled).
 	 *  Call-time only: resolved from `apiKeyEnv` when the lane is built, never kept on a model object. */
@@ -78,11 +78,11 @@ export const endpointAgentParametersSchema = z.object({
 	 * corrected at runtime from the service's done.model, so no model brand is hardcoded here. */
 	provenanceModel: z.string().default(""),
 	/** Inference provider for the badge. Empty by default → the badge names no provider rather than
-	 * claiming one the agent run may not have hit; the service's reported compute fills it (CUR-3562). */
+	 * claiming one the agent run may not have hit; the service's reported compute fills it. */
 	provenanceProvider: z.string().default(""),
 	/** Cap on how long we wait on the event stream (ms); should exceed the backend wall-clock. */
 	streamTimeoutMs: z.number().int().positive().default(300_000),
-	/** How long a submit answered "server at capacity" is asked again before the turn says so. (CUR-4584) */
+	/** How long a submit answered "server at capacity" is asked again before the turn says so. */
 	capacityWaitMs: z.number().int().nonnegative().default(AGENT_CAPACITY_WAIT_MS),
 });
 
@@ -95,7 +95,7 @@ interface AgentEvent {
 	step?: number;
 	ok?: boolean;
 	summary?: string;
-	/** Auto mode's plain sentence on `awaiting_confirmation` and `auto_approved` frames. (CUR-3142) */
+	/** Auto mode's plain sentence on `awaiting_confirmation` and `auto_approved` frames. */
 	plain?: string;
 	text?: string;
 	/** `token` frame: one chunk of the agent's answer prose, as it is produced. */
@@ -103,8 +103,8 @@ interface AgentEvent {
 	state?: string;
 	tokens?: number;
 	result?: string;
-	// `done` frame (CUR-856): agent-service's own reason a non-COMPLETED task has no result — the case
-	// this exists for is a moderation block on the agent's OWN artifacts (carried by StatusResponse
+	// `done` frame: agent-service's own reason a non-COMPLETED task has no result. The case it
+	// exists for is a moderation block on the agent's OWN artifacts (carried by StatusResponse
 	// and by `_done_payload`, the live SSE shape). Absent for an older build or a failure
 	// agent-service never got far enough to name.
 	error?: string;
@@ -116,11 +116,11 @@ interface AgentEvent {
 	 *
 	 * The service's auto-derived verify spec can reject correct answers: it counts separator-delimited
 	 * items, so identical arithmetic passes when terse and fails when written in prose, and the
-	 * short-circuit means the judge never gets to disagree. Read CUR-193 before rendering a verification
-	 * state; a badge fed from this field would be wrong on most free-form turns.
+	 * short-circuit means the judge never gets to disagree. A verification badge fed from this
+	 * field would be wrong on most free-form turns.
 	 */
 	verified?: boolean;
-	// `done` frame (CUR-756): agent-service's own verify tier for the task — "" (unverified) |
+	// `done` frame: agent-service's own verify tier for the task — "" (unverified) |
 	// "execution" | "judge" | "execution+judge" (agent-service's `_done_payload`, api/app.py). Unlike
 	// `verified` above, this one IS read — it feeds the provenance badge's trust segment. No model name
 	// travels with it; the verifier model is a live config value (fly/agent-app.toml's
@@ -129,20 +129,20 @@ interface AgentEvent {
 	// `done` frame reports the model that actually served the task (e.g. swiss-ai/Apertus-1.5-70B-SFT-RL-DPO-SDPO); used
 	// to correct the provenance badge instead of trusting the endpoint's configured default.
 	model?: string;
-	// `done` frame (CUR-1107, wired to the badge here by CUR-996): agent-service's own live-observed
+	// `done` frame: agent-service's own live-observed
 	// compute provider — `_effective_compute_provider()` in api/app.py, which prefers a poll of the
 	// model proxy's actual last-served backend over the static AGENT_COMPUTE_PROVIDER config value.
 	// Same correction pattern as `model` above: this endpoint's `provenanceProvider` param only ever
 	// held the configured INTENT, never what a run actually hit.
 	compute_provider?: string;
-	// `done` frame (CUR-773): "acp" | "oneshot" | "" (task never got far enough to decide) — agent-
+	// `done` frame: "acp" | "oneshot" | "" (task never got far enough to decide) — agent-
 	// service's own record of which transport this task actually ran on (Task.transport_used,
 	// api/app.py). Read to compute `acpTransport` below. A `state` frame says nothing about the transport,
 	// because agent-service emits `state:{working}` unconditionally at task start, before it has chosen
 	// one.
 	transport_used?: string;
 	/**
-	 * `done` frame (CUR-574 follow-up): the in-session repair loop's OWN verdict on the turn that became
+	 * `done` frame: the in-session repair loop's OWN verdict on the turn that became
 	 * this result — set only when the repair budget or the attempt's wall clock ran out on the very turn
 	 * that spent the last of it, so repair_check's disapproval could never trigger another retry (see
 	 * agent-service's acp_client._acp_run give-up branch). `wroteCodeWithoutRunningIt` and
@@ -152,21 +152,21 @@ interface AgentEvent {
 	 * when the last-checked turn passed, or no repair check is configured.
 	 */
 	unrun_detail?: string;
-	/** "restart" when a restart (a deploy that ran past its drain) ended the task unfinished. (CUR-4598) */
+	/** "restart" when a restart (a deploy that ran past its drain) ended the task unfinished. */
 	interrupted?: string;
-	// `done` frame (CUR-705): whether this task reused a prior turn's session workdir (agent-service's
+	// `done` frame: whether this task reused a prior turn's session workdir (agent-service's
 	// task._session_continued — see _run's (task.user, session_id) lookup). Absent/false for a fresh or
 	// sessionless task. See claimedActionOnContinuedSession for what this feeds.
 	session_continued?: boolean;
 	/**
-	 * `done` frame (CUR-1394): how many files the session's workdir ALREADY held when this turn started
+	 * `done` frame: how many files the session's workdir ALREADY held when this turn started
 	 * — agent-service's `task._session_files_at_start`, taken from the walk `_workdir_note` does to tell
 	 * the agent what is in the room. Saturates one past that service's own file cap; zero versus non-zero
 	 * is the only distinction read here, so don't reach for it as a true count.
 	 *
-	 * `session_continued` above says a workdir was REUSED, never whether anything was in it. That was the
-	 * gap: this client sends `session_id: conversationId`, so every turn after the first in an ordinary
-	 * conversation is a continued session with an empty room, and a caveat scoped to CUR-705's shape would
+	 * `session_continued` above says a workdir was REUSED, never whether anything was in it. This
+	 * client sends `session_id: conversationId`, so every turn after the first in an ordinary
+	 * conversation is a continued session with an empty room, and a caveat keyed on reuse alone would
 	 * open on answers that never touched a file.
 	 *
 	 * ABSENT on a service build older than this field, and absence is not zero — it means we did not ask.
@@ -175,21 +175,21 @@ interface AgentEvent {
 	 */
 	session_files_at_start?: number;
 	/**
-	 * `done` frame (CUR-4599): agent-service's no-tool review read this turn's accepted answer, which made no
+	 * `done` frame: agent-service's no-tool review read this turn's accepted answer, which made no
 	 * tool call, and found it claimed nothing: "declined" (it said it cannot do the request) or "answered"
 	 * (the request needed no tool). Empty or absent otherwise, and on an older build.
 	 *
 	 * Both "no tool call was observed" checks below count model calls as claimed steps (`usage.steps` is
 	 * agent-service's `model_calls`, at least 1 on every answer), so in a conversation that already holds a
 	 * file they fire on every no-tool answer, an honest "I cannot send emails" included. This is the signal
-	 * that tells a refusal from CUR-574's narrated run; it is a model's reading of the reply, made on the
-	 * service where the retry decision already depends on it.
+	 * that tells a refusal from a run that narrates work it never did; it is a model's reading of the
+	 * reply, made on the service where the retry decision already depends on it.
 	 */
 	no_tool_answer?: string;
-	// `done` frame (CUR-196, read since CUR-4393): the session's earlier workdir is gone and this turn
+	// `done` frame: the session's earlier workdir is gone and this turn
 	// started in an empty one. SESSION_EXPIRED_NOTICE says so.
 	expired?: boolean;
-	// `policy` frame (CUR-471): this caller's resolved write-permission state for the task, fired once
+	// `policy` frame: this caller's resolved write-permission state for the task, fired once
 	// early (same point `plan` fires) under every ACP_PERMISSION_POLICY value. See
 	// MessageWritePolicyUpdate for the full contract; loosely typed here like `state`/`tool` above
 	// because this is the raw-wire layer — endpointAgent narrows it before forwarding.
@@ -198,7 +198,7 @@ interface AgentEvent {
 	tasks_done?: number | null;
 	tasks_required?: number | null;
 	errors?: string[];
-	// `awaiting_confirmation` / `confirm_result` frames (CUR-218, ACP_PERMISSION_POLICY=confirm only —
+	// `awaiting_confirmation` / `confirm_result` frames (ACP_PERMISSION_POLICY=confirm only —
 	// see acp_client.py's _request_confirmation). `kind`/`title`/`summary` are agent-service's own
 	// redacted description of the paused tool call (_describe_tool_call); `decision`/`reason` arrive
 	// only on the resolution frame. `attempt` is reused from the field declared above.
@@ -207,7 +207,7 @@ interface AgentEvent {
 	title?: string;
 	decision?: string;
 	reason?: string;
-	// `awaiting_confirmation` frame only (CUR-1094): agent-service's own confirm_timeout_secs for THIS
+	// `awaiting_confirmation` frame only: agent-service's own confirm_timeout_secs for THIS
 	// pause, as a duration — see acp_client.py's _request_confirmation. Absent on an older/coarse build
 	// that predates this field.
 	timeout_secs?: number;
@@ -241,7 +241,7 @@ const INERT_TOOL_KINDS: ReadonlySet<string> = new Set([
  *
  * A turn can write code, emit no execute step, and print a block headed `Execution result:` whose
  * numbers its own code cannot produce. The same model sometimes heads that block `Expected results:`
- * instead, so it is able to mark a prediction as a prediction; nothing makes it (CUR-226).
+ * instead, so it is able to mark a prediction as a prediction; nothing makes it.
  *
  * Nothing here reads the answer prose. The harness knows which tools ran, and that fact alone decides
  * whether the caveat is warranted — a claim about the turn, not a guess about the text.
@@ -249,7 +249,7 @@ const INERT_TOOL_KINDS: ReadonlySet<string> = new Set([
  * An EMPTY set is not evidence: the coarse (ACP-off) path sends no tool frames at all, so it means we
  * never observed tools rather than that none were used. Requiring an `edit` covers that too.
  *
- * Tool kind alone is not enough: the call site ANDs this with `editedCodeArtifact` below (CUR-592).
+ * Tool kind alone is not enough: the call site ANDs this with `editedCodeArtifact` below.
  * This function knows that an `edit` tool ran, never what it touched, so on its own a turn that only
  * rewrote a `.txt` letter trips it exactly like one that fabricated a computed result. The tool-kind
  * question it answers is correct, just not sufficient on its own.
@@ -271,7 +271,7 @@ export function wroteCodeWithoutRunningIt(toolKinds: ReadonlyMap<string, number>
  * Deliberately an ALLOWLIST, the same shape as INERT_TOOL_KINDS above and for the same reason: an
  * extension this list hasn't caught up to (a new language) or no extension at all must NOT read as
  * code, because under-firing on an obscure language costs nothing while over-firing on prose is the
- * exact bug this list exists to fix (CUR-592). Kept small and named rather than exhaustive.
+ * exact mistake this list exists to prevent. Kept small and named rather than exhaustive.
  */
 const CODE_ARTIFACT_EXTENSIONS: ReadonlySet<string> = new Set([
 	"py",
@@ -318,13 +318,13 @@ export function editedCodeArtifact(artifacts: readonly AgentArtifact[]): boolean
  * call — observed NONE at all?
  *
  * A turn can report `steps: 1` in its `usage` frame and answer with numbers its own test data cannot
- * produce while zero `tool_call` frames arrive (CUR-574). `wroteCodeWithoutRunningIt` misses that case:
+ * produce while zero `tool_call` frames arrive. `wroteCodeWithoutRunningIt` misses that case:
  * it requires `edit` as a positive signal, deliberately, because an empty set is ALSO what the coarse
  * (ACP-off) transport always sends, where an empty set proves nothing (see its doc comment above).
  *
  * Under ACP transport that ambiguity doesn't hold — every tool call is reported, so a genuinely empty
  * `toolKinds` here IS the observation, not an absence of one (the log line below treats it the same
- * way, CUR-234). Gated on the service's OWN
+ * way). Gated on the service's OWN
  * claimed step count, not on `toolKinds` alone, so a turn that reasoned to an answer needing no tool
  * at all (steps unreported or 0) stays quiet. Requiring `toolKinds` to be fully EMPTY, not merely
  * non-executing, also keeps this quiet on a turn that called real (if inert) tools — read a file,
@@ -349,7 +349,7 @@ export function claimedStepsWithoutObservedTools(
  * Could this turn have been faking a measurement AT ALL?
  *
  * Without this gate the caveat below would open on capital-city questions, arithmetic, and web-search
- * answers, telling them they "wrote files but never ran anything" (CUR-1394). None of those turns wrote
+ * answers, telling them they "wrote files but never ran anything". None of those turns wrote
  * a file or ran a thing.
  *
  * Both callers below infer an overclaim from zero observed tool calls. That inference holds only in a
@@ -388,8 +388,8 @@ export function sessionHadSomethingToMeasure(sessionFilesAtStart: number | undef
  *
  * A follow-up ("add two rows, then run top_months.py again") against a session holding a prior turn's
  * files can claim "I have updated `sample_revenue.csv`" with specific numbers while `toolKinds` is
- * empty and no `plan` or `usage` frame arrives, so there is no claimed step count to compare against
- * (CUR-705). `claimedStepsWithoutObservedTools` requires the
+ * empty and no `plan` or `usage` frame arrives, so there is no claimed step count to compare against.
+ * `claimedStepsWithoutObservedTools` requires the
  * service to self-report `claimedSteps > 0` so that a turn that legitimately needs no tool stays quiet;
  * this function covers the continued-session shape that gate misses.
  *
@@ -398,10 +398,10 @@ export function sessionHadSomethingToMeasure(sessionFilesAtStart: number | undef
  * look identical from here (toolKinds empty, no claimed steps). That distinction needs the service's own
  * semantic judge (repair_check / the best-of-N verifier wired for caller-supplied specs, see
  * `unrun_detail`), extended to run for this shape on the auto-derived (`synthesize: true`) chat path;
- * that is separate work.
+ * this function does not attempt that.
  *
  * `sessionFilesAtStart` keeps the over-cautious caveat off ordinary conversations, whose workdir never
- * holds anything; see `sessionHadSomethingToMeasure` (CUR-1394). A session that held files keeps its
+ * holds anything; see `sessionHadSomethingToMeasure`. A session that held files keeps its
  * caveat.
  *
  * Takes a ReadonlyMap<string, number>; same `.size` reasoning as `claimedStepsWithoutObservedTools`
@@ -425,11 +425,11 @@ export function claimedActionOnContinuedSession(
 /**
  * agent-service reported that this conversation's earlier agent workspace is gone (reaped, or
  * the machine holding it was stopped or replaced), so the turn ran in an empty one. Prepended for the
- * same reason as UNRUN_CODE_NOTICE: the person must not read the answer as built on their earlier files. (CUR-4393)
+ * same reason as UNRUN_CODE_NOTICE: the person must not read the answer as built on their earlier files.
  */
 /**
- * The answer for an agent turn that ended while `pending` approval cards were still unanswered
- * (CUR-4660). The turn stopped because nobody answered, so the answer says that, rather than that
+ * The answer for an agent turn that ended while `pending` approval cards were still unanswered.
+ * The turn stopped because nobody answered, so the answer says that, rather than that
  * the run was "stopped", which reads as though something else ended it.
  */
 function unansweredApprovalAnswer(pending: number): string {
@@ -536,7 +536,7 @@ const SESSION_EXPIRED_NOTICE =
 /**
  * The Fly machine that ran this conversation's latest agent task. Session workdirs live on one
  * machine, so a follow-up `/run` is pinned there; `continues` tells agent-service that a miss means the
- * session moved or expired rather than that it is new. (CUR-4393)
+ * session moved or expired rather than that it is new.
  */
 function priorAgentMachine(messages: { from: string; agentRun?: { taskId: string; machineId?: string } }[]): {
 	continues: boolean;
@@ -550,7 +550,7 @@ export const UNRUN_CODE_NOTICE =
 	"_This turn wrote files but never ran anything, so any output shown below is predicted rather than measured._\n\n";
 
 /**
- * The same warning for the two branches that cannot see whether a file was written (CUR-1394).
+ * The same warning for the two branches that cannot see whether a file was written.
  *
  * `claimedStepsWithoutObservedTools` and `claimedActionOnContinuedSession` both infer an overclaim from
  * an empty tool-call stream. Neither knows what — if anything — this turn wrote, so UNRUN_CODE_NOTICE's
@@ -561,22 +561,22 @@ export const UNRUN_CODE_NOTICE =
  *
  * So this says only what those branches observed — the agent described work, and the transport that
  * reports every tool call saw none. Same prepended position and purpose as UNRUN_CODE_NOTICE. It reaches
- * the reasoning panel through the same `caveatReason` verdict (CUR-1341), which keeps the "Predicted"
+ * the reasoning panel through the same `caveatReason` verdict, which keeps the "Predicted"
  * header accurate above either sentence.
  */
-/** `no_tool_answer` values meaning the answer claimed no work, so the two no-tool checks stay quiet (CUR-4599). */
+/** `no_tool_answer` values meaning the answer claimed no work, so the two no-tool checks stay quiet. */
 const CLAIMED_NOTHING: ReadonlySet<string> = new Set(["declined", "answered"]);
 
 export const UNOBSERVED_ACTION_NOTICE =
 	"_This turn reported doing work, but no tool call was observed while it ran — so anything described below as done or measured may not have happened._\n\n";
 
 /**
- * Which sentence a given caveat verdict earns (CUR-1394).
+ * Which sentence a given caveat verdict earns.
  *
  * Exhaustive over `UnrunCodeReason` by construction — the `never` in the default branch makes adding a
  * sixth reason without choosing its copy a compile error rather than a silent fall-through onto whatever
- * sentence happens to be last. That matters here more than usual: the failure this whole area keeps
- * producing is a true mechanism attached to a sentence describing a different one.
+ * sentence happens to be last. That matters here more than usual: the failure to guard against
+ * is a true mechanism attached to a sentence describing a different one.
  *
  * `null` cannot reach this (the call site is inside `if (unrunCodeCaveat)`, and `caveatReason` is
  * non-null whenever that is true) and returns the empty string rather than throwing, because a caveat
@@ -607,9 +607,9 @@ export function noticeForCaveat(reason: UnrunCodeReason | null): string {
 }
 
 /**
- * CUR-855/846: agent-service's `unrun_detail` prefix for a turn that ended in State.FAILED (gateway
- * down, wall-clock cap, the agent process crashing) but still carries real content — the fix that made
- * `task.result` survive a structural failure. Distinct from the four overclaim prefixes UNRUN_CODE_NOTICE
+ * agent-service's `unrun_detail` prefix for a turn that ended in State.FAILED (gateway
+ * down, wall-clock cap, the agent process crashing) but still carries real content, because agent-service keeps
+ * `task.result` through a structural failure. Distinct from the four overclaim prefixes UNRUN_CODE_NOTICE
  * covers (wrote-and-never-ran, tool-call-failed, claimed-file-missing, attempts-disagreed): those are all
  * "the agent said more than it did," which is what that sentence describes. A structural failure tried
  * and didn't finish — reusing that sentence there would be false, not just imprecise.
@@ -663,8 +663,8 @@ const ARTIFACT_LANGS: Record<string, string> = {
  * CommonMark closes a fenced block on a run of at least as many backticks as opened it, so wrapping a
  * file that itself contains ``` in a 3-backtick fence ends the block early and spills the remainder as
  * prose. Artifacts are agent-written and markdown files are an ordinary thing to produce, so this is
- * the expected case rather than a hostile one. Same failure the progress markers had (CUR-227), from
- * the other direction: there a marker broke someone else's fence, here content breaks its own.
+ * the expected case rather than a hostile one. The progress markers (pushLine) guard the same failure
+ * from the other direction: a marker can break someone else's fence, and content can break its own.
  */
 function fenceFor(text: string): string {
 	let longest = 0;
@@ -675,7 +675,7 @@ function fenceFor(text: string): string {
 /**
  * The agent's files, rendered into the answer. PURE, so it unit-tests.
  *
- * These ride the `done` frame: `_done_payload` carries `artifacts` with inlined contents (CUR-195), so
+ * These ride the `done` frame: `_done_payload` carries `artifacts` with inlined contents, so
  * the files are out of the sandbox by the time the sandbox goes away.
  *
  * A file whose text the answer ALREADY contains verbatim is named, not pasted twice. That test is exact
@@ -687,13 +687,13 @@ function fenceFor(text: string): string {
  * fenced code under its filename. Fenced is what keeps it legible AS a file rather than as the
  * assistant's own prose.
  *
- * `downloadBaseHref` (CUR-546) is the base path for a real download link — `undefined` when either
+ * `downloadBaseHref` is the base path for a real download link — `undefined` when either
  * there's no live session to fetch from (no conversationId for the turn) or the download flag is
  * off; see the call site for how both conditions are named together. Every artifact with a live
  * session gets a link, not just the truncated/binary ones the inline path can't show — a real
  * download is strictly more correct than a rendered code block (no whitespace/line-ending loss).
  *
- * `saved` (CUR-4398) maps each artifact path copied out of the workdir to the saved copy's hash. Its link
+ * `saved` maps each artifact path copied out of the workdir to the saved copy's hash. Its link
  * names that copy (`?saved=<hash>`), so the route serves this turn's bytes and never an older turn's copy
  * of the same path; when every file is saved the reply drops the four-hour window.
  */
@@ -748,7 +748,7 @@ export function renderArtifacts(
 	if (dropped) blocks.push("_The agent produced more files than are listed here._");
 	// The files live in agent-service's session workdir, which its idle reaper deletes after
 	// AGENT_SESSION_IDLE_SECS (14400, agent-service/fly/agent-app.toml). The conversation itself is
-	// kept far longer, so the window is stated in hours rather than tied to the conversation (CUR-546).
+	// kept far longer, so the window is stated in hours rather than tied to the conversation.
 	const allSaved = artifacts.every((a) => saved.has((a.name ?? "").trim()));
 	const availability = !downloadBaseHref
 		? ""
@@ -763,7 +763,7 @@ export function renderArtifacts(
 const AGENT_CONTEXT_MAX_TURNS = 6;
 const AGENT_CONTEXT_MAX_CHARS_PER_TURN = 600;
 const AGENT_CONTEXT_MAX_CHARS_TOTAL = 4000;
-// Earlier turns' attached files, whole (CUR-4104), under this cap and under whatever the rest of the
+// Earlier turns' attached files, whole, under this cap and under whatever the rest of the
 // prompt leaves of the service's limit: it refuses a prompt over 100,000 characters (agent-service
 // MAX_PROMPT_CHARS), and the current turn's own files are sent uncut.
 const AGENT_ATTACHED_MAX_CHARS = 60_000;
@@ -784,14 +784,14 @@ const ATTACHED_HEADING =
  * agent backend isn't actually running under) instead of reusing the chat persona's prose.
  *
  * Without any identity line, the model answers "who are you" from its own pretrained priors and can
- * name a maker this deployment has never run (CUR-573). Exported for unit testing.
+ * name a maker this deployment has never run. Exported for unit testing.
  *
- * Also covers what it can do, not just who it is (CUR-594): without an instruction otherwise, asked
+ * Also covers what it can do, not just who it is: without an instruction otherwise, asked
  * what agent mode can do, the model recites its raw tool schema (`terminal()`, `read_file`,
  * `search_files`...) instead of the plain-language jobs those tools accomplish, which reads as a
  * function list to a non-technical user rather than an offer of help with their own task.
  *
- * Also carries the language-reply instruction (CUR-706): `persona.ts` has "Reply in the user's language
+ * Also carries the language-reply instruction: `persona.ts` has "Reply in the user's language
  * (default English)" for the non-agent path, and this preamble, being deliberately separate, does not
  * inherit it. Without it a Portuguese task with the agent on can come back in English. Source-fidelity
  * rules (deadlines, date formats) live in agent-service's own SOURCE_FIDELITY_NOTE prompt, not here.
@@ -799,7 +799,7 @@ const ATTACHED_HEADING =
 export function agentIdentityPreamble(modelId: string, replyLanguage?: string): string {
 	const id = resolveModelIdentity(modelId);
 	// A fixed answer language from settings replaces the reply-language sentence; with none
-	// the sentence is today's, byte for byte. (CUR-3929)
+	// the default reply-language sentence is used.
 	const language = replyLanguage
 		? `Reply in ${languageName(replyLanguage)}, whatever language the task is written in.`
 		: `Reply in the user's language (default English) — a task written in Portuguese, German, or any other language gets its answer in that language, not English.`;
@@ -809,19 +809,20 @@ export function agentIdentityPreamble(modelId: string, replyLanguage?: string): 
 /**
  * Compose the /run task prompt from the conversation. `current` is the latest user turn (the task);
  * prior turns are included as clearly-delimited CONTEXT. `identityPreamble` (see
- * `agentIdentityPreamble` above) is prepended when present — the /run wire has one `prompt` field and
- * no separate system-prompt slot (see the request body below), so this is the only way identity
- * reaches the agent model. Exported for unit testing.
+ * `agentIdentityPreamble` above) is prepended when present. The endpoint itself passes none and sends
+ * the identity line in /run's own `preamble` field instead; `reserve` keeps room for it
+ * under the service's prompt cap. Exported for unit testing.
  */
 export function buildTaskPrompt(
 	messages: { from: string; content?: string; attachedText?: string }[],
 	lastUserIdx: number,
 	current: string,
 	identityPreamble?: string,
-	clientInstructions?: string
+	clientInstructions?: string,
+	reserve = 0
 ): string {
 	// The visitor's own system prompt or Personalization, after our identity line so it can
-	// shape tone and format but reads as theirs. Capped like the guard caps it. (CUR-4088)
+	// shape tone and format but reads as theirs. Capped like the guard caps it.
 	const standing = clientInstructions?.trim()
 		? `The person has set these standing instructions for how you answer; follow them unless they conflict with the above:\n${clientInstructions.trim().slice(0, CLIENT_INSTRUCTIONS_MAX_CHARS)}`
 		: "";
@@ -831,7 +832,7 @@ export function buildTaskPrompt(
 	const earlier = (lastUserIdx >= 0 ? messages.slice(0, lastUserIdx) : []).filter(
 		(m) => (m.from === "user" || m.from === "assistant") && (m.content ?? "").trim()
 	);
-	// An earlier turn's content opens with the text of the documents it attached (CUR-4104), so cutting
+	// An earlier turn's content opens with the text of the documents it attached, so cutting
 	// the turn to 600 characters would keep a document's first paragraphs and drop the rest, along with
 	// the person's own words after it, and the agent would invent details the document holds. The typed
 	// words are cut; the attached text goes in its own block, whole, under its own budget.
@@ -856,7 +857,7 @@ export function buildTaskPrompt(
 				current
 		);
 	// What the rest of the prompt leaves of the service's limit, less the heading and the cut notes.
-	const room = AGENT_PROMPT_MAX_CHARS - compose("").length - ATTACHED_HEADING.length - 1_000;
+	const room = AGENT_PROMPT_MAX_CHARS - reserve - compose("").length - ATTACHED_HEADING.length - 1_000;
 	return compose(earlierAttachments(earlier, Math.min(AGENT_ATTACHED_MAX_CHARS, room)));
 }
 
@@ -885,8 +886,8 @@ function earlierAttachments(earlier: { from: string; attachedText?: string }[], 
  * Derive the `X-Agent-Subject` value: per-visitor attribution under one shared service token.
  *
  * WHAT IT IS FOR. We hold ONE static service token for every visitor, so the subject the agent
- * service authenticates is this deployment, not a person — its per-caller daily cap was the only
- * limit that could bite and it was shared across everyone on the surface. This names the visitor
+ * service authenticates is this deployment, not a person — on its own, its per-caller daily cap
+ * would be the only limit, shared across everyone on the surface. This names the visitor
  * inside that caller, which is what lets the service ration per person (AGENT_SUBJECT_DAILY_TASKS)
  * and attribute a run to anyone at all. SELF-ASSERTED, and the service is built for that: it checks
  * the authenticated caller ceiling FIRST and sums every subject under it, so forging this buys no
@@ -921,7 +922,7 @@ export function deriveAgentSubject(key: string, visitor: string): string {
 
 /**
  * `X-Agent-Subject` for a request, from the same `locals` fields the turn that created the
- * session used. Extracted so the artifact-download proxy route (CUR-546) computes the identical
+ * session used. Extracted so the artifact-download proxy route computes the identical
  * value for the same visitor — a different derivation means `get_session_workdir` on the
  * agent-service side finds nothing, since the workdir is keyed on this principal.
  */
@@ -943,20 +944,20 @@ export function agentServiceHeaders(
 	if (apiKey) headers["authorization"] = `Bearer ${apiKey}`;
 	const subject = agentSubjectFor(apiKey, locals);
 	if (subject) headers["x-agent-subject"] = subject;
-	// The subject is a hash, so agent-service cannot tell an account from a guest without this. (CUR-4402)
+	// The subject is a hash, so agent-service cannot tell an account from a guest without this.
 	if (locals?.user?._id) headers["x-agent-account"] = "user";
-	// A team account's daily task allowance, so agent-service's per-visitor cap (25) does not
+	// A team account's daily task allowance, so agent-service's per-visitor cap does not
 	// stop it before chat's own count does. Chat's word, like X-Agent-Account; the service only raises
-	// its cap with it and still checks the whole surface's ceiling first. (CUR-4620)
+	// its cap with it and still checks the whole surface's ceiling first.
 	if (subject && isTeamAccount(locals?.user)) headers["x-agent-subject-daily-tasks"] = String(agentTasksPerDay(locals));
 	return headers;
 }
 
 /**
- * Cancel the agent task a stopped turn started. Closing a tab no longer ends a run, so Stop
+ * Cancel the agent task a stopped turn started. Closing a tab does not end a run, so Stop
  * has to tell agent-service itself. The service checks only the deployment's token, not the visitor,
  * so the caller must already have found the task on a message in a conversation it owns. Returns
- * agent-service's status: 200 for a cancel (or a task already finished), 404 for one it no longer holds. (CUR-993)
+ * agent-service's status: 200 for a cancel (or a task already finished), 404 for one it no longer holds.
  */
 export async function cancelAgentTask(
 	input: z.input<typeof endpointAgentParametersSchema>,
@@ -966,7 +967,7 @@ export async function cancelAgentTask(
 	const { baseURL, apiKey } = endpointAgentParametersSchema.parse(input);
 	const headers = agentServiceHeaders(apiKey, locals);
 	if (run.machineId) headers["Fly-Force-Instance-Id"] = run.machineId;
-	// A task the scenario stand-in started is cancelled there, never on the real service. (SOL-212)
+	// A task the scenario stand-in started is cancelled there, never on the real service.
 	const fake = isFakeAgentTaskId(run.taskId);
 	const base = fake ? FAKE_AGENT_BASE : baseURL.replace(/\/$/, "");
 	const res = await (fake ? fakeAgentFetch : fetch)(`${base}/run/${run.taskId}`, {
@@ -990,7 +991,7 @@ export async function endpointAgent(
 	// The model id is static for the life of this endpoint (models.ts always configures this endpoint
 	// under id "potluck-agent"). Falls back to that same literal if `model` ever arrives shapeless (e.g.
 	// a bare `{}` in a test) — `z.any()` above doesn't validate its shape, so this can't assume `.id`
-	// exists. The preamble itself is built per call below (CUR-3929): its last sentence names the
+	// exists. The preamble itself is built per call below: its last sentence names the
 	// answer language the person fixed in settings, which can change between turns.
 	const identityModelId = (model as { id?: string } | undefined)?.id ?? "potluck-agent";
 
@@ -1009,8 +1010,8 @@ export async function endpointAgent(
 		const identityPreamble = agentIdentityPreamble(identityModelId, replyLanguage);
 		const autoApprove = await agentAutoApproveFor(locals);
 		// Per-visitor attribution. We hold ONE static AGENT_SERVICE_TOKEN for every visitor, so the
-		// authenticated subject the agent service sees is this deployment, not a person: its per-caller
-		// daily cap was the only limit that could bite, and it was shared across everyone on the surface.
+		// authenticated subject the agent service sees is this deployment, not a person: on its own, its per-caller
+		// daily cap would be the only limit, shared across everyone on the surface.
 		// `X-Agent-Subject` names the visitor inside that caller, which is what lets the service ration
 		// per person (AGENT_SUBJECT_DAILY_TASKS) and attribute a run to anyone at all.
 		//
@@ -1024,18 +1025,18 @@ export async function endpointAgent(
 		// Built per request, NOT folded into baseHeaders: that object is constructed once per endpoint
 		// and reused by every concurrent turn, so mutating it would leak one visitor's subject onto
 		// another visitor's request.
-		// agentServiceHeaders adds the signed-in claim too (CUR-4402): agent-service refuses a /run
+		// agentServiceHeaders adds the signed-in claim too: agent-service refuses a /run
 		// without `x-agent-account: user`, so a turn built from the subject alone 403s for everyone.
 		const headers = { ...baseHeaders, ...agentServiceHeaders(apiKey, locals) };
 
 		// The agent service runs one task per call. The CURRENT request is the latest user turn; but a
 		// chat is multi-turn, so a follow-up ("now add error handling to that") is meaningless without the
 		// turns before it. Build the task prompt as a bounded, clearly-delimited transcript: prior turns as
-		// CONTEXT (flagged not-an-instruction so the weak planner doesn't re-execute them), then the current
+		// CONTEXT (flagged not-an-instruction so the agent does not re-execute them), then the current
 		// request as the actual task. Single-turn conversations send just the request (no context preamble).
 		// The last user turn in `messages` has been through hardenLastUserTurn, which rewrites it into the
 		// chat model's grounding preamble plus a fence. Sent as the task, that preamble would become the
-		// job: a question the agent cannot read comes back as the preamble's decline rule (CUR-750). The
+		// job: a question the agent cannot read comes back as the preamble's decline rule. The
 		// person's own words go instead.
 		const lastUserIdx = messages.map((m) => m.from).lastIndexOf("user");
 		const current = (
@@ -1045,15 +1046,31 @@ export async function endpointAgent(
 				: messages[messages.length - 1]?.content) ??
 			""
 		).trim();
-		const prompt = buildTaskPrompt(messages, lastUserIdx, current, identityPreamble, clientInstructions);
+		// The identity line goes in its own `preamble` field, which agent-service screens apart from the
+		// task and joins ahead of it. Screened as one text, the identity line and an ordinary file request
+		// can be flagged as fraud though each passes alone. The service's prompt cap counts the
+		// joined text, so the transcript budget leaves room for it.
+		const prompt = buildTaskPrompt(
+			messages,
+			lastUserIdx,
+			current,
+			undefined,
+			clientInstructions,
+			identityPreamble.length + 2
+		);
 
 		// A scenario run's turn goes to the in-process stand-in (fakeAgentService.ts) instead of
-		// the develop agent machine every shard shares. A new task follows the send's `x-e2e-agent`
+		// a shared agent-service. A new task follows the send's `x-e2e-agent`
 		// header, read into the request context by the route; a re-attach follows the stored task id,
-		// because a task lives where it started whatever the reload's headers say. (SOL-212)
+		// because a task lives where it started whatever the reload's headers say.
 		const fakeRequest = getRequestContext()?.fakeAgent;
-		// Whether this turn may hand its run off to the page rather than end at the watchdog. (CUR-4410)
-		const handoff = turnDeadlineAt !== undefined && agentRunHandoffEnabled();
+		// Whether this turn may hand its run off to the page rather than end at the watchdog.
+		// It is decided once, when the run is submitted, and stored on the run (agentRun.handoff). A
+		// re-attach reads that stored fact, so a request served by an instance whose flag snapshot is stale
+		// still hands the run off rather than timing out and canceling it. The flag read on an attach covers
+		// only a run stored without that fact.
+		const handoff =
+			turnDeadlineAt !== undefined && (agentAttach?.handoff === true || agentRunHandoffEnabled());
 		const fake = agentAttach ? isFakeAgentTaskId(agentAttach.taskId) : Boolean(fakeRequest);
 		const runBase = fake ? FAKE_AGENT_BASE : base;
 		const agentFetch: typeof fetch = fake
@@ -1069,11 +1086,11 @@ export async function endpointAgent(
 					generated_text?: string | null;
 					router?: boolean;
 					routerModel?: string;
-					// Mirrors routerModel's correction pattern for the compute-provider half of the badge. (CUR-996)
+					// Mirrors routerModel's correction pattern for the compute-provider half of the badge.
 					computeProvider?: string;
 					// Forwarded only when the caller explicitly passes it (see the `in` check below) —
 					// "" is a real "checked, unverified" signal, not "no opinion", so it must not be dropped
-					// the way an empty routerModel is. (CUR-756)
+					// the way an empty routerModel is.
 					verifyMethod?: string;
 					agentStep?: { index: number; tool: string; total?: number };
 					sandboxWait?: "waiting" | "ready";
@@ -1131,7 +1148,7 @@ export async function endpointAgent(
 					...(opts.agentConfirmResult ? { agentConfirmResult: opts.agentConfirmResult } : {}),
 				}) as TextGenerationStreamOutputSimplified;
 
-			// 1) submit the task, or take the one this message already started (CUR-993). A re-attach
+			// 1) submit the task, or take the one this message already started. A re-attach
 			// replays that task's events from the start rather than resuming mid-stream: the message is
 			// rebuilt from nothing, so it needs the whole think block and answer, and agent-service keeps
 			// every frame for a live task and synthesizes a `done` for one whose buffer is gone.
@@ -1147,12 +1164,12 @@ export async function endpointAgent(
 				// not reachable) would otherwise throw out of the generator to the turn's top-level stream
 				// catch (+server.ts), which renders `err.message` to the user, and Node's fetch reports it
 				// as a bare `TypeError: fetch failed`. Every other failure shape in this file has a friendly
-				// message (429, non-OK, missing task id, stream-open failure, stream drop, timeout) (CUR-1067).
+				// message (429, non-OK, missing task id, stream-open failure, stream drop, timeout).
 				// A follow-up goes to the machine holding this conversation's workdir. When that machine is
 				// gone or stopped, Fly answers for it (a 5xx or 404 the app never sends from /run), and the
 				// turn is resubmitted unpinned; `continues_session` then makes the machine that takes it
-				// report the workdir expired instead of answering as a fresh session (CUR-4393).
-				// The per-account daily allowance is counted in chat's database (CUR-4401). A scenario run's
+				// report the workdir expired instead of answering as a fresh session.
+				// The per-account daily allowance is counted in chat's database. A scenario run's
 				// stand-in is not counted, since the test accounts would use a day's tasks in one run.
 				if (!fake) {
 					const room = await agentTaskRoom(locals);
@@ -1164,6 +1181,8 @@ export async function endpointAgent(
 					}
 				}
 				const prior = conversationId ? priorAgentMachine(messages) : { continues: false };
+				// The conversation's photos, so the agent sees what the person attached.
+				const files = await agentRunFiles(messages);
 				const submitOnce = (pin: string | undefined) =>
 					agentFetch(`${runBase}/run`, {
 						method: "POST",
@@ -1176,18 +1195,21 @@ export async function endpointAgent(
 						// so this can only ever shorten the run. See AGENT_SERVICE_WALL_CLOCK_SECS for the
 						// derivation and for what is still unmeasured in it. With `agent-run-handoff` on the run
 						// outlives this request instead, so it gets the whole attempt (AGENT_HANDOFF_WALL_CLOCK_SECS).
-						// session_id: keys agent-service's workdir reuse (CUR-196). Without it every turn starts
+						// session_id: keys agent-service's workdir reuse. Without it every turn starts
 						// a fresh workdir, so a follow-up that edits a file the previous turn wrote can never
-						// find it, and the turn fails, not just the edit (CUR-542). One conversation's turns share one workdir; omitted entirely for a
-						// conversationless call (e.g. a hermetic test) rather than sending a literal "undefined".
+						// find it, and the turn fails, not just the edit. One conversation's turns share one
+						// workdir; omitted entirely for a conversationless call (e.g. a hermetic test) rather than
+						// sending a literal "undefined".
 						body: JSON.stringify({
 							prompt,
+							preamble: identityPreamble,
 							synthesize: true,
 							wall_clock_secs: handoff ? AGENT_HANDOFF_WALL_CLOCK_SECS : AGENT_SERVICE_WALL_CLOCK_SECS,
 							...(conversationId ? { session_id: conversationId.toString() } : {}),
 							...(prior.continues ? { continues_session: true } : {}),
-							// Auto mode, per person. Absent means ask mode service-side. (CUR-3142)
+							// Auto mode, per person. Absent means ask mode service-side.
 							...(autoApprove ? { approval_mode: "auto" } : {}),
+							...(files.length > 0 ? { files } : {}),
 						}),
 						signal: abortSignal,
 					});
@@ -1210,8 +1232,8 @@ export async function endpointAgent(
 					}
 					submit ??= await submitOnce(undefined);
 					// "server at capacity" clears as other runs finish, so ask again on its Retry-After
-					// for up to a minute, with the live line saying what the wait is for, before saying so. (CUR-4584)
-					// So does a 503 from a machine draining for a deploy, once the new machine is up. (CUR-4598)
+					// for up to a minute, with the live line saying what the wait is for, before saying so.
+					// So does a 503 from a machine draining for a deploy, once the new machine is up.
 					const capacityUntil = Date.now() + capacityWaitMs;
 					let waitedForCapacity = false;
 					while ((submit.status === 429 || submit.status === 503) && Date.now() < capacityUntil) {
@@ -1246,7 +1268,7 @@ export async function endpointAgent(
 				if (!submit.ok) {
 					const body = refusedBody ?? (await submit.text().catch(() => ""));
 					// A 429 is either the AGENT_MAX_CONCURRENCY ceiling ("server at capacity", retry-able in a
-					// moment) or one of the daily limits ("… limit reached" / "… budget reached", CUR-4401), which
+					// moment) or one of the daily limits ("… limit reached" / "… budget reached"), which
 					// a retry cannot clear. Everyone else gets the raw status+body: those ARE worth surfacing
 					// bluntly, since they're the ones someone has to go debug.
 					const text =
@@ -1265,7 +1287,7 @@ export async function endpointAgent(
 					// FinalAnswer branch reads its text from generated_text, and screenOutputStream discards a
 					// FinalAnswer's own text, trusting only content it already saw as a Stream token. Any
 					// other shape leaves the user a bare "No output was generated," with the actual reason
-					// never reaching them or the logs (CUR-759).
+					// never reaching them or the logs.
 					yield mk(text);
 					yield mk("", { generated_text: text, special: true });
 					return;
@@ -1281,15 +1303,18 @@ export async function endpointAgent(
 				// Task state lives on whichever Fly machine ran /run, and a multi-machine deploy has
 				// no session affinity by default — the /events open below is a SEPARATE request that can land
 				// on a machine that never saw this task and 404 immediately. Echo the machine back via Fly's
-				// own sticky-routing header so this stream opens where the task actually lives. (CUR-895)
+				// own sticky-routing header so this stream opens where the task actually lives.
 				machineId = submitBody?.machine_id || undefined;
 				if (!fake) await recordAgentTask(locals);
 			}
 			const eventHeaders = machineId ? { ...headers, "Fly-Force-Instance-Id": machineId } : headers;
 
 			// Record the task before anything else streams, so a tab closed from here on leaves
-			// the message holding the handle to a run that is still going. (CUR-993)
-			yield mk("", { special: true, agentRun: { taskId, ...(machineId ? { machineId } : {}) } });
+			// the message holding the handle to a run that is still going.
+			yield mk("", {
+				special: true,
+				agentRun: { taskId, ...(machineId ? { machineId } : {}), ...(handoff ? { handoff: true } : {}) },
+			});
 
 			// provenance first → lights the badge + the Apertus node on the StackMap
 			yield mk("", { special: true, router: true });
@@ -1309,7 +1334,7 @@ export async function endpointAgent(
 			// The worst case is not cosmetic. A marker landing on a line that already holds a CLOSING code
 			// fence makes that fence invalid — CommonMark allows a close to carry only fence characters and
 			// whitespace — and an unclosed fenced block runs to the end of the document. The whole tail of
-			// the turn then renders as monospace inside a code box, silently (CUR-227).
+			// the turn then renders as monospace inside a code box, silently.
 			//
 			// So markers go through here and lead with a newline unless we are already at a line start.
 			// `token` deltas must NOT: reformatting the model's own prose is a different and worse bug.
@@ -1333,12 +1358,12 @@ export async function endpointAgent(
 
 			let answer = "";
 			// Whether the service's `done` frame arrived. A turn that ends without one (our timeout,
-			// a dropped stream, a stream that closed or never opened) cancels its task below. (CUR-2194)
+			// a dropped stream, a stream that closed or never opened) cancels its task below.
 			let sawDone = false;
 			let serviceLostTask = false;
 			// confirmIds opened this turn that no confirm_result has resolved yet. Read once
 			// the stream ends (below the loop) to cancel any the turn left dangling, so a drop never
-			// leaves an Allow/Deny card that resolves to nothing. (CUR-4070)
+			// leaves an Allow/Deny card that resolves to nothing.
 			const openConfirms = new Set<string>();
 			let totalSteps: number | undefined;
 			let thinkClosed = false;
@@ -1351,18 +1376,18 @@ export async function endpointAgent(
 			// it immediately, keyed to the attempt it belongs to. attempt_rejected discards the buffer
 			// outright — the strongest form of "clear the buffer" the wire contract asks for (zero
 			// exposure window, not shown-then-corrected). Flushed once at `done` for whichever attempt
-			// survived. Cost: the model's own prose in the think panel no longer streams token-by-token
+			// survived. Cost: the model's own prose in the think panel does not stream token-by-token
 			// (it lands in one piece at the end) — plan/tool_call/policy/usage narration is untouched
-			// and still streams live throughout, so the panel isn't static while a turn runs. (CUR-767)
+			// and still streams live throughout, so the panel isn't static while a turn runs.
 			let pendingAttempt: number | undefined;
 			let pendingTokenBuffer = "";
 			// Which tool KINDS the service reported this turn, and how many of each. Read once at `done`
-			// to decide whether the turn can honestly be described as having run anything (CUR-226).
+			// to decide whether the turn can honestly be described as having run anything.
 			// The counts feed the tool-run summary line; the classifiers below only read distinct kinds
 			// (`.keys()`/`.has()`/`.size`).
 			//
 			// A call only lands here once its `tool_result` confirms `ok !== false`, not at `tool_call`,
-			// which fires the instant a call is proposed, before permission is resolved (CUR-705). An edit
+			// which fires the instant a call is proposed, before permission is resolved. An edit
 			// denied on confirm timeout touches no file, and the model may still answer with fabricated
 			// figures; counting the proposal would put `edit` in `toolKinds` and keep
 			// `claimedStepsWithoutObservedTools`/`claimedActionOnContinuedSession` (both gated on
@@ -1377,7 +1402,7 @@ export async function endpointAgent(
 			// Steps whose `tool_result` confirmed they ran, in order, for the account a turn gives when it
 			// ends before `done` (partialRunAnswer).
 			const finishedSteps: { tool: string; summary?: string }[] = [];
-			// Between a `waiting_sandbox` state frame and the next state frame. (CUR-4584)
+			// Between a `waiting_sandbox` state frame and the next state frame.
 			let waitingForSandbox = false;
 			const closeThink = function* () {
 				if (thinkClosed) return;
@@ -1396,7 +1421,7 @@ export async function endpointAgent(
 			let timedOut = false;
 			// The route's watchdog ended the turn while an approval card was still open. Nobody
 			// answered it in time, so the card resolves as a timed-out deny and the answer says so,
-			// where a Stop (or a drop) cancels the card instead. (CUR-4660)
+			// where a Stop (or a drop) cancels the card instead.
 			let approvalUnanswered = false;
 			const timeout = setTimeout(() => {
 				timedOut = true;
@@ -1407,6 +1432,18 @@ export async function endpointAgent(
 			// Unset (never hands off) with `agent-run-handoff` off, or for a caller with no turn deadline (an eval).
 			const handoffAt = handoff && turnDeadlineAt !== undefined ? agentHandoffAt(turnDeadlineAt, Date.now()) : undefined;
 			let handedOff = false;
+			// One line per request, so a production check can see whether each request (an attach
+			// included) was set to hand the run off, and when.
+			logger.info(
+				{
+					taskId,
+					conversationId: conversationId?.toString(),
+					attach: Boolean(agentAttach),
+					handoff,
+					...(handoffAt !== undefined ? { handoffAt: new Date(handoffAt).toISOString() } : {}),
+				},
+				"[agent] reading the run"
+			);
 			try {
 				const res = await agentFetch(`${runBase}/run/${taskId}/events`, {
 					headers: eventHeaders,
@@ -1414,7 +1451,7 @@ export async function endpointAgent(
 				});
 				if (agentAttach && res.status === 404) {
 					// The service no longer holds this task (its machine restarted, or the task aged
-					// out). Close the handle, so the next reload doesn't try again and land on the same 404. (CUR-993)
+					// out). Close the handle, so the next reload doesn't try again and land on the same 404.
 					serviceLostTask = true;
 					yield mk("", { special: true, agentRun: { taskId, ...(machineId ? { machineId } : {}), closed: true } });
 					yield* closeThink();
@@ -1428,7 +1465,7 @@ export async function endpointAgent(
 					const reader = res.body.getReader();
 					const decoder = new TextDecoder();
 					// eventsource-parser reads the frames, so multi-line data, CRLF line ends and a
-					// value's single leading space follow the SSE spec. A read's events queue here in order. (CUR-4065)
+					// value's single leading space follow the SSE spec. A read's events queue here in order.
 					const frames: EventSourceMessage[] = [];
 					const sse = createParser({
 						onEvent: (message) => frames.push(message),
@@ -1505,12 +1542,12 @@ export async function endpointAgent(
 								const attempt = ev.attempt && ev.attempt > 1 ? ` (attempt ${ev.attempt})` : "";
 								yield* pushLine(`Planned ${steps.length} step(s): ${steps.join(", ")}${attempt}\n`);
 							} else if (etype === "policy") {
-								// This caller's write-permission resolution for the task (CUR-471). Fires once,
+								// This caller's write-permission resolution for the task. Fires once,
 								// early, under every ACP_PERMISSION_POLICY value — carried as a structured chunk,
 								// NOT narrated into the think block: agent-service separately injects a
 								// model-facing prompt note, and this is meant to stay authoritative independent
 								// of whatever the model says (or a deny_writes caller asking for terminal/
-								// code_execution — which gets no tool_result frame at all, since CUR-217's gating
+								// code_execution — which gets no tool_result frame at all, since agent-service's write gating
 								// removes those tools before the session starts rather than denying the call —
 								// going quiet with no explanation anywhere).
 								if (ev.policy) {
@@ -1525,7 +1562,7 @@ export async function endpointAgent(
 									});
 								}
 							} else if (etype === "tool_call") {
-								// Proposal only — see the CUR-705 note on `pendingStepKind`'s declaration. Not
+								// Proposal only — see the note on `toolKinds`'s declaration. Not
 								// committed to `toolKinds` until `tool_result` confirms it actually ran.
 								if (ev.tool && ev.step !== undefined) pendingStepKind.set(ev.step, ev.tool);
 								yield* pushLine(`→ step ${ev.step}: ${ev.tool}\n`);
@@ -1556,7 +1593,7 @@ export async function endpointAgent(
 								// has to enforce that). confirm_id is how the agent-confirm route names which paused
 								// call a click resolves; taskId is this turn's — both required, so a malformed frame
 								// (agent-service's own contract, but the wire is still untrusted input) is dropped
-								// rather than surfaced as a half-built prompt with nothing to click. (CUR-218)
+								// rather than surfaced as a half-built prompt with nothing to click.
 								if (ev.confirm_id) {
 									yield* pushLine(
 										`→ waiting for your OK: ${ev.plain || `${ev.kind ?? "action"} — ${ev.title ?? "(no title)"}`}\n`
@@ -1564,7 +1601,7 @@ export async function endpointAgent(
 									// agent-service reports its own confirm_timeout_secs as a DURATION, not a
 									// timestamp — its clock and this process's clock aren't the same clock, so the
 									// deadline is stamped from OUR receipt time (as close to the real ACP frame arrival
-									// as this pipeline gets) rather than trusting an epoch computed on the Python side. (CUR-1094)
+									// as this pipeline gets) rather than trusting an epoch computed on the Python side.
 									const timeoutSecs =
 										typeof ev.timeout_secs === "number" && ev.timeout_secs > 0
 											? ev.timeout_secs
@@ -1587,7 +1624,7 @@ export async function endpointAgent(
 								}
 							} else if (etype === "auto_approved") {
 								// Auto mode ran this call without a card. Listed in the trace so every
-								// action the agent took on its own stays visible, in the reviewer's plain words. (CUR-3142)
+								// action the agent took on its own stays visible, in the reviewer's plain words.
 								if (ev.plain) yield* pushLine(`→ ran without asking: ${ev.plain}\n`);
 							} else if (etype === "confirm_result") {
 								// The pause above resolved — a real answer, a timeout (reason "timeout", decision
@@ -1614,7 +1651,7 @@ export async function endpointAgent(
 							} else if (etype === "message") {
 								if (ev.text) yield* pushLine(`note: ${ev.text}\n`);
 							} else if (etype === "state" && ev.state === "waiting_sandbox") {
-								// The host is full and agent-service waits for a free sandbox, up to a minute. (CUR-4584)
+								// The host is full and agent-service waits for a free sandbox, up to a minute.
 								yield* pushLine(`→ ${ev.text || "Waiting for a free sandbox…"}\n`);
 								yield mk("", { special: true, sandboxWait: "waiting" });
 								waitingForSandbox = true;
@@ -1623,7 +1660,7 @@ export async function endpointAgent(
 								yield mk("", { special: true, sandboxWait: "ready" });
 							} else if (etype === "state") {
 								// Coarse liveness ping (e.g. "working"), fired unconditionally at task start before
-								// transport is even chosen (CUR-773) — never a signal for which transport ran; see
+								// transport is even chosen — never a signal for which transport ran; see
 								// `transport_used` on the `done` frame for that. The opening line already conveys
 								// "working", so nothing to narrate here — handled explicitly so it's not a silent
 								// fallthrough.
@@ -1639,7 +1676,7 @@ export async function endpointAgent(
 								}
 							} else if (etype === "token") {
 								// The agent's answer prose, arriving as it is produced — buffered per-attempt
-								// rather than pushed straight into `full`/the think block; see the CUR-767 note
+								// rather than pushed straight into `full`/the think block; see the note
 								// on `pendingTokenBuffer` above for why. `attempt` defaults to 1 defensively
 								// (older/coarse frames that omit it should never be treated as a NEW attempt and
 								// discard real buffered prose).
@@ -1662,7 +1699,7 @@ export async function endpointAgent(
 							} else if (etype === "attempt_rejected") {
 								// Fired the moment an attempt is rejected, well before the next
 								// attempt's first token. Discard its buffered prose outright — it's never
-								// pushed into `full`, so it's never rendered anywhere, not even briefly. (CUR-767)
+								// pushed into `full`, so it's never rendered anywhere, not even briefly.
 								if (ev.attempt === undefined || ev.attempt === pendingAttempt) {
 									pendingTokenBuffer = "";
 								}
@@ -1678,7 +1715,7 @@ export async function endpointAgent(
 							} else if (etype === "done") {
 								// whatever's still buffered belongs to the attempt that won — nothing
 								// else reaches `done` without either being flushed here or discarded by
-								// attempt_rejected above. (CUR-767)
+								// attempt_rejected above.
 								if (pendingTokenBuffer) {
 									yield* push(pendingTokenBuffer);
 									pendingTokenBuffer = "";
@@ -1688,10 +1725,10 @@ export async function endpointAgent(
 								// Last-write-wins client-side, so this overrides the early emit's configured default.
 								// Also carries verify_method whenever the field arrived on this frame — a
 								// separate `ev.verify_method !== undefined` check because "" (unverified) must still
-								// emit, and a done frame can in principle arrive without `model` set (CUR-756).
+								// emit, and a done frame can in principle arrive without `model` set.
 								// Same correction for compute_provider (the live-polled provider, not the static
 								// AGENT_COMPUTE_PROVIDER config) — hence the guard below also fires on a
-								// provider-only change with no model or verify_method present (CUR-996).
+								// provider-only change with no model or verify_method present.
 								if (ev.model || ev.compute_provider || ev.verify_method !== undefined) {
 									yield mk("", {
 										special: true,
@@ -1711,7 +1748,7 @@ export async function endpointAgent(
 									// OWN artifacts is the case this exists for — result stays empty either way, so
 									// without this the person sees only "(FAILED)" with no hint a safety check
 									// fired, let alone which one). Falls back to the bare state for an older build
-									// or a task that failed before agent-service set a reason at all. (CUR-856)
+									// or a task that failed before agent-service set a reason at all.
 									answer =
 										ev.interrupted === "restart"
 											? AGENT_RESTARTED_TEXT
@@ -1727,18 +1764,18 @@ export async function endpointAgent(
 								// observed, the last is the service's own repair-loop verdict on a turn whose
 								// answer it never got to re-check.
 								// `ev.transport_used` is agent-service's own record of which transport this task
-								// ran on (CUR-773). The `state` frame's presence says nothing about transport: it
+								// ran on. The `state` frame's presence says nothing about transport: it
 								// fires at task start on every task, before transport is chosen. Absent/"" (an
 								// old build, or a task that never got far enough to decide) reads as not-ACP, the
 								// fail-quiet direction.
 								const acpTransport = ev.transport_used === "acp";
-								// Computed once, ahead of both uses below: the caveat check (CUR-592 — only an
+								// Computed once, ahead of both uses below: the caveat check (only an
 								// actual code/script artifact can make wroteNotRun true) and renderArtifacts.
 								const artifacts: AgentArtifact[] = Array.isArray(ev.artifacts) ? ev.artifacts : [];
 								const wroteNotRun =
 									wroteCodeWithoutRunningIt(toolKinds) && editedCodeArtifact(artifacts);
 								// Undefined (an older service build) and 0 (an empty workdir) both produce silence
-								// today, so `?? 0` here would be an equivalent rewrite rather than a bug (CUR-1394). It
+								// today, so `?? 0` here would be an equivalent rewrite rather than a bug. It
 								// stays uncoerced anyway, because the
 								// two facts are different and only the type keeps them separable if the answers ever
 								// have to diverge. What WOULD be a bug is defaulting to a positive value, which turns
@@ -1759,7 +1796,7 @@ export async function endpointAgent(
 								);
 								const unrunDetail = (ev.unrun_detail ?? "").trim();
 								const serviceFlagged = Boolean(unrunDetail);
-								// CUR-855/846: a structural failure (gateway down, wall-clock cap, the agent
+								// A structural failure (gateway down, wall-clock cap, the agent
 								// process crashing) is a different claim than the other four unrun_detail shapes
 								// — those all mean "the agent overclaimed what it did," which UNRUN_CODE_NOTICE
 								// describes accurately. A structural failure tried and didn't finish; reusing
@@ -1768,12 +1805,10 @@ export async function endpointAgent(
 								const unrunCodeCaveat =
 									answer.trim() &&
 									(wroteNotRun || claimedNotObserved || continuedNoAction || serviceFlagged);
-								// Which branch fired, computed ONCE. Read by three consumers now — the log line below,
-								// the answer prefix, and (CUR-1341) the unrunCode update that drives the reasoning
-								// panel's header. It was an inline ternary chain inside the log call until the third
-								// consumer arrived; two copies of this chain would be a behavioral twin that drifts the
-								// first time a fifth reason is added, and the whole point of CUR-1341 is that the
-								// header and the sentence under it must never disagree.
+								// Which branch fired, computed ONCE. Read by three consumers: the log line below, the
+								// answer prefix, and the unrunCode update that drives the reasoning panel's header.
+								// Computing it once keeps the header and the sentence under it from ever disagreeing;
+								// two copies of this chain would drift the first time a new reason is added.
 								const caveatReason: UnrunCodeReason | null = wroteNotRun
 									? "wrote-not-run"
 									: claimedNotObserved
@@ -1788,62 +1823,61 @@ export async function endpointAgent(
 								if (unrunCodeCaveat) {
 									// The sentence is chosen from `caveatReason`, the same single verdict that
 									// drives the log line and the panel header, rather than from `structuralFailure`
-									// alone. Selecting on a different input than the header reads is how the two drift,
-									// which is the failure CUR-1341 hoisted this verdict to prevent. (CUR-1394)
+									// alone. Selecting on a different input than the header reads
+									// would let the two drift.
 									answer = noticeForCaveat(caveatReason) + answer;
 								}
 								// First in the answer, ahead of any caveat, since it explains why the earlier
-								// files are missing from everything below it. (CUR-4393)
+								// files are missing from everything below it.
 								if (ev.expired && answer.trim()) answer = SESSION_EXPIRED_NOTICE + answer;
 								// The same verdict the prefix above just wrote into the answer, carried to the
-								// client as structure instead of only as prose. The reasoning panel's header read
-								// `loading ? "Computing…" : "Computed"` — whether the block finished STREAMING, which is
-								// a different question — so a wrote-files-never-ran turn rendered "Computed" directly
-								// above the sentence denying it, and the header is what a reader who never expands the
-								// block walks away with. The client must NOT infer this from a missing agentTools
-								// chunk — that absence is the CUR-234 ambiguity, and reading a negative out of it is
-								// the bug next door.
+								// client as structure instead of only as prose. Without it the reasoning panel's
+								// header would follow only whether the block finished STREAMING (`loading ? "Computing…" :
+								// "Computed"`), a different question, and would show "Computed" directly above the
+								// sentence denying it; the header is what a reader who never expands the block walks away
+								// with. The client must NOT infer this from a missing agentTools chunk: an empty
+								// toolKinds is ambiguous (see the log line below), and reading a negative out of it
+								// would be wrong.
 								//
 								// Gated on the full `unrunCodeCaveat` rather than `caveatReason` alone so this and the
-								// prefix read one condition and cannot drift. Today the extra `answer.trim()`
-								// clause changes nothing, because an empty `result` on a COMPLETED task is replaced by
-								// the literal "Done." ~50 lines up before either check runs — dropping the clause here
-								// leaves the whole suite green, so no test pins it and none can. Keep it anyway: it
-								// costs nothing and it is what stays correct if that fallback ever goes away. (CUR-1341)
+								// prefix read one condition and cannot drift. The extra `answer.trim()`
+								// clause changes nothing while an empty `result` on a COMPLETED task is replaced by the
+								// literal "Done." above, so no test can pin it; it is kept so this stays correct if
+								// that fallback ever goes away.
 								if (unrunCodeCaveat && caveatReason) {
 									yield mk("", { special: true, unrunCode: { reason: caveatReason } });
 								}
 								// An empty toolKinds is ambiguous on its own — "ACP off, correctly never
 								// observed" and "ACP on but the checks silently didn't run" render identically.
 								// This makes the two tell apart from the log: transport:"coarse" (agent-service's
-								// own transport_used, CUR-773) is the honest silence — the coarse path sends no
+								// own transport_used) is the honest silence — the coarse path sends no
 								// tool frames by contract; transport:"acp" with zero toolKinds means the agent
-								// genuinely used no tools this turn, not that observation failed. (CUR-234)
+								// genuinely used no tools this turn, not that observation failed.
 								logger.info(
 									{
 										transport: acpTransport ? "acp" : "coarse",
 										toolKinds: [...toolKinds.keys()],
 										// per-kind counts alongside the distinct-kind list, so an operator
-										// debugging a wrongly-firing caveat (CUR-234's whole reason for this log line)
-										// can see call volume from logs alone, not just from the persisted message. (CUR-775)
+										// debugging a wrongly-firing caveat
+										// can see call volume from logs alone, not just from the persisted message.
 										toolCounts: Object.fromEntries(toolKinds),
 										// A call proposed but never resolved to a tool_result — denied,
 										// timed out, or (shouldn't happen) simply never answered. Excluded from
 										// toolKinds by design; visible here so a wrongly-quiet caveat is legible
-										// from the log instead of looking identical to "no call was ever made". (CUR-705)
+										// from the log instead of looking identical to "no call was ever made".
 										unresolvedToolKinds: [...pendingStepKind.values()],
 										claimedSteps: totalSteps,
 										sessionContinued: Boolean(ev.session_continued),
 										unrunCodeCaveat: Boolean(unrunCodeCaveat),
-										// Which branch, when any fired. Hoisted above (CUR-1341) so the log, the
+										// Which branch, when any fired. Computed above so the log, the
 										// answer prefix and the panel header all read one value.
 										caveatReason,
 									},
 									"[agent] tool-frame observability"
 								);
-								// Provenance for a genuinely tool-running turn (CUR-601): only when toolKinds is
+								// Provenance for a genuinely tool-running turn: only when toolKinds is
 								// non-empty, mirroring writePolicy's "only stamp when it's real" contract — an
-								// empty toolKinds is the same CUR-234 ambiguity discussed above, so this stays
+								// empty toolKinds is the same ambiguity discussed above, so this stays
 								// silent rather than assert a negative. Lets the client-side grounding classifier
 								// (provenanceFacts.agentToolsRan) tell a tool-running turn apart from "recall".
 								if (toolKinds.size > 0) {
@@ -1857,20 +1891,18 @@ export async function endpointAgent(
 								}
 								// Appended on EVERY terminal state, unlike the caveat above. A run that failed
 								// part-way still left whatever it wrote, and a half-written file is the most
-								// useful thing a failed turn can hand back — withholding it there would repeat
-								// CUR-195 (the answer describing files the response never carried) on exactly
+								// useful thing a failed turn can hand back — withholding it there would leave
+								// the answer describing files the response never carried, on exactly
 								// the turns where the description is least trustworthy.
-								// Both conditions named together, not left as an implicit "conversationId is
-								// truthy" check: no conversationId means no session_id was sent to /run
-								// (line ~480 above), so agent-service has no workdir to serve a download
-								// from — a link would 404 on every click. The flag gates it independently.
-								const downloadBaseHref =
-									conversationId && agentArtifactDownloadEnabled()
-										? `${chatBase}/conversation/${conversationId.toString()}/agent-artifact`
-										: undefined;
+								// No conversationId means no session_id was sent to /run
+								// (see the /run body above), so agent-service has no workdir to serve a download
+								// from — a link would 404 on every click.
+								const downloadBaseHref = conversationId
+									? `${chatBase}/conversation/${conversationId.toString()}/agent-artifact`
+									: undefined;
 								// Copy the files out while the workdir still holds them, so the link
 								// keeps working after a deploy or the idle reaper erases it. Same two
-								// conditions as the link: no session means nothing to read the files from. (CUR-4398)
+								// conditions as the link: no session means nothing to read the files from.
 								let saved: SavedAgentFile[] = [];
 								if (downloadBaseHref && conversationId && saveAgentFiles) {
 									const session = conversationId.toString();
@@ -1930,17 +1962,24 @@ export async function endpointAgent(
 				yield* closeThink();
 				const aborted = (err as Error)?.name === "AbortError";
 				const watchdog = aborted && endedByWatchdog(abortSignal);
-				approvalUnanswered = watchdog && openConfirms.size > 0;
-				answer = approvalUnanswered
-					? unansweredApprovalAnswer(openConfirms.size)
-					: partialRunAnswer(timedOut || watchdog ? "timed-out" : aborted ? "stopped" : "dropped", {
-							plannedSteps: totalSteps,
-							finishedSteps,
-							unfinishedTools: [...pendingStepKind.values()],
-							draft: pendingTokenBuffer,
-						});
 				if (!timedOut && !aborted) failOpenDeparture("agent-stream", "dropped");
-				yield* push(answer);
+				// A run submitted to hand off outlives whatever ended this request's read of it, short
+				// of a Stop: the watchdog, our own stream timeout, or a dropped stream. Hand it to the page as at
+				// the handoff mark, cards open and task running, rather than deny its cards and end it.
+				if (handoff && (watchdog || timedOut || !aborted)) {
+					handedOff = true;
+				} else {
+					approvalUnanswered = watchdog && openConfirms.size > 0;
+					answer = approvalUnanswered
+						? unansweredApprovalAnswer(openConfirms.size)
+						: partialRunAnswer(timedOut || watchdog ? "timed-out" : aborted ? "stopped" : "dropped", {
+								plannedSteps: totalSteps,
+								finishedSteps,
+								unfinishedTools: [...pendingStepKind.values()],
+								draft: pendingTokenBuffer,
+							});
+					yield* push(answer);
+				}
 			} finally {
 				clearTimeout(timeout);
 				abortSignal?.removeEventListener("abort", onAbort);
@@ -1962,8 +2001,8 @@ export async function endpointAgent(
 			// end with no `done`. Any confirmId still open never got its confirm_result, so cancel each:
 			// the live card closes and agentConfirmResolved stamps the persisted entry decision:"canceled",
 			// instead of a reload rendering an Allow/Deny card that resolves to nothing. On a normal `done`
-			// the set is already empty (confirm_result deleted each), so this is a no-op there. (CUR-4070)
-			// When the turn ended because nobody answered, each card says so instead. (CUR-4660)
+			// the set is already empty (confirm_result deleted each), so this is a no-op there.
+			// When the turn ended because nobody answered, each card says so instead.
 			for (const confirmId of openConfirms) {
 				yield mk("", {
 					special: true,
@@ -1977,12 +2016,14 @@ export async function endpointAgent(
 			// A turn that ended without the service's `done` is over for the person — they were told
 			// it timed out or dropped and to try again — but the task can still be running service-side, up to
 			// the task's own wall clock, and holding one of the person's two live-task slots the whole time.
-			// So cancel it here. A stop by the caller is left alone: Stop cancels through stop-generating,
-			// and a closed tab keeps its run for a reload to reattach to (CUR-993).
+			// So cancel it here. A stop by the caller is left alone: Stop cancels through
+			// stop-generating, and a closed tab keeps its run for a reload to reattach to.
 			// The route's watchdog is not a Stop and not a closed tab: nobody reattaches to that run, and left
 			// alone it goes on into its next best-of attempt for up to two more wall clocks, so the person's
-			// "carry on" would be refused with "another task is running in this conversation". (CUR-2194)
-			if (!sawDone && !serviceLostTask && (!abortSignal?.aborted || endedByWatchdog(abortSignal))) {
+			// "carry on" is refused with "another task is running in this conversation".
+			// A run submitted to hand off is never canceled here. The page follows it on purpose, so
+			// no request's end, the watchdog's included, is the end of the run; only Stop is.
+			if (!handoff && !sawDone && !serviceLostTask && (!abortSignal?.aborted || endedByWatchdog(abortSignal))) {
 				try {
 					const status = await cancelAgentTask(input, locals, { taskId, machineId });
 					logger.info({ taskId, status, timedOut }, "[agent] turn ended without a result; canceled its task");

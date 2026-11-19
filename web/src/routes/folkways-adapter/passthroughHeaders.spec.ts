@@ -6,9 +6,9 @@ import { passthroughResponseHeaders } from './passthroughHeaders';
 // guarantees what they need. The pair that matters is the first two — a forwarding proxy has to be
 // checked in both directions at once, because "forwards everything" and "forwards nothing" each
 // pass half of this file. They guard against the adapter dropping every upstream header but
-// content-type, which leaves the host unable to name the model that served a turn (CUR-1452).
+// content-type, which leaves the host unable to name the model that served a turn.
 
-describe('passthroughResponseHeaders — provenance survives the proxy (CUR-1452)', () => {
+describe('passthroughResponseHeaders — provenance survives the proxy', () => {
 	it('forwards x-litellm-model-api-base, without which no turn served through the adapter can name its model', () => {
 		const out = passthroughResponseHeaders(
 			new Headers({
@@ -47,7 +47,7 @@ describe('passthroughResponseHeaders — provenance survives the proxy (CUR-1452
 		expect(out['x-router-model']).toBe('some/model');
 	});
 
-	it("forwards retry-after and retry-after-ms, which chat's retry policy reads on a 429 (CUR-3186)", () => {
+	it("forwards retry-after and retry-after-ms, which chat's retry policy reads on a 429", () => {
 		const out = passthroughResponseHeaders(
 			new Headers({ 'retry-after': '7', 'retry-after-ms': '7000', 'x-ratelimit-limit': '30' })
 		);

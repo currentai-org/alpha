@@ -22,7 +22,7 @@ const DATABASE_URL = process.env.SCENARIO_DATABASE_URL;
 test.describe('email-OTP sign-in', () => {
 	// Chat-ui's own Hugging Face redirect used to answer any GET of /chat/login that did not
 	// negotiate text/html (a bare fetch, a probe), which is how a plain curl landed on Hugging Face's
-	// login page and read as though the chooser had never shipped (CUR-1961). It is gone, and the flag that kept it
+	// login page and read as though the chooser had never shipped. It is gone, and the flag that kept it
 	// as a fallback with it. A non-browser request now gets the same chooser page a browser does.
 	test(
 		'a non-browser GET of the sign-in page answers the chooser, not a redirect to Hugging Face',
@@ -48,7 +48,7 @@ test.describe('email-OTP sign-in', () => {
 		}
 	);
 
-	// CUR-1133 / CUR-3157: disableImplicitLinking (betterAuth.ts) refuses a sign-in through a second
+	// disableImplicitLinking (betterAuth.ts) refuses a sign-in through a second
 	// provider on an address that already has an account (betterAuth.accountMerge.spec.ts), so a provider
 	// is added by linking it in Settings while signed in, and an email code opens whichever account uses
 	// that address. The chooser says both, so nobody avoids the email code for fear of a fresh account.
@@ -73,11 +73,11 @@ test.describe('email-OTP sign-in', () => {
 	);
 
 	// The critique loop saw 'Continue with email' dim at first load and bright over the same
-	// empty field later, and read the bright one as a button that does nothing (CUR-3392). It is dim only until
-	// hydration (CUR-1400); after that it stays enabled on purpose, so a click says why it cannot send
-	// (CUR-1064). This drives that click.
+	// empty field later, and read the bright one as a button that does nothing. It is dim only until
+	// hydration; after that it stays enabled on purpose, so a click says why it cannot send.
+	// This drives that click.
 	test(
-		'Continue with email on an empty field says to enter an address and stays on the chooser (CUR-3392)',
+		'Continue with email on an empty field says to enter an address and stays on the chooser',
 		{ tag: '@A1' },
 		async ({ page }) => {
 			await page.goto('/chat/login', { waitUntil: 'load' });
@@ -97,7 +97,7 @@ test.describe('email-OTP sign-in', () => {
 	);
 
 	// The graded A1 board saw Google, GitHub and Hugging Face as bordered buttons and passkey
-	// as plain grey text under them, which read as a caveat rather than a fifth way in (CUR-2468). Passkey now sits
+	// as plain grey text under them, which read as a caveat rather than a fifth way in. Passkey now sits
 	// in the same group with the same button styling, and this compares what a person actually sees.
 	test(
 		'the passkey route is drawn as an equal button beside the other providers, not as a text link',
@@ -128,7 +128,7 @@ test.describe('email-OTP sign-in', () => {
 	);
 
 	// With no guest conversation to carry, the new-chat landing is where sign-in should end,
-	// so it is expected here (CUR-1808). What would read as a flash is the landing painting on some other page
+	// so it is expected here. What would read as a flash is the landing painting on some other page
 	// first and the view then moving on, so the landing must have painted on the page sign-in settled on
 	// and nowhere else.
 	test(
@@ -152,7 +152,7 @@ test.describe('email-OTP sign-in', () => {
 
 	// Production and develop both wrote Better Auth's default-named session cookie on
 	// Domain=aipotluck.org, so signing in on one overwrote the other's cookie and signed the person out
-	// there (CUR-1904). This reads the cookie a real sign-in actually set on this preview. It has to carry a name
+	// there. This reads the cookie a real sign-in actually set on this preview. It has to carry a name
 	// production never uses and no Domain attribute, or a sign-in here can still reach production.
 	// @preview-only: production is the one deployment that keeps the default name and the apex Domain.
 	test(
@@ -180,7 +180,7 @@ test.describe('email-OTP sign-in', () => {
 		}
 	);
 
-	// The point of signing in ("A1 (CUR-849). I can try Alpha, and sign in when I want it to remember
+	// The point of signing in ("A1. I can try Alpha, and sign in when I want it to remember
 	// me") is that it remembers you. The test above stops at a completed sign-in; this one follows
 	// through to what that sign-in was supposed to buy. Before this fix, signing in silently orphaned
 	// every anonymous conversation
@@ -192,7 +192,7 @@ test.describe('email-OTP sign-in', () => {
 	// 180s, the same budget report-a-problem.spec.ts:108 carries for the same 90s answer wait. The
 	// suite default is 90s, which is exactly that wait — so the budget would kill this test before
 	// the wait could reach its own deadline, and the message below would only ever be printed by a
-	// budget death describing what its author guessed (check:scenario-budgets, CUR-1633).
+	// budget death describing what its author guessed (check:scenario-budgets).
 	test(
 		'signing in carries an anonymous conversation onto the account, not just the redirect',
 		{ tag: '@A1' },
@@ -203,7 +203,7 @@ test.describe('email-OTP sign-in', () => {
 				await startChattingPastWelcome(welcomeDialog);
 			});
 			await installCannedReplies(page);
-			// The control for the CUR-3116 assertion at the bottom: the turn before sign-in really is
+			// The control for the assertion at the bottom: the turn before sign-in really is
 			// computing for a moment, so this watch has to see a live line there. Without it, a selector
 			// that drifted or a watch that never fires would pass that assertion exactly as a fix would.
 			const liveLinesBeforeSignIn = await watchForSelector(
@@ -224,7 +224,7 @@ test.describe('email-OTP sign-in', () => {
 
 				const conversationUrl = page.url();
 
-				// Wait for a real, finished answer BEFORE signing in (CUR-1668). Until this landed, the
+				// Wait for a real, finished answer BEFORE signing in. Until this landed, the
 				// test went straight from the URL appearing to the sign-in, which takes a second or two
 				// — so the recording the journey grader watches showed `Apertus 1.5 70B is working…` and
 				// never anything else, and the assertion at the bottom passed anyway because it reads
@@ -236,7 +236,7 @@ test.describe('email-OTP sign-in', () => {
 				// front of them"). The promise was written down; nothing checked it.
 				//
 				// Both waits: Retry marks the turn as finished, where a copy button can show while it is
-				// still working (CUR-1652, CUR-2133), and the `.prose` body is what proves words exist.
+				// still working, and the `.prose` body is what proves words exist.
 				// 90s matches the budget report-a-problem.spec.ts uses for the same precondition on the
 				// same preview tier.
 				const assistantMessage = page.locator('[data-message-role="assistant"]').last();
@@ -263,17 +263,17 @@ test.describe('email-OTP sign-in', () => {
 
 			// The journey critic saw the new-chat landing flash for a frame between the code
 			// being accepted and this conversation coming back, which reads as the conversation being
-			// lost (CUR-1594). The watcher sees every frame of every document from here on (helpers/landingWatch.ts).
+			// lost. The watcher sees every frame of every document from here on (helpers/landingWatch.ts).
 			const landingSightings = await watchForChatLanding(page);
 			// One graded run saw this finished answer come back as "<model> is computing…" after
-			// the code was accepted, then turn back into the answer (CUR-3116). The answer was complete before sign-in
+			// the code was accepted, then turn back into the answer. The answer was complete before sign-in
 			// and nothing is sent after it, so no document from here on should render an unfinished live
 			// line (`data-live-line`, LiveRequestLog.svelte) at all.
 			const liveLineSightings = await watchForSelector(page, '[data-live-line]', '__liveLineSeen');
 
-			// Through the rail's "Log in", as a person would. It carries `next` (CUR-1673), so sign-in
+			// Through the rail's "Log in", as a person would. It carries `next`, so sign-in
 			// lands back on this conversation by itself. A bare /chat/login would land on the chat entry first,
-			// and the entry screen that flashed in between read as a defect (CUR-1578).
+			// and the entry screen that flashed in between read as a defect.
 			await signInWithEmailOtp(page, DATABASE_URL!, freshTestEmail(), {
 				viaNavLink: true,
 				landsOn: new RegExp(`${new URL(conversationUrl).pathname}$`)
@@ -288,7 +288,7 @@ test.describe('email-OTP sign-in', () => {
 					page.getByText('Name one lake in Switzerland in one short sentence.')
 				).toBeVisible({ timeout: 15_000 });
 
-				// And the ANSWER survives, not just the question (CUR-1668). A migration that carried the
+				// And the ANSWER survives, not just the question. A migration that carried the
 				// conversation row but lost its assistant message would pass every assertion above this
 				// one. Matched on the text captured before sign-in rather than on "some answer is
 				// present", because that is the claim — the same answer, untouched.
@@ -313,14 +313,14 @@ test.describe('email-OTP sign-in', () => {
 		}
 	);
 
-	// The CUR-849 test above proves migration on a FIRST login (CUR-1719). This one proves the gap CUR-849
+	// The test above proves migration on a FIRST login. This one proves the gap
 	// left standing: `auth.ts`'s migration calls used to sit entirely inside `if (!user)` — a returning
 	// user (the shadow user row already exists) got nothing migrated, so a person who signs out, goes
 	// anonymous in the same browser, has a conversation, then signs back in lost it silently, the exact
-	// same "silent orphan" CUR-849 fixed for the first-login case. `migrateAnonymousConversations`'s
+	// same "silent orphan" that change fixed for the first-login case. `migrateAnonymousConversations`'s
 	// docstring calls this exact case ("keyed strictly by sessionId") safe already — `auth.ts` simply
 	// never called it here. Drives a real sign-out between the two logins rather
-	// than asserting on the code path directly, for the same reason the CUR-849 test drives a real
+	// than asserting on the code path directly, for the same reason the test drives a real
 	// conversation: a passing assertion on the function in isolation cannot prove `auth.ts` actually
 	// reaches it from the returning-login branch.
 	test(
@@ -359,13 +359,13 @@ test.describe('email-OTP sign-in', () => {
 			await page.waitForURL(/\/chat\/conversation\/[a-f0-9]+/, { timeout: 30_000 });
 			const conversationUrl = page.url();
 
-			// Through the rail's "Log in", for the reason the CUR-849 test above gives (CUR-1578).
+			// Through the rail's "Log in", for the reason the test above gives.
 			await signInWithEmailOtp(page, databaseUrl, email, {
 				viaNavLink: true,
 				landsOn: new RegExp(`${new URL(conversationUrl).pathname}$`)
 			});
 
-			// The CUR-849 test's own regression shape: a failed migration doesn't error, it silently
+			// The test's own regression shape: a failed migration doesn't error, it silently
 			// redirects to a blank new chat instead of this URL, which is why the URL itself gets read
 			// back here rather than trusting the message text alone.
 			await expect(page).toHaveURL(conversationUrl);
@@ -377,7 +377,7 @@ test.describe('email-OTP sign-in', () => {
 		}
 	);
 
-	// A1 step 14 (CUR-2791, case a). The CUR-1719 test above signs back into an account with nothing in
+	// A1 step 14 (case a). The test above signs back into an account with nothing in
 	// it. A real returning person already has chats, and signing in from a guest session has to add the
 	// guest's chat to them without losing either. While they are signed out, the account's chat must
 	// not show in the guest's rail either, since whoever uses the device next is that guest.
@@ -398,7 +398,7 @@ test.describe('email-OTP sign-in', () => {
 			async function chat(question: string): Promise<string> {
 				await page.goto(chatEntry(), { waitUntil: 'commit' });
 				// A second chat has no "Welcome to Alpha" to wait on, so Enter could reach the server-rendered
-				// box before the app has, and send nothing (CUR-3311). Wait for the app to take the box over.
+				// box before the app has, and send nothing. Wait for the app to take the box over.
 				await composerHydrated(page);
 				await composer.click({ timeout: 30_000 });
 				await composer.fill(question);
@@ -444,7 +444,7 @@ test.describe('email-OTP sign-in', () => {
 		}
 	);
 
-	// CUR-2791, case b. Tabs share one cookie jar, so signing in from one tab signs in every other tab of
+	// case b. Tabs share one cookie jar, so signing in from one tab signs in every other tab of
 	// the same browser. A second tab that kept showing "Guest" after a reload would invite the person to
 	// sign in twice, or to keep chatting where nothing is saved to the account.
 	test('a second tab open as a guest shows the account once the first tab signs in and it reloads', async ({
@@ -471,7 +471,7 @@ test.describe('email-OTP sign-in', () => {
 		await other.close();
 	});
 
-	// CUR-2791, case c. The sign-in page turns a signed-in person away (login/+page.server.ts), so the
+	// case c. The sign-in page turns a signed-in person away (login/+page.server.ts), so the
 	// only way to sign in as B while A is signed in is two tabs: the first is halfway through B's code
 	// when the second signs in as A and chats. B's sign-in then carries A's session cookie into the
 	// guest-chat migration (auth.ts), which must move nothing of A's. A's chats carry a userId and no
@@ -527,9 +527,9 @@ test.describe('email-OTP sign-in', () => {
 	});
 
 	// The new tests below pass skipPendingLabelCheck: the "Signing you in…" label is step 6's claim, checked by
-	// the test above, and a fast redirect can beat its 5s window (CUR-1696).
+	// the test above, and a fast redirect can beat its 5s window.
 	//
-	// A1 step 10 (CUR-2627). Signing out has to leave the shared device the way a stranger would find
+	// A1 step 10. Signing out has to leave the shared device the way a stranger would find
 	// it: the rail offers "Log in" again, and the address of a chat they had while signed in no longer
 	// shows that chat. A sign-out that only swapped the label would pass the first half and fail the
 	// second.
@@ -557,7 +557,7 @@ test.describe('email-OTP sign-in', () => {
 			await expect(page.getByText(question).first()).toBeVisible({ timeout: 15_000 });
 
 			await journeyStep(page, 'A1', 10, async () => {
-				// This label check has gone red with the account still named (CUR-3931). A slow sign-out
+				// This label check has gone red with the account still named. A slow sign-out
 				// request and a refused one look the same from the label, and only the second leaves a live
 				// session, so a red records the request's status and time and whether the server still
 				// holds a session before failing.
@@ -613,7 +613,7 @@ test.describe('email-OTP sign-in', () => {
 	);
 
 	// Log out used to ignore a refused sign-out request and reload anyway, which put the person
-	// straight back into the session they had just asked to end, with nothing on screen to say so (CUR-3931). A
+	// straight back into the session they had just asked to end, with nothing on screen to say so. A
 	// refused request now has to say so and leave them where they are, and the next Log out works.
 	test(
 		'a refused sign-out says the person is still signed in instead of reloading into the live session',
@@ -659,7 +659,7 @@ test.describe('email-OTP sign-in', () => {
 		}
 	);
 
-	// A1 step 11 (CUR-2627). Active sessions on the account page has to describe the account's real
+	// A1 step 11. Active sessions on the account page has to describe the account's real
 	// sessions and end the one it says it ends. Two browser contexts are two devices: the second
 	// signs in, the first sees both and ends the other, and the second finds itself signed out the
 	// next time it asks the server anything.
@@ -696,7 +696,7 @@ test.describe('email-OTP sign-in', () => {
 						'Active sessions lists one other device to end, not the second sign-in'
 					).toHaveCount(1, { timeout: 15_000 });
 					// Each device reads as a browser and system, not a raw user-agent string, so a
-					// person can tell their own two sessions apart (CUR-2735).
+					// person can tell their own two sessions apart.
 					const devices = sessions.getByTestId('session-device');
 					await expect(devices, 'Active sessions does not list both devices').toHaveCount(2);
 					for (const label of await devices.allInnerTexts()) {
@@ -730,7 +730,7 @@ test.describe('email-OTP sign-in', () => {
 						'the ended session is listed again after a reload'
 					).toHaveCount(0);
 					// The reload returns to the top of the page, so the shortened list was never on
-					// screen while the recording held (CUR-2750).
+					// screen while the recording held.
 					await sessions.scrollIntoViewIfNeeded();
 					await captionForRecording(
 						page,
@@ -755,7 +755,7 @@ test.describe('email-OTP sign-in', () => {
 		}
 	);
 
-	// A1's steps 6→7 are supposed to feel like nothing happened (CUR-1673): the same conversation, in
+	// A1's steps 6→7 are supposed to feel like nothing happened: the same conversation, in
 	// the same place. The nav's "Log in" linked to `${base}/login` with no `next`, so
 	// `login/+page.svelte`'s `data.next ?? `${base}/`` dropped anyone signing in mid-conversation at
 	// the generic chat entry — the "fresh empty chat home with unrelated prompt suggestions" the
@@ -779,7 +779,7 @@ test.describe('email-OTP sign-in', () => {
 			});
 			await installCannedReplies(page);
 
-			// `load`, not `commit`, for the reason the nav-link test below records under CUR-1479: the
+			// `load`, not `commit`, for the reason the nav-link test below records: the
 			// rail renders twice server-side and a strict-mode role query in the pre-CSS window can catch
 			// both copies and throw without retrying.
 			await page.goto(chatEntry(), { waitUntil: 'load' });
@@ -812,12 +812,12 @@ test.describe('email-OTP sign-in', () => {
 	);
 
 	// Every other test here starts at the chat entry, so nothing walked the way a visitor
-	// actually arrives (CUR-2698). Develop's home page carried a CMS card linking https://chat.aipotluck.org,
+	// actually arrives. Develop's home page carried a CMS card linking https://chat.aipotluck.org,
 	// which opened production's chat in a new tab. A visitor on develop then signed in on production
 	// and never reached this deployment's sign-in at all. The links come from CMS content that differs
 	// per environment, so the contract is stated over all of them: every chat link on the home page
 	// stays on this origin, and following one by clicking reaches this deployment's sign-in. A home
-	// page with no chat link of its own is walked through the Alpha page it links (CUR-4543).
+	// page with no chat link of its own is walked through the Alpha page it links.
 	test(
 		'every chat link on the home page stays on this deployment, and clicking one reaches its sign-in',
 		{ tag: '@A1' },
@@ -887,7 +887,7 @@ test.describe('email-OTP sign-in', () => {
 				);
 				let chatLinks = await chatLinksHere();
 				// A home page can lead into chat through its Alpha page instead of linking chat
-				// itself (develop's CMS home does (CUR-4543): its "Try Alpha" card opens /alpha, which links /chat). A
+				// itself (develop's CMS home does: its "Try Alpha" card opens /alpha, which links /chat). A
 				// visitor takes that page on the way, so the walk does too, by clicking. The Alpha page
 				// scrolls natively, so there is no smoothing to wait for once it loads.
 				if (chatLinks.length === 0) {
@@ -957,11 +957,11 @@ test.describe('email-OTP sign-in', () => {
 		}
 	);
 
-	// CUR-432 ("Show me that I am signed in"): the Done-when bar was "the account
+	// ("Show me that I am signed in"): the Done-when bar was "the account
 	// name somewhere visible, and a difference between the signed in and signed out state that you
 	// notice without looking for it." The tests above reach sign-in via page.goto('/chat/login') —
 	// a shortcut that never proves a real visitor notices "Log in" or sees it replaced afterward.
-	// This one clicks the actual nav link and asserts the confirmation CUR-432 shipped in its place.
+	// This one clicks the actual nav link and asserts the confirmation that change shipped in its place.
 	test(
 		'clicking "Log in" in the nav, not a direct URL, ends with a visible "Signed in as" confirmation',
 		{ tag: '@A1' },
@@ -971,7 +971,7 @@ test.describe('email-OTP sign-in', () => {
 				await startChattingPastWelcome(welcomeDialog);
 			});
 
-			// CUR-1479: `commit` fires as soon as the response starts arriving, before the page's own
+			// `commit` fires as soon as the response starts arriving, before the page's own
 			// stylesheet has applied — ChatShell.svelte server-renders NavMenu twice (once inside
 			// MobileNav's drawer, once in the desktop rail) and relies on `md:hidden`/`max-md:hidden`
 			// to show only one per viewport. A strict-mode role query run in that pre-CSS window can
@@ -990,7 +990,7 @@ test.describe('email-OTP sign-in', () => {
 			await signInWithEmailOtp(page, DATABASE_URL!, freshTestEmail(), { viaNavLink: true });
 
 			// The account button's accessible name is "Account — signed in as {name}" once sign-in took,
-			// and its menu offers Log out instead of Log in (CUR-432).
+			// and its menu offers Log out instead of Log in.
 			await journeyStep(page, 'A1', 7, async () => {
 				await expect(accountButton(page)).toHaveAccessibleName(/signed in as /i, {
 					timeout: 15_000
@@ -998,7 +998,7 @@ test.describe('email-OTP sign-in', () => {
 				await accountMenuItem(page, 'Log out', { timeout: 20_000 });
 				await expect(page.getByRole('menuitem', { name: 'Log in' })).toBeHidden();
 
-				// The menu names the person the way they wrote it, not in the UI's label case (CUR-2217). The
+				// The menu names the person the way they wrote it, not in the UI's label case. The
 				// DOM text is the same either way, so the rendered case is read from the computed style.
 				const signedInAs = (await accountButton(page).getAttribute('aria-label'))!.replace(
 					'Account — signed in as ',
@@ -1013,10 +1013,10 @@ test.describe('email-OTP sign-in', () => {
 		}
 	);
 
-	// A1 step 9 (CUR-1758): `a1-sign-in.md`'s coverage block marked
+	// A1 step 9: `a1-sign-in.md`'s coverage block marked
 	// this `kind: none` — nothing anywhere drove or displayed the state a second sign-in on the same
 	// email actually reaches. Driving a REAL collision needs two live OAuth accounts on one address
-	// — the same CI blocker step 4 already names (CUR-1551/CUR-1552/CUR-1696) — but the warning
+	// — the same CI blocker step 4 already names — but the warning
 	// itself is deterministic, client-side, and query-param-driven: betterAuth.ts's
 	// disableImplicitLinking makes Better Auth round-trip a real failed callback back to
 	// `errorCallbackURL` (this same login page) with `?error=account_not_linked`, and
@@ -1024,7 +1024,7 @@ test.describe('email-OTP sign-in', () => {
 	// (`friendlyAuthErrorMessage`, authErrorMessages.ts). Landing on that URL directly exercises the
 	// exact client code a real collision would run.
 	//
-	// Guards a client-side crash on any `?error=` param (`reading '$set'`, CUR-1813): onMount defers its
+	// Guards a client-side crash on any `?error=` param (`reading '$set'`): onMount defers its
 	// replaceState a tick.
 	test(
 		'a second sign-in on an already-used email is told plainly, before anything else, that this makes a second account',
@@ -1058,7 +1058,7 @@ test.describe('email-OTP sign-in', () => {
 	// window.location.href redirect to Hugging Face's own OAuth authorize endpoint, which this suite
 	// has no account to complete and no business sending real traffic to in CI. Reaching that
 	// provider and actually finishing the link is the same OAuth-infrastructure gap as step 4 — filed
-	// as CUR-1811, not solved here.
+	//, not solved here.
 	test(
 		'the account page offers a real, working way to add another sign-in provider',
 		{ tag: '@A1' },
@@ -1085,7 +1085,7 @@ test.describe('email-OTP sign-in', () => {
 	);
 
 	// An account that signs in by email code alone saw "Nothing linked yet." under Linked
-	// providers, so the page named no way it signs in (CUR-3049). Email code works for every account with an
+	// providers, so the page named no way it signs in. Email code works for every account with an
 	// address, and nothing can remove it, so it is listed with that reason and no button.
 	test(
 		'an account that signs in by email code sees email code listed as a sign-in method that cannot be removed',
@@ -1117,7 +1117,7 @@ test.describe('email-OTP sign-in', () => {
 
 	// After a wrong code, "Use a different email" went back to the email step but left the
 	// wrong code bound to the code field, so the next address's code screen opened already filled with
-	// it (CUR-1887). Drives the real wrong-code path: a guessed code auto-submits at six digits and the server
+	// it. Drives the real wrong-code path: a guessed code auto-submits at six digits and the server
 	// rejects it.
 	test(
 		'switching email after a wrong code opens the next code screen empty',
@@ -1151,7 +1151,7 @@ test.describe('email-OTP sign-in', () => {
 		}
 	);
 
-	// The code field had to be clicked before a person could type the code (CUR-2298). Checked on the
+	// The code field had to be clicked before a person could type the code. Checked on the
 	// first code screen and again after "Use a different email", because each opens a new field.
 	test(
 		'the code field has focus when the code screen opens, including after switching email',
@@ -1179,9 +1179,141 @@ test.describe('email-OTP sign-in', () => {
 		}
 	);
 
-	// From 768px up the expanded sidebar is an overlay 294px wide, and before the fix it stayed
+	// two paint defects on the code step. The empty focused field put the centred caret in
+	// the middle of the "000000" placeholder, reading as "000|000", so the placeholder must be
+	// invisible while the field has focus and visible once it loses it. And the pending spinner sat
+	// on the label's baseline, 5.75px below the label's centre (measured in a browser), so its centre
+	// must be within 1px of the label's. The verify request is held open so the pending state lasts
+	// long enough to measure, then let through with a code nobody was sent.
+	test(
+		'the code step hides the placeholder under the caret, and the pending spinner is centred on its label',
+		{ tag: '@A1' },
+		async ({ page }, testInfo) => {
+			await installOtpBypassHeader(page);
+			let release!: () => void;
+			const held = new Promise<void>((resolve) => (release = resolve));
+			await page.route('**/chat/api/auth/sign-in/email-otp', async (route) => {
+				await held;
+				await route.fallback();
+			});
+			await page.goto('/chat/login');
+			const email = freshTestEmail();
+			await page.locator('#signin-email').fill(email);
+			await page.getByRole('button', { name: 'Continue with email' }).click();
+			await expect(page.getByText(`We sent a 6-digit code to ${email}.`)).toBeVisible({
+				timeout: 30_000
+			});
+
+			const code = page.locator('#signin-otp');
+			const placeholderAlpha = () =>
+				code.evaluate((el) => {
+					// The colour's alpha in any computed form: rgba(r, g, b, a), or a / a in rgb(), oklch()
+					// or color(). Tailwind's text-transparent computes to rgba(0, 0, 0, 0).
+					const c = getComputedStyle(el, '::placeholder').color.trim();
+					if (c === 'transparent') return 0;
+					const args = c.slice(c.indexOf('(') + 1, c.lastIndexOf(')'));
+					if (args.includes('/')) return Number(args.split('/')[1].trim());
+					const parts = args.split(',');
+					return parts.length === 4 ? Number(parts[3].trim()) : 1;
+				});
+			await expect(code).toBeFocused();
+			await testInfo.attach('code field, empty and focused', {
+				body: await code.screenshot(),
+				contentType: 'image/png'
+			});
+			expect(
+				await placeholderAlpha(),
+				'the "000000" placeholder is painted while the field has focus, so the caret splits it'
+			).toBe(0);
+			await code.blur();
+			expect(
+				await placeholderAlpha(),
+				'the placeholder should still show on the empty field once it loses focus'
+			).toBeGreaterThan(0);
+
+			await code.fill('123456');
+			const pending = page.getByRole('button', { name: 'Signing you in…', exact: true });
+			await expect(pending).toBeVisible({ timeout: 10_000 });
+			const centres = await pending.evaluate((button) => {
+				const walker = document.createTreeWalker(button, NodeFilter.SHOW_TEXT);
+				let label: Text | null = null;
+				for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+					if (n.textContent?.includes('Signing you in')) label = n as Text;
+				}
+				const spinner = button.querySelector('[data-signing-in-spinner] [role="status"]');
+				if (!label || !spinner) return null;
+				const range = document.createRange();
+				range.selectNodeContents(label);
+				const l = range.getBoundingClientRect();
+				const s = spinner.getBoundingClientRect();
+				return { label: l.top + l.height / 2, spinner: s.top + s.height / 2 };
+			});
+			await testInfo.attach('pending verify button', {
+				body: await pending.screenshot(),
+				contentType: 'image/png'
+			});
+			release();
+			expect(
+				centres,
+				'the pending button shows no label text or no spinner to measure'
+			).not.toBeNull();
+			const offset = centres!.spinner - centres!.label;
+			expect(
+				Math.abs(offset),
+				`the spinner's centre sits ${offset.toFixed(2)}px from the label's centre`
+			).toBeLessThanOrEqual(1);
+		}
+	);
+
+	// A1 step 8 at phone width: the account row lives in the sidebar drawer, which starts
+	// closed, so the header carries the signed-in initials and a guest gets none.
+	test.describe('at phone width', () => {
+		test.use({ viewport: { width: 390, height: 844 } });
+
+		test(
+			'the header names the signed-in account without the drawer open, and a guest has no avatar',
+			{ tag: ['@A1', '@CUR-1466'] },
+			async ({ page }) => {
+				test.setTimeout(150_000);
+				const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });
+				await page.addLocatorHandler(welcomeDialog, async () => {
+					await startChattingPastWelcome(welcomeDialog);
+				});
+				const avatar = page.getByTestId('phone-account-avatar');
+
+				await page.goto(chatEntry());
+				await expect(
+					page.getByRole('button', { name: 'Open sidebar' }),
+					'the phone header should be hydrated before a guest is asserted to have no avatar'
+				).toBeVisible({ timeout: 20_000 });
+				await expect(avatar, 'a guest gets no account avatar').toHaveCount(0);
+
+				const email = freshTestEmail();
+				await signInWithEmailOtp(page, DATABASE_URL!, email, { skipPendingLabelCheck: true });
+				await expect(
+					page.getByRole('button', { name: 'Open sidebar' }),
+					'the drawer is still closed after signing in'
+				).toHaveAttribute('aria-expanded', 'false', { timeout: 20_000 });
+				await expect(avatar).toBeVisible({ timeout: 20_000 });
+				await expect(
+					avatar,
+					'the header avatar names the account that signed in'
+				).toHaveAccessibleName(new RegExp(`^Account — signed in as ${email}$`, 'i'));
+				await expect(avatar, 'the avatar paints initials, not an empty box').toHaveText(/\S/);
+
+				// Tapping it opens the drawer, where the account row lives.
+				await avatar.click();
+				await expect(
+					accountButton(page),
+					'tapping the avatar opens the drawer onto the account row'
+				).toHaveAccessibleName(`Account — signed in as ${email}`, { ignoreCase: true });
+			}
+		);
+	});
+
+	// from 768px up the expanded sidebar is an overlay 294px wide, and before the fix it stayed
 	// open across navigation, so "Log in" clicked from it landed on a sign-in page with the panel still
-	// floating over the email field (CUR-1899). 900px is narrow enough that the centred form sits under the panel.
+	// floating over the email field. 900px is narrow enough that the centred form sits under the panel.
 	test.describe('at a narrow desktop width', () => {
 		test.use({ viewport: { width: 900, height: 720 } });
 
@@ -1264,7 +1396,7 @@ test(
 		await page.getByLabel('Message AI Potluck').click({ timeout: 30_000 });
 		const railLabel = accountButton(page);
 		await expect(railLabel).toHaveAccessibleName(/signed in as /i, { timeout: 15_000 });
-		// The button reads the avatar's initial, the name, then "Signed in"; the name is the address.
+		// The button reads the avatar's initial, the name, then the workspace; the name is the address.
 		const lines = (await railLabel.innerText())
 			.split('\n')
 			.map((l) => l.trim())
@@ -1304,10 +1436,10 @@ test(
 );
 
 // An error box appearing on the sign-in card must not move the card under the person
-// reading it (CUR-3491). The card used to be centred in the page, so every error that grew it lifted its top
+// reading it. The card used to be centred in the page, so every error that grew it lifted its top
 // edge by half the error's height.
 test(
-	"CUR-3491: an error appearing on the sign-in card leaves the card's top edge where it was",
+	"an error appearing on the sign-in card leaves the card's top edge where it was",
 	{ tag: '@A1' },
 	async ({ page }) => {
 		await page.goto('/chat/login', { waitUntil: 'load' });
@@ -1331,7 +1463,7 @@ test(
 	}
 );
 
-// A sign-in code that no longer works (CUR-2793). Both ways a code dies (it expires after 600 s, or
+// A sign-in code that no longer works. Both ways a code dies (it expires after 600 s, or
 // three wrong tries lock it, and then even the right code is refused) end on copy that tells the
 // person to send a new one, and the code screen's "Send a new code" sends it to the same address. The
 // email step is driven by hand: signInWithEmailOtp marks A1 steps 5 and 6 itself.
@@ -1465,7 +1597,7 @@ test.describe('a sign-in code that no longer works', () => {
 	);
 
 	// The verify path allows 3 calls a minute per IP and a code dies after 3 wrong tries, so
-	// the 429 a fourth quick try gets always lands on a dead code (CUR-3048). The limiter counts in each
+	// the 429 a fourth quick try gets always lands on a dead code. The limiter counts in each
 	// instance's memory, so four real calls can split across instances and never trip it; this answers
 	// the verify call with Better Auth's own 429 (rate-limiter/index.mjs) instead.
 	test(

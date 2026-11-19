@@ -33,10 +33,10 @@ const WEB_SEARCH_GAP: StarterGap = {
 
 /** WEB_SEARCH_GAP for the first web-grounded answer, or undefined when that answer is written in a
  *  different language from the card. The card follows the browser's language (chromeCopy.ts), so an
- *  English browser asking in French would get an English recruitment line under a French answer (CUR-2377).
+ *  English browser asking in French would get an English recruitment line under a French answer.
  *  The answer's language is the routing heuristic's verdict on its text, counting its runners-up: the
  *  heuristic reads short French answers ("La capitale du Japon est Tokyo.") as Spanish with French
- *  second, so counting the runners-up keeps a French browser's card on most answers (CUR-2394). The
+ *  second, so counting the runners-up keeps a French browser's card on most answers. The
  *  cost is a French card under a Spanish answer in a French browser, which is still the reader's own language. An undecided
  *  verdict shows no card, since the card is an optional invitation and the answer is never wrong
  *  without it. */
@@ -60,7 +60,7 @@ export function webSearchGapFor(answer: string | undefined, uiLang: string | nul
 // (a content call), not a forced mis-aim.
 // Keyed by the EXACT starter-prompt text (see suggestions.ts). Honour the CURATION RULE above: only
 // an entry whose node ACTUALLY matches the ask. An entry keyed to a prompt that has left the pool
-// never shows its CTA, so rekey when the pool changes (CUR-620). The electric-cars fact-check earns
+// never shows its CTA, so rekey when the pool changes. The electric-cars fact-check earns
 // the same CTA on the same reasoning: it's a claim whose honest resolution is an open web search, the exact gap the
 // `websearch` node names ("a Google-scale open web index is still the honest gap"). The pool has no
 // EU-AI-Act-shaped entry here (see suggestions.ts): a recency question a model with no fresh

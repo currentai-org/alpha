@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { collections } from "$lib/chat/server/database";
 import { authCondition } from "$lib/chat/server/auth";
 import { z } from "zod";

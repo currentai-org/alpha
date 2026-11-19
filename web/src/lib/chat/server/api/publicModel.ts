@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-// The shape /chat/api/v2/models and the layout data publish for each model (CUR-2640). zod objects
+// The shape /chat/api/v2/models and the layout data publish for each model. zod objects
 // strip keys they don't name, so a field added to the registry, or anything the gateway catalog
 // returns per provider, stays server-side until someone adds it here. The registry declares
 // `providers` and `parameters` with `.passthrough()`, which is why those two are narrowed rather

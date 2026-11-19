@@ -1,20 +1,14 @@
 import { describe, it, expect, vi } from "vitest";
 
 // Same signed-in-only enforcement as ../account/page.server.spec.ts: the org calls this page makes all
-// need a real Better Auth session, so a signed-out visitor must never reach it (CUR-550).
-//
-// workspacesEnabled() defaults true here (matches "flag not yet created" behavior) so the tests below
-// exercise the signed-in-only gate unchanged; the flag-off case gets its own test below with the mock
-// flipped for that one call only (CUR-913).
-const workspacesEnabledMock = vi.fn(() => true);
+// need a real Better Auth session, so a signed-out visitor must never reach it.
 // workspaceOrgCreationEnabled() must actually reach page.data (see the load() comment). Defaults false,
 // matching that gate's own fail-closed fallback.
 const workspaceOrgCreationEnabledMock = vi.fn(() => false);
 vi.mock("$lib/chat/server/workspacesGate", () => ({
-	workspacesEnabled: () => workspacesEnabledMock(),
 	workspaceOrgCreationEnabled: () => workspaceOrgCreationEnabledMock(),
 }));
-// The former-workspace list comes from the same scope read the chat list uses. (CUR-3040)
+// The former-workspace list comes from the same scope read the chat list uses.
 const workspaceScopeForMock = vi.fn(async (): Promise<unknown> => null);
 vi.mock("$lib/chat/server/currentWorkspace", () => ({
 	workspaceScopeFor: () => workspaceScopeForMock(),
@@ -32,7 +26,7 @@ function fakeEvent(user: User) {
 	} as unknown as Parameters<typeof load>[0];
 }
 
-// The page now renders on the server, and that HTML carries the visitor's session. (CUR-1975)
+// The page now renders on the server, and that HTML carries the visitor's session.
 describe("workspace +page.server load — server-rendered, never shared-cached", () => {
 	it("marks a signed-in render private and uncacheable, since it carries that visitor's session", async () => {
 		setHeaders.mockReset();
@@ -78,18 +72,7 @@ describe("workspace +page.server load — signed-in-only, enforced server-side",
 		});
 	});
 
-	it("404s a signed-in visitor too when workspacesEnabled() is off (CUR-913)", async () => {
-		workspacesEnabledMock.mockReturnValueOnce(false);
-		let threw: { status?: number } = {};
-		try {
-			await load(fakeEvent({ id: "user-1" }));
-		} catch (e) {
-			threw = e as { status?: number };
-		}
-		expect(threw.status).toBe(404);
-	});
-
-	it("passes the former workspaces and the one being viewed through to page data (CUR-3040)", async () => {
+	it("passes the former workspaces and the one being viewed through to page data", async () => {
 		const gone = { id: "org-gone", name: "Food bank", kind: "deleted" };
 		workspaceScopeForMock.mockResolvedValueOnce({
 			current: null,

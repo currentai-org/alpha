@@ -1,6 +1,7 @@
 import { test, expect, chromium, type Page } from '@playwright/test';
 import { setupRecast, narrate, click, typeText } from 'playwright-recast/helpers';
 import { highlight, waitForNarration, openHome, clickIntoChat, TOUR_RECAST } from './show';
+import { tourEmail } from '../../scripts/lib/tourPersonas.mjs';
 import { signInWithEmailOtp } from '../scenarios/helpers/signIn';
 import {
 	accountButton,
@@ -8,10 +9,14 @@ import {
 	workspaceFlyout
 } from '../scenarios/helpers/accountMenu';
 import { setFlagOverrides } from '../scenarios/helpers/flagOverride';
+import { turnDone } from '../scenarios/helpers/turn';
 
 // The A8 walkthrough, short: docs/journeys/a8-workspaces.md's create and switch, walked as one
 // signed-in person. Sign-in is A1's tour, so it happens off camera in a browser of its own and the
-// take starts signed in, on the home page.
+// take starts signed in, on the home page. It also films Remove asking first and never offered on the
+// admin's own row, and the chat from a workspace she left sitting under "Former: <team>".
+// Last, a workspace deleted under her lands her in Personal rather than her other team
+// workspace, and Settings → Workspace says why.
 //
 // It is filmed for people. workspaces.spec.ts holds the assertions; the expects here are only the
 // ones a viewer would notice going wrong, so a broken take fails instead of rendering.
@@ -20,11 +25,13 @@ import { setFlagOverrides } from '../scenarios/helpers/flagOverride';
 setupRecast(test, TOUR_RECAST);
 
 const DATABASE_URL = process.env.SCENARIO_DATABASE_URL;
-const EMAIL = `priya.natarajan.${Math.random().toString(36).slice(2, 7)}@example.org`;
+const EMAIL = tourEmail('priya.natarajan');
 const WORKSPACE = `Lakeside Library ${Math.random().toString(36).slice(2, 5)}`;
 const RENAMED = `${WORKSPACE} Friends`;
-const INVITEE = `sam.okafor.${Math.random().toString(36).slice(2, 7)}@example.org`;
-const FLAGS = { workspaces: true, 'workspace-org-creation': true };
+const INVITEE = tourEmail('sam.okafor');
+const FLAGS = { 'workspace-org-creation': true };
+const OWN = `Priya's Projects ${Math.random().toString(36).slice(2, 5)}`;
+const CIRCLE = `Reading Circle ${Math.random().toString(36).slice(2, 5)}`;
 
 /** The id of the pending invitation for `email` in the admin's workspace named `name`. */
 async function pendingInvitationId(page: Page, name: string, email: string): Promise<string> {
@@ -58,6 +65,8 @@ test('A8: make a workspace for your group, and switch between it and your own', 
 	baseURL
 }) => {
 	expect(DATABASE_URL, 'SCENARIO_DATABASE_URL is needed to read the sign-in code').toBeTruthy();
+	// Two sign-ins off camera and one model turn on develop.
+	test.setTimeout(480_000);
 	await setFlagOverrides(context, baseURL!, FLAGS);
 
 	// Off camera: sign in by email code in a browser of its own, then hand its cookies to the take.
@@ -125,7 +134,7 @@ test('A8: make a workspace for your group, and switch between it and your own', 
 	await highlight(accountStatus);
 	await waitForNarration(page);
 
-	// The same switch from the rail, without opening Settings (CUR-3097).
+	// The same switch from the rail, without opening Settings.
 	await narrate('From any chat, the account menu switches too, without a trip to Settings.');
 	await page.goto('/chat', { waitUntil: 'load' });
 	await expect(page.getByLabel('Message AI Potluck')).toBeVisible({ timeout: 30_000 });
@@ -133,7 +142,7 @@ test('A8: make a workspace for your group, and switch between it and your own', 
 	const option = (name: string) => flyout.getByRole('menuitemradio', { name, exact: true });
 	await highlight(option(WORKSPACE));
 	await click(option('Personal workspace'));
-	// A switch that lands closes the menu, so the chat list it changed is in view (CUR-3174).
+	// A switch that lands closes the menu, so the chat list it changed is in view.
 	await expect(accountStatus).toHaveText('Personal workspace', { timeout: 15_000 });
 	await expect(flyout).toBeHidden({ timeout: 15_000 });
 	await waitForNarration(page);
@@ -150,7 +159,7 @@ test('A8: make a workspace for your group, and switch between it and your own', 
 	await highlight(accountStatus);
 	await waitForNarration(page);
 
-	// Sam joins so Priya can hand over admin, rename the group, then leave it (CUR-3106).
+	// Sam joins so Priya can hand over admin, rename the group, then leave it.
 	await narrate('Inviting her group happens on the settings page.');
 	await openWorkspaceSettings(page, { timeout: 30_000 });
 	await page.waitForURL(/\/chat\/settings\/workspace/, { timeout: 30_000 });
@@ -194,6 +203,26 @@ test('A8: make a workspace for your group, and switch between it and your own', 
 	await highlight(samAs('Admin'));
 	await waitForNarration(page);
 
+	// Remove asks first, and is never offered on the admin's own row. The take cancels, so
+	// Sam stays to take over the group below.
+	const removeButtons = page.getByRole('button', { name: /^Remove .+…$/ });
+	await expect(removeButtons, 'Remove is offered on Priya’s own row').toHaveCount(1);
+	await narrate(
+		'Removing someone asks first. Remove sits on Sam’s row only; an admin cannot remove herself here.'
+	);
+	await click(removeButtons.first());
+	const removeConfirm = page.getByTestId('workspace-remove-confirm');
+	await expect(removeConfirm).toContainText('They lose access to it straight away', {
+		timeout: 10_000
+	});
+	await highlight(removeConfirm);
+	await waitForNarration(page);
+	await narrate('Priya keeps Sam, so she cancels.');
+	await click(removeConfirm.getByRole('button', { name: 'Cancel', exact: true }));
+	await expect(removeConfirm).toBeHidden({ timeout: 10_000 });
+	await expect(samAs('Admin')).toBeVisible();
+	await waitForNarration(page);
+
 	await narrate('The group settled on a longer name. An admin can rename the workspace.');
 	await click(page.getByRole('button', { name: 'Rename…' }));
 	const renameInput = page.getByRole('textbox', { name: 'Workspace name' });
@@ -205,8 +234,25 @@ test('A8: make a workspace for your group, and switch between it and your own', 
 	await highlight(accountStatus);
 	await waitForNarration(page);
 
-	// Leave is offered only because Sam is an admin too (CUR-4020); a sole admin is told they can't.
-	// Priya has no chats in the workspace, so no Former workspaces section appears to point at.
+	// One chat in the workspace, so leaving it has something to keep under Former.
+	await narrate('Priya starts a chat for the group, in the group’s workspace.');
+	await page.goto('/chat', { waitUntil: 'load' });
+	const composer = page.getByLabel('Message AI Potluck');
+	await expect(composer).toBeVisible({ timeout: 30_000 });
+	await expect(accountStatus).toHaveText(RENAMED, { timeout: 15_000 });
+	await click(composer);
+	await typeText(composer, 'Write a two-line welcome for new library volunteers.');
+	await composer.press('Enter');
+	await page.waitForURL(/\/chat\/conversation\/[a-f0-9]+/, { timeout: 30_000 });
+	await expect(turnDone(page.locator('[data-message-role="assistant"]').last())).toBeVisible({
+		timeout: 120_000
+	});
+	await waitForNarration(page);
+	await openWorkspaceSettings(page, { timeout: 30_000 });
+	await page.waitForURL(/\/chat\/settings\/workspace/, { timeout: 30_000 });
+	await click(row(RENAMED));
+
+	// Leave is offered only because Sam is an admin too; a sole admin is told they can't.
 	await narrate(
 		'Later Priya hands the group to Sam and leaves. She can, because Sam is an admin too: the only admin is told they cannot.'
 	);
@@ -215,6 +261,84 @@ test('A8: make a workspace for your group, and switch between it and your own', 
 	await expect(accountStatus).toHaveText('Personal workspace', { timeout: 30_000 });
 	await expect(row(RENAMED)).toHaveCount(0, { timeout: 15_000 });
 	await highlight(page.getByRole('status').filter({ hasText: `You left ${RENAMED}` }));
+	await waitForNarration(page);
+
+	// Her chats from it sit together under "Former: <team>", not mixed into Personal.
+	await page.reload({ waitUntil: 'load' });
+	const former = page.getByRole('button', { name: `Former: ${RENAMED}` });
+	await expect(former, 'the chat from the workspace she left has no Former entry').toBeVisible({
+		timeout: 30_000
+	});
+	await narrate(
+		'Her chat from the group is not mixed into Personal. It sits under Former workspaces, readable, but not continued.'
+	);
+	await highlight(former);
+	await waitForNarration(page);
+
+	// A workspace deleted under her lands her in Personal, never in another team workspace she is in,
+	// and Settings → Workspace says why, through a reload. Off camera: Priya makes
+	// a workspace of her own, Sam makes a reading circle and invites her, and she works in the circle.
+	const origin = { origin: new URL(baseURL!).origin };
+	const slug = (name: string) => name.toLowerCase().replace(/\W+/g, '-');
+	const orgCall = async (on: Page, path: string, data: object) => {
+		const res = await on.request.post(`/chat/api/auth/organization/${path}`, {
+			data,
+			headers: origin
+		});
+		expect(res.status(), `${path} answered ${res.status()}: ${await res.text()}`).toBe(200);
+		return (await res.json()) as { id: string };
+	};
+	await orgCall(page, 'create', { name: OWN, slug: slug(OWN) });
+	const circleBrowser = await chromium.launch();
+	try {
+		const samContext = await circleBrowser.newContext({ baseURL });
+		await setFlagOverrides(samContext, baseURL!, FLAGS);
+		const samPage = await samContext.newPage();
+		await signInWithEmailOtp(samPage, DATABASE_URL!, INVITEE, { skipPendingLabelCheck: true });
+		const circle = await orgCall(samPage, 'create', { name: CIRCLE, slug: slug(CIRCLE) });
+		const invite = await orgCall(samPage, 'invite-member', {
+			organizationId: circle.id,
+			email: EMAIL,
+			role: 'member'
+		});
+		await orgCall(page, 'accept-invitation', { invitationId: invite.id });
+		await orgCall(page, 'set-active', { organizationId: circle.id });
+
+		await page.reload({ waitUntil: 'load' });
+		await expect(isCurrent(CIRCLE)).toBeVisible({ timeout: 30_000 });
+		await expect(row(OWN)).toBeVisible();
+		await narrate(
+			'Months on, Priya has a workspace of her own, and Sam has invited her to a reading circle. She is working in the circle.'
+		);
+		await highlight(isCurrent(CIRCLE));
+		await waitForNarration(page);
+
+		// Off camera: Sam, the circle's admin, deletes it.
+		await orgCall(samPage, 'delete', { organizationId: circle.id });
+	} finally {
+		await circleBrowser.close();
+	}
+
+	await narrate('Then Sam deletes the reading circle.');
+	await page.reload({ waitUntil: 'load' });
+	await expect(row(CIRCLE)).toHaveCount(0, { timeout: 30_000 });
+	await expect(
+		isCurrent('Personal workspace'),
+		'losing the current workspace did not land Priya in Personal'
+	).toBeVisible({ timeout: 30_000 });
+	await expect(
+		isCurrent(OWN),
+		'losing the current workspace moved Priya into her other team workspace'
+	).toHaveCount(0);
+	const why = list.getByRole('status');
+	await expect(why, 'nothing says why Priya is in Personal').toContainText('was deleted', {
+		timeout: 15_000
+	});
+	await expect(accountStatus).toHaveText('Personal workspace', { timeout: 15_000 });
+	await narrate(
+		'She lands in Personal, not in her other workspace, and Settings says why: the workspace she was in was deleted.'
+	);
+	await highlight(why);
 	await waitForNarration(page);
 
 	await narrate(

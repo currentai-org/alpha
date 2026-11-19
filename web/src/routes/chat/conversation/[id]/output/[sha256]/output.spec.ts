@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ObjectId } from "bson";
 
 // Downloading a chat's attachment reads the bucket copy. When Hugging Face throttles the storage token
-// past the read's one retry, the route says storage is busy instead of answering 500 (CUR-3680).
+// past the read's one retry, the route says storage is busy instead of answering 500.
 const download = vi.fn();
 vi.mock("$lib/chat/server/files/downloadFile", async (orig) => ({
 	...(await orig<typeof import("$lib/chat/server/files/downloadFile")>()),

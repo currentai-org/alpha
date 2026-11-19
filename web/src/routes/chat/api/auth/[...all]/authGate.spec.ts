@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// This route (CUR-434) is Better Auth's own catch-all — every sign-in/session/callback request for
-// Google, GitHub, HF, passkey, and email-OTP flows through it. Sign-in has no flag of its own any more
-// (CUR-1961); the one gate left here is the organization sub-path.
+// This route is Better Auth's own catch-all — every sign-in/session/callback request for
+// Google, GitHub, HF, passkey, and email-OTP flows through it. Sign-in has no flag of its own any more;
+// the one gate left here is the organization sub-path.
 const getAuthHandler = vi.fn();
 vi.mock("$lib/chat/server/betterAuth", () => ({
 	getAuth: () => "auth-instance-marker",
@@ -10,16 +10,16 @@ vi.mock("$lib/chat/server/betterAuth", () => ({
 vi.mock("better-auth/svelte-kit", () => ({
 	toSvelteKitHandler: () => getAuthHandler,
 }));
-// This route's org gate. Split to workspaceOrgCreationEnabled (CUR-957): this route is entirely about creating an
+// This route's org gate. Split to workspaceOrgCreationEnabled: this route is entirely about creating an
 // additional workspace / inviting members, never just seeing your own, so it stays gated on the
-// org-creation flag specifically, not the broader workspacesEnabled. (CUR-913/CUR-957)
+// org-creation flag specifically.
 const workspaceOrgCreationEnabledMock = vi.fn(() => true);
 vi.mock("$lib/chat/server/workspacesGate", () => ({
 	workspaceOrgCreationEnabled: () => workspaceOrgCreationEnabledMock(),
 }));
 
 // An instance that has not polled PostHog reads every flag as its OFF fallback, so the route must poll
-// before the org gate (CUR-1959).
+// before the org gate.
 const ensureFlagsPolledMock = vi.fn(async () => {});
 vi.mock("$lib/chat/server/flags", () => ({ ensureFlagsPolled: () => ensureFlagsPolledMock() }));
 
@@ -31,7 +31,7 @@ function fakeEvent(pathname = "/chat/api/auth/callback/google") {
 }
 const event = fakeEvent();
 
-describe("Better Auth catch-all route — sign-in reaches Better Auth with no flag in the way (CUR-1961)", () => {
+describe("Better Auth catch-all route — sign-in reaches Better Auth with no flag in the way", () => {
 	beforeEach(() => {
 		getAuthHandler.mockReset();
 		workspaceOrgCreationEnabledMock.mockReset().mockReturnValue(true);
@@ -56,7 +56,7 @@ describe("Better Auth catch-all route — sign-in reaches Better Auth with no fl
 	});
 });
 
-describe("Better Auth catch-all route — organization sub-path gate (CUR-913, CUR-957)", () => {
+describe("Better Auth catch-all route — organization sub-path gate", () => {
 	beforeEach(() => {
 		getAuthHandler.mockReset();
 		workspaceOrgCreationEnabledMock.mockReset();

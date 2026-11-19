@@ -10,21 +10,33 @@ vi.mock("$lib/chat/server/generateFromDefaultEndpoint", () => ({
 	generateFromDefaultEndpoint: vi.fn(),
 }));
 
-// The guard pins to SECOND_OPINION_MODEL only when models.ts registered it, so both the
-// config value and the registered list are test inputs here. (CUR-1439)
+// The guard pins to ENTITY_SCOPE_MODEL only when models.ts registered it, so both the
+// config value and the registered list are test inputs here.
 const pin = vi.hoisted(() => ({
 	config: {} as Record<string, string>,
 	models: [] as { id: string }[],
+	logError: (() => {}) as (...args: unknown[]) => void,
 }));
 vi.mock("$lib/chat/server/config", () => ({ config: pin.config }));
 vi.mock("$lib/chat/server/models", () => ({ models: pin.models }));
+vi.mock("$lib/chat/server/logger", () => ({
+	logger: {
+		error: (...args: unknown[]) => pin.logError(...args),
+		warn: () => {},
+		info: () => {},
+		debug: () => {},
+	},
+}));
 
-const GLM = "zai-org/GLM-5.2-FP8";
+const QWEN = "Qwen/Qwen3.6-35B-A3B";
+const GLM = "zai-org/GLM-5.2";
 
 beforeEach(() => {
 	vi.resetAllMocks();
+	delete pin.config.ENTITY_SCOPE_MODEL;
 	delete pin.config.SECOND_OPINION_MODEL;
 	pin.models.length = 0;
+	pin.logError = () => {};
 });
 
 import { generateFromDefaultEndpoint } from "$lib/chat/server/generateFromDefaultEndpoint";
@@ -119,7 +131,7 @@ describe("classifyEntityMatch", () => {
 	// which reads locals?.billingOrganization to bill the HF Inference-Providers call to the org
 	// instead of the personal-user scope. A locals of undefined
 	// resolves on the personal scope and 403s — the same mechanism classifySearchNeed already
-	// threads locals through for (searchDecision.ts). This asserts the plumbing, not the HTTP call. (CUR-1120)
+	// threads locals through for (searchDecision.ts). This asserts the plumbing, not the HTTP call.
 	it("forwards the real per-request locals to generateFromDefaultEndpoint, not undefined", async () => {
 		mockReply("yes");
 		const locals = { billingOrganization: "current-ai-official" } as App.Locals;
@@ -128,31 +140,69 @@ describe("classifyEntityMatch", () => {
 			expect.objectContaining({ locals })
 		);
 	});
-});
 
-describe("classifyEntityMatch model pin (CUR-1439)", () => {
-	const hit = { title: "AI Potluck", snippet: "AI Potluck is a market map." };
-
-	it("calls the registered second-opinion model with thinking disabled and the provider pin lifted", async () => {
-		pin.config.SECOND_OPINION_MODEL = GLM;
-		pin.models.push({ id: GLM });
-		mockReply("no");
-		await classifyEntityMatch("What is OpenAI working on right now?", hit, undefined);
+	// The gateway caches identical requests: without the opt-out the guard's samples of one hit return
+	// one cached answer, and the majority vote is a single check counted CLASSIFY_SAMPLES times.
+	it("asks the endpoint to skip the gateway cache, so each sample of a hit reaches the model", async () => {
+		mockReply("yes");
+		await classifyEntityMatch("What is AI Potluck?", hit, undefined);
 		expect(generateFromDefaultEndpoint).toHaveBeenCalledWith(
-			expect.objectContaining({ modelId: GLM, disableThinking: true, provider: "auto" })
+			expect.objectContaining({ skipGatewayCache: true })
 		);
 	});
 
-	it("falls back to the default endpoint, with no thinking field, when the model id is set but unregistered", async () => {
-		// models.ts registers the lane only when base URL and key are both set, so an id alone must
-		// not route: generateFromDefaultEndpoint would silently swap in the task model anyway, and
-		// the task model's lane may reject GLM's `thinking` field.
+	// A model asked loosely can read "Who runs Current AI?" against the AI Potluck passage as "does
+	// this passage answer it?" and say no, dropping the only about-us hit. The request has to tell the
+	// model to judge the passage's subject only. This pins what is sent; whether the model
+	// follows it is the live collision probe's job (pnpm eval:rag-collision).
+	it("asks the model which entity the passage is about, never whether it answers the question", async () => {
+		mockReply("yes");
+		await classifyEntityMatch("Who runs Current AI?", hit, undefined);
+		const args = vi.mocked(generateFromDefaultEndpoint).mock.calls[0][0];
+		expect(args.preprompt).toMatch(/never whether it answers the question/i);
+		expect(args.preprompt).toMatch(/even when it lacks the specific fact/i);
+	});
+});
+
+describe("classifyEntityMatch model pin", () => {
+	const hit = { title: "AI Potluck", snippet: "AI Potluck is a market map." };
+
+	it("pins to ENTITY_SCOPE_MODEL, not SECOND_OPINION_MODEL, with thinking disabled and the provider pin lifted", async () => {
+		pin.config.ENTITY_SCOPE_MODEL = QWEN;
 		pin.config.SECOND_OPINION_MODEL = GLM;
+		pin.models.push({ id: QWEN }, { id: GLM });
 		mockReply("no");
 		await classifyEntityMatch("What is OpenAI working on right now?", hit, undefined);
-		const args = vi.mocked(generateFromDefaultEndpoint).mock.calls[0][0];
+		expect(generateFromDefaultEndpoint).toHaveBeenCalledWith(
+			expect.objectContaining({ modelId: QWEN, disableThinking: true, provider: "auto" })
+		);
+	});
+
+	it("falls back to the default endpoint, with no thinking field and a logged error, when ENTITY_SCOPE_MODEL is set but unregistered", async () => {
+		// models.ts registers the lane only when base URL and key are both set, so an id alone must
+		// not route: generateFromDefaultEndpoint would silently swap in the task model anyway, and
+		// the task model's lane may reject a reasoning field. A registered SECOND_OPINION_MODEL is no
+		// stand-in: the guard was measured on its own role's model.
+		vi.resetModules();
+		const fresh = await import("./entityScopeGuard");
+		const gen = (await import("$lib/chat/server/generateFromDefaultEndpoint"))
+			.generateFromDefaultEndpoint;
+		const errors: unknown[][] = [];
+		pin.logError = (...args) => errors.push(args);
+		pin.config.ENTITY_SCOPE_MODEL = QWEN;
+		pin.config.SECOND_OPINION_MODEL = GLM;
+		pin.models.push({ id: GLM });
+		vi.mocked(gen).mockReturnValueOnce(immediateReturn("no"));
+		await fresh.classifyEntityMatch("What is OpenAI working on right now?", hit, undefined);
+		const args = vi.mocked(gen).mock.calls[0][0];
 		expect(args.modelId).toBeUndefined();
 		expect(args.disableThinking).toBeUndefined();
+		expect(errors).toEqual([
+			[
+				{ entityScopeModelSet: true },
+				expect.stringContaining("ENTITY_SCOPE_MODEL unregistered"),
+			],
+		]);
 	});
 
 	it("drops the hit when a closed think block precedes a no — leaked reasoning is not unparseable", async () => {
@@ -177,7 +227,7 @@ describe("filterByEntityScope", () => {
 		await expect(filterByEntityScope("q", [], undefined)).resolves.toEqual([]);
 	});
 
-	it("drops the collider, keeps the control — the CUR-43 shape, unanimous across samples", async () => {
+	it("drops the collider, keeps the control — the shape, unanimous across samples", async () => {
 		const control = { title: "AI Potluck", snippet: "AI Potluck is a market map." };
 		const collider = { title: "safety screen (Safety)", snippet: "Our safety category." };
 		mockReply("yes"); // control, sample 1
@@ -208,8 +258,8 @@ describe("filterByEntityScope", () => {
 	// "Who runs Current AI?" retrieves the one passage that actually names Current AI at a
 	// cosine rank nowhere near the top-K cutoff, so a single noisy classifier sample answering "no" on
 	// that passage would zero out the only relevant hit. Dropping a hit needs a majority of
-	// independent samples to agree, not one roll. (CUR-600)
-	it("keeps the hit when only a minority of samples say no — a single flaky verdict can't drop the only relevant hit (CUR-600)", async () => {
+	// independent samples to agree, not one roll.
+	it("keeps the hit when only a minority of samples say no — a single flaky verdict can't drop the only relevant hit", async () => {
 		const control = { title: "AI Potluck", snippet: "AI Potluck is a market map." };
 		mockReply("no"); // sample 1 — the flake
 		mockReply("yes"); // sample 2
@@ -219,7 +269,7 @@ describe("filterByEntityScope", () => {
 		).resolves.toEqual([control]);
 	});
 
-	it("still drops the hit when a majority of samples say no — CUR-43's collider protection holds under sampling", async () => {
+	it("still drops the hit when a majority of samples say no — the collider protection holds under sampling", async () => {
 		const collider = { title: "safety screen (Safety)", snippet: "Our safety category." };
 		mockReply("no");
 		mockReply("no");

@@ -5,12 +5,13 @@
  *
  * The contracts: a link opened from outside the browser pairs on load; any other arrival pairs only on
  * a confirm click; one link provisions one device; the poll hands out the install flags once; and the
- * manual Pair button keeps working beside it. (CUR-4110)
+ * manual Pair button keeps working beside it.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import superjson from "superjson";
 import { createTestLocals, createTestUser, cleanupTestData } from "./testHelpers";
-import { listLocalEndpointsForUserId } from "$lib/chat/server/db/localInferenceEndpoints";
+import { createLocalEndpoint, deleteLocalEndpoint, listLocalEndpointsForUserId } from "$lib/chat/server/db/localInferenceEndpoints";
+import { MAX_MANAGED_ENDPOINTS_PER_ACCOUNT } from "$lib/chat/server/localEndpointLimits";
 import { labelFromLink } from "$lib/chat/server/managedInference/pairingLink";
 
 import { load, actions } from "../../../../../routes/chat/local-inference/pair/+page.server";
@@ -83,6 +84,8 @@ vi.mock("$lib/chat/server/managedInference/pangolinClient", () => ({
 }));
 
 const PAIRING_ID = "cli-generated-pairing-id-0123456789abcdef";
+/** A second link, for the retry after a limit refusal. */
+const RETRY_PAIRING_ID = "cli-generated-pairing-id-fedcba9876543210";
 
 function pairUrl(id = PAIRING_ID, name: string | null = "Workstation"): URL {
 	const url = new URL("http://localhost/chat/local-inference/pair");
@@ -125,7 +128,7 @@ async function signedIn() {
 	return { locals, userId: user._id.toString() };
 }
 
-describe("CLI pairing link — CUR-4110", () => {
+describe("CLI pairing link", () => {
 	beforeEach(async () => {
 		gates.local = true;
 		gates.managedFlag = true;
@@ -226,6 +229,38 @@ describe("CLI pairing link — CUR-4110", () => {
 			expect(await visit(locals)).toEqual({ state: "paired", label: "Workstation" });
 		});
 
+		it("at the managed-server limit, says so instead of failing, and the same link pairs once a server is removed", async () => {
+			const { locals, userId } = await signedIn();
+			// Seed the account one short of the cap: pairing that many devices through the page would
+			// spend the settings routes' shared hourly create limiter, which this card leaves alone.
+			for (let i = 0; i < MAX_MANAGED_ENDPOINTS_PER_ACCOUNT - 1; i++) {
+				await createLocalEndpoint({
+					userId,
+					label: `Seeded ${i}`,
+					baseUrl: `https://seeded-${i}.example.org/v1`,
+					kind: "managed",
+					managedConfig: { provider: "pangolin", siteId: i, niceId: `newt-${i}`, resourceId: String(i) },
+				});
+			}
+
+			// The last server the account may hold pairs normally.
+			expect(await visit(locals)).toEqual({ state: "paired", label: "Workstation" });
+			expect(await listLocalEndpointsForUserId(userId)).toHaveLength(MAX_MANAGED_ENDPOINTS_PER_ACCOUNT);
+
+			// One more is refused as the cap, not as a fault, and provisions nothing.
+			expect(await visit(locals, { url: pairUrl(RETRY_PAIRING_ID) })).toEqual({
+				state: "limit",
+				max: MAX_MANAGED_ENDPOINTS_PER_ACCOUNT,
+			});
+			const rows = await listLocalEndpointsForUserId(userId);
+			expect(rows).toHaveLength(MAX_MANAGED_ENDPOINTS_PER_ACCOUNT);
+
+			// Removing one in settings frees the same link: it was released, not consumed.
+			expect(await deleteLocalEndpoint(userId, rows[0].id)).toBe(true);
+			expect(await visit(locals, { url: pairUrl(RETRY_PAIRING_ID) })).toEqual({ state: "paired", label: "Workstation" });
+			expect(await listLocalEndpointsForUserId(userId)).toHaveLength(MAX_MANAGED_ENDPOINTS_PER_ACCOUNT);
+		});
+
 		it("reports pairing unavailable when Pangolin isn't configured, instead of failing mid-provision", async () => {
 			const { locals, userId } = await signedIn();
 			gates.pangolinConfigured = false;
@@ -293,6 +328,7 @@ describe("CLI pairing link — CUR-4110", () => {
 			const res = await pairManually({
 				locals,
 				request: new Request("http://localhost/x", { method: "POST", body: JSON.stringify({ label: "Desk" }) }),
+				getClientAddress: () => "127.0.0.1",
 			} as never);
 			expect(res.status).toBe(201);
 			const body = superjson.parse<{ id: string; label: string; installArgs: Record<string, string> }>(await res.text());

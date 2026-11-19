@@ -13,15 +13,15 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // out was answered by Mistral Medium as plain chat, and the agent never ran.
 //
 // `math-routing` is forced on, and the chat starts on a model without tools, whose plan always carries
-// the planner (CUR-4015), so the planner is in play on this preview whatever its rollout; the override
+// the planner, so the planner is in play on this preview whatever its rollout; the override
 // cookie pins `agent-mode`, already 100% on preview.
 // Reachable by a minted `@example.org` account because `agent-mode-access` grants that domain on
-// preview (CUR-1611).
+// preview.
 //
-// `@real-agent` (SOL-212): the answer must be the real product, which only a real agent computes, so
+// `@real-agent`: the answer must be the real product, which only a real agent computes, so
 // this is the suite's one live agent smoke. It runs on develop's push run and is left out of PR runs.
 test(
-	'with Agent on, a question with a number to work out runs the agent rather than the math planner (CUR-3884)',
+	'with Agent on, a question with a number to work out runs the agent rather than the math planner',
 	{ tag: ['@preview-only', '@A7', '@CUR-3884', '@real-agent'] },
 	async ({ page, context, baseURL }) => {
 		// An agent turn runs a sandbox and several model rounds, as agent-file-download.spec.ts measures.

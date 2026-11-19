@@ -1,8 +1,8 @@
-// A refusal reads in the language the person wrote in (CUR-4051). rules.json holds the reviewed English
+// A refusal reads in the language the person wrote in. rules.json holds the reviewed English
 // copy; this file holds its translations, keyed by that English text, so an English edit in rules.json
 // orphans its translations and the notice falls back to English until they are redone (declineCopy.spec.ts
-// goes red on the orphan). The crisis-support copy is not translated here: it carries helpline advice that
-// wants a native speaker's review before any visitor reads it.
+// goes red on the orphan). The crisis-support copy is translated too: its translations are
+// agent-written and await a native speaker's review of the helpline advice, tracked on that ticket.
 import { heuristicClassify } from "$lib/chat/routing/heuristic";
 import { loadDetectors, refineLanguage } from "$lib/chat/routing/localClassifier";
 import { parentLanguage } from "$lib/chat/routing/languages";
@@ -44,6 +44,29 @@ const MESSAGES: Record<string, Translations> = {
 			ca: "Aquest xatbot no pot ajudar amb sol·licituds que impliquin trobar, compartir o exposar informació personal o privada d'algú.",
 			ta: "ஒருவரின் தனிப்பட்ட அல்லது அந்தரங்கத் தகவல்களைக் கண்டறிதல், பகிர்தல் அல்லது வெளிப்படுத்துதல் தொடர்பான கோரிக்கைகளுக்கு இந்த சாட்பாட்டால் உதவ முடியாது.",
 		},
+	"I'm glad our conversations feel useful. I'm an AI, though, so I can't be a partner, a friend or a therapist the way a person can. If you're feeling lonely, talking with someone you trust can really help. I'm still happy to help with whatever's on your mind.":
+		{
+			es: "Me alegra que nuestras conversaciones te resulten útiles. Pero soy una IA, así que no puedo ser tu pareja, tu amigo ni tu terapeuta como lo sería una persona. Si te sientes solo o sola, hablar con alguien de confianza puede ayudarte mucho. Sigo aquí para ayudarte con lo que tengas en mente.",
+			fr: "Ça me fait plaisir que nos conversations te soient utiles. Mais je suis une IA : je ne peux pas être un partenaire, un ami ou un thérapeute comme le serait une personne. Si tu te sens seul ou seule, parler à quelqu'un en qui tu as confiance peut vraiment aider. Je reste là pour t'aider avec ce qui te préoccupe.",
+			pt: "Fico feliz que nossas conversas sejam úteis para você. Mas eu sou uma IA, então não posso ser seu parceiro, amigo ou terapeuta como uma pessoa seria. Se você estiver se sentindo sozinho ou sozinha, conversar com alguém de confiança pode ajudar muito. Continuo aqui para ajudar com o que você tiver em mente.",
+			de: "Schön, dass dir unsere Gespräche nützen. Ich bin aber eine KI und kann kein Partner, kein Freund und kein Therapeut sein, so wie es ein Mensch kann. Wenn du dich einsam fühlst, kann ein Gespräch mit jemandem, dem du vertraust, wirklich helfen. Ich helfe dir weiterhin gern bei allem, was dich beschäftigt.",
+			it: "Mi fa piacere che le nostre conversazioni ti siano utili. Però sono un'IA, quindi non posso essere un partner, un amico o un terapeuta come lo sarebbe una persona. Se ti senti solo o sola, parlare con qualcuno di cui ti fidi può aiutare davvero. Sono ancora qui per aiutarti con qualsiasi cosa tu abbia in mente.",
+			ca: "M'alegra que les nostres converses et siguin útils. Però sóc una IA, així que no puc ser la teva parella, un amic ni un terapeuta com ho seria una persona. Si et sents sol o sola, parlar amb algú de confiança et pot ajudar molt. Continuo aquí per ajudar-te amb el que tinguis al cap.",
+			ta: "நமது உரையாடல்கள் உங்களுக்குப் பயனுள்ளதாக இருப்பதில் மகிழ்ச்சி. ஆனால் நான் ஒரு AI, அதனால் ஒரு மனிதரைப் போல உங்கள் துணையாகவோ, நண்பராகவோ, சிகிச்சையாளராகவோ இருக்க முடியாது. நீங்கள் தனிமையாக உணர்ந்தால், நீங்கள் நம்பும் ஒருவரிடம் பேசுவது மிகவும் உதவும். உங்கள் மனதில் உள்ள எதற்கும் உதவ நான் இன்னும் இங்கே இருக்கிறேன்.",
+		},
+	// The crisis-support message every self-harm rule shares. The translations are agent-written
+	// and await a native speaker's review per language, tracked on that ticket. Each keeps the
+	// findahelpline link, 112 and 988.
+	"You might be going through something painful right now, and you don't have to face it alone. Trained people can help, free and confidentially: [findahelpline.com](https://findahelpline.com) lists crisis lines in your country. In Europe, call 112 from any EU country; in the US, call or text 988. If you're in immediate danger, call your local emergency number. Reaching out to someone you trust can help too.":
+		{
+			es: "Puede que estés pasando por algo doloroso en este momento, y no tienes que afrontarlo a solas. Hay personas formadas que pueden ayudarte, de forma gratuita y confidencial: [findahelpline.com](https://findahelpline.com) reúne las líneas de crisis de tu país. En Europa, llama al 112 desde cualquier país de la UE; en Estados Unidos, llama o envía un mensaje de texto al 988. Si estás en peligro inmediato, llama al número de emergencias local. Hablar con alguien de confianza también puede ayudar.",
+			fr: "Tu traverses peut-être quelque chose de douloureux en ce moment, et tu n'as pas à affronter ça sans soutien. Des personnes formées peuvent t'aider, gratuitement et en toute confidentialité : [findahelpline.com](https://findahelpline.com) recense les lignes d'écoute de ton pays. En Europe, appelle le 112 depuis n'importe quel pays de l'UE ; aux États-Unis, appelle le 988 ou envoie-lui un SMS. Si tu es en danger immédiat, appelle le numéro d'urgence local. En parler à une personne de confiance peut aussi aider.",
+			pt: "Talvez você esteja passando por algo doloroso agora, e não precisa enfrentar isso sem apoio. Pessoas preparadas podem ajudar, de graça e com sigilo: [findahelpline.com](https://findahelpline.com) lista as linhas de apoio em crise do seu país. Na Europa, ligue para o 112 de qualquer país da UE; nos EUA, ligue ou envie uma mensagem de texto para o 988. Se você estiver em perigo imediato, ligue para o número de emergência local. Conversar com alguém de confiança também pode ajudar.",
+			de: "Vielleicht machst du gerade etwas Schmerzhaftes durch, und du musst das nicht allein durchstehen. Geschulte Menschen können dir helfen, kostenlos und vertraulich: [findahelpline.com](https://findahelpline.com) listet die Krisentelefone in deinem Land auf. In Europa wähl aus jedem EU-Land die 112; in den USA ruf die 988 an oder schreib eine SMS an die 988. Wenn du in unmittelbarer Gefahr bist, ruf die örtliche Notrufnummer an. Mit jemandem zu sprechen, dem du vertraust, kann auch helfen.",
+			it: "Forse stai attraversando un momento doloroso, e non devi affrontarlo in solitudine. Ci sono persone preparate che possono aiutarti, gratuitamente e in modo riservato: [findahelpline.com](https://findahelpline.com) elenca le linee di ascolto del tuo paese. In Europa chiama il 112 da qualsiasi paese dell'UE; negli Stati Uniti chiama o invia un SMS al 988. Se sei in pericolo immediato, chiama il numero di emergenza locale. Parlarne con qualcuno di cui ti fidi può aiutare.",
+			ca: "Potser estàs passant per alguna cosa dolorosa ara mateix, i no ho has d'afrontar a soles. Hi ha persones formades que et poden ajudar, de manera gratuïta i confidencial: [findahelpline.com](https://findahelpline.com) recull les línies d'ajuda en crisi del teu país. A Europa, truca al 112 des de qualsevol país de la UE; als Estats Units, truca o envia un missatge de text al 988. Si estàs en perill immediat, truca al número d'emergències local. Parlar amb algú de confiança també et pot ajudar.",
+			ta: "நீங்கள் இப்போது வலிமிகுந்த ஒன்றைக் கடந்து கொண்டிருக்கலாம்; இதை நீங்கள் தனியாக எதிர்கொள்ள வேண்டியதில்லை. பயிற்சி பெற்றவர்கள் இலவசமாகவும் ரகசியமாகவும் உதவ முடியும்: [findahelpline.com](https://findahelpline.com) உங்கள் நாட்டிலுள்ள நெருக்கடி உதவி எண்களைப் பட்டியலிடுகிறது. ஐரோப்பாவில், எந்த ஐரோப்பிய ஒன்றிய நாட்டிலிருந்தும் 112 ஐ அழைக்கவும்; அமெரிக்காவில், 988 ஐ அழைக்கவும் அல்லது குறுஞ்செய்தி அனுப்பவும். நீங்கள் உடனடி ஆபத்தில் இருந்தால், உங்கள் உள்ளூர் அவசர எண்ணை அழைக்கவும். நீங்கள் நம்பும் ஒருவரிடம் பேசுவதும் உதவக்கூடும்.",
+		},
 };
 
 /** rules.json `label` (English, exact) → its translations, for the "who set this limit" line. */
@@ -56,6 +79,8 @@ const LABELS: Record<string, Translations> = {
 	Privacy: { es: "Privacidad", fr: "Vie privée", pt: "Privacidade", de: "Privatsphäre", it: "Privacy", ca: "Privacitat", ta: "தனியுரிமை" },
 	"Illegal activity": { es: "Actividad ilegal", fr: "Activité illégale", pt: "Atividade ilegal", de: "Illegale Aktivitäten", it: "Attività illegali", ca: "Activitat il·legal", ta: "சட்டவிரோத செயல்பாடு" },
 	"Child safety": { es: "Seguridad infantil", fr: "Protection de l'enfance", pt: "Segurança infantil", de: "Kinderschutz", it: "Tutela dei minori", ca: "Seguretat infantil", ta: "குழந்தைப் பாதுகாப்பு" },
+	// ruleLabel.ts MULTIPLE_RULES_LABEL: more than one rule blocked the turn.
+	"Multiple Safety Rules": { es: "Varias reglas de seguridad", fr: "Plusieurs règles de sécurité", pt: "Várias regras de segurança", de: "Mehrere Sicherheitsregeln", it: "Più regole di sicurezza", ca: "Diverses normes de seguretat", ta: "பல பாதுகாப்பு விதிகள்" },
 };
 
 const ATTRIBUTION: Record<DeclineLanguage, (label: string) => string> = {
@@ -77,6 +102,11 @@ export function declineNotice(message: string, label: string, lang: DeclineLangu
 		return `${translated.message}\n\n${ATTRIBUTION[lang](translated.label)}`;
 	}
 	return `${message}\n\n${ATTRIBUTION.en(label)}`;
+}
+
+/** A rule's message alone, with no "who set this limit" line, in `lang` when it has a translation. */
+export function declineMessage(message: string, lang: DeclineLanguage = "en"): string {
+	return (lang === "en" ? undefined : MESSAGES[message]?.[lang]) ?? message;
 }
 
 /** Whether `message` and `label` have a translation in `lang` (the coverage spec's check).
@@ -108,4 +138,42 @@ export function declineLanguageFromTag(tag: string | undefined): DeclineLanguage
 /** The decline language for what the person wrote, for a caller that has no tag read already. */
 export async function declineLanguageOf(text: string): Promise<DeclineLanguage> {
 	return declineLanguageFromTag(await readMessageLanguage(text));
+}
+
+/** How long a declined turn's second language read may take before its line logs without it. */
+const DECLINE_SIGNAL_CAP_MS = 1000;
+
+/**
+ * Log `[turn] decline-language` for a declined turn: the locale its notice was picked in beside the
+ * language the multilingual reader named for the same message. A French message whose notice is
+ * `ca` or `es` is the misread the `decline-notice-language` verify query counts. The caller does not await
+ * this, so a slow read never holds the turn: hand it to `runInBackground`. The read waits at most `capMs`,
+ * then the line logs with `declineSignalLanguage: null`.
+ */
+export async function logDeclineLanguage(opts: {
+	logger: { info: (o: object, m: string) => void };
+	conversationId: string;
+	noticeLanguage: Promise<DeclineLanguage>;
+	signal: Promise<{ lang: string } | null>;
+	capMs?: number;
+}): Promise<void> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	try {
+		const signal = await Promise.race([
+			opts.signal.catch(() => null),
+			new Promise<null>((resolve) => {
+				timer = setTimeout(() => resolve(null), opts.capMs ?? DECLINE_SIGNAL_CAP_MS);
+			}),
+		]);
+		opts.logger.info(
+			{
+				conversationId: opts.conversationId,
+				declineLanguage: await opts.noticeLanguage.catch(() => "en" as const),
+				declineSignalLanguage: signal?.lang || null,
+			},
+			"[turn] decline-language"
+		);
+	} finally {
+		clearTimeout(timer);
+	}
 }

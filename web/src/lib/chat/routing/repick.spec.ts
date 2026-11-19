@@ -12,7 +12,7 @@ const silentAutoTurn: FailedTurn = {
 	contentSeen: false,
 };
 
-describe('shouldRepick (CUR-4384)', () => {
+describe('shouldRepick', () => {
 	it('picks again when the model Auto chose refused with a 429 or stayed silent before any text', () => {
 		expect(shouldRepick(silentAutoTurn)).toBe(true);
 		expect(shouldRepick({ ...silentAutoTurn, statusCode: 429, modelSilent: false })).toBe(true);
@@ -30,13 +30,13 @@ describe('shouldRepick (CUR-4384)', () => {
 		expect(shouldRepick({ ...silentAutoTurn, autoRoute: { ...autoRoute, repickedFrom: 'mistral-large' } })).toBe(false);
 	});
 
-	it('a 404 before any answer text re-picks once (CUR-4629: the router had no working entry for Large 4)', () => {
+	it('a 404 before any answer text re-picks once ( the router had no working entry for Large 4)', () => {
 		const notFound = { ...silentAutoTurn, statusCode: 404, modelSilent: false };
 		expect(shouldRepick(notFound)).toBe(true);
 		expect(shouldRepick({ ...notFound, autoRoute: { ...autoRoute, repickedFrom: 'mistral-large-2610' } })).toBe(false);
 	});
 
-	it('a 5xx before any answer text re-picks, the same as a 429 (CUR-4629)', () => {
+	it('a 5xx before any answer text re-picks, the same as a 429', () => {
 		for (const statusCode of [500, 502, 503]) {
 			expect(shouldRepick({ ...silentAutoTurn, statusCode, modelSilent: false }), String(statusCode)).toBe(true);
 		}
@@ -59,7 +59,7 @@ describe('shouldRepick (CUR-4384)', () => {
 	});
 });
 
-describe('modelAnsweredNobody (CUR-4629)', () => {
+describe('modelAnsweredNobody', () => {
 	it("counts a 429, a 404, a 5xx and a silent model as the model answering nobody, and our request's 4xx as not", () => {
 		expect(modelAnsweredNobody(429, false)).toBe(true);
 		expect(modelAnsweredNobody(404, false)).toBe(true);
@@ -72,7 +72,7 @@ describe('modelAnsweredNobody (CUR-4629)', () => {
 	});
 });
 
-describe('repickedNote (CUR-4384)', () => {
+describe('repickedNote', () => {
 	const next = { model: 'mistral-medium', reasons: ['Basque', 'Medium task'], explanation: 'Mistral Medium suits this.' };
 
 	it("names the model that didn't answer and the one Auto asked instead, ahead of Auto's own reason", () => {
@@ -87,7 +87,7 @@ describe('repickedNote (CUR-4384)', () => {
 	});
 });
 
-describe('slowToStartLine (CUR-4384)', () => {
+describe('slowToStartLine', () => {
 	const wait = { answerId: 'a1', model: 'alia-40b', waitMs: 40_000 };
 
 	it('says the model Auto is waiting on is slow to start once half its wait has passed, and that Auto will ask another', () => {
@@ -104,12 +104,12 @@ describe('slowToStartLine (CUR-4384)', () => {
 		expect(slowToStartLine({ wait: null, answerId: 'a1', elapsedMs: 30_000, started: false })).toBeUndefined();
 	});
 
-	it("never promises a re-pick once the model has started, such as a search round it asked for (CUR-4629)", () => {
+	it("never promises a re-pick once the model has started, such as a search round it asked for", () => {
 		expect(slowToStartLine({ wait, answerId: 'a1', elapsedMs: 39_000, started: true })).toBeUndefined();
 	});
 });
 
-describe('failureMarksModelBusy (CUR-4661)', () => {
+describe('failureMarksModelBusy', () => {
 	it('an agent turn the watchdog ended (an approval nobody answered) never marks the chosen model unavailable', () => {
 		expect(failureMarksModelBusy({ statusCode: 504, modelSilent: false, route: 'agent' })).toBe(false);
 		expect(failureMarksModelBusy({ statusCode: 429, modelSilent: true, route: 'agent' })).toBe(false);

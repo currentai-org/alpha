@@ -117,7 +117,7 @@ function fakeDeps(initial: RagDocumentListItem[], page: { title: string; text: s
 			row.version += 1;
 			return row as never;
 		}),
-		origin: () => "https://develop.aipotluck.org",
+		origin: () => "https://develop.example.test",
 	};
 	return { deps, rows };
 }
@@ -139,7 +139,7 @@ describe("syncPolicyPage", () => {
 		expect(result).toMatchObject({ outcome: "replaced", documentId: "new", retired: ["legacy"] });
 		expect(rows.find((r) => r.id === "new")).toMatchObject({
 			status: "active",
-			url: "https://develop.aipotluck.org/trust-and-safety",
+			url: "https://develop.example.test/trust-and-safety",
 			source: sourceFor("/trust-and-safety", PAGE_TEXT),
 		});
 		expect(rows.find((r) => r.id === "legacy")).toMatchObject({ status: "retired", title: "OLD-Trust & Safety" });
@@ -147,14 +147,14 @@ describe("syncPolicyPage", () => {
 
 	it("leaves the corpus alone when a republish did not change the page text", async () => {
 		const { deps } = fakeDeps([
-			listItem({ id: "synced", url: "https://develop.aipotluck.org/trust-and-safety", source: sourceFor("/trust-and-safety", PAGE_TEXT) }),
+			listItem({ id: "synced", url: "https://develop.example.test/trust-and-safety", source: sourceFor("/trust-and-safety", PAGE_TEXT) }),
 		]);
 		expect(await syncPolicyPage("/trust-and-safety", deps)).toEqual({ outcome: "unchanged", documentId: "synced" });
 		expect(deps.create).not.toHaveBeenCalled();
 	});
 
 	it("never retires an active copy newer than its own, so racing publishes settle on the newest", async () => {
-		const newer = listItem({ id: "newer", url: "https://develop.aipotluck.org/trust-and-safety", source: "cms:/trust-and-safety#other", createdAt: new Date("2026-10-08T00:00:00Z") });
+		const newer = listItem({ id: "newer", url: "https://develop.example.test/trust-and-safety", source: "cms:/trust-and-safety#other", createdAt: new Date("2026-10-08T00:00:00Z") });
 		const { deps, rows } = fakeDeps([newer]);
 		await syncPolicyPage("/trust-and-safety", deps);
 		expect(rows.find((r) => r.id === "newer")?.status).toBe("active");
@@ -170,11 +170,31 @@ describe("syncPolicyPage", () => {
 
 	it("does not touch another page's documents or an unrelated upload", async () => {
 		const { deps, rows } = fakeDeps([
-			listItem({ id: "terms", url: "https://develop.aipotluck.org/terms-of-use", source: "cms:/terms-of-use#a" }),
+			listItem({ id: "terms", url: "https://develop.example.test/terms-of-use", source: "cms:/terms-of-use#a" }),
 			listItem({ id: "faq", source: "faq.md" }),
 		]);
 		await syncPolicyPage("/trust-and-safety", deps);
 		expect(rows.filter((r) => r.status === "active").map((r) => r.id).sort()).toEqual(["faq", "new", "terms"]);
+	});
+
+	it("skips, writing nothing, when no origin is configured, so a self-host without PUBLIC_ORIGIN never piles up copies it cannot retire", async () => {
+		const { deps } = fakeDeps([listItem({ id: "legacy", source: "trust-and-safety.md.txt" })]);
+		deps.origin = () => null;
+		expect(await syncPolicyPage("/trust-and-safety", deps)).toEqual({
+			outcome: "skipped",
+			reason: "no origin to cite the page at: set PUBLIC_ORIGIN",
+		});
+		expect(deps.fetchPage).not.toHaveBeenCalled();
+		expect(deps.create).not.toHaveBeenCalled();
+		expect(deps.retire).not.toHaveBeenCalled();
+	});
+
+	it("cites the page at the configured origin", async () => {
+		const { deps } = fakeDeps([]);
+		await syncPolicyPage("/trust-and-safety", deps);
+		expect((deps.create as ReturnType<typeof vi.fn>).mock.calls[0][0].url).toBe(
+			"https://develop.example.test/trust-and-safety"
+		);
 	});
 
 	it("skips, writing nothing, when the page is not published", async () => {

@@ -5,7 +5,7 @@ import { on } from 'svelte/events';
 import { LINK_MARK } from '$lib/chat/utils/composerLinks';
 
 // Attach files follows what the composer offers, and the composer offers nothing where the server would
-// refuse every upload (offeredMimeTypes, CUR-2725), so the row never appears and then fails.
+// refuse every upload (offeredMimeTypes), so the row never appears and then fails.
 const appState = vi.hoisted(() => ({
 	page: { data: {} as Record<string, unknown>, url: new URL('http://localhost/chat') }
 }));
@@ -81,7 +81,7 @@ describe('ChatInput + menu', () => {
 		await expect.poll(() => opened, { message: 'a click on the caption words opened no picker' }).toBe(1);
 	});
 
-	it('opens one picker that takes every type on offer: text, photos, and PDF or Word where offered (CUR-987)', async () => {
+	it('opens one picker that takes every type on offer: text, photos, and PDF or Word where offered', async () => {
 		const baseElement = await openPlusMenu({ mimeTypes: [...TEXT_AND_IMAGES, 'application/pdf'] });
 		const input = baseElement.querySelector<HTMLInputElement>('input[type="file"]')!;
 		let acceptAtOpen: string | null = null;
@@ -100,10 +100,10 @@ describe('ChatInput + menu', () => {
 // flyout, whose captions say what auto does and why to turn it off. The composer shows no Web search
 // chip, whatever the mode. Off picked in
 // the menu is stored as a choice (webSearchMode.svelte.test.ts reloads it). Was the UI half of
-// e2e/scenarios/web-search-default.spec.ts (SOL-206). The store is loaded fresh over empty storage,
+// e2e/scenarios/web-search-default.spec.ts. The store is loaded fresh over empty storage,
 // as on a first visit.
-// e2e-moved: scenarios/web-search-default.spec.ts › a new visitor starts with web search on auto, and the control says what auto does and why to turn it off (CUR-2030)
-describe('web search in the + menu for a new visitor (CUR-2030)', () => {
+// e2e-moved: scenarios/web-search-default.spec.ts › a new visitor starts with web search on auto, and the control says what auto does and why to turn it off
+describe('web search in the + menu for a new visitor', () => {
 	it('starts on auto with no chip, captions Auto and Off, and stores Off picked in the menu as a choice', async () => {
 		localStorage.removeItem('ap:webSearchMode');
 		localStorage.removeItem('ap:webSearchChoice');
@@ -127,7 +127,7 @@ describe('web search in the + menu for a new visitor (CUR-2030)', () => {
 			await expect.element(option('Auto')).toHaveTextContent(/paste a link/i);
 			await expect.element(option('Off')).toHaveTextContent(/faster/i);
 
-			// A DOM click, not a locator click (CUR-4195): the locator waits for the flyout to stop moving, and
+			// A DOM click, not a locator click: the locator waits for the flyout to stop moving, and
 			// on a loaded runner that wait can outrun bits-ui's 500 ms submenu-intent fallback, which closes the
 			// flyout under the pointer. The pick itself is what this test is about.
 			(option('Off').element() as HTMLElement).click();

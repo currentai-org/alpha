@@ -7,15 +7,11 @@ import { setFlagOverrides } from './helpers/flagOverride';
 import { failIfStorageThrottled } from './helpers/storageThrottle';
 
 // My files took nothing over 4.4 MB, because Vercel refuses a request body over 4.5 MB
-// before any handler runs. With `chunked-uploads` on, the page sends a larger file in 4 MB chunks and
-// the server reassembles it and runs every upload check on the whole file, up to 20 MB.
-//
-// Each test forces `chunked-uploads` to the state it covers, as the flag registry requires
-// (flagKeys.spec.ts). A fresh example.org account on a preview is inside the flag's team condition
-// anyway, so the forced on matches what a staff tester gets there.
+// before any handler runs. Now the page sends a larger file in 4 MB chunks and the server reassembles
+// it and runs every upload check on the whole file, up to 20 MB. The `chunked-uploads` flag that gated
+// this was retired once it was on everywhere, and with it this file's off-state test.
 
 const ON_LIMIT = '20 MB';
-const OFF_LIMIT = '4.4 MB';
 
 async function openMyFiles(page: Page): Promise<void> {
 	await page.goto('/chat/storage', { waitUntil: 'commit' });
@@ -58,8 +54,7 @@ test(
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(240_000);
 		await setFlagOverrides(context, baseURL!, {
-			'custodial-storage-view': true,
-			'chunked-uploads': true
+			'custodial-storage-view': true
 		});
 		await signInAsFreshUser(page);
 		await openMyFiles(page);
@@ -67,7 +62,7 @@ test(
 		// The limit the page names is the one the server enforces.
 		await expect(
 			page.getByText(`up to ${ON_LIMIT}`),
-			`My files does not name the ${ON_LIMIT} ceiling with chunked-uploads forced on`
+			`My files does not name the ${ON_LIMIT} ceiling`
 		).toBeVisible({ timeout: 30_000 });
 
 		const name = 'field-survey-scans.txt';
@@ -147,31 +142,5 @@ test(
 		} finally {
 			await removeLeftovers(page);
 		}
-	}
-);
-
-test(
-	'with chunked-uploads off, My files names the 4.4 MB ceiling and the chunk routes are absent',
-	{ tag: ['@preview-only', '@CUR-1780'] },
-	async ({ page, context, baseURL }) => {
-		test.setTimeout(120_000);
-		await setFlagOverrides(context, baseURL!, {
-			'custodial-storage-view': true,
-			'chunked-uploads': false
-		});
-		await signInAsFreshUser(page);
-		await openMyFiles(page);
-
-		await expect(page.getByText(`up to ${OFF_LIMIT}`)).toBeVisible({ timeout: 30_000 });
-		// From the page, as the client sends it: a multipart POST with no Origin header (page.request)
-		// is refused 403 by SvelteKit's CSRF check before the route runs, which proves nothing here.
-		const status = await page.evaluate(async () => {
-			const form = new FormData();
-			form.set('uploadId', 'e2eoffcheck01');
-			form.set('idx', '0');
-			form.set('chunk', new Blob([new Uint8Array([1, 2, 3])]));
-			return (await fetch('/chat/api/storage/chunks', { method: 'POST', body: form })).status;
-		});
-		expect(status, 'the chunk route answered while its flag is off').toBe(404);
 	}
 );

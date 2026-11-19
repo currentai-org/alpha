@@ -4,9 +4,8 @@ import { MessageUpdateType, type MessageUpdate } from "$lib/chat/types/MessageUp
 // A picked model's last lane that sends nothing gives up at its deadline (failover.ts) instead
 // of waiting out the route's 45s watchdog. The visitor sees the same sentence the watchdog would have
 // shown, sooner, and the error's 504 carries through as the status.
-// (CUR-3939)
 // The sentence names the model, as the busy notice does (upstreamBusy.ts), so a person who
-// picked a model is told which one didn't answer. (CUR-3295)
+// picked a model is told which one didn't answer.
 
 /** The visitor-facing sentence for a turn that ran out of time before `modelName` answered. */
 function timedOutMessage(modelName: string): string {
@@ -20,7 +19,8 @@ export function upstreamSilentMessage(err: unknown, modelName: string): string |
 }
 
 // The generation watchdog also fires when our own step stalls (a web search, an agent or MCP
-// tool, retrieval), and naming the model then blames it for our wait. Those turns get the plain sentence. (CUR-4107)
+// tool, retrieval), and naming the model would then blame it for our wait. Those turns get the plain
+// sentence.
 const TOOL_STEP_TYPES: ReadonlySet<MessageUpdateType> = new Set([
 	MessageUpdateType.AgentStep,
 	MessageUpdateType.AgentRun,
@@ -51,7 +51,7 @@ export function watchdogTimedOutMessage(
 }
 
 /** Whether a watchdog stall is the model's own: the model call had begun and none of our tool steps ran after it. */
-function watchdogBlamesModel(
+export function watchdogBlamesModel(
 	updates: readonly MessageUpdate[] | undefined,
 	generationUpdatesFrom: number | undefined
 ): boolean {
@@ -60,11 +60,11 @@ function watchdogBlamesModel(
 }
 
 /**
- * CUR-4345. Whether a turn the generation watchdog ended counts toward the model's busy mark
+ * Whether a turn the generation watchdog ended counts toward the model's busy mark
  * (modelBusy.ts). A model with no last-lane give-up (harnessProfiles.ts `silentGiveUpMs`), such as SEA-LION and
  * ALIA, signals failure only this way, and failover.ts cannot tell this abort from a
  * visitor's Stop, so the route decides it. It counts only when the model sent no token at all (a slow
- * answer still writing is not busy), the stall was the model's (the CUR-4107 rule above), no fault was
+ * answer still writing is not busy), the stall was the model's (the tool-step rule above), no fault was
  * injected (the mark is shared by everyone on the deployment), and the model is a served gateway model.
  */
 export function watchdogCountsTowardBusy(turn: {

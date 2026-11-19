@@ -1,7 +1,7 @@
 // A place a person's files can live. Alpha storage (our bucket, under users/<id>/) is one;
 // a bucket of their own on Hugging Face is another. Drive, Dropbox or an iOS-style per-file grant
 // would each be an adapter behind this same interface, which is why `capabilities().grant` exists:
-// it says how much of the provider this location can see, so the UI can say so. (CUR-2930)
+// it says how much of the provider this location can see, so the UI can say so.
 import type { CustodialSubfolder } from "../custodialBucket";
 import type { UploadOptions } from "../custodialStorage";
 
@@ -25,13 +25,18 @@ type LocationCapabilities = {
 	 *  everything the credential can see. */
 	grant: "bucket" | "per-file" | "all";
 	/** The sizes `list` and `stat` report are what the store holds, which differs from what `read`
-	 *  returns: Alpha storage seals files (CUR-4116), so its listing counts ciphertext. A size compared
+	 *  returns: Alpha storage seals files, so its listing counts ciphertext. A size compared
 	 *  with read bytes has to come from a read. */
 	listsSealedSizes?: boolean;
 };
 
 /** One file, as a listing returns it. `path` round-trips to read, stat and delete on the same location. */
-type LocationFile = { path: string; size: number };
+type LocationFile = {
+	path: string;
+	size: number;
+	/** When the store took the file, ISO 8601, when it reports one. My files sorts newest first on it. */
+	addedAt?: string;
+};
 
 export interface StorageLocation {
 	readonly id: string;

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 const MAX_PARAM_LENGTH = 10_000;
 
 export function sanitizeUrlParam(value: string | null): string | null {

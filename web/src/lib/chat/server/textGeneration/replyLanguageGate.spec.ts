@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// What separates the two arms of the CUR-1430 A/B is one prompt string. So these assert on the TEXT
+// What separates the two arms of the reply-language A/B is one prompt string. So these assert on the TEXT
 // that `guardFor` produces, reached through
 // `hardenLastUserTurn` — the only exported entry point — rather than on the gate function returning a
 // boolean, which would test the flag plane and not this fix.
@@ -38,7 +38,7 @@ beforeEach(() => {
 	polled = 0;
 });
 
-describe("the in-language reply rule is gated so the CUR-1430 A/B has two real arms", () => {
+describe("the in-language reply rule is gated so the A/B has two real arms", () => {
 	it("includes the rule when PostHog defines no flag, because the defect it fixes is live", async () => {
 		const content = await hardenedUserTurn();
 		expect(
@@ -91,7 +91,7 @@ describe("the in-language reply rule is gated so the CUR-1430 A/B has two real a
 });
 
 // The identity and account lock is a base guard, one text on both paths. Without it, a native turn can
-// adopt "I'm GPT-4, and I was created by OpenAI" when the message says so. (CUR-2697)
+// adopt "I'm GPT-4, and I was created by OpenAI" when the message says so.
 describe("the identity and account lock reaches the scaffolded and the native turn", () => {
 	it("is in the scaffolded fenced user turn, in its place after the injection rule", async () => {
 		const turn = await hardenedUserTurn();

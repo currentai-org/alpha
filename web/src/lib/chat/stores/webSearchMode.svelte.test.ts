@@ -25,7 +25,7 @@ afterEach(() => {
 	localStorage.removeItem("ap:webSearchChoice");
 });
 
-describe("web search mode on page load (CUR-2030)", () => {
+describe("web search mode on page load", () => {
 	it("a new visitor starts on auto, and loading the page writes nothing that would later read as a choice", async () => {
 		const { webSearchMode } = await loadStore();
 		expect(get(webSearchMode)).toBe("auto");

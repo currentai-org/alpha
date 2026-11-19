@@ -5,7 +5,7 @@ and per-user spend can be summed across history for budgets (see app.py budget/r
 
 One machine by default: SQLite, WAL + a process-wide lock, safe for the thread-per-task model. With
 `tasks_url` set (AGENT_TASKS_DATABASE_URL, agent-service's own Postgres) the task rows, their event logs and
-cancel requests live there instead, so every machine of the app can serve any task (CUR-4443). The owning
+cancel requests live there instead, so every machine of the app can serve any task. The owning
 machine renews a lease on each running task; a machine that finds a lapsed lease ends the task. Session
 workdirs and the verify corpus stay in the local SQLite file: a workdir path names this machine's disk.
 """
@@ -42,24 +42,24 @@ CREATE TABLE IF NOT EXISTS tasks (
     -- AGENT_WALL_CLOCK_SECS moves. NULL-vs-set answers "did a caller ask" for all time, and the value
     -- itself gives the distribution of what they asked for.
     caller_wall_clock INTEGER,
-    -- CUR-855/846: the client's honesty-caveat verdict for this task (endpointAgent.ts's serviceFlagged
+    -- the client's honesty-caveat verdict for this task (endpointAgent.ts's serviceFlagged
     -- gates on this being non-blank). Was in-memory only — a task reconstructed from this store after
     -- eviction or a restart got its real `result` back but never its caveat, which is the false-confidence
     -- outcome this field exists to prevent. NULL/absent reads as "" in Python, same as never-set.
     unrun_detail    TEXT,
     session_expired INTEGER,
-    -- CUR-4443: the machine running the task, the time its lease runs out, and a cancel asked for on
+    -- the machine running the task, the time its lease runs out, and a cancel asked for on
     -- another machine. Only a shared store reads them; on one machine they stay NULL and 0.
     owner           TEXT,
     lease_until     REAL,
     cancel_requested INTEGER NOT NULL DEFAULT 0,
-    -- CUR-4603: the executor model the task ran on; NULL on a row from before, which ran on AGENT_MODEL.
+    -- the executor model the task ran on; NULL on a row from before, which ran on AGENT_MODEL.
     model           TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_tasks_user_created ON tasks("user", created_at);
 CREATE INDEX IF NOT EXISTS idx_tasks_state ON tasks(state);
 
--- CUR-4443: each task's event stream, so a machine other than the owner can replay it. Written only when
+-- each task's event stream, so a machine other than the owner can replay it. Written only when
 -- the store is shared; one machine streams from its in-memory buffer.
 CREATE TABLE IF NOT EXISTS task_events (
     task_id   TEXT NOT NULL,
@@ -71,7 +71,7 @@ CREATE TABLE IF NOT EXISTS task_events (
 """
 
 _LOCAL_SCHEMA = """
--- CUR-196: maps a (user, session_id) pair to the workdir it persists across turns. Separate table, not a
+-- maps a (user, session_id) pair to the workdir it persists across turns. Separate table, not a
 -- tasks column — a session outlives any single task row and isn't keyed by task id at all.
 CREATE TABLE IF NOT EXISTS session_workdirs (
     user          TEXT NOT NULL,
@@ -83,10 +83,10 @@ CREATE TABLE IF NOT EXISTS session_workdirs (
 );
 CREATE INDEX IF NOT EXISTS idx_session_workdirs_last_used ON session_workdirs(last_used_at);
 
--- CUR-596 item 2: every Tier 1 (deterministic expect_sorted_by/expect_columns rejection) and Tier 2
--- (best-of-N value disagreement) catch, durably — the labeled corpus CUR-654 needs before it can start
+-- every Tier 1 (deterministic expect_sorted_by/expect_columns rejection) and Tier 2
+-- (best-of-N value disagreement) catch, durably — the labeled corpus a later LLM critic needs before it can start
 -- building an LLM critic. Fire-and-discard through attempt_rejections/unrun_detail alone (both in-memory,
--- both dead with the process) would leave nothing for CUR-654 to train against.
+-- both dead with the process) would leave nothing for a critic to train against.
 CREATE TABLE IF NOT EXISTS verify_corpus (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     task_id     TEXT NOT NULL,
@@ -102,8 +102,8 @@ CREATE INDEX IF NOT EXISTS idx_verify_corpus_created ON verify_corpus(created_at
 """
 
 # `CREATE TABLE IF NOT EXISTS` is a no-op against a database that already has the table, so a column added
-# to _SCHEMA reaches a fresh dev box and never reaches an existing production database. Every
-# column added after the first deploy needs a line here too. Idempotent: applied only when absent.
+# to _SCHEMA reaches a fresh database and never an existing one. Every
+# column added after a database first exists needs a line here too. Idempotent: applied only when absent.
 _ADD_COLUMNS = (("artifacts", "TEXT"), ("caller_wall_clock", "INTEGER"), ("session_expired", "INTEGER"),
                 ("unrun_detail", "TEXT"), ("owner", "TEXT"), ("lease_until", "REAL"),
                 ("cancel_requested", "INTEGER NOT NULL DEFAULT 0"), ("model", "TEXT"))
@@ -152,7 +152,7 @@ class _SqliteTasks(_Tasks):
 
 
 class _PgTasks(_Tasks):
-    """agent-service's own Postgres (CUR-4443). A small pool, because the run threads and the request
+    """agent-service's own Postgres. A small pool, because the run threads and the request
     threads write at once; `check` replaces a connection Neon closed while it sat idle."""
 
     shared = True
@@ -256,7 +256,7 @@ class Store:
 
     @property
     def shared(self) -> bool:
-        """True when other machines read and write the same task rows (CUR-4443)."""
+        """True when other machines read and write the same task rows."""
         return self._tasks.shared
 
     def create(self, task_id: str, user: str, state: str, caller_wall_clock: int | None = None,
@@ -272,9 +272,8 @@ class Store:
     def caller_deadline_count(self) -> int:
         """How many stored tasks arrived with a caller-stated deadline. Ever — that is the whole point.
 
-        An in-process metrics counter cannot answer this on this service: the app runs
-        `min_machines_running = 0`, so it scales to zero when idle and the counter resets, and /healthz would
-        report 0 beside a durable tasks_total however often callers sent `wall_clock_secs`. A metric that answers a question about all time has to be as durable as the
+        It is read from the store, not an in-process counter: the app runs `min_machines_running = 0`, so
+        it scales to zero when idle and an in-process counter resets. A metric that answers a question about all time has to be as durable as the
         thing it is compared against."""
         row = self._tasks.run("SELECT COUNT(*) AS n FROM tasks WHERE caller_wall_clock IS NOT NULL", fetch="one")
         return int(row["n"])
@@ -310,7 +309,7 @@ class Store:
         return row["workdir"] if row else None
 
     def get_session_workdir_info(self, user: str, session_id: str) -> tuple[str, float] | None:
-        """(workdir, last_used_at) for CUR-546's artifact fetch — needs last_used_at to state a real
+        """(workdir, last_used_at) for its artifact fetch — needs last_used_at to state a real
         expiry, which get_session_workdir's callers (_run) have never needed. Separate method rather than
         widening get_session_workdir's return so that its one existing call site keeps its exact contract."""
         with self._lock:
@@ -364,12 +363,12 @@ class Store:
         """On startup, any task still non-terminal was interrupted by the crash/restart — its agent process
         is gone. Mark it FAILED honestly rather than leaving a zombie WORKING row forever.
 
-        CUR-218: AWAITING_CONFIRMATION gets a message naming what specifically happened, not the generic
+        AWAITING_CONFIRMATION gets a message naming what specifically happened, not the generic
         one — a human who answered (or was about to) deserves to know their answer never had anywhere to
         go, not just that the task failed for some unspecified reason. This is the correct degrade, not a
         bug: the worker thread and its `hermes acp` subprocess really are gone.
 
-        CUR-4443: on a shared store only this machine's own tasks (`owner`) and ownerless rows are this
+        on a shared store only this machine's own tasks (`owner`) and ownerless rows are this
         restart's to end; another machine's running tasks are left to their owner, or to `fail_lapsed`."""
         now = time.time()
         # Two fixed WHERE tails, never caller text, so the concatenation below is not an injection path.
@@ -383,7 +382,7 @@ class Store:
         n2 = self._tasks.run(running + scope, (now, *_TERMINAL, "AWAITING_CONFIRMATION", *scope_args))
         return n1 + n2
 
-    # ---- CUR-4443: what lets a second machine serve a task the first one runs --------------------------
+    # ---- what lets a second machine serve a task the first one runs --------------------------
 
     def renew_leases(self, owner: str, task_ids: list[str], until: float) -> list[str]:
         """The owner says these tasks are still alive, until `until`. Returns the ones it may no longer run:
@@ -405,7 +404,7 @@ class Store:
 
     def fail_lapsed(self, now: float | None = None) -> list[dict]:
         """End every running task whose owner stopped renewing its lease, naming the machine that went
-        quiet. Returns the ended rows (id, owner). Until a run can be reattached (CUR-4434) a task
+        quiet. Returns the ended rows (id, owner). Until a run can be reattached a task
         whose machine died is gone, and saying so beats a stream that never ends."""
         now = time.time() if now is None else now
         rows = self._tasks.run(
@@ -495,7 +494,7 @@ class Store:
         return int(row["t"])
 
     def caller_history(self, caller: str) -> dict:
-        """A caller's whole-lifetime footprint (CUR-470's accrual signal), not a windowed count like
+        """A caller's whole-lifetime footprint, not a windowed count like
         the two methods above — `first_seen` is `None` for a caller with no rows at all. Same
         prefix-match idiom as `caller_tasks_since`, same reason."""
         p = caller + "/"
@@ -507,8 +506,8 @@ class Store:
         return {"first_seen": row["first_seen"], "task_count": int(row["c"])}
 
     def migrate_caller(self, caller: str, old_subject: str, new_subject: str) -> dict:
-        """Re-key one caller's task rows from an old X-Agent-Subject onto a new one (CUR-761): the
-        anonymous session a visitor accrued CUR-470 trust under and the account they then sign into
+        """Re-key one caller's task rows from an old X-Agent-Subject onto a new one: the
+        anonymous session a visitor accrued trust under and the account they then sign into
         are different subjects, so without this, signing in silently resets `caller_history` to zero
         instead of carrying the accrual forward — authentication should only ever raise a caller's
         trust ceiling, never zero it. A straight re-key, not a merge: `caller_history` is a live
@@ -520,10 +519,8 @@ class Store:
         Scoped to `caller` (the endpoint's own authenticated identity), never a value the request body
         supplies, so one caller cannot re-key another's rows.
         NOTE: does not touch `session_workdirs` — a live mid-conversation session's workdir mapping is
-        keyed on the OLD principal and is not migrated here; out of scope here (CUR-761 is
-        about trust-tier accrual, not session continuity across sign-in, and `session_workdirs`' PK is
-        (user, session_id), so a blind re-key risks colliding with a row the new principal already
-        owns)."""
+        keyed on the OLD principal and is not migrated here. Re-keying those rows blindly could collide on
+        the (user, session_id) primary key with a row the new principal already owns."""
         if not old_subject or not new_subject or old_subject == new_subject:
             return {"migrated": 0}
         old_principal = f"{caller}/{old_subject}"
@@ -533,7 +530,7 @@ class Store:
 
     def delete_for_user(self, caller: str, subject: str) -> dict:
         """Delete every task row and session_workdirs row for ONE (caller, subject) principal — the
-        account-deletion counterpart to migrate_caller's re-key (CUR-1722). Exact-principal match,
+        account-deletion counterpart to migrate_caller's re-key. Exact-principal match,
         not the caller-wide prefix match caller_tasks_since/caller_history use for rationing: this
         deletes one person's history, not every subject a caller has ever asserted.
 
@@ -541,8 +538,7 @@ class Store:
         same contract prune_idle_sessions already uses; the caller rmtrees them.
 
         Does NOT touch verify_corpus: those rows are keyed by task_id, not by user, and are a
-        deliberately separate training dataset with its own age-based retention (prune_corpus,
-        CUR-654). Whether a per-user delete should reach it is an open question (CUR-1722)."""
+        deliberately separate training dataset with its own age-based retention. A per-user delete does not reach it."""
         principal = f"{caller}/{subject}" if subject else caller
         with self._lock:
             workdir_rows = self._db.execute(
@@ -559,7 +555,7 @@ class Store:
 
     def delete_sessions(self, principal: str, session_ids: list[str]) -> list[str]:
         """Delete the named sessions' workdir rows for ONE principal and return their paths, for a deleted
-        conversation (CUR-4484). The task rows stay: they are the account's history, which `delete_for_user`
+        conversation. The task rows stay: they are the account's history, which `delete_for_user`
         removes with the account. No filesystem I/O, as `prune_idle_sessions`; the caller rmtrees."""
         if not session_ids:
             return []
@@ -578,10 +574,9 @@ class Store:
 
     def log_corpus(self, task_id: str, tier: str, kind: str, prompt: str,
                    code: str, output: str, detail: str) -> None:
-        """One Tier 1/2 catch, for the CUR-654 corpus. Caller's job to keep `code`/`output` bounded —
+        """One Tier 1/2 catch, for the corpus. Caller's job to keep `code`/`output` bounded —
         this method does no truncation of its own, so a caller that starts passing raw multi-MB scratch
-        dumps would grow this table unbounded; see api/app.py's _corpus_snapshot_text for the cap in
-        force today."""
+        dumps would grow this table unbounded; see api/app.py's _corpus_snapshot_text for the cap."""
         with self._lock:
             self._db.execute(
                 "INSERT INTO verify_corpus (task_id,created_at,tier,kind,prompt,code,output,detail) "
@@ -598,9 +593,9 @@ class Store:
         """Delete verify_corpus rows older than the cutoff. Unlike `prune` (terminal tasks only —
         RUNNING/WORKING rows are never touched), every row here is already a completed observation the
         moment it's written, so age alone decides. Tier 1 (expect_sorted_by/expect_columns rejections)
-        logs on every real caller, independent of AGENT_VALUE_CONSISTENCY_CHECK — this table grows from
-        live production traffic whether or not that flag is raised (CUR-596), so it needs its own retention
-        rather than inheriting Tier 2's dark-by-default framing. Returns # deleted."""
+        logs on every real caller, independent of AGENT_VALUE_CONSISTENCY_CHECK — this table grows
+        whether or not that flag is raised, so it has its own retention rather than inheriting Tier 2's
+        flag-gated behaviour. Returns # deleted."""
         cutoff = time.time() - older_than_secs
         with self._lock:
             cur = self._db.execute("DELETE FROM verify_corpus WHERE created_at < ?", (cutoff,))

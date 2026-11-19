@@ -30,7 +30,7 @@ export interface RagHit {
 	node: string;
 	label: string;
 	/** plain-English description of what THIS store actually is — distinct per engine so two
-	 *  retrieval steps in the same turn never read as identical (see requestTrace.ts). */
+	 *  retrieval steps in the same turn never read as identical. */
 	detail: string;
 	count: number;
 }
@@ -51,7 +51,7 @@ export interface ProvenanceFacts {
 	servedFromCache: boolean;
 	/** the backend that served the answer is on the Swiss allowlist (`backendIsSwiss` on the persisted
 	 *  `routerMetadata.backend`). False when no backend was recorded, so a turn proves Swiss compute or
-	 *  the claim stays dark (CUR-1883). */
+	 *  the claim stays dark. */
 	swissCompute: boolean;
 	/** honest pre-screen state (see ScreenState) */
 	screen: ScreenState;
@@ -65,7 +65,7 @@ export interface ProvenanceFacts {
 	/** narrower than searchAttempted: true only when an actual round-trip to the open engines ran
 	 *  (not just the margin gate considering and declining it) */
 	searchRan: boolean;
-	/** A web search ran and did not finish (deadline or error), and no web source grounded the (CUR-4091)
+	/** A web search ran and did not finish (deadline or error), and no web source grounded the
 	 *  turn, so the answer was written without web results */
 	searchFailed: boolean;
 	/** RAG stores actually hit, with real counts + their map node */
@@ -78,10 +78,10 @@ export interface ProvenanceFacts {
 	mcpRan: boolean;
 	/** the agent endpoint observed at least one real ACP tool run this turn (write_file, terminal,
 	 *  code_execution, etc.) — drives the inline spine's "retrieve" vs "from training" for agent-mode
-	 *  turns the same way mcpRan does for open-component turns (CUR-601) */
+	 *  turns the same way mcpRan does for open-component turns */
 	agentToolsRan: boolean;
 	/** a tool ran that fetched or worked on something for the answer: an open tool other than read-aloud,
-	 *  or an agent tool. Read-aloud only speaks the finished answer (CUR-3317). */
+	 *  or an agent tool. Read-aloud only speaks the finished answer. */
 	toolLookup: boolean;
 	/** this turn actually produced a TTS audio clip (read-aloud ran) — drives the voice-output node so it
 	 *  lights only when voice really happened, not on every answer */
@@ -121,7 +121,7 @@ const RAG_LABEL = {
 		label: "the EPFL federated store",
 		detail: "Queried EPFL's federated news store live for this turn.",
 	},
-	// No node on the stack map, since the person's own chats are not a component of the stack. (CUR-4576)
+	// No node on the stack map, since the person's own chats are not a component of the stack.
 	PastChat: {
 		node: PAST_CHATS_NODE,
 		label: "your past chats",
@@ -172,7 +172,7 @@ export function provenanceFacts(message: Message): ProvenanceFacts {
 
 	const grounded = webSources.length > 0 || ragSources.length > 0 || vault;
 
-	// A fixed reply has text but no model behind it, so it lights no model or compute in X-ray (CUR-2954).
+	// A fixed reply has text but no model behind it, so it lights no model or compute in X-ray.
 	const answered = Boolean(message.content) && !message.fixedReply;
 	// Disposition applies ONLY to a real model answer — never to a safety-layer decline (input `declined`
 	// OR output `withheld`, both of which replace the visible content with a decline) or a cache-served

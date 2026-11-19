@@ -11,18 +11,18 @@ import { warmupContext } from './helpers/warmup';
 import { journeyStep } from './helpers/journeyStep';
 import { startChattingPastWelcome } from './helpers/welcome';
 
-// The abuse-match refusal names no reason on purpose, only the next step (CUR-3086).
+// The abuse-match refusal names no reason on purpose, only the next step.
 const ABUSE_REFUSAL =
 	"This file couldn't be added, so it was taken off. You can send your message without it.";
 
-// A PDF dropped on the composer is read to text on the server (A6, CUR-987), screened with the
+// A PDF dropped on the composer is read to text on the server (A6), screened with the
 // turn, and answered from. The fixture's one fact, a 37 EUR taxi cap that applies only after 22:00,
 // is in no model's training data, so an answer that states it has read the file.
 // The second test is the flag-off contract: the composer refuses the PDF before anything is sent.
 // The last two are the known-abuse image check on the pictures inside a PDF (embeddedImageScan.ts):
 // with the scanner down the PDF is dropped with the try-again line, and a PDF carrying the
 // placeholder bank's test image (web/hma/fly/, not abuse material) refuses the whole turn.
-// With the input screen's guard unreachable (CUR-4101), the PDF turn is declined as couldn't-check,
+// With the input screen's guard unreachable, the PDF turn is declined as couldn't-check,
 // since the document's text rides that screen and must never reach the model unscreened.
 // The text-only test is the workaround for accounts the full surface does not select
 // (`document-text-only`, storage/documentTextOnly.ts): the same bank-image PDF is answered from its
@@ -31,7 +31,7 @@ const ABUSE_REFUSAL =
 const FIXTURE = join(import.meta.dirname, 'fixtures', 'expenses-policy.pdf');
 const NAME = 'expenses-policy.pdf';
 const BANK_IMAGE_PDF = join(import.meta.dirname, 'fixtures', 'garden-report-bank-image.pdf');
-// 1,001 pages in 117 KB, one over the limit (CUR-3837). Generated, not a real document.
+// 1,001 pages in 117 KB, one over the limit. Generated, not a real document.
 const TOO_MANY_PAGES_PDF = join(import.meta.dirname, 'fixtures', 'too-many-pages.pdf');
 const CONVERSATION_POST = /\/chat\/conversation\/[a-f0-9]+$/;
 // The PDF's condition on the taxi cap, written either way a model might put it.
@@ -74,7 +74,7 @@ test(
 		test.setTimeout(180_000);
 		await setFlagOverrides(context, baseURL!, {
 			'document-attachments': true,
-			// A minted @example.org account has agent mode on preview (CUR-1611). Off pins the turn to
+			// A minted @example.org account has agent mode on preview. Off pins the turn to
 			// the chat path this spec is about; auto routing of a document turn is unit-tested in
 			// resolveAgentRoute.spec.ts.
 			'agent-mode': false
@@ -149,8 +149,8 @@ test(
 		await signInAsFreshUser(page);
 		await openChat(page);
 
-		// The refusal is the chat's error banner (FileDropzone.svelte, CUR-2631), naming the refused type
-		// in words (CUR-2839), where it used to list raw MIME types.
+		// The refusal is the chat's error banner (FileDropzone.svelte), naming the refused type
+		// in words, where it used to list raw MIME types.
 		await dropPdf(page);
 		await expect(page.getByText(/application\//)).toHaveCount(0);
 		await expect(
@@ -227,7 +227,7 @@ test(
 );
 
 test(
-	"CUR-4101: with the input screen's guard unreachable, a PDF turn is declined, never answered from the unscreened document",
+	"with the input screen's guard unreachable, a PDF turn is declined, never answered from the unscreened document",
 	// @real-screen: the fault replaces the real screen's guard, and a PR preview otherwise stubs the screen.
 	{ tag: ['@preview-only', '@real-screen', '@A6', '@CUR-987', '@CUR-4101'] },
 	async ({ page, context, baseURL }) => {
@@ -258,7 +258,7 @@ test(
 		await composer.fill('According to the attached policy, how much is a taxi reimbursed?');
 		await composer.press('Enter');
 		const answer = page.locator('[data-message-role="assistant"]').last();
-		// The document's text rides the turn's input screen (CUR-987 Q2), so a screen that cannot
+		// The document's text rides the turn's input screen (Q2), so a screen that cannot
 		// answer closes the turn as couldn't-check rather than sending the text on unscreened.
 		await expect(
 			answer,

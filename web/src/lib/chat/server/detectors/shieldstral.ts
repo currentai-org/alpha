@@ -1,4 +1,4 @@
-// detectors/shieldstral — the Shieldstral-1.0-3B detector adapter (coop-review-plane Step 5).
+// detectors/shieldstral — the Shieldstral-1.0-3B detector adapter.
 //
 // ONE JudgeFn behind ONE seam: runGuardScreen (guardGate.ts) calls `deps.judge ?? shieldstralJudge`, so
 // the detector is swappable by providing a different JudgeFn — a future detector is a NEW file
@@ -34,10 +34,10 @@ import { guardRefreshDue } from "./guardRefresh";
  *
  * A `@real-screen` spec on a develop push, nightly or promotion run asks for the live guard
  * (`guardLive`): a stored verdict is refreshed live when `guardRefreshDue` says so, and replays
- * otherwise (SOL-267), so the live screen drifting on identical input is caught within a few days
+ * otherwise, so the live screen drifting on identical input is caught within a few days
  * without every develop run sending ~300 screens to the GPU www shares. PR runs replay what it said last.
  * Outside a scenario request, and always in production (neither is set without the fault-inject
- * token), this is plain `fetch`. (SOL-258)
+ * token), this is plain `fetch`.
  */
 async function guardReplayFetch(url: string | URL | Request, init?: RequestInit): Promise<Response> {
 	const context = getRequestContext();
@@ -71,7 +71,7 @@ function shieldstralBillTo(): string | undefined {
 	return process.env.HF_BILL_TO || undefined;
 }
 /** True once the Shieldstral endpoint is addressed (GUARD_SHADOW_URL set) — the gate's misconfig check
- *  (invariant 5: flag/config decides on/off, this is the address). */
+ *  (flag and config decide on or off; this is the address). */
 export function shieldstralConfigured(): boolean {
 	return Boolean(shieldstralBase());
 }

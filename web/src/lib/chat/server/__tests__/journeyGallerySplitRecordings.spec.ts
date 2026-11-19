@@ -8,7 +8,7 @@ import { splitRecordingsByOutcome } from "../journeyGallery";
  *
  * The fixtures mirror a real board: A7 is `@preview-only`, P1 and
  * P2 are persona runs, all three skipped, and none may be announced on the page as "3 recordings
- * failed" (CUR-1816).
+ * failed".
  */
 const rec = (title: string, status: string, expectedFailure = false) => ({
 	slug: title,
@@ -27,8 +27,7 @@ const rec = (title: string, status: string, expectedFailure = false) => ({
 const card = (journey: string, recordings: ReturnType<typeof rec>[]): any => ({ journey, recordings });
 
 describe("splitRecordingsByOutcome", () => {
-	// sign-in.spec.ts's second-sign-in test is `test.fail()` while the login page crashes on
-	// `?error=` (CUR-1813); its recording is an expected failure, not a failed one. (CUR-2234)
+	// A `test.fail()` test's recording is an expected failure, not a failed one.
 	it("does not report an expected failure (test.fail) as failed", () => {
 		const { failed, expected } = splitRecordingsByOutcome([
 			card("A1", [

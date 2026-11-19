@@ -1,4 +1,4 @@
-// Put a line someone in Europe can use ahead of the US 988 line in a distress answer (CUR-2136).
+// Put a line someone in Europe can use ahead of the US 988 line in a distress answer.
 //
 // WHY A GUARD AND NOT ONLY THE PROMPT. CRISIS_AND_VALUES_CLAUSE (persona.ts) already tells the model
 // to name findahelpline.com first and 988 only for the US. A prompt line does not always hold (see
@@ -27,7 +27,7 @@ import type { DeclineLanguage } from "$lib/chat/server/declineCopy";
 export const CRISIS_REFERRAL_ORDER_FLAG = "crisis-referral-order";
 
 /**
- * The sentence inserted ahead of a 988 line, in the language the person wrote in (CUR-4061).
+ * The sentence inserted ahead of a 988 line, in the language the person wrote in.
  * findahelpline.com is on urlGuard's STATIC_ALLOW.
  */
 const EUROPEAN_LINE_SENTENCE: Record<DeclineLanguage, string> = {
@@ -107,7 +107,7 @@ export function leadWithEuropeanLine(
 
 // GFM autolinks only `www.` and scheme URLs, so when the model writes findahelpline.com as a bare domain
 // a person in distress has to copy it into a
-// browser (CUR-3909). Skipped after a scheme, `www.`, `/`, `@` or `[`, and before a path or `]`: those
+// browser. Skipped after a scheme, `www.`, `/`, `@` or `[`, and before a path or `]`: those
 // are already a link, part of one, or a longer URL we should not split.
 const BARE_HELPLINE = /(?<![\w./:@[-])findahelpline\.com(?![\w/\]-]|\.\w)/i;
 

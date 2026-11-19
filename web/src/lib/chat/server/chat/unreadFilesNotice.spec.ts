@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { unreadFilesNotice } from "./unreadFilesNotice";
 
-describe("unreadFilesNotice (CUR-3291)", () => {
+describe("unreadFilesNotice", () => {
 	it("says nothing when every file was read", () => {
 		expect(unreadFilesNotice([])).toBeUndefined();
 	});

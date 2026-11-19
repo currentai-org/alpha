@@ -1,12 +1,13 @@
 // GLM reasons before it answers, and on the lanes that serve it that reasoning reaches this client
 // in one of two shapes: a separate `reasoning_content` delta (the Hugging Face router's providers) or `<think>…</think>` inline in `content` (a vLLM server with no reasoning
 // parser). It restates the prompt it was given ("Let me use the calc block as required"), and an
-// Apertus turn has no such block, so a GLM answer is sent with its reasoning removed (CUR-1933).
+// Apertus turn has no such block, so a GLM side call's reasoning is removed. The visitor's answer
+// keeps it: it goes into the collapsed Working panel, which may quote the prompt.
 
 import { reasoningOffFields, splitWireId } from "../../modelProfiles";
 import { hfPinnedProvider, isHfRouter } from "./providerPin";
 
-/** The served model is one whose reasoning is removed from the answer. */
+/** The served model is one whose reasoning is removed from a side call's text. */
 export function dropsReasoning(modelId: string | undefined): boolean {
 	return !!modelId && /(^|\/)glm-/i.test(modelId.trim());
 }
@@ -17,7 +18,8 @@ export function dropsReasoning(modelId: string | undefined): boolean {
  * unless it already carries one; endpointOai has usually pinned it before this runs. The fields come
  * from the verified profile row for the model and the provider the id ends up naming
  * (modelProfiles.ts): Scaleway honours `reasoning_effort: "none"` and ignores `thinking`, novita and
- * zai-org the reverse.
+ * zai-org the reverse, and Featherless honours neither for GLM-5.2, so its row sends no field;
+ * DeepInfra honours `reasoning_effort` for GLM-5.2 and Qwen3.6.
  */
 export function reasoningOffRequest(
 	modelId: string,
@@ -29,7 +31,7 @@ export function reasoningOffRequest(
 	const { model: base, provider } = splitWireId(model);
 	// The unverified fallback (`thinking`) is a guess made for the gateway and the HF router. A host
 	// that is neither has no verified row and may validate its body strictly: Mistral's API answers
-	// 422 extra_forbidden on `thinking` (CUR-2282). Its models get no field at all.
+	// 422 extra_forbidden on `thinking`. Its models get no field at all.
 	const norm = (u: string) => u.trim().replace(/\/+$/, "");
 	if (
 		!provider &&
@@ -44,6 +46,26 @@ export function reasoningOffRequest(
 
 const OPEN = "<think>";
 const CLOSE = "</think>";
+
+/**
+ * Characters of reasoning inside `<think>…</think>` blocks in a finished generation, for the
+ * `reasoningChars` log field. The stream wraps every kind of reasoning in these tags before
+ * it reaches the text: a separate reasoning field (Large 4), an untagged opening held until its bare
+ * `</think>` (ALIA), and tags the model writes itself. An unclosed block counts to the end.
+ */
+export function thinkChars(text: string): number {
+	let total = 0;
+	let from = 0;
+	for (;;) {
+		const open = text.indexOf(OPEN, from);
+		if (open < 0) return total;
+		const start = open + OPEN.length;
+		const close = text.indexOf(CLOSE, start);
+		if (close < 0) return total + text.length - start;
+		total += close - start;
+		from = close + CLOSE.length;
+	}
+}
 
 /**
  * Removes `<think>…</think>` from streamed content that may split a tag across chunks. Feed each
@@ -93,41 +115,64 @@ export class ThinkFilter {
 }
 
 /**
- * For a model whose reasoning opens with no tag (harnessProfiles.ts `opensReasoningUntagged`, CUR-2470):
- * holds its content until the bare `</think>` arrives, then releases the held part as a closed
- * `<think>…</think>` block, which the client folds away like any other, and streams the rest as the
- * answer. A stream that ends with no `</think>` was an answer with no reasoning, so `flush` releases
- * the held text unchanged rather than hiding it. One cut off at the token cap (`cutOff`) was still
- * reasoning, so it is released as an open `<think>` block, which the client folds and reports as a turn
- * with no answer; a model that runs out mid-reasoning would otherwise show the reasoning as its
- * reply. A reply that does open with `<think>` passes through, less any
- * `<answer>` wrapper.
+ * For a model whose reasoning opens with no tag (harnessProfiles.ts `opensReasoningUntagged`): opens a
+ * `<think>` block at the first character and streams the content live inside it until the bare
+ * `</think>` arrives, then streams the rest as the answer. The client folds the block away like any
+ * other.
  *
- * The answer part also loses ALIA's `<answer>…</answer>` wrapper (AnswerTagStrip).
+ * A stream that ends with no `</think>` was an answer with no reasoning: `flush` closes the block and
+ * sends the same text again as the answer, so it is shown, at the cost of a copy in the folded panel.
+ * Everything goes out in order, as content, so output screening reads all of it. One cut off at the
+ * token cap (`cutOff`) was still reasoning, so its block is left open, which the client folds and
+ * reports as a turn with no answer rather than showing the reasoning as the reply. A reply that opens
+ * with `<think>` passes through, and one that opens with `<answer>` is the answer from its first
+ * character; both lose the `<answer>` wrapper (AnswerTagStrip).
  */
 export class UntaggedReasoningHold {
 	private held = "";
 	private released = false;
+	private opened = false;
+	/** Characters of `held` already sent inside the opened block. */
+	private sent = 0;
 	private answer: AnswerTagStrip | undefined;
+	/**
+	 * Characters `flush` copied into the block from a reply that never closed it, which were the answer
+	 * and not reasoning; `reasoningChars` subtracts them.
+	 */
+	copiedChars = 0;
 
-	/** True while text is held and not yet released as reasoning or answer (CUR-3942). */
+	/** True while the first characters are held to tell `<think>` or `<answer>` from reasoning. */
 	get holding(): boolean {
-		return !this.released && this.held.length > 0;
+		return !this.released && !this.opened && this.held.length > 0;
 	}
 
 	push(chunk: string): string {
 		if (this.released) return this.answer ? this.answer.push(chunk) : chunk;
 		this.held += chunk;
-		if (this.held.trimStart().toLowerCase().startsWith(OPEN)) return this.release("", this.held);
+		if (!this.opened) {
+			const start = this.held.trimStart().toLowerCase();
+			if (start.startsWith(OPEN) || start.startsWith(ANSWER_OPEN)) return this.release("", this.held);
+			if (OPEN.startsWith(start) || ANSWER_OPEN.startsWith(start)) return "";
+			this.opened = true;
+		}
+		const head = this.sent === 0 ? OPEN : "";
 		const at = this.held.toLowerCase().indexOf(CLOSE);
-		if (at < 0) return "";
-		return this.release(OPEN + this.held.slice(0, at) + CLOSE, this.held.slice(at + CLOSE.length));
+		if (at >= 0)
+			return this.release(head + this.held.slice(this.sent, at) + CLOSE, this.held.slice(at + CLOSE.length));
+		const upTo = this.held.length - partialTagSuffix(this.held, CLOSE);
+		if (upTo <= this.sent) return "";
+		const out = head + this.held.slice(this.sent, upTo);
+		this.sent = upTo;
+		return out;
 	}
 
 	flush(cutOff = false): string {
 		if (this.released) return this.answer ? this.answer.flush() : "";
-		if (cutOff) return this.release(OPEN + this.held);
-		return this.release("", this.held, true);
+		if (!this.opened) return cutOff ? this.release(OPEN + this.held) : this.release("", this.held, true);
+		const rest = (this.sent === 0 ? OPEN : "") + this.held.slice(this.sent);
+		if (cutOff) return this.release(rest);
+		this.copiedChars = this.held.length;
+		return this.release(rest + CLOSE, this.held, true);
 	}
 
 	/**
@@ -149,7 +194,7 @@ const ANSWER_CLOSE = "</answer>";
 /**
  * Drops the literal `<answer>` and `</answer>` ALIA wraps its reply in, with the whitespace just inside
  * them. Catalan drafting turns can come back as
- * "<answer> Hola! T'esperem dissabte… </answer>" (CUR-2470). Holds back a suffix that could start
+ * "<answer> Hola! T'esperem dissabte… </answer>". Holds back a suffix that could start
  * either tag until the next push or `flush`.
  */
 class AnswerTagStrip {
@@ -157,11 +202,9 @@ class AnswerTagStrip {
 
 	push(chunk: string): string {
 		const text = (this.pending + chunk).replace(/<answer>\s*/gi, "").replace(/\s*<\/answer>/gi, "");
-		const keep = Math.max(
-			partialTagSuffix(text, ANSWER_OPEN),
-			partialTagSuffix(text, ANSWER_CLOSE),
-			trailingSpaceBeforeClose(text)
-		);
+		const tag = Math.max(partialTagSuffix(text, ANSWER_OPEN), partialTagSuffix(text, ANSWER_CLOSE));
+		// The space before a partial `</answer>` is held with it, so the strip can drop both.
+		const keep = Math.max(tag ? tag + trailingSpaceBeforeClose(text.slice(0, text.length - tag)) : 0, trailingSpaceBeforeClose(text));
 		this.pending = text.slice(text.length - keep);
 		return text.slice(0, text.length - keep);
 	}

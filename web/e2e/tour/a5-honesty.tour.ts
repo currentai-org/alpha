@@ -12,12 +12,13 @@ import { openHome, clickIntoChat, TOUR_RECAST } from './show';
 import { accountButton } from '../scenarios/helpers/accountMenu';
 import { turnDone } from '../scenarios/helpers/turn';
 
-// The A5 walkthrough (CUR-3056): Alpha is honest about itself, and a visitor can report what is wrong.
+// The A5 walkthrough: Alpha is honest about itself, and a visitor can report what is wrong.
 // One guest, one sitting: who made the answer and where it ran, the open parts X-ray names, flagging an
 // answer, a prompt the safety layer declines, the session's energy estimate, and the account menu's
-// "Report a problem" (CUR-3078 added the stack, the flag's reasons and acknowledgement, and the energy;
-// CUR-4223 added "Where it's weak", what the answer looked up, Second opinion from the answer, the
-// calculator step and "Give feedback").
+// "Report a problem" (added the stack, the flag's reasons and acknowledgement, and the energy;
+// added "Where it's weak", what the answer looked up, Second opinion from the answer, the
+// calculator step and "Give feedback", then an answer read aloud that X-ray's "Looked up" does not
+// count as a lookup).
 //
 // It is filmed for people. xray-where-it-ran.spec.ts and report-a-problem.spec.ts hold the assertions;
 // the expects here are only the ones a viewer would notice going wrong. No report reaches the queue:
@@ -46,6 +47,8 @@ async function ask(page: Page, question: string) {
 }
 
 test('A5: Alpha is honest about itself, and you can report what is wrong', async ({ page }) => {
+	// Four model turns, a second opinion and a read-aloud clip on develop.
+	test.setTimeout(480_000);
 	await openHome(page);
 	await narrate(
 		'This is A5: Alpha is honest about itself, and you can tell us when it gets something wrong.'
@@ -80,7 +83,7 @@ test('A5: Alpha is honest about itself, and you can report what is wrong', async
 	);
 	await zoom(ranOn, 1.6);
 	await waitForNarration();
-	// What the turn read, from its own record (CUR-4150 and CUR-3317 corrected what this line claims)
+	// What the turn read, from its own record (corrected what this line claims)
 	const lookedUp = page.locator('[data-answer-receipt] li').filter({ hasText: 'Looked up' });
 	await expect(lookedUp).toBeVisible({ timeout: 10_000 });
 	await narrate(
@@ -104,7 +107,7 @@ test('A5: Alpha is honest about itself, and you can report what is wrong', async
 	await waitForNarration();
 	await page.keyboard.press('Escape');
 
-	// Where it's weak: the limits Alpha states about its own answers (CUR-3314 rewrote what it says)
+	// Where it's weak: the limits Alpha states about its own answers (rewrote what it says)
 	await click(page.getByRole('button', { name: "Where it's weak", exact: true }).first());
 	const weak = page.getByRole('dialog').filter({
 		has: page.getByRole('heading', { name: "Where it's weak" })
@@ -118,7 +121,7 @@ test('A5: Alpha is honest about itself, and you can report what is wrong', async
 	await page.keyboard.press('Escape');
 	await expect(weak).toBeHidden({ timeout: 10_000 });
 
-	// Second opinion, from the answer's own actions (CUR-4187), each take naming where it ran (CUR-3563)
+	// Second opinion, from the answer's own actions, each take naming where it ran
 	await narrate('You can also ask a panel of other open models whether they agree.');
 	await click(answer.getByRole('button', { name: 'Second opinion', exact: true }));
 	const offer = page.locator('[data-xray-panel] [data-second-opinion-offer]');
@@ -163,7 +166,7 @@ test('A5: Alpha is honest about itself, and you can report what is wrong', async
 	await waitForNarration();
 	await expect(menu).toBeHidden({ timeout: 10_000 });
 
-	// A sum: X-ray's Step by step names the calculator the answer used (CUR-3943)
+	// A sum: X-ray's Step by step names the calculator the answer used
 	await narrate('When an answer is worked out with a calculator, X-ray shows that step too.');
 	await ask(
 		page,
@@ -183,7 +186,7 @@ test('A5: Alpha is honest about itself, and you can report what is wrong', async
 	// A decline
 	await narrate('Some requests Alpha will not take on. Here is one its safety policy declines.');
 	await ask(page, DECLINED);
-	const decline = page.getByText(/declined because it goes against our content policy/i);
+	const decline = page.getByText(/I'm an AI, though, so I can't be a partner/i);
 	await expect(decline).toBeVisible({ timeout: 60_000 });
 	const declined = page.locator('[data-message-role="assistant"]').last();
 	await highlight(declined);
@@ -211,6 +214,47 @@ test('A5: Alpha is honest about itself, and you can report what is wrong', async
 	await page.keyboard.press('Escape');
 	await expect(sheet).toBeHidden({ timeout: 10_000 });
 
+	// Read aloud is not a lookup: X-ray's "Looked up" leaves it out
+	await narrate(
+		'Alpha can read its answers out loud. A guest turns that on from the plus button, set to Always.'
+	);
+	await click(page.getByRole('button', { name: /^Add files and tools/ }));
+	await click(page.getByRole('menuitem', { name: /^Read aloud\b/ }));
+	await click(
+		page
+			.getByRole('group', { name: 'Read aloud', exact: true })
+			.getByRole('menuitemradio', { name: /^Always\b/ })
+	);
+	await page.keyboard.press('Escape');
+	const readAloudChip = page.locator('[data-composer-chip]', { hasText: 'Read aloud' });
+	await expect(readAloudChip).toHaveText(/Read aloud · Always/, { timeout: 5_000 });
+	await highlight(readAloudChip);
+	await waitForNarration();
+	await ask(page, 'In one short sentence, what is a potluck?');
+	const spoken = page.locator('[data-message-role="assistant"]').last();
+	await expect(turnDone(spoken)).toBeVisible({ timeout: 120_000 });
+	await expect(
+		spoken.locator('[data-audio-player]').getByRole('button', { name: 'Play' }),
+		'the answer was never read aloud'
+	).toBeVisible({ timeout: 90_000 });
+	await narrate('The answer comes with a play button: read aloud ran.');
+	await zoom(spoken, 1.4);
+	await waitForNarration();
+	await click(spoken.getByRole('button', { name: /How this answer was made/ }));
+	await click(page.getByRole('tab', { name: 'This answer' }));
+	const spokenLookedUp = page.locator('[data-answer-receipt] li').filter({ hasText: 'Looked up' });
+	await expect(spokenLookedUp).toBeVisible({ timeout: 10_000 });
+	await expect(
+		spokenLookedUp,
+		'X-ray counted read aloud as a tool that looked something up'
+	).not.toContainText('Used tools to work on your request');
+	await narrate(
+		'X-ray does not count reading aloud as looking something up. It only speaks the finished answer, so the Looked up line leaves it out.'
+	);
+	await zoom(spokenLookedUp, 1.6);
+	await waitForNarration();
+	await page.keyboard.press('Escape');
+
 	// Report a problem with the chat itself
 	await narrate(
 		'And for anything that is not about one answer, Report a problem is in the account menu.'
@@ -218,7 +262,7 @@ test('A5: Alpha is honest about itself, and you can report what is wrong', async
 	await click(accountButton(page));
 	const trigger = page.getByRole('menuitem', { name: 'Report a problem' });
 	await expect(trigger).toBeVisible({ timeout: 10_000 });
-	// "Give feedback" sits beside it, for what a visitor liked or wishes it did (CUR-2890)
+	// "Give feedback" sits beside it, for what a visitor liked or wishes it did
 	const feedback = page.getByRole('menuitem', { name: 'Give feedback' });
 	await expect(feedback).toBeVisible({ timeout: 10_000 });
 	await narrate('Beside it, Give feedback, for what you liked or wish it did.');

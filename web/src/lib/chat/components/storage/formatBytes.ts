@@ -1,4 +1,4 @@
-// CUR-1276. Bytes come back raw from listCustodialFiles (StorageFile.size) — this is the one place
+// Bytes come back raw from listCustodialFiles (StorageFile.size) — this is the one place
 // that turns them into the "1.2 MB" a person reads. Base-1000 (MB, not MiB): CUSTODIAL_MAX_BYTES_PER_FILE
 // and CUSTODIAL_MAX_TOTAL_BYTES_PER_USER in custodialUpload.ts are themselves decimal (4_400_000,
 // 250_000_000), so a binary-prefix formatter here would make the displayed cap disagree with the

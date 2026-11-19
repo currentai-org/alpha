@@ -14,7 +14,7 @@ import { loadAttachmentsFromUrls } from "$lib/chat/utils/loadAttachmentsFromUrls
  * Reads the current URL's deep link and strips it, so a reload or Back/Forward cannot replay it. The
  * request lives in memory from here on. `null` when the URL carries nothing, or when the visitor is
  * being sent to log in first (that redirect comes back to this URL, params included). Shared by
- * `/chat` (ChatLanding) and `/chat/models/<id>` (CUR-2644).
+ * `/chat` (ChatLanding) and `/chat/models/<id>`.
  */
 export function takeLinkPromptRequest(): LinkPromptRequest | null {
 	const request = readLinkPromptRequest(page.url.searchParams);

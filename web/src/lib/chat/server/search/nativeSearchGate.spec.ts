@@ -17,7 +17,7 @@ const notSelf = async () => ({ isSelf: false, ok: true, margin: -0.2 });
 
 beforeEach(() => decide.mockReset());
 
-describe("nativeGateSaysSearch forces a search only on a gate verdict of search (CUR-4083)", () => {
+describe("nativeGateSaysSearch forces a search only on a gate verdict of search", () => {
 	it("says search when the gate says search and the question is not about Alpha", async () => {
 		decide.mockResolvedValue(searchYes);
 		expect(await nativeGateSaysSearch("I'm a tenant in England, what are my rights?", notSelf)).toBe(true);
@@ -33,7 +33,7 @@ describe("nativeGateSaysSearch forces a search only on a gate verdict of search 
 		expect(await nativeGateSaysSearch("anything", notSelf)).toBe(false);
 	});
 
-	it("says no for a question about Alpha itself, even when the gate says search (CUR-2135)", async () => {
+	it("says no for a question about Alpha itself, even when the gate says search", async () => {
 		decide.mockResolvedValue(searchYes);
 		const self = async () => ({ isSelf: true, ok: true, margin: 0.3 });
 		expect(await nativeGateSaysSearch("Quel modèle es-tu, et qui le fait tourner ?", self)).toBe(false);
@@ -72,7 +72,7 @@ describe("nativeGateSaysSearch forces a search only on a gate verdict of search 
 	});
 });
 
-describe("nativeGateSaysSearch names the identity reading on a forced search (CUR-2135)", () => {
+describe("nativeGateSaysSearch names the identity reading on a forced search", () => {
 	it("logs not-self with its margin, and missed-budget for a verdict slower than the budget", async () => {
 		const { logger } = await import("$lib/chat/server/logger");
 		const info = vi.spyOn(logger, "info");
@@ -80,13 +80,13 @@ describe("nativeGateSaysSearch names the identity reading on a forced search (CU
 		await nativeGateSaysSearch("tenant rights in England", notSelf);
 		expect(info).toHaveBeenLastCalledWith(
 			expect.objectContaining({ identity: "not-self", identityMargin: -0.2 }),
-			"[search] gate said search; forcing web_search"
+			"[search] gate said search; running the web search before round 1"
 		);
 		const slow = () => new Promise<never>(() => {});
 		expect(await nativeGateSaysSearch("Quel modèle es-tu ?", slow, 20)).toBe(true);
 		expect(info).toHaveBeenLastCalledWith(
 			expect.objectContaining({ identity: "missed-budget", identityBudgetMs: 20 }),
-			"[search] gate said search; forcing web_search"
+			"[search] gate said search; running the web search before round 1"
 		);
 		info.mockRestore();
 	});

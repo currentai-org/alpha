@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import type { OutcomeAgg } from "./turnBurnRate";
 
 // warm.ts reads serving config through the `config` proxy (not process.env), and the server test setup
 // mocks $env to a static snapshot — so mock `config` directly with a mutable object we can vary per test.
@@ -7,7 +8,7 @@ vi.mock("$lib/chat/server/config", () => ({ config: cfg }));
 
 // warmModel now reports its (honest) outcome to alerting.recordProbe, which reads/writes the
 // alert_state row. Mock it so the warm tests stay hermetic — and so we can assert WHAT gets reported,
-// which is the whole point of the model leg carrying an alert (CUR-35).
+// which is the whole point of the model leg carrying an alert.
 const recordProbeMock = vi.fn(
 	async (
 		_key: string,
@@ -36,29 +37,26 @@ const countDeclinesMock = vi.fn(async () => 0);
 vi.mock("$lib/chat/server/db/safetyEvents", () => ({
 	countFailClosedChildDeclines: countDeclinesMock,
 }));
-const countTurnOutcomesMock = vi.fn(async (): Promise<Record<string, number>> => ({}));
+const countTurnOutcomeWindowsMock = vi.fn(async (): Promise<OutcomeAgg[]> => []);
 const pruneTurnOutcomesMock = vi.fn(async () => 0);
-const noRecovery = { newestFailureAt: null as Date | null, completesSinceFailure: 0 };
-const turnOutcomeRecoveryMock = vi.fn(async () => noRecovery);
 const recentCompleteTtftsMock = vi.fn(async (): Promise<number[]> => []);
 vi.mock("$lib/chat/server/db/turnOutcomes", () => ({
-	countTurnOutcomes: countTurnOutcomesMock,
+	countTurnOutcomeWindows: countTurnOutcomeWindowsMock,
 	pruneTurnOutcomes: pruneTurnOutcomesMock,
-	turnOutcomeRecovery: turnOutcomeRecoveryMock,
 	recentCompleteTtfts: recentCompleteTtftsMock,
 }));
 
 // The warm cron is what keeps BOTH the flag snapshot AND the model registry built from it fresh on a
-// schedule (CUR-87, CUR-1149) — "warmAll actually calls it" is a real contract, not an implementation
+// schedule — "warmAll actually calls it" is a real contract, not an implementation
 // detail. `ensureModelsReady` builds the registry once per process at first request (a cold-start
 // patch: a fresh instance would otherwise read an empty snapshot and cache "no agent model" for its
 // whole life) — but never rebuilds it again on its own, so without this cron leg a flag flip never
-// reaches a registry-derived surface (model-picker/router-alias/agent-mode) for the rest of that
-// process's life, which in practice can span more than one deploy (CUR-1122).
+// reaches a registry-derived surface (router-alias/agent-mode) for the rest of that
+// process's life, which in practice can span more than one deploy.
 const refreshRegistryGatesIfChangedMock = vi.fn(
-	async (): Promise<{ changed: boolean; gates: { picker: boolean; routerAlias: boolean; agent: boolean; sideCallLane: boolean } }> => ({
+	async (): Promise<{ changed: boolean; gates: { routerAlias: boolean; agent: boolean; sideCallLane: boolean } }> => ({
 		changed: false,
-		gates: { picker: false, routerAlias: false, agent: false, sideCallLane: false },
+		gates: { routerAlias: false, agent: false, sideCallLane: false },
 	})
 );
 vi.mock("$lib/chat/server/models", () => ({
@@ -79,41 +77,41 @@ vi.mock("$lib/chat/server/errorTracking", () => ({
 
 // Same shape as the error-rate leg above — an in-process counter owned by
 // resolveAgentRoute.ts, mocked so a test can set the count directly. The counter's own
-// increment/reset/reason-classification behavior is covered in resolveAgentRoute.spec.ts. (CUR-1260)
+// increment/reset/reason-classification behavior is covered in resolveAgentRoute.spec.ts.
 const takeAgentRouteFailureCountMock = vi.fn(() => 0);
 vi.mock("$lib/chat/server/chat/resolveAgentRoute", () => ({
 	takeAgentRouteFailureCount: takeAgentRouteFailureCountMock,
 }));
 const warmModerationMock = vi.fn(async () => {});
-const probeCoopHealthMock = vi.fn(async () => ({ ok: true, ms: 1 }));
 // The review-plane config leg: which Coop keys are unset, and whether this process is a deployment.
 const coopReviewConfigMissingMock = vi.fn((): string[] => []);
 const isDeploymentMock = vi.fn(() => false);
+// ALPHA_EDITION=selfhost: a self-host with no Shieldstral endpoint has no guard leg to probe.
+const isSelfHostEditionMock = vi.fn(() => false);
 vi.mock("$lib/chat/server/moderation", () => ({
 	warmModeration: warmModerationMock,
-	probeCoopHealth: probeCoopHealthMock,
 	coopReviewConfigMissing: coopReviewConfigMissingMock,
 	isDeployment: isDeploymentMock,
+	isSelfHostEdition: isSelfHostEditionMock,
 }));
 
-// guardGate: only the three symbols warm.ts reads. guardPrimaryEnabled is controllable so
-// warmCoopHealth's guard-primary suppression (coop-review-plane Step 1e) can be driven; the probe/
-// configured stubs keep warmGuardHealth inert (flag off) exactly as the real defaults do.
-const guardPrimaryEnabledMock = vi.fn(() => false);
+// The agent screen endpoint's bearer: armed (set) keeps a self-host's guard leg loud with no classifier.
+const safetyScreenTokenMock = vi.fn((): string | undefined => undefined);
+vi.mock("$lib/chat/server/safetyScreen", () => ({ safetyScreenToken: safetyScreenTokenMock }));
+
+// guardGate: only the symbols warm.ts reads. guardPrimaryConfigured is GUARD_SHADOW_URL's presence; unset
+// by default, so the guard leg records unhealthy unless a test configures it.
 const guardPrimaryConfiguredMock = vi.fn(() => false);
 const probeGuardHealthMock = vi.fn(async () => null as unknown);
+// The S1 leg: s1JudgeFor is the s1-safety-judge flag read (undefined = off, the default) and
+// probeS1Health is the probe, null when the S1 key or endpoint is unset.
+const s1JudgeForMock = vi.fn((): unknown => undefined);
+const probeS1HealthMock = vi.fn(async (_s1: unknown): Promise<unknown> => null);
 vi.mock("$lib/chat/server/guardGate", () => ({
-	guardPrimaryEnabled: guardPrimaryEnabledMock,
 	guardPrimaryConfigured: guardPrimaryConfiguredMock,
 	probeGuardHealth: probeGuardHealthMock,
-}));
-
-// safetyScreen: warmGuardHealth also runs when the agent screen endpoint is armed (coop-review-plane
-// Step 4d), independent of the guard-primary flag. Controllable so the agent-only rollout window can be
-// driven; default false keeps warmGuardHealth inert under the flag-off default.
-const safetyScreenConfiguredMock = vi.fn(() => false);
-vi.mock("$lib/chat/server/safetyScreen", () => ({
-	safetyScreenConfigured: safetyScreenConfiguredMock,
+	s1JudgeFor: s1JudgeForMock,
+	probeS1Health: probeS1HealthMock,
 }));
 
 // warmSyftCatalog dynamically imports this module (so the SDK never loads when the router is off);
@@ -126,7 +124,7 @@ const fetchMock = vi.fn();
 // The identity legs' own log line (not just recordProbe) is what the fix is about — a probe
 // that only logs its failure case reads as silence on Axiom for both "matched every time" and "never
 // ran," which is indistinguishable from the outside. Mocked so tests below can assert the leg logs on
-// EVERY outcome — match, mismatch, and identity-unknown — not just the mismatch case. (CUR-1200)
+// EVERY outcome — match, mismatch, and identity-unknown — not just the mismatch case.
 const loggerWarnMock = vi.fn();
 const loggerInfoMock = vi.fn();
 const loggerErrorMock = vi.fn();
@@ -176,24 +174,22 @@ beforeEach(() => {
 	executeMock.mockResolvedValue([{ "?column?": 1 }]);
 	countDeclinesMock.mockClear();
 	countDeclinesMock.mockResolvedValue(0);
-	countTurnOutcomesMock.mockClear();
-	countTurnOutcomesMock.mockResolvedValue({});
+	countTurnOutcomeWindowsMock.mockReset();
+	countTurnOutcomeWindowsMock.mockResolvedValue([]);
 	pruneTurnOutcomesMock.mockClear();
 	pruneTurnOutcomesMock.mockResolvedValue(0);
-	turnOutcomeRecoveryMock.mockReset();
-	turnOutcomeRecoveryMock.mockResolvedValue(noRecovery);
 	recentCompleteTtftsMock.mockReset();
 	recentCompleteTtftsMock.mockResolvedValue([]);
 	refreshRegistryGatesIfChangedMock.mockClear();
 	refreshRegistryGatesIfChangedMock.mockResolvedValue({
 		changed: false,
-		gates: { picker: false, routerAlias: false, agent: false, sideCallLane: false },
+		gates: { routerAlias: false, agent: false, sideCallLane: false },
 	});
 	warmModerationMock.mockClear();
-	probeCoopHealthMock.mockClear();
-	probeCoopHealthMock.mockResolvedValue({ ok: true, ms: 1 });
-	guardPrimaryEnabledMock.mockReset();
-	guardPrimaryEnabledMock.mockReturnValue(false);
+	isSelfHostEditionMock.mockReset();
+	isSelfHostEditionMock.mockReturnValue(false);
+	safetyScreenTokenMock.mockReset();
+	safetyScreenTokenMock.mockReturnValue(undefined);
 	coopReviewConfigMissingMock.mockReset();
 	coopReviewConfigMissingMock.mockReturnValue([]);
 	isDeploymentMock.mockReset();
@@ -202,8 +198,10 @@ beforeEach(() => {
 	guardPrimaryConfiguredMock.mockReturnValue(false);
 	probeGuardHealthMock.mockReset();
 	probeGuardHealthMock.mockResolvedValue(null);
-	safetyScreenConfiguredMock.mockReset();
-	safetyScreenConfiguredMock.mockReturnValue(false);
+	s1JudgeForMock.mockReset();
+	s1JudgeForMock.mockReturnValue(undefined);
+	probeS1HealthMock.mockReset();
+	probeS1HealthMock.mockResolvedValue(null);
 	getSyftCatalogMock.mockClear();
 	getSyftCatalogMock.mockResolvedValue({ sources: [] });
 	loggerWarnMock.mockClear();
@@ -231,7 +229,7 @@ describe("warmModel — shared-model prewarm", () => {
 	});
 
 	// Apertus 1.5 refused any system role on some hosts, so its answers go out flattened to one
-	// user message. The probe sends the answer lane's shape, never an easier one. (CUR-1294)
+	// user message. The probe sends the answer lane's shape, never an easier one.
 	it("sends a flattened model one user message, the shape its answers go out in", async () => {
 		cfg.MODEL_ALLOWLIST = "swiss-ai/apertus-v1.5-70b";
 		fetchMock.mockResolvedValue(new Response("{}", { status: 200 }));
@@ -244,7 +242,7 @@ describe("warmModel — shared-model prewarm", () => {
 
 	// develop's default is Mistral Large 3 on Mistral's own API, which the gateway does not serve. A
 	// direct lane has no cold start and no substitution to catch, so the leg is skipped, visibly, instead of
-	// spending the provider's rate limit on every page load. (CUR-2284)
+	// spending the provider's rate limit on every page load.
 	it("skips the model leg, with a log line, when the primary is served by a direct lane", async () => {
 		Object.assign(cfg, {
 			MODEL_ALLOWLIST: "mistral-large-2512,swiss-ai/Apertus-70B-Instruct-2509",
@@ -263,9 +261,9 @@ describe("warmModel — shared-model prewarm", () => {
 	});
 
 	// The skip above must not fire when the primary is served through the router, or the one alerting probe
-	// on the default model stops (CUR-3848). The router is a caching LiteLLM gateway, so it is probed, on
+	// on the default model stops. The router is a caching LiteLLM gateway, so it is probed, on
 	// its own host and key, under its own name for the model (`mistralai/mistral-large-2512`), with no
-	// MISTRAL_API_KEY set (CUR-3193).
+	// MISTRAL_API_KEY set.
 	const onRouter = () =>
 		Object.assign(cfg, {
 			MODEL_ALLOWLIST: "mistral-large-2512,swiss-ai/Apertus-70B-Instruct-2509",
@@ -290,7 +288,7 @@ describe("warmModel — shared-model prewarm", () => {
 		expect(url).toBe("https://router.mistral.test/v1/chat/completions");
 		expect((init.headers as Record<string, string>).authorization).toBe("Bearer router-warmtest");
 		expect(JSON.parse(init.body as string).model).toBe("mistralai/mistral-large-2512");
-		// Large 3 answers carry a system role, so the probe does too and a host that refuses it fails here. (CUR-1294)
+		// Large 3 answers carry a system role, so the probe does too and a host that refuses it fails here.
 		expect(JSON.parse(init.body as string).messages.map((m: { role: string }) => m.role)).toEqual([
 			"system",
 			"user",
@@ -337,7 +335,7 @@ describe("warmModel — shared-model prewarm", () => {
 		expect(recordProbeMock).toHaveBeenCalledWith("model:identity", false, expect.anything());
 	});
 
-	// The router serves Medium 3.5 from Scaleway too, which reports its own name for the same weights. (CUR-4343)
+	// The router serves Medium 3.5 from Scaleway too, which reports its own name for the same weights.
 	it("stays green on model:identity when the router answers with a SERVED_AS name for the model asked for", async () => {
 		Object.assign(cfg, {
 			MODEL_ALLOWLIST: "mistral-medium-2604",
@@ -353,7 +351,7 @@ describe("warmModel — shared-model prewarm", () => {
 	});
 
 	// A per-ticket preview billing MISTRAL_API_KEY_CI stays on La Plateforme even with the router set
-	// (mistralKey.ts, CUR-2716), so it keeps CUR-2284's skip.
+	// (mistralKey.ts), so it keeps the skip.
 	it("still skips on a ticket-branch preview, where the Mistral lane is La Plateforme on the CI key", async () => {
 		onRouter();
 		Object.assign(cfg, {
@@ -389,7 +387,7 @@ describe("warmModel — shared-model prewarm", () => {
 	});
 
 	// With a fixed prompt the gateway's response cache answers the probe without reaching a model, so it
-	// reads ok while real turns time out (CUR-2242). Two probes must never send the same request.
+	// reads ok while real turns time out. Two probes must never send the same request.
 	it("sends a prompt no response cache can answer — two probes never send the same messages", async () => {
 		vi.useFakeTimers();
 		try {
@@ -408,7 +406,7 @@ describe("warmModel — shared-model prewarm", () => {
 		}
 	});
 
-	// CUR-2242. A cache hit still reports a backend, so the backend field could not show the old fixed
+	// A cache hit still reports a backend, so the backend field could not show the old fixed
 	// prompt was never reaching a model. The line has to say which one it was.
 	it("logs a gateway cache hit as cached, and a model answer as not cached", async () => {
 		const modelLine = () =>
@@ -467,7 +465,7 @@ describe("warmModel — shared-model prewarm", () => {
 
 	// The regression this guards: fetch RESOLVES on 4xx/5xx, so without the explicit status check a WAF
 	// 403 / provider 503 / rotated-out model id logs ok=true and can never alert. A leg that cannot
-	// go red is not monitoring (CUR-35).
+	// go red is not monitoring.
 	it.each([403, 500, 503])("reports UNHEALTHY on a non-2xx (%i), which fetch does not throw on", async (status) => {
 		fetchMock.mockResolvedValue(new Response("nope", { status }));
 		const { warmModel } = await import("./warm");
@@ -485,7 +483,7 @@ describe("warmModel — shared-model prewarm", () => {
 		expect(recordProbeMock.mock.calls[0]?.[1]).toBe(false);
 	});
 
-	// ── Served-model identity (CUR-113) ───────────────────────────────────────────────────────────
+	// ── Served-model identity ───────────────────────────────────────────────────────────
 	// The gap these close: a backup lane can serve a different checkpoint (zai-org/GLM-5.2) while model:warm
 	// reports ok=true on every probe. Reachability is not the question. Note every case below asserts on the
 	// model:identity probe SPECIFICALLY — folding this into model:warm would make a healthy endpoint serving
@@ -557,7 +555,7 @@ describe("warmModel — shared-model prewarm", () => {
 	// The leg logs the match case as well as the mismatch, so an Axiom search for `leg:
 	// "model-identity"` returning zero rows cannot be read as either "every cycle matched" or "the branch
 	// never ran". Every case below asserts a real log line landed, not just the recordProbe verdict already
-	// covered above. (CUR-1200)
+	// covered above.
 	const identityLog = () =>
 		[...loggerInfoMock.mock.calls, ...loggerWarnMock.mock.calls].find(
 			([fields]) => (fields as { leg?: string }).leg === "model-identity"
@@ -606,8 +604,8 @@ describe("warmModel — shared-model prewarm", () => {
 
 	// ── The probe follows what a real default turn gets, not a constant ───────────────────────────
 	// Stated as a contract: if a default turn resolves to a second registration while this leg probes the
-	// configured primary, `model:identity` reports green about a lane no user is on (CUR-113's failure one
-	// lane over, CUR-243). The registrations are collapsed, so the primary is the served lane and these
+	// configured primary, `model:identity` reports green about a lane no user is on (the failure one
+	// lane over). The registrations are collapsed, so the primary is the served lane and these
 	// read as ordinary. They are not: the assertion below reads the id that went out on the wire, and
 	// anything that reintroduces a substitution has to move this probe in the same change or it goes
 	// quietly back to asserting the wrong thing.
@@ -673,7 +671,7 @@ describe("warmEmbeddings / warmDb — honest legs report to alerting", () => {
 		expect(recordProbeMock.mock.calls[0]?.[2].severity).toBe("degraded");
 	});
 
-	// ── Embedding-space identity (CUR-113/CUR-115) ────────────────────────────────────────────────
+	// ── Embedding-space identity ────────────────────────────────────────────────
 	// Same gap the model leg has, one layer over, and invisible to check:rag-index by construction:
 	// that gate compares idx.model to RAG_EMBEDDING_MODEL, while production resolves through
 	// RAG_EMBEDDING_ENDPOINT_URL whose served model is set in the HF console. Against the production index,
@@ -695,7 +693,7 @@ describe("warmEmbeddings / warmDb — honest legs report to alerting", () => {
 	});
 
 	// Same as model-identity: a match logs a line, so this leg's own Axiom silence cannot be read as
-	// either "matching every cycle" or "not running." (CUR-1200)
+	// either "matching every cycle" or "not running."
 	it("logs a MATCH, not just a mismatch", async () => {
 		const chunk = await probeChunk();
 		embedMock.mockResolvedValue(chunk.vector);
@@ -741,7 +739,7 @@ describe("warmEmbeddings / warmDb — honest legs report to alerting", () => {
 		expect(identityCall()).toBeUndefined();
 	});
 
-	// THE HOLE THIS CLOSES (CUR-114): embedText fails OPEN internally — a non-OK response, an
+	// THE HOLE THIS CLOSES: embedText fails OPEN internally — a non-OK response, an
 	// unexpected shape, or a network error all resolve to `null` rather than throwing. Under the old
 	// timedWarm, "did the call throw" was the whole verdict, so every one of those failures reported
 	// embeddings:warm ok=true. This asserts the leg's OWN health probe, not just the identity probe the
@@ -795,7 +793,7 @@ describe("warmSyftCatalog — router catalog prewarm gating", () => {
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
-	// ── The catalog leg's OWN verdict, once both gates are open (CUR-114) ─────────────────────────────
+	// ── The catalog leg's OWN verdict, once both gates are open ─────────────────────────────
 	// getSyftCatalog FAILS OPEN internally (syftCatalog.ts): client-acquisition failure, an aborted
 	// browse, and an upstream error all resolve to `null` rather than throwing. A leg that only checked
 	// for a throw would report ok=true on every one of those failures, so catalog:warm judges the result.
@@ -854,9 +852,8 @@ describe("warmDeclineRate — the fail-closed child-safety decline alert", () =>
 	});
 });
 
-describe("warmCoopHealth — under guard-primary Coop is the REVIEW plane, not a detector (coop-review-plane Step 1e)", () => {
-	it("guard-primary ON, deployed, Coop review keys unset: coop:review-config alerts unhealthy and names the keys", async () => {
-		guardPrimaryEnabledMock.mockReturnValue(true);
+describe("warmCoopHealth — Coop is the REVIEW plane, never a detector (coop-review-plane Step 1e)", () => {
+	it("deployed, Coop review keys unset: coop:review-config alerts unhealthy and names the keys", async () => {
 		isDeploymentMock.mockReturnValue(true);
 		coopReviewConfigMissingMock.mockReturnValue(["COOP_URL", "COOP_API_KEY"]);
 		const { warmCoopHealth } = await import("./warm");
@@ -865,40 +862,29 @@ describe("warmCoopHealth — under guard-primary Coop is the REVIEW plane, not a
 		expect(call?.[1]).toBe(false);
 		expect(call?.[2].runbook).toContain("COOP_URL, COOP_API_KEY");
 	});
-	it("guard-primary ON, deployed, every Coop review key set: coop:review-config reports healthy", async () => {
-		guardPrimaryEnabledMock.mockReturnValue(true);
+	it("deployed, every Coop review key set: coop:review-config reports healthy", async () => {
 		isDeploymentMock.mockReturnValue(true);
 		coopReviewConfigMissingMock.mockReturnValue([]);
 		const { warmCoopHealth } = await import("./warm");
 		await warmCoopHealth();
 		expect(recordProbeMock.mock.calls.find((c) => c[0] === "coop:review-config")?.[1]).toBe(true);
 	});
-	it("guard-primary ON off a deployment: no coop:review-config probe (local dev may leave Coop unset)", async () => {
-		guardPrimaryEnabledMock.mockReturnValue(true);
+	it("off a deployment: no coop:review-config probe (local dev may leave Coop unset)", async () => {
 		isDeploymentMock.mockReturnValue(false);
 		coopReviewConfigMissingMock.mockReturnValue(["COOP_URL"]);
 		const { warmCoopHealth } = await import("./warm");
 		await warmCoopHealth();
 		expect(recordProbeMock.mock.calls.some((c) => c[0] === "coop:review-config")).toBe(false);
 	});
-	it("guard-primary ON: origin ping only (warmModeration), ZERO /content verdict probe, ZERO coop:verdict alert", async () => {
-		guardPrimaryEnabledMock.mockReturnValue(true);
+	it("origin ping only (warmModeration), ZERO coop:verdict alert, with no flag read", async () => {
 		const { warmCoopHealth } = await import("./warm");
 		await warmCoopHealth();
 		expect(warmModerationMock).toHaveBeenCalledTimes(1); // the rule-free origin ping stands in
-		expect(probeCoopHealthMock).not.toHaveBeenCalled(); // no Coop /content re-detection
 		expect(recordProbeMock.mock.calls.some((c) => c[0] === "coop:verdict")).toBe(false);
-	});
-	it("guard-primary OFF: the Coop verdict probe still runs (Coop is the live gate then)", async () => {
-		guardPrimaryEnabledMock.mockReturnValue(false);
-		const { warmCoopHealth } = await import("./warm");
-		await warmCoopHealth();
-		expect(probeCoopHealthMock).toHaveBeenCalledTimes(1);
-		expect(recordProbeMock.mock.calls.some((c) => c[0] === "coop:verdict")).toBe(true);
 	});
 });
 
-describe("warmGuardHealth — watches the guard for EITHER consumer (coop-review-plane Step 4d)", () => {
+describe("warmGuardHealth — the guard screens every chat turn, so its leg runs on every hosted build", () => {
 	const healthyProbe = {
 		healthy: true,
 		transportOk: true,
@@ -908,30 +894,16 @@ describe("warmGuardHealth — watches the guard for EITHER consumer (coop-review
 		servedModels: ["mistralai/Shieldstral-1.0-3B"],
 	};
 
-	it("guard-primary OFF but the screen endpoint configured: the identity probe STILL runs and alerts", async () => {
-		guardPrimaryEnabledMock.mockReturnValue(false);
-		safetyScreenConfiguredMock.mockReturnValue(true);
+	it("a hosted build probes the guard with no flag and no agent screen token: the identity probe runs and records", async () => {
 		guardPrimaryConfiguredMock.mockReturnValue(true);
 		probeGuardHealthMock.mockResolvedValue(healthyProbe);
 		const { warmGuardHealth } = await import("./warm");
 		await warmGuardHealth();
-		// the agent-only rollout window: the flag is off, yet the guard identity is asserted every cycle.
 		expect(probeGuardHealthMock).toHaveBeenCalledTimes(1);
-		expect(recordProbeMock.mock.calls.some((c) => c[0] === "guard:verdict")).toBe(true);
+		expect(recordProbeMock.mock.calls.find((c) => c[0] === "guard:verdict")?.[1]).toBe(true);
 	});
 
-	it("neither the flag NOR the screen endpoint live: inert — no probe, no alert (Coop leg is the watcher)", async () => {
-		guardPrimaryEnabledMock.mockReturnValue(false);
-		safetyScreenConfiguredMock.mockReturnValue(false);
-		const { warmGuardHealth } = await import("./warm");
-		await warmGuardHealth();
-		expect(probeGuardHealthMock).not.toHaveBeenCalled();
-		expect(recordProbeMock.mock.calls.some((c) => c[0] === "guard:verdict")).toBe(false);
-	});
-
-	it("screen endpoint configured but GUARD_SHADOW_URL unset: loud UNHEALTHY, never a silent skip", async () => {
-		guardPrimaryEnabledMock.mockReturnValue(false);
-		safetyScreenConfiguredMock.mockReturnValue(true);
+	it("a hosted build with GUARD_SHADOW_URL unset: loud UNHEALTHY, never a silent skip", async () => {
 		guardPrimaryConfiguredMock.mockReturnValue(false); // GUARD_SHADOW_URL unset
 		const { warmGuardHealth } = await import("./warm");
 		await warmGuardHealth();
@@ -940,13 +912,146 @@ describe("warmGuardHealth — watches the guard for EITHER consumer (coop-review
 		expect(guardAlerts).toHaveLength(1);
 		expect(guardAlerts[0]![1]).toBe(false); // recorded UNHEALTHY
 	});
+
+	it("a self-host edition with no Shieldstral endpoint chose to run none: no probe, no alert", async () => {
+		isSelfHostEditionMock.mockReturnValue(true);
+		guardPrimaryConfiguredMock.mockReturnValue(false);
+		const { warmGuardHealth } = await import("./warm");
+		await warmGuardHealth();
+		expect(probeGuardHealthMock).not.toHaveBeenCalled();
+		expect(recordProbeMock.mock.calls.some((c) => c[0] === "guard:verdict")).toBe(false);
+	});
+
+	it("a self-host edition with no Shieldstral endpoint but the agent screen endpoint armed: loud UNHEALTHY, since agent screens fail closed", async () => {
+		isSelfHostEditionMock.mockReturnValue(true);
+		guardPrimaryConfiguredMock.mockReturnValue(false);
+		safetyScreenTokenMock.mockReturnValue("agent-token");
+		const { warmGuardHealth } = await import("./warm");
+		await warmGuardHealth();
+		const guardAlerts = recordProbeMock.mock.calls.filter((c) => c[0] === "guard:verdict");
+		expect(guardAlerts).toHaveLength(1);
+		expect(guardAlerts[0]![1]).toBe(false);
+	});
+
+	it("a self-host edition with a Shieldstral endpoint is probed like a hosted build", async () => {
+		isSelfHostEditionMock.mockReturnValue(true);
+		guardPrimaryConfiguredMock.mockReturnValue(true);
+		probeGuardHealthMock.mockResolvedValue(healthyProbe);
+		const { warmGuardHealth } = await import("./warm");
+		await warmGuardHealth();
+		expect(probeGuardHealthMock).toHaveBeenCalledTimes(1);
+		expect(recordProbeMock.mock.calls.some((c) => c[0] === "guard:verdict")).toBe(true);
+	});
 });
 
-describe("warmAll — the cron is the only thing that KEEPS the flag snapshot and registry fresh (CUR-87, CUR-1149)", () => {
+describe("warmS1Health — the S1 judge's verdict path, watched while s1-safety-judge is on", () => {
+	const s1Judge = vi.fn();
+	const probe = (over: Record<string, unknown> = {}) => ({
+		healthy: true,
+		transportOk: true,
+		parseOk: true,
+		identityOk: true,
+		identityAsserted: true,
+		servedModels: ["zentropi-ai/cope-b-s1"],
+		...over,
+	});
+	const s1Records = () => recordProbeMock.mock.calls.filter((c) => c[0] === "s1:verdict");
+	const s1LegLine = () =>
+		[...loggerInfoMock.mock.calls, ...loggerWarnMock.mock.calls, ...loggerErrorMock.mock.calls].find(
+			(c) => (c[0] as { leg?: string })?.leg === "s1"
+		);
+
+	it("flag on and healthy: probes the S1 judge itself and records s1:verdict healthy, logging the served model", async () => {
+		s1JudgeForMock.mockReturnValue(s1Judge);
+		probeS1HealthMock.mockResolvedValue(probe());
+		const { warmS1Health } = await import("./warm");
+		await warmS1Health();
+		expect(probeS1HealthMock).toHaveBeenCalledWith(s1Judge);
+		expect(s1Records()).toHaveLength(1);
+		expect(s1Records()[0]![1]).toBe(true);
+		expect(s1LegLine()?.[0]).toMatchObject({ leg: "s1", ok: true, servedModels: ["zentropi-ai/cope-b-s1"] });
+	});
+
+	it.each([
+		["a transport failure", { healthy: false, transportOk: false }],
+		["the benign fixture blocking or the violative one passing", { healthy: false, parseOk: false }],
+		["a served model that is not S1, or a missing model id", { healthy: false, identityOk: false, identityAsserted: false }],
+	])("flag on and the probe red for %s: records s1:verdict UNHEALTHY with a warn line naming the failed check", async (_name, over) => {
+		s1JudgeForMock.mockReturnValue(s1Judge);
+		probeS1HealthMock.mockResolvedValue(probe(over));
+		const { warmS1Health } = await import("./warm");
+		await warmS1Health();
+		expect(s1Records()).toHaveLength(1);
+		expect(s1Records()[0]![1]).toBe(false);
+		expect(loggerWarnMock.mock.calls.some((c) => (c[0] as { leg?: string }).leg === "s1")).toBe(true);
+		const { healthy: _healthy, ...checks } = over;
+		expect(s1LegLine()?.[0]).toMatchObject({ leg: "s1", ok: false, ...checks });
+	});
+
+	it("flag on with the S1 key or endpoint unset: loud UNHEALTHY (error line + exception + red record), never a silent skip", async () => {
+		s1JudgeForMock.mockReturnValue(s1Judge);
+		probeS1HealthMock.mockResolvedValue(null);
+		const { warmS1Health } = await import("./warm");
+		await warmS1Health();
+		expect(s1Records()).toHaveLength(1);
+		expect(s1Records()[0]![1]).toBe(false);
+		expect(loggerErrorMock.mock.calls.some((c) => (c[0] as { leg?: string }).leg === "s1")).toBe(true);
+		expect(captureServerExceptionMock).toHaveBeenCalledTimes(1);
+	});
+
+	it("flag off: the leg does not probe and records nothing, so it is never red", async () => {
+		s1JudgeForMock.mockReturnValue(undefined);
+		const { warmS1Health } = await import("./warm");
+		await warmS1Health();
+		expect(probeS1HealthMock).not.toHaveBeenCalled();
+		expect(s1Records()).toHaveLength(0);
+		expect(s1LegLine()).toBeUndefined();
+	});
+
+	it("throttled like the guard leg: a second call inside the window sends no second probe to the shared endpoint", async () => {
+		s1JudgeForMock.mockReturnValue(s1Judge);
+		probeS1HealthMock.mockResolvedValue(probe());
+		const { warmS1Health } = await import("./warm");
+		await warmS1Health();
+		await warmS1Health();
+		expect(probeS1HealthMock).toHaveBeenCalledTimes(1);
+	});
+
+	it("the Shieldstral guard leg is unchanged beside it: same probe, same guard:verdict record, whatever S1 reports", async () => {
+		guardPrimaryConfiguredMock.mockReturnValue(true);
+		probeGuardHealthMock.mockResolvedValue(probe({ servedModels: ["mistralai/Shieldstral-1.0-3B"] }));
+		s1JudgeForMock.mockReturnValue(s1Judge);
+		probeS1HealthMock.mockResolvedValue(probe({ healthy: false, transportOk: false }));
+		const { warmGuardHealth, warmS1Health } = await import("./warm");
+		await Promise.all([warmGuardHealth(), warmS1Health()]);
+		expect(probeGuardHealthMock).toHaveBeenCalledTimes(1);
+		expect(probeGuardHealthMock).toHaveBeenCalledWith();
+		const guard = recordProbeMock.mock.calls.filter((c) => c[0] === "guard:verdict");
+		expect(guard).toHaveLength(1);
+		expect(guard[0]![1]).toBe(true);
+		expect(guard[0]![2].label).toBe("Guard gate (Shieldstral-1.0-3B) verdict path");
+		expect(s1Records()[0]![1]).toBe(false);
+	});
+
+	it("the scheduled job runs the S1 leg; the page ping never does", async () => {
+		fetchMock.mockResolvedValue(new Response("{}", { status: 200 }));
+		s1JudgeForMock.mockReturnValue(s1Judge);
+		probeS1HealthMock.mockResolvedValue(probe());
+		vi.stubEnv("VERCEL", "1");
+		const { warmAll, warmPagePing } = await import("./warm");
+		await warmPagePing();
+		expect(probeS1HealthMock).not.toHaveBeenCalled();
+		await warmAll();
+		expect(probeS1HealthMock).toHaveBeenCalledTimes(1);
+		vi.unstubAllEnvs();
+	});
+});
+
+describe("warmAll — the cron is the only thing that KEEPS the flag snapshot and registry fresh", () => {
 	// This is a WIRING test: flags.ts's header says the warm cron refreshes its snapshot, so something must
 	// call refreshFlags — otherwise every flag reads its env fallback forever while the plane reports no
 	// error, a flag plane that cannot go red. Reads are sync snapshot lookups, so if this call is dropped no
-	// flag test fails: only this one does. CUR-1149: the snapshot can stay fresh while the REGISTRY built from
+	// flag test fails: only this one does. the snapshot can stay fresh while the REGISTRY built from
 	// it doesn't, so this also asserts the registry-gates leg runs every tick.
 	it("calls refreshRegistryGatesIfChanged", async () => {
 		fetchMock.mockResolvedValue(new Response("{}", { status: 200 }));
@@ -963,7 +1068,7 @@ describe("warmAll — the cron is the only thing that KEEPS the flag snapshot an
 	});
 });
 
-describe("external heartbeat — the dead-man's switch that survives us being down (CUR-102)", () => {
+describe("external heartbeat — the dead-man's switch that survives us being down", () => {
 	const HEARTBEAT = "https://uptime.betterstack.com/api/v1/heartbeat/testtoken";
 
 	it("pings the configured URL once per warm run", async () => {
@@ -1051,8 +1156,8 @@ describe("warmErrorRate — unhandled server exceptions", () => {
 
 // The auto-route classifier fails OPEN (answers normally) rather than throwing, so
 // warmErrorRate's own counter never sees it — this leg exists because that failure mode was
-// otherwise invisible to every other probe in this file. (CUR-1260)
-describe("warmAgentRouteFailureRate — auto-route classifier fail-open rate (CUR-1260)", () => {
+// otherwise invisible to every other probe in this file.
+describe("warmAgentRouteFailureRate — auto-route classifier fail-open rate", () => {
 	it("reports HEALTHY below the threshold", async () => {
 		takeAgentRouteFailureCountMock.mockReturnValue(4); // threshold is 5
 		const { warmAgentRouteFailureRate } = await import("./warm");
@@ -1086,123 +1191,124 @@ describe("warmAgentRouteFailureRate — auto-route classifier fail-open rate (CU
 	});
 });
 
-describe("warmTurnOutcomeRate — the non-complete turn RATE probe (CUR-89)", () => {
-	const outcomeCall = () => recordProbeMock.mock.calls.find(([k]) => k === "turn:outcome-rate");
-
-	it("reports HEALTHY when the error+timedOut rate is under the ceiling", async () => {
-		countTurnOutcomesMock.mockResolvedValue({ complete: 90, error: 5, timedOut: 3, aborted: 20 });
+describe("warmTurnOutcomeRate — burn rate split by the layer each failed turn died in", () => {
+	const call = (key: string) => recordProbeMock.mock.calls.find(([k]) => k === key);
+	type W = OutcomeAgg["counts"];
+	/** `n` turns in every window: they all happened in the last five minutes. */
+	const now = (n: number): W => ({ "5m": n, "30m": n, "1h": n, "6h": n });
+	/** `n` turns more than an hour ago, inside the 6h window only. */
+	const earlier = (n: number): W => ({ "5m": 0, "30m": 0, "1h": 0, "6h": n });
+	const row = (outcome: string, failureLayer: string | null, counts: W, model = "mistral-large-2512"): OutcomeAgg => ({
+		outcome,
+		failureLayer,
+		model,
+		counts,
+	});
+	const run = async (rows: OutcomeAgg[]) => {
+		countTurnOutcomeWindowsMock.mockResolvedValue(rows);
 		const { warmTurnOutcomeRate } = await import("./warm");
 		await warmTurnOutcomeRate();
-		expect(outcomeCall()?.[1]).toBe(true); // 8 / 118 = 0.068
+	};
+
+	// THE contract, stated in the name: this must go RED when our own pipeline fails a share of turns now.
+	it("pages (turn:outcome-rate unhealthy, DOWN) when failures in OUR layer burn fast in both the 5m and 1h windows", async () => {
+		await run([row("complete", null, now(20)), row("error", "ours", now(5))]);
+		expect(call("turn:outcome-rate")?.[1]).toBe(false);
+		expect(call("turn:outcome-rate")?.[2]).not.toHaveProperty("severity", "degraded");
 	});
 
-	// THE contract, stated in the name: this must go RED for a sustained share of turns ending without
-	// an answer. A rate probe that cannot reach `false` is not a check (CUR-73 / the gate rules).
-	it("reports UNHEALTHY when error+timedOut exceed the rate ceiling", async () => {
-		countTurnOutcomesMock.mockResolvedValue({ complete: 20, error: 8, timedOut: 4 });
-		const { warmTurnOutcomeRate } = await import("./warm");
-		await warmTurnOutcomeRate();
-		expect(outcomeCall()?.[1]).toBe(false); // 12 / 32 = 0.375
+	it("does NOT page on a saturated partner host: upstream failures stay off turn:outcome-rate and name the model on turn:upstream-rate", async () => {
+		const sealion = "aisingapore/Nemotron-SEA-LION-v4.8-120B-A12B";
+		await run([row("complete", null, now(20)), row("timedOut", "upstream", now(5), sealion)]);
+		expect(call("turn:outcome-rate")?.[1]).toBe(true);
+		expect(call("turn:upstream-rate")?.[1]).toBe(false);
+		expect(call("turn:upstream-rate")?.[2]).toMatchObject({ severity: "degraded" });
+		expect(String(call("turn:upstream-rate")?.[2].label)).toContain(sealion);
 	});
 
-	// CUR-445. `empty` turns must not reach this probe as `complete` and count toward the healthy denominator:
-	// that is the one direction of miscount that makes a real failure look BETTER the worse it gets, since
-	// every turn the model failed to answer would arrive here as evidence of health.
+	it("reports visitor harm (degraded) when upstream failures leave visitors without an answer, though our layer is clean", async () => {
+		// The harm SLO (95%) carries the week's 3.5% partner-host failures, so a fast burn is 72% failing.
+		await run([row("complete", null, now(5)), row("error", "upstream", now(20))]);
+		expect(call("turn:harm-rate")?.[1]).toBe(false);
+		expect(call("turn:harm-rate")?.[2]).toMatchObject({ severity: "degraded" });
+	});
+
+	it("counts a failure with NO layer (a row written before the column) as ours, so nothing unattributed drops out", async () => {
+		await run([row("complete", null, now(20)), row("timedOut", null, now(5))]);
+		expect(call("turn:outcome-rate")?.[1]).toBe(false);
+	});
+
 	it("counts empty turns as failures — the model answered none of them", async () => {
-		countTurnOutcomesMock.mockResolvedValue({ complete: 20, empty: 12 });
-		const { warmTurnOutcomeRate } = await import("./warm");
-		await warmTurnOutcomeRate();
-		expect(outcomeCall()?.[1]).toBe(false); // 12 / 32 = 0.375
+		await run([row("complete", null, now(20)), row("empty", "ours", now(5))]);
+		expect(call("turn:outcome-rate")?.[1]).toBe(false);
+	});
+
+	it("counts client-layer failures on no alert: a visitor's own local endpoint is not our outage or a partner's", async () => {
+		await run([row("complete", null, now(20)), row("timedOut", "client", now(5), "local:abc:qwen")]);
+		expect(call("turn:outcome-rate")?.[1]).toBe(true);
+		expect(call("turn:harm-rate")?.[1]).toBe(true);
 	});
 
 	it("does NOT count user-aborts or policy-declines as failures", async () => {
-		// 40 users leaving + 10 policy declines, one real error over 60 turns → still healthy.
-		countTurnOutcomesMock.mockResolvedValue({ complete: 9, aborted: 40, declined: 10, error: 1 });
-		const { warmTurnOutcomeRate } = await import("./warm");
-		await warmTurnOutcomeRate();
-		expect(outcomeCall()?.[1]).toBe(true); // 1 / 60 = 0.017
+		await run([
+			row("complete", null, now(9)),
+			row("aborted", "client", now(40)),
+			row("declined", null, now(10)),
+			row("error", "ours", now(1)),
+		]);
+		expect(call("turn:outcome-rate")?.[1]).toBe(true);
 	});
 
-	it("records NOTHING below the min sample — a 1-of-2 blip is not a 50% outage", async () => {
-		countTurnOutcomesMock.mockResolvedValue({ complete: 1, error: 1 });
-		const { warmTurnOutcomeRate } = await import("./warm");
-		await warmTurnOutcomeRate();
-		expect(outcomeCall()).toBeUndefined();
+	it("records NOTHING below the volume floor — 1 failed turn of 2 is not a 50% outage", async () => {
+		await run([row("complete", null, now(1)), row("error", "ours", now(1))]);
+		expect(call("turn:outcome-rate")).toBeUndefined();
+		expect(call("turn:harm-rate")).toBeUndefined();
 	});
 
 	it("records NOTHING when the count query throws — no healthy zero (the always-green trap)", async () => {
-		countTurnOutcomesMock.mockRejectedValue(new Error("db down"));
+		countTurnOutcomeWindowsMock.mockRejectedValue(new Error("db down"));
 		const { warmTurnOutcomeRate } = await import("./warm");
 		await warmTurnOutcomeRate();
-		expect(outcomeCall()).toBeUndefined();
+		expect(call("turn:outcome-rate")).toBeUndefined();
 	});
 
-	// CUR-2242. A burst of timeouts must not hold the 6h window over 80% failed for hours after answers are
-	// completing again, re-posting DOWN every 30 minutes. The window decides an outage has started; the newest
-	// turns decide it has ended.
-	describe("recovery on the newest evidence (CUR-2242)", () => {
-		const burst = { complete: 11, timedOut: 48 }; // a 6h window 81% failed
-		const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000);
+	// The problem, solved by the short window: a burst that ended stops paging within minutes once
+	// answers complete again, and silence alone clears nothing.
+	describe("recovery is read from the short window", () => {
+		const burstInTheHour = (short: W) => [
+			row("complete", null, { "5m": short["5m"], "30m": 20, "1h": 20, "6h": 20 }),
+			row("timedOut", "ours", { "5m": 0, "30m": 6, "1h": 6, "6h": 6 }),
+		];
 
-		it("records HEALTHY once two turns completed after a failure at least 15 minutes old, though the window is still over the ceiling", async () => {
-			countTurnOutcomesMock.mockResolvedValue(burst);
-			turnOutcomeRecoveryMock.mockResolvedValue({ newestFailureAt: minutesAgo(40), completesSinceFailure: 2 });
-			const { warmTurnOutcomeRate } = await import("./warm");
-			await warmTurnOutcomeRate();
-			expect(outcomeCall()?.[1]).toBe(true);
+		it("records HEALTHY once the last 5 minutes hold completed turns and no failure, though the hour is still over", async () => {
+			await run(burstInTheHour({ ...earlier(0), "5m": 3 }));
+			expect(call("turn:outcome-rate")?.[1]).toBe(true);
 		});
 
-		it("stays UNHEALTHY on one completed turn after the burst — one answer is not a recovery", async () => {
-			countTurnOutcomesMock.mockResolvedValue(burst);
-			turnOutcomeRecoveryMock.mockResolvedValue({ newestFailureAt: minutesAgo(40), completesSinceFailure: 1 });
-			const { warmTurnOutcomeRate } = await import("./warm");
-			await warmTurnOutcomeRate();
-			expect(outcomeCall()?.[1]).toBe(false);
+		it("records NOTHING when the last 5 minutes hold no turn at all — silence is not evidence of health", async () => {
+			await run(burstInTheHour(earlier(0)));
+			expect(call("turn:outcome-rate")).toBeUndefined();
 		});
+	});
 
-		it("stays UNHEALTHY when a turn failed in the last 15 minutes, however many completed around it — a flapping outage is not over", async () => {
-			countTurnOutcomesMock.mockResolvedValue(burst);
-			turnOutcomeRecoveryMock.mockResolvedValue({ newestFailureAt: minutesAgo(5), completesSinceFailure: 6 });
-			const { warmTurnOutcomeRate } = await import("./warm");
-			await warmTurnOutcomeRate();
-			expect(outcomeCall()?.[1]).toBe(false);
-		});
-
-		it("stays UNHEALTHY when no turn at all followed the failures — silence is not evidence of health", async () => {
-			countTurnOutcomesMock.mockResolvedValue(burst);
-			turnOutcomeRecoveryMock.mockResolvedValue({ newestFailureAt: minutesAgo(180), completesSinceFailure: 0 });
-			const { warmTurnOutcomeRate } = await import("./warm");
-			await warmTurnOutcomeRate();
-			expect(outcomeCall()?.[1]).toBe(false);
-		});
-
-		it("stays UNHEALTHY when the recovery read throws — a failed read of the evidence is not the evidence", async () => {
-			countTurnOutcomesMock.mockResolvedValue(burst);
-			turnOutcomeRecoveryMock.mockRejectedValue(new Error("db down"));
-			const { warmTurnOutcomeRate } = await import("./warm");
-			await warmTurnOutcomeRate();
-			expect(outcomeCall()?.[1]).toBe(false);
-		});
-
-		it("does not read the recovery evidence when the window is healthy or below the min sample", async () => {
-			const { warmTurnOutcomeRate } = await import("./warm");
-			countTurnOutcomesMock.mockResolvedValue({ complete: 90, error: 1 });
-			await warmTurnOutcomeRate();
-			countTurnOutcomesMock.mockResolvedValue({ complete: 1, error: 1 });
-			await warmTurnOutcomeRate();
-			expect(turnOutcomeRecoveryMock).not.toHaveBeenCalled();
-		});
+	it("keeps a slow 6h burn on its own degraded probe, not the page", async () => {
+		// 4 failures among 50 turns over 6h (8%, 16x on a 0.5% budget), the last 30 minutes still failing.
+		await run([
+			row("complete", null, { "5m": 5, "30m": 10, "1h": 20, "6h": 46 }),
+			row("error", "ours", { "5m": 0, "30m": 2, "1h": 2, "6h": 4 }),
+		]);
+		expect(call("turn:outcome-burn-slow")?.[1]).toBe(false);
+		expect(call("turn:outcome-burn-slow")?.[2]).toMatchObject({ severity: "degraded" });
+		expect(call("turn:outcome-rate")?.[1]).toBe(true);
 	});
 
 	it("prunes the table on a run that read it, so it never grows unbounded", async () => {
-		countTurnOutcomesMock.mockResolvedValue({ complete: 50, error: 1 });
-		const { warmTurnOutcomeRate } = await import("./warm");
-		await warmTurnOutcomeRate();
+		await run([row("complete", null, now(50)), row("error", "ours", now(1))]);
 		expect(pruneTurnOutcomesMock).toHaveBeenCalledTimes(1);
 	});
 });
 
-describe("warmTurnSpeed — answers that arrive, slowly (CUR-2243)", () => {
+describe("warmTurnSpeed — answers that arrive, slowly", () => {
 	const speedCall = () => recordProbeMock.mock.calls.find(([k]) => k === "turn:first-token-median");
 	const turns = (ms: number) => Array.from({ length: 15 }, () => ms);
 
@@ -1238,7 +1344,7 @@ describe("warmTurnSpeed — answers that arrive, slowly (CUR-2243)", () => {
 });
 
 // An unreadable Mistral model list credits every answer to the router's `*-latest` alias, and
-// on event instances that runs for hours with only an error log line. The leg turns it into an alert. (CUR-3842)
+// on event instances that runs for hours with only an error log line. The leg turns it into an alert.
 describe("warmMistralVersions — the answer-version list", () => {
 	const routerLane = () =>
 		Object.assign(cfg, {
@@ -1276,5 +1382,61 @@ describe("warmMistralVersions — the answer-version list", () => {
 		await warmMistralVersions();
 		expect(fetchMock).not.toHaveBeenCalled();
 		expect(recordProbeMock).not.toHaveBeenCalledWith("mistral:versions", expect.anything(), expect.anything());
+	});
+});
+
+// the legs split by who needs them. A page ping wakes upstreams and never drives alerting;
+// a process's own keepalive refreshes its state; the scheduled job (warmAll) runs everything.
+describe("warm groups — page ping, process keepalive, scheduled job", () => {
+	const deploymentLegsRan = () =>
+		countDeclinesMock.mock.calls.length + countTurnOutcomeWindowsMock.mock.calls.length;
+	const processLegsRan = () =>
+		executeMock.mock.calls.length + refreshRegistryGatesIfChangedMock.mock.calls.length + takeErrorCountMock.mock.calls.length;
+
+	afterEach(() => vi.unstubAllEnvs());
+
+	it("the page ping off Vercel wakes moderation and the model, and runs no process or deployment leg", async () => {
+		vi.stubEnv("VERCEL", "");
+		fetchMock.mockResolvedValue(new Response("{}", { status: 200 }));
+		const { warmPagePing } = await import("./warm");
+		await warmPagePing();
+		expect(warmModerationMock).toHaveBeenCalledTimes(1);
+		expect(processLegsRan()).toBe(0);
+		expect(deploymentLegsRan()).toBe(0);
+	});
+
+	it("the page ping on Vercel also refreshes this instance's state, since Vercel has no keepalive, but still runs no probe", async () => {
+		vi.stubEnv("VERCEL", "1");
+		fetchMock.mockResolvedValue(new Response("{}", { status: 200 }));
+		const { warmPagePing } = await import("./warm");
+		await warmPagePing();
+		expect(warmModerationMock).toHaveBeenCalledTimes(1);
+		expect(refreshRegistryGatesIfChangedMock).toHaveBeenCalledTimes(1);
+		expect(executeMock).toHaveBeenCalledTimes(1);
+		expect(takeErrorCountMock).toHaveBeenCalledTimes(1);
+		expect(deploymentLegsRan()).toBe(0);
+	});
+
+	it("a process's keepalive refreshes its flags, registry, DB connection and error counters, and nothing else", async () => {
+		fetchMock.mockResolvedValue(new Response("{}", { status: 200 }));
+		const { warmProcess } = await import("./warm");
+		await warmProcess();
+		expect(refreshRegistryGatesIfChangedMock).toHaveBeenCalledTimes(1);
+		expect(executeMock).toHaveBeenCalledTimes(1);
+		expect(takeErrorCountMock).toHaveBeenCalledTimes(1);
+		expect(takeAgentRouteFailureCountMock).toHaveBeenCalledTimes(1);
+		expect(warmModerationMock).not.toHaveBeenCalled();
+		expect(deploymentLegsRan()).toBe(0);
+	});
+
+	it("the scheduled job runs all three groups", async () => {
+		fetchMock.mockResolvedValue(new Response("{}", { status: 200 }));
+		const { warmAll } = await import("./warm");
+		await warmAll();
+		// The page leg's ping and the Coop leg's origin ping (warmModeration throttles itself).
+		expect(warmModerationMock).toHaveBeenCalledTimes(2);
+		expect(refreshRegistryGatesIfChangedMock).toHaveBeenCalledTimes(1);
+		expect(countDeclinesMock).toHaveBeenCalledTimes(1);
+		expect(countTurnOutcomeWindowsMock).toHaveBeenCalledTimes(1);
 	});
 });

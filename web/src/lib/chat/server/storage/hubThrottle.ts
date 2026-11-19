@@ -1,12 +1,12 @@
 /**
- * The storage token's rate limit, as Hugging Face reports it (CUR-3680).
+ * The storage token's rate limit, as Hugging Face reports it.
  *
  * Hugging Face counts the token's Hub calls over 5-minute fixed windows (3,000 a window on the team
  * plan) and sends `RateLimit: "api";r=<remaining>;t=<seconds until reset>` on every response. The Hub
  * SDK's `HubApiError` keeps none of it, so every Hub call in custodialStorage.ts passes `hubFetch`,
  * which reads `t` on a 429. Until that reset, a call answers 429 here without reaching Hugging Face:
  * the window has nothing left to give, and spending more calls in it only lengthens the throttle for
- * every preview sharing the token. The SDK turns that 429 into its own `HubApiError`, so every caller's
+ * every deployment sharing the token. The SDK turns that 429 into its own `HubApiError`, so every caller's
  * existing throttle handling applies unchanged.
  *
  * Per serverless instance: another instance learns the reset from its own first 429.
@@ -42,7 +42,7 @@ function isTreeListing(input: RequestInfo | URL, init?: RequestInit): boolean {
  * answers 429 like a throttle, so callers retry it and the route says storage is busy. A miss arms no
  * reset: one slow listing is not Hugging Face's rate limit, and must not hold every other call. The body is
  * read inside the deadline because the SDK reads it after fetch resolves, past any timer here.
- * Uploads and downloads keep no deadline: their size, not the Hub, sets how long they take. (CUR-3980)
+ * Uploads and downloads keep no deadline: their size, not the Hub, sets how long they take.
  */
 async function withListingDeadline(input: RequestInfo | URL, init: RequestInit | undefined): Promise<Response | null> {
 	const deadline = new AbortController();
@@ -62,7 +62,7 @@ async function withListingDeadline(input: RequestInfo | URL, init: RequestInit |
 
 export const hubFetch: typeof fetch = async (input, init) => {
 	if (Date.now() < resetAt) return busy();
-	// Counted against the request (CUR-3682) only when it reaches Hugging Face.
+	// Counted against the request only when it reaches Hugging Face.
 	const res = isTreeListing(input, init) ? await withListingDeadline(input, init) : await countedFetch(input, init);
 	if (!res) return busy();
 	if (res.status === 429) {

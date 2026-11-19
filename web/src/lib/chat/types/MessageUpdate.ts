@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import type { InferenceProvider } from "@huggingface/inference";
 import type { RagSource } from "./Rag";
 import type { SearchSource } from "./Search";
@@ -95,7 +98,7 @@ export const PRESTREAM_STARTING_PHASE = phaseMarker("starting");
 export const PRESTREAM_ACCEPTED_PHASE = phaseMarker("accepted");
 
 // A new code sandbox is waiting for a free slot on a full host (agent-service waits up to about a
-// minute), and the wait is over. The server holds the turn's deadline while the first is the live phase. (CUR-4584)
+// minute), and the wait is over. The server holds the turn's deadline while the first is the live phase.
 export const SANDBOX_WAIT_PHASE = "waiting-sandbox";
 export const SANDBOX_READY_PHASE = "sandbox-ready";
 
@@ -111,15 +114,19 @@ export interface MessageStatusUpdate {
 	status: MessageUpdateStatus;
 	message?: string;
 	statusCode?: number;
-	// On a pre-stream 429 from our own message limit: whole seconds until a send can pass (CUR-3216).
+	// On a pre-stream 429 from our own message limit: whole seconds until a send can pass.
 	retryAfterSeconds?: number;
-	// The picked model's last lane sent nothing before its give-up, so the tab marks it busy. (CUR-4098)
+	// The picked model's last lane sent nothing before its give-up, so the tab marks it busy.
 	modelSilent?: boolean;
 	// Present only on a pre-stream duplicate-turn failure (statusCode 409, prestream-events protocol):
 	// the W2 idempotency info the HTTP 409 body used to carry, so the client can attach to the
 	// already-running turn instead of erroring. Mirrors the readGeneration record.
 	conflict?: { status?: string; conversationId?: string; messageId?: string };
-	// On a layer-test turn's Finished update only, the switches the turn actually applied. (CUR-2139)
+	// A pre-stream refusal's machine-readable cause, when the route sets one (App.Error's `reason`).
+	// A sealed-history 409 carries `history_missing` or `history_mismatch`, so the client tells it
+	// apart from the duplicate-turn 409 above and resyncs instead of attaching.
+	reason?: string;
+	// On a layer-test turn's Finished update only, the switches the turn actually applied.
 	evalLayers?: { promptBlock?: boolean; retrieval?: boolean; maxTokens?: number };
 }
 
@@ -138,7 +145,7 @@ export type TitleSource =
 	| "titling-disabled"
 	| "reply-not-title-shaped"
 	| "generation-failed"
-	// A fixed neutral title from the catalogs, because the turn carries crisis support. (CUR-4095)
+	// A fixed neutral title from the catalogs, because the turn carries crisis support.
 	| "support";
 
 export interface MessageTitleUpdate {
@@ -173,7 +180,7 @@ export interface MessageReasoningStatusUpdate {
 
 /**
  * The Reasoning status a turn gets when the server holds the model's untagged reasoning back until its
- * bare `</think>` (ALIA, CUR-3942). It carries no reasoning text, only that reasoning is under way.
+ * bare `</think>` (ALIA). It carries no reasoning text, only that reasoning is under way.
  */
 export const HELD_REASONING_STATUS = "reasoning-held";
 
@@ -182,7 +189,7 @@ export interface MessageFileUpdate {
 	name: string;
 	sha: string;
 	mime: string;
-	/** Set on a file an agent turn wrote; see MessageFile.agentPath. (CUR-4398) */
+	/** Set on a file an agent turn wrote; see MessageFile.agentPath. */
 	agentPath?: string;
 }
 export interface MessageFinalAnswerUpdate {
@@ -193,23 +200,23 @@ export interface MessageFinalAnswerUpdate {
 	 * The model stopped because it hit its token cap (finish_reason "length"), not because it finished.
 	 * A FLAG rather than text in `text`, because the output-moderation path rebuilds the answer body
 	 * from screened Stream tokens and discards whatever text a producer put on this update — the same
-	 * reason `interrupted` is carried here. The notice itself is appended once, at the update()
-	 * chokepoint every producer shares (CUR-149).
+	 * reason `interrupted` is carried here. The notice itself is appended once, at the update
+	 * chokepoint every producer shares.
 	 */
 	truncated?: boolean;
 	/**
 	 * Full output-moderation block: the reviewed decline copy, REPLACING `text` entirely. Carried
-	 * out-of-band and applied once at the update() chokepoint, after every model-text guard
-	 * (honesty, arithmetic) has already run — the same reason `truncated` is (CUR-149). A decline
+	 * out-of-band and applied once at the update chokepoint, after every model-text guard
+	 * (honesty, arithmetic) has already run — the same reason `truncated` is. A decline
 	 * is not model output: it must never be regenerated (onGroundedBail), source/hedge-stripped, or
-	 * arithmetic-corrected. CUR-946.
+	 * arithmetic-corrected.
 	 */
 	declineText?: string;
 	/**
 	 * Mid-stream output-moderation block: the reviewed notice to APPEND to `text` (the already-
 	 * cleared, already-honesty-and-arithmetic-processed prefix), after every model-text guard has
 	 * run. Out-of-band for the same reason as declineText — the notice itself must never pass
-	 * through those guards, even though the prefix ahead of it still should. CUR-946.
+	 * through those guards, even though the prefix ahead of it still should.
 	 */
 	declineNotice?: string;
 }
@@ -220,21 +227,21 @@ export interface MessageRouterMetadataUpdate {
 	provider?: InferenceProvider;
 	// The real backend that served, from `x-litellm-model-api-base` — the only provenance a healthy
 	// gateway turn carries (no router header, body echoes the group). Lets a consumer assert WHICH lane
-	// answered, which is why the synthetic turn (CUR-89) and the served-identity check (CUR-114/115) need
+	// answered, which is why the synthetic turn and the served-identity check need
 	// it to survive the pipeline instead of being dropped at the emit gates.
 	backend?: string;
 	// The host the request was sent to. Two lanes can share a `backend` (the staging router and
-	// La Plateforme both report api.mistral.ai), so this is what says which one carried the turn. (CUR-3193)
+	// La Plateforme both report api.mistral.ai), so this is what says which one carried the turn.
 	lane?: string;
-	// The Vercel region of the app server that ran the turn (`VERCEL_REGION`). (CUR-4580)
+	// The Vercel region of the app server that ran the turn (`VERCEL_REGION`).
 	appRegion?: string;
 	// agent-service's verify tier — "" (unverified) | "execution" | "judge" | "execution+judge".
 	// Absent (key not present) means this update carries no opinion on it; present-and-"" is a real,
-	// meaningful "checked, unverified" signal. Consumers must branch on presence, not truthiness. (CUR-756)
+	// meaningful "checked, unverified" signal. Consumers must branch on presence, not truthiness.
 	verifyMethod?: string;
-	// Helper models this turn used, merged by role into routerMetadata.assistedBy. (CUR-984)
+	// Helper models this turn used, merged by role into routerMetadata.assistedBy.
 	assistedBy?: AssistedBy[];
-	// The language the answer was asked for by name (Message.routerMetadata.answerLanguage). (CUR-2237)
+	// The language the answer was asked for by name (Message.routerMetadata.answerLanguage).
 	answerLanguage?: string;
 }
 
@@ -250,11 +257,11 @@ export interface MessageAgentStepUpdate {
 }
 
 // Emitted once, early in the agent event stream (same point `plan` fires) once the agent service has
-// resolved this caller's write permission for the task (CUR-471). Fires under EVERY
+// resolved this caller's write permission for the task. Fires under EVERY
 // ACP_PERMISSION_POLICY value — plain `allow`/`deny_writes` report tier "uniform" with null task
 // counts; only `staged` populates tasksDone/tasksRequired — but the client only stamps/renders it when
 // policy is actually "deny_writes" (see writePolicyProvenance). This is the ONLY signal a caller gets
-// for a denied terminal/code_execution request: CUR-217's gating removes those tools from the toolset
+// for a denied terminal/code_execution request: The gating removes those tools from the toolset
 // before the session starts rather than denying the call, so there is no tool_result frame to narrate a
 // refusal from — unlike write_file/patch denials, which DO get a real tool_result{ok:false}. Carried as
 // a structured chunk rather than <think> narration on purpose: agent-service separately injects a
@@ -283,10 +290,12 @@ export interface MessageSafetyUpdate {
 	// when the rule has a reviewed label; the client stamps it onto message.moderation.ruleLabel and shows
 	// it in place of the raw `label`. Absent → generic decline copy. Never carries a raw action code.
 	ruleLabel?: string;
+	// Every labeled content rule that blocked the turn, when more than one did.
+	ruleLabels?: string[];
 	// The screen could not run (fail-closed UNKNOWN): the turn was held back unchecked, nothing was
-	// flagged. The badge says "not checked" instead of naming a classifier (CUR-2301).
+	// flagged. The badge says "not checked" instead of naming a classifier.
 	unscreened?: boolean;
-	// A self-harm rule declined the turn; the client stamps message.moderation.support (CUR-2111).
+	// A self-harm rule declined the turn; the client stamps message.moderation.support.
 	support?: boolean;
 }
 
@@ -331,25 +340,25 @@ export interface MessageNameNoticeUpdate {
 
 // This turn's files were refused because they could not be scanned for known CSAM (no
 // scanner configured, or the configured one did not answer). Nothing was stored; the text of the
-// turn is still answered, and `message` is the one line both upload paths show. (CUR-2382)
+// turn is still answered, and `message` is the one line both upload paths show.
 interface MessageAttachmentNoticeUpdate {
 	type: MessageUpdateType.AttachmentNotice;
 	message: string;
-	/** A stored file this turn could not read back, rather than an upload refused (CUR-2382). (CUR-3291) */
+	/** A stored file this turn could not read back, rather than an upload refused. */
 	kind?: "unread";
-	/** The files left out of the sent message, so its bubble marks them before the reload. (CUR-3405) */
+	/** The files left out of the sent message, so its bubble marks them before the reload. */
 	leftOutFiles?: { name: string; mime: string }[];
 }
 
 // The chat was longer than the answering model's context, so this many of its oldest
-// exchanges were left out of the request (endpoints/openai/fitHistory.ts). Emitted only when > 0. (CUR-2893)
+// exchanges were left out of the request (endpoints/openai/fitHistory.ts). Emitted only when > 0.
 interface MessageHistoryNoticeUpdate {
 	type: MessageUpdateType.HistoryNotice;
 	leftOut: number;
 }
 
 // Agent was on Auto and the route check failed, so the selected model answered. Emitted
-// first thing in the stream; a "direct" verdict emits nothing. (CUR-2830)
+// first thing in the stream; a "direct" verdict emits nothing.
 interface MessageAgentRouteNoticeUpdate {
 	type: MessageUpdateType.AgentRouteNotice;
 }
@@ -357,27 +366,30 @@ interface MessageAgentRouteNoticeUpdate {
 // The input pre-screen let this turn through. Carries the verdict the server stamps onto
 // message.moderation, so X-ray on a just-finished answer says whether the check ran, as a reload would.
 // `screened` false = the screen could not run and the turn went through unchecked (failed open); absent =
-// no verdict was recorded, the same as message.moderation.screened. (CUR-3963)
+// no verdict was recorded, the same as message.moderation.screened.
 interface MessageInputScreenUpdate {
 	type: MessageUpdateType.InputScreen;
 	screened?: boolean;
 }
 
 // A self-harm distress rule fired and let the turn through, so the answer leads with the
-// Support resources card. Emitted before generation; a declined turn carries `support` on Safety instead. (CUR-3915)
+// Support resources card. Emitted before generation; a declined turn carries `support` on Safety instead.
 interface MessageSupportNoticeUpdate {
 	type: MessageUpdateType.SupportNotice;
-	// The message's language when the multilingual support signal stamped the card, for its copy. (CUR-4093)
+	// The message's language when the multilingual support signal stamped the card, for its copy.
 	supportLang?: string;
-	// The country the message places the person at risk in, for the card's helpline page. (CUR-4488)
+	// The country the message places the person at risk in, for the card's helpline page.
 	supportCountry?: string;
-	// The public label of the distress rule that matched, for X-ray's rule list. (CUR-3915)
+	// The public label of the distress rule that matched, for X-ray's rule list.
 	ruleLabel?: string;
+	// The Mila output guard flagged this answer and ended the conversation: the page shows a status line
+	// in place of the composer, and the server refuses every later turn (Conversation.crisisEndedAt).
+	conversationEnded?: true;
 }
 
 // This turn's text is a fixed string the server wrote, not a model reply, so no model ran.
 // Emitted before the FinalAnswer; the client stamps message.fixedReply so the receipt says so instead
-// of a provenance trace for a pipeline that never ran. (CUR-1579)
+// of a provenance trace for a pipeline that never ran.
 interface MessageFixedReplyUpdate {
 	type: MessageUpdateType.FixedReply;
 	kind: FixedReplyKind;
@@ -387,13 +399,13 @@ interface MessageFixedReplyUpdate {
 // is the at-capacity notice (screenStream.ts). No model wrote it, so the footer must not read "from
 // training" beside it.
 // "missing-document": the turn names a document nobody attached or pasted, so the server answers with a
-// fixed note and no model call (missingDocument.ts, CUR-1835, stamped since CUR-2124).
-// "canned": the `canned_reply` fault's stand-in answer for a spec that checks only our UI (SOL-91, CUR-2954).
+// fixed note and no model call (missingDocument.ts, stamped).
+// "canned": the `canned_reply` fault's stand-in answer for a spec that checks only our UI.
 export type FixedReplyKind = "low-resource-language" | "capacity" | "missing-document" | "canned";
 
 // The primary model did not answer this turn and a backup lane serving a different model took
 // over (endpoints/failover.ts). Emitted before the backup's attempt starts, so the live log can show the
-// switch as it happens and the receipt can keep it; the badge alone names only the model that answered. (CUR-2239)
+// switch as it happens and the receipt can keep it; the badge alone names only the model that answered.
 interface MessageFailoverUpdate {
 	type: MessageUpdateType.Failover;
 	/** the primary model's id, the one the backup stood in for */
@@ -401,7 +413,7 @@ interface MessageFailoverUpdate {
 	/** the backup lane's served-model id */
 	to: string;
 	reason: FailoverReason;
-	/** why the lane before the backup gave up; absent when no attempt was made (CUR-3313) */
+	/** why the lane before the backup gave up; absent when no attempt was made */
 	cause?: FailoverCause;
 }
 
@@ -455,7 +467,7 @@ export interface MessageSearchAttemptUpdate {
 	type: MessageUpdateType.SearchAttempt;
 	grounded: false;
 	searched: boolean;
-	/** The search ran and did not finish (see Message.searchAttempt.failed). (CUR-4091) */
+	/** The search ran and did not finish (see Message.searchAttempt.failed). */
 	failed?: "timeout" | "error";
 }
 
@@ -463,7 +475,7 @@ export interface MessageSearchAttemptUpdate {
 // sent (endpoints/openai/calculateTool.ts). One update per call. The UI shows the expression beside the
 // result so the reader can check the setup; it never says "checked" or "verified", because a right sum
 // of a wrong setup is still a wrong answer. `error` is set instead of `result` when the expression
-// could not be evaluated; the model was told why and answered on. (CUR-2273)
+// could not be evaluated; the model was told why and answered on.
 export interface MessageCalculationUpdate {
 	type: MessageUpdateType.Calculation;
 	expression: string;
@@ -473,8 +485,8 @@ export interface MessageCalculationUpdate {
 }
 
 // One call to an operator-configured MCP server (mcp/serversKit.ts), for the step-by-step
-// trace and provenance. Names and an outcome only, except for the conversation's own sandbox
-// (CUR-4232), whose code and output the person sees in place of a confirmation card. (CUR-3026)
+// trace and provenance. Names and an outcome only, except for the conversation's own sandbox,
+// whose code and output the person sees in place of a confirmation card.
 export interface MessageMcpCallUpdate {
 	type: MessageUpdateType.McpCall;
 	server: string;
@@ -506,20 +518,20 @@ export interface MessageMcpUpdate {
 	 *  legible to the user/tester rather than looking random. `skipMs` is how long we waited. */
 	skipped?: boolean;
 	skipMs?: number;
-	/** With `skipped`: the tool answered, with an error (CUR-2645), rather than not answering in time. */
+	/** With `skipped`: the tool answered, with an error, rather than not answering in time. */
 	failed?: boolean;
-	/** With `skipped`: read-aloud has no voice for the answer's language (CUR-3151); its English name. */
+	/** With `skipped`: read-aloud has no voice for the answer's language; its English name. */
 	unsupportedLanguage?: string;
-	/** With `unsupportedLanguage`: the English-voice clip, played only on the visitor's request (CUR-3989). */
+	/** With `unsupportedLanguage`: the English-voice clip, played only on the visitor's request. */
 	fallbackAudio?: string;
-	/** With `audio`: the voice's accent when the language has regional variants (CUR-3989). */
+	/** With `audio`: the voice's accent when the language has regional variants. */
 	voice?: string;
 }
 
 // Emitted from the agent endpoint's `done` handler when the ACP tool-call stream observed at least one
 // real tool run this turn (write_file, terminal, code_execution, etc. — the same `toolKinds` set
 // `wroteCodeWithoutRunningIt`/`claimedStepsWithoutObservedTools` already read for the unrun-code caveat).
-// Only emitted when non-empty — an empty toolKinds is ambiguous (CUR-234: could mean "ACP off, correctly
+// Only emitted when non-empty — an empty toolKinds is ambiguous (could mean "ACP off, correctly
 // silent" or "the agent genuinely used no tools"), so this stays silent rather than assert a negative.
 // Carries the marker the client stamps onto message.agentTools so the provenance trace reads "ran tools ·
 // <kinds>" instead of falling through to "from training" on a turn that genuinely ran real tools.
@@ -528,17 +540,20 @@ export interface MessageAgentToolsUpdate {
 	toolKinds: string[];
 	// per-kind call counts, alongside the distinct-kind toolKinds list above — powers the
 	// "Edited 2 files, ran 1 command" summary line instead of a flat kind join. Optional so an update
-	// built before this field existed still type-checks. (CUR-775)
+	// built before this field existed still type-checks.
 	counts?: Record<string, number>;
 }
 
 // The agent-service task id this turn submitted, and the Fly machine holding its state. The run
-// outlives the request, so the message keeps the handle a later visit needs to re-attach to it. (CUR-993)
+// outlives the request, so the message keeps the handle a later visit needs to re-attach to it.
 interface MessageAgentRunUpdate {
 	type: MessageUpdateType.AgentRun;
 	taskId: string;
 	machineId?: string;
 	closed?: boolean;
+	/** the run was submitted to outlive its request (`agent-run-handoff`). Decided once, at
+	 *  submit, and read from here by every later request and by the page, never re-read from the flag. */
+	handoff?: boolean;
 }
 
 // Why a turn's output is predicted rather than measured. The first three are this endpoint's own read of
@@ -554,7 +569,7 @@ export type UnrunCodeReason =
 	| "service-verdict-structural";
 
 // The negative half of MessageAgentToolsUpdate above, and it exists precisely because that update cannot
-// carry it. `agentTools` stays silent on an empty toolKinds by design (CUR-234), so its ABSENCE is
+// carry it. `agentTools` stays silent on an empty toolKinds by design, so its ABSENCE is
 // ambiguous between "ACP off, correctly silent" and "the agent genuinely executed nothing" — a client
 // reading "nothing ran" out of that absence would assert exactly the negative that comment refuses to.
 //
@@ -570,7 +585,7 @@ export interface MessageUnrunCodeUpdate {
 }
 
 // Emitted mid-run when agent-service pauses a tool call on ACP_PERMISSION_POLICY=confirm and needs a
-// human answer (CUR-218 — "the confirmation IS the security boundary, so it must be legible", CUR-54).
+// human answer ("the confirmation IS the security boundary, so it must be legible").
 // `taskId` names which agent-service task the eventual allow/deny click resolves (the agent-confirm
 // route has no other way to find it); `confirmId` names which of that task's paused calls. `kind`/
 // `title`/`summary` are agent-service's own redacted description of the call (acp_client.py's
@@ -583,15 +598,15 @@ export interface MessageAgentConfirmUpdate {
 	kind: string;
 	title: string;
 	summary: string;
-	/** Auto mode's one plain sentence for what the call does. When present the card leads (CUR-3142)
+	/** Auto mode's one plain sentence for what the call does. When present the card leads
 	 *  with it and keeps the raw title/summary behind "Details". */
 	plain?: string;
 	/** Epoch ms this confirmation auto-denies at (agent-service's own confirm_timeout_secs,
 	 *  stamped into an absolute deadline at the point this server received the ACP frame — the two
-	 *  processes don't share a clock, so agent-service never sends an epoch itself). Absent on an (CUR-1094)
+	 *  processes don't share a clock, so agent-service never sends an epoch itself). Absent on an
 	 *  older/coarse build that predates this field; the UI falls back to its old static copy. */
 	deadlineAt?: number;
-	/** "mcp" when this asks before an MCP tool runs; the answer goes to the elicitation route, (CUR-3026)
+	/** "mcp" when this asks before an MCP tool runs; the answer goes to the elicitation route,
 	 *  not agent-confirm. Absent for agent-service's gates. */
 	channel?: "agent" | "mcp";
 }

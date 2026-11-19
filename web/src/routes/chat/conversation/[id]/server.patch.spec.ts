@@ -1,6 +1,6 @@
 /**
  * The conversation PATCH (rename, switch model) answers a bad title or model id with 400 and
- * writes nothing. It used `.parse`, whose ZodError SvelteKit answered 500. (CUR-3699)
+ * writes nothing. It used `.parse`, whose ZodError SvelteKit answered 500.
  */
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { ObjectId } from "bson";
@@ -55,7 +55,7 @@ beforeEach(() => {
 	h.updateOne.mockClear();
 });
 
-describe("conversation PATCH answers bad input with 400 and writes nothing (CUR-3699)", () => {
+describe("conversation PATCH answers bad input with 400 and writes nothing", () => {
 	it("refuses a model id the caller cannot pick with 400", async () => {
 		expect(await status({ model: "not-a-model" })).toBe(400);
 		expect(h.updateOne).not.toHaveBeenCalled();

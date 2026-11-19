@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Every Vercel build fetches its flag definitions once and bakes them in, so a cold instance has
-// flags before its first PostHog fetch returns (CUR-4199).
+// flags before its first PostHog fetch returns.
 //
 // A PR preview serves the baked set and never fetches. Scenario runs start many short-lived Lambda
 // instances per preview, and each one polling on its own makes up most of the project's billed flag
@@ -8,7 +8,7 @@
 //
 // develop and production seed with the baked set and still fetch live, so a flag flipped in PostHog
 // reaches them without a redeploy. Without a seed a cold instance reads code fallbacks (off) until its
-// first fetch lands, and a frozen or slow fetch holds the picker at one model (CUR-4194). Seeding
+// first fetch lands, and a frozen or slow fetch holds the picker at one model. Seeding
 // from last known values is the fallback LaunchDarkly's resilience guide recommends.
 //
 // Never fails the build. Every path that does not write the file deletes any stale one first, so the
@@ -17,12 +17,15 @@
 
 import { rm, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import { deployEnvName, gitRef } from "../src/lib/server/runtimeEnv.js";
+import { posthogIngestHost } from "../src/lib/posthogUpstream.js";
 
 const OUT = fileURLToPath(new URL("../src/lib/chat/server/flag-definitions.baked.json", import.meta.url));
 
 /**
  * Whether this build bakes, and how the runtime uses what it baked: `frozen` (a PR preview, never
- * fetches) or `seed` (develop and production, fetch live on top), from Vercel's own system variables.
+ * fetches) or `seed` (develop and production, fetch live on top), from the deployment's identity
+ * (DEPLOY_ENV and GIT_REF, else Vercel's VERCEL_ENV and VERCEL_GIT_COMMIT_REF).
  */
 export function bakeDecision(env) {
 	const keys = !env.POSTHOG_FLAGS_SECRET_KEY
@@ -30,20 +33,23 @@ export function bakeDecision(env) {
 		: !env.PUBLIC_POSTHOG_KEY
 			? "PUBLIC_POSTHOG_KEY unset"
 			: null;
-	if (env.VERCEL_ENV === "production")
+	const environment = deployEnvName(env);
+	const ref = gitRef(env);
+	if (environment === "production")
 		return keys ? { bake: false, why: keys } : { bake: true, mode: "seed", why: "production" };
-	if (env.VERCEL_ENV !== "preview") return { bake: false, why: `VERCEL_ENV=${env.VERCEL_ENV ?? "unset"}` };
-	if (!env.VERCEL_GIT_COMMIT_REF) return { bake: false, why: "VERCEL_GIT_COMMIT_REF unset" };
+	if (environment !== "preview") return { bake: false, why: `deploy env=${environment ?? "unset"}` };
+	if (!ref) return { bake: false, why: "git ref unset" };
 	if (keys) return { bake: false, why: keys };
-	return env.VERCEL_GIT_COMMIT_REF === "develop"
+	return ref === "develop"
 		? { bake: true, mode: "seed", why: "develop" }
-		: { bake: true, mode: "frozen", why: `PR preview (${env.VERCEL_GIT_COMMIT_REF})` };
+		: { bake: true, mode: "frozen", why: `PR preview (${ref})` };
 }
 
-/** Same rule as src/lib/chat/server/posthogHost.ts: only an absolute PUBLIC_POSTHOG_HOST is a server host. */
+/** Same rule as src/lib/chat/server/posthogHost.ts: only an absolute PUBLIC_POSTHOG_HOST is a server
+ *  host; otherwise POSTHOG_INGEST_HOST, read through the one shared helper. */
 function host(env) {
 	const h = (env.PUBLIC_POSTHOG_HOST ?? "").trim();
-	return h && !h.startsWith("/") ? h : "https://us.i.posthog.com";
+	return h && !h.startsWith("/") ? h : posthogIngestHost(env);
 }
 
 async function main() {

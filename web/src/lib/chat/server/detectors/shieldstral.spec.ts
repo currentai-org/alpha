@@ -1,5 +1,5 @@
 // A scenario run's guard calls replay from the model replay store, so CI stops queueing on the
-// guard GPU www shares; outside a scenario request the judge calls the guard live, as before. (SOL-258)
+// guard GPU www shares; outside a scenario request the judge calls the guard live, as before.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("$lib/chat/server/endpoints/openai/replayStore", () => ({
@@ -46,7 +46,7 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-describe("the guard judge replays in scenario runs (SOL-258)", () => {
+describe("the guard judge replays in scenario runs", () => {
 	it("calls the guard live and never touches the store when the request asked for no replay", async () => {
 		const out = await runWithRequestContext(ask);
 		expect(out.answer).toMatchObject({ yes: false });
@@ -92,7 +92,7 @@ describe("the guard judge replays in scenario runs (SOL-258)", () => {
 			return ask();
 		});
 
-	it("calls the live guard for a @real-screen send over a verdict due for a refresh, and records what it said (SOL-267)", async () => {
+	it("calls the live guard for a @real-screen send over a verdict due for a refresh, and records what it said", async () => {
 		storedAt(new Date(Date.now() - 8 * 24 * HOUR).toISOString());
 		const out = await realScreen();
 		expect(out.answer).toMatchObject({ yes: false });
@@ -100,7 +100,7 @@ describe("the guard judge replays in scenario runs (SOL-258)", () => {
 		await vi.waitFor(() => expect(record).toHaveBeenCalled());
 	});
 
-	it("replays a verdict under a day old for a @real-screen send, so develop runs stop sending every screen to the shared GPU (SOL-267)", async () => {
+	it("replays a verdict under a day old for a @real-screen send, so develop runs stop sending every screen to the shared GPU", async () => {
 		storedAt(new Date(Date.now() - HOUR).toISOString());
 		const out = await realScreen();
 		expect(out).toMatchObject({ httpOk: true, answer: { yes: false } });
@@ -121,7 +121,7 @@ describe("the guard judge replays in scenario runs (SOL-258)", () => {
 	});
 });
 
-describe("a @real-screen verdict refreshes off-peak and spread out, never as one burst (SOL-267)", () => {
+describe("a @real-screen verdict refreshes off-peak and spread out, never as one burst", () => {
 	const recorded = Date.parse("2026-10-16T13:00:00.000Z");
 	const keys = Array.from({ length: 300 }, (_, i) => `guard-key-${i}`);
 	const at = (hoursAfter: number) => recorded + hoursAfter * HOUR;

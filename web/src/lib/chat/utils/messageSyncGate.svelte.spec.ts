@@ -53,10 +53,10 @@ function createGateHarness() {
 					cacheFallbackHere,
 					// This harness's `Snapshot` is `{ turn: string }`, never a Message[], so it cannot compute
 					// the real `serverSnapshotHasAnswer`. False is the honest value: these tests pin ORDERINGS
-					// around the hold, and the cache-fallback lift (CUR-1660) is pinned as a truth table in
+					// around the hold, and the cache-fallback lift is pinned as a truth table in
 					// generationState.spec.ts instead.
 					snapshotHasAnswer: false,
-					reportActionPending: reportHold, // TRACKED — CUR-1583, same release shape as hold
+					reportActionPending: reportHold, // TRACKED —, same release shape as hold
 				})
 			) {
 				messages = newMessages;
@@ -177,7 +177,7 @@ describe("message sync gate (ordered arrivals)", () => {
 	});
 
 	// A "Report a problem" submission on screen vetoes the resync the same way the
-	// turn hold does — same release shape, independent trigger (see reportHold.ts). (CUR-1583)
+	// turn hold does — same release shape, independent trigger (see reportHold.ts).
 	test("a delivery during a report hold is vetoed, and releasing the report hold applies it", () => {
 		const gate = createGateHarness();
 		gate.setReportHold(true);

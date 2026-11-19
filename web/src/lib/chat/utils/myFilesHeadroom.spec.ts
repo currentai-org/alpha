@@ -37,7 +37,7 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 });
 
-describe("fetchAttachmentRooms reuses a roomy My files headroom (CUR-3681)", () => {
+describe("fetchAttachmentRooms reuses a roomy My files headroom", () => {
 	it("lists My files once for two attaches a few seconds apart when there is plenty of room", async () => {
 		await fetchAttachmentRooms();
 		vi.setSystemTime(Date.now() + 5_000);

@@ -1,5 +1,5 @@
 // What a server log line is allowed to say about a user's content, applied to every line at the
-// pino layer (CUR-1721).
+// pino layer.
 //
 // Both Axiom datasets read the same bytes: the Vercel drain reads stdout and axiomStream.ts posts a
 // copy, so a redaction in either sink alone leaves the other one carrying the content. Axiom keeps

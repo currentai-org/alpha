@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
-// Same treatment as localEndpointsGate.spec.ts: the flag is the gate (CUR-3175), so drive its
+// Same treatment as localEndpointsGate.spec.ts: the flag is the gate, so drive its
 // answer directly; DEPLOY_ENV/VERCEL_ENV are stubbed per test because they still decide the
 // fallback, and deployEnv() reads process.env at call time.
 const flagEnabledOrMock = vi.fn((_key: string, fallback: () => boolean) => fallback());
@@ -25,7 +25,7 @@ afterEach(() => {
 	else process.env.VERCEL_ENV = savedVercelEnv;
 });
 
-describe("managedLocalInferenceEndpointsEnabled — the flag is the gate (CUR-3175)", () => {
+describe("managedLocalInferenceEndpointsEnabled — the flag is the gate", () => {
 	async function enabled() {
 		const { managedLocalInferenceEndpointsEnabled } = await import("./managedInferenceGate");
 		return managedLocalInferenceEndpointsEnabled();

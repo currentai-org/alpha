@@ -51,7 +51,7 @@ type Returned = {
 // until the screen shows the receipt and the stored answer is finished. The screen is sampled the
 // whole time, from the first sign of the receipt to 15s after the stored answer finished, because a
 // re-attached answer that vanishes is usually back by the time the stored copy finishes, so a
-// single read at the end can pass over a defect (CUR-3875). Both tests below share it, so
+// single read at the end can pass over a defect. Both tests below share it, so
 // the stored-answer checks keep their own test, which no known-broken cell covers.
 async function runPastTheDeadlineAndReturn(
 	page: Page,
@@ -135,7 +135,7 @@ async function runPastTheDeadlineAndReturn(
 
 	const back = reader;
 	// The server can keep screening the replay for minutes after a re-attach ends. Record how each
-	// attach ended, so a red run says whether the page or the server closed it (CUR-3875).
+	// attach ended, so a red run says whether the page or the server closed it.
 	const attachPost = (r: { method(): string; url(): string }) =>
 		r.method() === 'POST' && r.url().endsWith(`/conversation/${conversationId}`);
 	const note = (description: string) =>
@@ -236,7 +236,7 @@ test(
 	}
 );
 
-// Its own test, so the stored-answer checks above go red on their own when this one does (CUR-3875).
+// Its own test, so the stored-answer checks above go red on their own when this one does.
 test(
 	'a re-attached agent answer stays on screen once it is stored finished',
 	{ tag: ['@preview-only', '@CUR-3875'] },

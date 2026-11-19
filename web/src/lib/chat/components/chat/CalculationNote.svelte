@@ -1,11 +1,10 @@
 <script lang="ts">
 	// The expressions the model sent to the `calculate` tool and what code got for each. Shown
 	// so the reader can check the setup behind a number, which is where the errors are: a right sum of
-	// a wrong setup is easy to stamp "checked" (CUR-2256). So this names what ran and says
+	// a wrong setup is easy to stamp "checked". So this names what ran and says
 	// nothing about correctness: never "checked", never "verified".
-	// (CUR-2273)
 	// A bare monospace "calculate …" line under the prose reads as debug output, so the
-	// working carries a caption in plain words saying what it is and what to do with it. (CUR-2417)
+	// working carries a caption in plain words saying what it is and what to do with it.
 	import type { Message } from '$lib/chat/types/Message';
 
 	interface Props {
@@ -15,14 +14,14 @@
 
 	// A call the tool refused is not the working behind the answer once a later call worked, and
 	// "could not be worked out" next to a stated result reads as the result being unchecked. Refused calls
-	// stay when nothing evaluated, so a turn that never got a number still says so. (CUR-3860)
+	// stay when nothing evaluated, so a turn that never got a number still says so.
 	let shown = $derived(
 		calculations.some((c) => c.result !== undefined)
 			? calculations.filter((c) => c.result !== undefined)
 			: calculations
 	);
 	// With every call refused, the answer did not come from the calculator, and a caption saying it
-	// was worked out with one would claim otherwise. (CUR-3860)
+	// was worked out with one would claim otherwise.
 	let evaluated = $derived(shown.some((c) => c.result !== undefined));
 </script>
 

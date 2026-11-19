@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-// The FLAG is the gate now (CUR-3175), so drive its answer directly — flags.spec.ts covers the
+// The FLAG is the gate now, so drive its answer directly — flags.spec.ts covers the
 // polling plane itself. Same shape as dictationMode.spec.ts, whose gate made this move first.
 const flagEnabledOrMock = vi.fn((_key: string, fallback: () => boolean) => fallback());
 vi.mock("$lib/chat/server/flags", () => ({ flagEnabledOr: flagEnabledOrMock }));
@@ -29,7 +29,7 @@ async function enabled() {
 	return localInferenceEndpointsEnabled();
 }
 
-describe("localInferenceEndpointsEnabled — the flag is the gate (CUR-3175)", () => {
+describe("localInferenceEndpointsEnabled — the flag is the gate", () => {
 	it("reads the local-inference key, not some other flag", async () => {
 		await enabled();
 		expect(flagEnabledOrMock).toHaveBeenCalledWith("local-inference", expect.any(Function));
@@ -45,7 +45,7 @@ describe("localInferenceEndpointsEnabled — the flag is the gate (CUR-3175)", (
 
 	it("is OFF when the flag says off, even on an environment that used to hardcode it on", async () => {
 		// The direction that matters: a flag that cannot turn preview off would be a rollout control in
-		// name only (CUR-3175).
+		// name only.
 		process.env.DEPLOY_ENV = "preview";
 		flagEnabledOrMock.mockReturnValue(false);
 		expect(await enabled()).toBe(false);

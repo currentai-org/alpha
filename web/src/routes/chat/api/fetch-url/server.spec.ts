@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // api/fetch-url had no limit, used the SSRF guard that allows cluster-internal ranges, and
-// answered `public, max-age=3600`. These pin each of the three fixes at the route. (CUR-3191)
+// answered `public, max-age=3600`. These pin each of the three fixes at the route.
 vi.mock("$lib/chat/server/logger.js", () => ({
 	logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn() },
 	securityLogger: { warn: vi.fn(), error: vi.fn(), info: vi.fn() },
@@ -52,7 +52,7 @@ beforeEach(() => {
 	fetchUrlAllowed.mockReset().mockResolvedValue("ok");
 });
 
-describe("GET /chat/api/fetch-url (CUR-3191)", () => {
+describe("GET /chat/api/fetch-url", () => {
 	it("refuses a guest whose session was minted by this very request, before counting or fetching", async () => {
 		await expect(call("https://example.com/a.txt", { guestSessionMinted: true })).rejects.toMatchObject({
 			status: 401,

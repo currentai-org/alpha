@@ -32,8 +32,8 @@ import type { OutputRecheck } from "$lib/chat/server/outputRecheck";
 //     forces an earlier flush, to keep structural boundaries clean) — roughly halving-to-thirding N for
 //     a typical multi-sentence answer. Trade-off: on a SLOW generation (long pauses between sentences),
 //     grouping delays a sentence that's ready until its batch-mates arrive too — acceptable because the
-//     tax this change targets is Coop-bound, not generation-bound.
-//   • PIPELINING: a batch no longer waits for the PRIOR batch's Coop verdict before firing — only for
+//     latency grouping cuts is Coop-bound, not generation-bound.
+//   • PIPELINING: a batch does not wait for the PRIOR batch's Coop verdict before firing — only for
 //     its TEXT, which is already known from generation. Up to PIPELINE_DEPTH Coop calls run
 //     concurrently; results are still RELEASED to the client strictly in order, and the moment an
 //     earlier batch blocks, any later speculative results are discarded before release — never released
@@ -69,15 +69,16 @@ const PIPELINE_DEPTH = 3;
 // Idle bound on the screening phase: the longest it may go without releasing a batch. Distinct from
 // COOP_TIMEOUT_MS, which only bounds one Coop call (moderation.ts), and from the route's own 45s total
 // cap (genTimeoutMs), which still bounds the whole turn. As a total-phase bound it would cut healthy
-// long answers (a slow model generates for tens of seconds, with only a few seconds of that in Coop), so it re-arms on every release (CUR-1884).
+// long answers (a slow model generates for tens of seconds, with only a few seconds of that in Coop),
+// so it re-arms on every release.
 // A turn can die at the outer 45s generation watchdog with firstTokenReached=false while every
 // individual screen call is fast (screenPhaseMs can run far beyond any single call's abort clamp).
-// The stall is load-correlated and sits downstream of the per-call bound, so a per-call
-// timeout alone does not catch it (CUR-1657). This is the backstop: whatever kept a nested promise
-// from settling, the phase cannot sit without progress past this deadline. On trip, release whatever
-// already cleared (or decline honestly) instead of leaving the user with nothing until the 45s
-// watchdog fires. Sized with real margin under genTimeoutMs (45_000, +server.ts) and well above the
-// healthy p90 (11,582ms) so it does not fire on a legitimately slow-but-working turn.
+// Such a stall sits downstream of the per-call bound, so a per-call timeout alone does not catch
+// it. This is the backstop: whatever kept a nested promise from settling, the phase cannot sit
+// without progress past this deadline. On trip, release whatever already cleared (or decline
+// honestly) instead of leaving the user with nothing until the 45s watchdog fires. Sized with real
+// margin under genTimeoutMs (45_000, +server.ts) and well above a healthy turn's screening phase, so it
+// does not fire on a legitimately slow-but-working turn.
 const PHASE_DEADLINE_MS = Number(process.env.OUTPUT_SCREEN_PHASE_TIMEOUT_MS) || 25_000;
 
 // Honest, non-safety copy for a phase-deadline trip: an infra bound firing, with no verdict behind it,
@@ -86,9 +87,9 @@ const PHASE_DEADLINE_MS = Number(process.env.OUTPUT_SCREEN_PHASE_TIMEOUT_MS) || 
 // Bound on the FINALLY-block cleanup (it.return() + draining the producer), separate from
 // PHASE_DEADLINE_MS. it.return() QUEUES behind an already in-flight it.next() on the same async
 // iterator and cannot preempt one that never settles — precisely the case the phase deadline exists
-// for (CUR-1657, confirmed by screenStream.spec.ts's own phase-deadline tests: without this bound,
-// cleanup itself hangs forever and the honest decline this file exists to deliver never reaches the
-// user). Best-effort past this point — bounded, not skipped, so a healthy upstream still gets a clean
+// for. Without this bound, cleanup itself hangs forever and the honest decline this file exists to
+// deliver never reaches the user; screenStream.spec.ts's phase-deadline tests cover that case.
+// Best-effort past this point — bounded, not skipped, so a healthy upstream still gets a clean
 // it.return() almost every time.
 const CLEANUP_DEADLINE_MS = 2_000;
 
@@ -98,10 +99,10 @@ const OUTPUT_SCREEN_TIMEOUT_TRUNCATE =
 	"_[The rest of this response couldn't be verified in time and was withheld.]_";
 // OUTPUT_SCREEN_TIMEOUT_DECLINE asserts generation started ("I started to answer") — true
 // when the phase deadline trips after real tokens arrived but before the tail cleared screening, false
-// when NO token ever arrived (a sovereignty shed upstream — CUR-1313 — that produced zero tokens is
-// the observed case). Same honest, non-safety register as the sibling copy; narrower claim. Matches the
-// wording of the admission-gate's own at-capacity notice (+server.ts's pre-accept 503 path) rather than
-// inventing a third phrasing for the same user-facing idea. (CUR-1727)
+// when NO token ever arrived (for example, an upstream lane that shed the request under load before
+// producing any). This copy is for that case: the same honest, non-safety register as the sibling copy,
+// with a narrower claim. It matches the wording of the admission gate's own at-capacity notice
+// (+server.ts's pre-accept 503 path) rather than inventing a third phrasing for the same idea.
 const OUTPUT_SCREEN_NO_TOKENS_DECLINE = "Alpha is at capacity right now. Please try again in a moment.";
 
 /** The marker stamped onto message.outputModeration (shape mirrors Message.ts). */
@@ -116,15 +117,15 @@ export interface OutputModerationMarker {
 	/** Curated public-safe rule name (resolved server-side from the blocking action). Present only when
 	 *  the rule has a reviewed label; the raw action code never reaches the client. */
 	ruleLabel?: string;
-	/** true = the guard could not answer, so the answer was withheld unchecked, not flagged (CUR-3891). */
+	/** true = the guard could not answer, so the answer was withheld unchecked, not flagged. */
 	unscreened?: boolean;
-	/** How many flagged batches the re-check released (CUR-3975). Absent when none. */
+	/** How many flagged batches the re-check released. Absent when none. */
 	rechecked?: number;
 }
 
 export type ScreenFn = (text: string, userId?: string) => Promise<OutputScreenResult>;
 
-/** Route-owned ledger of every output screen fired this turn (coop-review-plane Step 3c). The route's
+/** Route-owned ledger of every output screen fired this turn. The route's
  *  finalizer drains `dispatched` for the ONE output review report and flips `stopped` to make
  *  finalization a TERMINAL BOUNDARY — once stopped, this generator screens nothing more, releases
  *  nothing more, and persists nothing more. The generator only APPENDS here (dispatched + released) and
@@ -154,30 +155,30 @@ export interface ScreenStreamOptions {
 	onModeration?: (marker: OutputModerationMarker) => void;
 	/** Injectable for tests; defaults to the real Coop-backed screen. */
 	screen?: ScreenFn;
-	/** The language the person wrote in, so a rule's decline notice reads in it (CUR-4051). English
+	/** The language the person wrote in, so a rule's decline notice reads in it. English
 	 *  when absent. Awaited only when an answer is cut. */
 	declineLanguage?: Promise<DeclineLanguage>;
 	/** Optional per-turn timing sink; the output-screen decomposition
 	 *  (firstScreenMs/totalScreenMs/screenPhaseMs) is written here for durable persistence. */
 	timings?: TurnSpans;
-	/** The route's output-screen ledger (coop-review-plane Step 3c). Every screen goes through it; the
+	/** The route's output-screen ledger. Every screen goes through it; the
 	 *  route drains it for the ONE output report and flips `stopped` at finalization. */
 	ledger?: OutputScreenLedger;
 	/** Overrides PHASE_DEADLINE_MS for this turn. Set only by the route's `output_screen_window_short`
 	 *  fault (faultInjection.ts). */
 	phaseDeadlineMs?: number;
-	/** Bounds the wait for the FIRST token, which ordinarily has no bound here (CUR-2243: the route's
-	 *  watchdogs own it). Set only by the route's `output_screen_timeout` fault, so a spec reaches the
+	/** Bounds the wait for the FIRST token, which ordinarily has no bound here because the route's
+	 *  watchdogs own it. Set only by the route's `output_screen_timeout` fault, so a spec reaches the
 	 *  no-token decline in a second. */
 	preTokenDeadlineMs?: number;
-	/** Agent turns only (CUR-546). A non-content event re-arms the phase deadline while no screen is in
+	/** Agent turns only. A non-content event re-arms the phase deadline while no screen is in
 	 *  flight. The agent works silently for longer than the window and pulses a keepalive every 4s
 	 *  (endpointAgent.ts HEARTBEAT_MS) so the turn is not read as dead; without this the window counted
 	 *  only releases and declined every agent turn that worked for more than 25s. A screen that never
 	 *  settles still trips the deadline, because a keepalive re-arms nothing while one is pending. */
 	rearmOnProgress?: boolean;
 	/** Asked about a flagged batch before the answer is cut, with the answer before it and the time the
-	 *  window has left (CUR-3975). Its result replaces the batch's verdict, so it can release a batch the
+	 *  window has left. Its result replaces the batch's verdict, so it can release a batch the
 	 *  narrow screen flagged. */
 	recheck?: OutputRecheck;
 }
@@ -226,7 +227,7 @@ export async function* screenOutputStream(
 	// True the moment the upstream source yields its first real token. Deliberately NOT
 	// `screenCount > 0` — screenChunk only increments that after its `screen()` call RESOLVES, so a
 	// dispatched-but-still-pending screen (the ordinary phase-deadline case) also reads screenCount 0.
-	// This is the honest "did anything ever arrive to answer with" signal a zero-token shed needs. (CUR-1727)
+	// This is the honest "did anything ever arrive to answer with" signal a zero-token shed needs.
 	let anyTokenArrived = false;
 	let released = ""; // cleared text already yielded (also the final FinalAnswer body + context source)
 	let blocked = false;
@@ -234,12 +235,12 @@ export async function* screenOutputStream(
 	// The blocking Coop action (rule identity) — captured so the marker can carry a curated public label.
 	// Server-side only; resolved to a label below and never emitted raw.
 	let blockedCategory: string | undefined;
-	// The block was a child screen that never answered, not a detection (CUR-3891).
+	// The block was a child screen that never answered, not a detection.
 	let blockedUnscreened = false;
 	let finalInterrupted = false;
 	// Held for the same reason as finalInterrupted: this function throws away the upstream FinalAnswer's
 	// TEXT and composes its own body from `released`, so a truncation notice written into that text would
-	// be silently dropped. The flag survives; the notice is appended once downstream (CUR-149).
+	// be silently dropped. The flag survives; the notice is appended once downstream.
 	let finalTruncated = false;
 
 	// Instrumentation (mirror of the input-gate "[moderation] pre-model screen timing"): firstScreenMs
@@ -250,7 +251,7 @@ export async function* screenOutputStream(
 	let firstScreenMs = 0;
 	let totalScreenMs = 0;
 	let screenCount = 0;
-	// Re-checks of flagged batches (CUR-3975): how many ran, how many released their batch, their time.
+	// Re-checks of flagged batches: how many ran, how many released their batch, their time.
 	let recheckCount = 0;
 	let recheckCleared = 0;
 	let recheckMs = 0;
@@ -258,13 +259,13 @@ export async function* screenOutputStream(
 
 	// A single top-level timer, independent of any per-call AbortSignal, so the phase cannot sit without
 	// progress past it even when a nested promise (a Coop fetch, an upstream iterator pull) never settles
-	// for a reason the per-call bound doesn't catch. Re-armed on every release (CUR-1884), so it bounds
+	// for a reason the per-call bound doesn't catch. Re-armed on every release, so it bounds
 	// the gap between releases, not the whole answer. `unref` keeps it from holding the process open
 	// past a normal exit.
 	//
-	// The window opens at the model's first token, not when this phase starts (CUR-2243). Counted from
-	// the start, it declines turns from a slow-to-start lane that has not produced a token in 25s but
-	// would answer later (CUR-2243). Before the first token
+	// The window opens at the model's first token, not when this phase starts. Counted from the start,
+	// it would decline turns from a slow-to-start lane that has not produced a token in 25s but would
+	// answer later. Before the first token
 	// the route's own watchdogs bound the wait (SILENCE_TIMEOUT_MS / genTimeoutMs), and a hang there
 	// ends as the route's timeout, not as a screening decline. preTokenWaitMs is logged and persisted
 	// so the time before the window opened stays visible next to screenPhaseMs.
@@ -335,7 +336,7 @@ export async function* screenOutputStream(
 	};
 
 	// Screens dispatched whose promise has not settled. Counted here rather than read off
-	// `pipeline`, because the consumer shifts a screen off `pipeline` before awaiting its verdict. (CUR-546)
+	// `pipeline`, because the consumer shifts a screen off `pipeline` before awaiting its verdict.
 	let unsettledScreens = 0;
 
 	// EVERY screen goes through dispatch — it records the screen on the route's
@@ -362,13 +363,13 @@ export async function* screenOutputStream(
 	const passthrough: MessageUpdate[] = [];
 	// A read-aloud clip is synthesized from the model's whole answer, unscreened text
 	// included, and the client stores and plays whatever clip arrives. So clips wait here for the
-	// answer's verdict: released after a cleared answer's text, dropped on any other ending. (CUR-3847)
+	// answer's verdict: released after a cleared answer's text, dropped on any other ending.
 	const heldClips: MessageUpdate[] = [];
 	// Typed by assertion so the producer closure sees the whole union, not the "pending" initializer.
 	let clipVerdict = "pending" as "pending" | "release" | "drop";
 	const isClip = (e: MessageUpdate) => e.type === MessageUpdateType.Mcp && Boolean(e.audio);
 	let sourceDone = false;
-	// Upstream's own FinalAnswer, which marks the end of CONTENT (CUR-1907). The source can keep going
+	// Upstream's own FinalAnswer, which marks the end of CONTENT. The source can keep going
 	// after it: textGeneration merges the title generator in, so a new conversation's Title event lands
 	// after the model has finished. Waiting for sourceDone before screening the tail would hold a short
 	// answer's last sentence behind the title call, up to its 15s ceiling.
@@ -378,7 +379,7 @@ export async function* screenOutputStream(
 	// because a rejection there would be silently discarded while the `finally` still marked
 	// sourceDone — the consumer would read a mid-stream throw exactly like a clean end-of-stream
 	// and this generator would fall through to composing an empty FinalAnswer as if nothing was wrong. Checked
-	// once the consume loop notices sourceDone, and re-thrown — see the `if (producerError)` below. (CUR-782)
+	// once the consume loop notices sourceDone, and re-thrown — see the `if (producerError)` below.
 	let producerError: unknown;
 	const it = source[Symbol.asyncIterator]();
 	// A "something changed" signal so the consumer can sleep until new tokens/events arrive (vs spinning).
@@ -394,7 +395,7 @@ export async function* screenOutputStream(
 		try {
 			for (;;) {
 				if (signal?.aborted) break;
-				if (ledger?.stopped) break; // finalization began — stop pulling tokens (coop-review-plane Step 3c)
+				if (ledger?.stopped) break; // finalization began — stop pulling tokens
 				const { value: event, done } = await it.next();
 				if (done) break;
 				// Abort may fire DURING it.next() (upstream cancellation). Discard the post-abort value so
@@ -405,8 +406,9 @@ export async function* screenOutputStream(
 					// Hold it — we compose our own FinalAnswer once the tail is screened. Keep the flags.
 					// A producer that streamed nothing and composed its answer whole (the explicit
 					// read-aloud path suppresses every Stream token) has its text only here. Screen it like
-					// streamed text; composing from the empty buffer turned an answered turn into "No output
-					// was generated". Only when nothing streamed, so a streamed answer is never screened twice. (CUR-2045)
+					// streamed text, since composing from the empty buffer would turn an answered turn into
+					// "No output was generated". Only when nothing streamed, so a streamed answer is never
+					// screened twice.
 					if (!anyTokenArrived && event.text.trim()) {
 						buffer += event.text;
 						anyTokenArrived = true;
@@ -426,14 +428,14 @@ export async function* screenOutputStream(
 					if (clipVerdict === "pending") heldClips.push(event);
 				} else {
 					passthrough.push(event);
-					// See rearmOnProgress. (CUR-546)
+					// See rearmOnProgress.
 					if (opts.rearmOnProgress && windowOpen && unsettledScreens === 0 && !phaseDeadlineHit)
 						armPhaseDeadline("keepalive");
 				}
 				// A switch to the backup lane is progress. Without this the backup inherits whatever
 				// is left of the window the silent primary spent, 13s after a 12s failover deadline, which a
 				// reasoning backup can use up before its first sentence clears the screen.
-				// Only once the window is open: before the first token there is no window to inherit (CUR-2243). (CUR-2316)
+				// Only once the window is open: before the first token there is no window to inherit.
 				if (event.type === MessageUpdateType.Failover && windowOpen && !phaseDeadlineHit) armPhaseDeadline("failover");
 				bump();
 			}
@@ -497,7 +499,7 @@ export async function* screenOutputStream(
 	};
 
 	// Leaving early (block/abort/phase-deadline) → tell the upstream model to stop; don't keep
-	// generating unseen tokens. Bounded (CUR-1657): it.return() queues behind an already in-flight
+	// generating unseen tokens. Bounded: it.return() queues behind an already in-flight
 	// it.next() and cannot preempt one that never settles, and the producer's own try/catch (above)
 	// means nothing here needs to swallow a throw from it — so both are safe to abandon past
 	// CLEANUP_DEADLINE_MS rather than hold the user's response hostage to upstream cleanup.
@@ -528,7 +530,7 @@ export async function* screenOutputStream(
 	});
 	// After our FinalAnswer, pass through whatever the source still sends (the Title event)
 	// until it ends. Runs only when the consumer's finally deferred the source's cleanup; an abort, or
-	// the caller abandoning this generator, cancels the source the same bounded way as leaving early. (CUR-1907)
+	// the caller abandoning this generator, cancels the source the same bounded way as leaving early.
 	function dropClips() {
 		clipVerdict = "drop";
 		heldClips.length = 0;
@@ -551,11 +553,11 @@ export async function* screenOutputStream(
 
 	// ── Consumer: keep the pipeline topped up, release cleared batches strictly in order ─────────────
 	// Drains the buffer (which holds only pre-abort, generated tokens); the abort check fires only once
-	// the pipeline is empty and no more work can be dispatched — matching pre-concurrency semantics where
-	// a batch already screened before the abort was noticed still streamed. No unscreened tail is released.
+	// the pipeline is empty and no more work can be dispatched, so a batch already screened before the
+	// abort was noticed still streams. No unscreened tail is released.
 	try {
 		consume: for (;;) {
-			if (ledger?.stopped) break consume; // finalization is a terminal boundary (coop-review-plane Step 3c)
+			if (ledger?.stopped) break consume; // finalization is a terminal boundary
 			if (phaseDeadlineHit) break consume; // the phase itself ran out of its own budget — stop here
 			// Flush queued non-content events promptly (watchdog re-arm) before/while we screen.
 			while (passthrough.length) {
@@ -565,10 +567,10 @@ export async function* screenOutputStream(
 
 			fireNext();
 			if (pipeline.length === 0) {
-				if (sourceDone || contentDone) break; // content finished AND no full batch remains (CUR-1907)
+				if (sourceDone || contentDone) break; // content finished AND no full batch remains
 				if (signal?.aborted) break; // aborted with only a partial left → drop it (no unscreened tail)
 				// Sleep until new tokens/events, the phase deadline, or an abort. The abort matters before the
-				// first token (CUR-2243): no window is open then, and a source that ignores the abort would
+				// first token: no window is open then, and a source that ignores the abort would
 				// otherwise hold this wait forever.
 				await Promise.race([wakeP, phaseDeadline, aborted$]);
 				continue;
@@ -582,7 +584,7 @@ export async function* screenOutputStream(
 			// On a block of the FIRST batch (nothing released yet) that leaves the client with zero bytes for
 			// the entire screen call, which can be long enough to trip an
 			// edge/CDN idle-connection timeout and surface as a raw client-side error even though this
-			// generator, and the route, never actually failed. Also raced against phaseDeadline (CUR-1657):
+			// generator, and the route, never actually failed. Also raced against phaseDeadline:
 			// a verdict that never settles on schedule must not hold this loop past the phase's own budget.
 			let res: OutputScreenResult | undefined;
 			for (;;) {
@@ -626,7 +628,7 @@ export async function* screenOutputStream(
 		clearTimeout(phaseDeadlineTimer);
 		// Content finished cleanly but the source has not (a title still to come). Cancelling it
 		// here would drop the title, so its cleanup waits for drainAfterContent, after our FinalAnswer —
-		// the order textGeneration already produces with screening off. (CUR-1907)
+		// the order textGeneration already produces with screening off.
 		deferCleanup =
 			contentDone && !sourceDone && !blocked && !phaseDeadlineHit && !ledger?.stopped && !signal?.aborted;
 		if (!deferCleanup) await cleanupSource();
@@ -639,7 +641,7 @@ export async function* screenOutputStream(
 
 	// re-throw a captured upstream failure now that cleanup (it.return, passthrough flush) has
 	// run — surfaces as a real rejection of this generator instead of a silent empty FinalAnswer, so
-	// +server.ts's outer catch logs it and the user sees an actual error rather than nothing. (CUR-782)
+	// +server.ts's outer catch logs it and the user sees an actual error rather than nothing.
 	if (producerError) throw producerError;
 
 	const aborted = signal?.aborted ?? false;
@@ -653,7 +655,7 @@ export async function* screenOutputStream(
 		const entry = dispatch(tail, released);
 		if (entry !== null) {
 			const res = await entry.promise;
-			// Re-check after the await: the same terminal boundary the batch loop applies (Step 3c).
+			// Re-check after the await: the same terminal boundary the batch loop applies.
 			if (!ledger?.stopped) {
 				if (res.blocked) {
 					blocked = true;
@@ -678,7 +680,7 @@ export async function* screenOutputStream(
 	// request_id/user ride along via the pino mixin. screens===0 = nothing was screened
 	// (empty/aborted-early) — itself informative, but NOT a reliable "nothing arrived" signal on its own
 	// (screenChunk only increments screens after its screen() call resolves, so a dispatched-but-still-
-	// pending screen also reads screens:0 — see anyTokenArrived above, CUR-1727).
+	// pending screen also reads screens:0 — see anyTokenArrived above).
 	const screenPhaseMs = Math.round(performance.now() - screenPhaseStart);
 	logger.info(
 		{
@@ -691,7 +693,7 @@ export async function* screenOutputStream(
 			recheckMs: Math.round(recheckMs),
 			outBlocked: blocked,
 			// The rules.json key that blocked. Server log only: the marker carries just the curated label,
-			// which several rules share, so this is the one record of which rule cut an answer (CUR-2320).
+			// which several rules share, so this is the one record of which rule cut an answer.
 			rule: blocked ? blockedCategory : undefined,
 			releasedLen: released.length,
 			aborted,
@@ -739,7 +741,7 @@ export async function* screenOutputStream(
 			// `declineNotice` carries the notice out-of-band so it reaches the route's update() chokepoint
 			// UNPROCESSED — honesty and arithmetic guards run on the cleared prefix (real model text) but
 			// must never touch curated safety copy. `text` stays composed for any direct caller/test; the
-			// route rebuilds it from the guard-processed prefix + this notice (CUR-946).
+			// route rebuilds it from the guard-processed prefix + this notice.
 			yield {
 				type: MessageUpdateType.FinalAnswer,
 				text: `${released.trimEnd()}\n\n${notice}`,
@@ -752,7 +754,7 @@ export async function* screenOutputStream(
 				? OUTPUT_UNSCREENED_DECLINE
 				: (ruleMessage ?? (child ? OUTPUT_CHILD_SAFETY_DECLINE : OUTPUT_CONTENT_DECLINE));
 			// `declineText` carries the decline out-of-band (same reason as above): the route applies it
-			// verbatim, so it bypasses every downstream model-text guard (CUR-946).
+			// verbatim, so it bypasses every downstream model-text guard.
 			yield {
 				type: MessageUpdateType.FinalAnswer,
 				text: decline,
@@ -766,7 +768,7 @@ export async function* screenOutputStream(
 
 	// The screening phase ran out of its own budget before finishing — not a moderation
 	// verdict, so this must not read like one (no onModeration flag, no safety copy). `screened: false`
-	// tells the trace this turn was never fully verified, which is the honest state to persist. (CUR-1657)
+	// tells the trace this turn was never fully verified, which is the honest state to persist.
 	if (phaseDeadlineHit) {
 		dropClips();
 		opts.onModeration?.({ flagged: false, label: null, score: 0, kind: "content_policy", screened: false });
@@ -779,9 +781,9 @@ export async function* screenOutputStream(
 			};
 		} else {
 			// No token ever arrived from upstream — OUTPUT_SCREEN_TIMEOUT_DECLINE's "I started to answer"
-			// would be false here (CUR-1727).
+			// would be false here.
 			const decline = anyTokenArrived ? OUTPUT_SCREEN_TIMEOUT_DECLINE : OUTPUT_SCREEN_NO_TOKENS_DECLINE;
-			// With no token at all, no model wrote any of this reply, so say so ahead of it (CUR-1872). The
+			// With no token at all, no model wrote any of this reply, so say so ahead of it. The
 			// receipt otherwise reads "from training" over a notice this server composed. Marked here, where
 			// the copy is chosen, rather than recognised later by its text.
 			if (!anyTokenArrived) yield { type: MessageUpdateType.FixedReply, kind: "capacity" };
@@ -800,7 +802,7 @@ export async function* screenOutputStream(
 	// FinalAnswer here. Doing so sets state.finalAnswerReceived before the caller's own abort handler
 	// (emitInterruptedFinalAnswer, +server.ts) gets a chance to run, which is the one place that knows
 	// about completed agentConfirmations and can tell the user what actually finished instead of a bare
-	// placeholder. A real, if partial, answer still finalizes below exactly as before. (CUR-1178)
+	// placeholder. A real, if partial, answer still finalizes below.
 	if (aborted && !stripThink(released).trim()) {
 		dropClips();
 		yield* drainAfterContent();

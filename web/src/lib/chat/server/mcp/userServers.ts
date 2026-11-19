@@ -1,4 +1,4 @@
-// MCP servers a person added themselves in Settings → Connectors (CUR-4016), beside the operator's
+// MCP servers a person added themselves in Settings → Connectors, beside the operator's
 // MCP_SERVERS list (servers.ts). Signed-in accounts only: a server and its token belong to an account,
 // and a guest session is too short-lived to hold either.
 //

@@ -1,4 +1,4 @@
-// A visitor's own numbered sources, pasted into their message (CUR-3844).
+// A visitor's own numbered sources, pasted into their message.
 //
 // Someone who pastes "[1] Smith 2021, ..." and "[2] ..." and asks for a cited answer expects the answer's
 // [1] and [2] to mean those. Our retrieved sources share the same [n] namespace, so without this the
@@ -55,7 +55,7 @@ type NumberedSource = { n?: number; title: string; link: string };
 
 /**
  * The list the renderer resolves [n] against, by position: the visitor's [1]..[k] as unlinked entries,
- * then our stored sources in their server-assigned order. A message saved before CUR-3844 numbered our
+ * then our stored sources in their server-assigned order. A message saved numbered our
  * sources from [1] even when the visitor's were there, so the visitor entries go in only when every
  * stored source is numbered after them; otherwise the stored numbering stands as it was saved.
  */

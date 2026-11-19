@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { runMcpTool } from "./executor";
 import type { McpCallOptions, McpCallResult } from "./client";
 
-describe("runMcpTool — the shared tool-execution seam (CUR-1017)", () => {
+describe("runMcpTool — the shared tool-execution seam", () => {
 	it("returns a typed success result on a successful call", async () => {
 		const call = vi.fn().mockResolvedValue({ kind: "text", text: "hello" });
 		await expect(runMcpTool({ call }, "read_aloud", { text: "hi" })).resolves.toEqual({
@@ -44,7 +44,7 @@ describe("runMcpTool — the shared tool-execution seam (CUR-1017)", () => {
 		});
 	});
 
-	// A transport that never settles, and ignores the abort, must still not hold the caller. (CUR-4627)
+	// A transport that never settles, and ignores the abort, must still not hold the caller.
 	it("a call whose transport never settles ends at its timeout as a timeout, not a hang or a failure", async () => {
 		const call = vi.fn().mockReturnValue(new Promise(() => {}));
 		await expect(runMcpTool({ call }, "run_code", {}, { timeoutMs: 20 })).resolves.toEqual({ ok: "timeout", aborted: false });

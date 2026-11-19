@@ -1,6 +1,6 @@
 // e2e-product: @chat
 // e2e-area: @provenance
-import { test, expect } from './helpers/test';
+import { test, expect, replayHeaders } from './helpers/test';
 import { LARGE4_MODEL } from './helpers/chatEntry';
 import { pinnedChatEntry } from './helpers/servedModel';
 import { turnDone } from './helpers/turn';
@@ -8,7 +8,7 @@ import { openStepByStep } from './helpers/xray';
 import { assistHostLabel } from '../../src/lib/chat/utils/trace/assistHost';
 
 // A second opinion's takes recorded no host, so X-ray could not say where each panel model
-// ran (CUR-3563). Each take now keeps its own call's routing record (backend, and the HF router's provider), and
+// ran. Each take now keeps its own call's routing record (backend, and the HF router's provider), and
 // Step by step's second-opinion step names it. The contract: a real panel run stores a host on at
 // least one take, and Step by step names each stored take's host, or says plainly it was not recorded.
 
@@ -39,9 +39,12 @@ test(
 		const conversationId = page.url().match(/\/conversation\/([a-f0-9]+)/)?.[1] ?? '';
 		const messageId = (await answer.getAttribute('data-message-id')) ?? '';
 
-		// The panel streams NDJSON; the response resolves once its last line, `done`, is written.
+		// The panel streams NDJSON; the response resolves once its last line, `done`, is written. Sent
+		// from here, so it carries the replay headers the page's own sends get from the fixture: a
+		// recorded panel answers without calling any panel model.
 		const run = await page.request.post('/chat/api/second-opinion', {
 			data: { conversationId, messageId },
+			headers: replayHeaders(test.info()),
 			timeout: 120_000
 		});
 		expect(run.ok(), `the second opinion answered ${run.status()}`).toBe(true);
@@ -57,7 +60,7 @@ test(
 		const body = (await res.json()) as { json?: { messages?: Stored[] } };
 		const opinions = body.json?.messages?.find((m) => m.id === messageId)?.opinions ?? [];
 		expect(opinions.length, 'no takes were stored on the answer').toBeGreaterThan(0);
-		// Each take is headed by the model's name, never its checkpoint like "gemma-4-31B-it" (CUR-2203).
+		// Each take is headed by the model's name, never its checkpoint like "gemma-4-31B-it".
 		for (const o of opinions) {
 			expect(o.modelShort, `a take is headed by a checkpoint: ${o.modelShort}`).not.toMatch(
 				/[/_]|-it$|-Instruct|-A3B/i

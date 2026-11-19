@@ -1,4 +1,4 @@
-// The starter prompts a visitor is actually offered (CUR-1003): the candidates in suggestions.ts,
+// The starter prompts a visitor is actually offered: the candidates in suggestions.ts,
 // minus any without a passing live grade in starterRecord.json. The record is written by
 // `pnpm --dir web probe:starters --write-record` (evals/inspect_tasks/starter_prompts.py), so
 // re-grading is how a prompt joins or leaves the shelf; no edit here is needed either way.
@@ -29,7 +29,7 @@ export function gradedShelf(candidates: readonly string[], rec: StarterRecord): 
 
 export const shelf: string[] = gradedShelf(suggestions, record);
 
-// Every graded prompt is English (CUR-2323). A visitor whose browser asks for another language
+// Every graded prompt is English. A visitor whose browser asks for another language
 // first would read English chips as "English is expected here", so the shelf offers nothing to
 // them until prompts are graded in their language. A missing or wildcard header offers the shelf.
 const SHELF_LANGUAGE = 'en';

@@ -4,10 +4,11 @@ import {
 	FAKE_RUN_MS,
 	fakeAgentArtifact,
 	fakeAgentFetch,
+	type FakeConfirmStore,
 } from "./fakeAgentService";
 
 // The scenario suite's in-process stand-in for agent-service. Stateless — every answer is
-// derived from the task id's start time and the clock — so these tests drive the clock directly. (SOL-212)
+// derived from the task id's start time and the clock — so these tests drive the clock directly.
 
 const T0 = 1_760_000_000_000;
 const RECEIPT_PROMPT =
@@ -15,26 +16,54 @@ const RECEIPT_PROMPT =
 const FILE_PROMPT =
 	"Create a text file named potluck-e2e-1234.txt whose only content is the line: potluck 1234\nThen say done.";
 
-async function submit(prompt: string, now = T0): Promise<string> {
+/** The approval-card answers, in memory, standing in for the database rows any instance can read. */
+function memoryConfirmStore(): FakeConfirmStore {
+	const rows = new Map<string, { decision: "allow" | "deny"; at: number }>();
+	return {
+		async read(id) {
+			return rows.get(id) ?? null;
+		},
+		async write(id, decision, at) {
+			if (rows.has(id)) return false;
+			rows.set(id, { decision, at });
+			return true;
+		},
+	};
+}
+
+async function submit(prompt: string, now = T0, knobs: NonNullable<Parameters<typeof fakeAgentFetch>[1]>["knobs"] = []): Promise<string> {
 	const res = await fakeAgentFetch(
 		`${FAKE_AGENT_BASE}/run`,
-		{ method: "POST", body: JSON.stringify({ prompt }) },
+		{ method: "POST", body: JSON.stringify({ prompt }), knobs },
 		() => now
 	);
 	expect(res.status).toBe(200);
 	return ((await res.json()) as { id: string }).id;
 }
 
-type FrameData = { state?: string; result?: string; delta?: string; task_id?: string; artifacts?: unknown };
+type FrameData = {
+	state?: string;
+	result?: string;
+	delta?: string;
+	task_id?: string;
+	artifacts?: unknown;
+	confirm_id?: string;
+	decision?: string;
+};
 
 /** Reads the event stream to its end with the clock fixed at `now`, so only frames due by then arrive
  *  before the stream would wait; abort once nothing more is due. */
-async function framesDueAt(taskId: string, now: number): Promise<{ event: string; data: FrameData }[]> {
+async function framesDueAt(
+	taskId: string,
+	now: number,
+	store?: FakeConfirmStore
+): Promise<{ event: string; data: FrameData }[]> {
 	const ctrl = new AbortController();
 	const res = await fakeAgentFetch(
 		`${FAKE_AGENT_BASE}/run/${taskId}/events`,
 		{ signal: ctrl.signal },
-		() => now
+		() => now,
+		store
 	);
 	expect(res.headers.get("content-type")).toBe("text/event-stream");
 	const reader = res.body!.getReader();
@@ -129,6 +158,15 @@ describe("fakeAgentService", () => {
 		]);
 	});
 
+	it("workdir_cleared still inlines the file in the done frame for the turn to save, but serves nothing for it afterwards", async () => {
+		const id = await submit(FILE_PROMPT, T0, ["workdir_cleared"]);
+		const frames = await framesDueAt(id, T0 + FAKE_RUN_MS);
+		expect(frames.at(-1)!.data.artifacts).toEqual([
+			{ name: "potluck-e2e-1234.txt", bytes: 13, text: "potluck 1234\n", truncated: false },
+		]);
+		expect(fakeAgentArtifact(id, "potluck-e2e-1234.txt", T0 + FAKE_RUN_MS)).toBeNull();
+	});
+
 	it("the at_capacity knob answers POST /run with agent-service's own 429 body", async () => {
 		const res = await fakeAgentFetch(
 			`${FAKE_AGENT_BASE}/run`,
@@ -175,5 +213,51 @@ describe("fakeAgentService", () => {
 			expect(res.status, path).toBe(404);
 		}
 		expect(fakeAgentArtifact(id, "potluck-e2e-1234.txt", T0 + FAKE_RUN_MS)).toBeNull();
+	});
+
+	describe("confirm_after_handoff", () => {
+		async function confirm(id: string, body: Record<string, unknown>, now: number, store: FakeConfirmStore) {
+			return fakeAgentFetch(
+				`${FAKE_AGENT_BASE}/run/${id}/confirm`,
+				{ method: "POST", body: JSON.stringify(body) },
+				() => now,
+				store
+			);
+		}
+
+		it("pauses on an approval card after the 20s handoff and does not finish while it is unanswered", async () => {
+			const store = memoryConfirmStore();
+			const id = await submit(RECEIPT_PROMPT, T0, ["confirm_after_handoff"]);
+			const frames = await framesDueAt(id, T0 + 90_000, store);
+			expect(frames.at(-1)?.event).toBe("awaiting_confirmation");
+			expect(frames.some((f) => f.event === "done")).toBe(false);
+			const status = (await (await fakeAgentFetch(`${FAKE_AGENT_BASE}/run/${id}`, {}, () => T0 + 90_000, store)).json()) as {
+				state: string;
+			};
+			expect(status.state).toBe("WORKING");
+		});
+
+		it("an Allow given on any instance resumes the run, which finishes with the receipt; a second answer is refused", async () => {
+			const store = memoryConfirmStore();
+			const id = await submit(RECEIPT_PROMPT, T0, ["confirm_after_handoff"]);
+			// The card opens past the 20s turn deadline the spec forces, so after the first request's handoff.
+			expect((await framesDueAt(id, T0 + 20_000, store)).some((f) => f.event === "awaiting_confirmation")).toBe(false);
+			const [card] = (await framesDueAt(id, T0 + 30_000, store)).filter((f) => f.event === "awaiting_confirmation");
+			const confirmId = card.data.confirm_id!;
+			expect((await confirm(id, { confirm_id: "someone-else", decision: "allow" }, T0 + 40_000, store)).status).toBe(404);
+			expect((await confirm(id, { confirm_id: confirmId, decision: "allow" }, T0 + 40_000, store)).status).toBe(200);
+			expect((await confirm(id, { confirm_id: confirmId, decision: "deny" }, T0 + 41_000, store)).status).toBe(409);
+			const frames = await framesDueAt(id, T0 + 47_000, store);
+			expect(frames.find((f) => f.event === "confirm_result")?.data).toMatchObject({ confirm_id: confirmId, decision: "allow" });
+			expect(frames.at(-1)?.event).toBe("done");
+			expect(frames.at(-1)?.data.result).toContain("receipt 0a1b2c3d4e5f");
+		});
+
+		it("a run without the knob opens no card and ignores the store", async () => {
+			const id = await submit(RECEIPT_PROMPT);
+			const frames = await framesDueAt(id, T0 + FAKE_RUN_MS, memoryConfirmStore());
+			expect(frames.some((f) => f.event === "awaiting_confirmation")).toBe(false);
+			expect(frames.at(-1)?.event).toBe("done");
+		});
 	});
 });

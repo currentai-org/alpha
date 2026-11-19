@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { defaultModel } from "$lib/chat/server/models";
 import type { AnswerLanguage, Emojis, Format, Length, Tone } from "$lib/chat/answerPreferences";
 import type { Timestamps } from "./Timestamps";
@@ -77,27 +80,27 @@ export interface Settings extends Timestamps {
 	billingOrganization?: string;
 
 	/**
-	 * per-account override of the CUR-1430 reply-language rule (write the whole reply in
+	 * per-account override of the reply-language rule (write the whole reply in
 	 * the asker's language, never opening in English because the instructions were). `undefined`
 	 * means no preference set — the turn path falls back to the global rollout flag
-	 * (`replyLanguageRuleEnabled()`); an explicit `true`/`false` here always wins over that flag,
-	 * since a person's own choice outranks a rollout percentage. (CUR-1443)
+	 * (`replyLanguageRuleEnabled`); an explicit `true`/`false` here always wins over that flag,
+	 * since a person's own choice outranks a rollout percentage.
 	 */
 	replyInUserLanguage?: boolean;
 
 	/**
 	 * per-account override of whether Alpha refers to itself as a machine ("I'm a
-	 * machine — {model}. I have no feelings...") or is allowed a person-style first-person register
-	 * (CUR-3930). `undefined`/`false` keeps today's fixed machine framing — there is no rollout flag
+	 * machine — {model}. I have no feelings...") or is allowed a person-style first-person register.
+	 * `undefined`/`false` keeps today's fixed machine framing — there is no rollout flag
 	 * for this one, only the account setting. One of answerPreferences.ts's fields: a reset is sent as
-	 * `null` and stored as unset. (CUR-1443)
+	 * `null` and stored as unset.
 	 */
 	selfReferenceAsPerson?: boolean;
 
 	/**
 	 * How Alpha writes to this person (answerPreferences.ts). Each is optional and unset by
 	 * default; `undefined` means Alpha's default, and no entry in `DEFAULT_SETTINGS` fills one in, so
-	 * the row says only what the person chose. A reset is sent as `null` and stored as unset. (CUR-3929)
+	 * the row says only what the person chose. A reset is sent as `null` and stored as unset.
 	 */
 	tone?: Tone;
 	answerLength?: Length;
@@ -107,21 +110,21 @@ export interface Settings extends Timestamps {
 	answerLanguage?: AnswerLanguage;
 	/** Short sentences, everyday words, no jargon. */
 	plainLanguage?: boolean;
-	/** prose, bullets, or whatever fits. (CUR-549) */
+	/** prose, bullets, or whatever fits. */
 	answerFormat?: Format;
-	/** Never an emoji, or one where it helps. (CUR-549) */
+	/** Never an emoji, or one where it helps. */
 	emojis?: Emojis;
-	/** Show the model and host under each answer and in X-ray. UI only. (CUR-549) */
+	/** Show the model and host under each answer and in X-ray. UI only. */
 	showServing?: boolean;
 	/**
 	 * Settings → Connectors. The person's choice per connected MCP tool, keyed by its
-	 * `server__tool` name: allow (no confirmation card), ask (the default) or block (never runs). (CUR-3984)
+	 * `server__tool` name: allow (no confirmation card), ask (the default) or block (never runs).
 	 */
 	mcpToolPolicies?: Record<string, McpToolPolicy>;
 	/**
 	 * Settings → Personalization, "Search my past chats". When true and the
 	 * `past-chat-search` flag is on, a signed-in person's turns may search their own earlier chats.
-	 * `undefined` is off. (CUR-4576)
+	 * `undefined` is off.
 	 */
 	searchPastChats?: boolean;
 	/**

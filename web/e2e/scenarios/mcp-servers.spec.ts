@@ -3,12 +3,12 @@
 // A person asks Alpha to read a setting and change it, through an MCP server the operator
 // configured, in one turn, confirming before the change runs. The server is the in-deployment stub that
 // `mcp_stub_server` adds (web/src/lib/chat/server/mcp/e2eStub.ts): get_setting is marked read-only and
-// runs unasked, set_setting is not and waits for Allow, get_admin_lock answers isError (CUR-2645).
+// runs unasked, set_setting is not and waits for Allow, get_admin_lock answers isError.
 //
 // Entered on Large 4, which calls tools natively, so the model decides the calls and the kit's cap and
 // confirmation are what is under test. Preview-only: production refuses both the fault and the override.
 import { test, expect, type Page } from './helpers/test';
-import { LARGE4_MODEL } from './helpers/chatEntry';
+import { LARGE4_MODEL, chatPath } from './helpers/chatEntry';
 import { agentOption, openAgentTools } from './helpers/agentTool';
 import { faultInjectionHeaders, installFaultInjectionHeader } from './helpers/faultInjection';
 import { setFlagOverrides } from './helpers/flagOverride';
@@ -41,15 +41,18 @@ async function send(page: Page, text: string): Promise<void> {
 /** The connectors page lists, probes and adds the stub only for a request carrying its fault, so the
  *  fault header rides the page's own requests (the document, SvelteKit's __data.json and the form
  *  actions) as well as the chat send. */
-async function stubOnConnectorsPage(page: Page): Promise<void> {
-	const stubHeaders = faultInjectionHeaders('mcp_stub_server');
+async function stubOnConnectorsPage(
+	page: Page,
+	fault: 'mcp_stub_server' | 'mcp_stub_server_swapped' = 'mcp_stub_server'
+): Promise<void> {
+	const stubHeaders = faultInjectionHeaders(fault);
 	await page.route(
 		(url) => /\/settings\/connectors(\/__data\.json)?$/.test(url.pathname),
 		(route) => route.continue({ headers: { ...route.request().headers(), ...stubHeaders } })
 	);
 }
 
-/** From the composer to Settings → Connectors, through the + menu (CUR-4016). */
+/** From the composer to Settings → Connectors, through the + menu. */
 async function openConnectors(page: Page): Promise<void> {
 	const row = page.getByTestId('composer-connectors');
 	await expect(async () => {
@@ -71,7 +74,7 @@ async function stepByStep(page: Page): Promise<string> {
 	return text;
 }
 
-// X-ray opens on "This answer"; its receipt is what a person reads first (CUR-4038).
+// X-ray opens on "This answer"; its receipt is what a person reads first.
 async function thisAnswer(page: Page): Promise<string> {
 	const reply = page.locator('[data-message-role="assistant"]').last();
 	await openXrayTab(page, reply, 'This answer', {
@@ -94,7 +97,7 @@ test(
 		await installFaultInjectionHeader(page, 'mcp_stub_server');
 		await openComposer(page);
 
-		// Worded unlike the other two tests in this file on purpose (CUR-4054). PR runs replay the base branch's
+		// Worded unlike the other two tests in this file on purpose. PR runs replay the base branch's
 		// recordings by a loose key that drops tool ids and results, and the store keeps one recording per
 		// key, the newest. With one shared prompt, the last test to record on the base branch decided turn one's
 		// answer on every PR, and this test's turn two, which only this test sends, then had no recording
@@ -109,6 +112,11 @@ test(
 		const card = reply.getByText(/This turn wants to: run set_setting on stub/);
 		await expect(card, 'no confirmation card for the write tool').toBeVisible({ timeout: 90_000 });
 		await expect(turnDone(reply), 'the turn finished before the person answered').toBeHidden();
+		// the person takes 25 s to read the card, longer than the old 20 s window that counted
+		// silence as "no". The wait is the contract under test, so it is a fixed delay, not a condition.
+		await page.waitForTimeout(25_000);
+		await expect(card, 'the card closed while the person was still reading it').toBeVisible();
+		await expect(turnDone(reply), 'the turn ended while the card was still open').toBeHidden();
 		await reply.getByRole('button', { name: 'Allow' }).click();
 		await expect(reply.getByText(/run set_setting on stub — Allowed\./)).toBeVisible({
 			timeout: 15_000
@@ -128,7 +136,7 @@ test(
 			'set_setting on stub: it ran'
 		);
 
-		// CUR-2645 on the same server: a tool that answers isError is shown as an error, not a result.
+		// on the same server: a tool that answers isError is shown as an error, not a result.
 		await send(
 			page,
 			'Now use the stub tool get_admin_lock to check whether my settings are locked.'
@@ -146,6 +154,18 @@ test(
 			secondAnswer,
 			'the answer reports the failed lock check as a result instead of a failure'
 		).toMatch(/unavailable|error|couldn.t|could not|failed|unable/i);
+		// The failed tool never vouches for the answer: "This answer" names the call as a tool error and
+		// never with the line a tool the answer was grounded in gets ("it ran, and the answer used its
+		// result.").
+		const errorReceipt = await thisAnswer(page);
+		expect(
+			errorReceipt,
+			'X-ray’s "This answer" lists the failed get_admin_lock call as a source the answer used'
+		).not.toContain('get_admin_lock on stub: it ran');
+		expect(
+			errorReceipt,
+			'X-ray’s "This answer" does not name the get_admin_lock call as a tool error'
+		).toMatch(/get_admin_lock on stub: it said it couldn.t do what was asked/);
 	}
 );
 
@@ -153,7 +173,7 @@ test(
 // account with no flag override, so the flag is PostHog's own team condition, as a team member reaches it.
 test(
 	'a team account asks Alpha to change a setting through the configured tool server and confirms it',
-	{ tag: ['@F1', '@preview-only', '@CUR-3026'] },
+	{ tag: ['@F1', '@preview-only', '@CUR-3026', '@CUR-4727'] },
 	async ({ page }) => {
 		test.setTimeout(180_000);
 		await installFaultInjectionHeader(page, 'mcp_stub_server');
@@ -161,8 +181,8 @@ test(
 		await openComposer(page);
 		const reply = page.locator('[data-message-role="assistant"]').last();
 
-		// A team account has agent mode on, and an agent turn does not reach the configured servers yet
-		// (CUR-3025), so the person turns agent off in the Tools menu first (the journey doc's Known gaps).
+		// A team account has agent mode on, and an agent turn does not reach the configured servers yet,
+		// so the person turns agent off in the Tools menu first (the journey doc's Known gaps).
 		await openAgentTools(page, { timeout: 15_000 });
 		await agentOption(page, 'Off').click();
 		await expect(agentOption(page, 'Off')).toHaveAttribute('aria-checked', 'true', {
@@ -223,7 +243,63 @@ test(
 	}
 );
 
-// Settings → Connectors (CUR-3984). The person opens settings from the chat, finds the stub server and
+// the operator pinned the stub's three tools by hash, and the server has since rewritten
+// set_setting's description (the "rug pull"). Chat must keep offering the two unchanged tools and never
+// offer the rewritten one: Settings → Connectors, which lists exactly what a turn is offered
+// (serversForRequest + listServerTools), shows no set_setting, and a turn asked to change the setting
+// gets no confirmation card and runs no set_setting. The Connectors listing is the deterministic half;
+// the turn's half does not depend on which tool calls a replayed model makes, only that none of them
+// reached a write tool chat never offered.
+test(
+	'a pinned MCP server that rewrites a tool after it was pinned has that tool left out of chat, and keeps its unchanged tools',
+	{ tag: ['@preview-only', '@CUR-3985'] },
+	async ({ page, context, baseURL }) => {
+		test.setTimeout(180_000);
+		await setFlagOverrides(context, baseURL!, { 'mcp-servers': true });
+		await installFaultInjectionHeader(page, 'mcp_stub_server_swapped');
+		await stubOnConnectorsPage(page, 'mcp_stub_server_swapped');
+		await openComposer(page);
+
+		await page.goto(chatPath('/settings/connectors'), { waitUntil: 'load' });
+		await expect(page.getByRole('heading', { level: 1, name: 'Connectors' })).toBeVisible({
+			timeout: 30_000
+		});
+		await expect(
+			page.locator('[data-connector="stub"]'),
+			'the pinned stub server is not listed'
+		).toBeVisible({ timeout: 15_000 });
+		await expect(
+			page.locator('[data-connector-tool="stub__get_setting"]'),
+			'a pinned tool that did not change was left out'
+		).toBeVisible();
+		await expect(
+			page.locator('[data-connector-tool="stub__get_admin_lock"]'),
+			'a pinned tool that did not change was left out'
+		).toBeVisible();
+		await expect(
+			page.locator('[data-connector-tool="stub__set_setting"]'),
+			'chat offers set_setting although the server rewrote it after it was pinned'
+		).toHaveCount(0);
+
+		await openComposer(page);
+		// Its own wording, so its recording never stands in for another test's turn.
+		await send(
+			page,
+			'Through the stub tools, please switch my accent_color setting to orange and confirm when done.'
+		);
+		const reply = page.locator('[data-message-role="assistant"]').last();
+		await expect(turnDone(reply), 'the turn never finished').toBeVisible({ timeout: 90_000 });
+		await expect(
+			reply.getByText(/This turn wants to: run set_setting on stub/),
+			'chat asked to run the rewritten set_setting'
+		).toHaveCount(0);
+		expect(await stepByStep(page), 'the rewritten set_setting ran').not.toContain(
+			'set_setting on stub'
+		);
+	}
+);
+
+// Settings → Connectors. The person opens settings from the chat, finds the stub server and
 // its tools there, sets the write tool to always allow, and the next turn changes the setting with no
 // confirmation card. The connectors page lists the stub only for a request carrying its fault, so the
 // fault header rides the page's own requests (the document and SvelteKit's __data.json) as well as the
@@ -273,10 +349,10 @@ test(
 		await expect(writeTool.getByRole('radio', { name: 'Always allow' })).toBeChecked();
 
 		await openComposer(page);
-		// Its own wording, so its recording never stands in for another test's turn (CUR-4054).
+		// Its own wording, so its recording never stands in for another test's turn.
 		await send(
 			page,
-			'Using the stub tools, read my accent_color setting, then change it to orange, and tell me both values.'
+			'Using the stub tools, read my accent_color setting, change it to orange, then tell me its value before and after.'
 		);
 		const reply = page.locator('[data-message-role="assistant"]').last();
 		await expect(turnDone(reply), 'the turn never finished').toBeVisible({ timeout: 90_000 });
@@ -298,7 +374,7 @@ test(
 // entry, so the tool the turn calls can only have come from the person's own server.
 test(
 	'a person adds their own MCP server in Settings → Connectors, calls its tool in chat, and removes it',
-	{ tag: ['@preview-only', '@CUR-4016', '@CUR-4038'] },
+	{ tag: ['@preview-only', '@CUR-4016', '@CUR-4038', '@CUR-4727'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(180_000);
 		await setFlagOverrides(context, baseURL!, { 'mcp-servers': true });
@@ -307,7 +383,7 @@ test(
 		await signInAsFreshUser(page);
 		await openComposer(page);
 
-		// A team account has agent mode on, and an agent turn does not reach the servers (CUR-3025).
+		// A team account has agent mode on, and an agent turn does not reach the servers.
 		await openAgentTools(page, { timeout: 15_000 });
 		await agentOption(page, 'Off').click();
 		await expect(agentOption(page, 'Off')).toHaveAttribute('aria-checked', 'true', {

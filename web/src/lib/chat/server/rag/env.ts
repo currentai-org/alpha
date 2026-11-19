@@ -38,11 +38,13 @@ export function embeddingModel(): string {
 	return read("RAG_EMBEDDING_MODEL") || "sentence-transformers/all-MiniLM-L6-v2";
 }
 
-/** HF Inference feature-extraction base (the HF router /v1 has no /embeddings). */
+/** HF Inference feature-extraction base (the HF router /v1 has no /embeddings). Empty on a self-host
+ *  edition (ALPHA_EDITION=selfhost) with RAG_EMBEDDING_BASE_URL unset: a self-host sends no text to
+ *  Hugging Face it did not name, so every embedding caller then fails open without a request. */
 export function embeddingBaseUrl(): string {
-	return (
-		read("RAG_EMBEDDING_BASE_URL") || "https://router.huggingface.co/hf-inference/models"
-	).replace(/\/$/, "");
+	const set = read("RAG_EMBEDDING_BASE_URL");
+	if (!set && read("ALPHA_EDITION").toLowerCase() === "selfhost") return "";
+	return (set || "https://router.huggingface.co/hf-inference/models").replace(/\/$/, "");
 }
 
 /** A DEDICATED HF Inference Endpoint URL for the embeddings model (always-warm, no scale-to-zero —
@@ -58,7 +60,7 @@ export function embeddingEndpointUrl(): string {
 export const MULTILINGUAL_EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2";
 
 /** A dedicated always-warm endpoint serving MULTILINGUAL_EMBEDDING_MODEL. HF's shared serverless queue
- *  for this model can take 7–21 s a call under load, past the identity check's 6 s budget (CUR-2135);
+ *  for this model can take longer than the identity check's 6 s budget under load;
  *  empty ⇒ the serverless path, which still works when the queue is short. */
 export function multilingualEmbeddingEndpointUrl(): string {
 	return read("MULTILINGUAL_EMBEDDING_ENDPOINT_URL").replace(/\/$/, "");
@@ -74,7 +76,7 @@ export function embeddingToken(): string {
 	// HF-named tokens FIRST: the embed endpoint is HF feature-extraction (needs an hf_… token). When the chat
 	// lane is CSCS, OPENAI_API_KEY is the CSCS sk-… chat key — NOT valid for HF — so it goes LAST
 	// (only useful where it is itself the HF key). firstKey logs whichever it lands on.
-	// The second-opinion key is not in the chain: it belongs to the compare panel (CUR-2265).
+	// The second-opinion key is not in the chain: it belongs to the compare panel.
 	return firstKey(
 		["HF_RAG_EMBEDDINGS_TOKEN", "HF_TOKEN", "OPENAI_API_KEY"],
 		"embeddingToken"

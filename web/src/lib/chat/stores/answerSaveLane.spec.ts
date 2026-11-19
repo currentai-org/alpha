@@ -4,7 +4,7 @@ import { createAnswerSaveLane } from "./answerSaveLane";
 type WireBody = Record<string, unknown>;
 
 // The ordering and recovery rules of the serial save lane, each as the person would see it on
-// the Personalization page. The server is a hand-driven stub so a request can be held open or failed. (CUR-3929)
+// the Personalization page. The server is a hand-driven stub so a request can be held open or failed.
 type Prefs = { tone?: "plain" | "neutral" | "formal"; answerLength?: "short" | "normal" | "detailed" };
 
 function harness(opts: { fail?: (body: WireBody, n: number) => boolean } = {}) {
@@ -40,7 +40,7 @@ function harness(opts: { fail?: (body: WireBody, n: number) => boolean } = {}) {
 	return { lane, store, bodies, release, events, confirmed };
 }
 
-describe("createAnswerSaveLane (CUR-3929)", () => {
+describe("createAnswerSaveLane", () => {
 	it("takes the value in the store at once, before the request answers", () => {
 		const h = harness();
 		void h.lane.set({ tone: "plain" });

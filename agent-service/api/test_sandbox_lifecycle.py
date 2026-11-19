@@ -1,4 +1,4 @@
-"""Deleting a conversation or an account deletes its sandboxes, and idle ones are reaped (CUR-4484)."""
+"""Deleting a conversation or an account deletes its sandboxes, and idle ones are reaped."""
 
 import app
 import pytest
@@ -10,6 +10,7 @@ class RecordingBackend:
 
     def __init__(self, fail=False):
         self.destroyed, self.swept, self.fail = [], [], fail
+        self.running_limits, self.killed = [], []
 
     def destroy(self, principal, conversation):
         if self.fail:
@@ -17,11 +18,15 @@ class RecordingBackend:
         self.destroyed.append((principal, conversation))
         return 1
 
-    def sweep(self, older_than_secs):
+    def sweep(self, older_than_secs, *, running_older_than_secs=None, keep=frozenset()):
         if self.fail:
             raise ConnectionError("sandbox host down")
         self.swept.append(older_than_secs)
+        self.running_limits.append((running_older_than_secs, keep))
         return ["k"]
+
+    def kill(self, handle):
+        self.killed.append(handle.key)
 
 
 @pytest.fixture
@@ -105,7 +110,7 @@ class _WaitingBackend:
 
 
 def test_an_agent_task_waiting_for_a_slot_streams_the_wait_then_working_and_gets_its_sandbox(monkeypatch):
-    """CUR-4584: the event stream chat reads carries one "waiting_sandbox" with the status text, then "working"."""
+    """The event stream chat reads carries one "waiting_sandbox" with the status text, then "working"."""
     from sandbox_backend import SANDBOX_WAIT_TEXT
     backend = _WaitingBackend()
     monkeypatch.setattr(app, "SANDBOX_BACKEND", backend)
@@ -134,3 +139,29 @@ def test_an_agent_task_cancelled_during_the_wait_keeps_its_canceled_state(monkey
     task._canceled, task.summary, task.state = True, "canceled by user", app.State.CANCELED
     assert app._connect_agent_sandbox(task, None) is None
     assert (task.state, task.summary) == (app.State.CANCELED, "canceled by user")
+
+
+def _live_task(task_id, key, hard_deadline):
+    from sandbox_backend import Handle, Tier
+    t = app.Task(id=task_id, prompt="p", user="u")
+    t.state = app.State.WORKING
+    t._sbx = Handle(key=key, tier=Tier.AGENT, ref=None)
+    t._hard_deadline = hard_deadline
+    return t
+
+
+def test_the_reaper_kills_a_running_task_sandbox_past_the_hard_limit_and_keeps_a_live_one(backend, monkeypatch):
+    """The idle sweep never reaches a running sandbox. A task still holding its sandbox past its hard limit
+    plus the grace has that sandbox killed; one inside its limit is kept, and named to the host sweep as live."""
+    import time
+    now = time.monotonic()
+    late = _live_task("late", "k-late", now - app.SANDBOX_STUCK_GRACE_SECS - 1)
+    live = _live_task("live", "k-live", now + 60)
+    monkeypatch.setattr(app, "TASKS", {"late": late, "live": live})
+
+    swept = app._sweep_sandboxes()
+
+    assert backend.killed == ["k-late"]
+    assert "k-late" in swept
+    assert backend.running_limits == [(app.TASK_HARD_CAP_SECS + app.SANDBOX_STUCK_GRACE_SECS,
+                                       frozenset({"k-live"}))]

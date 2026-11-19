@@ -5,7 +5,7 @@ import { test, expect } from './helpers/test';
 // (production's homepage among them), is the homepage card, a JPEG. `og:image` is absolute and built
 // from PUBLIC_ORIGIN, which on a PR preview is develop's origin, so a page's tag can name a file this
 // deployment ships before develop does. The check therefore asks the deployment under test for the
-// file itself. (CUR-2991, CUR-4690)
+// file itself.
 
 /** Width and height from a JPEG's SOF segment: any of SOF0–SOF15 bar DHT (C4), JPG (C8) and DAC (CC). */
 function jpegSize(jpg: Buffer): { width: number; height: number } | null {

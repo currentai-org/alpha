@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 // The "Reasoning effort" switch on the per-model settings page promises a Low / Medium / High
 // selector in the chat footer for this model. `reasoningEffortOverrides`, the value the server
 // forwards as `reasoning_effort`, needs a writer, or the toggle changes nothing reachable outside
-// its own boolean (CUR-458, CUR-680). This test stops the footer control and the value it's supposed
+// its own boolean. This test stops the footer control and the value it's supposed
 // to write from drifting apart.
 const CHAT_WINDOW = "src/lib/chat/components/chat/ChatWindow.svelte";
 

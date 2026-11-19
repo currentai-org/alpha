@@ -13,6 +13,8 @@ export type ProvenanceProduct = {
 	maintainers_url: string[];
 	os_product: string | null;
 	os_product_url: string | null;
+	/** The product is this chat: its link is the chat's own home on the serving origin. */
+	links_to_this_app?: true;
 	os_product_description: string | null;
 	os_product_links: { label: string; url: string }[];
 	os_options: string[];
@@ -337,7 +339,8 @@ export const PROVENANCE_PRODUCTS: ProvenanceProduct[] = [
 				"https://currentai.org"
 			],
 			"os_product": "Stack X-Ray",
-			"os_product_url": "https://aipotluck.org/chat",
+			"os_product_url": null,
+			"links_to_this_app": true,
 			"os_product_description": "Tooling for tracking and displaying the origin of AI stack components.",
 			"os_product_links": [],
 			"os_options": [

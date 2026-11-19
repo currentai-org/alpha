@@ -1,4 +1,4 @@
-"""CUR-3025: operator-configured MCP servers for agent mode.
+"""Operator-configured MCP servers for agent mode.
 
 Offline. Config parsing (mcp_config), what reaches `new_session` (acp_client._acp_run driven against a
 fake ACP connection), which tasks get the servers (app._execute_attempt), the agent env, /healthz, and
@@ -218,7 +218,7 @@ def test_healthz_reports_a_malformed_config(monkeypatch):
 
 
 def test_healthz_with_nothing_configured_has_no_mcp_field_at_all(monkeypatch):
-    """Unset must look exactly like the service before CUR-3025: no new field, not an empty one."""
+    """Unset must look exactly like a service with no MCP config: no `mcp` field, not an empty one."""
     monkeypatch.setattr(app, "MCP_CONFIG", mcp_config.McpConfig())
     assert "mcp" not in app.healthz()
 

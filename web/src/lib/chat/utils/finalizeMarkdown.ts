@@ -27,7 +27,7 @@ import { Lexer, type Token, type Tokens } from "marked";
  *
  * It also rewrites one valid shape the model never means: a setext `---` heading
  * whose text spans several lines, which is a block closed by a rule (a letter's
- * signature over its closing `---`, CUR-3662). See multiLineSetextAsRule.
+ * signature over its closing `---`). See multiLineSetextAsRule.
  *
  * It is TOKEN-AWARE: it lexes with marked and only ever rewrites `paragraph` and
  * run-on `list` tokens, emitting every other container (tables, blockquotes,
@@ -249,7 +249,7 @@ const SETEXT_DASH_HEADING = /^([\s\S]*\n)([ ]{0,3}-{3,}[ \t]*)(\n*)$/;
  * @remarks
  * A heading is one line in practice, so several lines over a `---` are a block the model closed with
  * a rule: a model may bracket a drafted letter in `---` and put the closing one straight under
- * the signature (CUR-3662). A one-line setext heading (`Title\n---`) is left as it is, and so is an
+ * the signature. A one-line setext heading (`Title\n---`) is left as it is, and so is an
  * `===` underline, which is no rule.
  */
 function multiLineSetextAsRule(token: Token): string | null {
@@ -304,7 +304,7 @@ export function finalizeMarkdown(content: string): string {
 		if (isNumberReadAsEmptyList(token)) {
 			// A reply that is only `4417.` lexes as `<ol start="4417"><li></li></ol>`: a blank bubble.
 			// An ordered list whose every item is empty is a number the model wrote, never a list it
-			// meant, so the delimiter is escaped and the number shows as text (CUR-2283).
+			// meant, so the delimiter is escaped and the number shows as text.
 			out += token.raw.replace(/^(\s*\d{1,9})([.)])/gm, "$1\\$2");
 		} else if (token.type === "paragraph" || token.type === "list") {
 			out += finalizeUnit(token.raw, token.type === "paragraph");

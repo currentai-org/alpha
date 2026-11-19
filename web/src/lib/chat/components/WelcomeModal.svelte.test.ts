@@ -55,7 +55,7 @@ describe('WelcomeModal hands over to the tour, and every other way out is a skip
 	});
 
 	// The seen mark must not wait for the close animation, or a reload in that window
-	// never sends it and the welcome comes back on the next load. (CUR-4348)
+	// never sends it and the welcome comes back on the next load.
 	it('reports the dismissal while the welcome is still closing, before it hands over, so a reload then keeps the seen mark', async () => {
 		const w = await open();
 		w.dialog.querySelector<HTMLElement>('[data-welcome-start]')!.click();
@@ -82,7 +82,7 @@ describe('WelcomeModal hands over to the tour, and every other way out is a skip
 		expect(w.onTakeTour).not.toHaveBeenCalled();
 	});
 
-	// Without a mouse, Tab must not go to the buttons hidden behind the welcome. A button outside the dialog stands in for the app behind it. (CUR-4259)
+	// Without a mouse, Tab must not go to the buttons hidden behind the welcome. A button outside the dialog stands in for the app behind it.
 	it('Tab and Shift+Tab stay inside the welcome, never reaching the app behind it', async () => {
 		const behind = document.body.appendChild(document.createElement('button'));
 		behind.textContent = 'behind';
@@ -99,7 +99,7 @@ describe('WelcomeModal hands over to the tour, and every other way out is a skip
 	});
 
 	// On a phone "Start chatting" must not fall below the fold. A 375×600 window is a
-	// small phone with the browser's bars showing. (CUR-4260)
+	// small phone with the browser's bars showing.
 	it('on a small phone both ways forward are on screen without scrolling', async () => {
 		const w = await open([{ id: 'swiss-ai/apertus-v1.5-70b' }, { id: 'BSC-LT/ALIA-40b-instruct' }], [375, 600]);
 		await expect.poll(() => Math.round(w.dialog.getBoundingClientRect().bottom)).toBe(window.innerHeight);
@@ -120,7 +120,7 @@ describe('WelcomeModal hands over to the tour, and every other way out is a skip
 	});
 });
 
-// The credits row names who made and who runs the models this deployment serves (CUR-2565).
+// The credits row names who made and who runs the models this deployment serves.
 describe('WelcomeModal credits', () => {
 	it('credits only the makers and hosts of served models, so production names no develop-only maker', async () => {
 		const w = await open([{ id: 'swiss-ai/apertus-v1.5-70b' }]);
@@ -151,7 +151,7 @@ describe('WelcomeModal credits', () => {
 });
 
 // The welcome is modal for a keyboard visitor. Tab never leaves the dialog for the page
-// behind it, and Escape is a skip, the same as Start chatting. (CUR-4259)
+// behind it, and Escape is a skip, the same as Start chatting.
 describe('WelcomeModal keyboard', () => {
 	it('keeps Tab inside the dialog, and Escape reports a skip rather than the tour', async () => {
 		const outside = document.createElement('button');

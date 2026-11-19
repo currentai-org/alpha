@@ -1,5 +1,5 @@
 // `disable_fallbacks: true` on the answer lane's request body, and how long to honour the 429 that
-// comes back (CUR-1729).
+// comes back.
 //
 // The LiteLLM gateway substitutes a different model for the one we asked for whenever our deployment
 // is in its cooldown list, and says so only in a response header we have to diff after the fact.
@@ -41,13 +41,13 @@ export function gatewayFallbackOverride(
 ): Record<string, unknown> {
 	if (!servesUserAnswer) return {};
 	// `disable_fallbacks` is LiteLLM's field. A host that validates its body strictly rejects it:
-	// Mistral's La Plateforme answers 422 `extra_forbidden` (CUR-2280). So a
+	// Mistral's La Plateforme answers 422 `extra_forbidden`. So a
 	// call whose baseURL is none of the gateway's gets nothing; with the URL or every gateway URL
 	// unknown, the gateway is assumed, which is what every call was before.
 	//
 	// More than one URL reaches the gateway. On an event deployment OPENAI_BASE_URL is an adapter,
 	// which relays the body unchanged, while the catalog backup lane calls FALLBACK_BASE_URL, the
-	// gateway itself. Matching only the first left that backup call free to substitute (CUR-3936).
+	// gateway itself. Matching only the first left that backup call free to substitute.
 	const norm = (u: string) => u.trim().replace(/\/+$/, "");
 	const gateways = (typeof gatewayBaseURLs === "string" ? [gatewayBaseURLs] : (gatewayBaseURLs ?? []))
 		.filter((u): u is string => Boolean(u?.trim()))
@@ -56,9 +56,30 @@ export function gatewayFallbackOverride(
 	return { disable_fallbacks: true };
 }
 
+/**
+ * LiteLLM's per-request cache opt-out, for a call whose repeats must each reach the model.
+ *
+ * @remarks
+ * The gateway caches identical requests, so three identical classifier samples sent one after another
+ * come back as one answer under one response id: the entity-scope guard's majority vote would be one
+ * check counted three times. The field is LiteLLM's, so like `disable_fallbacks` it goes
+ * only to a base URL that is one of the gateway's; a strict direct host (La Plateforme) answers 422 on
+ * an unknown field. Unlike `disable_fallbacks`, an unknown base URL gets nothing.
+ */
+export function gatewayNoCache(
+	skipCache: boolean | undefined,
+	baseURL: string | undefined,
+	gatewayBaseURLs: readonly (string | undefined)[]
+): Record<string, unknown> {
+	if (!skipCache || !baseURL) return {};
+	const norm = (u: string) => u.trim().replace(/\/+$/, "");
+	const gateways = gatewayBaseURLs.filter((u): u is string => Boolean(u?.trim())).map(norm);
+	return gateways.includes(norm(baseURL)) ? { cache: { "no-cache": true } } : {};
+}
+
 // The staging router's backups by group, from its `/router/settings`: Large 4
 // falls back to Bedrock's Large 3, a different model under Large 4's name, so its answer calls
-// refuse it (CUR-4551). Large 3's backup is Large 3 on Bedrock, the same model, and it keeps it.
+// refuse it. Large 3's backup is Large 3 on Bedrock, the same model, and it keeps it.
 const CROSS_MODEL_ROUTER_BACKUP: ReadonlySet<string> = new Set(["mistralai/mistral-large-2610"]);
 
 /** The router base URL to treat as a gateway for this wire id: set only when its backup is another model. */

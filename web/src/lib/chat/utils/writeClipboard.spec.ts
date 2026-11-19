@@ -17,7 +17,7 @@ function fakeDocument(execResult: boolean | "throw") {
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe("writeClipboard (CUR-2823)", () => {
+describe("writeClipboard", () => {
 	it("uses the Clipboard API when it accepts, and never touches execCommand", async () => {
 		const writeText = vi.fn(async () => {});
 		vi.stubGlobal("navigator", { clipboard: { writeText } });

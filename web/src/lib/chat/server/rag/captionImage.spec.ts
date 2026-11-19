@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { parseVisionJson, assembleImageText, pickVisionModel } from "./captionImage";
 import { logger } from "$lib/chat/server/logger";
 
-describe("pickVisionModel (CUR-2319)", () => {
+describe("pickVisionModel", () => {
 	afterEach(() => vi.restoreAllMocks());
 
 	it("picks the first multimodal model without a warning", async () => {

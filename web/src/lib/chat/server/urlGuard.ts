@@ -1,6 +1,7 @@
 // URL-fabrication guard — the runtime "de-link" half of the citation-honesty enforcement, sibling to
 // $lib/chat/server/hedgeGuard and $lib/chat/server/nameGuard.
 //
+import { DEPLOYMENT } from "$lib/deployment";
 import { UNVERIFIED_TITLE } from "$lib/chat/constants/unverifiedHref";
 import { TRAILING_SOURCE_LABEL } from "$lib/chat/server/sourceGuard";
 export { UNVERIFIED_TITLE };
@@ -48,19 +49,23 @@ export interface UrlGuardResult {
 }
 
 // Domains we legitimately link and trust even on an ungrounded turn. Host-suffix match (so subdomains
-// like en.wikipedia.org are covered). Deliberately does NOT include github.com — we don't currently cite
-// a verified GitHub repo in answers, and that is exactly the host the model fabricated. Add an entry
-// (optionally host+path-scoped, e.g. "github.com/swiss-ai") only once a link there is real and intended.
+// like en.wikipedia.org are covered). github.com is allowed only path-scoped, because it is exactly the
+// host the model fabricates. Add an entry there (e.g. "github.com/swiss-ai") only once a link is real and
+// intended.
 const STATIC_ALLOW = [
-	"aipotluck.org",
+	// The installation's own domain (src/lib/deployment.ts).
+	...(DEPLOYMENT.apexDomain ? [DEPLOYMENT.apexDomain] : []),
 	"huggingface.co",
 	"wikipedia.org",
 	"wikimedia.org",
 	"openalex.org",
 	"swiss-ai.org",
-	// The country-by-country crisis line finder the persona and crisisReferralOrder.ts send people to
-	// (CUR-2136). Unlisted, every distress answer's helpline link carried the "unverified" mark.
+	// The country-by-country crisis line finder the persona and crisisReferralOrder.ts send people to.
+	// Unlisted, every distress answer's helpline link carried the "unverified" mark.
 	"findahelpline.com",
+	// Our public source, which the persona tells the model to cite when asked whether the code is open.
+	// Unlisted, that answer marked our own repo "unverified".
+	"github.com/currentai-org/alpha",
 ];
 
 // Self-referential / partner entities the model fabricates links for (github.com/snai/apertus-70b,
@@ -76,8 +81,8 @@ const CANONICAL_LINKS: { entity: RegExp; url: string }[] = [
 	{ entity: /apertus/i, url: "https://huggingface.co/swiss-ai/Apertus-70B-Instruct-2509" },
 	{ entity: /\bsnai\b|\bswiss[-\s]?ai\b/i, url: "https://huggingface.co/swiss-ai" },
 ];
-// Our own project, for which no canonical contribute/repo link exists yet — a fabricated one is stripped,
-// not rewritten. aipotluck.org itself is on STATIC_ALLOW, so only OFF-domain fabrications reach here.
+// Our own project: a fabricated link is stripped, not rewritten. The installation's domain and the real
+// repo are on STATIC_ALLOW, so only other off-domain fabrications reach here.
 const STRIP_SELF = /\baipotluck\b|\bai[-\s]?potluck\b/i;
 
 /** For an UNALLOWED url (+ its visible label), decide how to resolve a self-referential/partner
@@ -221,7 +226,7 @@ export function detectFabricatedUrls(text: string, opts: UrlGuardOptions = {}): 
 	// are resolved, not unverified, so they're deliberately not in it.
 	// The caller passes one streaming batch at a time, and a batch often ends on the "\n" that separates
 	// two list items. Trimming only what the rewrite left inside and putting the batch's own edges back
-	// keeps that line break; trimming it fused the next item onto this line (CUR-2567).
+	// keeps that line break; trimming it fused the next item onto this line.
 	const lead = /^\s*/.exec(original)?.[0] ?? "";
 	const tail = /\s*$/.exec(original)?.[0] ?? "";
 	return { flagged: true, cleaned: lead + out.trim() + tail, urls: flaggedUrls };

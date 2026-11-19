@@ -6,7 +6,7 @@ Each section records one decision that shapes the design system.
 
 **Decision.** Every component follows Base UI's public shape: namespace and part names
 (`Popover.Root/Trigger/Portal/Positioner/Popup/Arrow`), prop names (`open`, `value` as an array for
-Accordion and ToggleGroup, `keepMounted`, `hiddenUntilFound`) and data-attribute names. The
+ToggleGroup, `keepMounted`, `hiddenUntilFound`) and data-attribute names. The
 behaviour engine underneath is bits-ui, a Svelte 5 library the app already depends on.
 
 **Reason.** Upgrades start from base-ui.com, and matching names make the mapping mechanical. bits-ui

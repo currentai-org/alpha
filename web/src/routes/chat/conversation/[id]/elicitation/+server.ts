@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { error } from "@sveltejs/kit";
 import { json } from "$lib/chat/server/api/utils/json";
 import { z } from "zod";
@@ -5,7 +8,7 @@ import type { RequestHandler } from "./$types";
 import { loadOwnedConversation } from "$lib/chat/server/loadOwnedConversation";
 import { submitElicitationAnswer } from "$lib/chat/server/mcp/elicitation";
 
-// Separate from the generation stream (CUR-1017): the run that parked this may be on another
+// Separate from the generation stream: the run that parked this may be on another
 // instance entirely by the time this answer arrives — see db/schema.ts's mcpElicitations comment.
 const bodySchema = z.object({
 	elicitationId: z.string().min(1),

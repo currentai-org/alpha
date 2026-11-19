@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { secretEquals } from "./crypto";
 
-describe("secretEquals (CUR-3524)", () => {
+describe("secretEquals", () => {
 	const secret = "s3cret-value";
 
 	it("accepts the exact secret", () => {

@@ -36,7 +36,12 @@ export default {
 			props: [{ name: 'title', type: 'string', description: 'Sheet title (the accessible name).' }]
 		},
 		{ name: 'Sheet.Body', description: 'Scrolling content with the scroll shadow.' },
-		{ name: 'useCompact()', description: 'Reactive MediaQuery: `.current` is true below md.' }
+		{ name: 'useCompact()', description: 'Reactive MediaQuery: `.current` is true below md.' },
+		{
+			name: 'useSheetOpen()',
+			description:
+				'Reactive: `.current` is true while any Sheet is open. A floating control outside the sheet (a chip, a toast action) hides while it is: the sheet covers the bottom of the screen, and its scroll lock stops taps outside it.'
+		}
 	],
 	examples: [{ file: 'Hero', title: 'Bottom sheet' }]
 } satisfies DocEntry;

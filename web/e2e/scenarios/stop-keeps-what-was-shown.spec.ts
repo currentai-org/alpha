@@ -6,7 +6,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 import { holdAnswerForStop } from './helpers/faultInjection';
 
 // A stopped answer on a preview gained one more chunk of text a few seconds later, so Stop
-// read as not having worked (CUR-2300). The contract: a stopped answer keeps exactly the text
+// read as not having worked. The contract: a stopped answer keeps exactly the text
 // that was on screen when Stop was pressed, through the refresh that follows.
 //
 // Two moments can change the text after the click, and this reads it at both. The first is the next
@@ -18,7 +18,7 @@ import { holdAnswerForStop } from './helpers/faultInjection';
 //
 // An answer arrives in screened chunks of about 150 characters on preview, so 200 characters on
 // screen means the stop lands mid-answer with more still to come. The prompt asks for far more than
-// that. CUR-4027: a PR run's replayed answer arrives whole at once, so there the turn is held after
+// that. a PR run's replayed answer arrives whole at once, so there the turn is held after
 // its first sentence instead (holdAnswerForStop), and any text on screen is mid-answer. A held turn
 // leaves nothing in the frame buffer, so the next-frame read bites on a live answer only.
 const PROMPT =

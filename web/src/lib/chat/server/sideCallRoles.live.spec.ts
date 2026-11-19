@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import type { Endpoint, EndpointMessage } from "./endpoints/types";
 
-// LIVE: a side call to Apertus, shaped by generateFromDefaultEndpoint, is answered by Apertus (CUR-1294).
+// LIVE: a side call to Apertus, shaped by generateFromDefaultEndpoint, is answered by Apertus.
 //
 // The answer lane flattens roles for Apertus; side calls (entity scope, world model, query rewrite…) must
 // too, because a system role sent to a pooled model group can be answered by a different model in the pool.

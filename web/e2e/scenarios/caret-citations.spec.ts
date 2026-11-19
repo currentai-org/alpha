@@ -7,12 +7,13 @@ import { startChattingPastWelcome } from './helpers/welcome';
 
 // Mistral Large 3 cites web sources in Pandoc's caret shapes, "Tokyo^1,2^" and "[^1^]", and the
 // answer showed them as raw carets where a numbered link to the source belonged (A2 recordings 8 to 10).
-// It also writes a range, "Tokyo[1]-4.", which linked [1] and printed "-4". CUR-2393: bold round the
+// It also writes a range, "Tokyo[1]-4.", which linked [1] and printed "-4". bold round the
 // markers alone, "problemas**[1][2]**.", printed both pairs of asterisks. Escaped brackets, "Qatar \[1,3,4\].",
 // opened a display-math block that showed "1,3,4" on a monospace line of its own (A5 recordings 2 and 4).
+// a plain group, "[1,3]", printed as text where one link per number belonged.
 // Large 3 writes carets in only some answers, so the `caret_cited_reply` fault streams one with no model
 // call: three Wikipedia sources, then an answer citing the second and third every way, split mid-marker as
-// a stream splits. CUR-3933: search put an uncited page first and the answer's citations started at [3], so
+// a stream splits. search put an uncited page first and the answer's citations started at [3], so
 // the page must number the cited sources from [1] in the order the answer cites them.
 const SOURCES = {
 	'1': 'https://en.wikipedia.org/wiki/Tokyo',
@@ -64,6 +65,9 @@ test(
 		expect(stored?.content, 'the fault sent no escaped-bracket citations').toContain(
 			'Olympics \\[2,3\\].'
 		);
+		expect(stored?.content, 'the fault sent no plain grouped citation').toContain(
+			'government [2,3].'
+		);
 
 		await expect(reply).toContainText('The capital of Japan is Tokyo');
 		const answerText = (await reply.locator('.prose').allInnerTexts()).join('\n');
@@ -72,6 +76,19 @@ test(
 		expect(answerText, 'bold round the citations printed its asterisks').not.toContain('*');
 		await expect(reply).toContainText('live in cities');
 		await expect(reply).toContainText('hosted the Olympics');
+		// a plain grouped marker, "[2,3]", shows as one link per number, never as text.
+		await expect(reply).toContainText('seats of government');
+		expect(answerText, 'a grouped citation reached the page as text').not.toMatch(
+			/\[\d+\s*,\s*\d+\]/
+		);
+		const groupedLinks = await reply
+			.locator('p', { hasText: 'seats of government' })
+			.locator('a[href^="http"]')
+			.evaluateAll((links) => links.map((a) => a.getAttribute('href') ?? ''));
+		expect(
+			groupedLinks,
+			`the grouped citation [2,3] did not become one link per source (links: ${JSON.stringify(groupedLinks)})`
+		).toEqual(Object.values(SOURCES));
 		await expect(
 			reply.locator('.katex, [data-katex-pending]'),
 			'escaped citation brackets opened a math block'

@@ -38,7 +38,7 @@ describe("parseClassifierVerdict", () => {
 	});
 });
 
-describe("readClassifierVerdict keeps a malformed reply apart from a real no (CUR-2141)", () => {
+describe("readClassifierVerdict keeps a malformed reply apart from a real no", () => {
 	it("reads yes and no by their leading word", () => {
 		expect(readClassifierVerdict("Yes.")).toBe("yes");
 		expect(readClassifierVerdict("  no  ")).toBe("no");

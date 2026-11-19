@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { getContext, setContext } from "svelte";
 import type { ArtifactRegistry } from "./artifacts";
 import type { artifactPanel } from "$lib/chat/stores/artifactPanel.svelte";

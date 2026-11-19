@@ -41,13 +41,13 @@ beforeEach(() => {
 });
 
 describe("getSyftClient", () => {
-	// Contract, not just behavior (CUR-77): null is the fail-open signal — callers drop the federated
+	// Contract, not just behavior: null is the fail-open signal — callers drop the federated
 	// path and answer normally. An unconfigured token must degrade silently, never throw into a turn.
 	// A null client and a real "queried, found nothing" result must be
 	// distinguishable in the logs — every caller (syftSources.ts, syftCatalog.ts) silently no-ops.
 	// Asserted here, on the FIRST call the missing-token branch ever executes in this file's test
 	// order — warnedUnconfigured is module-level state, so a later repeat of this scenario would not
-	// re-warn (proven in the next test) and would falsely read as "no warning happened". (CUR-878)
+	// re-warn (proven in the next test) and would falsely read as "no warning happened".
 	it("returns null when no API token is configured, warning once (fail-open: callers answer without federated RAG)", () => {
 		Object.assign(h.config, { token: "", baseUrl: "http://hub" });
 		expect(getSyftClient()).toBeNull();

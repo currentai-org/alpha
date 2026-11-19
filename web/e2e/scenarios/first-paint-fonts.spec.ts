@@ -4,7 +4,7 @@ import type { Page } from '@playwright/test';
 import { test, expect } from './helpers/test';
 import { chatEntry } from './helpers/chatEntry';
 
-// This spec is about the first-run welcome, so it meets the welcome itself rather than through the shared handler (SOL-343).
+// This spec is about the first-run welcome, so it meets the welcome itself rather than through the shared handler.
 test.use({ welcome: 'show' });
 
 // A first-time visitor's Welcome to Alpha card painted in fallback faces, then rewrapped about a
@@ -13,7 +13,7 @@ test.use({ welcome: 'show' });
 // and a browser fetches a face only once text needing it is on screen, so a card rendered on the
 // client always drew its first frame before its fonts.
 //
-// The contract (CUR-2385): the first frame the card is on screen is already drawn in its own faces. Checked over
+// The contract: the first frame the card is on screen is already drawn in its own faces. Checked over
 // a slow connection, because on a fast one the fonts win the race by luck and the defect hides.
 
 test.use({ viewport: { width: 1280, height: 720 } });

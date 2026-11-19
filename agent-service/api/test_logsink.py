@@ -190,8 +190,8 @@ def test_queue_is_bounded_and_drops_oldest(monkeypatch):
 
 
 def test_post_failure_is_counted_and_surfaced(sink, monkeypatch):
-    """A failing sink endpoint must show up in /healthz rather than being swallowed — the
-    same failure-is-invisible shape this sink was built to fix (CUR-182)."""
+    """An outage upstream of the sink must show up in /healthz rather than being swallowed — a
+    silent failure is the shape this sink exists to prevent."""
     calls = []
 
     class FakeResp:
@@ -259,3 +259,20 @@ def test_posts_a_json_array_to_the_dataset_ingest_path(sink, monkeypatch):
     assert seen["headers"]["authorization"] == "Bearer tok-test"
     assert isinstance(seen["body"], list) and seen["body"][0]["event"] == "run.started"
     assert sink.stats()["sent"] == 1
+
+
+# ---- the Fly app stamp ----------------------------------------------------------------------
+
+def test_emitted_record_carries_fly_app_from_env_and_keeps_an_explicit_one(sink, monkeypatch):
+    monkeypatch.setenv("FLY_APP_NAME", "potluck-agent-test")
+    sink.emit({"ts": 1.0, "event": "run.finished", "id": "t1"})
+    sink.emit({"ts": 2.0, "event": "sandbox.pool", "fly_app": "explicit-app"})
+    first, second = _drain(sink)
+    assert first["fly_app"] == "potluck-agent-test"
+    assert second["fly_app"] == "explicit-app"
+
+
+def test_record_omits_fly_app_when_env_unset(sink, monkeypatch):
+    monkeypatch.delenv("FLY_APP_NAME", raising=False)
+    sink.emit({"ts": 1.0, "event": "run.finished", "id": "t1"})
+    assert "fly_app" not in _drain(sink)[0]

@@ -8,7 +8,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 
 // Someone who reloads in the seconds after sending, before the server has saved the
 // question, used to get an empty conversation that never filled in, though the server went on to
-// save the answer (CUR-1893). A cold instance opens that gap (7s from send to save, seen on a preview); the
+// save the answer. A cold instance opens that gap (7s from send to save, seen on a preview); the
 // `question_save_delayed` fault opens the same gap on demand.
 //
 // The stored conversation is read right after the reload, so a pass can't come from a reload that

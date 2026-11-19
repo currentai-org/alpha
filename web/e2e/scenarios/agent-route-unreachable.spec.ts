@@ -17,7 +17,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 //
 // @preview-only: reaches the agent control by forcing `agent-mode` through the override cookie, and
 // arms a fault, neither of which production wires. `agent-mode-access` grants the minted
-// @example.org account on previews (CUR-1611).
+// @example.org account on previews.
 
 const NOTE = 'The agent wasn’t reachable';
 
@@ -42,7 +42,7 @@ async function onAuto(page: Page, context: BrowserContext, baseURL: string) {
 	return composer;
 }
 
-// The failed-route half moved below e2e (SOL-195): server.turn.spec.ts drives the turn route with the
+// The failed-route half moved below e2e: server.turn.spec.ts drives the turn route with the
 // check failing and reads the note streamed and stored; ChatMessage.svelte.test.ts renders it. This
 // half stays, because only a real classifier answering proves the note isn't shown by default.
 test(

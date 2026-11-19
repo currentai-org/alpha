@@ -40,7 +40,7 @@ async function openComposer(page: Page) {
 		await startChattingPastWelcome(welcomeDialog);
 	});
 	// signInAsFreshUser already left the page on /chat. A second goto here reloaded it mid-setup,
-	// which the gallery read as a 1.1 s blank no visitor ever sees (CUR-3615).
+	// which the gallery read as a 1.1 s blank no visitor ever sees.
 	await installCannedReplies(page);
 	await page.getByLabel('Message AI Potluck').click({ timeout: 30_000 });
 }

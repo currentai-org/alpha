@@ -15,22 +15,22 @@
  * the user-facing /privacy retention promise (delete guest conversations after RETENTION_DAYS), not
  * just infra-table hygiene.
  *
- * `upload_chunks` (CUR-1780) is swept an hour after its newest write: an upload that has not finished
+ * `upload_chunks` is swept an hour after its newest write: an upload that has not finished
  * by then never will, and its bytes were never scanned.
  *
- * `local_inference_pairings` (CUR-4110) is swept on `expiresAt` too: an expired pairing's CLI stopped
+ * `local_inference_pairings` is swept on `expiresAt` too: an expired pairing's CLI stopped
  * polling long ago, and a row nobody collected still holds a tunnel secret. collectPairing() already
  * refuses an expired row, so the sweep only bounds how long that secret sits in the table.
  *
- * Better Auth's own `session` and `verification` tables are swept on `expires_at` too (CUR-939). Better
+ * Better Auth's own `session` and `verification` tables are swept on `expires_at` too. Better
  * Auth drops an expired row only when it next reads it, so a session from a device that never returns,
  * or a sign-in code nobody entered, otherwise stays for good — and a `verification` row carries the
- * email address it was sent to. Neither table indexes `expires_at`; both hold tens of rows in
- * production, so a daily sequential scan costs nothing and no migration is needed until that changes.
+ * email address it was sent to. Neither table indexes `expires_at`; both stay small, so a daily
+ * sequential scan costs little and needs no index.
  *
- * `safety_events` (CUR-4428) is swept on `createdAt` after SAFETY_RECORD_RETENTION_DAYS, the period the
- * privacy notice states for safety records. child_safety rows are never swept here: their period is a
- * legal decision still open under CUR-2577.
+ * `safety_events` is swept on `createdAt` after SAFETY_RECORD_RETENTION_DAYS, the period the privacy
+ * notice states for safety records. child_safety rows are never swept here: their retention period is a
+ * legal decision that has not been made yet.
  *
  * `account` is deliberately NOT swept. Its only expiry columns are the provider's access and refresh
  * token expiries, not the account's: an expired access token is the normal state of a linked account,
@@ -40,6 +40,7 @@ import { and, isNull, lt, inArray, ne } from "drizzle-orm";
 import { getDb } from "./client";
 import { sweepAbandonedUploadChunks } from "./uploadChunks";
 import { sweepSyncTombstones } from "./syncTombstones";
+import { sweepGenerationEvents } from "./generationEvents";
 import * as schema from "./schema";
 // Relative (not `$lib`) so this module also resolves under tsx in scripts/verify-cleanup.ts,
 // which runs outside Vite and can't resolve SvelteKit's `$lib` alias.
@@ -54,6 +55,9 @@ const ABORTED_GENERATION_TTL_MS = 60 * 60 * 1000;
 // mcpElicitations: a parked question nobody ever answers. Generous for the same reason as above —
 // this is a safe-GC floor, not a claim about how long a real user takes to fill in a form.
 const MCP_ELICITATION_TTL_MS = 24 * 60 * 60 * 1000;
+// generationEvents: stream-follow's log. The producer deletes a turn's rows two minutes
+// after it ends; this catches the turn whose instance was killed first. No turn runs near ten minutes.
+const GENERATION_EVENTS_TTL_MS = 10 * 60 * 1000;
 const SAFETY_RECORD_TTL_MS = SAFETY_RECORD_RETENTION_DAYS * 24 * 60 * 60 * 1000;
 
 export type CleanupCounts = {
@@ -63,19 +67,21 @@ export type CleanupCounts = {
 	tokenCaches: number;
 	abortedGenerations: number;
 	mcpElicitations: number;
-	// Better Auth's own tables (CUR-939).
+	// stream-follow's event log.
+	generationEvents: number;
+	// Better Auth's own tables.
 	authSessions: number;
 	verifications: number;
 	// Conversations past the retention window (the /privacy "deleted after N days" promise).
 	conversations: number;
-	// CLI pairing handoffs past their expiry (CUR-4110).
+	// CLI pairing handoffs past their expiry.
 	localInferencePairings: number;
-	// Chunks of My files uploads abandoned before they finished (CUR-1780).
+	// Chunks of My files uploads abandoned before they finished.
 	uploadChunks: number;
-	// Sync tombstones past their 30 days, and sync access tokens past their expiry (CUR-4312).
+	// Rows the removed Thunderbolt sync left: tombstones past 30 days, access tokens past expiry.
 	syncTombstones: number;
 	oauthAccessTokens: number;
-	// Safety decline records past SAFETY_RECORD_RETENTION_DAYS, child_safety excepted (CUR-4428).
+	// Safety decline records past SAFETY_RECORD_RETENTION_DAYS, child_safety excepted.
 	safetyEvents: number;
 };
 
@@ -84,7 +90,12 @@ export type CleanupCounts = {
  * expiry column are never touched (NULL < now is NULL, i.e. not matched). Returns per-table delete
  * counts. `now` is injectable so the verification harness can reason about fixed boundaries.
  */
-export async function cleanupExpired(now: Date = new Date()): Promise<CleanupCounts> {
+export async function cleanupExpired(
+	now: Date = new Date(),
+	// False while conversation expiry (server/conversationExpiry.ts) is on: it deletes guest
+	// conversations from their creation, so this older sweep by `updatedAt` stands down.
+	opts: { guestConversations?: boolean } = {}
+): Promise<CleanupCounts> {
 	const db = getDb();
 	const tokenCacheCutoff = new Date(now.getTime() - TOKEN_CACHE_TTL_MS);
 	const abortedCutoff = new Date(now.getTime() - ABORTED_GENERATION_TTL_MS);
@@ -100,6 +111,7 @@ export async function cleanupExpired(now: Date = new Date()): Promise<CleanupCou
 		tokenCaches,
 		abortedGenerations,
 		mcpElicitations,
+		generationEvents,
 		authSessions,
 		verifications,
 		localInferencePairings,
@@ -132,6 +144,7 @@ export async function cleanupExpired(now: Date = new Date()): Promise<CleanupCou
 			.delete(schema.mcpElicitations)
 			.where(lt(schema.mcpElicitations.updatedAt, elicitationCutoff))
 			.returning({ id: schema.mcpElicitations.id }),
+		sweepGenerationEvents(new Date(now.getTime() - GENERATION_EVENTS_TTL_MS)),
 		db
 			.delete(schema.session)
 			.where(lt(schema.session.expiresAt, now))
@@ -167,13 +180,15 @@ export async function cleanupExpired(now: Date = new Date()): Promise<CleanupCou
 	// conversationId. Snapshot the expired ids, delete by id in one transaction so the dependent
 	// deletes and the conversation delete operate on exactly the same set.
 	//
-	// GUEST conversations only (userId IS NULL) (CUR-830). A signed-in user's conversations live until
-	// they delete them (wipeUserData / the trash-all) or the account goes, as the notice's account-data row,
+	// GUEST conversations only (userId IS NULL). A signed-in user's conversations live until they
+	// delete them (wipeUserData / the trash-all) or the account goes, as the notice's account-data row,
 	// the settings page's conversation list, and the whole "sign in when I want it to remember me" premise
-	// (A1) say; dormant-account expiry is a separate decision with a warning email in front of it, not
+	// say; dormant-account expiry is a separate decision with a warning email in front of it, not
 	// this sweep.
+	//
+	// With conversation expiry on, it owns every conversation, guests' included, and this block deletes none.
 	const conversationsCutoff = new Date(now.getTime() - RETENTION_MS);
-	const conversations = await db.transaction(async (tx) => {
+	const conversations = opts.guestConversations === false ? [] : await db.transaction(async (tx) => {
 		const expired = await tx
 			.select({ id: schema.conversations.id })
 			.from(schema.conversations)
@@ -197,6 +212,7 @@ export async function cleanupExpired(now: Date = new Date()): Promise<CleanupCou
 		tokenCaches: tokenCaches.length,
 		abortedGenerations: abortedGenerations.length,
 		mcpElicitations: mcpElicitations.length,
+		generationEvents,
 		authSessions: authSessions.length,
 		verifications: verifications.length,
 		conversations: conversations.length,

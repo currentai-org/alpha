@@ -6,12 +6,12 @@ import { CHAT_ENTRY } from './helpers/chatEntry';
 import { startChattingPastWelcome } from './helpers/welcome';
 import { signInAsFreshUser } from './helpers/session';
 
-// A model's measured weak spot (CUR-3911, CUR-420) shows as one quiet line in that
+// A model's measured weak spot shows as one quiet line in that
 // model's details, and never on the picker row. Since the redesign the per-model Settings page
 // is developer-only, so the line sits on the chat's empty state, under the sentence that names the
 // picked model. A guest picks ALIA 40B in the composer and reads the sentence there; Mistral Medium 3.5,
 // with none on record, shows no line. The sentences are the English ones in messages/en.json; ALIA's
-// was reworded for a general visitor (CUR-4262), so the old prompt-injection wording must be gone.
+// was reworded for a general visitor, so the old prompt-injection wording must be gone.
 //
 // With `auto-routing` on, the composer's menu opens on Auto with the model rows one level down under
 // "Choose a model yourself". A model picked there is still the person's model everywhere, so the pick
@@ -23,7 +23,7 @@ const CHOOSE_YOURSELF = 'Choose a model yourself';
 const ALIA = { id: 'BSC-LT/ALIA-40b-instruct', name: 'ALIA 40B' };
 const MEDIUM = { id: 'mistral-medium-2604', name: 'Mistral Medium 3.5' };
 const GLM = { id: 'zai-org/GLM-5.2', name: 'GLM 5.2' };
-// The answer settings GLM 5.2 failed on the preview probe (modelWeakSpots.ts, CUR-4289).
+// The answer settings GLM 5.2 failed on the preview probe (modelWeakSpots.ts).
 const GLM_SETTINGS_WEAK_SPOT =
 	'GLM 5.2 does not always follow these answer settings: Answer length: Short, Answer language.';
 const ALIA_WEAK_SPOT = 'ALIA 40B is easier to talk into ignoring its rules than other models here.';

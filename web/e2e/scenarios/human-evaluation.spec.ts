@@ -6,7 +6,7 @@ import { setFlagOverrides } from './helpers/flagOverride';
 import { startChattingPastWelcome } from './helpers/welcome';
 
 // The human evaluation API and the /chat/settings/evaluate page, both behind the
-// `human-eval` flag (CUR-1913, CUR-1914). The first two tests pin the server contract the page calls; the last two drive
+// `human-eval` flag. The first two tests pin the server contract the page calls; the last two drive
 // the page itself, from the sidebar's Contribute link to a rating, against that same API. The full rating flow,
 // with stored answers, check items and quarantine, is also driven against a real Postgres in
 // humanEval.flow.spec.ts, because a preview database may hold no generated answers to rate.
@@ -65,7 +65,7 @@ test(
 
 		await signInAsFreshUser(page);
 
-		// With no stored French answers, the person is told so before any consent (CUR-4263).
+		// With no stored French answers, the person is told so before any consent.
 		if (!french!.hasAnswers) {
 			const empty = await (await page.request.get('/chat/api/eval/next?language=fra')).json();
 			expect(empty.kind, 'a language with nothing to rate went on to consent').toBe('empty');
@@ -160,7 +160,7 @@ test(
 		});
 		await page.goto('/chat', { waitUntil: 'commit' });
 		// A click that lands while navigation is still slow leaves the page on Contribute, where the
-		// card isn't rendered, so a retry returns once the URL already matches (SOL-238).
+		// card isn't rendered, so a retry returns once the URL already matches.
 		const contribute = /\/chat\/settings\/contribute/;
 		await expect(async () => {
 			if (contribute.test(page.url())) return;
@@ -194,7 +194,7 @@ test(
 			languages: { id: string; hasAnswers: boolean }[];
 		};
 		if (!open.find((l) => l.id === 'fra')?.hasAnswers) {
-			// Nothing stored to rate in French here: the page says so and offers no Start (CUR-4263).
+			// Nothing stored to rate in French here: the page says so and offers no Start.
 			await expect(page.locator('[data-eval-empty-notice]')).toBeVisible();
 			await expect(page.locator('[data-eval-start]')).toHaveCount(0);
 			test.info().annotations.push({
@@ -245,7 +245,7 @@ test(
 
 		// The server now has the profile, the consent and the finished worked example, and French has
 		// stored answers: it offers a real one, never the worked example, the consent step, or "done"
-		// to someone who has rated nothing (CUR-4263).
+		// to someone who has rated nothing.
 		const next = (await (await page.request.get('/chat/api/eval/next?language=fra')).json()) as {
 			kind: string;
 			runId?: string;

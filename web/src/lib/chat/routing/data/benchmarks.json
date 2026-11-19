@@ -1,8 +1,8 @@
 {
   "version": 1,
   "status": "placeholder",
-  "source": "Intelligence: Artificial Analysis Intelligence Index v4.3.2 (read 2026-10-20), each row's own page where rated, its base model's where it is a fine-tune (the SEA-LION rows), hand-set where AA has no entry (ALIA 40B, Bielik 11B; Apertus 1.5 sits near AA's estimate for Apertus v1). Language support: hand-set estimates, checked against SEA-HELM (2026-09-18), model cards and tech reports; each row lists the pages it was checked against. Mistral Medium 3.5 stays at 8 against AA's 14 until its routing effect is decided (CUR-4294).",
-  "updated": "2026-10-20",
+  "source": "Intelligence: Artificial Analysis Intelligence Index v4.3.2 (read 2026-10-20), each row's own page where rated, its base model's where it is a fine-tune (the SEA-LION rows), hand-set where AA has no entry (ALIA 40B, Bielik 11B; Apertus 1.5 sits near AA's estimate for Apertus v1). Language support: hand-set estimates, checked against SEA-HELM (2026-09-18), model cards and tech reports; each row lists the pages it was checked against. Mistral Medium 3.5 carries its v4.3.2 rating of 14 (CUR-4294). AA has since moved to v5.0.1, which rescales every row (read 2026-11-10: Medium 3.5 4.6, Small 4 4.3, Large 4 26.1); the table stays on v4.3.2 throughout, since the targets are set in its points.",
+  "updated": "2026-11-10",
   "models": {
     "apertus-70b": {
       "intelligence": 5,
@@ -377,7 +377,7 @@
       ]
     },
     "mistral-medium": {
-      "intelligence": 8,
+      "intelligence": 14,
       "defaultSupport": 0.32,
       "languages": {
         "fra": 0.9,
@@ -390,7 +390,7 @@
         "pol": 0.67
       },
       "basis": {
-        "intelligence": "estimate",
+        "intelligence": "measured",
         "languages": "estimate"
       },
       "sources": [

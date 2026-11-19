@@ -1,7 +1,7 @@
 <!--
   @component
   Reads a deep link's `?q=` / `?prompt=` / `?attachments=` on mount and acts on it only once the
-  visitor has confirmed (CUR-2644). Rendered by `/chat` (ChatLanding) and `/chat/models/<id>`, which
+  visitor has confirmed. Rendered by `/chat` (ChatLanding) and `/chat/models/<id>`, which
   pass in how to attach, fill and send on their own composer.
 -->
 <script lang="ts">

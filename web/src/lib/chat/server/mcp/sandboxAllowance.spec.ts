@@ -2,7 +2,7 @@
 // first message with one live sandbox and a small daily allowance; a call past either limit is refused
 // before it reaches agent-service, with when it frees up and how the tier grows; clean use over days
 // moves the account up; a real safety decline holds it on the first tier; a database failure never
-// refuses a call on its own. (CUR-4578)
+// refuses a call on its own.
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("$lib/chat/server/logger", () => ({
@@ -169,7 +169,7 @@ function memoryStore(rows: RecentRun[] = [], history: RunHistory = fresh): Sandb
 const call = (tool: string, id = "c1") => ({ id, name: `sandbox__${tool}`, arguments: "{}" });
 
 describe("withSandboxAllowance", () => {
-	it("a team account starts on the highest tier, even when new and held by a decline, so a second conversation's run goes through (CUR-4620)", async () => {
+	it("a team account starts on the highest tier, even when new and held by a decline, so a second conversation's run goes through", async () => {
 		const declined: RunHistory = { runs: 0, firstRunAt: null, declined: true };
 		const store = memoryStore([run(MIN, "conv-a")], declined);
 		const staff = fakeKit();
@@ -186,7 +186,7 @@ describe("withSandboxAllowance", () => {
 		expect(visitor.ran).toEqual([]);
 	});
 
-	it("a team account is still stopped at the highest tier's daily runs, so a runaway loop ends (CUR-4620)", async () => {
+	it("a team account is still stopped at the highest tier's daily runs, so a runaway loop ends", async () => {
 		const today = Array.from({ length: ESTABLISHED.runsPerDay }, (_, i) => run(HOUR + i * 1000, "conv-a"));
 		const store = memoryStore(today);
 		const { kit, ran } = fakeKit();

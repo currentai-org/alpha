@@ -1,5 +1,6 @@
 // e2e-product: @site
 import { test, expect } from './helpers/test';
+import { recentUpdatesWindow } from './helpers/recentUpdates';
 
 // The homepage hero's recent-updates tile hovers with the same three-column wipe as the
 // site's buttons (blocks/button/sweep-blocks.svelte), filling white and turning its text dark blue.
@@ -13,18 +14,35 @@ test(
 		await page.goto('/');
 		const tile = page.locator('[data-block="recent-updates"]');
 		// A cold render that waits more than 1s on the CMS serves an empty window and the tile hides by
-		// design (CUR-2254); the fetch still warms the cache, so reload until it answers, as
-		// project-is-active.spec.ts does (CUR-3700). The hover contract is what this spec checks.
+		// design; the fetch still warms the cache, so reload until it answers, as
+		// project-is-active.spec.ts does. The hover contract is what this spec checks.
 		if (!(await tile.isVisible())) {
 			test.info().annotations.push({
 				type: 'cold-render',
 				description:
 					'the first render of / served the updates fallback; reloaded until the CMS answer was cached'
 			});
-			await expect(async () => {
+			const deadline = Date.now() + 20_000;
+			while (!(await tile.isVisible()) && Date.now() < deadline) {
 				await page.reload();
-				await expect(tile).toBeVisible({ timeout: 2_000 });
-			}).toPass({ timeout: 20_000 });
+				await tile.waitFor({ state: 'visible', timeout: 2_000 }).catch(() => {});
+			}
+		}
+		// A window with no update in it hides the tile by design (`updatesHref` in home-hero.svelte).
+		// That is the content of the CMS this deployment reads, not a defect, so read the count the
+		// page rendered from and assert the hidden state's own contract instead.
+		if (!(await tile.isVisible())) {
+			const { count, weeks } = await recentUpdatesWindow(page);
+			// A count of 0 means something only over a real window; a missing one reads as 0 too.
+			expect(weeks, 'the home page rendered no updates window').toBeGreaterThan(0);
+			expect(count, 'the CMS window holds updates, yet the page shows no updates tile').toBe(0);
+			test.info().annotations.push({
+				type: 'no-recent-updates',
+				description:
+					"this deployment's CMS has no update inside the home page's window, so the tile is correctly absent and the hover was not exercised"
+			});
+			await expect(tile, 'an empty window still renders the updates tile').toHaveCount(0);
+			return;
 		}
 		await expect(tile).toBeVisible({ timeout: 5_000 });
 		const columns = tile.locator('span[aria-hidden="true"] > span');

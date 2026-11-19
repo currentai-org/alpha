@@ -1,9 +1,9 @@
-// Does an answer OPEN by stating what it is? (CUR-1430)
+// Does an answer OPEN by stating what it is?
 //
 // Dependency-free .mjs, mirroring guardPolicyCore.mjs's split: identityOpener.ts re-exports this
 // directly rather than duplicating it, so the runtime (textGeneration/index.ts) and a standalone
-// script (scripts/language-turn-probe.mjs, CUR-1442) share the exact same detector — a detector
-// that existed in two copies would be two definitions of "opens with identity" (CUR-1457).
+// script (scripts/language-turn-probe.mjs) share the exact same detector — a detector
+// that existed in two copies would be two definitions of "opens with identity".
 //
 // Named identityOpenerCore.mjs, not identityOpener.mjs, deliberately — a same-named .mjs sibling to
 // identityOpener.ts would leave the extensionless `./identityOpener` import ambiguous between the two
@@ -39,11 +39,11 @@ const OPENERS = [
 	{ id: "im-apertus", re: /^\s*(?:i'm|i am)\s+(?:an?\s+)?apertus\b/i },
 	// "I am an AI language model…" — not seen in the sweep, but the same shape and the same cost.
 	{ id: "im-an-ai", re: /^\s*(?:i'm|i am)\s+an?\s+(?:ai|artificial intelligence|language model)\b/i },
-	// CUR-1891, the most common first answer:
+	// the most common first answer:
 	// "I generate text from patterns based on training data; I don't have direct access to any specific library…"
 	// "I generate text based on patterns learned from large datasets, not from direct experience…"
 	{ id: "i-generate-text", re: /^\s*i\s+(?:only\s+)?generate\s+text\b/i },
-	// CUR-1892, a requested voice refused before it is used:
+	// a requested voice refused before it is used:
 	// "I cannot pretend to be a grumpy pirate — I am Apertus 1.5 70B, an open model running on public compute."
 	{ id: "cannot-pretend", re: /^\s*i\s+(?:cannot|can't|can\u2019t|can not)\s+(?:pretend|role-?play)\b/i },
 ];

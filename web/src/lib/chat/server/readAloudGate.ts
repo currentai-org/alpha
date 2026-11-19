@@ -40,7 +40,7 @@ export const READ_ALOUD_FLAG = "read-aloud";
 export function readAloudEnabled(): boolean {
 	if (!flagEnabledOr(READ_ALOUD_FLAG, () => READ_ALOUD_ENABLED)) return false;
 	// The flag is the only switch; read-aloud does not depend on any other address being set.
-	// A flag that is on with no router credential is a misconfiguration: say so and withhold. (CUR-3151)
+	// A flag that is on with no router credential is a misconfiguration: say so and withhold.
 	if (speechConfigured()) return true;
 	if (!warnedUnconfigured) {
 		warnedUnconfigured = true;

@@ -9,7 +9,7 @@ import { withNativeFirst } from "./nativeRolesFirst";
 const NATIVE = ["system", "user", "assistant", "user"];
 const FLAT = ["user"];
 
-describe("withNativeFirst (CUR-1886)", () => {
+describe("withNativeFirst", () => {
 	it("serves the native shape and never sends the flattened one when the native attempt succeeds", async () => {
 		const sent: string[][] = [];
 		const out = await withNativeFirst({
@@ -38,7 +38,7 @@ describe("withNativeFirst (CUR-1886)", () => {
 		expect(sent).toEqual([NATIVE, FLAT]);
 	});
 
-	it("does not send a flattened resend when the native attempt is rate-limited (429); the 429 surfaces (CUR-2330)", async () => {
+	it("does not send a flattened resend when the native attempt is rate-limited (429); the 429 surfaces", async () => {
 		const sent: string[][] = [];
 		const rateLimited = Object.assign(new Error("429 Rate limit exceeded"), { status: 429 });
 		await expect(
@@ -55,7 +55,7 @@ describe("withNativeFirst (CUR-1886)", () => {
 		expect(sent).toEqual([NATIVE]);
 	});
 
-	it("still resends flattened on a 400 from the native attempt: only a rate limit skips the resend (CUR-2330)", async () => {
+	it("still resends flattened on a 400 from the native attempt: only a rate limit skips the resend", async () => {
 		const sent: string[][] = [];
 		const rejected = Object.assign(new Error("400 roles not supported"), { status: 400 });
 		const out = await withNativeFirst({
@@ -71,7 +71,7 @@ describe("withNativeFirst (CUR-1886)", () => {
 		expect(sent).toEqual([NATIVE, FLAT]);
 	});
 
-	it("a native attempt that hangs costs the hedge delay, not its whole hang: flat serves and native is cancelled (CUR-2012)", async () => {
+	it("a native attempt that hangs costs the hedge delay, not its whole hang: flat serves and native is cancelled", async () => {
 		let nativeSignal: AbortSignal | undefined;
 		const t0 = Date.now();
 		const out = await withNativeFirst({
@@ -89,7 +89,7 @@ describe("withNativeFirst (CUR-1886)", () => {
 		expect(Date.now() - t0).toBeLessThan(500);
 	});
 
-	it("a slow native attempt still serves if it answers before the flattened one, and the flattened one is cancelled (CUR-2012)", async () => {
+	it("a slow native attempt still serves if it answers before the flattened one, and the flattened one is cancelled", async () => {
 		let flatSignal: AbortSignal | undefined;
 		const out = await withNativeFirst({
 			native: NATIVE,

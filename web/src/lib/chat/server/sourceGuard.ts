@@ -68,6 +68,9 @@ const splitSentences = (text: string): string[] => text.split(/(?<=[.!?])\s+/);
 // block is bad, but a one-word fragment is worse, and a near-total strip signals an over-broad match).
 const MIN_KEEP_CHARS = 24;
 
+// A reasoning block, closed or still open at the end of the text.
+const THINK_BLOCK = /<think>[\s\S]*?(?:<\/think>|$)/gi;
+
 /**
  * Detect a fabricated source bibliography and/or a fictional-source disclaimer in an answer and return a
  * cleaned copy. The disclaimer strip runs on every turn; the trailing "Sources:" block strip runs only on
@@ -80,6 +83,31 @@ export function detectFabricatedSources(
 	opts: SourceGuardOptions = {}
 ): FabricatedSourceResult {
 	const original = text ?? "";
+	if (!/<think>/i.test(original)) return guardAnswerText(original, opts);
+	// A thinking model's final text carries its reasoning inline. The guard reads the answer only: a
+	// "Sources:" line in Large 4's reasoning cut from there to the end, the whole answer with it, and
+	// the reasoning counted toward MIN_KEEP_CHARS so the cut was allowed. Each run of answer
+	// text between reasoning blocks is guarded on its own, and the reasoning is kept as it was.
+	let flagged = false;
+	let out = "";
+	let at = 0;
+	const guardSegment = (segment: string) => {
+		const r = guardAnswerText(segment, opts);
+		if (!r.flagged) return segment;
+		flagged = true;
+		if (r.cleaned === segment) return segment;
+		// The cleaned text is trimmed; the break before it is what keeps it apart from the reasoning.
+		return (segment.match(/^\s*/)?.[0] ?? "") + r.cleaned;
+	};
+	for (const m of original.matchAll(THINK_BLOCK)) {
+		out += guardSegment(original.slice(at, m.index)) + m[0];
+		at = m.index + m[0].length;
+	}
+	out += guardSegment(original.slice(at));
+	return { flagged, cleaned: out };
+}
+
+function guardAnswerText(original: string, opts: SourceGuardOptions): FabricatedSourceResult {
 	if (!original.trim()) return { flagged: false, cleaned: original };
 
 	let working = original;

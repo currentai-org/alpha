@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2018- The Hugging Face team
+SPDX-License-Identifier: Apache-2.0
+Modified by Current AI from huggingface/chat-ui.
+-->
 <script lang="ts">
 	import { UrlDependency } from "$lib/chat/types/UrlDependency";
 	import { safeInvalidate } from "$lib/chat/utils/safeInvalidate";
@@ -15,7 +20,7 @@
 
 	const convsStore = useConversationsStore();
 
-	// Writable $derived, not $state + $effect.pre (CUR-219). It is `bind:value` on the <select> below,
+	// Writable $derived, not $state + $effect.pre. It is `bind:value` on the <select> below,
 	// so it has to stay assignable — and Svelte 5 writable $derived is assignable while still
 	// re-deriving when `currentModel`/`models` change. A $state + $effect.pre pairing has a real ordering hazard, not
 	// just extra lines: an effect that writes the same state it reads from props can land AFTER the user

@@ -12,7 +12,7 @@
  *
  * Bounded per run, so one cron invocation stays well inside the function's time limit; a backlog
  * drains over the following nights. Each endpoint is revoked best-effort, the way the Remove button
- * does it, and deleted even when Pangolin can't be reached, for the same reason. (CUR-4110)
+ * does it, and deleted even when Pangolin can't be reached, for the same reason.
  */
 import { logger } from "$lib/chat/server/logger";
 import { listUncollectedExpiredPairings } from "$lib/chat/server/db/localInferencePairings";

@@ -1,5 +1,5 @@
 """The task store on one machine (SQLite) and shared across machines (Postgres), and what the app does with a
-shared one (CUR-4443).
+shared one.
 
 The Postgres half needs `AGENT_TEST_POSTGRES_URL`, a database these tests may empty; CI runs a Postgres
 service for it (agent-service-ci.yml). Without it those cases skip and the SQLite half still runs.

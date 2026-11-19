@@ -15,7 +15,7 @@ function memoryStorage() {
 	};
 }
 
-describe("pendingTurnToAwait (CUR-1893)", () => {
+describe("pendingTurnToAwait", () => {
 	afterEach(() => vi.unstubAllGlobals());
 
 	it("waits for a turn this tab sent that the snapshot doesn't hold yet", () => {

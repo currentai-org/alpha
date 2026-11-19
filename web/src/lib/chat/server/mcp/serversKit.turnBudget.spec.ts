@@ -3,7 +3,7 @@
 // the turn's abort, or a hung sandbox holds the visitor on a spinner until "took too long".
 //
 // The fake connection's call never settles unless its signal aborts, so whether the kit's run() settles at
-// all, and when, is read off the clock rather than off our own outcome label. (CUR-4627)
+// all, and when, is read off the clock rather than off our own outcome label.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("$lib/chat/server/logger", () => ({
@@ -83,7 +83,7 @@ async function settledAt<T>(p: Promise<T>, untilMs: number): Promise<number | un
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
-describe("a sandbox call is bounded by the turn's time left (CUR-4627)", () => {
+describe("a sandbox call is bounded by the turn's time left", () => {
 	it("a sandbox call that outlives the turn's budget is aborted before the turn's cap and the answer says the run timed out", async () => {
 		const { connect, seen } = fakeConn();
 		const kit = kitFor(connect, { turnDeadlineAt: Date.now() + TURN_CAP_MS, signal: new AbortController().signal });

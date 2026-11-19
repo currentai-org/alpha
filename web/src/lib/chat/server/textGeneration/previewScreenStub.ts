@@ -10,28 +10,30 @@
 // exercise hold-and-release. Specs that read a verdict (a decline, or an everyday question the screen
 // must not decline) are tagged `@real-screen` and send no stub header; see e2e/scenarios/helpers/test.ts.
 //
-// develop.aipotluck.org never stubs a plain `stub` send: its screen is the one people use. A develop
+// The develop host (siteDevelopHost) never stubs a plain `stub` send: its screen is the one people use. A develop
 // build reached at its own deployment URL is where develop's push runs send their suite, and it stubs
-// like any PR preview (SOL-198). SOL-178: a spec tagged `@stub-screen` sends `stub-tagged` instead,
-// which develop.aipotluck.org honours. Those specs read no verdict (message-too-long's past-context
-// answers) and would otherwise fail on the real screen's fault window. The
-// token and the preview/development check still apply, so production never stubs either value. (CUR-3110)
+// like any PR preview. A spec tagged `@stub-screen` sends `stub-tagged` instead, which the develop
+// host honours. Those specs read no verdict (message-too-long's past-context answers) and would
+// otherwise fail whenever the real screen has a fault. The token and the preview/development check
+// still apply, so production never stubs either value.
 
+import { DEPLOYMENT } from "$lib/deployment";
 import type { GuardGateVerdict } from "$lib/chat/server/guardGate";
 import type { OutputScreenResult } from "$lib/chat/server/moderation";
 import { carriesFaultInjectToken } from "./faultInjection";
+import { gitRef } from "$lib/server/runtimeEnv";
 
-/** About one idle Shieldstral call (an unloaded probe answers in ~0.27s, CUR-3110 Observed). */
+/** Roughly the time one Shieldstral call takes when the GPU is idle. */
 const STUB_SCREEN_MS = 200;
 
-/** The develop deployment people use. */
-const DEVELOP_ALIAS_HOST = "develop.aipotluck.org";
+/** The develop deployment people use (src/lib/deployment.ts). */
+const DEVELOP_ALIAS_HOST = DEPLOYMENT.siteDevelopHost;
 
 /** Whether this request asked for, and may have, the stub screen. Never throws; any miss is the
  *  real screen. */
 export async function resolvePreviewScreenStub(
 	req: Request,
-	branch: string = process.env.VERCEL_GIT_COMMIT_REF ?? ""
+	branch: string = gitRef() ?? ""
 ): Promise<boolean> {
 	const asked = req.headers.get("x-e2e-screen");
 	if (asked === "stub") {

@@ -2,7 +2,7 @@
  * sendVerificationOTP is extracted to a standalone export precisely so this doesn't need a
  * live betterAuth() instance (buildAuth() eagerly calls getDb(), which throws without DATABASE_URL) —
  * same move betterAuth.accountMerge.spec.ts makes for handleOAuthUserInfo, applied to a pure function
- * instead of a DB-backed one. (CUR-518)
+ * instead of a DB-backed one.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -13,7 +13,7 @@ const infoMock = vi.fn();
 const errorMock = vi.fn();
 vi.mock("$lib/chat/server/logger", () => ({
 	logger: { info: infoMock, error: errorMock, warn: vi.fn() },
-	// The refused sends are security lines; one mock keeps the assertions on either logger. (CUR-4143)
+	// The refused sends are security lines; one mock keeps the assertions on either logger.
 	securityLogger: { info: infoMock, error: errorMock, warn: vi.fn() },
 }));
 
@@ -28,9 +28,13 @@ vi.mock("$app/environment", () => ({
 const fetchMock = vi.fn();
 vi.stubGlobal("fetch", fetchMock);
 
+// The SMTP leg of mailer.ts: nodemailer's transport, so no socket opens.
+const smtpSendMock = vi.fn();
+vi.mock("nodemailer", () => ({ default: { createTransport: () => ({ sendMail: smtpSendMock }) } }));
+
 // betterAuth.ts now imports the DB-backed target-email backstop at module level — mocked here
 // the same way config/logger are, rather than exercised for real, since this whole file's premise is
-// no live DB. Defaults to "always allowed" so it doesn't interfere with the in-memory-limiter test below. (CUR-920)
+// no live DB. Defaults to "always allowed" so it doesn't interfere with the in-memory-limiter test below.
 const targetEmailRateState = { allowed: true };
 const targetEmailSendAllowedMock = vi.fn(async () => targetEmailRateState.allowed);
 const recordTargetEmailSendMock = vi.fn(async () => {});
@@ -46,7 +50,7 @@ vi.mock("$lib/chat/server/db/targetEmailRate", () => ({
 }));
 
 // The daily caps in signInCodeRate.ts run for real over an in-memory event store, and the
-// account lookup reads from `existingAccounts`, so a test can say which addresses already have one. (CUR-4172)
+// account lookup reads from `existingAccounts`, so a test can say which addresses already have one.
 const eventCounts = new Map<string, number>();
 const eventKey = (k: { type: string; userId?: string; ipHash?: string }) => `${k.type}:${k.userId ?? k.ipHash}`;
 vi.mock("$lib/chat/server/db/eventWindow", () => ({
@@ -72,6 +76,7 @@ beforeEach(() => {
 	infoMock.mockReset();
 	errorMock.mockReset();
 	fetchMock.mockReset();
+	smtpSendMock.mockReset();
 	targetEmailRateState.allowed = true;
 	targetEmailSendAllowedMock.mockClear();
 	recordTargetEmailSendMock.mockClear();
@@ -80,7 +85,7 @@ beforeEach(() => {
 	recordOtpSourceSendMock.mockClear();
 });
 
-describe("sendVerificationOTP (CUR-518)", () => {
+describe("sendVerificationOTP", () => {
 	// 120000ms, not the 30000ms default (same bump as server-live's own tier in vite.config.ts) — under a
 	// loaded host the test can need most of a minute of actual execution alone (not just import/transform).
 	it(
@@ -130,7 +135,7 @@ describe("sendVerificationOTP (CUR-518)", () => {
 			expect(init.method).toBe("POST");
 			expect((init.headers as Record<string, string>).Authorization).toBe("Bearer re_test_key");
 			const body = JSON.parse(init.body as string);
-			expect(body.from).toBe("AI Potluck <noreply@mail.aipotluck.org>");
+			expect(body.from).toBe("AI Potluck <noreply@mail.example.test>");
 			expect(body.to).toEqual(["b@example.com"]);
 			expect(body.subject).not.toContain("654321");
 			expect(body.text).toContain("654321");
@@ -142,6 +147,31 @@ describe("sendVerificationOTP (CUR-518)", () => {
 			);
 			// The address is the thing being delivered to, not a thing to retain in Axiom.
 			expect(JSON.stringify(infoMock.mock.calls)).not.toContain("b@example.com");
+		},
+		120000
+	);
+
+	it(
+		"sends the code through SMTP_URL's server, and never through Resend, when only SMTP_URL is set",
+		async () => {
+			cfg.SMTP_URL = "smtp://mailpit:1025";
+			cfg.SMTP_FROM = "Alpha <noreply@alpha.test>";
+			smtpSendMock.mockResolvedValueOnce({ messageId: "<m1@alpha.test>" });
+			const { sendVerificationOTP } = await import("./betterAuth");
+			await sendVerificationOTP({ email: "d@alpha.test", otp: "246810", type: "sign-in" });
+
+			expect(fetchMock).not.toHaveBeenCalled();
+			expect(smtpSendMock).toHaveBeenCalledTimes(1);
+			const sent = smtpSendMock.mock.calls[0][0] as { from: string; to: string; subject: string; text: string };
+			expect(sent.from).toBe("Alpha <noreply@alpha.test>");
+			expect(sent.to).toBe("d@alpha.test");
+			expect(sent.subject).not.toContain("246810");
+			expect(sent.text).toContain("246810");
+			expect(errorMock).not.toHaveBeenCalled();
+			expect(infoMock).toHaveBeenCalledWith(
+				expect.objectContaining({ messageId: "<m1@alpha.test>" }),
+				expect.stringContaining("SMTP")
+			);
 		},
 		120000
 	);
@@ -195,7 +225,7 @@ describe("sendVerificationOTP (CUR-518)", () => {
 	);
 
 	it(
-		"blocks a send when the DB-backed target-email backstop reports the cap reached (CUR-920), independently of the in-memory limiter",
+		"blocks a send when the DB-backed target-email backstop reports the cap reached, independently of the in-memory limiter",
 		async () => {
 			cfg.RESEND_API_KEY = "re_test_key";
 			targetEmailRateState.allowed = false; // the in-memory limiter alone would allow this send
@@ -214,7 +244,7 @@ describe("sendVerificationOTP (CUR-518)", () => {
 	);
 
 	it(
-		"blocks a send when the (ip, target) source-pair backstop reports the cap reached (CUR-920 review follow-up), independently of the target-only checks — and, critically, never touches the target-wide counter either",
+		"blocks a send when the (ip, target) source-pair backstop reports the cap reached ( review follow-up), independently of the target-only checks — and, critically, never touches the target-wide counter either",
 		async () => {
 			cfg.RESEND_API_KEY = "re_test_key";
 			otpSourceRateState.allowed = false; // target-only checks alone would allow this send
@@ -257,7 +287,7 @@ describe("sendVerificationOTP (CUR-518)", () => {
 	);
 
 	it(
-		"suppresses the send for reserved test domains (CUR-1254), without touching any rate-limit state",
+		"suppresses the send for reserved test domains, without touching any rate-limit state",
 		async () => {
 			cfg.RESEND_API_KEY = "re_test_key";
 			const { sendVerificationOTP } = await import("./betterAuth");
@@ -285,7 +315,7 @@ describe("sendVerificationOTP (CUR-518)", () => {
 	);
 
 	it(
-		"codes to many new addresses stop at the site-wide ceiling while an existing account still gets its code (CUR-4172)",
+		"codes to many new addresses stop at the site-wide ceiling while an existing account still gets its code",
 		async () => {
 			cfg.RESEND_API_KEY = "re_test_key";
 			cfg.OTP_SITE_NEW_MAX_PER_DAY = "5";
@@ -306,7 +336,34 @@ describe("sendVerificationOTP (CUR-518)", () => {
 	);
 
 	it(
-		"one address gets at most its daily allowance of codes, however the requests are spaced (CUR-4172)",
+		"after the sign-in-code share is spent, a workspace invitation still sends",
+		async () => {
+			cfg.RESEND_API_KEY = "re_test_key";
+			cfg.OTP_SITE_NEW_MAX_PER_DAY = "3";
+			fetchMock.mockResolvedValue({ ok: true, json: async () => ({ id: "r" }) });
+			const { sendVerificationOTP, sendWorkspaceInvitationEmail } = await import("./betterAuth");
+
+			for (let i = 0; i < 6; i++) {
+				await sendVerificationOTP({ email: `stranger-${i}@inbox.test`, otp: "111111", type: "sign-in" });
+			}
+			expect(fetchMock).toHaveBeenCalledTimes(3);
+
+			await sendWorkspaceInvitationEmail({
+				id: "inv-1",
+				email: "colleague@school.test",
+				organizationName: "Staff room",
+				inviterEmail: "admin@school.test",
+				acceptUrl: "https://www.example.test/accept/inv-1",
+			});
+			expect(fetchMock).toHaveBeenCalledTimes(4);
+			const body = JSON.parse((fetchMock.mock.calls[3] as [string, RequestInit])[1].body as string);
+			expect(body.subject).toContain("invited to a workspace");
+		},
+		120000
+	);
+
+	it(
+		"one address gets at most its daily allowance of codes, however the requests are spaced",
 		async () => {
 			cfg.RESEND_API_KEY = "re_test_key";
 			cfg.CONTRIBUTION_IP_PEPPER = "test-pepper";
@@ -324,7 +381,7 @@ describe("sendVerificationOTP (CUR-518)", () => {
 	);
 
 	it(
-		"a member's own address is never daily-capped, so nobody who knows it can lock them out for a day (CUR-4172)",
+		"a member's own address is never daily-capped, so nobody who knows it can lock them out for a day",
 		async () => {
 			cfg.RESEND_API_KEY = "re_test_key";
 			cfg.CONTRIBUTION_IP_PEPPER = "test-pepper";

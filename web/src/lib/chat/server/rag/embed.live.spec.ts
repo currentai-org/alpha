@@ -5,8 +5,8 @@ import ragIndex from "./data/rag-index.json";
 // LIVE CONTRACT CHECK for the embedding endpoint — the input to every vector path we have.
 //
 // WHAT DEPENDS ON IT: local RAG retrieval (localStore/adminStore), guardVectors, semanticHedge,
-// localitySemantic and the intent taxonomy. It was the last uncovered external dependency after the
-// CUR-81 sweep, and the one on the most paths.
+// localitySemantic and the intent taxonomy. Of the external dependencies with a live contract check,
+// it is the one on the most paths.
 //
 // WHY IT MATTERS MORE THAN THE OTHER FAIL-OPEN VENDORS. embed.ts returns null on a non-OK response or
 // an unrecognised shape, logs a warning, and the caller skips grounding — an ungrounded answer, not an

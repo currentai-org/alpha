@@ -8,9 +8,9 @@ import { composerHydrated, sendOpensConversation } from './helpers/composer';
 import { startChattingPastWelcome } from './helpers/welcome';
 
 // With s1-safety-judge on, Zentropi S1 (zentropi-ai/cope-b-s1 on our own Hugging Face endpoint)
-// judges every text chunk of the input screen against rules-s1.json, in place of Shieldstral and the CoPE
-// lane (CUR-4527). The observable is the screen's served model, stored on the answer as the `safety-screen` helper
-// in routerMetadata.assistedBy (CUR-3563). A turn S1 declines stores the helper too; a turn Shieldstral
+// judges every text chunk of the input screen against rules-s1.json, in place of Shieldstral.
+// The observable is the screen's served model, stored on the answer as the `safety-screen` helper
+// in routerMetadata.assistedBy. A turn S1 declines stores the helper too; a turn Shieldstral
 // declines stores none.
 //
 // Tagged @real-screen: the preview stub screens with no model. S1 is called live (no replay store), so
@@ -56,15 +56,14 @@ function pastWelcome(page: Page) {
 }
 
 test(
-	'with s1-safety-judge on, Zentropi S1 declines a harmful English turn, answers a safe Amharic turn, and answers distress under the support card (CUR-4527)',
+	'with s1-safety-judge on, Zentropi S1 declines a harmful English turn, answers a safe Amharic turn, and answers distress under the support card',
 	{ tag: ['@A5', '@CUR-4527', '@real-screen'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(300_000);
-		// zentropi-african-routing on, so the Amharic turn shows S1 replaced the CoPE lane. The support
-		// classifier off, so the card can only come from S1's crisis policy. Distress declines off, as in production.
+		// The support classifier off, so the card can only come from S1's crisis policy. Distress declines
+		// off, as in production.
 		await setFlagOverrides(context, baseURL!, {
 			's1-safety-judge': true,
-			'zentropi-african-routing': true,
 			'support-signal-classifier': false,
 			'self-harm-distress-declines': false
 		});
@@ -88,7 +87,7 @@ test(
 		).toHaveCount(0);
 		expect(
 			amharic.screen?.model,
-			`the Amharic turn's safety-screen helper was ${JSON.stringify(amharic.screen)}: cope-b-a4b means the CoPE lane still ran`
+			`the Amharic turn's safety-screen helper was ${JSON.stringify(amharic.screen)}`
 		).toBe(S1_MODEL);
 
 		const distress = await send(page, DISTRESS);
@@ -109,14 +108,13 @@ test(
 );
 
 test(
-	'with s1-safety-judge forced off, the same turns are screened by Shieldstral (CUR-4527)',
+	'with s1-safety-judge forced off, the same turns are screened by Shieldstral',
 	{ tag: ['@A5', '@CUR-4527', '@real-screen'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(300_000);
-		// Forced false, not left unset, so a later preview default cannot change it. CoPE off too, so Amharic reads Shieldstral.
+		// Forced false, not left unset, so a later preview default cannot change it.
 		await setFlagOverrides(context, baseURL!, {
 			's1-safety-judge': false,
-			'zentropi-african-routing': false,
 			'self-harm-distress-declines': false
 		});
 		await pastWelcome(page);

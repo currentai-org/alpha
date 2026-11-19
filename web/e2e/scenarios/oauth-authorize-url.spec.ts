@@ -6,20 +6,20 @@ import { chatPath } from './helpers/chatEntry';
 import { captionForRecording, holdForRecording } from './helpers/recording';
 import { recordMeasurement } from './helpers/measurement';
 
-// Google, GitHub and Hugging Face sign-in (CUR-1552, CUR-2694) up to the provider's door. Each test clicks the
+// Google, GitHub and Hugging Face sign-in up to the provider's door. Each test clicks the
 // provider's button on the sign-in screen, catches the browser's navigation to the provider and
 // answers it with an empty 204, so no request ever reaches Google or GitHub, and checks the authorize URL the app built.
 // The server-to-server half (code for token, then the user's profile) is not covered here; the
 // mock-OIDC walk (mock-oidc-sign-in.spec.ts) exercises the callback, state, linking and session code
 // that all three providers share. Better Auth 1.7.1 compiles these two providers' endpoints in, so
-// they cannot be pointed at a mock (CUR-1552). Hugging Face goes through genericOAuth
+// they cannot be pointed at a mock. Hugging Face goes through genericOAuth
 // rather than socialProviders, but the button calls the same sign-in/social endpoint.
 //
 // redirect_uri: Better Auth builds it from PUBLIC_ORIGIN, which is develop's origin on every preview
 // (the provider consoles register
 // develop's and production's callbacks only). So a preview sends develop's callback, and develop or
 // production sends its own. Anything else is a callback the provider would refuse. Production's chat
-// is alpha since CUR-4439 and builds its own origin (`/chat/api/auth/callback/<id>` is reserved there,
+// is alpha and builds its own origin (`/chat/api/auth/callback/<id>` is reserved there,
 // so it keeps its prefix); www stays listed while it still answers sign-in.
 
 const REGISTERED_ORIGINS = [
@@ -81,8 +81,7 @@ async function authorizeUrlFor(page: Page, buttonName: string, authorize: string
 		async (route) => {
 			resolveUrl(route.request().url());
 			// A 204 to a navigation leaves the current document in place. abort() would commit
-			// Chrome's error page, which the recording shows as a blank screen a person never meets
-			// (CUR-2737, CUR-2738).
+			// Chrome's error page, which the recording shows as a blank screen a person never meets.
 			await route.fulfill({ status: 204 });
 		}
 	);
@@ -104,7 +103,7 @@ async function authorizeUrlFor(page: Page, buttonName: string, authorize: string
 	const url = new URL(await sent);
 	// The 204 left this page in place, the way a slow provider does before its first byte, and
 	// sign-in/social has already answered. The button has to keep saying it is on its way and refuse a
-	// second click until the page is gone (CUR-2739). Holding the provider's response open instead
+	// second click until the page is gone. Holding the provider's response open instead
 	// would stall these reads, since a locator waits for a pending navigation to finish.
 	await expect(
 		button,
@@ -112,7 +111,7 @@ async function authorizeUrlFor(page: Page, buttonName: string, authorize: string
 	).toHaveText(/Redirecting…/);
 	await expect(button, 'a second click is open while the first is still leaving').toBeDisabled();
 	// The provider is stubbed, so this page never leaves and the button stays on Redirecting…. Without
-	// the caption the recording ends on a button that seems stuck, which is the finding CUR-2739 fixed.
+	// the caption the recording ends on a button that seems stuck, which is the finding that change fixed.
 	await captionForRecording(
 		page,
 		`${buttonName} stubbed out by the test: the browser was sent there and stopped before it left`,
@@ -122,7 +121,7 @@ async function authorizeUrlFor(page: Page, buttonName: string, authorize: string
 	return url;
 }
 
-/** Seconds of blank tab can follow this page's request (CUR-2843) while the server answers
+/** Seconds of blank tab can follow this page's request while the server answers
  *  in under 60 ms. These are the browser's own milestones for the sign-in page, from navigation start,
  *  so a run's meta.json says whether the time goes to the response, the first paint, or the load. */
 async function recordSignInPageTiming(page: Page) {

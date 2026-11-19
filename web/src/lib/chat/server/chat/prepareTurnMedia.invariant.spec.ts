@@ -1,8 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
+import { error } from "@sveltejs/kit";
 import { ObjectId } from "bson";
 import type { Message, MessageFile } from "$lib/chat/types/Message";
 import { CLIPBOARD_MIME } from "$lib/chat/constants/mime";
-import { MAX_TURN_IMAGES, type FailedUnit } from "$lib/chat/server/guardScreenTypes";
+import { MAX_TURN_IMAGES, SCREEN_HISTORY_CAP, type FailedUnit } from "$lib/chat/server/guardScreenTypes";
 import { AttachmentReadError } from "$lib/chat/server/files/downloadFile";
 import { RagExtractError } from "$lib/chat/server/rag/extractFile";
 import { prepareTurnMedia, type PrepareTurnMediaDeps } from "./prepareTurnMedia";
@@ -11,13 +12,17 @@ import { prepareTurnMedia, type PrepareTurnMediaDeps } from "./prepareTurnMedia"
 // fixture per path. The guard screens `screen`; the model gets `messages` (or a message's raw content
 // when it carried no files). Whatever a change to a failure branch does, these hold:
 //
-//   1. Everything the model receives was screened: each finalText sits inside the corpus, and each
-//      payload image is a screened image with a screening rendition.
+//   1. What the model receives was screened. The newest message's finalText always sits whole at
+//      the end of the corpus. With `guard-history-cap` off every earlier finalText is in it too; on,
+//      the corpus is only the end of everything sent, no longer than SCREEN_HISTORY_CAP unless the
+//      newest alone is (an earlier message passed the screen on its own turn). Each payload
+//      image is a screened image with a screening rendition.
 //   2. A file is exempt from failedUnits only when none of it reaches the model. A failed unit fails
-//      exactly which outcomes may do it (a bucket read error is one of them, CUR-3291).
+//      exactly which outcomes may do it (a bucket read error is one of them).
 //   3. No file vanishes without a trace: each one is in the prompt, a failed unit, a named unread
-//      file, or an image over the cap. The one exception is a mime the prompt does not carry, which
-//      is logged and dropped, and parseRequest refuses at upload.
+//      file, or an image over the cap. One exception is a mime the prompt does not carry, which
+//      is logged and dropped, and parseRequest refuses at upload. A file deleted from an older
+//      message is the other: its notice was given on its own turn, so it is not repeated.
 
 type Outcome =
 	| "text"
@@ -30,6 +35,7 @@ type Outcome =
 	| "image-bad"
 	| "unreadable"
 	| "missing"
+	| "download-error"
 	| "unsupported";
 
 const OUTCOMES: Outcome[] = [
@@ -43,6 +49,7 @@ const OUTCOMES: Outcome[] = [
 	"image-bad",
 	"unreadable",
 	"missing",
+	"download-error",
 	"unsupported",
 ];
 
@@ -50,6 +57,16 @@ type PlannedFile = { sha: string; outcome: Outcome; name: string };
 type PlannedMessage = { id: string; typed: string; files: PlannedFile[] };
 
 const CONV = new ObjectId();
+
+const historyCap = vi.hoisted(() => ({ on: false }));
+vi.mock("$lib/chat/server/flags", async (importActual) => {
+	const actual = await importActual<typeof import("$lib/chat/server/flags")>();
+	return {
+		...actual,
+		flagEnabledOr: (key: string, fallback: () => boolean) =>
+			key === "guard-history-cap" ? historyCap.on : actual.flagEnabledOr(key, fallback),
+	};
+});
 const b64 = (s: string) => Buffer.from(s, "utf-8").toString("base64");
 /** The bytes a file carries, so a leak is findable by substring. */
 const marker = (f: PlannedFile) => `BODY-${f.outcome}-${f.sha}`;
@@ -66,13 +83,15 @@ function rng(seed: number) {
 	};
 }
 
-function planTurn(seed: number): PlannedMessage[] {
+/** `padded` adds up to 3,000 chars to each typed text, so a turn of several messages passes the
+ *  history cap. */
+function planTurn(seed: number, padded = false): PlannedMessage[] {
 	const r = rng(seed);
 	let n = 0;
 	const messageCount = 1 + Math.floor(r() * 3);
 	return Array.from({ length: messageCount }, (_, i) => ({
 		id: `m${i}`,
-		typed: `typed-${seed}-${i}`,
+		typed: `typed-${seed}-${i}` + (padded ? "p".repeat(Math.floor(r() * 3_000)) : ""),
 		files: Array.from({ length: Math.floor(r() * 5) }, () => {
 			const outcome = OUTCOMES[Math.floor(r() * OUTCOMES.length)];
 			const sha = `s${seed}x${n++}`;
@@ -95,7 +114,11 @@ function depsFor(plan: PlannedMessage[]): PrepareTurnMediaDeps {
 			case "unreadable":
 				throw new AttachmentReadError("The storage bucket could not be read");
 			case "missing":
-				throw new Error(`File not found: ${sha}`);
+				// The 404 downloadFile throws when no copy exists: deleted from My files.
+				error(404, "File not found");
+				break;
+			case "download-error":
+				throw new Error(`unexplained download failure: ${sha}`);
 			case "text":
 				return record("text/plain", b64(marker(f)));
 			case "clipboard":
@@ -140,9 +163,12 @@ const toMessages = (plan: PlannedMessage[]): Message[] =>
 		return i < plan.length - 1 ? [user, { from: "assistant", id: `a${i}`, content: `reply-${i}` }] : [user];
 	});
 
-async function checkTurn(seed: number) {
-	const plan = planTurn(seed);
-	const out = await prepareTurnMedia(toMessages(plan), CONV, depsFor(plan));
+async function checkTurn(seed: number, capped = false) {
+	const plan = planTurn(seed, capped);
+	historyCap.on = capped;
+	const out = await prepareTurnMedia(toMessages(plan), CONV, depsFor(plan)).finally(() => {
+		historyCap.on = false;
+	});
 	const why = (s: string) => `seed ${seed}: ${s}\nplan ${JSON.stringify(plan)}`;
 
 	// What the model receives, per message: finalText for a message with files, raw content otherwise.
@@ -152,11 +178,27 @@ async function checkTurn(seed: number) {
 		images: out.messages.get(m.id)?.images ?? [],
 	}));
 
-	// 1. Everything sent was screened.
-	for (const s of sent) {
-		expect(out.screen.corpus, why(`${s.plan.id}'s prompt text is not inside the screened corpus`)).toContain(
-			s.text
+	// 1. What was sent was screened: the newest whole, the history whole (flag off) or its end (on).
+	const newest = sent.at(-1)!.text;
+	const everything = sent.map((s) => s.text).join("\n\n");
+	expect(out.screen.corpus.endsWith(newest), why("the newest message's prompt text is not whole in the corpus")).toBe(
+		true
+	);
+	if (capped) {
+		expect(everything.endsWith(out.screen.corpus), why("the capped corpus is not the end of what was sent")).toBe(
+			true
 		);
+		expect(out.screen.corpus.length, why("the capped corpus passes the cap")).toBeLessThanOrEqual(
+			Math.max(SCREEN_HISTORY_CAP, newest.length)
+		);
+	}
+	for (const s of sent) {
+		if (!capped) {
+			expect(
+				out.screen.corpus,
+				why(`${s.plan.id}'s prompt text is not inside the screened corpus`)
+			).toContain(s.text);
+		}
 		for (const img of s.images) {
 			const screened = out.screen.images.find((x) => x.sha === img.sha && x.sourceMessageId === s.plan.id);
 			expect(screened?.screenB64, why(`image ${img.sha} goes to the model unscreened`)).toBeTruthy();
@@ -173,7 +215,7 @@ async function checkTurn(seed: number) {
 	// The cap keeps the newest occurrences, so the dropped ones are the oldest in prompt order.
 	const overCap = new Set(imageFiles.slice(0, out.droppedImages).map(({ f }) => f.sha));
 	const expectedUnits: FailedUnit[] = files.flatMap(({ f }): FailedUnit[] => {
-		if (f.outcome === "missing") return [{ kind: "file-hydration", sha: f.sha }];
+		if (f.outcome === "download-error") return [{ kind: "file-hydration", sha: f.sha }];
 		if (f.outcome === "garbled") return [{ kind: "text-decode", sha: f.sha }];
 		if (f.outcome === "pdf-crash") return [{ kind: "document-extract", sha: f.sha }];
 		if (f.outcome === "image-bad" && !overCap.has(f.sha)) return [{ kind: "image-encode", sha: f.sha }];
@@ -219,7 +261,7 @@ async function checkTurn(seed: number) {
 				}
 				break;
 		}
-		if (["unreadable", "unsupported", "garbled", "pdf-crash", "missing"].includes(f.outcome)) {
+		if (["unreadable", "unsupported", "garbled", "pdf-crash", "missing", "download-error"].includes(f.outcome)) {
 			expect(allSent, why(`${f.name} could not be read but its bytes reached the model`)).not.toContain(
 				marker(f)
 			);
@@ -261,5 +303,9 @@ describe("prepareTurnMedia safety invariant", () => {
 
 	it("over 500 generated turns mixing every outcome: everything sent is screened, failedUnits is exactly the failed files, and no file is lost silently", async () => {
 		for (let seed = 1; seed <= 500; seed++) await checkTurn(seed);
+	});
+
+	it("with guard-history-cap on, over 500 generated long turns: the newest message is screened whole and the history only up to the cap, and the other rules still hold", async () => {
+		for (let seed = 1; seed <= 500; seed++) await checkTurn(seed, true);
 	});
 });

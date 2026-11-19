@@ -5,7 +5,7 @@
  *
  * Signed-in-only, unlike most of this app's content: there's no guest/session-scoped case for "point
  * MY server at this app" the way there is for conversations, so requireAuth alone (which also accepts
- * a bare session) isn't enough — every handler here additionally requires a real `locals.user`. (CUR-1262)
+ * a bare session) isn't enough — every handler here additionally requires a real `locals.user`.
  */
 import { error, type RequestHandler } from "@sveltejs/kit";
 import { z } from "zod";
@@ -13,6 +13,7 @@ import { superjsonResponse } from "$lib/chat/server/api/utils/superjsonResponse"
 import { requireUserId } from "$lib/chat/server/api/utils/requireAuth";
 import { localInferenceEndpointsEnabled } from "$lib/chat/server/localEndpointsGate";
 import { isRefusedLocalBaseUrl, normalizeLocalBaseUrl } from "$lib/chat/server/localModels";
+import { assertUnderEndpointCap, limitEndpointCreate } from "$lib/chat/server/localEndpointLimits";
 import {
 	listLocalEndpointsForUserId,
 	createLocalEndpoint,
@@ -40,7 +41,7 @@ function toClientShape(row: LocalInferenceEndpointRow) {
 
 // A header's `value` may legitimately be empty (a header whose presence matters more than
 // its content) — only `name` is required, matching the settings UI's own "Add custom header" button,
-// which enables on a name alone. Capped at 50 headers/request as a sanity bound, not a measured limit. (CUR-1291)
+// which enables on a name alone. Capped at 50 headers/request as a sanity bound, not a measured limit.
 const headerSchema = z.object({
 	name: z.string().trim().min(1, "Header name is required").max(200),
 	value: z.string().trim().max(2000).default(""),
@@ -60,9 +61,10 @@ export const GET: RequestHandler = async ({ locals }) => {
 	return superjsonResponse(rows.map(toClientShape));
 };
 
-export const POST: RequestHandler = async ({ locals, request }) => {
+export const POST: RequestHandler = async ({ locals, request, getClientAddress }) => {
 	const userId = requireUserId(locals);
 	if (!localInferenceEndpointsEnabled()) error(404, "Not found");
+	await limitEndpointCreate(userId, getClientAddress());
 
 	const parsed = createSchema.safeParse(await request.json());
 	if (!parsed.success) {
@@ -80,6 +82,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		error(400, "Enter a valid server URL, e.g. http://localhost:11434");
 	}
 
+	await assertUnderEndpointCap(userId, "direct");
 	const row = await createLocalEndpoint({
 		userId,
 		label: parsed.data.label,

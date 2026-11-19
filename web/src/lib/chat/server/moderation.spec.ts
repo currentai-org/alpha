@@ -19,6 +19,7 @@ import {
 	reportHitToCoop,
 	reportCsamMatchToCoop,
 	__resetReportWarningsForTest,
+	logCoopPostureAtBoot,
 	CHILD_SAFETY_DECLINE,
 	CONTENT_POLICY_DECLINE,
 	OUTPUT_CONTENT_DECLINE,
@@ -28,7 +29,7 @@ import type { GuardHit } from "$lib/chat/server/guardScreenTypes";
 import coopReportFixture from "./fixtures/coop-report.json";
 
 // moderation.ts logs through pino, so the Axiom error alert (which counts pino level error) sees a
-// Coop refusal (CUR-2598). The mock keeps each call's (fields, message) for the assertions below.
+// Coop refusal. The mock keeps each call's (fields, message) for the assertions below.
 const log = vi.hoisted(() => ({ error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() }));
 vi.mock("$lib/chat/server/logger", () => ({ logger: log }));
 // The message of a pino call: the string argument, whether or not a fields object came first.
@@ -69,7 +70,7 @@ afterEach(() => {
 });
 
 describe("getCoopVerdict", () => {
-	it("under the coop_report_rate_limited fault a user flag sends nothing to Coop and logs the 429 at error level (CUR-2598)", async () => {
+	it("under the coop_report_rate_limited fault a user flag sends nothing to Coop and logs the 429 at error level", async () => {
 		vi.stubEnv("COOP_USER_TYPE_ID", "user-type");
 		vi.stubEnv("COOP_ITEM_TYPE_ID", "item-type");
 		await reportToCoop({ messageId: "m1", text: "an answer", reason: "inaccurate", reporterId: "s1", injectedStatus: 429 });
@@ -78,7 +79,7 @@ describe("getCoopVerdict", () => {
 		expect(call?.[0]).toMatchObject({ status: 429, itemId: "m1" });
 	});
 
-	it("a Coop /content 503 is logged at pino error level with its status as a field (CUR-2598)", async () => {
+	it("a Coop /content 503 is logged at pino error level with its status as a field", async () => {
 		fetchMock.mockResolvedValue(coopActions([], 503));
 		expect(await getCoopVerdict("hello")).toEqual({ status: "unknown", actions: [] });
 		const call = log.error.mock.calls.find((c) => String(c[1]).includes("Coop HTTP 503"));
@@ -245,7 +246,7 @@ describe("checkChildSafety (Coop, fail CLOSED)", () => {
 		expect(await checkChildSafety("bad")).toEqual({ flagged: false });
 	});
 
-	it("fails CLOSED (flagged) on UNKNOWN, marked unscreened so the decline says it couldn't check (CUR-2301)", async () => {
+	it("fails CLOSED (flagged) on UNKNOWN, marked unscreened so the decline says it couldn't check", async () => {
 		fetchMock.mockResolvedValue({ ok: false, status: 503, json: async () => ({}) } as Response);
 		expect(await checkChildSafety("bad")).toEqual({ flagged: true, unscreened: true });
 	});
@@ -352,13 +353,13 @@ describe("screenModelOutput (output moderation — content + child on the model'
 		});
 	});
 
-	// NAME STATES THE CONTRACT, NOT THE HAPPY PATH (CUR-77). `actionsTriggered: []` is NOT proof of
+	// NAME STATES THE CONTRACT, NOT THE HAPPY PATH. `actionsTriggered: []` is NOT proof of
 	// clean: Coop returns the same empty
 	// array when a detector leaf ERRORED while the origin stayed up, and on its own 24s cap. So what
-	// this test actually guarantees is the weaker, riskier statement below, and CUR-83 argues that
+	// this test actually guarantees is the weaker, riskier statement below, and argues that
 	// guarantee is wrong for the child class. Naming it "clean" would hide that: green looks like
 	// endorsement.
-	it("treats an empty action list as not-blocked — which is also what an ERRORED detector returns (CUR-83)", async () => {
+	it("treats an empty action list as not-blocked — which is also what an ERRORED detector returns", async () => {
 		fetchMock.mockResolvedValue(coopActions([]));
 		expect(await screenModelOutput("the answer")).toEqual({ blocked: false, kind: null });
 	});
@@ -533,7 +534,7 @@ describe("reportHitToCoop + reportToCoop (Coop = review plane, /report)", () => 
 	});
 });
 
-describe("reportCsamMatchToCoop (CUR-986: a hash match is a severe verdict too, not just a Slack page)", () => {
+describe("reportCsamMatchToCoop ( a hash match is a severe verdict too, not just a Slack page)", () => {
 	beforeEach(() => {
 		__resetReportWarningsForTest();
 		vi.stubEnv("COOP_USER_TYPE_ID", "user-type");
@@ -595,7 +596,7 @@ describe("reportCsamMatchToCoop (CUR-986: a hash match is a severe verdict too, 
 		errSpy.mockRestore();
 	});
 
-	it("a Coop /report 429 is logged at pino error level with its status as a field, so the error alert counts it (CUR-2598)", async () => {
+	it("a Coop /report 429 is logged at pino error level with its status as a field, so the error alert counts it", async () => {
 		vi.stubEnv("COOP_SYSTEM_REPORTER_ID", "csam-hash-guard");
 		fetchMock.mockResolvedValue({ status: 429, text: async () => "rate limited" } as Response);
 		await reportCsamMatchToCoop({ reportedItemId: "m1", bankName: "test-bank", bankContentId: 42, distance: "0" });
@@ -747,5 +748,61 @@ describe("Coop unconfigured on a deployment (fails closed, never allow-all)", ()
 		vi.stubEnv("COOP_URL", "");
 		vi.stubEnv("COOP_API_KEY", "");
 		expect(await probeCoopHealth()).toBeNull();
+	});
+});
+
+// ── a self-host edition may run production mode without Coop; hosted never may ──────────
+// Only ALPHA_EDITION=selfhost lifts the requirement. Hosted, unset, or any other value still fails closed,
+// the same rule CSAM_SCAN=off follows. The self-host case must be loud: one warn line from boot.
+describe("Coop unconfigured in production mode, by ALPHA_EDITION", () => {
+	beforeEach(() => {
+		vi.stubEnv("DEPLOY_ENV", "production");
+		vi.stubEnv("COOP_URL", "");
+		vi.stubEnv("COOP_API_KEY", "");
+		__resetReportWarningsForTest();
+	});
+
+	for (const edition of ["hosted", "Hosted", "", "self-host", "selfhosted"]) {
+		it(`ALPHA_EDITION=${JSON.stringify(edition)}: still fails CLOSED — the turn is declined, never allow-all`, async () => {
+			vi.stubEnv("ALPHA_EDITION", edition);
+			const verdict = await getCoopVerdict("hello");
+			expect(verdict).toEqual({ status: "unknown", actions: [] });
+			expect(await checkChildSafety("hello", undefined, verdict)).toEqual({ flagged: true, unscreened: true });
+			expect(await probeCoopHealth()).toBe(false);
+		});
+	}
+
+	it("ALPHA_EDITION=selfhost: the turn passes unscreened, with no Coop call", async () => {
+		vi.stubEnv("ALPHA_EDITION", "selfhost");
+		const verdict = await getCoopVerdict("hello");
+		expect(verdict).toEqual({ status: "ok", actions: [] });
+		expect(await checkChildSafety("hello", undefined, verdict)).toEqual({ flagged: false });
+		expect(await screenModelOutput("an answer")).toEqual({ blocked: false, kind: null });
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it("ALPHA_EDITION=selfhost says so at boot, once, at warn level and not as the hosted error", () => {
+		vi.stubEnv("ALPHA_EDITION", " SelfHost ");
+		logCoopPostureAtBoot();
+		logCoopPostureAtBoot();
+		const warns = messages(log.warn).filter((m) => m.includes("SELF-HOST, NO COOP"));
+		expect(warns).toHaveLength(1);
+		expect(warns[0]).toMatch(/every turn reaches the model unscreened/);
+		expect(messages(log.error).filter((m) => m.includes("[moderation]"))).toEqual([]);
+	});
+
+	it("ALPHA_EDITION=hosted logs the fail-closed error at boot, not the self-host warn", () => {
+		vi.stubEnv("ALPHA_EDITION", "hosted");
+		logCoopPostureAtBoot();
+		expect(messages(log.error).join(" ")).toMatch(/child safety fails CLOSED/);
+		expect(messages(log.warn).filter((m) => m.includes("SELF-HOST"))).toEqual([]);
+	});
+
+	it("ALPHA_EDITION=selfhost with Coop configured still screens through Coop", async () => {
+		vi.stubEnv("ALPHA_EDITION", "selfhost");
+		vi.stubEnv("COOP_URL", "http://coop.local:8080");
+		vi.stubEnv("COOP_API_KEY", "test-key");
+		fetchMock.mockResolvedValue({ ok: false, status: 503, json: async () => ({}) } as Response);
+		expect(await checkChildSafety("hello")).toEqual({ flagged: true, unscreened: true });
 	});
 });

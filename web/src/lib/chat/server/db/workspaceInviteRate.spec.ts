@@ -1,7 +1,7 @@
 /**
  * The site-wide invitation ceiling is shared by everyone, so it must not be reachable by a
  * couple of accounts made a day ago. The event store is an in-memory counter here, since the test is
- * about which allowance each account gets. `eventWindow.spec.ts` covers the SQL window. (CUR-4168)
+ * about which allowance each account gets. `eventWindow.spec.ts` covers the SQL window.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -33,7 +33,7 @@ beforeEach(() => {
 	for (const k of Object.keys(cfg)) delete cfg[k];
 });
 
-describe("workspace invite allowance (CUR-4168)", () => {
+describe("workspace invite allowance", () => {
 	it("two day-old accounts sending until refused leave the site-wide ceiling open for everyone else", async () => {
 		const dayOld = new Date(Date.now() - DAY);
 		let sent = 0;
@@ -48,7 +48,7 @@ describe("workspace invite allowance (CUR-4168)", () => {
 		expect(await siteInviteAllowed()).toBe(true);
 	});
 
-	it("the site-wide ceiling is a circuit breaker: it refuses the 501st invitation of a day, not the 31st (CUR-4172)", async () => {
+	it("the site-wide ceiling is a circuit breaker: it refuses the 501st invitation of a day, not the 31st", async () => {
 		for (let i = 0; i < 499; i++) await recordSiteInviteSend();
 		expect(await siteInviteAllowed()).toBe(true);
 		await recordSiteInviteSend();
@@ -64,5 +64,22 @@ describe("workspace invite allowance (CUR-4168)", () => {
 		cfg.WORKSPACE_INVITE_MAX_PER_DAY = "3";
 		cfg.WORKSPACE_INVITE_NEW_ACCOUNT_MAX_PER_DAY = "10";
 		expect(maxInvitesPerDay(new Date())).toBe(3);
+	});
+
+	it("an account older than a week can still invite after new accounts have spent their share of the ceiling", async () => {
+		const dayOld = new Date(Date.now() - DAY);
+		const established = new Date(Date.now() - 30 * DAY);
+		let newSent = 0;
+		while (await siteInviteAllowed(dayOld)) {
+			await recordSiteInviteSend(dayOld);
+			newSent++;
+		}
+		expect(newSent).toBe(250);
+		expect(await siteInviteAllowed(dayOld)).toBe(false);
+		expect(await siteInviteAllowed(established)).toBe(true);
+		await recordSiteInviteSend(established);
+		// The established account is still bound by the whole-site circuit breaker.
+		for (let i = 0; i < 249; i++) await recordSiteInviteSend(established);
+		expect(await siteInviteAllowed(established)).toBe(false);
 	});
 });

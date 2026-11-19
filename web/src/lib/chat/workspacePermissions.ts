@@ -4,11 +4,11 @@
 // that only holds if nothing hardcodes a value.
 //
 // Only "invitation" (joinMethod) and "admin_only" (configChangeRule) have a live mechanism behind them
-// today — CUR-550 built invite-by-email, and Better Auth's own admin/member access control enforces
+// today — built invite-by-email, and Better Auth's own admin/member access control enforces
 // admin-only member management. The other join methods are refused on write until they have a flow
-// (CUR-3021, JOIN_METHODS_WITH_A_FLOW); the other config-change rules are storable and displayable so CUR-551
-// (admin config screen) and CUR-554 (member change-requests) — both separate, already-ticketed work —
-// have a stable contract to build against, not a placeholder they'd need to redefine. (CUR-826)
+// (JOIN_METHODS_WITH_A_FLOW); the other config-change rules are storable and displayable so
+// (admin config screen) and (member change-requests) — both separate, already-ticketed work —
+// have a stable contract to build against, not a placeholder they'd need to redefine.
 
 export const JOIN_METHODS = ["invitation", "request", "open"] as const;
 export type JoinMethod = (typeof JOIN_METHODS)[number];
@@ -38,7 +38,7 @@ export const CONFIG_CHANGE_RULE_LABELS: Record<ConfigChangeRule, string> = {
 
 // The join methods someone can actually use to get in. Better Auth stores `joinMethod` as a
 // free string, so without this a workspace could be saved as "open" with no way to join it openly.
-// Rows that already hold another value still display through joinMethodLabel. (CUR-3021)
+// Rows that already hold another value still display through joinMethodLabel.
 const JOIN_METHODS_WITH_A_FLOW: readonly JoinMethod[] = ["invitation"];
 
 /** The refusal to show when a workspace is created or updated with a join method nobody can use yet,
@@ -51,7 +51,7 @@ export function joinMethodRefusal(value: unknown): string | null {
 
 // A workspace's name goes into the invitation email a stranger receives, so it must not be
 // able to carry a link or a paragraph. Checked server-side on create and rename (betterAuth.ts); the
-// page's inputs share the length so a person hits the limit while typing. (CUR-3194)
+// page's inputs share the length so a person hits the limit while typing.
 export const WORKSPACE_NAME_MAX = 60;
 
 // A scheme, a "www." prefix, or a dotted name ending in a 2+ letter label ("example.com", "bit.ly/x").

@@ -8,7 +8,7 @@ import { warmupContext } from './helpers/warmup';
 import { startChattingPastWelcome } from './helpers/welcome';
 
 // The chat tells readers that the numbers in a searched answer, like [1], point to the pages
-// it found so they can check them (CUR-3231). `native-web-search.spec.ts` asserts that on the native harness only,
+// it found so they can check them. `native-web-search.spec.ts` asserts that on the native harness only,
 // forced through the fuzz_override cookie that production refuses. This walk forces nothing: it asks
 // a news question as a guest on whatever harness the deployment serves, so the same test runs on a PR
 // preview and in the live suite's production leg.

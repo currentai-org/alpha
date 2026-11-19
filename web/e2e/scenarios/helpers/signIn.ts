@@ -3,7 +3,7 @@ import { readSignInOtp } from './otp';
 import { accountMenuItem } from './accountMenu';
 import { journeyStep } from './journeyStep';
 
-// After a successful verify (CUR-1481), `busy` clearing can re-enable the Verify button and
+// After a successful verify, `busy` clearing can re-enable the Verify button and
 // revert its label to "Verify" for up to ~2.3s before the redirect landed — indistinguishable on
 // screen from a code that had never been accepted. waitForURL alone can't see this: the URL
 // doesn't change until well after that window closes. Waits for the button to first show its
@@ -12,7 +12,7 @@ import { journeyStep } from './journeyStep';
 // navigation to catch it coming back.
 //
 // The pending label is "Signing you in…" and has to be read off +page.svelte rather than
-// remembered: an assertion that names a stale label cannot pass in any state (CUR-1487).
+// remembered: an assertion that names a stale label cannot pass in any state.
 // Injuring the fix does not catch that: the assertion is red either way,
 // which satisfies "can it go red" and proves nothing. A gate has to go red for the failure it
 // NAMES. The label covers both `busy === "verify-otp"` and the `verifiedCode` window after busy
@@ -22,7 +22,7 @@ async function assertVerifyButtonStaysPendingUntilNav(page: Page): Promise<void>
 	await expect(pending).toBeVisible({
 		timeout: 5_000
 	});
-	// The label must not sit perfectly still for the whole wait (CUR-1621). Something in the button has
+	// The label must not sit perfectly still for the whole wait. Something in the button has
 	// to be moving, so read the spinner's running animation rather than its presence in the DOM.
 	// Skipped under reduced motion, where the spinner deliberately stands still.
 	const seen = await pending
@@ -35,20 +35,20 @@ async function assertVerifyButtonStaysPendingUntilNav(page: Page): Promise<void>
 		}))
 		.catch(() => ({ cells: 0, moving: false }));
 	// A redirect fast enough to unmount the button between the two reads says nothing either way (the
-	// CUR-1696 race); a button still on screen with nothing moving in it is the defect.
+	// race); a button still on screen with nothing moving in it is the defect.
 	const stillPending = /\/login/.test(page.url()) && (await pending.isVisible().catch(() => false));
 	if (stillPending || seen.cells > 0) {
 		expect(seen.moving, 'the pending sign-in button shows no moving indicator').toBe(true);
 	}
 
 	// An enabled "Verify" reappearing has two causes that look identical to this poll —
-	// the CUR-1481 timing regression (code WAS accepted, the UI just lagged), and a genuine
+	// the timing regression (code WAS accepted, the UI just lagged), and a genuine
 	// rejection (the code was wrong, or +page.svelte's own errorMsg alert fired). Both leave the
 	// button enabled and labelled "Verify"; only the alert distinguishes them. Checking it first
-	// turns a misleading "CUR-1481 regression" on a real rejection into the actual cause (CUR-1493).
+	// turns a misleading " regression" on a real rejection into the actual cause.
 	// A "Too many requests. Please try again
 	// later." alert can sit in the DOM while the button behaves correctly.
-	// The send cap (CUR-1486) has a carve-out (CUR-1553), so this suite's own sends no
+	// The send cap has a carve-out, so this suite's own sends no
 	// longer hit it, so a "Too many requests" surfacing HERE (post-submit) would be a different,
 	// still-active per-path limiter on the verify step itself, not the send one.
 	const errorAlert = page.getByRole('alert');
@@ -95,7 +95,7 @@ async function bannerText(banner: Locator): Promise<string | null> {
 // The deadline is a parameter rather than a constant in the body: it is a property of this wait that a
 // caller might reasonably tune, and in the signature a reader sees it without reading the loop. It is
 // also what `scripts/e2e-scope-classify.mjs` counts — it reads literal `timeout: N` occurrences, so a
-// deadline expressed only as `Date.now() + N` reads to it as coverage removed (CUR-1494).
+// deadline expressed only as `Date.now + N` reads to it as coverage removed.
 async function waitForOtpScreen(
 	page: Page,
 	opts: { timeout: number } = { timeout: 15_000 }
@@ -147,7 +147,7 @@ export function freshTestEmail(domain: 'example.org' | 'currentai.org' = 'exampl
 // request, and freshTestEmail() below always mints an @example.org target), so there is no longer
 // a real limit here to sleep ahead of. so there is no client-side throttle mirroring
 // the server's decideConsume algorithm: a throttle nothing can trip is dead code that would
-// mislead the next reader into thinking a real limit still applies here (CUR-1553).
+// mislead the next reader into thinking a real limit still applies here.
 
 // The two Better Auth paths otpSendCapCarveOut reads this header on — send AND this app's
 // real verify call (signIn.emailOtp() -> POST /sign-in/email-otp, not /email-otp/check-verification-otp).
@@ -176,14 +176,18 @@ export async function signInWithEmailOtp(
 	page: Page,
 	databaseUrl: string,
 	email: string,
-	options: { viaNavLink?: boolean; landsOn?: RegExp; skipPendingLabelCheck?: boolean } = {}
+	options: {
+		viaNavLink?: boolean;
+		landsOn?: RegExp;
+		skipPendingLabelCheck?: boolean;
+	} = {}
 ): Promise<void> {
 	await installOtpBypassHeader(page);
 	if (options.viaNavLink) {
 		// The real entry point (the account menu's "Log in") rather than a goto shortcut around it —
-		// for a test proving the sign-in confirmation replaces it (CUR-432).
+		// for a test proving the sign-in confirmation replaces it.
 		// The row ends on the open menu showing "Log in", so its snapshot is the menu, not the dialog
-		// the click opens (CUR-2764).
+		// the click opens.
 		const logIn = await journeyStep(page, 'A1', 3, () =>
 			accountMenuItem(page, 'Log in', { timeout: 20_000 })
 		);
@@ -224,12 +228,12 @@ export async function signInWithEmailOtp(
 		// URL, and a helper that kept waiting for the entry would go red on the fix rather than on a
 		// defect.
 		// assertVerifyButtonStaysPendingUntilNav's own 5s window on the pending label races a
-		// genuinely-fast redirect and loses (CUR-1696), landing
+		// genuinely-fast redirect and loses, landing
 		// fully signed in before the check sees the transient state. That
-		// race belongs to CUR-1481/CUR-1487, and a passkey test only needs "did the OTP leg land signed
+		// race belongs, and a passkey test only needs "did the OTP leg land signed
 		// in" — it has no stake in whether the pending label rendered on schedule.
 		// The window is not loosened here, since a looser timing
-		// assumption for every caller risks masking the exact regression CUR-1487 was written to catch.
+		// assumption for every caller risks masking the exact regression that change was written to catch.
 		const landed = page.waitForURL(options.landsOn ?? /\/chat\/?(\?|$)/, { timeout: 15_000 });
 		if (options.skipPendingLabelCheck) {
 			await landed;

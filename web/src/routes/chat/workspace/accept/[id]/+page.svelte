@@ -1,8 +1,8 @@
 <script lang="ts">
-	// getInvitation requires the caller's own session email to match the invite. CUR-2835: a
+	// getInvitation requires the caller's own session email to match the invite. a
 	// dead link and the wrong account each get their own line and a way on, in place of Better Auth's
 	// "Invitation not found!" and "You are not the recipient of the invitation". The wrong account is
-	// never told whose invitation it is. (CUR-550)
+	// never told whose invitation it is.
 	import { onMount } from "svelte";
 	import { goto, invalidateAll } from "$app/navigation";
 	import { authClient } from "$lib/chat/authClient";
@@ -38,7 +38,7 @@
 				"This invitation was sent to a different email address. Sign out, then open the link again and sign in with the address it was sent to.";
 		} else if (error?.status === 400) {
 			// Every 400 from get-invitation means the link is dead: cancelled, used or expired (sent with no
-			// code at all), its workspace deleted, or its inviter gone (CUR-2835).
+			// code at all), its workspace deleted, or its inviter gone.
 			loadError =
 				"This invitation was cancelled or has expired. Ask the person who invited you for a new one.";
 		} else if (error) {
@@ -59,10 +59,10 @@
 			actionError = error.message ?? "Couldn't accept that invitation.";
 			return;
 		}
-		// busy stays "accept" through the navigation, so the button keeps saying Joining… (CUR-3281).
+		// busy stays "accept" through the navigation, so the button keeps saying Joining….
 		outcome = "accepted";
 		// The pending-invite list and workspace scope come from the chat layout's load, which a plain
-		// goto keeps; without the reload Settings could list the accepted invite as pending (CUR-4167).
+		// goto keeps; without the reload Settings could list the accepted invite as pending.
 		goto(`${base}/settings/workspace`, { invalidateAll: true });
 	}
 

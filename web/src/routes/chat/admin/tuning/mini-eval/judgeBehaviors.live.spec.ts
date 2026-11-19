@@ -16,7 +16,7 @@
 //   - E1 (no unprompted next-action). Measures whether sign-off/listicle drift is real, without
 //     touching the persona.
 //
-//   - D1 (no identity/capability disclaimer on a non-identity task, CUR-1437), e.g. a request to
+//   - D1 (no identity/capability disclaimer on a non-identity task), e.g. a request to
 //     improve a thank-you email opening "I don't have feelings or personal opinions" unasked.
 //     Distinct from W1 (which bans a willingness/ability opener): this bans an identity/capability
 //     opener, a different move the other rubrics don't name.
@@ -32,7 +32,7 @@
 //   JUDGE_LIVE=1 VITEST_LIVE=1 npx vitest run --project=server-live \
 //     src/routes/chat/admin/tuning/mini-eval/judgeBehaviors.live.spec.ts
 //
-// JUDGE_BEHAVIOR_LIVE=0 skips the POSITIVE half, the one that grades the model (CUR-2759). Unset, it runs.
+// JUDGE_BEHAVIOR_LIVE=0 skips the POSITIVE half, the one that grades the model. Unset, it runs.
 // live-vendor-tests.yml sets 0 on its vendor-contract step and runs this half in a step of its own with
 // its own alert, so a model that misbehaves and a vendor that changed shape do not read as the same red.
 //
@@ -75,7 +75,7 @@ const BILL_TO = process.env.HF_BILL_TO;
 
 async function ask(system: string, prompt: string): Promise<string> {
 	// A 504 from the gateway is transient, not a broken contract — retried once before
-	// this hard-fails, same as urlGuard.live.spec.ts's own ask(). (CUR-1303)
+	// this hard-fails, same as urlGuard.live.spec.ts's own ask.
 	const r = await fetchRetryOnce(
 		() =>
 			fetch(`${BASE}/chat/completions`, {
@@ -94,7 +94,7 @@ async function ask(system: string, prompt: string): Promise<string> {
 					// NOT temperature: 0. Must send exactly what production sends (resolveDecoding(), temp 0.1).
 					// A pinned temperature (evals/checkpoint-compare's 0.7 is pinned for cross-model comparability,
 					// see this file's header note) would grade a cell nobody ships. The decoding sweep was run at
-					// the production temperature (see persona.ts's GROUNDED_DECODING comment) (CUR-702).
+					// the production temperature (see persona.ts's GROUNDED_DECODING comment).
 					...resolveDecoding(),
 				}),
 			}),
@@ -122,7 +122,7 @@ async function ask(system: string, prompt: string): Promise<string> {
  * checkpoint, not of this suite: evals/behavior-repeat.ts reports the number of distinct answers per
  * behavior for a checkpoint, and it differs across checkpoints.
  * A local harness loads .env.local over any injected MODEL_ALLOWLIST, so a laptop and
- * CI can grade different checkpoints without saying so (CUR-243).
+ * CI can grade different checkpoints without saying so.
  *
  * A flipping verdict has three candidates: the judge disagreeing with itself, the judge not answering,
  * and the model. The marker separates out only the second. Quote no pass rate off this suite without
@@ -146,7 +146,7 @@ async function verdictOrJudgeError(
 describe.runIf(LIVE)("LLM-judge — live behavior probe", () => {
 	it("refuses to run on any model but the one a default turn is served", () => {
 		// IDENTITY, not size. /70B/i is satisfied by both Apertus checkpoints, so a size check stays green while
-		// this suite grades a model nobody is on (CUR-243).
+		// this suite grades a model nobody is on.
 		expect(
 			isGradedCheckpoint(MODEL),
 			`MODEL_ALLOWLIST picks "${MODEL}"; this suite only grades "${GRADED_CHECKPOINT}". A verdict on any other checkpoint is a claim about a model no user is served.`
@@ -167,7 +167,7 @@ describe.runIf(LIVE)("LLM-judge — live behavior probe", () => {
 	// `ask()` here hits the model directly, so no runtime guard applies to this verdict, and W1 cannot
 	// become green while it grades this layer.
 	//
-	// Nothing enforces it at runtime either (CUR-170). The lead-in the served model does write ("Here's
+	// Nothing enforces it at runtime either. The lead-in the served model does write ("Here's
 	// a concise, professional thank-you note you can adapt:") announces delivery rather than
 	// willingness, so it is not obviously filler. The case stays skipped rather than deleted because W1
 	// also grades the admin mini-eval (behaviors.ts). Do not un-skip by relaxing the rubric.
@@ -181,7 +181,7 @@ describe.runIf(LIVE)("LLM-judge — live behavior probe", () => {
 			"the persona was measured unable to enforce this (a5228455), and CUR-170 removed the runtime guard",
 	};
 
-	// SELF-CONSISTENCY, NOT ONE SAMPLE (CUR-100). Temperature 0 is not deterministic under batched serving
+	// SELF-CONSISTENCY, NOT ONE SAMPLE. Temperature 0 is not deterministic under batched serving
 	// (see JUDGE_ERROR's note above), so a single (generation, judge) pair is a coin flip dressed as a
 	// verdict, and a nightly alert on it fires on a different behavior most nights with no underlying
 	// regression. Sample N independently and require a MAJORITY fail before reddening the run.

@@ -108,7 +108,7 @@ describe.each(
 	});
 });
 
-describe('CF spec fidelity (dark window)', () => {
+describe('Alpha design spec fidelity (dark window)', () => {
 	const alpha = themes.find((t) => t.id === 'alpha')!;
 	const p = deriveMode(alpha, 'dark');
 	it('Background 1/2/3 are the spec hexes #181818 / #121212 / #2F2F2F (±1 per channel)', () => {

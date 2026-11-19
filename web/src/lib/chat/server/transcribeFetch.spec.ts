@@ -11,7 +11,7 @@ function stalled(signal: AbortSignal): Promise<Response> {
 	});
 }
 
-describe("fetchWithStallRetry (CUR-2328)", () => {
+describe("fetchWithStallRetry", () => {
 	beforeEach(() => vi.useFakeTimers());
 	afterEach(() => vi.useRealTimers());
 
@@ -46,7 +46,7 @@ describe("fetchWithStallRetry (CUR-2328)", () => {
 	});
 });
 
-describe("upstreamContentType (CUR-2802)", () => {
+describe("upstreamContentType", () => {
 	it("sends an mp4 recording as audio/m4a, the name the transcriber accepts for that container", () => {
 		expect(upstreamContentType("audio/mp4")).toBe("audio/m4a");
 		expect(upstreamContentType("audio/mp4;codecs=opus")).toBe("audio/m4a");

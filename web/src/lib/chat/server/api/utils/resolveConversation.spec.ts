@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // resolveConversation's owner-mismatch branch logs the owner's actual sessionId/userId
 // alongside the requester's, so a live occurrence names which identity won rather than only
-// "cookie was present". Mirrors auth.betterAuthBridge.spec.ts's DB-mocking convention. (CUR-1315)
+// "cookie was present". Mirrors auth.betterAuthBridge.spec.ts's DB-mocking convention.
 vi.mock("$lib/chat/server/database", () => ({
 	collections: {
 		conversations: {
@@ -26,7 +26,7 @@ const conversationsFindOne = vi.mocked((collections as any).conversations.findOn
 const id = new ObjectId().toHexString();
 const anonLocals = (sessionId: string) => ({ sessionId, user: undefined }) as unknown as App.Locals;
 
-describe("resolveConversation — 403 identity logging (CUR-1315)", () => {
+describe("resolveConversation — 403 identity logging", () => {
 	beforeEach(() => {
 		conversationsFindOne.mockReset();
 		warn.mockReset();
@@ -37,7 +37,7 @@ describe("resolveConversation — 403 identity logging (CUR-1315)", () => {
 			.mockResolvedValueOnce(null) // the authCondition-scoped lookup: no match for this requester
 			.mockResolvedValueOnce({ _id: new ObjectId(id), sessionId: "owner-session-hash", userId: undefined }); // the bare existence re-check
 
-		// Still a 404 with the same message as a missing id, so the answer reveals nothing. (CUR-3523)
+		// Still a 404 with the same message as a missing id, so the answer reveals nothing.
 		await expect(resolveConversation(id, anonLocals("requester-session-hash"))).rejects.toMatchObject({
 			status: 404,
 			body: { message: "Conversation not found." },

@@ -1,6 +1,6 @@
 // e2e-product: @chat
 // e2e-area: @turn
-// The "?" under an answer opens "Where it's weak" (CUR-4262). Two of its sections described an older
+// The "?" under an answer opens "Where it's weak". Two of its sections described an older
 // Alpha: "a single open model generates every answer" (Auto now picks between several models) and
 // "turn Web search on in the + menu" (web search is automatic by default). A visitor sends a message,
 // opens the "?" under the answer, and reads limits that match the product today.

@@ -1,4 +1,4 @@
-// Compare the Node a build is running on against the pin in `.nvmrc` (CUR-256).
+// Compare the Node a build is running on against the pin in `.nvmrc`.
 //
 // WHY THE PIN IS EXACT. `web/.npmrc` sets engine-strict=true, so an `engines.node` floor is enforced
 // in CI and at deploy, but only agrees between them when both run the same version. A floating

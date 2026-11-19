@@ -1,11 +1,11 @@
-// Asking the person before an MCP tool that may change something runs (CUR-3026).
+// Asking the person before an MCP tool that may change something runs.
 //
 // The question is a row in mcpElicitations, the same durable table and answer route the 2026-era
-// elicitation flow uses (CUR-1017): POST /chat/conversation/{id}/elicitation with accept or decline,
+// elicitation flow uses: POST /chat/conversation/{id}/elicitation with accept or decline,
 // ownership-checked and compare-and-set on `status: "pending"`. The turn that asked polls the row, so
 // the answer can arrive on any instance. A form with no fields is a yes/no question.
 //
-// The turn's total generation cap stands still while the card is open (CUR-3983, ScreenAwareDeadline),
+// The turn's total generation cap stands still while the card is open (ScreenAwareDeadline),
 // so the person gets time to read it. Running out of time is still a "no": nothing changes unless the
 // person said yes.
 import { ObjectId } from "bson";

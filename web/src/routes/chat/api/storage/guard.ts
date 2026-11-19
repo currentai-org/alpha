@@ -39,14 +39,14 @@ import { documentAttachmentsEnabled } from "$lib/chat/server/documentAttachments
 import { resolveFaultInjection } from "$lib/chat/server/textGeneration/faultInjection";
 import { multimodalEnabled } from "$lib/chat/server/textOnly";
 
-// CUR-1276. The two things every custodial storage endpoint has to do before it touches the bucket,
+// The two things every custodial storage endpoint has to do before it touches the bucket,
 // in one place so a new endpoint cannot ship with only one of them.
 //
 // This matters more here than on most routes. ONE shared `HF_BUCKETS_TOKEN` holds every person's
 // files, so `assertOwnership`'s path check is the only thing standing between two users — there is
 // no per-user credential underneath as a second layer, and a bug is a cross-user read rather than a
 // leaked field (an unnormalized path walking out of the prefix is the failure to guard against,
-// CUR-928). CUR-1288 is the open question about the credential model itself.
+//). That change is the open question about the credential model itself.
 
 /**
  * Resolve the account id this request is allowed to act as, or throw the right HTTP error.
@@ -71,7 +71,7 @@ export async function requireStorageAccess(locals: App.Locals): Promise<string> 
 
 /**
  * Storage access, plus the `storage-locations` flag. 404 when either is off, for the same
- * reason requireStorageAccess gives: a dark feature looks unbuilt. (CUR-2930)
+ * reason requireStorageAccess gives: a dark feature looks unbuilt.
  */
 export async function requireLocationsAccess(locals: App.Locals): Promise<string> {
 	const accountId = await requireStorageAccess(locals);
@@ -87,7 +87,7 @@ export async function locationsEnabled(accountId: string, email: string | undefi
 /**
  * Turn a storage-module error into the status it deserves, or rethrow.
  *
- * Every limit in CUR-1129 is a typed error precisely so a route can do this rather than let a quota
+ * Every limit in that change is a typed error precisely so a route can do this rather than let a quota
  * degrade into a suggestion. A handler that swallows one of these has un-enforced the limit while
  * still importing it.
  */
@@ -104,7 +104,7 @@ function storageError(e: unknown): never {
 		error(403, "Not your file.");
 	}
 
-	// CUR-2930. A path outside a linked location's folder is "not yours" too, and an id that is not
+	// A path outside a linked location's folder is "not yours" too, and an id that is not
 	// this account's is a 404, the same non-distinguishing posture as above.
 	if (e instanceof PathOutsideLocationError) error(403, "Not your file.");
 	if (e instanceof UnknownLocationError) error(404, "Not found");
@@ -127,7 +127,7 @@ function storageError(e: unknown): never {
 	// CSAM signal — a distinct rejection reason from "not yours" or "wrong format".
 	if (e instanceof CsamMatchError) error(422, "This file could not be uploaded.");
 	// 503: the file could not be scanned, because no scanner is configured or the configured one did
-	// not answer. Fail closed (CUR-1136, CUR-2382), with the same line chat shows.
+	// not answer. Fail closed, with the same line chat shows.
 	if (e instanceof CsamScannerUnconfiguredError) {
 		// A config error, not a service failure: nothing is scanned until CSAM_SCAN_BASE_URL is set, so it is
 		// logged at error, as chat's own refusal is (parseRequest.ts).
@@ -135,10 +135,10 @@ function storageError(e: unknown): never {
 		error(503, UPLOAD_NOT_SCANNED_MESSAGE);
 	}
 	if (e instanceof HmaUnreachableError) error(503, UPLOAD_NOT_SCANNED_MESSAGE);
-	// 422: a picture inside the file could not be decoded, so it could not be checked (CUR-987). A
+	// 422: a picture inside the file could not be decoded, so it could not be checked. A
 	// retry gives the same answer, unlike the 503 above.
 	if (e instanceof UnscannableFileError) error(422, UNSCANNABLE_FILE_MESSAGE);
-	// The child-safety screen on stored pictures fails closed the way the hash scan does. (CUR-3201)
+	// The child-safety screen on stored pictures fails closed the way the hash scan does.
 	if (e instanceof ImageScreenUnavailableError) error(503, UPLOAD_NOT_SCANNED_MESSAGE);
 	if (e instanceof TooManyImagesToScreenError) {
 		error(422, tooManyImagesMessage(e.count));
@@ -148,7 +148,7 @@ function storageError(e: unknown): never {
 
 /**
  * Log which upload check refused a file and why. Every one of these reaches the person as a single
- * line of copy, so without this line a refusal in production cannot be traced to its check (CUR-4658).
+ * line of copy, so without this line a refusal in production cannot be traced to its check.
  * The messages carry a status code or a reason, never file content or a file name.
  */
 function logScanRefusal(e: unknown): void {
@@ -163,7 +163,9 @@ function logScanRefusal(e: unknown): void {
 						? "image-screen-count"
 						: e instanceof CsamMatchError
 							? "csam-match"
-							: null;
+							: e instanceof CsamScannerUnconfiguredError
+								? "csam-unconfigured"
+								: null;
 	if (!check) return;
 	logger.warn({ check, reason: e instanceof Error ? e.message : String(e) }, "[upload-guard] upload refused");
 }
@@ -171,7 +173,7 @@ function logScanRefusal(e: unknown): void {
 /**
  * A storage route's answer to any error: storageError's status, except when the storage host throttled
  * the shared storage token (3,000 Hub calls per 5 minutes on the team plan). That is a 503 that
- * reads as busy and carries `Retry-After` until the window resets (CUR-3120, CUR-3680).
+ * reads as busy and carries `Retry-After` until the window resets.
  */
 export function storageFailure(e: unknown): Response {
 	return hubBusyResponse(e, STORAGE_BUSY_MESSAGE, "storage") ?? storageError(e);
@@ -184,14 +186,16 @@ function retryAfterSeconds(e: UploadRateLimitedError): number {
 
 /**
  * The content gates every write takes, built once so an upload and a copy or move can't drift apart.
- * A gate added to uploads but not to transfers would make a transfer the way around it (CUR-2931).
+ * A gate added to uploads but not to transfers would make a transfer the way around it.
  */
 export async function writeOptions(request: Request) {
+	const fault = await resolveFaultInjection(request);
 	return {
-		scannerDown: (await resolveFaultInjection(request)) === "csam_scanner_down",
-		// An image only for an account the `multimodal` flag selects (team-only on preview). (CUR-2725)
+		scannerDown: fault === "csam_scanner_down",
+		scannerBlip: fault === "csam_scanner_blip",
+		// An image only for an account the `multimodal` flag selects (team-only on preview).
 		imagesAllowed: multimodalEnabled(),
-		// A document only where its pictures may be extracted in-process (team-only). (CUR-987)
+		// A document only where its pictures may be extracted in-process (team-only).
 		documentsAllowed: documentAttachmentsEnabled(),
 	};
 }

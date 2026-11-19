@@ -1,5 +1,5 @@
-// Cut a generation that is stuck repeating itself while it streams, before output moderation reads it
-// (CUR-3318). A model that loops thousands of characters of "No crushing. No smashing. No breaking…"
+// Cut a generation that is stuck repeating itself while it streams, before output moderation reads it.
+// A model that loops thousands of characters of "No crushing. No smashing. No breaking…"
 // is read in full by the output screen, which can decline the answer as violent, so the visitor's last
 // sight is a content-policy decline. repetitionGuard.ts cannot help there: it
 // runs on the finished answer inside honestyStream.ts, after a full decline has already returned.
@@ -19,7 +19,7 @@ import type { DeclineLanguage } from "$lib/chat/server/declineCopy";
 import { repetitionNotice } from "./repetitionGuard";
 
 /**
- * PostHog flag key. A killswitch: on unless set off, because it repairs a live defect (CUR-3318).
+ * PostHog flag key. A killswitch: the cut is on unless the flag is set off.
  * @internal exported for the flag registry spec
  */
 export const LOOP_CUT_FLAG = "loop-cut";
@@ -49,7 +49,8 @@ const THINK_TAG_RE = /(<\/?think>)/;
  * `skipReasoning`: leave everything inside `<think>…</think>` unread. An agent turn's reasoning block is
  * its step trace, and the agent narrates between steps in near-identical sentences ("Created
  * x.xlsx…", "x.xlsx is in your folder…") while it checks its own file. Read as a loop, that trace would
- * be cut before `</think>`, and a finished file turn would show "No answer" (CUR-4105). The agent service bounds the trace itself (step and frame caps).
+ * be cut before `</think>`, and a finished file turn would show "No answer". The agent service bounds the
+ * trace itself with step and frame caps.
  */
 export interface LoopCutOptions {
 	skipReasoning?: boolean;
@@ -86,7 +87,7 @@ export function createLoopCounter(options: LoopCutOptions = {}) {
 	};
 
 	// The answer after a reasoning block restates it: the agent's trace ends with its summary and the
-	// answer is that summary again (CUR-4105). Each side is read for loops on its own.
+	// answer is that summary again. Each side is read for loops on its own.
 	const endReasoning = () => {
 		seen.clear();
 		words.length = 0;
@@ -135,10 +136,11 @@ export function createLoopCounter(options: LoopCutOptions = {}) {
 /**
  * Pass the generation through until its last WINDOW_WORDS words add almost nothing new, then stop reading it and end the
  * answer with the fixed notice. Everything else passes through unchanged.
+ *
+ * `language`: the language the person wrote in, awaited only when a loop is cut, so the notice reads in
+ * it. A cut inside an open `<think>` closes it first: the notice is the answer, and left inside the
+ * reasoning block it would render as "No answer was produced".
  */
-/** `language`: the language the person wrote in, awaited only when a loop is cut, so the notice reads in
- *  it (CUR-4052). A cut inside an open `<think>` closes it first: the notice is the answer, and left
- *  inside the reasoning block it rendered as "No answer was produced" (CUR-4105). */
 export async function* cutRepetitionLoop(
 	source: AsyncIterable<MessageUpdate>,
 	language?: Promise<DeclineLanguage>,
@@ -159,8 +161,14 @@ export async function* cutRepetitionLoop(
 		streamed += event.token;
 		const span = counter.push(event.token);
 		if (!span) continue;
+		// The span is answer text, which can quote what the visitor typed, so every deployment logs only
+		// its length, since stdout can be kept for a long time by a log drain.
 		logger.warn(
-			{ span, window: WINDOW_WORDS, chars: streamed.length },
+			{
+				spanChars: span.length,
+				window: WINDOW_WORDS,
+				chars: streamed.length,
+			},
 			"[loop-cut] the answer is repeating one span; generation stopped before the output screen"
 		);
 		const close = counter.reasoningOpen() ? `\n${THINK_CLOSE}` : "";

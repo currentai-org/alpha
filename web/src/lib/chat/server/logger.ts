@@ -1,9 +1,13 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import pino from "pino";
 import { dev } from "$app/environment";
 import { config } from "$lib/chat/server/config";
 import { buildLoggerOptions } from "$lib/chat/server/loggerOptions";
 import { createAxiomStream } from "$lib/chat/server/axiomStream";
 import { deploymentInstance } from "$lib/chat/server/instance";
+import { deployEnvName, gitRef, gitSha } from "$lib/server/runtimeEnv";
 
 // The options live in loggerOptions.ts, which is where the log-line shape is documented and tested.
 // This file exists to supply the values that come from SvelteKit and app config, and to decide where
@@ -35,7 +39,7 @@ function buildAxiomStream(
 }
 
 const axiomStream = buildAxiomStream(config.AXIOM_TOKEN, config.AXIOM_DATASET, ["AXIOM_TOKEN", "AXIOM_DATASET"]);
-// Security events also go to their own dataset, kept longer than the app logs. (CUR-4143)
+// Security events also go to their own dataset, kept longer than the app logs.
 const securityStream = buildAxiomStream(config.AXIOM_SECURITY_TOKEN, config.AXIOM_SECURITY_DATASET, [
 	"AXIOM_SECURITY_TOKEN",
 	"AXIOM_SECURITY_DATASET",
@@ -52,22 +56,22 @@ const securityDestination = securityStream
 			{ stream: securityStream },
 		])
 	: undefined;
-// Read here rather than through deployEnv(), which imports this logger. Same order it
-// uses: DEPLOY_ENV first, VERCEL_ENV as the fallback. (CUR-2057)
-const env = process.env.DEPLOY_ENV || process.env.VERCEL_ENV || undefined;
+// read here rather than through deployEnv, which imports this logger. deployEnvName is
+// the same read without the validation: DEPLOY_ENV first, VERCEL_ENV as the fallback.
+const env = deployEnvName() || undefined;
 const options = buildLoggerOptions({
 	dev,
 	level: config.LOG_LEVEL || "info",
 	env,
-	// Vercel sets both at build and runtime; absent locally, where they are omitted. (CUR-2019)
-	commit: process.env.VERCEL_GIT_COMMIT_SHA || undefined,
-	branch: process.env.VERCEL_GIT_COMMIT_REF || undefined,
+	// Vercel sets both at build and runtime; absent locally, where they are omitted.
+	commit: gitSha() || undefined,
+	branch: gitRef() || undefined,
 	instance: instanceForLogs(),
 });
 
 export const logger = destination ? pino(options, destination) : pino(options);
 
-/** For security events (CUR-4143): a sign-in, a rate-limit trip, a refused email send, a blocked fetch.
+/** For security events: a sign-in, a rate-limit trip, a refused email send, a blocked fetch.
  *  Each line goes everywhere `logger`'s does and also to AXIOM_SECURITY_DATASET, which is kept longer.
  *  A line here records the client network itself, as `ipHash`, since only the Vercel drain sees the
  *  raw address. Without the security dataset configured this is `logger`. */

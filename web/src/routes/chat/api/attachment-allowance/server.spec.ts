@@ -16,7 +16,7 @@ const { GET } = await import("./+server");
 const call = (locals: Partial<App.Locals>) =>
 	GET({ locals, getClientAddress: () => "203.0.113.5" } as unknown as Parameters<typeof GET>[0]) as Promise<Response>;
 
-describe("GET /chat/api/attachment-allowance (CUR-3235, CUR-3600)", () => {
+describe("GET /chat/api/attachment-allowance", () => {
 	beforeEach(() => {
 		gate.enforced = true;
 		gate.left.mockReset().mockResolvedValue({ files: 3, bytes: 1_000 });
@@ -30,12 +30,12 @@ describe("GET /chat/api/attachment-allowance (CUR-3235, CUR-3600)", () => {
 		expect(gate.left).toHaveBeenCalledWith({ guestSessionId: "s", ipHash: "hash:203.0.113.5" });
 	});
 
-	it("says when the guest's network, not the session, ran out (CUR-3600)", async () => {
+	it("says when the guest's network, not the session, ran out", async () => {
 		gate.left.mockResolvedValue({ files: 0, bytes: 0, network: true });
 		expect(await (await call({ sessionId: "s" })).json()).toEqual({ files: 0, bytes: 0, guest: true, network: true });
 	});
 
-	it("logs a spent allowance with guest and network, so the network ceiling is set from real refusals (CUR-3600)", async () => {
+	it("logs a spent allowance with guest and network, so the network ceiling is set from real refusals", async () => {
 		gate.left.mockResolvedValue({ files: 0, bytes: 0, network: true });
 		await call({ sessionId: "s" });
 		expect(info).toHaveBeenCalledWith({ guest: true, network: true, at: "attach" }, "[attachment-allowance] refused");

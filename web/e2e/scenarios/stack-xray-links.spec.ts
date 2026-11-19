@@ -9,8 +9,8 @@ import { installFaultInjectionHeader } from './helpers/faultInjection';
 import { backendHost, backendIsSwiss, laneVendor } from '../../src/lib/chat/servingProvenance';
 import { backendOrg } from '../../src/lib/chat/routing/catalog';
 
-// The model row describes the model that answered (CUR-2287), so each test pins the model whose
-// stack it asserts rather than inheriting whatever a target's default is (CUR-2283).
+// The model row describes the model that answered, so each test pins the model whose
+// stack it asserts rather than inheriting whatever a target's default is.
 const APERTUS = 'swiss-ai/apertus-v1.5-70b';
 const LARGE_4 = LARGE4_MODEL;
 
@@ -51,7 +51,7 @@ async function answeredModelRow(page: Page, modelId: string, answerWait: { timeo
 
 // The X-Ray describes the model that served, so a turn that failed over to a backup shows the backup's
 // row and every Large 3 assertion below reads as an X-Ray bug. Read the stored failover record first and
-// name it, so a red here says the lane went silent rather than that the card is wrong (CUR-3345).
+// name it, so a red here says the lane went silent rather than that the card is wrong.
 async function expectServedBy(page: Page, modelId: string) {
 	const id = page.url().match(/\/conversation\/([a-f0-9]+)/)?.[1];
 	if (!id) throw new Error(`could not read a conversation id out of ${page.url()}`);
@@ -95,7 +95,7 @@ test.describe('x-ray card links', () => {
 		"the model row's gap-map link opens Apertus's own page in a new tab, and its Hugging Face link is the 1.5 card",
 		{ tag: ['@F3', '@needs-apertus'] },
 		async ({ page, context }) => {
-			// Sends a real turn and waits up to 90s for it, after up to 60s of setup (CUR-1633's budget check).
+			// Sends a real turn and waits up to 90s for it, after up to 60s of setup (the budget check).
 			test.setTimeout(180_000);
 			const card = await answeredModelRow(page, APERTUS, { timeout: 90_000 });
 			const mapLink = card.getByRole('link', { name: /see on the gap map/i });
@@ -125,7 +125,7 @@ test.describe('x-ray card links', () => {
 					.getByRole('link', { name: 'Stack X-Ray' }),
 				"the Stack X-Ray card's link leaves this deployment for production"
 			).toHaveAttribute('href', '/chat');
-			// The safety card's maker name, "Mistral AI", went to our own policy page (CUR-1745). It now goes
+			// The safety card's maker name, "Mistral AI", went to our own policy page. It now goes
 			// to Mistral like every other maker, and our page is a separate link that says it is ours.
 			await openRow(page, 'trust-and-safety');
 			const safetyCard = page.locator('li[data-product-id="trust-and-safety"]');
@@ -144,7 +144,7 @@ test.describe('x-ray card links', () => {
 			).toBe(true);
 			const computeCard = page.locator('li[data-product-id="sovereign-compute"]');
 			// The compute row claims the answer ran in Switzerland, so it is lit exactly when the
-			// backend this turn recorded is on the Swiss allowlist (CUR-1883). Apertus reaches several backends through
+			// backend this turn recorded is on the Swiss allowlist. Apertus reaches several backends through
 			// the gateway, so the expectation is read from the turn, and either direction can be the one met.
 			const conversationId = page.url().match(/\/conversation\/([a-f0-9]+)/)?.[1];
 			const res = await page.request.get(`/chat/api/v2/conversations/${conversationId}`);
@@ -159,7 +159,7 @@ test.describe('x-ray card links', () => {
 				description: `${backend ?? 'none recorded'} (${swiss ? 'Swiss' : 'not Swiss'})`
 			});
 			// The gateway's Apertus group reaches several Swiss hosts (CSCS, Infomaniak, Phoeniqs), and the
-			// card names whichever served, by its catalog org (CUR-4587). Expecting CSCS text on every Swiss
+			// card names whichever served, by its catalog org. Expecting CSCS text on every Swiss
 			// turn failed whenever another host answered.
 			const servedOrg = backendOrg(backendHost(backend))?.org;
 			const cscs = servedOrg?.id === 'cscs';
@@ -192,7 +192,7 @@ test.describe('x-ray card links', () => {
 					'Swiss National Supercomputing Centre by Swiss National Supercomputing Centre'
 				);
 				// The compute card's only way out was its name, underlined on hover alone, so the
-				// A5 grader read it as a component with nothing behind it (CUR-1783). It now carries a visible CSCS link.
+				// A5 grader read it as a component with nothing behind it. It now carries a visible CSCS link.
 				const cscsLink = computeCard.getByRole('link', { name: 'CSCS', exact: true });
 				await expect(cscsLink, 'the compute card shows no visible link to CSCS').toBeVisible();
 				await expect(cscsLink).toHaveAttribute('href', 'https://cscs.ch');
@@ -218,10 +218,10 @@ test.describe('x-ray card links', () => {
 	);
 
 	test(
-		"a Mistral Large 4 answer's X-Ray names Large 4 by Mistral AI; sent straight to La Plateforme it lights no gateway or compute row and names La Plateforme on each, and sent through a router it never says direct (CUR-3966, CUR-4577)",
+		"a Mistral Large 4 answer's X-Ray names Large 4 by Mistral AI; sent straight to La Plateforme it lights no gateway or compute row and names La Plateforme on each, and sent through a router it never says direct",
 		{ tag: ['@F3', '@CUR-2287', '@CUR-2850', '@CUR-3966', '@CUR-4577'] },
 		async ({ page }) => {
-			// Sends a real turn and waits up to 90s for it, after up to 60s of setup (CUR-1633's budget check).
+			// Sends a real turn and waits up to 90s for it, after up to 60s of setup (the budget check).
 			test.setTimeout(180_000);
 			const card = await answeredModelRow(page, LARGE_4, { timeout: 90_000 });
 			const mapLink = card.getByRole('link', { name: /see on the gap map/i });
@@ -246,8 +246,8 @@ test.describe('x-ray card links', () => {
 				"the model row's gap-map link lands on another model's page"
 			).not.toBe('/product/apertus');
 
-			// Which host the turn was SENT to decides whether anything stood between the app and Mistral
-			// (CUR-4577). A preview's Mistral lane may be the staging router, which forwards to La
+			// Which host the turn was SENT to decides whether anything stood between the app and Mistral.
+			// A preview's Mistral lane may be the staging router, which forwards to La
 			// Plateforme, so the backend alone reads the same either way.
 			const conversationId = page.url().match(/\/conversation\/([a-f0-9]+)/)?.[1];
 			const stored = await page.request.get(`/chat/api/v2/conversations/${conversationId}`);
@@ -285,8 +285,8 @@ test.describe('x-ray card links', () => {
 					`the ${row} row lit on an answer that never passed through it`
 				).not.toHaveAttribute('data-used', 'true');
 			}
-			// The skipped rows said "Working" under the finished answer, which reads as busy (CUR-2850).
-			// Then "Not used", which read as a claim that nothing hosted the model at all (CUR-3966). Each
+			// The skipped rows said "Working" under the finished answer, which reads as busy.
+			// Then "Not used", which read as a claim that nothing hosted the model at all. Each
 			// row the maker's own API stood in for now says so and names it.
 			for (const row of [
 				'inference-platform',
@@ -307,10 +307,10 @@ test.describe('x-ray card links', () => {
 	);
 });
 
-// A visitor agent mode does not clear sees the Task helper row in X-ray's stack (CUR-2203). Its badge
+// A visitor agent mode does not clear sees the Task helper row in X-ray's stack. Its badge
 // said "Not available to you", which reads as a locked door; it now says the part is not switched on.
 test(
-	'CUR-2203: X-ray tells a visitor without agent mode that the task helper is not switched on, in plain words',
+	'X-ray tells a visitor without agent mode that the task helper is not switched on, in plain words',
 	{ tag: ['@preview-only', '@F3'] },
 	async ({ page, context, baseURL }) => {
 		await setFlagOverrides(context, baseURL!, { 'agent-mode': false });
@@ -336,13 +336,13 @@ test(
 	}
 );
 
-// A laptop on a projector is about 690px tall (CUR-3934). X-ray's tab bodies were a fixed 384px and the
+// A laptop on a projector is about 690px tall. X-ray's tab bodies were a fixed 384px and the
 // panel sits above the composer, so opening it there left no room for the answer it describes. The
 // caret_cited_reply fault answers with no model call, so the answer's height is the same every run.
 test.describe('x-ray on a short window', () => {
 	test.use({ viewport: { width: 1280, height: 690 } });
 	test(
-		'CUR-3934: opening X-ray on a 690px-tall window leaves the answer it describes in view',
+		'opening X-ray on a 690px-tall window leaves the answer it describes in view',
 		{ tag: ['@preview-only', '@F3', '@CUR-3934'] },
 		async ({ page }) => {
 			test.setTimeout(120_000);
@@ -382,10 +382,10 @@ test.describe('x-ray on a short window', () => {
 	);
 
 	// On that window scrolling stopped at the answer's start, so its footer, the line X-ray is
-	// opened to check, stayed under the panel's edge with only the answer's first line above it (CUR-3951). The
+	// opened to check, stayed under the panel's edge with only the answer's first line above it. The
 	// panel now gives back the height the footer is short of.
 	test(
-		'CUR-3951: X-ray opened from the composer chip on a 690px window keeps the whole answer and its footer above the panel',
+		'X-ray opened from the composer chip on a 690px window keeps the whole answer and its footer above the panel',
 		{ tag: ['@preview-only', '@F6', '@CUR-3951'] },
 		async ({ page }) => {
 			test.setTimeout(120_000);

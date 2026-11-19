@@ -15,7 +15,7 @@ const page = (cacheControl?: string) =>
 
 const standIn = { locals: { servedStandIn: true } as App.Locals };
 
-describe('CDN hold on a stand-in render (CUR-1597)', () => {
+describe('CDN hold on a stand-in render', () => {
 	it('shortens a public page to 5s when its render stood in for the CMS', () => {
 		const res = cdnCacheFor(page(CDN_PAGE_CACHE_CONTROL), standIn);
 		expect(res.headers.get('cache-control')).toBe('public, max-age=0, s-maxage=5');

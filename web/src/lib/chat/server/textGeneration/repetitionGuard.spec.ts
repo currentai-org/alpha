@@ -1,8 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { detectDegenerateRepetition, REPETITION_MIN_OCCURRENCES } from "./repetitionGuard";
 
-// Real captures (CUR-1104), not synthesised
-// text — the same real-capture discipline degeneration.ts's
+// Real captures, not synthesised text: the same real-capture discipline degeneration.ts's
 // own suite uses. All three came from the same prompt, "Bawo ni, se o le ran mi lowo pelu nkankan?"
 const WRECKS = {
 	"run 1 (flag on)": `Bawo ni, se o le ran mi lowo pelu nkankan?
@@ -35,7 +34,7 @@ retry(() => fetch(url));
 	"plain prose, no repetition": `The closing speed is 270 km/h and the gap is 84 km, so they meet after about eighteen and two thirds minutes.`,
 };
 
-describe("detectDegenerateRepetition — the CUR-1104 probe", () => {
+describe("detectDegenerateRepetition — the probe", () => {
 	it.each(Object.entries(WRECKS))("flags the real captured incident output (%s)", (_name, text) => {
 		const v = detectDegenerateRepetition(text);
 		expect(v.repeated).toBe(true);

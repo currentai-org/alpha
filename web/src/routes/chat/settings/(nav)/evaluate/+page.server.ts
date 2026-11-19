@@ -7,7 +7,7 @@ import { error } from '@sveltejs/kit';
 import { humanEvalEnabled } from '$lib/chat/server/humanEval/gate';
 
 /**
- * The page is behind the same `human-eval` flag as the API it calls (CUR-1914), so it never shows
+ * The page is behind the same `human-eval` flag as the API it calls, so it never shows
  * where rating can't be saved. Local generation output is a preview for `?sample=1` in development;
  * the API owns scored answers everywhere else.
  */

@@ -75,12 +75,12 @@ function rerankMaxBatch(): number {
 	return Number.isInteger(n) && n > 0 ? n : 32;
 }
 
-/** Transport selector. A dedicated TEI endpoint wins (implicit "tei" — Decision C); otherwise
- *  RERANK_KIND picks "hf" vs the default "cohere" (CSCS sovereign /rerank, byte-for-byte unchanged). */
+/** Transport selector. A dedicated TEI endpoint wins (implicit "tei"); otherwise
+ *  RERANK_KIND picks "hf" vs the default "cohere" (a Cohere-compatible /rerank endpoint). */
 function rerankKind(): "cohere" | "hf" | "tei" {
 	if (rerankEndpointUrl()) {
 		// RERANK_KIND is never consulted on this path. A deployment with it set to "hf" while running
-		// TEI would otherwise get no signal (CUR-112), hence the announcement, which stays silent
+		// TEI would otherwise get no signal, hence the announcement, which stays silent
 		// unless the losing key is actually set.
 		noteOverridden("rerank.transport", "tei", "RERANK_ENDPOINT_URL", [
 			["RERANK_KIND", readKey("RERANK_KIND")],

@@ -5,8 +5,8 @@ import { page, userEvent } from 'vitest/browser';
 import type { LocationsState, LocationSummary } from './locationTypes';
 
 // A photo attached in chat minutes earlier must not sit below every older file in Your files;
-// the list is sorted newest first, not left in the bucket listing's order. (CUR-4355)
-describe('Your files (CUR-4355)', () => {
+// the list is sorted newest first, not left in the bucket listing's order.
+describe('Your files', () => {
 	it('lists the newest file first, whatever order the listing returned them in', async () => {
 		const { container } = await render(FilesPanel, {
 			initialFiles: [
@@ -23,8 +23,8 @@ describe('Your files (CUR-4355)', () => {
 	});
 });
 
-// The places files live are a tab list, not a row of pressed buttons, and the keys work. (CUR-4363)
-describe('Storage location tabs (CUR-4363)', () => {
+// The places files live are a tab list, not a row of pressed buttons, and the keys work.
+describe('Storage location tabs', () => {
 	const alpha = { id: 'alpha', kind: 'alpha', label: 'Alpha storage', detail: '', status: 'ok', lastError: null, grant: 'alpha' } as const;
 	const bucket = {
 		id: 'loc-1',
@@ -88,6 +88,31 @@ describe('Storage location tabs (CUR-4363)', () => {
 		await expect.element(second).toHaveAttribute('aria-selected', 'true');
 		// Opening the bucket's tab reads the bucket's own list, which is where a dropped file then goes.
 		expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('location=loc-1'))).toBe(true);
+	});
+
+	it('lists a linked bucket newest first by the upload time its listing carries, whatever order it came in', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () =>
+				new Response(
+					JSON.stringify({
+						files: [
+							{ path: 'old.txt', size: 1, addedAt: '2026-11-01T10:00:00.000Z' },
+							{ path: 'new.txt', size: 1, addedAt: '2026-11-18T10:00:00.000Z' },
+							{ path: 'mid.txt', size: 1, addedAt: '2026-11-10T10:00:00.000Z' }
+						]
+					}),
+					{ status: 200, headers: { 'content-type': 'application/json' } }
+				)
+			)
+		);
+		const { container } = await render(FilesPanel, { initialFiles: files, initialLocations: state([alpha, bucket]) });
+		await page.getByRole('tab', { name: /someone\/alpha-files/ }).click();
+		await expect.poll(() => container.querySelectorAll('[data-file-row]').length).toBe(3);
+		const names = [...container.querySelectorAll('[data-file-row]')].map((row) => row.textContent ?? '');
+		expect(names[0], 'the newest bucket file is not first').toContain('new.txt');
+		expect(names[1]).toContain('mid.txt');
+		expect(names[2]).toContain('old.txt');
 	});
 
 	it('still shows the tab list with Alpha storage the only place, so the page reads the same before and after a bucket is linked', async () => {

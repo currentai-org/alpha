@@ -3,7 +3,7 @@
   Generated from @fontsource-variable/{plus-jakarta-sans,noto-serif} 5.3.0 (wght.css, wght-italic.css)
   with the family renamed and the file paths made package-relative. A Google Fonts @import is only
   fetched once text needing the face is on screen, so the client-rendered welcome card would paint
-  in a fallback face and rewrap about 1 s later (CUR-2385). Self-hosting also lets the root layout
+  in a fallback face and rewrap about 1 s later. Self-hosting also lets the root layout
   preload the latin files (routes/+layout.svelte).
 */
 

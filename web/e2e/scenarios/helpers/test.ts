@@ -1,5 +1,5 @@
 // Every scenario spec imports `test` from here rather than from '@playwright/test', so two kinds of
-// request a test never asserts on stop reaching the preview on every page load (CUR-2675).
+// request a test never asserts on stop reaching the preview on every page load.
 //
 // One
 // scenario run sent ~37k requests, 21.2k of them `/_app/immutable/*` and 3.7k `/chat/api/warm`.
@@ -15,7 +15,7 @@
 // 27 of 100 pings through to the server; the ping is sent with
 // `keepalive: true`, so it is answered by wrapping `fetch` in an init script instead. global-setup's real warm-up turn (helpers/warmup.ts) is what
 // wakes the preview's model path; the browser ping only re-runs warmAll(), and no spec reads it.
-import { test as base, type Page, type Route } from '@playwright/test';
+import { test as base, type Page, type Route, type TestInfo } from '@playwright/test';
 import { mockAnswerShown, replayMissLine } from './replayMiss';
 import {
 	CHAT_MODELS_ANNOTATION,
@@ -70,6 +70,41 @@ async function serveFromCache(route: Route, cache: Map<string, Cached>, tally: C
 	return route.fulfill(entry);
 }
 
+/**
+ * The replay mode the `modelReplay` fixture gives this test's browser sends, and whether it replays
+ * at all. Read by the fixture and by `replayHeaders`, so the two cannot disagree.
+ */
+function replayModeFor(testInfo: TestInfo): { mode: string; replay: boolean } {
+	const mode =
+		process.env.E2E_REPLAY_MODE === 'none'
+			? 'none'
+			: process.env.E2E_REPLAY_MODE === 'record-misses'
+				? 'nearest'
+				: process.env.E2E_REPLAY_MODE !== 'record'
+					? 'mock'
+					: testInfo.retry > 0
+						? 'all'
+						: 'new_episodes';
+	const replay =
+		Boolean(process.env.E2E_FAULT_INJECT_TOKEN) &&
+		process.env.E2E_REPLAY_MODE !== 'off' &&
+		!testInfo.tags.includes('@no-replay');
+	return { mode, replay };
+}
+
+/**
+ * The replay headers for a model-calling request a spec sends itself with `page.request`, which the
+ * fixture's in-page fetch wrapper never sees. Empty when this test does not replay.
+ */
+export function replayHeaders(testInfo: TestInfo): Record<string, string> {
+	const { mode, replay } = replayModeFor(testInfo);
+	if (!replay) return {};
+	return {
+		'x-e2e-fault-inject-token': process.env.E2E_FAULT_INJECT_TOKEN!,
+		'x-e2e-replay': mode
+	};
+}
+
 export const test = base.extend<
 	{
 		cacheStaticAssets: boolean;
@@ -78,6 +113,7 @@ export const test = base.extend<
 		modelReplay: void;
 		upstreamAdvisory: void;
 		agentServiceFake: void;
+		realAgentStopped: void;
 		recordedViewport: void;
 		firstNavigation: void;
 		footprint: void;
@@ -176,9 +212,9 @@ export const test = base.extend<
 	// an everyday question that must not be declined, and keeps the real screen. The headers go on in
 	// the page's own fetch, ahead of any page.route, so a spec's fault header is added beside them
 	// rather than in place of them. Without the token (production) or in the gallery
-	// (SCENARIO_NO_CANNED_REPLIES) nothing is sent, so the real screen runs there and its verdict replays
-	// (SOL-258); the shared development site ignores a plain `stub` either way; a development build at its own
-	// deployment URL honours it (SOL-198). A test tagged `@stub-screen` films nothing and reads
+	// (SCENARIO_NO_CANNED_REPLIES) nothing is sent, so the real screen runs there and its verdict replays;
+	// the shared development site ignores a plain `stub` either way; a development build at its own
+	// deployment URL honours it. A test tagged `@stub-screen` films nothing and reads
 	// no verdict, so it asks for the stub even in the gallery, with `stub-tagged`, the one value
 	// the shared development site honours.
 	previewScreenStub: [
@@ -222,39 +258,26 @@ export const test = base.extend<
 	// recorded when none does, so a second run of the same head buys no model calls. Recordings are
 	// keyed on the whole request body, so a change to our prompt, history or harness misses and goes
 	// live; replay hides only upstream drift on identical input. A test tagged `@no-replay` needs that
-	// drift and goes live; `@no-replay` runs on develop push and nightly, never in the gallery's grade (SOL-287). A miss is
+	// drift and goes live; `@no-replay` runs on develop push and nightly, never in the gallery's grade. A miss is
 	// answered with a mock (MOCK_ANSWER in modelReplay.ts) and calls no model, on every attempt, so an
 	// upstream outage cannot redden a run; a spec that reads the answer's content needs a recording, made by
 	// a run with E2E_REPLAY_MODE=record (the `scenarios:record` PR label). E2E_REPLAY_MODE=none
 	// fails any miss, which proves a run made zero live calls. The header goes on beside a spec's own
 	// fault header, so replay and a named fault apply to the same send. In a record run a retry sends
 	// `all`: it calls the live model and records over the answer, so one bad draw recorded on the first
-	// attempt does not fail every retry and later run on the branch (SOL-166). `mock` and `none` stay as
-	// they are on a retry. `record-misses` (the journey gallery, SOL-287) records a miss on every
+	// attempt does not fail every retry and later run on the branch. `mock` and `none` stay as
+	// they are on a retry. `record-misses` (the journey gallery) records a miss on every
 	// attempt and never re-asks a recorded turn, so a retry there cannot go live and meet an outage. It
 	// sends `nearest`, which also reads the base branch's recording of the same conversation when only the
 	// graded build's own persona prompt differs, so a turn goes live only when nobody has recorded it.
 	modelReplay: [
 		async ({ context }, use, testInfo) => {
 			const token = process.env.E2E_FAULT_INJECT_TOKEN;
-			const mode =
-				process.env.E2E_REPLAY_MODE === 'none'
-					? 'none'
-					: process.env.E2E_REPLAY_MODE === 'record-misses'
-						? 'nearest'
-						: process.env.E2E_REPLAY_MODE !== 'record'
-							? 'mock'
-							: testInfo.retry > 0
-								? 'all'
-								: 'new_episodes';
-			const replay =
-				Boolean(token) &&
-				process.env.E2E_REPLAY_MODE !== 'off' &&
-				!testInfo.tags.includes('@no-replay');
+			const { mode, replay } = replayModeFor(testInfo);
 			// The guard's verdicts replay too. A `@real-screen` spec exists to read the live screen,
 			// so on a run that may call live models (develop push, nightly, promotion) it asks for the live
 			// guard, which refreshes a stored verdict off-peak every few days and replays it otherwise
-			// (SOL-267, `guardRefreshDue`); a PR run replays what it said most recently.
+			// (`guardRefreshDue`); a PR run replays what it said most recently.
 			const guardLive =
 				testInfo.tags.includes('@real-screen') &&
 				process.env.SCENARIO_SKIP_LIVE_MODEL !== '1' &&
@@ -267,11 +290,14 @@ export const test = base.extend<
 							const request = input instanceof Request ? input : null;
 							const url = new URL(request ? request.url : String(input), location.href);
 							const method = (init?.method ?? request?.method ?? 'GET').toUpperCase();
-							// Auto's draft read goes to Clef through the same store.
+							// Auto's draft read goes to Clef through the same store, and the second-opinion panel
+							// replays as the turn it checks does.
 							if (
 								url.origin !== location.origin ||
 								method !== 'POST' ||
-								!/\/conversation\/[a-f0-9]+$|\/chat\/api\/routing\/classify$/.test(url.pathname)
+								!/\/conversation\/[a-f0-9]+$|\/chat\/api\/routing\/classify$|\/chat\/api\/second-opinion$/.test(
+									url.pathname
+								)
 							)
 								return realFetch(input, init);
 							const headers = new Headers(init?.headers ?? request?.headers);
@@ -347,7 +373,7 @@ export const test = base.extend<
 	// every shard and preview shares, which runs four tasks at a time. The stand-in paces a run past the
 	// 20s turn deadline, ends with the prompt's `receipt <nonce>` line and writes the file a prompt asks
 	// for. A test tagged `@real-agent` needs a real agent's answer and sends no header; a PR's run leaves
-	// those out and a develop push run keeps them (playwright.config.ts). The gallery (SOL-287) uses the
+	// those out and a develop push run keeps them (playwright.config.ts). The gallery uses the
 	// stand-in too; twelve gallery browsers on a four-slot machine graded its capacity, not our code.
 	agentServiceFake: [
 		async ({ context }, use, testInfo) => {
@@ -383,6 +409,34 @@ export const test = base.extend<
 			}
 			testInfo.annotations.push({ type: 'agent-service', description: fake ? 'fake' : 'live' });
 			await use();
+		},
+		{ auto: true }
+	],
+
+	// A `@real-agent` test runs on the shared develop agent machines, and a run there outlives its tab on
+	// purpose: a person who closes the tab gets it back on reload, and a handed-off run is followed by the
+	// page, not the request. So a test that ends before its turn does (a failed assertion, a timeout, a
+	// check that never waited for `done`) left a live task behind, its approval cards timing out one by one
+	// while it held a sandbox slot other runs were refused for. Press Stop on the way out, as a
+	// person done with the run would; it cancels the task through stop-generating. Never fails the test.
+	realAgentStopped: [
+		async ({ context }, use, testInfo) => {
+			await use();
+			if (!testInfo.tags.includes('@real-agent')) return;
+			for (const page of context.pages()) {
+				if (page.isClosed()) continue;
+				const stop = page.getByRole('button', { name: 'Stop generating' });
+				if (!(await stop.isVisible().catch(() => false))) continue;
+				const stopped = page
+					.waitForResponse((r) => r.url().endsWith('/stop-generating'), { timeout: 10_000 })
+					.then((r) => r.status())
+					.catch(() => 0);
+				await stop.click({ timeout: 5_000 }).catch(() => {});
+				testInfo.annotations.push({
+					type: 'agent-run-stopped',
+					description: `a live agent turn was still running at teardown; stop-generating answered ${await stopped}`
+				});
+			}
 		},
 		{ auto: true }
 	],

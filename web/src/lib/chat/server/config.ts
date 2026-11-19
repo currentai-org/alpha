@@ -1,13 +1,47 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { env as publicEnv } from "$env/dynamic/public";
 import { env as serverEnv } from "$env/dynamic/private";
 import { building } from "$app/environment";
 import type { Collections } from "./database";
 import { Semaphores } from "$lib/chat/types/Semaphore";
-import { deployedEnv, isRoleModelKey, roleModelSetting } from "../../../../config/inference";
+import { resolveOpenAiEnv } from "./env/openWebUiAliases";
+import { committedConfigEnv, isRoleModelKey, roleModelSetting } from "../../../../config/inference";
 
 export type PublicConfigKey = keyof typeof publicEnv;
 const keysFromEnv = { ...publicEnv, ...serverEnv };
+applyOpenWebUiNames(keysFromEnv as Record<string, string | undefined>);
 export type ConfigKey = keyof typeof keysFromEnv;
+
+// Open WebUI's OPENAI_API_BASE_URLS / OPENAI_API_KEYS stand in for OPENAI_BASE_URL / OPENAI_API_KEY only
+// when OPENAI_BASE_URL is unset, so a deployment that sets it (www does) never reaches the alias path.
+// console, not the logger: the logger reads this module's config.
+function applyOpenWebUiNames(env: Record<string, string | undefined>) {
+	const r = resolveOpenAiEnv(env);
+	if (r.source === "open-webui") {
+		env.OPENAI_BASE_URL = r.baseUrl;
+		// An empty first key is a keyless endpoint; it must not wipe a key that is already set (compose sets "none").
+		if (r.apiKey) env.OPENAI_API_KEY = r.apiKey;
+		console.info(
+			"[config] model endpoint from Open WebUI names (OPENAI_API_BASE_URLS / OPENAI_API_KEYS): OPENAI_BASE_URL is unset"
+		);
+		if (r.keysGiven !== undefined) {
+			console.warn(
+				`[config] OPENAI_API_KEYS holds ${r.keysGiven} key(s) for ${r.ignoredEndpoints + 1} URL(s); missing keys are empty and extra keys are dropped, as Open WebUI does`
+			);
+		}
+		if (r.ignoredEndpoints > 0) {
+			console.warn(
+				`[config] OPENAI_API_BASE_URLS lists ${r.ignoredEndpoints + 1} endpoints; Alpha serves one, so the first is used and ${r.ignoredEndpoints} ignored`
+			);
+		}
+	} else if (r.openWebUiShadowed) {
+		console.info(
+			"[config] model endpoint from Alpha's names (OPENAI_BASE_URL); OPENAI_API_BASE_URLS / OPENAI_API_KEYS are ignored"
+		);
+	}
+}
 
 class ConfigManager {
 	private keysFromDB: Partial<Record<ConfigKey, string>> = {};
@@ -83,10 +117,10 @@ class ConfigManager {
 	}
 
 	get(key: ConfigKey): string {
-		// A role's model is committed config on a deployment (CUR-2277). Off Vercel the env var still
+		// A role's model is committed config on a deployment. Off Vercel the env var still
 		// decides, unset included, since local dev, CI and evals register only the models they name.
 		if (isRoleModelKey(key)) {
-			if (deployedEnv(keysFromEnv)) return roleModelSetting(key);
+			if (committedConfigEnv(keysFromEnv)) return roleModelSetting(key);
 			return keysFromEnv[key] || "";
 		}
 		if (!this.ConfigManagerEnabled) {
@@ -167,23 +201,37 @@ export const ready = (async () => {
 type ExtraConfigKeys =
 	| "HF_TOKEN"
 	// Fine-grained HF PAT (repo read+write, current-ai-official/* only) for @huggingface/hub calls
-	// against buckets/current-ai-official/custodial-storage-eu (CUR-899/CUR-412). Distinct credential
+	// against buckets/current-ai-official/custodial-storage-eu. Distinct credential
 	// class from HF_TOKEN (inference) — never fall back between them.
 	| "HF_BUCKETS_TOKEN"
-	// Which bucket custodial storage uses, as buckets/<owner>/<name>. Unset → the production bucket.
-	// Preview sets its own so its files and token never touch production's (CUR-1288).
+	// Which bucket custodial storage uses, as buckets/<owner>/<name>. Unset → production's bucket on a
+	// production deployment only; anywhere else custodial storage is off (storage/custodialBucketRepo.ts).
+	// Preview sets its own so its files and token never touch production's.
 	| "HF_BUCKETS_REPO"
 	// The master age identities that open owners' key objects in that bucket, as JSON {"<kid>": "AGE-SECRET-KEY-PQ-1..."},
-	// and which kid is current (CUR-4115, docs/plans/custodial-file-encryption.md). Unset → sealed objects can't be opened.
+	// and which kid is current. Unset → sealed objects can't be opened.
 	| "CUSTODIAL_MASTER_IDENTITIES"
-	// The same, held in AWS KMS instead, as JSON {"<kid>": "arn:aws:kms:..."} (CUR-4136). A kid in either map can be active.
+	// The same, held in AWS KMS instead, as JSON {"<kid>": "arn:aws:kms:..."}. A kid in either map can be active.
 	| "CUSTODIAL_MASTER_KMS_KEYS"
-	// The IAM role a Vercel deployment assumes with its OIDC token to call those keys (CUR-4269). Unset → the SDK's default chain.
+	// The IAM role a Vercel deployment assumes with its OIDC token to call those keys. Unset → the SDK's default chain.
 	| "CUSTODIAL_KMS_ROLE_ARN"
 	| "CUSTODIAL_MASTER_ACTIVE"
-	// "true" seals every custodial write to its owner's key (CUR-4116). A deployment switch, not a flag.
+	// "true" seals every custodial write to its owner's key. A deployment switch, not a flag.
 	| "CUSTODIAL_SEAL_WRITES"
-	// The storage OAuth app behind "Connect Hugging Face" (CUR-2932). Not sign-in's app, never a fallback for it.
+	// The server secret for the per-message HMAC-SHA-256 that refuses a forged history, held as
+	// key id k0. Rotation: CONVERSATION_HISTORY_MAC_KEYS as JSON {"<kid>": "<hex or base64>"},
+	// and CONVERSATION_HISTORY_MAC_KEY_ACTIVE naming the kid new MACs use (sealedTurn.ts macRing).
+	| "CONVERSATION_HISTORY_MAC_KEY"
+	| "CONVERSATION_HISTORY_MAC_KEYS"
+	| "CONVERSATION_HISTORY_MAC_KEY_ACTIVE"
+	// Where custodial files live: hf, s3 or local (no default), and each backend's address.
+	| "CUSTODIAL_STORAGE_BACKEND"
+	| "CUSTODIAL_S3_BUCKET"
+	| "CUSTODIAL_S3_ENDPOINT"
+	| "CUSTODIAL_S3_REGION"
+	| "CUSTODIAL_S3_FORCE_PATH_STYLE"
+	| "CUSTODIAL_LOCAL_DIR"
+	// The storage OAuth app behind "Connect Hugging Face". Not sign-in's app, never a fallback for it.
 	| "HF_STORAGE_OAUTH_CLIENT_ID"
 	| "HF_STORAGE_OAUTH_CLIENT_SECRET"
 	// HF inference base URL — the backup serving lane for the primary model (same checkpoint, non-
@@ -193,7 +241,7 @@ type ExtraConfigKeys =
 	// HF router while publicai-direct serves Apertus). Needed when the two hosts don't share an id
 	// (a lowercase Apertus id on publicai-direct is not the id the HF router accepts). Unset → the backup lane requests the primary id unchanged (same-checkpoint behavior).
 	| "FALLBACK_MODEL_ID"
-	// The catalog backup lane's own host and key (CUR-2293). Unset → the HF_BASE_URL/HF_TOKEN pair.
+	// The catalog backup lane's own host and key. Unset → the HF_BASE_URL/HF_TOKEN pair.
 	| "FALLBACK_BASE_URL"
 	| "FALLBACK_API_KEY"
 	| "OLD_MODELS"
@@ -209,20 +257,33 @@ type ExtraConfigKeys =
 	// sort-by-date `sbd:1`, combinable e.g. "sbd:1,qdr:w". Unset → no recency bias.
 	| "FIRECRAWL_API_KEY"
 	| "FIRECRAWL_TBS"
-	// Resend API key for real email-OTP delivery (CUR-518, betterAuth.ts's sendVerificationOTP).
+	// Base URL of a self-hosted Firecrawl (same v2 API). Unset → api.firecrawl.dev.
+	| "FIRECRAWL_BASE_URL"
+	// Base URL of an OpenAI-compatible speech API for read-aloud. Unset → the Hugging Face router.
+	| "READ_ALOUD_BASE_URL"
+	// Optional bearer for READ_ALOUD_BASE_URL; unset sends no Authorization header.
+	| "READ_ALOUD_API_KEY"
+	// Model and voice names a custom READ_ALOUD_BASE_URL host expects; unset keeps the Kokoro values.
+	| "READ_ALOUD_MODEL"
+	| "READ_ALOUD_VOICE"
+	// Resend API key for real email-OTP delivery (betterAuth.ts's sendVerificationOTP).
 	// Unset → the log-only stub (local dev, or a not-yet-synced environment) instead of a real send.
 	| "RESEND_API_KEY"
-	// Shared secret for the e2e-only OTP send-cap carve-out (CUR-1553, betterAuth.ts's
-	// otpSendCapCarveOut). Set ONLY in Doppler's preview/dev configs — NEVER prd. Unset → the carve-out
+	// Any SMTP server, as smtp(s)://user:pass@host:port, and the sender it accepts (mailer.ts).
+	// Used only when RESEND_API_KEY is unset: a self-hosted Alpha's mail. Unset → no SMTP.
+	| "SMTP_URL"
+	| "SMTP_FROM"
+	// Shared secret for the e2e-only OTP send-cap carve-out (betterAuth.ts's
+	// otpSendCapCarveOut). Set ONLY in preview and development env — NEVER production. Unset → the carve-out
 	// can never fire regardless of environment or header, which is the safe default.
 	| "E2E_OTP_BYPASS_TOKEN"
-	// Shared secret for the e2e-only fault-injection switch (CUR-1614, textGeneration/faultInjection.ts)
-	// — same gating shape as E2E_OTP_BYPASS_TOKEN directly above. Set ONLY in Doppler's preview/dev
-	// configs — NEVER prd. Unset → the switch can never fire regardless of environment or header, which
+	// Shared secret for the e2e-only fault-injection switch (textGeneration/faultInjection.ts)
+	// — same gating shape as E2E_OTP_BYPASS_TOKEN directly above. Set ONLY in preview and development
+	// env — NEVER production. Unset → the switch can never fire regardless of environment or header, which
 	// is the safe default.
 	| "E2E_FAULT_INJECT_TOKEN"
 	// The dedicated model replay database every preview's scenario run shares
-	// (endpoints/openai/replayStore.ts). Preview only, NEVER prd. (SOL-148)
+	// (endpoints/openai/replayStore.ts). Preview only, NEVER prd.
 	| "REPLAY_DATABASE_URL"
 	// Human-facing Coop trust & safety dashboard URL, surfaced as a deep-link from /admin/safety.
 	// Distinct from COOP_URL (the moderation API base). Unset → the Safety panel shows a note instead.
@@ -241,7 +302,10 @@ type ExtraConfigKeys =
 	// only; the clef-routing flag is the switch.
 	| "CLEF_BASE_URL"
 	| "CLEF_API_KEY"
-	| "CLEF_MODEL";
+	| "CLEF_MODEL"
+	// Shared secret the scheduled production probes send as x-probe-token, so a turn of theirs that a screen
+	// declines writes a safety_events row marked as a probe's (probeMarker.ts). Unset → no row is marked.
+	| "PROBE_MARKER_TOKEN";
 
 type ConfigProxy = ConfigManager & { [K in ConfigKey | ExtraConfigKeys]: string };
 

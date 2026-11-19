@@ -11,9 +11,9 @@
 // Linear issue. The burst's first report creates it and posts to Slack; each later one finds that issue
 // through the attachment URL (the first report's admin anchor) and comments the running count. The
 // burst is walked back report by report, not cut at one window before the newest, which would make a steady
-// stream's third report look for an issue under the second, a repeat with none (CUR-2913). If a later
+// stream's third report look for an issue under the second, a repeat with none. If a later
 // report's fan-out runs before the first one's issue exists, or a burst runs past BURST_LOOKBACK_MS,
-// the count comment is skipped and logged; the rows themselves are all on the admin page either way. (CUR-997)
+// the count comment is skipped and logged; the rows themselves are all on the admin page either way.
 
 import { and, desc, eq, gte } from "drizzle-orm";
 import { ANSWER_REPORT_REASONS } from "$lib/chat/reportReasons";

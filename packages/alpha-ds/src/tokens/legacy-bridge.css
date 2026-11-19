@@ -11,7 +11,7 @@
  */
 
 .ds-root {
-	/* CUR-509 --ap-* chat palette → design-system tokens */
+	/* --ap-* chat palette → design-system tokens */
 	--ap-paper: var(--ds-bg-1);
 	--ap-paper-2: var(--ds-bg-2);
 	--ap-paper-3: var(--ds-bg-3);

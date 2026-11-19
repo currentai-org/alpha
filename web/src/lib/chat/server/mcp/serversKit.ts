@@ -1,12 +1,12 @@
-// The configured MCP servers' tools as a NativeToolKit (CUR-3026), so the same tool loop that runs
+// The configured MCP servers' tools as a NativeToolKit, so the same tool loop that runs
 // calculate and search runs them: the model calls `server__tool`, this kit runs it on that server.
 //
 // Three rules hold for every call:
 //  - A tool not marked `readOnlyHint: true` runs only after the person says yes (beforeRun asks),
-//    unless the person set it to always allow in Settings → Connectors (CUR-3984). One they set to
+//    unless the person set it to always allow in Settings → Connectors. One they set to
 //    never is not offered to the model, and a call naming it anyway is refused without running.
 //  - A result is data, never instructions: it goes back to the model inside a fence it is told not to
-//    obey, and an `isError` result says the action did not happen (CUR-2645).
+//    obey, and an `isError` result says the action did not happen.
 //  - Timing and sizes are logged per call; arguments and results never are.
 import { randomUUID } from "node:crypto";
 import { logger } from "$lib/chat/server/logger";
@@ -34,7 +34,7 @@ export const MAX_MCP_CALLS_PER_TURN = 4;
 /** Per call: connect and handshake. A slower server is reported as unreachable. */
 const CALL_TIMEOUT_MS = 10_000;
 /** The turn time a call leaves for the model to read its result and start the answer. Once the
- *  answer is streaming the route extends the turn (CUR-4009), so this covers only getting it started. (CUR-4627)
+ *  answer is streaming the route extends the turn, so this covers only getting it started.
  *  @internal exported for serversKit.turnBudget.spec */
 export const ANSWER_MARGIN_MS = 10_000;
 /** A call with less turn time than this left is not started: it could not finish, and the answer needs the time. */
@@ -52,7 +52,7 @@ type McpCallOutcome =
 	| "capped"
 	| "blocked"
 	| "unknown_tool"
-	// The call ran out of time (its own timeout or the turn's budget) or the turn was stopped. (CUR-4627)
+	// The call ran out of time (its own timeout or the turn's budget) or the turn was stopped.
 	| "call_timeout";
 
 type Output = TextGenerationStreamOutputSimplified;
@@ -102,16 +102,16 @@ export function mcpServersKit(opts: {
 	signal?: AbortSignal;
 	/** The person's per-tool choices (Settings → Connectors), keyed by `server__tool`. Absent: ask. */
 	policies?: Readonly<Record<string, McpToolPolicy>>;
-	/** Servers whose call input and result the person sees in the trace (CUR-4232: the conversation's
+	/** Servers whose call input and result the person sees in the trace (the conversation's
 	 *  own sandbox, where both are the model's code and its output). Every other server's stay here. */
 	shownServers?: readonly string[];
-	/** Calls this turn may make, and the rounds its answer may run. Absent: MAX_MCP_CALLS_PER_TURN (CUR-4239)
+	/** Calls this turn may make, and the rounds its answer may run. Absent: MAX_MCP_CALLS_PER_TURN
 	 *  and the loop's own default. */
 	maxCalls?: number;
 	maxRounds?: number;
 	sequential?: boolean;
 	/** When the route's watchdog ends this turn (epoch ms). Each call is bounded by what is left
-	 *  of it, less ANSWER_MARGIN_MS, so the model hears of a hung call in time to answer. Absent: only the (CUR-4627)
+	 *  of it, less ANSWER_MARGIN_MS, so the model hears of a hung call in time to answer. Absent: only the
 	 *  call's own timeout bounds it. */
 	turnDeadlineAt?: number;
 }): McpServersKit {
@@ -127,7 +127,7 @@ export function mcpServersKit(opts: {
 	const refused = new Set<string>();
 	const decisions = new Map<string, ConfirmDecision>();
 	// Time a sandbox wait held the turn's clock (the route holds it while the wait is shown), so
-	// the turn's end has moved by this much. (CUR-4627)
+	// the turn's end has moved by this much.
 	let heldMs = 0;
 	/** What a call may take now: its own cap, cut to the turn's time left less the answer's margin. */
 	const budgetFor = (capMs: number): number =>
@@ -254,17 +254,17 @@ export function mcpServersKit(opts: {
 				extra
 			);
 		};
-		// A call the turn has no time left for is not started. (CUR-4627)
+		// A call the turn has no time left for is not started.
 		if (budgetFor(CALL_TIMEOUT_MS) < MIN_CALL_MS) return timedOut(0);
 		let connectMs = 0;
 		let callMs = 0;
 		let conn: Awaited<ReturnType<Connect>> | undefined;
 		// The sandbox's progress means it is waiting for a slot on a full host. Shown once while
-		// the call is pending, and ended when it returns, however it ended. (CUR-4584)
+		// the call is pending, and ended when it returns, however it ended.
 		let waiting = false;
 		let waitStartedAt: number | undefined;
 		// The turn's budget for this call. While a sandbox wait is shown the route holds the turn's
-		// clock, so the budget stops counting and only the call's own timeout still bounds it. (CUR-4627)
+		// clock, so the budget stops counting and only the call's own timeout still bounds it.
 		const budget = new AbortController();
 		let budgetTimer: ReturnType<typeof setTimeout> | undefined;
 		const onTurnAbort = () => budget.abort(opts.signal?.reason);
@@ -360,6 +360,7 @@ export function composeKits(base: NativeToolKit | undefined, extra: NativeToolKi
 		definitions: [...base.definitions, ...extra.definitions],
 		run: (call) => (ownsExtra(call) ? extra.run(call) : base.run(call)),
 		...(base.firstRoundTool ? { firstRoundTool: base.firstRoundTool } : {}),
+		...(base.firstRoundCalls ? { firstRoundCalls: base.firstRoundCalls } : {}),
 		// The longer of the two, so the sandbox's rounds are not cut to the base kit's.
 		...(base.maxRounds || extra.maxRounds
 			? { maxRounds: Math.max(base.maxRounds ?? 0, extra.maxRounds ?? 0) }
@@ -369,7 +370,7 @@ export function composeKits(base: NativeToolKit | undefined, extra: NativeToolKi
 			? { retrievalOf: (calls: StreamedToolCall[]) => base.retrievalOf?.(calls.filter((c) => !ownsExtra(c))) }
 			: {}),
 		...(before ? { beforeRun: (calls: StreamedToolCall[]) => before(calls.filter(ownsExtra)) } : {}),
-		// Only the MCP kit's calls show frames while they run. (CUR-4584)
+		// Only the MCP kit's calls show frames while they run.
 		...(extra.frames ? { frames: extra.frames } : base.frames ? { frames: base.frames } : {}),
 	};
 }

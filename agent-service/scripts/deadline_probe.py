@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 """Prove the caller-deadline count is DURABLE, not just present.
 
-WHY A SEPARATE PROBE. An in-process `caller_deadlines` counter on an app with
-`min_machines_running = 0` reports 0 after every scale-to-zero, even while the chat tier sends
-`wall_clock_secs` on every turn. The obvious check — send one and watch the number go up — passes for BOTH an in-process
-counter and a durable one, because within a single boot either increments fine. The only
+WHY A SEPARATE PROBE. The app runs with `min_machines_running = 0`, so an in-process counter would
+reset on every scale-to-zero. Sending one deadline and watching the number go up passes for an
+in-process counter and a durable one alike, because within a single boot both increment. The only
 observation that separates them is the number surviving a restart. So this does three steps and the
 middle one is the point:
 
   1. POST /run with wall_clock_secs -> count must rise by exactly 1
-  2. restart the machine                 <- the step an in-process counter fails
+  2. restart the machine                 <- the step that would have failed before
   3. read /healthz again                 -> count must still be there
 
 The token comes from AGENT_SMOKE_TOKEN (env, else the gitignored .env) and is never printed.
@@ -37,7 +36,7 @@ def _token() -> str:
     if t:
         return t
     raise RuntimeError("no AGENT_SMOKE_TOKEN — run via `doppler run` (agent-service/prd), or mint one "
-                        "as an HS256 JWT signed with WEBUI_SECRET_KEY")
+                        "with fly/mint-token.sh")
 
 
 def _get(path: str) -> dict:

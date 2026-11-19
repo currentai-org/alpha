@@ -1,0 +1,38 @@
+# Security updates only. Each ecosystem below allows no version-update pull requests, so Dependabot opens
+# one only for a dependency with a published advisory. "Dependabot security updates" must also be on in
+# the repository's Code security settings, or nothing opens at all.
+#
+# The cooldown sits on every entry so a version update, if a limit is ever raised above zero, waits a week
+# after a release before it is proposed. GitHub does not apply cooldown to security updates.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    cooldown:
+      default-days: 7
+  - package-ecosystem: pip
+    directory: /agent-service
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    cooldown:
+      default-days: 7
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    cooldown:
+      default-days: 7
+  - package-ecosystem: docker
+    directories:
+      - /web
+      - /agent-service/deploy
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 0
+    cooldown:
+      default-days: 7

@@ -7,10 +7,10 @@
 	import { m } from "$lib/paraglide/messages.js";
 
 	// The way to challenge a policy decline that /about promises. The decline text itself stays
-	// "Current AI set this limit (rule: X)." with nothing added (CUR-3205); this is interface around it.
+	// "Current AI set this limit (rule: X)." with nothing added; this is interface around it.
 	// A challenge is an answer report with reason `refused`, so staff review it on /chat/admin/reports and
-	// the person sees the outcome under Your reports (CUR-3903). It never goes back to the model: a model
-	// gives way to a pushed-back user, so an in-chat "are you sure?" would be a way round the screen. (CUR-3902)
+	// the person sees the outcome under Your reports. It never goes back to the model: a model
+	// gives way to a pushed-back user, so an in-chat "are you sure?" would be a way round the screen.
 	interface Props {
 		messageId: string;
 	}

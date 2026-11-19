@@ -12,3 +12,13 @@ export function isChatModelsRoute(routeId: string | null | undefined): boolean {
 	// eslint-disable-next-line chat-paths/no-chat-path-literal -- a route id, `/chat` on both surfaces
 	return routeId?.startsWith("/chat/models/") ?? false;
 }
+
+/**
+ * Whether a route id is the read-only share-link viewer (`/chat/r/[shareId]`). ChatShell
+ * leaves its generic social card off there: the viewer is noindex, and the card would describe the
+ * app rather than the shared chat.
+ */
+export function isSharedConversationRoute(routeId: string | null | undefined): boolean {
+	// eslint-disable-next-line chat-paths/no-chat-path-literal -- a route id, `/chat` on both surfaces
+	return routeId === "/chat/r/[shareId]";
+}

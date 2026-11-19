@@ -1,5 +1,5 @@
 // The replay store against a real Postgres (the server-stateful project's DATABASE_URL), so
-// the SQL itself is what passes, not a mock of it. (SOL-148)
+// the SQL itself is what passes, not a mock of it.
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import postgres from "postgres";
 
@@ -37,7 +37,7 @@ afterAll(async () => {
 	await sql.end();
 });
 
-describe("replay store scopes (SOL-148)", () => {
+describe("replay store scopes", () => {
 	it("reads a branch's own scope and then develop's; develop reads only its own", () => {
 		expect(store.readScopes("someone/sol-1-x")).toEqual(["someone/sol-1-x", "develop"]);
 		expect(store.readScopes("develop")).toEqual(["develop"]);
@@ -54,7 +54,7 @@ describe("replay store scopes (SOL-148)", () => {
 		expect(found?.cassette.body).toBe("mine");
 	});
 
-	it("a branch with no recording of its own or develop's hits another branch's, newest first (SOL-180)", async () => {
+	it("a branch with no recording of its own or develop's hits another branch's, newest first", async () => {
 		await store.record(cassette("older"), "someone-else");
 		await sql`update model_replay set recorded_at = now() - interval '1 hour'`;
 		await store.record(cassette("newer"), "a-third");
@@ -63,7 +63,7 @@ describe("replay store scopes (SOL-148)", () => {
 		expect(found?.cassette.body).toBe("newer");
 	});
 
-	it("a branch's own recording, then develop's, still win over another branch's (SOL-180)", async () => {
+	it("a branch's own recording, then develop's, still win over another branch's", async () => {
 		await store.record(cassette("theirs"), "someone-else");
 		await store.record(cassette("develop's"), "develop");
 		expect((await store.lookup(HASH, "mine", HOST))?.cassette.body).toBe("develop's");
@@ -71,7 +71,7 @@ describe("replay store scopes (SOL-148)", () => {
 		expect((await store.lookup(HASH, "mine", HOST))?.cassette.body).toBe("mine");
 	});
 
-	it("develop hits the recording a merged branch made for the same request and upstream, since develop's run mocks a miss instead of recording (SOL-208)", async () => {
+	it("develop hits the recording a merged branch made for the same request and upstream, since develop's run mocks a miss instead of recording", async () => {
 		await store.record(cassette("the PR's"), "someone/sol-1-x");
 		const found = await store.lookup(HASH, "develop", HOST);
 		expect(found?.scope).toBe("someone/sol-1-x");
@@ -80,7 +80,7 @@ describe("replay store scopes (SOL-148)", () => {
 		expect((await store.lookup(HASH, "develop", HOST))?.cassette.body).toBe("develop's own");
 	});
 
-	it("another branch's recording made against a different upstream host, or none named, is never read (SOL-180)", async () => {
+	it("another branch's recording made against a different upstream host, or none named, is never read", async () => {
 		await store.record({ ...cassette("other upstream"), host: "elsewhere.example.org" }, "someone-else");
 		const { host: _h, ...hostless } = cassette("no host");
 		await store.record(hostless, "a-third");
@@ -93,7 +93,7 @@ describe("replay store scopes (SOL-148)", () => {
 		expect(await store.lookup(HASH, "mine", HOST)).toBeNull();
 	});
 
-	it("a recorded 429 is read until its refusedUntil and missed after, in its own scope and another branch's (CUR-3982)", async () => {
+	it("a recorded 429 is read until its refusedUntil and missed after, in its own scope and another branch's", async () => {
 		const now = Date.parse("2026-10-14T16:00:00Z");
 		const refused = { ...cassette("busy"), status: 429, refusedUntil: "2026-10-14T16:10:00Z" };
 		await store.record(refused, "someone-else");
@@ -104,7 +104,7 @@ describe("replay store scopes (SOL-148)", () => {
 		expect(await store.lookup(HASH, "mine", HOST, now + 10 * 60 * 1000)).toBeNull();
 	});
 
-	it("another branch's good recording wins over an unexpired 429, and an expired 429 of its own falls through to develop's (CUR-3982)", async () => {
+	it("another branch's good recording wins over an unexpired 429, and an expired 429 of its own falls through to develop's", async () => {
 		const now = Date.parse("2026-10-14T16:00:00Z");
 		await store.record({ ...cassette("busy"), status: 429, refusedUntil: "2026-10-14T16:10:00Z" }, "a-third");
 		await store.record(cassette("answer"), "someone-else");
@@ -114,7 +114,7 @@ describe("replay store scopes (SOL-148)", () => {
 		expect((await store.lookup(HASH, "mine", HOST, now))?.cassette.body).toBe("develop's");
 	});
 
-	it("a good recording in develop wins over an unexpired 429 in the run's own scope (CUR-3996)", async () => {
+	it("a good recording in develop wins over an unexpired 429 in the run's own scope", async () => {
 		const now = Date.parse("2026-10-14T16:00:00Z");
 		await store.record({ ...cassette("busy"), status: 429, refusedUntil: "2026-10-14T16:10:00Z" }, "mine");
 		expect((await store.lookup(HASH, "mine", HOST, now))?.cassette.body).toBe("busy");
@@ -142,7 +142,7 @@ describe("replay store scopes (SOL-148)", () => {
 	});
 });
 
-describe("an unconfigured store fails loud (SOL-148)", () => {
+describe("an unconfigured store fails loud", () => {
 	it("throws when REPLAY_DATABASE_URL is unset, so modelReplay reads it as a miss and never an empty hit", async () => {
 		vi.resetModules();
 		storeUrl = "";
@@ -152,7 +152,7 @@ describe("an unconfigured store fails loud (SOL-148)", () => {
 	});
 });
 
-describe("a store that never answers costs a turn at most the deadline (SOL-209)", () => {
+describe("a store that never answers costs a turn at most the deadline", () => {
 	it("a lookup on a connection that never answers gives up within its deadline and the next call reconnects", async () => {
 		// A socket that accepts and then says nothing: what a stalled pooled connection looks like.
 		const { createServer } = await import("node:net");

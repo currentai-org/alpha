@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 // prepareMessagesWithFiles — OpenAI-payload formatter over the ONE shared media pass. Text-file and
 // clipboard content is ALREADY spliced into message.content by prepareTurnMedia (budget-capped and
 // screened by the gate), so this module does no text extraction — re-splicing
@@ -39,9 +42,10 @@ export async function prepareMessagesWithFiles(
 
 /**
  * Leaves out assistant messages that carry neither text nor tool calls. A turn that failed with no
- * answer is kept in the conversation so the visitor can ask again (CUR-4494), and sent back as
- * history a backend that requires content or tool_calls on every assistant message refuses the whole
- * request with a 400 ("Assistant message must have either content or tool_calls"), so the re-asked question fails too. Run it after
+ * answer is kept in the conversation so the visitor can ask again. Sent back as history, that empty
+ * message makes a backend that requires content or tool_calls on every assistant message refuse the
+ * whole request with a 400 ("Assistant message must have either content or tool_calls"), so the
+ * re-asked question would fail too. Run it after
  * withPastCalculations, which pairs this list with the source messages by index.
  */
 export function withoutEmptyAnswers(

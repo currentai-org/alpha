@@ -12,8 +12,8 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // daily cap. The stand-in's `daily_limit` knob answers the run with that cap's own 429 body, so the
 // person should read that today's limit is reached.
 test(
-	'an agent turn past the daily task limit says the limit is reached, not "wait a moment"',
-	{ tag: ['@preview-only', '@CUR-4401', '@agent-knob:daily_limit'] },
+	'an agent turn past the daily task limit says the limit is reached and to try again tomorrow, not "wait a moment"',
+	{ tag: ['@preview-only', '@CUR-4401', '@CUR-4405', '@agent-knob:daily_limit'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(120_000);
 
@@ -40,6 +40,8 @@ test(
 		await expect(answer).toContainText("Agent mode has reached today's task limit", {
 			timeout: 60_000
 		});
+		// When the next task opens: the refusal says tomorrow, not "in a moment".
+		await expect(answer).toContainText('try again tomorrow');
 		await expect(answer).not.toContainText('wait a moment');
 	}
 );

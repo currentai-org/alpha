@@ -7,7 +7,7 @@ import { installFaultInjectionHeader, installModelReplay } from './helpers/fault
 import { openComposerTool, toolGroup } from './helpers/composerMenu';
 import { startChattingPastWelcome } from './helpers/welcome';
 
-// When the web search for a turn doesn't finish, the answer is written without web sources (CUR-4091).
+// When the web search for a turn doesn't finish, the answer is written without web sources.
 // Before this change it read like any other answer, and X-ray said Alpha had decided no search was
 // needed. The two tests differ in one thing, the `web_search_hangs` fault, which holds every web search
 // on the turn until the web leg's 15s deadline cuts it, on whichever harness the turn runs (the route's

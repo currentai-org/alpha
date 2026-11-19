@@ -17,10 +17,10 @@ import { throwIfHubRateLimitFault } from "$lib/chat/server/storage/hubBusy";
 import { locationsEnabled, rateLimitedResponse, storageFailure, writeOptions } from "./guard";
 
 // The write half of an upload, shared by the single-request POST in ./+server.ts and the chunked
-// upload's finishing request in ./chunks/complete (CUR-1780), so a reassembled file takes exactly the
+// upload's finishing request in ./chunks/complete, so a reassembled file takes exactly the
 // path, checks and locations a one-request file does.
 
-/** A `location` the request named, honoured only for an account the `storage-locations` (CUR-2930)
+/** A `location` the request named, honoured only for an account the `storage-locations`
  *  flag selects. Without the flag every request is Alpha storage, exactly as before. */
 export async function requestedLocation(
 	locals: App.Locals,
@@ -89,7 +89,7 @@ export async function writeUpload(
 	// own prefix itself. Passing custodialFilePath()'s output here would resolve twice and bury the
 	// file at users/<id>/users/<id>/…, which is a real trap given both functions are one import away.
 	const relativePath = `${folder}/${name}`;
-	// With the flag on, an upload goes where the request says, else to the account's default. (CUR-2930)
+	// With the flag on, an upload goes where the request says, else to the account's default.
 	const useLocations = await locationsEnabled(accountId, flagEmail(locals.user));
 	const named = useLocations ? await requestedLocation(locals, accountId, upload.location) : null;
 

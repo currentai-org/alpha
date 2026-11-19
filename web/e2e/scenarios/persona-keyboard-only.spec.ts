@@ -10,12 +10,12 @@ import {
 	runPersona
 } from './helpers/personaDriver';
 
-// The fifth persona (CUR-2676). See persona-chaos-monkey.spec.ts for the shared reasoning.
+// The fifth persona. See persona-chaos-monkey.spec.ts for the shared reasoning.
 //
 // THE DRIVER, NOT THE PROMPT, KEEPS THIS ONE OFF THE MOUSE. `actions` leaves out click, so a model
 // that reaches for a click is refused and asked again; a prompt alone would drift back to clicking
 // within a few turns and the run would stop being a keyboard test without saying so. Typing is
-// `fill`: `press` takes one key name, and a keyboard user types (CUR-2916).
+// `fill`: `press` takes one key name, and a keyboard user types.
 
 const SYSTEM_PROMPT = `You use a chat product called Alpha without a mouse or a touchscreen. You
 navigate only with the keyboard: Tab and Shift+Tab to move between controls, Enter and Space to
@@ -41,7 +41,7 @@ test(
 
 		test.setTimeout(5 * 60_000);
 
-		await signInAsFreshUser(page); // CUR-2676, see persona-chaos-monkey.spec.ts
+		await signInAsFreshUser(page); // see persona-chaos-monkey.spec.ts
 
 		await runPersona({
 			page,

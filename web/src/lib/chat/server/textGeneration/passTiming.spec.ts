@@ -15,7 +15,7 @@ const clock = (ms: number) => {
 
 beforeEach(() => vi.clearAllMocks());
 
-describe("timedPass (CUR-3749)", () => {
+describe("timedPass", () => {
 	it("names a pass that blocked for SLOW_PASS_MS or longer, with its time and the answer's length", () => {
 		const result = timedPass("stripEchoedWrapperTail", "x".repeat(40_000), () => "trimmed", clock(SLOW_PASS_MS + 250));
 		expect(result).toBe("trimmed");
@@ -40,7 +40,7 @@ describe("timedPass (CUR-3749)", () => {
 	});
 });
 
-describe("noteLongAnswer (CUR-3749)", () => {
+describe("noteLongAnswer", () => {
 	it("logs an answer of LONG_ANSWER_CHARS or more before its passes, so a killed request still leaves its size", () => {
 		noteLongAnswer("y".repeat(LONG_ANSWER_CHARS));
 		expect(logger.info).toHaveBeenCalledWith(

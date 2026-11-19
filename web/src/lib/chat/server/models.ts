@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { building } from "$app/environment";
 import { config } from "$lib/chat/server/config";
 import { mistralChatLane, ticketBranchAllowlist } from "$lib/chat/server/mistralKey";
@@ -17,11 +20,9 @@ import {
 import {
 	withFailover,
 	firstChunkTimings,
-	FAILOVER_ON_SILENT_LANE_FLAG,
-	HEDGE_ON_FIRST_TOKEN_FLAG,
 	laneModelIds,
 } from "./endpoints/failover";
-import { flagEnabledOr, ensureFlagsPolled } from "$lib/chat/server/flags";
+import { ensureFlagsPolled } from "$lib/chat/server/flags";
 import { firstChunkMsFor, silentGiveUpMsFor } from "$lib/chat/server/harnessProfiles";
 import type { Endpoint } from "./endpoints/types";
 
@@ -29,7 +30,6 @@ import JSON5 from "json5";
 import { agentServiceUrl } from "$lib/chat/server/agentMode";
 import { AGENT_MODEL_ID } from "$lib/chat/server/chat/resolveAgentRoute";
 import {
-	offeredModels,
 	onRegistryPollLanded,
 	resolveRegistryGates,
 	type RegistryGates,
@@ -43,7 +43,7 @@ import {
 	uncheckedProviders,
 	type Lane,
 } from "$lib/chat/server/inferenceTopology";
-import { inferenceEnvironment } from "../../../../config/inference";
+import { committedConfigEnv, inferenceEnvironment } from "../../../../config/inference";
 import { logger } from "$lib/chat/server/logger";
 import { deployEnv, type DeployEnv } from "$lib/chat/server/deployEnv";
 import { makeRouterEndpoint } from "$lib/chat/server/router/endpoint";
@@ -71,6 +71,7 @@ import {
 // build time). The committed default is empty ({baseURL:"", entries:[]}) so this import always resolves;
 // parseModelsSnapshot treats an empty/mismatched artifact as absent → live path (§C).
 import modelsSnapshotRaw from "$lib/chat/server/data/models-snapshot.json";
+import { deployEnvName } from "$lib/server/runtimeEnv";
 
 // Re-export the shared catalog-entry type from its home in modelsSnapshot.ts (type-only, erased at
 // build) so existing importers (modelsCatalog.ts, its spec) keep resolving it from here.
@@ -79,11 +80,11 @@ export type { CatalogEntry } from "$lib/chat/server/modelsSnapshot";
 type Optional<T, K extends keyof T> = Pick<Partial<T>, K> & Omit<T, K>;
 
 /**
- * An endpoint as the model registry holds it (CUR-2640): the env var its key lives in
+ * An endpoint as the model registry holds it: the env var its key lives in
  * (`apiKeyEnv`), never the key. The registry is long-lived and gets serialized, and a key value on it
- * would be exposed through `/chat/api/v2/models` (CUR-2643). `getEndpoint` resolves the value
+ * would be exposed through `/chat/api/v2/models`. `getEndpoint` resolves the value
  * when it builds the lane. The one `apiKey` allowed is a local endpoint's fixed, non-secret
- * placeholder (localModels.ts, CUR-3177).
+ * placeholder (localModels.ts).
  */
 const registryEndpointSchema = z.discriminatedUnion("type", [
 	endpointOAIParametersSchema
@@ -175,17 +176,17 @@ const fallbackBaseURL = (config.HF_BASE_URL || "").trim();
 const fallbackApiKey = firstKey(["HF_TOKEN", "OPENAI_API_KEY"], "modelsFallbackApiKey", {
 	allowEmpty: true,
 });
-// The env var that value came from, same precedence: what a registry endpoint records (CUR-2640).
+// The env var that value came from, same precedence: what a registry endpoint records.
 const fallbackApiKeyEnv = firstSetKeyEnv(["HF_TOKEN", "OPENAI_API_KEY"]);
 // The backup lane's spelling of the primary's id, for a backup host that cases it differently. Never
-// a different model: withOnlyPickedModelLanes drops any lane that asks for one (CUR-3936). Unset →
+// a different model: withOnlyPickedModelLanes drops any lane that asks for one. Unset →
 // the backup lane requests the primary id unchanged.
 const fallbackModelId = ((config.FALLBACK_MODEL_ID as string | undefined) || "").trim();
 
 // Mistral's La Plateforme, called directly: its models join the catalog so MODEL_ALLOWLIST can name them
-// like the gateway's, the first allowlisted id becoming defaultModel wherever it is served (CUR-2272).
-// The host is mistralChatLane's: the staging router when it is configured (CUR-2928). Shared with the
-// model warm probe, which must reach the same host (CUR-3848).
+// like the gateway's, the first allowlisted id becoming defaultModel wherever it is served.
+// The host is mistralChatLane's: the staging router when it is configured. Shared with the
+// model warm probe, which must reach the same host.
 const mistralEndpoint = mistralChatEndpoint;
 
 // The HF router bills a personal token against an org through this header, and 403s on arrival
@@ -193,13 +194,13 @@ const mistralEndpoint = mistralChatEndpoint;
 // omits it answers 403 to every failover.
 const fallbackBillTo = (firstKey(["HF_BILL_TO"], "modelsFallbackBillTo", { allowEmpty: true }) || "").trim();
 
-// Pinned models on the HF router as picker entries (CUR-1683): an id MODEL_ALLOWLIST names that has a
+// Pinned models on the HF router as picker entries: an id MODEL_ALLOWLIST names that has a
 // row in HF_PROVIDER_PIN is offered from HF_BASE_URL, pinned to that provider. The pin table is the
 // route; the second-opinion panels are separate consumers and play no part in what the picker offers.
 const hfEndpoint = (allowlistSpec: string): DirectEndpoint | null =>
 	hfPinnedLane(fallbackBaseURL, fallbackApiKeyEnv, fallbackBillTo, allowlistSpec);
 
-// The catalog backup lane's own host (CUR-2293). The HF router serves no Apertus 70B, so on
+// The catalog backup lane's own host. The HF router serves no Apertus 70B, so on
 // production the HF pair above answers every failover with a 400. FALLBACK_BASE_URL
 // points this lane elsewhere (the gateway's Infomaniak-only Apertus group); unset, it stays on the HF
 // pair. The direct models' backup and the catalog list's fallback keep the HF pair either way. Off HF
@@ -279,10 +280,10 @@ export function shorterGiveUp(own: number | null, turn: number | null): number |
 
 /**
  * The input `endpoints.agent` is built from for a model's agent lane: the registry endpoint plus the
- * call-time `model` and the key read from `apiKeyEnv` (CUR-2640).
+ * call-time `model` and the key read from `apiKeyEnv`.
  *
  * @remarks
- * Shared by the turn's lane and Stop's cancel (CUR-4602). The bare registry entry fails the schema on
+ * Shared by the turn's lane and Stop's cancel. The bare registry entry fails the schema on
  * the missing `model` and carries no service token, so a cancel built from it never reaches the task.
  * One builder keeps the two from drifting.
  */
@@ -301,7 +302,7 @@ export function agentModelLaneInput() {
 export const addEndpoint = (m: Awaited<ReturnType<typeof processModel>>) => ({
 	...m,
 	/** `giveUpMs` shortens this turn's give-up on a silent last lane; it never lengthens the model's own
-	 *  (CUR-4384: an Auto turn gives up sooner so Auto can pick again). `recordBusy: false` leaves the
+	 *  (an Auto turn gives up sooner so Auto can pick again). `recordBusy: false` leaves the
 	 *  busy mark to the caller: the warm probe (modelProbe.ts) records its own verdict, once. */
 	getEndpoint: async ({
 		giveUpMs,
@@ -313,7 +314,7 @@ export const addEndpoint = (m: Awaited<ReturnType<typeof processModel>>) => ({
 		// OpenAI-compatible models (the catalog default) + the Potluck agent endpoint (Story B:
 		// the agent service behind chat-ui's stream — see endpoints/agent/endpointAgent.ts).
 		// The key is read from config here, per lane build, and handed to the endpoint; the registry
-		// object only names its env var (CUR-2640). No apiKeyEnv → the endpoint's own default key.
+		// object only names its env var. No apiKeyEnv → the endpoint's own default key.
 		const buildLane = async (
 			endpoint: NonNullable<typeof m.endpoints>[number]
 		): Promise<Endpoint> => {
@@ -333,16 +334,12 @@ export const addEndpoint = (m: Awaited<ReturnType<typeof processModel>>) => ({
 		// endpoint behaves exactly as before; a model with a backup lane (e.g. CSCS primary + HF) tries
 		// them in order, switching only on a failure BEFORE any output (see endpoints/failover.ts).
 		const lanes = await Promise.all(m.endpoints.map(buildLane));
-		// CUR-1344. getEndpoint runs per request, so this reads live rather than at model-load time —
-		// but preview runs no warm cron, so a cold instance has never polled PostHog and would read the
-		// code default forever. ensureFlagsPolled is the same precedent guardGate.ts uses.
+		// The endpoint reads flags per request (endpointOai.ts's hedge-tool-rounds), but preview runs no
+		// warm cron, so a cold instance has never polled PostHog and would read the code default forever.
+		// ensureFlagsPolled waits for that first poll, as native.ts does before its own flag reads.
 		await ensureFlagsPolled();
-		const hedging = flagEnabledOr(HEDGE_ON_FIRST_TOKEN_FLAG, () => false);
-		const silentLaneFailover = flagEnabledOr(FAILOVER_ON_SILENT_LANE_FLAG, () => false);
 		return withFailover(lanes, {
 			...firstChunkTimings(firstChunkMsFor(m.id), {
-				hedging,
-				silentLaneFailover,
 				giveUpMs: shorterGiveUp(silentGiveUpMsFor(m.id), giveUpMs ?? null),
 			}),
 			laneModels: laneModelIds(m.id, m.endpoints),
@@ -357,7 +354,7 @@ type InternalProcessedModel = Awaited<ReturnType<typeof addEndpoint>> & {
 	/** Only set for a per-user local model (localModels.ts): which kind of endpoint serves it, so the
 	 *  UI can describe the route a message actually takes. A managed endpoint reaches the user's
 	 *  machine through an encrypted tunnel; a direct one is a plain URL this server dials. Those are
-	 *  different privacy stories and the panel must not tell the wrong one (CUR-3037). */
+	 *  different privacy stories and the panel must not tell the wrong one. */
 	localEndpointKind?: "direct" | "managed";
 };
 
@@ -389,11 +386,11 @@ export let validModelIdSchema: z.ZodType<string> = z.string();
 // serving logic can find its config, but it is never a directly-selectable model — the AgentMode toggle
 // is the only path onto it (resolveAgentRoute.ts). Excluding it here, at the one place this schema is
 // built, means every current and future caller that validates a client-supplied model id against it
-// rejects the agent id, without each call site needing its own check. (CUR-770)
+// rejects the agent id, without each call site needing its own check.
 /**
  * Whether a visitor may pick this model for a conversation or a turn. The agent and every `unlisted`
  * entry (side-call, compare-panel and backup models) are registered so the server can call them, never
- * so a visitor can chat on them: a PATCH naming one is refused (CUR-3388).
+ * so a visitor can chat on them: a PATCH naming one is refused.
  */
 export const isSelectableModel = (m: Pick<ProcessedModel, "id" | "unlisted">): boolean =>
 	m.id !== AGENT_MODEL_ID && !m.unlisted;
@@ -411,11 +408,13 @@ const createValidModelIdSchema = (modelList: ProcessedModel[]): z.ZodType<string
 // allowlist move side calls onto another model, or another provider's key, silently. A
 // TASK_MODEL that names no registered model throws, everywhere. An unset one throws on a deployed
 // environment, where both preview and prd name theirs; local dev and the hermetic CI tiers declare no
-// environment and set no TASK_MODEL, so they keep the first model, with a warning that says so. (CUR-2319)
+// environment and set no TASK_MODEL, so they keep the first model, with a warning that says so.
+// A self-host in production mode reads no committed TASK_MODEL (committedConfigEnv), so it counts as
+// undeclared here too and keeps its first model, with the same warning.
 export const resolveTaskModel = (
 	modelList: ProcessedModel[],
 	taskModelId: string | undefined = config.TASK_MODEL,
-	env: DeployEnv | null = deployEnv()
+	env: DeployEnv | null = committedConfigEnv(process.env) === null ? null : deployEnv()
 ): ProcessedModel => {
 	if (modelList.length === 0) {
 		throw new Error("No models available to select task model");
@@ -453,10 +452,10 @@ export const resolveTaskModel = (
 // Apertus checkpoints may be added here later. The first allowlisted model becomes defaultModel
 // (models[0]); with one entry the picker collapses to a single model.
 //
-// THIS DEFAULT IS THE MODEL EVERY EVAL GRADES (CUR-243): the consumers reading MODEL_ALLOWLIST[0]
+// THIS DEFAULT IS THE MODEL EVERY EVAL GRADES: the consumers reading MODEL_ALLOWLIST[0]
 // characterise the checkpoint a default turn gets. Keep this string equal to what a default turn
 // actually gets.
-// On a Vercel deployment the list comes from config/inference.ts (CUR-3484); see pickerSpec.
+// On a Vercel deployment the list comes from config/inference.ts; see pickerSpec.
 const resolveAllowlistSpec = (): string => ticketBranchAllowlist(pickerSpec() || "swiss-ai/apertus-v1.5-70b");
 
 // Fetch + validate an upstream OpenAI-compatible /models catalog. Bounded by a timeout and retried a
@@ -488,7 +487,7 @@ const fetchModelCatalog = async (baseURL: string, authToken: string): Promise<Ca
 						`Failed to fetch ${baseURL}/models: ${response.status} ${response.statusText} (no auth token available)`
 					);
 				}
-				// The folkways adapter answers 503 with this header when its flag is off (CUR-1626): the
+				// The folkways adapter answers 503 with this header when its flag is off: the
 				// route is there and switched off on purpose, which neither a retry nor a backup lane changes.
 				const disabled = response.headers?.get?.("x-folkways-disabled") || undefined;
 				throw Object.assign(
@@ -542,7 +541,7 @@ const processConfigs = async (modelsRaw: ModelConfig[]): Promise<ProcessedModel[
 	return builtModels as ProcessedModel[];
 };
 
-// Prepend the LLM-router alias (Omni) when the `router-alias` flag is on (CUR-257).
+// Prepend the LLM-router alias (Omni) when the `router-alias` flag is on.
 //
 // The gate used to be `LLM_ROUTER_ROUTES_PATH` being non-empty, which made the routing policy its own
 // on/off switch: the policy could not be present with the feature off, and either direction cost a
@@ -586,7 +585,7 @@ const maybeAddRouterAlias = async (
 	} as ModelConfig;
 
 	// The deployment's consent, not the per-account flag: this list is shared by every visitor on the
-	// instance, so who may send an image is decided per request (modelTakesImagesNow, CUR-2725).
+	// instance, so who may send an image is decided per request (modelTakesImagesNow).
 	if (multimodalConfigured() && routerMultimodalEnabled) {
 		aliasRaw.multimodal = true;
 		aliasRaw.multimodalAcceptedMimetypes = ["image/*"];
@@ -628,14 +627,14 @@ const maybeAddRouterAlias = async (
 // answer).
 //
 // The gate is agentModeEnabled() (agentMode.ts): deployEnv() === "preview" | "production" decides
-// on/off first, THEN AGENT_MODE_FLAG is read from PostHog (CUR-1451); AGENT_SERVICE_URL is config, and
+// on/off first, THEN AGENT_MODE_FLAG is read from PostHog; AGENT_SERVICE_URL is config, and
 // a missing URL on an allowed env is a loud config error inside that call, not a silent gate. It is the SAME call
 // layoutData.ts makes for `agentEnabled`, so the registry and the UI toggle cannot disagree about
 // whether this feature exists. Because the gate returns false unless the URL is present,
 // `agentServiceUrl()` below is guaranteed non-empty here. NOTE: this runs during registry build, once
 // per instance; flipping deployEnv or the flag re-gates the surface at the next rebuild/poll.
 //
-// `unlisted: true` (CUR-770): the agent is registered here so `resolveAgentRoute`'s internal lookup and
+// `unlisted: true`: the agent is registered here so `resolveAgentRoute`'s internal lookup and
 // turn-serving logic can find its config, but it is never a directly-selectable model — no gallery
 // entry, no picker row, rejected by `createValidModelIdSchema` (models.ts, above). The
 // composer's AgentMode toggle (stores/agentMode.ts) is the only path onto it, for every user including a
@@ -730,7 +729,7 @@ async function unlistedModel(
 // triangulation, not "a more capable model" (we don't assert a hierarchy). Off by default → safe for
 // the alpha; the third is dormant until THIRD_OPINION_MODEL is set. The side-call models
 // (ARITHMETIC_ROUTE_MODEL, TASK_MODEL) register on the same endpoint, except that with the
-// `side-call-own-lane` flag on, one listed in MISTRAL_MODELS registers on the Mistral lane (CUR-2262).
+// `side-call-own-lane` flag on, one listed in MISTRAL_MODELS registers on the Mistral lane.
 const maybeAddCompareModels = async (
 	decorated: ProcessedModel[],
 	direct: DirectEndpoint | null = null,
@@ -767,22 +766,28 @@ const maybeAddCompareModels = async (
 	).trim();
 	if (secondId && secondName) nameHints[secondId] = secondName;
 	if (thirdId && thirdName) nameHints[thirdId] = thirdName;
-	// Side-call models the app calls on its own (CUR-2261): ARITHMETIC_ROUTE_MODEL (the math-routing
-	// turn planner), TASK_MODEL (titles and other side calls) and SECOND_OPINION_MODEL (the RAG
-	// entity-scope guard pins to it, CUR-2263). All are looked up by id in the
+	// Side-call models the app calls on its own: ARITHMETIC_ROUTE_MODEL (the math-routing
+	// turn planner), TASK_MODEL (titles and other side calls), SECOND_OPINION_MODEL (the panel's first
+	// seat) and ENTITY_SCOPE_MODEL (the RAG entity-scope guard pins to it). All are
+	// looked up by id in the
 	// registry, so each is registered here in its own right instead of working only while COMPARE_PANEL
 	// happens to list the same id. An id already registered (TASK_MODEL naming an allowlisted chat
 	// model, or a panelist) is left as it is.
-	const sideCallIds = ["ARITHMETIC_ROUTE_MODEL", "TASK_MODEL", "SECOND_OPINION_MODEL"]
+	const sideCallIds = [
+		"ARITHMETIC_ROUTE_MODEL",
+		"TASK_MODEL",
+		"SECOND_OPINION_MODEL",
+		"ENTITY_SCOPE_MODEL",
+	]
 		.map((key) => ((Reflect.get(config, key) as string | undefined) ?? "").trim())
 		.filter((id) => id && !decorated.some((m) => m.id === id || m.name === id));
 	// A side-call id Mistral serves goes to Mistral: on the compare endpoint it would be sent to a
-	// provider that does not have it (CUR-2262).
+	// provider that does not have it.
 	const lane = sideCallLane ? direct : null;
 	const directSideCallIds = lane
 		? [...new Set(sideCallIds.filter((id) => lane.modelIds.includes(id)))]
 		: [];
-	// A panelist the picker already offers (CUR-1683) is registered once, as the picker entry on the same
+	// A panelist the picker already offers is registered once, as the picker entry on the same
 	// host, so a lookup by id never finds two models.
 	const compareIds = [
 		...new Set([...panelIds, ...(aggId ? [aggId] : []), ...sideCallIds]),
@@ -812,7 +817,7 @@ const maybeAddCompareModels = async (
 	if (lane) {
 		for (const [i, id] of directSideCallIds.entries()) {
 			// Each Mistral side-call model is backed by the next one on the lane, so Small and Medium back
-			// each other (CUR-2092). Both share the Mistral account, so an account-level
+			// each other. Both share the Mistral account, so an account-level
 			// failure takes out both lanes; that risk is accepted. A lone side-call model has no partner.
 			const partner =
 				directSideCallIds.length > 1
@@ -863,7 +868,7 @@ const maybeAddCompareModels = async (
 // route. The shaped configs still carry BOTH lanes for streaming regardless of which host served the
 // list, so downstream provenance/failover is unchanged.
 //
-// It is NOT the streaming failover (withFailover), and the difference is CUR-1249. The streaming lane
+// It is NOT the streaming failover (withFailover), and the difference is. The streaming lane
 // maps the model id onto the backup's spelling (FALLBACK_MODEL_ID); the model list cannot, because the
 // allowlist is written in the primary's ids and the HF router spells them differently
 // (`swiss-ai/Apertus-v1.5-70B` against `swiss-ai/apertus-v1.5-70b`). So a backup catalogue is accepted
@@ -919,7 +924,7 @@ const loadCatalog = async (baseURL: string): Promise<CatalogEntry[]> => {
 	}
 };
 
-/** The gates the published registry was built with (CUR-1149, CUR-4194). */
+/** The gates the published registry was built with. */
 let lastKnownGates: RegistryGates | null = null;
 
 // Shape + process + endpoint-decorate a raw catalog into ProcessedModels. The SAME transform for the
@@ -941,18 +946,15 @@ const buildModelsFromCatalog = async (
 
 	// Constrain the upstream router's full catalog to a curated allowlist, shape the survivors into
 	// model configs, then layer MODELS overrides on top (see $lib/chat/server/modelsCatalog).
-	//
-	// With the `model-picker` flag off, the allowlist still decides WHICH models are admissible and the
-	// flag decides whether more than the first is offered — so a widened MODEL_ALLOWLIST is inert until
-	// someone turns the picker on, and defaultModel is the same model either way (CUR-245).
+	// The allowlist decides which models the picker offers.
 	const direct = mistralEndpoint();
 	const allowlistSpec = resolveAllowlistSpec();
 	const hfPinned = hfEndpoint(allowlistSpec);
-	const allowed = offeredModels(
-		selectAllowedModels(withDirectModels(withDirectModels(catalog, direct), hfPinned), allowlistSpec),
-		gates.picker
+	const allowed = selectAllowedModels(
+		withDirectModels(withDirectModels(catalog, direct), hfPinned),
+		allowlistSpec
 	);
-	// The lane guard runs last so a MODELS override can't reintroduce a substitute (CUR-3936).
+	// The lane guard runs last so a MODELS override can't reintroduce a substitute.
 	const configs = withOnlyPickedModelLanes(
 		applyOverrides(
 			routeDirectModels(
@@ -1023,13 +1025,13 @@ export const publishRegistry = (newModels: ProcessedModel[]): void => {
 // so the role check reuses it rather than asking the gateway again.
 let gatewayListed: Set<string> | null = null;
 
-// Every lane this module can send a request to, for config/inference.ts (CUR-2277). The key VALUES are
+// Every lane this module can send a request to, for config/inference.ts. The key VALUES are
 // here only so the check can read each lane's /models; the config records the env var names.
 const inferenceLanes = (): Lane[] => {
 	const env = (key: string) => ((Reflect.get(config, key) as string | undefined) ?? "").trim();
 	const direct = mistralEndpoint();
 	const gatewayKey = firstKey(["OPENAI_API_KEY", "HF_TOKEN"], "inferenceGatewayKey", { allowEmpty: true });
-	// The catalog backup is FALLBACK_BASE_URL when set (CUR-2293), else the HF pair. On its own host
+	// The catalog backup is FALLBACK_BASE_URL when set, else the HF pair. On its own host
 	// with no FALLBACK_API_KEY it rides the gateway's key, which is what endpointOai sends.
 	const backupKey = endpointApiKey(catalogBackup);
 	const backupKeyEnv = !catalogBackupHost ? "HF_TOKEN" : backupKey ? "FALLBACK_API_KEY" : "OPENAI_API_KEY";
@@ -1053,11 +1055,11 @@ const inferenceLanes = (): Lane[] => {
 // Builds the inference config from the registry just published, logs it, and checks every role against
 // its provider's /models. Phase 1 changes nothing that is served: a misconfigured role is an error log
 // and a captured exception at boot, where before it was a visitor-facing failure the first time the
-// role was used (CUR-2293). Never throws.
+// role was used. Never throws.
 const reportInferenceTopology = async (registry: ProcessedModel[]): Promise<void> => {
 	const env = (key: string) => ((Reflect.get(config, key) as string | undefined) ?? "").trim() || undefined;
 	const list = (raw: string | undefined) => (raw ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-	const environment = inferenceEnvironment(process.env.VERCEL_ENV);
+	const environment = inferenceEnvironment(deployEnvName());
 	const lanes = inferenceLanes();
 	const shadowed = shadowedIds(registry);
 	if (shadowed.length) {
@@ -1087,7 +1089,7 @@ const reportInferenceTopology = async (registry: ProcessedModel[]): Promise<void
 			logger.error(r, "[inference] a role names a model its provider does not serve");
 		}
 		// An unreadable list is expected on a cold start (a slow /models), and the role still serves:
-		// one warn per provider, never an error per role (CUR-4057). No failopen field: the fail-open
+		// one warn per provider, never an error per role. No failopen field: the fail-open
 		// monitor pages at three an hour, and nothing here falls back for a person.
 		for (const p of uncheckedProviders(cfg, unserved, fetchErrors)) {
 			logger.warn(
@@ -1105,8 +1107,8 @@ const reportInferenceTopology = async (registry: ProcessedModel[]): Promise<void
 };
 
 // Build (or rebuild) the model registry from the LIVE catalog and publish it into the live exports.
-// Models a visitor can actually choose and send a message to. NOT the same as the registry's length
-// (CUR-1246): buildModelsFromCatalog appends the agent model and the compare panel AFTER the
+// Models a visitor can actually choose and send a message to. NOT the same as the registry's length:
+// buildModelsFromCatalog appends the agent model and the compare panel AFTER the
 // allowlisted chat models, all of them `unlisted`, so a build whose allowlist matched NOTHING still
 // returns five entries. An emptiness guard that counts those as a healthy registry lets `initModels`
 // publish it without throwing, `ensureModelsReady` skip the retry, and `applyLiveRegistry` republish it
@@ -1153,7 +1155,7 @@ const INIT_RETRY_COOLDOWN_MS = 15_000;
 export const ensureModelsReady = async (): Promise<void> => {
 	// Servable, not total. A registry of only the agent and the compare panel is non-empty and serves
 	// nobody, and returning early on it would skip the retry below, so
-	// an instance that lost its catalog once would stay dead for its whole life (CUR-1246). The tradeoff is deliberate
+	// an instance that lost its catalog once would stay dead for its whole life. The tradeoff is deliberate
 	// — a request now errors and triggers a heal instead of rendering a page that says "No models
 	// available" forever, which reads as a configuration choice rather than a broken instance.
 	if (registryCanServe()) return;
@@ -1162,7 +1164,7 @@ export const ensureModelsReady = async (): Promise<void> => {
 			// Every request refused during the cooldown window is logged. `warn`, not
 			// `error`/captureServerException: the underlying failure was already reported once below when it
 			// happened, and every request hitting this branch during the same 15s window is the same
-			// failure, not a new one. (CUR-1154)
+			// failure, not a new one.
 			logger.warn(
 				{ cooldownRemainingMs: INIT_RETRY_COOLDOWN_MS - (Date.now() - lastInitFailureAt) },
 				"[models] Model registry unavailable — retry cooldown active, refusing without a fresh attempt"
@@ -1225,22 +1227,21 @@ const refreshFromLive = async (snapshotModels: ProcessedModel[]): Promise<void> 
 // "just flipped" without rebuilding on every tick. `null` means "never checked yet".
 
 const gatesEqual = (a: RegistryGates, b: RegistryGates): boolean =>
-	a.picker === b.picker &&
 	a.routerAlias === b.routerAlias &&
 	a.agent === b.agent &&
 	a.sideCallLane === b.sideCallLane;
 
 /**
  * Re-derive the three registry gates against a fresh flag poll, and rebuild + republish the registry
- * ONLY when a gate's value actually changed since the last check (CUR-1149).
+ * ONLY when a gate's value actually changed since the last check.
  *
  * `ensureModelsReady` builds the registry exactly ONCE per process — that's deliberate (see its own
  * comment), but it means nothing re-reads the gates again for the rest of that process's life, and a
- * process's life can span more than one deploy on warm compute (CUR-1122). Called from the warm cron
+ * process's life can span more than one deploy on warm compute. Called from the warm cron
  * (already running every ~60s to keep the flag SNAPSHOT fresh, per refreshFlags's own header) so a stale
  * registry self-corrects on the same cadence without a forced cold start.
  *
- * Cheap in the common (unchanged) case — one flag poll, no catalog fetch. A full `buildModels()` only
+ * Cheap in the common (unchanged) case — one flag poll, no catalog fetch. A full `buildModels` only
  * runs on a real flip, and a failed rebuild leaves the previous registry serving rather than clearing it.
  */
 export const refreshRegistryGatesIfChanged = async (): Promise<{
@@ -1257,7 +1258,7 @@ export const refreshRegistryGatesIfChanged = async (): Promise<{
 		const rebuilt = await buildModels();
 		// Servable, not total — the warm cron calls this every ~60s, so this is the path by which a
 		// single failed catalog fetch could replace a working production registry with one nobody can
-		// use (CUR-1246).
+		// use.
 		if (servableModels(rebuilt).length > 0) publishRegistry(rebuilt);
 		logger.info({ gates, rebuiltCount: rebuilt.length }, "[models] registry gates changed — republished");
 		return { changed: true, gates };
@@ -1268,7 +1269,7 @@ export const refreshRegistryGatesIfChanged = async (): Promise<{
 };
 
 // A cold instance whose registry was built past the boot poll's cap rebuilds itself when that poll
-// lands, rather than waiting for the warm cron, which previews don't get (CUR-4194).
+// lands, rather than waiting for the warm cron, which previews don't get.
 onRegistryPollLanded(() =>
 	refreshRegistryGatesIfChanged().catch((e) => logger.warn(e, "[models] late-poll gate refresh failed"))
 );

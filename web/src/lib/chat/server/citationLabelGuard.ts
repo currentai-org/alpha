@@ -115,7 +115,7 @@ const CITED_LABEL = /\[(\d+)\] \(([^()]{1,60})\)/g;
 export function verifyCitationLabels(
 	text: string,
 	sources: CitationLabelSource[],
-	/** How many of the visitor's own numbered sources come first; `sources` starts after them (CUR-3844). */
+	/** How many of the visitor's own numbered sources come first; `sources` starts after them. */
 	visitorCount = 0
 ): CitationLabelResult {
 	const original = text ?? "";

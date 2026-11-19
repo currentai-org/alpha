@@ -2,7 +2,7 @@
 // e2e-area: @agent
 import { randomBytes } from 'node:crypto';
 import { test, expect } from './helpers/test';
-import { chatEntry } from './helpers/chatEntry';
+import { MEDIUM_MODEL } from './helpers/chatEntry';
 import { setFlagOverrides } from './helpers/flagOverride';
 import { signInAsFreshUser } from './helpers/session';
 import { agentOption, openAgentTools } from './helpers/agentTool';
@@ -11,7 +11,7 @@ import { turnDone } from './helpers/turn';
 import { startChattingPastWelcome } from './helpers/welcome';
 
 // An agent turn the route's generation watchdog ends (the way a turn with an approval nobody
-// answers ends, CUR-4660) arrives as a 504. The tab used to read any 5xx as the chosen model failing and
+// answers ends) arrives as a 504. The tab used to read any 5xx as the chosen model failing and
 // marked it busy for ten minutes, so the composer said "Mistral Medium 3.5 is unavailable right now"
 // while Medium answered everyone else. The agent served that turn without ever calling the chosen
 // model, which must stay on offer afterwards.
@@ -19,6 +19,9 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // `agent_turn_deadline_20s` cuts an agent turn's watchdog to 20s (see agent-outlives-the-tab.spec.ts),
 // so it fires without a three-minute wait. Reachable by a minted `@example.org` account on preview, as
 // in agent-file-download.spec.ts.
+//
+// The chat starts on a hand-picked model, never Auto: Auto routes around a model the tab marked busy and
+// hides the notice, so a spec on Auto stays green with or without the fix.
 
 test(
 	'an agent turn the watchdog ends leaves the chosen model available: no "unavailable right now" notice under the composer',
@@ -29,7 +32,9 @@ test(
 		await page.addLocatorHandler(welcomeDialog, async () => {
 			await startChattingPastWelcome(welcomeDialog);
 		});
-		await setFlagOverrides(context, baseURL!, { 'agent-mode': true });
+		// `agent-run-handoff` off: with it on, the route hands the run to the page before the watchdog,
+		// the run finishes, and the watchdog's 504 this spec is about never happens.
+		await setFlagOverrides(context, baseURL!, { 'agent-mode': true, 'agent-run-handoff': false });
 		await signInAsFreshUser(page);
 		await installFaultInjectionHeader(page, 'agent_turn_deadline_20s');
 
@@ -38,7 +43,7 @@ test(
 		// The develop agent app refuses runs past its concurrency with an answer, not a 504; send again in
 		// a new conversation up to four times, as agent-outlives-the-tab.spec.ts does.
 		for (let attempt = 1; ; attempt++) {
-			await page.goto(chatEntry(), { waitUntil: 'commit' });
+			await page.goto(`/chat/models/${MEDIUM_MODEL}`, { waitUntil: 'commit' });
 			await composer.click({ timeout: 30_000 });
 			await openAgentTools(page, { timeout: 15_000 });
 			await agentOption(page, 'On').click();

@@ -7,7 +7,7 @@
 //
 // Only a language the model is built for gets named. An English browser names nothing here, so a
 // visitor writing Catalan on an English laptop is never told to answer in English; the message's own
-// language is named instead (messageLanguageNote, below). (CUR-1713)
+// language is named instead (messageLanguageNote, below).
 import { fromIso1, languageName } from "$lib/chat/routing/languages";
 import { heuristicClassify } from "$lib/chat/routing/heuristic";
 
@@ -24,8 +24,8 @@ export function browserLanguageNote(
 // on an English laptop can answer Spanish and Catalan in English unless the message's language is
 // named. The read is the one refusal notices use (declineCopy.ts), and only a
 // language on the model's list gets named, so an English message, or one the detector can't place,
-// gets today's prompt. Short Catalan can read as Spanish (a tie at 0.42 on "Ets una persona de
-// veritat?"), which sends the answer into Spanish rather than English. (CUR-3898)
+// gets no note. Short Catalan can read as Spanish (a tie at 0.42 on "Ets una persona de
+// veritat?"), which sends the answer into Spanish rather than English.
 export type MessageLanguageRead = (text: string) => Promise<string | undefined>;
 
 export async function messageLanguageNote(
@@ -46,7 +46,7 @@ export async function messageLanguageNote(
 // can answer Hausa in English. Here the name comes from the message, since the browser says nothing about
 // Hausa, and only for a language on the model's measured-weak list. A script that names its language
 // outright decides first; otherwise Clef, offered the weak languages, reads the message. When Clef
-// can't be asked the turn names nothing (clefLanguageOf logs why), which is today's prompt. (CUR-2237)
+// can't be asked the turn names nothing (clefLanguageOf logs why) and the prompt carries no note.
 const SURE_WORDS = 0.6;
 
 export type ClefLanguageRead = (text: string, extra: readonly string[]) => Promise<string | null | undefined>;
@@ -76,4 +76,31 @@ export async function weakLanguageNote(
 		language: code,
 		note: `The person wrote in ${name}. Write your whole answer in ${name}, including any lists, and do not switch to English.`,
 	};
+}
+
+// A model can carry the conversation's earlier language into a turn written in another one: after
+// two Spanish turns, "Now in English please" gets a Spanish answer that opens by copying the earlier
+// answer's heading. The fenced turn's rule only says "the language of the message", which the history
+// outweighs. So when the latest message reads as a different language from the answer before it,
+// the turn names the message's language after the fence, where the per-turn answer settings go. The
+// read is the one refusal notices use (declineCopy.ts), on both texts; when either can't be placed, or
+// both read the same, nothing is named. Only a model whose profile asks for it gets the note
+// (harnessProfiles.ts `namesSwitchedLanguage`).
+export async function switchedLanguageNote(
+	messages: readonly { from: string; content?: string }[],
+	readLanguage: MessageLanguageRead
+): Promise<{ language: string; previous: string; note: string } | undefined> {
+	const lastUser = messages.findLastIndex((m) => m.from === "user");
+	if (lastUser <= 0) return undefined;
+	const text = (messages[lastUser].content ?? "").trim();
+	const before = messages.slice(0, lastUser).findLast((m) => m.from === "assistant");
+	const earlier = (before?.content ?? "").replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+	if (!text || !earlier) return undefined;
+	const [tag, previous] = await Promise.all([readLanguage(text), readLanguage(earlier)]);
+	if (!tag || !previous) return undefined;
+	const base = tag.split("-")[0];
+	if (base === previous.split("-")[0]) return undefined;
+	// The same note messageLanguageNote writes, from the read already made, so the two never word it apart.
+	const named = await messageLanguageNote(text, [base], async () => tag);
+	return named && { ...named, previous: previous.split("-")[0] };
 }

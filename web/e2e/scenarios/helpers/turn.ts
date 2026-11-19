@@ -7,11 +7,11 @@ import { dirname, join } from 'node:path';
 //
 // "Copy to clipboard" is NOT that signal. A code block inside the answer renders its own copy button
 // while the turn is still streaming, so a wait on the title returns mid-stream and `innerText()` reads
-// "… is generating…". That let data-portability export a half-written answer (CUR-2035) and made
-// math-routing's fence fallback read as a missing total when the page showed the right one (CUR-2133).
+// "… is generating…". That let data-portability export a half-written answer and made
+// math-routing's fence fallback read as a missing total when the page showed the right one.
 //
 // Retry is: ChatMessage.svelte renders it only once `isTurnStillRunning` is false, including for a turn
-// that produced no text (CUR-1652, CUR-1748). An interrupted reply shows Retry too (CUR-2008), so a
+// that produced no text. An interrupted reply shows Retry too, so a
 // spec that must tell a complete answer from an interrupted one still has to assert on the text.
 //
 // Returns the locator rather than waiting on it, so the `expect` stays in the spec where the

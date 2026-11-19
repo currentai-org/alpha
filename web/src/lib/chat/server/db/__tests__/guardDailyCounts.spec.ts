@@ -1,7 +1,7 @@
 /**
  * A distress (log-action) guard hit leaves a count and nothing else. The contracts: hits on one
  * UTC day and rule add up in a single row, and a row holds only the day, the rule and the count, so there
- * is no per-hit record to join back to a person. (CUR-3915)
+ * is no per-hit record to join back to a person.
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { and, asc, getTableColumns, gte, lte } from "drizzle-orm";
@@ -19,7 +19,7 @@ const readCounts = () =>
 		.where(inTestYear)
 		.orderBy(asc(guardDailyCounts.day), asc(guardDailyCounts.ruleKey));
 
-describe.sequential("guard daily counts (CUR-3915)", () => {
+describe.sequential("guard daily counts", () => {
 	afterEach(async () => {
 		await getDb().delete(guardDailyCounts).where(inTestYear);
 	});

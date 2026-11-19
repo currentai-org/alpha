@@ -1,6 +1,6 @@
 /**
- * One Anthropic Messages call whose answer is a tool call, shared by the persona driver and the cold-walk
- * driver. The decoder is held to the tool's schema, so there is no reply text to parse; the callers still
+ * One Anthropic Messages call whose answer is a tool call, used by the persona driver. The decoder is held
+ * to the tool's schema, so there is no reply text to parse; the callers still
  * validate the input, because a schema cannot say whether a ref names something on the current page.
  */
 export type ToolChoice = { type: 'tool'; name: string } | { type: 'any' } | { type: 'auto' };

@@ -1,4 +1,4 @@
-// Can a person attach a PDF or Word document in chat and ask about it? (CUR-987)
+// Can a person attach a PDF or Word document in chat and ask about it?
 //
 // The `document-attachments` flag decides. A document is read on the server with the parsers the
 // admin corpus already uses (rag/extractFile.ts: unpdf for PDF, mammoth for DOCX), and its text joins
@@ -16,7 +16,6 @@
 // Fallback is OFF: a new, not-yet-trusted surface fails closed if PostHog was never polled.
 
 import { flagEnabledOr } from "$lib/chat/server/flags";
-import { guardPrimaryEnabled } from "$lib/chat/server/guardGate";
 import { multimodalEnabled } from "$lib/chat/server/multimodalMode";
 
 /** PostHog flag key. Owner: chat. Remove once document attachments are permanently on. */
@@ -39,10 +38,8 @@ export function documentTextOnlyEnabled(): boolean {
 }
 
 /** Should the composer offer PDF and DOCX? Only when a document sent now would be read: the flag is
- *  on, attachments are accepted at all (`multimodal`, else parseRequest answers 415), and the guard
- *  screens the turn. Offering it otherwise leads to a file the model never sees. */
+ *  on and attachments are accepted at all (`multimodal`, else parseRequest answers 415). Offering it
+ *  otherwise leads to a file the model never sees. */
 export function documentAttachmentsOffered(): boolean {
-	return (
-		(documentAttachmentsEnabled() || documentTextOnlyEnabled()) && multimodalEnabled() && guardPrimaryEnabled()
-	);
+	return (documentAttachmentsEnabled() || documentTextOnlyEnabled()) && multimodalEnabled();
 }

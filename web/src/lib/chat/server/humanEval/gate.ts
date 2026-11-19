@@ -1,7 +1,7 @@
 import { flagEnabledOr } from "$lib/chat/server/flags";
 import { isTestDeployment } from "$lib/chat/server/deployEnv";
 
-/** PostHog flag key. Owner: chat. Ticket: CUR-1914. */
+/** PostHog flag key. Owner: chat. Ticket:. */
 export const HUMAN_EVAL_FLAG = "human-eval";
 
 /** Is the human evaluation flow (API and entry point on the models page) on for this request? */

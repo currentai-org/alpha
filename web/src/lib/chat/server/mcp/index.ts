@@ -3,7 +3,7 @@
 //   maybeRunMcpTool(userMessage, { synthesizeText }):
 //     seals a Kokoro clip of the text in its language (readAloudSpeech.ts), or skips with the reason.
 //
-// No Space is connected here (CUR-3989 retired the read-aloud Space); configured MCP servers run through
+// No Hugging Face Space is connected here; configured MCP servers run through
 // serversKit.ts. FAIL-OPEN: any failure resolves to a skip or null, never a thrown error.
 import type { ObjectId } from "bson";
 import { logger } from "$lib/chat/server/logger";
@@ -19,7 +19,7 @@ export type McpToolResult = {
 	 *  component" link in the provenance trace. */
 	space: string;
 	/** Read-aloud: the accent the voice speaks, when the language has regional variants and the voice is
-	 *  one of them ("Brazilian Portuguese", CUR-3989). Shown under the player. */
+	 *  one of them ("Brazilian Portuguese"). Shown under the player. */
 	voice?: string;
 };
 
@@ -29,14 +29,14 @@ export type McpToolResult = {
 export type McpSkipped = {
 	skipped: true;
 	ms: number;
-	/** read-aloud has no voice for the answer's language; the language's English name. (CUR-3151) */
+	/** read-aloud has no voice for the answer's language; the language's English name. */
 	unsupportedLanguage?: string;
 	/** With `unsupportedLanguage`: a clip of the same text in the English voice, played only when the
-	 *  visitor asks for it (CUR-3989). Nothing is synthesized until it is fetched. */
+	 *  visitor asks for it. Nothing is synthesized until it is fetched. */
 	fallbackAudio?: string;
 };
 
-/** The tool ran and reported an error (`isError`, CUR-2645). A skip in every place that only asks
+/** The tool ran and reported an error (`isError`). A skip in every place that only asks
  *  "did a tool produce something?", so nothing grounds on it, with the tool's own reason kept so the
  *  answer can say what went wrong. */
 export type McpToolFailed = McpSkipped & { failed: true; tool: string; message: string };
@@ -46,9 +46,8 @@ export function isMcpFailure(x: unknown): x is McpToolFailed {
 	return x != null && typeof x === "object" && "failed" in x && x.failed === true;
 }
 
-/** A 2026-era server needs more input before this tool call can finish (CUR-1017). Parked in
- *  `mcp_elicitations`; the caller decides how (or whether) to surface it — v1 has no UI for this
- *  yet, since nothing live triggers it (the one configured Space is TTS-only). */
+/** A 2026-era server needs more input before this tool call can finish. Parked in
+ *  `mcp_elicitations`; the caller decides how (or whether) to surface it. */
 export type McpElicitationPending = { pending: true; elicitationId: string };
 
 /** Narrow a maybeRunMcpTool result to a real tool run (vs a skip, a parked elicitation, or no-tool null). */
@@ -58,7 +57,7 @@ export function isMcpResult(
 	return x != null && "result" in x;
 }
 
-/** Path of the clip served under the `tts_canned_clip` fault (CUR-2253), from web/static. */
+/** Path of the clip served under the `tts_canned_clip` fault, from web/static. */
 export const CANNED_READ_ALOUD_CLIP = "/e2e/canned-read-aloud.wav";
 
 /** Willingness framing for a read-aloud turn, so the model's generation
@@ -242,12 +241,12 @@ export async function maybeRunMcpTool(
 		allowTts?: boolean;
 		/** The clip is sealed to its conversation, so the speech route plays it only to its owner. */
 		conversationId?: ObjectId;
-		/** Set only under the `tts_canned_clip` fault (preview/development plus the e2e (CUR-2253)
+		/** Set only under the `tts_canned_clip` fault (preview/development plus the e2e
 		 *  secret). A TTS-eligible call answers with this clip instead of synthesizing one. */
 		cannedClipUrl?: string;
-		/** Set only under `tts_slow_canned_clip`. The canned clip arrives after this long. (CUR-3810) */
+		/** Set only under `tts_slow_canned_clip`. The canned clip arrives after this long. */
 		cannedClipDelayMs?: number;
-		/** Set only under the `tts_space_down` fault. A TTS-eligible call skips as if the (CUR-2268)
+		/** Set only under the `tts_space_down` fault. A TTS-eligible call skips as if the
 		 *  Space had timed out, so a spec can read the note a visitor gets when read-aloud fails. */
 		spaceDown?: boolean;
 		/** The visitor's browser language (ISO 639-1), the voice for an answer with too few letters to
@@ -275,13 +274,13 @@ export async function maybeRunMcpTool(
 		};
 	}
 	// The clip is Kokoro through Hugging Face's router (readAloudSpeech.ts), in the answer's
-	// language or not at all. (CUR-3151)
+	// language or not at all.
 	if (opts?.synthesizeText && allowTts) return readAloudClip(opts.synthesizeText, opts.conversationId, userMessage, opts.fallbackLanguage);
 	return null;
 }
 
 /** The read-aloud clip for `text`: a URL the player fetches, or a skip naming the language when
- *  Kokoro has no voice for it (CUR-3151, CUR-3989). `question` is the person's message, which settles the
+ *  Kokoro has no voice for it. `question` is the person's message, which settles the
  *  language of a one-line answer. */
 async function readAloudClip(
 	answer: string,

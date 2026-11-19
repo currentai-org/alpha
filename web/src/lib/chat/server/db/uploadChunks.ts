@@ -2,7 +2,7 @@
  * The chunks of a My files upload too large for one request, held until the finishing
  * request reassembles them. Every chunk request may land on a different instance, so they wait in
  * Postgres rather than in memory. Nothing here is scanned: the only reader is takeUploadChunks, whose
- * caller runs every upload check on the whole file before any byte reaches a bucket. (CUR-1780)
+ * caller runs every upload check on the whole file before any byte reaches a bucket.
  */
 import { and, asc, eq, lt, sql } from "drizzle-orm";
 import { getDb } from "./client";

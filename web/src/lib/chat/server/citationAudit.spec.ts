@@ -4,7 +4,7 @@ import { auditCitations } from "./citationAudit";
 const sources = (n: number) => ({ sources: Array.from({ length: n }, (_, i) => ({ n: i + 1 })) });
 
 describe("auditCitations — is a grounded turn actually citing what it was given", () => {
-	it("flags the live defect: sources supplied, answer cites none (CUR-151)", () => {
+	it("flags the live defect: sources supplied, answer cites none", () => {
 		// A representative shape: eight web sources attached, an answer
 		// that is correct and carries no marker at all.
 		const audit = auditCitations({

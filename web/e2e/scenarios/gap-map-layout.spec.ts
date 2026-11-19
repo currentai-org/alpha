@@ -1,7 +1,7 @@
 // e2e-product: @site
 import { test, expect, type Locator, type Page } from './helpers/test';
 
-// G1, the gap map's layout (CUR-732). Each test is one
+// G1, the gap map's layout. Each test is one
 // "Done when" line from that spec, asserted on the rendered page rather than on the markup that
 // produces it. Counts are asserted by shape, not value: they change every time the catalog is
 // rescored, and a pinned number would go red on the map working as intended.
@@ -555,7 +555,7 @@ test.describe('gap map layout, desktop', { tag: '@G1' }, () => {
 		await expect(dialog).toBeHidden();
 	});
 
-	test('hovering a square shows that one product, inside the viewport, and scrolling hides it (CUR-2214)', async ({
+	test('hovering a square shows that one product, inside the viewport, and scrolling hides it', async ({
 		page
 	}) => {
 		await openMap(page);
@@ -673,7 +673,7 @@ test.describe('gap map layout, desktop', { tag: '@G1' }, () => {
 		}
 	});
 
-	test('the category panel names its score column "Product score", and a long product name truncates on its own line with the organisation under it (CUR-2213)', async ({
+	test('the category panel names its score column "Product score", and a long product name truncates on its own line with the organisation under it', async ({
 		page
 	}) => {
 		await openMap(page);
@@ -832,9 +832,7 @@ test.describe('gap map layout, desktop', { tag: '@G1' }, () => {
 test.describe('gap map layout, 1280×720', { tag: '@G1' }, () => {
 	test.use({ viewport: { width: 1280, height: 720 } });
 
-	test("nothing fixed on screen covers a row's products at 1280×720 (CUR-1648)", async ({
-		page
-	}) => {
+	test("nothing fixed on screen covers a row's products at 1280×720", async ({ page }) => {
 		await openMap(page);
 		for (const y of [0, 600, 1400]) {
 			await page.evaluate((y) => window.scrollTo({ top: y, behavior: 'instant' }), y);

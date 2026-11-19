@@ -5,8 +5,8 @@
 //
 // Better Auth's `user.validateUserInfo` is the one seam that sees the provider's fresh email on a
 // returning sign-in (action "sign-in"). Its own `overrideUserInfoOnSignIn` was rejected: it also
-// rewrites the display name set in Settings (CUR-1176), and it copies an email the provider has not
-// verified, which team flags would then read (CUR-3182).
+// rewrites the display name set in Settings, and it copies an email the provider has not
+// verified, which team flags would then read.
 //
 // Only the provider that created the account may change its address. An account made by an email
 // code, or by another provider, keeps its own address when a provider linked to it later reports a
@@ -16,7 +16,7 @@
 //
 // The new address is taken only when the provider marks it verified and no other user holds it.
 // Anything else keeps the stored email. This runs inside a validator, where a throw refuses the
-// sign-in, so it never throws: a failed refresh costs a stale email, never a failed sign-in. (CUR-3249)
+// sign-in, so it never throws: a failed refresh costs a stale email, never a failed sign-in.
 import { logger } from "$lib/chat/server/logger";
 
 type ValidateData = {

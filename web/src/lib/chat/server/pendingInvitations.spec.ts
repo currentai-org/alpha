@@ -1,7 +1,7 @@
 // The in-app invite list is a second route into someone's attention, so it shows an invite
 // only to the verified address it was sent to, and only while it can still be accepted. The query is
 // stubbed to hand back rows the database filter would have let through by mistake, so these tests
-// pin the second filter in code that stands behind it. (CUR-4167)
+// pin the second filter in code that stands behind it.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const H = vi.hoisted(() => ({ rows: [] as unknown[], getDb: vi.fn() }));

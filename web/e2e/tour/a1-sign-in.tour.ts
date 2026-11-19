@@ -1,12 +1,13 @@
 import { test, expect, chromium, type Page } from '@playwright/test';
 import { setupRecast, narrate, click, typeText, zoom } from 'playwright-recast/helpers';
 import { highlight, waitForNarration, openHome, clickIntoChat, TOUR_RECAST } from './show';
+import { tourEmail } from '../../scripts/lib/tourPersonas.mjs';
 import { installOtpBypassHeader, signInWithEmailOtp } from '../scenarios/helpers/signIn';
 import { readSignInOtp } from '../scenarios/helpers/otp';
 import { accountButton } from '../scenarios/helpers/accountMenu';
 import { turnDone } from '../scenarios/helpers/turn';
 
-// The A1 walkthrough (CUR-2789): docs/journeys/a1-sign-in.md walked as one person in one sitting,
+// The A1 walkthrough: docs/journeys/a1-sign-in.md walked as one person in one sitting,
 // rows 1–8, then 11, then 10, so the story ends on signing out. Row 9 needs a real second OAuth
 // account, so it is told over the chooser's own line about linking providers rather than walked.
 //
@@ -22,7 +23,7 @@ const PASSKEY_NAME = "Sam's phone";
 
 // A readable address on screen. The OTP carve-out needs @example.org; the suffix keeps each run's
 // account fresh.
-const EMAIL = `sam.rivera.${Math.random().toString(36).slice(2, 7)}@example.org`;
+const EMAIL = tourEmail('sam.rivera');
 
 async function meetAlpha(page: Page) {
 	const dialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });
@@ -150,8 +151,8 @@ test('A1: try Alpha, then sign in when you want it to remember you', async ({ pa
 		await laptopBrowser.close();
 	}
 
-	// Managing ways in (CUR-3080), still on the account page. Email code is listed first and has no
-	// button (CUR-3049).
+	// Managing ways in, still on the account page. Email code is listed first and has no
+	// button.
 	const providers = page
 		.locator('section')
 		.filter({ has: page.getByRole('heading', { name: 'Linked providers' }) });
@@ -218,7 +219,7 @@ test('A1: try Alpha, then sign in when you want it to remember you', async ({ pa
 	await page.goto('/chat/settings/account', { waitUntil: 'load' });
 	await expect(emailRow).toBeVisible({ timeout: 15_000 });
 	// The last linked provider's Unlink is off by rule, and the page says the email code
-	// still works, so the line never claims the provider is Sam's only way in (CUR-3144).
+	// still works, so the line never claims the provider is Sam's only way in.
 	await narrate(
 		'Each linked provider gets an Unlink button. While only one is linked, Unlink is greyed out until another is added, and the page says the email code still works either way.'
 	);

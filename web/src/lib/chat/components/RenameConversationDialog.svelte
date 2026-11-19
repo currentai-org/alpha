@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Button, Dialog, Field, Inline } from '@aipotluck/alpha-ds';
 
-	/** Rename a conversation from the side rail's Conversation actions menu (CUR-2629). */
+	/** Rename a conversation from the side rail's Conversation actions menu. */
 	interface Props {
 		open?: boolean;
 		title: string;

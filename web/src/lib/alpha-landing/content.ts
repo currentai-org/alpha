@@ -19,13 +19,11 @@ export const alphaLandingSchema = z.object({
 		ctaHref: text,
 		headlineStart: text,
 		headlineAccent: text,
-		demoCta: text,
 		languagePillar: text,
 		dataPillar: text,
 		rulesPillar: text
 	}),
 	sectionsIntro: z.object({ eyebrow: text, title: text, body: text }),
-	preview: z.object({ eyebrow: text, link: text }),
 	ticker: z.array(
 		z.object({
 			key: z.enum(['open', 'hosts', 'xray', 'language', 'training', 'erase', 'model']),
@@ -38,13 +36,6 @@ export const alphaLandingSchema = z.object({
 		body: text,
 		actions: z.array(link).min(2),
 		more: link
-	}),
-	stage: z.object({
-		label: text,
-		interactLabel: text,
-		interactHint: text,
-		prompt: text,
-		answer: text
 	}),
 	features: z
 		.array(
@@ -116,16 +107,13 @@ export const defaultAlphaLandingContent: AlphaLandingContent = {
 		...defaults.hero,
 		headlineStart: 'Make AI',
 		headlineAccent: 'yours',
-		demoCta: 'Try the demo',
 		languagePillar: 'Your language.',
 		dataPillar: 'Your data.',
 		rulesPillar: 'Your rules.'
 	},
 	sectionsIntro: defaults.sectionsIntro,
-	preview: defaults.preview,
 	ticker: defaults.ticker.map(({ id, text }) => ({ key: id, text })),
 	closing: { ...defaults.closing, actions: [...defaults.closing.actions] },
-	stage: defaults.stage,
 	features: defaults.features.map(({ id, nav, eyebrow, title, body }) => ({
 		key: id,
 		nav,

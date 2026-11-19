@@ -1,4 +1,4 @@
-// Groundcheck (CUR-2467, detector CUR-2554). The grounding prompt already forbids stating a project's
+// Groundcheck (detector). The grounding prompt already forbids stating a project's
 // country unless a source says so (ragGrounding.ts), and models break it anyway on fabrication-eval turns.
 // A prompt rule cannot hold a fact the model believes it knows, so this checks the finished answer
 // instead.
@@ -18,8 +18,7 @@
 // fabrication dump (47 unsourced countries cut to 11 rather than 9). Any failure, timeout or truncated
 // context leaves the answer exactly as generated.
 //
-// Behind `groundcheck`, preview only. Production needs the privacy notice to name the processors
-// (CUR-2063).
+// Behind `groundcheck`, preview only. Production needs the privacy notice to name the processors.
 
 import type OpenAI from "openai";
 import { Lexer, type Tokens } from "marked";
@@ -181,8 +180,8 @@ export function deletesSourcedWords(original: string, revised: string, sourceWor
 const clauseBreak = /[,;:—–()]/u;
 
 /**
- * True when a deletion cuts the end off a sentence in the middle of a clause, leaving a fragment
- * (CUR-2594): "A potluck is a gathering where each participant contributes a dish to share." cut to
+ * True when a deletion cuts the end off a sentence in the middle of a clause, leaving a fragment:
+ * "A potluck is a gathering where each participant contributes a dish to share." cut to
  * "A potluck is a gathering where." A cut is allowed where the original already broke the sentence
  * with a comma, dash, colon, semicolon or bracket ("- EuroLLM — France" to "- EuroLLM —"), and when
  * it removes the whole sentence. Deletions inside the sentence are not judged here. Our own [n]
@@ -209,8 +208,8 @@ export function cutsMidClause(original: string, revised: string): boolean {
 }
 
 /**
- * True when a deletion inside a sentence removes only numbers and leaves the words around them joined
- * (CUR-2874): "the capital of Japan in 1868 during the Meiji Restoration" cut to "in during". A number
+ * True when a deletion inside a sentence removes only numbers and leaves the words around them joined:
+ * "the capital of Japan in 1868 during the Meiji Restoration" cut to "in during". A number
  * is nearly always what the word before it needs, so the remainder reads broken. A cut bounded by a
  * comma, dash, colon, semicolon or bracket on either side is allowed, as in `cutsMidClause`. A cut that
  * also removes a word is not judged here: "A French lab" cut to "A lab" still reads.
@@ -252,8 +251,8 @@ export function cutsLoneNumber(original: string, revised: string): boolean {
 const markers = (s: string): string[] => s.match(/\[\d+\]/g) ?? [];
 
 /**
- * True when a revision keeps words but drops a `[n]` citation marker the original carried (CUR-2682).
- * `words()` reads a marker as one more word, so `isWordDeletion` lets the reviser delete it with the
+ * True when a revision keeps words but drops a `[n]` citation marker the original carried.
+ * `words` reads a marker as one more word, so `isWordDeletion` lets the reviser delete it with the
  * claim next to it, and the sentence that stays reads as unsourced. The reviser can do that to
  * "AI Potluck, based in Switzerland, assembles … Alpha [1]."
  */
@@ -268,7 +267,7 @@ export function dropsCitation(original: string, revised: string): boolean {
  * the end of the sentence; null when a dropped marker sat mid-sentence. A closing marker cites the
  * whole sentence, including the part the deletion leaves. The reviser drops it whenever it
  * deletes a clause from a cited sentence ("AI Potluck, based in Belgium, is … assistants [1]." on 20
- * of 20 live runs, CUR-2692), and refusing the revision for that kept the unsourced country.
+ * of 20 live runs), and refusing the revision for that kept the unsourced country.
  */
 export function restoreClosingMarkers(original: string, revised: string): string | null {
 	const closing = original.match(/((?:\s*\[\d+\])+)\s*[.!?]*\s*$/u)?.[1] ?? "";
@@ -284,7 +283,7 @@ export function restoreClosingMarkers(original: string, revised: string): string
  * the sources do not support; a word it left unmarked is one it read as supported or as a claim it
  * does not judge. With sources about AI Potluck, the detector marked only "where each participant
  * contributes a dish to share" of "A potluck is a gathering where …", the reviser empties the whole
- * sentence, and a fragment guard then has nothing to refuse (CUR-2692).
+ * sentence, and a fragment guard then has nothing to refuse.
  * Refusing it leaves the sentence whole, since cutting just the marked clause is a mid-clause cut.
  *
  * @remarks Prose only, for the reason `emptiesUnrelatedSentence` gives: on a list line the reviser
@@ -317,7 +316,7 @@ export function deletesUnmarkedWords(answer: string, unit: Unit, revised: string
  *
  * Groundcheck tries this only after the reviser's own revision of a list item was refused. The reviser
  * does not produce it by itself: it can write "Hug Face" when the detector marks "ging", or empty
- * "- OpenMined — Norway" though OpenMined is a source's name, leaving both countries (CUR-2692).
+ * "- OpenMined — Norway" though OpenMined is a source's name, leaving both countries.
  * The cut still passes every guard the reviser's revisions do.
  */
 export function unsourcedTail(answer: string, unit: Unit, spans: DetectSpan[], sourceWords: Set<string>): string | null {
@@ -350,7 +349,7 @@ const namesSomething = (line: string) =>
 
 /**
  * True when a revision deletes a whole prose sentence that names nothing the sources mention: no
- * content word of it appears in them (CUR-2680). Such a sentence is general knowledge set beside the
+ * content word of it appears in them. Such a sentence is general knowledge set beside the
  * sourced answer ("Paris is the capital of France."), not a detail about anything the sources cover.
  * The reviser deletes such a sentence even when a prompt tells it not to.
  *
@@ -459,7 +458,7 @@ const itemMarker = /^\s*(?:[-*+]|\d+[.)])(?=\s|$)/u;
 const loneNumeral = /(?<![\p{N}.,[])\p{N}+(?![\p{N}\p{L}\]]|[.,]\p{N})/gu;
 
 /**
- * A list item goes whole or stays whole (CUR-4489). When a revision empties an item's title (the first
+ * A list item goes whole or stays whole. When a revision empties an item's title (the first
  * unit on its marker line with text after the marker) or its whole marker line, every line of the item
  * joins `drop`. Deleting only the title would leave "5. Um mistério envolvente…", and descriptions
  * with no title under them. An ordered list that lost items is renumbered from its start, and a numeral
@@ -679,7 +678,7 @@ export async function groundcheckAnswer(
 
 /**
  * What replaces an answer groundcheck emptied: what happened, and the sources that were retrieved.
- * Each title once, in plain text, with no `[n]` markers (CUR-2614): the chat renders a marker for a
+ * Each title once, in plain text, with no `[n]` markers: the chat renders a marker for a
  * source with no url as `[<title>]` (marked.ts), so "[1] About AI Potluck" read the name twice, and
  * two chunks of one document listed it twice more. The links stay in the sources list under the answer.
  */
@@ -690,7 +689,7 @@ export function groundcheckEmptiedText(sources: { n: number; title: string }[]):
 	return `${head} They were: ${titles.join(", ")}.`;
 }
 
-// The line under an answer that lost list items (CUR-4489), by the decline languages (declineCopy.ts),
+// The line under an answer that lost list items, by the decline languages (declineCopy.ts),
 // so it reads in the language the answer is in. Tamil falls back to English until a native speaker
 // writes it, as the crisis copy does.
 const ITEMS_REMOVED: { en: (n: number) => string } & Partial<Record<DeclineLanguage, (n: number) => string>> = {
@@ -801,7 +800,7 @@ export const GROUNDCHECK_FAULT_EVIDENCE = ["A fixed reply stands in for a model'
 /**
  * The check `groundcheck_removes_claim` runs in place of the remote detector and the task-model
  * reviser. It flags the word "canned" in `canned_reply`'s text and deletes it, then lets the real
- * acceptance guards and count run, so a spec reads the removed-claim count a real revision stamps. (CUR-2927)
+ * acceptance guards and count run, so a spec reads the removed-claim count a real revision stamps.
  */
 export function groundcheckFaultCheck(input: { answer: string; context: string[]; question: string }) {
 	return groundcheckAnswer(input, {

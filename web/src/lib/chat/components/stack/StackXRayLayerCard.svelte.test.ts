@@ -4,8 +4,8 @@ import { page } from "vitest/browser";
 import { describe, expect, it, afterEach } from "vitest";
 import type { StackXRayLayer } from "./stackXRayLayers";
 
-// Every card links outward only (GitHub, Hugging Face, vendor sites) — never to our own /map
-// (CUR-1736). This pins it via a real accessible-role query, because a rendered-link text scan and the accessibility tree can
+// Every card links outward only (GitHub, Hugging Face, vendor sites) — never to our own /map.
+// This pins it via a real accessible-role query, because a rendered-link text scan and the accessibility tree can
 // disagree on this panel, and the tree is the one a visitor gets.
 // A source grep on the template string would not catch a regression of it. The row's detail opens on tap (`expanded` only marks the part as used), so
 // each test opens it first.
@@ -23,7 +23,7 @@ const baseLayer: StackXRayLayer = {
 	mapHref: "/map",
 };
 
-describe("StackXRayLayerCard — gap map link (CUR-1736)", () => {
+describe("StackXRayLayerCard — gap map link", () => {
 	afterEach(() => {
 		cleanup();
 	});
@@ -69,7 +69,7 @@ describe("StackXRayLayerCard — gap map link (CUR-1736)", () => {
 	});
 });
 
-describe("StackXRayLayerCard — maker name and our own page (CUR-1745)", () => {
+describe("StackXRayLayerCard — maker name and our own page", () => {
 	afterEach(() => {
 		cleanup();
 	});
@@ -105,8 +105,8 @@ describe("StackXRayLayerCard — maker name and our own page (CUR-1745)", () => 
 });
 
 // A Mistral Large 3 answer goes straight to Mistral's API, so the router and engine rows stay unlit,
-// and their chip must not say "Working" under the finished answer, which reads as still running (CUR-2850).
-describe("StackXRayLayerCard — status chip beside an answer (CUR-2850)", () => {
+// and their chip must not say "Working" under the finished answer, which reads as still running.
+describe("StackXRayLayerCard — status chip beside an answer", () => {
 	afterEach(() => {
 		cleanup();
 	});
@@ -117,7 +117,7 @@ describe("StackXRayLayerCard — status chip beside an answer (CUR-2850)", () =>
 		await expect.element(page.getByText("Working", { exact: true })).not.toBeInTheDocument();
 	});
 
-	it("names the platform that stood in for a skipped serving row instead of a bare 'not used' (CUR-3966)", async () => {
+	it("names the platform that stood in for a skipped serving row instead of a bare 'not used'", async () => {
 		await render(StackXRayLayerCard, {
 			layer: { ...baseLayer, bypassedBy: "Mistral AI's La Plateforme in France" },
 			expanded: false,
@@ -130,7 +130,7 @@ describe("StackXRayLayerCard — status chip beside an answer (CUR-2850)", () =>
 		await expect.element(page.getByText("Not used for this answer")).not.toBeInTheDocument();
 	});
 
-	it("marks a row the answer recorded nothing about as not reported, never as not used (CUR-3966)", async () => {
+	it("marks a row the answer recorded nothing about as not reported, never as not used", async () => {
 		await render(StackXRayLayerCard, {
 			layer: { ...baseLayer, unreported: true },
 			expanded: false,
@@ -145,13 +145,13 @@ describe("StackXRayLayerCard — status chip beside an answer (CUR-2850)", () =>
 		await expect.element(page.getByText("Working", { exact: true })).toBeInTheDocument();
 	});
 
-	it("says a built part no offered model runs on is not in use before an answer, never working (CUR-4328)", async () => {
+	it("says a built part no offered model runs on is not in use before an answer, never working", async () => {
 		await render(StackXRayLayerCard, { layer: { ...baseLayer, idle: true }, expanded: false });
 		await expect.element(page.getByText("Not in use right now")).toBeInTheDocument();
 		await expect.element(page.getByText("Working", { exact: true })).not.toBeInTheDocument();
 	});
 
-	it("still lights an idle part as used when an answer did run on it (CUR-4328)", async () => {
+	it("still lights an idle part as used when an answer did run on it", async () => {
 		await render(StackXRayLayerCard, {
 			layer: { ...baseLayer, idle: true, touched: true },
 			expanded: true,

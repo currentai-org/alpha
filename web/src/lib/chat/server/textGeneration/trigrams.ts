@@ -3,7 +3,7 @@
  * (`scripts/gen-language-profiles.mts`) and the runtime detector (`languageFallback.ts`). A profile
  * built with one normalization and scored with another silently degrades every score, so both sides
  * import this file rather than keeping two copies. No imports, and only erasable TypeScript, so the
- * generator can load it with Node's own type stripping. (CUR-1841)
+ * generator can load it with Node's own type stripping.
  */
 
 /**

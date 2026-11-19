@@ -5,7 +5,7 @@
 // holds no helpline numbers. It holds emergency numbers only, since law fixes those; each cites a source.
 //
 // The country comes from Vercel's `x-vercel-ip-country` request header, read per request in
-// loadChatShellData. It is never stored or logged. (CUR-3912)
+// loadChatShellData. It is never stored or logged.
 
 /**
  * The country codes findahelpline.com has a page for, from https://findahelpline.com/server-sitemap.xml
@@ -19,7 +19,7 @@ const FINDAHELPLINE_COUNTRIES = new Set(
 		'co cr cu cv cw cy cz de dj dk dm do dz ec ee es fi fj fo fr ga gb gd ge gf gg gh gi gl gm gp gr ' +
 		'gt gu gy hk hn hr ht hu id ie il im in iq ir is it je jm jo jp ke kg kh ki kr kw ky kz la lb lc ' +
 		'li lk lr lt lu lv ma mc md me mg mk mm mn mo mq mr mt mu mv mw mx my mz na nc ne ng ni nl no np ' +
-		'nr nz om pa pe pg ph pk pl pr ps pt py qa re ro rs ru rw sb sc se sg si sk sl ss sv sz tg th tl ' +
+		'nr nz om pa pe pg ph pk pl pr ps pt py qa re ro rs ru rw sb sc se sg si sk sl sv sz tg th tl ' +
 		'tm tn to tr tt tw tz ua ug us uy ve vn vu ws xk ye yt za zm zw'
 	).split(' ')
 );

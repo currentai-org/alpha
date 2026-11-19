@@ -16,7 +16,7 @@ import { requireLocationsAccess } from "../../../guard";
 // The Connect Hugging Face button lands here. It mints a state and a PKCE pair, seals both
 // with the account id into a short-lived cookie, and sends the browser to the storage app's consent.
 // `?bucket=<name>` names the bucket to make; without it Alpha makes alpha-files. Connecting again with
-// another name adds a second bucket. (CUR-2932)
+// another name adds a second bucket.
 export const GET: RequestHandler = async ({ locals, cookies, url }) => {
 	const accountId = await requireLocationsAccess(locals);
 	const bucket = url.searchParams.get("bucket")?.trim() || undefined;

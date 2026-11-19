@@ -1,7 +1,7 @@
 /**
  * Two OAuth sign-ins that happen to share an email never silently merge, even when both assert a
- * verified email, because the person may have deliberately kept them separate (CUR-850). The explicit
- * "Settings → Account → Linked providers → Link" flow (CUR-580) is the only path two accounts can
+ * verified email, because the person may have deliberately kept them separate. The explicit
+ * "Settings → Account → Linked providers → Link" flow is the only path two accounts can
  * merge through. This file tests that a same-email sign-in collision is refused, not merged, and that
  * the explicit link path still works.
  *
@@ -60,7 +60,7 @@ async function cleanupByEmail(email: string) {
 	}
 }
 
-describe.sequential("Better Auth account-merge invariant (CUR-850, reverses CUR-482)", () => {
+describe.sequential("Better Auth account-merge invariant ( reverses )", () => {
 	const emails: string[] = [];
 
 	afterEach(async () => {
@@ -88,7 +88,7 @@ describe.sequential("Better Auth account-merge invariant (CUR-850, reverses CUR-
 
 		// Same person, in reality — but this call simulates a FRESH SIGN-IN attempt via Hugging Face,
 		// not the authenticated "link a provider" action from Settings. It must not silently merge into the
-		// Google account (isRegister: false) (CUR-850): the person has to sign in with Google first, then
+		// Google account (isRegister: false): the person has to sign in with Google first, then
 		// link Hugging Face explicitly.
 		const second = await handleOAuthUserInfo(c, {
 			userInfo: { id: "hf-sub-1", email, emailVerified: true, name: "Ada Lovelace" },
@@ -115,7 +115,7 @@ describe.sequential("Better Auth account-merge invariant (CUR-850, reverses CUR-
 		expect(accounts.map((a) => a.providerId)).toEqual(["google"]);
 	});
 
-	it("explicit link (Settings → Account → Link) then a fresh sign-in via the SECOND provider resolves to the SAME user — the one path CUR-850 keeps open", async () => {
+	it("explicit link (Settings → Account → Link) then a fresh sign-in via the SECOND provider resolves to the SAME user — the one path keeps open", async () => {
 		const email = `merge-${newId()}@example.org`;
 		emails.push(email);
 		const c = await buildContext();
@@ -143,7 +143,7 @@ describe.sequential("Better Auth account-merge invariant (CUR-850, reverses CUR-
 		// 83's check is `!opts.selectedUser && (...)`), because this call is authenticated as userId
 		// already and isn't deciding whether two strangers' sign-ins should merge. A different email on
 		// purpose, and this path (handleOAuthUserInfo) never checks it either way, with or without
-		// allowDifferentEmails. The separate email-match check (CUR-1768) lives in callback.mjs:175, the
+		// allowDifferentEmails. The separate email-match check lives in callback.mjs:175, the
 		// redirect-completion handler Hugging Face's genericOAuth plugin runs, which real traffic hits and
 		// this synthetic call bypasses.
 		const link = await handleOAuthUserInfo(c, {

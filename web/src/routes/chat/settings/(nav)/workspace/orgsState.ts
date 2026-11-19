@@ -5,7 +5,7 @@ type ListOrgsResult = { data: OrgRow[] | null; error: AuthError | null };
 
 export const SIGNED_OUT_COPY = "You're signed out. Sign in again to manage your workspaces.";
 
-/** A Better Auth call refused for want of a session (CUR-4108). */
+/** A Better Auth call refused for want of a session. */
 export function isSignedOut(error: AuthError | null | undefined): boolean {
 	return error?.status === 401;
 }
@@ -13,7 +13,7 @@ export function isSignedOut(error: AuthError | null | undefined): boolean {
 /**
  * What this page says when a Better Auth call fails. A 401 means the session ended under the page,
  * most often in the moment between signing out and the logout's reload, and Better Auth's own text
- * for it is the bare word "Unauthorized" (CUR-3280).
+ * for it is the bare word "Unauthorized".
  */
 export function pageErrorText(error: AuthError, fallback: string): string {
 	if (isSignedOut(error)) return SIGNED_OUT_COPY;

@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2018- The Hugging Face team
+SPDX-License-Identifier: Apache-2.0
+Modified by Current AI from huggingface/chat-ui.
+-->
 <script lang="ts">
 	import Modal from "./Modal.svelte";
 	import ExternalLinkModal from "./ExternalLinkModal.svelte";
@@ -26,7 +31,7 @@
 
 	let srcdoc = $derived(buildArtifactSrcdoc(kind, html, channel));
 
-	// A frame that navigates away from its srcdoc is replaced with a notice (CUR-3527)
+	// A frame that navigates away from its srcdoc is replaced with a notice
 	const leave = new PreviewLeave(
 		() => iframeEl,
 		() => srcdoc

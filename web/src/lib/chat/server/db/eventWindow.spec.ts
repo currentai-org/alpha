@@ -50,6 +50,18 @@ describe("eventWindow", () => {
 		expect(warn.mock.calls[0][1]).toMatch(/^\[admin-login\] count failed/);
 	});
 
+	it("stores exactly windowMs between createdAt and expiresAt even when the clock ticks between reads", async () => {
+		vi.useFakeTimers({ now: new Date("2026-10-01T12:00:00Z") });
+		const realNow = Date.now.bind(Date);
+		let ticks = 0;
+		// Every Date.now() read is 1 ms later than the last, as when a millisecond passes mid-call.
+		vi.spyOn(Date, "now").mockImplementation(() => realNow() + ++ticks);
+		await recordEvent({ type: "t", userId: "u" }, 86_400_000, "l");
+		const row = insertOne.mock.calls[0][0];
+		expect(row.expiresAt.getTime() - row.createdAt.getTime()).toBe(86_400_000);
+		vi.restoreAllMocks();
+	});
+
 	it("records a row that expires one window from now", async () => {
 		vi.useFakeTimers({ now: new Date("2026-10-01T12:00:00Z") });
 		await recordEvent({ type: "t", ipHash: "h", userId: "u" }, 60_000, "l");
@@ -70,7 +82,7 @@ describe("eventWindow", () => {
 		expect(warn).toHaveBeenCalledTimes(2);
 	});
 
-	describe("secondsUntilRoom (CUR-3216)", () => {
+	describe("secondsUntilRoom", () => {
 		const at = (iso: string) => ({ expiresAt: new Date(iso) });
 		beforeEach(() => vi.useFakeTimers({ now: new Date("2026-10-01T12:00:00Z") }));
 

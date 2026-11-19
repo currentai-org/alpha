@@ -2,7 +2,7 @@
  * A persona drives the real UI one model-chosen action per turn.
  *
  * Every journey-tagged spec in this suite drives a correct path — sign in, send a message,
- * change a setting, read the reply. (CUR-1530)
+ * change a setting, read the reply.
  * `pm-critique-journey.mjs` then watches those recordings, so the strongest instrument in the repo is
  * pointed at a product being operated properly and the whole class of defect that only shows up under
  * abuse is invisible to it. Not under-weighted — invisible, because no frame of it was ever captured.
@@ -57,11 +57,11 @@ export const ACTIONS = ['click', 'fill', 'press', 'reload', 'back', 'wait', 'che
 export type ActionName = (typeof ACTIONS)[number];
 
 /** What a persona may do when its spec says nothing. `check_inbox` needs an inbox to read, which only
- *  a persona given one has (CUR-2676), so it is offered only where the spec lists it. */
+ *  a persona given one has, so it is offered only where the spec lists it. */
 export const DEFAULT_ACTIONS: readonly ActionName[] = ACTIONS.filter((a) => a !== 'check_inbox');
 
 /**
- * A keyboard user's actions: no click, but they type (CUR-2916). Without `fill` the persona could not
+ * A keyboard user's actions: no click, but they type. Without `fill` the persona could not
  * write a question at all, since `press` takes one key name and Playwright refuses text, and the
  * critic then filed "can't send a message by keyboard" as a product bug.
  */
@@ -74,7 +74,7 @@ export const KEYBOARD_ONLY_ACTIONS: readonly ActionName[] = [
 ];
 
 /**
- * The sign-in breaker's inbox line (CUR-2916). "No code yet" only when there is genuinely no row; any
+ * The sign-in breaker's inbox line. "No code yet" only when there is genuinely no row; any
  * other read failure is thrown, so runPersona's catch says "could not read the inbox" and the critic
  * never reads a broken database as a sign-in that sent nothing.
  */
@@ -116,7 +116,7 @@ export type TurnRecord = {
 };
 
 /**
- * What the driver refuses to type, whatever the persona asks for (CUR-2676).
+ * What the driver refuses to type, whatever the persona asks for.
  *
  * A TRIPWIRE ON OUR OWN DRIVER'S OUTPUT, NOT A CLASSIFIER OF ANYONE'S TEXT. The personas run
  * unattended against a deployed preview several times a day, signed in as a real account, and an adversarial
@@ -221,7 +221,7 @@ export function validateAction(
 		}
 		// Mistral Large 3 takes no scheduled traffic. The specs pin
 		// GLM, but the picker is on the screen and any persona can reach it, so the driver refuses an
-		// action on anything labelled with it (CUR-2676).
+		// action on anything labelled with it.
 		const target = snapshot.find((e) => e.ref === ref)!;
 		if (OFF_LIMITS_TARGET.test(target.name)) {
 			return {
@@ -273,7 +273,7 @@ export function validateAction(
 
 /** Pages only a signed-in account has: its files, its account, its workspaces, its data and its saved
  *  instructions. A signed-in persona opens on one of them, so a scheduled run reaches a per-account
- *  surface even when the persona's own goal keeps it in the chat (CUR-2676).
+ *  surface even when the persona's own goal keeps it in the chat.
  *  */
 export const ACCOUNT_SURFACES = [
 	'/chat/storage',
@@ -298,7 +298,7 @@ const PROVENANCE_LABEL =
 
 /** Whether `url` is the `/alpha` demo, whose answers are sample data with their own provenance
  *  buttons: no request reached the model they credit. A persona that clicked
- *  into it would log its sample X-ray as a Mistral Large 3 turn (CUR-2676). */
+ *  into it would log its sample X-ray as a Mistral Large 3 turn. */
 export function isDemoPage(url: string): boolean {
 	const path = new URL(url, 'http://x').pathname;
 	return path === '/alpha' || path.startsWith('/alpha/');
@@ -320,7 +320,7 @@ const MODEL_CHOICE_KEY = 'alpha:model-choice';
 /** The catalog id the composer stores for a served model id: `mistral-large-2512` → `mistral-large`.
  *  The app reads back only an id its catalog lists and treats anything else as Auto, so the id comes
  *  from the catalog itself. Stripping the publisher off the gateway id matched GLM's row by
- *  coincidence and no other (CUR-3994). */
+ *  coincidence and no other. */
 export function choiceIdFor(gatewayId: string): string {
 	return catalogByGatewayId(gatewayId)?.id ?? servedKey(gatewayId);
 }
@@ -342,7 +342,7 @@ export function pillNamesModel(pillLabel: string, gatewayId: string): boolean {
  * and the device's stored choice wins whenever Auto routing is on, so this sets both. Setting only one leaves a gap:
  * a persona's first chat can reach another model after the model-page visit alone,
  * and a persona that opens on an account page never visits the
- * model page and is answered by the default (CUR-2676).
+ * model page and is answered by the default.
  */
 export async function pinScenarioModel(page: Page, name: string): Promise<void> {
 	const model = process.env.SCENARIO_MODEL;
@@ -368,7 +368,7 @@ export async function pinScenarioModel(page: Page, name: string): Promise<void> 
 	await page.goto('/chat', { waitUntil: 'load' });
 	// The server renders the pill as Auto and hydration swaps in the stored choice, so one read can land
 	// before the swap. It would then read "Model: Auto" while the page already shows
-	// "Model: Mistral" (SOL-164). Read until the pill names the model or 30 s pass.
+	// "Model: Mistral". Read until the pill names the model or 30 s pass.
 	const pill = page.locator('[data-model-pill]').first();
 	let label: string;
 	const deadline = Date.now() + 30_000;
@@ -398,7 +398,7 @@ export function renderSnapshot(snapshot: SnapshotEntry[]): string {
 
 /** Menu, listbox and tab roles are here because bits-ui renders a menu's choices as `menuitem` and
  *  `menuitemradio` divs, not buttons: without them a driver could open the Tools menu and never pick
- *  "Read aloud: Always" (CUR-3557, CUR-3570). */
+ *  "Read aloud: Always". */
 export const INTERACTIVE_SELECTOR = [
 	'button',
 	'a[href]',
@@ -448,8 +448,8 @@ export type ElementRow = {
  * Reads every matched element in one pass. It runs inside the page through `evaluateAll`, so it must
  * stay self-contained: no reference to anything else in this module.
  *
- * @remarks Reading each element through its own `nth(i)` locator hung the driver for 19 minutes
- * (SOL-159): a menu closed between the query and the reads, the list shrank, and `evaluate` on an
+ * @remarks Reading each element through its own `nth(i)` locator hung the driver for 19 minutes:
+ * a menu closed between the query and the reads, the list shrank, and `evaluate` on an
  * index that no longer existed waited, with no timeout, until the test was killed. One read is one
  * consistent picture of the page and cannot wait on an element. Visibility follows Playwright's
  * `isVisible` (a non-empty box and not `visibility: hidden`), and enablement its `isEnabled`
@@ -460,7 +460,7 @@ export function readElements(els: Element[], popup: string): ElementRow[] {
 		const box = el.getBoundingClientRect();
 		return box.width > 0 && box.height > 0 && getComputedStyle(el).visibility !== 'hidden';
 	};
-	// An open modal dialog covers everything else on the page (SOL-162): the Welcome to Alpha intro sat over
+	// An open modal dialog covers everything else on the page: the Welcome to Alpha intro sat over
 	// the chat for a whole walk while the driver clicked the controls underneath it. Menus and listboxes
 	// opened from inside the modal portal to the end of <body>, so they stay readable.
 	const modals = els[0]
@@ -511,7 +511,7 @@ export async function snapshotPage(page: Page): Promise<SnapshotEntry[]> {
  * mid-click, and a thrown error there would end the run and destroy the recording — which is the
  * artifact this exists to produce.
  */
-export async function perform(
+async function perform(
 	page: Page,
 	action: PersonaAction,
 	snapshot: SnapshotEntry[]
@@ -606,7 +606,7 @@ type Lane = Exclude<ReturnType<typeof resolvePersonaLane>, { error: string }>;
  * this whole driver rests on is about the object being TRUE of the page in front of it, and that is
  * checkable only against the snapshot.
  */
-export const actionSchema = (allowed: readonly ActionName[]) => ({
+const actionSchema = (allowed: readonly ActionName[]) => ({
 	type: 'object',
 	properties: {
 		do: {
@@ -641,7 +641,7 @@ async function askModel(
 	allowed: readonly ActionName[]
 ): Promise<unknown> {
 	if (lane.provider === 'anthropic') {
-		// Deliberately uncached (CUR-2072). Every call is one fresh user message, so the only span
+		// Deliberately uncached. Every call is one fresh user message, so the only span
 		// shared across turns is tools + system, about 1,160 tokens. On
 		// claude-sonnet-5: a marker on `system` wrote 0 and read 0 on identical-prefix calls; a
 		// marker on the user message wrote ~1,225 every turn and read 0 on the next, since the
@@ -754,7 +754,7 @@ export type PersonaRunOptions = {
 	turns: number;
 	lane: Lane;
 	/** What this tester may do; every action when omitted. Narrowed for a persona defined by a
-	 *  constraint, such as keyboard-only (CUR-2676). */
+	 *  constraint, such as keyboard-only. */
 	actions?: readonly ActionName[];
 	/** What `check_inbox` reads: the latest sign-in code for the persona's own test address, or a line
 	 *  saying none has arrived. Required when `actions` includes `check_inbox`. */
@@ -791,7 +791,7 @@ export async function runPersona(opts: PersonaRunOptions): Promise<TurnRecord[]>
 	const trace: TurnRecord[] = [];
 	let inboxNote = '';
 
-	// A positive control for the refusal tripwire, once per run (CUR-2676). A unit test proves the rule;
+	// A positive control for the refusal tripwire, once per run. A unit test proves the rule;
 	// this proves the build that is about to type unattended still carries it, and leaves the log
 	// line a reader can find. A canned input that is NOT refused stops the run before turn 1.
 	const control = validateAction(
@@ -874,7 +874,7 @@ export async function runPersona(opts: PersonaRunOptions): Promise<TurnRecord[]>
 			const verdict = validateAction(reply, snapshot, actions);
 			if ('error' in verdict) {
 				record.rejected!.push(verdict.error);
-				// One line per refusal, so a run's log proves the tripwire fired (CUR-2676).
+				// One line per refusal, so a run's log proves the tripwire fired.
 				if (verdict.error.startsWith(REFUSAL_PREFIX))
 					console.error(`[persona refused] ${name} turn ${turn}: ${verdict.error}`);
 			} else chosen = verdict.action;

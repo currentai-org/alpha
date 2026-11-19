@@ -180,9 +180,9 @@ describe("computePulseNodes — streaming pulse honesty (same gates, applied liv
 
 	// What lights the CSCS cell must be what served the turn. `servedOnSovereignCompute` must not be
 	// filled from `serving.isSovereign`, a deployment-wide config constant that is true for every prod
-	// turn, or the cell lights on turns the gateway sent to Infomaniak (CUR-75). Going dark for
+	// turn, or the cell lights on turns the gateway sent to Infomaniak. Going dark for
 	// Infomaniak is not the answer either: it serves a large share of real traffic, so the map shows it
-	// rather than nothing (CUR-1124). Never CSCS; not dark. Assertions that only ask "does true light
+	// rather than nothing. Never CSCS; not dark. Assertions that only ask "does true light
 	// it" cannot catch this, so these ask what is allowed to be true.
 	it("synthesizes an honestly-named node for a Swiss backend the map has no bespoke entry for — never mislabels it as CSCS", () => {
 		const infomaniak = backendComputeNode("https://api.infomaniak.com/2/ai/106744/openai/v1");
@@ -203,7 +203,7 @@ describe("computePulseNodes — streaming pulse honesty (same gates, applied liv
 		// Mid-stream, and on any lane whose gateway reports no backend header at all.
 		expect(backendComputeNode(undefined)).toBeUndefined();
 		// Still dark post-synthesis — the router and gateway hosts below are our own routing
-		// hosts, explicitly excluded (NOT_A_BACKEND), never a nameable institution. (CUR-1124)
+		// hosts, explicitly excluded (NOT_A_BACKEND), never a nameable institution.
 		expect(backendComputeNode("https://router.huggingface.co/v1")).toBeUndefined();
 		// The GATEWAY's own host is not a backend — reading it as one is the original conflation.
 		expect(backendComputeNode("https://api-internal.publicai.co/v1")).toBeUndefined();
@@ -239,7 +239,7 @@ describe("computePulseNodes — streaming pulse honesty (same gates, applied liv
 		expect(computeRevealStages({ opinions: [] })).not.toContain(ROUTER_NODE);
 	});
 
-	it("lights the SERVED model's node, not the app default, once one is resolved (CUR-1124)", () => {
+	it("lights the SERVED model's node, not the app default, once one is resolved", () => {
 		const seaLion = modelNodeFor("aisingapore/Qwen-SEA-LION-v4-32B-IT");
 		expect(computeRevealStages({}, { modelNode: seaLion })).toEqual([seaLion]);
 		expect(computePulseNodes({ modelNode: seaLion })).toEqual([seaLion]);
@@ -249,7 +249,7 @@ describe("computePulseNodes — streaming pulse honesty (same gates, applied liv
 	});
 });
 
-describe("modelNodeFor — the model node id for a measured served model (CUR-1124)", () => {
+describe("modelNodeFor — the model node id for a measured served model", () => {
 	it("returns the curated apertus node for an Apertus id, or when nothing was measured", () => {
 		expect(modelNodeFor(undefined)).toBe("apertus");
 		expect(modelNodeFor("swiss-ai/Apertus-70B-Instruct-2509")).toBe("apertus");

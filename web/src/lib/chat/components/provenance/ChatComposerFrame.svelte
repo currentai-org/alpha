@@ -49,7 +49,6 @@
 	import RiImageLine from '~icons/ri/image-line';
 	import RiErrorWarningLine from '~icons/ri/error-warning-line';
 	import type { Message } from '$lib/chat/types/Message';
-	import type { EmbeddedIntent } from '$lib/chat/types/EmbeddedIntent';
 	import { stackOpen, STACK_MAP_ENABLED } from '$lib/chat/stores/stack';
 	import XRayComposerPanel from '../stack/XRayComposerPanel.svelte';
 
@@ -76,8 +75,6 @@
 		started = false,
 		messages = [],
 		loading = false,
-		embeddedDemo = false,
-		onEmbeddedNavigate,
 		photoAttached = false,
 		children
 	}: {
@@ -93,9 +90,6 @@
 		/** The conversation, for the XRAY panel. */
 		messages?: Message[];
 		loading?: boolean;
-		/** The /alpha demo: links to the full app's pages report an intent instead of navigating. */
-		embeddedDemo?: boolean;
-		onEmbeddedNavigate?: (intent?: EmbeddedIntent) => void;
 		/** The composer; receives the model picker to render in its toolbar. */
 		children?: Snippet<[Snippet]>;
 	} = $props();
@@ -178,7 +172,7 @@
 	// A local model's id IS its served id already (no gatewayId indirection, unlike a catalog entry —
 	// see choose() below), so when it's the active model it has to be threaded through directly rather
 	// than via catalogByGatewayId, which only ever resolves catalog entries.
-	// A pick made in a started chat switches that chat from its next message on (CUR-3190). It is held
+	// A pick made in a started chat switches that chat from its next message on. It is held
 	// for the conversation it was made in, so opening another chat doesn't carry it over, and it still
 	// becomes the default for new chats. With Auto on that default is the shared `modelChoice`, which a
 	// started chat reads only when it is Auto itself: a model picked in another chat leaves this one on
@@ -233,7 +227,7 @@
 	}
 
 	// Whether this conversation is being answered on the person's own machine. Deliberately the same
-	// signal ChatIntroduction's greeting reads (CUR-3037), so the pill and the "served from your own
+	// signal ChatIntroduction's greeting reads, so the pill and the "served from your own
 	// local inference server" line can never disagree about the same session -- they are two
 	// statements about one fact, and a user seeing one without the other would reasonably wonder
 	// which to believe. Note this follows the CONVERSATION's model: picking a local model mid-chat
@@ -280,12 +274,12 @@
 	);
 	// Models getting no answer through right now, by the server's mark (set by failed
 	// turns and by the warm cron's probe) and by this tab's own failed turns. Auto routes around them; the
-	// picker shows them as unavailable, and a hand pick stays where it is and says so before sending. (CUR-4043, CUR-4042)
+	// picker shows them as unavailable, and a hand pick stays where it is and says so before sending.
 	const busyIds = $derived(
 		busyNow(serverBusyNow(page.data.busyModels as string[] | undefined, $serverBusy), $busyHere)
 	);
 	// An open tab re-reads the server's marks, so a model that goes down or comes back after
-	// the page loaded is routed around, or chosen again, without a reload. (CUR-4629)
+	// the page loaded is routed around, or chosen again, without a reload.
 	$effect(() => {
 		const everyMs = page.data.busyRefreshMs as number | null | undefined;
 		if (page.data.autoRoutingEnabled === true && everyMs) return keepServerBusyFresh(everyMs);
@@ -397,7 +391,7 @@
 	// mid-chat, Auto's choice for the draft travels with it, so the answer's X-ray can say Auto
 	// chose the model and why. The landing page records the first message's choice itself.
 	// An empty draft leaves the choice alone: it is the message just sent, which the conversation page
-	// reads after this effect has run (the landing's first message, and a send awaiting the PATCH). (CUR-3944)
+	// reads after this effect has run (the landing's first message, and a send awaiting the PATCH).
 	$effect(() => {
 		if (!started) return;
 		if (!autoOn || manualServed) return pendingAutoRoute.set(null);
@@ -426,7 +420,7 @@
 		return lang !== 'und' ? `${m.product_auto()} · ${localLanguageName(lang, getLocale())}` : m.product_auto();
 	});
 
-	// A model that isn't offered (CUR-2763) is listed only where this deployment defaults to it (a CI
+	// A model that isn't offered is listed only where this deployment defaults to it (a CI
 	// ticket-branch preview, whose allowlist puts it first) or in a conversation it is already serving.
 	const deploymentDefault = $derived(servedIds[0] ? servedKey(servedIds[0]) : undefined);
 	const listed = (m: (typeof catalog)[number]) =>
@@ -649,7 +643,7 @@
 			<span class="min-w-0 type-caption text-fg-3"
 				><Ticker>{orgs[m.maker].name}{enabled ? textOnlyMark(m) : ` · ${statusLabel[m.status]}`}</Ticker></span
 			>
-			<!-- CUR-4043: still pickable, and a hand pick stays on it; the note says why Auto is going elsewhere. -->
+			<!-- still pickable, and a hand pick stays on it; the note says why Auto is going elsewhere. -->
 			{#if enabled && isBusy(m.gatewayId)}<span class="type-caption text-caution-text" data-model-busy data-model-unavailable>{busyRowNote}</span>{/if}
 		</span>
 		{#if chosenId === m.id}<span class="size-1.5 bg-fg-1 rounded-pill" aria-hidden="true"></span>{/if}
@@ -921,7 +915,7 @@
 	</ComposerAccessory.Panel>
 
 	{#if localInference && localServer}
-		<!-- CUR-3037. Written for someone who cares about privacy and does not read architecture
+		<!-- Written for someone who cares about privacy and does not read architecture
 		     diagrams, so it walks the route the message actually takes rather than naming components.
 
 		     Tense follows `started`, because the empty state is where most people meet this panel and
@@ -998,8 +992,6 @@
 				{coverage}
 				placeholder={$activeBenchmarks.status === 'placeholder'}
 				live={liveRead}
-				{embeddedDemo}
-				{onEmbeddedNavigate}
 			/>
 		</ComposerAccessory.Panel>
 	{/if}
@@ -1012,15 +1004,13 @@
 				weakSupport={$activeRoutingConfig.weakSupport}
 				reference={englishReference}
 				placeholder={placeholderScores}
-				{embeddedDemo}
-				{onEmbeddedNavigate}
 			/>
 		</ComposerAccessory.Panel>
 	{/if}
 
 
 	{#if next && isBusy(next.gatewayId)}
-		<!-- CUR-4042: the next message goes to a model that is getting no answers through (picked by hand,
+		<!-- the next message goes to a model that is getting no answers through (picked by hand,
 		     or every other model is unavailable too). Said before sending; the pick itself never moves. -->
 		<ComposerAccessory.Notice icon={RiErrorWarningLine} data-model-unavailable-notice>
 			{m.routing_unavailablePick({ model: next.name })}

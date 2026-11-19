@@ -1,5 +1,5 @@
 /**
- * The Shieldstral child-safety screen for pictures a person stores (CUR-3201): a photo saved to My
+ * The Shieldstral child-safety screen for pictures a person stores: a photo saved to My
  * files, and every picture inside a PDF or Word file saved there. It runs after the known-CSAM hash
  * check (embeddedImageScan.ts), which only catches pictures already in a bank; this one judges what a
  * new picture shows.
@@ -10,19 +10,20 @@
  * the rest of a content policy to the point of sharing; this follows that line.
  *
  * Fails closed: a child rule that fires refuses the file, and a screen that cannot answer (unreachable,
- * past its deadline, a picture sharp cannot render, flag on with no endpoint) refuses it too.
+ * past its deadline, a picture sharp cannot render, no endpoint on a hosted build) refuses it too. A
+ * self-host edition with no Shieldstral endpoint stores the picture unscreened, as its chat turns go.
  */
 
 import { createHash } from "node:crypto";
 import type sharp from "sharp";
 import { logger as defaultLogger } from "$lib/chat/server/logger";
-import { ensureFlagsPolled } from "$lib/chat/server/flags";
-import { getGuardVerdict, guardPrimaryConfigured, guardPrimaryEnabled, type GuardScreenDeps } from "$lib/chat/server/guardGate";
+import { getGuardVerdict, guardPrimaryConfigured, type GuardScreenDeps } from "$lib/chat/server/guardGate";
+import { isSelfHostEdition } from "$lib/chat/server/moderation";
 import { childRules, loadGuardPolicy } from "$lib/chat/server/guardPolicy";
 import type { FailedUnit, GuardHit, PreparedImage } from "$lib/chat/server/guardScreenTypes";
 
-/** Distinct pictures one file may hold for this screen. At two calls each that is 40 calls on the one
- *  Shieldstral GPU prod and every preview share (CUR-3110). A file with more is refused whole; no subset is screened in its place. */
+/** Distinct pictures one file may hold for this screen. At two calls each that is 40 calls to the
+ *  guard endpoint for one file. A file with more is refused whole; no subset is screened in its place. */
 const MAX_SCREENED_IMAGES_PER_FILE = 20;
 
 /** A child-tier rule fired on a stored picture. `hits` carries rule keys only, never bytes. */
@@ -46,7 +47,7 @@ export class ImageScreenUnavailableError extends Error {
 }
 
 /**
- * What a person reads when a file holds more pictures than the screen checks (CUR-4662): how many it
+ * What a person reads when a file holds more pictures than the screen checks: how many it
  * has, the most we check, and the way out. A scanned document is one picture per page, so splitting
  * it is the step that works; sending it again gets the same answer.
  */
@@ -64,26 +65,27 @@ export class TooManyImagesToScreenError extends Error {
 
 export type UploadImageGuardDeps = Pick<GuardScreenDeps, "judge" | "timeoutMs" | "concurrency"> & {
 	sharpImpl?: typeof sharp;
-	enabled?: () => boolean;
 	configured?: () => boolean;
+	selfHost?: () => boolean;
 	logger?: Pick<typeof defaultLogger, "info" | "warn" | "error">;
 };
 
 /**
  * Screen `images` (raw bytes of each distinct picture) with the child-tier rules. Resolves when every
  * picture was judged and none fired; throws one of the three errors above otherwise. Resolves without
- * a call when `guard-primary` is off, which is the flag chat's own screen runs under.
+ * a call only on a self-host edition with no Shieldstral endpoint.
  */
 export async function screenStoredImages(images: Uint8Array[], deps: UploadImageGuardDeps = {}): Promise<void> {
 	if (images.length === 0) return;
-	// A cold instance reads guard-primary as its `false` fallback until the first poll, which would skip
-	// this screen without a word (CUR-1142); chat's resolveTurnPolicy waits on the same poll.
-	if (!deps.enabled) await ensureFlagsPolled();
-	if (!(deps.enabled ?? guardPrimaryEnabled)()) return;
 	const log = deps.logger ?? defaultLogger;
 	if (!deps.judge && !(deps.configured ?? guardPrimaryConfigured)()) {
-		// Flag on, address missing: a loud misconfiguration, never a silent pass.
-		log.error("[upload-guard] guard-primary is on but GUARD_SHADOW_URL is unset, so a stored picture was refused");
+		// A self-host operator's choice: no picture classifier, so stored pictures go unscreened.
+		if ((deps.selfHost ?? isSelfHostEdition)()) {
+			log.warn("[upload-guard] self-host with GUARD_SHADOW_URL unset, so a stored picture was not screened");
+			return;
+		}
+		// A hosted build with the address missing: a loud misconfiguration, never a silent pass.
+		log.error("[upload-guard] GUARD_SHADOW_URL is unset, so a stored picture was refused");
 		throw new ImageScreenUnavailableError("not configured");
 	}
 	const distinct = dedupe(images);

@@ -6,12 +6,12 @@ export const AUTO_REPICK_FLAG = "auto-repick";
 
 /**
  * How long an Auto-chosen model may go without a first chunk before the turn ends on the silent-model
- * error and the browser asks Auto again (CUR-4384). A model whose own give-up is sooner keeps it, and a
- * model measured slower to its first token has a longer row in harnessProfiles.ts (CUR-4539).
+ * error and the browser asks Auto again. A model whose own give-up is sooner keeps it, and a
+ * model measured slower to its first token has a longer row in harnessProfiles.ts.
  */
 const AUTO_REPICK_GIVE_UP_MS = 20_000;
 
-/** How long Auto waits for `modelId` before asking again: its measured row, else the 20s default (CUR-4539). */
+/** How long Auto waits for `modelId` before asking again: its measured row, else the 20s default. */
 export function autoRepickGiveUpFor(modelId: string | undefined): number {
 	return autoRepickGiveUpMsFor(modelId) ?? AUTO_REPICK_GIVE_UP_MS;
 }

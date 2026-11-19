@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import type { ArtifactKind } from "./artifacts";
 
 /**
@@ -22,7 +25,7 @@ const END_SCRIPT_TAG = "</scr" + "ipt>";
 
 // The code CDNs the builders below load from and that model-written pages commonly use.
 // Script hosts receive a request but give an artifact no way to read a response back from another
-// origin, and fetch, XHR, beacons, WebSockets and form posts are all closed below. (CUR-3187)
+// origin, and fetch, XHR, beacons, WebSockets and form posts are all closed below.
 const CODE_CDNS = [
 	"https://cdn.tailwindcss.com",
 	"https://unpkg.com",
@@ -31,7 +34,7 @@ const CODE_CDNS = [
 ];
 
 /**
- * The policy every artifact document carries (CUR-3187). A model-written artifact may run any
+ * The policy every artifact document carries. A model-written artifact may run any
  * script, so this policy closes the ways out of the frame instead: no fetch, XHR, beacon or
  * WebSocket (connect-src), no form submission (form-action), no remote images or media, which
  * would carry data in their URLs, no nested frames, and no <base href> rewrite. A srcdoc frame
@@ -241,7 +244,7 @@ export function buildArtifactSrcdoc(kind: ArtifactKind, content: string, channel
 }
 
 /**
- * Notices a preview frame leaving its own document (CUR-3527). A sandboxed frame may still navigate
+ * Notices a preview frame leaving its own document. A sandboxed frame may still navigate
  * itself, and no CSP directive in the frame governs that, so an artifact's script can swap the
  * preview for any site, which then renders inside our panel with the sandbox's flags.
  *

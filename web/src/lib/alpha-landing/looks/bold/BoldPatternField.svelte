@@ -8,7 +8,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { on } from 'svelte/events';
-	import { octagonPath } from '../../canvas-shapes';
+	import { octagonPath, smoothstep } from '$lib/canvas-shapes';
 
 	/** `hero` keeps the headline area calm and fades the bottom; `open` fills the whole ground. */
 	let { mask = 'hero' }: { mask?: 'hero' | 'open' } = $props();
@@ -19,11 +19,6 @@
 
 	const CELL = 26;
 	const FRAME_MS = 1000 / 30;
-
-	const smoothstep = (a: number, b: number, v: number) => {
-		const t = Math.min(1, Math.max(0, (v - a) / (b - a)));
-		return t * t * (3 - 2 * t);
-	};
 
 	onMount(() => {
 		if (!host || !canvas) return;

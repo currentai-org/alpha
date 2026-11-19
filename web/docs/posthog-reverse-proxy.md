@@ -44,7 +44,10 @@ On Vercel, you can serve `/rs/*` at the edge and skip the function. Add these re
 ```json
 {
 	"rewrites": [
-		{ "source": "/rs/static/:path*", "destination": "https://us-assets.i.posthog.com/static/:path*" },
+		{
+			"source": "/rs/static/:path*",
+			"destination": "https://us-assets.i.posthog.com/static/:path*"
+		},
 		{ "source": "/rs/array/:path*", "destination": "https://us-assets.i.posthog.com/array/:path*" },
 		{ "source": "/rs/:path*", "destination": "https://us.i.posthog.com/:path*" }
 	]

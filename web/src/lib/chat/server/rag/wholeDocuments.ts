@@ -1,4 +1,4 @@
-// The model reads a cited document whole (CUR-4296). Given three 480-character chunks of a 30-chunk
+// The model reads a cited document whole. Given three 480-character chunks of a 30-chunk
 // Privacy Notice, a model answers as if those three were the whole policy. Retrieval picks which document
 // is relevant; this module then hands the model that document's full text from the same store,
 // within a per-turn budget ("small-to-big" retrieval).

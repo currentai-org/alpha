@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { upstreamDroppedMessage } from "./upstreamDropped";
 
 // The shape undici raises when a lane's socket closes mid-answer, which the `stream_truncates_midway`
-// fault reproduces in generate.ts (CUR-1614).
+// fault reproduces in generate.ts.
 const undiciDrop = Object.assign(new TypeError("terminated"), {
 	cause: Object.assign(new Error("other side closed"), { code: "UND_ERR_SOCKET" }),
 });

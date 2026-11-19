@@ -25,17 +25,19 @@
 // unset) and never fail the deploy, but they do cost readable stacks for that build. A CLI failure
 // WITH credentials present — a network error, a rotated/revoked key, an upstream error — degrades the
 // same way rather than throwing: analytics availability must not be able to gate every deploy, the same argument errorTracking.ts makes for never letting reporting replace
-// a real error. Caught here explicitly, not left to escape and abort the `&&`-chained vercel-build. (CUR-1510)
+// a real error. Caught here explicitly, not left to escape and abort the `&&`-chained vercel-build.
 
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { gitSha } from "../src/lib/server/runtimeEnv.js";
 
 const DIR = ".vercel/output/static";
 const CLI = "posthog-cli";
 
 function releaseVersion() {
-	if (process.env.VERCEL_GIT_COMMIT_SHA) return process.env.VERCEL_GIT_COMMIT_SHA.trim();
+	const sha = gitSha();
+	if (sha) return sha.trim();
 	try {
 		return execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
 	} catch {

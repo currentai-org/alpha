@@ -1,3 +1,4 @@
+import { APP_USER_AGENT } from "$lib/chat/constants/app";
 import type OpenAI from "openai";
 import { config } from "$lib/chat/server/config";
 import { endpointApiKey } from "$lib/chat/server/endpointKey";
@@ -27,10 +28,10 @@ async function taskModelClient(
 		baseURL: ep.baseURL,
 		apiKey,
 		timeout: timeoutMs,
-		defaultHeaders: { "User-Agent": "aipotluck.org" },
+		defaultHeaders: { "User-Agent": APP_USER_AGENT },
 	});
 	// The endpoint's `modelId` is the id its host knows the model by: a router can name
-	// mistral-small-2603 `mistralai/mistral-small-2603` and answer 400 to ours (CUR-3057, CUR-3055).
+	// mistral-small-2603 `mistralai/mistral-small-2603` and answer 400 to ours.
 	return { client, modelId: ep.modelId || modelId };
 }
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Execution-sandbox test (maturity gap A). Proves the bwrap fs-sandbox: (1) the agent still works sandboxed,
 # (2) it CANNOT read a secret in $HOME (canary), (3) SANDBOX_REQUIRED fails closed. Network egress is NOT
-# enforced here (needs root/slirp) — that is the K8s NetworkPolicy in deploy/; this closes the fs-exfil half.
+# enforced here (needs root) — deploy/entrypoint.sh installs the egress filter; this closes the fs-exfil half.
 set -uo pipefail
 command -v bwrap >/dev/null || { echo "SKIP: bwrap not installed"; exit 0; }
 source "$(dirname "${BASH_SOURCE[0]}")/scripts/testlib.sh"   # AS, PY, MODEL_UPSTREAM_TOKEN — overridable, no local paths

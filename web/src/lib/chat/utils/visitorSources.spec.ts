@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { citationSourceList, parseVisitorSources, visitorSourcesNote } from "./visitorSources";
 
-describe("parseVisitorSources reads the person's own numbered sources (CUR-3844)", () => {
+describe("parseVisitorSources reads the person's own numbered sources", () => {
 	it("reads [1] and [2] at line start, in order, with their text", () => {
 		const msg = "Summarize with citations.\n\n[1] Smith 2021, Open models\n[2] Jones 2023, Data commons";
 		expect(parseVisitorSources(msg)).toEqual([
@@ -48,7 +48,7 @@ describe("visitorSourcesNote", () => {
 	});
 });
 
-describe("citationSourceList lines [n] up with the right source (CUR-3844)", () => {
+describe("citationSourceList lines [n] up with the right source", () => {
 	const web = (n: number) => ({ n, title: `web ${n}`, link: `https://example.org/${n}` });
 
 	it("puts the visitor's [1]..[k] ahead of sources the server numbered after them", () => {

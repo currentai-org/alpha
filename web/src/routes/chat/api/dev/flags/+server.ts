@@ -7,7 +7,7 @@ import type { RequestHandler } from "./$types";
 
 /**
  * Dev servers only: every registered flag and what this request resolves it to, for the account
- * menu's Feature flags (Dev) dialog. Local overrides ride the `fuzz_override` cookie (CUR-1044), which
+ * menu's Feature flags (Dev) dialog. Local overrides ride the `fuzz_override` cookie, which
  * the server honours only with FUZZ_OVERRIDE_ENABLED set; `overridesActive` says whether it is.
  */
 export const GET: RequestHandler = async () => {

@@ -1,6 +1,6 @@
 import type { SafetyRule } from "$lib/chat/types/SafetyRule";
 import RULES from "$lib/chat/server/rules.json";
-import { declineNotice, type DeclineLanguage } from "$lib/chat/server/declineCopy";
+import { declineMessage, declineNotice, type DeclineLanguage } from "$lib/chat/server/declineCopy";
 
 // CURATED, PUBLIC-SAFE rule catalog for Coop block actions — the SINGLE place a rule gets a public name
 // AND its user-facing decline message. Edit `rules.json` (one entry per Coop action):
@@ -64,9 +64,13 @@ const SUPPORT_RULE_KEYS = new Set([
 	"chat-block-self-harm-hedged",
 ]);
 
+// A person asking Alpha to be a partner, friend or therapist may be lonely, so that rule's warm copy
+// carries no "who set this limit" line either. Both read in the person's language.
+const NO_ATTRIBUTION_KEYS = new Set(["chat-block-anthro"]);
+
 /** True for the self-harm rules, which carry crisis support: the client leads that turn, declined or
  * answered, with the Support resources card even when the person's words miss the card's own
- * client-side check (CUR-2111, CUR-3915). */
+ * client-side check. */
 export function isSupportRule(action?: string | null): boolean {
 	return !!action && SUPPORT_RULE_KEYS.has(action);
 }
@@ -74,14 +78,41 @@ export function isSupportRule(action?: string | null): boolean {
 // Resolve a Coop action name to its curated per-rule decline MESSAGE, or null when the action has no custom
 // message (unmapped, no `message` field, empty input, or the kill switch is off). Callers use this to REPLACE
 // the generic decline copy for that block; on null they keep the generic, reviewed default.
-// /about promises that a refusal "tells you who set that limit" (CUR-3205), so a policy decline ends with
-// that line. Both read in `lang`, the language the person wrote in, where declineCopy.ts has it (CUR-4051).
-export function resolveActionMessage(action?: string | null, lang: DeclineLanguage = "en"): string | null {
+// /about promises that a refusal "tells you who set that limit", so a policy decline ends with
+// that line. Both read in `lang`, the language the person wrote in, where declineCopy.ts has it.
+// `multiple`: more than one labeled rule blocked the turn, so the attribution line names them together.
+export function resolveActionMessage(
+	action?: string | null,
+	lang: DeclineLanguage = "en",
+	multiple = false
+): string | null {
 	if (!action || !ruleLabelEnabled()) return null;
 	const entry = RULE_MAP[action];
 	if (!entry?.message) return null;
-	if (SUPPORT_RULE_KEYS.has(action)) return entry.message;
-	return declineNotice(entry.message, entry.label, lang);
+	if (SUPPORT_RULE_KEYS.has(action) || NO_ATTRIBUTION_KEYS.has(action)) return declineMessage(entry.message, lang);
+	return declineNotice(entry.message, multiple ? MULTIPLE_RULES_LABEL : entry.label, lang);
+}
+
+/** The attribution line's rule name when more than one labeled rule blocked a turn. */
+const MULTIPLE_RULES_LABEL = "Multiple Safety Rules";
+
+/** The label of every content rule that blocked a turn, deduplicated, the shown rule's first. A self-harm
+ *  decline names only its own rule, since a person in crisis reads only the support copy. Empty when the
+ *  shown rule has no reviewed label or the kill switch is off. */
+export function blockedRuleLabels(
+	hits: ReadonlyArray<{ key: string; action: "block" | "log"; tier: "child" | "content" }> | undefined,
+	shown?: string | null
+): string[] {
+	const first = resolveActionLabel(shown);
+	if (!first) return [];
+	if (isSupportRule(shown)) return [first];
+	const labels = new Set([first]);
+	for (const h of hits ?? []) {
+		if (h.action !== "block" || h.tier !== "content" || isSupportRule(h.key)) continue;
+		const label = resolveActionLabel(h.key);
+		if (label) labels.add(label);
+	}
+	return [...labels];
 }
 
 // The PUBLIC catalog of named safety rules, for the client to render as cards (one card per rule, the

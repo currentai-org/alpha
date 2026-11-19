@@ -1,4 +1,4 @@
-"""The sandbox's MCP face (CUR-4232), through the real app: auth, the bwrap box, no network, no secrets.
+"""The sandbox's MCP face, through the real app: auth, the bwrap box, no network, no secrets.
 
 Each test speaks JSON-RPC to `/mcp/` the way chat's client does (stateless, each reply an SSE stream). The box tests
 need bwrap and skip without it; CI installs it (agent-service-ci.yml).
@@ -85,7 +85,7 @@ def test_refuses_a_request_without_a_bearer_token(client, monkeypatch):
 
 
 def test_refuses_a_guest_when_the_deployment_requires_an_account(client, monkeypatch):
-    """CUR-4402: with AGENT_REQUIRE_ACCOUNT on, a call chat did not mark as a signed-in account is refused
+    """With AGENT_REQUIRE_ACCOUNT on, a call chat did not mark as a signed-in account is refused
     before the MCP transport reads it, and one it did mark gets through."""
     monkeypatch.setattr(app, "REQUIRE_ACCOUNT", True)
     body = {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}
@@ -130,7 +130,7 @@ def test_a_file_written_by_code_is_read_back_in_a_later_call(client):
 
 
 def test_listing_or_reading_a_fresh_conversation_starts_no_sandbox(client, monkeypatch):
-    """CUR-4502: on E2B a connect is a microVM held for minutes; a read with nothing to read needs none."""
+    """On E2B a connect starts a microVM that stays up for a while; a read with nothing to read needs none."""
     made = []
     monkeypatch.setattr(app.SANDBOX_BACKEND, "connect", lambda *a, **k: made.append(a))
     fresh = {**HEADERS, "x-agent-session": "conv-never-used"}
@@ -179,7 +179,7 @@ def test_result_text_is_json_safe():
 
 
 def test_a_call_on_the_wrong_machine_is_replayed_to_the_conversations_home(client, monkeypatch):
-    # Chat pins none of its sandbox calls, so the server sends each conversation to one machine. (CUR-4435)
+    # chat pins none of its sandbox calls, so the server sends each conversation to one machine.
     import home_machine
     ids = ("m-aaaa", "m-bbbb")
     home = home_machine.home_for("conv-1", ids)
@@ -194,7 +194,7 @@ def test_a_call_on_the_wrong_machine_is_replayed_to_the_conversations_home(clien
 
 
 def test_a_run_waiting_on_a_full_host_sends_the_wait_as_progress_before_its_result():
-    """CUR-4584: connect tells the tool it is waiting for a slot; chat hears that as MCP progress on the same call,
+    """Connect tells the tool it is waiting for a slot; chat hears that as MCP progress on the same call,
     ahead of the result, which is what lets its live line say so while the call is still pending."""
     from sandbox_backend import SANDBOX_WAIT_TEXT, ExecResult, Handle
 

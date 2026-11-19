@@ -8,7 +8,7 @@ const { GET } = await import("./+server");
 const call = (locals: Partial<App.Locals>) =>
 	GET({ locals } as unknown as Parameters<typeof GET>[0]) as Promise<Response>;
 
-describe("GET /chat/api/sign-in-hint (CUR-3015)", () => {
+describe("GET /chat/api/sign-in-hint", () => {
 	beforeEach(() => multimodalOnSignIn.mockReset());
 
 	it("answers a guest from the flag evaluated for that guest's own session", async () => {

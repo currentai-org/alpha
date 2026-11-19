@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2018- The Hugging Face team
+SPDX-License-Identifier: Apache-2.0
+Modified by Current AI from huggingface/chat-ui.
+-->
 <script lang="ts">
 	import { processBlocks, processBlocksSync, type BlockToken } from "$lib/chat/utils/marked";
 	import MarkdownWorker from "$lib/chat/workers/markdownWorker?worker";
@@ -22,7 +27,7 @@
 	// While streaming, a worker result one chunk behind is fine and keeps parsing off the main thread.
 	// Once streaming stops, a stale worker result would keep painting the earlier text for a round
 	// trip, and anything gated on the turn ending (the read-aloud player) painted over a half-written
-	// answer (CUR-2048). The final content renders synchronously in that same flush instead.
+	// answer. The final content renders synchronously in that same flush instead.
 	let blocks = $derived(
 		workerBlocks && (loading || workerContent === content) ? workerBlocks : syncBlocks
 	);

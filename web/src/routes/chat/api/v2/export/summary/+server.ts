@@ -11,16 +11,17 @@ import {
 import { userPrefix } from "$lib/chat/server/storage/custodialBucket";
 import { storedAttachmentKey } from "$lib/chat/server/storage/attachmentsToCustodial";
 import { logger } from "$lib/chat/server/logger";
+import { hasSealedFields } from "$lib/chat/crypto/sealedShape";
 
 // Counts of what the export ZIP would hold right now, gathered as ../+server.ts gathers it, so the
-// account page can say it before anyone downloads (CUR-2395). A person deciding whether to leave
+// account page can say it before anyone downloads. A person deciding whether to leave
 // should not have to unzip a file to learn whether their conversations, files and each answer's
 // provenance made it in. Not rate-limited: it reads counts, not bytes.
 export const GET: RequestHandler = async ({ locals }) => {
 	const user = requireExportUser(locals.user);
 
 	// Listed first: a chat attachment kept in Alpha storage is in the listing too, and the export
-	// writes it once (CUR-3327).
+	// writes it once.
 	const accountId = user._id.toString();
 	const stored = custodialStorageConfigured()
 		? await listCustodialFiles(accountId).catch((err) => {
@@ -36,7 +37,11 @@ export const GET: RequestHandler = async ({ locals }) => {
 		.toArray();
 	let answers = 0;
 	let files = stored.length;
+	// Conversations whose text only the person's history key opens: the page builds those into the
+	// download in the browser.
+	let sealed = 0;
 	for (const conversation of conversations) {
+		if (hasSealedFields(conversation)) sealed++;
 		for (const message of conversation.messages) {
 			if (message.from === "assistant") answers++;
 			// The export route only writes attachments when multimodal is on; count the same way.
@@ -48,5 +53,5 @@ export const GET: RequestHandler = async ({ locals }) => {
 		}
 	}
 
-	return json({ conversations: conversations.length, answers, files });
+	return json({ conversations: conversations.length, answers, files, sealed });
 };

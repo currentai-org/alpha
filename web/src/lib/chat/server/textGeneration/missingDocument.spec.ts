@@ -6,7 +6,7 @@ const refersToAbsentDocument = (text: string) => missingDocumentReply([user(text
 const user = (content: string, files?: unknown[]) => ({ from: "user" as const, content, files: files as never });
 const assistant = (content: string) => ({ from: "assistant" as const, content });
 
-describe("missingDocumentReply on a single turn (CUR-1835)", () => {
+describe("missingDocumentReply on a single turn", () => {
 	// The probe's own messages, plus shapes the probe does not send.
 	it.each([
 		"Can you summarise this agenda in three bullet points for our board?",
@@ -41,7 +41,7 @@ describe("missingDocumentReply on a single turn (CUR-1835)", () => {
 	});
 });
 
-describe("missingDocumentReply (CUR-1835)", () => {
+describe("missingDocumentReply", () => {
 	it("returns the note on a first turn that names a document nobody gave", () => {
 		expect(missingDocumentReply([user("Translate the letter below into French.")])).toMatch(/^I can't see the /);
 	});
@@ -71,7 +71,7 @@ describe("missingDocumentReply (CUR-1835)", () => {
 	});
 });
 
-describe("missingDocumentReply names what is missing (CUR-1835)", () => {
+describe("missingDocumentReply names what is missing", () => {
 	it.each([
 		["Can you summarise this agenda in three bullet points for our board?", "agenda"],
 		["Translate the letter below into French.", "letter"],

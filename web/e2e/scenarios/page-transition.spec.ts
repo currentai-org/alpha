@@ -1,7 +1,7 @@
 // e2e-product: @site
 import { test, expect, type APIRequestContext, type Page } from './helpers/test';
 
-// Page transitions ($lib/scroll/page-transition, CUR-4025): a link from one content page to another
+// Page transitions ($lib/scroll/page-transition): a link from one content page to another
 // runs as a View Transition, with the old page fading out and the new one rising in under a header
 // that holds still. The new page's snapshot is taken once ScrollSmoother has moved it to its own
 // scroll position, so it rises in at the top (or, back and forward, where the reader left it) rather

@@ -12,6 +12,7 @@ import {
 import { lookup, record } from "./endpoints/openai/replayStore";
 import { clefRoutingEnabled } from "./clefRoutingGate";
 import { __resetFlagsForTest } from "./flags";
+import { logger } from "./logger";
 
 vi.mock("./endpoints/openai/replayStore", () => ({ lookup: vi.fn(), record: vi.fn(async () => {}) }));
 
@@ -50,6 +51,14 @@ describe("classifyWithClef", () => {
 		});
 	});
 
+	it("logs the router host an answered read went through, so the serving router is read from the logs", async () => {
+		const info = vi.spyOn(logger, "info");
+		const fetchImpl = reply(200, { success: true, result: { model: "clef", answers: ANSWERS } });
+		await classifyWithClef("hello there friend", cfg, fetchImpl as typeof fetch);
+		expect(info).toHaveBeenCalledWith(expect.objectContaining({ host: "router.example" }), "[clef] read answered");
+		info.mockRestore();
+	});
+
 	it("reports a timeout as 504", async () => {
 		const fetchImpl = vi.fn(async () => {
 			throw new DOMException("timed out", "TimeoutError");
@@ -82,8 +91,8 @@ describe("clef-routing fails closed", () => {
 
 // A scenario run's draft reads go through the model replay store, so CI's reads stop spending
 // the Clef quota real visitors share. The key is the whole request, so a changed question set or a
-// different model misses and goes live, the same contract as a model answer. (SOL-201)
-describe("clefFetch: Clef reads replay in scenario runs (SOL-201)", () => {
+// different model misses and goes live, the same contract as a model answer.
+describe("clefFetch: Clef reads replay in scenario runs", () => {
 	const ok = { success: true, result: { model: "clef", answers: ANSWERS }, errors: [] };
 
 	beforeEach(() => {
@@ -134,7 +143,7 @@ describe("clefFetch: Clef reads replay in scenario runs (SOL-201)", () => {
 	});
 
 	// A refusal is kept for ten minutes, so reruns stop spending a quota that is already gone,
-	// and it expires on its own so the read goes live again once Clef answers. (CUR-3996)
+	// and it expires on its own so the read goes live again once Clef answers.
 	it("records a refused read with a ten-minute expiry, so reruns replay the 429 instead of retrying it", async () => {
 		vi.mocked(lookup).mockResolvedValue(null);
 		const live = reply(429, { success: false, result: {}, errors: [{ message: "used up your daily free allocation" }] });
@@ -150,7 +159,7 @@ describe("clefFetch: Clef reads replay in scenario runs (SOL-201)", () => {
 	});
 });
 
-describe("clefLanguageOf (CUR-2237)", () => {
+describe("clefLanguageOf", () => {
 	const cfg = { url: "https://clef.test/v1", apiKey: "k", model: "clef" };
 	const answering = (choice: string, p: number, ok = true) =>
 		vi.fn(async (_url: string, _init: RequestInit) =>

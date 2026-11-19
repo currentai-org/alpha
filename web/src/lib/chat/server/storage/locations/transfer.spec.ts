@@ -1,7 +1,7 @@
 // The two promises a transfer makes. A move never deletes an original whose copy it has not
 // verified, and a write into a person's own bucket is screened (CSAM scan included, failing closed)
 // before any byte reaches it. The real hfBucketLocation and screenUpload run; the Hub and the scanner
-// are mocked. (CUR-2931)
+// are mocked.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const cfg = vi.hoisted((): Record<string, string> => ({}));
@@ -75,6 +75,7 @@ function memory(id: string, files: Record<string, Blob> = {}, landedSize?: numbe
 
 beforeEach(() => {
 	for (const k of Object.keys(cfg)) delete cfg[k];
+	cfg.CUSTODIAL_STORAGE_BACKEND = "hf";
 	cfg.HF_BUCKETS_TOKEN = "hf_test_token";
 	cfg.HF_BUCKETS_REPO = "buckets/example/custodial";
 	scanner.configured = true;
@@ -106,7 +107,7 @@ describe("a move keeps the original unless the copy is verified", () => {
 		expect(dst.store.has("bucket/documents/a.txt")).toBe(true);
 	});
 
-	it("into a store that lists sealed sizes, verifies the copy by reading it back rather than by its listed size (CUR-4116)", async () => {
+	it("into a store that lists sealed sizes, verifies the copy by reading it back rather than by its listed size", async () => {
 		const src = memory("bucket", { "bucket/documents/a.txt": new Blob(["hello"]) });
 		// Alpha storage lists ciphertext, which is larger than what read returns.
 		const dst = memory("alpha", {}, 5 + 1_300);
@@ -137,7 +138,7 @@ describe("a move keeps the original unless the copy is verified", () => {
 		expect(dst.store.has("bucket/documents/a.txt")).toBe(true);
 	});
 
-	it("a copy whose size does not match fails its check and leaves the source in place (CUR-2941)", async () => {
+	it("a copy whose size does not match fails its check and leaves the source in place", async () => {
 		const src = memory("alpha", { "users/u1/documents/a.txt": new Blob(["hello"]) });
 		const dst = memory("bucket", {}, 999);
 		await expect(transferFile(src.loc, dst.loc, "users/u1/documents/a.txt", "copy", {})).rejects.toBeInstanceOf(
@@ -189,7 +190,7 @@ describe("a transfer into a person's own bucket is screened before the write, fa
 	});
 });
 
-describe("moving a batch never stops or overwrites on a name already taken (CUR-2941)", () => {
+describe("moving a batch never stops or overwrites on a name already taken", () => {
 	// Two chats that each hold shapes.png both land in the bucket's documents/ folder.
 	const A = "users/u1/conversations/c1/aaa/shapes.png";
 	const B = "users/u1/conversations/c2/bbb/shapes.png";

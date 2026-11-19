@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2018- The Hugging Face team
+SPDX-License-Identifier: Apache-2.0
+Modified by Current AI from huggingface/chat-ui.
+-->
 <script lang="ts">
 	import { onDestroy } from "svelte";
 	import { confirm as hapticConfirm } from "$lib/chat/utils/haptics";
@@ -25,7 +30,7 @@
 		showTooltip = true,
 	}: Props = $props();
 
-	// A refused copy says so, as the answer footer's copy does (CUR-2823). (CUR-2920)
+	// A refused copy says so, as the answer footer's copy does.
 	const feedback = new CopyFeedback(1000);
 	const copyState = $derived(feedback.state);
 

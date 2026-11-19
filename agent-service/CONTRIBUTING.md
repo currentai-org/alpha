@@ -1,44 +1,44 @@
 # Contributing
 
-This guide covers local setup and the checks a pull request to the agent service must pass.
+This is the Public AI agent service — a sovereign Hermes agent API with a
+model-boundary proxy, an execution sandbox (an E2B microVM per conversation by default, `bwrap` for
+local stacks), and an independent-verify + best-of-N layer that catches the
+model's occasional false "task completed" on long-running work.
 
-## Set up a dev environment
+## Dev setup
 
-The service requires Python 3.11+ and [uv](https://github.com/astral-sh/uv).
+Requires Python 3.11+ and [uv](https://github.com/astral-sh/uv).
 
 ```
 make venv     # creates .venv and installs requirements-dev.txt (runtime + test deps)
-make test     # offline test suite: no network, no model, no Docker
+make test     # offline test suite — no network, no model, no Docker
 make lint     # ruff check
 make run      # app role on :8731   (make proxy → proxy role on :8732)
 ```
 
-`requirements.txt` lists the runtime dependencies, and the Dockerfile installs from it.
-`requirements-dev.txt` adds the test and lint toolchain and isn't installed in the image.
+`requirements.txt` is the single source of truth for **runtime** deps (the Dockerfile installs from
+it). `requirements-dev.txt` adds the test/lint toolchain and is **not** in the image.
 
-## Architecture
+## Architecture (the two planes)
 
-- **App** (`api/app.py`) handles requests without a model credential. It submits and polls runs,
-  streams SSE and enforces per-user budgets.
-- **Proxy** (`api/proxy.py`) holds the upstream model credential. It swaps the per-task nonce for
-  the real token, enforces step and spend caps, and can fail over across providers.
-- **ACP front door** (`api/acp_remote.py`) is a local Agent Client Protocol shim for editors such
-  as Zed. It forwards to the hosted service, and the editor runs nothing locally.
+- **App** (`api/app.py`) — credential-free request handler. Submits/polls runs, streams SSE, enforces
+  per-user budgets. Never sees the real model token.
+- **Proxy / gateway** (`api/proxy.py`) — holds the upstream model credential, swaps the per-task
+  nonce for the real token, clamps spend/step caps, and can fail over across sovereign providers.
+- **ACP front door** (`api/acp_remote.py`) — a local Agent Client Protocol shim for editors (Zed, etc.)
+  that forwards to the hosted service; the editor's client runs nothing locally.
 
-`README.md` covers the design. `compose.yaml` and `config.yaml.example` show the configuration.
+See `docs/` for the design, the wire/streaming spec, and the model×host×controller matrix.
 
-## Check your change
+## Before you open a PR
 
-Before you open a pull request:
+- `make test` is green (the suite is offline and deterministic — it must stay that way).
+- `make lint` is clean (`ruff`).
+- New behavior gets a test. The security-relevant seams (budget clamps, secret scrubbing, SSRF
+  guard, sandbox profile, verify-spec parsing) especially must keep their regression coverage.
+- Don't commit secrets. Tokens load from a local, gitignored env file or a path you set via env var;
+  never hardcode a token or a personal absolute path.
 
-- Run `make test` and confirm it passes. The suite is offline and deterministic. Keep it that way.
-- Run `make lint` (`ruff`) and fix any findings.
-- Add a test for new behavior. Keep regression coverage on the security-relevant code: budget
-  clamps, secret scrubbing, the SSRF guard, the sandbox profile and verify-spec parsing.
-- Don't commit secrets. Load tokens from a gitignored env file or from a path set in an env var.
-  Never hardcode a token or an absolute path from your machine.
+## Reporting security issues
 
-## Report a security issue
-
-Report vulnerabilities privately through the repository's **Security** tab ("Report a vulnerability"),
-as the root `SECURITY.md` describes. Don't open a public issue.
+See [SECURITY.md](SECURITY.md) — report privately, not via a public issue.

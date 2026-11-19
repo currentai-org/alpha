@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { describe, it, expect, beforeEach } from "vitest";
 import superjson from "superjson";
 import { collections } from "$lib/chat/server/database";
@@ -198,7 +201,7 @@ describe("POST /api/v2/user/settings", () => {
 	});
 
 	// A write persists only the fields it names. The schema fills a default for every
-	// absent field, so without that a save that left `streamingMode` out would reset a saved `raw`. (CUR-1643)
+	// absent field, so without that a save that left `streamingMode` out would reset a saved `raw`.
 	const postSettings = (locals: App.Locals, body: unknown) =>
 		settingsPOST(
 			mockRequestEvent(locals, {

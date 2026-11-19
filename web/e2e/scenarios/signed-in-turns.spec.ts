@@ -10,7 +10,7 @@ import { signInAsFreshUser } from './helpers/session';
 import { turnDone } from './helpers/turn';
 
 // A signed-in account takes a different turn path from a guest (the native harness,
-// CUR-2734), and every F2 and C3 spec ran as a guest (CUR-2807). These walk the same outcomes once more as a
+//), and every F2 and C3 spec ran as a guest. These walk the same outcomes once more as a
 // fresh signed-in account: a first answer, a rate-limited Large 3, a timed-out turn, and Retry after
 // a failed send. The faults are preview-only (faultInjection.ts), and so is the test session
 // (helpers/session.ts).
@@ -93,7 +93,7 @@ test(
 );
 
 test(
-	'signed in, a rate-limited Large 4 turn ends on the busy notice, never answered by Mistral Medium (CUR-4383)',
+	'signed in, a rate-limited Large 4 turn ends on the busy notice, never answered by Mistral Medium',
 	{ tag: ['@F2', '@preview-only', '@CUR-4383'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
@@ -139,7 +139,7 @@ test(
 			'C3',
 			3,
 			async () => {
-				// The notice names the model that ran out of time, so match the sentence after it (CUR-3295).
+				// The notice names the model that ran out of time, so match the sentence after it.
 				const timedOut = /took too long to respond\. Please try again\./;
 				const reply = page.locator('[data-message-role="assistant"]').last();
 				await expect(

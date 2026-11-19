@@ -1,5 +1,5 @@
 /**
- * Drizzle schema for the Postgres/Neon persistence layer (B1-lite migration off MongoDB).
+ * Drizzle schema for the Postgres/Neon persistence layer, which replaced the MongoDB one.
  *
  * Strategy: a document store. Each former Mongo collection is a table of `id` (24-hex, ObjectId-width)
  * + the small set of columns it is actually *filtered/sorted* by (for indexes) + a `doc` JSONB column
@@ -48,13 +48,13 @@ export const conversations = pgTable(
 		id: text("id").primaryKey(),
 		sessionId: text("session_id"),
 		// The shadow `users.id` (auth.ts's bridge), never Better Auth's own `user.id`. No cascade:
-		// wipeUserData.ts deletes these rows before the `users` row, so a delete that skips the wipe fails. (CUR-769)
+		// wipeUserData.ts deletes these rows before the `users` row, so a delete that skips the wipe fails.
 		userId: text("user_id").references(() => users.id),
 		createdAt: timestamp("created_at", { withTimezone: true }),
 		updatedAt: timestamp("updated_at", { withTimezone: true }),
-		// Attribution, not ownership (CUR-961), qualifying the "conversations stay unscoped on purpose"
-		// line on ragDocuments' own organizationId comment below. Conversations aren't WORKSPACE PROPERTY
-		// (CUR-736): an admin can't read one, a workspace delete can't take one down. A workspace's usage
+		// Attribution, not ownership, qualifying the "conversations stay unscoped on purpose" line on
+		// ragDocuments' own organizationId comment below. Conversations aren't WORKSPACE PROPERTY: an
+		// admin can't read one, and a workspace delete can't take one down. A workspace's usage
 		// count is computed from this column rather than by joining on membership, which would expose a
 		// member's usage elsewhere to the admin. NULL for anything outside a workspace context or
 		// created before this column existed (no retrofit: a conversation didn't happen "in" a
@@ -62,16 +62,87 @@ export const conversations = pgTable(
 		// conversation contributes to. onDelete "set null", NOT "cascade" like ragDocuments' column —
 		// deleting a workspace must never delete a member's own conversation, only detach it.
 		organizationId: text("organization_id").references(() => organization.id, { onDelete: "set null" }),
+		// Pinned heads the sidebar; archived leaves the list but stays reachable under Settings →
+		// Archived chats. Real columns, not keys in `doc`, so the list can filter and sort on them and an
+		// Open WebUI import is a straight copy of `chat.pinned` / `chat.archived`.
+		pinned: boolean("pinned").notNull().default(false),
+		archived: boolean("archived").notNull().default(false),
+		// The ids of the person's own tags on this chat (conversation_tags.id), typed by the person, never
+		// by a model. A real column with a GIN index so the sidebar and search can filter on one tag, and
+		// an Open WebUI import is a copy of `chat.meta.tags`.
+		// Privacy: a tag is text the person wrote, like a title. When history encryption seals titles,
+		// these ids and conversation_tags.name need
+		// sealing in the same stage; nothing here is sealed yet.
+		tags: text("tags").array().notNull().default(sql`'{}'::text[]`),
 		doc: jsonb("doc").$type<Doc>().notNull(),
 	},
 	(t) => [
+		index("conversations_tags_idx").using("gin", t.tags),
+		index("conversations_user_archived_pinned_updated_idx").on(
+			t.userId,
+			t.archived,
+			t.pinned.desc(),
+			t.updatedAt.desc()
+		),
 		index("conversations_session_updated_idx").on(t.sessionId, t.updatedAt.desc()),
 		index("conversations_user_updated_idx").on(t.userId, t.updatedAt.desc()),
 		// Serves the retention sweep's `updated_at < cutoff` predicate (db/cleanup.ts); the composite
 		// indexes above lead with session/user so they can't answer a bare time-range scan.
 		index("conversations_updated_idx").on(t.updatedAt),
-		// workspaceUsage.ts's own scoping query, same shape as the session/user indexes above. (CUR-961)
+		// workspaceUsage.ts's own scoping query, same shape as the session/user indexes above.
 		index("conversations_org_updated_idx").on(t.organizationId, t.updatedAt.desc()),
+	]
+);
+
+// ── conversation_tags ───────────────────────────────────────────────
+// One row per tag a person has, keyed (id, user_id) as Open WebUI's `tag` table is, so its import is a
+// copy. `id` is the name lowercased with spaces as underscores (Open WebUI's own rule), so "Grant" and
+// "grant" are one tag; `name` keeps the spelling the person first typed. A chat names its tags by id in
+// conversations.tags. Signed-in accounts only: a guest has no users row to key on. Cascades with the
+// shadow users row; wipeUserData also deletes these rows on Forget everything. Same privacy note as
+// conversations.tags: `name` is the person's own text, to be sealed with titles in a later stage.
+export const conversationTags = pgTable(
+	"conversation_tags",
+	{
+		id: text("id").notNull(),
+		userId: text("user_id")
+			.notNull()
+			.references(() => users.id, { onDelete: "cascade" }),
+		name: text("name").notNull(),
+		meta: jsonb("meta").$type<Doc>(),
+	},
+	(t) => [primaryKey({ columns: [t.id, t.userId] })]
+);
+
+// ── shared_conversations (read-only share links) ─────────────────────
+// One row per live share link. `id` is the link's token (`/r/<id>`): at least 128 random bits, so a
+// link cannot be guessed, and an imported Open WebUI `shared_chat` keeps its own token here, so an old
+// `/s/<id>` can redirect to `/r/<id>` with no lookup table. `doc` is a snapshot of the conversation
+// taken when the person shared it (or last refreshed the link): the viewer reads only this, never the
+// live conversation, its files, or anything about the owner.
+//
+// Revoking a link deletes its row rather than stamping it, so a revoked snapshot is not kept. Both
+// foreign keys cascade as a backstop; deleteConversationsCascade and wipeUserData delete these rows
+// explicitly, so chat delete, Forget everything and account delete each end every link.
+export const sharedConversations = pgTable(
+	"shared_conversations",
+	{
+		id: text("id").primaryKey(),
+		conversationId: text("conversation_id")
+			.notNull()
+			.references(() => conversations.id, { onDelete: "cascade" }),
+		userId: text("user_id")
+			.notNull()
+			.references(() => users.id, { onDelete: "cascade" }),
+		title: text("title").notNull(),
+		doc: jsonb("doc").$type<Doc>().notNull(),
+		createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+		updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+	},
+	(t) => [
+		// One link per conversation, as Open WebUI's `chat.share_id`: sharing again refreshes it.
+		uniqueIndex("shared_conversations_conversation_idx").on(t.conversationId),
+		index("shared_conversations_user_created_idx").on(t.userId, t.createdAt.desc()),
 	]
 );
 
@@ -98,7 +169,7 @@ export const sessions = pgTable(
 		id: text("id").primaryKey(),
 		sessionId: text("session_id").notNull(),
 		// The shadow `users.id` (auth.ts's bridge), never Better Auth's own `user.id`. No cascade:
-		// wipeUserData.ts deletes these rows before the `users` row, so a delete that skips the wipe fails. (CUR-769)
+		// wipeUserData.ts deletes these rows before the `users` row, so a delete that skips the wipe fails.
 		userId: text("user_id").references(() => users.id),
 		// Postgres has no native TTL; expiry is enforced by query + a cleanup job (replaces Mongo TTL index).
 		expiresAt: timestamp("expires_at", { withTimezone: true }),
@@ -110,7 +181,7 @@ export const sessions = pgTable(
 	]
 );
 
-// ── Better Auth: identity & session (CUR-434/CUR-432) ────────────────────────────
+// ── Better Auth: identity & session ────────────────────────────
 // Better Auth owns identity end-to-end — passkey, email-OTP, Google, and (via genericOAuth) Hugging
 // Face all resolve through it, including its native account-linking-by-verified-email. These are
 // Better Auth's OWN default (singular) table names, chosen deliberately: they cannot collide with this
@@ -141,11 +212,11 @@ export const user = pgTable(
 		// The workspace this person last made active (null is Personal), so a new session
 		// can start there. This app's own column, not Better Auth's, written and read only by
 		// resumeWorkspace.ts. No foreign key: a deleted workspace leaves a stale id, which the
-		// membership check on read already treats as Personal. (CUR-3024)
+		// membership check on read already treats as Personal.
 		lastActiveOrganizationId: text("last_active_organization_id"),
 		// Better Auth's admin plugin (betterAuth.ts) reads and writes these four, field shape
 		// copied from the installed plugin's schema (better-auth/dist/plugins/admin/schema.mjs). `role`
-		// is what adminRoles.ts grants permissions from; null means no staff role. (CUR-3990)
+		// is what adminRoles.ts grants permissions from; null means no staff role.
 		role: text("role"),
 		banned: boolean("banned").default(false),
 		banReason: text("ban_reason"),
@@ -171,10 +242,10 @@ export const session = pgTable(
 		// on create (unless keepCurrentActiveOrganization is passed) — required:false/input:false in the
 		// plugin's OWN schema declaration (organization.mjs), copied here rather than assumed. This app
 		// never reads it (every org.ts call passes an explicit organizationId), but the column has to
-		// exist or those writes fail against a schema that doesn't know the field. (CUR-550)
+		// exist or those writes fail against a schema that doesn't know the field.
 		activeOrganizationId: text("active_organization_id"),
 		// The admin plugin's impersonation marker. No role is granted impersonation, so this
-		// stays null, but the plugin's session hooks read the column. (CUR-3990)
+		// stays null, but the plugin's session hooks read the column.
 		impersonatedBy: text("impersonated_by"),
 	},
 	(t) => [uniqueIndex("session_token_idx").on(t.token), index("session_user_idx").on(t.userId)]
@@ -185,7 +256,7 @@ export const account = pgTable(
 	{
 		id: text("id").primaryKey(),
 		// Nullable, and no longer an identity key: Better Auth 1.7.3+ keys an account by (provider_id,
-		// account_id) and stops writing this column (CUR-2602). Drop the column once no build writes it.
+		// account_id) and stops writing this column. Drop the column once no build writes it.
 		issuer: text("issuer"),
 		accountId: text("account_id").notNull(),
 		providerId: text("provider_id").notNull(),
@@ -199,8 +270,8 @@ export const account = pgTable(
 		accessTokenExpiresAt: timestamp("access_token_expires_at", { withTimezone: true }),
 		refreshTokenExpiresAt: timestamp("refresh_token_expires_at", { withTimezone: true }),
 		scope: text("scope"),
-		// Unused: the email/password plugin (which is the only thing that ever populates this) is not
-		// enabled — CUR-482 resolved to passkey + email-OTP instead, no password, ever. Kept because
+		// Unused: the email/password plugin (the only thing that ever populates this) is not enabled,
+		// because sign-in is passkey and email-OTP only, with no password. Kept because
 		// it's part of Better Auth's core account schema regardless of which plugins are active.
 		password: text("password"),
 		createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -208,7 +279,7 @@ export const account = pgTable(
 	},
 	(t) => [
 		// One row per provider identity; it replaces the issuer-keyed index, so a doubled OAuth callback
-		// still cannot insert the same provider account twice (CUR-4159).
+		// still cannot insert the same provider account twice.
 		uniqueIndex("account_provider_account_idx").on(t.providerId, t.accountId),
 		index("account_user_idx").on(t.userId),
 	]
@@ -252,10 +323,10 @@ export const passkey = pgTable(
 	(t) => [index("passkey_user_idx").on(t.userId), index("passkey_credential_idx").on(t.credentialID)]
 );
 
-// ── Better Auth: organization plugin (workspaces, CUR-550) ────────────────────────
+// ── Better Auth: organization plugin (workspaces) ────────────────────────
 // A workspace IS a Better Auth "organization" — creatorRole is set to "admin" in betterAuth.ts (not
 // the plugin's own "owner" default), and this app never invites, promotes, or displays anyone as
-// "owner", so the product surface only ever shows the two roles CUR-550 asks for. Field shapes below
+// "owner", so the product surface only ever shows two roles, admin and member. Field shapes below
 // are copied from the INSTALLED package's own schema declaration (organization.mjs's `schema` object),
 // not assumed — same discipline as the user/session/account/verification/passkey block above. Table
 // names are Better Auth's own singular defaults (modelName unset), matching that block's convention.
@@ -270,20 +341,20 @@ export const organization = pgTable(
 		// read directly by this app.
 		metadata: text("metadata"),
 		createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
-		// ── CUR-826: the three switches every workspace carries ──────────────────────────────
+		// ── The three switches every workspace carries ──────────────────────────────
 		// App-owned fields, not Better Auth's — registered as `schema.organization.additionalFields`
 		// in betterAuth.ts so the plugin's own create/update/get-full-organization endpoints read and
 		// write them, rather than a parallel table only this app's own routes would know to join.
 		// Canonical value lists + labels live in $lib/chat/workspacePermissions.ts (not under server/ —
 		// the settings page reads it client-side too) — nothing outside that module should compare
-		// against a bare string literal (the whole point of CUR-826: "no screen hardcodes a value").
+		// against a bare string literal, so no screen hardcodes a value.
 		//
-		// Defaults match CUR-550's actual shipped behavior exactly, so this migration changes no
-		// existing workspace's real permissions — only "invitation" and "admin_only" have a live
+		// The defaults match how workspaces behaved before these switches existed, so adding them changed
+		// no workspace's real permissions. Only "invitation" and "admin_only" have a live
 		// mechanism behind them today (invite-by-email, and Better Auth's own admin/member ac). "request",
 		// "open", and the two "members_propose_*" values are legal, storable, and DISPLAYED, but nothing
-		// in this codebase acts on them yet — that's CUR-551 (admin config screen) and CUR-554 (member
-		// change-requests), both the trust-and-safety lead's, not built here.
+		// in this codebase acts on them yet: there is no admin config screen and no member change-request
+		// flow.
 		joinMethod: text("join_method", { enum: ["invitation", "request", "open"] })
 			.notNull()
 			.default("invitation"),
@@ -292,9 +363,9 @@ export const organization = pgTable(
 		})
 			.notNull()
 			.default("admin_only"),
-		// Only one legal value today — modeled as a real column (not a hardcoded constant) per the
-		// ticket's own "the three switches exist on the workspace record", so a future product decision
-		// to make this configurable is a value addition, not a schema migration.
+		// Only one legal value today — modeled as a real column (not a hardcoded constant) so all three
+		// switches live on the workspace record, and making this configurable later is a value
+		// addition, not a schema migration.
 		rulesVisibility: text("rules_visibility", { enum: ["always"] }).notNull().default("always"),
 	},
 	(t) => [uniqueIndex("organization_slug_idx").on(t.slug)]
@@ -347,11 +418,10 @@ export const invitation = pgTable(
 	]
 );
 
-// ── Better Auth: OAuth 2.1 provider plugin (Thunderbolt sync, CUR-4312) ─────────────────────────
-// Alpha as an authorization server, so a registered client (the Thunderbolt sandbox,
-// config/thunderbolt.ts) can hold a token for /chat/api/v2/sync/* and nothing else. Field shapes are
-// copied from the installed plugin's schema (@better-auth/oauth-provider dist/authorize-*.mjs,
-// `const schema`); oauthProviderSchema.spec.ts fails when the plugin writes a field no column holds.
+// ── Better Auth: OAuth 2.1 provider plugin (Thunderbolt sync, removed) ────────────────
+// Since Thunderbolt sync was removed, only the account wipe and the nightly cleanup touch these
+// tables. They stay until a later migration drops them. Field shapes were copied from the
+// @better-auth/oauth-provider plugin's schema.
 // Every reference to `user` cascades, which is this app's choice and not the plugin's: an account
 // wipe deletes the `user` row, and a grant outliving its person would block that delete.
 export const oauthClient = pgTable(
@@ -537,7 +607,7 @@ export const settings = pgTable(
 	{
 		id: text("id").primaryKey(),
 		// The shadow `users.id` (auth.ts's bridge), never Better Auth's own `user.id`. No cascade:
-		// wipeUserData.ts deletes these rows before the `users` row, so a delete that skips the wipe fails. (CUR-769)
+		// wipeUserData.ts deletes these rows before the `users` row, so a delete that skips the wipe fails.
 		userId: text("user_id").references(() => users.id),
 		sessionId: text("session_id"),
 		doc: jsonb("doc").$type<Doc>().notNull(),
@@ -580,7 +650,7 @@ export const abortedGenerations = pgTable(
 	(t) => [uniqueIndex("aborted_generations_conversation_idx").on(t.conversationId)]
 );
 
-// ── mcpElicitations (parked mid-tool-call question, CUR-1017) ────────────────────
+// ── mcpElicitations (parked mid-tool-call question) ────────────────────
 // A 2026-era MCP server answers a tool call with `input_required` and its own request ends
 // immediately — nothing is blocked waiting anywhere (unlike a 2025-era server's blocking
 // `elicitation/create`, which this repo deliberately does not support: the platform kill at
@@ -670,13 +740,13 @@ export const reports = pgTable(
 		// GENERAL "report a problem" category. Null on a per-answer report.
 		category: text("category", { enum: ["bug", "ux", "content", "other"] }),
 		detail: text("detail"),
-		// The reported answer as it read when reported, and the model that served it (CUR-997).
+		// The reported answer as it read when reported, and the model that served it.
 		// Deleting a conversation detaches its reports and keeps them, so without these a retained
 		// report would no longer say what was wrong. Null on a general report.
 		answerText: text("answer_text"),
 		answerModel: text("answer_model"),
 		// What staff decided, set from /admin/reports and shown back to the reporter on
-		// /settings/reports (CUR-3903), so a report doesn't vanish after the thank-you line.
+		// /settings/reports, so a report doesn't vanish after the thank-you line.
 		status: text("status", { enum: REPORT_STATUS_KEYS }).notNull().default("received"),
 		statusUpdatedAt: timestamp("status_updated_at", { withTimezone: true }),
 		createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -709,6 +779,10 @@ export const safetyEvents = pgTable(
 		}).notNull(),
 		label: text("label"),
 		score: real("score"),
+		// The name of the production probe that sent this turn, set only when the request carried the
+		// verified probe token (probeMarker.ts); null on every other turn. A count of real declines leaves
+		// out rows where it is set.
+		probe: text("probe"),
 		createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 	},
 	(t) => [index("safety_events_created_idx").on(t.createdAt)]
@@ -719,7 +793,7 @@ export type SafetyEventRow = typeof safetyEvents.$inferSelect;
 // The self-harm distress rules are log hits, which answer under the support card. A per-hit
 // record of one, however stripped, can be joined back to the person by its time and the serverless
 // instance it came from, and would then be health data. So a hit is only counted: one row per day and
-// rule, with no id, no timestamp finer than the day, and nothing that orders the hits within it. (CUR-3915)
+// rule, with no id, no timestamp finer than the day, and nothing that orders the hits within it.
 export const guardDailyCounts = pgTable(
 	"guard_daily_counts",
 	{
@@ -736,22 +810,29 @@ export const guardDailyCounts = pgTable(
 // collapses to complete|error and marks an interrupted/empty turn `complete` (generations.ts:55), which
 // is exactly the failure it would have to catch. The `[turn] outcome` line has the right
 // taxonomy but lives in Axiom, which the warm cron cannot read. So the rate is derived here instead.
-// Rows are pruned to a short retention by the warm cron — an alerting table must not become the
-// conversations-table problem (mostly load-test rows). `declineKind` is broken out so `child_safety`
+// Rows are pruned to a short retention by the warm cron, so an alerting table never grows without
+// bound. `declineKind` is broken out so `child_safety`
 // stays greppable, though its rate already has its own probe (moderation:failclosed).
 export const turnOutcomes = pgTable(
 	"turn_outcomes",
 	{
 		id: text("id").primaryKey(),
 		// complete | error | timedOut | aborted | shed | declined | empty — the taxonomy from
-		// $lib/chat/utils/outcomeLadder (it was inline in routes/chat/conversation/[id]/+server.ts until
-		// CUR-445). NOT constrained to an enum here: a new outcome value must widen the aggregate quietly
-		// rather than fail an insert on the hot turn path — `empty` arrived through exactly that door.
+		// $lib/chat/utils/outcomeLadder. NOT constrained to an enum here: a new outcome value must widen
+		// the aggregate quietly rather than fail an insert on the hot turn path.
 		outcome: text("outcome").notNull(),
 		declineKind: text("decline_kind"),
 		// Request start to the first released token, the message's own `timings.ttftMs`; null when no token
-		// streamed. The first-token median probe reads it on completed turns (CUR-2243).
+		// streamed. The first-token median probe reads it on completed turns.
 		ttftMs: integer("ttft_ms"),
+		// ours | upstream | client on a failed or aborted turn ($lib/chat/utils/failureLayer), null
+		// otherwise and on every row written before the column. The rate alert pages on `ours` and treats a
+		// null failure as ours, so a row it cannot attribute still counts. Text, not an enum, for the same
+		// reason as `outcome`.
+		failureLayer: text("failure_layer"),
+		// The model that served the turn (routerMetadata.model, else the requested id), for the per-model
+		// upstream line. A model id, never user text.
+		model: text("model"),
 		createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 	},
 	(t) => [index("turn_outcomes_created_idx").on(t.createdAt)]
@@ -837,6 +918,31 @@ export const generations = pgTable(
 
 export type GenerationRow = typeof generations.$inferSelect;
 
+// ── generation_events (stream-follow event log) ─────────────────────────────────────────
+// What a turn's stream sent the client, in order, batched about every 500 ms, so a client whose
+// connection dropped can replay it and keep following (GET /conversation/[id]/generation/[generationId]).
+// A new table rather than `message_events`: that one is keyed by a text id with no (generation, seq)
+// order, and its rate-limit windows are read on every message, so a log of one INSERT per half second
+// would share its indexes and vacuum with the hot path. Holds answer text, so it is deleted about two
+// minutes after the turn ends (generationLog.ts), swept by cleanup.ts, and deleted with its
+// conversation (deleteConversations.ts). Raw drizzle, not a document collection.
+export const generationEvents = pgTable(
+	"generation_events",
+	{
+		generationId: text("generation_id").notNull(),
+		conversationId: text("conversation_id").notNull(),
+		seq: integer("seq").notNull(),
+		// A batch of NDJSON lines, one MessageUpdate each, exactly as sent (Stream tokens unpadded).
+		payload: text("payload").notNull(),
+		createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+	},
+	(t) => [
+		primaryKey({ columns: [t.generationId, t.seq] }),
+		index("generation_events_conversation_idx").on(t.conversationId),
+		index("generation_events_created_idx").on(t.createdAt),
+	]
+);
+
 // ── rag_documents (admin RAG upload — parent item) ───────────────────────────────
 // First-class normalized table (NOT the Mongo-shaped doc-store): the admin-authored
 // content path for the local "Potluck" RAG store. One row per uploaded item; its
@@ -857,7 +963,7 @@ export const ragDocuments = pgTable(
 			.notNull()
 			.default("draft"),
 		// Nullable FK: an admin authors most items, but a seed/import may have no user. Doubles as the
-		// "uploader" that CUR-736's data rule #1 names ("admin or uploader may delete").
+		// "uploader" in the workspace delete rule ("admin or uploader may delete").
 		createdBy: text("created_by").references(() => users.id),
 		approvedBy: text("approved_by"), // stamped at activate (the approval gate)
 		approvedAt: timestamp("approved_at", { withTimezone: true }),
@@ -867,11 +973,11 @@ export const ragDocuments = pgTable(
 		editedAt: timestamp("edited_at", { withTimezone: true }),
 		// Optimistic-concurrency token — a write supplies the version it read; a mismatch is a conflict.
 		version: integer("version").notNull().default(1),
-		// The workspace-scoping column (CUR-736): documents get an organizationId and conversations stay
+		// The workspace-scoping column: documents get an organizationId and conversations stay
 		// unscoped on purpose.
 		// NULL is the existing site-wide Potluck corpus (unchanged); a real value marks a workspace's own
-		// document. onDelete:"cascade" means deleting an organization (CUR-827's admin delete) removes its
-		// documents for free — same precedent as member/invitation, no explicit app-level delete loop.
+		// document. onDelete:"cascade" means deleting an organization (the workspace admin's delete)
+		// removes its documents for free — same precedent as member/invitation, no explicit app-level delete loop.
 		// `files` (chat attachments) deliberately does NOT get this column: it's keyed to conversationId,
 		// and conversations stay unscoped per this same decision, so an attachment has no workspace to
 		// belong to independent of its (unscoped) parent conversation.
@@ -950,10 +1056,9 @@ export type NewRagDocumentAuditRow = typeof ragDocumentAudit.$inferInsert;
 // ── alert_state (ops-alert debounce/dedup — the SINGLE home for alerting state) ───────────────────
 // Backs the ops-alert path: warm-cron health probes → alert webhook (server/alerting.ts + warm.ts). ONE ROW
 // PER ALERT, keyed by an arbitrary `key` (e.g. "coop:verdict"). Every future alert — other health
-// probes, the CUR-75 serving-backend-drift alert, error-rate alerts — reuses THIS table with a NEW KEY.
+// probes, a serving-backend-drift alert, error-rate alerts — reuses THIS table with a NEW KEY.
 // Do NOT add a second alert-state table; add a row. First-class table (not the Mongo doc-store),
-// written via a drizzle upsert in alerting.ts. Kept tiny and normalized — no `doc`. See CUR-35 + the
-// "alerting" note in this file's header context / MIGRATION.md.
+// written via a drizzle upsert in alerting.ts. Kept tiny and normalized — no `doc`.
 export const alertState = pgTable("alert_state", {
 	// Alert identity, e.g. "coop:verdict". PK ⇒ one row per distinct alert; this IS the upsert key.
 	key: text("key").primaryKey(),
@@ -971,7 +1076,7 @@ export const alertState = pgTable("alert_state", {
 export type AlertStateRow = typeof alertState.$inferSelect;
 export type NewAlertStateRow = typeof alertState.$inferInsert;
 
-// ── local_inference_endpoints — per-user LAN/local inference server (CUR-1194) ────────────────────
+// ── local_inference_endpoints — per-user LAN/local inference server ────────────────────
 // Zero or more rows per user, each pointing a "local" conversation model at a personal, self-hosted
 // OpenAI-compatible server (e.g. Ollama on localhost or a home-network box) — NOT a shared/org-wide
 // custom deployment, which would be a different, global-scope feature built on the shared model
@@ -983,7 +1088,7 @@ export type NewAlertStateRow = typeof alertState.$inferInsert;
 // (`local:{endpointId}:{servedModelId}`, see localModels.ts) so two servers reporting the same wire
 // model tag never collide in the picker.
 //
-// Keyed on `userId` (the shadow `users.id`), not email (CUR-1262). `userId` is the SAME identity space
+// Keyed on `userId` (the shadow `users.id`), not email. `userId` is the SAME identity space
 // every other per-user content table here keys on
 // (settings.userId, conversations.userId, messageEvents.userId, contributions.userId — all populated
 // from `authCondition(locals)`/`locals.user._id.toString()`, never Better Auth's own `user.id`
@@ -996,7 +1101,7 @@ export type NewAlertStateRow = typeof alertState.$inferInsert;
 // Non-unique on `userId`, so a user can register more than one server, matching the settings UI's
 // list-of-servers design.
 //
-// One custom HTTP header sent with every request to this server (CUR-1291). Order-preserving array,
+// One custom HTTP header sent with every request to this server. Order-preserving array,
 // not a map — a header name could legitimately repeat (rare, but HTTP allows it), and preserving
 // entry order is cheap and never wrong.
 export type LocalInferenceHeader = { name: string; value: string };
@@ -1006,7 +1111,7 @@ export type LocalInferenceHeader = { name: string; value: string };
 // see pangolinClient.ts. `provider` is a discriminant for a future second tunnel provider; today
 // only "pangolin" exists. Plain `text`+`jsonb`, no DB-level enum — matches this file's existing
 // convention (headers above, every other table here) of validating a small string set at the API
-// layer (zod) rather than in Postgres. (CUR-1266)
+// layer (zod) rather than in Postgres.
 export type ManagedEndpointConfig = {
 	provider: "pangolin";
 	siteId: number;
@@ -1037,11 +1142,11 @@ export const localInferenceEndpoints = pgTable(
 		//
 		// Wired through create/list (localInferenceEndpoints.ts, api/v2/user/local-inference-endpoints),
 		// the settings UI's Advanced Options panel, AND applied on every request to this endpoint
-		// (discovery, prewarm, and generation — see localModels.ts's headersRecord()/defaultHeaders). (CUR-1291)
+		// (discovery, prewarm, and generation — see localModels.ts's headersRecord()/defaultHeaders).
 		headers: jsonb("headers").$type<LocalInferenceHeader[]>().notNull().default([]),
 		// "direct" (default — the user supplies baseUrl themselves) or "managed" (baseUrl/headers
 		// are populated by us from a tunnel provider's control-plane response; see the managed provisioning
-		// route). (CUR-1266)
+		// route).
 		kind: text("kind").notNull().default("direct"),
 		// Only set for kind: "managed" — the tunnel provider's own object ids, needed to poll status
 		// and to revoke (delete the site/resource) when the row is removed. Null for "direct" rows.
@@ -1054,7 +1159,7 @@ export const localInferenceEndpoints = pgTable(
 export type LocalInferenceEndpointRow = typeof localInferenceEndpoints.$inferSelect;
 export type NewLocalInferenceEndpointRow = typeof localInferenceEndpoints.$inferInsert;
 
-// ── local_inference_pairings — the CLI's one-click pairing handoff (CUR-4110) ─────────────────────
+// ── local_inference_pairings — the CLI's one-click pairing handoff ─────────────────────
 // `aipotluck-local-client` makes up a random pairing id, opens chat/local-inference/pair?id=…&name=…
 // in the browser, and polls api/v2/local-inference/pairings/<id> until this row carries credentials.
 // The signed-in visit provisions a managed endpoint (managedInference/provision.ts) and parks its
@@ -1102,7 +1207,7 @@ export const localInferencePairings = pgTable(
 
 export type LocalInferencePairingRow = typeof localInferencePairings.$inferSelect;
 
-// ── human evaluation (A2, CUR-1913 / CUR-1914) ───────────────────────────────────────────────
+// ── human evaluation ───────────────────────────────────────────────
 // People who speak a language rate stored model answers to a fixed task set (humanEval/config.ts).
 // Raw rows only: results are derived in humanEval/aggregate.ts and never stored.
 
@@ -1202,7 +1307,7 @@ export const humanEvalRatings = pgTable(
 export type HumanEvalRatingRow = typeof humanEvalRatings.$inferSelect;
 export type NewHumanEvalRatingRow = typeof humanEvalRatings.$inferInsert;
 
-// ── storageLocations (CUR-2930: a person's own bucket, linked as a place files can live) ──────
+// ── storageLocations (a person's own bucket, linked as a place files can live) ──────
 // One row per linked location. Alpha storage itself has no row: it is the location every account
 // has, and `storage_preferences.default_location` null means it. `credential` is sealed with
 // storage/locations/sealedSecret.ts and never leaves the server. Unlinking deletes the row, never
@@ -1214,7 +1319,7 @@ export type StorageLocationConfig = {
 	// resolved under it (hfBucketLocation.ts).
 	prefix: string;
 	// How Alpha holds access: a token the person pasted (absent means this), or the grant from Connect
-	// Hugging Face (CUR-2932), whose sealed credential is a refreshable OAuth grant. jsonb, so no migration.
+	// Hugging Face, whose sealed credential is a refreshable OAuth grant. jsonb, so no migration.
 	grant?: "token" | "oauth";
 };
 
@@ -1242,7 +1347,7 @@ export const storageLocations = pgTable(
 
 export type StorageLocationRow = typeof storageLocations.$inferSelect;
 
-// ── userMcpServers (CUR-4016: an MCP server a person added in Settings → Connectors) ───────────
+// ── userMcpServers (an MCP server a person added in Settings → Connectors) ───────────
 // One row per server. `credential` is the bearer token they gave, sealed with
 // storage/locations/sealedSecret.ts under its own info string, or null when the server needs none. It
 // never leaves the server and is sent only to `url`'s own origin (mcp/servers.ts originScopedFetch).
@@ -1265,7 +1370,7 @@ export const userMcpServers = pgTable(
 export type UserMcpServerRow = typeof userMcpServers.$inferSelect;
 
 // One row per account that has chosen where new files go or has uploaded with locations on. No row,
-// or a null `default_location`, is "Last used" (CUR-3077); "alpha" is Alpha storage; "ask" asks on
+// or a null `default_location`, is "Last used"; "alpha" is Alpha storage; "ask" asks on
 // every upload once a second location is linked; anything else is a storage_locations id.
 export const storagePreferences = pgTable("storage_preferences", {
 	userId: text("user_id")
@@ -1273,7 +1378,7 @@ export const storagePreferences = pgTable("storage_preferences", {
 		.references(() => users.id, { onDelete: "cascade" }),
 	defaultLocation: text("default_location"),
 	// Where this account's most recent upload went ("alpha" or a storage_locations id), what
-	// "Last used" resolves to. Null until the first upload, and cleared when that location is unlinked. (CUR-3077)
+	// "Last used" resolves to. Null until the first upload, and cleared when that location is unlinked.
 	lastUsedLocation: text("last_used_location"),
 	updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -1284,7 +1389,7 @@ export const storagePreferences = pgTable("storage_preferences", {
 // the finishing request reassembles them and runs every upload check on the whole file. Nothing in
 // this table has been scanned, so nothing reads it except that request, and the cleanup cron drops
 // any upload abandoned for an hour. `owner_id` has no FK on purpose: a guest owner is not a users
-// row, and the sweep, not a cascade, is what bounds how long bytes stay. (CUR-1780)
+// row, and the sweep, not a cascade, is what bounds how long bytes stay.
 export const uploadChunks = pgTable(
 	"upload_chunks",
 	{
@@ -1300,11 +1405,9 @@ export const uploadChunks = pgTable(
 	]
 );
 
-// ── sync_tombstones (deletes a connected sync client mirrors, CUR-4312) ──────────────────────────
-// A conversation delete removes the row, so nothing is left for /chat/api/v2/sync/changes to report.
-// Each delete made while thunderbolt-sync is on writes one of these instead: the deleted id and the
-// client id it was pushed under, if any. Kept 30 days (db/cleanup.ts); a client offline longer than
-// that misses the delete and keeps its copy. `kind` is "conversation" or "message".
+// ── sync_tombstones (Thunderbolt sync, removed) ────────────────────────────────────────
+// Deletes a connected sync client mirrored. Nothing writes it since the feature was removed; the
+// nightly sweep (db/cleanup.ts) ages out what is left until a later migration drops it.
 export const syncTombstones = pgTable(
 	"sync_tombstones",
 	{

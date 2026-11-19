@@ -114,9 +114,9 @@ test(
 	}
 );
 
-// The composer's ask is the visible half (CUR-3997); the server holds the line for a request that
+// The composer's ask is the visible half; the server holds the line for a request that
 // skips the composer. A guest starts a chat, then posts that conversation a turn with a text file
-// the way a script would. The same guest's long paste is typed text, not an attachment (CUR-1895),
+// the way a script would. The same guest's long paste is typed text, not an attachment,
 // so it still sends with attachments on.
 test(
 	"a guest's crafted send with a file is refused 403 and asked to sign in, while a guest's long paste still sends",

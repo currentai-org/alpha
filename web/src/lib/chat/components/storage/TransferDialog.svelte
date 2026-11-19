@@ -4,7 +4,7 @@
 	import { locationLabel, locationDetail, type LocationSummary } from './locationTypes';
 
 	// Copy or move one file to another of the person's locations. Only places that answer
-	// are offered; the one the file is in now is left out. (CUR-2931)
+	// are offered; the one the file is in now is left out.
 	interface Props {
 		open?: boolean;
 		name: string;

@@ -1,4 +1,4 @@
-// detectors/s1 — the Zentropi S1 (cope-b-s1) detector for the chat turn's screens (CUR-4527).
+// detectors/s1 — the Zentropi S1 (cope-b-s1) detector for the chat turn's screens.
 // Handed to runGuardScreen as deps.s1 only while the `s1-safety-judge` flag is on (guardGate.ts
 // inputJudgesFor). Unlike a JudgeFn, which answers one (target, rule query) call, S1 judges every policy
 // of a text chunk in one request, so this answers one CHUNK: a verdict per rules.json rule id. The gate
@@ -20,6 +20,7 @@
 // mismatch or an answer key mismatch leaves that call's policies unknown, and the gate fails closed on a
 // child rule as it does today. No retry. One info line per failed call, with the reason, never the text.
 import { S1_JUDGE } from "../../../../../config/safetyScreen";
+import { judgeApiBase } from "./judgeApiBase";
 import S1_RULES_RAW from "$lib/chat/server/rules-s1.json";
 import type { MinimalLogger } from "$lib/chat/server/guardScreenTypes";
 import { z } from "zod";
@@ -126,8 +127,14 @@ function s1Key(): string | undefined {
 	return process.env[S1_JUDGE.provider.api_key_env] || undefined;
 }
 
+/** The endpoint's base URL: ZENTROPI_S1_ENDPOINT_URL, or Current AI's own on its deployments. */
+function s1ApiBase(): string | undefined {
+	return judgeApiBase(S1_JUDGE.provider);
+}
+
+/** Both the key and an endpoint. An HF_TOKEN alone is not an S1 judge: a self-host holds one anyway. */
 export function s1Configured(): boolean {
-	return Boolean(s1Key());
+	return Boolean(s1Key()) && Boolean(s1ApiBase());
 }
 
 type CallKind = "broad" | "single" | "escalation" | "crisis";
@@ -166,7 +173,8 @@ export function makeS1Judge(overrides: S1Overrides = {}): S1UnitJudge {
 		const limiter = new Limiter(header.concurrency);
 		const key = overrides.key ?? s1Key();
 		const doFetch = overrides.fetchImpl ?? globalThis.fetch;
-		const endpoint = overrides.endpoint ?? `${S1_JUDGE.provider.api_base}/v1/systemone`;
+		const apiBase = overrides.endpoint ? undefined : s1ApiBase();
+		const endpoint = overrides.endpoint ?? (apiBase ? `${apiBase}/v1/systemone` : undefined);
 		let calls = 0;
 		let httpOk = true;
 		let servedBackend: string | undefined;
@@ -185,7 +193,7 @@ export function makeS1Judge(overrides: S1Overrides = {}): S1UnitJudge {
 			limiter.run(async () => {
 				// A call whose turn comes after the operation deadline starts no request.
 				if (ctx.opSignal.aborted) return unknown(kind, "deadline");
-				if (!key) return unknown(kind, "config");
+				if (!key || !endpoint) return unknown(kind, "config");
 				calls++;
 				let res: Response;
 				try {

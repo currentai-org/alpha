@@ -5,7 +5,7 @@ import { describe, it, expect, afterAll } from "vitest";
 import { migrationDatabaseUrl } from "../lib/migrationDatabaseUrl.mjs";
 
 // Each child gets its own ceiling, well under the test's 120s, and a failure rethrows with the
-// command and everything it printed, so a hung child is identifiable (CUR-2010).
+// command and everything it printed, so a hung child is identifiable.
 //
 // On timeout the child's whole process group is listed and killed, and the failure says whether the
 // direct child had exited, because a grandchild holding the output pipe open looks the same as a
@@ -60,7 +60,7 @@ function run(cmd: string, args: string[]): Promise<void> {
 }
 const WEB = new URL("../..", import.meta.url).pathname;
 
-// CUR-1517 swapped `drizzle-kit migrate` for scripts/db-migrate.mjs in `vercel-build`, because
+// swapped `drizzle-kit migrate` for scripts/db-migrate.mjs in `vercel-build`, because
 // drizzle-kit exits 1 on a failed migration without printing why. The wrapper calls the migrator
 // drizzle-kit itself wraps, so the two are supposed to share migration state — same ./drizzle
 // folder, same journal, same drizzle.__drizzle_migrations table.
@@ -78,7 +78,7 @@ const WEB = new URL("../..", import.meta.url).pathname;
 // container.
 //
 // Stateful project (serial): it reads and can in principle write the shared database, so running it
-// file-parallel with the other DB specs is the CUR-93 race.
+// file-parallel with the other DB specs is the race.
 
 const MIGRATIONS = "SELECT hash FROM drizzle.__drizzle_migrations ORDER BY created_at, id";
 
@@ -102,7 +102,7 @@ describe("db-migrate and drizzle-kit migrate share migration state, so either ca
 		expect(afterWrapper).toEqual(before);
 
 		// Through the wrapper, not `npx drizzle-kit`: see scripts/drizzle-kit.sh for the Node 24 exit
-		// hang it avoids (CUR-2010).
+		// hang it avoids.
 		await run("./scripts/drizzle-kit.sh", ["migrate"]);
 		const afterKit = await applied();
 		expect(afterKit).toEqual(before);

@@ -9,7 +9,7 @@ export type UploadKind = "text" | "markdown" | "csv" | "json" | "html" | "pdf" |
  * Photo types the known-abuse scanner (HMA) cannot hash: it answers HTTP 500 to a HEIC, and the
  * server's sharp build has no HEVC decoder to convert one. My files redraws these as JPEG in the
  * browser before upload, and the server refuses one it is still handed as an unsupported type rather
- * than as a scanner outage, which a retry could never clear (CUR-4665).
+ * than as a scanner outage, which a retry could never clear.
  */
 export const SCANNER_UNREADABLE_IMAGE_MIMES: readonly string[] = [
 	"image/heic",
@@ -39,7 +39,7 @@ export const UPLOAD_MAX_BYTES_ANY = 4_400_000;
 
 /** Pages a PDF may have before it is refused unread. Extraction cost grows faster than page count: a
  *  1.2 MB file of 10,000 blank pages takes about 10 s, 30,000 exhaust node's memory, and 1,000 take
- *  about a quarter of a second (CUR-3837). */
+ *  about a quarter of a second. */
 export const MAX_PDF_PAGES = 1_000;
 
 /** Per-kind byte caps (server-enforced; client mirrors for instant feedback). All ≤ 4 MB. */

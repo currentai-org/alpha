@@ -11,7 +11,7 @@ import { freshTestEmail, signInWithEmailOtp } from './helpers/signIn';
 import { startChattingPastWelcome } from './helpers/welcome';
 
 // A tool round after the first goes out after the lane has committed, so a 429 there used to
-// end the turn on "is busy right now" with no retry (CUR-2432). It now retries on the same lane. The `tool_round_rate_limited` fault refuses the first
+// end the turn on "is busy right now" with no retry. It now retries on the same lane. The `tool_round_rate_limited` fault refuses the first
 // request after round 1 once. An arithmetic question, because calculate is the tool that forces a
 // round 2. Preview-only: the fault switch is never armed on production.
 const LARGE4 = LARGE4_MODEL;
@@ -32,7 +32,7 @@ test(
 		await page.goto(pinnedChatEntry(LARGE4), { waitUntil: 'commit' });
 
 		const composer = page.getByLabel('Message AI Potluck');
-		// An Enter on the server-rendered box, before the app takes it over, may be dropped (CUR-3345).
+		// An Enter on the server-rendered box, before the app takes it over, may be dropped.
 		await composerHydrated(page);
 		await composer.click({ timeout: 30_000 });
 		await composer.fill(
@@ -74,8 +74,8 @@ test(
 		expect(answer?.content ?? '', 'the answer does not state the total').toMatch(/756/);
 		// The contract is "the lane that committed is the lane that finished". Which lane commits is not
 		// this spec's to control: Large 3 runs on a 30-request-a-minute account the whole suite shares, so
-		// a real 429 on the first request moves the turn to the backup before any tool round, by design
-		// (CUR-2346), and the fault then fires on the backup's round 2 instead.
+		// a real 429 on the first request moves the turn to the backup before any tool round, by design,
+		// and the fault then fires on the backup's round 2 instead.
 		const committed = answer?.failover?.to ?? LARGE4;
 		const served = answer?.routerMetadata?.model ?? '';
 		if (!answer?.failover) {

@@ -1,10 +1,10 @@
-// CUR-2932 adds "Connect Hugging Face" for storage. The person consents on the storage OAuth app, which
+// "Connect Hugging Face" for storage. The person consents on the storage OAuth app, which
 // is a separate app from sign-in and is not Better Auth's link-social (that would make the grant a way
 // to sign in). Alpha then creates one private bucket in their account and keeps the grant sealed in
 // `storage_locations`.
 //
 // The scope is `contribute-repos`: "create repositories and access those created by this app". Only a
-// live consent shows whether Hugging Face applies it to buckets (CUR-2932's Done when). If it does not,
+// live consent shows whether Hugging Face applies it to buckets. If it does not,
 // the bucket create fails and the callback says so; nothing widens the grant on its own.
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { createRepo, HubApiError, listFiles } from "@huggingface/hub";

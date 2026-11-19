@@ -152,9 +152,9 @@ test(
 	}
 );
 
-// Chinese routes to GLM 5.2, which reads no photos (routing.spec.ts, CUR-392), so a photo attached to a
+// Chinese routes to GLM 5.2, which reads no photos (routing.spec.ts), so a photo attached to a
 // Chinese question is what moves Auto off it. Catalan stays on Mistral Medium, which reads photos, since
-// CUR-392, and SEA-LION v4.8 (Vietnamese) drops out of Auto whenever its circuit breaker marks it busy.
+// and SEA-LION v4.8 (Vietnamese) drops out of Auto whenever its circuit breaker marks it busy.
 test(
 	'with Auto choosing, a photo takes the message to a model that reads photos, and the composer says why',
 	{ tag: ['@preview-only', '@A6'] },

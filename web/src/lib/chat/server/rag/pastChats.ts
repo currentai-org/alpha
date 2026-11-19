@@ -1,10 +1,9 @@
 /**
- * Past-chat search (CUR-4576): keyword retrieval over the signed-in person's own earlier chats.
+ * Past-chat search: keyword retrieval over the signed-in person's own earlier chats.
  *
  * Memory here is search over raw history. No facts about the person are extracted or stored, and
  * deleting a chat removes it from search. Keyword search over raw history scored close to Mem0 for
- * a fraction of the cost (MemoryTax, arXiv 2610.29823), so this is the baseline before any memory layer
- * (CUR-197).
+ * a fraction of the cost (MemoryTax, arXiv 2610.29823), so this is the baseline before any memory layer.
  *
  * Ranking is BM25 from MiniSearch (MIT), built per call over that one owner's messages. The default
  * tokenizer splits on Unicode spaces and punctuation and stems nothing, so it needs no per-language

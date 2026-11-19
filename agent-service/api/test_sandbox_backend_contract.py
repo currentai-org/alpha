@@ -1,8 +1,9 @@
-"""What every sandbox backend must do, whichever one runs it (CUR-4438).
+"""What every sandbox backend must do, whichever one runs it.
 
-The same cases run against each backend: bwrap here and in CI, the other backends against a live account
-with `SANDBOX_CONTRACT_BACKEND=e2b|agentsandbox` (CUR-4434). A backend that passes them can serve chat's
-run-code tools; the stdio cases are what agent mode's ACP session to Hermes needs (CUR-4450).
+The same cases run against each backend: bwrap here and in CI, the bake-off's backends against the live account
+with `SANDBOX_CONTRACT_BACKEND=e2b|agentsandbox`, and the docker backend through the
+self-host socket proxy with `SANDBOX_CONTRACT_BACKEND=docker`. A backend that passes them can serve chat's
+run-code tools; the stdio cases are what agent mode's ACP session to Hermes needs.
 """
 
 import asyncio
@@ -11,7 +12,6 @@ import shutil
 import tempfile
 import uuid
 
-import app
 import pytest
 from sandbox_backend import BwrapBackend, SandboxError, Tier
 
@@ -22,6 +22,8 @@ SECRET = "contract-secret-should-never-reach-the-box"
 def _bwrap(tmp_path, monkeypatch):
     if shutil.which("bwrap") is None:
         pytest.skip("bwrap not installed")
+    import app  # here, not at the top: the E2B run ships only the backend files, and importing app pulls in the whole service
+
     # The same allowances test_sandbox_mcp.py makes for a developer desktop.
     monkeypatch.setattr(app, "SANDBOX", "bwrap")
     monkeypatch.setattr(app, "RLIMIT_ENABLED", False)
@@ -43,8 +45,8 @@ def _bwrap(tmp_path, monkeypatch):
 
 
 def _e2b():
-    """A live E2B install (CUR-4451): E2B_API_URL, E2B_SANDBOX_URL and E2B_API_KEY name it, reached through a
-    private link or port forward, not a public address. Each run's conversations are new keys,
+    """A live E2B install: E2B_API_URL, E2B_SANDBOX_URL and E2B_API_KEY name it, reached through the
+    WireGuard link or an SSM port forward, never Embed's public address. Each run's conversations are new keys,
     so a rerun never resumes an earlier run's sandboxes."""
     from sandbox_e2b import E2BBackend, E2BConfig
 
@@ -54,6 +56,21 @@ def _e2b():
     cfg = E2BConfig(api_url=url, api_key=key, sandbox_url=os.environ.get("E2B_SANDBOX_URL", ""),
                     template=os.environ.get("E2B_TEMPLATE") or E2BConfig.template)
     return _FreshKeys(E2BBackend(cfg), uuid.uuid4().hex[:8])
+
+
+def _docker():
+    """The docker backend through a socket proxy: DOCKER_HOST names the proxy, SANDBOX_CONTRACT_IMAGE a
+    digest-pinned image with python3 and bash, and SANDBOX_CONTRACT_GATEWAY the container agent sandboxes may reach.
+    .github/selfhost-socket-proxy-smoke.sh runs this against the pinned sockguard."""
+    from sandbox_docker import DockerBackend, DockerConfig
+
+    host, image = os.environ.get("DOCKER_HOST", ""), os.environ.get("SANDBOX_CONTRACT_IMAGE", "")
+    if not (host and image):
+        pytest.skip("DOCKER_HOST and SANDBOX_CONTRACT_IMAGE name the proxy and image to test")
+    gateway = os.environ.get("SANDBOX_CONTRACT_GATEWAY", "")
+    cfg = DockerConfig(docker_host=host, image=image, gateway_host="gateway" if gateway else "",
+                       gateway_container=gateway)
+    return _FreshKeys(DockerBackend(cfg), uuid.uuid4().hex[:8])
 
 
 class _FreshKeys:
@@ -93,6 +110,11 @@ def backend(tmp_path, monkeypatch):
         yield b
         b.close()
         return
+    if BACKEND == "docker":
+        b = _docker()
+        yield b
+        b.close()
+        return
     pytest.skip(f"no contract fixture for backend {BACKEND!r} yet")
     yield  # unreachable: skip raises; keeps this a generator fixture
 
@@ -111,7 +133,7 @@ def test_a_file_written_in_one_call_is_there_in_the_next(backend):
 
 
 def test_find_on_a_conversation_never_used_makes_nothing(backend):
-    """CUR-4502: listing or reading in a fresh conversation must not start a sandbox to say it is empty."""
+    """Listing or reading in a fresh conversation must not start a sandbox to say it is empty."""
     assert backend.find("alice", "conv-unseen", Tier.RUN_CODE) is None
     assert backend.find("alice", "conv-unseen", Tier.RUN_CODE) is None, "the first find created one"
 
@@ -135,8 +157,8 @@ def test_two_conversations_never_see_each_others_files(backend):
 
 def test_run_code_tier_reaches_no_network(backend):
     h = backend.connect("alice", "conv-1", Tier.RUN_CODE)
-    # Reached means an answer came back, any status included: E2B's egress proxy completes the TCP handshake and
-    # then closes a denied connection, so a bare connect proves nothing. For cloud metadata, reached means a credential
+    # Reached means an answer came back, any status included: E2B's egress proxy accepts every TCP handshake and
+    # then closes a denied one, so a bare connect proves nothing. For cloud metadata, reached means a credential
     # path answered 200 after the IMDSv2 token dance. Inside Firecracker 169.254.169.254 is the VMM's own MMDS,
     # which issues a token but has no such path.
     code = (
@@ -222,7 +244,7 @@ def _stdio_roundtrip(backend, h, argv, send: bytes):
 
 
 def test_a_stdio_process_answers_what_it_is_sent(backend):
-    """CUR-4450: agent mode's ACP session to Hermes runs over these two streams."""
+    """Agent mode's ACP session to Hermes runs over these two streams."""
     h = backend.connect("alice", "stdio-echo", Tier.AGENT)
     line, _ = _stdio_roundtrip(
         backend, h, ["python3", "-c", "import sys; print(sys.stdin.readline().upper(), end='', flush=True)"], b"ping\n"

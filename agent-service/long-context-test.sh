@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Long-horizon / context-growth reliability test (a launch-gate check).
+# Long-horizon / context-growth reliability test (brief §9 launch-gate; the second of the two open tests).
 #
 # 2026 SOTA framing: long-horizon agent reliability (cf. "Beyond pass@1: A Reliability Science Framework
 # for Long-Horizon LLM Agents", 2026; tau-bench pass^k). A sequential accumulator forces >=12 dependent
 # tool turns whose growing tool output pushes the transcript PAST 32k tokens — directly probing the
-# Hermes >=64k context floor (served-context <64k is blocker #4). Each step depends on the
+# Hermes >=64k context floor (served-context <64k is blocker #4; see docs/model-tradeoffs.md). Each step depends on the
 # prior running total, so the model cannot shortcut; it must carry state across a long, growing context.
 # We report pass^k = (correct totals)/RUNS; the gate is pass^k == RUNS.
 #

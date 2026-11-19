@@ -1,23 +1,23 @@
-// List/upload/download/delete against the shared custodial bucket
-// (buckets/current-ai-official/custodial-storage-eu, in the EU region), on top of the users/<id>/
-// layout and per-request ownership check (CUR-899). One shared HF_BUCKETS_TOKEN credential holds
-// everyone's files, so every function here re-derives ownership from the path itself via
-// assertOwnership before touching the bucket, never trusting that a path was safely constructed
-// upstream (custodialBucket.ts's own stated contract, CUR-928).
+// List/upload/download/delete against the custodial store, on top of the users/<id>/ layout and
+// per-request ownership check. One shared credential holds everyone's files, so every
+// function here re-derives ownership from the path itself via assertOwnership before touching the
+// store, never trusting that a path was safely constructed upstream (custodialBucket.ts's own stated
+// contract).
 //
-// List, upload, download (byte-for-byte) and delete all work through @huggingface/hub with a plain
-// Bearer token: no S3, no manual key mint (scripts/hf-bucket-probe.mjs checks this against the real
-// bucket). listFiles's returned `path` is always the full repo-relative path regardless of the `path`
-// query filter used to scope the request, which is what makes checking assertOwnership against each
+// The bytes go through custodialBackend.ts: the Hugging Face bucket (hf;
+// buckets/current-ai-official/custodial-storage-eu on production), an S3-compatible bucket or a
+// local directory, whichever CUSTODIAL_STORAGE_BACKEND names. It has no default. Sealing happens here, above that seam, so a backend
+// only ever holds ciphertext. Every backend's listing returns each entry's full store-relative path
+// whatever prefix scoped the request, which is what makes checking assertOwnership against each
 // listed entry's own `path` meaningful rather than a no-op.
 //
-// Gated per person by custodialStorageViewEnabledForUser() (CUR-1276). Callers (routes, not this
+// Gated per person by custodialStorageViewEnabledForUser(). Callers (routes, not this
 // module) are responsible for checking the gate before reaching any function here.
 
 import path from "node:path";
-import { HubApiError, listFiles, uploadFile, downloadFile, deleteFile, type ListFileEntry } from "@huggingface/hub";
+import { HubApiError } from "@huggingface/hub";
 import { config } from "$lib/chat/server/config";
-import { deployEnv } from "$lib/chat/server/deployEnv";
+import { custodialBackend, custodialBackendConfigured, type StoredFile } from "./custodialBackend";
 import {
 	assertOwnership,
 	assertOwnerOwnership,
@@ -34,9 +34,8 @@ import { SCANNER_UNREADABLE_IMAGE_MIMES } from "$lib/chat/constants/ragUpload";
 import { recordRateLimitTrip, clearRateLimitTrip, recordCsamMatch } from "$lib/chat/server/alerting";
 import { reportCsamMatchToCoop, reportHitToCoop } from "$lib/chat/server/moderation";
 import { runInBackground } from "$lib/chat/server/vercelBackground";
-import { csamScanConfigured, CsamScannerUnconfiguredError, HmaUnreachableError } from "./csamScan";
+import { csamScanConfigured, CsamScannerUnconfiguredError, HmaUnreachableError, scanCsamHash } from "./csamScan";
 import { scanFileForCsam } from "./embeddedImageScan";
-import { hubFetch } from "./hubThrottle";
 import {
 	memoKeyStore,
 	openCustodialObject,
@@ -51,6 +50,7 @@ import {
 	type OwnerLock,
 } from "./custodialCrypto";
 import { withAdvisoryLock } from "$lib/chat/server/db/advisoryLock";
+import { resetHistoryKey, tombstoneHistoryKey } from "./historyKey";
 import { ImageScreenBlockedError, screenStoredImages } from "./uploadImageGuard";
 import {
 	CUSTODIAL_ALLOWED_KINDS,
@@ -65,7 +65,7 @@ import {
 
 // The limits, as typed errors a route maps to a real status. Throwing beats returning a
 // falsy value: an unguarded write path that fails silently is how a quota becomes a suggestion, and
-// this module's callers are routes that need something to turn into a 4xx. (CUR-1129)
+// this module's callers are routes that need something to turn into a 4xx.
 export class FileTooLargeError extends Error {
 	constructor(
 		readonly bytes: number,
@@ -81,14 +81,14 @@ export class UnsupportedFileTypeError extends Error {
 		this.name = "UnsupportedFileTypeError";
 	}
 }
-/** An image from a person the `multimodal` flag does not select (CUR-2725: team accounts only on preview). */
+/** An image from a person the `multimodal` flag does not select. */
 export class ImageInputNotAllowedError extends Error {
 	name = "ImageInputNotAllowedError";
 	message = "Images can't be added to your files on this deployment yet.";
 }
-/** A PDF or DOCX from a person the `document-attachments` flag does not select (CUR-987). Its pictures
- *  are extracted by parsers that run in this process, which is acceptable for team accounts only
- *  until the sandboxed parser lands (CUR-2780); storing it unscanned is not an option. */
+/** A PDF or DOCX from a person the `document-attachments` flag does not select. Its pictures
+ *  are extracted by parsers that run in this process, so the flag limits who may store one;
+ *  storing it unscanned is not an option. */
 export class DocumentInputNotAllowedError extends Error {
 	name = "DocumentInputNotAllowedError";
 	message = "PDF and Word files can't be added to your files on this deployment yet.";
@@ -109,7 +109,7 @@ export class UploadRateLimitedError extends Error {
 	}
 }
 // Thrown after the upload has already been redirected to quarantine — never after a write to
-// the caller's real path, since the scan runs before that write (see uploadCustodialFile below). (CUR-1136)
+// the caller's real path, since the scan runs before that write (see uploadCustodialFile below).
 export class CsamMatchError extends Error {
 	constructor() {
 		super("upload rejected");
@@ -134,7 +134,7 @@ const inFlightBytes = new Map<string, number>();
 // tripped it — the team learns nothing about who's hitting it or how often. download/
 // deleteCustodialFile have no cap, so their velocity is tracked here purely to alert on, never to
 // block. Same in-memory/per-instance shape and the same caveat as
-// uploadTimes above: a civility-scale signal, not a distributed one. (CUR-1135)
+// uploadTimes above: a civility-scale signal, not a distributed one.
 const downloadTimes = new Map<string, number[]>();
 const deleteTimes = new Map<string, number[]>();
 // Deliberately not in custodialUpload.ts: that file is shared with the client for UX feedback on a
@@ -158,9 +158,9 @@ function assertUploadRateOk(sessionUserId: string, now = Date.now()): void {
 	const cutoff = now - CUSTODIAL_RATE_WINDOW_MS;
 	const recent = (uploadTimes.get(sessionUserId) ?? []).filter((t) => t > cutoff);
 	if (recent.length >= CUSTODIAL_UPLOADS_PER_HOUR) {
-		// fire-and-forget, same posture as CUR-1134's chat rate limiter — alerting on abuse
+		// fire-and-forget, the same posture as the chat rate limiter: alerting on abuse
 		// must never add latency to (or block) the 429 already being thrown. sessionUserId is the
-		// opaque account id requireStorageAccess resolves (guard.ts), never a raw IP or email. (CUR-1135)
+		// opaque account id requireStorageAccess resolves (guard.ts), never a raw IP or email.
 		void recordRateLimitTrip(`custodial-storage:upload-rate:${sessionUserId}`, {
 			limitName: "custodial upload rate (per hour)",
 			identity: sessionUserId,
@@ -194,90 +194,42 @@ function noteDeleteVelocity(sessionUserId: string, now = Date.now()): void {
 	}
 }
 
-/** Production's bucket, in Hugging Face's EU region (CUR-4533), and the one a production deployment gets when
- * `HF_BUCKETS_REPO` is unset. */
-const DEFAULT_CUSTODIAL_BUCKET_REPO = "buckets/current-ai-official/custodial-storage-eu";
-
-/** A deployment that isn't production has no `HF_BUCKETS_REPO` (CUR-4114). It refuses storage
- *  rather than read and write production's bucket under whatever token it holds. */
-class CustodialBucketUnsetError extends Error {
-	constructor(env: string | null) {
-		super(
-			`HF_BUCKETS_REPO is not set on this ${env ?? "undeclared"} deployment; only production may use ` +
-				`${DEFAULT_CUSTODIAL_BUCKET_REPO} by default, so custodial storage is refused`
-		);
-		this.name = "CustodialBucketUnsetError";
-	}
-}
-
-const BUCKET_REPO_SHAPE = /^buckets\/[A-Za-z0-9][\w.-]*\/[A-Za-z0-9][\w.-]*$/;
-
-/** The one bucket this deployment talks to. Set per environment so preview and production hold
- * their files in different buckets under different tokens (CUR-1288). Not user-configurable: CUR-413
- * (a user's OWN external bucket) is separate work with its own credential model. A malformed value
- * throws rather than falling back, since silently writing to the production bucket from a preview is
- * the failure this setting exists to prevent. */
-function custodialBucketRepo(): string {
-	const configured = config.HF_BUCKETS_REPO?.trim();
-	if (!configured) {
-		// Production's name is the default only on production. Anywhere else a forgotten setting
-		// would share production's files with that deployment, so it fails by name (CUR-4114).
-		const env = deployEnv();
-		if (env === "production") return DEFAULT_CUSTODIAL_BUCKET_REPO;
-		throw new CustodialBucketUnsetError(env);
-	}
-	if (!BUCKET_REPO_SHAPE.test(configured)) {
-		throw new Error(`HF_BUCKETS_REPO must look like buckets/<owner>/<name>, got ${JSON.stringify(configured)}`);
-	}
-	return configured;
-}
-
-function bucketAccessToken(): string {
-	const token = config.HF_BUCKETS_TOKEN;
-	if (!token) {
-		throw new Error("HF_BUCKETS_TOKEN is not configured — custodial storage cannot authenticate");
-	}
-	return token;
-}
-
-/** What every Hub call here passes: the storage token, and the fetch that tracks its rate limit (CUR-3680). */
-function hubAuth(): { accessToken: string; fetch: typeof fetch } {
-	return { accessToken: bucketAccessToken(), fetch: hubFetch };
-}
-
-/** Owners' key objects and recipients, in the same bucket as their files (CUR-4115, CUR-4116). */
+/** Owners' key objects and recipients, in the same bucket as their files. */
 const bucketKeys: KeyBucket = {
 	async read(keyPath) {
-		const blob = await downloadFile({ repo: custodialBucketRepo(), path: keyPath, ...hubAuth() });
+		const blob = await (await custodialBackend()).get(keyPath);
 		return blob ? new Uint8Array(await blob.arrayBuffer()) : null;
 	},
 	async write(keyPath, bytes) {
-		await uploadFile({ repo: custodialBucketRepo(), file: { path: keyPath, content: new Blob([bytes as BlobPart]) }, ...hubAuth() });
+		await (await custodialBackend()).put(keyPath, new Blob([bytes as BlobPart]));
 	},
 	async uploadedAt(objectPath) {
-		// Listing one exact path returns that file alone, with the bucket's upload time.
-		for await (const entry of listFiles({ repo: custodialBucketRepo(), path: objectPath, ...hubAuth() })) {
-			if (entry.type === "file" && entry.path === objectPath && entry.uploadedAt) return Date.parse(entry.uploadedAt);
-		}
-		return null;
+		const entry = await (await custodialBackend()).stat(objectPath);
+		return entry?.uploadedAt ? Date.parse(entry.uploadedAt) : null;
 	},
 };
 
+/** The `_keys/` objects, for a caller that keeps another key beside the file key: the history key
+ *  route. It reads and writes key objects only, never a person's files. */
+export function custodialKeyBucket(): KeyBucket {
+	return bucketKeys;
+}
+
 /** The key store one chat turn passes to every attachment read it makes, so several of one owner's
- *  files cost one key read (CUR-4116). Make one per turn and drop it with the turn: one kept longer
+ *  files cost one key read. Make one per turn and drop it with the turn: one kept longer
  *  would not see a wipe's tombstone. */
 export function turnKeyStore(): KeyStore {
 	return memoKeyStore(bucketKeys);
 }
 
-/** Read one owner's object and open it (CUR-4115): sealed objects decrypt, legacy plaintext passes
+/** Read one owner's object and open it: sealed objects decrypt, legacy plaintext passes
  *  through, and a sealed object that won't open throws CustodialCryptoError. */
 async function readOpened(grant: Grant, bucketPath: string, keys: KeyStore = bucketKeys): Promise<Blob | null> {
-	const blob = await downloadFile({ repo: custodialBucketRepo(), path: bucketPath, ...hubAuth() });
+	const blob = await (await custodialBackend()).get(bucketPath);
 	return blob ? openCustodialObject(grant, bucketPath, blob, keys) : null;
 }
 
-/** Whether writes on this deployment are sealed (CUR-4116). A deployment switch, not a flag: every
+/** Whether writes on this deployment are sealed. A deployment switch, not a flag: every
  *  owner's files must be sealed or not together, and a person cannot be rolled out to one at a time. */
 function sealWritesOn(): boolean {
 	return config.CUSTODIAL_SEAL_WRITES?.trim() === "true";
@@ -292,13 +244,15 @@ async function sealedForWrite(owner: Owner, content: Blob): Promise<Blob> {
 	return new Blob([(await sealToRecipient(recipient, new Uint8Array(await content.arrayBuffer()))) as BlobPart]);
 }
 
-/** Whether this deployment has a bucket at all. False means there is nothing to list, which is a
- * different fact from an empty listing. */
+/** Whether this deployment has a store at all: for the Hugging Face default, a token and a bucket to use
+ * it on (HF_BUCKETS_REPO, or production's on production; custodialBucketRepo.ts); for s3 or local, its
+ * bucket or directory (custodialBackend.ts). False means there is nothing to list, which is a different
+ * fact from an empty listing. */
 export function custodialStorageConfigured(): boolean {
-	return Boolean(config.HF_BUCKETS_TOKEN);
+	return custodialBackendConfigured();
 }
 
-/** Where walkthrough recordings live in the bucket (CUR-2183), at the root beside users/
+/** Where walkthrough recordings live in the bucket, at the root beside users/
  * and never under any person's folder. Same string as journeyGallery.ts's VIDEO_PREFIX. */
 const JOURNEY_RECORDINGS_PREFIX = "journey-gallery/";
 
@@ -311,21 +265,17 @@ export async function readJourneyRecording(filename: string): Promise<Blob | nul
 	const normalized = path.posix.normalize(filename);
 	if (!normalized.startsWith(JOURNEY_RECORDINGS_PREFIX) || normalized !== filename) return null;
 	// Not through readOpened: recordings belong to no owner and stay plaintext until they move to a
-	// bucket of their own (docs/plans/custodial-file-encryption.md, "The seam").
-	return downloadFile({
-		repo: custodialBucketRepo(),
-		path: normalized,
-		...hubAuth(),
-	});
+	// bucket of their own.
+	return (await custodialBackend()).get(normalized);
 }
 
 /** Every file under the session user's own users/<id>/ folder. Non-file entries (directories) are
  * dropped — a storage-view listing wants leaves, not the tree shape. */
-export async function listCustodialFiles(sessionUserId: string): Promise<ListFileEntry[]> {
+export async function listCustodialFiles(sessionUserId: string): Promise<StoredFile[]> {
 	return listOwnerFiles({ root: "users", id: sessionUserId });
 }
 
-/** One owner of files in the bucket: a signed-in person, or a guest's session (CUR-2183). */
+/** One owner of files in the bucket: a signed-in person, or a guest's session. */
 type Owner = { root: StorageRoot; id: string };
 
 /** The key the per-instance rate and in-flight maps use. A guest's is prefixed so a session id can
@@ -333,8 +283,8 @@ type Owner = { root: StorageRoot; id: string };
 const ownerKey = (owner: Owner) => (owner.root === "users" ? owner.id : `guest:${owner.id}`);
 
 /**
- * The folder inside a conversation's attachment folder that holds its long pastes (CUR-2183). A paste
- * is message text the composer sent as a file (CUR-1895), so it is kept for the turns that read it
+ * The folder inside a conversation's attachment folder that holds its long pastes. A paste
+ * is message text the composer sent as a file, so it is kept for the turns that read it
  * but is not a file the person gave Alpha: it stays out of My files and out of the quota. Never a
  * sha, so it cannot collide with an attachment's `<sha>/` folder, and the My files upload route
  * cannot write here (it takes a named subfolder and a bare filename).
@@ -344,21 +294,15 @@ export const PASTES_DIRNAME = "pastes";
 /** Whether a path relative to the owner's prefix is a stored paste. */
 const isPastePath = (relative: string) => new RegExp(`^conversations/[^/]+/${PASTES_DIRNAME}/`).test(relative);
 
-async function listOwnerFiles(owner: Owner, opts: { includePastes?: boolean } = {}): Promise<ListFileEntry[]> {
+async function listOwnerFiles(owner: Owner, opts: { includePastes?: boolean } = {}): Promise<StoredFile[]> {
 	const prefix = ownerPrefix(owner.root, owner.id); // throws InvalidUserIdError first, same as every entry point below
-	const entries: ListFileEntry[] = [];
-	for await (const entry of listFiles({
-		repo: custodialBucketRepo(),
-		path: prefix,
-		recursive: true,
-		...hubAuth(),
-	})) {
-		if (entry.type !== "file") continue;
+	const entries: StoredFile[] = [];
+	for await (const entry of (await custodialBackend()).list(prefix)) {
 		// Defense in depth, per assertOwnership's own contract: don't trust that the `path` query
 		// filter above actually scoped correctly — re-derive ownership from each entry's own path.
 		assertOwnerOwnership(owner.root, owner.id, entry.path);
 		// A quarantined file is never a listing result — mirrors agent-service's own
-		// ARTIFACT_QUARANTINE_DIRNAME exclusion from its artifact listing (CUR-836). (CUR-1136)
+		// ARTIFACT_QUARANTINE_DIRNAME exclusion from its artifact listing.
 		if (entry.path.startsWith(`${prefix}${CUSTODIAL_QUARANTINE_DIRNAME}/`)) continue;
 		if (!opts.includePastes && isPastePath(entry.path.slice(prefix.length))) continue;
 		entries.push(entry);
@@ -370,12 +314,12 @@ async function listOwnerFiles(owner: Owner, opts: { includePastes?: boolean } = 
 // storage token. A listing is kept here for a minute per owner, with this instance's own writes added
 // and any delete through this module dropping it. Another instance's writes stay unseen until the
 // minute is up, so racing instances can overshoot by what they each admit in that minute: still bounded by the per-instance upload rate above, and a
-// refusal is only ever made on a fresh listing (writeWithinQuota), so a stale count never says no. (CUR-3682)
+// refusal is only ever made on a fresh listing (writeWithinQuota), so a stale count never says no.
 const QUOTA_LISTING_TTL_MS = 60_000;
-const quotaListings = new Map<string, { at: number; entries: ListFileEntry[] }>();
+const quotaListings = new Map<string, { at: number; entries: StoredFile[] }>();
 
 /** The owner's listing, and whether it is a kept one rather than read from the bucket just now. */
-async function quotaListing(owner: Owner, opts: { fresh?: boolean } = {}): Promise<{ entries: ListFileEntry[]; kept: boolean }> {
+async function quotaListing(owner: Owner, opts: { fresh?: boolean } = {}): Promise<{ entries: StoredFile[]; kept: boolean }> {
 	const key = ownerKey(owner);
 	const kept = quotaListings.get(key);
 	if (!opts.fresh && kept && Date.now() - kept.at < QUOTA_LISTING_TTL_MS) return { entries: kept.entries, kept: true };
@@ -389,7 +333,7 @@ function noteQuotaWrite(owner: Owner, path: string, size: number): void {
 	const kept = quotaListings.get(ownerKey(owner));
 	if (!kept) return;
 	const entries = kept.entries.filter((e) => e.path !== path);
-	entries.push({ type: "file", path, size, oid: "", uploadedAt: new Date().toISOString() } as ListFileEntry);
+	entries.push({ type: "file", path, size, uploadedAt: new Date().toISOString() });
 	quotaListings.set(ownerKey(owner), { at: kept.at, entries });
 }
 
@@ -400,24 +344,27 @@ const forgetQuotaListing = (owner: Owner) => quotaListings.delete(ownerKey(owner
  * server-side read; this module has no opinion on where the bytes came from. */
 export type UploadOptions = {
 	// The per-file ceiling for this upload. A chunked upload passes the larger chunked limit;
-	// omitted means the single-request one. (CUR-1780)
+	// omitted means the single-request one.
 	maxBytes?: number;
 	// The `csam_scanner_down` fault (preview only, see faultInjection.ts) makes the scan
-	// fail the way a dead HMA does, so a spec can read the refusal on a live deployment. (CUR-2382)
+	// fail the way a dead HMA does, so a spec can read the refusal on a live deployment.
 	scannerDown?: boolean;
+	// The `csam_scanner_blip` fault (preview only) fails each scan's first attempt as a stopped scanner
+	// machine does, so a spec can show the retry still stores the file.
+	scannerBlip?: boolean;
 	// False refuses an image before it is scanned or stored. The route a person uploads
 	// through passes the `multimodal` flag for their account; omitted means allowed, for callers whose
-	// images were already gated (a chat attachment, which parseRequest refused unless the flag allows). (CUR-2725)
+	// images were already gated (a chat attachment, which parseRequest refused unless the flag allows).
 	imagesAllowed?: boolean;
 	// False refuses a PDF or DOCX before any parser opens it. The route passes the
 	// `document-attachments` flag for the account; omitted means allowed, for a chat attachment that
-	// parseRequest already gated the same way. (CUR-987)
+	// parseRequest already gated the same way.
 	documentsAllowed?: boolean;
 };
 
 /**
  * The screening a write to a person's own linked bucket gets, identical to an upload into
- * Alpha storage minus the quota (their bucket, their quota). Call it before the write, never after. (CUR-2930)
+ * Alpha storage minus the quota (their bucket, their quota). Call it before the write, never after.
  */
 export async function screenUploadForUser(
 	userId: string,
@@ -445,11 +392,11 @@ export async function uploadCustodialFile(
  * hourly upload rate, the type sniffed from its bytes, the per-account image and document flags, and
  * the CSAM scan. A match is written to the owner's quarantine folder in OUR bucket and then refused,
  * so the evidence stays where a reviewer can find it even when the person was writing to a bucket of
- * their own (CUR-2930). Throws the same typed errors guard.ts maps to statuses.
+ * their own. Throws the same typed errors guard.ts maps to statuses.
  */
 async function screenUpload(owner: Owner, relativePath: string, content: Blob, opts: UploadOptions): Promise<void> {
 	const sessionUserId = ownerKey(owner);
-	// CUR-1129, in cost order: the two free checks first, then the one that costs a listing.
+	// In cost order: the two free checks first, then the one that costs a listing.
 	const maxBytes = opts.maxBytes ?? CUSTODIAL_MAX_BYTES_PER_FILE;
 	if (content.size > maxBytes) throw new FileTooLargeError(content.size, maxBytes);
 	assertUploadRateOk(sessionUserId);
@@ -468,19 +415,19 @@ async function screenUpload(owner: Owner, relativePath: string, content: Blob, o
 	// Decided from the sniffed bytes, like the type check above, so a renamed image is still an image.
 	if (kind === "image" && opts.imagesAllowed === false) throw new ImageInputNotAllowedError();
 	// The scanner cannot hash a HEIC and answers 500, which would read as an outage and tell
-	// the person to try again forever. Refuse it as a type instead; My files converts one to JPEG first. (CUR-4665)
+	// the person to try again forever. Refuse it as a type instead; My files converts one to JPEG first.
 	if (kind === "image") {
 		const sniffed = await sniffMime(header);
 		if (sniffed && SCANNER_UNREADABLE_IMAGE_MIMES.includes(sniffed)) throw new UnsupportedFileTypeError(sniffed);
 	}
 
-	// Scan before the real write, not after (CUR-1136): HmaUnreachableError propagates straight out of
+	// Scan before the real write, not after: HmaUnreachableError propagates straight out of
 	// this function (fail closed: no bytes reach the bucket at all), and a match is redirected to
 	// quarantine instead of the caller's real path, so a matched upload never lands where a normal
 	// listing or download could reach it.
 	//
-	// No scanner configured refuses every file, whatever its kind (CUR-2382). A photo is scanned as
-	// itself and a PDF or DOCX by every picture inside it; a text file has none (CUR-987).
+	// No scanner configured refuses every file, whatever its kind. A photo is scanned as
+	// itself and a PDF or DOCX by every picture inside it; a text file has none.
 	// UnscannableFileError (a picture we cannot decode) propagates like the scanner being down.
 	if (!csamScanConfigured()) throw new CsamScannerUnconfiguredError();
 	const scanTarget = kind === "image" || kind === "pdf" ? kind : kind === "docx" ? "office" : null;
@@ -491,14 +438,13 @@ async function screenUpload(owner: Owner, relativePath: string, content: Blob, o
 		throw new HmaUnreachableError(new Error("fault injection: csam_scanner_down"));
 	}
 	const collected: Buffer[] = [];
-	const scanResult = await scanFileForCsam(content, relativePath, scanTarget, { collected });
+	const scanResult = await scanFileForCsam(content, relativePath, scanTarget, {
+		collected,
+		...(opts.scannerBlip ? { scan: (c: Blob, n: string) => scanCsamHash(c, n, { failFirstAttempt: true }) } : {}),
+	});
 	const quarantine = async () => {
 		const quarantinePath = `${ownerPrefix(owner.root, owner.id)}${CUSTODIAL_QUARANTINE_DIRNAME}/${Date.now()}-${relativePath.split("/").pop()}`;
-		await uploadFile({
-			repo: custodialBucketRepo(),
-			file: { path: quarantinePath, content },
-			...hubAuth(),
-		});
+		await (await custodialBackend()).put(quarantinePath, content);
 		return quarantinePath;
 	};
 	if (scanResult.status === "match") {
@@ -526,7 +472,7 @@ async function screenUpload(owner: Owner, relativePath: string, content: Blob, o
 
 	// The hash check above only knows pictures already in a bank. Shieldstral's child-tier
 	// rules judge what a new picture shows. ImageScreenUnavailableError and TooManyImagesToScreenError
-	// propagate and refuse the file, like the hash scanner being down. (CUR-3201)
+	// propagate and refuse the file, like the hash scanner being down.
 	const pictures = scanTarget === "image" ? [new Uint8Array(await content.arrayBuffer())] : collected;
 	try {
 		await screenStoredImages(pictures);
@@ -585,7 +531,7 @@ const ownerLimits = (owner: Owner) =>
  * turn. The quota still applies, because the file shows in My files. A paste (PASTES_DIRNAME) doesn't
  * show there and doesn't count. A file already at the path (the same attachment sent again) is left as
  * it is and not counted twice.
- * @throws StorageQuotaExceededError when it does not fit, or the Hub's own error (hubRateLimitedUrl). (CUR-2183)
+ * @throws StorageQuotaExceededError when it does not fit, or the Hub's own error (hubRateLimitedUrl).
  */
 export async function storeChatAttachment(
 	owner: { userId: string } | { guestSessionId: string },
@@ -598,12 +544,7 @@ export async function storeChatAttachment(
 	const bucketPath = resolveOwnerPath(o.root, o.id, relativePath); // throws PathEscapesUserPrefixError
 	assertOwnerOwnership(o.root, o.id, bucketPath);
 	if (isPastePath(relativePath)) {
-		await uploadFile({
-			repo: custodialBucketRepo(),
-			file: { path: bucketPath, content: await sealedForWrite(o, content) },
-			...hubAuth(),
-			abortSignal: opts.signal,
-		});
+		await (await custodialBackend()).put(bucketPath, await sealedForWrite(o, content), { signal: opts.signal });
 		return;
 	}
 	await writeWithinQuota(o, bucketPath, content, ownerLimits(o), { skipIfStored: true, signal: opts.signal });
@@ -621,7 +562,7 @@ async function writeWithinQuota(
 	content = await sealedForWrite(owner, content);
 	// Quota measured from the real bucket rather than a stored counter: a counter drifts the moment a
 	// delete, a failed upload or a second instance touches it, and a quota that drifts open is not a
-	// quota. The listing is reused for up to a minute (quotaListing above, CUR-3682).
+	// quota. The listing is reused for up to a minute (quotaListing above).
 	//
 	// WHAT THIS IS AND IS NOT. Read-then-write, so it is optimistic, not transactional — HF buckets
 	// offer no compare-and-set to make it otherwise. In-flight bytes (above) close the same-process
@@ -631,27 +572,27 @@ async function writeWithinQuota(
 	// concurrency x CUSTODIAL_MAX_BYTES_PER_FILE, against a quota three orders of magnitude larger.
 	// Calling that a hard guarantee would be the same overclaim the rate limiter above deliberately
 	// avoids; it is a bound that holds under real use and leaks slightly under a deliberate race.
-	const measure = (entries: ListFileEntry[]) => {
+	const measure = (entries: StoredFile[]) => {
 		const usedBytes = entries.reduce((sum, e) => sum + (e.size ?? 0), 0) + (inFlightBytes.get(sessionUserId) ?? 0);
 		return { usedBytes, over: entries.length >= limits.maxFiles || usedBytes + content.size > limits.maxTotalBytes };
 	};
 	const listing = await quotaListing(owner);
 	let existing = listing.entries;
 	let { usedBytes, over } = measure(existing);
-	// Never refuse, and never skip as already stored, on a kept listing (CUR-3682): another instance may
+	// Never refuse, and never skip as already stored, on a kept listing: another instance may
 	// have deleted files since, making room or removing the very file a skip would rely on.
 	if (listing.kept && (over || (opts.skipIfStored && existing.some((e) => e.path === bucketPath)))) {
 		existing = (await quotaListing(owner, { fresh: true })).entries;
 		({ usedBytes, over } = measure(existing));
 	}
-	// A caller that gave up during the listing (CUR-2183's write deadline) gets no upload: the file
+	// A caller that gave up during the listing (the chat attachment path's write deadline) gets no upload: the file
 	// already went to the files table, and a late copy here would be a second, unreferenced one.
 	opts.signal?.throwIfAborted();
 	if (opts.skipIfStored && existing.some((e) => e.path === bucketPath)) return;
 	if (over) {
 		// Own key from the rate limiter above — a person hitting their storage quota and a
 		// person hitting the hourly upload rate are different abusive patterns and should debounce
-		// independently rather than share one alert. (CUR-1135)
+		// independently rather than share one alert.
 		void recordRateLimitTrip(`custodial-storage:quota:${sessionUserId}`, {
 			limitName: "custodial storage quota",
 			identity: `${sessionUserId} (${existing.length} files, ${usedBytes} bytes)`,
@@ -660,19 +601,14 @@ async function writeWithinQuota(
 	}
 	inFlightBytes.set(sessionUserId, (inFlightBytes.get(sessionUserId) ?? 0) + content.size);
 	try {
-		await uploadFile({
-			repo: custodialBucketRepo(),
-			file: { path: bucketPath, content },
-			...hubAuth(),
-			abortSignal: opts.signal,
-		});
+		await (await custodialBackend()).put(bucketPath, content, { signal: opts.signal });
 		noteQuotaWrite(owner, bucketPath, content.size);
 		// Only once the write has actually SUCCEEDED — passing the quota check above proves
 		// this session was under quota at read time, but a failed upload after that proves nothing
 		// about whether the condition genuinely resolved, and clearing here regardless would let a
 		// person who keeps failing (not succeeding) look "recovered". Clear any prior quota trip so a
 		// future one starts a fresh episode instead of continuing to climb a counter that (unlike the
-		// rate-limiter triggers above) has no time-based decay of its own. (CUR-1318)
+		// rate-limiter triggers above) has no time-based decay of its own.
 		void clearRateLimitTrip(`custodial-storage:quota:${sessionUserId}`);
 	} finally {
 		// Released whether the write succeeded or threw — a failed upload that kept its reservation
@@ -688,10 +624,10 @@ async function writeWithinQuota(
 // at upload (CsamMatchError). assertOwnership alone doesn't catch this: it only checks the path
 // resolves under the caller's own users/<id>/ prefix, and quarantine/ is still inside that prefix.
 // Reuses OwnershipMismatchError (same "not yours" 403, no extra mapping needed in guard.ts) rather
-// than a distinct error — same non-distinguishing posture assertOwnership's own header argues for. (CUR-1136)
+// than a distinct error — same non-distinguishing posture assertOwnership's own header argues for.
 // Tested on the NORMALIZED path, as assertOwnership is. A raw `startsWith` would let
 // `users/<me>/x/../quarantine/<ts>-<name>` through, and @huggingface/hub puts the path into a URL
-// unencoded, where URL parsing collapses the dot segment back onto the quarantined object. (CUR-3180)
+// unencoded, where URL parsing collapses the dot segment back onto the quarantined object.
 function assertNotQuarantined(sessionUserId: string, bucketPath: string): void {
 	if (path.posix.normalize(bucketPath).startsWith(`${userPrefix(sessionUserId)}${CUSTODIAL_QUARANTINE_DIRNAME}/`)) {
 		throw new OwnershipMismatchError(sessionUserId, bucketPath);
@@ -700,7 +636,7 @@ function assertNotQuarantined(sessionUserId: string, bucketPath: string): void {
 
 /** `bucketPath` is a full repo-relative path — typically one returned by listCustodialFiles, not
  * something to build by hand. Re-verifies ownership regardless of where it came from.
- * @returns null when the file doesn't exist, matching @huggingface/hub's own downloadFile contract. */
+ * @returns null when the file doesn't exist. */
 export async function downloadCustodialFile(sessionUserId: string, bucketPath: string): Promise<Blob | null> {
 	assertOwnership(sessionUserId, bucketPath);
 	assertNotQuarantined(sessionUserId, bucketPath);
@@ -724,14 +660,14 @@ export class CustodialWipeError extends Error {
  * Account deletion's reach into the bucket: every file under `users/<id>/`, deleted.
  *
  * @returns the number of files deleted, or `undefined` when custodial storage is not configured on
- * this deployment (no HF_BUCKETS_TOKEN). There is then no bucket to hold anything, which is a
- * different fact from "held nothing", so it is not reported as zero.
+ * this deployment (custodialStorageConfigured: no HF_BUCKETS_TOKEN, or no bucket). There is then no
+ * bucket to hold anything, which is a different fact from "held nothing", so it is not reported as zero.
  * @throws CustodialWipeError when storage IS configured and the listing or any delete fails. The
  * caller must not report the account as cleared in that case.
  *
  * Deliberately not gated on custodialStorageViewEnabledForUser: a person may have uploaded while the
  * flag was on for them and lost it since, and their files are still theirs to have deleted.
- * Quarantined uploads (CUR-1136) are excluded by listCustodialFiles and kept: they are CSAM-match
+ * Quarantined uploads are excluded by listCustodialFiles and kept: they are CSAM-match
  * evidence, retained on the same Art. 17(3) basis as child-safety `safety_events`.
  */
 export async function wipeCustodialFiles(
@@ -746,15 +682,20 @@ export async function wipeCustodialFiles(
 		t[name] = now - mark;
 		mark = now;
 	};
-	// The key goes before any object (CUR-4117): from here a sealed file left behind by a failed delete,
+	// The key goes before any object: from here a sealed file left behind by a failed delete,
 	// or in a backup, cannot be opened, and a turn still writing for this account is refused.
 	try {
 		await tombstoneOwnerKey(ownerGrant("users", userId), bucketKeys, timedLock(t, "tombstone"));
+		// The conversation-history key too, so no turn seals to a deleted account's recipient.
+		// "Forget everything" keeps the account, so its slot is emptied rather than closed, and the person
+		// can enroll a new history key once this returns.
+		const wipeHistoryKey = opts.keepAccount ? resetHistoryKey : tombstoneHistoryKey;
+		await wipeHistoryKey(ownerGrant("users", userId), bucketKeys, timedLock(t, "historyKey"));
 	} catch (e) {
 		throw new CustodialWipeError(0, 0, e);
 	}
 	step("tombstoneMs");
-	let entries: ListFileEntry[];
+	let entries: StoredFile[];
 	try {
 		// Pastes too: My files leaves them out, but account deletion must not leave pasted text behind.
 		entries = await listOwnerFiles({ root: "users", id: userId }, { includePastes: true });
@@ -768,7 +709,7 @@ export async function wipeCustodialFiles(
 	step("deleteMs");
 	// "Forget everything" keeps the account, which must be able to upload again, so it gets a
 	// new key once every file is gone. A failed delete has already thrown, leaving the tombstone in place
-	// until the person retries. Account deletion keeps the tombstone for good (CUR-4117). (CUR-4415)
+	// until the person retries. Account deletion keeps the tombstone for good.
 	if (opts.keepAccount) {
 		try {
 			await replaceOwnerKey(ownerGrant("users", userId), bucketKeys, timedLock(t, "replace"));
@@ -780,8 +721,30 @@ export async function wipeCustodialFiles(
 	return deleted;
 }
 
+/**
+ * How many files "Forget everything" would delete for this person: the same listing, pastes included,
+ * that `wipeCustodialFiles` deletes from, so the confirm panel and the receipt count the same thing.
+ * Read-only. `undefined` where custodial storage is not configured.
+ */
+export async function countCustodialFilesForWipe(userId: string): Promise<number | undefined> {
+	if (!custodialStorageConfigured()) return undefined;
+	return (await listOwnerFiles({ root: "users", id: userId }, { includePastes: true })).length;
+}
+
+/**
+ * Forget everything's reach into a guest's history key: the slot under `guests/<sessionId>`
+ * is emptied, as `wipeCustodialFiles` empties a signed-in person's, so the old wrap is destroyed and the
+ * guest can enroll a new key. A guest keeps its session cookie across the wipe, so without this the
+ * old key would still answer and a new one could not be stored. A no-op where custodial storage is
+ * not configured, since no key can have been stored there.
+ */
+export async function resetGuestHistoryKey(sessionId: string, timing: Record<string, number> = {}): Promise<void> {
+	if (!custodialStorageConfigured()) return;
+	await resetHistoryKey(ownerGrant("guests", sessionId), bucketKeys, timedLock(timing, "historyKey"));
+}
+
 /** The advisory lock, recording into `t` how long `<label>LockWaitMs` it took to get (a database
- *  connection, then the lock) and `<label>LockHeldMs` it was held (CUR-4548). The two are what tell a
+ *  connection, then the lock) and `<label>LockHeldMs` it was held. The two are what tell a
  *  slow wipe that queued behind other requests from one whose bucket calls were slow. */
 function timedLock(t: Record<string, number>, label: string): OwnerLock {
 	return (name, fn) => {
@@ -804,7 +767,7 @@ async function deleteAllOrThrow(paths: string[]): Promise<number> {
 	const errors: unknown[] = [];
 	for (const p of paths) {
 		try {
-			await deleteFile({ repo: custodialBucketRepo(), path: p, ...hubAuth() });
+			await (await custodialBackend()).delete(p);
 			deleted++;
 		} catch (e) {
 			errors.push(e);
@@ -820,11 +783,7 @@ export async function deleteCustodialFile(sessionUserId: string, bucketPath: str
 	assertNotQuarantined(sessionUserId, bucketPath);
 	noteDeleteVelocity(sessionUserId);
 	forgetQuotaListing({ root: "users", id: sessionUserId });
-	await deleteFile({
-		repo: custodialBucketRepo(),
-		path: bucketPath,
-		...hubAuth(),
-	});
+	await (await custodialBackend()).delete(bucketPath);
 }
 
 /**
@@ -832,7 +791,7 @@ export async function deleteCustodialFile(sessionUserId: string, bucketPath: str
  *
  * Not downloadCustodialFile, because that counts toward the download-velocity alert, which watches a
  * person pulling files out of their store. This is the server re-reading the person's own attachment
- * once per turn, and a long image conversation would otherwise page as an exfiltration. (CUR-2183)
+ * once per turn, and a long image conversation would otherwise page as an exfiltration.
  * @returns null when the file doesn't exist. */
 export async function readCustodialAttachment(userId: string, relativePath: string, keys?: KeyStore): Promise<Blob | null> {
 	const bucketPath = resolveUserPath(userId, relativePath);
@@ -849,8 +808,8 @@ export async function readCustodialAttachment(userId: string, relativePath: stri
  * of signing out, uploading as a guest and signing back in adds a guest's quota to the account. A
  * file that does not fit stays under the guest's folder, where the guest sweep deletes it 30 days after
  * upload. Until then the conversation still reads it there, through the `formerGuestSessionId` sign-in
- * stamps on the conversation, as it does a file whose copy failed or a turn sent before this lands. Quarantined files stay where they are, as
- * evidence. Never throws; returns what happened for the caller's log. (CUR-2183)
+ * stamps on the conversation, as it does a file whose copy failed or a turn sent before the move finishes. Quarantined files stay where they are, as
+ * evidence. Never throws; returns what happened for the caller's log.
  */
 export async function moveGuestFilesToUser(
 	sessionId: string,
@@ -858,7 +817,7 @@ export async function moveGuestFilesToUser(
 ): Promise<{ moved: number; failed: number; overQuota: number } | undefined> {
 	if (!custodialStorageConfigured()) return undefined;
 	let guest: string;
-	let entries: ListFileEntry[];
+	let entries: StoredFile[];
 	let fileCount: number;
 	let usedBytes: number;
 	try {
@@ -894,10 +853,10 @@ export async function moveGuestFilesToUser(
 			const content = await readOpened(ownerGrant("guests", sessionId), entry.path);
 			if (!content) continue;
 			const sealed = await sealedForWrite({ root: "users", id: userId }, content);
-			await uploadFile({ repo: custodialBucketRepo(), file: { path: target, content: sealed }, ...hubAuth() });
+			await (await custodialBackend()).put(target, sealed);
 			if (!paste) fileCount++;
 			usedBytes += size;
-			await deleteFile({ repo: custodialBucketRepo(), path: entry.path, ...hubAuth() });
+			await (await custodialBackend()).delete(entry.path);
 			moved++;
 		} catch {
 			failed++;
@@ -918,33 +877,32 @@ export async function moveGuestFilesToUser(
  * the bucket's own `uploadedAt`. Not by the conversation's `updatedAt`: one message a month would
  * keep a conversation alive forever and every file in it with it. Quarantined files are kept, as
  * CSAM-match evidence. A file with no `uploadedAt` is left alone and counted, since its age is
- * unknown. Every deleted path is checked against guests/<id>/ here, whatever the listing returned.
- * @returns undefined when this deployment has no bucket. (CUR-2183)
+ * unknown. Every deleted path is checked against guests/<id>/ (or users/<id>/ for `root` "users") here,
+ * whatever the listing returned.
+ * @returns undefined when this deployment has no bucket.
  */
 export async function sweepExpiredGuestFiles(
 	retentionMs: number,
-	now: Date = new Date()
+	now: Date = new Date(),
+	// "users" sweeps signed-in people's My files the same way, for conversation expiry.
+	root: StorageRoot = "guests"
 ): Promise<{ deleted: number; failed: number; undated: number } | undefined> {
 	if (!custodialStorageConfigured()) return undefined;
 	const cutoff = now.getTime() - retentionMs;
 	const result = { deleted: 0, failed: 0, undated: 0 };
-	for await (const entry of listFiles({
-		repo: custodialBucketRepo(),
-		path: "guests/",
-		recursive: true,
-		...hubAuth(),
-	})) {
+	const ownerPattern = new RegExp(`^${root}/([^/]+)/`);
+	for await (const entry of (await custodialBackend()).list(`${root}/`)) {
 		// Only a path already in canonical form: `guests/<a>/../users/...` normalises to a guests/ path
 		// that passes the ownership check, while the delete would be sent with the raw one.
 		if (entry.type !== "file" || path.posix.normalize(entry.path) !== entry.path) continue;
-		const owner = /^guests\/([^/]+)\//.exec(entry.path)?.[1];
+		const owner = ownerPattern.exec(entry.path)?.[1];
 		if (!owner) continue;
 		try {
-			assertOwnerOwnership("guests", owner, entry.path);
+			assertOwnerOwnership(root, owner, entry.path);
 		} catch {
 			continue;
 		}
-		if (entry.path.startsWith(`${ownerPrefix("guests", owner)}${CUSTODIAL_QUARANTINE_DIRNAME}/`)) continue;
+		if (entry.path.startsWith(`${ownerPrefix(root, owner)}${CUSTODIAL_QUARANTINE_DIRNAME}/`)) continue;
 		const uploaded = entry.uploadedAt ? Date.parse(entry.uploadedAt) : NaN;
 		if (Number.isNaN(uploaded)) {
 			result.undated++;
@@ -952,7 +910,7 @@ export async function sweepExpiredGuestFiles(
 		}
 		if (uploaded >= cutoff) continue;
 		try {
-			await deleteFile({ repo: custodialBucketRepo(), path: entry.path, ...hubAuth() });
+			await (await custodialBackend()).delete(entry.path);
 			result.deleted++;
 		} catch {
 			result.failed++;
@@ -961,7 +919,7 @@ export async function sweepExpiredGuestFiles(
 	return result;
 }
 
-/** `readCustodialAttachment` for a guest's attachment under `guests/<sessionId>/` (CUR-2183). */
+/** `readCustodialAttachment` for a guest's attachment under `guests/<sessionId>/`. */
 export async function readGuestAttachment(sessionId: string, relativePath: string, keys?: KeyStore): Promise<Blob | null> {
 	const bucketPath = resolveOwnerPath("guests", sessionId, relativePath);
 	assertOwnerOwnership("guests", sessionId, bucketPath);
@@ -972,12 +930,12 @@ export async function readGuestAttachment(sessionId: string, relativePath: strin
 }
 
 /**
- * Every file under the given folders of the person's own prefix, deleted (CUR-2183). Used when
+ * Every file under the given folders of the person's own prefix, deleted. Used when
  * conversations are deleted, for their attachment folders (`conversations/<id>`).
  *
  * One listing of the folders' common parent, however many folders are named, so Delete-all over a
- * hundred conversations costs one listing and not a hundred (~320 ms each on the preview bucket; a
- * folder that does not exist lists as empty rather than throwing).
+ * hundred conversations costs one listing and not a hundred. A folder that does not exist lists as
+ * empty rather than throwing.
  * @returns the number of files deleted, or `undefined` when no bucket is configured.
  * @throws CustodialWipeError when the listing or any delete fails, so the caller does not report the
  * conversations as deleted while their files remain.
@@ -986,7 +944,7 @@ export async function deleteCustodialFolders(
 	userId: string,
 	parentDir: string,
 	childNames: string[],
-	// "guests" for a guest's session, whose id goes in `userId`. (CUR-2183)
+	// "guests" for a guest's session, whose id goes in `userId`.
 	root: StorageRoot = "users"
 ): Promise<number | undefined> {
 	if (!custodialStorageConfigured()) return undefined;
@@ -996,13 +954,7 @@ export async function deleteCustodialFolders(
 	const targets = childNames.map((name) => `${resolveOwnerPath(root, userId, `${parentDir}/${name}`)}/`);
 	const paths: string[] = [];
 	try {
-		for await (const entry of listFiles({
-			repo: custodialBucketRepo(),
-			path: parent,
-			recursive: true,
-			...hubAuth(),
-		})) {
-			if (entry.type !== "file") continue;
+		for await (const entry of (await custodialBackend()).list(parent)) {
 			assertOwnerOwnership(root, userId, entry.path);
 			if (targets.some((t) => entry.path.startsWith(t))) paths.push(entry.path);
 		}
@@ -1015,14 +967,14 @@ export async function deleteCustodialFolders(
 
 /**
  * The Hub URL of a call Hugging Face refused because the shared storage token hit its rate limit
- * (3,000 Hub calls per 5 minutes on the team plan), or null for any other error (CUR-3120).
+ * (3,000 Hub calls per 5 minutes on the team plan), or null for any other error.
  */
 export function hubRateLimitedUrl(e: unknown): string | null {
 	return e instanceof HubApiError && e.statusCode === 429 ? e.url : null;
 }
 
-/** A read worth one more try: the Hub throttled it (429), failed on its side (5xx), or it never landed
- *  (CUR-3291). Kept here so the Hub SDK stays inside this declared store (wipeCoverage.spec.ts). */
+/** A read worth one more try: the Hub throttled it (429), failed on its side (5xx), or it never landed.
+ * Kept here so the Hub SDK stays inside this declared store (wipeCoverage.spec.ts). */
 export function transientHubError(e: unknown): boolean {
 	return e instanceof HubApiError ? e.statusCode === 429 || e.statusCode >= 500 : e instanceof TypeError;
 }

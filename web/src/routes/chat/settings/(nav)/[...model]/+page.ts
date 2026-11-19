@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { base } from "$lib/chat/paths";
 import { redirect } from "@sveltejs/kit";
 import { settingsDevTools } from "$lib/chat/settingsSections";

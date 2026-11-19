@@ -4,7 +4,7 @@ import { cardText, pickCardCopy } from "./crisisCardCopy";
 
 const CATALOGS = ["en", "es", "fr", "de"] as const;
 
-describe("where the support card's copy comes from (CUR-4103)", () => {
+describe("where the support card's copy comes from", () => {
 	it("Catalan, Italian and Portuguese come from the card-only table", () => {
 		for (const lang of ["ca", "it", "pt"]) expect(pickCardCopy(lang, CATALOGS, "fr")).toEqual({ kind: "card", lang });
 	});

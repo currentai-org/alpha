@@ -10,7 +10,7 @@ vi.mock("$lib/chat/server/logger", () => ({
 
 // A real MCP server over Streamable HTTP, small enough to read: JSON-RPC in, one JSON response out.
 // The real SDK client talks to it unmocked, so `isError` crosses the same wire it would from a Space
-// or a Folkways server (CUR-2645). Two tools: one that refuses with `isError`, one that succeeds.
+// or any other server. Two tools: one that refuses with `isError`, one that succeeds.
 const TOOLS = [
 	{ name: "refuse", description: "Always refuses", inputSchema: { type: "object", properties: {} } },
 	{ name: "echo", description: "Echoes", inputSchema: { type: "object", properties: {} } },
@@ -68,7 +68,7 @@ beforeAll(async () => {
 
 afterAll(() => new Promise<void>((r) => server.close(() => r())));
 
-describe("an MCP tool that answers isError is a failure, never a result to ground on (CUR-2645)", () => {
+describe("an MCP tool that answers isError is a failure, never a result to ground on", () => {
 	it("returns tool_error with the tool's own reason when the server sets isError", async () => {
 		const conn = await connectMcp(url, { timeoutMs: 5000 });
 		try {

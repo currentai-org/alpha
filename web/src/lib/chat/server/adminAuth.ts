@@ -1,8 +1,8 @@
 // Gate for the admin area (/admin/* — portal, reports, safety, RAG console, tuning, journeys, audit).
 //
 // A person signs in with their own Better Auth account, and the role on that account decides what
-// they may do (adminRoles.ts, CUR-3990). The shared ADMIN_USER / ADMIN_PASSWORD login and its `admin`
-// proof cookie are gone (CUR-3992), because every deployment held the same password. A browser still
+// they may do (adminRoles.ts). There is no shared ADMIN_USER / ADMIN_PASSWORD login and no `admin`
+// proof cookie, since a shared password would be the same on every deployment. A browser still
 // holding an old `admin` cookie is treated as signed out.
 
 import { error, type Cookies } from "@sveltejs/kit";

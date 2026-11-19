@@ -6,7 +6,7 @@ vi.mock('$app/state', () => ({ page: { data: {} } }));
 
 // The welcome is open on first paint, so it has to be in the server's HTML. Inside a portal it
 // renders nothing on the server and appears only after hydration, over a message box the visitor may
-// already be typing in. (SOL-345)
+// already be typing in.
 describe('the first-run welcome is in the server-rendered HTML', () => {
 	it('renders its dialog and its "Welcome to Alpha" title on the server', () => {
 		const { body } = render(WelcomeModal, {

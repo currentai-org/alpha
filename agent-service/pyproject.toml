@@ -9,10 +9,12 @@ target-version = "py311"
 extend-exclude = [".venv", "eval/cache"]
 
 [tool.ruff.lint]
-# CUR-1226. The code is annotated as though bandit and blind-except are running: each `noqa` documents
-# a considered `except Exception`. A `noqa` for a rule that is not enabled does nothing, and a new blind
-# except would be caught by nothing. RUF100 below prevents that: a `noqa` for a rule we do not run is
-# itself an error.
+# This list was E/F/W/I only — pyflakes and formatting — while the code was already
+# annotated as though bandit and blind-except were running: 116 `noqa` directives named rules that
+# were not enabled, 76 of them BLE001. Each one was written deliberately by someone documenting a
+# considered `except Exception`, and none of them was doing anything. A new blind except was caught
+# by nothing. RUF100 below is what stops that from silently recurring — a `noqa` for a rule we do
+# not run is now itself an error.
 #
 # Enabling these found no live bug (checked: every production-code hit was a false positive with a
 # real reason — an allowlisted SQL column list, a lambda consumed inside its own loop iteration, a
@@ -38,7 +40,7 @@ ignore = [
   "SIM108",  # ternary over if/else — hurts readability on the multi-line cases here
   "RUF001", "RUF002", "RUF003",  # ambiguous unicode: the prose deliberately uses — and …
   # S110/S112 flag the SAME lines BLE001 does, and BLE001 is the one that forces a written reason.
-  # Nearly every try/except/pass site in this service already carries
+  # Measured before dropping them: of the 22 try/except/pass sites in this service, 20 already carried
   # a `# noqa: BLE001 — <why>`. Keeping both means every documented best-effort handler needs two
   # codes, which is the pressure that turns a considered annotation into a blanket `# noqa`.
   "S110", "S112",
@@ -72,32 +74,40 @@ ignore = [
 "eval/*.py" = ["S101", "S108", "S310", "S603", "S607"]
 
 [tool.pyright]
-# Type-checks api/ (CUR-1227). The code is written for a checker: `from __future__ import annotations`,
-# `str | None` signatures, pydantic models on the wire, a State(str, Enum) persisted to SQLite.
+# Nothing type-checked a line of this service until now, while the code was already written
+# as though something did: `from __future__ import annotations` everywhere, `str | None` signatures,
+# pydantic models on the wire, a State(str, Enum) persisted to SQLite and shipped over the API.
 #
-# pyright rather than ty or mypy: at default settings on api/ the three report nearly the same set
-# (ty 191, pyright 192, mypy 41, which skips unannotated function bodies). Only pyright flags a name
-# bound solely in a `try` body and an `except` handler and then read in `finally`, where any other
-# exception raises UnboundLocalError instead of the real error. A checker that models "exception
-# mid-try, before the assignment" costs about 3s a run.
+# pyright rather than ty or mypy, and the reason is a measurement, not a vendor preference. All three
+# were run against api/ at default settings: ty 0.0.80 found 191, pyright 1.1.414 found
+# 192, mypy 2.3.1 found 41 (it skips unannotated function bodies by default). Nearly the same set —
+# except for one finding pyright reported and the other two cannot see at ANY rule setting
+# (`ty --error all`, `mypy --enable-error-code possibly-undefined`): acp_client.py's confirmation
+# `finally` read two names that only the `try` body and the `except TimeoutError` handler bind, so any
+# other exception through that block raised UnboundLocalError INSTEAD of the real error. Reproduced by
+# cancelling the coroutine, then fixed. A checker that models "exception mid-try, before the
+# assignment" is worth 3s a run; one that doesn't would have shipped that bug again.
 include = ["api"]
-# Tests are excluded on purpose. The suite is 10k lines of monkeypatching, and 151 of pyright's 192
-# findings are in it: assigning a stub over a typed attribute is `reportAttributeAccessIssue` by
-# construction, and a fixture's `VerifySpec | None` is Optional at every use. Those come from the
-# test style, not defects. Widening to the suite later means shortening this list.
+# Tests are NOT checked yet, deliberately, and this is the whole gap between "checked" and "all green".
+# The suite is 10k lines of monkeypatching, and 151 of pyright's 192 findings were in it: assigning a
+# stub over a typed attribute is `reportAttributeAccessIssue` by construction, and a fixture's
+# `VerifySpec | None` is Optional at every use. Those are the cost of the test style, not defects.
+# Production code is 8,859 lines and carries the findings that can page someone. Widening to the suite
+# later is this one list getting shorter — not a rewrite.
 exclude = ["api/test_*.py", "api/conftest.py", "**/.venv", "**/__pycache__"]
-# Resolve fastapi/pydantic/acp from the dev venv `make venv` builds. Without it, 20 of the 192 findings
-# are `reportMissingImports`, and the checker has nothing to say about code using an unseen library.
+# Resolve fastapi/pydantic/acp from the dev venv `make venv` builds. Without this, 20 of the 192 were
+# `reportMissingImports` — a checker that cannot see a library reports its whole surface as unknown
+# and then has nothing to say about the code using it.
 venvPath = "."
 venv = ".venv"
-# The floor CI actually promises, not ruff's `target-version` above: the pinned numpy ships no 3.11 wheel,
+# The floor CI actually promises, not ruff's `target-version` above: numpy==2.5.2 ships no 3.11 wheel,
 # so nothing can install this service on 3.11. (ruff's py311 only withholds newer-syntax suggestions,
 # so it is harmless.)
 pythonVersion = "3.12"
 typeCheckingMode = "standard"
 
 [tool.pytest.ini_options]
-testpaths = ["api", "scripts/tests"]  # scripts/tests: the probes' own scoring rules (CUR-4595)
+testpaths = ["api", "scripts/tests"]  # scripts/tests: the probes' own scoring rules
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 addopts = "-q --strict-markers"
@@ -109,7 +119,7 @@ filterwarnings = [
 ]
 
 [tool.mutmut]
-# CUR-1189, candidate 3. Real keys confirmed against the installed mutmut==3.8.0's own
+# candidate 3. Real keys confirmed against the installed mutmut==3.8.0's own
 # configuration.py — its README examples target an older config shape. `pyproject.toml`'s
 # [tool.pytest.ini_options] restricts bare `pytest` to testpaths=["api"], so mutmut's own
 # pytest invocation needs the test path spelled out explicitly via
@@ -132,7 +142,7 @@ show_missing = true
 # (The live I/O paths — subprocess agent runs, streaming upstream forward — are covered by the
 # bash integration tests, not this offline suite.)
 #
-# The floor is 75 against an actual 77.95% (CUR-1226): a floor far below the real number is
-# closer to off than on.
+# Raised 55 -> 75. Actual is 77.95%, so the old floor let 23 points of coverage drain
+# away before anything complained — a gate that far below the real number is closer to off than on.
 # 3 points of slack absorbs an honest refactor; a whole module going untested does not fit in it.
 fail_under = 75

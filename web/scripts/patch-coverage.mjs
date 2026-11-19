@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Patch coverage: of the lines a diff adds or changes in covered source, how many did the tests that
-// ran execute (SOL-107). Global thresholds say little about a single PR; this says whether the
+// ran execute. Global thresholds say little about a single PR; this says whether the
 // PR's own new code was run by any test.
 //
 //   node scripts/patch-coverage.mjs <base> [coverage/coverage-final.json]

@@ -6,7 +6,7 @@
 // useless for anything Better Auth signs. The cost: rotating BETTER_AUTH_SECRET makes every sealed
 // credential unopenable, and the location then shows "Reconnect" (registry.ts) rather than failing
 // somewhere quieter. Each environment has its own database and its own secret, so a value is only
-// ever opened by the environment that sealed it. (CUR-2930)
+// ever opened by the environment that sealed it.
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from "node:crypto";
 import { config } from "$lib/chat/server/config";
 
@@ -16,7 +16,7 @@ const NONCE_BYTES = 12;
 const TAG_BYTES = 16;
 
 /** The secret every sealed credential derives its key from: storage locations and a person's own MCP
- *  server tokens (CUR-4016), each under its own info string. */
+ *  server tokens, each under its own info string. */
 export function credentialSecret(): string {
 	const secret = config.BETTER_AUTH_SECRET;
 	if (!secret) throw new Error("BETTER_AUTH_SECRET is not configured, so a linked credential cannot be sealed or opened");

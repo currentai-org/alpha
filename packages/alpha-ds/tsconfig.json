@@ -1,5 +1,5 @@
 {
 	// web/'s program, which already includes this package's sources, so the ESLint project service
-	// finds a tsconfig for them with the $app and ~icons types the app supplies (CUR-4479).
+	// finds a tsconfig for them with the $app and ~icons types the app supplies.
 	"extends": "../../web/tsconfig.json"
 }

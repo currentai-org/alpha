@@ -21,13 +21,13 @@ import { WITHDRAWN } from '../config/picker';
 // `Pixel 7` is chromium-based, so no second browser download, and carries `isMobile` and `hasTouch`.
 // That last part is the whole point: A1's Known gaps records that the side rail loads collapsed, so
 // "Log in" and "Signed in as {name}" are icon-only with their text reachable only through a hover
-// title — and hover does not exist on touch (CUR-1466). Desktop cannot see that and never will.
+// title — and hover does not exist on touch. Desktop cannot see that and never will.
 //
 // A- and F-journeys only. The persona specs (`@P\d+`) are deliberately excluded: each drives a live
 // model, so a second viewport doubles their inference bill rather than their runtime, and nothing
 // about a chaos-monkey run needs a phone to be worth reading.
 // Every anonymous test's cookie-less first request is a legitimate trigger for
-// auth.ts's mintOrAdoptAnonymousSession() coalescing (CUR-1240) — designed to fold one real
+// auth.ts's mintOrAdoptAnonymousSession coalescing — designed to fold one real
 // browser's own parallel requests into one session, keyed on (IP, User-Agent) within a 2s
 // window. Two DIFFERENT test files running concurrently on CI share one runner's egress IP
 // and, absent this, Chromium's own identical default UA string — so at `workers: 2` (below)
@@ -45,8 +45,8 @@ import { WITHDRAWN } from '../config/picker';
 const workerUaSuffix = ` CUR1643Worker/${process.env.TEST_PARALLEL_INDEX ?? '0'}`;
 
 // Record at the viewport's own size, never the 800x800 box `video: 'on'` fits a page into.
-// At 800x450 the chat status line's small type lands near 7px and the journey critic misreads it
-// (CUR-1956), while the trace holds the right text in the DOM. A single fixed size here would be
+// At 800x450 the chat status line's small type lands near 7px and the journey critic misreads it,
+// while the trace holds the right text in the DOM. A single fixed size here would be
 // wrong for one project or the other: 1280x720 squeezes the phone's 412x839 down to fit 720 high.
 // Only a run that grades its recordings records them. journey-gallery.yml and
 // persona-dogfood.yml set SCENARIO_VIDEO=1; every other run, the per-PR gate above all, records
@@ -104,6 +104,9 @@ const EXCLUDED_TAGS = [
 	// (PR previews, develop, www, the gallery) leaves them out.
 	process.env.SCENARIO_CHAT_SURFACE === '1' ? null : 'root',
 	process.env.SCENARIO_LOCAL_MOCK === '1' ? null : 'local-mock',
+	// @local-storage specs read the custodial store directly (a local S3-compatible server or directory),
+	// which only storage-local.yml starts beside the app; it sets SCENARIO_LOCAL_STORAGE=1.
+	process.env.SCENARIO_LOCAL_STORAGE === '1' ? null : 'local-storage',
 	// @linked-bucket links current-ai-official/e2e-linked with E2E_LINKED_BUCKET_TOKEN. The
 	// scenario workflow sets SCENARIO_LINKED_BUCKET=1 when the preview secrets hold that token.
 	process.env.SCENARIO_LINKED_BUCKET === '1' ? null : 'linked-bucket',
@@ -118,7 +121,7 @@ const EXCLUDED_TAGS = [
 	process.env.SCENARIO_SKIP_APEX_RP === '1' ? 'apex-rp' : null,
 	// @no-replay specs need a live model answer every run, so a PR's run leaves them out and
 	// replays the rest; develop's push run runs them live (helpers/test.ts's modelReplay fixture).
-	// Not `@live-…`: every www filter matches `@live` unanchored, so such a tag would join the www set (CUR-3852).
+	// Not `@live-…`: every www filter matches `@live` unanchored, so such a tag would join the www set.
 	process.env.SCENARIO_SKIP_LIVE_MODEL === '1' ? 'no-replay' : null,
 	// @real-agent specs need agent-service itself, where every other spec gets the in-process
 	// stand-in (helpers/test.ts's agentServiceFake), so a PR's run leaves them out the same way.
@@ -131,7 +134,7 @@ const EXCLUDED_TAGS = [
 // e2e/quarantine.json lists flaky scenarios that stop blocking merges while their owner
 // ticket is open. Only a run that sets SCENARIO_QUARANTINE=1 leaves them out, and only
 // scenario-suite-check.yml sets it, on pull_request runs. Every other run, that workflow's develop
-// push above all, still runs them, so a quarantined spec keeps reporting (CUR-4151).
+// push above all, still runs them, so a quarantined spec keeps reporting.
 const QUARANTINED =
 	process.env.SCENARIO_QUARANTINE === '1' ? readQuarantine().map(entryPattern) : [];
 const GREP_INVERT = [
@@ -155,19 +158,22 @@ export default defineConfig({
 	// the test run on localhost (sign-in-local.yml sets SCENARIO_LOCAL_MOCK=1), never on a deployment.
 	grepInvert: GREP_INVERT.length ? GREP_INVERT : undefined,
 	// Raised from 1 once the suite's own OTP send/verify calls stopped sleeping ahead of Better Auth's
-	// per-IP cap, which is what `workers: 1` was protecting against (CUR-1553).
+	// per-IP cap, which is what `workers: 1` was protecting against.
 	//
 	// Raising `workers` does not put two attempts of the same test in flight at once: retries of one
 	// test are sequential by construction, attempt 0 finishing before attempt 1 starts on a different
 	// worker. journeyArtifacts.ts's protection against collisions is `recordingSlug` keying each
-	// recording by test title + project (CUR-1550), which two different tests running concurrently
+	// recording by test title + project, which two different tests running concurrently
 	// can never share.
 	//
 	// Timed against the live preview at workers 1, 2 and 4: 1 and 2 passed the suite (2 about twice as
 	// fast), 4 failed, including a real backend 500 under load. The preview tier has a concurrency
 	// ceiling well below what a bigger CI box could drive, and 4 crossed it; 2 is the highest value it
 	// holds up under.
-	workers: 2,
+	//
+	// SCENARIO_WORKERS overrides it per workflow, and scripts/lib/shardSizing.mjs sizes a PR's shard
+	// matrix from the same variable, so more workers per shard means fewer shards to set up.
+	workers: Number(process.env.SCENARIO_WORKERS) || 2,
 	retries: process.env.CI ? 1 : 0,
 	// 90s. chat-message-send's worst case is a 30s poll for an actionable composer, then up to 30s
 	// for the conversation URL, then 10s for the message bubble: 70s of legitimate waiting that 60s

@@ -1,5 +1,5 @@
 // The journeys page — six documented journeys, their recorded walkthroughs, and the grader's
-// verdict on each, on one page somebody outside this repo can open (CUR-1524).
+// verdict on each, on one page somebody outside this repo can open.
 //
 // The CI journey run executes the suite against develop's preview, keeps every tagged test's video,
 // and grades each journey doc against its recordings. scripts/publish-journey-gallery.mjs writes that
@@ -12,6 +12,7 @@
 import type { PageServerLoad } from "./$types";
 import { eq } from "drizzle-orm";
 import { env } from "$env/dynamic/private";
+import { gitSha } from "$lib/server/runtimeEnv";
 import { getDb } from "$lib/chat/server/db/client";
 import { configKv } from "$lib/chat/server/db/schema";
 import { MANIFEST_KEY, withUndocumentedAsNotCovered, type JourneyManifest } from "$lib/chat/server/journeyGallery";
@@ -29,16 +30,23 @@ async function readManifest(): Promise<JourneyManifest | null> {
 
 export const load: PageServerLoad = async ({ locals, cookies }) => {
 	if (!(await isAdminPermitted({ cookies, locals }, { console: "view" }))) {
-		return { needsLogin: true, signedIn: Boolean(locals.user), manifest: null, buildSha: null };
+		return {
+			needsLogin: true,
+			signedIn: Boolean(locals.user),
+			role: locals.user?.role ?? null,
+			manifest: null,
+			buildSha: null,
+		};
 	}
 
 	return {
 		needsLogin: false,
 		signedIn: Boolean(locals.user),
+		role: locals.user?.role ?? null,
 		manifest: await readManifest(),
 		// The commit THIS page was built from. Comparing it to the manifest's own sha is the whole
 		// staleness check, and it needs no GitHub call: the preview is built from the branch tip, so
 		// a mismatch means the page is showing an older commit than the reader is looking at.
-		buildSha: env.VERCEL_GIT_COMMIT_SHA ?? null,
+		buildSha: gitSha(env) ?? null,
 	};
 };

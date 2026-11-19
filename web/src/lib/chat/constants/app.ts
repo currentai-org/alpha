@@ -1,3 +1,5 @@
+import { DEPLOYMENT } from "$lib/deployment";
+
 // The application's own identity. Deliberately a CONSTANT, not env config: the name is
 // "AI Potluck" in dev, preview, and production alike, and config that never varies by
 // environment isn't environment config. Upstream chat-ui exposed this as PUBLIC_APP_NAME
@@ -10,5 +12,5 @@
 export const APP_NAME = "AI Potluck";
 
 // Sent as User-Agent on outbound upstream calls (inference, search, rerank) so operators can
-// attribute traffic to this deployment. One constant, since the deployment is always aipotluck.org.
-export const APP_USER_AGENT = "aipotluck.org";
+// attribute traffic to this installation (src/lib/deployment.ts).
+export const APP_USER_AGENT: string = DEPLOYMENT.userAgent;

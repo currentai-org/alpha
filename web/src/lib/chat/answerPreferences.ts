@@ -1,12 +1,12 @@
 // The settings that shape how Alpha writes to a person, listed once. The Settings schema,
 // the per-turn resolver, every prompt carrier and the Personalization page read this list, so what the
-// page shows and what the turn sends cannot disagree (CUR-1443 Done-when 4). No server imports: the
+// page shows and what the turn sends cannot disagree (Done-when 4). No server imports: the
 // page bundles it.
 //
 // Every field is optional on the stored row, and `undefined` means Alpha's default. The default
 // assembly of every prompt stays byte-identical to today's, because each clause renders only when the
 // person set a value that is not the default (persona.ts `styleFor`, grounding.ts `guardFor`,
-// promptSections.ts `answer-style`). There is no feature flag: the change is opt-in per account. (CUR-3929)
+// promptSections.ts `answer-style`). There is no feature flag: the change is opt-in per account.
 import { fromIso1, languageName as tagName } from "$lib/chat/routing/languages";
 
 export const TONES = ["plain", "neutral", "formal"] as const;
@@ -19,12 +19,12 @@ export type Length = (typeof LENGTHS)[number];
 export const ANSWER_LANGUAGES = ["auto", "en", "fr", "de", "es", "it", "pt", "ca", "pl", "ar"] as const;
 export type AnswerLanguage = (typeof ANSWER_LANGUAGES)[number];
 
-/** The answer's shape. `auto` is today's rule (each list item on its own line, plain bullets (CUR-549)
+/** The answer's shape. `auto` is today's rule (each list item on its own line, plain bullets
  *  preferred); `prose` asks for sentences and paragraphs, `bullets` for a list. */
 export const FORMATS = ["auto", "prose", "bullets"] as const;
 export type Format = (typeof FORMATS)[number];
 
-/** `never` is today's prompt, which has no emoji rule and gets none; `helpful` adds the one (CUR-549)
+/** `never` is today's prompt, which has no emoji rule and gets none; `helpful` adds the one
  *  clause that permits an emoji where it carries meaning. */
 export const EMOJIS = ["never", "helpful"] as const;
 export type Emojis = (typeof EMOJIS)[number];
@@ -33,7 +33,7 @@ export type Emojis = (typeof EMOJIS)[number];
 export interface AnswerPreferences {
 	tone: Tone;
 	answerLength: Length;
-	/** The existing CUR-1443 field. True is the warmer first-person register (CUR-3930); Alpha never
+	/** The existing field. True is the warmer first-person register; Alpha never
 	 *  claims feelings or humanity either way (persona.ts IDENTITY_HONESTY_INVARIANT). */
 	selfReferenceAsPerson: boolean;
 	/** Whether an answer may add next steps, offers and questions back. */
@@ -42,11 +42,11 @@ export interface AnswerPreferences {
 	answerLanguage: AnswerLanguage;
 	/** Short sentences, everyday words, no jargon. */
 	plainLanguage: boolean;
-	/** prose, bullets, or whatever fits (`auto`). (CUR-549) */
+	/** prose, bullets, or whatever fits (`auto`). */
 	answerFormat: Format;
-	/** Never an emoji, or one where it helps. (CUR-549) */
+	/** Never an emoji, or one where it helps. */
 	emojis: Emojis;
-	/** Show which model answered and where it ran, under each answer and in X-ray. UI only: (CUR-549)
+	/** Show which model answered and where it ran, under each answer and in X-ray. UI only:
 	 *  no prompt carrier reads it. */
 	showServing: boolean;
 }
@@ -87,8 +87,8 @@ const bool = (value: unknown, fallback: boolean): boolean => (typeof value === "
 /**
  * The row as the turn and the page use it: every field present, an unset or unknown value replaced
  * by its default. A value outside the list (an old row, a hand edit) is the default too, so no prompt
- * carrier ever sees a word it has no clause for. A stored `explainTerms` (CUR-549, off the page under
- * rule 4.6, CUR-4288) is never read, so an old row's value adds nothing.
+ * carrier ever sees a word it has no clause for. A stored `explainTerms` (off the page under
+ * rule 4.6) is never read, so an old row's value adds nothing.
  */
 export function resolveAnswerPreferences(row: AnswerPreferencesRow | null | undefined): AnswerPreferences {
 	return {
@@ -123,7 +123,7 @@ export function languageName(code: string): string {
 // One preset sets the voice and the shape in one request. The list below is the ONE list the
 // write and the comparison both use, so a preset can neither leave a field to chance nor read as
 // active while a field it never set differs. Language, suggestions, self-reference and the serving
-// receipt are the person's own and stay as they are. (CUR-549)
+// receipt are the person's own and stay as they are.
 
 /** The fields a preset controls: voice and shape. */
 export const PRESET_FIELDS = [

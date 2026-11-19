@@ -1,6 +1,7 @@
-// Chat hands a long task to the agent (CUR-4388). A native turn with the sandbox can run six tool rounds,
-// which is enough for a short write-and-run task and not for a multi-file package, which chat can run out
-// of rounds on while the agent finishes it (CUR-4388). `hand_off_to_agent` lets the model move such a task to the agent mid-turn.
+// Chat hands a long task to the agent. A native turn with the sandbox can run six tool rounds, which is
+// enough for a short write-and-run task but not for a multi-file package, where chat runs out of rounds
+// and the agent's step cap (AGENT_MAX_STEPS model calls per task) is far higher than chat's six rounds.
+// `hand_off_to_agent` lets the model move such a task to the agent mid-turn.
 //
 // The agent's run uses the same subject and the conversation id as its session, which is how the sandbox
 // keys its workdir too (sandboxServer.ts), so the agent picks up the files chat has written so far.

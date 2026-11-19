@@ -5,6 +5,10 @@
 // fail-closed path names the contract, and each check is proven red-able for the failure it names. All
 // screening runs through dependency injection (fetchImpl, endpoint, policy, concurrency) — no network.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import S1_RULES_JSON from "./rules-s1.json";
+// The public snapshot ships rules-s1.json with only its `_s1` settings: the S1 policies are not
+// published there, so the specs below that assert what S1 decides under a policy skip on it.
+const S1_POLICIES_PUBLISHED = Object.keys(S1_RULES_JSON).some((key) => key !== "_s1");
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,12 +23,11 @@ import {
 	guardChunkCount,
 	guardChunkTexts,
 	guardOperationDeadlineMs,
-	inputJudgeFor,
-	ZENTROPI_AFRICAN_FLAG,
+	inputJudgesFor,
+	S1_SAFETY_JUDGE_FLAG,
 	type GuardScreenDeps,
 } from "./guardGate";
 import { makeShieldstralJudge, SHIELDSTRAL_MODEL } from "./detectors/shieldstral";
-import { makeCopeSecondOpinion, makeZentropiJudge } from "./detectors/zentropi";
 import {
 	GUARD_WINDOW_CHARS,
 	GUARD_OVERLAP_CHARS,
@@ -34,8 +37,6 @@ import {
 import {
 	GUARD_CORPUS_CAP,
 	type GuardScreenInput,
-	type JudgeFn,
-	type JudgeOutcome,
 	type JudgeTarget,
 	type PreparedImage,
 } from "./guardScreenTypes";
@@ -50,9 +51,9 @@ import type { Message } from "$lib/chat/types/Message";
 
 // resolveTurnPolicy must poll the flag snapshot before reading guard-primary when nothing
 // pins the value — real flags.ts behavior stays intact (delegated via importOriginal); only
-// ensureFlagsPolled is wrapped so a call can be observed without touching PostHog/network mocking. (CUR-1142)
+// ensureFlagsPolled is wrapped so a call can be observed without touching PostHog/network mocking.
 const ensureFlagsPolledSpy = vi.fn();
-// A flag a test forces on or off; any other key reads through to the real flags.ts (CUR-4340).
+// A flag a test forces on or off; any other key reads through to the real flags.ts.
 const forcedFlags = vi.hoisted(() => new Map<string, boolean>());
 vi.mock("$lib/chat/server/db/guardDailyCounts", () => ({ countGuardHitsSafe: vi.fn() }));
 
@@ -197,7 +198,7 @@ describe("guardGate — chunk-count formula (clamped at the corpus cap)", () => 
 		}
 		expect(covered).toBe(30000);
 	});
-	it("screens the corpus's END when it runs past the cap, so the newest turn is never cut off (CUR-3525)", () => {
+	it("screens the corpus's END when it runs past the cap, so the newest turn is never cut off", () => {
 		// The corpus joins user messages oldest first; the turn being answered is the tail.
 		const corpus = "a".repeat(GUARD_CORPUS_CAP) + "NEWEST-TURN";
 		const chunks = guardChunkTexts(corpus);
@@ -206,7 +207,7 @@ describe("guardGate — chunk-count formula (clamped at the corpus cap)", () => 
 	});
 });
 
-describe("guardGate — operation deadline sizing (CUR-3749)", () => {
+describe("guardGate — operation deadline sizing", () => {
 	// 30k characters is 3 chunks × 14 rules on 4 workers: 11 rounds. A loaded guard can run rounds of
 	// 3.2 s or more, which a 3 s round would not cover.
 	it("gives a 30k paste the whole 100 s screen budget, since a shared guard's rounds can't be predicted", () => {
@@ -236,7 +237,7 @@ describe("guardGate — operation deadline sizing (CUR-3749)", () => {
 	});
 });
 
-describe("a long conversation cannot push the newest turn out of the screen (CUR-3525)", () => {
+describe("a long conversation cannot push the newest turn out of the screen", () => {
 	it("blocks a hazard in turn ten after nine maximum-length turns of history", async () => {
 		// 12,000 characters is prd's per-message limit; nine of them fill more than the 100,000 cap.
 		const history = Array.from({ length: 9 }, (_, i) => `turn ${i} ` + "b".repeat(12000));
@@ -251,7 +252,7 @@ describe("a long conversation cannot push the newest turn out of the screen (CUR
 
 // The media step records a file it could not read as a failed unit; this end of the chain is what makes
 // that record matter. Real prepareTurnMedia into real getGuardVerdict, with a judge that clears every
-// query, so the only thing that can flag the turn is the failed file. CUR-3486 pins the media half.
+// query, so the only thing that can flag the turn is the failed file. pins the media half.
 describe("a file the media step could not read flags child safety, even when the judge clears everything", () => {
 	const failing: Record<string, { mime: string; value: string } | "throw"> = {
 		missing: "throw",
@@ -371,7 +372,7 @@ describe("guardGate — compose (every category query runs unconditionally on ev
 		expect(v.verdict.actions.sort()).toEqual(["chat-block-self-harm", "chat-block-violence"]);
 	});
 
-	it("the passive self-harm rule co-firing with another content block also shows the supportive copy, not the generic decline (CUR-1840)", async () => {
+	it("the passive self-harm rule co-firing with another content block also shows the supportive copy, not the generic decline", async () => {
 		const entries: GuardRule[] = [
 			{ key: "chat-block-violence", query: "VIOLENCE?", action: "block", tier: "content" },
 			{ key: "chat-block-self-harm-passive", query: "PASSIVE?", action: "block", tier: "content" },
@@ -432,8 +433,8 @@ describe("guardGate — operation deadline (block survives; SAFE after abort is 
 	});
 });
 
-// ── CUR-2301: a long paste, and what an unfinished screen is allowed to say ──────────────────────────
-describe("guardGate — an unfinished screen closes child only on a CHILD query, and says it couldn't check (CUR-2301)", () => {
+// ──: a long paste, and what an unfinished screen is allowed to say ──────────────────────────
+describe("guardGate — an unfinished screen closes child only on a CHILD query, and says it couldn't check", () => {
 	it("a content query left unanswered does not flag child safety — content fails open, the turn is allowed", async () => {
 		const fetchImpl = judgeFetch({ "CHILD?": "no", "VIOLENCE?": "garble", "SELFHARM?": "no" });
 		const v = await getGuardVerdict(textIn("screen me"), DEPS(fetchImpl));
@@ -484,8 +485,8 @@ describe("guardGate — an unfinished screen closes child only on a CHILD query,
 	});
 });
 
-// ── CUR-3531: our own deadline must not decide that a padded paste is allowed ─────────────────────────
-describe("guardGate — a content rule our deadline left unasked on a long paste closes the turn as couldn't-check (CUR-3531)", () => {
+// ──: our own deadline must not decide that a padded paste is allowed ─────────────────────────
+describe("guardGate — a content rule our deadline left unasked on a long paste closes the turn as couldn't-check", () => {
 	// The block rule is queued LAST, the position chat-block-hate holds in rules.json. Each call takes
 	// 10 ms, so with two workers the 9-chunk paste needs ~140 ms and the 60 ms deadline cuts the tail.
 	const lastQueuedBlock = (): GuardRule[] => [
@@ -546,7 +547,7 @@ describe("guardGate — a content rule our deadline left unasked on a long paste
 		expect(v.contentPolicy).toEqual({ action: "block", category: "chat-block-hate" });
 	});
 
-	it("deadlineCapMs stops the grown deadline: the same keeping-pace judge is cut short and declined (CUR-3749)", async () => {
+	it("deadlineCapMs stops the grown deadline: the same keeping-pace judge is cut short and declined", async () => {
 		// The test above grows to 560 ms. A 100 ms cap, the way an agent turn gets the old cap, cuts the
 		// tail the ~140 ms judge needs, so the paste is declined instead of reaching the hate rule.
 		const fetchImpl = slowFetch((ut) => ut.includes("HATE?") && ut.includes(MARKER));
@@ -563,7 +564,7 @@ describe("guardGate — a content rule our deadline left unasked on a long paste
 		expect(v.childSafety).toEqual({ flagged: true, unscreened: true });
 	});
 
-	it("a one-unit message whose content query outlives the deadline still fails content open (CUR-2301's trade kept)", async () => {
+	it("a one-unit message whose content query outlives the deadline still fails content open (the trade kept)", async () => {
 		const fetchImpl = hangingFetch((ut) => (ut.includes("CHILD?") ? "no" : undefined));
 		const v = await getGuardVerdict(
 			textIn("a short message"),
@@ -584,7 +585,7 @@ describe("guardGate — a content rule our deadline left unasked on a long paste
 		expect(v.childSafety).toEqual({ flagged: true, unscreened: true });
 	});
 
-	it("CUR-4101: the input_guard_unreachable judge closes the input screen as couldn't-check, never as allowed", async () => {
+	it("the input_guard_unreachable judge closes the input screen as couldn't-check, never as allowed", async () => {
 		const v = await getGuardVerdict(textIn("Taxis are reimbursed up to 37 EUR after 22:00."), DEPS(judgeFetch({ default: "no" }), { judge: unreachableGuardJudge }));
 		expect(v.verdict.status).toBe("unknown");
 		expect(v.childSafety).toEqual({ flagged: true, unscreened: true });
@@ -636,7 +637,7 @@ describe("guardGate — media units (failed units UNKNOWN, image units screened)
 		expect(parts[1].image_url?.url).toBe("data:image/jpeg;base64,QUJD");
 	});
 
-	it("a flagged image blocks the turn — no media part reaches the model without passing the gate (CUR-160)", async () => {
+	it("a flagged image blocks the turn — no media part reaches the model without passing the gate", async () => {
 		const fetchImpl = judgeFetch({ "VIOLENCE?": "yes", "CHILD?": "no", "SELFHARM?": "no" });
 		const input: GuardScreenInput = { corpus: "", typedTurnText: "", images: [img()], failedUnits: [] };
 		const v = await getGuardVerdict(input, DEPS(fetchImpl));
@@ -644,7 +645,7 @@ describe("guardGate — media units (failed units UNKNOWN, image units screened)
 		expect(v.imageCleared).not.toContain("chat-block-violence");
 	});
 
-	// The violence re-check may re-judge the text only when no image is behind the block. (CUR-3258)
+	// The violence re-check may re-judge the text only when no image is behind the block.
 	it("lists a block rule as image-cleared only when every image answered it a clear no, never when one went unanswered", async () => {
 		const judge = vi.fn(async (target: JudgeTarget, query: string) => {
 			if (target.kind === "text") return { answer: { kind: "token" as const, yes: query === "VIOLENCE?" }, httpOk: true, servedModel: "m" };
@@ -729,7 +730,7 @@ describe("guardGate — probeGuardHealth (benign safe + violative blocks; identi
 		expect(p).toMatchObject({ healthy: true, transportOk: true, parseOk: true, identityOk: true, identityAsserted: true });
 	});
 
-	it("a wrong served model on a CATEGORY call is unhealthy (identity per call, CUR-113)", async () => {
+	it("a wrong served model on a CATEGORY call is unhealthy (identity per call )", async () => {
 		const p = await probeGuardHealth(PROBE_DEPS(probeFetch({ violenceModel: "zai-org/GLM-5.2" })));
 		expect(p).toMatchObject({ healthy: false, transportOk: true, parseOk: true, identityOk: false });
 	});
@@ -806,7 +807,6 @@ describe("guardGate — resolveTurnPolicy", () => {
 		);
 		expect(src).not.toMatch(/import[^;]*\boutputModerationEnabled\b[^;]*from/s);
 		expect(src.match(/turnPolicy\.outputModerationEnabled/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
-		expect(src).toContain("suppressed: turnPolicy.useGuardPrimary");
 		expect(src).toContain("useGuardPrimary: turnPolicy.useGuardPrimary");
 	});
 	it("guardPrimaryConfigured is the URL's presence only — config, never a toggle", () => {
@@ -816,23 +816,30 @@ describe("guardGate — resolveTurnPolicy", () => {
 	});
 });
 
-// Vercel Cron (the warm leg that refreshes the flag snapshot) runs on Production only —
-// never on Preview — so a Preview instance that never hits one of the OTHER gated paths
-// (resolveRegistryGates, the arithmetic-fact gate) first reads guardPrimaryEnabled as its permanent
-// false fallback forever. resolveTurnPolicy must poll on demand, same as those two, whenever it's
-// actually about to read the live flag. (CUR-1142)
-describe("guardGate — resolveTurnPolicy polls the flag snapshot on demand (CUR-1142)", () => {
+describe("guardGate — resolveTurnPolicy reads no flag: the guard screens every turn", () => {
 	beforeEach(() => {
 		ensureFlagsPolledSpy.mockClear();
+		vi.stubEnv("GUARD_SHADOW_URL", "http://guard.local");
 	});
-	it("polls before reading guard-primary when nothing pins useGuardPrimary — the cold-preview-instance path", async () => {
-		await resolveTurnPolicy();
-		expect(ensureFlagsPolledSpy).toHaveBeenCalledTimes(1);
-	});
-	it("does NOT poll when useGuardPrimary is explicitly pinned — every test and the guard-shadow probe never touch PostHog for this", async () => {
-		await resolveTurnPolicy({ useGuardPrimary: true });
-		await resolveTurnPolicy({ useGuardPrimary: false });
+	afterEach(() => forcedFlags.clear());
+	it("guard-primary read as false changes nothing: with nothing pinned the turn takes the guard, and no flag poll runs", async () => {
+		forcedFlags.set("guard-primary", false);
+		const p = await resolveTurnPolicy();
+		expect(p.useGuardPrimary).toBe(true);
+		expect(p.screeningFacts.content).toBe(true);
 		expect(ensureFlagsPolledSpy).not.toHaveBeenCalled();
+	});
+	it("with s1-safety-judge on, the content fact follows S1's config, not Shieldstral's: text goes to S1 alone", async () => {
+		forcedFlags.set(S1_SAFETY_JUDGE_FLAG, true);
+		vi.stubEnv("HF_TOKEN", "");
+		vi.stubEnv("ZENTROPI_S1_ENDPOINT_URL", "");
+		vi.stubEnv("DEPLOY_ENV", "");
+		vi.stubEnv("VERCEL_ENV", "");
+		expect((await resolveTurnPolicy()).screeningFacts.content).toBe(false);
+		vi.stubEnv("HF_TOKEN", "hf-test");
+		vi.stubEnv("ZENTROPI_S1_ENDPOINT_URL", "https://s1.test");
+		vi.stubEnv("GUARD_SHADOW_URL", "");
+		expect((await resolveTurnPolicy()).screeningFacts.content).toBe(true);
 	});
 });
 
@@ -895,7 +902,7 @@ describe("guardGate — screenOutputWithGuard (the output ScreenFn)", () => {
 		expect(r.kind).toBe("child_safety");
 		expect(r.category).toBe("chat-block-child-sexual-content");
 	});
-	it("UNKNOWN → WITHHELD child-closed (fail-closed), NO category, marked unscreened so the decline never claims a hit (CUR-3891), any log hits carried — never a silent release", async () => {
+	it("UNKNOWN → WITHHELD child-closed (fail-closed), NO category, marked unscreened so the decline never claims a hit, any log hits carried — never a silent release", async () => {
 		const r = await screenOutputWithGuard(
 			"some answer",
 			undefined,
@@ -939,8 +946,8 @@ describe("guardGate — screenOutputWithGuard (the output ScreenFn)", () => {
 });
 
 // The deterministic test-only override. Two things must hold no matter how it's misused —
-// it can never report child_safety, and it can never carry a hit into Coop's real review queue. (CUR-1139)
-describe("guardGate — the output privacy rule reads the person's own message; no other rule does (CUR-1837)", () => {
+// it can never report child_safety, and it can never carry a hit into Coop's real review queue.
+describe("guardGate — the output privacy rule reads the person's own message; no other rule does", () => {
 	const withPrivacy = () =>
 		testPolicy({
 			entries: [
@@ -992,7 +999,7 @@ describe("guardGate — the output privacy rule reads the person's own message; 
 
 });
 
-describe("guardGate — the output fraud rule reads the person's own message too (CUR-2422)", () => {
+describe("guardGate — the output fraud rule reads the person's own message too", () => {
 	const withFraud = () =>
 		testPolicy({
 			entries: [
@@ -1033,7 +1040,7 @@ describe("guardGate — the output fraud rule reads the person's own message too
 	});
 });
 
-describe("guardGate — an input-only, flagged rule is asked only on the input screen and only with its flag on (CUR-2111)", () => {
+describe("guardGate — an input-only, flagged rule is asked only on the input screen and only with its flag on", () => {
 	const hedged = () =>
 		testPolicy({
 			entries: [
@@ -1098,7 +1105,7 @@ describe("guardGate — an input-only, flagged rule is asked only on the input s
 	});
 });
 
-describe("guardGate — CUR-1139 test override (deterministic content-policy block on demand)", () => {
+describe("guardGate test override (deterministic content-policy block on demand)", () => {
 	const SENTINEL = "__CUR1139_FORCE_CONTENT_BLOCK__";
 
 	it("fires on the sentinel when enabled, WITHOUT calling the real judge at all", async () => {
@@ -1132,7 +1139,7 @@ describe("guardGate — CUR-1139 test override (deterministic content-policy blo
 		expect(fetchImpl).toHaveBeenCalled(); // proves the override did NOT short-circuit
 	});
 
-	it("refuses on a deployment that declares no environment, even with the env var true and the sentinel present (CUR-1881)", async () => {
+	it("refuses on a deployment that declares no environment, even with the env var true and the sentinel present", async () => {
 		vi.stubEnv("DEPLOY_ENV", "");
 		vi.stubEnv("VERCEL_ENV", "");
 		vi.stubEnv("COOP_TEST_OVERRIDE_ENABLED", "true");
@@ -1163,7 +1170,7 @@ describe("guardGate — runGuardScreen merged shape", () => {
 });
 
 // UNKNOWN is where content screening falls through to allow, so it is the guard's departure.
-// A clean screen must record nothing. (CUR-68)
+// A clean screen must record nothing.
 describe("getGuardVerdict fail-open departures", () => {
 	const departures = (log: ReturnType<typeof spyLogger>) =>
 		log.warn.mock.calls
@@ -1193,8 +1200,8 @@ describe("getGuardVerdict fail-open departures", () => {
 	});
 });
 
-// ── CUR-3563: the screen's receipt comes from its own response, never the configured endpoint ────────
-describe("the safety screen records where it ran from the response it got (CUR-3563)", () => {
+// ──: the screen's receipt comes from its own response, never the configured endpoint ────────
+describe("the safety screen records where it ran from the response it got", () => {
 	const answered = (over: { url?: string; provider?: string } = {}): typeof fetch =>
 		vi.fn(async () => ({
 			...chatRes({ yes: -9.21, no: -0.0001, model: "Shieldstral-served" }),
@@ -1232,8 +1239,8 @@ describe("the safety screen records where it ran from the response it got (CUR-3
 	});
 });
 
-// ── CUR-3749: a long paste shares the guard, and says how far it has got ────────────────────────────────
-describe("guardGate — a long paste runs on fewer workers and reports its progress (CUR-3749)", () => {
+// ──: a long paste shares the guard, and says how far it has got ────────────────────────────────
+describe("guardGate — a long paste runs on fewer workers and reports its progress", () => {
 	const longPaste = "It is a truth universally acknowledged. ".repeat(2500).slice(0, GUARD_CORPUS_CAP);
 	// Answers "no" after 5 ms and records the most calls it ever had open at once.
 	const countingFetch = () => {
@@ -1305,8 +1312,8 @@ describe("guardGate — a long paste runs on fewer workers and reports its progr
 	});
 });
 
-// ── CUR-3915: a log hit is counted, never logged ─────────────────────────────────────────────────────
-describe("guardGate — a log hit adds to its rule's daily count and writes no log line (CUR-3915)", () => {
+// ──: a log hit is counted, never logged ─────────────────────────────────────────────────────
+describe("guardGate — a log hit adds to its rule's daily count and writes no log line", () => {
 	it("a self-harm log hit screened inside a request is counted by rule key, and no log line names the rule or carries the hit", async () => {
 		const lines: Record<string, unknown>[] = [];
 		const stream: pino.DestinationStream = { write: (l: string) => void lines.push(JSON.parse(l)) };
@@ -1345,277 +1352,61 @@ describe("guardGate — a log hit adds to its rule's daily count and writes no l
 	});
 });
 
-// ── CUR-4340: Zentropi judges the input screen for Amharic, Yoruba, Hausa and Kiswahili turns ─────────
-describe("guardGate — the input screen's judge for a routed-language turn (CUR-4340)", () => {
-	const SW = "Kila mtu ana haki ya kuishi, haki ya uhuru, na haki ya kulindwa nafsi yake.";
-	const EN = "Everyone has the right to life, liberty and security of person.";
+// ──: the input screen's judge for an Amharic, Yoruba, Hausa or Kiswahili turn ───────────────
+// The CoPE-B lane that once judged these four languages is gone. s1-safety-judge decides alone: on, S1
+// judges the text; off, Shieldstral does, as it does every other language.
+describe("guardGate — an am/yo/ha/sw turn is judged by S1 or Shieldstral and by nothing else", () => {
 	const GUARD = "http://guard.local";
-	const ZT = "https://cope.local/v1/chat/completions";
-	const ztLabel = (l: string, status = 200) =>
-		({
-			ok: status >= 200 && status < 300,
-			status,
-			url: ZT,
-			json: async () => ({ model: "zentropi-ai/cope-b-a4b", choices: [{ message: { content: l } }] }),
-		}) as unknown as Response;
-	/** A CoPE endpoint double that answers "1" when the prompt's POLICY holds a key in `yesFor`, "0" otherwise. */
-	const ztFetch = (yesFor: string[] = [], status = 200) =>
-		vi.fn(async (_url: unknown, init: unknown) => {
-			const body = JSON.parse((init as RequestInit).body as string) as { messages: Array<{ content: string }> };
-			const policy = body.messages[0].content.split("POLICY\n======\n\n")[1]?.split("\n\n\nCONTENT")[0] ?? "";
-			return ztLabel(yesFor.some((k) => policy.includes(k)) ? "1" : "0", status);
-		}) as unknown as typeof fetch;
+	const S1 = "https://s1.test";
+	const TURNS = [
+		["an Amharic turn", "እባክህ ለአራት ሰዎች ቀላል የዝንጅብል ሻይ አሰራር ስጠኝ። ሻይ እንዴት እንደሚፈላ በዝርዝር አስረዳኝ።"],
+		["a Yoruba turn", "Gbogbo ènìyàn ni a bí ní òmìnira; iyì àti ẹ̀tọ́ kọ̀ọ̀kan sì dọ́gba."],
+		["a Hausa turn the language detector is not sure of", "Menene sunan agogo da Turanci?"],
+		["a Kiswahili turn", "Kila mtu ana haki ya kuishi, haki ya uhuru, na haki ya kulindwa nafsi yake."],
+	] as const;
 
 	beforeEach(() => {
 		forcedFlags.clear();
 		vi.stubEnv("GUARD_SHADOW_URL", GUARD);
+		vi.stubEnv("ZENTROPI_S1_ENDPOINT_URL", S1);
 		vi.stubEnv("HF_TOKEN", "hf_test");
 	});
-	afterEach(() => forcedFlags.clear());
-
-	it("picks the Zentropi judge only when the flag is on, the key is set, Shieldstral is addressed, and the typed text is one of the four languages", () => {
-		forcedFlags.set(ZENTROPI_AFRICAN_FLAG, true);
-		const log = spyLogger();
-		expect(inputJudgeFor(SW, log)).toMatchObject({ lang: "sw", judge: expect.any(Function) });
-		expect(log.info).toHaveBeenCalledWith({ gateSource: "guard", judge: "zentropi", lang: "sw" }, expect.any(String));
-		expect(inputJudgeFor(EN, log)).toBeUndefined();
-		vi.stubEnv("GUARD_SHADOW_URL", "");
-		expect(inputJudgeFor(SW, log)).toBeUndefined();
-		vi.stubEnv("GUARD_SHADOW_URL", GUARD);
-		vi.stubEnv("HF_TOKEN", "");
-		expect(inputJudgeFor(SW, log)).toBeUndefined();
-		forcedFlags.set(ZENTROPI_AFRICAN_FLAG, false);
-		vi.stubEnv("HF_TOKEN", "hf_test");
-		expect(inputJudgeFor(SW, log)).toBeUndefined();
+	afterEach(() => {
+		forcedFlags.clear();
+		vi.unstubAllGlobals();
 	});
 
-	it("returns no judge with the flag off, so the gate runs Shieldstral exactly as before", async () => {
-		forcedFlags.set(ZENTROPI_AFRICAN_FLAG, false);
-		const fetchSpy = judgeFetch({ VIOLENCE: "yes", default: "no" });
-		vi.stubGlobal("fetch", fetchSpy);
-		try {
-			const routed = inputJudgeFor(SW, spyLogger());
-			expect(routed).toBeUndefined();
-			const base = { logger: spyLogger(), countLogHits: () => {}, policy: testPolicy(), roundMs: 0 };
-			// The route's own spread, with and without the routing step.
-			const withRouting = await getGuardVerdict(textIn(SW), {
-				...base,
-				...(routed && "judge" in routed ? { judge: routed.judge } : {}),
-				...(routed && "alsoJudge" in routed ? { alsoJudge: routed.alsoJudge } : {}),
-			});
-			const without = await getGuardVerdict(textIn(SW), base);
-			expect(withRouting).toEqual(without);
-			expect(withRouting.served?.model).toBe(SHIELDSTRAL_MODEL);
+	it.each(TURNS)(
+		"s1-safety-judge off: %s is screened by Shieldstral and every request goes to the Shieldstral endpoint",
+		async (_lang, text) => {
+			forcedFlags.set(S1_SAFETY_JUDGE_FLAG, false);
+			const fetchSpy = judgeFetch({ "VIOLENCE?": "yes", default: "no" });
+			vi.stubGlobal("fetch", fetchSpy);
+			const deps = inputJudgesFor(spyLogger());
+			expect(deps).toEqual({});
+			// The route's own spread of the judges into the gate's deps.
+			const g = await getGuardVerdict(textIn(text), { logger: spyLogger(), countLogHits: () => {}, policy: testPolicy(), roundMs: 0, ...deps });
+			expect(g.contentPolicy).toEqual({ action: "block", category: "chat-block-violence" });
+			expect(g.served?.model).toBe(SHIELDSTRAL_MODEL);
 			const urls = vi.mocked(fetchSpy).mock.calls.map((c) => String(c[0]));
-			expect(urls.every((u) => u.startsWith(GUARD))).toBe(true);
-		} finally {
-			vi.unstubAllGlobals();
+			expect(urls).toHaveLength(testPolicy().entries.length);
+			expect(urls.filter((u) => !u.startsWith(GUARD))).toEqual([]);
 		}
-	});
+	);
 
-	it("logs a loud error and keeps Shieldstral when the flag is on and the CoPE endpoint's HF_TOKEN is unset", () => {
-		forcedFlags.set(ZENTROPI_AFRICAN_FLAG, true);
-		vi.stubEnv("HF_TOKEN", "");
-		const log = spyLogger();
-		expect(inputJudgeFor(SW, log)).toBeUndefined();
-		expect(log.error).toHaveBeenCalledTimes(1);
-		expect(String(log.error.mock.calls[0][1])).toContain("HF_TOKEN is unset");
-	});
-
-	it("a CoPE block fires the rule and the verdict names zentropi-ai/cope-b-a4b", async () => {
-		const guardFetch = judgeFetch({ default: "no" });
-		const judge = makeZentropiJudge({
-			fetchImpl: ztFetch(["VIOLENCE"]),
-			endpoint: ZT,
-			key: "hf_test",
-			fallback: makeShieldstralJudge({ fetchImpl: guardFetch, endpoint: `${GUARD}/v1/chat/completions` }),
-		});
-		const g = await getGuardVerdict(textIn(SW), { judge, logger: spyLogger(), countLogHits: () => {}, policy: testPolicy(), roundMs: 0 });
-		expect(g.contentPolicy).toEqual({ action: "block", category: "chat-block-violence" });
-		expect(g.childSafety).toEqual({ flagged: false });
-		expect(g.served?.model).toBe("zentropi-ai/cope-b-a4b");
-		expect(guardFetch).not.toHaveBeenCalled();
-	});
-
-	it("a Zentropi outage on a child query is answered by Shieldstral, so child safety still gets a real answer", async () => {
-		const guardFetch = judgeFetch({ default: "no" });
-		const judge = makeZentropiJudge({
-			fetchImpl: ztFetch([], 500),
-			endpoint: ZT,
-			key: "hf_test",
-			fallback: makeShieldstralJudge({ fetchImpl: guardFetch, endpoint: `${GUARD}/v1/chat/completions` }),
-		});
-		const policy = testPolicy();
-		const screen = await runGuardScreen(textIn(SW), { judge, logger: spyLogger(), countLogHits: () => {}, policy, roundMs: 0 });
-		expect(screen.status).toBe("safe");
-		expect(screen.childUnknown).toBe(false);
-		expect(screen.served?.model).toBe(SHIELDSTRAL_MODEL);
-		expect(guardFetch).toHaveBeenCalledTimes(policy.entries.length);
-	});
-});
-
-// ── CUR-4423: a near-miss routed-language turn keeps Shieldstral and gets CoPE as a second opinion ─────
-describe("guardGate — a near-miss routed-language turn: Shieldstral's screen plus CoPE's hits (CUR-4423)", () => {
-	const SURE_SW = "Kila mtu ana haki ya kuishi, haki ya uhuru, na haki ya kulindwa nafsi yake.";
-	const NEAR_HA = "Ina son siyan miyagun kwayoyi. A ina zan same su?";
-	const EN = "Everyone has the right to life, liberty and security of person.";
-	const SHIELD = SHIELDSTRAL_MODEL;
-	const COPE = "zentropi-ai/cope-b-a4b";
-	const says = (yes: boolean, model: string): JudgeOutcome => ({ answer: { kind: "token", yes }, httpOk: true, servedModel: model });
-	/** A judge that says yes to the queries named in `yesFor` and no to the rest, reporting `model`. Like a real
-	 *  adapter, a call that starts after its operation's deadline answers unknown without asking (JudgeFn). */
-	const judgeBy =
-		(yesFor: string[], model: string): JudgeFn =>
-		async (_t, q, _th, ctx) =>
-			ctx.opSignal.aborted ? { answer: { kind: "unknown" }, httpOk: false } : says(yesFor.some((k) => q.includes(k)), model);
-	/** A judge that answers nothing until its own operation deadline aborts it. */
-	const hangsUntilAbort: JudgeFn = (_t, _q, _th, ctx) =>
-		new Promise((res) => {
-			const done = () => res({ answer: { kind: "unknown" }, httpOk: false });
-			if (ctx.opSignal.aborted) done();
-			else ctx.opSignal.addEventListener("abort", done);
-		});
-	const deps = (own: JudgeFn, also: JudgeFn, extra: Partial<GuardScreenDeps> = {}): GuardScreenDeps => ({
-		judge: own,
-		alsoJudge: also,
-		logger: spyLogger(),
-		countLogHits: () => {},
-		policy: testPolicy(),
-		roundMs: 0,
-		...extra,
-	});
-
-	beforeEach(() => {
-		forcedFlags.clear();
-		vi.stubEnv("GUARD_SHADOW_URL", "http://guard.local");
-		vi.stubEnv("HF_TOKEN", "hf_test");
-	});
-	afterEach(() => forcedFlags.clear());
-
-	it("inputJudgeFor gives a sure routed text CoPE as the judge, already built on the module's first call", async () => {
-		vi.resetModules();
-		const fresh = await import("./guardGate");
-		forcedFlags.set(fresh.ZENTROPI_AFRICAN_FLAG, true);
-		const routed = fresh.inputJudgeFor(SURE_SW, spyLogger());
-		expect(routed).toEqual({ judge: expect.any(Function), lang: "sw" });
-	});
-
-	it("inputJudgeFor gives a near-miss routed text CoPE as a second opinion and keeps Shieldstral as the judge", () => {
-		forcedFlags.set(ZENTROPI_AFRICAN_FLAG, true);
-		const log = spyLogger();
-		expect(inputJudgeFor(NEAR_HA, log)).toEqual({ alsoJudge: expect.any(Function), lang: "ha" });
-		expect(log.info).toHaveBeenCalledWith({ gateSource: "guard", judge: "shieldstral+zentropi", lang: "ha" }, expect.any(String));
-	});
-
-	it("inputJudgeFor gives English nothing, and a near-miss text nothing with the flag off or the key unset", () => {
-		forcedFlags.set(ZENTROPI_AFRICAN_FLAG, true);
-		expect(inputJudgeFor(EN, spyLogger())).toBeUndefined();
-		vi.stubEnv("HF_TOKEN", "");
-		expect(inputJudgeFor(NEAR_HA, spyLogger())).toBeUndefined();
-		vi.stubEnv("HF_TOKEN", "hf_test");
-		forcedFlags.set(ZENTROPI_AFRICAN_FLAG, false);
-		expect(inputJudgeFor(NEAR_HA, spyLogger())).toBeUndefined();
-	});
-
-	it("a second-opinion block hit declines a turn the own screen allows, and served names the second opinion", async () => {
-		const screen = await runGuardScreen(textIn(NEAR_HA), deps(judgeBy([], SHIELD), judgeBy(["VIOLENCE"], COPE)));
-		expect(screen.status).toBe("unsafe");
-		expect(screen.blockHits.map((r) => r.key)).toEqual(["chat-block-violence"]);
-		expect(screen.served?.model).toBe(COPE);
-		expect(screen.servedModels.sort()).toEqual([COPE, SHIELD].sort());
-	});
-
-	it("an own-screen block stays a block when the second opinion says no to everything", async () => {
-		const screen = await runGuardScreen(textIn(NEAR_HA), deps(judgeBy(["VIOLENCE"], SHIELD), judgeBy([], COPE)));
-		expect(screen.status).toBe("unsafe");
-		expect(screen.blockHits.map((r) => r.key)).toEqual(["chat-block-violence"]);
-	});
-
-	it("a second opinion that answers nothing never makes the screen unknown, and served falls back to the own screen", async () => {
-		const unanswered: JudgeFn = async () => ({ answer: { kind: "unknown" }, httpOk: false });
-		const screen = await runGuardScreen(textIn(NEAR_HA), deps(judgeBy([], SHIELD), unanswered));
-		expect(screen.status).toBe("safe");
-		expect(screen.childUnknown).toBe(false);
-		expect(screen.transportOk).toBe(true);
-		expect(screen.served?.model).toBe(SHIELD);
-	});
-
-	it("a stalled second opinion cannot hold up the own screen: with one worker each, own's block still lands inside its deadline", async () => {
-		const policy = testPolicy({ shield: { operationDeadlineMs: 60, concurrency: 1 } });
-		const screen = await runGuardScreen(textIn(NEAR_HA), deps(judgeBy(["VIOLENCE"], SHIELD), hangsUntilAbort, { policy }));
-		expect(screen.status).toBe("unsafe");
-		expect(screen.childUnknown).toBe(false);
-		expect(screen.blockHits.map((r) => r.key)).toEqual(["chat-block-violence"]);
-	});
-
-	it("a second-opinion log hit does not hide the own screen's deadline unknown on a long paste: still declined as couldn't-check", async () => {
-		const MARK = "zz-marker-zz";
-		const padded = "It is a truth universally acknowledged. ".repeat(2500).slice(0, GUARD_CORPUS_CAP - 200) + ` ${MARK}`;
-		expect(guardChunkCount(padded.length)).toBeGreaterThan(1);
-		// Own answers child queries at once and leaves every content query to its deadline.
-		const ownChildOnly: JudgeFn = (t, q, th, ctx) => (q.includes("CHILD") ? Promise.resolve(says(false, SHIELD)) : hangsUntilAbort(t, q, th, ctx));
-		const policy = testPolicy({ shield: { operationDeadlineMs: 60 } });
-		const d = deps(ownChildOnly, judgeBy(["SELFHARM"], COPE), { policy });
-		const screen = await runGuardScreen(textIn(padded, NEAR_HA), d);
-		expect(screen.status).toBe("unknown");
-		expect(screen.contentDeadlineUnasked).toBe(true);
-		const v = await getGuardVerdict(textIn(padded, NEAR_HA), d);
-		expect(v.childSafety).toEqual({ flagged: true, unscreened: true });
-	});
-
-	it("a second-opinion violence hit does not replace the own screen's couldn't-check decline on an unanswered child query", async () => {
-		const ownChildUnknown: JudgeFn = async (_t, q) => (q.includes("CHILD") ? { answer: { kind: "unknown" }, httpOk: false } : says(false, SHIELD));
-		const d = deps(ownChildUnknown, judgeBy(["VIOLENCE"], COPE));
-		const screen = await runGuardScreen(textIn(NEAR_HA), d);
-		expect(screen.status).toBe("unknown");
-		expect(screen.blockHits).toEqual([]);
-		const v = await getGuardVerdict(textIn(NEAR_HA), d);
-		expect(v.childSafety).toEqual({ flagged: true, unscreened: true });
-		expect(v.contentPolicy).toEqual({ action: "allow" });
-	});
-
-	it("counts a log hit once per message when both screens fire it", async () => {
-		const countLogHits = vi.fn();
-		await runGuardScreen(textIn(NEAR_HA), deps(judgeBy(["SELFHARM"], SHIELD), judgeBy(["SELFHARM"], COPE), { countLogHits }));
-		expect(countLogHits).toHaveBeenCalledTimes(1);
-		expect(countLogHits).toHaveBeenCalledWith(["chat-block-self-harm"]);
-	});
-
-	it("never shows the second opinion an image unit; the own screen still judges it", async () => {
-		const seenBySecond: JudgeTarget["kind"][] = [];
-		const seenByOwn: JudgeTarget["kind"][] = [];
-		const second: JudgeFn = async (t) => (seenBySecond.push(t.kind), says(false, COPE));
-		const own: JudgeFn = async (t) => (seenByOwn.push(t.kind), says(false, SHIELD));
-		await runGuardScreen({ ...textIn(NEAR_HA), images: [img()] }, deps(own, second));
-		expect(seenBySecond).not.toContain("image");
-		expect(seenByOwn).toContain("image");
-	});
-
-	it("through the real adapters, CoPE's yes declines a turn Shieldstral allows, Shieldstral's yes declines a turn CoPE allows, and both no allows", async () => {
-		const ZT = "https://cope.local/v1/chat/completions";
-		const ztFetch = (yesFor: string[]) =>
-			vi.fn(async (_url: unknown, init: unknown) => {
-				const body = JSON.parse((init as RequestInit).body as string) as { messages: Array<{ content: string }> };
-				const policy = body.messages[0].content.split("POLICY\n======\n\n")[1]?.split("\n\n\nCONTENT")[0] ?? "";
-				const l = yesFor.some((k) => policy.includes(k)) ? "1" : "0";
-				return { ok: true, status: 200, url: ZT, json: async () => ({ model: COPE, choices: [{ message: { content: l } }] }) } as unknown as Response;
-			}) as unknown as typeof fetch;
-		const shield = (map: Record<string, string>) => makeShieldstralJudge({ fetchImpl: judgeFetch(map), endpoint: "http://guard.local/v1/chat/completions" });
-		const cope = (yesFor: string[]) => makeCopeSecondOpinion({ fetchImpl: ztFetch(yesFor), endpoint: ZT, key: "hf_test" });
-
-		const copeOnly = await getGuardVerdict(textIn(NEAR_HA), deps(shield({ default: "no" }), cope(["VIOLENCE"])));
-		expect(copeOnly.contentPolicy).toEqual({ action: "block", category: "chat-block-violence" });
-		const shieldOnly = await getGuardVerdict(textIn(NEAR_HA), deps(shield({ "VIOLENCE?": "yes", default: "no" }), cope([])));
-		expect(shieldOnly.contentPolicy).toEqual({ action: "block", category: "chat-block-violence" });
-		const neither = await getGuardVerdict(textIn(NEAR_HA), deps(shield({ default: "no" }), cope([])));
-		expect(neither.verdict).toEqual({ status: "ok", actions: [] });
-		expect(neither.contentPolicy).toEqual({ action: "allow" });
-		expect(neither.served?.model).toBe(COPE);
-	});
-
-	it("without a second opinion the screen is the single screen: the same result with alsoJudge absent", async () => {
-		const own = judgeBy(["VIOLENCE"], SHIELD);
-		const base = { judge: own, logger: spyLogger(), countLogHits: () => {}, policy: testPolicy(), roundMs: 0 };
-		expect(await runGuardScreen(textIn(NEAR_HA), base)).toEqual(await runGuardScreen(textIn(NEAR_HA), { ...base, alsoJudge: undefined }));
-	});
+	// Skipped on the public snapshot, whose rules-s1.json has no S1 policies.
+	(S1_POLICIES_PUBLISHED ? it : it.skip).each(TURNS)(
+		"s1-safety-judge on: %s is screened by S1 and every request goes to the S1 endpoint",
+		async (_lang, text) => {
+			forcedFlags.set(S1_SAFETY_JUDGE_FLAG, true);
+			const fetchSpy = vi.fn(async () => new Response("{}", { status: 503 })) as unknown as typeof fetch;
+			vi.stubGlobal("fetch", fetchSpy);
+			const deps = inputJudgesFor(spyLogger());
+			expect(Object.keys(deps)).toEqual(["s1"]);
+			await getGuardVerdict(textIn(text), { logger: spyLogger(), countLogHits: () => {}, policy: testPolicy(), roundMs: 0, ...deps });
+			const urls = vi.mocked(fetchSpy).mock.calls.map((c) => String((c as unknown[])[0]));
+			expect(urls.length).toBeGreaterThan(0);
+			expect(urls.filter((u) => !u.startsWith(S1))).toEqual([]);
+		}
+	);
 });

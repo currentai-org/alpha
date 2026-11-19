@@ -7,7 +7,7 @@ import { journeyStep } from './helpers/journeyStep';
 import { STORAGE_POLL_INTERVALS } from './helpers/storagePoll';
 
 // Every My files refusal names the limit it hit and what to do next
-// (`storageRefusalMessage` in custodialUpload.ts) (CUR-2631). The too-large and wrong-type refusals come from the
+// (`storageRefusalMessage` in custodialUpload.ts). The too-large and wrong-type refusals come from the
 // real client check and the real server; the hourly and storage-full refusals would take 60 uploads
 // or a full 250 MB account to reach, so their upload response is answered with that status here and
 // the spec reads what the page makes of it. The server's status per limit is covered by
@@ -18,11 +18,8 @@ async function openMyFiles(
 	context: import('@playwright/test').BrowserContext,
 	baseURL: string
 ) {
-	// chunked-uploads off: these refusals name the one-request 4.4 MB ceiling, which a team account on a
-	// preview would otherwise not have (CUR-1780).
 	await setFlagOverrides(context, baseURL, {
-		'custodial-storage-view': true,
-		'chunked-uploads': false
+		'custodial-storage-view': true
 	});
 	await signInAsFreshUser(page);
 	await page.goto('/chat/storage', { waitUntil: 'commit' });
@@ -66,10 +63,11 @@ test(
 
 		await journeyStep(page, 'A3', 13, async () => {
 			// Over the per-file limit: refused in the browser before any upload starts.
-			await addFile(page, 'too-big.txt', 'text/plain', Buffer.alloc(4_500_000, 'a'));
+			// Over the 20 MB chunked ceiling, which the page checks before sending anything.
+			await addFile(page, 'too-big.txt', 'text/plain', Buffer.alloc(20_100_000, 'a'));
 			await expect(
 				page.getByText(
-					'That file is over the 4.4 MB limit per file. Compress it or split it, then add it again.'
+					'That file is over the 20 MB limit per file. Compress it or split it, then add it again.'
 				),
 				'the over-size refusal does not name the per-file limit'
 			).toBeVisible({ timeout: 10_000 });
@@ -109,7 +107,7 @@ test(
 			).toBeVisible({ timeout: 10_000 });
 			await page.unrouteAll();
 
-			// A 422 is a content refusal, and the server's line says which one (CUR-4662). A scanned PDF
+			// A 422 is a content refusal, and the server's line says which one. A scanned PDF
 			// with one picture per page past the screen's cap must read as that, not as "can't be stored".
 			const tooMany =
 				"This file has 41 pictures in it, and we can check up to 20 in one file, so it wasn't added. Split it into smaller files of up to 20 pictures and add each one.";

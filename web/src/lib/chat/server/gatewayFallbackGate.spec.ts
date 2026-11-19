@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { crossModelRouterURL, gatewayFallbackOverride, gatewayRetryDelayMs } from "./gatewayFallbackGate";
+import { crossModelRouterURL, gatewayFallbackOverride, gatewayNoCache, gatewayRetryDelayMs } from "./gatewayFallbackGate";
 
-// What decides whether CUR-1729 works is what goes ON THE WIRE and how long the turn waits before
+// What decides whether works is what goes ON THE WIRE and how long the turn waits before
 // giving up, so these assert the body fragment and the millisecond figure rather than a boolean.
 // The two that matter are the side-call exclusion and the cap: each one, removed, turns exactly its
 // own test red and nothing else.
@@ -22,7 +22,7 @@ describe("gatewayFallbackOverride — which calls are allowed to make the gatewa
 		expect(gatewayFallbackOverride(undefined)).toEqual({});
 	});
 
-	// A host that validates its body strictly answers 422 extra_forbidden on this field (CUR-2280).
+	// A host that validates its body strictly answers 422 extra_forbidden on this field.
 	const GATEWAY = "https://gateway.example/v1";
 	it("sends nothing to a host that is not the gateway, which would reject the unknown field", () => {
 		expect(gatewayFallbackOverride(true, "https://api.mistral.ai/v1", GATEWAY)).toEqual({});
@@ -33,7 +33,7 @@ describe("gatewayFallbackOverride — which calls are allowed to make the gatewa
 	});
 
 	// An event deployment's primary can be an adapter in front of the gateway while the backup lane calls
-	// the gateway directly (CUR-3936).
+	// the gateway directly.
 	const ADAPTER = "https://mozfest.example/folkways-adapter/v1";
 	it("asks the gateway not to substitute on the backup lane too, when the primary is a relay in front of it", () => {
 		expect(gatewayFallbackOverride(true, GATEWAY, [ADAPTER, GATEWAY])).toEqual({ disable_fallbacks: true });
@@ -74,7 +74,7 @@ describe("gatewayRetryDelayMs — how long we honour a cooldown before failing h
 	});
 });
 
-describe("crossModelRouterURL — Large 4 is answered by Large 4 or not at all (CUR-4551)", () => {
+describe("crossModelRouterURL — Large 4 is answered by Large 4 or not at all", () => {
 	const ROUTER = "https://router.stg.aipotluck.org/v1";
 	const GATEWAYS = (wire: string) => ["https://gateway.example/v1", undefined, crossModelRouterURL(wire, ROUTER)];
 
@@ -92,5 +92,19 @@ describe("crossModelRouterURL — Large 4 is answered by Large 4 or not at all (
 		expect(
 			gatewayFallbackOverride(true, "https://api.mistral.ai/v1", GATEWAYS("mistralai/mistral-large-2610"))
 		).toEqual({});
+	});
+});
+
+describe("gatewayNoCache", () => {
+	const GW = "https://api-internal.publicai.co/v1";
+	it("returns LiteLLM's cache opt-out for a gateway base URL, trailing slash or not", () => {
+		expect(gatewayNoCache(true, `${GW}/`, [undefined, GW])).toEqual({ cache: { "no-cache": true } });
+	});
+	it("returns nothing when the caller did not ask", () => {
+		expect(gatewayNoCache(undefined, GW, [GW])).toEqual({});
+	});
+	it("returns nothing for a host that is not the gateway, or when no gateway is known", () => {
+		expect(gatewayNoCache(true, "https://api.mistral.ai/v1", [GW])).toEqual({});
+		expect(gatewayNoCache(true, GW, [undefined, ""])).toEqual({});
 	});
 });

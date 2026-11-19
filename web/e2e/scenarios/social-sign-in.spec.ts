@@ -13,7 +13,7 @@ import { signInWithEmailOtp } from './helpers/signIn';
 import { startChattingPastWelcome } from './helpers/welcome';
 
 // Google and GitHub sign-in end to end, through the code-for-token exchange and the profile
-// read, on Better Auth's own built-in providers with no real account (CUR-1552). oauth-authorize-url.spec.ts
+// read, on Better Auth's own built-in providers with no real account. oauth-authorize-url.spec.ts
 // covers the authorize URL; this covers everything after it.
 //
 // @local-mock only: Better Auth compiles both providers' URLs in, so the local sign-in leg
@@ -53,7 +53,7 @@ async function deleteTestUsers(emails: string[]): Promise<void> {
 }
 
 // The tests below share the two fixed accounts above and this file's afterAll deletes them,
-// so they stay on one worker under the config's fullyParallel (CUR-3916). 'default' keeps them in order on one
+// so they stay on one worker under the config's fullyParallel. 'default' keeps them in order on one
 // worker without serial mode's skip-the-rest-on-a-failure.
 test.describe.configure({ mode: 'default' });
 
@@ -80,7 +80,7 @@ for (const provider of PROVIDERS) {
 				}
 			);
 
-			// CUR-2758: a1-sign-in.md row 4, from the chooser to landing back signed in.
+			// a1-sign-in.md row 4, from the chooser to landing back signed in.
 			await journeyStep(
 				page,
 				'A1',
@@ -131,7 +131,7 @@ for (const provider of PROVIDERS) {
 }
 
 // A person who changes the email on their Google account keeps one Alpha account, under the
-// new address (CUR-3249). Better Auth finds a returning OAuth user by the provider's id, so the first sign-in's
+// new address. Better Auth finds a returning OAuth user by the provider's id, so the first sign-in's
 // address used to stay for good; an email code at the new one then opened a second, empty account.
 // The mock signs this test in as its own variant identity (mock-oidc/server.mjs), so the other Google
 // tests, which may run at the same time, keep theirs.
@@ -164,7 +164,7 @@ test(
 			const previous = page;
 			page = await context.newPage();
 			// Nothing reads the old page again, so don't wait on its close: a landing still loading its
-			// assets through the context's cache route held close() until the test timed out (CUR-4058).
+			// assets through the context's cache route held close until the test timed out.
 			void previous.close().catch(() => {});
 		};
 		const signInWithGoogle = async () => {
@@ -224,7 +224,7 @@ test(
 );
 
 // Signing in brings a person back to the conversation they were in, with no new-chat
-// landing in between (CUR-1677). sign-in.spec.ts and passkey-sign-in.spec.ts prove it for the email code and the
+// landing in between. sign-in.spec.ts and passkey-sign-in.spec.ts prove it for the email code and the
 // passkey, which return through afterSignIn(); an OAuth sign-in returns through Better Auth's callback
 // instead, redirecting to the `callbackURL` the login page passed (login/+page.svelte), so it needs its
 // own walk. The guest's answer comes from upstream-stub.mjs, the leg's stand-in model.
@@ -235,7 +235,7 @@ for (const provider of PROVIDERS) {
 		async ({ page, context, baseURL }) => {
 			test.setTimeout(150_000);
 			// The rail offers "Log in" only when accounts are on. This leg has no PostHog, so the flag is
-			// set here, as mock-oidc-sign-in.spec.ts does for the Account page (CUR-2663).
+			// set here, as mock-oidc-sign-in.spec.ts does for the Account page.
 			await setFlagOverrides(context, baseURL!, { accounts: true });
 			await page.route(
 				(url) => `${url.origin}${url.pathname}` === provider.authorize,
@@ -349,7 +349,7 @@ for (const provider of PROVIDERS) {
 	);
 }
 
-// A person who backs out of the provider's consent screen (CUR-2793). The provider answers the
+// A person who backs out of the provider's consent screen. The provider answers the
 // authorize request by sending the browser straight back with `error=access_denied` and the same
 // state, which is what Google does on Cancel. They land on sign-in, still signed out, with copy that
 // says nothing changed. Before this the page showed "Linking failed (access_denied)".

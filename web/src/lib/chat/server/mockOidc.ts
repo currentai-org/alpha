@@ -8,9 +8,9 @@
 // REFUSED ON PRODUCTION. On production it is refused even with every var set, and says so loudly,
 // because a mock identity provider on production is a sign-in anyone can complete.
 //
-// LOOPBACK ONLY. The mock runs inside the test run, beside the app on the same machine (CUR-2451,
+// LOOPBACK ONLY. The mock runs inside the test run, beside the app on the same machine (
 // sign-in-local.yml). A mock on a public host lets anyone who finds it sign in to the deployment
-// that trusts it (CUR-2522). So the app registers it only at a loopback address, and only on a
+// that trusts it. So the app registers it only at a loopback address, and only on a
 // preview or development server.
 //
 // CANNOT TAKE THE OTHER PROVIDERS DOWN, NOR DEPEND ON THE NETWORK AT STARTUP. The endpoints are given
@@ -20,7 +20,7 @@
 // sign-in walk with nothing to click.
 //
 // The ID token is then decoded without signature verification, which OIDC Core §3.1.3.7 allows for
-// a token received directly from the token endpoint over TLS in exchange for our client secret. (CUR-1551)
+// a token received directly from the token endpoint over TLS in exchange for our client secret.
 import type { GenericOAuthConfig } from "better-auth/plugins/generic-oauth";
 
 const MOCK_OIDC_PROVIDER_ID = "mock-oidc";

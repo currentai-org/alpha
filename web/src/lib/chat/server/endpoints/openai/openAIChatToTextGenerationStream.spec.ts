@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2018- The Hugging Face team
+// SPDX-License-Identifier: Apache-2.0
+// Modified by Current AI from huggingface/chat-ui.
 import { describe, it, expect, vi } from "vitest";
 import { logger } from "$lib/chat/server/logger";
 import {
@@ -34,7 +37,7 @@ async function collect(gen: AsyncGenerator<unknown>) {
 // generated_text never reaches the user. A test that pins text at this layer cannot go red for the
 // failure that matters, so these pin the FLAG, and
 // the delivery is pinned where it can actually break (screenStream.spec.ts, and withTruncationNotice
-// below). CUR-149.
+// below).
 describe("openAIChatToTextGenerationStream — flags a generation cut at the token cap", () => {
 	it("sets truncated on the final chunk when finish_reason is length, and leaves the text alone", async () => {
 		const events = await collect(
@@ -47,7 +50,7 @@ describe("openAIChatToTextGenerationStream — flags a generation cut at the tok
 		expect(last?.truncated).toBe(true);
 		// Verbatim: the transform must not smuggle the notice into text that gets rebuilt downstream.
 		expect(last?.final).toBe("Half a thought that runs on");
-		// The last delta streams on its own ordinary token ahead of the final chunk (CUR-2081), so the
+		// The last delta streams on its own ordinary token ahead of the final chunk, so the
 		// final chunk carries no text of its own.
 		expect(events.at(-2)?.text).toBe(" that runs on");
 		expect(last?.text).toBe("");
@@ -119,8 +122,7 @@ describe("openAIChatToTextGenerationStream — usage accounting (stream_options.
 //
 // These names say what must survive, not which branch runs. "handles a merged usage chunk" would pass
 // just as well if the transform swallowed the answer and only kept the token counts — which looks like
-// an accounting detail until the panel's GLM panelist and its aggregator both return empty
-// (CUR-153).
+// an accounting detail, yet it leaves the panel's GLM panelist and its aggregator both empty.
 const GLM_MERGED = [
 	{ choices: [{ delta: { role: "assistant", reasoning_content: "Bern " }, finish_reason: null }] },
 	{ choices: [{ delta: { role: "assistant", reasoning_content: "vs Zurich." }, finish_reason: null }] },
@@ -173,10 +175,33 @@ describe("openAIChatToTextGenerationStream — usage merged into the finish_reas
 	});
 });
 
+// GLM's reasoning restates the prompt it was given. On the visitor's answer it belongs in the collapsed
+// Working panel (a <think> block ChatMessage folds), never dropped and never in the answer text; only a
+// side call drops it. Sent with reasoning off, GLM writes it into the answer instead.
+const GLM_SERVED = GLM_MERGED.map((c) => ({ ...c, model: "zai-org/GLM-5.2" }));
+
+describe("openAIChatToTextGenerationStream — a GLM answer keeps its reasoning in the Working panel", () => {
+	it("puts a GLM answer's reasoning in a <think> block ahead of the answer, not dropped", async () => {
+		const events = await collect(
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			openAIChatToTextGenerationStream(chunks(GLM_SERVED as any) as any, undefined, Date.now(), false, "zai-org/GLM-5.2", [], undefined, true)
+		);
+		const finals = events.map((e) => e.final).filter((f): f is string => f !== null);
+		expect(finals).toEqual(["<think>Bern vs Zurich.</think>Bern is the capital."]);
+	});
+
+	it("still drops a GLM side call's reasoning, so a title never carries it", async () => {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const events = await collect(openAIChatToTextGenerationStream(chunks(GLM_SERVED as any) as any));
+		const finals = events.map((e) => e.final).filter((f): f is string => f !== null);
+		expect(finals).toEqual(["Bern is the capital."]);
+	});
+});
+
 // The conversation route persists the turn on FinalAnswer, which comes from the chunk carrying
 // generated_text. Provenance that trails it misses that write, so an export taken as the answer
-// settles shows no served model (CUR-2078). And a consumer that stops reading early, as output
-// screening does when its phase deadline trips, never reaches a late yield at all (CUR-2343).
+// settles shows no served model. And a consumer that stops reading early, as output screening does
+// when its phase deadline trips, never reaches a late yield at all.
 describe("openAIChatToTextGenerationStream — header provenance goes out with the first chunk", () => {
 	const served = { model: "swiss-ai/apertus-v1.5-70b", backend: "https://api.featherless.ai/v1" };
 	const run = (parts: Chunk[]) =>
@@ -222,9 +247,9 @@ describe("openAIChatToTextGenerationStream — header provenance goes out with t
 	});
 });
 
-// The HF router sends `x-inference-provider` and no served-model header, so a pinned GLM
-// turn persisted a provider and an empty model. The body's own `model` is the router's report of what
-// served, and it fills the gap only when the headers named no model. (CUR-1683)
+// The HF router sends `x-inference-provider` and no served-model header, so from headers alone a
+// pinned GLM turn would persist a provider and an empty model. The body's own `model` is the router's
+// report of what served, and it fills the gap only when the headers named no model.
 describe("openAIChatToTextGenerationStream — a provider-only header report takes the served model from the body", () => {
 	const metadataOf = async (
 		headers: { model?: string; provider?: string },
@@ -301,7 +326,7 @@ describe("openAIChatToTextGenerationSingle — flags a non-streamed answer cut a
 	});
 });
 
-// Mistral can send `content` as a list of parts rather than a string (CUR-2340). Read as a string, the
+// Mistral can send `content` as a list of parts rather than a string. Read as a string, the
 // first such delta throws `content.trim is not a function` and the answer never finishes.
 describe("openAIChatToTextGenerationStream — content sent as a list of parts", () => {
 	it("finishes the answer with the text parts when a delta's content is a list, rather than throwing", async () => {
@@ -375,7 +400,7 @@ describe("openAIChatToTextGenerationStream — content sent as a list of parts",
 	});
 
 	// Deltas a model really streamed: a
-	// reference naming a tool, then that call's arguments as plain text, split across deltas (CUR-2777).
+	// reference naming a tool, then that call's arguments as plain text, split across deltas.
 	it("drops a call written into the answer (a reference naming a tool, then its JSON) so the visitor never reads it", async () => {
 		const deltas: unknown[] = [
 			"0% de la", " factura en algunas", " zonas)",
@@ -410,7 +435,7 @@ describe("openAIChatToTextGenerationStream — content sent as a list of parts",
 		expect(events.at(-1)?.final).toBe("Heating costs most in winter.");
 	});
 
-	// The same call typed as plain text, the tool's own name first. (CUR-2777)
+	// The same call typed as plain text, the tool's own name first.
 	describe("a call typed into the answer as the tool's name then its JSON", () => {
 		const run = (deltas: string[], toolNames = ["web_search", "calculate"]) =>
 			collect(
@@ -446,7 +471,7 @@ describe("openAIChatToTextGenerationStream — content sent as a list of parts",
 		});
 	});
 
-	// CUR-2777, through a router that drops the `reference` part:
+	// The same call through a router that drops the `reference` part:
 	// "The capital of Chile is Santiago{"query": "capital of Chile"}". Only the arguments are left.
 	describe("a call left as bare arguments, with no reference and no tool name before it", () => {
 		const TOOLS = [
@@ -503,9 +528,9 @@ describe("openAIChatToTextGenerationStream — content sent as a list of parts",
 	});
 });
 
-// The first-chunk allowance can only be set per turn shape once the finish line records the
-// shape, so Axiom can split Large 3's time to first chunk by photo turn and text turn. (CUR-4003)
-describe("the [generation] finish line records the turn's shape (CUR-4003)", () => {
+// The finish line records the turn's shape, so time to first chunk can be split by photo turn and
+// text turn, and the first-chunk allowance judged per shape.
+describe("the [generation] finish line records the turn's shape", () => {
 	it("counts each image part and every character of text, in string and part-array messages", () => {
 		expect(
 			turnShapeOf([
@@ -552,8 +577,8 @@ describe("the [generation] finish line records the turn's shape (CUR-4003)", () 
 });
 
 describe("openAIChatToTextGenerationStream — a tool call's name reaches dispatch and replay as the declared name", () => {
-	// Medium 3.5 sent "\t\t  \nweb_search". Kept verbatim, the native kit ran no tool and the
-	// next round replayed the padded name, which LiteLLM refused with a 400 that ended the turn. (CUR-4362)
+	// Medium 3.5 can send "\t\t  \nweb_search". Kept verbatim, the native kit would run no tool and
+	// the next round would replay the padded name, which LiteLLM refuses with a 400 that ends the turn.
 	const toolStream = (name: string) =>
 		openAIChatToTextGenerationStream(
 			chunks([

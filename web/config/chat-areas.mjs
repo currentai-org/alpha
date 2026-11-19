@@ -1,4 +1,4 @@
-// The areas inside chat, and which chat source paths belong to each (CUR-2775). A PR whose live files are
+// The areas inside chat, and which chat source paths belong to each. A PR whose live files are
 // all chat code, and all inside the areas below, runs only the @chat specs tagged for those areas, plus
 // the smoke specs and its own ticket's specs. Read by `scripts/lib/e2eRunScope.mjs`; every @chat spec
 // names its areas on a line of its own, `// e2e-area: @composer @storage`, and
@@ -14,7 +14,7 @@
 //   `agentMode`, `messageProvenance` and `stores/deleteAll` are left out for that reason, as are
 //   `server/auth.ts` and `betterAuth.ts`, which every request runs. Map a file only after checking
 //   nothing on that path imports it.
-// - Every develop push runs the whole suite (scenario-suite-check.yml's push trigger, SOL-129), so a
+// - Every develop push runs the whole suite (scenario-suite-check.yml's push trigger), so a
 //   break that crosses areas is still caught; scoping moves when it is found, never whether.
 //
 // `turn` names specs about the turn itself (answers, streaming, lanes, refusals). No path maps to it:
@@ -62,7 +62,7 @@ export const CHAT_AREAS = {
 	agent: [
 		under(
 			CHAT,
-			'server/(agentArtifactDownload|agentConfirmUi|deleteAgentServiceData|migrateAgentTrust)\\.ts$'
+			'server/(agentConfirmUi|deleteAgentServiceData|migrateAgentTrust)\\.ts$'
 		),
 		under(CHAT, 'components/chat/AgentConfirmPrompt\\.svelte$'),
 		under(ROUTES, 'conversation/\\[id\\]/agent-')
@@ -76,7 +76,7 @@ export const CHAT_AREAS = {
 		under(ROUTES, 'models/'),
 		under(ROUTES, 'api/v2/models/'),
 		under(ROUTES, 'settings/\\(nav\\)/(models|\\[\\.\\.\\.model\\]|routing|local-inference)/'),
-		// The CLI pairing link and its poll, which end in the local-inference settings list. (CUR-4110)
+		// The CLI pairing link and its poll, which end in the local-inference settings list.
 		under(ROUTES, '(api/v2/)?local-inference/')
 	],
 	history: [

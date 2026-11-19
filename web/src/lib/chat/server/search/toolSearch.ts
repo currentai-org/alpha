@@ -9,7 +9,7 @@
  */
 // On the native path the model is the search decider, so the tool description names the
 // kinds of question that need search, such as rules and rights in a named country, which a model
-// can otherwise answer from memory with only the first two sentences. (CUR-2423)
+// can otherwise answer from memory with only the first two sentences.
 export const WEB_SEARCH_TOOL = {
 	type: "function",
 	function: {

@@ -35,7 +35,7 @@ describe("distillQuery", () => {
 		expect(distillQuery(q)).toBe(q);
 	});
 
-	it("keeps who is asking and where: a self-description names the jurisdiction the answer turns on (CUR-2423)", () => {
+	it("keeps who is asking and where: a self-description names the jurisdiction the answer turns on", () => {
 		for (const [q, place] of [
 			["I'm a tenant in England and my landlord wants to evict me. What are my rights?", "England"],
 			["I'm a nurse in Ontario, what is the minimum wage?", "Ontario"],
