@@ -28,6 +28,7 @@ import {
 	date,
 	primaryKey,
 	foreignKey,
+	bigint,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { ANSWER_REPORT_REASON_KEYS, REPORT_STATUS_KEYS } from "../../reportReasons";
@@ -283,6 +284,20 @@ export const account = pgTable(
 		uniqueIndex("account_provider_account_idx").on(t.providerId, t.accountId),
 		index("account_user_idx").on(t.userId),
 	]
+);
+
+// Better Auth's own rate-limit counters (`rateLimit.storage: "database"`): one row per limiter key
+// (an IP plus a path), so the per-IP limit holds across serverless instances. Better Auth names the
+// model `rateLimit` and reads `key`, `count` and `lastRequest` (epoch milliseconds).
+export const rateLimit = pgTable(
+	"rate_limit",
+	{
+		id: text("id").primaryKey(),
+		key: text("key").notNull(),
+		count: integer("count").notNull(),
+		lastRequest: bigint("last_request", { mode: "number" }).notNull(),
+	},
+	(t) => [uniqueIndex("rate_limit_key_idx").on(t.key)]
 );
 
 export const verification = pgTable(

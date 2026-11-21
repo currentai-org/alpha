@@ -104,6 +104,7 @@ const STATEFUL_SERVER_SPECS = [
 	'src/routes/chat/api/v2/keys/history/history-key.stateful.spec.ts',
 	'src/lib/chat/server/endpoints/openai/replayStore.spec.ts',
 	'src/lib/chat/server/betterAuth.accountMerge.spec.ts',
+	'src/lib/chat/server/betterAuth.rateLimitStorage.spec.ts',
 	'src/lib/chat/server/betterAuth.selfInvite.spec.ts',
 	// the mail a real invite sends, through the plugin and the app's own hook.
 	'src/lib/chat/server/betterAuth.invitationMail.spec.ts',

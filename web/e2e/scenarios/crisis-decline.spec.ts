@@ -6,7 +6,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 
 // A request for a way to hurt oneself is declined by the input screen's
 // chat-block-self-harm rule, so the model never runs and the persona's crisis clause
-// (findahelpline.com and 112 first) never reaches the person. The decline itself told them
+// (findahelpline.com first) never reaches the person. The decline itself told them
 // to "contact your local emergency services" and named no line. rules.json's "Support needed" copy
 // now links findahelpline.com, and this spec reads it inside the decline paragraph, separately from
 // the CrisisResources card, which carries the same link and would otherwise satisfy a page-wide check.
@@ -44,6 +44,12 @@ test(
 			decline.getByRole('link', { name: 'findahelpline.com' }),
 			'the decline names no helpline, so a person in crisis is left with "your local emergency number" alone'
 		).toHaveAttribute('href', 'https://findahelpline.com');
+		// The support card beside the decline holds the emergency number, picked per country; a 112 in the
+		// decline contradicts a card that says 911 or 999.
+		await expect(
+			decline,
+			'the decline names 112, which the support card may contradict'
+		).not.toContainText(/\b112\b/);
 
 		await expect(
 			answer.getByRole('note', { name: 'Support resources' }),
@@ -93,6 +99,7 @@ test(
 			decline.getByRole('link', { name: 'findahelpline.com' }),
 			'the Spanish decline lost its helpline link'
 		).toHaveAttribute('href', 'https://findahelpline.com');
+		await expect(decline, 'the Spanish decline names 112').not.toContainText(/\b112\b/);
 
 		// The card names itself in the language its own classifier picks, so find it by role and attribute.
 		await expect(

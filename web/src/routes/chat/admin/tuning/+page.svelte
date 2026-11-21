@@ -365,7 +365,7 @@
 				were something to say back. Keep <code>{"{style}"}</code> in the template: it carries the
 				tone and answer-shape instructions and, at its end, the honesty clause saying Alpha
 				generates text from patterns and can be wrong. Nothing in the code can remove that clause,
-				but deleting the token here does (CUR-1506).</span
+				but deleting the token here does.</span
 			>
 			<textarea
 				name="persona"

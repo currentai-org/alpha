@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from "vitest";
 const PICKER_ID = "mistral-medium-2604";
 const WIRE_ID = "mistral-medium-3.5-128b";
 
-// The gateway only knows the wire id; the picker id is a 400, as tuning's try met on alpha.
+// The gateway only knows the wire id; the picker id is a 400.
 const gatewayCreate = vi.fn(async ({ model }: { model: string }) => {
 	if (model !== WIRE_ID) {
 		throw new Error(`400 /chat/completions: Invalid model name passed in model=${model}`);

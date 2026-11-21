@@ -21,6 +21,7 @@ import { getGuardVerdict, guardPrimaryConfigured, type GuardScreenDeps } from "$
 import { isSelfHostEdition } from "$lib/chat/server/moderation";
 import { childRules, loadGuardPolicy } from "$lib/chat/server/guardPolicy";
 import type { FailedUnit, GuardHit, PreparedImage } from "$lib/chat/server/guardScreenTypes";
+import { screenRendition } from "$lib/chat/server/screenRendition";
 
 /** Distinct pictures one file may hold for this screen. At two calls each that is 40 calls to the
  *  guard endpoint for one file. A file with more is refused whole; no subset is screened in its place. */
@@ -100,8 +101,8 @@ export async function screenStoredImages(images: Uint8Array[], deps: UploadImage
 	const failedUnits: FailedUnit[] = [];
 	for (const { sha, bytes } of distinct) {
 		try {
-			// The rendition chat's screen uses (prepareTurnMedia.ts): fit-inside 1024×1024 JPEG q85.
-			const encoded = await sharpFn(bytes).resize({ width: 1024, height: 1024, fit: "inside" }).jpeg({ quality: 85 }).toBuffer();
+			// The rendition chat's screen uses (screenRendition.ts).
+			const encoded = await screenRendition(sharpFn, bytes);
 			prepared.push({
 				sha,
 				mime: "image/jpeg",

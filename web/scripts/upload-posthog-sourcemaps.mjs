@@ -31,6 +31,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { gitSha } from "../src/lib/server/runtimeEnv.js";
+import { appHost } from "../config/posthogRegion.mjs";
 
 const DIR = ".vercel/output/static";
 const CLI = "posthog-cli";
@@ -45,8 +46,10 @@ function releaseVersion() {
 	}
 }
 
+// The CLI's global `--host` flag (posthog-cli --help: "The PostHog host to connect to"; unset it uses
+// https://us.posthog.com). It goes before the subcommand, and takes the app host, not the ingest one.
 function run(args) {
-	execFileSync(CLI, args, { stdio: "inherit" });
+	execFileSync(CLI, ["--host", appHost, ...args], { stdio: "inherit" });
 }
 
 function deleteMaps(dir) {

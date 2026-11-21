@@ -52,8 +52,7 @@
 // `tool_round_rate_limited_sustained` refuses every such request on the first lane, so the
 // retries run out and the backup lane continues the transcript. `gap_map_db_down`
 // fails the gap map dataset read in gapMap/pageRead.ts, so a product or org page renders
-// from the committed snapshot. `csam_scanner_down` makes the known-CSAM scan in My files and
-// in a chat turn's image attachments (parseRequest.ts) fail as an unreachable HMA does, so a spec reads the refusal and sees nothing stored. `question_save_delayed`
+// from the committed snapshot. `question_save_delayed`
 // holds the question's first write in the chat route for QUESTION_SAVE_DELAY_MS, so a spec can
 // reload before the server has saved the turn. `agent_turn_deadline_20s` shortens an agent
 // turn's generation watchdog to 20s in the conversation route, so the route gives up on a run
@@ -109,8 +108,8 @@
 // fixed text (continueSummary.ts). `caret_cited_reply` does the same with two
 // web sources cited in Large 3's caret shapes ("Tokyo^1,2^"), so a spec sees each marker link to its
 // source. `crisis_line_reply` does the same with a crisis answer that names the US 988 line
-// first, so a spec sees the honesty stream put findahelpline.com and 112 ahead of it on whichever turn
-// path the visitor is on. `model_replay`, in
+// first, so a spec sees the honesty stream put findahelpline.com and the person's local emergency
+// services ahead of it on whichever turn path the visitor is on. `model_replay`, in
 // endpoints/openai/modelReplay.ts, answers the answer's model calls from a committed recording when one
 // matches the request and records the live response when none does, so a spec that reads provenance or
 // a stream filter runs the whole pipeline without a live answer. `model_replay_none` does the
@@ -207,10 +206,6 @@ export const FAULT_NAMES = [
 	"block_fixtures",
 	// The homepage gains a Cards block above a same-tone Promo Banner (siteFault.ts), so a spec scrolls that seam under block lag.
 	"home_cards_promo_pair",
-	"csam_scanner_down",
-	// The scanner's first attempt fails as a connection to a just-stopped machine does (csamScan.ts), and
-	// the one retry reaches a live one, so a spec sees an upload stored through a scanner blip.
-	"csam_scanner_blip",
 	"question_save_delayed",
 	"agent_turn_deadline_20s",
 	"output_screen_blocks",
@@ -225,6 +220,9 @@ export const FAULT_NAMES = [
 	// in a few turns and sees the limit message.
 	"daily_turn_cap_low",
 	"answer_holds_midway",
+	// One sentence, then silence until the shortened watchdog cuts the turn; a Continue gets the rest
+	// (textGeneration/index.ts), so a spec sees a cut answer kept and finished.
+	"answer_cut_at_ceiling",
 	"storage_listing_down",
 	"guest_file_move_skipped",
 	"storage_hub_rate_limited",
@@ -327,7 +325,8 @@ export function watchdogDeadlineMs(
 	opts: { isAgentTurn: boolean }
 ): number {
 	if (opts.isAgentTurn && fault === "agent_turn_deadline_20s") return AGENT_TURN_DEADLINE_FAULT_MS;
-	if (fault === "generation_timeout") return Math.min(configuredMs, GENERATION_TIMEOUT_FAULT_MS);
+	if (fault === "generation_timeout" || fault === "answer_cut_at_ceiling")
+		return Math.min(configuredMs, GENERATION_TIMEOUT_FAULT_MS);
 	if (fault === "answer_streams_past_cap") return Math.min(configuredMs, STREAMS_PAST_CAP_FAULT_MS);
 	return configuredMs;
 }

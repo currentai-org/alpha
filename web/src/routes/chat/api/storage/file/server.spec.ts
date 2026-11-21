@@ -50,7 +50,7 @@ beforeEach(() => {
 describe('download refuses to describe the bytes it serves', () => {
 	it('forces attachment so an uploaded .html can never render on our own origin', async () => {
 		// The hazard is stored XSS: a rendered page from this origin runs with our cookies and our
-		// session. Nothing here has been scanned either (the open half), so the disposition is
+		// session. Nothing here has been scanned either, so the disposition is
 		// what keeps "we stored something malicious" from becoming "we executed it".
 		// @ts-expect-error - RequestEvent is heavier than this test needs
 		const res = await GET({ locals: locals(), url: url(`users/${ACCOUNT_ID}/documents/evil.html`) });

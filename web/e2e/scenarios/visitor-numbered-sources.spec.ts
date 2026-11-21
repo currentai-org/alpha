@@ -5,6 +5,19 @@ import { chatEntry } from './helpers/chatEntry';
 import { turnDone } from './helpers/turn';
 import { warmupContext } from './helpers/warmup';
 import { startChattingPastWelcome } from './helpers/welcome';
+import {
+	HARD_UNWIND_GRACE_MS,
+	MAX_SEARCHED_GENERATION_TIMEOUT_MS
+} from '../../src/lib/chat/utils/deadlineLadder';
+
+// How long a turn may take before the spec calls it stuck. A turn with search off answers well
+// inside 120s. A searched turn may keep streaming until the product's own searched-turn bound, and
+// a preview's searched turn can take longer than 120s and still end complete, so the search-on turn
+// waits as long as the product lets it run.
+const TURN_WAIT_MS = {
+	off: 120_000,
+	always: MAX_SEARCHED_GENERATION_TIMEOUT_MS + HARD_UNWIND_GRACE_MS
+};
 
 // A visitor who pastes their own numbered sources, "[1] …" and "[2] …", and asks for a cited
 // answer expects the answer's [1] and [2] to mean those. With search off, the no-source guard deleted
@@ -70,11 +83,12 @@ async function askWithSearch(
 	await page.waitForURL(/\/chat\/conversation\/[a-f0-9]+/, { timeout: 30_000 });
 	const id = page.url().match(/\/conversation\/([a-f0-9]+)/)?.[1] ?? '';
 	const message = page.locator('[data-message-role="assistant"]').last();
+	const wait = TURN_WAIT_MS[mode];
 	await expect(
 		turnDone(message),
-		'the turn never finished within 120s' + warmupContext()
+		`the turn never finished within ${wait / 1000}s` + warmupContext()
 	).toBeVisible({
-		timeout: 120_000
+		timeout: wait
 	});
 	const res = await page.request.get(`/chat/api/v2/conversations/${id}`);
 	expect(res.ok(), `reading the stored conversation answered ${res.status()}`).toBe(true);
@@ -133,7 +147,7 @@ test(
 	"with search on, our sources are numbered after the visitor's [1] and [2], which never link to a result",
 	{ tag: ['@CUR-3844'] },
 	async ({ page }) => {
-		test.setTimeout(180_000);
+		test.setTimeout(TURN_WAIT_MS.always + 60_000);
 		let id = '';
 		try {
 			const turn = await askWithSearch(page, 'always', ON_PROMPT);

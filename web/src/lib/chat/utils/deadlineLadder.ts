@@ -12,14 +12,15 @@
  * ordering is structural rather than a coincidence of five magic numbers.
  *
  *   prestream chain (60s)
- *     → generation watchdog (env, clamped ≤155s) — silence timer (45s, primary) inside the same cap (backstop)
+ *     → generation watchdog (env, clamped ≤155s; a searched turn still streaming ≤205s) — silence
+ *       timer (45s, primary) inside the same cap (backstop)
  *       → hard unwind grace (+15s)
  *         → emergency cleanup tail (+3×5s)
  *           → platform kill (300s)
  *
  * and, on the client side:
  *
- *   generation staleness (180s) → background-track eviction (240s)
+ *   generation staleness (230s) → background-track eviction (290s)
  *
  * TWO SEPARATE INVARIANTS live here, and they do not have the same terms:
  *
@@ -71,14 +72,48 @@ export const EMERGENCY_TAIL_MS = 3 * EMERGENCY_CLEANUP_BUDGET_MS;
 export const HARD_UNWIND_GRACE_MS = 15_000;
 
 /**
+ * The longest a SEARCHED turn may run while it is still producing output: the room the
+ * total cap's still-streaming extension may give a native turn that searched the web. Everything else
+ * stops at MAX_SAFE_GENERATION_TIMEOUT_MS.
+ *
+ *   MAX_SEARCHED = PLATFORM − PRESTREAM_CHAIN − HARD_UNWIND_GRACE − EMERGENCY_TAIL − one cleanup budget
+ *
+ * It is the invocation invariant solved for the generation term, less one EMERGENCY_CLEANUP_BUDGET_MS of
+ * margin so the worst case (295s) is not the kill itself. A searched turn can reason in every round
+ * and spend up to two minutes inside web_search, so 155s can end it while it is still writing.
+ *
+ * Why not a hand-off past one request, as an agent run gets (agentHandoffAt)? An agent run lives in
+ * agent-service, so the page can follow it after the request ends. A native turn's model loop runs
+ * inside this invocation, and nothing outside it carries the work on, so the invocation's 300s
+ * (aipotluck-alpha's project default on the Pro plan) is the bound either way. Raising past it means
+ * raising that project setting, not this number.
+ *
+ * Only the extension reaches it, never a configured watchdog: the turn must still be streaming or in
+ * a tool round when its own cap arrives, and the silence watchdog ends it if the output stops.
+ */
+export const MAX_SEARCHED_GENERATION_TIMEOUT_MS =
+	PLATFORM_MAX_DURATION_MS -
+	PRESTREAM_CHAIN_DEADLINE_MS -
+	HARD_UNWIND_GRACE_MS -
+	EMERGENCY_TAIL_MS -
+	EMERGENCY_CLEANUP_BUDGET_MS;
+
+/**
  * How long a generation may go without any database write before the UI declares it dead.
  * `conversation.updatedAt` is bumped when a generation starts (the pre-stream message write) and
  * when it ends (persistConversation), so a non-terminal conversation quiet longer than this belongs
  * to a pod that crashed before persisting — it will never become terminal on its own.
  *
- * Raised 120s → 180s for agent turns. MUST stay under MAX_TRACK_DURATION_MS (see below).
+ *   STALE = MAX_SEARCHED + HARD_UNWIND_GRACE + 2 × EMERGENCY_CLEANUP_BUDGET
+ *
+ * The clamp invariant (see MAX_SAFE_GENERATION_TIMEOUT_MS for why the coefficient is 2) solved for the
+ * longest turn the ladder allows, so a searched turn still writing at 205s is never declared dead.
+ * Raised 120s → 180s for agent turns, then to 230s for searched turns; the cost is that a
+ * turn whose pod died is called dead 50s later. MUST stay under MAX_TRACK_DURATION_MS (see below).
  */
-export const GENERATION_STALE_MS = 180_000;
+export const GENERATION_STALE_MS =
+	MAX_SEARCHED_GENERATION_TIMEOUT_MS + HARD_UNWIND_GRACE_MS + 2 * EMERGENCY_CLEANUP_BUDGET_MS;
+
 
 /**
  * Margin between staleness and the client poller's eviction of a background generation. Staleness
@@ -131,9 +166,16 @@ export const DEFAULT_SILENCE_TIMEOUT_MS = 45_000;
 export const SILENCE_CHECK_INTERVAL_MS = 5_000;
 
 /**
- * Ceiling the env-supplied generation timeout is clamped to.
+ * Ceiling the env-supplied generation timeout is clamped to, and the most a turn that did not search
+ * may run. It must satisfy
  *
- *   MAX_SAFE = GENERATION_STALE_MS − HARD_UNWIND_GRACE_MS − 2 × EMERGENCY_CLEANUP_BUDGET_MS
+ *   MAX_SAFE + HARD_UNWIND_GRACE_MS + 2 × EMERGENCY_CLEANUP_BUDGET_MS ≤ GENERATION_STALE_MS
+ *
+ * which it did with equality while it was the ladder's largest rung (180 − 25 = 155s). Since searched
+ * turns took the larger MAX_SEARCHED_GENERATION_TIMEOUT_MS and STALE moved up with it, 155s is a held
+ * value rather than a derived one: the agent and local defaults equal it, agent-service's wall clock is
+ * derived from it, and nothing measured on those turns asks for more (see
+ * DEFAULT_AGENT_GENERATION_TIMEOUT_MS). The spec keeps it at or under MAX_SEARCHED.
  *
  * The coefficient on the cleanup budget is 2 — not 3, not 0. GENERATION_STALE_MS is measured
  * against `conversation.updatedAt`, not against the SSE event. On the hard-deadline path that write
@@ -142,9 +184,8 @@ export const SILENCE_CHECK_INTERVAL_MS = 5_000;
  * `finishGeneration`, runs after the staleness clock has already been reset by that write and must
  * be excluded — budgeting it would shrink the usable window for nothing.
  *
- * A naive `STALE − GRACE` (165s) is wrong in the other direction: an operator setting the env to
- * that ceiling produces 165 + 15 + 5 = 185s against a 180s stale window, i.e. a live turn declared
- * dead. 155s is the largest value that cannot do that.
+ * A naive `STALE − GRACE` is wrong in the other direction: the turn's terminal persist lands up to
+ * one more cleanup budget after the grace, past the stale window, and a live turn is declared dead.
  *
  * The prestream chain is NOT a term here. `gen + grace < stale` is sound because the `updatedAt`
  * write is effectively the last act of the prestream chain — everything expensive precedes it and
@@ -153,8 +194,7 @@ export const SILENCE_CHECK_INTERVAL_MS = 5_000;
  * in conversation/[id]/+server.ts. Do not "fix" it by adding a PRESTREAM_CHAIN_DEADLINE_MS term —
  * that would budget a ~0 quantity, cap generation at 105s, and gut the change.
  */
-export const MAX_SAFE_GENERATION_TIMEOUT_MS =
-	GENERATION_STALE_MS - HARD_UNWIND_GRACE_MS - 2 * EMERGENCY_CLEANUP_BUDGET_MS;
+export const MAX_SAFE_GENERATION_TIMEOUT_MS = 155_000;
 
 /**
  * The longest the input safety screen may run (guardGate.ts's operation-deadline cap).
@@ -192,8 +232,8 @@ export const MAX_INPUT_SCREEN_MS = 100_000;
  * deadline by design and are exactly the turns that extend toward the ceiling, so re-derive from the
  * same query once repair traffic exists.
  *
- * Anything higher than MAX_SAFE would require raising GENERATION_STALE_MS, which is a real change to
- * the invariants above rather than a tuning step, and nothing in the measured distribution asks for it.
+ * Nothing in the measured distribution asks for more than MAX_SAFE, and with `agent-run-handoff` on a
+ * longer run is handed off rather than held (below).
  *
  * It is a DEFAULT rather than a required env var on purpose. A number that has to be set somewhere
  * to be correct is a number that is wrong in every environment nobody remembered — and agent turns
@@ -216,7 +256,7 @@ export const DEFAULT_AGENT_GENERATION_TIMEOUT_MS = MAX_SAFE_GENERATION_TIMEOUT_M
  * box's own hardware or a cold daemon's load time — a real cold start on ordinary consumer hardware
  * measured well past 45s with zero bytes back (see the timeout investigation). Reuses the
  * SAME ceiling agent turns already get rather than inventing a new number: it's the largest value the
- * ladder can safely allow without revisiting GENERATION_STALE_MS (see MAX_SAFE's own derivation above).
+ * ladder allows a turn that did not search (see MAX_SAFE above).
  *
  * Deliberately does NOT get its own SILENCE default the way the total cap does here: the silence
  * watchdog's activity clock (`state.lastActivityAt`, streamUpdate.ts) is bumped by every processed
@@ -338,10 +378,11 @@ export function agentHandoffAt(turnDeadlineAt: number, now: number): number {
 	return Math.max(turnDeadlineAt - AGENT_HANDOFF_MARGIN_MS, now + (turnDeadlineAt - now) / 2);
 }
 
-/** Worst-case wall clock for one admitted invocation, against which the platform kill is judged. */
+/** Worst-case wall clock for one admitted invocation, against which the platform kill is judged. A
+ *  searched turn's extension is the longest generation the ladder allows, so it sets the worst case. */
 export const MAX_INVOCATION_MS =
 	PRESTREAM_CHAIN_DEADLINE_MS +
-	MAX_SAFE_GENERATION_TIMEOUT_MS +
+	MAX_SEARCHED_GENERATION_TIMEOUT_MS +
 	HARD_UNWIND_GRACE_MS +
 	EMERGENCY_TAIL_MS;
 

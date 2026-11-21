@@ -99,6 +99,10 @@ function orMerge(a: State, b: State): State {
 type S1UnitResult = {
 	/** rules.json rule id → its merged state over the S1 policies mapped to it. */
 	rules: Map<string, State>;
+	/** rules.json rule id → the highest score among its policies, each policy's being the higher of its
+	 *  broad and single scores (the crisis call's for a log policy). A policy with no score adds nothing.
+	 *  The guard ranks co-firing content rules by it; a rule with no score ranks as unknown. */
+	scores?: Map<string, number>;
 	/** Every call reached HTTP 2xx with a readable body. */
 	httpOk: boolean;
 	/** The configured id when an answering call reported the request's model. */
@@ -281,8 +285,16 @@ export function makeS1Judge(overrides: S1Overrides = {}): S1UnitJudge {
 		}
 		for (const p of crisis) put(p.ruleId, state(crisisScores.get(p.name), p.threshold));
 
+		const scoreByRule = new Map<string, number>();
+		const keep = (ruleId: string, ...vs: Array<number | undefined>) => {
+			for (const v of vs) if (v !== undefined && v > (scoreByRule.get(ruleId) ?? -1)) scoreByRule.set(ruleId, v);
+		};
+		for (const p of blocking) keep(p.ruleId, broad.scores.get(p.name), single.get(p.name));
+		for (const p of crisis) keep(p.ruleId, crisisScores.get(p.name));
+
 		return {
 			rules: byRule,
+			scores: scoreByRule,
 			httpOk,
 			...(answered ? { servedModel: S1_JUDGE.model, servedBackend } : {}),
 			calls,

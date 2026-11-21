@@ -782,7 +782,10 @@ function buildAuth() {
 			// match" in place of the copy for a lapsed code. The daily cron sweeps lapsed rows instead
 			// (db/cleanup.ts), and a code its own verify finds lapsed is still deleted then.
 			verification: { disableCleanup: true },
+			// Counters live in the database (rate_limit table), not each instance's memory, so the per-IP
+			// limit on sign-in codes holds across serverless instances.
 			rateLimit: {
+				storage: "database",
 				customRules: {
 					"/email-otp/send-verification-otp": venueSignInRule,
 					"/sign-in/email-otp": venueSignInRule,

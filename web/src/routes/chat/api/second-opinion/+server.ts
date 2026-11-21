@@ -54,7 +54,7 @@ import {
 //
 // An empty answer and a dead model both come back as `null` here, so a panelist that returns "" looks
 // like a timeout. A backend may merge `usage` into the finish_reason chunk, and the stream transform
-// must not skip such a chunk or runOne sees "". A parallel fanout should not be held by
+// must not skip such a chunk or runOne() sees "". A parallel fanout should not be held by
 // its slowest member:
 //   • EMPTY: nothing landed yet → the panel is almost certainly all-cold; give up fast instead of a
 //     minute-long spinner (an all-cold panel can hang about 69s before failing).
@@ -220,9 +220,8 @@ async function askPanelist(
 					// sovereign Apertus primary on Public AI's warm lane). The panel deliberately fans out to a
 					// DIVERSE set of open models — EuroLLM, Olmo, GLM, Qwen — most of which Public AI does not
 					// host. Inheriting the pin routed every panelist as `<model>:publicai`, which has no backend
-					// there, so the call hung to the timeout and the whole panel returned "unavailable" (the
-					// EuroLLM/Olmo takes land at 11-17s with the pin removed). "auto" lets the
-					// HF router pick a backend that actually serves each model, restoring the working panel.
+					// there, so the call hung to the timeout and the whole panel returned "unavailable".
+					// "auto" lets the HF router pick a backend that actually serves each model, restoring the working panel.
 					provider: "auto",
 					onFailure: (kind, status) => (failure = { kind, status }),
 					onServed: ({ backend, provider }) => {

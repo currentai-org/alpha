@@ -105,6 +105,11 @@ export interface TextGenerationContext {
 	/** When the route's generation watchdog ends this turn (epoch ms), so a retry inside the
 	 *  answer never starts a wait the turn cannot outlast. Absent ⇒ retries are bounded by attempts only. */
 	turnDeadlineAt?: number;
+	/** The latest this turn can run to while it is still working (epoch ms), read when called; see
+	 *  EndpointParameters.turnCeilingAt. */
+	turnCeilingAt?: () => number;
+	/** Continue: the visible text of the answer this turn finishes, cut off at the time limit. */
+	continueFrom?: string;
 	/** Re-attach this turn to the agent task its assistant message already started, rather than
 	 *  submitting a new one. Set by the route only for an attach request on a message that holds one.
 	 *  `handoff` is the stored fact that the run was submitted to hand off. */

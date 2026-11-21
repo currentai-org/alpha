@@ -12,7 +12,7 @@ import requireStaticClasses from './rules/require-static-classes.js';
 import remixIconsOnly from './rules/remix-icons-only.js';
 import pillNestedRadius from './rules/pill-nested-radius.js';
 
-export const rules = {
+const rules = {
 	'no-raw-colors': noRawColors,
 	'no-arbitrary-values': noArbitraryValues,
 	'no-off-scale': noOffScale,

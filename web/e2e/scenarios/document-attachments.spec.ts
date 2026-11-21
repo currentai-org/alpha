@@ -11,22 +11,15 @@ import { warmupContext } from './helpers/warmup';
 import { journeyStep } from './helpers/journeyStep';
 import { startChattingPastWelcome } from './helpers/welcome';
 
-// The abuse-match refusal names no reason on purpose, only the next step.
-const ABUSE_REFUSAL =
-	"This file couldn't be added, so it was taken off. You can send your message without it.";
-
 // A PDF dropped on the composer is read to text on the server (A6), screened with the
 // turn, and answered from. The fixture's one fact, a 37 EUR taxi cap that applies only after 22:00,
 // is in no model's training data, so an answer that states it has read the file.
 // The second test is the flag-off contract: the composer refuses the PDF before anything is sent.
-// The last two are the known-abuse image check on the pictures inside a PDF (embeddedImageScan.ts):
-// with the scanner down the PDF is dropped with the try-again line, and a PDF carrying the
-// placeholder bank's test image (web/hma/fly/, not abuse material) refuses the whole turn.
 // With the input screen's guard unreachable, the PDF turn is declined as couldn't-check,
 // since the document's text rides that screen and must never reach the model unscreened.
 // The text-only test is the workaround for accounts the full surface does not select
-// (`document-text-only`, storage/documentTextOnly.ts): the same bank-image PDF is answered from its
-// text, its picture is never opened, and My files holds only a .txt of the text, never the PDF.
+// (`document-text-only`, storage/documentTextOnly.ts): a PDF with a picture in it is answered from
+// its text, its picture is never opened, and My files holds only a .txt of the text, never the PDF.
 
 const FIXTURE = join(import.meta.dirname, 'fixtures', 'expenses-policy.pdf');
 const NAME = 'expenses-policy.pdf';
@@ -165,68 +158,6 @@ test(
 );
 
 test(
-	'with the scanner down, a dropped PDF is left out with the try-again line and the text is still answered',
-	{ tag: ['@preview-only', '@A6', '@CUR-987', '@CUR-3405', '@CUR-3505'] },
-	async ({ page, context, baseURL }) => {
-		test.setTimeout(150_000);
-		const token = process.env.E2E_FAULT_INJECT_TOKEN;
-		if (!token)
-			throw new Error('E2E_FAULT_INJECT_TOKEN is not set, so the scanner-down fault cannot fire');
-		await setFlagOverrides(context, baseURL!, {
-			'document-attachments': true,
-			'agent-mode': false
-		});
-		await page.route(CONVERSATION_POST, (route) =>
-			route.request().method() === 'POST'
-				? route.continue({
-						headers: {
-							...route.request().headers(),
-							'x-e2e-fault-inject-token': token,
-							'x-e2e-fault-inject': 'csam_scanner_down'
-						}
-					})
-				: route.continue()
-		);
-		await signInAsFreshUser(page);
-		const composer = await openChat(page);
-		// Row 9: the PDF can't be checked, so it is left out with a reason and the text answered.
-		await journeyStep(page, 'A6', 9, async () => {
-			await dropPdf(page);
-			await expect(page.getByText(NAME).first()).toBeVisible({ timeout: 10_000 });
-
-			await composer.fill(
-				'According to the attached policy, how much is a taxi reimbursed? If nothing is attached, say "no file".'
-			);
-			await composer.press('Enter');
-			const answer = page.locator('[data-message-role="assistant"]').last();
-			await expect(
-				turnDone(answer),
-				'no finished answer: with the scanner down the text should still be answered' +
-					warmupContext()
-			).toBeVisible({ timeout: 120_000 });
-			await expect(
-				page.getByText("We couldn't check this file just now, so it wasn't added."),
-				'the dropped PDF was not explained with the try-again line'
-			).toBeVisible({ timeout: 15_000 });
-			// The PDF stays in the sent message, marked not added, instead of vanishing from it.
-			const sent = page.locator('[data-message-type="user"]').last();
-			const leftOut = sent.locator('[data-left-out-file]');
-			await expect(leftOut, 'the left-out PDF vanished from the sent message').toContainText(NAME);
-			await expect(leftOut).toContainText('Not added');
-			// And only as not added, never also as a sent attachment beside the note.
-			await expect(
-				sent.getByText(NAME),
-				'the sent message shows the PDF as both sent and not added'
-			).toHaveCount(1);
-			await expect(
-				answer,
-				'the answer quoted the PDF, so an unchecked file reached the model'
-			).not.toContainText(/37\s?(EUR|euros?)|€\s?37/i);
-		});
-	}
-);
-
-test(
 	"with the input screen's guard unreachable, a PDF turn is declined, never answered from the unscreened document",
 	// @real-screen: the fault replaces the real screen's guard, and a PR preview otherwise stubs the screen.
 	{ tag: ['@preview-only', '@real-screen', '@A6', '@CUR-987', '@CUR-4101'] },
@@ -312,57 +243,6 @@ test(
 );
 
 test(
-	"a PDF carrying the bank's test image refuses the turn, as the same photo sent alone would",
-	{ tag: ['@preview-only', '@A6', '@CUR-987'] },
-	async ({ page, context, baseURL }) => {
-		test.setTimeout(150_000);
-		await setFlagOverrides(context, baseURL!, {
-			'document-attachments': true,
-			'agent-mode': false
-		});
-		await signInAsFreshUser(page);
-		const composer = await openChat(page);
-		const name = 'garden-report.pdf';
-		await dropPdf(page, BANK_IMAGE_PDF, name);
-		await expect(page.getByText(name).first()).toBeVisible({ timeout: 10_000 });
-
-		// The client opts into prestream events, so the 422 arrives inside a 200 stream; Chromium keeps
-		// no body for a streamed response, so the turn is fetched and fulfilled here to read it, as
-		// csam-scan.spec.ts does for a photo.
-		let turnBody = '';
-		await page.route(CONVERSATION_POST, async (route) => {
-			if (route.request().method() !== 'POST') return route.continue();
-			const response = await route.fetch();
-			turnBody = await response.text();
-			await route.fulfill({ response, body: turnBody });
-		});
-		const question = 'What does the figure in this report show?';
-		// Row 9: a picture inside the PDF matches the bank, so the whole turn is refused.
-		await journeyStep(page, 'A6', 9, async () => {
-			await composer.fill(question);
-			await composer.press('Enter');
-			await expect
-				.poll(() => turnBody, {
-					message:
-						'the turn was not refused, so the picture inside the PDF was not matched against the bank',
-					timeout: 60_000
-				})
-				.toMatch(/"statusCode":\s*422/);
-			await expect(
-				page.getByText(ABUSE_REFUSAL),
-				'the refused turn showed no next step'
-			).toBeVisible({ timeout: 15_000 });
-			// A file left on the composer made a resend fail the same way.
-			await expect(page.getByText(name), 'the refused PDF stayed on the composer').toHaveCount(0);
-			await expect(
-				page.locator('[data-message-role="assistant"]'),
-				'a turn carrying a matched picture was answered'
-			).toHaveCount(0);
-		});
-	}
-);
-
-test(
 	'under document-text-only, a PDF is answered from its text and only a .txt of that text is stored',
 	{ tag: ['@preview-only', '@A6', '@A3', '@CUR-987'] },
 	async ({ page, context, baseURL }) => {
@@ -376,8 +256,7 @@ test(
 		});
 		await signInAsFreshUser(page);
 		const composer = await openChat(page);
-		// The bank-image PDF on purpose: the full surface refuses this turn (the test above), so an
-		// answer here shows the picture was never opened and only the text went on.
+		// A PDF with a picture in it on purpose: an answer here shows only the text went on.
 		const name = 'garden-report.pdf';
 		// Row 6 for accounts on the text-only workaround: the PDF is answered from its text alone.
 		await journeyStep(page, 'A6', 6, async () => {

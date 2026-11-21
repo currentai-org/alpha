@@ -72,6 +72,12 @@ def key_for(principal: str, conversation: str) -> str:
     return hashlib.sha256(f"{principal}\x00{conversation}".encode()).hexdigest()[:40]
 
 
+def agent_conversation(session: str) -> str:
+    """The conversation key of a session's agent-tier sandbox. The agent's egress differs from the run-code tools',
+    and egress is fixed when a sandbox is made, so on a remote backend the two are separate sandboxes."""
+    return f"agent:{session}"
+
+
 def owner_for(principal: str) -> str:
     """The name an account's sandboxes are counted by: every sandbox of one principal carries it, so the live ones
     can be listed without the conversation. Hashed like `key_for`, and salted apart from it."""

@@ -34,7 +34,7 @@ import { SCANNER_UNREADABLE_IMAGE_MIMES } from "$lib/chat/constants/ragUpload";
 import { recordRateLimitTrip, clearRateLimitTrip, recordCsamMatch } from "$lib/chat/server/alerting";
 import { reportCsamMatchToCoop, reportHitToCoop } from "$lib/chat/server/moderation";
 import { runInBackground } from "$lib/chat/server/vercelBackground";
-import { csamScanConfigured, CsamScannerUnconfiguredError, HmaUnreachableError, scanCsamHash } from "./csamScan";
+import { csamScanAllowsUploads, CsamScannerUnconfiguredError } from "./csamScan";
 import { scanFileForCsam } from "./embeddedImageScan";
 import {
 	memoKeyStore,
@@ -346,12 +346,6 @@ export type UploadOptions = {
 	// The per-file ceiling for this upload. A chunked upload passes the larger chunked limit;
 	// omitted means the single-request one.
 	maxBytes?: number;
-	// The `csam_scanner_down` fault (preview only, see faultInjection.ts) makes the scan
-	// fail the way a dead HMA does, so a spec can read the refusal on a live deployment.
-	scannerDown?: boolean;
-	// The `csam_scanner_blip` fault (preview only) fails each scan's first attempt as a stopped scanner
-	// machine does, so a spec can show the retry still stores the file.
-	scannerBlip?: boolean;
 	// False refuses an image before it is scanned or stored. The route a person uploads
 	// through passes the `multimodal` flag for their account; omitted means allowed, for callers whose
 	// images were already gated (a chat attachment, which parseRequest refused unless the flag allows).
@@ -421,27 +415,22 @@ async function screenUpload(owner: Owner, relativePath: string, content: Blob, o
 		if (sniffed && SCANNER_UNREADABLE_IMAGE_MIMES.includes(sniffed)) throw new UnsupportedFileTypeError(sniffed);
 	}
 
-	// Scan before the real write, not after: HmaUnreachableError propagates straight out of
+	// Scan before the real write, not after: CsamScannerUnreachableError propagates straight out of
 	// this function (fail closed: no bytes reach the bucket at all), and a match is redirected to
 	// quarantine instead of the caller's real path, so a matched upload never lands where a normal
 	// listing or download could reach it.
 	//
-	// No scanner configured refuses every file, whatever its kind. A photo is scanned as
-	// itself and a PDF or DOCX by every picture inside it; a text file has none.
+	// An incomplete scanner config refuses every file, whatever its kind. With no scanner at all the
+	// file is taken and the scan logs that no hash check ran. A photo is scanned as itself and a PDF
+	// or DOCX by every picture inside it; a text file has none.
 	// UnscannableFileError (a picture we cannot decode) propagates like the scanner being down.
-	if (!csamScanConfigured()) throw new CsamScannerUnconfiguredError();
+	if (!csamScanAllowsUploads()) throw new CsamScannerUnconfiguredError();
 	const scanTarget = kind === "image" || kind === "pdf" ? kind : kind === "docx" ? "office" : null;
 	if ((scanTarget === "pdf" || scanTarget === "office") && opts.documentsAllowed === false) {
 		throw new DocumentInputNotAllowedError();
 	}
-	if (scanTarget && opts.scannerDown) {
-		throw new HmaUnreachableError(new Error("fault injection: csam_scanner_down"));
-	}
 	const collected: Buffer[] = [];
-	const scanResult = await scanFileForCsam(content, relativePath, scanTarget, {
-		collected,
-		...(opts.scannerBlip ? { scan: (c: Blob, n: string) => scanCsamHash(c, n, { failFirstAttempt: true }) } : {}),
-	});
+	const scanResult = await scanFileForCsam(content, relativePath, scanTarget, { collected });
 	const quarantine = async () => {
 		const quarantinePath = `${ownerPrefix(owner.root, owner.id)}${CUSTODIAL_QUARANTINE_DIRNAME}/${Date.now()}-${relativePath.split("/").pop()}`;
 		await (await custodialBackend()).put(quarantinePath, content);

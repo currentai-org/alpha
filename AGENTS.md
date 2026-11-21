@@ -72,9 +72,6 @@ read them for expected behaviour rather than running them on a fresh clone.
   (`web/LICENSE.chat-ui`); `THIRD_PARTY_NOTICES.md` lists them and `web/UPSTREAM.md` names the forked
   directories. Keep any upstream headers that are present.
 - `routerMetadata` keeps chat-ui's name though Alpha fills it on every turn, router or not.
-- `web/src/lib/chat/server/rules-s1.json` and `web/src/lib/chat/server/data/guard-vectors.json` are
-  placeholders. With them, the optional S1 safety judge has no policies, and the guard examples are
-  embedded at run time instead of read from precomputed vectors.
 - `web/src/lib/chat/server/rules.json` is the screening policy, not a detector. It is enforced only by the
   Shieldstral guard (`guard-primary` flag and `GUARD_SHADOW_URL`); by default Coop is the screen.
 - `pnpm dev` is plain `vite dev` and reads `web/.env.local`. `pnpm db:migrate` reads only `process.env`: run

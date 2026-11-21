@@ -68,7 +68,7 @@
 									: (CATEGORY_LABEL[r.category ?? ""] ?? r.category ?? "—")}
 							</td>
 							<td class="max-w-xs px-3 py-2 text-gray-700">{r.detail ?? "—"}</td>
-							<!-- the answer as it read when reported. It outlives a deleted conversation,
+							<!-- The answer as it read when reported. It outlives a deleted conversation,
 							     so this is the only place a retained report still says what was wrong. -->
 							<td class="max-w-md px-3 py-2 text-fg-2">
 								{#if r.answerText}
@@ -98,7 +98,7 @@
 							<td class="px-3 py-2 font-mono text-xs whitespace-nowrap text-gray-400">
 								{short(r.sessionId ?? r.userId)}
 							</td>
-							<!-- the reporter sees this on their own reports page. -->
+							<!-- The reporter sees this on their own reports page. -->
 							<td class="px-3 py-2 whitespace-nowrap">
 								<form method="POST" action="?/setStatus" class="flex items-center gap-2">
 									<input type="hidden" name="id" value={r.id} />

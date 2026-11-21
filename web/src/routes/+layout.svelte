@@ -47,7 +47,12 @@
 	// the matching $pageleave. The chat layout emits its additional events (session_started, …)
 	// against this same instance.
 	afterNavigate(({ to }) => {
-		initAnalytics(env.PUBLIC_POSTHOG_KEY, env.PUBLIC_POSTHOG_HOST, env.PUBLIC_POSTHOG_UI_HOST);
+		initAnalytics(
+			env.PUBLIC_POSTHOG_KEY,
+			env.PUBLIC_POSTHOG_HOST,
+			env.PUBLIC_POSTHOG_UI_HOST,
+			env.PUBLIC_POSTHOG_LEGACY_KEY
+		);
 		markInternalIfNeeded();
 		if (to) {
 			registerArrivalSource(to.url); // first-touch arrival source; guarded to once per session

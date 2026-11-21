@@ -12,21 +12,22 @@ const LOCAL = "qwen2.5-0.5b-instruct";
 
 // Every hosted row's persona prompt hash and the prompt its plan picks, taken from develop before the
 // local model's row existed. A hosted model's system prompt changing fails here.
+// The hashes cover the crisis clause that names no emergency number.
 const HOSTED: Record<string, { hash: string; prompt: "persona" | "minimal" }> = {
-	"mistral-large-2512": { hash: "0ea4ebe6c6f0f167", prompt: "minimal" },
-	"mistral-large-2610": { hash: "04c6db7147300cfe", prompt: "minimal" },
-	"mistral-small-2603": { hash: "60709dc59a0bee02", prompt: "minimal" },
-	"mistral-medium-2604": { hash: "c5ce13e2da1424f4", prompt: "minimal" },
-	"swiss-ai/apertus-v1.5-70b": { hash: "8961752c82bd04d2", prompt: "persona" },
-	"swiss-ai/apertus-v1.5-70b-thinking": { hash: "75d7614fd813f2e8", prompt: "persona" },
-	"swiss-ai/apertus-v1.5-8b": { hash: "b76ed1bbaa224efa", prompt: "persona" },
-	"swiss-ai/apertus-8b-instruct": { hash: "0ed911af16cfdb3e", prompt: "persona" },
-	"aisingapore/qwen-sea-lion-v4-32b-it": { hash: "f167e93bf40b1b77", prompt: "persona" },
-	"aisingapore/gemma-sea-lion-v4-27b-it": { hash: "c3054100be23d443", prompt: "persona" },
-	"aisingapore/nemotron-sea-lion-v4.8-120b-a12b": { hash: "d81e5e1551ad07a5", prompt: "persona" },
-	"bsc-lt/alia-40b-instruct": { hash: "442e957b6977f41f", prompt: "minimal" },
-	"speakleash/bielik-11b-v3.0-instruct": { hash: "b4274bbc6823d3d2", prompt: "persona" },
-	"zai-org/glm-5.2": { hash: "b421da202921fd48", prompt: "minimal" },
+	"mistral-large-2512": { hash: "2ac4540355f35466", prompt: "minimal" },
+	"mistral-large-2610": { hash: "83b0b8a7a92575d4", prompt: "minimal" },
+	"mistral-small-2603": { hash: "4c6eb992b1cc8eb3", prompt: "minimal" },
+	"mistral-medium-2604": { hash: "72da4d9b6500b5d0", prompt: "minimal" },
+	"swiss-ai/apertus-v1.5-70b": { hash: "51444937f098fcce", prompt: "persona" },
+	"swiss-ai/apertus-v1.5-70b-thinking": { hash: "20c18b4b13e91c01", prompt: "persona" },
+	"swiss-ai/apertus-v1.5-8b": { hash: "29b470945b6cbee1", prompt: "persona" },
+	"swiss-ai/apertus-8b-instruct": { hash: "99f48608102c3c1c", prompt: "persona" },
+	"aisingapore/qwen-sea-lion-v4-32b-it": { hash: "e40e2cc60fd55c1a", prompt: "persona" },
+	"aisingapore/gemma-sea-lion-v4-27b-it": { hash: "8862fcbf14e709c8", prompt: "persona" },
+	"aisingapore/nemotron-sea-lion-v4.8-120b-a12b": { hash: "7205c1c253f700c4", prompt: "persona" },
+	"bsc-lt/alia-40b-instruct": { hash: "8dc8f17c05c1dec3", prompt: "minimal" },
+	"speakleash/bielik-11b-v3.0-instruct": { hash: "5dd9aa85cb47c66e", prompt: "persona" },
+	"zai-org/glm-5.2": { hash: "6774b32dcc262496", prompt: "minimal" },
 };
 
 const sha = (s: string) => createHash("sha256").update(s).digest("hex").slice(0, 16);

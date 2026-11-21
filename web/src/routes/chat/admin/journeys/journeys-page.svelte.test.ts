@@ -73,7 +73,7 @@ const pageData = (m: JourneyManifest) => ({
 
 afterEach(() => cleanup());
 
-// the gallery's self-check reads the failed-recordings sentence alone. A known-broken
+// The gallery's self-check reads the failed-recordings sentence alone. A known-broken
 // (test.fail()) recording that failed as declared belongs in the expected-failures sentence and must
 // never be counted among the failures, or a promotion's graded run reads red when the board is right.
 describe("the journeys page's failed-recordings sentence", () => {
@@ -128,7 +128,7 @@ describe("the journeys page's failed-recordings sentence", () => {
 	});
 });
 
-// a clean card that carries a product-critique note must not read a bare "Clean", or a
+// A clean card that carries a product-critique note must not read a bare "Clean", or a
 // skimmer who trusts the badge misses the note. Seeded here because published runs have had no such card.
 describe("the journeys page's clean badge with notes", () => {
 	it('reads "Clean · 1 note" on both the rail and the open card for a clean card carrying one note', async () => {

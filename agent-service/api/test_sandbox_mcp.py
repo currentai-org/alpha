@@ -10,6 +10,7 @@ import shutil
 
 import app
 import pytest
+import sandbox_backend
 import sandbox_mcp
 from fastapi.testclient import TestClient
 from starlette.applications import Starlette
@@ -139,6 +140,32 @@ def test_listing_or_reading_a_fresh_conversation_starts_no_sandbox(client, monke
     is_error, text = call(client, "read_file", {"path": "notes.txt"}, headers=fresh)
     assert is_error and "not a file" in text
     assert made == [], "a read-only tool created a sandbox"
+
+
+def test_files_a_handed_off_agent_wrote_in_its_own_sandbox_are_listed_and_read(client, monkeypatch):
+    """On a remote backend the agent works in a sandbox of its own (its egress differs), so chat's listing and
+    reads look there too. What the agent keeps for itself is never shown."""
+    backend = app.SANDBOX_BACKEND
+    agent_box = sandbox_backend.Handle(key="k", tier=sandbox_backend.Tier.AGENT)
+    seen = []
+
+    def find(principal, conversation, tier):
+        seen.append((conversation, tier))
+        return agent_box if tier is sandbox_backend.Tier.AGENT else None
+
+    files = {"shapes/circle.py": b"def area(r): ...", "hermes-home-1/config.yaml": b"secret", "agent-quarantine/x": b"x"}
+    monkeypatch.setattr(backend, "find", find)
+    monkeypatch.setattr(backend, "list", lambda h, limit: sorted((k, len(v)) for k, v in files.items()))
+    monkeypatch.setattr(backend, "read", lambda h, path, limit: files[path] if path in files else (_ for _ in ()).throw(
+        sandbox_backend.SandboxError("not a file")))
+    headers = {**HEADERS, "x-agent-session": "conv-handoff"}
+    is_error, listing = call(client, "list_files", {}, headers=headers)
+    assert not is_error and listing == "shapes/circle.py (16 bytes)"
+    is_error, text = call(client, "read_file", {"path": "shapes/circle.py"}, headers=headers)
+    assert not is_error and text == "def area(r): ..."
+    is_error, text = call(client, "read_file", {"path": "hermes-home-1/config.yaml"}, headers=headers)
+    assert is_error and "not a file" in text
+    assert (sandbox_backend.agent_conversation("conv-handoff"), sandbox_backend.Tier.AGENT) in seen
 
 
 @needs_bwrap

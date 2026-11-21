@@ -71,7 +71,7 @@ async function openChatEntry(page: Page) {
 
 test(
 	'the model picker lists what this deployment admits, and picking one makes it the model for the next chat',
-	{ tag: ['@preview-only', '@F3'] },
+	{ tag: ['@preview-only', '@F3', '@provider-contract'] },
 	async ({ page }) => {
 		test.setTimeout(90_000);
 		await openChatEntry(page);

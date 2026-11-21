@@ -120,6 +120,22 @@ export function selfHostFlagValue(key: string, fallback: () => boolean): boolean
 	return d.onWhenEnv.every((name) => envSet(name) || satisfiedInstead(name, d.satisfiedBy?.[name]));
 }
 
+/** Called once from server init: each flag whose self-host default waits on env that is not set says so,
+ *  with the env that turns it on, so a forker sees what is off and why before the first turn. Silent
+ *  with PostHog configured, and for a flag the operator set in ALPHA_FLAGS. */
+export function logSelfHostFlagPostureAtBoot(): void {
+	if (!selfHostDefaultsApply()) return;
+	for (const f of FLAG_KEYS) {
+		const d = f.selfHost;
+		if (typeof d !== "object" || alphaFlagOverrides().has(f.key) || selfHostFlagValue(f.key, () => false)) continue;
+		const missing = d.onWhenEnv.filter((name) => !envSet(name) && !satisfiedInstead(name, d.satisfiedBy?.[name]));
+		logger.info(
+			{ flag: f.key, missingEnv: missing },
+			`[flags] self-host: ${f.key} is off until ${missing.join(" and ")} ${missing.length === 1 ? "is" : "are"} set (or ALPHA_FLAGS=+${f.key})`
+		);
+	}
+}
+
 /** How each registry condition is evaluated; a condition added to SELF_HOST_CONDITIONS without one here fails the type check. */
 const conditionHolds: Record<FlagSelfHostCondition, (name: string) => boolean> = {
 	"self-host-edition-unless-set": (name) => selfHostDefaultFor(env(name)),

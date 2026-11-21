@@ -217,6 +217,13 @@ const MIDWAY_FAULT_REST =
 	'Over thousands of years that turns a narrow river valley into a wide U shape.';
 const MIDWAY_FAULT_HOLD_MS = 20_000;
 
+/**
+ * What `answer_cut_at_ceiling` streams: the first sentence, then nothing until the watchdog ends the
+ * turn; on the Continue that follows, the rest. Two sentences of one answer to the spec's question.
+ */
+const CUT_FAULT_FIRST = 'Tides rise and fall twice a day because the Moon pulls on the oceans. ';
+const CUT_FAULT_REST = 'The Sun pulls too, so the highest tides come when the two line up.';
+
 /** What `answer_streams_past_cap` streams, a token every STREAMS_PAST_CAP_TOKEN_MS, so the
  *  whole answer takes about ten seconds against the fault's four-second total cap. */
 const STREAMS_PAST_CAP_TOKENS = Array.from(
@@ -800,6 +807,30 @@ export async function* textGenerationWithoutTitle(
 			text += token;
 		}
 		if (!signal.aborted) yield { type: MessageUpdateType.FinalAnswer, text, interrupted: false };
+		done.abort();
+		return;
+	}
+
+	// `answer_cut_at_ceiling` is an answer the turn's time limit cuts off mid-way: one sentence, then
+	// silence until the watchdog (shortened by the fault) ends the turn. The Continue that follows carries
+	// the cut text as `continueFrom`, and gets the rest.
+	if (ctx.faultInjection === 'answer_cut_at_ceiling') {
+		logger.warn(
+			{ conversationId: convId.toString(), fault: ctx.faultInjection, continued: Boolean(ctx.continueFrom) },
+			'[fault-injection] simulating answer_cut_at_ceiling — one sentence, then the time limit'
+		);
+		const signal = ctx.abortController.signal;
+		if (ctx.continueFrom) {
+			yield { type: MessageUpdateType.Stream, token: CUT_FAULT_REST };
+			yield { type: MessageUpdateType.FinalAnswer, text: CUT_FAULT_REST, interrupted: false };
+			done.abort();
+			return;
+		}
+		yield { type: MessageUpdateType.Stream, token: CUT_FAULT_FIRST };
+		await new Promise<void>((resolve) => {
+			if (signal.aborted) return resolve();
+			signal.addEventListener('abort', () => resolve(), { once: true });
+		});
 		done.abort();
 		return;
 	}

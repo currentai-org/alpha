@@ -1,6 +1,7 @@
 import { m } from '$lib/paraglide/messages.js';
 import { catalog } from './catalog';
 import type { AutoRouteNote } from './state';
+import { WATCHDOG_TIMEOUT_REASON } from '$lib/chat/types/MessageUpdate';
 
 /** A catalog model's name for a sentence, or its id when the catalog no longer lists it. */
 export function catalogName(id: string): string {
@@ -43,13 +44,20 @@ export function modelAnsweredNobody(statusCode: number | undefined, modelSilent:
  * never does: agent-service ran it, so the route's watchdog ending a run whose approval
  * nobody answered, or a stall in the agent's own steps, says nothing about the chosen model, which was
  * never called. The server's own mark already leaves agent turns out (watchdogCountsTowardBusy).
+ *
+ * Nor does the route's own watchdog ending a turn (`reason` WATCHDOG_TIMEOUT_REASON) unless the
+ * server also said the model sent nothing. Its 504 is our time limit running out, often on
+ * a model that was reasoning or searching the whole time, and calling that model unavailable told the
+ * person it was down while it was working.
  */
 export function failureMarksModelBusy(turn: {
 	statusCode: number | undefined;
 	modelSilent: boolean;
 	route: string | undefined;
+	reason?: string;
 }): boolean {
 	if (turn.route === 'agent') return false;
+	if (turn.reason === WATCHDOG_TIMEOUT_REASON) return turn.modelSilent;
 	return modelAnsweredNobody(turn.statusCode, turn.modelSilent);
 }
 

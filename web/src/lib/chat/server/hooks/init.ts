@@ -38,6 +38,8 @@ export async function initServer(): Promise<void> {
 	(await import("$lib/chat/server/moderation")).logCoopPostureAtBoot();
 	// A self-host edition with no safety classifier says so at boot: its turns answer unscreened.
 	(await import("$lib/chat/server/guardGate")).logGuardPostureAtBoot();
+	// Each self-host feature left off for want of a setting is named in the boot log.
+	(await import("$lib/chat/server/flags")).logSelfHostFlagPostureAtBoot();
 	initExitHandler();
 
 	if (config.METRICS_ENABLED === "true") {

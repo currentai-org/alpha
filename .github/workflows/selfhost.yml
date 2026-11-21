@@ -4,17 +4,9 @@
 name: Self-host smoke
 
 on:
+  # Every pull request, whatever it touches: with e2e.yml's mock-model job, it is the whole end-to-end
+  # check a pull request gets, and neither reads a secret.
   pull_request:
-    paths:
-      - "selfhost/**"
-      - "deploy/smoke.sh"
-      - "web/Dockerfile"
-      - "web/Dockerfile.dockerignore"
-      - "web/drizzle/**"
-      - "web/package.json"
-      - "pnpm-lock.yaml"
-      - "pnpm-workspace.yaml"
-      - ".github/workflows/selfhost.yml"
   merge_group:
   push:
     branches: [main]
@@ -49,7 +41,7 @@ jobs:
 
       # Restore only: a pull request never writes the cache, so a pull request cannot poison what main reads.
       - name: Restore the model cache
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ${{ env.LOCAL_MODELS_DIR }}
           key: ${{ env.MODEL_CACHE_KEY }}
@@ -59,7 +51,7 @@ jobs:
 
       - name: Save the model cache
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ${{ env.LOCAL_MODELS_DIR }}
           key: ${{ env.MODEL_CACHE_KEY }}

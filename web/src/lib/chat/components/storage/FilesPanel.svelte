@@ -51,6 +51,8 @@
 		sizeBytes: number;
 		addedAt?: string;
 		conversationId?: string;
+		/** The agent turn that made the file, from its folder in the key. */
+		agentTurn?: string;
 	};
 	type ListedFile = { path: string; size: number; addedAt?: string };
 	type UploadingRow = { kind: 'uploading'; id: string; name: string; sizeBytes: number; progress: number };
@@ -158,6 +160,13 @@
 		return at >= 0 && parts.length > at + 2 ? parts[at + 1] : undefined;
 	}
 
+	// A file an agent turn made is kept at `conversations/<conversation>/agent/<turn>/…`.
+	function agentTurnOf(path: string): string | undefined {
+		const parts = path.split('/');
+		const at = parts.indexOf('conversations');
+		return at >= 0 && parts[at + 2] === 'agent' && parts.length > at + 4 ? parts[at + 3] : undefined;
+	}
+
 	function toStoredRow(f: ListedFile): StoredRow {
 		return {
 			kind: 'stored',
@@ -166,6 +175,7 @@
 			sizeBytes: f.size,
 			addedAt: f.addedAt,
 			conversationId: conversationOf(f.path),
+			agentTurn: agentTurnOf(f.path),
 		};
 	}
 
@@ -492,6 +502,7 @@
 						size={formatBytes(row.sizeBytes)}
 						added={row.addedAt}
 						chatHref={chatHrefFor(row)}
+						agentTurn={row.agentTurn}
 						thumbnailUrl={row.sizeBytes <= THUMBNAIL_MAX_BYTES ? fileUrl(row) : undefined}
 						onOpen={() => openRow(row)}
 						onDelete={() => requestDelete(row)}

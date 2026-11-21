@@ -199,6 +199,22 @@ describe("applyMessageUpdate", () => {
 		expect(ctx.message.interrupted).toBe(true);
 	});
 
+	it("records and sends a continued answer's FinalAnswer as the whole answer, since the page renders a finished message from it", async () => {
+		const ctx = makeCtx({
+			message: emptyMessage("Cut here. more"),
+			initialMessageContent: "Cut here. ",
+		});
+		ctx.message.updates = [];
+		const out = await applyMessageUpdate(
+			{ type: MessageUpdateType.FinalAnswer, text: "more", interrupted: false },
+			ctx
+		);
+
+		expect(out).toEqual({ type: MessageUpdateType.FinalAnswer, text: "Cut here. more", interrupted: false });
+		expect(ctx.message.updates.at(-1)).toEqual(out);
+		expect(ctx.message.content).toBe("Cut here. more");
+	});
+
 	it("appends a hash file entry", async () => {
 		const ctx = makeCtx();
 		await applyMessageUpdate(
@@ -224,6 +240,15 @@ describe("applyMessageUpdate", () => {
 			await applyMessageUpdate(u, ctx);
 
 		expect(ctx.message.files?.map((f) => f.agentPath)).toEqual(["a/__init__.py", "b/__init__.py"]);
+	});
+
+	it("keeps the agent turn on the message's file reference, which the download route reads the saved copy by", async () => {
+		const ctx = makeCtx();
+		await applyMessageUpdate(
+			{ type: MessageUpdateType.File, name: "r.md", sha: "e3b0", mime: "text/markdown", agentPath: "r.md", agentTurn: "task-42" },
+			ctx
+		);
+		expect(ctx.message.files?.[0]).toMatchObject({ agentPath: "r.md", agentTurn: "task-42" });
 	});
 
 	it("still appends every non-agent file, identical bytes included", async () => {
@@ -528,5 +553,16 @@ describe("applyMessageUpdate — a native tool round still retrieving", () => {
 		expect(ctx.state.runningTools).toBe(true);
 		await applyMessageUpdate(phase("thinking"), ctx);
 		expect(ctx.state.runningTools).toBe(false);
+	});
+	// the total cap gives a searched turn the longer ceiling, so the mark outlives the round.
+	it("marks the turn searched from the first searching marker, and the mark stays after the round ends", async () => {
+		const ctx = makeCtx();
+		expect(ctx.state.searched).toBe(false);
+		await applyMessageUpdate(phase("thinking"), ctx);
+		expect(ctx.state.searched).toBe(false);
+		await applyMessageUpdate(phase("searching"), ctx);
+		await applyMessageUpdate(stream("Barcelona "), ctx);
+		await applyMessageUpdate(phase("thinking"), ctx);
+		expect(ctx.state.searched).toBe(true);
 	});
 });

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { WATCHDOG_TIMEOUT_REASON } from '$lib/chat/types/MessageUpdate';
 import { failureMarksModelBusy, modelAnsweredNobody, repickedNote, shouldRepick, slowToStartLine, type FailedTurn } from './repick';
 
 const autoRoute = { model: 'alia-40b', reasons: ['Basque', 'Medium task'], explanation: 'ALIA is the strongest at Basque.' };
@@ -123,5 +124,22 @@ describe('failureMarksModelBusy', () => {
 
 	it('a failure that is about our request (400) marks nothing, agent or not', () => {
 		expect(failureMarksModelBusy({ statusCode: 400, modelSilent: false, route: undefined })).toBe(false);
+	});
+
+	// our watchdog's 504 marks the model busy only when the model sent nothing.
+	it("our watchdog's 504 on a model that was still working does not call the model unavailable", () => {
+		expect(
+			failureMarksModelBusy({ statusCode: 504, modelSilent: false, route: 'direct', reason: WATCHDOG_TIMEOUT_REASON })
+		).toBe(false);
+	});
+
+	it('our watchdog ending a model that sent nothing at all still marks it, as the server does', () => {
+		expect(
+			failureMarksModelBusy({ statusCode: 504, modelSilent: true, route: 'direct', reason: WATCHDOG_TIMEOUT_REASON })
+		).toBe(true);
+	});
+
+	it("a gateway's own 504 with no watchdog reason still marks the model", () => {
+		expect(failureMarksModelBusy({ statusCode: 504, modelSilent: false, route: 'direct' })).toBe(true);
 	});
 });

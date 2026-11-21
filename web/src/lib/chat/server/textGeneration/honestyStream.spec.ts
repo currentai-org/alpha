@@ -800,8 +800,9 @@ describe("honestyScreenStream — crisis referral order", () => {
 	const raw =
 		"I hear how heavy that feeling can be. If you ever feel unsafe, please call or text a crisis line right away: in the U.S., dial or text 988; in the UK, call Samaritans at 116 123; and globally you can find local numbers at [findahelpline.com](https://findahelpline.com).\n\nYou don't have to face this alone.";
 
-	// 988 survives the number guard only for a visitor in the US or Canada.
-	it("streams findahelpline.com and 112 ahead of 988, with no unverified mark on the link", async () => {
+	// 988 survives the number guard only for a visitor in the US or Canada. The inserted sentence names
+	// no emergency number: the support card holds it, picked per country.
+	it("streams findahelpline.com and local emergency services ahead of 988, naming no 112, with no unverified mark on the link", async () => {
 		const out = await drain(
 			honestyScreenStream(src([...tokensOf(raw, 7), fin(raw)]), {
 				grounded: false,
@@ -812,12 +813,14 @@ describe("honestyScreenStream — crisis referral order", () => {
 		);
 		const streamed = streamedText(out);
 		expect(streamed.indexOf("findahelpline.com")).toBeLessThan(streamed.indexOf("988"));
-		expect(streamed).toContain("call 112");
+		expect(streamed).toContain("local emergency services");
+		expect(streamed.indexOf("local emergency services")).toBeLessThan(streamed.indexOf("988"));
+		expect(streamed).not.toMatch(/\b112\b/);
 		expect(streamed).not.toContain(UNVERIFIED_TITLE);
 		expect(finalAnswer(out)?.text).toBe(streamed);
 	});
 
-	it("for a visitor in Portugal, keeps 112 and held national lines, and replaces 988 and every recalled number", async () => {
+	it("for a visitor in Portugal, keeps findahelpline.com, and replaces 988, the UK's national line and every recalled number", async () => {
 		const out = await drain(
 			honestyScreenStream(src([...tokensOf(raw, 7), fin(raw)]), {
 				grounded: false,
@@ -827,10 +830,11 @@ describe("honestyScreenStream — crisis referral order", () => {
 			})
 		);
 		const text = finalAnswer(out)?.text ?? "";
-		expect(text).toContain("call 112");
+		expect(text).toContain("local emergency services");
 		expect(text).not.toMatch(/988/);
-		// Samaritans' 116 123 is a UK line we hold, named here as the UK's, so it stays for every visitor.
-		expect(text).toContain("Samaritans at 116 123");
+		// Samaritans' 116 123 is a UK and Irish line; a visitor in Portugal cannot reach it.
+		expect(text).not.toMatch(/116 ?123/);
+		expect(text).toContain("Samaritans at [findahelpline.com](https://findahelpline.com)");
 	});
 
 	it("inserts once, even when a later paragraph names 988 again", async () => {
@@ -838,7 +842,7 @@ describe("honestyScreenStream — crisis referral order", () => {
 		const out = await drain(
 			honestyScreenStream(src([...tokensOf(twice, 11), fin(twice)]), { grounded: false, sources: [], allowedUrls: [] })
 		);
-		expect(streamedText(out).split("call 112").length - 1).toBe(1);
+		expect(streamedText(out).split("local emergency services").length - 1).toBe(1);
 	});
 
 	// A bare findahelpline.com renders as plain text, so the stream links it.
@@ -974,6 +978,86 @@ describe("honestyScreenStream — a crisis answer never ships a phone number the
 		expect(finalAnswer(out)?.text).not.toContain("3115");
 	});
 
+	// France's 3114 stays only when the visitor is in France or the message places the person there, and
+	// the support classifier that reads the message's country can still be running while the answer
+	// streams.
+	describe("a national line waits for the message's country before it is replaced", () => {
+		const fr = "Tu peux trouver une ligne sur [findahelpline.com](https://findahelpline.com). Si tu es en France, appelle le 3114.";
+		// The number streams before the resource, so only the end-of-stream pass judges it.
+		const late = "Si tu es en France, appelle le 3114. Tu peux aussi trouver une ligne sur [findahelpline.com](https://findahelpline.com).";
+		const classify = (country: string | undefined, ms = 20) => {
+			let named: string | undefined;
+			let land!: () => void;
+			const settled = new Promise<void>((r) => (land = r));
+			setTimeout(() => {
+				named = country;
+				land();
+			}, ms);
+			return { namedHelplineCountry: () => named, crisisSupportSettled: () => settled };
+		};
+
+		it("keeps 3114 as it streams when the classifier names France after the answer started", async () => {
+			const out = await drain(
+				honestyScreenStream(src([...tokensOf(fr, 6), fin(fr)]), { ...plain, helplineCountry: "tw", ...classify("fr") })
+			);
+			expect(streamedText(out)).toContain("appelle le 3114");
+			expect(finalAnswer(out)?.text).toBe(fr);
+		});
+
+		it("keeps 3114 in the final answer when the number streamed before the resource and France is named late", async () => {
+			const out = await drain(
+				honestyScreenStream(src([...tokensOf(late, 6), fin(late)]), { ...plain, helplineCountry: "tw", ...classify("fr") })
+			);
+			expect(finalAnswer(out)?.text).toBe(late);
+		});
+
+		it("replaces 3114 for a visitor in the US once the classifier names no country", async () => {
+			const out = await drain(
+				honestyScreenStream(src([...tokensOf(fr, 6), fin(fr)]), { ...plain, helplineCountry: "us", ...classify(undefined) })
+			);
+			expect(streamedText(out)).not.toContain("3114");
+			expect(finalAnswer(out)?.text).toContain("appelle le [findahelpline.com](https://findahelpline.com)");
+		});
+
+		it("replaces 3114 in the final answer for a visitor in the US when it streamed before the resource", async () => {
+			const out = await drain(
+				honestyScreenStream(src([...tokensOf(late, 6), fin(late)]), { ...plain, helplineCountry: "us", ...classify(undefined) })
+			);
+			expect(finalAnswer(out)?.text).not.toContain("3114");
+		});
+
+		it("keeps the held line and still replaces a recalled one in the same sentence once France is named", async () => {
+			const both = "Tu peux trouver une ligne sur [findahelpline.com](https://findahelpline.com). En France, appelle le 3114 ou le 3115.";
+			const out = await drain(
+				honestyScreenStream(src([...tokensOf(both, 6), fin(both)]), { ...plain, helplineCountry: "tw", ...classify("fr") })
+			);
+			const text = finalAnswer(out)?.text ?? "";
+			expect(text).toContain("le 3114 ou");
+			expect(text).not.toContain("3115");
+		});
+
+		it("replaces 3114 at the end of the stream when no classifier is wired, for a visitor outside France", async () => {
+			const out = await drain(
+				honestyScreenStream(src([...tokensOf(late, 6), fin(late)]), { ...plain, helplineCountry: "us" })
+			);
+			expect(finalAnswer(out)?.text).toContain("appelle le [findahelpline.com](https://findahelpline.com).");
+		});
+
+		it("never waits on the classifier for a recalled number that is no held national line", async () => {
+			const never = new Promise<void>(() => {});
+			const recalled = "Tu peux trouver une ligne sur [findahelpline.com](https://findahelpline.com). Appelle le 3115.";
+			const out = await drain(
+				honestyScreenStream(src([...tokensOf(recalled, 6), fin(recalled)]), {
+					...plain,
+					helplineCountry: "tw",
+					namedHelplineCountry: () => undefined,
+					crisisSupportSettled: () => never,
+				})
+			);
+			expect(finalAnswer(out)?.text).not.toContain("3115");
+		});
+	});
+
 	it("treats a support-stamped turn as a crisis answer before it names any resource", async () => {
 		const text = "Tafadhali piga 0800 720 020 sasa hivi. Hauko peke yako.";
 		const out = await drain(
@@ -1019,7 +1103,7 @@ describe("honestyScreenStream — a crisis answer never ships a phone number the
 		}
 	});
 
-	it("inserts the 112 sentence in the language the person wrote in", async () => {
+	it("inserts the findahelpline sentence in the language the person wrote in", async () => {
 		const es = "Lo siento mucho. Si tu amiga está en crisis en Estados Unidos, puede llamar al 988.";
 		const out = await drain(
 			honestyScreenStream(src([...tokensOf(es, 6), fin(es)]), { ...plain, noticeLanguage: Promise.resolve("es") })

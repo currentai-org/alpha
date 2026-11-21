@@ -7,7 +7,7 @@
 // calls the report hook, the "probe/shadow/screen endpoint never report" contract holds structurally.
 //
 // AUTH: a shared bearer (SAFETY_SCREEN_TOKEN), constant-time compared over fixed-length HMAC digests —
-// the pattern (hooks/handle.ts). 401 on a wrong/absent bearer; 503 (loud) when
+// the same pattern as hooks/handle.ts. 401 on a wrong/absent bearer; 503 (loud) when
 // the token is UNSET — config missing is not an open door. The token is CONFIG, not a feature flag; this
 // endpoint is NOT gated by `guard-primary` (that flag governs the chat turn path only — the agent asks
 // for screening by configuration, on its own deploy cadence).

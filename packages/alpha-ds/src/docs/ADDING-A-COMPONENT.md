@@ -55,7 +55,5 @@ Update the docs in the same commit as the code:
 
 1. Replace hand-written markup with components, primitives and patterns. Move colours to token
    utilities.
-2. Run `node scripts/ds-lint-ratchet.mjs --report` to list the remaining violations in the file, and
-   fix them all.
-3. Add the file to `DESIGN_SYSTEM_STRICT` in `web/eslint.config.js`.
-4. Run `pnpm lint:design --update` to record the lower baseline.
+2. Delete the file's entry in `web/eslint-suppressions.json` and run `pnpm exec eslint <file>` from
+   `web/`. Every remaining violation is now an error; fix them all.

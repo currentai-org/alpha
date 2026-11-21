@@ -417,7 +417,21 @@ export interface CatalogModel {
 	 * Such a round asks for any tool (`"required"`) instead (calculateTool.ts `wireToolChoice`).
 	 */
 	namedToolChoice?: false;
+	/**
+	 * What the per-turn energy and water estimate prices this model from (server/turnFootprint.ts).
+	 * Absent means not estimated, and the footprint panel says so rather than showing a number.
+	 */
+	footprint?: ModelFootprint;
 }
+
+/**
+ * The size facts an EcoLogits estimate needs. `ecologits` names the model's entry in the EcoLogits
+ * registry, which carries its parameter counts. `parametersB` gives the published size in billions of
+ * parameters, for a model the registry does not list: `total`, and `active` for a mixture of experts.
+ */
+type ModelFootprint =
+	| { ecologits: { provider: string; model: string } }
+	| { parametersB: { total: number; active?: number } };
 
 const models: Omit<CatalogModel, 'provider'>[] = [
 	{
@@ -426,6 +440,8 @@ const models: Omit<CatalogModel, 'provider'>[] = [
 		family: 'Apertus',
 		maker: 'swiss-ai',
 		gatewayId: 'swiss-ai/apertus-v1.5-70b',
+		// 70B dense (the model card); not in the EcoLogits registry.
+		footprint: { parametersB: { total: 70 } },
 		tier: 'deep',
 		languages: ['*'],
 		status: 'live',
@@ -439,6 +455,8 @@ const models: Omit<CatalogModel, 'provider'>[] = [
 		family: 'Apertus',
 		maker: 'swiss-ai',
 		gatewayId: 'swiss-ai/apertus-v1.5-8b',
+		// 8B dense (the model card); not in the EcoLogits registry.
+		footprint: { parametersB: { total: 8 } },
 		tier: 'quick',
 		languages: ['*'],
 		status: 'live',
@@ -455,6 +473,8 @@ const models: Omit<CatalogModel, 'provider'>[] = [
 		family: 'ALIA',
 		maker: 'bsc',
 		gatewayId: 'BSC-LT/ALIA-40b-instruct',
+		// 40B dense (the model card); not in the EcoLogits registry.
+		footprint: { parametersB: { total: 40 } },
 		tier: 'balanced',
 		languages: ['es', 'ca', 'gl', 'eu'],
 		alsoGood: ['en', 'pt', 'fr'],
@@ -485,6 +505,8 @@ const models: Omit<CatalogModel, 'provider'>[] = [
 		family: 'SEA-LION',
 		maker: 'ai-singapore',
 		gatewayId: 'aisingapore/Nemotron-SEA-LION-v4.8-120B-A12B',
+		// 120B total, 12B active (the model id); not in the EcoLogits registry.
+		footprint: { parametersB: { total: 120, active: 12 } },
 		tier: 'deep',
 		languages: ['id', 'ms', 'th', 'vi', 'tl', 'my', 'km', 'lo', 'ta'],
 		alsoGood: ['en'],
@@ -514,6 +536,8 @@ const models: Omit<CatalogModel, 'provider'>[] = [
 		family: 'Bielik',
 		maker: 'speakleash',
 		gatewayId: 'speakleash/Bielik-11B-v3.0-Instruct',
+		// 11B dense (the model card); not in the EcoLogits registry.
+		footprint: { parametersB: { total: 11 } },
 		tier: 'balanced',
 		languages: ['pl'],
 		alsoGood: ['en'],
@@ -528,6 +552,7 @@ const models: Omit<CatalogModel, 'provider'>[] = [
 		family: 'GLM',
 		maker: 'zhipu',
 		gatewayId: 'zai-org/GLM-5.2',
+		footprint: { ecologits: { provider: 'mistralai', model: 'glm-5-2' } },
 		tier: 'deep',
 		languages: ['zh'],
 		alsoGood: ['en'],
@@ -545,6 +570,7 @@ const models: Omit<CatalogModel, 'provider'>[] = [
 		family: 'Mistral',
 		maker: 'mistral',
 		gatewayId: 'mistral-large-2512',
+		footprint: { ecologits: { provider: 'mistralai', model: 'mistral-large-2512' } },
 		tier: 'deep',
 		languages: ['*'],
 		alsoGood: ['en', 'fr', 'de', 'es', 'it', 'pt'],
@@ -569,6 +595,7 @@ const models: Omit<CatalogModel, 'provider'>[] = [
 		family: 'Mistral',
 		maker: 'mistral',
 		gatewayId: 'mistral-large-2610',
+		// No `footprint`: EcoLogits does not list Large 4, and its size is not published.
 		tier: 'deep',
 		languages: ['*'],
 		alsoGood: ['en', 'fr', 'de', 'es', 'it', 'pt'],
@@ -591,6 +618,7 @@ const models: Omit<CatalogModel, 'provider'>[] = [
 		family: 'Mistral',
 		maker: 'mistral',
 		gatewayId: 'mistral-medium-2604',
+		footprint: { ecologits: { provider: 'mistralai', model: 'mistral-medium-2604' } },
 		tier: 'balanced',
 		languages: ['*'],
 		alsoGood: ['en', 'fr', 'de', 'es', 'it', 'pt'],

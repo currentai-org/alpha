@@ -28,7 +28,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // verbatim. Rename it in a commit that touches nothing else, if it ever seems worth the round trip.
 test(
 	'sending a message from /alpha/chat renders the conversation with no console exceptions',
-	{ tag: '@F2' },
+	{ tag: ['@F2', '@provider-contract'] },
 	async ({ page }) => {
 		const errors: string[] = [];
 		page.on('pageerror', (err) => errors.push(err.message));
@@ -107,7 +107,7 @@ test(
 // value the header takes from the first send until the turn ends.
 test(
 	'a new chat header never reads "Conversation" while the rail calls it "New Chat"',
-	{ tag: '@F2' },
+	{ tag: ['@F2', '@provider-contract'] },
 	async ({ page }) => {
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });
 		await page.addLocatorHandler(welcomeDialog, async () => {
@@ -169,7 +169,7 @@ test(
 // of the card knows where that claim is actually tested.
 test(
 	'Alpha answers: a reply arrives with words in it, not an empty turn that ended quietly',
-	{ tag: ['@F2', '@live'] },
+	{ tag: ['@F2', '@live', '@provider-contract'] },
 	async ({ page }) => {
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });
 		await page.addLocatorHandler(welcomeDialog, async () => {
@@ -1793,5 +1793,90 @@ test(
 				).toHaveCount(1);
 			})
 		);
+	}
+);
+
+// A turn the time limit ends after part of the answer was written keeps that part, saved, with a
+// notice saying it was cut off. Continue beside Retry asks the model to go on from its last word, and
+// the finished answer reads as one. `answer_cut_at_ceiling` writes one sentence, then holds until the
+// shortened watchdog ends the turn; on the Continue it writes the second.
+test(
+	'a turn the time limit cuts off keeps its partial answer, saved, and Continue finishes it in place',
+	{ tag: ['@C3', '@preview-only', '@CUR-5187'] },
+	async ({ page }) => {
+		test.setTimeout(150_000);
+		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });
+		await page.addLocatorHandler(welcomeDialog, async () => {
+			await startChattingPastWelcome(welcomeDialog);
+		});
+		await installFaultInjectionHeader(page, 'answer_cut_at_ceiling');
+		await page.goto(chatEntry(), { waitUntil: 'commit' });
+
+		const first = 'Tides rise and fall twice a day because the Moon pulls on the oceans.';
+		const rest = 'The Sun pulls too, so the highest tides come when the two line up.';
+		const cutOff = 'This answer was cut off at the time limit.';
+		const question = 'Why are there two tides a day?';
+		const composer = page.getByLabel('Message AI Potluck');
+		await composer.click({ timeout: 30_000 });
+		await composer.fill(question);
+		await composer.press('Enter');
+		await page.waitForURL(/\/(alpha\/)?chat\/conversation\/[a-f0-9]+/, { timeout: 30_000 });
+
+		const reply = page.locator('[data-message-role="assistant"]').last();
+		await expect(
+			reply.getByText(cutOff),
+			'the cut-off notice never showed: the watchdog did not fire, or the fault header did not reach the server'
+		).toBeVisible({ timeout: 90_000 });
+		await expect(
+			reply,
+			'the part of the answer written before the time limit is gone'
+		).toContainText(first);
+		await expect(
+			reply.getByText(/took too long to respond/),
+			'the cut answer shows the generic timeout copy as well'
+		).toHaveCount(0);
+
+		// Saved, not only on screen: a reload brings back the same part and the same notice.
+		await page.reload({ waitUntil: 'commit' });
+		const reloaded = page.locator('[data-message-role="assistant"]').last();
+		await expect(
+			reloaded.getByText(cutOff),
+			'after a reload the cut answer lost its notice'
+		).toBeVisible({ timeout: 30_000 });
+		await expect(reloaded, 'after a reload the cut answer lost its text').toContainText(first);
+		await expect(
+			reloaded.getByRole('button', { name: 'Retry' }),
+			'the cut answer offers no Retry'
+		).toBeVisible();
+
+		await journeyStep(page, 'C3', 11, async () => {
+			await reloaded.getByRole('button', { name: 'Continue', exact: true }).click();
+			const answer = page.locator('[data-message-role="assistant"]').last();
+			await expect(answer, 'Continue never added the rest of the answer').toContainText(rest, {
+				timeout: 60_000
+			});
+			await expect(answer, 'Continue lost the part written before the cut').toContainText(first);
+			await expect(
+				page.getByText(cutOff),
+				'the cut-off notice stayed after Continue finished the answer'
+			).toHaveCount(0);
+			await expect(
+				page.locator('[data-message-type="user"]').filter({ hasText: question }),
+				'Continue showed the question twice'
+			).toHaveCount(1);
+			await expect(
+				page.locator('[data-message-role="assistant"]'),
+				'Continue left a second answer bubble'
+			).toHaveCount(1);
+		});
+
+		// The finished answer is what was saved.
+		await page.reload({ waitUntil: 'commit' });
+		const saved = page.locator('[data-message-role="assistant"]').last();
+		await expect(saved, 'the continued answer was not saved whole').toContainText(rest, {
+			timeout: 30_000
+		});
+		await expect(saved).toContainText(first);
+		await expect(page.getByText(cutOff)).toHaveCount(0);
 	}
 );

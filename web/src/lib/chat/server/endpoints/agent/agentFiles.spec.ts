@@ -131,6 +131,27 @@ describe("an agent turn's files are saved with the conversation", () => {
 		expect(answer).not.toContain("about four hours");
 	});
 
+	it("saves the files under the agent task that made them", async () => {
+		const turns: (string | undefined)[] = [];
+		await agentTurn([{ name: "a.txt", bytes: 2, text: "a\n", truncated: false }], {
+			conversationId,
+			saveAgentFiles: async (files: File[], opts?: { turn?: string }) => {
+				turns.push(opts?.turn);
+				return fakeSave()(files);
+			},
+		});
+		expect(turns).toEqual(["t1"]);
+	});
+
+	it("yields each saved file with the turn it was filed under, so the message's reference reads the same folder", async () => {
+		const { chunks } = await agentTurn([{ name: "a.txt", bytes: 2, text: "a\n", truncated: false }], {
+			conversationId,
+			saveAgentFiles: async (files: File[]) =>
+				(await fakeSave()(files)).map((r) => ({ ...r, agentTurn: "t1" })),
+		});
+		expect(chunks.find((c) => c.agentFile)?.agentFile).toMatchObject({ agentPath: "a.txt", agentTurn: "t1" });
+	});
+
 	it("keeps the four-hour line when the save fails, and the turn still answers", async () => {
 		const { chunks } = await agentTurn([{ name: "a.txt", bytes: 2, text: "a\n", truncated: false }], {
 			conversationId,

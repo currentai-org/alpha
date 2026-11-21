@@ -14,7 +14,8 @@ class FakePostHog {
 }
 vi.mock("posthog-node", () => ({ PostHog: FakePostHog }));
 
-import { __resetFlagsForTest, flagEnabledForUser, flagEnabledOr } from "./flags";
+import { __resetFlagsForTest, flagEnabledForUser, flagEnabledOr, logSelfHostFlagPostureAtBoot } from "./flags";
+import { logger } from "$lib/chat/server/logger";
 import { FLAG_KEYS } from "./flagKeys";
 
 // Keys picked by their declared self-host default, so the specs break if a default is edited away
@@ -92,9 +93,12 @@ describe("self-host defaults, PostHog not configured", () => {
 		expect(flagEnabledOr("multimodal", () => false)).toBe(false);
 	});
 
-	it("with PostHog unset, read-aloud stays off with HF_TOKEN set (boot copies OPENAI_API_KEY into it) and turns on only by ALPHA_FLAGS", () => {
+	it("with PostHog unset, read-aloud stays off with HF_TOKEN set (boot copies OPENAI_API_KEY into it), turns on with READ_ALOUD_BASE_URL, and turns on without it only by ALPHA_FLAGS", () => {
 		cfg.HF_TOKEN = "none";
 		expect(flagEnabledOr("read-aloud", () => false)).toBe(false);
+		cfg.READ_ALOUD_BASE_URL = "http://speech:8880/v1";
+		expect(flagEnabledOr("read-aloud", () => false)).toBe(true);
+		delete cfg.READ_ALOUD_BASE_URL;
 		cfg.ALPHA_FLAGS = "+read-aloud";
 		expect(flagEnabledOr("read-aloud", () => false)).toBe(true);
 	});
@@ -134,11 +138,51 @@ describe("self-host defaults, PostHog not configured", () => {
 
 	it("with PostHog unset, the safety, access and security flags still awaiting a decision read off, each though its code fallback is on", () => {
 		const awaitingDecision = [
-			"violence-recheck", "support-signal-classifier", "groundcheck", "guard-primary",
-			"self-harm-distress-declines", "s1-safety-judge", "mila-sp-output-guard",
-			"guard-history-cap", "workspace-org-creation", "document-attachments", "document-text-only", "mcp-servers",
+			"groundcheck", "guard-primary", "self-harm-distress-declines", "mila-sp-output-guard",
+			"guard-history-cap", "document-text-only", "mcp-servers",
 		];
 		for (const k of awaitingDecision) expect(flagEnabledOr(k, () => true), k).toBe(false);
+	});
+
+	it("with PostHog unset, document-attachments, workspace-org-creation and stream-follow read on with nothing configured", () => {
+		for (const k of ["document-attachments", "workspace-org-creation", "stream-follow"]) {
+			expect(flagEnabledOr(k, () => false), k).toBe(true);
+		}
+	});
+
+	it("with PostHog unset, each service-backed flag reads off until its service is configured, then on", () => {
+		const needs: Record<string, Record<string, string>> = {
+			"s1-safety-judge": { ZENTROPI_S1_ENDPOINT_URL: "https://s1.example", HF_TOKEN: "k" },
+			"violence-recheck": { GUARD_SHADOW_URL: "https://guard.example/v1" },
+			"support-signal-classifier": { GUARD_SHADOW_URL: "https://guard.example/v1" },
+			"read-aloud": { READ_ALOUD_BASE_URL: "http://speech:8880/v1" },
+			"agent-run-handoff": { AGENT_SERVICE_URL: "http://agent:8000", AGENT_SERVICE_TOKEN: "t" },
+		};
+		for (const [key, env] of Object.entries(needs)) {
+			for (const k of Object.keys(cfg)) delete cfg[k];
+			expect(flagEnabledOr(key, () => false), `${key} with no service`).toBe(false);
+			Object.assign(cfg, env);
+			expect(flagEnabledOr(key, () => false), `${key} with ${Object.keys(env).join(" and ")}`).toBe(true);
+		}
+	});
+
+	it("the boot log names each service-backed flag left off with the env that turns it on, and nothing once it is set", () => {
+		const warnings = () => (logger.info as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[1]));
+		(logger.info as ReturnType<typeof vi.fn>).mockClear();
+		logSelfHostFlagPostureAtBoot();
+		for (const [key, env] of [
+			["s1-safety-judge", "ZENTROPI_S1_ENDPOINT_URL"],
+			["violence-recheck", "GUARD_SHADOW_URL"],
+			["support-signal-classifier", "GUARD_SHADOW_URL"],
+			["read-aloud", "READ_ALOUD_BASE_URL"],
+			["agent-run-handoff", "AGENT_SERVICE_URL and AGENT_SERVICE_TOKEN"],
+		]) {
+			expect(warnings().some((m) => m.includes(`${key} is off until ${env}`)), `${key} named with ${env}`).toBe(true);
+		}
+		cfg.READ_ALOUD_BASE_URL = "http://speech:8880/v1";
+		(logger.info as ReturnType<typeof vi.fn>).mockClear();
+		logSelfHostFlagPostureAtBoot();
+		expect(warnings().some((m) => m.includes("read-aloud"))).toBe(false);
 	});
 
 	it("with PostHog unset, agent-mode-access reads on for a signed-in account, so a self-host reaches the agent toggle once agent-mode is on", async () => {

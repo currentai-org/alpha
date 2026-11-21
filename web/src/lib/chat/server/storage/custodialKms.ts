@@ -10,7 +10,7 @@
 // AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY. Off Vercel the role ARN is ignored, since there is no Vercel
 // OIDC token to assume it with; an operator who wants a role names it the SDK's way.
 
-import { DecryptCommand, EncryptCommand, KMSClient } from "@aws-sdk/client-kms";
+import { DecryptCommand, EncryptCommand, KMSClient, ReEncryptCommand } from "@aws-sdk/client-kms";
 import { awsCredentialsProvider } from "@vercel/oidc-aws-credentials-provider";
 import { config } from "$lib/chat/server/config";
 import { logger } from "$lib/chat/server/logger";
@@ -76,4 +76,27 @@ export async function kmsDecrypt(keyArn: string, ciphertext: Uint8Array, context
 	const out = await client(keyArn).send(new DecryptCommand({ KeyId: keyArn, CiphertextBlob: ciphertext, EncryptionContext: context }));
 	if (!out.Plaintext) throw new Error("KMS Decrypt returned no plaintext");
 	return out.Plaintext;
+}
+
+/** Moves a wrapped blob from one KMS key to another inside KMS: the plaintext is never returned to the
+ *  caller. The call is signed in the source key's region; the caller needs `kms:ReEncryptFrom` on the
+ *  source key and `kms:ReEncryptTo` on the destination. Both contexts are the owner's, so a blob
+ *  copied onto another owner's path is refused here as by `kmsDecrypt`. */
+export async function kmsReEncrypt(
+	fromArn: string,
+	toArn: string,
+	ciphertext: Uint8Array,
+	context: Record<string, string>
+): Promise<Uint8Array> {
+	const out = await client(fromArn).send(
+		new ReEncryptCommand({
+			CiphertextBlob: ciphertext,
+			SourceKeyId: fromArn,
+			SourceEncryptionContext: context,
+			DestinationKeyId: toArn,
+			DestinationEncryptionContext: context,
+		})
+	);
+	if (!out.CiphertextBlob) throw new Error("KMS ReEncrypt returned no ciphertext");
+	return out.CiphertextBlob;
 }

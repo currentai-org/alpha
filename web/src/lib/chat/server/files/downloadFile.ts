@@ -30,6 +30,8 @@ export type AttachmentOwner = {
 	guestSessionId?: string;
 	name?: string;
 	mime?: string;
+	/** The reference's agent turn, for a file an agent made: its copy sits under that turn's folder. */
+	agentTurn?: string;
 	/** The reference's linked location; the copy is read there and nowhere else. */
 	location?: MessageFile["location"];
 	/** Preview-only (faultInjection.ts): every bucket read answers as a throttled Hub does. */
@@ -75,12 +77,12 @@ const errorName = (e: unknown) => (e instanceof Error ? e.name : String(e));
 async function readCopy(
 	sha: string,
 	convId: string,
-	{ ownerId, guestSessionId, name, mime: refMime, location, fault, keys }: AttachmentOwner
+	{ ownerId, guestSessionId, name, mime: refMime, agentTurn, location, fault, keys }: AttachmentOwner
 ): Promise<(MessageFile & { type: "base64" }) | null | Unreadable> {
 	if ((!ownerId && !guestSessionId) || !name) return null;
 	if (!location && !custodialStorageConfigured()) return null;
 	const paste = refMime === CLIPBOARD_MIME;
-	const relativePath = attachmentPath(convId, sha, name, { paste });
+	const relativePath = attachmentPath(convId, sha, name, { paste, agentTurn });
 	if (!relativePath) return null;
 	const read = async (): Promise<Blob | null> => {
 		if (fault === "storage_hub_read_rate_limited") throw hubRateLimitedError("fault injection: storage_hub_read_rate_limited");

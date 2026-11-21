@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { generateHybridIdentity, identityToRecipient } from "age-encryption";
 import type { Message } from "$lib/chat/types/Message";
 
-// Second opinion on a sealed conversation (stage 4c): the panel reads the
+// Second opinion on a sealed conversation (sealed history): the panel reads the
 // question and the answer from the bodies the browser opened, each checked against its stored MAC, and
 // the verdict is saved sealed with the answer. Real age, real sealing on save; the conversation row is
 // one object the mocked doc store rewrites.

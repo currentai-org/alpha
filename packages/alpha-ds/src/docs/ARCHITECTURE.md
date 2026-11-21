@@ -79,9 +79,9 @@ example or an index.
 - Four are specific to Alpha: `no-legacy-tokens`, `no-unknown-tokens`, `no-off-scale` and
   `remix-icons-only`.
 
-The rules report errors on the design system and on migrated surfaces (`DESIGN_SYSTEM_STRICT` in
-`eslint.config.js`). Legacy chat code is held to a per-file, per-rule ratchet (`pnpm lint:design`,
-run in CI). Each rule has tests that show it fires on the violation it names.
+The rules report errors on the design system, on surfaces built on it (`DESIGN_SYSTEM_STRICT` in
+`eslint.config.js`) and on legacy chat code (`DESIGN_SYSTEM_LEGACY`), whose existing hits are held per
+file and per rule in ESLint's suppressions file, `web/eslint-suppressions.json`. Each rule has tests that show it fires on the violation it names.
 
 ## 8. Legacy bridge
 

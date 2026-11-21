@@ -71,7 +71,7 @@ function safetyWarnings(t: Tuning): string[] {
 }
 
 // Non-blocking, same reasoning as safetyWarnings: an operator may genuinely want a small fixed
-// set (a campaign, a demo), so warn rather than reject. Catches the footgun —
+// set (a campaign, a demo), so warn rather than reject. Catches this footgun:
 // pickRotatingStarters (starterRotation.ts) short-circuits at pool.length <= count and just
 // returns the whole pool unshuffled, so a starters override this small silently freezes what
 // every visitor sees instead of rotating it.

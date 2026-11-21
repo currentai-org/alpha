@@ -7,8 +7,7 @@ import { resolveFaultInjection } from "$lib/chat/server/textGeneration/faultInje
 // visitor, but `private` keeps a faulted answer out of any shared cache; the browser holds it for
 // the minute the server does.
 export const GET: RequestHandler = async ({ request }) => {
-	// `url` is the page the banner links to; null means this deployment has no status page, so no banner
-	// (a self-host without STATUS_PAGE_URL).
+	// `url` is the page the banner links to; null means this deployment has no status page, so no banner.
 	const url = statusPageUrl();
 	const fault = await resolveFaultInjection(request);
 	const state = url && fault === "status_page_degraded" ? "degraded" : await statusPageState();

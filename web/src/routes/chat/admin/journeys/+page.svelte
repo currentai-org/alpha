@@ -305,7 +305,7 @@
 
 	let videoEl = $state<HTMLVideoElement | null>(null);
 
-	// a finding's "Recording 2 at 14.6s" opens that recording at that second. Changing the tab
+	// A finding's "Recording 2 at 14.6s" opens that recording at that second. Changing the tab
 	// remounts the player, so the seek waits for the new one's metadata rather than landing on the old.
 	// The slug pins the seek to the new player: the old one can still be bound when this first runs.
 	let pendingSeek = $state<{ slug: string; at: number } | null>(null);
@@ -439,7 +439,7 @@
 		<!-- The configuration, before any result. A verdict with no configuration attached answers no
 		     question about readiness — which is how every by-hand run of this gets written up. -->
 		<section class="mb-6 border border-line-2 bg-surface-2 p-4 text-body" data-testid="journey-run-header">
-			<!-- the verdict leads, the way a build review page (Chromatic, Vercel's deployment
+			<!-- The verdict leads, the way a build review page (Chromatic, Vercel's deployment
 			     list) opens on pass or fail before anything else. Words carry it; the border only repeats it. -->
 			<p class="mb-3 flex flex-wrap items-center gap-2">
 				<span class="border px-2 py-1 text-subhead font-medium {VERDICT_TONE[verdict.tone]}" data-testid="journey-verdict">
@@ -501,7 +501,7 @@
 						{lookNotBroken.length === 1 ? "is" : "are"} asking for a look, with nothing yet seen broken.
 					{/if}
 					{#if failedRecordings.length > 0}
-						<!-- its own span so the self-check reads this sentence alone, not the
+						<!-- Its own span so the self-check reads this sentence alone, not the
 						     whole paragraph, which also holds the expected-failures list. -->
 						<span data-testid="journey-failed-recordings">
 							{failedRecordings.length}
@@ -509,7 +509,7 @@
 							{failedRecordings.map((r) => `${r.journey} — ${r.title}`).join(", ")}.
 						</span>
 					{/if}
-					<!-- a separate sentence in a quieter voice, because a skip is a gap in the
+					<!-- A separate sentence in a quieter voice, because a skip is a gap in the
 					     run and the page's whole job is to keep that apart from a result. Same register
 					     as the unmeasured block below, deliberately. -->
 					{#if skippedRecordings.length > 0}
@@ -521,7 +521,7 @@
 						</span>
 					{/if}
 				{/if}
-				<!-- a test.fail spec failing as declared is the suite working, so it sits
+				<!-- A test.fail() spec failing as declared is the suite working, so it sits
 				     outside the "asking for a look" sentence, in the same quiet voice as a skip. -->
 				{#if expectedRecordings.length > 0}
 					<span class="font-normal text-fg-2" data-testid="journey-expected-failures">
@@ -580,7 +580,7 @@
 			</div>
 		{/if}
 
-		<!-- one journey at a time. A rail of every journey on the left, the selected
+		<!-- One journey at a time. A rail of every journey on the left, the selected
 		     journey's recording as large as the page allows in the middle, and what was found beside
 		     it on a wide screen or under it otherwise. The old layout put every journey on one long
 		     page with its recordings in a two-column grid of thumbnails, which had to be fullscreened
@@ -695,7 +695,7 @@
 			{#if selected}
 				{@const j = selected}
 				{@const r = j.recordings[recIndex] ?? j.recordings[0]}
-				<!-- the id is what a filed ticket's recording link lands on (`…/journeys#A1`),
+				<!-- The id is what a filed ticket's recording link lands on (`…/journeys#A1`),
 				     and the page selects that journey on load. -->
 				<article id={j.journey} data-testid="journey-open" class="min-w-0 border border-line-2 {EDGE[j.state]}">
 					<header
@@ -706,7 +706,7 @@
 								<span class="font-mono text-fg-3">{j.journey}</span>
 								{j.project || j.journey}
 							</h2>
-							<!-- an undocumented recording (no docs/journeys/*.md claims this ID) has
+							<!-- An undocumented recording (no docs/journeys/*.md claims this ID) has
 							     nothing this line could show; `j.doc` is empty for exactly that case. -->
 							{#if j.doc}
 								<p class="mt-0.5 text-small text-fg-3">
@@ -760,7 +760,7 @@
 									</div>
 								{/if}
 								<figure class="space-y-1">
-									<!-- a recording opens on the blank tab before its page loads, so it
+									<!-- A recording opens on the blank tab before its page loads, so it
 									     starts where the publisher measured the first paint. The video route answers
 									     Range requests for this. A recording with no screen to show has no
 									     video stored, and says so instead of drawing a white box. -->
@@ -776,7 +776,7 @@
 									{:else}
 										{#key r.slug}
 											<!-- svelte-ignore a11y_media_has_caption -->
-											<!-- one player per page, so nothing competes for the fetch the way ~100 tiles did. -->
+											<!-- One player per page, so nothing competes for the fetch the way ~100 tiles did. -->
 											<video
 												bind:this={videoEl}
 												data-slug={r.slug}
@@ -795,7 +795,7 @@
 											>{/if}
 										· {r.title}
 										{#if r.durationMs}· {secs(r.durationMs)}{/if} · {kb(r.bytes)}
-										<!-- what the spec measured, e.g. the A1 limit message's time; the breakdown on hover. -->
+										<!-- What the spec measured, e.g. the A1 limit message's time; the breakdown on hover. -->
 										{#each r.measurements ?? [] as m (m.name)}
 											· <span class="text-fg-2" title={m.detail} data-testid="journey-measurement"
 												>{m.name}: {m.value} {m.unit}</span
@@ -803,7 +803,7 @@
 										{/each}
 									</figcaption>
 								</figure>
-								<!-- a persona spec's turn-by-turn record. Frames alone cannot say whether a
+								<!-- A persona spec's turn-by-turn record. Frames alone cannot say whether a
 								     click landed on what the persona asked for or on a neighbour — `acted` is what the
 								     driver actually did, `why` is only the model's stated intent. -->
 								{#if r.personaTrace}
@@ -899,7 +899,7 @@
 														<span class="border px-1.5 py-0.5 text-small {SEVERITY_TONE[f.severity]}">
 															{f.severity} — {SEVERITY_LABEL[f.severity]}
 														</span>
-														<!-- this states the filing RULE, never the outcome. Tickets are
+														<!-- This states the filing RULE, never the outcome. Tickets are
 														     opened in a step that runs after the manifest is published, so no
 														     ticket id exists for this line to check against. -->
 														<span class="text-small text-fg-3">
@@ -918,7 +918,7 @@
 										</ul>
 										<p class="mt-2 text-small text-fg-3">
 											Whether a ticket was actually opened for any of these is in the run's own job
-											summary, not on this page (CUR-1670).
+											summary, not on this page.
 										</p>
 									{/if}
 									{#if j.pm.rejected && j.pm.rejected.length > 0}

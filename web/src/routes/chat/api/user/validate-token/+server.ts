@@ -13,7 +13,7 @@ const validateTokenSchema = z.object({
 	token: z.string(),
 });
 
-// brute-force lockout — this endpoint had no throttle at all before. Low real urgency
+// Brute-force lockout — this endpoint had no throttle at all before. Low real urgency
 // (ADMIN_CLI_LOGIN must stay `false` in prod by standing convention), but a token check deserves one.
 export const POST = async ({ request, locals, getClientAddress }) => {
 	const { success, data } = validateTokenSchema.safeParse(await request.json());

@@ -16,7 +16,7 @@ import {
 import { conversationSealWritesOn } from "$lib/chat/server/chat/sealedTurn";
 import { sealOwnerHistory } from "$lib/chat/server/chat/sealBackfill";
 
-// The caller's own wrapped conversation-history key (stage 1). The browser makes
+// The caller's own wrapped conversation-history key. The browser makes
 // and wraps the key; this route only keeps it.
 //
 // The owner is the session's, always: there is no parameter naming whose key to read or write, so no

@@ -17,7 +17,7 @@ import { createHash } from "node:crypto";
 import type sharp from "sharp";
 import { MAX_PDF_PAGES } from "$lib/chat/constants/ragUpload";
 import { logger as defaultLogger } from "$lib/chat/server/logger";
-import { csamScanSkipped, scanCsamHash, unscannedByOperatorChoice, type CsamScanResult } from "./csamScan";
+import { csamScanSkipped, scanCsamHash, unscannedResult, type CsamScanResult } from "./csamScan";
 
 /** Chat's line for a PDF or DOCX from an account `document-attachments` does not select. */
 export const DOCUMENTS_NOT_ACCEPTED_MESSAGE = "PDF and Word files can't be added here yet, so this one wasn't added.";
@@ -27,7 +27,7 @@ export const UNSCANNABLE_FILE_MESSAGE = "This file has a picture in it we couldn
 const PDF_TOO_LONG_MESSAGE = `This PDF has more than ${MAX_PDF_PAGES.toLocaleString("en")} pages, so it wasn't added.`;
 
 /** The file holds something the check cannot read, so it is refused. A retry gives the same answer,
- *  unlike HmaUnreachableError. `reason` is for logs only, never shown or sent with content; `notice`
+ *  unlike CsamScannerUnreachableError. `reason` is for logs only, never shown or sent with content; `notice`
  *  is the line chat shows for it. */
 export class UnscannableFileError extends Error {
 	name = "UnscannableFileError";
@@ -94,7 +94,7 @@ type Ctx = {
 
 /**
  * Scan `content` against the known-abuse list. Returns the first match, or clean. Throws
- * HmaUnreachableError (from scanCsamHash) when the scanner does not answer, and UnscannableFileError
+ * CsamScannerUnreachableError (from scanCsamHash) when the scanner does not answer, and UnscannableFileError
  * when the file cannot be checked; the caller refuses the file on either.
  */
 export async function scanFileForCsam(
@@ -104,9 +104,11 @@ export async function scanFileForCsam(
 	deps: EmbeddedScanDeps = {}
 ): Promise<CsamScanResult> {
 	const scan = deps.scan ?? scanCsamHash;
-	if (!deps.scan && csamScanSkipped()) return unscannedByOperatorChoice(name);
 	if (target === null) return { status: "clean" };
-	if (target === "image") return scan(content, name);
+	// No scanner: no hash check runs, and the file logs that once. A document's pictures are still
+	// extracted below, since the child-safety screen on stored pictures reads `collected`.
+	const skipped = !deps.scan && csamScanSkipped();
+	if (target === "image") return skipped ? unscannedResult() : scan(content, name);
 
 	const now = deps.now ?? Date.now;
 	const log = deps.logger ?? defaultLogger;
@@ -122,10 +124,18 @@ export async function scanFileForCsam(
 	try {
 		await collect(bytes, target, ctx, 0);
 	} catch (e) {
+		// With no hash check to run, a file whose pictures cannot be read is taken as it is, as it was
+		// before pictures were collected on this path; the stored-picture screen gets what was read.
+		// A stated limit with its own line, such as the PDF page limit, still refuses the file.
+		if (skipped && e instanceof UnscannableFileError && e.notice === UNSCANNABLE_FILE_MESSAGE) {
+			deps.collected?.push(...ctx.images);
+			return unscannedResult();
+		}
 		if (e instanceof UnscannableFileError) log.warn({ target, reason: e.reason }, "[csam-scan] file refused: unscannable");
 		throw e;
 	}
 	deps.collected?.push(...ctx.images);
+	if (skipped) return unscannedResult();
 	const extractedMs = now() - started;
 
 	let match: CsamScanResult | undefined;

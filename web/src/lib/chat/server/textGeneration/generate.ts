@@ -28,6 +28,7 @@ import { logger } from "../logger";
 import { unreadFilesNotice } from "../chat/unreadFilesNotice";
 import { storeChatAttachments } from "../storage/attachmentsToCustodial";
 import { region } from "$lib/server/runtimeEnv";
+import { createFootprintMeter } from "../turnFootprint";
 
 type GenerateContext = Omit<TextGenerationContext, "messages"> & {
 	messages: EndpointMessage[];
@@ -105,6 +106,8 @@ async function* generateImpl(
 		abortController,
 		faultInjection,
 		turnDeadlineAt,
+		turnCeilingAt,
+		continueFrom,
 		unhardenedUserText,
 		clientInstructions,
 		agentAttach,
@@ -126,6 +129,7 @@ async function* generateImpl(
 	let lastReasoningUpdate = new Date();
 	let status = "";
 	const startTime = new Date();
+	const footprintMeter = createFootprintMeter(model.id);
 	const modelReasoning = Reflect.get(model, "reasoning") as
 		{ type: string; beginToken?: string; endToken?: string; regex?: string } | undefined;
 	if (
@@ -200,7 +204,12 @@ async function* generateImpl(
 			historyLeftOut = Math.max(leftOut, mediaCut);
 		},
 		unhardenedUserText,
-		saveAgentFiles: (files) => storeChatAttachments(conv, files.map((file) => ({ file, paste: false }))),
+		saveAgentFiles: (files, opts) =>
+			storeChatAttachments(
+				conv,
+				files.map((file) => ({ file, paste: false })),
+				opts?.turn ? { agentTurn: opts.turn } : {}
+			),
 		...(clientInstructions ? { clientInstructions } : {}),
 		...(agentAttach ? { agentAttach } : {}),
 		...(laneRewrites ? { laneRewrites } : {}),
@@ -217,6 +226,8 @@ async function* generateImpl(
 		...(faultInjection === "model_replay" ? { replayModelCalls: "new_episodes" as const } : {}),
 		...(faultInjection === "model_replay_none" ? { replayModelCalls: "none" as const } : {}),
 		...(turnDeadlineAt !== undefined ? { turnDeadlineAt } : {}),
+		...(turnCeilingAt ? { turnCeilingAt } : {}),
+		...(continueFrom ? { continueFrom } : {}),
 		...(calculateTool ? { calculateTool: true } : {}),
 		...(calculateTool && calculateFirst ? { calculateFirst: true } : {}),
 		...(nativeTools ? { nativeTools } : {}),
@@ -307,6 +318,7 @@ async function* generateImpl(
 				sha: output.agentFile.sha,
 				mime: output.agentFile.mime,
 				agentPath: output.agentFile.agentPath,
+				...(output.agentFile.agentTurn ? { agentTurn: output.agentFile.agentTurn } : {}),
 			};
 			continue;
 		}
@@ -470,6 +482,7 @@ async function* generateImpl(
 		// 3) a served-model id is present (cross-model backup lanes seed it so provenance can name the
 		//    model that actually answered even when the host sends no provider header)
 		if ("routerMetadata" in output && output.routerMetadata) {
+			footprintMeter.noteServedModel(output.routerMetadata.model);
 			const hasProviderOnly = Boolean(output.routerMetadata.provider);
 			const hasServedModel = Boolean(output.routerMetadata.model);
 			// 4) the LiteLLM backend host is present — the only signal on a HEALTHY gateway turn, and the
@@ -539,6 +552,7 @@ async function* generateImpl(
 				},
 				"[usage] token accounting"
 			);
+			footprintMeter.noteUsage(u.completionTokens);
 			continue;
 		}
 		// text generation completed
@@ -739,4 +753,7 @@ async function* generateImpl(
 		// no output check
 		if (!output) break;
 	}
+	// One footprint figure per turn, from the provider's own output-token count and how long the
+	// generation took; nothing for a turn that reported no usage.
+	yield* footprintMeter.finish();
 }

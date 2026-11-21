@@ -78,7 +78,7 @@
 <div class="flex max-w-5xl flex-col gap-10 px-6 py-10 lg:px-12">
 	<PageHead
 		title="Design lint"
-		lead="An ESLint plugin (alpha-ds/*) modelled on shadcn/lint, plus rules for this system’s own contracts. Errors inside the design system and migrated surfaces; a ratchet everywhere else so legacy debt can only shrink."
+		lead="An ESLint plugin (alpha-ds/*) modelled on shadcn/lint, plus rules for this system’s own contracts. Errors everywhere; legacy code’s existing hits sit in a suppressions file, so its debt can only shrink."
 	/>
 	<CodeBlock code={snippets.run.code} html={snippets.run.html} label={snippets.run.label} />
 	<div class="flex flex-col border border-line-2">

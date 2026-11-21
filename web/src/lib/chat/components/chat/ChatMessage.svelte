@@ -39,8 +39,10 @@ Modified by Current AI from huggingface/chat-ui.
 		HELD_REASONING_STATUS,
 		MessageReasoningUpdateType,
 		MessageUpdateType,
-		MessageUpdateStatus
+		MessageUpdateStatus,
+		WATCHDOG_TIMEOUT_REASON
 	} from '$lib/chat/types/MessageUpdate';
+	import { requestModelPicker } from '$lib/chat/routing/choice';
 	import ImageLightbox from './ImageLightbox.svelte';
 	import AnswerFooter from '../provenance/AnswerFooter.svelte';
 	import { servingRecorded } from '$lib/chat/utils/routerMetadata';
@@ -83,6 +85,7 @@ Modified by Current AI from huggingface/chat-ui.
 		showsProvenanceReceipt
 	} from '$lib/chat/utils/generationState';
 	import { producedNoAnswer } from '$lib/chat/utils/producedNoAnswer';
+	import { hasAnswerToContinue } from '$lib/chat/utils/continueAnswer';
 	import { reconcileFinalAnswerText } from '$lib/chat/utils/finalAnswerReconciliation';
 	import { textDirection } from '$lib/chat/utils/textDirection';
 	import { m } from '$lib/paraglide/messages.js';
@@ -108,6 +111,8 @@ Modified by Current AI from huggingface/chat-ui.
 		// honest "touches a gap → get involved" CTA. Undefined for prompts that target no gap.
 		gap?: StarterGap;
 		onretry?: (payload: { id: Message['id']; content?: string }) => void;
+		/** Continue this answer from where the time limit cut it off. */
+		oncontinue?: (payload: { id: Message['id'] }) => void;
 		onshowAlternateMsg?: (payload: { id: Message['id'] }) => void;
 		// The user prompt this assistant answer responds to (resolved by ChatWindow from
 		// the preceding message, like `gap`). Lets the user request an independent second
@@ -139,6 +144,7 @@ Modified by Current AI from huggingface/chat-ui.
 		gap,
 		question,
 		onretry,
+		oncontinue,
 		onshowAlternateMsg,
 		onquote,
 		onsend,
@@ -621,13 +627,23 @@ Modified by Current AI from huggingface/chat-ui.
 	// respond. Please try again."), so the text already exists; this puts it in the transcript. Same
 	// honest-degradation shape as the two notices above, and the same fix: say what happened, over
 	// whatever content did survive (a timeout can fire after real partial text already streamed).
-	const errorNoticeMessage = $derived(
+	const errorUpdate = $derived(
 		[...(message.updates ?? [])]
 			.reverse()
 			.find(
 				(update): update is Extract<typeof update, { type: MessageUpdateType.Status }> =>
 					update.type === MessageUpdateType.Status && update.status === MessageUpdateStatus.Error
-			)?.message
+			)
+	);
+	const errorNoticeMessage = $derived(errorUpdate?.message);
+	// Our own time limit ended the turn. The model may have been working the whole time, so
+	// beside Retry the notice offers another model rather than leaving Retry the only way on.
+	const offersAnotherModel = $derived(errorUpdate?.reason === WATCHDOG_TIMEOUT_REASON);
+	// The time limit cut an answer off after part of it was written: the part stays, the notice
+	// says it was cut off, and Continue asks the model to finish it. An agent answer rebuilds from its task
+	// instead, so it is never offered Continue.
+	const cutAtTimeLimit = $derived(
+		offersAnotherModel && !message.agentRun && hasAnswerToContinue(message.content)
 	);
 	const showsErrorNotice = $derived(!loading && deriveMessageStatus(message) === 'error');
 	// Each of the three notices carries its own Retry, so the footer drops its copy while one shows:
@@ -946,17 +962,27 @@ Modified by Current AI from huggingface/chat-ui.
 			<!-- Shared shape for every honest-degradation notice below: role="alert"/aria-live so screen
 			     readers announce it, retry through the same regenerate path. Three call sites (interrupted,
 			     empty-answer, error) differ only in their guard and their copy, so the markup is one snippet. -->
-			{#snippet degradationNotice(text: string, statusLink = false)}
+			{#snippet degradationNotice(text: string, statusLink = false, anotherModel = false, continuable = false)}
 				<div
 					role="alert"
 					aria-live="polite"
 					data-exclude-from-copy
 					class="mt-2 type-body text-fg-3"
 				>
-					{text}{#if onretry}<button
+					{text}{#if continuable && oncontinue}<button
 							type="button"
 							class="ml-1 underline underline-offset-2 transition-control hover:text-fg-1"
+							data-continue-answer
+							onclick={() => oncontinue?.({ id: message.id })}>{m.message_continueAnswer()}</button
+						>{/if}{#if onretry}<button
+							type="button"
+							class="{continuable && oncontinue ? 'ml-3' : 'ml-1'} underline underline-offset-2 transition-control hover:text-fg-1"
 							onclick={() => onretry?.({ id: message.id })}>{m.message_retry()}</button
+						>{/if}{#if anotherModel && onretry}<button
+							type="button"
+							class="ml-3 underline underline-offset-2 transition-control hover:text-fg-1"
+							data-try-another-model
+							onclick={() => requestModelPicker()}>{m.message_tryAnotherModel()}</button
 						>{/if}{#if statusLink && page.data.statusPageUrl}<a
 							href={page.data.statusPageUrl}
 							target="_blank"
@@ -1001,7 +1027,12 @@ Modified by Current AI from huggingface/chat-ui.
 			{#if showsErrorNotice}
 				<!-- a failed turn is the moment someone wonders whether Alpha is down, so the
 				     notice points at the status page beside Retry. -->
-				{@render degradationNotice(errorNoticeMessage ?? m.message_somethingWrong(), true)}
+				{@render degradationNotice(
+					cutAtTimeLimit ? m.message_answerCutAtTimeLimit() : (errorNoticeMessage ?? m.message_somethingWrong()),
+					true,
+					offersAnotherModel,
+					cutAtTimeLimit
+				)}
 			{/if}
 
 			<!-- the expressions the model sent to the calculate tool and what code got for each,

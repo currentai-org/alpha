@@ -12,11 +12,14 @@
 // 016 and the "30-90" in a naloxone answer into findahelpline links. Outside a crisis answer nothing
 // is touched, so a bank's number or a price is safe.
 //
-// 112 stays, because the clause names it; 988 stays only for a visitor in the US or Canada, where it is
+// 112 stays, because it is the emergency number across Europe, though no copy of ours names it;
+// 988 stays only for a visitor in the US or Canada, where it is
 // the crisis line; and so does the visitor's own emergency number from crisisLocale.ts, which cites a
-// source for each. A national line in NATIONAL_LINES below stays for every visitor, like the emergency
-// numbers: a crisis answer is often about another country, so a visitor in Hong Kong asking about a
-// pupil in France keeps 3114. Any country's police, ambulance or fire number stays too
+// source for each. A national line in NATIONAL_LINES below stays only for a visitor in its country, or
+// when the person's message places the person at risk there (the support classifier's `named`), so a
+// visitor in Hong Kong asking about a pupil in France keeps 3114. For anyone else it is a
+// line that does not work where they are, so it becomes the findahelpline link. Any
+// country's police, ambulance or fire number stays too
 // (EMERGENCY_SERVICES). Every other run of three or more digits that reads as a phone number becomes a
 // link to findahelpline.com's front page, where the person picks their country and ThroughLine keeps
 // the verified line current. The link names no country: the model's words around a replaced number
@@ -31,14 +34,14 @@
 
 import { crisisLocale } from "$lib/chat/crisisLocale";
 
-/** Always kept: the EU emergency number, which the clause names and the 112 sentence inserts. */
+/** Always kept: the EU emergency number, when the model writes it itself. */
 const ALWAYS_ALLOWED = new Set(["112"]);
 
 // 988 is the Suicide & Crisis Lifeline in the US and, since 2023-11-30, Canada's 9-8-8 line
 // (https://988.ca). Anywhere else it reaches nobody, so it is kept only for a visitor in one of these.
 const LINE_988_COUNTRIES = new Set(["us", "ca"]);
 
-// National lines kept for every visitor, digits only. Each comes from its operator's own
+// National lines, digits only, kept for a visitor in that country or a message that names it. Each comes from its operator's own
 // page; re-read the page before adding or changing one. Short, toll-free, state-run or
 // long-standing lines only, since a number here is said to someone in crisis without a second check.
 const NATIONAL_LINES: Record<string, string[]> = {
@@ -99,6 +102,14 @@ export interface HelplineNumberResult {
 	cleaned: string;
 }
 
+const HELD_NATIONAL_LINES = new Set(Object.values(NATIONAL_LINES).flat());
+
+/** Whether `digits` is a national line we hold for some country. Whether it stays depends on the
+ *  country, and the message's named country can arrive while the answer streams. */
+export function isHeldNationalLine(digits: string): boolean {
+	return HELD_NATIONAL_LINES.has(digits);
+}
+
 /** Whether `text` reads as a crisis answer on its own: it names findahelpline or 988. */
 export function namesOurCrisisResource(text: string): boolean {
 	return OUR_RESOURCE.test(text);
@@ -122,9 +133,10 @@ export function guardHelplineNumbers(
 	for (const cc of [country, named]) {
 		const emergency = crisisLocale(cc)?.emergency;
 		if (emergency) allowed.add(emergency);
-		if (LINE_988_COUNTRIES.has(cc?.trim().toLowerCase() ?? "")) allowed.add("988");
+		const code = cc?.trim().toLowerCase() ?? "";
+		if (LINE_988_COUNTRIES.has(code)) allowed.add("988");
+		for (const line of NATIONAL_LINES[code] ?? []) allowed.add(line);
 	}
-	for (const line of Object.values(NATIONAL_LINES).flat()) allowed.add(line);
 	const namedLocale = crisisLocale(named);
 	const link = `[findahelpline.com](${namedLocale?.helplineUrl ?? "https://findahelpline.com"})`;
 

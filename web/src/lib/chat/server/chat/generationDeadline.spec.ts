@@ -251,6 +251,28 @@ describe("ScreenAwareDeadline.extendWhileStreaming — a turn still streaming at
 			expect(onFire).toHaveBeenCalledTimes(2);
 		}));
 
+	// the route sizes roomMs for a searched turn and caps a turn that never searched back to
+	// the ordinary room, so only a turn that searched can run past 155s.
+	it("a turn that never searched is capped to the ordinary room, though roomMs was sized for a searched one", () => {
+		const deadline = new ScreenAwareDeadline(45_000, 0, Date.now, 160_000);
+		deadline.screenSettled();
+		expect(deadline.extendWhileStreaming(110_000)).toBe(110_000);
+		expect(deadline.baseMs + deadline.streamExtensionMs).toBe(155_000);
+	});
+
+	it("a searched turn takes the whole searched room: no cap, the deadline lands at base plus roomMs", () => {
+		const deadline = new ScreenAwareDeadline(45_000, 0, Date.now, 160_000);
+		deadline.screenSettled();
+		expect(deadline.extendWhileStreaming()).toBe(160_000);
+		expect(deadline.baseMs + deadline.streamExtensionMs).toBe(205_000);
+	});
+
+	it("a cap larger than roomMs never widens the room past what the deadline was built with", () => {
+		const deadline = new ScreenAwareDeadline(45_000, 0, Date.now, 110_000);
+		deadline.screenSettled();
+		expect(deadline.extendWhileStreaming(500_000)).toBe(110_000);
+	});
+
 	it("the extension is granted once: a second call adds nothing, so a turn cannot stream forever", () => {
 		const deadline = new ScreenAwareDeadline(45_000, 100_000, Date.now, 110_000);
 		deadline.screenSettled();
@@ -295,4 +317,19 @@ describe("ScreenAwareDeadline.extendWhileStreaming — a turn still streaming at
 			expect(rejected).toBeInstanceOf(GenerationDeadlineExceeded);
 			expect((rejected as GenerationDeadlineExceeded).deadlineMs).toBe(45_000 + 110_000 + 15_000);
 		}));
+});
+
+describe("ScreenAwareDeadline.ceilingAt — the latest a still-working turn can run to", () => {
+	it("is the base plus all the room, or the capped room for a turn held to less, until the stream extension is taken", () => {
+		let t = 1_000;
+		const deadline = new ScreenAwareDeadline(45_000, 10_000, () => t, 160_000);
+		expect(deadline.ceilingAt()).toBe(1_000 + 45_000 + 160_000);
+		expect(deadline.ceilingAt(110_000)).toBe(1_000 + 45_000 + 110_000);
+		t = 3_000;
+		deadline.screenSettled();
+		t = 46_000;
+		deadline.extendWhileStreaming(110_000);
+		// Taken: the deadline itself, which the screen's 2 s and the streaming room set.
+		expect(deadline.ceilingAt()).toBe(1_000 + 45_000 + 110_000);
+	});
 });

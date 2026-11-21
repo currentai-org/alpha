@@ -39,6 +39,7 @@ LEFT_OUT = {
     "api/test_agent_service.py::test_verifier_model_and_its_route_are_configured_as_a_pair",
     "api/test_isolation_config.py::test_a_retired_key_left_in_the_deployed_copy_is_a_note_not_a_deploy_blocking_finding",
     "api/test_isolation_config.py::test_prodcheck_requires_the_bwrap_profile_only_where_bwrap_runs",
+    "api/test_isolation_config.py::test_session_workdirs_live_on_the_mounted_volume_so_a_restarted_machine_keeps_them",
     "api/test_isolation_config.py::test_the_fly_template_sets_no_bwrap_profile_knob",
     "api/test_sandbox_pool_alert.py::test_a_host_at_four_fifths_of_its_capacity_for_several_readings_posts_the_near_full_alert",
     "api/test_sandbox_pool_alert.py::test_a_quiet_dataset_posts_neither_sandbox_alert",

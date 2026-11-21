@@ -28,6 +28,9 @@
  * email address it was sent to. Neither table indexes `expires_at`; both stay small, so a daily
  * sequential scan costs little and needs no index.
  *
+ * Better Auth's `rate_limit` counters are swept a day after their last request. Better Auth never
+ * deletes one, each key carries a client IP, and a counter past its window counts nothing.
+ *
  * `safety_events` is swept on `createdAt` after SAFETY_RECORD_RETENTION_DAYS, the period the privacy
  * notice states for safety records. child_safety rows are never swept here: their retention period is a
  * legal decision that has not been made yet.
@@ -58,6 +61,10 @@ const MCP_ELICITATION_TTL_MS = 24 * 60 * 60 * 1000;
 // generationEvents: stream-follow's log. The producer deletes a turn's rows two minutes
 // after it ends; this catches the turn whose instance was killed first. No turn runs near ten minutes.
 const GENERATION_EVENTS_TTL_MS = 10 * 60 * 1000;
+// rateLimit: Better Auth's per-IP counters. Better Auth starts a key over once `now - lastRequest`
+// passes its window, and no window here is longer than a minute times the venue multiplier, so a row
+// a day old counts nothing. Its key holds the client IP, so it is not kept past that.
+const RATE_LIMIT_TTL_MS = 24 * 60 * 60 * 1000;
 const SAFETY_RECORD_TTL_MS = SAFETY_RECORD_RETENTION_DAYS * 24 * 60 * 60 * 1000;
 
 export type CleanupCounts = {
@@ -72,6 +79,7 @@ export type CleanupCounts = {
 	// Better Auth's own tables.
 	authSessions: number;
 	verifications: number;
+	rateLimits: number;
 	// Conversations past the retention window (the /privacy "deleted after N days" promise).
 	conversations: number;
 	// CLI pairing handoffs past their expiry.
@@ -114,6 +122,7 @@ export async function cleanupExpired(
 		generationEvents,
 		authSessions,
 		verifications,
+		rateLimits,
 		localInferencePairings,
 		uploadChunks,
 		syncTombstones,
@@ -153,6 +162,10 @@ export async function cleanupExpired(
 			.delete(schema.verification)
 			.where(lt(schema.verification.expiresAt, now))
 			.returning({ id: schema.verification.id }),
+		db
+			.delete(schema.rateLimit)
+			.where(lt(schema.rateLimit.lastRequest, now.getTime() - RATE_LIMIT_TTL_MS))
+			.returning({ id: schema.rateLimit.id }),
 		db
 			.delete(schema.localInferencePairings)
 			.where(lt(schema.localInferencePairings.expiresAt, now))
@@ -215,6 +228,7 @@ export async function cleanupExpired(
 		generationEvents,
 		authSessions: authSessions.length,
 		verifications: verifications.length,
+		rateLimits: rateLimits.length,
 		conversations: conversations.length,
 		localInferencePairings: localInferencePairings.length,
 		uploadChunks,

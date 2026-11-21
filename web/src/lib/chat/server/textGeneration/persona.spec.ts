@@ -520,20 +520,31 @@ describe("CRISIS_AND_VALUES_CLAUSE", () => {
 	});
 
 	// With 988 as the first example, answers to people in Europe name the US line first.
-	it("points to findahelpline.com and 112 before the US 988 line, which comes only as the US example", () => {
+	it("points to findahelpline.com before the US 988 line, which comes only as the US example", () => {
 		const at = (s: string) => CRISIS_AND_VALUES_CLAUSE.indexOf(s);
 		expect(at("findahelpline.com")).toBeGreaterThan(-1);
-		expect(at("112")).toBeGreaterThan(-1);
 		expect(at("988")).toBeGreaterThan(at("findahelpline.com"));
-		expect(at("988")).toBeGreaterThan(at("112"));
 		expect(CRISIS_AND_VALUES_CLAUSE).toMatch(/988[^.]*\bUS\b/);
+	});
+
+	// The support card carries the visitor's emergency number, picked per country (crisisLocale.ts), so
+	// the prompt names none; whether answers leave numbers out is the live probe's job
+	// (crisis_referral.py). Another country's line works only in that country, so the prompt rules it
+	// out even as a condition.
+	it("rules out another country's line, even written as a condition", () => {
+		expect(CRISIS_AND_VALUES_CLAUSE).toMatch(/Name no other country's line, not even conditionally/);
+	});
+
+	it("names no emergency number and sends immediate danger to local emergency services", () => {
+		expect(CRISIS_AND_VALUES_CLAUSE).not.toMatch(/\b(?:112|911|999)\b/);
+		expect(CRISIS_AND_VALUES_CLAUSE).toMatch(/local emergency services, without giving a number/);
 	});
 
 	// "name that country's own line" makes the model recall numbers from memory (3115 for France's 3114).
 	// Whether the model leaves them out is the live probe's job (evals/inspect_tasks/crisis_referral.py).
-	it("never asks the model for a country's own number, and forbids any number but 112 and the US lines", () => {
+	it("never asks the model for a country's own number, and forbids any number but the US 988 line", () => {
 		expect(CRISIS_AND_VALUES_CLAUSE).not.toMatch(/country's own line/);
-		expect(CRISIS_AND_VALUES_CLAUSE).toMatch(/Never write any other helpline or crisis phone number/);
+		expect(CRISIS_AND_VALUES_CLAUSE).toMatch(/never write a helpline, crisis or emergency phone number other than 988[^:]*writes in one country's language/);
 	});
 });
 

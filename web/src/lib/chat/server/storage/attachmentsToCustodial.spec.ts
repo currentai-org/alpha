@@ -189,6 +189,30 @@ describe("attachmentPath", () => {
 	});
 });
 
+describe("a file an agent turn made is filed under that turn, so My files can say Alpha made it", () => {
+	it("writes it to conversations/<conversation>/agent/<turn>/<sha>/<name> and keeps the turn on the reference", async () => {
+		const refs = await storeChatAttachments(signedIn, [attachment("report.md", "r")], { agentTurn: "task-42" });
+		const sha = await sha256("r");
+		expect(storeChatAttachment.mock.calls.map((c) => c[1])).toEqual([`conversations/c1/agent/task-42/${sha}/report.md`]);
+		expect(refs[0]).toMatchObject({ value: sha, name: "report.md", agentTurn: "task-42" });
+	});
+
+	it("files an attachment the old way when no turn is given", async () => {
+		const refs = await storeChatAttachments(signedIn, [attachment("a.txt", "a")]);
+		const sha = await sha256("a");
+		expect(storeChatAttachment.mock.calls.map((c) => c[1])).toEqual([`conversations/c1/${sha}/a.txt`]);
+		expect(refs[0]).not.toHaveProperty("agentTurn");
+	});
+
+	it("reads from the same folder the write used, and folds a turn id that cannot be a path segment to a short hash", () => {
+		const sha = "a".repeat(64);
+		expect(attachmentPath("c1", sha, "r.md", { agentTurn: "task-42" })).toBe(`conversations/c1/agent/task-42/${sha}/r.md`);
+		const folded = attachmentPath("c1", sha, "r.md", { agentTurn: "../other" });
+		expect(folded).toMatch(new RegExp(`^conversations/c1/agent/[0-9a-f]{24}/${sha}/r.md$`));
+		expect(attachmentPath("c1", sha, "r.md", { agentTurn: "../other" })).toBe(folded);
+	});
+});
+
 describe("storeChatAttachments with a linked default location", () => {
 	const linkedLocation = (write: (folder: string, name: string) => Promise<string>) =>
 		({ id: "loc1", kind: "hf-bucket", label: "me/alpha-files", write }) as unknown as StorageLocation;

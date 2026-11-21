@@ -89,6 +89,10 @@ export interface StreamState {
 	 *  model nothing for seconds, and without it the cap would end a turn mid-search. The silence watchdog does not
 	 *  read it, so a round that truly hangs still ends. */
 	runningTools: boolean;
+	/** A native tool round has searched at least once this turn: set by the first `searching*` phase
+	 *  marker and never cleared. The total cap reads it to give a searched turn the longer ceiling
+	 *  (deadlineLadder.ts MAX_SEARCHED_GENERATION_TIMEOUT_MS). */
+	searched: boolean;
 }
 
 export function createStreamState(): StreamState {
@@ -103,6 +107,7 @@ export function createStreamState(): StreamState {
 		awaitingConfirmation: false,
 		waitingForSandbox: false,
 		runningTools: false,
+		searched: false,
 	};
 }
 
@@ -129,10 +134,16 @@ export interface ApplyUpdateContext {
 }
 
 export async function applyMessageUpdate(
-	event: MessageUpdate,
+	incoming: MessageUpdate,
 	ctx: ApplyUpdateContext
 ): Promise<MessageUpdate | null> {
 	const { message, initialMessageContent, model, state, metrics } = ctx;
+	// The page renders a finished message from its FinalAnswer update, so on a turn that started from text
+	// (a Continue, which starts from the cut answer) the final text recorded and sent is the whole answer.
+	const event: MessageUpdate =
+		incoming.type === MessageUpdateType.FinalAnswer && initialMessageContent
+			? { ...incoming, text: initialMessageContent + incoming.text }
+			: incoming;
 
 	// Reaching this reducer at all — any event type, including one dropped further down for
 	// carrying no visible text — is proof the generation is still alive. Set before any type dispatch or
@@ -147,6 +158,7 @@ export async function applyMessageUpdate(
 	if (event.type === MessageUpdateType.Status && event.message?.startsWith(PHASE_PREFIX)) {
 		state.waitingForSandbox = event.message === phaseMarker(SANDBOX_WAIT_PHASE);
 		state.runningTools = event.message.startsWith(phaseMarker("searching"));
+		if (state.runningTools) state.searched = true;
 	}
 	if (
 		(event.type === MessageUpdateType.Stream ||
@@ -202,7 +214,7 @@ export async function applyMessageUpdate(
 	// provider's final text simply replaces the streamed-so-far text (the old pre-tool merge is gone).
 	else if (event.type === MessageUpdateType.FinalAnswer) {
 		message.interrupted = event.interrupted;
-		message.content = initialMessageContent + event.text;
+		message.content = event.text;
 		state.finalAnswerReceived = true;
 
 		if (metrics) {
@@ -343,6 +355,7 @@ export async function applyMessageUpdate(
 					value: event.sha,
 					mime: event.mime,
 					...(event.agentPath ? { agentPath: event.agentPath } : {}),
+					...(event.agentTurn ? { agentTurn: event.agentTurn } : {}),
 				},
 			];
 		}

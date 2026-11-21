@@ -315,11 +315,8 @@ string; pass the file with `--env-file` as above, or export the variables in you
   request. The scripts in `web/scripts/` that are here are the ones the app, its build or its tests
   import; a few (alerting, the audited production database reader) assume the hosted setup above.
 - Secrets, deployment settings and account ids.
-- Two data files ship as placeholders: `web/src/lib/chat/server/rules-s1.json`, the policies for the
-  optional S1 safety judge, and `web/src/lib/chat/server/data/guard-vectors.json`, precomputed embeddings
-  of the semantic guards' example phrases (without them the examples are embedded at run time). The
-  Shieldstral guard's policy, `web/src/lib/chat/server/rules.json`, is here in full; Coop's own rules
-  are not part of this repository.
+- Coop's own rules. The Shieldstral guard's policy (`web/src/lib/chat/server/rules.json`) and the
+  optional S1 judge's policies (`web/src/lib/chat/server/rules-s1.json`) are here in full.
 
 The browser end-to-end specs in `web/e2e/` are here as a record of what the app is expected to do.
 They run against a deployed instance with the hosted services, so they will not pass on a fresh clone.

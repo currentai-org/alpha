@@ -24,6 +24,7 @@
 //     without files pays nothing.
 
 import sharp from "sharp";
+import { screenRendition } from "$lib/chat/server/screenRendition";
 import type { ObjectId } from "bson";
 import type { Message } from "$lib/chat/types/Message";
 import { AttachmentReadError, downloadFile, isAttachmentMissing, type AttachmentOwner } from "$lib/chat/server/files/downloadFile";
@@ -385,7 +386,7 @@ export async function prepareTurnMedia(
 		);
 	}
 
-	// Screening rendition: bounded bytes for the guard (sharp fit-inside 1024×1024 JPEG q85), never
+	// Screening rendition: bounded bytes for the guard (screenRendition.ts, never scaled up), never
 	// the endpoint's imageProcessor (endpoint-specific, resolved only at generation time — plan r1
 	// #7). Source-file identity, not pixel identity, is the contract. A sharp failure is a FailedUnit
 	// (UNKNOWN unit), and the image is excluded from the payload too.
@@ -395,10 +396,7 @@ export async function prepareTurnMedia(
 	for (const { w, ref } of retained) {
 		let screenB64: string;
 		try {
-			const encoded = await sharpFn(ref.source)
-				.resize({ width: 1024, height: 1024, fit: "inside" })
-				.jpeg({ quality: 85 })
-				.toBuffer();
+			const encoded = await screenRendition(sharpFn, ref.source);
 			screenB64 = encoded.toString("base64");
 		} catch {
 			failedUnits.push({ kind: "image-encode", sha: ref.sha });

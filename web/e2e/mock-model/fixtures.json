@@ -1,0 +1,38 @@
+{
+	"fixtures": [
+		{
+			"match": {
+				"model": "mistral-large-2610",
+				"userMessage": "3 workshops. Each has 14 people",
+				"toolName": "calculate",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "calculate",
+						"arguments": {
+							"counts": "workshops: 3\npeople per workshop: 14",
+							"expression": "3 * 14 * 18 + 3 * 240"
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"userMessage": "3 workshops. Each has 14 people",
+				"hasToolResult": true
+			},
+			"response": {
+				"content": "Lunch is 3 × 14 × €18 = €756, and room hire is 3 × €240 = €720, so the total budget is €1,476."
+			}
+		},
+		{
+			"match": {},
+			"response": {
+				"content": "Hello. This answer comes from the mock model the end-to-end tests run against, so no real model was called."
+			}
+		}
+	]
+}

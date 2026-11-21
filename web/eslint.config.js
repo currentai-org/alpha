@@ -3,6 +3,7 @@ import path from 'node:path';
 import js from '@eslint/js';
 import svelte from 'eslint-plugin-svelte';
 import { defineConfig, includeIgnoreFile } from 'eslint/config';
+import eslintComments from '@eslint-community/eslint-plugin-eslint-comments';
 import globals from 'globals';
 import ts from 'typescript-eslint';
 import { noDiscardedEffectRoot } from './eslint-rules/no-discarded-effect-root.js';
@@ -16,9 +17,9 @@ import alphaDs, {
 const gitignorePath = path.resolve(import.meta.dirname, '.gitignore');
 
 /**
- * Code built on the Alpha design system — every design lint rule is an error here. When a legacy
- * chat surface is migrated onto the system, add it to this list (and `pnpm lint:design --update`
- * drops it from the ratchet baseline).
+ * Code built on the Alpha design system — every design lint rule is an error here. The legacy
+ * surfaces in DESIGN_SYSTEM_LEGACY get the same errors, with the hits they already had held in
+ * eslint-suppressions.json; this list names what was built on the system from the start.
  */
 export const DESIGN_SYSTEM_STRICT = [
 	// The system's own examples and catalog, as packages/alpha-ds/eslint.config.js sees them.
@@ -56,6 +57,19 @@ export const DESIGN_SYSTEM_STRICT = [
 	'src/lib/chat/components/stack/XRayComposerPanel.svelte',
 	'src/lib/chat/components/leaderboard/*.svelte',
 	'src/routes/alpha/languages/+page.svelte'
+];
+
+/**
+ * The Alpha product surface that predates the design system. Every design rule is an error here
+ * too, and each file's existing hits sit in eslint-suppressions.json, so a file may lose
+ * violations but never gain one. Migrating a file is fixing its hits and running
+ * `pnpm exec eslint --prune-suppressions <file>`.
+ */
+const DESIGN_SYSTEM_LEGACY = [
+	'src/lib/chat/**/*.{svelte,ts}',
+	'src/routes/chat/**/*.{svelte,ts}',
+	'src/lib/alpha-landing/**/*.{svelte,ts}',
+	'src/routes/alpha/**/*.{svelte,ts}'
 ];
 
 /** The design system's own sources, where recipes may use arbitrary values and inline geometry.
@@ -140,6 +154,17 @@ export default defineConfig(
 		}
 	},
 	{
+		// A disable says why on the same line, after ` -- `, so the next reader can judge whether it
+		// still holds. Hits that predate this rule sit in eslint-suppressions.json.
+		plugins: { '@eslint-community/eslint-comments': eslintComments },
+		rules: {
+			'@eslint-community/eslint-comments/require-description': [
+				'error',
+				{ ignore: ['eslint-enable', 'eslint', 'eslint-env', 'exported', 'global', 'globals'] }
+			]
+		}
+	},
+	{
 		files: ['**/*.svelte', '**/*.svelte.ts', '**/*.svelte.js'],
 		languageOptions: {
 			parserOptions: {
@@ -185,9 +210,14 @@ export default defineConfig(
 	{
 		// Alpha design-system linter (eslint-rules/alpha-ds, docs at /designsystem/linting).
 		// Inside the system's own component/primitive/pattern sources, recipes may use arbitrary
-		// values and inline geometry; everywhere built ON the system gets every rule as an error.
-		// Legacy chat code is not listed here — `pnpm lint:design` ratchets it (scripts/ds-lint-ratchet.mjs)
-		// and a migrated file joins DESIGN_SYSTEM_STRICT below.
+		// values and inline geometry; everywhere built ON the system gets every rule as an error,
+		// and so does the legacy surface, whose existing hits are in eslint-suppressions.json.
+		files: DESIGN_SYSTEM_LEGACY,
+		ignores: ['**/*.spec.ts', '**/*.test.ts'],
+		plugins: { 'alpha-ds': alphaDs },
+		rules: alphaDsStrict
+	},
+	{
 		files: ALPHA_DS_INTERNAL,
 		ignores: ['**/*.spec.ts', '**/examples/**'],
 		plugins: { 'alpha-ds': alphaDs },

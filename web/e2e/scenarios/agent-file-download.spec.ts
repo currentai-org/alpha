@@ -30,7 +30,16 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // production, and agent mode is off there.
 test(
 	'a file the agent writes can be downloaded from the turn, and the bytes are the ones it was asked for',
-	{ tag: ['@preview-only', '@A7', '@CUR-546', '@CUR-4398', '@agent-knob:workdir_cleared'] },
+	{
+		tag: [
+			'@preview-only',
+			'@A7',
+			'@CUR-546',
+			'@CUR-4398',
+			'@CUR-2172',
+			'@agent-knob:workdir_cleared'
+		]
+	},
 	async ({ page, context, baseURL }) => {
 		// An agent turn runs a sandbox and several model rounds; three minutes is the observed ceiling
 		// on develop with room to spare, not a padded guess at an unknown.
@@ -42,7 +51,9 @@ test(
 		});
 
 		await setFlagOverrides(context, baseURL!, {
-			'agent-mode': true
+			'agent-mode': true,
+			// The turn's files go to My files only for an owner this flag selects.
+			'custodial-storage-view': true
 		});
 		await signInAsFreshUser(page);
 
@@ -167,5 +178,27 @@ test(
 			page.getByRole('dialog').getByText(`potluck ${nonce}`),
 			'the saved copy does not hold the line the agent wrote, so the turn stored something else or nothing'
 		).toBeVisible({ timeout: 15_000 });
+
+		// The same file is in My files, filed under this conversation and marked as made by Alpha,
+		// where a file attached in chat is listed without the mark.
+		const conversationId = new URL(page.url()).pathname.split('/').pop()!;
+		await page.goto('/chat/storage', { waitUntil: 'commit' });
+		const row = page.locator('[data-file-row]').filter({ hasText: filename });
+		await expect(
+			row,
+			'the file the agent made is not in My files, so it was kept only with the conversation'
+		).toBeVisible({ timeout: 30_000 });
+		await expect(
+			row.getByTestId('made-by-alpha'),
+			'the agent-made file is listed in My files without the made-by-Alpha mark'
+		).toHaveText('Made by Alpha');
+		await expect(row.getByTestId('made-by-alpha'), 'the mark carries no turn id').toHaveAttribute(
+			'data-agent-turn',
+			/\S+/
+		);
+		await expect(
+			row.getByRole('link', { name: `Open the chat ${filename} came from` }),
+			'the row does not link back to the conversation that made the file'
+		).toHaveAttribute('href', new RegExp(`/conversation/${conversationId}$`));
 	}
 );

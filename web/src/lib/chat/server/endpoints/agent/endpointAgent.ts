@@ -1102,7 +1102,7 @@ export async function endpointAgent(
 					};
 					agentTools?: { toolKinds: string[]; counts?: Record<string, number> };
 					agentRun?: { taskId: string; machineId?: string; closed?: boolean };
-					agentFile?: { name: string; sha: string; mime: string; agentPath: string };
+					agentFile?: { name: string; sha: string; mime: string; agentPath: string; agentTurn?: string };
 					unrunCode?: { reason: UnrunCodeReason };
 					agentConfirm?: {
 						taskId: string;
@@ -1922,7 +1922,7 @@ export async function endpointAgent(
 											);
 											return res.ok ? new Uint8Array(await res.arrayBuffer()) : undefined;
 										},
-										save: saveAgentFiles,
+										save: (files) => saveAgentFiles(files, { turn: taskId }),
 									}).catch((err: unknown) => {
 										// A full My files or a storage failure costs the person the saved copy,
 										// never the turn: the live link still works for now.
@@ -1935,7 +1935,7 @@ export async function endpointAgent(
 									for (const { agentPath, ref } of saved) {
 										yield mk("", {
 											special: true,
-											agentFile: { name: ref.name, sha: ref.value, mime: ref.mime, agentPath },
+											agentFile: { name: ref.name, sha: ref.value, mime: ref.mime, agentPath, ...(ref.agentTurn ? { agentTurn: ref.agentTurn } : {}) },
 										});
 									}
 								}

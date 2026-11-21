@@ -36,10 +36,12 @@ import socket
 import stat
 import struct
 import subprocess
+import sys
 import tempfile
 import threading
 import time
 import uuid
+import zipfile
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -56,7 +58,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import PlainTextResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 from remote_work import RemoteWork
-from sandbox_backend import BwrapBackend, Handle, SandboxBusy, SandboxError, Tier, confine, key_for
+from sandbox_backend import BwrapBackend, Handle, SandboxBusy, SandboxError, Tier, agent_conversation, confine, key_for
 from sandbox_mcp import build_sandbox_server, sandbox_http_app
 from store import Store
 from xlsx_check import workdir_chart_problems, workdir_reader
@@ -433,6 +435,14 @@ ARTIFACT_DOWNLOAD_MAX_BYTES = int(os.environ.get("AGENT_ARTIFACT_DOWNLOAD_MAX_BY
 # _artifact_text_for_moderation on every later turn of the session. A top-level dir excluded from
 # `_artifact_paths`'s walk and `_resolve_artifact_path`'s resolution, same pattern as "hermes-home*" below.
 ARTIFACT_QUARANTINE_DIRNAME = "agent-quarantine"
+# The agent's PDF, Word and Excel files reach the artifacts screen as extracted text, read by
+# api/doc_text.py in a child process under these limits. A file that breaks one is a file the screen could
+# not read, and is treated as one. Reading stops at ARTIFACT_DOWNLOAD_MAX_BYTES characters of text.
+# Measured in python:3.14-slim: a one-page file takes 0.05 s in under 48 MB, a 3.6 MB workbook of 1.5
+# million text cells reaches the text cap in 2.1 s, and a docx that inflates to 1.5 GB stops at the memory
+# limit in 0.13 s.
+ARTIFACT_EXTRACT_TIMEOUT_SECS = float(os.environ.get("AGENT_ARTIFACT_EXTRACT_TIMEOUT_SECS", "10"))
+ARTIFACT_EXTRACT_MAX_MEMORY = int(os.environ.get("AGENT_ARTIFACT_EXTRACT_MAX_MEMORY", str(512 << 20)))
 VERIFY_DETAIL_CHARS = int(os.environ.get("AGENT_VERIFY_DETAIL_CHARS", "400"))  # check_cmd output kept in the failure reason
 REPAIR_LOOP = os.environ.get("AGENT_REPAIR_LOOP", "1") != "0"                # retry attempts REPAIR the last one instead of restarting
 REPAIR_TURNS = int(os.environ.get("AGENT_REPAIR_TURNS", "2"))                # in-session repair turns per attempt (ACP only; 0 = off)
@@ -2359,6 +2369,7 @@ def _screen(text: str, stage: str, user: str, task_id: str | None = None, enforc
     # against the live seat while the same requests in plaintext scored 11/11 — see `_expand_encoded`.
     # Applied here rather than inside the provider call, so this holds if the seat changes: a screen that
     # can be stepped around by an encoding nobody re-measures is the failure mode this exists to catch.
+    started = time.monotonic()
     text = _expand_encoded(text)
     hits: dict[str, dict] = {}
     try:
@@ -2392,6 +2403,9 @@ def _screen(text: str, stage: str, user: str, task_id: str | None = None, enforc
             if not enforce:
                 return
             raise HTTPException(502, f"moderation pipeline unavailable: {type(last).__name__}") from last
+        # Every verdict, allow included, with how long it took: the one place a stage's screening time shows.
+        _log_event("moderation.screened", stage=stage, mode=mode, chars=len(text),
+                   ms=int((time.monotonic() - started) * 1000), verdict=verdict[:64])
         if verdict != "allow" and not enforce:
             _metric_inc("agent_moderation_logged_total")
             _log_event("moderation.logged", stage=stage, mode=mode, verdict=verdict[:64])
@@ -3822,6 +3836,12 @@ def _artifact_paths(work: str | RemoteWork, limit: int, since: float | None = No
 def _read_artifact(path: str, cap: int) -> tuple[str | None, bool]:
     """(text, truncated) for one file, or (None, False) if it isn't text. Binary is reported by size only —
     the chat surface renders text, and base64 of an unknown blob helps nobody at this size budget."""
+    raw = _read_artifact_bytes(path, cap)
+    return (None, False) if raw is None else _decode_artifact(raw, cap)
+
+
+def _read_artifact_bytes(path: str, cap: int) -> bytes | None:
+    """Up to cap + 1 bytes of one file (the extra byte says it was longer), or None if it can't be read."""
     try:
         # O_NOFOLLOW and a BOUNDED read. `Path(path).read_bytes()[:cap]` materialises the whole file
         # first, so `truncate -s 20G` in the scratch — sparse, free to create — was an out-of-memory kill
@@ -3829,13 +3849,12 @@ def _read_artifact(path: str, cap: int) -> tuple[str | None, bool]:
         # the symlink route a second time, in case a file passes the lstat above and is swapped after.
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
     except OSError:
-        return None, False
+        return None
     try:
         with os.fdopen(fd, "rb") as fh:
-            raw = fh.read(cap + 1)
+            return fh.read(cap + 1)
     except OSError:
-        return None, False
-    return _decode_artifact(raw, cap)
+        return None
 
 
 def _decode_artifact(raw: bytes, cap: int) -> tuple[str | None, bool]:
@@ -3859,10 +3878,15 @@ def _decode_artifact(raw: bytes, cap: int) -> tuple[str | None, bool]:
 
 def _read_rel(work: str | RemoteWork, rel: str, cap: int) -> tuple[str | None, bool]:
     """`_read_artifact` for a file named relative to `work`, which may be the guest's workspace."""
+    raw = _read_rel_bytes(work, rel, cap)
+    return (None, False) if raw is None else _decode_artifact(raw, cap)
+
+
+def _read_rel_bytes(work: str | RemoteWork, rel: str, cap: int) -> bytes | None:
+    """`_read_artifact_bytes` for a file named relative to `work`, which may be the guest's workspace."""
     if isinstance(work, RemoteWork):
-        raw = work.read(rel, cap + 1)
-        return (None, False) if raw is None else _decode_artifact(raw, cap)
-    return _read_artifact(os.path.join(work, rel), cap)
+        return work.read(rel, cap + 1)
+    return _read_artifact_bytes(os.path.join(work, rel), cap)
 
 
 def _collect_artifacts(work: str | RemoteWork, since: float | None = None,
@@ -3910,26 +3934,186 @@ def _artifact_text_for_moderation(work: str | RemoteWork) -> str:
     the same ground — deliberately unbounded by ARTIFACT_MAX_FILES here, for the same reason
     `_resolve_artifact_path` isn't.
 
-    Binary content is skipped, not blocked: `_read_artifact` returns None for it (same as `_collect_artifacts`
-    already accepts), and no practical text classifier moderates raw bytes anyway. This stays an accepted,
-    visible gap — the route review considered gating binary downloads on it and chose not to, since
-    that would block ordinary non-text work output for a screening pass that can't act on it regardless."""
-    out = []
+    A PDF, Word or Excel file is screened by its extracted text (`_extract_document_text`), never
+    its raw bytes, which took the guard 30 s for 15 KB. One whose text cannot be extracted is
+    logged as `moderation.artifact_unreadable`, and under AGENT_OUTPUT_SCREEN_MODE=block it blocks the stage
+    (403, so `_quarantine_blocked_artifacts` moves it out): nothing screened it, and an encrypted or broken
+    document is the easy way past a screen that only reads the ones that open.
+
+    Other binary content is skipped, not blocked: no practical text classifier moderates raw bytes. This
+    stays an accepted, visible gap — the route review considered gating binary downloads on it and
+    chose not to, since that would block ordinary non-text work output for a screening pass that can't act
+    on it regardless."""
+    out: list[str] = []
+    unreadable: dict[str, str] = {}
+    documents, document_chars, started = 0, 0, time.monotonic()
     for rel, size in _artifact_paths(work, limit=10**9):  # no ARTIFACT_MAX_FILES cap — see docstring above
         if size <= 0:
             continue
-        text, _truncated = _read_rel(work, rel, ARTIFACT_DOWNLOAD_MAX_BYTES)
-        if text:
-            out.append(text)
+        source = _artifact_screen_source(work, rel)
+        if isinstance(source, str):
+            out.append(source)
+        elif source is not None:
+            documents += 1
+            try:
+                text = _document_text(*source)
+            except ArtifactUnreadable as e:
+                unreadable[rel] = str(e)
+                continue
+            document_chars += len(text)
+            if text:
+                out.append(text)
+    if documents:
+        _log_event("artifact.text_extracted", documents=documents, chars=document_chars,
+                   unreadable=len(unreadable), ms=int((time.monotonic() - started) * 1000))
+    if unreadable:
+        _metric_inc("agent_moderation_artifact_unreadable_total")
+        _log_event("moderation.artifact_unreadable", stage=STAGE_ARTIFACTS, mode=OUTPUT_SCREEN_MODE,
+                   files=sorted(unreadable), errors=sorted(set(unreadable.values())))
+        # "guard" only: with moderation off nothing is screened anyway, and unconfigured fails 503 in moderate().
+        if OUTPUT_SCREEN_MODE == "block" and _moderation_mode() == "guard":
+            raise HTTPException(403, f"blocked by moderation ({STAGE_ARTIFACTS}): unreadable document")
     return "\n".join(out)
+
+
+# .docm, .dotx and .dotm are Word packages too: doc_text.py screens their body text, and their macro project
+# is never parsed or run.
+_DOCUMENT_SUFFIXES = {".pdf": "pdf", ".docx": "docx", ".docm": "docx", ".dotx": "docx", ".dotm": "docx",
+                      ".xlsx": "xlsx"}
+_DOC_TEXT_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "doc_text.py")
+_DOC_TEXT_NOT_A_PDF = 3   # doc_text.py's exit code when pypdf cannot open the bytes as a PDF at all
+_DOC_TEXT_PDF_UNPARSABLE = 4   # ... and when pypdf fails on them with any other error, opening or reading
+
+
+class ArtifactUnreadable(Exception):
+    """A PDF, Word or Excel artifact whose text could not be extracted, so nothing has screened it.
+    `not_a_pdf`: pypdf could not open the bytes as a PDF at all, as opposed to a PDF it could not read.
+    `pdf_unparsable`: pypdf failed on them some other way, which for bytes that are text means the same."""
+
+    def __init__(self, reason: str, not_a_pdf: bool = False, pdf_unparsable: bool = False):
+        super().__init__(reason)
+        self.not_a_pdf = not_a_pdf
+        self.pdf_unparsable = pdf_unparsable
+
+
+def _sniff_documents(raw: bytes) -> tuple[str, ...]:
+    """The document kinds the bytes alone show, so a renamed document is still read as one. A ZIP is
+    opened from its central directory, as Office and zipfile both do, so bytes before it change nothing.
+    A PDF header anywhere in the first 1024 bytes counts: PDF readers and pypdf both accept bytes before
+    it. A file can show both (a crafted PDF/ZIP polyglot opens as either), so both are read."""
+    try:
+        names = set(zipfile.ZipFile(io.BytesIO(raw)).namelist())
+    except Exception:  # noqa: BLE001 — not a zip that opens, so not an Office file by content
+        names = set()
+    kinds = [kind for kind, part in (("docx", "word/document.xml"), ("xlsx", "xl/workbook.xml")) if part in names]
+    if b"%PDF-" in raw[:1024]:
+        kinds.append("pdf")
+    return tuple(kinds)
+
+
+def _artifact_screen_source(work: str | RemoteWork, rel: str) -> str | tuple[tuple[str, ...], bytes, str | None] | None:
+    """What the artifacts screen reads from one file: its text; or (kinds, bytes, the kind its name says)
+    for a PDF, Word or Excel file, whose text `_document_text` pulls out; or None when there is nothing to
+    screen.
+
+    The bytes decide first (`_sniff_documents`). Otherwise a file that decodes as text is screened as text
+    whatever its name says, and a binary file NAMED .pdf/.docx/.xlsx is taken at its word, so an encrypted or
+    broken one fails extraction and is reported instead of passing as binary. A document over
+    ARTIFACT_DOWNLOAD_MAX_BYTES is not extracted, since the download route answers 413 for it; if it decodes
+    as text it is still screened as text, because `_collect_artifacts`' inline preview sends its start."""
+    raw = _read_rel_bytes(work, rel, ARTIFACT_DOWNLOAD_MAX_BYTES)
+    if raw is None:
+        return None
+    fits = len(raw) <= ARTIFACT_DOWNLOAD_MAX_BYTES
+    named = _DOCUMENT_SUFFIXES.get(os.path.splitext(rel)[1].lower())
+    kinds = _sniff_documents(raw)
+    if kinds and fits:
+        return kinds, raw, named
+    text, _truncated = _decode_artifact(raw, ARTIFACT_DOWNLOAD_MAX_BYTES)
+    if text is not None:
+        return text or None
+    kinds = kinds or ((named,) if named else ())
+    return (kinds, raw, named) if kinds and fits else None
+
+
+def _document_text(kinds: tuple[str, ...], raw: bytes, named: str | None) -> str:
+    """The text of every kind the file showed. Raises ArtifactUnreadable if any of them fails, with one
+    exception: bytes that only mention a PDF header (a script that writes one, a note about the format, a
+    compiled module holding the string), which pypdf cannot open as a PDF at all, or, when the bytes are
+    text, fails on with any error but the encryption and resource limits. Those are screened as whatever
+    else they are: the Office file that also parsed, text, or binary of another kind, skipped like any
+    other. A binary file NAMED .pdf/.docx/.xlsx stays unreadable then, since its name says a reader should
+    open it, and a stray header must not excuse a broken document from that rule.
+
+    Bytes that decode as text are screened as that text too, beside anything extracted from them:
+    `_collect_artifacts`' inline preview sends a text file whole, so a small PDF at the top of a note must
+    not leave the rest of the note to pass on the PDF's text alone."""
+    decoded, _truncated = _decode_artifact(raw, ARTIFACT_DOWNLOAD_MAX_BYTES)
+    texts: list[str] = []
+    not_a_pdf: ArtifactUnreadable | None = None
+    for kind in kinds:
+        try:
+            texts.append(_extract_document_text(kind, raw))
+        except ArtifactUnreadable as e:
+            if not (e.not_a_pdf or (e.pdf_unparsable and decoded is not None)):
+                raise
+            not_a_pdf = e
+    if not_a_pdf is not None and not texts:
+        if decoded is not None:
+            return decoded
+        if named is not None:
+            raise not_a_pdf
+    if decoded:
+        texts.append(decoded)
+    return "\n".join(texts)
+
+
+def _extract_document_text(kind: str, raw: bytes) -> str:
+    """The text of one PDF, Word or Excel file, from api/doc_text.py in a child process held to
+    ARTIFACT_EXTRACT_MAX_MEMORY and ARTIFACT_EXTRACT_TIMEOUT_SECS. The child gets no environment, so a
+    parser bug a crafted file reaches finds no token to read. Raises ArtifactUnreadable when the child
+    fails, is killed, or runs out of time."""
+    cmd = [sys.executable, "-I", "-B", _DOC_TEXT_SCRIPT, kind, str(ARTIFACT_DOWNLOAD_MAX_BYTES),
+           str(ARTIFACT_EXTRACT_MAX_MEMORY), str(math.ceil(ARTIFACT_EXTRACT_TIMEOUT_SECS))]
+    try:
+        proc = subprocess.run(cmd, input=raw, capture_output=True, env={}, check=False,
+                              timeout=ARTIFACT_EXTRACT_TIMEOUT_SECS)
+    except subprocess.TimeoutExpired as e:
+        raise ArtifactUnreadable("TimeoutExpired") from e
+    except OSError as e:
+        raise ArtifactUnreadable(type(e).__name__) from e
+    if proc.returncode != 0:
+        raise ArtifactUnreadable(proc.stderr.decode("utf-8", "replace")[:64] or f"exit {proc.returncode}",
+                                 not_a_pdf=proc.returncode == _DOC_TEXT_NOT_A_PDF,
+                                 pdf_unparsable=proc.returncode == _DOC_TEXT_PDF_UNPARSABLE)
+    return proc.stdout.decode("utf-8", "replace")
+
+
+def _skipped_as_other_binary(source: str | tuple[tuple[str, ...], bytes, str | None]) -> bool:
+    """Whether `_document_text` skipped this file as binary that only mentions a PDF header, so the screen
+    read nothing of it. pypdf is asked again only for that one shape: found by the PDF sniff alone, under no
+    document name, and not text."""
+    if isinstance(source, str):
+        return False
+    kinds, raw, named = source
+    if kinds != ("pdf",) or named is not None or _decode_artifact(raw, ARTIFACT_DOWNLOAD_MAX_BYTES)[0] is not None:
+        return False
+    try:
+        _extract_document_text("pdf", raw)
+    except ArtifactUnreadable as e:
+        return e.not_a_pdf
+    return False
 
 
 def _quarantine_blocked_artifacts(work: str | RemoteWork) -> list[str]:
     """Called right after a STAGE_ARTIFACTS `moderate()` call raises. Moves every file that
-    contributed text to that call — same walk, same skip rules as `_artifact_text_for_moderation`, so
+    call read — same walk, same `_artifact_screen_source` rules as `_artifact_text_for_moderation`, so
     "the offending files" means exactly the set that was actually screened and blocked, nothing wider
-    (an empty or binary file couldn't have caused the block and is left alone) — out of `work` and into
-    ARTIFACT_QUARANTINE_DIRNAME, a directory `_artifact_paths` and `_resolve_artifact_path` both exclude.
+    (an empty or other binary file couldn't have caused the block and is left alone) — out of `work` and
+    into ARTIFACT_QUARANTINE_DIRNAME, a directory `_artifact_paths` and `_resolve_artifact_path` both
+    exclude. Every PDF, Word and Excel file counts as read, without extracting its text again: one whose
+    text could not be extracted is itself a reason the stage blocks. The one exception is binary
+    that only mentions a PDF header, which the screen skipped (`_skipped_as_other_binary`).
 
     Coarse by construction, not by oversight: STAGE_ARTIFACTS moderates one concatenated blob of every
     artifact's text in a single call, so a block carries no per-file attribution — an innocent file that
@@ -3948,14 +4132,14 @@ def _quarantine_blocked_artifacts(work: str | RemoteWork) -> list[str]:
     for rel, size in _artifact_paths(work, limit=10**9):
         if size <= 0:
             continue
+        source = _artifact_screen_source(work, rel)
+        if source is None or _skipped_as_other_binary(source):
+            continue
         if isinstance(work, RemoteWork):
-            if _read_rel(work, rel, ARTIFACT_DOWNLOAD_MAX_BYTES)[0] and work.quarantine(rel):
+            if work.quarantine(rel):
                 quarantined.append(rel)
             continue
         src = os.path.join(work, rel)
-        text, _truncated = _read_artifact(src, ARTIFACT_DOWNLOAD_MAX_BYTES)
-        if not text:
-            continue
         dest = os.path.join(work, ARTIFACT_QUARANTINE_DIRNAME, rel)
         try:
             os.makedirs(os.path.dirname(dest), exist_ok=True)
@@ -6631,7 +6815,7 @@ def _connect_agent_sandbox(task: Task, buf) -> Handle | None:
 
     On a full host connect waits for a slot: the event stream says "waiting_sandbox" with the text chat
     shows as the turn's live line, then "working" again once a slot is found. A cancel ends the wait."""
-    conversation = f"agent:{task._session_id or task.id}"
+    conversation = agent_conversation(task._session_id or task.id)
     busy_key = key_for(task.user, conversation)
     if not _claim_remote(busy_key, REMOTE_BUSY_WAIT_SECS):
         task.error, task.summary, task.state = ("another task is running in this conversation",
@@ -6802,7 +6986,7 @@ def _forget_sandboxes(principal: str, session_id: str) -> int:
     deleted conversation is gone from chat whether or not the sandbox host answered, and the idle sweep
     catches whatever this missed."""
     killed = 0
-    for conversation in (session_id, f"agent:{session_id}"):
+    for conversation in (session_id, agent_conversation(session_id)):
         try:
             killed += SANDBOX_BACKEND.destroy(principal, conversation)
         except Exception as e:  # noqa: BLE001
@@ -7854,7 +8038,7 @@ def _guest_artifact(user: str, session_id: str, filename: str, expires_at: int) 
     if not rel or posixpath.isabs(rel) or rel == ".." or rel.startswith("../") or not _downloadable(tuple(rel.split("/"))):
         raise HTTPException(404, "no such artifact")
     try:
-        h = SANDBOX_BACKEND.find(user, f"agent:{session_id}", Tier.AGENT)
+        h = SANDBOX_BACKEND.find(user, agent_conversation(session_id), Tier.AGENT)
     except Exception as e:  # an unreachable sandbox host is an outage, not a missing file
         raise HTTPException(503, f"sandbox unavailable ({type(e).__name__})") from e
     if h is None:

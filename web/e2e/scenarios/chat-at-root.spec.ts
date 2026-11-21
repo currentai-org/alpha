@@ -9,7 +9,7 @@ import { test, expect } from './helpers/test';
 import { composerHydrated, sendOpensConversation } from './helpers/composer';
 import { turnDone } from './helpers/turn';
 
-test.describe('chat at the root of a chat-surface host', { tag: '@root' }, () => {
+test.describe('chat at the root of a chat-surface host', { tag: ['@root', '@mock-model'] }, () => {
 	test('the root opens the composer, a sent turn lives at /conversation/<id>, and a reload keeps it', async ({
 		page
 	}) => {

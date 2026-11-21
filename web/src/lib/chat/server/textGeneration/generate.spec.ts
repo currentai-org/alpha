@@ -283,6 +283,19 @@ describe("generate — provenance/agent forwarding branches (all silently blind 
 		});
 	});
 
+	it("forwards the turn an agentFile was filed under on its File update", async () => {
+		const agentFile = { name: "b.py", sha: "a".repeat(64), mime: "text/x-python", agentPath: "b.py", agentTurn: "task-9" };
+		const updates = await collect(
+			testCtx({
+				endpoint: endpointYielding([
+					{ token: normalToken(""), generated_text: null, agentFile },
+					{ token: specialToken(), generated_text: "done" },
+				]),
+			})
+		);
+		expect(updates.filter((u) => u.type === MessageUpdateType.File)).toEqual([{ type: MessageUpdateType.File, ...agentFile }]);
+	});
+
 	it("forwards an agentFile chunk as a File update carrying its agent path, and ignores a falsy one", async () => {
 		const agentFile = { name: "b.py", sha: "a".repeat(64), mime: "text/x-python", agentPath: "sub/b.py" };
 		const updates = await collect(
@@ -313,8 +326,23 @@ describe("generate — provenance/agent forwarding branches (all silently blind 
 			}) as unknown as ReturnType<typeof endpointYielding>,
 		});
 		await collect(ctx);
-		expect(storeChatAttachments).toHaveBeenCalledWith(ctx.conv, [{ file, paste: false }]);
+		expect(storeChatAttachments).toHaveBeenCalledWith(ctx.conv, [{ file, paste: false }], {});
 		expect(returned).toBe(saved);
+	});
+
+	it("files an agent turn's files under the turn that made them", async () => {
+		storeChatAttachments.mockResolvedValueOnce([]);
+		const file = new File(["x"], "b.py");
+		const ctx = testCtx({
+			endpoint: (async (params: { saveAgentFiles?: (f: File[], o?: { turn?: string }) => Promise<unknown> }) => {
+				await params.saveAgentFiles?.([file], { turn: "task-9" });
+				return (async function* () {
+					yield { token: specialToken(), generated_text: "done" } as TokenChunk;
+				})();
+			}) as unknown as ReturnType<typeof endpointYielding>,
+		});
+		await collect(ctx);
+		expect(storeChatAttachments).toHaveBeenCalledWith(ctx.conv, [{ file, paste: false }], { agentTurn: "task-9" });
 	});
 
 	it("forwards an agentConfirm chunk as an AgentConfirm update, omitting deadlineAt when absent", async () => {
@@ -1244,5 +1272,77 @@ describe("generate — visitor instructions reach the endpoint", () => {
 		await collect(testCtx({ endpoint: endpoint as unknown as ReturnType<typeof endpointYielding> }));
 		expect(seen[0].clientInstructions).toBe("Answer with emoji.");
 		expect("clientInstructions" in seen[1]).toBe(false);
+	});
+});
+
+describe("generate — hands the endpoint the turn's ceiling and a Continue's starting text", () => {
+	function capturing() {
+		const seen: { turnCeilingAt?: () => number; continueFrom?: string }[] = [];
+		const endpoint = (async (params: { turnCeilingAt?: () => number; continueFrom?: string }) => {
+			seen.push(params);
+			return (async function* () {
+				yield { token: specialToken(), generated_text: "done" } as TokenChunk;
+			})();
+		}) as unknown as ReturnType<typeof endpointYielding>;
+		return { seen, endpoint };
+	}
+
+	it("passes both through, so the tool loop can read the ceiling and a Continue goes on from the cut text", async () => {
+		const { seen, endpoint } = capturing();
+		const turnCeilingAt = () => 205_000;
+		await collect({ ...testCtx({ endpoint }), turnCeilingAt, continueFrom: "Tides rise because " });
+		expect(seen[0].turnCeilingAt).toBe(turnCeilingAt);
+		expect(seen[0].continueFrom).toBe("Tides rise because ");
+	});
+
+	it("passes neither on an ordinary turn", async () => {
+		const { seen, endpoint } = capturing();
+		await collect(testCtx({ endpoint }));
+		expect("turnCeilingAt" in seen[0]).toBe(false);
+		expect("continueFrom" in seen[0]).toBe(false);
+	});
+});
+
+describe("generate — footprint update", () => {
+	const footprintOf = (updates: MessageUpdate[]) =>
+		updates.filter((u) => u.type === MessageUpdateType.Footprint);
+
+	it("sends one footprint update naming the model that served the turn, with the largest reported token count", async () => {
+		const updates = await collect(
+			testCtx({
+				endpoint: endpointYielding([
+					{ token: normalToken(""), generated_text: null, routerMetadata: { model: "swiss-ai/apertus-v1.5-70b" } },
+					{ token: specialToken(), generated_text: "hi" },
+					{ token: normalToken(""), generated_text: null, usage: { completionTokens: 400 } },
+					{ token: normalToken(""), generated_text: null, usage: { completionTokens: 120 } },
+				]),
+			})
+		);
+		const footprints = footprintOf(updates);
+		expect(footprints).toHaveLength(1);
+		expect(footprints[0]).toMatchObject({
+			model: "swiss-ai/apertus-v1.5-70b",
+			outputTokens: 400,
+			estimated: true,
+		});
+	});
+
+	it("falls back to the picked model, as not estimated, when no chunk names the served one", async () => {
+		const updates = await collect(
+			testCtx({
+				endpoint: endpointYielding([
+					{ token: specialToken(), generated_text: "hi" },
+					{ token: normalToken(""), generated_text: null, usage: { completionTokens: 50 } },
+				]),
+			})
+		);
+		expect(footprintOf(updates)).toMatchObject([{ model: "test-model", outputTokens: 50, estimated: false }]);
+	});
+
+	it("sends no footprint update for a turn whose host reported no usage", async () => {
+		const updates = await collect(
+			testCtx({ endpoint: endpointYielding([{ token: specialToken(), generated_text: "hi" }]) })
+		);
+		expect(footprintOf(updates)).toEqual([]);
 	});
 });

@@ -6,10 +6,18 @@
 # multi-arch index, tags it, attests its build provenance (`gh attestation verify`) and signs it with
 # cosign keyless (`cosign verify`). deploy/README.md has both verify commands.
 #
+# Three gates stand between a build and a release tag. Each platform image is scanned for secrets by
+# gitleaks over its filesystem (deploy/scan-image.sh) before its digest is handed on. The signed index
+# is then pulled by digest into the self-host stack (selfhost/compose.release.yaml, no local build) and
+# must answer a guest chat turn. Only after both does the last job put the version tags on that same
+# digest, so a version tag never names an image that was not scanned and booted.
+#
 # It runs only when asked for: on a version tag vX.Y.Z, which gives `X.Y.Z`, `X.Y` and `stable`, and
-# on a manual run (workflow_dispatch) on a branch, which gives `<branch>` and `sha-<commit>`. A push to
-# main publishes nothing, so a new image exists only when a release or a person needs one. There is no
-# `latest`: deploy/compose.yaml and selfhost/compose.release.yaml pin a version.
+# on a manual run (workflow_dispatch) from main, which gives `main` and `sha-<commit>`. A manual run from
+# any other branch publishes nothing: it fails before any job gets a token that can write the package,
+# so an unreviewed branch never reaches it. A push to main publishes nothing, so a new image exists only
+# when a release or a person needs one. There is no `latest`: deploy/compose.yaml and
+# selfhost/compose.release.yaml pin a version.
 #
 # No pull_request trigger: a pull request never publishes, and selfhost.yml already builds and smokes
 # the image from source on every change to it.
@@ -31,8 +39,24 @@ env:
   IMAGE: ghcr.io/${{ github.repository }}
 
 jobs:
+  # A manual run from a branch other than main stops here, red, and the jobs that push are skipped.
+  refuse-branch:
+    name: refuse a branch other than main
+    if: github.ref_type != 'tag' && github.ref != 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Refuse
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          echo "::error::Images publish only from main or a vX.Y.Z tag; this run is on $REF."
+          exit 1
+
   build:
     name: build ${{ matrix.platform }}
+    if: github.ref_type == 'tag' || github.ref == 'refs/heads/main'
     strategy:
       fail-fast: true
       matrix:
@@ -85,6 +109,13 @@ jobs:
           provenance: mode=max
           sbom: true
 
+      # What ships, read back from the registry by digest: a file a build stage copied in is covered
+      # even when no source scan saw it. A finding fails the job, so the digest is never handed on.
+      - name: Scan the image filesystem for secrets
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: ./deploy/scan-image.sh "$IMAGE@$DIGEST"
+
       - name: Record the digest
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
@@ -104,6 +135,8 @@ jobs:
     needs: build
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    outputs:
+      digest: ${{ steps.index.outputs.digest }}
     permissions:
       contents: read
       packages: write # tag the index, push the signature and the attestation
@@ -130,12 +163,9 @@ jobs:
         with:
           images: ${{ env.IMAGE }}
           flavor: latest=false
+          # The candidate tag only: the version tags wait for the smoke (the `release-tags` job).
           tags: |
-            type=ref,event=branch
-            type=sha,format=long,prefix=sha-,enable=${{ github.ref_type == 'branch' }}
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=stable,enable=${{ github.ref_type == 'tag' }}
+            type=sha,format=long,prefix=sha-
 
       # One index over both platform digests, carrying their SBOM and provenance manifests with it.
       - name: Create the multi-arch index
@@ -181,10 +211,95 @@ jobs:
       - name: Summary
         env:
           DIGEST: ${{ steps.index.outputs.digest }}
+        run: echo "### Candidate $IMAGE@$DIGEST (signed, not yet released)" >> "$GITHUB_STEP_SUMMARY"
+
+  # The self-host stack on the image as a stranger gets it: pulled by digest, never built here.
+  # compose.release.yaml drops `build`, and ALPHA_IMAGE names the digest, so what boots is the signed
+  # index the publish job made. Fails the run before any version tag exists.
+  smoke:
+    name: self-host smoke on the pulled image
+    needs: publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: read # pull the candidate by digest
+    env:
+      MODEL_CACHE_KEY: selfhost-gguf-qwen2.5-0.5b-instruct-q4_k_m-v1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Model directory
+        run: |
+          echo "LOCAL_MODELS_DIR=$RUNNER_TEMP/selfhost-models" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/selfhost-models"
+
+      # Restore only, as in selfhost.yml.
+      - name: Restore the model cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ env.LOCAL_MODELS_DIR }}
+          key: ${{ env.MODEL_CACHE_KEY }}
+
+      - name: Boot the pulled image and chat
+        env:
+          DIGEST: ${{ needs.publish.outputs.digest }}
+          COMPOSE_FILE: compose.yaml:compose.release.yaml
+        run: |
+          export ALPHA_IMAGE="$IMAGE@$DIGEST"
+          SMOKE_DOWN=1 ./selfhost/smoke.sh
+          echo "smoke ran $ALPHA_IMAGE" >> "$GITHUB_STEP_SUMMARY"
+
+  # The version tags, put on the digest that passed the scan and the smoke. Retagging moves no bytes,
+  # and the signature and attestation are on the digest, so they stay valid.
+  release-tags:
+    name: tag the verified digest
+    needs: [publish, smoke]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write # add tags to the index
+    steps:
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image tags
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: ${{ env.IMAGE }}
+          flavor: latest=false
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=stable,enable=${{ github.ref_type == 'tag' }}
+
+      - name: Tag the digest
+        env:
+          DIGEST: ${{ needs.publish.outputs.digest }}
           TAGS: ${{ steps.meta.outputs.tags }}
         run: |
+          args=()
+          while IFS= read -r tag; do [ -n "$tag" ] && args+=(-t "$tag"); done <<<"$TAGS"
+          [ "${#args[@]}" -gt 0 ] || { echo "no tags to apply" >&2; exit 1; }
+          docker buildx imagetools create "${args[@]}" "$IMAGE@$DIGEST"
           {
-            echo "### Published $IMAGE@$DIGEST"
+            echo "### Released $IMAGE@$DIGEST"
             echo
             echo '```'
             echo "$TAGS"

@@ -137,7 +137,7 @@ it is stale.
 | `agent-auto-mode` | on | none |
 | `agent-mode` | on when all of its env is set | `AGENT_SERVICE_URL`, `AGENT_SERVICE_TOKEN` |
 | `agent-mode-access` | on | none |
-| `agent-run-handoff` | off | none |
+| `agent-run-handoff` | on when all of its env is set | `AGENT_SERVICE_URL`, `AGENT_SERVICE_TOKEN` |
 | `attachment-allowance` | on | none |
 | `auto-repick` | on | none |
 | `auto-routing` | on | none |
@@ -149,7 +149,7 @@ it is stale.
 | `crisis-referral-order` | the code's own fallback (on) | none |
 | `custodial-storage-view` | on when all of its env is set | `CUSTODIAL_STORAGE_BACKEND` |
 | `dictation` | on when all of its env is set | `TRANSCRIPTION_MODEL` |
-| `document-attachments` | off | none |
+| `document-attachments` | on | none |
 | `document-text-only` | off | none |
 | `entity-name-correction` | on | none |
 | `folkways-adapter` | on when all of its env is set | `FOLKWAYS_ENABLED`, `FOLKWAYS_URL` |
@@ -178,23 +178,23 @@ it is stale.
 | `provenance-assisted-by` | on | none |
 | `provenance-facts-per-turn` | on | none |
 | `rag-entity-scope-guard` | on | none |
-| `read-aloud` | off | none |
+| `read-aloud` | on when all of its env is set | `READ_ALOUD_BASE_URL` |
 | `repetition-guard` | off | none |
 | `reply-language-rule` | on | none |
 | `report-fanout` | on when all of its env is set | `REPORT_SLACK_WEBHOOK` |
 | `router-alias` | on when all of its env is set | `LLM_ROUTER_ROUTES_PATH` |
-| `s1-safety-judge` | off | none |
+| `s1-safety-judge` | on when all of its env is set | `ZENTROPI_S1_ENDPOINT_URL`, `HF_TOKEN` |
 | `search-query-language` | on | none |
 | `self-harm-distress-declines` | off | none |
 | `share-links` | off | none |
 | `side-call-own-lane` | on when all of its env is set | `MISTRAL_MODELS` |
 | `source-credibility-filter` | on | none |
 | `storage-locations` | on when all of its env is set | `HF_BUCKETS_TOKEN`, `HF_BUCKETS_REPO` |
-| `stream-follow` | off | none |
-| `support-signal-classifier` | off | none |
+| `stream-follow` | on | none |
+| `support-signal-classifier` | on when all of its env is set | `GUARD_SHADOW_URL` |
 | `thunderbolt-export` | on | none |
-| `violence-recheck` | off | none |
-| `workspace-org-creation` | off | none |
+| `violence-recheck` | on when all of its env is set | `GUARD_SHADOW_URL` |
+| `workspace-org-creation` | on | none |
 <!-- selfhost-flag-table:end -->
 
 The app image is `web/Dockerfile`, the definition the published image is built from, with
@@ -300,8 +300,11 @@ its sandboxed frame.
   boot log then says `SELF-HOST, NO SCREEN`, so the gap is never silent (`guardGate.ts`,
   `selfHostWithoutScreen`). To screen every turn, name a classifier: a Shieldstral endpoint in
   `GUARD_SHADOW_URL` (`detectors/shieldstral.ts`), which also screens pictures, or Zentropi S1 for text
-  with `ZENTROPI_S1_ENDPOINT_URL` and `HF_TOKEN` plus `ALPHA_FLAGS=+s1-safety-judge` (`detectors/s1.ts`).
-  No flag turns the screen on; a configured classifier does. With S1 selected, text goes to S1 alone, so a
+  with `ZENTROPI_S1_ENDPOINT_URL` and `HF_TOKEN` (`detectors/s1.ts`); `s1-safety-judge` turns on by itself
+  when both are set. A configured classifier turns the screen on, and `violence-recheck` and
+  `support-signal-classifier` follow `GUARD_SHADOW_URL` as the sign that a screen is configured. Both call your
+  `TASK_MODEL`, not the classifier, so on an S1-only stack `ALPHA_FLAGS=+violence-recheck,+support-signal-classifier`
+  turns them on. With S1 selected, text goes to S1 alone, so a
   Shieldstral endpoint does not screen text then. Read `web/src/lib/chat/server/guardGate.ts` before you
   open this to the public. The boot log's `SELF-HOST, NO COOP` line is about Coop, the review service,
   which this directory does not run.
@@ -310,14 +313,15 @@ its sandboxed frame.
 - **Embeddings.** Nothing is embedded unless `RAG_EMBEDDING_BASE_URL` (or a dedicated `*_ENDPOINT_URL`) names
   an embedder, so no text goes to Hugging Face; the features that use embeddings fall back without them.
 - **A CSAM scanner for file uploads.** Uploads are on by default (`ALPHA_EDITION=selfhost` stands in for
-  `MULTIMODAL_ENABLED`, `multimodalMode.ts:47-52`; set `MULTIMODAL_ENABLED=false` to turn them off), and every
-  upload must pass a CSAM hash check (`CSAM_SCAN_BASE_URL` and `CSAM_SCAN_TOKEN`, a scanner such as HMA,
-  which is not part of this directory). `.env.example` sets `CSAM_SCAN=off` instead, so uploads work on
-  first start: they are stored unscanned (each logs a warning) and you take on detecting and reporting
-  CSAM. Remove that line to refuse every upload until a scanner is named. `CSAM_SCAN=off` is honoured only
+  `MULTIMODAL_ENABLED`, `multimodalMode.ts:47-52`; set `MULTIMODAL_ENABLED=false` to turn them off) once you
+  make a scan decision: name a CSAM hash-matching scanner (`CSAM_SCAN_PROVIDER`, `CSAM_SCAN_BASE_URL` and
+  `CSAM_SCAN_TOKEN`; not part of this directory), which then checks every picture and refuses an upload it
+  cannot check, or set `CSAM_SCAN=off`. `.env.example` sets `CSAM_SCAN=off`, so uploads work on first
+  start: they are stored with no hash check (each picture logs a line saying so) and you take on detecting
+  and reporting CSAM. Remove that line to keep uploads off until a scanner is named. `CSAM_SCAN=off` is honoured only
   when `ALPHA_EDITION` is set to something other than `hosted` (`csamScan.ts`; compose sets `selfhost`).
-  PDF and DOCX are a third switch: `document-attachments` is off in self-host, so add
-  `ALPHA_FLAGS=+document-attachments`. They are offered only while `multimodal` is also on
+  PDF and DOCX are a third switch: `document-attachments` is on in self-host (`ALPHA_FLAGS=-document-attachments`
+  turns it off). They are offered only while `multimodal` is also on
   (`documentAttachmentsGate.ts`), and their text is screened with the turn by whichever classifier
   Moderation (above) names; with none, it reaches the model unscreened like the rest of the turn.
 - **Agent mode** needs `AGENT_SERVICE_URL` and `AGENT_SERVICE_TOKEN` (the agent service in

@@ -136,8 +136,9 @@ to docs, examples and specs don't need an entry. The failure message prints the 
 ## Lint
 
 `pnpm lint` enforces nine `alpha-ds/*` rules as errors on the design system and every surface built
-on it. Five match shadcn/lint, and four are specific to Alpha. `pnpm lint:design` applies a ratchet
-to legacy chat code: each file's violation count in `design-lint-baseline.json` can only go down.
+on it. Five match shadcn/lint, and four are specific to Alpha. Legacy chat code gets the same errors,
+with each file's existing hits held in ESLint's own suppressions file, `web/eslint-suppressions.json`:
+a file's count can only go down, and lint fails until a count that went down is pruned.
 [`/designsystem/linting`](/designsystem/linting) has details and examples.
 
 ## Commands
@@ -147,9 +148,8 @@ pnpm dev:local                     # dev server on :5199 (auto CMS fallback): /d
 pnpm ds:tokens                     # regenerate tokens after editing tokens/*.ts
 pnpm ds:change "<summary>"         # record a change; the version follows (see Versioning)
 pnpm ds:version                    # current version and anything unrecorded
-pnpm lint:design                   # token drift + legacy ratchet (runs in CI)
-pnpm lint:design --update          # lock in an improvement (refuses to raise the baseline)
-node scripts/ds-lint-ratchet.mjs --report   # where the remaining debt is
+pnpm lint:design                   # token drift + unrecorded changes (runs in CI)
+pnpm exec eslint --prune-suppressions <file>  # lock in an improvement to a legacy file
 pnpm vitest run --project=server-fast ../packages/alpha-ds  # tokens, lint rules, catalog coverage
 ```
 

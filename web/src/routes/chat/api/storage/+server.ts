@@ -9,7 +9,7 @@ import { requireStorageAccess, storageFailure } from "./guard";
 import { requestedLocation, writeUpload } from "./write";
 import { throwIfHubRateLimitFault } from "$lib/chat/server/storage/hubBusy";
 
-// The front door never built. List and upload live here; download and delete are
+// The front door for My files. List and upload live here; download and delete are
 // one level down in ./file, because download is the endpoint where a bug serves another person's
 // BYTES rather than their filenames, and it earns its own file and its own header discipline.
 

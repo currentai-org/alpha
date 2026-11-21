@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import sharp from 'sharp';
 import { zipSync } from 'fflate';
-import { HmaUnreachableError, type CsamScanResult } from './csamScan';
+import { CsamScannerUnreachableError, type CsamScanResult } from './csamScan';
 import { scanFileForCsam, scanTargetForMime, UnscannableFileError } from './embeddedImageScan';
 
 const fixture = (name: string) =>
@@ -97,11 +97,11 @@ describe('scanFileForCsam on a PDF', () => {
 
 	it('lets an unreachable scanner propagate, so the caller refuses with the try-again line', async () => {
 		const scan = async () => {
-			throw new HmaUnreachableError(new Error('down'));
+			throw new CsamScannerUnreachableError(new Error('down'));
 		};
 		await expect(
 			scanFileForCsam(blob(fixture('xobject.pdf')), 'a.pdf', 'pdf', { scan, logger: quietLog })
-		).rejects.toBeInstanceOf(HmaUnreachableError);
+		).rejects.toBeInstanceOf(CsamScannerUnreachableError);
 	});
 });
 
@@ -171,6 +171,26 @@ describe('scanFileForCsam on an image or text', () => {
 	});
 });
 
+describe('scanFileForCsam with no scanner configured', () => {
+	it("still hands a PDF's pictures to the stored-picture screen, and returns unscanned, never clean", async () => {
+		const collected: Buffer[] = [];
+		const result = await scanFileForCsam(blob(fixture('xobject.pdf')), 'a.pdf', 'pdf', { collected, logger: quietLog });
+		expect(result).toEqual({ status: 'unscanned', reason: 'no-scanner' });
+		expect(collected.length).toBeGreaterThan(0);
+	});
+
+	it('takes a PDF that does not open as unscanned, never refusing it, since no hash check would run', async () => {
+		await expect(
+			scanFileForCsam(blob(new Uint8Array([37, 80, 68, 70, 45, 120])), 'broken.pdf', 'pdf', { logger: quietLog })
+		).resolves.toEqual({ status: 'unscanned', reason: 'no-scanner' });
+	});
+
+	it('returns unscanned for a photo, and clean for a text file, which has no picture to check', async () => {
+		await expect(scanFileForCsam(blob(NOISE_PNG), 'p.png', 'image')).resolves.toEqual({ status: 'unscanned', reason: 'no-scanner' });
+		await expect(scanFileForCsam(blob(new Uint8Array([104, 105])), 't.txt', null)).resolves.toEqual({ status: 'clean' });
+	});
+});
+
 describe('a PDF over the page limit', () => {
 	it('is refused with the page-limit notice before the scanner sees anything', async () => {
 		const bytes = readFileSync(fileURLToPath(new URL('../../../../../e2e/scenarios/fixtures/too-many-pages.pdf', import.meta.url)));
@@ -179,5 +199,11 @@ describe('a PDF over the page limit', () => {
 		await expect(out).rejects.toBeInstanceOf(UnscannableFileError);
 		await expect(out).rejects.toMatchObject({ notice: "This PDF has more than 1,000 pages, so it wasn't added." });
 		expect(calls).toEqual([]);
+	});
+
+	it('is still refused with the page-limit notice when no scanner is configured', async () => {
+		const bytes = readFileSync(fileURLToPath(new URL('../../../../../e2e/scenarios/fixtures/too-many-pages.pdf', import.meta.url)));
+		const out = scanFileForCsam(blob(bytes), 'p.pdf', 'pdf', { logger: quietLog });
+		await expect(out).rejects.toMatchObject({ notice: "This PDF has more than 1,000 pages, so it wasn't added." });
 	});
 });

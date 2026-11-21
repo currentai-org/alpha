@@ -106,3 +106,29 @@ describe.sequential("cleanupExpired: safety record retention", () => {
 		expect(counts.safetyEvents).toBeGreaterThanOrEqual(swept.length);
 	});
 });
+
+describe.sequential("cleanupExpired: Better Auth rate-limit counters", () => {
+	const keys = ["cleanup-spec-old", "cleanup-spec-recent"];
+	afterEach(async () => {
+		await getDb().delete(schema.rateLimit).where(inArray(schema.rateLimit.key, keys));
+	});
+
+	it("deletes a counter whose last request is over a day old and keeps a recent one", async () => {
+		const day = 24 * 60 * 60 * 1000;
+		await getDb()
+			.insert(schema.rateLimit)
+			.values([
+				{ id: "cleanup-spec-old", key: keys[0], count: 3, lastRequest: now.getTime() - day - 60_000 },
+				{ id: "cleanup-spec-recent", key: keys[1], count: 1, lastRequest: now.getTime() - 60_000 },
+			]);
+
+		const counts = await cleanupExpired(now);
+
+		const left = await getDb()
+			.select({ key: schema.rateLimit.key })
+			.from(schema.rateLimit)
+			.where(inArray(schema.rateLimit.key, keys));
+		expect(left.map((r) => r.key)).toEqual(["cleanup-spec-recent"]);
+		expect(counts.rateLimits).toBeGreaterThanOrEqual(1);
+	});
+});

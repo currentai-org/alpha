@@ -6,6 +6,7 @@ import { addChildren } from "$lib/chat/utils/tree/addChildren.js";
 import { addSibling } from "$lib/chat/utils/tree/addSibling.js";
 import { logger } from "$lib/chat/server/logger";
 import { isUnsavedAnswer } from "./settlePendingAnswers";
+import { continuedAnswerStart, hasAnswerToContinue, visibleAnswerText } from "$lib/chat/utils/continueAnswer";
 
 /**
  * Append this turn's message(s) to the conversation tree and return the assistant message we'll
@@ -16,6 +17,8 @@ import { isUnsavedAnswer } from "./settlePendingAnswers";
  *     answer from the prompt subtree.
  *   - normal turn → append the user message + a blank assistant child back to back, after the newest
  *     turn on the branch the page named (see `newestOnBranch`).
+ *   - continue an ASSISTANT message the time limit cut off → add an assistant sibling that starts with
+ *     its visible text, and return that text as `continueFrom` for the model to go on from.
  *   - attach to an ASSISTANT message holding an agent task → no new node: the same message
  *     is emptied and rewritten from the task's replayed events, so a reload after the tab closed
  *     shows the run's answer where its interrupted one was, rather than a regenerated sibling.
@@ -35,12 +38,14 @@ export function appendTurnMessages(
 	opts: {
 		isRetry?: boolean;
 		attach?: boolean;
+		/** Finish the assistant message `messageId`, which the time limit cut off. */
+		isContinue?: boolean;
 		messageId?: Message["id"];
 		newPrompt?: string;
 		uploadedFiles: NonNullable<Message["files"]>;
 		newMessageIds?: { user?: Message["id"]; assistant?: Message["id"] };
 	}
-): { messageToWriteToId: Message["id"] | undefined; messagesForPrompt: Message[] } {
+): { messageToWriteToId: Message["id"] | undefined; messagesForPrompt: Message[]; continueFrom?: string } {
 	const { isRetry, messageId, newPrompt, uploadedFiles } = opts;
 	const taken = (id: Message["id"]) => conv.messages.some((m) => m.id === id);
 	const clientId = (role: "user" | "assistant"): Message["id"] | undefined => {
@@ -61,6 +66,34 @@ export function appendTurnMessages(
 	let messageToWriteToId: Message["id"] | undefined = undefined;
 	// used for building the prompt, subtree of the conversation that goes from the latest message to the root
 	let messagesForPrompt: Message[] = [];
+
+	if (opts.isContinue) {
+		const target = conv.messages.find((message) => message.id === messageId);
+		if (!target) error(404, "Message not found");
+		if (target.from !== "assistant" || !hasAnswerToContinue(target.content)) {
+			error(409, "This message has no answer to continue");
+		}
+		const continueFrom = visibleAnswerText(target.content);
+		// A new answer beside the cut one, as a Retry makes, that starts with the cut answer's text: the
+		// route appends what the model writes next, so the finished answer reads as one. The cut answer stays
+		// as the other branch. Its sources come along, so citations in the text it carries still resolve.
+		const continuedId = addSibling(
+			conv,
+			{
+				from: "assistant",
+				...continuedAnswerStart(continueFrom),
+				...(target.webSearch ? { webSearch: target.webSearch } : {}),
+				...(target.rag ? { rag: target.rag } : {}),
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			},
+			target.id,
+			assistantId
+		);
+		const prompt = buildSubtree(conv, target.id);
+		prompt.pop(); // the cut answer reaches the model as `continueFrom`, after the question
+		return { messageToWriteToId: continuedId, messagesForPrompt: prompt, continueFrom };
+	}
 
 	if (opts.attach) {
 		const target = conv.messages.find((message) => message.id === messageId);

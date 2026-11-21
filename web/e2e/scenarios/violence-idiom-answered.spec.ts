@@ -60,7 +60,11 @@ test(
 			body.startsWith(VIOLENCE_DECLINE),
 			`a real violence request got past the screen: ${body.slice(0, 300)}`
 		).toBe(true);
-		// The decline names who set the limit and the rule.
-		expect(body).toContain('Current AI set this limit (rule: Violent content).');
+		// The decline names who set the limit and the rule. This prompt also trips the fraud
+		// and self-harm rules on the S1 screen, so the attribution reads "Multiple Safety Rules" when more
+		// than one rule blocked (ruleLabel.ts); the violence decline above is what this test holds.
+		expect(body).toMatch(
+			/Current AI set this limit \(rule: (Violent content|Multiple Safety Rules)\)\./
+		);
 	}
 );

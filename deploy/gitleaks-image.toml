@@ -1,0 +1,28 @@
+# Allowlist for the image secret scan (deploy/scan-image.sh), on top of gitleaks' default rules.
+# Paths are relative to the image root. One entry per file, each limited to the rule that fired, so a
+# new finding anywhere else still fails the scan.
+title = "image secret scan"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "an x-e2e-fault-inject request header name; the token comes from an env var"
+targetRules = ["generic-api-key"]
+paths = ['''(^|/)web/scripts/chat-trajectory-probe\.mjs$''']
+
+[[allowlists]]
+description = "paraglide's build cache: the compiled i18n plugin as one bundled JS file, whose long identifiers match these two rules"
+targetRules = ["generic-api-key", "jfrog-identity-token"]
+paths = ['''(^|/)web/project\.inlang/cache/''']
+
+[[allowlists]]
+description = "a V8 header shipped with the Node base image, upstream C++ source with no credential"
+targetRules = ["generic-api-key"]
+paths = ['''(^|/)usr/local/include/node/v8-internal\.h$''']
+
+[[allowlists]]
+description = "the feature flag key s1-safety-judge (web/src/lib/chat/server/flagKeys.ts), which the bundler keeps in the server chunk without the source's gitleaks:allow comment"
+targetRules = ["generic-api-key"]
+regexTarget = "match"
+regexes = ['''key: "s1-safety-judge"'''] # gitleaks:allow — a flag key, not a secret

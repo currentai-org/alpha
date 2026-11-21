@@ -17,7 +17,7 @@ import {
 import { custodialStorageViewEnabledForUser } from "$lib/chat/server/storage/custodialStorageGate";
 import {
 	CsamScannerUnconfiguredError,
-	HmaUnreachableError,
+	CsamScannerUnreachableError,
 	UPLOAD_NOT_SCANNED_MESSAGE,
 } from "$lib/chat/server/storage/csamScan";
 import { UnscannableFileError, UNSCANNABLE_FILE_MESSAGE } from "$lib/chat/server/storage/embeddedImageScan";
@@ -36,7 +36,6 @@ import { LocationUnavailableError, UnknownLocationError } from "$lib/chat/server
 import { LinkRefusedError, PathOutsideLocationError } from "$lib/chat/server/storage/locations/hfBucketLocation";
 import { LocationChoiceRequiredError } from "$lib/chat/server/storage/locations/registry";
 import { documentAttachmentsEnabled } from "$lib/chat/server/documentAttachmentsGate";
-import { resolveFaultInjection } from "$lib/chat/server/textGeneration/faultInjection";
 import { multimodalEnabled } from "$lib/chat/server/textOnly";
 
 // The two things every custodial storage endpoint has to do before it touches the bucket,
@@ -45,8 +44,7 @@ import { multimodalEnabled } from "$lib/chat/server/textOnly";
 // This matters more here than on most routes. ONE shared `HF_BUCKETS_TOKEN` holds every person's
 // files, so `assertOwnership`'s path check is the only thing standing between two users — there is
 // no per-user credential underneath as a second layer, and a bug is a cross-user read rather than a
-// leaked field (an unnormalized path walking out of the prefix is the failure to guard against,
-//). That change is the open question about the credential model itself.
+// leaked field (an unnormalized path walking out of the prefix is the failure to guard against).
 
 /**
  * Resolve the account id this request is allowed to act as, or throw the right HTTP error.
@@ -87,7 +85,7 @@ export async function locationsEnabled(accountId: string, email: string | undefi
 /**
  * Turn a storage-module error into the status it deserves, or rethrow.
  *
- * Every limit in that change is a typed error precisely so a route can do this rather than let a quota
+ * Every storage limit is a typed error precisely so a route can do this rather than let a quota
  * degrade into a suggestion. A handler that swallows one of these has un-enforced the limit while
  * still importing it.
  */
@@ -126,15 +124,15 @@ function storageError(e: unknown): never {
 	// 422, not 403/415: the file is well-formed and of an allowed type, but its content matched a known
 	// CSAM signal — a distinct rejection reason from "not yours" or "wrong format".
 	if (e instanceof CsamMatchError) error(422, "This file could not be uploaded.");
-	// 503: the file could not be scanned, because no scanner is configured or the configured one did
-	// not answer. Fail closed, with the same line chat shows.
+	// 503: the file could not be scanned, because the scanner config is incomplete or the configured
+	// scanner did not answer. Fail closed, with the same line chat shows.
 	if (e instanceof CsamScannerUnconfiguredError) {
-		// A config error, not a service failure: nothing is scanned until CSAM_SCAN_BASE_URL is set, so it is
+		// A config error, not a service failure: nothing is scanned until the scanner config is complete, so it is
 		// logged at error, as chat's own refusal is (parseRequest.ts).
-		logger.error("[csam-scan] CSAM_SCAN_BASE_URL is unset, so a My files upload was refused (config error)");
+		logger.error("[csam-scan] the CSAM scan config is incomplete, so a My files upload was refused (config error)");
 		error(503, UPLOAD_NOT_SCANNED_MESSAGE);
 	}
-	if (e instanceof HmaUnreachableError) error(503, UPLOAD_NOT_SCANNED_MESSAGE);
+	if (e instanceof CsamScannerUnreachableError) error(503, UPLOAD_NOT_SCANNED_MESSAGE);
 	// 422: a picture inside the file could not be decoded, so it could not be checked. A
 	// retry gives the same answer, unlike the 503 above.
 	if (e instanceof UnscannableFileError) error(422, UNSCANNABLE_FILE_MESSAGE);
@@ -153,7 +151,7 @@ function storageError(e: unknown): never {
  */
 function logScanRefusal(e: unknown): void {
 	const check =
-		e instanceof HmaUnreachableError
+		e instanceof CsamScannerUnreachableError
 			? "csam-hash"
 			: e instanceof ImageScreenUnavailableError
 				? "image-screen"
@@ -188,11 +186,8 @@ function retryAfterSeconds(e: UploadRateLimitedError): number {
  * The content gates every write takes, built once so an upload and a copy or move can't drift apart.
  * A gate added to uploads but not to transfers would make a transfer the way around it.
  */
-export async function writeOptions(request: Request) {
-	const fault = await resolveFaultInjection(request);
+export async function writeOptions() {
 	return {
-		scannerDown: fault === "csam_scanner_down",
-		scannerBlip: fault === "csam_scanner_blip",
 		// An image only for an account the `multimodal` flag selects (team-only on preview).
 		imagesAllowed: multimodalEnabled(),
 		// A document only where its pictures may be extracted in-process (team-only).

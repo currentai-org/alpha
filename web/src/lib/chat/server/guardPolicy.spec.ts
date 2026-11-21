@@ -241,7 +241,7 @@ describe("guardPolicy v2 — memoized loader + compose helpers", () => {
 		expect(policy!.shield.concurrency).toBeGreaterThan(0);
 	});
 
-	it("every self-harm decline links findahelpline.com and 112 before the US 988 line", () => {
+	it("every self-harm decline links findahelpline.com before the US 988 line and names no 112", () => {
 		// The screen's decline is the whole reply on this path: the model never runs, so the persona's
 		// crisis clause can't supply a line. Same order as CrisisResources.svelte.
 		const supportRules = Object.entries(RULES as Record<string, { label?: string; message?: string }>).filter(
@@ -251,7 +251,7 @@ describe("guardPolicy v2 — memoized loader + compose helpers", () => {
 		for (const [key, { message = "" }] of supportRules) {
 			const at = (s: string) => message.indexOf(s);
 			expect(at("[findahelpline.com](https://findahelpline.com)"), key).toBeGreaterThan(-1);
-			expect(at("112"), key).toBeGreaterThan(-1);
+			expect(message, key).not.toMatch(/\b112\b/);
 			expect(at("988"), key).toBeGreaterThan(at("findahelpline.com"));
 		}
 	});

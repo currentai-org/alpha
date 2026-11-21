@@ -1,15 +1,15 @@
-# The scenario suite (Playwright) against the pull request's own Vercel preview. It needs secrets, so it
-# runs only where they can be read safely:
+# The scenario suite (Playwright), in two jobs.
 #
-# - A pull request from a branch in this repository runs in the `preview-e2e` environment, whose required
-#   reviewers approve each run before any secret reaches it.
-# - A merge queue batch runs in `merge-queue-e2e`, open only to the queue's own branches. Its code was
-#   already reviewed, so it needs no second approval.
-# - A pull request from a fork never runs it here: GitHub gives a fork's `pull_request` run no secrets.
-#   The merge queue runs it on the batch before the change lands on main.
+# - `mock-model` runs on every pull request, a fork's included, and on every merge queue batch. It
+#   reads no secret: the app, Postgres and a mock OpenAI-compatible model (aimock, answering from
+#   web/e2e/mock-model/fixtures.json) all run on the runner, and the @mock-model scenarios drive them
+#   (web/scripts/mock-model-e2e.sh). The self-host smoke (selfhost.yml) runs beside it.
+# - `provider-contract` runs the @provider-contract scenarios against real models, on the batch's own
+#   Vercel preview. It runs only in the merge queue, in the `merge-queue-e2e` environment, which only
+#   the queue's own branches can deploy to, so a pull request's code never runs with a model key.
 #
-# With no secrets set (a fork of this repository, or before the environments are configured) the job
-# says so in a notice and passes, so the CI stays green for anyone who cannot run it.
+# With no secrets set (a fork, or before the environment is configured) `provider-contract` says so in
+# a notice and passes.
 name: E2E
 
 on:
@@ -23,17 +23,71 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  scenarios:
-    name: scenario suite against the preview
-    if: github.event_name == 'merge_group' || github.event.pull_request.head.repo.full_name == github.repository
+  mock-model:
+    name: scenario suite against a mock model
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16@sha256:3950ad7c3148ca2175ef1b6c36c9efbf78957ae8fbe8b3a5d7c35af50500382f
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: alpha_e2e
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d alpha_e2e"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/alpha_e2e
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .nvmrc
+
+      - name: Install
+        run: |
+          pnpm install --frozen-lockfile
+          cd web && pnpm exec playwright install --with-deps chromium
+
+      - name: Migrate the test database
+        working-directory: web
+        run: pnpm db:migrate
+
+      - name: Scenario suite against the mock model
+        working-directory: web
+        run: ./scripts/mock-model-e2e.sh --output=test-results/mock-model-playwright
+
+      - name: Upload the report and logs
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: mock-model-e2e
+          path: |
+            web/test-results/
+            web/playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  provider-contract:
+    name: provider-contract scenarios against real models
+    if: github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    environment: ${{ github.event_name == 'merge_group' && 'merge-queue-e2e' || 'preview-e2e' }}
+    environment: merge-queue-e2e
     permissions:
       contents: read
       deployments: read # the Vercel git integration reports each preview as a deployment on the commit
     env:
-      HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+      HEAD_SHA: ${{ github.event.merge_group.head_sha }}
     steps:
       - name: Are the secrets here?
         id: gate
@@ -41,7 +95,7 @@ jobs:
           SCENARIO_ENV: ${{ secrets.SCENARIO_ENV }}
         run: |
           if [ -z "$SCENARIO_ENV" ]; then
-            echo "::notice title=e2e skipped::the SCENARIO_ENV secret is not set in this environment, so the scenario suite did not run."
+            echo "::notice title=e2e skipped::the SCENARIO_ENV secret is not set in this environment, so the provider-contract scenarios did not run."
             echo "run=false" >> "$GITHUB_OUTPUT"
           else
             echo "run=true" >> "$GITHUB_OUTPUT"
@@ -88,21 +142,19 @@ jobs:
           pnpm install --frozen-lockfile
           cd web && pnpm exec playwright install --with-deps chromium
 
-      - name: Scenario suite
+      - name: Provider-contract scenarios
         if: steps.gate.outputs.run == 'true'
         working-directory: web
         env:
           # The contents of a dotenv file: one KEY=value per line, with the keys web/.env.example names.
           SCENARIO_ENV: ${{ secrets.SCENARIO_ENV }}
           SCENARIO_BASE_URL: ${{ steps.preview.outputs.base_url }}
-          # A pull request reads the quarantine list and skips the live-model specs; the queue runs all.
-          SCENARIO_QUARANTINE: ${{ github.event_name == 'pull_request' && '1' || '0' }}
-          SCENARIO_SKIP_LIVE_MODEL: ${{ github.event_name == 'pull_request' && '1' || '0' }}
         run: |
           set -a
+          # shellcheck source=/dev/null
           . <(printf '%s\n' "$SCENARIO_ENV")
           set +a
-          pnpm test:e2e:scenarios
+          pnpm test:e2e:scenarios --grep @provider-contract
 
       - name: Upload the report
         if: failure() && steps.gate.outputs.run == 'true'

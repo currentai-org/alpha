@@ -1,7 +1,7 @@
 // scanCsamHash's own contract, isolated from uploadCustodialFile's reaction to it (that
-// half is covered in custodialStorage.spec.ts, which mocks this module). fetch is mocked here; HMA's
-// real API shape (a match/no-match/degenerate-hash 400) is confirmed separately against the running
-// local stack in web/hma/, and csamScan.ts's header lists those response shapes.
+// half is covered in custodialStorage.spec.ts, which mocks this module): which provider the config
+// selects, failing closed when none is, and the `hma` provider's reading of each answer. fetch is mocked
+// here; csamScanHma.ts's header lists the response shapes it reads.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const cfg: Record<string, string> = {};
@@ -21,19 +21,74 @@ beforeEach(() => {
 	vi.stubGlobal("fetch", fetchMock);
 });
 
-describe("scanCsamHash — no scanner configured fails closed", () => {
-	it("refuses (throws CsamScannerUnconfiguredError), never returns clean, when CSAM_SCAN_BASE_URL is unset", async () => {
-		const { scanCsamHash, CsamScannerUnconfiguredError, csamScanConfigured } = await import("./csamScan");
-		expect(csamScanConfigured()).toBe(false);
-		await expect(scanCsamHash(new Blob(["x"]), "a.png")).rejects.toBeInstanceOf(
-			CsamScannerUnconfiguredError
-		);
+describe("scanCsamHash — with no scanner configured, the upload is taken and one content-free line says no hash check ran", () => {
+	it("returns unscanned (never clean), calls nothing, and logs one line naming no file", async () => {
+		const { scanCsamHash, csamScanAllowsUploads, csamScanSkipped } = await import("./csamScan");
+		expect(csamScanAllowsUploads()).toBe(true);
+		expect(csamScanSkipped()).toBe(true);
+		const result = await scanCsamHash(new Blob(["x"]), "holiday-photo.png");
+		expect(result).toEqual({ status: "unscanned", reason: "no-scanner" });
 		expect(fetchMock).not.toHaveBeenCalled();
+		expect(logMock.warn).toHaveBeenCalledTimes(1);
+		expect(logMock.warn.mock.calls[0]).toEqual(["[csam-scan] no known-CSAM hash check ran: no scanner is configured"]);
+		expect(JSON.stringify(logMock.warn.mock.calls)).not.toContain("holiday-photo");
 	});
 });
 
-describe("scanCsamHash — the Fly proxy's bearer", () => {
+describe("scanCsamHash — the provider is chosen by config, and a half-written config fails closed", () => {
+	it("a base URL with no CSAM_SCAN_PROVIDER uses the hma provider, so a scanner URL that is set still runs", async () => {
+		cfg.CSAM_SCAN_BASE_URL = "https://scanner.example.test/";
+		fetchMock.mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
+		const { scanCsamHash, csamScanAllowsUploads, csamScanSkipped } = await import("./csamScan");
+		expect(csamScanAllowsUploads()).toBe(true);
+		expect(csamScanSkipped()).toBe(false);
+		await expect(scanCsamHash(new Blob(["x"]), "a.png")).resolves.toEqual({ status: "clean" });
+		expect(fetchMock.mock.calls[0][0]).toBe("https://scanner.example.test/m/lookup?bypass_coinflip=true");
+	});
+
+	it("a set scanner URL that cannot be reached still refuses the upload", async () => {
+		cfg.CSAM_SCAN_BASE_URL = "https://scanner.example.test";
+		fetchMock.mockRejectedValue(new TypeError("fetch failed"));
+		const { scanCsamHash, CsamScannerUnreachableError } = await import("./csamScan");
+		await expect(scanCsamHash(new Blob(["x"]), "a.png", { retryDelayMs: 0 })).rejects.toBeInstanceOf(
+			CsamScannerUnreachableError
+		);
+	});
+
+	it("a CSAM_SCAN_PROVIDER that names no known provider refuses every upload, calls nothing, and logs it once", async () => {
+		cfg.CSAM_SCAN_PROVIDER = "no-such-provider";
+		cfg.CSAM_SCAN_BASE_URL = "https://scanner.example.test";
+		const { scanCsamHash, CsamScannerUnconfiguredError, csamScanAllowsUploads } = await import("./csamScan");
+		expect(csamScanAllowsUploads()).toBe(false);
+		await expect(scanCsamHash(new Blob(["x"]), "a.png")).rejects.toBeInstanceOf(CsamScannerUnconfiguredError);
+		await expect(scanCsamHash(new Blob(["x"]), "b.png")).rejects.toBeInstanceOf(CsamScannerUnconfiguredError);
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(logMock.error).toHaveBeenCalledTimes(1);
+		expect(logMock.error).toHaveBeenCalledWith(expect.stringContaining("no-such-provider"));
+	});
+
+	it("a provider named with no CSAM_SCAN_BASE_URL refuses every upload and calls nothing", async () => {
+		cfg.CSAM_SCAN_PROVIDER = "hma";
+		const { scanCsamHash, CsamScannerUnconfiguredError, csamScanAllowsUploads } = await import("./csamScan");
+		expect(csamScanAllowsUploads()).toBe(false);
+		await expect(scanCsamHash(new Blob(["x"]), "a.png")).rejects.toBeInstanceOf(CsamScannerUnconfiguredError);
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it("a CSAM_SCAN_TOKEN left set with no CSAM_SCAN_BASE_URL refuses every upload, never takes it unscanned", async () => {
+		cfg.CSAM_SCAN_TOKEN = "left-behind";
+		const { scanCsamHash, CsamScannerUnconfiguredError, csamScanAllowsUploads, csamScanSkipped } = await import("./csamScan");
+		expect(csamScanSkipped()).toBe(false);
+		expect(csamScanAllowsUploads()).toBe(false);
+		await expect(scanCsamHash(new Blob(["x"]), "a.png")).rejects.toBeInstanceOf(CsamScannerUnconfiguredError);
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(logMock.error).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("scanCsamHash — the proxy's bearer", () => {
 	it("sends CSAM_SCAN_TOKEN as a bearer when it is set, and no Authorization header when it is not", async () => {
+		cfg.CSAM_SCAN_PROVIDER = "hma";
 		cfg.CSAM_SCAN_BASE_URL = "https://hma.example.test";
 		fetchMock.mockImplementation(async () => new Response(JSON.stringify({}), { status: 200 }));
 		const { scanCsamHash } = await import("./csamScan");
@@ -47,15 +102,17 @@ describe("scanCsamHash — the Fly proxy's bearer", () => {
 	});
 
 	it("reads a 401 from the proxy (a wrong or missing token) as unreachable, never as clean", async () => {
+		cfg.CSAM_SCAN_PROVIDER = "hma";
 		cfg.CSAM_SCAN_BASE_URL = "https://hma.example.test";
 		fetchMock.mockResolvedValue(new Response("unauthorized", { status: 401 }));
-		const { scanCsamHash, HmaUnreachableError } = await import("./csamScan");
-		await expect(scanCsamHash(new Blob(["x"]), "a.png")).rejects.toBeInstanceOf(HmaUnreachableError);
+		const { scanCsamHash, CsamScannerUnreachableError } = await import("./csamScan");
+		await expect(scanCsamHash(new Blob(["x"]), "a.png")).rejects.toBeInstanceOf(CsamScannerUnreachableError);
 	});
 });
 
-describe("scanCsamHash — HMA reachable", () => {
+describe("scanCsamHash — the hma provider, reachable", () => {
 	beforeEach(() => {
+		cfg.CSAM_SCAN_PROVIDER = "hma";
 		cfg.CSAM_SCAN_BASE_URL = "http://127.0.0.1:5101";
 	});
 
@@ -96,53 +153,34 @@ describe("scanCsamHash — HMA reachable", () => {
 		expect(result).toEqual({ status: "clean" });
 	});
 
-	it("throws HmaUnreachableError, NOT clean, on a 400 naming a different cause (a malformed request on our side)", async () => {
+	it("throws CsamScannerUnreachableError, NOT clean, on a 400 naming a different cause (a malformed request on our side)", async () => {
 		fetchMock.mockResolvedValue(
 			new Response(JSON.stringify({ message: "no such content_type: 'wrongfield'" }), { status: 400 })
 		);
-		const { scanCsamHash, HmaUnreachableError } = await import("./csamScan");
-		await expect(scanCsamHash(new Blob(["x"]), "a.png")).rejects.toBeInstanceOf(HmaUnreachableError);
+		const { scanCsamHash, CsamScannerUnreachableError } = await import("./csamScan");
+		await expect(scanCsamHash(new Blob(["x"]), "a.png")).rejects.toBeInstanceOf(CsamScannerUnreachableError);
 	});
 
-	it("throws HmaUnreachableError on a 400 with no parseable message", async () => {
+	it("throws CsamScannerUnreachableError on a 400 with no parseable message", async () => {
 		fetchMock.mockResolvedValue(new Response("not json", { status: 400 }));
-		const { scanCsamHash, HmaUnreachableError } = await import("./csamScan");
-		await expect(scanCsamHash(new Blob(["x"]), "a.png")).rejects.toBeInstanceOf(HmaUnreachableError);
+		const { scanCsamHash, CsamScannerUnreachableError } = await import("./csamScan");
+		await expect(scanCsamHash(new Blob(["x"]), "a.png")).rejects.toBeInstanceOf(CsamScannerUnreachableError);
 	});
 
-	it("the csam_scanner_blip fault fails only the first attempt, so the retry's real lookup decides the file", async () => {
-		cfg.CSAM_SCAN_BASE_URL = "https://hma.example";
-		fetchMock.mockResolvedValue(new Response(JSON.stringify({ pdq: {} }), { status: 200 }));
-		const { scanCsamHash } = await import("./csamScan");
-		const result = await scanCsamHash(new Blob(["x"]), "a.png", { retryDelayMs: 0, failFirstAttempt: true });
-		expect(result).toEqual({ status: "clean" });
-		// The faulted first attempt sends nothing; the retry is the one real request.
-		expect(fetchMock).toHaveBeenCalledTimes(1);
-	});
-
-	it("the csam_scanner_blip fault still fails closed when the retry also cannot reach the scanner", async () => {
-		cfg.CSAM_SCAN_BASE_URL = "https://hma.example";
+	it("still refuses (CsamScannerUnreachableError) after two network failures in a row, never clean", async () => {
 		fetchMock.mockRejectedValue(new TypeError("fetch failed"));
-		const { scanCsamHash, HmaUnreachableError } = await import("./csamScan");
-		await expect(
-			scanCsamHash(new Blob(["x"]), "a.png", { retryDelayMs: 0, failFirstAttempt: true })
-		).rejects.toBeInstanceOf(HmaUnreachableError);
-	});
-
-	it("still refuses (HmaUnreachableError) after two network failures in a row, never clean", async () => {
-		fetchMock.mockRejectedValue(new TypeError("fetch failed"));
-		const { scanCsamHash, HmaUnreachableError } = await import("./csamScan");
+		const { scanCsamHash, CsamScannerUnreachableError } = await import("./csamScan");
 		await expect(scanCsamHash(new Blob(["x"]), "a.png", { retryDelayMs: 0 })).rejects.toBeInstanceOf(
-			HmaUnreachableError
+			CsamScannerUnreachableError
 		);
 		expect(fetchMock).toHaveBeenCalledTimes(2);
 	});
 
 	it("still refuses after two 503s, naming the status, and asks no third time", async () => {
 		fetchMock.mockImplementation(async () => new Response("", { status: 503 }));
-		const { scanCsamHash, HmaUnreachableError } = await import("./csamScan");
+		const { scanCsamHash, CsamScannerUnreachableError } = await import("./csamScan");
 		const scan = scanCsamHash(new Blob(["x"]), "a.png", { retryDelayMs: 0 });
-		await expect(scan).rejects.toBeInstanceOf(HmaUnreachableError);
+		await expect(scan).rejects.toBeInstanceOf(CsamScannerUnreachableError);
 		await expect(scan).rejects.toThrow("HTTP 503");
 		expect(fetchMock).toHaveBeenCalledTimes(2);
 	});
@@ -175,7 +213,7 @@ describe("scanCsamHash — HMA reachable", () => {
 	});
 
 	it("never retries a timeout, a 500 or a 4xx: one call, then refused", async () => {
-		const { scanCsamHash, HmaUnreachableError } = await import("./csamScan");
+		const { scanCsamHash, CsamScannerUnreachableError } = await import("./csamScan");
 		for (const only of [
 			() => Promise.reject(new DOMException("The operation was aborted due to timeout", "TimeoutError")),
 			() => Promise.resolve(new Response("", { status: 500 })),
@@ -183,13 +221,14 @@ describe("scanCsamHash — HMA reachable", () => {
 		]) {
 			fetchMock.mockReset().mockImplementation(only);
 			await expect(scanCsamHash(new Blob(["x"]), "a.png", { retryDelayMs: 0 })).rejects.toBeInstanceOf(
-				HmaUnreachableError
+				CsamScannerUnreachableError
 			);
 			expect(fetchMock).toHaveBeenCalledTimes(1);
 		}
 	});
 
 	it("sends CSAM_SCAN_TOKEN as a bearer when it is set, and no Authorization header when it is not", async () => {
+		cfg.CSAM_SCAN_PROVIDER = "hma";
 		cfg.CSAM_SCAN_BASE_URL = "https://hma.example.test";
 		fetchMock.mockImplementation(async () => new Response(JSON.stringify({}), { status: 200 }));
 		const { scanCsamHash } = await import("./csamScan");
@@ -203,41 +242,45 @@ describe("scanCsamHash — HMA reachable", () => {
 	});
 
 	it("reads a 401 from the proxy (a wrong or missing token) as unreachable, never as clean", async () => {
+		cfg.CSAM_SCAN_PROVIDER = "hma";
 		cfg.CSAM_SCAN_BASE_URL = "https://hma.example.test";
 		fetchMock.mockResolvedValue(new Response("unauthorized", { status: 401 }));
-		const { scanCsamHash, HmaUnreachableError } = await import("./csamScan");
-		await expect(scanCsamHash(new Blob(["x"]), "a.png")).rejects.toBeInstanceOf(HmaUnreachableError);
+		const { scanCsamHash, CsamScannerUnreachableError } = await import("./csamScan");
+		await expect(scanCsamHash(new Blob(["x"]), "a.png")).rejects.toBeInstanceOf(CsamScannerUnreachableError);
 	});
 });
 
 describe("scanCsamHash — CSAM_SCAN=off is honoured on self-host only", () => {
-	it("hosted edition with CSAM_SCAN=off still refuses (fail closed), and logs the ignored switch once", async () => {
+	it("hosted edition with CSAM_SCAN=off and no scanner takes the file as a deployment with no scanner does, and logs the ignored switch once", async () => {
 		cfg.CSAM_SCAN = "off";
 		cfg.ALPHA_EDITION = "Hosted";
-		const { scanCsamHash, CsamScannerUnconfiguredError, csamScanConfigured } = await import("./csamScan");
-		expect(csamScanConfigured()).toBe(false);
-		await expect(scanCsamHash(new Blob(["x"]), "a.png")).rejects.toBeInstanceOf(CsamScannerUnconfiguredError);
-		await expect(scanCsamHash(new Blob(["x"]), "b.png")).rejects.toBeInstanceOf(CsamScannerUnconfiguredError);
+		const { scanCsamHash, csamScanOptedOut } = await import("./csamScan");
+		expect(csamScanOptedOut()).toBe(false);
+		await expect(scanCsamHash(new Blob(["x"]), "a.png")).resolves.toEqual({ status: "unscanned", reason: "no-scanner" });
+		await expect(scanCsamHash(new Blob(["x"]), "b.png")).resolves.toEqual({ status: "unscanned", reason: "no-scanner" });
 		expect(logMock.error).toHaveBeenCalledTimes(1);
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
-	it("self-host edition with CSAM_SCAN=off accepts and returns the opted-out result, never clean, with a warn line", async () => {
+	it("self-host edition with CSAM_SCAN=off returns the opted-out result, never clean, with one content-free warn line", async () => {
 		cfg.CSAM_SCAN = "off";
 		cfg.ALPHA_EDITION = "selfhost";
-		const { scanCsamHash, csamScanConfigured } = await import("./csamScan");
-		expect(csamScanConfigured()).toBe(true);
+		const { scanCsamHash, csamScanOptedOut } = await import("./csamScan");
+		expect(csamScanOptedOut()).toBe(true);
 		const result = await scanCsamHash(new Blob(["x"]), "a.png");
-		expect(result).toEqual({ status: "unscanned-operator-opt-out" });
-		expect(result.status).not.toBe("clean");
+		expect(result).toEqual({ status: "unscanned", reason: "operator-opt-out" });
 		expect(logMock.warn).toHaveBeenCalledTimes(1);
+		expect(JSON.stringify(logMock.warn.mock.calls)).not.toContain("a.png");
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
-	it("ALPHA_EDITION unset with CSAM_SCAN=off still refuses (fail closed)", async () => {
+	it("CSAM_SCAN=off does not switch off a scanner that is configured", async () => {
 		cfg.CSAM_SCAN = "off";
-		const { scanCsamHash, CsamScannerUnconfiguredError, csamScanConfigured } = await import("./csamScan");
-		expect(csamScanConfigured()).toBe(false);
-		await expect(scanCsamHash(new Blob(["x"]), "a.png")).rejects.toBeInstanceOf(CsamScannerUnconfiguredError);
+		cfg.ALPHA_EDITION = "selfhost";
+		cfg.CSAM_SCAN_BASE_URL = "https://scanner.example.test";
+		fetchMock.mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }));
+		const { scanCsamHash } = await import("./csamScan");
+		await expect(scanCsamHash(new Blob(["x"]), "a.png")).resolves.toEqual({ status: "clean" });
+		expect(fetchMock).toHaveBeenCalledTimes(1);
 	});
 });

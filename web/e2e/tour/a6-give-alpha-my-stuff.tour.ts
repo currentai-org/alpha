@@ -15,7 +15,6 @@ import { tourEmail } from '../../scripts/lib/tourPersonas.mjs';
 import { signInWithEmailOtp } from '../scenarios/helpers/signIn';
 import { turnDone } from '../scenarios/helpers/turn';
 import { phonePhotoJpeg } from '../scenarios/helpers/phonePhoto';
-import { installFaultInjectionHeader } from '../scenarios/helpers/faultInjection';
 
 // The A6 walkthrough: give Alpha my stuff. One person signs in from the account menu, chooses a 6 MB
 // phone photo from the plus button and types straight away while the browser shrinks it (
@@ -69,8 +68,6 @@ async function ask(page: Page, question: string) {
 }
 
 // Waits for the answer after the `before`th, so a finished earlier answer never passes for this one.
-// The scanner-down turn depends on it: the fault header is added per request, and disarming on the
-// old answer could let the photo's request through clean.
 async function newAnswer(page: Page, before: number) {
 	const answer = assistantMessages(page).nth(before);
 	await expect(turnDone(answer)).toBeVisible({ timeout: 120_000 });
@@ -150,25 +147,18 @@ test('A6: give Alpha a photo and a document, and it answers from them', async ({
 	await zoom(docAnswer, 1.5);
 	await waitForNarration();
 
-	// A photo the chat can't check: the upload scanner is down for this one turn
-	const scannerDown = await installFaultInjectionHeader(page, 'csam_scanner_down');
-	await narrate(
-		"Every photo is checked before Alpha sees it. If that check can't run, the photo is left out, and Alex is told."
-	);
+	// A photo, attached and read
+	await narrate('A photo goes in the same way, through the plus button.');
 	await attachThroughMenu(page, 'Attach files', {
 		name: 'shapes.png',
 		mimeType: 'image/png',
 		buffer: await shapesPng()
 	});
 	await expect(page.getByAltText('shapes.png').first()).toBeVisible({ timeout: 15_000 });
-	await ask(page, 'Reply with the single word: ready.');
-	scannerDown.disarm();
-	const leftOut = page.locator('[data-message-type="user"]').last().locator('[data-left-out-file]');
-	await expect(leftOut).toContainText('Not added', { timeout: 15_000 });
-	await narrate(
-		'The sent message marks the photo not added, the note under the answer says the same, and the question was still answered.'
-	);
-	await highlight(leftOut);
+	const photoAnswer = await ask(page, 'What colour is the circle in this picture?');
+	await expect(photoAnswer).toContainText(/blue/i);
+	await narrate('Alpha read the picture: the circle is blue.');
+	await highlight(photoAnswer);
 	await waitForNarration();
 
 	// Read aloud

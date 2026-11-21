@@ -26,7 +26,7 @@ const SECURITY_HEADERS: HeadersInit = {
 /**
  * Fetch a URL a visitor attached by link, for the composer (loadAttachmentsFromUrls.ts).
  *
- * hardening. Only a caller with a session the server already issued is served: a request
+ * Hardening: only a caller with a session the server already issued is served: a request
  * that had to mint one (no cookie, or a value the server never issued) gets a 401, and hooks/handle.ts
  * sets no cookie on this path. Each session and each IP is limited (db/fetchUrlRate.ts). The fetch uses
  * the strict SSRF guard, which also refuses the cluster-internal ranges (10/8, IPv6 ULA) the default

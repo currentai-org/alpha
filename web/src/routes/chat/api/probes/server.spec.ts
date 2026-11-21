@@ -1,4 +1,4 @@
-// the probes job runs only for the scheduler that holds CRON_SECRET, and runs every group.
+// The probes job runs only for the scheduler that holds CRON_SECRET, and runs every group.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const env = vi.hoisted(() => ({ CRON_SECRET: "cron-secret" as string | undefined }));

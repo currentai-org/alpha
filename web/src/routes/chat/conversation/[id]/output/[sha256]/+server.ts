@@ -55,6 +55,7 @@ export const GET: RequestHandler = async ({ locals, params, request }) => {
 			guestSessionId: conv.userId ? conv.formerGuestSessionId : conv.sessionId,
 			name: ref?.name,
 			mime: ref?.mime,
+			agentTurn: ref?.agentTurn,
 			location: ref?.location,
 			...(fault === "storage_hub_read_rate_limited" ? { fault } : {}),
 		});

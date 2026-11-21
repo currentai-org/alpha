@@ -1,0 +1,1085 @@
+{
+  "e2e/scenarios/helpers/test.ts": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 1
+    }
+  },
+  "src/lib/alpha-landing/AlphaSectionNav.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 1
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 1
+    },
+    "alpha-ds/remix-icons-only": {
+      "count": 4
+    }
+  },
+  "src/lib/alpha-landing/PageOptions.svelte": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 1
+    }
+  },
+  "src/lib/alpha-landing/looks/bold/BoldBuildField.svelte": {
+    "alpha-ds/no-raw-colors": {
+      "count": 5
+    }
+  },
+  "src/lib/alpha-landing/looks/bold/BoldClosing.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 14
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 10
+    },
+    "alpha-ds/no-off-scale": {
+      "count": 3
+    },
+    "alpha-ds/no-raw-colors": {
+      "count": 9
+    },
+    "alpha-ds/remix-icons-only": {
+      "count": 2
+    }
+  },
+  "src/lib/alpha-landing/looks/bold/BoldFaq.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 18
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 10
+    },
+    "alpha-ds/no-raw-colors": {
+      "count": 1
+    },
+    "alpha-ds/remix-icons-only": {
+      "count": 1
+    }
+  },
+  "src/lib/alpha-landing/looks/bold/BoldFeatures.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 19
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 12
+    },
+    "alpha-ds/no-raw-colors": {
+      "count": 4
+    },
+    "alpha-ds/remix-icons-only": {
+      "count": 1
+    },
+    "alpha-ds/require-static-classes": {
+      "count": 1
+    }
+  },
+  "src/lib/alpha-landing/looks/bold/BoldLook.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 19
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 8
+    },
+    "alpha-ds/no-off-scale": {
+      "count": 1
+    },
+    "alpha-ds/no-raw-colors": {
+      "count": 7
+    },
+    "alpha-ds/remix-icons-only": {
+      "count": 8
+    }
+  },
+  "src/lib/alpha-landing/looks/bold/BoldPatternField.svelte": {
+    "alpha-ds/no-raw-colors": {
+      "count": 5
+    }
+  },
+  "src/lib/alpha-landing/looks/bold/PatternGlyph.svelte": {
+    "alpha-ds/no-raw-colors": {
+      "count": 8
+    }
+  },
+  "src/lib/alpha-landing/looks/classic/ClassicFaq.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 10
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 14
+    }
+  },
+  "src/lib/alpha-landing/looks/classic/ClassicFeatures.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 11
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 14
+    }
+  },
+  "src/lib/alpha-landing/looks/classic/ClassicHeroBackdrop.svelte": {
+    "alpha-ds/no-legacy-tokens": {
+      "count": 1
+    },
+    "alpha-ds/no-raw-colors": {
+      "count": 1
+    }
+  },
+  "src/lib/alpha-landing/looks/classic/ClassicLook.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 13
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 13
+    }
+  },
+  "src/lib/chat/APIClient.ts": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 1
+    }
+  },
+  "src/lib/chat/components/AiDisclosureBanner.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 4
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 4
+    },
+    "alpha-ds/no-off-scale": {
+      "count": 1
+    }
+  },
+  "src/lib/chat/components/AnchoredModal.svelte": {
+    "alpha-ds/no-inline-styles": {
+      "count": 4
+    },
+    "alpha-ds/no-off-scale": {
+      "count": 1
+    },
+    "alpha-ds/no-raw-colors": {
+      "count": 2
+    }
+  },
+  "src/lib/chat/components/ChatShell.svelte": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 2
+    }
+  },
+  "src/lib/chat/components/ChatShellSkeleton.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 6
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 6
+    },
+    "alpha-ds/no-off-scale": {
+      "count": 1
+    }
+  },
+  "src/lib/chat/components/CodeBlock.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 1
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 3
+    },
+    "alpha-ds/no-off-scale": {
+      "count": 4
+    },
+    "alpha-ds/no-raw-colors": {
+      "count": 4
+    },
+    "alpha-ds/remix-icons-only": {
+      "count": 2
+    }
+  },
+  "src/lib/chat/components/CopyToClipBoardBtn.svelte": {
+    "alpha-ds/remix-icons-only": {
+      "count": 1
+    }
+  },
+  "src/lib/chat/components/DeleteConversationModal.svelte": {
+    "alpha-ds/no-legacy-tokens": {
+      "count": 5
+    },
+    "alpha-ds/no-off-scale": {
+      "count": 7
+    },
+    "alpha-ds/no-raw-colors": {
+      "count": 10
+    }
+  },
+  "src/lib/chat/components/ExternalLinkModal.svelte": {
+    "alpha-ds/no-legacy-tokens": {
+      "count": 3
+    },
+    "alpha-ds/no-off-scale": {
+      "count": 9
+    },
+    "alpha-ds/no-raw-colors": {
+      "count": 6
+    },
+    "alpha-ds/remix-icons-only": {
+      "count": 2
+    }
+  },
+  "src/lib/chat/components/FeatureAnnouncementToast.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 1
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 9
+    },
+    "alpha-ds/no-off-scale": {
+      "count": 6
+    },
+    "alpha-ds/no-raw-colors": {
+      "count": 10
+    },
+    "alpha-ds/remix-icons-only": {
+      "count": 3
+    }
+  },
+  "src/lib/chat/components/HtmlPreviewModal.svelte": {
+    "alpha-ds/no-off-scale": {
+      "count": 6
+    },
+    "alpha-ds/no-raw-colors": {
+      "count": 8
+    },
+    "alpha-ds/remix-icons-only": {
+      "count": 1
+    }
+  },
+  "src/lib/chat/components/NavConversationsSkeleton.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 4
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 3
+    },
+    "alpha-ds/no-off-scale": {
+      "count": 2
+    }
+  },
+  "src/lib/chat/components/NavMenu.svelte": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 2
+    }
+  },
+  "src/lib/chat/components/NoModelsAvailable.svelte": {
+    "alpha-ds/no-legacy-tokens": {
+      "count": 4
+    },
+    "alpha-ds/no-off-scale": {
+      "count": 4
+    },
+    "alpha-ds/no-raw-colors": {
+      "count": 6
+    }
+  },
+  "src/lib/chat/components/SystemPromptModal.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 1
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 6
+    },
+    "alpha-ds/no-off-scale": {
+      "count": 5
+    },
+    "alpha-ds/no-raw-colors": {
+      "count": 11
+    },
+    "alpha-ds/remix-icons-only": {
+      "count": 2
+    }
+  },
+  "src/lib/chat/components/Tooltip.svelte": {
+    "alpha-ds/no-inline-styles": {
+      "count": 1
+    },
+    "alpha-ds/no-off-scale": {
+      "count": 2
+    },
+    "alpha-ds/no-raw-colors": {
+      "count": 3
+    }
+  },
+  "src/lib/chat/components/chat/AgentConfirmPrompt.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 22
+    },
+    "alpha-ds/no-inline-styles": {
+      "count": 2
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 22
+    },
+    "alpha-ds/no-off-scale": {
+      "count": 4
+    },
+    "alpha-ds/no-raw-colors": {
+      "count": 2
+    }
+  },
+  "src/lib/chat/components/chat/Alternatives.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 10
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 10
+    },
+    "alpha-ds/remix-icons-only": {
+      "count": 2
+    }
+  },
+  "src/lib/chat/components/chat/ArtifactCard.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 2
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 13
+    },
+    "alpha-ds/no-off-scale": {
+      "count": 13
+    },
+    "alpha-ds/no-raw-colors": {
+      "count": 13
+    },
+    "alpha-ds/remix-icons-only": {
+      "count": 8
+    }
+  },
+  "src/lib/chat/components/chat/ArtifactPanel.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 6
+    },
+    "alpha-ds/no-inline-styles": {
+      "count": 1
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 47
+    },
+    "alpha-ds/no-off-scale": {
+      "count": 17
+    },
+    "alpha-ds/no-raw-colors": {
+      "count": 64
+    },
+    "alpha-ds/remix-icons-only": {
+      "count": 8
+    }
+  },
+  "src/lib/chat/components/chat/ChatInput.svelte": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 1
+    },
+    "alpha-ds/no-arbitrary-values": {
+      "count": 13
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 11
+    },
+    "alpha-ds/no-raw-colors": {
+      "count": 1
+    }
+  },
+  "src/lib/chat/components/chat/ChatMessage.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 14
+    },
+    "alpha-ds/no-inline-styles": {
+      "count": 1
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 11
+    },
+    "alpha-ds/no-off-scale": {
+      "count": 3
+    },
+    "alpha-ds/no-raw-colors": {
+      "count": 1
+    }
+  },
+  "src/lib/chat/components/chat/ChatWindow.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 1
+    },
+    "alpha-ds/no-inline-styles": {
+      "count": 1
+    },
+    "alpha-ds/no-raw-colors": {
+      "count": 1
+    }
+  },
+  "src/lib/chat/components/chat/ConnectionStatus.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 2
+    },
+    "alpha-ds/no-inline-styles": {
+      "count": 1
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 9
+    },
+    "alpha-ds/no-off-scale": {
+      "count": 2
+    }
+  },
+  "src/lib/chat/components/chat/CrisisResources.svelte": {
+    "alpha-ds/remix-icons-only": {
+      "count": 1
+    }
+  },
+  "src/lib/chat/components/chat/ImageLightbox.svelte": {
+    "alpha-ds/no-off-scale": {
+      "count": 1
+    },
+    "alpha-ds/no-raw-colors": {
+      "count": 5
+    },
+    "alpha-ds/remix-icons-only": {
+      "count": 1
+    }
+  },
+  "src/lib/chat/components/chat/LiveRequestLog.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 6
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 5
+    },
+    "alpha-ds/no-off-scale": {
+      "count": 1
+    }
+  },
+  "src/lib/chat/components/chat/ModelSwitch.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 3
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 3
+    },
+    "alpha-ds/no-raw-colors": {
+      "count": 1
+    }
+  },
+  "src/lib/chat/components/chat/OpenReasoningResults.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 11
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 19
+    },
+    "alpha-ds/no-off-scale": {
+      "count": 2
+    },
+    "alpha-ds/no-raw-colors": {
+      "count": 1
+    },
+    "alpha-ds/remix-icons-only": {
+      "count": 1
+    }
+  },
+  "src/lib/chat/components/chat/PinchZoomImage.svelte": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 1
+    },
+    "alpha-ds/no-inline-styles": {
+      "count": 1
+    }
+  },
+  "src/lib/chat/components/chat/ReportButton.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 2
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 2
+    },
+    "alpha-ds/remix-icons-only": {
+      "count": 1
+    }
+  },
+  "src/lib/chat/components/chat/SafetyBadge.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 3
+    },
+    "alpha-ds/no-inline-styles": {
+      "count": 1
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 3
+    },
+    "alpha-ds/no-off-scale": {
+      "count": 1
+    }
+  },
+  "src/lib/chat/components/chat/SecondOpinion.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 62
+    },
+    "alpha-ds/no-inline-styles": {
+      "count": 2
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 65
+    },
+    "alpha-ds/no-off-scale": {
+      "count": 3
+    },
+    "alpha-ds/no-raw-colors": {
+      "count": 4
+    },
+    "alpha-ds/remix-icons-only": {
+      "count": 2
+    }
+  },
+  "src/lib/chat/components/chat/UploadedFile.svelte": {
+    "alpha-ds/no-legacy-tokens": {
+      "count": 2
+    },
+    "alpha-ds/no-off-scale": {
+      "count": 7
+    },
+    "alpha-ds/no-raw-colors": {
+      "count": 5
+    },
+    "alpha-ds/remix-icons-only": {
+      "count": 3
+    }
+  },
+  "src/lib/chat/components/chat/VoiceRecorder.svelte": {
+    "alpha-ds/no-legacy-tokens": {
+      "count": 11
+    },
+    "alpha-ds/no-off-scale": {
+      "count": 4
+    },
+    "alpha-ds/no-raw-colors": {
+      "count": 18
+    },
+    "alpha-ds/remix-icons-only": {
+      "count": 4
+    }
+  },
+  "src/lib/chat/components/chat/WarmingIndicator.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 4
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 3
+    },
+    "alpha-ds/no-off-scale": {
+      "count": 1
+    }
+  },
+  "src/lib/chat/components/chat/WeakSpotsModal.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 13
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 12
+    }
+  },
+  "src/lib/chat/components/icons/IconLoading.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 3
+    },
+    "alpha-ds/no-inline-styles": {
+      "count": 3
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 3
+    },
+    "alpha-ds/no-off-scale": {
+      "count": 3
+    }
+  },
+  "src/lib/chat/components/icons/IconOmni.svelte": {
+    "alpha-ds/no-legacy-tokens": {
+      "count": 2
+    }
+  },
+  "src/lib/chat/components/players/AudioPlayer.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 3
+    },
+    "alpha-ds/no-inline-styles": {
+      "count": 1
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 12
+    },
+    "alpha-ds/no-off-scale": {
+      "count": 6
+    },
+    "alpha-ds/no-raw-colors": {
+      "count": 15
+    },
+    "alpha-ds/remix-icons-only": {
+      "count": 2
+    }
+  },
+  "src/lib/chat/components/players/MediaAudioPlayer.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 13
+    },
+    "alpha-ds/no-inline-styles": {
+      "count": 1
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 13
+    },
+    "alpha-ds/no-off-scale": {
+      "count": 5
+    },
+    "alpha-ds/remix-icons-only": {
+      "count": 2
+    }
+  },
+  "src/lib/chat/components/rag/FileDropZone.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 41
+    },
+    "alpha-ds/no-inline-styles": {
+      "count": 4
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 48
+    },
+    "alpha-ds/no-off-scale": {
+      "count": 13
+    },
+    "alpha-ds/remix-icons-only": {
+      "count": 3
+    }
+  },
+  "src/lib/chat/components/stack/StackXRay.svelte": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 3
+    }
+  },
+  "src/lib/chat/components/stack/stackRoadmap.ts": {
+    "alpha-ds/no-legacy-tokens": {
+      "count": 4
+    }
+  },
+  "src/lib/chat/components/stack/types.ts": {
+    "alpha-ds/no-legacy-tokens": {
+      "count": 8
+    }
+  },
+  "src/lib/chat/components/storage/ConfirmDeleteDialog.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 26
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 18
+    }
+  },
+  "src/lib/chat/components/storage/DropZone.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 17
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 14
+    }
+  },
+  "src/lib/chat/components/storage/FileRow.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 29
+    },
+    "alpha-ds/no-inline-styles": {
+      "count": 1
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 23
+    }
+  },
+  "src/lib/chat/components/storage/FilesPanel.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 12
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 7
+    }
+  },
+  "src/lib/chat/components/storage/LoadingList.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 8
+    },
+    "alpha-ds/no-inline-styles": {
+      "count": 1
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 6
+    }
+  },
+  "src/lib/chat/components/storage/StorageNotice.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 15
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 11
+    }
+  },
+  "src/lib/chat/components/storage/StorageUnavailable.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 15
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 10
+    }
+  },
+  "src/lib/chat/components/voice/AudioWaveform.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 1
+    },
+    "alpha-ds/no-inline-styles": {
+      "count": 1
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 1
+    },
+    "alpha-ds/no-off-scale": {
+      "count": 1
+    },
+    "alpha-ds/no-raw-colors": {
+      "count": 2
+    }
+  },
+  "src/lib/chat/crypto/shownTitle.svelte.ts": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 1
+    }
+  },
+  "src/lib/chat/server/api/utils/noSecretFields.spec.ts": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 1
+    }
+  },
+  "src/lib/chat/server/api/utils/resolveConversation.spec.ts": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 1
+    }
+  },
+  "src/lib/chat/server/auth.anonSessionMint.spec.ts": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 4
+    }
+  },
+  "src/lib/chat/server/auth.betterAuthBridge.spec.ts": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 5
+    }
+  },
+  "src/lib/chat/server/auth.guestCookie.spec.ts": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 1
+    }
+  },
+  "src/lib/chat/server/auth.ts": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 1
+    }
+  },
+  "src/lib/chat/server/endpoints/openai/openAIChatToTextGenerationStream.spec.ts": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 19
+    }
+  },
+  "src/lib/chat/server/endpoints/openai/thinkFilter.spec.ts": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 1
+    }
+  },
+  "src/lib/chat/server/exportFormat.ts": {
+    "alpha-ds/require-static-classes": {
+      "count": 1
+    }
+  },
+  "src/lib/chat/server/guestHandoff.spec.ts": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 1
+    }
+  },
+  "src/lib/chat/server/migrateAnonymousSession.spec.ts": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 2
+    }
+  },
+  "src/lib/chat/server/openWebUiImport/files.ts": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 1
+    }
+  },
+  "src/lib/chat/server/textGeneration/generate.spec.ts": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 2
+    }
+  },
+  "src/lib/chat/server/tuning.spec.ts": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 5
+    }
+  },
+  "src/lib/chat/stores/agentMode.ts": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 1
+    }
+  },
+  "src/lib/chat/stores/connection.ts": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 1
+    }
+  },
+  "src/lib/chat/stores/conversations.svelte.ts": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 3
+    }
+  },
+  "src/lib/chat/stores/speakMode.ts": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 1
+    }
+  },
+  "src/lib/chat/stores/webSearchMode.ts": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 1
+    }
+  },
+  "src/lib/chat/utils/landingSend.svelte.ts": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 1
+    }
+  },
+  "src/lib/chat/utils/marked.ts": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 2
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 6
+    }
+  },
+  "src/lib/chat/utils/safeHref.ts": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 1
+    }
+  },
+  "src/lib/chat/workspacePermissions.ts": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 1
+    }
+  },
+  "src/lib/components/ui/data-table/data-table.svelte.ts": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 3
+    }
+  },
+  "src/lib/components/ui/data-table/render-helpers.ts": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 1
+    }
+  },
+  "src/lib/i18n/client.svelte.ts": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 1
+    }
+  },
+  "src/lib/i18n/copyEdit/entry.svelte.ts": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 2
+    }
+  },
+  "src/lib/i18n/copyEdit/state.svelte.ts": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 3
+    }
+  },
+  "src/lib/utils.ts": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 2
+    }
+  },
+  "src/routes/chat/admin/+layout.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 2
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 2
+    }
+  },
+  "src/routes/chat/admin/+page.svelte": {
+    "alpha-ds/no-off-scale": {
+      "count": 4
+    },
+    "alpha-ds/no-raw-colors": {
+      "count": 4
+    }
+  },
+  "src/routes/chat/admin/audit/+page.svelte": {
+    "alpha-ds/no-off-scale": {
+      "count": 9
+    },
+    "alpha-ds/no-raw-colors": {
+      "count": 11
+    }
+  },
+  "src/routes/chat/admin/journeys/+page.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 8
+    },
+    "alpha-ds/no-off-scale": {
+      "count": 2
+    },
+    "alpha-ds/no-raw-colors": {
+      "count": 1
+    }
+  },
+  "src/routes/chat/admin/rag/+page.svelte": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 1
+    },
+    "alpha-ds/no-arbitrary-values": {
+      "count": 82
+    },
+    "alpha-ds/no-inline-styles": {
+      "count": 10
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 95
+    },
+    "alpha-ds/no-off-scale": {
+      "count": 83
+    }
+  },
+  "src/routes/chat/admin/reports/+page.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 1
+    },
+    "alpha-ds/no-off-scale": {
+      "count": 9
+    },
+    "alpha-ds/no-raw-colors": {
+      "count": 9
+    }
+  },
+  "src/routes/chat/admin/reports/[conversationId]/+page.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 1
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 1
+    },
+    "alpha-ds/no-off-scale": {
+      "count": 9
+    },
+    "alpha-ds/no-raw-colors": {
+      "count": 14
+    }
+  },
+  "src/routes/chat/admin/safety/+page.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 1
+    },
+    "alpha-ds/no-off-scale": {
+      "count": 18
+    },
+    "alpha-ds/no-raw-colors": {
+      "count": 18
+    }
+  },
+  "src/routes/chat/admin/tuning/+page.svelte": {
+    "alpha-ds/no-off-scale": {
+      "count": 102
+    },
+    "alpha-ds/no-raw-colors": {
+      "count": 98
+    }
+  },
+  "src/routes/chat/api/second-opinion/+server.ts": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 2
+    }
+  },
+  "src/routes/chat/conversation/[id]/+page.svelte": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 1
+    }
+  },
+  "src/routes/chat/login/+page.server.ts": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 1
+    }
+  },
+  "src/routes/chat/models/[...model]/thumbnail.png/ModelThumbnail.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 1
+    },
+    "alpha-ds/no-inline-styles": {
+      "count": 1
+    },
+    "alpha-ds/no-off-scale": {
+      "count": 3
+    },
+    "alpha-ds/no-raw-colors": {
+      "count": 4
+    }
+  },
+  "src/routes/chat/settings/(nav)/[...model]/+page.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 38
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 40
+    },
+    "alpha-ds/no-off-scale": {
+      "count": 1
+    },
+    "alpha-ds/no-raw-colors": {
+      "count": 2
+    }
+  },
+  "src/routes/chat/settings/(nav)/account/account-reauth.svelte.test.ts": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 1
+    }
+  },
+  "src/routes/chat/settings/(nav)/local-inference/+page.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 4
+    }
+  },
+  "src/routes/chat/settings/(nav)/local-inference/local-inference-tab.svelte.test.ts": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 1
+    }
+  },
+  "src/routes/chat/settings/(nav)/workspace/+page.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 98
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 99
+    },
+    "alpha-ds/no-raw-colors": {
+      "count": 4
+    }
+  },
+  "src/routes/chat/workspace/accept/[id]/+page.svelte": {
+    "alpha-ds/no-arbitrary-values": {
+      "count": 15
+    },
+    "alpha-ds/no-legacy-tokens": {
+      "count": 16
+    },
+    "alpha-ds/no-raw-colors": {
+      "count": 1
+    }
+  },
+  "src/routes/folkways-adapter/promptLoader.spec.ts": {
+    "@eslint-community/eslint-comments/require-description": {
+      "count": 2
+    }
+  }
+}

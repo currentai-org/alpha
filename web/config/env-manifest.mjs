@@ -190,14 +190,17 @@ export const ENV_MANIFEST = {
 		desc: "Maximum request body size, read only by SvelteKit's Node adapter. The Vercel build does not read it.",
 	},
 	CSAM_SCAN_BASE_URL: {
-		desc: "Base URL of the known-CSAM hash check (an HMA instance) run on every chat and My files upload. Uploads fail closed on it: unset, no attach control is offered and any upload is refused; if the check cannot be reached, the file is refused and the turn's text is still answered; a match refuses the upload, alerts and reports to Coop. Local stack: web/hma/.",
+		desc: "Base URL of the optional known-CSAM hash check run on every chat and My files picture, answered by the provider CSAM_SCAN_PROVIDER names. Unset (with CSAM_SCAN_PROVIDER unset too), no hash check runs: uploads are taken and each picture logs one line saying so. Set, the check fails closed: if it cannot be reached the file is refused and the turn's text is still answered, and a match refuses the upload, alerts and reports to Coop.",
+	},
+	CSAM_SCAN_PROVIDER: {
+		desc: "Which hash-matching provider answers at CSAM_SCAN_BASE_URL (storage/csamScan.ts). Defaults to \"hma\", a self-run HMA instance. A name no provider answers to, or a provider with no CSAM_SCAN_BASE_URL, refuses every upload.",
 	},
 	CSAM_SCAN: {
-		desc: "Self-host only. \"off\" turns the CSAM hash check off, so uploads are stored unscanned (each logs a warning) and the operator owns detecting and reporting CSAM. Honoured only when ALPHA_EDITION is set and is not \"hosted\"; a hosted deployment ignores it, logs an error once and keeps refusing.",
+		desc: "Self-host only. \"off\" records that the operator chose to run no CSAM hash check and owns detecting and reporting CSAM: uploads are stored unscanned (each picture logs a line), and it stands in for the scanner keys in the self-host flag defaults. Honoured only when ALPHA_EDITION is set and is not \"hosted\"; a hosted deployment ignores it and logs an error once.",
 	},
 	CSAM_SCAN_TOKEN: {
 		secret: true,
-		desc: "Bearer token for the proxy in front of the hash check. A wrong or missing token looks the same as a scanner that cannot be reached, so uploads are refused. Not needed for the local web/hma/ stack.",
+		desc: "Bearer token for the proxy in front of the hash check, when it needs one. A wrong or missing token looks the same as a scanner that cannot be reached, so uploads are refused.",
 	},
 	CHALLENGE_REDERIVE_ENABLED: {
 		desc: "\"true\" makes the model re-derive an answer the user challenges instead of conceding. Default off.",
@@ -404,6 +407,12 @@ export const ENV_MANIFEST = {
 	},
 	POSTHOG_INGEST_HOST: {
 		desc: "Absolute https origin of this deployment's PostHog (CUR-4833): where the /rs proxy forwards and where the server-side flag and error clients send when PUBLIC_POSTHOG_HOST is relative. Unset means https://us.i.posthog.com. PostHog Cloud's assets host is derived (us. -> us-assets.); a self-hosted PostHog serves both from this origin. The EU move is CUR-439.",
+	},
+	POSTHOG_APP_HOST: {
+		desc: "Absolute https origin of this deployment's PostHog app and management API (config/posthogRegion.mjs, CUR-439): the source-map upload's --host and the flag scripts' API reads. Unset, it follows POSTHOG_INGEST_HOST (eu.i.posthog.com -> eu.posthog.com), which unset means https://us.posthog.com.",
+	},
+	POSTHOG_PROJECT_ID: {
+		desc: "The PostHog project the flag scripts read through the management API (config/posthogRegion.mjs, CUR-439). Unset means 492965, the US project. Not a credential.",
 	},
 	PRODUCTION_URL: {
 		desc: "The project's production hostname, no scheme (runtimeEnv.js productionUrl()), read at BUILD time by vite.config.ts for the canonical origin of prerendered pages. Unset on Vercel, which supplies VERCEL_PROJECT_PRODUCTION_URL instead and that is the fallback.",
@@ -891,6 +900,9 @@ export const ENV_MANIFEST = {
 	},
 	PUBLIC_POSTHOG_KEY: {
 		desc: "PostHog project token. Public by design (write-only). Unset, analytics are off.",
+	},
+	PUBLIC_POSTHOG_LEGACY_KEY: {
+		desc: "The previous PostHog project token, set only while a project move settles (CUR-439). A browser with nothing stored under PUBLIC_POSTHOG_KEY starts from the distinct_id it had under this token (analytics.ts legacyDistinctId), so returning visitors are not counted as new. Unset, or equal to PUBLIC_POSTHOG_KEY, does nothing. Public by design, like the key it replaces.",
 	},
 	PUBLIC_POSTHOG_UI_HOST: {
 		desc: "PostHog app host, for links into PostHog.",

@@ -62,13 +62,13 @@ vi.mock("./uploadImageGuard", async () => {
 });
 
 // scanCsamHash is mocked per-test to control skipped/clean/match/unreachable without a real
-// HMA instance; HmaUnreachableError stays the REAL class (vi.importActual) because these tests assert
+// HMA instance; CsamScannerUnreachableError stays the REAL class (vi.importActual) because these tests assert
 // `instanceof` against it.
 const scanCsamHash = vi.fn();
 const scanner = { configured: true };
 vi.mock("./csamScan", async () => {
 	const actual = await vi.importActual<typeof import("./csamScan")>("./csamScan");
-	return { ...actual, scanCsamHash, csamScanConfigured: () => scanner.configured };
+	return { ...actual, scanCsamHash, csamScanAllowsUploads: () => scanner.configured, csamScanSkipped: () => false };
 });
 // A real 1x1 PNG, so resolveUploadKind sniffs it as an image and it is sent to the scanner.
 const PNG_BYTES = Buffer.from(
@@ -323,8 +323,8 @@ describe("upload quota — reuses a recent listing instead of listing on every u
 });
 
 // PDQ hash-match prewiring. scanCsamHash itself is mocked (see top of file) — these tests
-// cover uploadCustodialFile's reaction to each CsamScanResult, not HMA's own hashing/matching, which
-// csamScan.spec.ts and a live probe against web/hma/ cover separately.
+// cover uploadCustodialFile's reaction to each CsamScanResult; the provider's own hashing and matching is
+// csamScan.spec.ts's subject.
 describe("uploadCustodialFile — CSAM scan ( fail closed per )", () => {
 	it("refuses an image from an account the multimodal flag does not select, before scanning or storing it", async () => {
 		listFiles.mockReturnValue(asyncGen([]));
@@ -346,7 +346,7 @@ describe("uploadCustodialFile — CSAM scan ( fail closed per )", () => {
 		expect(uploadFile).toHaveBeenCalledTimes(2);
 	});
 
-	it("refuses every file, even a text one, and writes nothing when no scanner is configured ( fail closed)", async () => {
+	it("refuses every file, even a text one, and writes nothing when the scanner config is incomplete ( fail closed)", async () => {
 		scanner.configured = false;
 		listFiles.mockReturnValue(asyncGen([]));
 		const { uploadCustodialFile } = await import("./custodialStorage");
@@ -466,17 +466,6 @@ describe("uploadCustodialFile — CSAM scan ( fail closed per )", () => {
 		});
 	});
 
-	it("scanner-down fault: refuses an image as unreachable and writes nothing, without calling HMA", async () => {
-		const { HmaUnreachableError } = await import("./csamScan");
-		const { uploadCustodialFile } = await import("./custodialStorage");
-		await expect(
-			uploadCustodialFile(ME, "photos/cat.png", new Blob([PNG_BYTES]), { scannerDown: true })
-		).rejects.toBeInstanceOf(HmaUnreachableError);
-		expect(scanCsamHash).not.toHaveBeenCalled();
-		expect(uploadFile).not.toHaveBeenCalled();
-		expect(reportCsamMatchToCoop).not.toHaveBeenCalled();
-	});
-
 	it("sends a photo to the scanner, and a PDF by each picture inside it, never skipping one", async () => {
 		scanCsamHash.mockResolvedValue({ status: "clean" });
 		listFiles.mockReturnValue(asyncGen([]));
@@ -494,12 +483,12 @@ describe("uploadCustodialFile — CSAM scan ( fail closed per )", () => {
 		expect(uploadFile).toHaveBeenCalledTimes(3);
 	});
 
-	it("HMA unreachable: fails closed — no write to either the real path or quarantine", async () => {
-		const { HmaUnreachableError } = await import("./csamScan");
-		scanCsamHash.mockRejectedValue(new HmaUnreachableError(new Error("ECONNREFUSED")));
+	it("scanner unreachable: fails closed — no write to either the real path or quarantine", async () => {
+		const { CsamScannerUnreachableError } = await import("./csamScan");
+		scanCsamHash.mockRejectedValue(new CsamScannerUnreachableError(new Error("ECONNREFUSED")));
 		const { uploadCustodialFile } = await import("./custodialStorage");
 		await expect(uploadCustodialFile(ME, "photos/cat.png", new Blob([PNG_BYTES]))).rejects.toBeInstanceOf(
-			HmaUnreachableError
+			CsamScannerUnreachableError
 		);
 		expect(uploadFile).not.toHaveBeenCalled();
 		expect(recordCsamMatch).not.toHaveBeenCalled();

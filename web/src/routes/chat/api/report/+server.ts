@@ -23,7 +23,7 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 		throw error(400, "Pick a category for the problem.");
 	}
 
-	// the same limiter, keying and type as the per-answer report route, so a
+	// The same limiter, keying and type as the per-answer report route, so a
 	// script cannot fill the reports queue. A 429 here saves nothing.
 	await enforceRequestRateLimits({
 		userId: locals.user?._id ?? locals.sessionId,

@@ -15,8 +15,9 @@ you would like to be credited.
 ## What this snapshot leaves out
 
 Secrets, deployment settings and account ids are not in this tree. The optional S1 safety judge's
-policies (`web/src/lib/chat/server/rules-s1.json`) and the semantic guards' precomputed example embeddings
-(`web/src/lib/chat/server/data/guard-vectors.json`) ship as placeholders.
+policies (`web/src/lib/chat/server/rules-s1.json`) ship in full. Its judge endpoint and the Mila
+suicide-prevention endpoint named in `web/config/safetyScreen.ts` require a Hugging Face token; set
+`ZENTROPI_S1_ENDPOINT_URL` and `MILA_SP_ENDPOINT_URL` to point a self-hosted install at its own.
 
 `web/src/lib/chat/server/rules.json` is the screening policy: its categories, the queries that detect
 them, and the copy a declined turn shows. It is here in full, but it detects nothing on its own. It is

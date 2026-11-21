@@ -29,14 +29,16 @@ describe("decline copy", () => {
 		expect(missing).toEqual([]);
 	});
 
-	it("the crisis-support message is translated into every decline language and keeps the findahelpline link, 112 and 988", () => {
+	// The support card above the decline carries the emergency number, picked per country, so the decline
+	// names none.
+	it("the crisis-support message is translated into every decline language, keeps the findahelpline link and 988, and names no emergency number", () => {
 		const crisis = (RULES as Record<string, { message?: string }>)["chat-block-self-harm"]?.message ?? "";
 		expect(crisis).not.toBe("");
 		for (const lang of DECLINE_LANGUAGES) {
 			const text = declineMessage(crisis, lang);
 			expect(text, `${lang} falls back to English`).not.toBe(crisis);
 			expect(text, `${lang} lost the findahelpline link`).toContain("[findahelpline.com](https://findahelpline.com)");
-			expect(text, `${lang} lost 112`).toContain("112");
+			expect(text, `${lang} names 112`).not.toMatch(/\b112\b/);
 			expect(text, `${lang} lost 988`).toContain("988");
 		}
 	});

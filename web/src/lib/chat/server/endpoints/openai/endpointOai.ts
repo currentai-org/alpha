@@ -71,10 +71,24 @@ import type { InlineToolParameters } from "./inlineToolReference";
 import { HEDGE_TOOL_ROUNDS_FLAG } from "../failover";
 import { upstreamFetch } from "../../upstreamFetch";
 import { backendForDeployment } from "./gatewayDeployments";
+import {
+	TurnPace,
+	expectedAnswerRoundMs,
+	lastToolRoundAt,
+	observeRound,
+	recordAnswerRound,
+	typicalAnswerTokens,
+} from "./answerRoundBudget";
 
 /** Kept free for the answer when the model sets no max_tokens, and the cap a model-decoding
  *  turn sends (generate.ts), so the room the history leaves and the answer's ceiling agree. */
 export const DEFAULT_ANSWER_RESERVE = 4_096;
+
+/** What a Continue turn asks after the cut-off answer: go on from the last word, repeating nothing.
+ *  A user turn, since some chat templates refuse a request that ends on the assistant.
+ *  @internal exported for toolLoopDeadline.spec */
+export const CONTINUE_ANSWER_MESSAGE =
+	"Your answer above was cut off at the time limit. Continue it from exactly where it stopped, in the same language and format. Do not repeat anything already written, and do not mention that it was cut off.";
 
 
 /**
@@ -719,6 +733,8 @@ export async function endpointOai(
 			calculateFirst,
 			nativeTools,
 			turnDeadlineAt,
+			turnCeilingAt,
+			continueFrom,
 			rateLimitToolRound,
 			rateLimitToolRoundSustained,
 			toolTranscript,
@@ -769,6 +785,18 @@ export async function endpointOai(
 				if (normalizedPreprompt) {
 					messagesOpenAI = [{ role: "system", content: normalizedPreprompt }, ...messagesOpenAI];
 				}
+			}
+
+			// Continue: the answer this turn finishes was cut off at the turn's time limit. The
+			// model reads what it already wrote as its own turn, then is asked to go on from its last word.
+			// The question stays the last user turn in the history the route built, so search, language and
+			// the persona read the question, not this instruction.
+			if (continueFrom && servesUserAnswer) {
+				messagesOpenAI = [
+					...messagesOpenAI,
+					{ role: "assistant", content: continueFrom },
+					{ role: "user", content: CONTINUE_ANSWER_MESSAGE },
+				];
 			}
 
 			// Fit the history to the context this lane accepts. Here because `messagesOpenAI` is
@@ -999,6 +1027,40 @@ export async function endpointOai(
 					// `tool_round_rate_limited_sustained` refuses every one, so the retries run out.
 					let sends = 0;
 					let faultArmed = rateLimitToolRound === true;
+					// What this turn's rounds show of the model's speed, for the deadline check below.
+					const pace = new TurnPace();
+					let deadlineCutLogged = false;
+					/** The deadline-aware bound on offering tools: the answer round, at this turn's measured
+					 *  pace and the model's typical answer length, must still fit before the turn's ceiling. */
+					const deadlineAnswerBy = (): number | undefined => {
+						if (!turnCeilingAt) return undefined;
+						const ceilingAt = turnCeilingAt();
+						const length = typicalAnswerTokens(requestedModel, DEFAULT_ANSWER_RESERVE);
+						const tokensPerSecond = pace.tokensPerSecond();
+						const expectedAnswerMs = expectedAnswerRoundMs({
+							answerTokens: length.tokens,
+							tokensPerSecond,
+							firstChunkMs: pace.firstChunkMs(),
+						});
+						const at = lastToolRoundAt({ ceilingAt, expectedAnswerMs });
+						if (!deadlineCutLogged && Date.now() >= at) {
+							deadlineCutLogged = true;
+							logger.info(
+								{
+									leg: `${kit.label}-tool`,
+									model: requestedModel,
+									msToCeiling: ceilingAt - Date.now(),
+									expectedAnswerMs: Math.round(expectedAnswerMs),
+									answerTokens: length.tokens,
+									answerTokensSource: length.source,
+									tokensPerSecond: tokensPerSecond === undefined ? null : Math.round(tokensPerSecond),
+								},
+								`[${kit.label}] the answer round would not fit after another tool round; asking for the answer`
+							);
+						}
+						return at;
+					};
+					const loopStartedAt = Date.now();
 					return withToolLoop({
 						// A backup lane continues the loop the lane before it could not finish.
 						messages: toolTranscript?.messages ?? messagesOpenAI,
@@ -1010,15 +1072,31 @@ export async function endpointOai(
 									Object.assign(new Error("429 Rate limit exceeded"), { status: 429 })
 								);
 							}
-							return send(msgs, signal ?? abortSignal, toolChoice);
+							const sentAt = Date.now();
+							return send(msgs, signal ?? abortSignal, toolChoice).then((stream) =>
+								observeRound(stream, {
+									sentAt,
+									onDone: (sample, calledTools) => {
+										pace.observe(sample);
+										if (!calledTools) recordAnswerRound(requestedModel, sample.completionTokens);
+									},
+								})
+							);
 						},
 						kit,
 						...(kit.maxRounds ? { maxRounds: kit.maxRounds } : {}),
 						retry: {
 							deadlineAt: turnDeadlineAt,
-							// A search loop answers by then. A sandbox kit (sequential) may run code for longer,
-							// so it keeps only its round cap.
-							...(kit.sequential ? {} : { answerBy: Date.now() + TOOL_LOOP_ANSWER_BY_MS }),
+							// A search loop answers by the earlier of a fixed bound and the moment the answer round
+							// would stop fitting before the turn's ceiling. The loop reads this before each round, so
+							// a getter keeps the second bound current with the rounds measured so far. A sandbox kit
+							// (sequential) may run code for longer, so it keeps only its round cap.
+							get answerBy(): number | undefined {
+								if (kit.sequential) return undefined;
+								const fixed = loopStartedAt + TOOL_LOOP_ANSWER_BY_MS;
+								const fits = deadlineAnswerBy();
+								return fits === undefined ? fixed : Math.min(fixed, fits);
+							},
 							signal: abortSignal,
 							// A later round hedges after its own delay, under its own flag.
 							hedgeAfterMs: flagEnabledOr(HEDGE_TOOL_ROUNDS_FLAG, () => false)

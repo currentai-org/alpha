@@ -22,7 +22,19 @@
 
 import { browser } from "$app/environment";
 import { getContext, setContext } from "svelte";
-import { estimateTokensFromText, estimateEnergyWh } from "$lib/chat/utils/energyEstimate";
+import { estimateTokensFromText } from "$lib/chat/utils/energyEstimate";
+import type { MessageFootprintUpdate } from "$lib/chat/types/MessageUpdate";
+import {
+	addFallbackTurn,
+	applyServerFigure,
+	emptyTotals,
+	energyHeadlineWh,
+	energyRangeWh,
+	hasEnergy,
+	waterRangeL,
+	type FootprintTotals,
+	type Range,
+} from "$lib/chat/utils/footprintTotals";
 
 export const SESSION_FOOTPRINT_CONTEXT_KEY = "sessionFootprintStore";
 
@@ -38,13 +50,18 @@ const IDLE_MS = 120_000;
 
 interface PersistedFootprint {
 	startedAt: number;
+	/** Output tokens guessed from text length, for answers the server sent no figure for. */
 	outputTokens: number;
 	activeMs: number;
+	/** The server's per-answer figures, summed. Absent in a session stored before they existed. */
+	totals?: FootprintTotals;
 }
 
 class SessionFootprintStore {
 	#startedAt = $state(0);
-	#outputTokens = $state(0);
+	#totals = $state<FootprintTotals>({ ...emptyTotals });
+	// The text-length guess recorded for the answer that has no server figure yet. The figure replaces it.
+	#pendingGuessTokens = 0;
 	// Accumulated ACTIVE time (persisted). The live, currently-accruing span is added on read.
 	#activeMs = $state(0);
 	// Live "now", bumped on an interval so elapsed time stays current without a per-second
@@ -69,7 +86,7 @@ class SessionFootprintStore {
 			: this.#load();
 		if (persisted) {
 			this.#startedAt = persisted.startedAt;
-			this.#outputTokens = persisted.outputTokens;
+			this.#totals = { ...emptyTotals, ...persisted.totals, fallbackTokens: persisted.outputTokens };
 			this.#activeMs = persisted.activeMs;
 		} else {
 			this.#startedAt = Date.now();
@@ -151,7 +168,12 @@ class SessionFootprintStore {
 			}
 			// activeMs added later; default 0 for pre-existing tab sessions.
 			const activeMs = typeof parsed.activeMs === "number" ? parsed.activeMs : 0;
-			return { startedAt: parsed.startedAt, outputTokens: parsed.outputTokens, activeMs };
+			return {
+				startedAt: parsed.startedAt,
+				outputTokens: parsed.outputTokens,
+				activeMs,
+				...(parsed.totals ? { totals: parsed.totals } : {}),
+			};
 		} catch {
 			return null;
 		}
@@ -164,8 +186,9 @@ class SessionFootprintStore {
 				STORAGE_KEY,
 				JSON.stringify({
 					startedAt: this.#startedAt,
-					outputTokens: this.#outputTokens,
+					outputTokens: this.#totals.fallbackTokens,
 					activeMs: this.#activeMs,
+					totals: this.#totals,
 				})
 			);
 		} catch {
@@ -193,29 +216,67 @@ class SessionFootprintStore {
 
 	/** Whether any assistant response has been recorded yet (gates energy display). */
 	get hasActivity(): boolean {
-		return this.#outputTokens > 0;
+		return hasEnergy(this.#totals) || this.#totals.unpricedTurns > 0;
 	}
 
+	/** Whether any answer has an energy figure. False when every answer was from a model with no size on record. */
+	get hasEnergy(): boolean {
+		return hasEnergy(this.#totals);
+	}
+
+	/** Tokens guessed from text length, for answers the server sent no figure for. */
 	get outputTokens(): number {
-		return this.#outputTokens;
+		return this.#totals.fallbackTokens;
 	}
 
-	/** Estimated energy for the session so far, in Wh. */
+	/** Answers priced by the server (EcoLogits). */
+	get serverTurns(): number {
+		return this.#totals.serverTurns;
+	}
+
+	/** Answers the server reported as not estimated. */
+	get unpricedTurns(): number {
+		return this.#totals.unpricedTurns;
+	}
+
+	/** Estimated energy for the session so far, in Wh (midpoint of the range). */
 	get energyWh(): number {
-		return estimateEnergyWh(this.#outputTokens);
+		return energyHeadlineWh(this.#totals);
+	}
+
+	/** The range the session's energy lies in, in Wh. */
+	get energyRangeWh(): Range {
+		return energyRangeWh(this.#totals);
+	}
+
+	/** Estimated water for the session in litres, or null when no answer has a server figure. */
+	get waterRangeL(): Range | null {
+		return waterRangeL(this.#totals);
 	}
 
 	/**
-	 * Record a completed assistant response. We have no real token usage, so we estimate
-	 * from the final text length (see energyEstimate). Called once per FinalAnswer.
+	 * Record a completed assistant response with the text-length estimate (see energyEstimate), which
+	 * stands for the answer unless the server's figure for it arrives (recordFootprint). Called once per
+	 * FinalAnswer.
 	 */
 	recordResponse(text: string): void {
 		const tokens = estimateTokensFromText(text);
 		if (tokens <= 0) return;
-		this.#outputTokens += tokens;
+		this.#totals = addFallbackTurn(this.#totals, tokens);
+		this.#pendingGuessTokens = tokens;
 		// A reply landing is itself presence — keep the active clock running through a long
 		// answer the user is reading even if they haven't touched the mouse.
 		if (browser) this.#registerActivity();
+		this.#persist();
+	}
+
+	/**
+	 * Record the server's energy and water figure for the answer just recorded. It replaces that
+	 * answer's text-length guess; an answer the server could not price is counted as not estimated.
+	 */
+	recordFootprint(update: MessageFootprintUpdate): void {
+		this.#totals = applyServerFigure(this.#totals, update, this.#pendingGuessTokens);
+		this.#pendingGuessTokens = 0;
 		this.#persist();
 	}
 
@@ -229,7 +290,8 @@ class SessionFootprintStore {
 		if (!browser) return;
 		this.#pause(); // fold/stop any in-flight active span first
 		this.#activeMs = 0;
-		this.#outputTokens = 0;
+		this.#totals = { ...emptyTotals };
+		this.#pendingGuessTokens = 0;
 		this.#startedAt = Date.now();
 		this.#resumeAt = 0;
 		this.#lastInteractionAt = Date.now();

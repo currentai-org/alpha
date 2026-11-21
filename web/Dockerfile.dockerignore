@@ -16,3 +16,12 @@ agent-service
 pangolin
 notebooks
 .git
+# Nothing the server or the operator CLIs read: test fixtures, the end-to-end specs and load test, and the repository's root data/ (the gap map dataset the server reads
+# is web/static/data, which stays).
+web/scripts/fixtures
+web/e2e
+web/loadtest
+data
+# Unit and component tests sit beside the code they test, and the server and the operator CLIs never load them.
+**/*.spec.ts
+**/*.test.ts

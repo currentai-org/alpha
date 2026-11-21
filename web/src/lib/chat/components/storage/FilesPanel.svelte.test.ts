@@ -23,6 +23,24 @@ describe('Your files', () => {
 	});
 });
 
+// A file an agent turn made says so on its row, with the turn it came from.
+describe('Your files, made by Alpha', () => {
+	it('labels a file kept under an agent turn as made by Alpha and leaves a plain attachment unlabelled', async () => {
+		const { container } = await render(FilesPanel, {
+			initialFiles: [
+				{ path: 'users/u1/conversations/c1/agent/task-42/' + 'a'.repeat(64) + '/report.md', size: 10, addedAt: '2026-10-21T21:10:00.000Z' },
+				{ path: 'users/u1/conversations/c1/' + 'b'.repeat(64) + '/rota.txt', size: 10, addedAt: '2026-10-20T21:10:00.000Z' }
+			]
+		});
+		const rows = [...container.querySelectorAll('[data-file-row]')];
+		expect(rows, 'the file list did not render two rows').toHaveLength(2);
+		const label = rows[0].querySelector('[data-testid="made-by-alpha"]');
+		expect(label?.textContent).toBe('Made by Alpha');
+		expect(label?.getAttribute('data-agent-turn')).toBe('task-42');
+		expect(rows[1].querySelector('[data-testid="made-by-alpha"]'), 'a plain attachment must not be labelled').toBeNull();
+	});
+});
+
 // The places files live are a tab list, not a row of pressed buttons, and the keys work.
 describe('Storage location tabs', () => {
 	const alpha = { id: 'alpha', kind: 'alpha', label: 'Alpha storage', detail: '', status: 'ok', lastError: null, grant: 'alpha' } as const;

@@ -42,12 +42,13 @@ vi.mock("$lib/chat/server/storage/uploadImageGuard", async () => ({
 	screenStoredImages: vi.fn(() => Promise.resolve()),
 }));
 
-// The scanner's network call. HmaUnreachableError and the rest of csamScan stay real.
+// The scanner's network call. CsamScannerUnreachableError and the rest of csamScan stay real.
 const scanCsamHash = vi.fn();
 vi.mock("$lib/chat/server/storage/csamScan", async () => ({
 	...(await vi.importActual<typeof import("$lib/chat/server/storage/csamScan")>("$lib/chat/server/storage/csamScan")),
 	scanCsamHash,
-	csamScanConfigured: () => true,
+	csamScanAllowsUploads: () => true,
+	csamScanSkipped: () => false,
 }));
 
 const fixtureBytes = (name: string) => new Uint8Array(readFileSync(fileURLToPath(new URL(`../../fixtures/embedded-images/${name}`, import.meta.url))));
@@ -155,8 +156,8 @@ describe("Open WebUI import through the real upload path", () => {
 	});
 
 	it("refuses each picture-bearing file and writes nothing for it when the scanner is down, so a file is never stored unscanned", async () => {
-		const { HmaUnreachableError } = await import("$lib/chat/server/storage/csamScan");
-		scanCsamHash.mockRejectedValue(new HmaUnreachableError(new Error("ECONNREFUSED")));
+		const { CsamScannerUnreachableError } = await import("$lib/chat/server/storage/csamScan");
+		scanCsamHash.mockRejectedValue(new CsamScannerUnreachableError(new Error("ECONNREFUSED")));
 		const { reportFor } = await run();
 		const p = await importedPaths();
 		expect(written()).not.toContain(`users/acct-alice/${p["potluck-notes.pdf"]}`);

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { logger } from "$lib/chat/server/logger";
 import type { Conversation } from "$lib/chat/types/Conversation";
 import type { MessageFile } from "$lib/chat/types/Message";
@@ -59,6 +60,12 @@ function attachmentName(name: string): string {
 	return last.slice(0, 255 - ext.length) + ext;
 }
 
+/** The folder under a conversation that holds the files its agent turns made, one folder per turn. */
+const AGENT_DIRNAME = "agent";
+const AGENT_TURN_SEGMENT = /^[A-Za-z0-9_-]{1,64}$/;
+const agentTurnSegment = (turn: string): string =>
+	AGENT_TURN_SEGMENT.test(turn) ? turn : createHash("sha256").update(turn).digest("hex").slice(0, 24);
+
 /** The folder holding one conversation's attachments, relative to the person's prefix. */
 const attachmentFolder = (conversationId: string) => `conversations/${conversationId}`;
 
@@ -71,11 +78,15 @@ export function attachmentPath(
 	conversationId: string,
 	sha: string,
 	name: string,
-	opts: { paste?: boolean } = {}
+	opts: { paste?: boolean; agentTurn?: string } = {}
 ): string | undefined {
 	const stored = storedName(name);
 	if (!stored || !/^[0-9a-f]{64}$/.test(sha)) return undefined;
-	const folder = attachmentFolder(conversationId);
+	// A file an agent turn made sits under that turn's own folder, so My files can say who made it.
+	// A turn id that is not a short plain segment (a stand-in's is long base64) is folded to a short
+	// hash of itself, so the write and the read agree on a safe folder name.
+	const turn = opts.agentTurn ? agentTurnSegment(opts.agentTurn) : undefined;
+	const folder = turn ? `${attachmentFolder(conversationId)}/${AGENT_DIRNAME}/${turn}` : attachmentFolder(conversationId);
 	return opts.paste ? `${folder}/${PASTES_DIRNAME}/${sha}/${stored}` : `${folder}/${sha}/${stored}`;
 }
 
@@ -87,10 +98,13 @@ export function attachmentPath(
  */
 export function storedAttachmentKey(
 	conversationId: string,
-	ref: Pick<MessageFile, "value" | "name" | "mime" | "location">
+	ref: Pick<MessageFile, "value" | "name" | "mime" | "location" | "agentTurn">
 ): string | undefined {
 	if (ref.location) return undefined;
-	return attachmentPath(conversationId, ref.value, ref.name, { paste: ref.mime === CLIPBOARD_MIME });
+	return attachmentPath(conversationId, ref.value, ref.name, {
+		paste: ref.mime === CLIPBOARD_MIME,
+		agentTurn: ref.agentTurn,
+	});
 }
 
 /**
@@ -181,7 +195,7 @@ export async function linkedAttachmentLocation(
 export async function storeChatAttachments(
 	conv: Conversation,
 	files: { file: File; paste: boolean }[],
-	opts: { fault?: FaultInjectionName | null; location?: StorageLocation } = {}
+	opts: { fault?: FaultInjectionName | null; location?: StorageLocation; agentTurn?: string } = {}
 ): Promise<MessageFile[]> {
 	if (files.length === 0) return [];
 	const owner = await bucketOwner(conv);
@@ -220,13 +234,19 @@ export async function storeChatAttachments(
 			const name = attachmentName(file.name);
 			const sha = await sha256(await file.text());
 			// Always defined: `name` is a usable segment and `sha` is 64 hex characters.
-			const relativePath = attachmentPath(conversationId, sha, name, { paste })!;
+			const relativePath = attachmentPath(conversationId, sha, name, { paste, agentTurn: opts.agentTurn })!;
 			try {
 				// Preview-only faults (faultInjection.ts), so a spec can watch the fallback on a live deployment.
 				if (opts.fault === "storage_hub_rate_limited") throw hubRateLimitedError("fault injection: storage_hub_rate_limited");
 				if (opts.fault === "storage_quota_full") throw new StorageQuotaExceededError(0, 0);
 				await withinDeadline((signal) => storeChatAttachment(owner, relativePath, file, { signal }), BUCKET_WRITE_TIMEOUT_MS);
-				refs.push({ type: "hash", value: sha, mime: file.type, name });
+				refs.push({
+					type: "hash",
+					value: sha,
+					mime: file.type,
+					name,
+					...(opts.agentTurn ? { agentTurn: opts.agentTurn } : {}),
+				});
 				continue;
 			} catch (e) {
 				// A full My files is the person's to sort out, not a failure to route around. The

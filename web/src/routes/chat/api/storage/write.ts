@@ -95,7 +95,7 @@ export async function writeUpload(
 
 	try {
 		await throwIfHubRateLimitFault(request);
-		const opts = { ...(await writeOptions(request)), ...extra };
+		const opts = { ...(await writeOptions()), ...extra };
 		if (useLocations) {
 			const target = await resolveUploadLocation(accountId, named);
 			const path = await target.write(folder, name, upload.content, opts);

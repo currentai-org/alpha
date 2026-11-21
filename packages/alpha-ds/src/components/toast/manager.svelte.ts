@@ -33,10 +33,10 @@ export interface ToastItem extends Required<Pick<ToastOptions, 'type' | 'timeout
 export class ToastManager {
 	toasts = $state<ToastItem[]>([]);
 	// Timer handles are bookkeeping, never rendered — a plain Map is correct, reactivity would be waste.
-	// eslint-disable-next-line svelte/prefer-svelte-reactivity
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- timer handles are never rendered
 	#timers = new Map<string, ReturnType<typeof setTimeout>>();
 	// When each running timer ends, so a pause can resume with only the time that was left.
-	// eslint-disable-next-line svelte/prefer-svelte-reactivity
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- end times are never rendered
 	#ends = new Map<string, number>();
 	#paused = false;
 	#seq = 0;

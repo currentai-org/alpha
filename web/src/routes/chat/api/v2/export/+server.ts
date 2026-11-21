@@ -101,6 +101,7 @@ export const GET: RequestHandler = async ({ locals, request }) => {
 						guestSessionId: conversation.userId ? conversation.formerGuestSessionId : conversation.sessionId,
 						name: ref.name,
 						mime: ref.mime,
+						agentTurn: ref.agentTurn,
 						location: ref.location,
 					}).catch(() => null);
 					if (!file) continue;

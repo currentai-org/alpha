@@ -2,6 +2,7 @@
 	import { Badge, Button, Collapsible, Meter, Popover, Sheet, useCompact } from '@aipotluck/alpha-ds';
 	import RiFlashlightLine from '~icons/ri/flashlight-line';
 	import RiTimeLine from '~icons/ri/time-line';
+	import RiDropLine from '~icons/ri/drop-line';
 	import RiLightbulbFlashLine from '~icons/ri/lightbulb-flash-line';
 	import RiDeleteBinFill from '~icons/ri/delete-bin-fill';
 	import RiArrowRightSLine from '~icons/ri/arrow-right-s-line';
@@ -17,9 +18,11 @@
 		formatElapsedShort,
 		formatEnergyShort,
 		estimateEnergyBandWh,
+		estimateEnergyWh,
 		energyBreakdown,
 		TYPICAL_AI_PROMPT_WH
 	} from '$lib/chat/utils/energyEstimate';
+	import { formatWater } from '$lib/chat/utils/footprintTotals';
 	import { localizedAnchor, localizedBulbShort, localizedComparison, localizedElapsed } from '$lib/chat/utils/energyCopy';
 	import { trackEvent } from '$lib/analytics';
 	import { deleteAllOpen, deleteAllAnchor, deleteAllMode } from '$lib/chat/stores/deleteAll';
@@ -53,7 +56,15 @@
 	const elapsed = $derived(localizedElapsed(footprint.elapsedMs));
 	const comparison = $derived(localizedComparison(footprint.energyWh));
 	const band = $derived(estimateEnergyBandWh(footprint.outputTokens));
-	const energyShort = $derived(formatEnergyShort(footprint.energyWh));
+	const energyShort = $derived(
+		footprint.hasEnergy || !footprint.hasActivity
+			? formatEnergyShort(footprint.energyWh)
+			: m.chat_footprintNoEstimateShort()
+	);
+	// Server figures arrive as ranges; the text-length guess has its own band, used by the method section.
+	const guessWh = $derived(estimateEnergyWh(footprint.outputTokens));
+	const energyRange = $derived(footprint.energyRangeWh);
+	const waterRange = $derived(footprint.waterRangeL);
 	// The meter fills toward an everyday amount (a phone charge, a laptop charge, a kettle boil).
 	const anchor = $derived(localizedAnchor(footprint.energyWh));
 	const anchorShare = $derived(footprint.energyWh / anchor.wh);
@@ -73,7 +84,7 @@
 		const min = Math.log10(lo) - 0.3;
 		const max = Math.log10(hi) + 0.3;
 		const pos = (v: number) => ((Math.log10(Math.max(v, 1e-6)) - min) / (max - min)) * 100;
-		return { lo: pos(lo), hi: pos(hi), mid: pos(footprint.energyWh) };
+		return { lo: pos(lo), hi: pos(hi), mid: pos(guessWh) };
 	});
 	const spread = $derived(Math.round(band.hi / Math.max(band.lo, 1e-9)));
 	const scaleRows = $derived([
@@ -200,9 +211,36 @@
 									<RiFlashlightLine aria-hidden="true" class="size-3.5 text-accent-1" /> {m.chat_energy()}
 								</span>
 								<span class="type-title text-fg-1 tabular-nums">{energyShort}</span>
-								<span class="type-caption text-fg-3">{m.chat_estimated()}</span>
+								<span class="type-caption text-fg-3" data-footprint-energy-range>
+									{#if !footprint.hasEnergy}
+										{footprint.hasActivity ? m.chat_notEstimated() : m.chat_estimated()}
+									{:else if footprint.serverTurns > 0}
+										{m.chat_footprintRange({ low: formatEnergy(energyRange.min), high: formatEnergy(energyRange.max) })}
+									{:else}
+										{m.chat_estimated()}
+									{/if}
+								</span>
 							</div>
-							<div class="flex flex-col gap-1 border border-line-2 p-3 rounded-card">
+							<div class="flex flex-col gap-1 border border-line-2 p-3 rounded-card" data-footprint-water>
+								<span class="flex items-center gap-1.5 type-caption text-fg-2">
+									<RiDropLine aria-hidden="true" class="size-3.5 text-accent-1" /> {m.chat_water()}
+								</span>
+								<span class="type-title text-fg-1 tabular-nums" data-footprint-water-value>
+									{#if waterRange}
+										{formatWater((waterRange.min + waterRange.max) / 2)}
+									{:else}
+										{footprint.hasActivity ? m.chat_notEstimated() : '–'}
+									{/if}
+								</span>
+								<span class="type-caption text-fg-3">
+									{#if waterRange}
+										{m.chat_footprintRange({ low: formatWater(waterRange.min), high: formatWater(waterRange.max) })} · {m.chat_footprintWaterNote()}
+									{:else}
+										{m.chat_estimated()}
+									{/if}
+								</span>
+							</div>
+							<div class="col-span-2 flex flex-col gap-1 border border-line-2 p-3 rounded-card">
 								<span class="flex items-center gap-1.5 type-caption text-fg-2">
 									<RiTimeLine aria-hidden="true" class="size-3.5 text-accent-1" /> {m.chat_timeOnline()}
 								</span>
@@ -211,7 +249,13 @@
 							</div>
 						</div>
 
-						{#if footprint.hasActivity}
+						{#if footprint.unpricedTurns > 0}
+							<p class="type-caption text-fg-2" data-footprint-unpriced>
+								{m.chat_footprintUnpriced({ count: footprint.unpricedTurns })}
+							</p>
+						{/if}
+
+						{#if footprint.hasEnergy}
 							<p class="type-body text-fg-1">{comparison}</p>
 							<Meter.Root value={footprint.energyWh} max={anchor.wh} format={() => energyShort}>
 								<Meter.Label>{m.chat_comparedWith({ anchor: anchor.label })}</Meter.Label>
@@ -232,7 +276,7 @@
 							{m.chat_footprintWhy()}
 						</p>
 
-						{#if footprint.hasActivity}
+						{#if footprint.hasEnergy}
 							<Collapsible.Root bind:open={methodOpen}>
 								<Collapsible.Trigger>
 									<RiArrowRightSLine class={methodOpen ? 'rotate-90' : ''} aria-hidden="true" /> {m.chat_howEstimated()}
@@ -245,6 +289,14 @@
 									       "Google median text prompt ~0.24 Wh" comparison: Xiaozhe Yao (SwissAI Serving),
 									       https://about.yao.sh/posts/swissai-serving/ ("Energy Consumption" section). -->
 									<div class="flex flex-col gap-5 pt-3" data-energy-method>
+										{#if footprint.serverTurns > 0}
+											<section class="flex flex-col gap-2" data-footprint-source>
+												<p class="type-caption text-fg-2">{m.chat_methodEcologitsIntro()}</p>
+												<p class="type-caption text-fg-2">{m.chat_methodEcologitsRange()}</p>
+											</section>
+										{/if}
+
+										{#if footprint.outputTokens > 0}
 										<p class="type-caption text-fg-2">
 											{m.chat_methodIntro()}
 										</p>
@@ -271,19 +323,20 @@
 										<!-- 2. How sure we are — the plausible band on a log scale, the estimate marked. -->
 										<section class="flex flex-col gap-2" aria-labelledby="energy-range">
 											<h3 id="energy-range" class="type-label text-fg-3">{m.chat_methodRange()}</h3>
-											<div class="relative h-3 w-full rounded-pill bg-tint-subtle" role="img" aria-label={m.chat_methodRangeLabel({ low: formatEnergy(band.lo), high: formatEnergy(band.hi), estimate: formatEnergy(footprint.energyWh) })}>
+											<div class="relative h-3 w-full rounded-pill bg-tint-subtle" role="img" aria-label={m.chat_methodRangeLabel({ low: formatEnergy(band.lo), high: formatEnergy(band.hi), estimate: formatEnergy(guessWh) })}>
 												<span class="absolute inset-y-0 bar-offset bar-width bg-accent-1/30 rounded-pill" style:--bar-offset="{rangePos.lo}%" style:--bar-width="{rangePos.hi - rangePos.lo}%"></span>
 												<span class="absolute -inset-y-0.5 w-0.5 bar-offset bg-accent-1" style:--bar-offset="{rangePos.mid}%"></span>
 											</div>
 											<div class="flex justify-between type-caption text-fg-3 tabular-nums">
 												<span>{formatEnergy(band.lo)}</span>
-												<span class="text-fg-1">≈ {formatEnergy(footprint.energyWh)}</span>
+												<span class="text-fg-1">≈ {formatEnergy(guessWh)}</span>
 												<span>{formatEnergy(band.hi)}</span>
 											</div>
 											<p class="type-caption text-fg-2">
 												{m.chat_methodRangeNote({ spread })}
 											</p>
 										</section>
+										{/if}
 
 										<!-- 3. For scale -->
 										<section class="flex flex-col gap-2" aria-labelledby="energy-scale">
@@ -320,9 +373,11 @@
 											</div>
 										</section>
 
-										<p class="type-caption text-fg-3">
-											{serving.namesSwitzerland ? m.chat_methodCalibrationSwiss() : m.chat_methodCalibration()}
-										</p>
+										{#if footprint.outputTokens > 0}
+											<p class="type-caption text-fg-3">
+												{serving.namesSwitzerland ? m.chat_methodCalibrationSwiss() : m.chat_methodCalibration()}
+											</p>
+										{/if}
 									</div>
 								</Collapsible.Panel>
 							</Collapsible.Root>

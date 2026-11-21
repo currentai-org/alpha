@@ -135,6 +135,8 @@ Modified by Current AI from huggingface/chat-ui.
 		onmessage?: (content: string) => void;
 		onstop?: () => void;
 		onretry?: (payload: { id: Message['id']; content?: string }) => void;
+		/** Continue an answer the time limit cut off. */
+		oncontinue?: (payload: { id: Message['id'] }) => void;
 		onshowAlternateMsg?: (payload: { id: Message['id'] }) => void;
 		draft?: string;
 	}
@@ -164,6 +166,7 @@ Modified by Current AI from huggingface/chat-ui.
 		onmessage,
 		onstop,
 		onretry,
+		oncontinue,
 		onshowAlternateMsg
 	}: Props = $props();
 
@@ -1380,6 +1383,7 @@ Modified by Current AI from huggingface/chat-ui.
 								isLast={idx === messages.length - 1}
 								bind:editMsdgId
 								onretry={(payload) => onretry?.(payload)}
+								oncontinue={oncontinue ? (payload) => oncontinue?.(payload) : undefined}
 								onshowAlternateMsg={(payload) => onshowAlternateMsg?.(payload)}
 								onquote={!shared && !isReadOnly && !formerWorkspace ? quoteToComposer : undefined}
 								onsend={!shared && !isReadOnly && !formerWorkspace ? sendAsVisitor : undefined}

@@ -63,7 +63,12 @@
 	// session_started — no separate onMount needed. ($pageview/$pageleave are captured site-wide by
 	// the root layout; chat only adds its own events here.)
 	afterNavigate(({ to }) => {
-		initAnalytics(publicConfig.PUBLIC_POSTHOG_KEY, publicConfig.PUBLIC_POSTHOG_HOST);
+		initAnalytics(
+			publicConfig.PUBLIC_POSTHOG_KEY,
+			publicConfig.PUBLIC_POSTHOG_HOST,
+			undefined,
+			publicConfig.PUBLIC_POSTHOG_LEGACY_KEY
+		);
 		// Checked every navigation (not just once) so a mid-session ?ph_test=1 still lands.
 		markInternalIfNeeded();
 

@@ -22,7 +22,7 @@ import {
 	linkBareHelpline,
 	CRISIS_REFERRAL_ORDER_FLAG,
 } from "$lib/chat/server/crisisReferralOrder";
-import { guardHelplineNumbers, namesOurCrisisResource } from "$lib/chat/server/helplineNumberGuard";
+import { guardHelplineNumbers, isHeldNationalLine, namesOurCrisisResource } from "$lib/chat/server/helplineNumberGuard";
 import { flagEnabledOr } from "$lib/chat/server/flags";
 import { logger } from "$lib/chat/server/logger";
 import { measureDegeneration } from "./degeneration";
@@ -386,8 +386,9 @@ async function* honestyScreenContent(
 			}
 		}
 
-		// The first crisis-line 988 decides, once per answer, whether findahelpline.com and 112
-		// go ahead of it. Runs before the URL check so the inserted link is judged like any other.
+		// The first crisis-line 988 decides, once per answer, whether findahelpline.com and the person's
+		// local emergency services go ahead of it. Runs before the URL check so the inserted link is
+		// judged like any other.
 		if (!crisisOrderDecided) {
 			// The person's language is awaited only for a batch that may hold the first 988.
 			// Stryker disable next-line StringLiteral: with no 988 in the batch the language is never read.
@@ -396,7 +397,8 @@ async function* honestyScreenContent(
 			crisisOrderDecided = order.decided;
 			if (order.inserted && flagEnabledOr(CRISIS_REFERRAL_ORDER_FLAG, () => true)) {
 				text = order.cleaned;
-				logger.info("[crisis-order] put findahelpline.com and 112 ahead of 988");
+				// Stryker disable next-line StringLiteral,CallExpression: the log line is not behaviour.
+				logger.info("[crisis-order] put findahelpline.com ahead of 988");
 			}
 		}
 
@@ -410,7 +412,14 @@ async function* honestyScreenContent(
 		// small models recall them wrong. It becomes a findahelpline
 		// link. The end-of-stream pass below catches a number released before the answer named a resource.
 		if (inCrisisAnswer(released + text) && flagEnabledOr(CRISIS_REFERRAL_ORDER_FLAG, () => true)) {
-			const numbers = guardHelplineNumbers(text, opts.helplineCountry, opts.namedHelplineCountry?.());
+			let numbers = guardHelplineNumbers(text, opts.helplineCountry, opts.namedHelplineCountry?.());
+			// A national line stays when the message names its country, and the support classifier that
+			// reads that country can still be running. Wait for it before taking such a line out.
+			if (numbers.numbers.some(isHeldNationalLine)) {
+				// Stryker disable next-line ArrowFunction: the verdict promise never rejects; the catch is a floor.
+				await opts.crisisSupportSettled?.().catch(() => {});
+				numbers = guardHelplineNumbers(text, opts.helplineCountry, opts.namedHelplineCountry?.());
+			}
 			if (numbers.replaced) {
 				text = numbers.cleaned;
 				logger.warn({ replaced: numbers.numbers.length }, "[crisis-order] replaced a model-written helpline number");
@@ -774,7 +783,13 @@ async function* honestyScreenContent(
 		await opts.crisisSupportSettled?.().catch(() => {});
 	}
 	if (crisisGuardOn && inCrisisAnswer(finalText)) {
-		const numbers = guardHelplineNumbers(finalText, opts.helplineCountry, opts.namedHelplineCountry?.());
+		let numbers = guardHelplineNumbers(finalText, opts.helplineCountry, opts.namedHelplineCountry?.());
+		// As in the per-batch pass: a national line waits for the named country before it goes.
+		if (numbers.numbers.some(isHeldNationalLine)) {
+			// Stryker disable next-line ArrowFunction: the verdict promise never rejects; the catch is a floor.
+			await opts.crisisSupportSettled?.().catch(() => {});
+			numbers = guardHelplineNumbers(finalText, opts.helplineCountry, opts.namedHelplineCountry?.());
+		}
 		if (numbers.replaced) {
 			logger.warn({ replaced: numbers.numbers.length }, "[crisis-order] replaced a model-written helpline number at end of stream");
 			const before = finalText;

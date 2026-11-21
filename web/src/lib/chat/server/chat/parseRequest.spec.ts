@@ -43,11 +43,11 @@ vi.mock("$lib/chat/constants/uploadLimits", async (orig) => ({
 		return fileSize.bytes;
 	},
 }));
-// HmaUnreachableError kept real (not stubbed) — parseRequest.ts checks `instanceof` against it, so
+// CsamScannerUnreachableError kept real (not stubbed) — parseRequest.ts checks `instanceof` against it, so
 // the test needs to throw the same class the module under test imports.
 vi.mock("$lib/chat/server/storage/csamScan", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("$lib/chat/server/storage/csamScan")>();
-	return { ...actual, scanCsamHash, csamScanConfigured: () => scanner.configured };
+	return { ...actual, scanCsamHash, csamScanAllowsUploads: () => scanner.configured, csamScanSkipped: () => false };
 });
 vi.mock("$lib/chat/server/alerting", () => ({ recordCsamMatch }));
 vi.mock("$lib/chat/server/moderation", () => ({ reportCsamMatchToCoop }));
@@ -83,7 +83,7 @@ vi.mock("$lib/chat/server/documentAttachmentsGate", () => ({
 import { parseChatRequest } from "./parseRequest";
 import { CHAT_ATTACHMENTS_MAX_COUNT } from "$lib/chat/constants/uploadLimits";
 import {
-	HmaUnreachableError,
+	CsamScannerUnreachableError,
 	UPLOAD_NOT_SCANNED_MESSAGE,
 } from "$lib/chat/server/storage/csamScan";
 
@@ -609,7 +609,7 @@ describe("parseChatRequest", () => {
 
 	it("drops every file, stores nothing, and still answers the text when the CSAM scanner is unreachable", async () => {
 		multimodal.enabled = true;
-		scanCsamHash.mockRejectedValue(new HmaUnreachableError(new Error("connect timeout")));
+		scanCsamHash.mockRejectedValue(new CsamScannerUnreachableError(new Error("connect timeout")));
 		const image = new File(["aGVsbG8="], "base64;photo.png", { type: "image/png" });
 		const text = new File(["aGVsbG8="], "base64;notes.txt", { type: "text/plain" });
 		const hash = new File(["deadbeef"], "hash;old.txt", { type: "text/plain" });
@@ -632,22 +632,6 @@ describe("parseChatRequest", () => {
 		]);
 	});
 
-	it("the csam_scanner_down fault refuses a turn's image as an unreachable scanner does, without calling the scanner", async () => {
-		multimodal.enabled = true;
-		resolveFaultInjection.mockResolvedValue("csam_scanner_down");
-		const image = new File(["aGVsbG8="], "base64;photo.png", { type: "image/png" });
-		const out = await parseChatRequest({
-			request: makeRequest({ inputs: "what is this?" }, [image]),
-			conv,
-			locals: makeLocals(),
-		});
-		expect(out.newPrompt).toBe("what is this?");
-		expect(out.attachmentNotice).toBe(UPLOAD_NOT_SCANNED_MESSAGE);
-		expect(scanCsamHash).not.toHaveBeenCalled();
-		expect(uploadFile).not.toHaveBeenCalled();
-		expect(out.uploadedFiles).toEqual([]);
-	});
-
 	it("refuses every attached file, even text, and never calls the scanner when none is configured ( fail closed)", async () => {
 		multimodal.enabled = true;
 		scanner.configured = false;
@@ -664,7 +648,7 @@ describe("parseChatRequest", () => {
 		expect(scanCsamHash).not.toHaveBeenCalled();
 	});
 
-	it("keeps a long paste as message text when no scanner is configured, with no notice ( still holds under )", async () => {
+	it("keeps a long paste as message text when the scanner config is incomplete, with no notice ( still holds under )", async () => {
 		scanner.configured = false;
 		const paste = new File([b64("A pasted article. ".repeat(300))], "base64;Pasted Content", {
 			type: "application/vnd.chatui.clipboard",

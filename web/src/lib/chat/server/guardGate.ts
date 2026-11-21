@@ -354,6 +354,9 @@ export type GuardScreen = {
 	 *  image's own answer for it has arrived, so a query that never ran can't read as cleared. Absent
 	 *  means not recorded, which a reader treats as no rule cleared. */
 	imageCleared?: string[];
+	/** S1's score per fired rule key, the highest over text chunks. Present only when S1 judged a text unit;
+	 *  a rule S1 gave no score is absent. */
+	scores?: Record<string, number>;
 };
 
 /** A concurrency governor shared across the WHOLE operation (units and stages) — one global worker
@@ -442,6 +445,8 @@ async function screenOnce(input: GuardScreenInput, deps: GuardScreenDeps): Promi
 
 	const blockByKey = new Map<string, GuardRule>();
 	const logByKey = new Map<string, GuardRule>();
+	// Set once S1 judges a text unit, so a Shieldstral screen reports no scores at all.
+	let scoreByKey: Map<string, number> | undefined;
 	const servedModels = new Set<string>();
 	let served: ServedCall | undefined;
 	let transportOk = true;
@@ -514,11 +519,16 @@ async function screenOnce(input: GuardScreenInput, deps: GuardScreenDeps): Promi
 						if (!r.httpOk) transportOk = false;
 						if (r.servedModel) record({ answer: { kind: "unknown" }, httpOk: true, servedModel: r.servedModel, servedBackend: r.servedBackend });
 						else if (r.httpOk && r.calls > 0) servedModelMissing = true;
+						scoreByKey ??= new Map();
 						for (const rule of s1Rules) {
 							progress();
 							// A rule S1 left without an answer is unknown, never a pass.
 							const st = r.rules.get(rule.key) ?? "U";
-							if (st === "P") fire(rule);
+							if (st === "P") {
+								fire(rule);
+								const sc = r.scores?.get(rule.key);
+								if (sc !== undefined && sc > (scoreByKey.get(rule.key) ?? -1)) scoreByKey.set(rule.key, sc);
+							}
 							else if (st === "U") {
 								unitUnknown[ui] = true;
 								if (rule.tier === "child") childUnknown = true;
@@ -581,6 +591,7 @@ async function screenOnce(input: GuardScreenInput, deps: GuardScreenDeps): Promi
 		contentDeadlineUnasked,
 		...(served ? { served } : {}),
 		imageCleared: [...imageClearCount].filter(([, n]) => n === input.images.length).map(([k]) => k),
+		...(scoreByKey ? { scores: Object.fromEntries(scoreByKey) } : {}),
 	};
 }
 
@@ -619,6 +630,37 @@ export function toHits(rules: GuardRule[]): GuardHit[] {
 	return rules.map((r) => ({ key: r.key, action: r.action, tier: r.tier }));
 }
 
+/** The content block whose decline copy the turn shows. Self-harm's supportive copy wins over a co-firing
+ *  content rule (see SELF_HARM_KEYS), so the shown decline is deterministic, not a race between concurrent
+ *  verdicts. On an S1 input screen it wins only when self-harm is the strongest hit: its highest score at
+ *  least the highest of the other fired content rules. A tie, or a fired rule with no score, keeps
+ *  self-harm, so a doubt never takes crisis support away. Without S1 scores the order is as above.
+ *  @internal exported for its unit test */
+export function shownContentHit(
+	contentBlocks: GuardRule[],
+	scores: Record<string, number> | undefined,
+	log: MinimalLogger = defaultLogger
+): GuardRule | undefined {
+	const selfHarm = contentBlocks.filter((r) => SELF_HARM_KEYS.has(r.key));
+	const others = contentBlocks.filter((r) => !SELF_HARM_KEYS.has(r.key));
+	if (selfHarm.length === 0) return contentBlocks[0];
+	if (others.length === 0 || !scores) return selfHarm[0];
+	const scored = (rs: GuardRule[]) => rs.map((r) => scores[r.key]);
+	const shScores = scored(selfHarm);
+	const otherScores = scored(others);
+	if ([...shScores, ...otherScores].some((s) => s === undefined)) return selfHarm[0];
+	const sh = Math.max(...(shScores as number[]));
+	const top = Math.max(...(otherScores as number[]));
+	if (sh >= top) return selfHarm[0];
+	const winner = others[(otherScores as number[]).indexOf(top)];
+	// Rule keys and scores only, never the text.
+	log.info(
+		{ gateSource: "guard", judge: "s1", selfHarm: Object.fromEntries(selfHarm.map((r) => [r.key, scores[r.key]])), shown: winner.key, shownScore: top },
+		"[guard] self-harm outscored — content decline shown"
+	);
+	return winner;
+}
+
 export async function getGuardVerdict(
 	input: GuardScreenInput,
 	deps: GuardScreenDeps = {}
@@ -646,10 +688,8 @@ export async function getGuardVerdict(
 		// Precedence rule 1: known blocks are the verdict, whatever else failed. Child hits flag child;
 		// content hits block content — both can be true, and decideModeration takes child first.
 		const childHit = screen.blockHits.find((r) => r.tier === "child");
-		// Self-harm's supportive copy wins over any co-firing content rule (see SELF_HARM_KEYS) — so the
-		// shown decline is deterministic, not a race between concurrent verdicts.
 		const contentBlocks = screen.blockHits.filter((r) => r.tier === "content");
-		const contentHit = contentBlocks.find((r) => SELF_HARM_KEYS.has(r.key)) ?? contentBlocks[0];
+		const contentHit = shownContentHit(contentBlocks, deps.screen === "output" ? undefined : screen.scores, deps.logger ?? defaultLogger);
 		return {
 			verdict: { status: "ok", actions: screen.blockHits.map((r) => r.key) },
 			childSafety: childHit ? { flagged: true, category: childHit.key } : { flagged: false },

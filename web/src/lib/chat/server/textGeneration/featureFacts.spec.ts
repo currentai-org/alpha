@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const gates = vi.hoisted(() => ({ scanner: true, multimodal: true, dictation: true, images: true, documents: true, readAloud: true }));
-vi.mock("$lib/chat/server/storage/csamScan", () => ({ csamScanConfigured: () => gates.scanner }));
+vi.mock("$lib/chat/server/storage/csamScan", () => ({ csamScanAllowsUploads: () => gates.scanner }));
 vi.mock("$lib/chat/server/dictationMode", () => ({ dictationEnabled: () => gates.dictation }));
 vi.mock("$lib/chat/server/multimodalMode", () => ({ modelTakesImagesNow: () => gates.images, multimodalEnabled: () => gates.multimodal }));
 vi.mock("$lib/chat/server/documentAttachmentsGate", () => ({ documentAttachmentsOffered: () => gates.documents }));
@@ -10,12 +10,12 @@ vi.mock("$lib/chat/server/readAloudGate", () => ({ readAloudEnabled: () => gates
 const { resolveFeatureFacts, featuresClause } = await import("./persona");
 
 // The prompt may name only what this visitor's composer shows. The composer drops the whole
-// attach control when no upload scanner is configured (layoutData.ts), so the prompt must too, or the
+// attach control when the upload scanner config is incomplete (layoutData.ts), so the prompt must too, or the
 // model offers a guest an upload button that isn't there.
 describe("resolveFeatureFacts", () => {
 	beforeEach(() => Object.assign(gates, { scanner: true, multimodal: true, dictation: true, images: true, documents: true, readAloud: true }));
 
-	it("offers images and documents only when the composer's attach control exists (scanner configured)", () => {
+	it("offers images and documents only when the composer's attach control exists (scanner config not incomplete)", () => {
 		gates.scanner = false;
 		const facts = resolveFeatureFacts({ multimodal: true });
 		expect(facts).toEqual({ dictation: true, textFiles: false, noAttach: "off", images: false, documents: false, readAloud: true, otherModels: [], answering: expect.objectContaining({ openness: expect.any(String) }), readAloudMode: "auto" });

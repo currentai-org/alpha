@@ -39,3 +39,6 @@ stub/
 # Inlang/Paraglide working files; only project.inlang/settings.json is tracked.
 project.inlang/*
 !project.inlang/settings.json
+
+# ESLint writes and prunes its suppressions file in its own format.
+eslint-suppressions.json

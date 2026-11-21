@@ -21,6 +21,7 @@ import {
 	MAX_INPUT_SCREEN_MS,
 	MAX_INVOCATION_MS,
 	MAX_SAFE_GENERATION_TIMEOUT_MS,
+	MAX_SEARCHED_GENERATION_TIMEOUT_MS,
 	MAX_TRACK_DURATION_MS,
 	PLATFORM_MAX_DURATION_MS,
 	PRESTREAM_CHAIN_DEADLINE_MS,
@@ -56,10 +57,34 @@ describe("deadline ladder ordering", () => {
 		expect(MAX_INVOCATION_MS).toBeLessThan(PLATFORM_MAX_DURATION_MS);
 		expect(MAX_INVOCATION_MS).toBe(
 			PRESTREAM_CHAIN_DEADLINE_MS +
-				MAX_SAFE_GENERATION_TIMEOUT_MS +
+				MAX_SEARCHED_GENERATION_TIMEOUT_MS +
 				HARD_UNWIND_GRACE_MS +
 				EMERGENCY_TAIL_MS
 		);
+	});
+
+	// a searched turn still writing may run past MAX_SAFE, so every invariant is re-checked
+	// against the longest generation the ladder allows, not the env clamp.
+	test("a searched turn at its longest, with its unwind and pre-updatedAt cleanup, fits inside the stale window", () => {
+		expect(
+			MAX_SEARCHED_GENERATION_TIMEOUT_MS + HARD_UNWIND_GRACE_MS + 2 * EMERGENCY_CLEANUP_BUDGET_MS
+		).toBeLessThanOrEqual(GENERATION_STALE_MS);
+	});
+
+	test("a searched turn at its longest still leaves the invocation a cleanup budget before the platform kill", () => {
+		expect(
+			PRESTREAM_CHAIN_DEADLINE_MS +
+				MAX_SEARCHED_GENERATION_TIMEOUT_MS +
+				HARD_UNWIND_GRACE_MS +
+				EMERGENCY_TAIL_MS +
+				EMERGENCY_CLEANUP_BUDGET_MS
+		).toBeLessThanOrEqual(PLATFORM_MAX_DURATION_MS);
+	});
+
+	test("only a searched turn gets past the env clamp: the searched ceiling is longer than MAX_SAFE", () => {
+		// Equal would mean the searched turn gained nothing; MAX_SAFE above it would break the invariants
+		// above for every turn the env clamp lets through.
+		expect(MAX_SAFE_GENERATION_TIMEOUT_MS).toBeLessThan(MAX_SEARCHED_GENERATION_TIMEOUT_MS);
 	});
 
 	test("the default generation timeout is itself within the clamp", () => {
@@ -145,6 +170,7 @@ describe("deadline ladder ordering", () => {
 			GENERATION_STALE_MS,
 			MAX_TRACK_DURATION_MS,
 			MAX_SAFE_GENERATION_TIMEOUT_MS,
+			MAX_SEARCHED_GENERATION_TIMEOUT_MS,
 			PLATFORM_MAX_DURATION_MS,
 		]) {
 			expect(ms).toBeGreaterThan(0);

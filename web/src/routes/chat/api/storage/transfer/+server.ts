@@ -34,7 +34,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 	try {
 		const from = await resolveLocation(accountId, field(body, "from"));
 		const to = await resolveLocation(accountId, field(body, "to"));
-		const opts = await writeOptions(request);
+		const opts = await writeOptions();
 		// keepBoth is for moving a batch: a taken name never stops it or overwrites anything.
 		const ifNameTaken = body.ifNameTaken === "keepBoth" ? "keepBoth" : "refuse";
 		const { path, outcome } = await transferFile(from, to, field(body, "path"), mode as TransferMode, opts, ifNameTaken);

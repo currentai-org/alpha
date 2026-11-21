@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// this route had no brute-force protection at all. These tests prove the new
+// This route had no brute-force protection at all. These tests prove the new
 // adminTokenRate.ts-backed lockout gates the check, and that a valid/invalid token still clears or
 // records a failure respectively.
 

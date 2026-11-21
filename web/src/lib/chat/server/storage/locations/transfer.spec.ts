@@ -30,10 +30,10 @@ vi.mock("$lib/chat/server/moderation", () => ({ reportCsamMatchToCoop: vi.fn(asy
 const scanner = vi.hoisted(() => ({ configured: true, scan: vi.fn() }));
 vi.mock("../csamScan", async () => {
 	const actual = await vi.importActual<typeof import("../csamScan")>("../csamScan");
-	return { ...actual, scanCsamHash: scanner.scan, csamScanConfigured: () => scanner.configured };
+	return { ...actual, scanCsamHash: scanner.scan, csamScanAllowsUploads: () => scanner.configured, csamScanSkipped: () => false };
 });
 
-import { CsamScannerUnconfiguredError, HmaUnreachableError } from "../csamScan";
+import { CsamScannerUnconfiguredError, CsamScannerUnreachableError } from "../csamScan";
 import { hfBucketLocation } from "./hfBucketLocation";
 import { transferFile, TransferRefusedError, TransferVerifyError } from "./transfer";
 import type { StorageLocation } from "./types";
@@ -170,17 +170,17 @@ describe("a transfer into a person's own bucket is screened before the write, fa
 	const bucket = () =>
 		hfBucketLocation({ id: "loc1", label: "mine", userId: "u1", repo: "buckets/me/files", prefix: "", token: "hf_x" });
 
-	it("refuses with HmaUnreachableError and uploads nothing when the CSAM scanner does not answer", async () => {
-		scanner.scan.mockRejectedValue(new HmaUnreachableError(new Error("down")));
+	it("refuses with CsamScannerUnreachableError and uploads nothing when the CSAM scanner does not answer", async () => {
+		scanner.scan.mockRejectedValue(new CsamScannerUnreachableError(new Error("down")));
 		const src = memory("alpha", { "users/u1/documents/cat.png": new Blob([PNG]) });
 		await expect(
 			transferFile(src.loc, bucket(), "users/u1/documents/cat.png", "move", { imagesAllowed: true })
-		).rejects.toBeInstanceOf(HmaUnreachableError);
+		).rejects.toBeInstanceOf(CsamScannerUnreachableError);
 		expect(hub.uploadFile).not.toHaveBeenCalled();
 		expect(src.deleted).toEqual([]);
 	});
 
-	it("refuses with CsamScannerUnconfiguredError and uploads nothing when no scanner is configured", async () => {
+	it("refuses with CsamScannerUnconfiguredError and uploads nothing when the scanner config is incomplete", async () => {
 		scanner.configured = false;
 		const src = memory("alpha", { "users/u1/documents/a.txt": new Blob(["plain text"]) });
 		await expect(transferFile(src.loc, bucket(), "users/u1/documents/a.txt", "copy", {})).rejects.toBeInstanceOf(

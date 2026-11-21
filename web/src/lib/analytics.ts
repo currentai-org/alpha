@@ -50,15 +50,21 @@ export type SiteEvent =
 // and which forwards to POSTHOG_INGEST_HOST. PUBLIC_POSTHOG_HOST overrides it; set
 // PUBLIC_POSTHOG_UI_HOST (e.g. https://us.posthog.com) so the toolbar / "view in PostHog" links resolve
 // while the API host is a proxy.
+//
+// legacyKey is PUBLIC_POSTHOG_LEGACY_KEY, the previous project token while a region move settles; see
+// legacyDistinctId below.
 export function initAnalytics(
 	key: string | undefined,
 	host: string | undefined,
-	uiHost?: string | undefined
+	uiHost?: string | undefined,
+	legacyKey?: string | undefined
 ) {
 	if (!browser || !key || initialized) return;
+	const distinctID = legacyDistinctId(key, legacyKey, browserStore());
 	posthog.init(key, {
 		api_host: host || '/rs',
 		...(uiHost ? { ui_host: uiHost } : {}),
+		...(distinctID ? { bootstrap: { distinctID } } : {}),
 		person_profiles: 'identified_only',
 		autocapture: false,
 		// SvelteKit SPA best practice: capture_pageview OFF and fire $pageview MANUALLY from the root
@@ -78,6 +84,70 @@ export function initAnalytics(
 		before_send: (event) => (!event || isBrowserNoise(event) ? null : scrubRouteIds(event))
 	});
 	initialized = true;
+}
+
+// Moving the project to another region comes with a new project token, and posthog-js keys
+// its storage by token (`ph_<token>_posthog`, a cookie and a localStorage entry), so every returning
+// visitor would arrive as someone new. While PUBLIC_POSTHOG_LEGACY_KEY names the old token, a browser
+// with nothing stored under the new token starts from the distinct_id it had under the old one. Only
+// then: posthog-js applies a bootstrap id on every load, so once the new token has storage of its own
+// it is left alone. Unset, or equal to the current token, it does nothing. Remove it with the legacy key.
+export type PersistenceStore = { cookie: string; getItem(name: string): string | null };
+
+/** posthog-js's storage name for a token (posthog-persistence.js parseName). */
+function persistenceName(token: string): string {
+	return `ph_${token.replace(/\+/g, 'PL').replace(/\//g, 'SL').replace(/=/g, 'EQ')}_posthog`;
+}
+
+function cookieValue(cookie: string, name: string): string | null {
+	for (const part of cookie.split(';')) {
+		const eq = part.indexOf('=');
+		if (eq > 0 && part.slice(0, eq).trim() === name) return part.slice(eq + 1).trim();
+	}
+	return null;
+}
+
+function parsedDistinctId(raw: string | null, decode: boolean): string | undefined {
+	if (!raw) return undefined;
+	try {
+		const value: unknown = JSON.parse(decode ? decodeURIComponent(raw) : raw);
+		const id = value && typeof value === 'object' ? Reflect.get(value, 'distinct_id') : undefined;
+		return typeof id === 'string' && id !== '' && !id.startsWith('$') ? id : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+function storedDistinctId(token: string, store: PersistenceStore): string | undefined {
+	const name = persistenceName(token);
+	return (
+		parsedDistinctId(cookieValue(store.cookie, name), true) ??
+		parsedDistinctId(store.getItem(name), false)
+	);
+}
+
+export function legacyDistinctId(
+	key: string,
+	legacyKey: string | undefined,
+	store: PersistenceStore
+): string | undefined {
+	const legacy = legacyKey?.trim();
+	if (!legacy || legacy === key) return undefined;
+	if (storedDistinctId(key, store)) return undefined;
+	return storedDistinctId(legacy, store);
+}
+
+function browserStore(): PersistenceStore {
+	return {
+		cookie: globalThis.document?.cookie ?? '',
+		getItem: (name) => {
+			try {
+				return globalThis.localStorage?.getItem(name) ?? null;
+			} catch {
+				return null; // storage blocked
+			}
+		}
+	};
 }
 
 // Chrome raises "ResizeObserver loop completed with undelivered notifications" (older

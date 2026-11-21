@@ -16,7 +16,7 @@ import { error, type RequestEvent } from "@sveltejs/kit";
 // while org creation is off. A 404, not a 403: unlike sign-in (a stated "not yet" policy on a surface
 // that will exist), the feature genuinely doesn't exist for this deployment while the flag is off.
 //
-// gated on workspaceOrgCreationEnabled specifically — seeing your own
+// Gated on workspaceOrgCreationEnabled specifically — seeing your own
 // workspace and its settings is a separate, safe-by-default privilege from creating an ADDITIONAL one
 // or inviting other people into it. This route is entirely about the latter (every /organization/*
 // call is create/invite/list/get-full/set-active/remove/delete, none of them "just show my own"), so

@@ -12,7 +12,7 @@
 	import { localLanguageName } from '$lib/chat/routing/languages';
 	import { route, shownLanguage } from '$lib/chat/routing/router';
 	import { languageSupport } from '$lib/chat/routing/benchmarks';
-	import { AUTO, modelChoice, modelPickRequest, pickerChoice } from '$lib/chat/routing/choice';
+	import { AUTO, modelChoice, modelPickRequest, modelPickerOpenRequest, pickerChoice } from '$lib/chat/routing/choice';
 	import { useDraftAnalysis } from '$lib/chat/routing/draftAnalysis.svelte';
 	import { mergeClef } from '$lib/chat/routing/clef';
 	import { readWithClef } from '$lib/chat/routing/remoteRead';
@@ -208,6 +208,26 @@
 		if (!requested) return;
 		untrack(() => choose(requested));
 		modelPickRequest.set(null);
+	});
+
+	// "Try another model" on a timed-out turn opens this picker. Only a request made after
+	// mount counts, so a request from an earlier page does not open it on arrival.
+	let menuOpen = $state(false);
+	let pickerRequestsSeen = $modelPickerOpenRequest;
+	$effect(() => {
+		const requested = $modelPickerOpenRequest;
+		if (requested === pickerRequestsSeen) return;
+		pickerRequestsSeen = requested;
+		untrack(() => {
+			open = null;
+			if (phone.current) {
+				pickerOpen = true;
+				return;
+			}
+			const shell = pillEl?.closest('[data-composer-accessory]')?.querySelector<HTMLElement>('.composer-shell');
+			menuAnchor = shell ? composerBottomEdge(shell) : null;
+			menuOpen = true;
+		});
 	});
 
 	function choose(id: string) {
@@ -816,6 +836,7 @@
 		</Sheet.Root>
 	{:else}
 	<Menu.Root
+		bind:open={menuOpen}
 		onOpenChange={(o) => {
 			if (!o) return;
 			open = null;

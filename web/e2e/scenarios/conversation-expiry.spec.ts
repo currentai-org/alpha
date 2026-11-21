@@ -243,6 +243,24 @@ test(
 						from conversations c where id = ${id}
 					`
 				)[0];
+			// The finished turn still writes its timings after Retry shows. Read the chat once two reads a
+			// second apart agree, so the comparison below sees only what Continue might change.
+			let previous = '';
+			await expect
+				.poll(
+					async () => {
+						const current = (await stored()).messages;
+						const settled = current === previous;
+						previous = current;
+						return settled;
+					},
+					{
+						message: 'the first turn kept writing to the chat',
+						intervals: [1_000],
+						timeout: 30_000
+					}
+				)
+				.toBe(true);
 			const before = await stored();
 			expect(before.held, 'the fresh account holds more than the one chat').toBe('1');
 

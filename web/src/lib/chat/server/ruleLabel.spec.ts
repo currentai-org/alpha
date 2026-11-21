@@ -8,6 +8,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
 	ACTION_LABELS,
 	blockedRuleLabels,
+	declineCarriesSupport,
 	isSupportRule,
 	resolveActionLabel,
 	resolveActionMessage,
@@ -157,6 +158,24 @@ describe("isSupportRule", () => {
 	it("holds with the rule-label kill switch off, since the card is crisis support, not a label", () => {
 		vi.stubEnv("COOP_SURFACE_RULE_LABEL", "false");
 		expect(isSupportRule("chat-block-self-harm-hedged")).toBe(true);
+	});
+});
+
+describe("declineCarriesSupport", () => {
+	const crisisLog = { key: "chat-block-self-harm-intent", action: "log" as const };
+	it("a self-harm decline carries the Support resources card", () => {
+		expect(declineCarriesSupport("chat-block-self-harm", [], undefined)).toBe(true);
+	});
+	it("a drug decline keeps the card when a crisis rule fired as a log hit on the latest message", () => {
+		expect(declineCarriesSupport("chat-block-drugs", [{ key: "chat-block-drugs", action: "block" }, crisisLog], undefined)).toBe(true);
+		expect(declineCarriesSupport("chat-block-drugs", [crisisLog], true)).toBe(true);
+	});
+	it("a crisis log hit that fired only on earlier messages adds no card to a drug decline", () => {
+		expect(declineCarriesSupport("chat-block-drugs", [crisisLog], false)).toBe(false);
+	});
+	it("a drug decline with no crisis hit carries no card, and a self-harm BLOCK hit behind it adds none", () => {
+		expect(declineCarriesSupport("chat-block-drugs", [{ key: "chat-block-drugs", action: "block" }], undefined)).toBe(false);
+		expect(declineCarriesSupport("chat-block-drugs", [{ key: "chat-block-self-harm", action: "block" }], undefined)).toBe(false);
 	});
 });
 

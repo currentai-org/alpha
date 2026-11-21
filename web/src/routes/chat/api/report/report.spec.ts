@@ -1,5 +1,5 @@
 /**
- * the general "Report a problem" route runs the shared per-session limiter before it saves,
+ * The general "Report a problem" route runs the shared per-session limiter before it saves,
  * so one visitor cannot fill the reports queue. The real route and limiter run; the limiter's event
  * window is an in-memory stand-in for the database and `saveReport` is a spy.
  */

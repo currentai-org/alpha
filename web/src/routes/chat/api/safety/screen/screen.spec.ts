@@ -302,7 +302,7 @@ describe("POST /chat/api/safety/screen — through the hook (zero HF, zero DB, z
 	});
 });
 
-// the screen runs in the surface's phase, and S1 judges when s1-safety-judge is on. These run the
+// The screen runs in the surface's phase, and S1 judges when s1-safety-judge is on. These run the
 // REAL runGuardScreen and rules.json over the offline detectors above.
 describe("POST /chat/api/safety/screen — which judge, and which phase's rules", () => {
 	const screenText = async (text: string, surface: string) => {

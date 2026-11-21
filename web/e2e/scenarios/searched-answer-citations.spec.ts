@@ -28,7 +28,7 @@ type Stored = {
 
 test(
 	'a searched news answer numbers its sources, each [n] a link to a page the turn retrieved, and clicking one opens it',
-	{ tag: ['@A5', '@live', '@CUR-3231'] },
+	{ tag: ['@A5', '@live', '@CUR-3231', '@provider-contract'] },
 	async ({ page, context }) => {
 		test.setTimeout(180_000);
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });

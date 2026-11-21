@@ -117,10 +117,14 @@ export class ScreenAwareDeadline {
 	 * and re-arm every timer. A long answer on a slow lane is not a stall, and the silence watchdog
 	 * still ends one that stops. Staying inside `roomMs` keeps the ladder's invariant. Returns the
 	 * milliseconds added, 0 when there was no room or the extension was already taken.
+	 *
+	 * `capRoomMs` holds this turn to less than `roomMs`: the route sizes `roomMs` for a searched turn
+	 * and passes the ordinary room here when the turn turned out not to search.
 	 */
-	extendWhileStreaming(): number {
+	extendWhileStreaming(capRoomMs: number = this.roomMs): number {
 		if (this.streamMs > 0) return 0;
-		this.streamMs = Math.max(0, this.roomMs - this.screenExtensionMs - this.humanExtensionMs);
+		const room = Math.min(this.roomMs, capRoomMs);
+		this.streamMs = Math.max(0, room - this.screenExtensionMs - this.humanExtensionMs);
 		if (this.streamMs > 0) this.rearmAll();
 		return this.streamMs;
 	}
@@ -164,6 +168,16 @@ export class ScreenAwareDeadline {
 			extraMs -
 			this.now()
 		);
+	}
+
+	/**
+	 * The latest this deadline can reach (epoch ms) for a turn that keeps working: once the streaming
+	 * extension is taken, the deadline itself; before, the base plus all the room, or `capRoomMs` of it
+	 * for a turn that will be held to less (see extendWhileStreaming).
+	 */
+	ceilingAt(capRoomMs: number = this.roomMs): number {
+		if (this.streamMs > 0) return this.now() + this.remainingMs();
+		return this.armedAt + this.baseMs + Math.min(this.roomMs, capRoomMs);
 	}
 
 	/** Run `onFire` once the deadline plus `extraMs` passes, re-armed when the screen settles. Returns

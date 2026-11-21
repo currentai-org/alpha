@@ -37,11 +37,23 @@ describe("guardHelplineNumbers replaces a crisis number the model recalled", () 
 		expect(guardHelplineNumbers("Call or text 988.", "CA").replaced).toBe(false);
 	});
 
-	it("keeps a held national line whatever the visitor's country, since the answer can be about another country", () => {
+	it("keeps a held national line for a visitor in its country, or when the message names that country", () => {
 		expect(guardHelplineNumbers("Appelez le 3114.", "fr").replaced).toBe(false);
 		// A Hong Kong connection read as Taiwan, asking about a pupil in France.
-		expect(guardHelplineNumbers("Appelez le 3114, le numéro national de prévention du suicide.", "tw").replaced).toBe(false);
-		expect(guardHelplineNumbers("Puedes llamar al 016 o al 024.", "us").replaced).toBe(false);
+		expect(guardHelplineNumbers("Appelez le 3114, le numéro national de prévention du suicide.", "tw", "fr").replaced).toBe(false);
+		expect(guardHelplineNumbers("Puedes llamar al 016 o al 024.", "es").replaced).toBe(false);
+	});
+
+	// A national line works only in its own country. A French answer to a visitor in the US that adds
+	// "si tu es en France, le 3114" names a line they cannot reach.
+	it("replaces another country's national line for a visitor who is not there and whose message names no country", () => {
+		const fr = guardHelplineNumbers("Si tu es en France, tu peux aussi appeler le 3114.", "us");
+		expect(fr.numbers).toEqual(["3114"]);
+		expect(fr.cleaned).toBe(`Si tu es en France, tu peux aussi appeler le ${LINK}.`);
+		expect(guardHelplineNumbers("Appelez le 3114.", "tw").numbers).toEqual(["3114"]);
+		expect(guardHelplineNumbers("Puedes llamar al 016 o al 024.", "us").numbers).toEqual(["016", "024"]);
+		expect(guardHelplineNumbers("Samaritans on 116 123, free.", "pt").numbers).toEqual(["116123"]);
+		expect(guardHelplineNumbers("Appelez le 3114.", null).numbers).toEqual(["3114"]);
 	});
 
 	it("links findahelpline's front page, never the IP country's page, so the model's words never name the wrong country", () => {

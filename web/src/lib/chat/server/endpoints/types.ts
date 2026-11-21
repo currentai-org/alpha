@@ -99,7 +99,7 @@ export interface EndpointParameters {
 	 * when the bucket is off for this person) and returns one reference per file, in order. Only the
 	 * answer path sets it; the agent endpoint calls it while the agent's workdir still holds the files.
 	 */
-	saveAgentFiles?: (files: File[]) => Promise<MessageFile[]>;
+	saveAgentFiles?: (files: File[], opts?: { turn?: string }) => Promise<MessageFile[]>;
 	/**
 	 * The system text the visitor wrote for this turn: Personalization when on, else the conversation's
 	 * own preprompt unless it is the model's (`clientAuthoredInstructions`). The agent endpoint puts it in
@@ -183,6 +183,14 @@ export interface EndpointParameters {
 	 * answer no time before it is not taken (endpoints/retryPolicy.ts). Unset on side calls.
 	 */
 	turnDeadlineAt?: number;
+	/**
+	 * The latest the turn can run to (epoch ms), read when called: the route's ceiling for a turn still
+	 * working, which is longer once the turn has searched. The native tool loop stops offering tools once
+	 * the answer round would no longer fit before it (endpoints/openai/answerRoundBudget.ts). Unset on side calls.
+	 */
+	turnCeilingAt?: () => number;
+	/** Continue: the visible text of an answer cut off at the time limit, which this turn finishes. */
+	continueFrom?: string;
 	/**
 	 * Offer the native `calculate` tool on this request (endpoints/openai/calculateTool.ts).
 	 * Decided once per turn by textGeneration (flag + the model's supportsTools) so the persona's
@@ -318,7 +326,7 @@ export type TextGenerationStreamOutputSimplified = TextGenerationStreamOutput & 
 	agentHandoff?: boolean;
 	/** A file the agent wrote this turn, saved with the conversation. `agentPath` is its path in
 	 *  the agent's workdir, the name the reply's download link carries. */
-	agentFile?: { name: string; sha: string; mime: string; agentPath: string };
+	agentFile?: { name: string; sha: string; mime: string; agentPath: string; agentTurn?: string };
 	/** agent-service opened a confirmation gate mid-run (ACP_PERMISSION_POLICY=confirm) and is
 	 *  paused waiting for a human answer. `taskId` is required to resolve it — the agent-confirm route
 	 *  has no other way to name which agent-service task the click belongs to. */

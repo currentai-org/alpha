@@ -92,8 +92,8 @@ describe("POST /chat/api/second-opinion — the question comes only from the cal
 describe("POST /chat/api/second-opinion — rate limiting", () => {
 	// Explicit per-test timeout, above the project's own 30s default (vite.config.ts) — this file's
 	// actual work is a few mocked async calls and finishes in milliseconds under normal load; the
-	// margin exists purely to survive host scheduling delays outside the test's control (
-	// this test can still hit the 30s default under a load spike even without the cold re-import).
+	// margin exists purely to survive host scheduling delays outside the test's control:
+	// this test can still hit the 30s default under a load spike even without the cold re-import.
 	// There is no slow code here.
 	it(
 		"keys the limiter on the session id and the real client address, then proceeds past it",

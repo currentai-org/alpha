@@ -94,7 +94,7 @@ describe("GET /chat/api/search/classify — answers with what a chat turn decide
 	});
 
 	it("reports the fallback and ok:false when the decider gave no verdict", async () => {
-		// The case the old route could not express: the regex deciding in the gate's place. Before
+		// The case the old route could not express: the regex deciding in the gate's place. Before this,
 		// a failed completion decider came back as shouldSearch:false with nothing else, which
 		// reads exactly like the model declining.
 		decideMock.mockResolvedValueOnce({

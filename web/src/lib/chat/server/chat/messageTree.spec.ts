@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Conversation } from "$lib/chat/types/Conversation";
+import { MessageUpdateType } from "$lib/chat/types/MessageUpdate";
 import { addChildren } from "$lib/chat/utils/tree/addChildren.js";
 import { appendTurnMessages } from "./messageTree";
 
@@ -307,5 +308,39 @@ describe("appendTurnMessages — re-attaching to an agent task", () => {
 			).toThrow(expect.objectContaining({ status: 409 }));
 			expect(answer.content).toBe("Stopped early.");
 		}
+	});
+});
+
+describe("appendTurnMessages — Continue finishes an answer the time limit cut off", () => {
+	it("adds a sibling that starts with the cut answer's visible text, and prompts from the question", () => {
+		const { conv, assistantId } = seededConv();
+		const cut = conv.messages.find((m) => m.id === assistantId)!;
+		cut.content = "<think>planning the reply</think>Tides rise and fall because ";
+
+		const { messageToWriteToId, messagesForPrompt, continueFrom } = appendTurnMessages(conv, {
+			isContinue: true,
+			messageId: assistantId,
+			uploadedFiles: [],
+		});
+
+		const writeTo = conv.messages.find((m) => m.id === messageToWriteToId);
+		expect(writeTo?.id).not.toBe(assistantId);
+		// The reasoning is left out and the trailing space kept, so the next word joins cleanly.
+		expect(writeTo?.content).toBe("Tides rise and fall because ");
+		expect(continueFrom).toBe("Tides rise and fall because ");
+		// The page renders from updates, so the cut text is also the first stream entry.
+		expect(writeTo?.updates).toEqual([{ type: MessageUpdateType.Stream, token: "Tides rise and fall because " }]);
+		// The cut answer stays in the tree as the other branch.
+		expect(conv.messages.some((m) => m.id === assistantId)).toBe(true);
+		expect(messagesForPrompt.at(-1)?.from).toBe("user");
+		expect(messagesForPrompt.some((m) => m.id === assistantId)).toBe(false);
+	});
+
+	it("refuses with 409 when the answer has nothing visible to continue from", () => {
+		const { conv, assistantId } = seededConv();
+		conv.messages.find((m) => m.id === assistantId)!.content = "<think>still reasoning";
+		expect(() =>
+			appendTurnMessages(conv, { isContinue: true, messageId: assistantId, uploadedFiles: [] })
+		).toThrow(expect.objectContaining({ status: 409 }));
 	});
 });

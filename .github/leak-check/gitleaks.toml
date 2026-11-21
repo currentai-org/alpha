@@ -14,3 +14,11 @@ paths = [
   '''agent-service/hardening-test\.sh''',
   '''web/project\.inlang/cache/''',
 ]
+# Whole values that gitleaks 8.30's generic-api-key reads as keys, each anchored so a longer real value
+# still matches the rule: the recovery-key spec's two made-up age keys, the e2e fault-injection header
+# name, and a Mistral model id that sits next to an env key name.
+regexes = [
+  '''(?i)^age-secret-key-pq-1ab[cd]$''',
+  '''^x-e2e-fault-inject$''',
+  '''^mistral-large-\d{4}$''',
+]

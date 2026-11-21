@@ -29,7 +29,7 @@ import {
 	UploadRateLimitedError
 } from '$lib/chat/server/storage/custodialStorage';
 
-import { CsamScannerUnconfiguredError, HmaUnreachableError } from '$lib/chat/server/storage/csamScan';
+import { CsamScannerUnconfiguredError, CsamScannerUnreachableError } from '$lib/chat/server/storage/csamScan';
 import { HubApiError } from '@huggingface/hub';
 import { STORAGE_BUSY_MESSAGE } from '$lib/chat/constants/custodialUpload';
 import { logger } from '$lib/chat/server/logger';
@@ -82,22 +82,6 @@ describe('storage route access control', () => {
 		// @ts-expect-error - RequestEvent is heavier than this test needs
 		await POST({ locals: locals(), request: upload() });
 		expect(uploadCustodialFile).toHaveBeenCalledWith(ACCOUNT_ID, 'documents/notes.txt', expect.any(File), {
-			scannerDown: false,
-			scannerBlip: false,
-			imagesAllowed: false,
-			documentsAllowed: false
-		});
-	});
-
-	it('ignores a scanner-down fault header that carries no valid token, so a caller cannot choose the fault', async () => {
-		const request = upload();
-		request.headers.set('x-e2e-fault-inject', 'csam_scanner_down');
-		request.headers.set('x-e2e-fault-inject-token', 'not-the-token');
-		// @ts-expect-error - RequestEvent is heavier than this test needs
-		await POST({ locals: locals(), request });
-		expect(uploadCustodialFile).toHaveBeenCalledWith(ACCOUNT_ID, 'documents/notes.txt', expect.any(File), {
-			scannerDown: false,
-			scannerBlip: false,
 			imagesAllowed: false,
 			documentsAllowed: false
 		});
@@ -134,17 +118,17 @@ describe('the limits are enforced FROM THE ROUTE, not only in a unit test', () =
 });
 
 describe('an upload that could not be scanned', () => {
-	it('refuses with 503 AND logs at error when no scanner is configured, since that is a config error', async () => {
+	it('refuses with 503 AND logs at error when the scanner config is incomplete, since that is a config error', async () => {
 		const logged = vi.spyOn(logger, 'error').mockImplementation(() => {});
 		uploadCustodialFile.mockRejectedValue(new CsamScannerUnconfiguredError());
 		// @ts-expect-error - RequestEvent is heavier than this test needs
 		await expect(POST({ locals: locals(), request: upload() })).rejects.toMatchObject({ status: 503 });
-		expect(logged).toHaveBeenCalledWith(expect.stringContaining('CSAM_SCAN_BASE_URL is unset'));
+		expect(logged).toHaveBeenCalledWith(expect.stringContaining('the CSAM scan config is incomplete'));
 	});
 
 	it('refuses with 503 and no config-error line when a configured scanner did not answer', async () => {
 		const logged = vi.spyOn(logger, 'error').mockImplementation(() => {});
-		uploadCustodialFile.mockRejectedValue(new HmaUnreachableError(new Error('timeout')));
+		uploadCustodialFile.mockRejectedValue(new CsamScannerUnreachableError(new Error('timeout')));
 		// @ts-expect-error - RequestEvent is heavier than this test needs
 		await expect(POST({ locals: locals(), request: upload() })).rejects.toMatchObject({ status: 503 });
 		expect(logged).not.toHaveBeenCalled();
@@ -218,7 +202,7 @@ describe('upload input', () => {
 			ACCOUNT_ID,
 			'documents/escape.txt',
 			expect.any(File),
-			{ scannerDown: false, scannerBlip: false, imagesAllowed: false, documentsAllowed: false }
+			{ imagesAllowed: false, documentsAllowed: false }
 		);
 	});
 

@@ -45,7 +45,7 @@ vi.mock("$lib/chat/server/db/eventWindow", () => {
 	};
 });
 
-// the opt-in seal of an account's existing chats, stood in for so these tests need no database.
+// The opt-in seal of an account's existing chats, stood in for so these tests need no database.
 const sealing = vi.hoisted(() => ({ on: vi.fn(() => true), sealOwnerHistory: vi.fn(async (_userId: string) => ({ sealed: { conversations: 0, messages: 0 }, changedMeanwhile: 0 })) }));
 vi.mock("$lib/chat/server/chat/sealedTurn", () => ({ conversationSealWritesOn: () => sealing.on() }));
 vi.mock("$lib/chat/server/chat/sealBackfill", () => ({ sealOwnerHistory: (id: string) => sealing.sealOwnerHistory(id) }));

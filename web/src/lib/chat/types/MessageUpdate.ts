@@ -37,7 +37,8 @@ export type MessageUpdate =
 	| MessageAgentConfirmUpdate
 	| MessageAgentConfirmResultUpdate
 	| MessageCalculationUpdate
-	| MessageMcpCallUpdate;
+	| MessageMcpCallUpdate
+	| MessageFootprintUpdate;
 
 export enum MessageUpdateType {
 	Status = "status",
@@ -71,6 +72,7 @@ export enum MessageUpdateType {
 	AgentConfirmResult = "agentConfirmResult",
 	Calculation = "calculation",
 	McpCall = "mcpCall",
+	Footprint = "footprint",
 }
 
 // Marker on a KeepAlive Status update emitted while "speak every answer" mode synthesizes the answer
@@ -102,6 +104,9 @@ export const PRESTREAM_ACCEPTED_PHASE = phaseMarker("accepted");
 export const SANDBOX_WAIT_PHASE = "waiting-sandbox";
 export const SANDBOX_READY_PHASE = "sandbox-ready";
 
+/** `reason` on the 504 the route's generation watchdog or hard deadline ends a turn with. */
+export const WATCHDOG_TIMEOUT_REASON = "watchdog";
+
 // Status
 export enum MessageUpdateStatus {
 	Started = "started",
@@ -122,9 +127,11 @@ export interface MessageStatusUpdate {
 	// the W2 idempotency info the HTTP 409 body used to carry, so the client can attach to the
 	// already-running turn instead of erroring. Mirrors the readGeneration record.
 	conflict?: { status?: string; conversationId?: string; messageId?: string };
-	// A pre-stream refusal's machine-readable cause, when the route sets one (App.Error's `reason`).
+	// A refusal's or failure's machine-readable cause, when the route sets one (App.Error's `reason`).
 	// A sealed-history 409 carries `history_missing` or `history_mismatch`, so the client tells it
 	// apart from the duplicate-turn 409 above and resyncs instead of attaching.
+	// The route's own generation watchdog marks its 504 WATCHDOG_TIMEOUT_REASON: our time limit ran
+	// out, which says nothing about the model being down unless `modelSilent` is set too.
 	reason?: string;
 	// On a layer-test turn's Finished update only, the switches the turn actually applied.
 	evalLayers?: { promptBlock?: boolean; retrieval?: boolean; maxTokens?: number };
@@ -191,6 +198,8 @@ export interface MessageFileUpdate {
 	mime: string;
 	/** Set on a file an agent turn wrote; see MessageFile.agentPath. */
 	agentPath?: string;
+	/** On a file an agent turn wrote and My files holds: the turn that made it. */
+	agentTurn?: string;
 }
 export interface MessageFinalAnswerUpdate {
 	type: MessageUpdateType.FinalAnswer;
@@ -619,4 +628,26 @@ export interface MessageAgentConfirmResultUpdate {
 	confirmId: string;
 	decision: "allow" | "deny" | "canceled";
 	reason: string;
+}
+
+/** A low and high bound. Equal when the estimate has no spread. */
+export interface FootprintRange {
+	min: number;
+	max: number;
+}
+
+// The estimated energy and water one answer cost, computed on the server from the provider's
+// output-token count and the measured generation time (server/turnFootprint.ts). It arrives after the
+// FinalAnswer, because the usage report is the last chunk of a stream. `estimated: false` means the
+// catalog has no size facts for the model, and both figures are null.
+export interface MessageFootprintUpdate {
+	type: MessageUpdateType.Footprint;
+	/** The model that served the answer. */
+	model: string;
+	outputTokens: number;
+	estimated: boolean;
+	/** Watt-hours, including datacentre overhead. */
+	energyWh: FootprintRange | null;
+	/** Litres of water consumed, at the datacentre and in generating its electricity. */
+	waterL: FootprintRange | null;
 }

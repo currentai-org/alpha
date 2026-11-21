@@ -806,6 +806,11 @@ test(
 			await del.click();
 			const dialog = page.getByRole('dialog', { name: 'Delete this file?' });
 			await expect(dialog).toBeVisible();
+			// What a person is told before the delete: the chat's earlier answers stay.
+			await expect(
+				dialog.getByText(/Anything Alpha already told you using it stays in your conversation/),
+				'the delete dialog does not say what happens to the conversation that used the file'
+			).toBeVisible();
 			const deleted = page.waitForResponse(
 				(r) => r.request().method() === 'DELETE' && r.url().includes('/chat/api/storage/file'),
 				{ timeout: 20_000 }

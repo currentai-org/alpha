@@ -30,8 +30,8 @@ import { runInBackground } from "$lib/chat/server/vercelBackground";
 import { resolveFaultInjection } from "$lib/chat/server/textGeneration/faultInjection";
 import { usageLimits } from "$lib/chat/server/usageLimits";
 import {
-	csamScanConfigured,
-	HmaUnreachableError,
+	csamScanAllowsUploads,
+	CsamScannerUnreachableError,
 	UPLOAD_NOT_SCANNED_MESSAGE,
 	type CsamScanResult,
 } from "$lib/chat/server/storage/csamScan";
@@ -82,6 +82,7 @@ export interface ParsedChatRequest {
 	newPrompt: ChatRequestPayload["inputs"];
 	messageId: ChatRequestPayload["id"];
 	isRetry: ChatRequestPayload["is_retry"];
+	isContinue: ChatRequestPayload["is_continue"];
 	agentAttach: ChatRequestPayload["agent_attach"];
 	generationId: ChatRequestPayload["generationId"];
 	newMessageIds: ChatRequestPayload["newMessageIds"];
@@ -127,8 +128,9 @@ function attachmentOwner(
  *   - 400 if the prompt exceeds the configured message-length limit;
  *   - 413 if a base64 upload exceeds the shared file-size cap;
  *   - 422 if an image attachment matches a known CSAM hash — the whole request is refused, nothing
- *     is uploaded. With no scanner configured, or one that does not answer, the files are
- *     dropped and the text still answered, with `attachmentNotice` set;
+ *     is uploaded. With an incomplete scanner config, or a scanner that does not answer, the
+ *     files are dropped and the text still answered, with `attachmentNotice` set. With no scanner
+ *     configured, the files are taken without a hash check;
  *   - stores base64 files (hash refs pass through untouched): in the bucket where
  *     `custodial-storage-view` selects the owner, else in the files table. A throttled or stalled
  *     bucket, or a guest's full quota, sends the file to the files table and the turn goes on (see
@@ -157,6 +159,7 @@ export async function parseChatRequest(opts: {
 		speakMode,
 		id: messageId,
 		is_retry: isRetry,
+		is_continue: isContinue,
 		agent_attach: agentAttach,
 		generationId,
 		newMessageIds,
@@ -305,11 +308,11 @@ export async function parseChatRequest(opts: {
 		b64Files.map(async (file) => (await fileTypeFromBuffer(await file.arrayBuffer()))?.mime ?? file.type)
 	);
 	//
-	// Fail closed: no file is accepted unless it could be scanned. With no scanner configured
-	// (the composer offers no attach control then, so only a crafted request gets here) or one that
-	// does not answer, every file in the turn is dropped rather than stored, the text of the turn is
-	// still answered, and `attachmentNotice` tells the person why. Text files cannot be PDQ-hashed, so
-	// they are refused on configuration alone: the scanner has nothing to say about them.
+	// A configured scanner fails closed: with an incomplete scanner config (the composer offers no
+	// attach control then, so only a crafted request gets here) or a scanner that does not answer,
+	// every file in the turn is dropped rather than stored, the text of the turn is still answered,
+	// and `attachmentNotice` tells the person why. With no scanner configured at all, files are taken
+	// and each picture logs that no hash check ran (csamScan.ts).
 	let attachmentNotice: string | undefined;
 	// By file, not by index: files leave b64Files below, which would shift every later index.
 	const sniffedType = new Map(b64Files.map((file, i) => [file, b64FileTypes[i]]));
@@ -386,19 +389,14 @@ export async function parseChatRequest(opts: {
 		.map((file) => ({ file, target: scanTargetForMime(sniffedType.get(file) ?? file.type) }))
 		.filter(({ target }) => target !== null);
 	let scans: CsamScanResult[] = [];
-	if (refusable.some(Boolean) && !csamScanConfigured()) {
+	if (refusable.some(Boolean) && !csamScanAllowsUploads()) {
 		logger.error(
 			{ conversationId: conv._id.toString(), files: refusable.filter(Boolean).length },
-			"[csam-scan] CSAM_SCAN_BASE_URL is unset, so this turn's attachments were refused (config error: the attach control should not have been offered)"
+			"[csam-scan] the CSAM scan config is incomplete, so this turn's attachments were refused (config error: the attach control should not have been offered)"
 		);
 		dropUnscannedFiles();
 	} else {
 		try {
-			// The `csam_scanner_down` fault (preview only) fails this scan as an unreachable HMA does, so a
-			// spec can read what a person sees in chat when the scanner is down, as My files already can.
-			if (scanned.length && (await resolveFaultInjection(request)) === "csam_scanner_down") {
-				throw new HmaUnreachableError(new Error("fault injection: csam_scanner_down"));
-			}
 			// A file we cannot check (an image this server cannot decode) is dropped alone, with its own
 			// line; the scanner being down still drops every file below.
 			const unscannable = new Map<File, string>();
@@ -418,7 +416,7 @@ export async function parseChatRequest(opts: {
 				attachmentNotice = unscannable.values().next().value ?? UNSCANNABLE_FILE_MESSAGE;
 			}
 		} catch (e) {
-			if (!(e instanceof HmaUnreachableError)) throw e;
+			if (!(e instanceof CsamScannerUnreachableError)) throw e;
 			logger.warn(
 				{ conversationId: conv._id.toString(), err: e.message },
 				"[csam-scan] scanner unreachable, so this turn's attachments were refused and the text answered"
@@ -511,11 +509,13 @@ export async function parseChatRequest(opts: {
 		newPrompt,
 		messageId,
 		isRetry,
+		isContinue,
 		agentAttach,
 		generationId,
 		newMessageIds,
 		searchContext,
-		webSearchMode: webSearchMode ?? "off",
+		// A Continue finishes an answer from what it already wrote, so it searches nothing new.
+		webSearchMode: isContinue ? "off" : (webSearchMode ?? "off"),
 		speakAll,
 		speakMode,
 		agentMode,

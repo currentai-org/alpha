@@ -89,3 +89,13 @@ export function resolveModel(
  * Large 3"). ChatComposerFrame applies it, so Auto on or off and mid-chat all behave as a real pick.
  */
 export const modelPickRequest = writable<string | null>(null);
+
+/**
+ * Asks the composer's model picker to open, so the person can choose another model (a timed-out turn's
+ * "Try another model"). Each `requestModelPicker` bumps it; ChatComposerFrame opens on change.
+ */
+export const modelPickerOpenRequest = writable(0);
+
+export function requestModelPicker(): void {
+	modelPickerOpenRequest.update((n) => n + 1);
+}

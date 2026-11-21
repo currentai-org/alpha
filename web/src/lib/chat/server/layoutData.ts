@@ -1,5 +1,5 @@
 import { ObjectId } from "bson";
-import { csamScanConfigured } from "$lib/chat/server/storage/csamScan";
+import { csamScanAllowsUploads } from "$lib/chat/server/storage/csamScan";
 import type { env as publicEnv } from "$env/dynamic/public";
 import { agentModeEnabledForUser } from "$lib/chat/server/agentMode";
 import { seesDeveloperTools } from "$lib/chat/server/adminRoles";
@@ -140,11 +140,11 @@ export async function getLayoutFeatureFlags(locals: App.Locals): Promise<Feature
 		// Both the button and the API read the dictation gate, so the client never shows a
 		// button the API would 403.
 		transcriptionEnabled: dictationEnabled(),
-		// No scanner, no attach control. Every upload is refused server-side without one, so
-		// offering the control would only lead to a refusal.
-		attachmentsEnabled: csamScanConfigured(),
+		// An incomplete scanner config refuses every upload server-side, so it withholds the control too.
+		// With no scanner at all, uploads are taken without a hash check.
+		attachmentsEnabled: csamScanAllowsUploads(),
 		// PDF and DOCX, read to text on the server. Offered only where they would be read.
-		documentAttachmentsEnabled: csamScanConfigured() && documentAttachmentsOffered(),
+		documentAttachmentsEnabled: csamScanAllowsUploads() && documentAttachmentsOffered(),
 		// May THIS visitor send an image? The `multimodal` flag per account (team accounts only
 		// on preview). My files reads it to decide whether to offer images at all.
 		imageInputEnabled: multimodalEnabled(),

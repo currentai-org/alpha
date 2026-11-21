@@ -33,7 +33,7 @@ async function locationFrom(locals: App.Locals, accountId: string, url: URL): Pr
 //      will render is stored XSS against our own origin — the attacker's page runs with our cookies
 //      and our session. The defence is not to guess a safe content type; it is to never render at
 //      all. Forced attachment, one fixed `application/octet-stream`, `nosniff`.
-//   2. Nothing has scanned these files. The open half is malware scanning, and until that
+//   2. Nothing has scanned these files. Malware scanning is not built, and until it
 //      exists a download route is precisely the thing that converts "we stored something malicious"
 //      into "we served it to someone". Attachment disposition does not fix that; it does mean the
 //      browser hands the file to the user as a file rather than executing it in our origin.

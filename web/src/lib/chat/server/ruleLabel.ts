@@ -75,6 +75,19 @@ export function isSupportRule(action?: string | null): boolean {
 	return !!action && SUPPORT_RULE_KEYS.has(action);
 }
 
+/** Whether a declined turn carries the Support resources card: its shown rule is a self-harm rule, or a
+ *  self-harm distress rule fired as a log hit on the latest message (`supportOnLatest` false means it fired
+ *  only on earlier ones). The second keeps the card when a stronger content rule's decline is the
+ *  one shown. */
+export function declineCarriesSupport(
+	shown: string | null | undefined,
+	hits: ReadonlyArray<{ key: string; action: "block" | "log" }> | undefined,
+	supportOnLatest: boolean | undefined
+): boolean {
+	if (isSupportRule(shown)) return true;
+	return supportOnLatest !== false && (hits ?? []).some((h) => h.action === "log" && isSupportRule(h.key));
+}
+
 // Resolve a Coop action name to its curated per-rule decline MESSAGE, or null when the action has no custom
 // message (unmapped, no `message` field, empty input, or the kill switch is off). Callers use this to REPLACE
 // the generic decline copy for that block; on null they keep the generic, reviewed default.

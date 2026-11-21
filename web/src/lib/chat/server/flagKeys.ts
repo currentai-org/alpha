@@ -376,7 +376,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		owner: "chat",
 		expires: "2026-12-31",
 		gates:
-			"inserting findahelpline.com and 112 ahead of a distress answer's first 988 line, and linking a findahelpline.com the model wrote as a bare domain (CUR-3909), and replacing any other phone number in a crisis answer with a findahelpline.com link (CUR-4061, helplineNumberGuard.ts) (crisisReferralOrder.ts, called from honestyStream.ts)",
+			"inserting findahelpline.com and the person's local emergency services (no number, CUR-4141) ahead of a distress answer's first 988 line, and linking a findahelpline.com the model wrote as a bare domain (CUR-3909), and replacing any other phone number in a crisis answer with a findahelpline.com link (CUR-4061, helplineNumberGuard.ts) (crisisReferralOrder.ts, called from honestyStream.ts)",
 		// A kill switch: the guard defaults ON and the flag only stops it.
 		whenAbsent: "the guard keeps running — it defaults ON",
 		ticket: "CUR-2136",
@@ -386,7 +386,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		safety: true,
 		scope: "account",
 		codeDefault: "off",
-		selfHost: "off",
+		selfHost: { onWhenEnv: ["GUARD_SHADOW_URL"] },
 		class: "fix",
 		owner: "chat",
 		expires: "2026-12-31",
@@ -401,7 +401,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		specs: { on: "support-signal-multilingual.spec.ts", off: "self-harm-hedged.spec.ts" },
 		scope: "account",
 		codeDefault: "off",
-		selfHost: "off",
+		selfHost: { onWhenEnv: ["GUARD_SHADOW_URL"] },
 		class: "fix",
 		owner: "chat",
 		expires: "2026-12-31",
@@ -453,9 +453,10 @@ export const FLAG_KEYS = defineFlagKeys([
 		key: "read-aloud",
 		scope: "account",
 		codeDefault: "env",
-		// Off, and turned on by itself with ALPHA_FLAGS=+read-aloud: HF_TOKEN is no switch, since boot copies
-		// OPENAI_API_KEY into it, and speech goes to Hugging Face's router with the answer text.
-		selfHost: "off",
+		// On when READ_ALOUD_BASE_URL names a speech endpoint. HF_TOKEN is no switch, since boot copies
+		// OPENAI_API_KEY into it, and the Hugging Face router would get the answer text; an operator
+		// who wants that route sets ALPHA_FLAGS=+read-aloud.
+		selfHost: { onWhenEnv: ["READ_ALOUD_BASE_URL"] },
 		class: "feature",
 		owner: "chat",
 		gates:
@@ -579,7 +580,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		safety: true,
 		scope: "account",
 		codeDefault: "off",
-		selfHost: "off",
+		selfHost: { onWhenEnv: ["ZENTROPI_S1_ENDPOINT_URL", "HF_TOKEN"] },
 		class: "fix",
 		owner: "trust-and-safety",
 		expires: "2027-03-31",
@@ -695,7 +696,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		scope: "account",
 		specs: { on: "workspaces.spec.ts" },
 		codeDefault: "off",
-		selfHost: "off",
+		selfHost: "on",
 		class: "feature",
 		owner: "chat",
 		gates:
@@ -839,7 +840,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		scope: "account",
 		specs: { on: "document-attachments.spec.ts", off: "document-attachments.spec.ts" },
 		codeDefault: "off",
-		selfHost: "off",
+		selfHost: "on",
 		class: "feature",
 		owner: "chat",
 		gates:
@@ -1065,7 +1066,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		specs: { on: "agent-run-outlives-the-request.spec.ts", off: "agent-outlives-the-tab.spec.ts" },
 		class: "feature",
 		codeDefault: "off",
-		selfHost: "off",
+		selfHost: { onWhenEnv: ["AGENT_SERVICE_URL", "AGENT_SERVICE_TOKEN"] },
 		owner: "chat",
 		gates:
 			"An agent run outliving the chat request (agentRunHandoffGate.ts, read when a run is submitted and stored on it as agentRun.handoff). On, an agent turn asks agent-service for its whole 300s attempt instead of 150s, hands the run to the page about 15s before the route's watchdog (the answer is stored interrupted with the run open), and the page that sent it re-attaches until the run ends, for up to every attempt the service may make",
@@ -1145,7 +1146,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		scope: "deployment",
 		specs: { on: "stream-resumes-mid-answer.spec.ts", off: "stream-resumes-mid-answer.spec.ts" },
 		codeDefault: "off",
-		selfHost: "off",
+		selfHost: "on",
 		class: "feature",
 		owner: "chat",
 		gates:

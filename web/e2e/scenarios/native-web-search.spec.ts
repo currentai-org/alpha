@@ -21,7 +21,7 @@ type Stored = {
 
 test(
 	'on the native harness, a news question searches through our grounding and cites what it found',
-	{ tag: ['@preview-only', '@CUR-2275'] },
+	{ tag: ['@preview-only', '@CUR-2275', '@provider-contract'] },
 	async ({ page }) => {
 		test.setTimeout(150_000);
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });

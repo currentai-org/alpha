@@ -13,8 +13,11 @@
 // model already did that by writing a crisis line. A bare "call 988" with no "crisis" in its sentence is
 // left alone, which is today's behaviour.
 //
-// WHAT IT DOES. Inserts one fixed sentence naming findahelpline.com and 112 immediately before the
-// sentence that holds that 988, unless findahelpline or 112 has already been written. 988 stays where
+// WHAT IT DOES. Inserts one fixed sentence naming findahelpline.com and the person's local emergency
+// services immediately before the sentence that holds that 988, unless findahelpline has already been
+// written. A 112 earlier in the answer does not skip it: the sentence exists to supply findahelpline,
+// so "call 112 or 988" would otherwise go out without it. The sentence names no emergency number: the
+// support card holds it, picked per country in crisisLocale.ts. 988 stays where
 // the model put it: for someone in the US it is still the right number, just no longer the first.
 // One decision per answer: the first 988 decides, inserted or not, and nothing later is touched.
 
@@ -27,22 +30,23 @@ import type { DeclineLanguage } from "$lib/chat/server/declineCopy";
 export const CRISIS_REFERRAL_ORDER_FLAG = "crisis-referral-order";
 
 /**
- * The sentence inserted ahead of a 988 line, in the language the person wrote in.
+ * The sentence inserted ahead of a 988 line, in the language the person wrote in. It names
+ * no emergency number.
  * findahelpline.com is on urlGuard's STATIC_ALLOW.
  */
 const EUROPEAN_LINE_SENTENCE: Record<DeclineLanguage, string> = {
-	en: "Wherever you are, [findahelpline.com](https://findahelpline.com) lists free, confidential crisis lines for your country, and anywhere in Europe you can call 112 in an emergency.",
-	es: "Estés donde estés, [findahelpline.com](https://findahelpline.com) reúne líneas de crisis gratuitas y confidenciales de tu país, y en cualquier lugar de Europa puedes llamar al 112 en caso de emergencia.",
-	fr: "Où que vous soyez, [findahelpline.com](https://findahelpline.com) répertorie des lignes d'écoute gratuites et confidentielles pour votre pays, et partout en Europe vous pouvez appeler le 112 en cas d'urgence.",
-	pt: "Esteja onde estiver, [findahelpline.com](https://findahelpline.com) reúne linhas de apoio gratuitas e confidenciais para o seu país, e em qualquer lugar da Europa pode ligar para o 112 numa emergência.",
-	de: "Wo auch immer Sie sind: [findahelpline.com](https://findahelpline.com) listet kostenlose, vertrauliche Krisentelefone für Ihr Land auf, und überall in Europa erreichen Sie im Notfall die 112.",
-	it: "Ovunque tu sia, [findahelpline.com](https://findahelpline.com) elenca linee di ascolto gratuite e riservate per il tuo paese, e ovunque in Europa puoi chiamare il 112 in caso di emergenza.",
-	ca: "Siguis on siguis, [findahelpline.com](https://findahelpline.com) recull línies d'ajuda gratuïtes i confidencials per al teu país, i a qualsevol lloc d'Europa pots trucar al 112 en cas d'emergència.",
-	ta: "நீங்கள் எங்கிருந்தாலும், [findahelpline.com](https://findahelpline.com) உங்கள் நாட்டுக்கான இலவச, ரகசியமான நெருக்கடி உதவி எண்களைப் பட்டியலிடுகிறது; ஐரோப்பாவில் எங்கும் அவசர நிலையில் 112 ஐ அழைக்கலாம்.",
+	en: "Wherever you are, [findahelpline.com](https://findahelpline.com) lists free, confidential crisis lines for your country, and in an emergency you can contact your local emergency services.",
+	es: "Estés donde estés, [findahelpline.com](https://findahelpline.com) reúne líneas de crisis gratuitas y confidenciales de tu país, y en caso de emergencia puedes contactar con los servicios de emergencia locales.",
+	fr: "Où que vous soyez, [findahelpline.com](https://findahelpline.com) répertorie des lignes d'écoute gratuites et confidentielles pour votre pays, et en cas d'urgence vous pouvez contacter les services d'urgence locaux.",
+	pt: "Esteja onde estiver, [findahelpline.com](https://findahelpline.com) reúne linhas de apoio gratuitas e confidenciais para o seu país, e numa emergência pode contactar os serviços de emergência locais.",
+	de: "Wo auch immer Sie sind: [findahelpline.com](https://findahelpline.com) listet kostenlose, vertrauliche Krisentelefone für Ihr Land auf, und im Notfall wenden Sie sich an die örtlichen Notdienste.",
+	it: "Ovunque tu sia, [findahelpline.com](https://findahelpline.com) elenca linee di ascolto gratuite e riservate per il tuo paese, e in caso di emergenza puoi contattare i servizi di emergenza locali.",
+	ca: "Siguis on siguis, [findahelpline.com](https://findahelpline.com) recull línies d'ajuda gratuïtes i confidencials per al teu país, i en cas d'emergència pots contactar amb els serveis d'emergència locals.",
+	ta: "நீங்கள் எங்கிருந்தாலும், [findahelpline.com](https://findahelpline.com) உங்கள் நாட்டுக்கான இலவச, ரகசியமான நெருக்கடி உதவி எண்களைப் பட்டியலிடுகிறது; அவசர நிலையில் உங்கள் உள்ளூர் அவசர சேவைகளைத் தொடர்பு கொள்ளலாம்.",
 };
 
-// Already pointed somewhere a person in Europe can call: the country finder or the EU emergency number.
-const EUROPEAN = /findahelpline|(?<![\d-])\b112\b(?![\d-])/i;
+// Already pointed to the country finder, the one thing the inserted sentence adds.
+const HELPLINE_FINDER = /findahelpline/i;
 // 988 as a number of its own: not 1-988-…, not 9880, not 988.5.
 const LINE_988 = /(?<![\d.,-])\b988\b(?![\d-]|[.,]\d)/;
 const CRISIS = /\bcris[ie]s\b/i;
@@ -94,7 +98,7 @@ export function leadWithEuropeanLine(
 	const idx = m.index;
 	const start = sentenceStart(text, idx);
 	const sentence = text.slice(start, sentenceEnd(text, idx));
-	if (EUROPEAN.test(releasedBefore) || EUROPEAN.test(text.slice(0, idx)) || !CRISIS.test(sentence)) {
+	if (HELPLINE_FINDER.test(releasedBefore) || HELPLINE_FINDER.test(text.slice(0, idx)) || !CRISIS.test(sentence)) {
 		return { decided: true, inserted: false, cleaned: text };
 	}
 	const line = text.slice(start).split("\n", 1)[0];

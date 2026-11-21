@@ -94,7 +94,7 @@ describe('chips show exactly the tools that are on', () => {
 });
 
 describe('offeredMimeTypes', () => {
-	it('offers no file type at all when no CSAM scanner is configured, so the composer shows no attach control', () => {
+	it('offers no file type at all when attachments are off (an incomplete scanner config), so the composer shows no attach control', () => {
 		expect(offeredMimeTypes({ attachmentsEnabled: false, uploadsEnabled: true, modelIsMultimodal: true })).toEqual([]);
 	});
 
@@ -102,7 +102,7 @@ describe('offeredMimeTypes', () => {
 		expect(offeredMimeTypes({ attachmentsEnabled: true, uploadsEnabled: false, modelIsMultimodal: true })).toEqual([]);
 	});
 
-	it('offers text and the default image types for a multimodal model once a scanner is configured', () => {
+	it('offers text and the default image types for a multimodal model when attachments are on', () => {
 		const offered = offeredMimeTypes({ attachmentsEnabled: true, uploadsEnabled: true, modelIsMultimodal: true });
 		expect(offered).toContain('text/*');
 		expect(offered).toEqual(expect.arrayContaining(['image/jpeg', 'image/png']));
@@ -136,7 +136,7 @@ describe('offeredMimeTypes', () => {
 		expect(mimeOffered(offered, 'image/tiff')).toBe(false);
 	});
 
-	it('offers PDF and DOCX only where the server reads them, and never without a scanner', () => {
+	it('offers PDF and DOCX only where the server reads them, and never with attachments off', () => {
 		const pdf = 'application/pdf';
 		expect(offeredMimeTypes({ attachmentsEnabled: true, uploadsEnabled: true, modelIsMultimodal: false })).not.toContain(pdf);
 		expect(

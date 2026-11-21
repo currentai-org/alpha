@@ -16,7 +16,7 @@
 	},
 	"chat-block-self-harm": {
 		"label": "Support needed",
-		"message": "You might be going through something painful right now, and you don't have to face it alone. Trained people can help, free and confidentially: [findahelpline.com](https://findahelpline.com) lists crisis lines in your country. In Europe, call 112 from any EU country; in the US, call or text 988. If you're in immediate danger, call your local emergency number. Reaching out to someone you trust can help too.",
+		"message": "You might be going through something painful right now, and you don't have to face it alone. Trained people can help, free and confidentially: [findahelpline.com](https://findahelpline.com) lists crisis lines in your country. In the US, call or text 988. If you're in immediate danger, call your local emergency number. Reaching out to someone you trust can help too.",
 		"guard": {
 			"query": "Does this content ask for or give practical details on how to carry out suicide or self-injury, such as a method, a place, a substance, or a lethal amount? Saying that one wants to die or to hurt oneself, without asking how, does not count.",
 			"action": "block",
@@ -25,7 +25,7 @@
 	},
 	"chat-block-self-harm-eating": {
 		"label": "Support needed",
-		"message": "You might be going through something painful right now, and you don't have to face it alone. Trained people can help, free and confidentially: [findahelpline.com](https://findahelpline.com) lists crisis lines in your country. In Europe, call 112 from any EU country; in the US, call or text 988. If you're in immediate danger, call your local emergency number. Reaching out to someone you trust can help too.",
+		"message": "You might be going through something painful right now, and you don't have to face it alone. Trained people can help, free and confidentially: [findahelpline.com](https://findahelpline.com) lists crisis lines in your country. In the US, call or text 988. If you're in immediate danger, call your local emergency number. Reaching out to someone you trust can help too.",
 		"guard": {
 			"query": "Does this content ask how to stop eating, eat almost nothing, hide not eating from others, make oneself vomit after eating, or reach a dangerously low body weight?",
 			"action": "block",
@@ -34,7 +34,7 @@
 	},
 	"chat-block-self-harm-intent": {
 		"label": "Support needed",
-		"message": "You might be going through something painful right now, and you don't have to face it alone. Trained people can help, free and confidentially: [findahelpline.com](https://findahelpline.com) lists crisis lines in your country. In Europe, call 112 from any EU country; in the US, call or text 988. If you're in immediate danger, call your local emergency number. Reaching out to someone you trust can help too.",
+		"message": "You might be going through something painful right now, and you don't have to face it alone. Trained people can help, free and confidentially: [findahelpline.com](https://findahelpline.com) lists crisis lines in your country. In the US, call or text 988. If you're in immediate danger, call your local emergency number. Reaching out to someone you trust can help too.",
 		"guard": {
 			"query": "Does the writer say that they themselves want or intend to kill themselves, end their life, or hurt themselves?",
 			"action": "log",
@@ -43,7 +43,7 @@
 	},
 	"chat-block-self-harm-passive": {
 		"label": "Support needed",
-		"message": "You might be going through something painful right now, and you don't have to face it alone. Trained people can help, free and confidentially: [findahelpline.com](https://findahelpline.com) lists crisis lines in your country. In Europe, call 112 from any EU country; in the US, call or text 988. If you're in immediate danger, call your local emergency number. Reaching out to someone you trust can help too.",
+		"message": "You might be going through something painful right now, and you don't have to face it alone. Trained people can help, free and confidentially: [findahelpline.com](https://findahelpline.com) lists crisis lines in your country. In the US, call or text 988. If you're in immediate danger, call your local emergency number. Reaching out to someone you trust can help too.",
 		"guard": {
 			"query": "Does the writer say that they themselves do not want to be alive, do not want to be here any more, or that others would be better off without them?",
 			"action": "log",
@@ -52,7 +52,7 @@
 	},
 	"chat-block-self-harm-hedged": {
 		"label": "Support needed",
-		"message": "You might be going through something painful right now, and you don't have to face it alone. Trained people can help, free and confidentially: [findahelpline.com](https://findahelpline.com) lists crisis lines in your country. In Europe, call 112 from any EU country; in the US, call or text 988. If you're in immediate danger, call your local emergency number. Reaching out to someone you trust can help too.",
+		"message": "You might be going through something painful right now, and you don't have to face it alone. Trained people can help, free and confidentially: [findahelpline.com](https://findahelpline.com) lists crisis lines in your country. In the US, call or text 988. If you're in immediate danger, call your local emergency number. Reaching out to someone you trust can help too.",
 		"guard": {
 			"query": "Does the writer describe feeling hopeless about their own life, or wonder whether their own life or going on has any point?",
 			"action": "log",

@@ -118,6 +118,7 @@ async function savedArtifactBytes(
 			guestSessionId: conv.userId ? conv.formerGuestSessionId : conv.sessionId,
 			name: ref.name,
 			mime: ref.mime,
+			agentTurn: ref.agentTurn,
 			location: ref.location,
 		});
 		return Buffer.from(file.value, "base64");

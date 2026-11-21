@@ -35,6 +35,8 @@
 		added?: string;
 		/** The chat a file attached in chat came from. */
 		chatHref?: string;
+		/** The agent turn that made the file; set, the row says Alpha made it. */
+		agentTurn?: string;
 		/** The file's bytes, fetched for a thumbnail once the row scrolls into view. */
 		thumbnailUrl?: string;
 		/** Open the file in place. The thumbnail and the name both do it. */
@@ -56,6 +58,7 @@
 		onTransfer,
 		added,
 		chatHref,
+		agentTurn,
 		thumbnailUrl,
 		onOpen,
 	}: Props = $props();
@@ -143,9 +146,10 @@
 			<span class="mt-0.5 block font-sans text-[12px] text-[var(--ap-ink-3)]">
 				{size}{uploading ? ` · ${m.storage_uploading({ percent: progress })}` : busy ? ` · ${busy}` : ''}
 			</span>
-			{#if addedLabel || chatHref}
+			{#if addedLabel || chatHref || agentTurn}
 				<span class="mt-0.5 flex flex-wrap items-center gap-x-2 type-caption text-fg-3">
 					{#if addedLabel}<span title={added}>{addedLabel}</span>{/if}
+					{#if agentTurn}<span data-testid="made-by-alpha" data-agent-turn={agentTurn} title={`Turn ${agentTurn}`}>Made by Alpha</span>{/if}
 					{#if chatHref}
 						<a
 							href={chatHref}

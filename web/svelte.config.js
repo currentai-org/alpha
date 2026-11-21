@@ -9,6 +9,7 @@ import { functionRegionsFor } from './src/lib/functionRegion.js';
 import { CSP_REPORT_GROUP, cspReportEndpoint } from './src/lib/cspReportEndpoint.js';
 import { gitSha } from './src/lib/server/runtimeEnv.js';
 import { readDeploymentFile } from './config/deployment.mjs';
+import { CLOUD_HOSTS, posthogAssetsHost, posthogIngestHost } from './config/posthogRegion.mjs';
 
 dotenv.config({ path: './.env.local', override: true, quiet: true });
 dotenv.config({ path: './.env', quiet: true });
@@ -52,11 +53,20 @@ const imageSources = [
 
 // every origin the browser fetches from or loads a script from, enumerated from the
 // client code. PostHog: its ingest host (PUBLIC_POSTHOG_HOST, which preview sets to the same-origin
-// /rs proxy and production leaves on the default) and its assets host for lazy scripts.
+// /rs proxy and production leaves on the default) and its assets host for lazy scripts. Both PostHog
+// Cloud regions are allowed while the project moves from US to EU, plus the configured
+// region's hosts (config/posthogRegion.mjs), which are a self-hosted PostHog's own origin.
 // huggingface.co: HuggingChat mode's profile read. The CMS: Live Preview's data fetch. Tally: the
 // email-signup embed. Plausible: optional, by env. The code CDNs: artifacts load from them, and a
 // srcdoc frame inherits this policy.
-const posthogHost = originOf(process.env.PUBLIC_POSTHOG_HOST) ?? 'https://us.i.posthog.com';
+// Read after dotenv above, so a local .env's POSTHOG_INGEST_HOST counts.
+const posthogIngest = posthogIngestHost(process.env);
+const posthogAssets = [
+	posthogAssetsHost(posthogIngest),
+	...CLOUD_HOSTS.filter((h) => h.includes('-assets.'))
+];
+const posthogHosts = [posthogIngest, ...CLOUD_HOSTS, ...posthogAssets];
+const posthogHost = originOf(process.env.PUBLIC_POSTHOG_HOST) ?? posthogIngest;
 const plausibleOrigin = originOf(process.env.PUBLIC_PLAUSIBLE_SCRIPT_URL);
 const codeCdns = [
 	'https://cdn.tailwindcss.com',
@@ -68,8 +78,7 @@ const connectSources = [
 	...new Set([
 		"'self'",
 		posthogHost,
-		'https://us.i.posthog.com',
-		'https://us-assets.i.posthog.com',
+		...posthogHosts,
 		'https://huggingface.co',
 		cmsOrigin,
 		'https://tally.so',
@@ -84,7 +93,7 @@ const scriptSources = [
 	// `unsafe-inline` (csp.js compares the raw value), and it adds the quotes itself.
 	'unsafe-inline',
 	'unsafe-eval',
-	'https://us-assets.i.posthog.com',
+	...new Set(posthogAssets),
 	'https://tally.so',
 	plausibleOrigin,
 	...codeCdns

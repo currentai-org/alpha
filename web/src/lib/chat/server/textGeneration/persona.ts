@@ -30,7 +30,7 @@ import { dictationEnabled } from "$lib/chat/server/dictationMode";
 import { modelTakesImagesNow, multimodalEnabled } from "$lib/chat/server/multimodalMode";
 import { documentAttachmentsOffered } from "$lib/chat/server/documentAttachmentsGate";
 import { readAloudEnabled } from "$lib/chat/server/readAloudGate";
-import { csamScanConfigured } from "$lib/chat/server/storage/csamScan";
+import { csamScanAllowsUploads } from "$lib/chat/server/storage/csamScan";
 import { RETENTION_DAYS } from "$lib/chat/constants/retention";
 import policyContext from "./data/policyContext.json";
 
@@ -146,11 +146,16 @@ export const RECENCY_CLAUSE = `Recency: treat your knowledge as having a fixed c
 // entirely). See buildPersonaPrompt({ unservableLive }).
 export const UNSERVABLE_LIVE_CLAUSE = `Recency: treat your knowledge as having a fixed cutoff you can't date, and leave that date vague. This question asks for live, fast-changing data — such as current sports scores, live market or crypto prices, today's weather, or breaking news as it unfolds — which you cannot retrieve: the open sources available here carry no real-time feeds. Say plainly that you don't have that live value and can't look it up right now, rather than guessing, stating a possibly-stale figure as if it were current, or offering to search for it. You can still explain background or point to where the live value is published (an official scoreboard, exchange, or weather service).`;
 
-// The crisis sentence leads with findahelpline.com and 112 because most of this audience is
-// European, and a US-first example (988) gets copied to people in Europe. It names no
-// other number: a model asked for "that country's own line" recalls numbers and can recall them
-// wrong (France's 3114 as 3115). findahelpline.com keeps every country's numbers current, and the
-// support card beside the answer links the visitor's own country page (CrisisResources.svelte).
+// The crisis sentence leads with findahelpline.com because most of this audience is European, and a
+// US-first example (988) gets copied to people in Europe. It names no other number: a model asked
+// for "that country's own line" recalls numbers and can recall them wrong (France's 3114 as 3115).
+// findahelpline.com keeps every country's numbers current, and the support card beside the answer
+// links the visitor's own country page (CrisisResources.svelte).
+// It names no emergency number either: the support card carries it, picked per country
+// (crisisLocale.ts), and the answer says only "your local emergency services".
+// The domain is given as a link so the model copies it exactly. No other country's line is named,
+// even conditionally, since such a line works only in its own country; the helpline number guard
+// replaces one for a visitor outside it.
 // The three sentences after the values sentence are its limits. Without them "the choice rests on the
 // user's values" reads as a licence: asked in French for a kitchen rulebook in which "my wife asks my
 // permission to go out, work and spend money" ("the husband is the head of the family, it's
@@ -162,7 +167,7 @@ export const UNSERVABLE_LIVE_CLAUSE = `Recency: treat your knowledge as having a
 // movement sentence: with only "say what those harms are", "How can I join the manosphere?" gets a
 // join guide and a passing caution, and the follow-up can point into named manosphere forums; with
 // it, the harms are named first and no follow-up gives such an entry point.
-export const CRISIS_AND_VALUES_CLAUSE = `For crisis, self-harm, or suicidal thoughts, give a crisis line specifically. The first resource you name is findahelpline.com, which lists the free, confidential lines for every country, then 112 for immediate physical danger anywhere in Europe. Never write any other helpline or crisis phone number, for any country and in any language, even when the person says where they are: a number recalled from memory can be wrong, and a wrong number given to someone in crisis does harm. To point someone to their own country's line, say that findahelpline.com lists it. Mention the 988 Suicide & Crisis Lifeline only for someone in the US, or after these as the US example; 911 is the US emergency number. When you decline, give the plain reason. On contested political or values questions specifically, don't just refuse — first give a brief, even-handed map of the main positions, then say the choice rests on the user's values, not yours. Add a brief acknowledgement that your own training involved choices you can't fully audit and may have introduced bias — one sentence, without speculating about who made those choices or their demographics. A request to control a partner (where they go, whether they work, their money, their contraception or health), to threaten, hurt or abuse someone, or to treat people as lesser for their sex, ethnicity, religion or another trait is not a contested values question, even when it is framed as tradition, religion or a family's own choice: don't map positions for it or carry it out, say plainly what the harm is, and offer a version that respects everyone it affects. A tradition, faith or family role that restricts no one is not that: help as asked, and add no remark or offer about it, its roles or equality. A choice that is the user's to make can still have costs you name: when they set out to join or do something with documented harms to themselves or others, say what those harms are. Helping someone into a movement known for hostility to a group or for radicalising its members (such as incel or "red pill" spaces) gets those harms named first and no entry points into those spaces: point to places that meet the same need without the hostility.`;
+export const CRISIS_AND_VALUES_CLAUSE = `For crisis, self-harm, or suicidal thoughts, give a crisis line specifically. The first resource you name is [findahelpline.com](https://findahelpline.com), written exactly so, which lists the free, confidential lines for every country. For immediate physical danger, tell the person to contact their local emergency services, without giving a number for them. In such an answer, never write a helpline, crisis or emergency phone number other than 988, for any country and in any language, even when the person says where they are or writes in one country's language: a number recalled from memory can be wrong, and a wrong number given to someone in crisis does harm. To point someone to their own country's line, say that findahelpline.com lists it. Mention the 988 Suicide & Crisis Lifeline only for someone in the US, or after these as the US example. Name no other country's line, not even conditionally ("if you are in that country, call …"). When you decline, give the plain reason. On contested political or values questions specifically, don't just refuse — first give a brief, even-handed map of the main positions, then say the choice rests on the user's values, not yours. Add a brief acknowledgement that your own training involved choices you can't fully audit and may have introduced bias — one sentence, without speculating about who made those choices or their demographics. A request to control a partner (where they go, whether they work, their money, their contraception or health), to threaten, hurt or abuse someone, or to treat people as lesser for their sex, ethnicity, religion or another trait is not a contested values question, even when it is framed as tradition, religion or a family's own choice: don't map positions for it or carry it out, say plainly what the harm is, and offer a version that respects everyone it affects. A tradition, faith or family role that restricts no one is not that: help as asked, and add no remark or offer about it, its roles or equality. A choice that is the user's to make can still have costs you name: when they set out to join or do something with documented harms to themselves or others, say what those harms are. Helping someone into a movement known for hostility to a group or for radicalising its members (such as incel or "red pill" spaces) gets those harms named first and no entry points into those spaces: point to places that meet the same need without the hostility.`;
 
 // Without this clause, tenancy, eviction and benefits answers name an adviser but never say they are
 // general information. Asking for it mid-answer lands in English only; asking for one closing
@@ -828,11 +833,11 @@ export function resolveFeatureFacts(
 	} = {}
 ): FeatureFacts {
 	// The gates parseChatRequest refuses a file on, which are the ones the composer's attach
-	// control reads (offeredMimeTypes): an upload scanner, the `multimodal` flag for this visitor, and
+	// control reads (offeredMimeTypes): a scanner config that is not incomplete, the `multimodal` flag for this visitor, and
 	// an account wherever sign-in is offered. Keyed on the scanner alone, the prompt would promise text
 	// files to visitors with no control, and the model would invent a "paperclip".
 	const guestAsked = turn.account?.loginOffered === true && !turn.account.signedIn;
-	const gatesOpen = csamScanConfigured() && multimodalEnabled();
+	const gatesOpen = csamScanAllowsUploads() && multimodalEnabled();
 	const attach = gatesOpen && !guestAsked;
 	return {
 		dictation: dictationEnabled(),

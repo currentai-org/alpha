@@ -33,7 +33,7 @@ export const GET: RequestHandler = async ({ locals, url, request, getClientAddre
 	});
 
 	// No serving model is passed, and that is the correct answer: decideWebSearch falls back to
-	// `defaultModel`, which since that change IS what a default turn gets. Reintroduce a serving-model
+	// `defaultModel`, which IS what a default turn gets. Reintroduce a serving-model
 	// argument WITH any future per-request substitution, or this route answers for a different model
 	// than the turn it claims to describe.
 	// `search_classifier_malformed` (preview only) makes the classifier's reply neither yes nor no, so a

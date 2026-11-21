@@ -116,7 +116,7 @@ describe.sequential("GET /chat/api/v2/export", () => {
 		expect(byTitle).toEqual({ Tagged: ["Grant writing", "teaching"], Plain: undefined });
 	});
 
-	// stream-follow keeps an answer's streamed text in generation_events while it streams and
+	// Stream-follow keeps an answer's streamed text in generation_events while it streams and
 	// for two minutes after. An export taken in that window carries the person's rows, and nobody else's.
 	it("carries the streamed-answer log of the person's own conversations, and never another person's", async () => {
 		const db = getDb();

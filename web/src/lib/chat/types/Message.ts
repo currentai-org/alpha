@@ -542,6 +542,9 @@ export type MessageFile = {
 	/** On a file an agent turn wrote, its path in the agent's workdir. The reply's download
 	 *  link names this path, and the link's route serves this saved copy before asking the agent. */
 	agentPath?: string;
+	/** On a file an agent turn wrote and My files holds: that turn's task id. It puts the copy under
+	 *  `conversations/<id>/agent/<turn>/`, which is how My files labels it as made by Alpha. */
+	agentTurn?: string;
 };
 
 /** What a helper model did on a turn it did not write. */

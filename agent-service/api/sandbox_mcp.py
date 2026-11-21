@@ -31,12 +31,14 @@ from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
+from remote_work import QUARANTINE_DIRNAME
 from sandbox_backend import (  # noqa: F401  (sandbox_env re-exported)
     Handle,
     OnWait,
     SandboxBackend,
     SandboxError,
     Tier,
+    agent_conversation,
     sandbox_env,
 )
 
@@ -74,6 +76,12 @@ def _listing(backend: SandboxBackend, h: Handle, limit: int = 50) -> list[str]:
     if len(files) > limit:
         out.append("…")
     return out
+
+
+def _agent_visible(rel: str) -> bool:
+    """False for what the agent keeps in its workspace for itself: its Hermes home and its quarantine."""
+    top = rel.split("/", 1)[0]
+    return not (top.startswith("hermes-home") or top == QUARANTINE_DIRNAME)
 
 
 def build_sandbox_server(
@@ -124,6 +132,15 @@ def build_sandbox_server(
         for minutes just to answer "empty", and on a full host a busy error instead."""
         principal, session = _caller(ctx)
         return backend.find(principal, session, Tier.RUN_CODE)
+
+    def _agent_box(ctx: Context) -> Handle | None:
+        """The agent-tier sandbox of this conversation, if a handed-off task made one. On a remote backend the
+        agent works in a sandbox of its own, so the files it wrote are there, not in the run-code sandbox."""
+        principal, session = _caller(ctx)
+        try:
+            return backend.find(principal, agent_conversation(session), Tier.AGENT)
+        except SandboxError:
+            return None
 
     def _refusing(fn: Callable[[], str]) -> str:
         try:
@@ -179,9 +196,16 @@ def build_sandbox_server(
     async def read_file(path: str, ctx: Context) -> str:
         def go() -> str:
             h = _existing(ctx)
-            if h is None:
-                raise SandboxRefused(f"{path!r} is not a file in the workspace")
-            return _clip(backend.read(h, path, READ_MAX_BYTES).decode("utf-8", "replace"))
+            try:
+                if h is None:
+                    raise SandboxError("not a file")
+                return _clip(backend.read(h, path, READ_MAX_BYTES).decode("utf-8", "replace"))
+            except SandboxError:
+                # A file the handed-off agent wrote lives in its own sandbox.
+                a = _agent_box(ctx) if _agent_visible(path.lstrip("./")) else None
+                if a is None:
+                    raise
+                return _clip(backend.read(a, path, READ_MAX_BYTES).decode("utf-8", "replace"))
         return await to_thread.run_sync(lambda: _refusing(go))
 
     @server.tool(
@@ -206,7 +230,13 @@ def build_sandbox_server(
     async def list_files(ctx: Context) -> str:
         def go() -> str:
             h = _existing(ctx)
-            files = _listing(backend, h) if h is not None else []
+            own = backend.list(h, 501) if h is not None else []
+            a = _agent_box(ctx)
+            seen = {rel for rel, _ in own}
+            theirs = [(rel, n) for rel, n in backend.list(a, 501) if rel not in seen and _agent_visible(rel)] if a else []
+            files = [f"{rel} ({size} bytes)" for rel, size in (own + theirs)[:50]]
+            if len(own) + len(theirs) > 50:
+                files.append("…")
             return "\n".join(files) if files else "The workspace is empty."
         return await to_thread.run_sync(lambda: _refusing(go))
 

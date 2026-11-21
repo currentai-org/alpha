@@ -26,6 +26,7 @@ Modified by Current AI from huggingface/chat-ui.
 	import { beforeNavigate, replaceState } from "$app/navigation";
 	import { UrlDependency } from "$lib/chat/types/UrlDependency";
 	import { safeInvalidate } from "$lib/chat/utils/safeInvalidate";
+	import { continuedAnswerStart, visibleAnswerText } from "$lib/chat/utils/continueAnswer";
 	import { wipeCommitted, wipeInProgress } from "$lib/chat/stores/deleteAll";
 	import { base } from "$lib/chat/paths";
 	import {
@@ -336,6 +337,7 @@ Modified by Current AI from huggingface/chat-ui.
 		follow,
 		resendFiles,
 		autoRoute,
+		continueAnswer = false,
 	}: {
 		prompt?: string;
 		messageId?: string;
@@ -358,6 +360,11 @@ Modified by Current AI from huggingface/chat-ui.
 		resendFiles?: Message["files"];
 		/** Auto's choice, read before any await: the composer drops it once its draft clears. */
 		autoRoute?: AutoRouteNote;
+		/**
+		 * Finish the answer `messageId`, which the time limit cut off: a new answer beside it starts
+		 * with its visible text, and what the model writes next is added to it.
+		 */
+		continueAnswer?: boolean;
 	}): Promise<void> {
 		// A new turn silences the last answer's read-aloud rather than talking over the next one.
 		stopPlayback();
@@ -518,6 +525,26 @@ Modified by Current AI from huggingface/chat-ui.
 					replay = { ...$state.snapshot(target), content: "", updates: [] } as Message;
 					messageToWriteToId = target.id;
 					userMessageId = target.ancestors?.at(-1);
+				}
+			} else if (continueAnswer && messageId) {
+				// The server makes the same sibling (appendTurnMessages): the cut answer's visible text, which
+				// this turn goes on from. The cut answer stays as the other version.
+				const cut = messages.find((message) => message.id === messageId);
+				if (cut?.from === "assistant") {
+					messageToWriteToId = addSibling(
+						{
+							messages,
+							rootMessageId,
+						},
+						{
+							from: "assistant",
+							...continuedAnswerStart(visibleAnswerText(cut.content)),
+							...(cut.webSearch ? { webSearch: cut.webSearch } : {}),
+							...(cut.rag ? { rag: cut.rag } : {}),
+						},
+						messageId
+					);
+					userMessageId = cut.ancestors?.at(-1);
 				}
 			} else if (isRetry && messageId) {
 				// two cases, if we're retrying a user message with a newPrompt set,
@@ -961,10 +988,11 @@ Modified by Current AI from huggingface/chat-ui.
 						inputs: prompt,
 						messageId,
 						isRetry,
+						isContinue: continueAnswer || undefined,
 						agentAttach: attach || undefined,
 						generationId: activeGenerationId,
 						newMessageIds: attach ? undefined : { user: newUserId, assistant: messageToWriteToId },
-						files: attach ? undefined : isRetry ? userMessage?.files : base64Files,
+						files: attach || continueAnswer ? undefined : isRetry ? userMessage?.files : base64Files,
 						timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
 						streamingMode,
 						webSearchMode: get(webSearchMode),
@@ -1207,7 +1235,7 @@ Modified by Current AI from huggingface/chat-ui.
 						}
 					} else {
 						// No tools: final answer replaces streamed content so
-						// the provider's final text is authoritative.
+						// the provider's final text is authoritative. A Continue's carries the cut answer too.
 						messageToWriteTo.content = finalText;
 					}
 
@@ -1245,6 +1273,7 @@ Modified by Current AI from huggingface/chat-ui.
 								statusCode: update.statusCode,
 								modelSilent: update.modelSilent === true,
 								route: messageToWriteTo.routerMetadata?.route,
+								reason: update.reason,
 							}) &&
 							currentModel
 						)
@@ -1283,6 +1312,7 @@ Modified by Current AI from huggingface/chat-ui.
 								mime: update.mime,
 								name: update.name,
 								...(update.agentPath ? { agentPath: update.agentPath } : {}),
+								...(update.agentTurn ? { agentTurn: update.agentTurn } : {}),
 							},
 						];
 					}
@@ -1391,6 +1421,10 @@ Modified by Current AI from huggingface/chat-ui.
 				} else if (update.type === MessageUpdateType.FixedReply) {
 					// The server answered with a fixed string and no model ran; the receipt says so.
 					messageToWriteTo.fixedReply = { kind: update.kind };
+				} else if (update.type === MessageUpdateType.Footprint) {
+					// The server's energy and water figure for the answer that just settled; it replaces the
+					// text-length guess recorded for it. Arrives after the final answer.
+					footprint.recordFootprint(update);
 				} else if (update.type === MessageUpdateType.Calculation) {
 					// Code evaluated one of the model's calculate calls; the expression shows live.
 					messageToWriteTo.calculations = calculationAppended(
@@ -2159,6 +2193,12 @@ Modified by Current AI from huggingface/chat-ui.
 	// Set by writeMessage when the server answers a plain Retry with "Message not found".
 	let retryTargetMissing = false;
 
+	/** Continue an answer the time limit cut off: the model goes on from its last word. */
+	async function onContinue(payload: { id: Message["id"] }) {
+		if (requireAuthUser()) return;
+		await writeMessage({ messageId: payload.id, continueAnswer: true });
+	}
+
 	async function onRetry(payload: { id: Message["id"]; content?: string }) {
 		if (requireAuthUser()) return;
 
@@ -2419,6 +2459,7 @@ Modified by Current AI from huggingface/chat-ui.
 		bind:files
 		onmessage={onMessage}
 		onretry={onRetry}
+		oncontinue={onContinue}
 		onshowAlternateMsg={onShowAlternateMsg}
 		onstop={stopGeneration}
 		models={data.models}

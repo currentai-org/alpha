@@ -100,6 +100,7 @@ import { applyMessageUpdate, createStreamState } from "$lib/chat/server/chat/str
 import {
 	MessageUpdateStatus,
 	MessageUpdateType,
+	WATCHDOG_TIMEOUT_REASON,
 	phaseMarker,
 	PRESTREAM_EVENTS_HEADER,
 	PRESTREAM_STARTING_PHASE,
@@ -133,7 +134,7 @@ import { clientAuthoredInstructions, withClientInstructions } from "$lib/chat/se
 import { personalInstructionsFrom } from "$lib/chat/personalInstructions";
 import { documentAttachmentsEnabled } from "$lib/chat/server/documentAttachmentsGate";
 import { CLIPBOARD_MIME, DOCUMENT_MIME_ALLOWLIST } from "$lib/chat/constants/mime";
-import { blockedRuleLabels, isSupportRule, resolveActionLabel, resolveActionMessage } from "$lib/chat/server/ruleLabel";
+import { blockedRuleLabels, declineCarriesSupport, isSupportRule, resolveActionLabel, resolveActionMessage } from "$lib/chat/server/ruleLabel";
 import { declineLanguageFromTag, logDeclineLanguage, readMessageLanguage } from "$lib/chat/server/declineCopy";
 import { stampSupportFromSignal, supportSignal, supportSignalEnabled } from "$lib/chat/server/supportSignal";
 import { checkAnswerWithMilaSp } from "$lib/chat/server/milaSpOutputGuard";
@@ -239,6 +240,7 @@ import {
 	isSilentStall,
 	isStillStreaming,
 	MAX_SAFE_GENERATION_TIMEOUT_MS,
+	MAX_SEARCHED_GENERATION_TIMEOUT_MS,
 	PRESTREAM_CHAIN_DEADLINE_MS,
 	resolveGenerationTimeoutMs,
 	screenAllowanceMs,
@@ -601,6 +603,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 		newPrompt,
 		messageId,
 		isRetry,
+		isContinue,
 		agentAttach,
 		generationId,
 		newMessageIds,
@@ -729,8 +732,12 @@ export async function POST({ request, locals, params, getClientAddress }) {
 
 	// Append this turn's message(s) to the conversation tree (normal / retry / edit) and get the
 	// assistant message to stream into plus the prompt subtree. See $lib/chat/server/chat/messageTree.
-	const { messageToWriteToId, messagesForPrompt } = appendTurnMessages(conv, {
+	// A Continue finishes an answer a chat model wrote; the agent rebuilds its answer from its task instead,
+	// so it never offers one.
+	if (isContinue && isAgentTurn) error(409, "An agent answer can't be continued");
+	const { messageToWriteToId, messagesForPrompt, continueFrom } = appendTurnMessages(conv, {
 		isRetry,
+		isContinue,
 		attach: agentAttach,
 		messageId,
 		newPrompt,
@@ -745,7 +752,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 	// The model this answer was asked of, so a later model switch can't relabel it as a backup.
 	messageToWriteTo.requestedModel = model.id;
 	// Auto's choice, made in the browser, kept when it names the model this turn runs on.
-	const autoRouted = autoRouteForTurn(autoRoute, model.id, isRetry);
+	const autoRouted = autoRouteForTurn(autoRoute, model.id, isRetry || isContinue);
 	if (autoRouted) messageToWriteTo.autoRoute = autoRouted;
 	// This turn's files were refused because they could not be scanned. Stored on the answer
 	// so a reload still says why, and streamed first thing in generationWork below.
@@ -861,7 +868,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 	const lastUserIndex = messagesForPrompt.findLastIndex((m) => m.from === "user");
 	const namedParent = conv.messages.find((m) => m.id === messageId);
 	const previousReply =
-		(isRetry || agentAttach
+		(isRetry || isContinue || agentAttach
 			? messagesForPrompt.slice(0, Math.max(lastUserIndex, 0)).findLast((m) => m.from === "assistant")?.content
 			: namedParent?.from === "assistant"
 				? namedParent.content
@@ -1171,6 +1178,8 @@ export async function POST({ request, locals, params, getClientAddress }) {
 		// Auto's kept choice, so the endpoint below can give up sooner on a silent pick.
 		autoRouted,
 		messagesForPrompt,
+		// Continue: the cut answer's text this turn goes on from.
+		continueFrom,
 		generationId,
 		webSearchMode,
 		speakAll,
@@ -1399,6 +1408,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 				messageToWriteTo,
 				autoRouted,
 				messagesForPrompt,
+				continueFrom,
 				generationId,
 				webSearchMode,
 				speakAll,
@@ -1704,12 +1714,23 @@ export async function POST({ request, locals, params, getClientAddress }) {
 			//
 			// An open confirm card (state.awaitingConfirmation) holds this clock too, inside the
 			// same room under MAX_SAFE, so a person deciding is not counted as generation time.
+			//
+			// A native turn that searches may stream on to MAX_SEARCHED (205s) rather than MAX_SAFE (155s):
+			// a searched turn can reason in every round and wait two minutes inside web_search, and a slow
+			// answer beats a retry. The room is sized for that up front and the
+			// extension below caps it back to MAX_SAFE when the turn has not searched by then. Agent and local
+			// turns keep MAX_SAFE; their watchdog already sits there.
+			const searchEligible = !isAgentTurn && !isLocalModel && webSearchMode !== "off";
+			const ordinaryRoomMs = Math.max(0, MAX_SAFE_GENERATION_TIMEOUT_MS - genTimeoutMs);
 			const genDeadline = new ScreenAwareDeadline(
 				genTimeoutMs,
 				screenAllowanceMs(genTimeoutMs),
 				Date.now,
-				Math.max(0, MAX_SAFE_GENERATION_TIMEOUT_MS - genTimeoutMs)
+				searchEligible ? Math.max(0, MAX_SEARCHED_GENERATION_TIMEOUT_MS - genTimeoutMs) : ordinaryRoomMs
 			);
+			/** Whether this turn searched the web: Always mode, the route's own search, or a native tool round. */
+			const turnSearched = () =>
+				webSearchMode === "always" || state.searched || messageToWriteTo?.webSearch !== undefined;
 			let screenSettled = false;
 			const settleScreen = () => {
 				screenSettled = true;
@@ -1732,10 +1753,11 @@ export async function POST({ request, locals, params, getClientAddress }) {
 							lastModelOutputAt: state.lastModelOutputAt?.getTime(),
 						}))
 				) {
-					const addedMs = genDeadline.extendWhileStreaming();
+					const searched = turnSearched();
+					const addedMs = genDeadline.extendWhileStreaming(searched ? undefined : ordinaryRoomMs);
 					if (addedMs > 0) {
 						logger.info(
-							{ conversationId: conversationKey, genTimeoutMs, addedMs },
+							{ conversationId: conversationKey, genTimeoutMs, addedMs, searched },
 							"[watchdog] total cap reached while still streaming — extended to the ceiling"
 						);
 						cancelTotalTimer = genDeadline.schedule(onTotalDeadline);
@@ -2058,9 +2080,9 @@ export async function POST({ request, locals, params, getClientAddress }) {
 				// The page renders a finished message from its stored FinalAnswer update, so a
 				// FinalAnswer already recorded (output screening sends its own on abort) must carry the
 				// clamped text too, or the reload shows everything screening had released.
-				const text = clamped.slice(initialMessageContent.length);
+				// A stored FinalAnswer holds the whole answer, a Continue's cut text included (streamUpdate.ts).
 				messageToWriteTo.updates = messageToWriteTo.updates?.map((u) =>
-					u.type === MessageUpdateType.FinalAnswer ? { ...u, text } : u
+					u.type === MessageUpdateType.FinalAnswer ? { ...u, text: clamped } : u
 				);
 			};
 			const emitInterruptedFinalAnswer = async () => {
@@ -2237,7 +2259,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 					// A self-harm rule declined the turn, so it carries crisis support.
 					support?: boolean;
 				};
-				const decideModeration = ({ childSafety, contentPolicy, hits }: GateBundle): ModerationDecision => {
+				const decideModeration = ({ childSafety, contentPolicy, hits, supportOnLatest }: GateBundle): ModerationDecision => {
 					const ruleLabels = contentPolicy.action === "block" ? blockedRuleLabels(hits, contentPolicy.category) : [];
 					return childSafety.flagged
 						? {
@@ -2266,7 +2288,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 								ruleLabel: resolveActionLabel(contentPolicy.category) ?? undefined,
 								...(ruleLabels.length > 1 ? { ruleLabels } : {}),
 								auditCategory: contentPolicy.category,
-								...(isSupportRule(contentPolicy.category) ? { support: true } : {}),
+								...(declineCarriesSupport(contentPolicy.category, hits, supportOnLatest) ? { support: true } : {}),
 							}
 						: // not flagged → allow; kind is unused when flagged is false.
 							{ flagged: false, label: null, score: 0, kind: "content_policy" };
@@ -2906,6 +2928,10 @@ export async function POST({ request, locals, params, getClientAddress }) {
 						model: turnModel,
 						// The watchdog's own end, so a retry inside the answer can tell whether it still fits.
 						turnDeadlineAt: genWatchdogArmedAt + genTimeoutMs,
+						// The ceiling the turn can still run to: the searched one once it has searched. The native tool
+						// loop stops offering tools when the answer round would no longer fit before it.
+						turnCeilingAt: () => genDeadline.ceilingAt(turnSearched() ? undefined : ordinaryRoomMs),
+						...(continueFrom ? { continueFrom } : {}),
 						harness,
 						webSearchMode,
 						// A model Auto chose gives up sooner when silent, so the browser can ask Auto
@@ -3370,6 +3396,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 										model.displayName ?? model.name
 									),
 									statusCode: 504,
+									reason: WATCHDOG_TIMEOUT_REASON,
 								...(watchdogModelSilent && { modelSilent: true }),
 								});
 							} else {
@@ -3437,6 +3464,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 										model.displayName ?? model.name
 									),
 							statusCode: 504,
+							reason: WATCHDOG_TIMEOUT_REASON,
 						...(watchdogModelSilent && { modelSilent: true }),
 						});
 						logger.error(err, "Error in conversation stream");
@@ -3729,6 +3757,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 							type: MessageUpdateType.Status,
 							status: MessageUpdateStatus.Error,
 							statusCode: 504,
+							reason: WATCHDOG_TIMEOUT_REASON,
 							message: "The request took too long to respond. Please try again.",
 						}),
 						EMERGENCY_CLEANUP_BUDGET_MS
@@ -3798,11 +3827,9 @@ export async function POST({ request, locals, params, getClientAddress }) {
 			//
 			// `lengths` is hoisted out of the log payload below because the ladder needs modelChars:
 			// `empty` is the rung the honesty guard had made unreachable. Sliced from
-			// initialMessageContent like lines 1078 and 1833, NOT because the prefix is ever non-empty
-			// today — appendTurnMessages creates every assistant message with `content: ""` — but because
+			// initialMessageContent because a Continue starts its message from the cut answer's text, and
 			// preGuardChars is this turn's text while content is the whole message. The two numbers are
-			// only comparable if they measure the same span, and relying on the prefix being empty makes
-			// that an accident rather than a property.
+			// only comparable if they measure the same span.
 			const lengths = answerLengths(
 				messageToWriteTo.content.slice(initialMessageContent.length),
 				preGuardChars

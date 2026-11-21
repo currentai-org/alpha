@@ -1,9 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { leadWithEuropeanLine, linkBareHelpline } from "./crisisReferralOrder";
+import { DECLINE_LANGUAGES } from "./declineCopy";
 
 // Pinned here as copy: a change to the inserted sentence should be a visible change to this spec.
 const EUROPEAN_LINE_SENTENCE =
-	"Wherever you are, [findahelpline.com](https://findahelpline.com) lists free, confidential crisis lines for your country, and anywhere in Europe you can call 112 in an emergency.";
+	"Wherever you are, [findahelpline.com](https://findahelpline.com) lists free, confidential crisis lines for your country, and in an emergency you can contact your local emergency services.";
 
 // Three answers for the Lisbon case (crisis_referral.py), verbatim. Each puts 988
 // before any line someone in Europe can use.
@@ -62,9 +63,18 @@ describe("leadWithEuropeanLine", () => {
 		});
 	});
 
-	it("leaves an answer alone when 112 comes earlier in the same batch", () => {
+	// The sentence exists to supply findahelpline.com, so a 112 earlier in the answer does not skip it:
+	// "call 112 or 988" would otherwise go out with no way to find a line where the person is.
+	it("still inserts findahelpline.com when 112 comes earlier in the same batch", () => {
 		const raw = "In Europe call 112. In the U.S., the crisis line is 988.";
-		expect(leadWithEuropeanLine(raw, "")).toMatchObject({ decided: true, inserted: false, cleaned: raw });
+		const r = leadWithEuropeanLine(raw, "");
+		expect(r).toMatchObject({ decided: true, inserted: true });
+		expect(r.cleaned).toBe(`In Europe call 112. ${EUROPEAN_LINE_SENTENCE} In the U.S., the crisis line is 988.`);
+	});
+
+	it("still inserts findahelpline.com when 112 was already released", () => {
+		const raw = "In the U.S., the crisis line is 988.";
+		expect(leadWithEuropeanLine(raw, "If you are in danger, call 112. ")).toMatchObject({ decided: true, inserted: true });
 	});
 
 	it("does not fire on a 988 that is not named as a crisis line, and still decides", () => {
@@ -93,11 +103,25 @@ describe("leadWithEuropeanLine writes its sentence in the person's language", ()
 		expect(r.inserted).toBe(true);
 		expect(r.cleaned).toContain("Estés donde estés, [findahelpline.com](https://findahelpline.com)");
 		expect(r.cleaned).not.toContain(EUROPEAN_LINE_SENTENCE);
-		expect(r.cleaned.indexOf("112")).toBeLessThan(r.cleaned.indexOf("988"));
+		expect(r.cleaned.indexOf("findahelpline")).toBeLessThan(r.cleaned.indexOf("988"));
 	});
 
 	it("keeps English when no language is given", () => {
 		expect(leadWithEuropeanLine(es, "").cleaned).toContain(EUROPEAN_LINE_SENTENCE);
+	});
+});
+
+// The support card above a crisis answer carries the visitor's emergency number, picked per country
+// (crisisLocale.ts). A number in the inserted sentence would contradict it for someone outside Europe:
+// 112 under a US card that says 911.
+describe("the inserted sentence names no emergency number, in any language", () => {
+	const raw = "If you are in crisis in the U.S., call or text 988.";
+	it.each((["en", ...DECLINE_LANGUAGES] as const).map((l) => [l]))("%s: adds findahelpline.com and no phone number of its own", (lang) => {
+		const r = leadWithEuropeanLine(raw, "", lang);
+		expect(r.inserted).toBe(true);
+		const added = r.cleaned.slice(0, r.cleaned.indexOf(raw));
+		expect(added).toContain("[findahelpline.com](https://findahelpline.com)");
+		expect(added, `${lang} names a number: ${added}`).not.toMatch(/\d/);
 	});
 });
 

@@ -29,6 +29,9 @@ export const chatRequestSchema = z.object({
 			.transform((s) => s.replace(/\r\n/g, "\n"))
 	),
 	is_retry: z.optional(z.boolean()),
+	// finish the assistant message `id`, which the time limit cut off: a new answer beside it that starts
+	// with its text and goes on from there. No prompt rides along.
+	is_continue: z.optional(z.boolean()),
 	// re-attach the assistant message `id` to the agent task it already started, after the tab
 	// that started it closed. No prompt rides along; the task's replayed events rewrite the message.
 	agent_attach: z.optional(z.boolean()),

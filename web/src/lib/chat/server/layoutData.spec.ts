@@ -13,7 +13,7 @@ import {
 } from "./layoutData";
 import { CONV_NUM_PER_PAGE } from "$lib/chat/constants/pagination";
 import { dictationEnabled } from "./dictationMode";
-import { csamScanConfigured } from "./storage/csamScan";
+import { csamScanAllowsUploads } from "./storage/csamScan";
 import { thunderboltExportEnabled } from "./dataPortability";
 import { custodialStorageViewEnabledForUser } from "./storage/custodialStorageGate";
 import { getDb } from "./db/client";
@@ -209,10 +209,10 @@ describe("layoutData", () => {
 	});
 
 	// The composer's attach control and My files' drop zone read this flag, and the server
-	// refuses every upload when csamScanConfigured is false, so the two must be the same read.
-	it("getLayoutFeatureFlags.attachmentsEnabled is csamScanConfigured(), so no control is offered that the server would refuse", async () => {
+	// refuses every upload when csamScanAllowsUploads is false, so the two must be the same read.
+	it("getLayoutFeatureFlags.attachmentsEnabled is csamScanAllowsUploads(), so no control is offered that the server would refuse", async () => {
 		const flags = await getLayoutFeatureFlags(createTestLocals());
-		expect(flags.attachmentsEnabled).toBe(csamScanConfigured());
+		expect(flags.attachmentsEnabled).toBe(csamScanAllowsUploads());
 	});
 
 	// The settings list's and a failed turn's status links read this, so they lead where the banner's

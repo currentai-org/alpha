@@ -15,6 +15,7 @@ import ast
 import base64
 import errno
 import inspect
+import io
 import json
 import os
 import shutil
@@ -769,7 +770,376 @@ def test_a_pdf_with_no_nul_byte_is_binary_to_the_artifact_screen_cur4106(tmp_pat
     (work / "notes.txt").write_text("real text output")
 
     assert app._read_artifact(str(work / "note.pdf"), 1 << 20) == (None, False)
-    assert app._artifact_text_for_moderation(str(work)) == "real text output"
+    screened = app._artifact_text_for_moderation(str(work))
+    assert "real text output" in screened and "Note" in screened
+    assert len(screened) < 200, "the PDF's text, never its 15 KB of encoded streams (CUR-4113 reads the text)"
+
+
+def _add_footnote(path, text):
+    """python-docx writes no footnotes, so add a footnotes part by hand, the way Word stores one."""
+    import zipfile
+    w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    with zipfile.ZipFile(path) as src:
+        members = {n: src.read(n) for n in src.namelist()}
+    members["[Content_Types].xml"] = members["[Content_Types].xml"].replace(b"</Types>", (
+        b'<Override PartName="/word/footnotes.xml" ContentType="application/'
+        b'vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml"/></Types>'))
+    members["word/_rels/document.xml.rels"] = members["word/_rels/document.xml.rels"].replace(
+        b"</Relationships>", b'<Relationship Id="rIdFn1" Type="http://schemas.openxmlformats.org/'
+        b'officeDocument/2006/relationships/footnotes" Target="footnotes.xml"/></Relationships>')
+    members["word/footnotes.xml"] = (f'<w:footnotes xmlns:w="{w}"><w:footnote w:id="1"><w:p><w:r>'
+                                     f'<w:t>{text}</w:t></w:r></w:p></w:footnote></w:footnotes>').encode()
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as dst:
+        for name, body in members.items():
+            dst.writestr(name, body)
+
+
+def _rewrite_zip_member(path, name, change):
+    import zipfile
+    with zipfile.ZipFile(path) as src:
+        members = {n: src.read(n) for n in src.namelist()}
+    members[name] = change(members[name])
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as dst:
+        for n, body in members.items():
+            dst.writestr(n, body)
+
+
+def _agent_documents(work):
+    """A PDF with a chart, a Word file with a table and a header, and a workbook with a formula: what the
+    agent writes when asked for a note, a report or a sheet, each carrying marker words."""
+    import docx
+    import matplotlib
+    import openpyxl
+    from openpyxl.worksheet.formula import ArrayFormula
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.platypus import Image, Paragraph, SimpleDocTemplate
+
+    fig, ax = plt.subplots()
+    ax.bar(["Jul", "Aug"], [412, 438])
+    fig.savefig(work.parent / "chart.png")
+    plt.close(fig)
+    SimpleDocTemplate(str(work / "note.pdf")).build([
+        Paragraph("Note au conseil municipal PDFWORDS", getSampleStyleSheet()["Title"]),
+        Image(str(work.parent / "chart.png"), 200, 150)])
+
+    d = docx.Document()
+    d.add_paragraph("Rapport DOCXBODY")
+    d.add_table(rows=1, cols=1).cell(0, 0).text = "DOCXTABLE"
+    d.sections[0].header.paragraphs[0].text = "DOCXHEADER"
+    d.save(str(work / "rapport.docx"))
+    _add_footnote(work / "rapport.docx", "DOCXFOOTNOTE")
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "XLSXSHEET"
+    ws["A1"] = "XLSXCELL"
+    ws["B1"] = '="XLSX" & "FORMULA"'
+    ws["C1"] = ArrayFormula("C1", '=CONCAT("XLSX", "ARRAY")')
+    wb.save(str(work / "budget.xlsx"))
+    # The values a viewer that does not recalculate shows; openpyxl writes none, Excel and LibreOffice do.
+    _rewrite_zip_member(work / "budget.xlsx", "xl/worksheets/sheet1.xml", lambda x: x.replace(
+        b'<c r="B1"><f>', b'<c r="B1" t="str"><f>').replace(b'<c r="C1"><f', b'<c r="C1" t="str"><f').replace(
+        b'FORMULA"</f><v></v>', b'FORMULA"</f><v>XLSXCACHED</v>').replace(
+        b'ARRAY")</f><v></v>', b'ARRAY")</f><v>XLSXARRAYCACHED</v>'))
+
+
+def test_text_in_agent_made_pdf_word_and_excel_files_reaches_the_artifact_screen_cur4113(tmp_path):
+    work = tmp_path / "work"
+    work.mkdir()
+    _agent_documents(work)
+    (work / "notes.txt").write_text("real text output")
+    # Renamed, with one newline before the PDF header or the ZIP data, which readers accept: the bytes,
+    # not the name, make each one a document.
+    for name in ("note.pdf", "rapport.docx", "budget.xlsx"):
+        (work / f"{name}.bin").write_bytes(b"\n" + (work / name).read_bytes())
+        (work / name).unlink()
+
+    screened = app._artifact_text_for_moderation(str(work))
+
+    for marker in ("PDFWORDS", "DOCXBODY", "DOCXTABLE", "DOCXHEADER", "DOCXFOOTNOTE", "XLSXSHEET", "XLSXCELL",
+                   '"XLSX" & "FORMULA"', "XLSXCACHED", '"XLSX", "ARRAY"', "XLSXARRAYCACHED", "real text output"):
+        assert marker in screened, marker
+    assert "%PDF" not in screened and "PK\x03\x04" not in screened, "text, never the container bytes"
+
+
+def test_an_unreadable_agent_document_is_reported_and_blocks_the_artifact_screen_cur4113(tmp_path, monkeypatch):
+    """An encrypted or broken document is the easy way past a screen that only reads the ones that open,
+    so in block mode it blocks the stage, and the quarantine that follows a block moves it out."""
+    from pypdf import PdfWriter
+
+    _guard_env(monkeypatch)
+    events = []
+    monkeypatch.setattr(app, "_log_event", lambda ev, **k: events.append((ev, k)))
+    monkeypatch.setattr(app, "OUTPUT_SCREEN_MODE", "block")
+    work = tmp_path / "work"
+    work.mkdir()
+    _agent_documents(work)
+    locked = PdfWriter(clone_from=str(work / "note.pdf"))
+    locked.encrypt("secret")
+    locked.write(str(work / "locked.pdf"))
+    # One that decodes as text: a blank page has no binary stream, ASCII replaces the binary comment line,
+    # and a newline goes before the header. pypdf opens it, so it is a PDF it cannot read, never text that
+    # only mentions a PDF header.
+    blank = PdfWriter()
+    blank.add_blank_page(100, 100)
+    blank.encrypt("secret")
+    buf = io.BytesIO()
+    blank.write(buf)
+    (work / "locked2.bin").write_bytes(b"\n" + buf.getvalue().replace(b"%\xe2\xe3\xcf\xd3", b"%abcd", 1))
+    (work / "locked2.bin").read_bytes().decode("utf-8")      # the fixture must be text to test the fallback
+    (work / "broken.docx").write_bytes(b"\xd0\xcf\x11\xe0 not a zip \x00\x01")
+    (work / "plain.pdf").write_text("Markdown the agent saved under a .pdf name")
+    (work / "helper.pyc").write_bytes(b"\xcb\x0d\x0d\x0a\x00\x00 b'%PDF-1.4' \x00\x01")   # only mentions one
+    (work / "junk.xlsx").write_bytes(b"\x00\x01 %PDF-1.4 up front, and no workbook \x00")      # a name, not a PDF
+
+    with pytest.raises(HTTPException) as ei:
+        app._artifact_text_for_moderation(str(work))
+
+    assert ei.value.status_code == 403 and "unreadable document" in str(ei.value.detail)
+    reported = [k for e, k in events if e == "moderation.artifact_unreadable"]
+    assert len(reported) == 1 and reported[0]["files"] == ["broken.docx", "junk.xlsx", "locked.pdf", "locked2.bin"], \
+        "a text file under a .pdf name is text; a binary that only mentions a PDF header is other binary, " \
+        "unless its name says it is a document"
+    assert reported[0]["stage"] == app.STAGE_ARTIFACTS
+    moved = app._quarantine_blocked_artifacts(str(work))
+    assert {"broken.docx", "locked.pdf", "locked2.bin", "note.pdf", "plain.pdf"} <= set(moved)
+    assert "helper.pyc" not in moved, "binary that only mentions a PDF header was never screened, so it stays"
+
+
+def test_a_word_file_whose_parts_sit_outside_word_is_still_read_cur4113(tmp_path):
+    """Word finds the main part through the package's relationships, not a fixed directory."""
+    import zipfile
+    work = tmp_path / "work"
+    work.mkdir()
+    _agent_documents(work)
+    with zipfile.ZipFile(work / "rapport.docx") as src:
+        members = {n.replace("word/", "docs/", 1): src.read(n) for n in src.namelist()}
+    members["[Content_Types].xml"] = members["[Content_Types].xml"].replace(b"/word/", b"/docs/")
+    members["_rels/.rels"] = members["_rels/.rels"].replace(b"word/document.xml", b"docs/document.xml")
+    with zipfile.ZipFile(work / "rapport.docx", "w", zipfile.ZIP_DEFLATED) as dst:
+        for n, body in members.items():
+            dst.writestr(n, body)
+
+    screened = app._artifact_text_for_moderation(str(work))
+    assert "DOCXBODY" in screened and "DOCXFOOTNOTE" in screened
+
+
+_WORD_VARIANTS = {
+    "docm": b"application/vnd.ms-word.document.macroEnabled.main+xml",
+    "dotx": b"application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml",
+    "dotm": b"application/vnd.ms-word.template.macroEnabledTemplate.main+xml",
+}
+
+
+def _as_word_variant(path, ext):
+    """Turn a .docx into the package Word saves as .docm, .dotx or .dotm: the main part's content type
+    changes, and a macro-enabled one carries a vbaProject.bin part related from the document."""
+    import zipfile
+    main = b"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"
+    with zipfile.ZipFile(path) as src:
+        members = {n: src.read(n) for n in src.namelist()}
+    assert main in members["[Content_Types].xml"]
+    types = members["[Content_Types].xml"].replace(main, _WORD_VARIANTS[ext])
+    if ext.endswith("m"):
+        types = types.replace(b"</Types>", b'<Default Extension="bin" '
+                              b'ContentType="application/vnd.ms-office.vbaProject"/></Types>')
+        members["word/_rels/document.xml.rels"] = members["word/_rels/document.xml.rels"].replace(
+            b"</Relationships>", b'<Relationship Id="rIdVba" Type="http://schemas.microsoft.com/office/2006/'
+            b'relationships/vbaProject" Target="vbaProject.bin"/></Relationships>')
+        members["word/vbaProject.bin"] = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1 MACROSOURCE Sub AutoOpen() \x00\x01"
+    members["[Content_Types].xml"] = types
+    out = path.with_suffix(f".{ext}")
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as dst:
+        for name, body in members.items():
+            dst.writestr(name, body)
+    return out
+
+
+@pytest.mark.parametrize("ext", sorted(_WORD_VARIANTS))
+def test_a_macro_enabled_or_template_word_file_reaches_the_screen_as_its_text_and_its_macro_project_never_does_cur4113(
+        tmp_path, monkeypatch, ext):
+    _guard_env(monkeypatch)
+    events = []
+    monkeypatch.setattr(app, "_log_event", lambda ev, **k: events.append((ev, k)))
+    monkeypatch.setattr(app, "OUTPUT_SCREEN_MODE", "block")
+    work = tmp_path / "work"
+    work.mkdir()
+    _agent_documents(work)
+    for name in ("note.pdf", "budget.xlsx"):
+        (work / name).unlink()
+    _as_word_variant(work / "rapport.docx", ext)
+    (work / "rapport.docx").unlink()
+
+    screened = app._artifact_text_for_moderation(str(work))
+
+    for marker in ("DOCXBODY", "DOCXTABLE", "DOCXHEADER", "DOCXFOOTNOTE"):
+        assert marker in screened, marker
+    assert "MACROSOURCE" not in screened, "the macro project is a binary part: never parsed, run or screened"
+    assert not [k for e, k in events if e == "moderation.artifact_unreadable"]
+
+
+@pytest.mark.parametrize("ext", sorted(_WORD_VARIANTS))
+def test_a_broken_macro_enabled_or_template_word_file_is_reported_unreadable_not_passed_cur4113(
+        tmp_path, monkeypatch, ext):
+    _guard_env(monkeypatch)
+    events = []
+    monkeypatch.setattr(app, "_log_event", lambda ev, **k: events.append((ev, k)))
+    monkeypatch.setattr(app, "OUTPUT_SCREEN_MODE", "block")
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / f"broken.{ext}").write_bytes(b"\xd0\xcf\x11\xe0 not a zip \x00\x01")
+
+    with pytest.raises(HTTPException) as ei:
+        app._artifact_text_for_moderation(str(work))
+
+    assert ei.value.status_code == 403
+    assert [k["files"] for e, k in events if e == "moderation.artifact_unreadable"] == [[f"broken.{ext}"]]
+
+
+def test_a_word_file_that_mentions_a_pdf_header_is_read_as_the_word_file_cur4113(tmp_path, monkeypatch):
+    """The PDF sniff is loose (a header anywhere in the first 1024 bytes), so a stored part that mentions
+    one must not make an ordinary Word file unreadable."""
+    import zipfile
+    _guard_env(monkeypatch)
+    monkeypatch.setattr(app, "OUTPUT_SCREEN_MODE", "block")
+    work = tmp_path / "work"
+    work.mkdir()
+    _agent_documents(work)
+    with zipfile.ZipFile(work / "rapport.docx") as src:
+        members = {n: src.read(n) for n in src.namelist()}
+    with zipfile.ZipFile(work / "rapport.docx", "w") as dst:      # stored, so the mention is in the bytes
+        dst.writestr("notes.txt", b"%PDF-1.4 is how a PDF starts")
+        for n, body in members.items():
+            dst.writestr(n, body)
+    assert b"%PDF-" in (work / "rapport.docx").read_bytes()[:1024]
+
+    assert "DOCXBODY" in app._artifact_text_for_moderation(str(work))
+
+
+def test_in_log_mode_an_unreadable_document_is_reported_and_the_screen_goes_on_cur4113(tmp_path, monkeypatch):
+    _guard_env(monkeypatch)
+    events = []
+    monkeypatch.setattr(app, "_log_event", lambda ev, **k: events.append((ev, k)))
+    monkeypatch.setattr(app, "OUTPUT_SCREEN_MODE", "log")
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / "broken.xlsx").write_bytes(b"PK\x03\x04 truncated \x00")
+    (work / "notes.txt").write_text("real text output")
+    (work / "make_pdf.py").write_text('open("out.pdf", "wb").write(b"%PDF-1.4 by hand")\n')
+
+    screened = app._artifact_text_for_moderation(str(work))
+
+    assert "real text output" in screened and "%PDF-1.4 by hand" in screened, \
+        "a script that only mentions a PDF header is screened as text, not reported"
+    assert [k["files"] for e, k in events if e == "moderation.artifact_unreadable"] == [["broken.xlsx"]]
+
+
+def test_a_text_file_over_the_download_cap_is_still_screened_when_it_mentions_a_pdf_header_cur4113(
+        tmp_path, monkeypatch):
+    """Over the cap nothing extracts it, but the inline preview still sends its start."""
+    monkeypatch.setattr(app, "ARTIFACT_DOWNLOAD_MAX_BYTES", 64)
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / "notes.md").write_text("# About %PDF- headers\n" + "PREVIEWED TEXT " * 20)
+    assert "PREVIEWED TEXT" in app._artifact_text_for_moderation(str(work))
+
+
+def _ascii_pdf(words: str, prefix: bytes = b"", trailer: bytes = b"") -> bytes:
+    """A one-page PDF in plain ASCII, as a script writing one by hand makes it, showing `words`, after
+    `prefix` and with offsets that count it, so pypdf reads its xref and trailer as written."""
+    stream = f"BT /F1 12 Tf 10 50 Td ({words}) Tj ET".encode()
+    objs = [b"<< /Type /Catalog /Pages 2 0 R >>", b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Contents 4 0 R "
+            b"/Resources << /Font << /F1 5 0 R >> >> >>",
+            b"<< /Length %d >>\nstream\n" % len(stream) + stream + b"\nendstream",
+            b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"]
+    out, offsets = prefix + b"%PDF-1.4\n", []
+    for i, body in enumerate(objs, 1):
+        offsets.append(len(out))
+        out += b"%d 0 obj\n" % i + body + b"\nendobj\n"
+    xref = len(out)
+    out += b"xref\n0 %d\n0000000000 65535 f \n" % (len(objs) + 1) + b"".join(b"%010d 00000 n \n" % o for o in offsets)
+    return out + b"trailer\n<< /Size %d /Root 1 0 R%s >>\nstartxref\n%d\n%%%%EOF\n" % (len(objs) + 1, trailer, xref)
+
+
+def test_a_text_file_that_starts_with_a_pdf_is_screened_on_its_full_text_not_only_the_pdf_part_cur4113(tmp_path):
+    """pypdf opens a small PDF at the top of a note, but the inline preview sends the whole note."""
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / "notes.md").write_bytes(b"# Notes\n" + _ascii_pdf("PDFPART") + b"\nTRAILING NOTE TEXT\n")
+    previewed = app._collect_artifacts(str(work))[0][0]["text"]
+    assert "PDFPART" in previewed and "TRAILING NOTE TEXT" in previewed, "the fixture must be previewed as text"
+
+    screened = app._artifact_text_for_moderation(str(work))
+
+    assert "PDFPART" in screened and "TRAILING NOTE TEXT" in screened
+
+
+def test_a_text_file_whose_pdf_part_pypdf_fails_on_is_screened_as_text_not_reported_unreadable_cur4113(
+        tmp_path, monkeypatch):
+    """pypdf can open the bytes and then fail on them, or fail opening with an error that is not its own
+    (a TypeError here). Text that does that only mentions a PDF; binary that does it stays unreadable."""
+    _guard_env(monkeypatch)
+    events = []
+    monkeypatch.setattr(app, "_log_event", lambda ev, **k: events.append((ev, k)))
+    monkeypatch.setattr(app, "OUTPUT_SCREEN_MODE", "block")
+    work = tmp_path / "work"
+    work.mkdir()
+    opens_then_fails = b"# Writing a PDF by hand\n%PDF-1.4\nstartxref\n9\n%%EOF\nOPENS THEN FAILS\n"
+    fails_opening = _ascii_pdf("PDFPART", prefix=b"# FAILS OPENING\n", trailer=b" /Prev (a)")
+    (work / "make_pdf.md").write_bytes(opens_then_fails)
+    (work / "trailer.md").write_bytes(fails_opening)
+    for name, raw, code in (("make_pdf.md", opens_then_fails, "PdfReadError"),
+                            ("trailer.md", fails_opening, "TypeError")):
+        with pytest.raises(app.ArtifactUnreadable, match=code) as ei:
+            app._extract_document_text("pdf", raw)
+        assert ei.value.pdf_unparsable, f"{name}: the fixture must fail inside pypdf, past its own open check"
+
+    screened = app._artifact_text_for_moderation(str(work))
+
+    assert "OPENS THEN FAILS" in screened and "FAILS OPENING" in screened
+    assert not [k for e, k in events if e == "moderation.artifact_unreadable"]
+    (work / "blob.bin").write_bytes(_ascii_pdf("PDFPART", prefix=b"\x00\x01 binary\n", trailer=b" /Prev (a)"))
+    with pytest.raises(HTTPException):
+        app._artifact_text_for_moderation(str(work))
+    assert [k["files"] for e, k in events if e == "moderation.artifact_unreadable"] == [["blob.bin"]]
+
+
+def test_a_document_extraction_that_runs_out_of_time_is_unreadable_cur4113(tmp_path, monkeypatch):
+    work = tmp_path / "work"
+    work.mkdir()
+    _agent_documents(work)
+    monkeypatch.setattr(app, "ARTIFACT_EXTRACT_TIMEOUT_SECS", 0.001)
+    with pytest.raises(app.ArtifactUnreadable, match="TimeoutExpired"):
+        app._extract_document_text("pdf", (work / "note.pdf").read_bytes())
+
+
+def test_document_text_stops_at_the_cap_instead_of_reading_the_whole_file_cur4113(monkeypatch):
+    """A long ordinary workbook must not run into the time limit and be blocked as unreadable."""
+    import openpyxl
+    wb = openpyxl.Workbook(write_only=True)
+    ws = wb.create_sheet()
+    for _ in range(20000):
+        ws.append(["Ordinary report value"] * 5)
+    buf = io.BytesIO()
+    wb.save(buf)
+    monkeypatch.setattr(app, "ARTIFACT_DOWNLOAD_MAX_BYTES", 1000)
+    text = app._extract_document_text("xlsx", buf.getvalue())
+    assert 0 < len(text) <= 1000 and text.startswith("Sheet")
+
+
+def test_every_screen_verdict_logs_its_stage_and_time_cur4113(monkeypatch):
+    """Done-when 2 reads the artifacts stage's screening time from Axiom; an allow logged nothing before."""
+    _guard_env(monkeypatch)
+    events = []
+    monkeypatch.setattr(app, "_log_event", lambda ev, **k: events.append((ev, k)))
+    monkeypatch.setattr(app, "_moderate_via_guard", lambda t, s: ("allow", []))
+    app.moderate("a quarterly note", app.STAGE_ARTIFACTS, "u1", task_id="t1")
+    screened = [k for e, k in events if e == "moderation.screened"]
+    assert len(screened) == 1 and screened[0]["stage"] == app.STAGE_ARTIFACTS
+    assert screened[0]["verdict"] == "allow" and screened[0]["chars"] > 0 and screened[0]["ms"] >= 0
 
 
 def test_only_a_character_cut_at_the_cap_reads_leniently_cur4106(tmp_path):
@@ -8680,7 +9050,7 @@ def test_ungrounded_execution_claim_needs_acp_watching_and_zero_tools():
         assert app._wrote_code_without_running_it(set(), nf, work, "Here's a plan for the script.", True) is None
 
 
-def test_unrun_detection_catches_julies_headless_revenue_fabrication():
+def test_unrun_detection_catches_a_headless_revenue_fabrication():
     """End to end through _wrote_code_without_running_it (not just _ungrounded_execution_claim
     directly): zero tool calls, a comms-register answer with a false
     computation claim, no heading. repair_check alone passes it as `ok=True`

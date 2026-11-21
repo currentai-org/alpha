@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // /api/search/classify reaches a real model call (decideWebSearch's deciders) behind only
-// requireAuth — the same gap that change already fixed on its three
+// requireAuth — the same gap already closed on its three
 // siblings (/api/search, /api/second-opinion, /api/transcribe). These tests prove the SAME limiter now
 // gates this route too, keyed the same way, before the decision runs.
 

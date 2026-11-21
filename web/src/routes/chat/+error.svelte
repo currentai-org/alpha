@@ -11,7 +11,7 @@ Modified by Current AI from huggingface/chat-ui.
 
 <ErrorCard />
 {#if page.status === 404}
-	<!-- a short, crawlable recovery path — not just a status code — so an agent
+	<!-- A short, crawlable recovery path — not just a status code — so an agent
 	     that landed on a dead link can find its way back rather than dead-ending here. -->
 	<div class="flex items-center justify-center bg-surface-1 pb-4">
 		<p class="max-w-sm pb-2 text-center type-caption text-fg-2">
