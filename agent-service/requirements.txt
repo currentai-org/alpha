@@ -1,7 +1,7 @@
 # Runtime deps for the agent-service (app + proxy roles). Single source of truth —
 # the Dockerfile installs from this file too, so local dev and the image can't drift.
 # Pinned for reproducible builds + a stable supply-chain surface; bump deliberately.
-fastapi==0.163.1
+fastapi==0.163.2
 uvicorn[standard]==0.54.0
 httpx==0.28.1
 pydantic==2.14.3
