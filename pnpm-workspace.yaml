@@ -94,11 +94,12 @@ overrides:
   zod@^4: ^4.6.6
   vite@^8: ^8.2.4
   happy-dom: ^21.0.4
-  # Advisories GHSA-rmxm-3fg6-px4f (@hono/node-server), GHSA-3g3m-2fjr-6pw4 (glob) and
+  # Advisories GHSA-rmxm-3fg6-px4f, GHSA-jpvv-r467-5p4w and GHSA-qv5m-9pm6-hqp3 (@hono/node-server),
+  # GHSA-3g3m-2fjr-6pw4 (glob) and
   # GHSA-g3hv-75wg-m249 (minimatch). The MCP SDK's range already admits node-server 2; glob 13 is
   # @vercel/nft's build-time file matcher. minimatch 3 (eslint's config-array and plugins) has no
   # fixed release and stays.
-  '@hono/node-server@<2.1.3': ^2.1.3
+  '@hono/node-server@<2.1.6': ^2.1.6
   glob@^13: ^14.0.2
   minimatch@^10: ^11.0.1
 
@@ -108,7 +109,7 @@ overrides:
 # for SvelteKit 3 only (sveltejs/kit#16933, fixed by #16935). It names an exact version, so
 # a SvelteKit bump fails the install until it is moved or, on SvelteKit 3, deleted.
 patchedDependencies:
-  '@sveltejs/kit@2.70.3': web/patches/@sveltejs__kit@2.70.3.patch
+  '@sveltejs/kit@2.70.4': web/patches/@sveltejs__kit@2.70.4.patch
 
 # web/ and payload/ resolved their peers separately before the merge. Deduping peer dependents across
 # the workspace would hand one app's packages the other's optional peers (better-auth would see

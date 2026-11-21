@@ -1,7 +1,377 @@
 {
+  "e2e/owui-migrate.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 1
+    }
+  },
+  "e2e/scenarios/agent-daily-limit.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 3
+    }
+  },
+  "e2e/scenarios/agent-math-turn.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 1
+    }
+  },
+  "e2e/scenarios/agent-outlives-the-tab.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 2
+    }
+  },
+  "e2e/scenarios/agent-reads-earlier-attachment.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 1
+    }
+  },
+  "e2e/scenarios/agent-run-outlives-the-request.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 1
+    }
+  },
+  "e2e/scenarios/agent-stop-cancels-the-task.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 2
+    }
+  },
+  "e2e/scenarios/agent-turn-end-keeps-model-available.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 2
+    }
+  },
+  "e2e/scenarios/answer-footer-ran-on.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 2
+    }
+  },
+  "e2e/scenarios/attach-before-first-message.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 1
+    }
+  },
+  "e2e/scenarios/attached-html-readable.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 2
+    }
+  },
+  "e2e/scenarios/auto-repick.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 3
+    }
+  },
+  "e2e/scenarios/backup-lane.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 1
+    }
+  },
+  "e2e/scenarios/bring-your-own-text.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 7
+    }
+  },
+  "e2e/scenarios/calculate-tool.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 4
+    }
+  },
+  "e2e/scenarios/caret-citations.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 5
+    }
+  },
+  "e2e/scenarios/catalog-citations.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 3
+    }
+  },
+  "e2e/scenarios/chat-message-send.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 11
+    }
+  },
+  "e2e/scenarios/crisis-card-country.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 1
+    }
+  },
+  "e2e/scenarios/crisis-card-language.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 3
+    }
+  },
+  "e2e/scenarios/crisis-decline.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 2
+    }
+  },
+  "e2e/scenarios/crisis-line-order.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 1
+    }
+  },
+  "e2e/scenarios/crisis-number-guard.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 2
+    }
+  },
+  "e2e/scenarios/custodial-storage.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 3
+    }
+  },
+  "e2e/scenarios/document-attachments.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 10
+    }
+  },
+  "e2e/scenarios/empty-answer.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 2
+    }
+  },
+  "e2e/scenarios/gap-card-language.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 4
+    }
+  },
   "e2e/scenarios/helpers/test.ts": {
     "@eslint-community/eslint-comments/require-description": {
       "count": 1
+    }
+  },
+  "e2e/scenarios/identity-search.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 1
+    }
+  },
+  "e2e/scenarios/image-upload-unscanned.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 1
+    }
+  },
+  "e2e/scenarios/language-response.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 10
+    }
+  },
+  "e2e/scenarios/long-history-decline.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 5
+    }
+  },
+  "e2e/scenarios/loop-cut.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 3
+    }
+  },
+  "e2e/scenarios/math-routing.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 4
+    }
+  },
+  "e2e/scenarios/mcp-servers.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 5
+    }
+  },
+  "e2e/scenarios/message-too-long.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 8
+    }
+  },
+  "e2e/scenarios/missing-document.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 3
+    }
+  },
+  "e2e/scenarios/model-busy.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 2
+    }
+  },
+  "e2e/scenarios/model-picker.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 5
+    }
+  },
+  "e2e/scenarios/offline-mid-answer.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 5
+    }
+  },
+  "e2e/scenarios/one-chat-sandbox.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 1
+    }
+  },
+  "e2e/scenarios/opening-alpha.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 1
+    }
+  },
+  "e2e/scenarios/own-details-answered.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 3
+    }
+  },
+  "e2e/scenarios/past-chat-search.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 1
+    }
+  },
+  "e2e/scenarios/photo-question.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 15
+    }
+  },
+  "e2e/scenarios/production-promises.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 1
+    }
+  },
+  "e2e/scenarios/recited-preamble.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 4
+    }
+  },
+  "e2e/scenarios/reload-before-save.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 1
+    }
+  },
+  "e2e/scenarios/replay-miss-detector.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 1
+    }
+  },
+  "e2e/scenarios/report-a-problem.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 4
+    }
+  },
+  "e2e/scenarios/sandbox-call-hangs.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 1
+    }
+  },
+  "e2e/scenarios/sandbox-host-full-wait.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 1
+    }
+  },
+  "e2e/scenarios/sandbox-usage-tiers.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 1
+    }
+  },
+  "e2e/scenarios/searched-turn-timeout.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 1
+    }
+  },
+  "e2e/scenarios/second-chat-while-answering.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 4
+    }
+  },
+  "e2e/scenarios/sign-in.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 2
+    }
+  },
+  "e2e/scenarios/signed-in-turns.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 2
+    }
+  },
+  "e2e/scenarios/silent-primary-failover.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 2
+    }
+  },
+  "e2e/scenarios/slow-answer-finishes.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 2
+    }
+  },
+  "e2e/scenarios/slow-question-save.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 2
+    }
+  },
+  "e2e/scenarios/sources-pointer-language.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 4
+    }
+  },
+  "e2e/scenarios/stop-after-server-finished.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 1
+    }
+  },
+  "e2e/scenarios/stop-keeps-what-was-shown.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 1
+    }
+  },
+  "e2e/scenarios/storage-locations.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 1
+    }
+  },
+  "e2e/scenarios/stream-closes-mid-answer.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 2
+    }
+  },
+  "e2e/scenarios/stream-hidden-mid-answer.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 4
+    }
+  },
+  "e2e/scenarios/stream-resumes-mid-answer.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 6
+    }
+  },
+  "e2e/scenarios/tool-round-handoff.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 1
+    }
+  },
+  "e2e/scenarios/tool-round-retry.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 1
+    }
+  },
+  "e2e/scenarios/voice-and-attachments.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 7
+    }
+  },
+  "e2e/scenarios/when-a-reply-cant-come.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 9
+    }
+  },
+  "e2e/scenarios/where-alpha-runs.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 3
+    }
+  },
+  "e2e/scenarios/work-with-an-answer.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 6
+    }
+  },
+  "e2e/scenarios/xray-fact-check-count.spec.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 2
+    }
+  },
+  "e2e/tour/a2-a4-stage.tour.ts": {
+    "e2e/no-model-wording-assertion": {
+      "count": 3
     }
   },
   "src/lib/alpha-landing/AlphaSectionNav.svelte": {

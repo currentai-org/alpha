@@ -25,12 +25,15 @@ import asyncio
 import contextlib
 import json
 import os
+import shutil
+import tempfile
 import time
 import uuid
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 import acp
+import kilo_config
 import logsink
 from acp.schema import (
     AllowedOutcome,
@@ -118,6 +121,13 @@ def _pick_option(options, allow: bool) -> str:
         if str(getattr(o, "kind", "")).startswith(want):
             return getattr(o, "option_id", "")
     return getattr(options[0], "option_id", "allow") if options else "allow"
+
+
+# Which agent engine `_acp_run` drives: "hermes" (`hermes acp`, the default and what production runs) or "kilo"
+# (`kilo acp`, configured by kilo_config.py). Temporary, for the move to Kilo only: agent mode is meant to have
+# exactly one engine, and there is no pluggable harness to grow here. This switch, and the Hermes branch beside every `engine == "kilo"` test in
+# this file and app.py, are removed when Kilo becomes the only engine.
+ENGINES = ("hermes", "kilo")
 
 
 def _selected(option_id: str) -> RequestPermissionResponse:
@@ -325,14 +335,20 @@ _TEARDOWN_SECS = 10.0   # each step of ending a remote attempt (cancel, close) g
 
 
 @contextlib.asynccontextmanager
-async def _agent_connection(client, command: str, args: list[str], env: dict, work: str, open_stdio):
-    """An ACP connection to `hermes acp`. With no `open_stdio` it is the launch agent mode has always done,
-    bwrap prefix and all. With one, the sandbox backend starts the process from the bare Hermes argv
-    and owns where it runs, and only the ACP connection over its streams is built here."""
+async def _agent_connection(client, command: str, args: list[str], env: dict, work: str, open_stdio,
+                            args_file: str | None = None):
+    """An ACP connection to the agent's ACP server. With no `open_stdio` it is the launch agent mode has always
+    done, bwrap prefix and all. With one, the sandbox backend starts the process from the bare agent argv
+    and owns where it runs, and only the ACP connection over its streams is built here. `args_file` (Kilo's
+    control password under bwrap, `_password_args_file`) is removed however the launch ends, a failed spawn
+    included; Hermes passes none."""
     if open_stdio is None:
-        async with acp.spawn_agent_process(client, command, *args,  # pyright: ignore[reportArgumentType]
-                                           env=env, cwd=work) as pair:
-            yield pair
+        try:
+            async with acp.spawn_agent_process(client, command, *args,  # pyright: ignore[reportArgumentType]
+                                               env=env, cwd=work) as pair:
+                yield pair
+        finally:
+            _discard(args_file)
         return
     async with open_stdio([command, *args], env) as (reader, writer, proc):
         conn = acp.connect_to_agent(client, writer, reader)  # pyright: ignore[reportArgumentType]
@@ -354,6 +370,78 @@ def _acp_argv(sandbox_prefix: list[str], hermes_bin: str, accept_hooks: bool = T
     if sandbox_prefix:
         return sandbox_prefix[0], [*sandbox_prefix[1:], *tail]
     return tail[0], tail[1:]
+
+
+class KiloMissing(FileNotFoundError):
+    """AGENT_ENGINE=kilo, and the Kilo CLI is not where the agent would run. Raised before any session starts, so
+    the attempt fails at once with a reason that names the binary, rather than waiting out its clock on an ACP
+    handshake nothing will answer."""
+
+
+def _local_kilo(kilo_bin: str) -> str:
+    """The resolved path of the Kilo binary a local launch would run, refusing one it must not run.
+
+    Missing: KiloMissing. Readable by this user: PermissionError. `kilo acp` holds KILO_SERVER_PASSWORD, the key
+    to its local control API (`POST /permission/:id/reply`), and the agent's shell runs as the same uid. The
+    kernel keeps /proc/<kilo>/environ from that shell only when Kilo is non-dumpable, which it is when its
+    executable is not readable by the user running it (fs/exec.c would_dump). The service image installs it
+    root-owned 0711 for this."""
+    path = shutil.which(kilo_bin)
+    if not path:
+        raise KiloMissing(f"AGENT_ENGINE=kilo but the Kilo CLI {kilo_bin!r} is not on PATH here; install it "
+                          f"(agent-service/deploy/Dockerfile) or set KILO_BIN")
+    real = os.path.realpath(path)
+    if os.access(real, os.R_OK):
+        raise PermissionError(f"{real} is readable by this user, so `kilo acp` would be dumpable and the agent's "
+                              f"shell could read its control password from /proc; install it execute-only "
+                              f"(root-owned, chmod 0711)")
+    return real
+
+
+def _is_bwrap(sandbox_prefix: list[str]) -> bool:
+    return any(os.path.basename(a) == "bwrap" for a in sandbox_prefix)
+
+
+def _password_args_file(password: str) -> str:
+    """A 0600 file outside every sandbox holding bwrap `--args` input that sets KILO_SERVER_PASSWORD for Kilo.
+
+    In the launch environment instead, the password would sit in bwrap's own environ, and bwrap stays in the
+    sandbox as its PID 1, readable by the agent's shell (/proc/1/environ). Read from a descriptor, it is in no
+    process's environ or command line but Kilo's. `_acp_run` empties and removes the file once Kilo has
+    answered `initialize`, before the agent can run anything."""
+    fd, path = tempfile.mkstemp(prefix="kilo-args-")
+    with os.fdopen(fd, "wb") as f:
+        f.write(b"--setenv\0KILO_SERVER_PASSWORD\0" + password.encode() + b"\0")
+    return path
+
+
+def _discard(path: str | None) -> None:
+    if not path:
+        return
+    with contextlib.suppress(OSError):
+        os.truncate(path, 0)    # a descriptor bwrap left open in Kilo now reads nothing
+    with contextlib.suppress(OSError):
+        os.unlink(path)
+
+
+def _kilo_launch(attempt_home: str, agent_home: str, model: str, model_env: dict, permission_policy: str,
+                 sandbox_prefix: list[str], kilo_bin: str, local: bool) -> tuple[str, list[str], dict, str | None]:
+    """(command, args, env, args_file) for one Kilo attempt, with its config written into `attempt_home`.
+
+    `agent_home` is that same directory as Kilo will see it (the guest path on a remote sandbox). `local` is a
+    launch on this machine; a remote backend checks its own guest for the binary (app.py's Kilo opener)."""
+    base_url = model_env.get("HF_BASE_URL") or os.environ.get("AGENT_MODEL_BASE_URL", "")
+    kilo_config.write_config(attempt_home, model, base_url, permission_policy)
+    env = {**model_env, **kilo_config.kilo_env(agent_home)}
+    args_file = None
+    if local:
+        kilo_bin = _local_kilo(kilo_bin)
+        if _is_bwrap(sandbox_prefix):
+            args_file = _password_args_file(env.pop("KILO_SERVER_PASSWORD"))
+            loader = ["/bin/sh", "-c", 'exec "$@" 8<"$0"', args_file]
+            sandbox_prefix = [*loader, *sandbox_prefix, "--args", "8"]
+    command, args = kilo_config.kilo_argv(sandbox_prefix, kilo_bin)
+    return command, args, env, args_file
 
 
 _MODELS_DEV_OFFLINE_URL = "http://127.0.0.1:9/api.json"   # discard port: refused, so no timeout wait
@@ -460,8 +548,13 @@ class _AgentClient:
                  permission_policy: str = "allow",
                  confirm_timeout_secs: float = 45.0,
                  approval_mode: str = "ask",
-                 auto_reviewer: Callable[[dict], Awaitable[dict]] | None = None) -> None:
+                 auto_reviewer: Callable[[dict], Awaitable[dict]] | None = None,
+                 engine: str = "hermes") -> None:
         self.work = str(Path(work).resolve())
+        # Which engine is on the other end of the session (ENGINES). It changes three things only: how a
+        # permission option is picked (`_pick`), which kinds pause for a person (request_permission), and that
+        # Kilo's in-progress tool updates are not results (session_update).
+        self.engine = engine if engine in ENGINES else "hermes"
         # see APPROVAL_MODES. "auto" without a reviewer still decides edits by path and asks
         # about everything else, so a wiring miss costs cards, never an unreviewed shell command.
         self.approval_mode = approval_mode if approval_mode in APPROVAL_MODES else "ask"
@@ -523,6 +616,14 @@ class _AgentClient:
     @property
     def text(self) -> str:
         return "".join(self.text_parts)
+
+    def _pick(self, options, allow: bool) -> str:
+        """The option id that answers one permission request. On Kilo an allow is only ever `allow_once`, never
+        `allow_always`: Kilo turns an "always" reply into a session rule and stops asking for matching calls,
+        so later calls would pass our approval cards unseen (kilo_config.pick_option)."""
+        if self.engine == "kilo":
+            return kilo_config.pick_option(options, allow)
+        return _pick_option(options, allow)
 
     def _emit(self, etype: str, data: dict) -> None:
         if self._buf is not None:
@@ -631,8 +732,12 @@ class _AgentClient:
             # A completion status arrives here for plain tool calls, including execute, including a
             # turn's LAST call before it ends (see self.tool_failures above).
             tcid = getattr(update, "tool_call_id", None)
-            step = self._step_for(tcid)
             status = getattr(update, "status", None)
+            if self.engine == "kilo" and status in ("pending", "in_progress"):
+                # Kilo streams progress updates while a call runs (kilocode acp/tool.ts). They are not
+                # results: a tool_result frame for each would show a step as failed (ok=false) before it ended.
+                return
+            step = self._step_for(tcid)
             if status == "failed":
                 kind_of_call = self._call_kind.get(tcid)
                 if kind_of_call:
@@ -686,11 +791,15 @@ class _AgentClient:
         # floor keeps failing closed.
         self.permission_calls += 1
         kind = str(getattr(tool_call, "kind", "") or "")
-        if self.permission_policy == "deny_writes" and kind in _ALWAYS_CONFIRM_KINDS:
+        # On Kilo every request that reaches here is a person's call. kilo_config allows the read-only tools
+        # outright and sets everything else to `ask`, including tools it cannot name (an MCP tool, a tool a later
+        # Kilo adds), which arrive with kind "other". So no kind is auto-allowed by policy on this engine.
+        confirm_kind = self.engine == "kilo" or kind in _ALWAYS_CONFIRM_KINDS
+        if self.permission_policy == "deny_writes" and confirm_kind:
             self._log_permission(kind, "deny", "policy")
-            oid = _pick_option(options, allow=False)
+            oid = self._pick(options, allow=False)
             return _selected(oid)
-        if self.permission_policy == "confirm" or kind in _ALWAYS_CONFIRM_KINDS:
+        if self.permission_policy == "confirm" or confirm_kind:
             plain = None
             if self.approval_mode == "auto":
                 verdict = await self._auto_verdict(kind, tool_call)
@@ -699,12 +808,12 @@ class _AgentClient:
                                                  "plain": verdict["plain"], "by": verdict["by"],
                                                  "attempt": self._attempt})
                     self._log_permission(kind, "run", verdict["by"])
-                    return _selected(_pick_option(options, allow=True))
+                    return _selected(self._pick(options, allow=True))
                 plain = verdict["plain"] or None
                 self._log_permission(kind, "ask", verdict["by"])
             return await self._request_confirmation(options, tool_call, plain=plain)
         self._log_permission(kind, "allow", "policy")
-        oid = _pick_option(options, allow=True)
+        oid = self._pick(options, allow=True)
         return _selected(oid)
 
     async def _auto_verdict(self, kind: str, tool_call) -> dict:
@@ -823,7 +932,7 @@ class _AgentClient:
             kind = str(getattr(tool_call, "kind", "") or "")
             self.tool_failures.discard(kind)
             self.tool_kinds.add(kind)
-        oid = _pick_option(options, allow=decision == "allow")
+        oid = self._pick(options, allow=decision == "allow")
         return _selected(oid)
 
     async def write_text_file(self, content, path, session_id, **kw) -> WriteTextFileResponse:
@@ -908,6 +1017,9 @@ async def _acp_run(work: str, attempt_home: str, prompt: str, nonce, timeout_sec
                    session_cwd: str | None = None,
                    mcp_servers: list[HttpMcpServer] | None = None,
                    images: list[tuple[str, str]] | None = None,
+                   engine: str = "hermes",
+                   kilo_bin: str = "kilo",
+                   agent_home: str | None = None,
                    ) -> tuple[str, str | None, int | None]:
     """Drive one `hermes acp` session end to end. Returns (final_text, stop_reason, returncode).
 
@@ -946,25 +1058,41 @@ async def _acp_run(work: str, attempt_home: str, prompt: str, nonce, timeout_sec
     reverse). Forwarded onto the client below; see `_request_confirmation` for what they're called with.
 
     `mcp_servers` (inert if empty): ACP MCP server entries from `build_mcp_servers`, passed on
-    new_session. The caller decides whether this task gets them at all (app.py `_task_mcp_servers`)."""
-    _write_acp_config(attempt_home, model, provider)
-    _write_acp_toolsets(attempt_home, model_env.get("HERMES_ACP_TOOLSETS", ""))
+    new_session. The caller decides whether this task gets them at all (app.py `_task_mcp_servers`).
+
+    `engine` (ENGINES, temporary): "hermes" is everything above, unchanged. "kilo" drives `kilo acp` instead,
+    with its config from kilo_config.py written into `attempt_home`; `agent_home` is that directory as Kilo sees
+    it (the guest path when `open_stdio` runs it remotely), defaulting to `attempt_home`. A missing Kilo binary
+    raises KiloMissing before anything starts."""
+    if engine not in ENGINES:
+        raise ValueError(f"unknown agent engine {engine!r}; expected one of {ENGINES}")
+    args_file = None
+    if engine == "kilo":
+        command, args, model_env, args_file = _kilo_launch(
+            attempt_home, agent_home or attempt_home, model, model_env, permission_policy, sandbox_prefix,
+            kilo_bin, local=open_stdio is None)
+        # Kilo writes and reads files with its own tools, inside the sandbox. Offering the client fs methods would
+        # have this machine write the guest paths Kilo mirrors an approved edit to.
+        caps = ClientCapabilities(fs=FileSystemCapabilities(read_text_file=False, write_text_file=False))
+    else:
+        _write_acp_config(attempt_home, model, provider)
+        _write_acp_toolsets(attempt_home, model_env.get("HERMES_ACP_TOOLSETS", ""))
+        command, args = _acp_argv(sandbox_prefix, hermes_bin)
+        caps = ClientCapabilities(fs=FileSystemCapabilities(read_text_file=True, write_text_file=True))
+    if open_stdio is not None and sandbox_prefix:
+        raise ValueError("open_stdio owns where the agent runs; pass no sandbox_prefix with it")
     # on E2B, Hermes names its edits by guest path (/home/user/work/...), so the path check that
     # auto-approves an in-folder write has to measure against the guest's folder; against this machine's
     # scratch every such write would read as "outside" and go to a confirmation.
     client = _AgentClient(session_cwd or work, buf, attempt, emit_token=emit_token, token_max_frames=token_max_frames,
                           tool_kinds=tool_kinds, tool_failures=tool_failures,
                           permission_policy=permission_policy, confirm_timeout_secs=confirm_timeout_secs,
-                          approval_mode=approval_mode, auto_reviewer=auto_reviewer)
+                          approval_mode=approval_mode, auto_reviewer=auto_reviewer, engine=engine)
     client.task_id = str(getattr(task, "id", "") or "")
     client.on_confirmation_open = on_confirmation_open
     client.on_confirmation_close = on_confirmation_close
     if policy_detail is not None:
         client.emit_policy(policy_detail)
-    if open_stdio is not None and sandbox_prefix:
-        raise ValueError("open_stdio owns where Hermes runs; pass no sandbox_prefix with it")
-    command, args = _acp_argv(sandbox_prefix, hermes_bin)
-    caps = ClientCapabilities(fs=FileSystemCapabilities(read_text_file=True, write_text_file=True))
     loop = asyncio.get_running_loop()
     prompt_task: asyncio.Task | None = None
     debounce = _EarlyExitDebounce(verify_check)
@@ -1005,7 +1133,7 @@ async def _acp_run(work: str, attempt_home: str, prompt: str, nonce, timeout_sec
     # _AgentClient implements the handlers acp actually calls, but does not inherit acp.Client, so it
     # is a structural mismatch to the annotation while being the correct object to pass. Inheriting
     # would drag in the full abstract surface for no runtime gain.
-    async with _agent_connection(client, command, args, model_env, work, open_stdio) as (conn, proc):
+    async with _agent_connection(client, command, args, model_env, work, open_stdio, args_file) as (conn, proc):
         task._acp_cancel = _cancel_soon
         task._acp_confirm = _confirm_soon
         stderr_task = loop.create_task(_drain_stderr(proc, task.id, attempt, nonce))
@@ -1016,6 +1144,7 @@ async def _acp_run(work: str, attempt_home: str, prompt: str, nonce, timeout_sec
             clock = _AttemptClock(loop, timeout_secs, hard_timeout_secs)
             await asyncio.wait_for(conn.initialize(protocol_version=1, client_capabilities=caps),
                                    max(0.0, clock.ends_at() - loop.time()))
+            _discard(args_file)   # Kilo answered, so bwrap has read it; a no-op for Hermes
             # A guest Hermes starts every `terminal` command in the session's cwd. `work` is this machine's
             # folder, which does not exist in a sandbox, so a remote run passes the guest's own.
             # operator-configured MCP servers ride new_session; Hermes registers them and adds an

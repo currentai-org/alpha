@@ -144,7 +144,8 @@ services:
   # before anyone else uses the stack.
   #
   # One image runs agent-init (which builds it), gateway and agent, and is also the image each sandbox container
-  # starts from (it carries the agent runtime, Hermes). Built here, so the sandbox image is named by tag, not digest.
+  # starts from (it carries the agent engine, Kilo, and Hermes until the move to Kilo finishes). Built here, so the
+  # sandbox image is named by tag, not digest.
   # agent-init makes the secrets the first time the stack starts, keeps them in the agent-secrets volume
   # and never overwrites them: a random key that signs the token web sends (agent-service accepts only a
   # token signed with it) and a random key the agent and the gateway share. Nothing is checked in or
@@ -233,6 +234,10 @@ services:
       # The model chat answers with; set AGENT_MODEL in .env to run tasks on another model your endpoint serves.
       AGENT_MODEL: ${AGENT_MODEL:-${LOCAL_MODEL_ALIAS:-qwen2.5-0.5b-instruct}}
       AGENT_ACP: "1"
+      # The engine that drives each task inside the sandbox: Kilo (Kilo-Org/kilocode, MIT) over ACP, installed
+      # execute-only in this image. Our hosted service still runs Hermes until the move finishes;
+      # AGENT_ENGINE=hermes in .env runs that one here too.
+      AGENT_ENGINE: ${AGENT_ENGINE:-kilo}
       AGENT_DB_PATH: /data/tasks.db
       # Tasks are not screened: the service's screen is chat's own endpoint, which a self-host does not point it
       # at. Left unset the service refuses every task, so it is off here, and the README says so.

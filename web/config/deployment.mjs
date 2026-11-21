@@ -12,8 +12,7 @@ const webDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
  * @param {Record<string, string | undefined>} [env]
  */
 export function readDeploymentFile(env = process.env) {
-	const named = env.DEPLOYMENT_CONFIG?.trim();
-	const path = resolve(webDir, named || 'config/deployment.json');
+	const { named, path } = deploymentFilePath(env);
 	if (!existsSync(path)) {
 		if (named) throw new Error(`DEPLOYMENT_CONFIG="${named}" names no file (looked for ${path})`);
 		return {};
@@ -23,4 +22,14 @@ export function readDeploymentFile(env = process.env) {
 		throw new Error(`${path} must hold a JSON object`);
 	}
 	return value;
+}
+
+/**
+ * Which file is the identity file: DEPLOYMENT_CONFIG's, else config/deployment.json, resolved against
+ * web/. `named` is the DEPLOYMENT_CONFIG value, or undefined when it is unset.
+ * @param {Record<string, string | undefined>} [env]
+ */
+export function deploymentFilePath(env = process.env) {
+	const named = env.DEPLOYMENT_CONFIG?.trim() || undefined;
+	return { named, path: resolve(webDir, named || 'config/deployment.json') };
 }

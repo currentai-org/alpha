@@ -87,6 +87,25 @@ RUN hermes --version && hermes acp --check \
 # `|| true`: a file that stops compiling should fail the build, not quietly bring the cost back.
 RUN python -m compileall -q -j 0 /opt/hermes
 
+# Kilo's CLI (Kilo-Org/kilocode, MIT), the agent engine agent mode moves to. Installed beside Hermes and not yet
+# run by anything: Hermes stays the engine until the service is switched over. Pinned to an exact release and
+# checked against the sha512 npm publishes for that release's platform package, so a re-published or tampered
+# tarball fails the build. To move it: set KILO_VERSION, then both digests from
+# `npm view @kilocode/cli-linux-<x64|arm64>@<version> dist.integrity` (base64; this file holds them as hex).
+ARG KILO_VERSION=7.8.27
+ARG KILO_SHA512_X64=7f56eceebf11f180623b67c84331081fdc24129c7dac5e83a2e00a46d880f7736b3c3e1ebe284878bb30c418af8bcadb4a3d6c4e9b94530e2d6e1c20b13c1fb7
+ARG KILO_SHA512_ARM64=ad262e0188e21c15909ac864e2fbad36aab2f25b0da60ad1a53c14239df4e0620a666ddea0942c9d2665f25bf9d7dd029391dcdadeba394a1ec6774c200a4feb
+# The platform package is the binary plus the files it loads beside it, so the whole bin directory goes to
+# /opt/kilo and only `kilo` is put on PATH; our sandbox keeps using the distribution's /usr/bin/bwrap.
+# Execute-only (0711): an executable its user cannot read makes the process non-dumpable, so the agent's shell,
+# running as the same uid, cannot read `kilo acp`'s environment, which will hold the password to Kilo's local
+# control API. The last line fails the build unless the `kilo` on PATH is the pinned release.
+RUN python -c "import hashlib, io, platform, sys, tarfile, urllib.request; v, want = sys.argv[1], dict(x64=sys.argv[2], arm64=sys.argv[3]); a = dict(x86_64='x64', aarch64='arm64')[platform.machine()]; url = f'https://registry.npmjs.org/@kilocode/cli-linux-{a}/-/cli-linux-{a}-{v}.tgz'; d = urllib.request.urlopen(url, timeout=300).read(); got = hashlib.sha512(d).hexdigest(); sys.exit(f'{url}: sha512 {got} is not the pinned {want[a]}') if got != want[a] else None; tarfile.open(fileobj=io.BytesIO(d)).extractall('/tmp/kilo', filter='data')" "${KILO_VERSION}" "${KILO_SHA512_X64}" "${KILO_SHA512_ARM64}" \
+    && mv /tmp/kilo/package/bin /opt/kilo && rm -rf /tmp/kilo \
+    && chmod 0711 /opt/kilo/kilo && ln -s /opt/kilo/kilo /usr/local/bin/kilo \
+    && got="$(kilo --version)" && echo "kilo --version: $got" \
+    && { [ "$got" = "${KILO_VERSION}" ] || { echo "kilo on PATH is not the pinned ${KILO_VERSION}" >&2; exit 1; }; }
+
 # Non-root by default (defense-in-depth) AND required for bwrap in a container: tested under Docker, the
 # agent (uid 10001) uses bwrap's unprivileged user-namespace path; root instead takes the privileged mount
 # path which fails "make / slave: EPERM" inside a container. Fly's Firecracker is a real-kernel microVM, so

@@ -8,6 +8,7 @@ import globals from 'globals';
 import ts from 'typescript-eslint';
 import { noDiscardedEffectRoot } from './eslint-rules/no-discarded-effect-root.js';
 import { noChatPathLiteral } from './eslint-rules/no-chat-path-literal.js';
+import { noModelWordingAssertion } from './eslint-rules/no-model-wording-assertion.js';
 import { noHostEnvRead, RUNTIME_ENV_MODULE } from './eslint-rules/no-host-env-read.js';
 import alphaDs, {
 	internal as alphaDsInternal,
@@ -325,7 +326,11 @@ export default defineConfig(
 		// built (`test.use({ viewport })`, or a `projects` entry in e2e/playwright.config.ts) and the
 		// recording matches the page.
 		files: ['e2e/**/*.ts'],
+		// A spec that reads an assistant message's text grades the model's wording, which changes
+		// between runs; eslint-rules/no-model-wording-assertion.js says what to assert on instead.
+		plugins: { e2e: { rules: { 'no-model-wording-assertion': noModelWordingAssertion } } },
 		rules: {
+			'e2e/no-model-wording-assertion': 'error',
 			'no-restricted-syntax': [
 				'error',
 				{

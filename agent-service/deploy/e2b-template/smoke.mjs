@@ -12,6 +12,7 @@ try {
   }
   await run('hermes --version')
   await run('hermes acp --check && echo acp-ok')
+  await run('kilo --version')
   // Every library in guest-libraries.txt: a template missing one, or one whose wheel installs but fails to import,
   // fails its build here, not a person's task.
   await run('python3 -c "import numpy, pandas, matplotlib, openpyxl, docx, reportlab, pptx, pypdf, xlsxwriter, scipy, sklearn, skimage, seaborn, plotly, bokeh, cv2, sympy, statsmodels, networkx, bs4, lxml, PIL, spacy, nltk, librosa, xarray, aiohttp, imageio, joblib, numba, pytest, pytz, requests, soundfile, textblob, urllib3, xlrd, tabulate; print(numpy.__version__)"')

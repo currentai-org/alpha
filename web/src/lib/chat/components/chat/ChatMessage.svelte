@@ -770,6 +770,18 @@ Modified by Current AI from huggingface/chat-ui.
 		class="group relative flex w-full max-w-full items-start justify-start leading-relaxed"
 		data-message-id={message.id}
 		data-message-role="assistant"
+		data-safety-decline={message.moderation?.flagged
+			? 'input'
+			: message.outputModeration?.flagged
+				? 'output'
+				: 'none'}
+		data-safety-rule={message.moderation?.flagged
+			? message.moderation.ruleLabels?.length
+				? message.moderation.ruleLabels.join(', ')
+				: message.moderation.ruleLabel
+			: message.outputModeration?.flagged
+				? message.outputModeration.ruleLabel
+				: undefined}
 		role="presentation"
 		onclick={() => (isTapped = !isTapped)}
 		onkeydown={() => (isTapped = !isTapped)}

@@ -25,7 +25,7 @@ is Current AI's.
 | Markdown block splitter | [vercel/streamdown](https://github.com/vercel/streamdown) `parse-blocks.tsx`, Copyright 2023 Vercel, Inc. | Apache-2.0 | `web/src/lib/chat/utils/parseBlocks.ts` (upstream header kept) |
 | Tool-run summary table | [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) `summarizeToolRun`, Copyright (c) 2025 Nous Research | MIT (text below) | `web/src/lib/chat/utils/trace/toolRunSummary.ts` |
 | ACP edit-approval patch | hermes-agent, Copyright (c) 2025 Nous Research | MIT (text below) | `agent-service/deploy/hermes/0002-acp-confirm-execute.patch` |
-| SvelteKit status patch | [sveltejs/kit](https://github.com/sveltejs/kit) 2.70.3 | MIT | `web/patches/@sveltejs__kit@2.70.3.patch` |
+| SvelteKit status patch | [sveltejs/kit](https://github.com/sveltejs/kit) 2.70.4 | MIT | `web/patches/@sveltejs__kit@2.70.4.patch` |
 | Guest-library list for the code sandbox | e2b-dev/code-interpreter `template/requirements.txt` | Apache-2.0 | `agent-service/deploy/e2b-template/guest-libraries.txt` (a list of package names) |
 
 ## Prompt and evaluation text taken from elsewhere

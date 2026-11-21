@@ -32,7 +32,7 @@
 		"tailwind-variants": "^3.3.1"
 	},
 	"devDependencies": {
-		"@sveltejs/kit": "^2.70.3",
+		"@sveltejs/kit": "^2.70.4",
 		"@vitest/browser-playwright": "^4.1.11",
 		"svelte": "^5.57.0",
 		"vitest": "^4.1.11",

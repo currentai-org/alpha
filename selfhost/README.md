@@ -70,6 +70,9 @@ starts agent-service, its model gateway and a socket proxy beside the app, and w
   the `agent-token` volume. Agent-service is not published on the host and refuses any call without that
   token. `docker volume rm alpha_agent-secrets alpha_agent-token` makes new ones on the next start. To use
   an agent-service of your own instead, set `AGENT_SERVICE_URL` and `AGENT_SERVICE_TOKEN` in `.env`.
+- **The engine is Kilo.** Each task is driven by Kilo (Kilo-Org/kilocode, MIT) over ACP, inside the
+  sandbox, pointed at your endpoint through the gateway; it needs no Kilo account.
+  `AGENT_ENGINE=hermes` in `.env` runs the previous engine instead.
 - **The model is the one chat uses.** The gateway forwards to `OPENAI_BASE_URL` with `OPENAI_API_KEY`. The
   agent's sandbox never holds that key: it holds a one-task grant the gateway honours.
 - **What the sandbox isolates.** Each conversation's agent runs in a container of its own: a non-root user,

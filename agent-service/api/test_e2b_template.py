@@ -12,8 +12,8 @@ def _arg(dockerfile: Path, name: str) -> str:
     return m.group(1)
 
 
-def test_the_sandbox_image_pins_the_hermes_the_service_image_pins():
-    for name in ("HERMES_GIT_URL", "HERMES_SHA"):
+def test_the_sandbox_image_pins_the_hermes_and_kilo_the_service_image_pins():
+    for name in ("HERMES_GIT_URL", "HERMES_SHA", "KILO_VERSION", "KILO_SHA512_X64", "KILO_SHA512_ARM64"):
         assert _arg(DEPLOY / "e2b-template" / "Dockerfile", name) == _arg(DEPLOY / "Dockerfile", name)
 
 
@@ -49,3 +49,12 @@ def test_a_client_that_names_no_template_gets_the_one_the_build_script_builds():
     m = re.search(r"E2B_TEMPLATE_ALIAS \|\| '([\w-]+)'", (DEPLOY / "e2b-template" / "build.mjs").read_text())
     assert m, "build.mjs no longer names its default alias"
     assert E2BConfig(api_url="http://e2b.invalid", api_key="k").template == m.group(1)
+
+
+def test_the_service_image_pins_kilo_to_one_release_and_its_digests():
+    """Kilo is installed beside Hermes at an exact release, checked against npm's sha512 for each platform
+    package; a range, a tag like `latest` or a missing digest would let the build pick up another binary."""
+    dockerfile = DEPLOY / "Dockerfile"
+    assert re.fullmatch(r"\d+\.\d+\.\d+", _arg(dockerfile, "KILO_VERSION"))
+    for arch in ("X64", "ARM64"):
+        assert re.fullmatch(r"[0-9a-f]{128}", _arg(dockerfile, f"KILO_SHA512_{arch}"))

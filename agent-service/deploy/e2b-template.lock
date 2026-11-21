@@ -1,4 +1,4 @@
 # Digest of the E2B template's build inputs, as last rebuilt on the hosts (scripts/e2b_template_lock.py).
 # Move it only after the `hermes` template has been rebuilt from these inputs: build-on-host.sh on the develop
 # host, and on production's before the change is promoted. Then `python scripts/e2b_template_lock.py --write`.
-inputs = 2704ddd7431f45b7989e005fe93a4f8276cf0c3f0c714e087a6608a8a2262c8e
+inputs = e897b16400309523dc19dddf8665567a000a22f6d47a7b8fe150cb6183599798

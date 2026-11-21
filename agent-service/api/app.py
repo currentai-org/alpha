@@ -95,6 +95,20 @@ ALLOWED_TOOLSETS = os.environ.get("AGENT_TOOLSETS", "terminal")          # restr
 # an observable per-tool-call gate. Default OFF — the proven oneshot path stays default until ACP is soaked.
 # The whole ACP module is imported lazily inside _run so flag-off never needs the `acp` package installed.
 AGENT_ACP = os.environ.get("AGENT_ACP", "") == "1"
+# Which engine drives an ACP attempt: "hermes" (the default, and what production runs) or "kilo" (`kilo acp`,
+# configured by kilo_config.py). TEMPORARY. It exists only for the move to Kilo, so Kilo can be run and measured
+# beside Hermes before it replaces it; agent mode keeps one engine and is not a pluggable harness. Removed, with
+# every Hermes branch it selects, when Kilo becomes the only engine. Unset, nothing about a run changes, and
+# /healthz reports no `engine` field. Kilo runs only over ACP, so "kilo" with AGENT_ACP off refuses to start, as
+# does any value but the two.
+_AGENT_ENGINE_RAW = os.environ.get("AGENT_ENGINE", "").strip().lower()
+AGENT_ENGINE = _AGENT_ENGINE_RAW or "hermes"
+if AGENT_ENGINE not in ("hermes", "kilo"):
+    raise RuntimeError(f"AGENT_ENGINE={_AGENT_ENGINE_RAW!r}: expected 'hermes' (the default) or 'kilo'")
+if AGENT_ENGINE == "kilo" and not AGENT_ACP:
+    raise RuntimeError("AGENT_ENGINE=kilo needs AGENT_ACP=1: Kilo runs only over ACP")
+# The Kilo CLI on this machine, for a local launch; a remote sandbox runs the guest's own `kilo` on its PATH.
+KILO_BIN = os.environ.get("KILO_BIN", "kilo")
 # ACP tool-permission policy, one of:
 #   allow        no policy refusal; edit/delete/execute calls still go to a human (_ALWAYS_CONFIRM_KINDS).
 #   deny_writes  file edits are refused (see below for exactly which).
@@ -696,6 +710,33 @@ def _remote_hermes_opener(h: Handle, local_home: str, remote_rel: str):
     async def opener(argv: list[str], env: dict[str, str]):
         await asyncio.to_thread(push)  # each write is a round trip to the sandbox host
         async with SANDBOX_BACKEND.open_stdio(h, argv, env) as streams:
+            yield streams
+    return opener
+
+
+def _remote_kilo_opener(h: Handle, local_home: str, remote_rel: str, kilo_bin: str = "kilo"):
+    """`open_stdio` for a Kilo attempt on a remote backend: the Hermes opener's copy-then-launch, after checking
+    the guest has Kilo at all. A template built before Kilo was added to it would otherwise start a command that
+    exits 127, and the attempt would fail on a closed ACP stream with no word of why. Here it fails before
+    anything is copied, with an error naming the binary.
+
+    On E2B the launch is `exec`ed: envd starts a command in a shell, and that shell would otherwise stay as
+    Kilo's parent holding `env`, the control password included, in a /proc/<pid>/environ the agent's shell can
+    read. The other backends start argv directly, with no shell to replace."""
+    from contextlib import asynccontextmanager
+
+    import acp_client
+    hermes_opener = _remote_hermes_opener(h, local_home, remote_rel)
+
+    @asynccontextmanager
+    async def opener(argv: list[str], env: dict[str, str]):
+        probe = await asyncio.to_thread(SANDBOX_BACKEND.exec, h, ["sh", "-c", 'command -v "$1"', "sh", kilo_bin], 30)
+        if probe.code != 0 or not probe.stdout.strip():
+            raise acp_client.KiloMissing(
+                f"AGENT_ENGINE=kilo but the sandbox has no Kilo CLI: {kilo_bin!r} is not on the guest's PATH "
+                f"(exit {probe.code}); rebuild the sandbox template with Kilo installed")
+        launch = ["exec", *argv] if SANDBOX_BACKEND.name == "e2b" else argv
+        async with hermes_opener(launch, env) as streams:
             yield streams
     return opener
 
@@ -6002,13 +6043,17 @@ def _execute_attempt(
             remote = task._sbx is not None
             review_work = ((RemoteWork(SANDBOX_BACKEND, task._sbx, _remote_work()) if task._sbx is not None else work)
                            if task._approval_mode == "auto" else None)
+            kilo = AGENT_ENGINE == "kilo"   # temporary switch, see AGENT_ENGINE
+            opener = _remote_kilo_opener if kilo else _remote_hermes_opener
             stdout, acp_stop, ret = asyncio.run(acp_client._acp_run(
                 work, attempt_home, attempt_prompt, nonce, timeout_secs, buf, task,
                 sandbox_prefix=[] if remote else sandbox, hermes_bin="hermes" if remote else HERMES_BIN,
                 model_env=(_remote_model_env(f"{_remote_work()}/{remote_rel}", permission_policy, nonce or "") if remote
                            else _model_env(nonce, attempt_home, permission_policy)),
-                open_stdio=(_remote_hermes_opener(task._sbx, attempt_home, remote_rel)  # pyright: ignore[reportArgumentType]
+                open_stdio=(opener(task._sbx, attempt_home, remote_rel)  # pyright: ignore[reportArgumentType]
                             if remote and task._sbx is not None else None),
+                **({"engine": "kilo", "kilo_bin": "kilo" if remote else KILO_BIN,
+                    "agent_home": f"{_remote_work()}/{remote_rel}" if remote else attempt_home} if kilo else {}),
                 session_cwd=_remote_work() if remote else None,
                 model=task.model or AGENT_MODEL, provider=AGENT_MODEL_PROVIDER, attempt=attempts,
                 verify_check=verify_check, repair_check=repair_check,
@@ -6159,6 +6204,11 @@ def _run(task: Task) -> None:
         # _use_acp: single-path default is ACP, transport="oneshot" is the explicit opt-out.
         use_acp = AGENT_ACP and _use_acp(task._transport)
         task.transport_used = "acp" if use_acp else "oneshot"   # observability: which path this task actually took
+        if AGENT_ENGINE == "kilo" and not use_acp:
+            # The oneshot path is `hermes -z`; running it here would quietly swap the engine this deploy chose.
+            task.error, task.summary, task.state = ("AGENT_ENGINE=kilo runs only over ACP; the oneshot transport "
+                                                    "is Hermes"), "failed: transport", State.FAILED
+            return
         ws: str | RemoteWork = work                         # where the agent's files are; the guest's, when remote
         if SANDBOX_BACKEND.name != "bwrap":
             # Hermes runs in the conversation's own sandbox, which only the ACP path can drive and
@@ -8254,6 +8304,8 @@ def healthz() -> dict[str, object]:
         "api": API_VERSION, "build": BUILD_SHA or "unknown",
         "model": AGENT_MODEL or "unset", "compute_provider": _effective_compute_provider() or "unset",
         "hermes": "configured" if (shutil.which(HERMES_BIN) or Path(HERMES_BIN).exists()) else "MISSING",
+        # Only when AGENT_ENGINE is set, so a deployment that never sets it reports the fields it always did.
+        **({"engine": AGENT_ENGINE} if _AGENT_ENGINE_RAW else {}),
         "toolsets": ALLOWED_TOOLSETS, "toolsets_effective": _effective_toolsets(),
         # The four knobs that most change what a USER experiences, and none of them
         # is otherwise visible from outside. Without them nobody can

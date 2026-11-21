@@ -1335,7 +1335,7 @@ test(
 
 // A /chat page streams its response, because the chat layout returns the sidebar's conversations as
 // a promise, and SvelteKit 2.x built a streamed response without the page's status, so a page that
-// threw `error(404)` rendered Not found and answered 200. `patches/@sveltejs__kit@2.70.3.patch` passes
+// threw `error(404)` rendered Not found and answered 200. `patches/@sveltejs__kit@2.70.4.patch` passes
 // the status through, as SvelteKit 3 does; this test goes red if a SvelteKit bump drops it.
 test(
 	'with org creation off, the invitation page answers HTTP 404, not only a page that says Not found',

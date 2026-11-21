@@ -16,3 +16,4 @@ agents-md-refs	/CONTRIBUTING.md	points readers at the public AGENTS.md
 agents-md-refs	.github/leak-check/allow.tsv	this list, shipped for the public repo's leak check, names the paths and gives each reason
 personal-emails	.github/leak-check/allow.tsv	the same list: a reason quotes the synthetic address its spec uses
 profanity	.github/leak-check/allow.tsv	the same list: a path names the third-party domain it allows
+staff-names	web/src/lib/chat/server/rag/data/catalog-entities.json	generated from the public gap-map catalog; first names there belong to third-party projects and their maintainers, not staff

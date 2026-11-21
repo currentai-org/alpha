@@ -166,9 +166,8 @@ sits in this patch's own diff context.
   egress and the Plane B app is credential-free. `entrypoint.sh` installs default-deny egress so the
   agent's only outbound is the gateway (the network half of the exfil control). `deploy/aws/` stands the
   pair up on EC2 beside the E2B hosts.
-- **`fly/`** — the Fly app configs and deploy scripts the hosted service runs on (`fly/deploy.sh`
-  creates and configures an app pair). See
-  `fly/DEPLOY.md`.
+- **`fly/`** — the retired Fly app configs and deploy scripts. The hosted service deploys to AWS
+  (`deploy/aws/agent/`); `fly/verify-deploy.sh` and `fly/mint-token.sh` are still used there.
 
 ## Giving agent mode an MCP server
 

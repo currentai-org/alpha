@@ -1,6 +1,6 @@
 # Deploy — one image, two roles (Plane A gateway + Plane B execution)
 
-Fly deploys: `../fly/DEPLOY.md`. EC2 deploys beside the E2B hosts: `aws/agent/README.md`.
+Deploys: `aws/agent/README.md`, EC2 beside the E2B hosts, the only deploy path. The Fly tooling in `../fly/` is retired.
 
 One image serves both roles:
 
