@@ -113,6 +113,20 @@ export function handedOffAgentRun(updates: MessageUpdate[] | undefined): boolean
 }
 
 /**
+ * Is this tab's own request still delivering a turn that hands its agent run off? The server ends
+ * such a turn with an interrupted final answer while the run goes on; once the request closes, the
+ * page drops that answer and follows the run. Between the final answer arriving and the
+ * request closing, the turn reads as interrupted, so the page would show Retry on a run that is still
+ * going, with its approval card still open. This keeps the turn loading through that window. A request
+ * that has closed answers false, so a handed-off run the page does not follow still settles.
+ */
+export function ownRequestHandingOff(messages: Message[], requestInFlight: boolean): boolean {
+	if (!requestInFlight) return false;
+	const lastAssistant = messages.findLast((message) => message.from === "assistant");
+	return handedOffAgentRun(lastAssistant?.updates);
+}
+
+/**
  * When a page stops re-attaching to an agent run: the run's ceiling, counted from when its
  * answer was first written. An attach keeps the answer's `createdAt`, so this is the run's own start,
  * not the latest re-attach. A message with no readable start counts from `now`. With `agent-run-handoff`

@@ -429,13 +429,14 @@ export function claimedActionOnContinuedSession(
  */
 /**
  * The answer for an agent turn that ended while `pending` approval cards were still unanswered.
- * The turn stopped because nobody answered, so the answer says that, rather than that
- * the run was "stopped", which reads as though something else ended it.
+ * The run waits at the card, then pauses there rather than go ahead, so the answer says it paused
+ * and points at the Retry the page shows under it (ChatMessage's paused notice), rather than that
+ * the run was "stopped" or "denied", which read as though someone said no.
  */
 function unansweredApprovalAnswer(pending: number): string {
 	return pending === 1
-		? "No answer arrived in time for the agent's approval request, so it was denied and the run ended. Ask again to run it afresh."
-		: `No answer arrived in time for the agent's ${pending} approval requests, so they were denied and the run ended. Ask again to run it afresh.`;
+		? "Paused: the agent waited for your approval and nobody answered in time, so it didn't go ahead. Retry when you're back to run it again."
+		: `Paused: the agent waited for your approval on ${pending} steps and nobody answered in time, so it didn't go ahead. Retry when you're back to run it again.`;
 }
 
 /** What an agent turn's answer says once the run outlasts the request and is handed to the page.

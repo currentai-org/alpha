@@ -187,7 +187,7 @@ test(
 // whose text has not yet caught up with the answer on screen, and it has to show there and then; the
 // request reading the run when the card is answered or unanswered must hand it off again rather than
 // deny the card and cancel the run. Before the fix the card stayed hidden and chat's watchdog denied it
-// with "No answer arrived in time".
+// with an unanswered-approval answer.
 test(
 	'an approval asked for after the run is handed off shows its card in the same tab, takes Allow, and the run finishes',
 	{
@@ -217,7 +217,7 @@ test(
 			nonce,
 			'after Allow the run never finished on the page that sent it'
 		);
-		await expect(page.getByText(/No answer arrived in time/)).toHaveCount(0);
+		await expect(page.getByText(/answered in time/)).toHaveCount(0);
 		expect(
 			counter.sends,
 			'the run finished inside one re-attach, so no request handed it off with the card open'

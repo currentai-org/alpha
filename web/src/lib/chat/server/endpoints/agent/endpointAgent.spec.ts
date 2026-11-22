@@ -973,7 +973,7 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 			};
 		}
 
-		it("the watchdog ending a turn nobody answered resolves every open card as a timed-out deny, and the answer names the unanswered approvals, not a stop", async () => {
+		it("the watchdog ending a turn nobody answered resolves every open card as timed out, and the answer says the run paused for a Retry, not that it was stopped", async () => {
 			const { results, final } = await turnEndedBy(
 				(ctrl) => ctrl.abort(new GenerationWatchdogAbort()),
 				["c1", "c2", "c3"]
@@ -983,7 +983,8 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 				{ confirmId: "c2", decision: "deny", reason: "timeout" },
 				{ confirmId: "c3", decision: "deny", reason: "timeout" },
 			]);
-			expect(final).toContain("No answer arrived in time for the agent's 3 approval requests");
+			expect(final).toContain("the agent waited for your approval on 3 steps and nobody answered in time");
+			expect(final).toContain("Retry");
 			expect(final).not.toContain("stopped before it finished");
 
 			// Folded the way streamUpdate folds it, the persisted card reads as timed out on reload too.
@@ -1008,7 +1009,7 @@ describe("endpointAgent (unit, mocked agent service)", () => {
 		it("names a single unanswered approval in the singular", async () => {
 			const { results, final } = await turnEndedBy((ctrl) => ctrl.abort(new GenerationWatchdogAbort()), ["c1"]);
 			expect(results).toEqual([{ confirmId: "c1", decision: "deny", reason: "timeout" }]);
-			expect(final).toContain("No answer arrived in time for the agent's approval request, so it was denied");
+			expect(final).toContain("Paused: the agent waited for your approval and nobody answered in time");
 		});
 	});
 
@@ -3651,7 +3652,7 @@ describe("an agent run longer than one request is handed off to the page, not cu
 		const terminal = chunks.at(-1);
 		expect(terminal?.agentHandoff).toBe(true);
 		expect(terminal?.generated_text).toContain(AGENT_HANDOFF_TEXT);
-		expect(terminal?.generated_text).not.toContain("No answer arrived in time");
+		expect(terminal?.generated_text).not.toContain("nobody answered in time");
 	});
 
 	it("an approval card on a handed-off run that runs out agent-service's clock unanswered ends the turn: the run is canceled and the answer says the approval went unanswered", async () => {
@@ -3700,7 +3701,7 @@ describe("an agent run longer than one request is handed off to the page, not cu
 
 		const terminal = chunks.at(-1);
 		expect(terminal?.agentHandoff).toBeUndefined();
-		expect(terminal?.generated_text).toContain("No answer arrived in time for the agent's approval request");
+		expect(terminal?.generated_text).toContain("Paused: the agent waited for your approval and nobody answered in time");
 		expect(terminal?.generated_text).not.toContain(AGENT_HANDOFF_TEXT);
 		expect(chunks.filter((c) => c.agentConfirmResult).map((c) => c.agentConfirmResult)).toEqual([
 			{ confirmId: "c1", decision: "deny", reason: "timeout" },

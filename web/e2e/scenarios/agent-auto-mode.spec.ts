@@ -1,7 +1,7 @@
 // e2e-product: @chat
 // e2e-area: @agent
 import { randomBytes } from 'node:crypto';
-import type { Page } from '@playwright/test';
+import type { BrowserContext, Page } from '@playwright/test';
 import { test, expect } from './helpers/test';
 import { chatEntry, chatPath } from './helpers/chatEntry';
 import { setFlagOverrides } from './helpers/flagOverride';
@@ -243,42 +243,72 @@ test(
 
 // A card nobody answers. The turn ends when the card does: the route's watchdog ends a run that was not
 // handed off, and a handed-off run ends when agent-service denies the card at its own 180s timeout. The
-// person must be told that the approval went unanswered: the card reads as a timed-out deny and the answer
-// names the unanswered approval, never "stopped" or "Canceled.", which read as though someone else
-// ended the run.
+// person must be told the run paused at the card: the card says so, the answer says nobody answered in
+// time, never "stopped" or "Canceled.", and the turn's one Retry runs it again to the same card.
+/** Sends a make-a-file request with Ask before every step on, leaves its approval card unanswered until the
+ *  turn ends, and checks the turn reads as paused with exactly one Retry. Returns that Retry. */
+async function leaveTheCardUnanswered(page: Page, context: BrowserContext, baseURL: string) {
+	await setFlagOverrides(context, baseURL, {
+		'agent-mode': true,
+		'agent-auto-mode': true
+	});
+	const composer = await agentOn(page, () => askEveryStep(page));
+	const nonce = randomBytes(6).toString('hex');
+	const turn = await send(
+		page,
+		composer,
+		`Create a text file named plan-${nonce}.txt whose only line is: potluck ${nonce}`
+	);
+	await expect(
+		page.getByText(CARD).first(),
+		'the person asked before every step and no approval card opened'
+	).toBeVisible({ timeout: 240_000 });
+
+	// Nobody answers. The turn ends on its own deadline with the card still open.
+	await expect(turnDone(turn), 'the turn never ended with its card unanswered').toBeVisible({
+		timeout: 220_000
+	});
+	await expect(
+		turn.getByText('Not answered in time — paused here.').first(),
+		'the unanswered card does not say the run paused there'
+	).toBeVisible({ timeout: 15_000 });
+	await expect(turn.getByText(/— Canceled\./)).toHaveCount(0);
+	await expect(turn).toContainText(/Paused: the agent waited for your approval/);
+	await expect(turn).not.toContainText('The agent run was stopped before it finished.');
+	const retry = turn.getByRole('button', { name: 'Retry', exact: true });
+	await expect(retry, 'the paused turn offers no Retry').toHaveCount(1);
+	return retry;
+}
+
 test(
-	'an approval card left unanswered until the turn ends reads as a timed-out deny, and the answer says the approval went unanswered',
+	'an approval card left unanswered pauses the run there, and the turn offers a Retry that asks again',
 	{ tag: ['@preview-only', '@A7', '@CUR-4660', '@real-agent'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(480_000);
-		await setFlagOverrides(context, baseURL!, {
-			'agent-mode': true,
-			'agent-auto-mode': true
-		});
-		const composer = await agentOn(page, () => askEveryStep(page));
-		const nonce = randomBytes(6).toString('hex');
-		const turn = await send(
-			page,
-			composer,
-			`Create a text file named plan-${nonce}.txt whose only line is: potluck ${nonce}`
-		);
+		const retry = await leaveTheCardUnanswered(page, context, baseURL!);
+		await retry.click();
 		await expect(
-			page.getByText(CARD).first(),
-			'the person asked before every step and no approval card opened'
-		).toBeVisible({ timeout: 240_000 });
+			page.getByText(/Paused: the agent waited for your approval/),
+			'Retry on the paused turn did not start it again'
+		).toHaveCount(0, { timeout: 30_000 });
+	}
+);
 
-		// Nobody answers. The turn ends on its own deadline with the card still open.
-		await expect(turnDone(turn), 'the turn never ended with its card unanswered').toBeVisible({
-			timeout: 220_000
-		});
+// Retry on a paused turn runs the request again, so the agent reaches the same step and asks again.
+// Its own test, since a second card adds a full run to the paused test's time.
+test(
+	'Retry on a turn paused at an unanswered approval runs the request again to a new approval card',
+	{ tag: ['@preview-only', '@A7', '@CUR-5255', '@real-agent'] },
+	async ({ page, context, baseURL }) => {
+		test.setTimeout(720_000);
+		const retry = await leaveTheCardUnanswered(page, context, baseURL!);
+		// The paused card is resolved and shows no Allow, so an Allow on screen is a new, open card.
+		const allow = page.getByRole('button', { name: 'Allow', exact: true });
+		await expect(allow).toHaveCount(0);
+		await retry.click();
 		await expect(
-			turn.getByText('No answer arrived in time — denied.').first(),
-			'the unanswered card does not say it timed out'
-		).toBeVisible({ timeout: 15_000 });
-		await expect(turn.getByText(/— Canceled\./)).toHaveCount(0);
-		await expect(turn).toContainText(
-			/No answer arrived in time for the agent's (\d+ )?approval request/
-		);
-		await expect(turn).not.toContainText('The agent run was stopped before it finished.');
+			allow.first(),
+			'Retry on the paused turn did not run the request again to a new approval card'
+		).toBeVisible({ timeout: 240_000 });
 	}
 );

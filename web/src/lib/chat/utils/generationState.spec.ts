@@ -21,6 +21,7 @@ import {
 	isConversationGenerationActive,
 	isGenerationStale,
 	isTurnStillRunning,
+	ownRequestHandingOff,
 	reattachView,
 	serverSnapshotHasAnswer,
 	shouldShowEmptyAnswerNotice,
@@ -754,6 +755,27 @@ describe("handedOffAgentRun", () => {
 	test("the run's stored handoff bit alone decides a follow: an interrupted run not submitted to hand off is never followed", () => {
 		expect(handedOffAgentRun([unmarkedRun, interruptedEnd])).toBe(false);
 		expect(handedOffAgentRun([run, interruptedEnd])).toBe(true);
+	});
+});
+
+describe("ownRequestHandingOff", () => {
+	const question = { from: "user", id: "user-1", content: "q", children: [] } as unknown as Message;
+	const run = { type: MessageUpdateType.AgentRun, taskId: "t1", handoff: true } as MessageUpdate;
+	const interruptedEnd = { type: MessageUpdateType.FinalAnswer, text: "", interrupted: true } as MessageUpdate;
+	const handedOff = assistantMessage({ updates: [run, interruptedEnd], interrupted: true });
+
+	// The handed-off answer arrives before the request closes; a page that read the turn as over in
+	// that gap offered Retry on a run still waiting at its approval card.
+	test("a turn handing its run off stays loading while this tab's request is still open", () => {
+		expect(isConversationGenerationActive([question, handedOff])).toBe(false);
+		expect(ownRequestHandingOff([question, handedOff], true)).toBe(true);
+	});
+
+	test("once the request has closed, or for any other ending, the turn is left to settle", () => {
+		expect(ownRequestHandingOff([question, handedOff], false)).toBe(false);
+		const interruptedNoHandoff = assistantMessage({ updates: [interruptedEnd], interrupted: true });
+		expect(ownRequestHandingOff([question, interruptedNoHandoff], true)).toBe(false);
+		expect(ownRequestHandingOff([question], true)).toBe(false);
 	});
 });
 

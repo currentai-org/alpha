@@ -145,7 +145,7 @@
 			: decision === 'canceled'
 				? 'Canceled.'
 				: reason === 'timeout'
-					? 'No answer arrived in time — denied.'
+					? 'Not answered in time — paused here.'
 					: 'Denied.'
 	);
 </script>
@@ -205,8 +205,8 @@
 			</button>
 			<span class="text-[length:var(--ap-text-1)] text-[color:var(--ap-ink-3)]">
 				{secondsLeft !== undefined
-					? `Times out to Deny in ${secondsLeft}s`
-					: 'Times out to Deny if nobody answers.'}
+					? `Pauses in ${secondsLeft}s if nobody answers`
+					: 'Pauses if nobody answers.'}
 			</span>
 		</div>
 		{#if sendError}

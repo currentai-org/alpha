@@ -81,13 +81,25 @@ async function answer(
 	return { response, resolve };
 }
 
+// The site-only redirect is the site's own code, reached through the website.server seam. The public
+// Alpha tree ships this spec beside hooks.server.ts but leaves out the whole site directory, so there it
+// has nothing to test. Only that whole-directory absence skips: with the site present and siteOnly.ts
+// renamed or moved, the guard below fails instead of letting the suite skip green.
+const SITE_FILES = Object.keys(import.meta.glob('/src/lib/website/**'));
+const SITE_CODE = SITE_FILES.length > 0;
+if (SITE_CODE && !SITE_FILES.includes('/src/lib/website/siteOnly.ts')) {
+	throw new Error(
+		'web/src/lib/website/siteOnly.ts is missing while the site is present: update this spec and the website.server seam to its new path'
+	);
+}
+
 beforeEach(() => {
 	vi.stubEnv('DEPLOY_ENV', 'production');
 	handleRequest.mockClear();
 });
 afterEach(() => vi.unstubAllEnvs());
 
-describe('site-only: chat addresses on www move to alpha', () => {
+describe.skipIf(!SITE_CODE)('site-only: chat addresses on www move to alpha', () => {
 	it('answers 308 to alpha for a JSON GET of /chat/api/models, keeping its /chat/api path', async () => {
 		const { response } = await answer('https://www.example.test/chat/api/models', {
 			headers: JSON_FETCH
@@ -159,7 +171,7 @@ describe('site-only: chat addresses on www move to alpha', () => {
 	});
 });
 
-describe("site-only: the scheduled jobs run on alpha's project alone", () => {
+describe.skipIf(!SITE_CODE)("site-only: the scheduled jobs run on alpha's project alone", () => {
 	it('answers 404, not a 308, for every cron path vercel.json registers, so www runs none of them', async () => {
 		const { default: vercelConfig } = await import('../vercel.json');
 		const paths = vercelConfig.crons.map((cron) => cron.path);
@@ -176,7 +188,7 @@ describe("site-only: the scheduled jobs run on alpha's project alone", () => {
 	});
 });
 
-describe('site-only: the site itself', () => {
+describe.skipIf(!SITE_CODE)('site-only: the site itself', () => {
 	it('serves / and /map through the site, not a redirect', async () => {
 		for (const path of ['/', '/map', '/about']) {
 			const { response, resolve } = await answer(`https://www.example.test${path}`, {
@@ -198,7 +210,7 @@ describe('site-only: the site itself', () => {
 	});
 });
 
-describe('site-only: a guest still carries their session to alpha', () => {
+describe.skipIf(!SITE_CODE)('site-only: a guest still carries their session to alpha', () => {
 	it('answers a page load from a guest with the handoff page instead of a bare 308', async () => {
 		const { response } = await answer('https://www.example.test/chat/settings', {
 			headers: PAGE_LOAD,
@@ -219,7 +231,7 @@ describe('site-only: a guest still carries their session to alpha', () => {
 	});
 });
 
-describe('site-only: boot and the error and fetch hooks', () => {
+describe.skipIf(!SITE_CODE)('site-only: boot and the error and fetch hooks', () => {
 	it("checks the site's own env at boot, with neither chat's env check nor chat's server", async () => {
 		vi.stubEnv('PUBLIC_ORIGIN', 'https://www.example.test');
 		vi.stubEnv('PUBLIC_CMS_PAYLOAD_URL', 'https://cms.example.test');

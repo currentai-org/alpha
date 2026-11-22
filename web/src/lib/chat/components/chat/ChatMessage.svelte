@@ -651,8 +651,18 @@ Modified by Current AI from huggingface/chat-ui.
 	// An input screen that didn't finish declines with "send it again"; its notice carries the
 	// Retry for that, so the footer's icon drops here too.
 	const showsUnscreenedNotice = $derived(!loading && !!message.moderation?.unscreened);
+	// An agent turn that paused at an approval card nobody answered: the answer says it paused, and
+	// this notice is its Retry, which runs the turn again from the start.
+	const showsPausedNotice = $derived(
+		!loading &&
+			!!message.agentConfirmations?.some((c) => c.decision === 'deny' && c.reason === 'timeout')
+	);
 	const showsDegradationNotice = $derived(
-		showsErrorNotice || showsInterruptedNotice || showsEmptyAnswerNotice || showsUnscreenedNotice
+		showsErrorNotice ||
+			showsInterruptedNotice ||
+			showsEmptyAnswerNotice ||
+			showsUnscreenedNotice ||
+			showsPausedNotice
 	);
 
 	// The footer's provenance line. "Finished" is showsProvenanceReceipt, not `!loading`,
@@ -1032,7 +1042,7 @@ Modified by Current AI from huggingface/chat-ui.
 			     too long", "at capacity", etc.) rather than one generic string for every cause. -->
 			<!-- the decline above already says why, so the notice is just its Retry, which
 			     regenerates the stored turn with its photo or file. -->
-			{#if showsUnscreenedNotice}
+			{#if showsUnscreenedNotice || (showsPausedNotice && !showsErrorNotice)}
 				{@render degradationNotice('')}
 			{/if}
 

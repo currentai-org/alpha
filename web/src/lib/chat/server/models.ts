@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Modified by Current AI from huggingface/chat-ui.
 import { building } from "$app/environment";
+import { APP_SURFACE } from "$lib/surface";
 import { config } from "$lib/chat/server/config";
 import { mistralChatLane, ticketBranchAllowlist } from "$lib/chat/server/mistralKey";
 import { pickerSpec } from "$lib/chat/server/primaryModel";
@@ -1310,7 +1311,10 @@ export const bootModels = async (): Promise<void> => {
 // Also skip under CI_HERMETIC — hermetic unit tests must not pay production catalog boot
 // (models.boot.spec.ts drives bootModels() explicitly). The model list is built once at
 // server startup; new models appear on redeploy.
-if (!building && process.env.CI_HERMETIC !== "true") {
+// A site-only build (www) serves no chat and carries no inference settings, yet a scheduled job
+// registered for both projects can still load this module there; booting would log three errors
+// for a catalog nothing on that build uses.
+if (!building && process.env.CI_HERMETIC !== "true" && APP_SURFACE !== "site-only") {
 	// Warm path: build at module eval so the first request doesn't pay the fetch — snapshot-first, live
 	// fallback — but NEVER let a failure escape module evaluation (see ensureModelsReady above). On
 	// failure the registry stays empty and the per-request gate retries.

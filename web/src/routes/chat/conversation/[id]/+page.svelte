@@ -111,6 +111,7 @@ Modified by Current AI from huggingface/chat-ui.
 		agentRunReattachDeadline,
 		endsTheTurn,
 		handedOffAgentRun,
+		ownRequestHandingOff,
 		reattachView,
 		isConversationGenerationActive,
 		isGenerationStale,
@@ -2329,10 +2330,12 @@ Modified by Current AI from huggingface/chat-ui.
 			(untrack(() => writeMessageInFlight) || !isGenerationStale(data.updatedAt));
 		if (stopRequestedFor === convId) {
 			$loading = false;
-		} else if (streaming || pending) {
+		} else if (streaming || pending || ownRequestHandingOff(messages, untrack(() => writeMessageInFlight))) {
 			// `pending` covers the pre-stream phase (safety check, sources) before the first token.
 			// Leaving it out let a re-run here clear `$loading` mid-phase, which showed Send instead
 			// of Stop and let a second message in while the first was still starting.
+			// A handed-off agent turn's interrupted answer lands before its request closes; until then the
+			// run is still going, so the turn must not offer Retry over its open approval card.
 			$loading = true;
 		} else {
 			$loading = false;

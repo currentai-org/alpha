@@ -6,10 +6,13 @@
 # multi-arch index, tags it, attests its build provenance (`gh attestation verify`) and signs it with
 # cosign keyless (`cosign verify`). deploy/README.md has both verify commands.
 #
-# Three gates stand between a build and a release tag. Each platform image is scanned for secrets by
+# Three blocking gates stand between a build and a release tag. Each platform image is scanned for secrets by
 # gitleaks over its filesystem (deploy/scan-image.sh) before its digest is handed on. The signed index
 # is then pulled by digest into the self-host stack (selfhost/compose.release.yaml, no local build) and
-# must answer a guest chat turn. Only after both does the last job put the version tags on that same
+# must answer a guest chat turn. Before it is attested and signed, the index's SBOM is read back from the
+# registry and must list packages on every platform (deploy/check-sbom.sh). Each platform image is also
+# scanned for known vulnerabilities by Grype, report-only: high and critical counts go to the run summary and
+# never fail the run. Only after the blocking gates does the last job put the version tags on that same
 # digest, so a version tag never names an image that was not scanned and booted.
 #
 # It runs only when asked for: on a version tag vX.Y.Z, which gives `X.Y.Z`, `X.Y` and `stable`, and
@@ -116,6 +119,46 @@ jobs:
           DIGEST: ${{ steps.build.outputs.digest }}
         run: ./deploy/scan-image.sh "$IMAGE@$DIGEST"
 
+      # Report-only. Grype reads the platform image from the registry by digest, on this platform's own runner,
+      # so the platform it scans is the one it was built for. A scan that cannot run, or a finding of any
+      # severity, never fails the job: the counts below are for a person to read before a release.
+      # To make high or critical findings block, add `fail-build: true` and `severity-cutoff: high` here and
+      # drop `continue-on-error`.
+      - name: Scan the image for known vulnerabilities (report only)
+        id: grype
+        continue-on-error: true
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
+        with:
+          image: registry:${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+          fail-build: false
+          output-format: json
+          only-fixed: false
+
+      - name: Vulnerability summary (report only)
+        if: ${{ !cancelled() }}
+        env:
+          REPORT: ${{ steps.grype.outputs.json }}
+          PLATFORM: ${{ matrix.platform }}
+          OUTCOME: ${{ steps.grype.outcome }}
+        run: |
+          {
+            echo "### Known vulnerabilities, $PLATFORM (Grype, report only)"
+            echo
+            if [ "$OUTCOME" != success ] || [ ! -s "$REPORT" ]; then
+              echo "The scan did not run (outcome: $OUTCOME). Nothing was counted."
+            else
+              jq -r '
+                [.matches[] | .vulnerability.severity] as $sev
+                | "| Critical | High | Medium | Low | Other |\n|---|---|---|---|---|\n| \([$sev[] | select(. == "Critical")] | length) | \([$sev[] | select(. == "High")] | length) | \([$sev[] | select(. == "Medium")] | length) | \([$sev[] | select(. == "Low")] | length) | \([$sev[] | select(. as $s | ["Critical","High","Medium","Low"] | index($s) | not)] | length) |"' "$REPORT"
+              echo
+              echo "Of the high and critical, with a fix available (package: vulnerability):"
+              echo
+              echo '```'
+              jq -r '[.matches[] | select(.vulnerability.severity == "Critical" or .vulnerability.severity == "High") | select((.vulnerability.fix.versions // []) | length > 0) | "\(.artifact.name) \(.artifact.version): \(.vulnerability.id) (\(.vulnerability.severity)), fixed in \(.vulnerability.fix.versions | join(", "))"] | unique | .[:40][]' "$REPORT"
+              echo '```'
+            fi
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
       - name: Record the digest
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
@@ -143,6 +186,12 @@ jobs:
       id-token: write # this run's OIDC identity, for keyless signing and the attestation
       attestations: write # record the provenance attestation on the repository
     steps:
+      # For deploy/check-sbom.sh only.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          sparse-checkout: deploy
+
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: ${{ runner.temp }}/digests
@@ -189,6 +238,13 @@ jobs:
           [[ "$digest" == sha256:* ]] || { echo "no index digest for $IMAGE:$TAG" >&2; exit 1; }
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
           docker buildx imagetools inspect "$IMAGE@$digest"
+
+      # The SBOM is read back from the registry, per platform, before anything vouches for the index: a build
+      # that produced an empty or missing SBOM fails here, not after it was attested and signed.
+      - name: SBOM lists packages on every platform
+        env:
+          DIGEST: ${{ steps.index.outputs.digest }}
+        run: ./deploy/check-sbom.sh "$IMAGE@$DIGEST" 2
 
       - name: Attest build provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
