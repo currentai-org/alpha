@@ -4,7 +4,7 @@
 // by the self-host edition's default with the scan choice .env.example makes, and My files on because
 // CUSTODIAL_STORAGE_BACKEND names a store.
 //
-// Run by .github/workflows/selfhost-smoke.yml twice, once per backend:
+// Run by the source repository's self-host CI twice, once per backend:
 //   cd web && SELFHOST_FILES_BACKEND=local pnpm exec playwright test --config=e2e/selfhost-files.config.ts
 //   (after the web service is recreated on the s3 profile's SeaweedFS)
 //   cd web && SELFHOST_FILES_BACKEND=s3 SELFHOST_COMPOSE_PROFILE=local,s3 pnpm exec playwright test ...

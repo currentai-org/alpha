@@ -1,7 +1,7 @@
 // Playwright config for e2e/selfhost-files.spec.ts, kept apart from the scenario suite like
 // owui-migrate.config.ts: the suite's testDir is ./scenarios, so no PR check, gallery run or persona run
 // collects this spec. It needs the self-host compose stack running and `docker compose` on the host,
-// which only .github/workflows/selfhost-smoke.yml provides.
+// which the source repository's self-host CI provides.
 import { defineConfig } from '@playwright/test';
 
 // SELFHOST_FILES_KIND=image runs the image test alone; anything else runs the text-file test alone.

@@ -237,7 +237,7 @@ export const MAX_INPUT_SCREEN_MS = 100_000;
  *
  * It is a DEFAULT rather than a required env var on purpose. A number that has to be set somewhere
  * to be correct is a number that is wrong in every environment nobody remembered — and agent turns
- * are exactly the low-traffic surface where nobody would notice for weeks.
+ * are the low-traffic surface where a wrong value goes unnoticed longest.
  *
  * Not a licence to grow: past ~155s the answer is not a bigger ceiling. With `agent-run-handoff` on, a
  * run longer than one request is handed off before this fires (agentHandoffAt) and the page follows it

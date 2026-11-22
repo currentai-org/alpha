@@ -9,9 +9,8 @@
 // tells a deployment about itself. Those scripts go with the platform rather than moving.
 //
 // Used by eslint.config.js (src/, svelte.config.js, vite.config.ts) and eslint.scripts.config.js
-// (scripts/). web/config/ is NOT covered: eslint.config.js ignores config/** globally and no other
-// config lints it, so a VERCEL_* read added there passes. None exists today; covering config/ needs an
-// ESLint config for it first, which is a separate change. Specs are exempt: they set VERCEL_* to simulate a deployment, which the fallback in
+// (scripts/ and config/; config/ gets this rule alone, since eslint.config.js ignores it). Specs are
+// exempt: they set VERCEL_* to simulate a deployment, which the fallback in
 // runtimeEnv.js keeps working.
 
 /** The one file allowed to read a VERCEL_* variable, relative to web/. */

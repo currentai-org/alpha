@@ -1,6 +1,7 @@
 // Correctness lint for `scripts/`. The main gate (eslint.config.js) ignores the
 // directory and `lint:quality` only warns, so before this nothing failed on an undefined name or a
-// dead import in the ops tooling that deploys, gates and probes the app. Run via `pnpm lint:scripts`.
+// dead import in the ops tooling that deploys, gates and probes the app. Run via `pnpm lint:scripts`,
+// which also runs the host-env rule (and nothing else) over config/.
 //
 // Correctness only, no style: formatting is prettier's job (scripts/.prettierrc.json), enforced on
 // the files a commit or PR touches rather than by reformatting the whole directory at once.
@@ -49,6 +50,17 @@ export default defineConfig(
 		// variable (eslint-rules/no-host-env-read.js). Specs set those variables to simulate a deployment.
 		files: ['scripts/**/*.{js,mjs,cjs,ts,mts}'],
 		ignores: ['scripts/__tests__/**', 'scripts/**/*.spec.ts'],
+		rules: {
+			'no-restricted-syntax': ['error', ...noHostEnvRead]
+		}
+	},
+	{
+		// config/ (models, roles, tuning, the env manifest) is ignored by eslint.config.js and gets no
+		// correctness pass here; only the host-env rule applies to it, so a VERCEL_* read added there
+		// fails the same way it does in src/ and scripts/.
+		files: ['config/**/*.{js,mjs,cjs,ts,mts}'],
+		ignores: ['config/**/*.spec.ts'],
+		languageOptions: { parser: ts.parser },
 		rules: {
 			'no-restricted-syntax': ['error', ...noHostEnvRead]
 		}

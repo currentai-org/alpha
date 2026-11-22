@@ -33,10 +33,11 @@ image's signature. No tag can be pulled until the first release is published.
 
 The default local model is Qwen2.5 0.5B Instruct, chosen so the first answer arrives on a plain CPU,
 not for its quality. A CPU reads Alpha's system prompt, about 2,600 tokens, before the first word
-appears: on an 8-vCPU cloud VM the 0.5B model read it in 11 s and the first answer arrived 20 s after
-the message was sent. Slower CPUs and larger models take proportionally longer. Later turns reuse the
-cached prompt and start in seconds. With a GPU or a fast CPU, set
-`LOCAL_MODEL_*` in `.env` to a larger model.
+appears: on a standard GitHub-hosted Linux runner the 0.5B model reads it in about 30 s and the whole
+first answer arrives in under a minute. The self-host CI workflow measures this on every run: its smoke
+step (`smoke.sh`) prints llama.cpp's `prompt eval` line. Slower CPUs and larger models take
+proportionally longer. Later turns reuse the cached prompt and start in seconds. With a GPU or a fast
+CPU, set `LOCAL_MODEL_*` in `.env` to a larger model.
 
 To use a hosted provider in place of the local model, fill in block B of `.env` and start without
 the profile:
@@ -48,6 +49,49 @@ docker compose up --build
 `./smoke.sh` brings the local stack up, sends one chat turn as a guest and checks that an answer
 comes back. It exits non-zero on any failure, and CI runs it on every change to this directory or the image
 definition.
+
+## A safety screen (optional)
+
+Out of the box nothing checks a message before the model sees it (Configuration, Moderation, below).
+Each option here costs no subscription: it runs on hardware you already have, with open weights.
+
+**The `safety` profile** runs Mistral's Shieldstral-1.0-3B classifier (Apache-2.0) in a second
+llama.cpp container on CPU. Add one line to `.env` and start both profiles:
+
+```sh
+echo 'GUARD_SHADOW_URL=http://shieldstral:8080' >> .env
+docker compose --profile local --profile safety up --build
+```
+
+The variable's name is historical: with it set, the screen **enforces**. Every turn is screened
+against the rules in `web/src/lib/chat/server/rules.json`, and a block stops the turn before the model
+answers (`inputGate.ts`, `guardGate.ts`). The profile alone, without the line, screens nothing.
+
+What to expect:
+
+- **It fails closed, and on CPU that happens often.** One short message is 17 classifier calls, one per
+  rule. The app gives each call 8 s and the whole screen 20 s (`guardGate.ts`, `GUARD_TIMEOUT_MS` and
+  `operationDeadlineMs` in `rules.json`). On an 8-CPU machine under other load, with the classifier
+  capped at 4 CPUs, a warm screen took 25 to 36 s and its slowest call 11 to 17 s; the first screen after
+  start took 121 s. On CI's 8-CPU runner, the first turn after start ran out of time at 20 s and the
+  second, a blocked one, finished in 18 s. A screen that runs out of time is unknown, and an unknown
+  screen declines the turn (the child-safety rules fail closed), so on CPU expect declined turns. A screen
+  that finds a block before it runs out of time still blocks. For a usable screen, give it a GPU: set
+  `LLAMACPP_IMAGE` to a CUDA build of the same server. CI's `safety-profile` job prints the times.
+- **Text only.** No vision projector is loaded, so a turn with a picture cannot be screened and is
+  declined, and a stored picture is refused.
+- **The weights are a community conversion.** Mistral publishes no GGUF. The profile pins
+  `Abiray/Shieldstral-1.0-3B-GGUF`, Q4_K_M, by commit. `SAFETY_MODEL_URL` and `SAFETY_MODEL_FILE` point at another file.
+  About 2.1 GB to download, and 2.5 to 4.5 GB of RAM while running.
+- **Two side checks turn on with it.** `violence-recheck` and `support-signal-classifier` follow
+  `GUARD_SHADOW_URL` (Feature flags, below). Both call your `TASK_MODEL` (unset, the first model `MODEL_ALLOWLIST` offers),
+  not the classifier. `ALPHA_FLAGS=-violence-recheck,-support-signal-classifier` turns them off.
+
+**Zentropi S1 on your own GPU**, for text: the model `zentropi-ai/cope-b-s1` (Apache-2.0) served with
+Zentropi's `zentropiai/cope-s1-sglang` image, which answers `POST /v1/systemone`. Set
+`ZENTROPI_S1_ENDPOINT_URL` to it and `HF_TOKEN` to whatever token it accepts. `s1-safety-judge` turns
+on when both are set, and then text goes to S1 alone (`detectors/s1.ts`). This directory does not run
+it.
 
 ## Agent mode (demo)
 
@@ -110,7 +154,9 @@ Compose reads `.env` next to `compose.yaml`.
 | `GENERATION_TIMEOUT_MS`, `SILENCE_TIMEOUT_MS` | `150000` | How long a turn may wait for the model before it is ended as an error. The app's own default is 45 s, too short for a CPU model's first turn. |
 | `LOCAL_MODEL_REPO`, `LOCAL_MODEL_FILE`, `LOCAL_MODEL_ALIAS`, `LOCAL_MODEL_CTX` | Qwen2.5 0.5B Instruct, Q4_K_M, 16k context | Which GGUF llama.cpp downloads from Hugging Face, and the model id it reports. Keep `MODEL_ALLOWLIST` in step with the alias. |
 | `LOCAL_MODELS_DIR` | the `models` volume | A host directory to keep the downloaded GGUF in. CI points it at a cached directory. |
-| `LLAMACPP_IMAGE` | llama.cpp's `server` image, pinned by digest | Another llama.cpp server build, such as a CUDA one. |
+| `LLAMACPP_IMAGE` | llama.cpp's `server` image, pinned by digest | Another llama.cpp server build, such as a CUDA one. The `safety` profile uses it too. |
+| `GUARD_SHADOW_URL` | none | A Shieldstral endpoint's base. Set, every turn is screened and a block stops it; with the `safety` profile, `http://shieldstral:8080`. |
+| `SAFETY_MODEL_URL`, `SAFETY_MODEL_FILE` | a pinned Shieldstral Q4_K_M GGUF | With `--profile safety`: the GGUF the classifier downloads, and the file name it is kept under. Change both together. |
 | `ALPHA_IMAGE` | `ghcr.io/currentai-org/alpha:0.1.0` | With `compose.release.yaml` only: another release tag or a digest of the app image. |
 | `SMTP_URL` | none | Your mail server, as `smtp://user:password@host:587` (or `smtps://` on 465). Sign-in codes and workspace invitations go out through it. Unset, people sign in with email and password instead. |
 | `SMTP_FROM` | `Alpha <noreply@` your `PUBLIC_ORIGIN` host `>` | The sender address. Set it to one your mail server accepts. |
@@ -301,7 +347,7 @@ its sandboxed frame.
 - **Moderation.** No safety classifier is configured, so nothing checks a message before the model sees
   it. That holds with `DEPLOY_ENV=production` too, because compose sets `ALPHA_EDITION=selfhost`, and the
   boot log then says `SELF-HOST, NO SCREEN`, so the gap is never silent (`guardGate.ts`,
-  `selfHostWithoutScreen`). To screen every turn, name a classifier: a Shieldstral endpoint in
+  `selfHostWithoutScreen`). "A safety screen (optional)", above, runs one beside the stack. To screen every turn, name a classifier: a Shieldstral endpoint in
   `GUARD_SHADOW_URL` (`detectors/shieldstral.ts`), which also screens pictures, or Zentropi S1 for text
   with `ZENTROPI_S1_ENDPOINT_URL` and `HF_TOKEN` (`detectors/s1.ts`); `s1-safety-judge` turns on by itself
   when both are set. A configured classifier turns the screen on, and `violence-recheck` and

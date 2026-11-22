@@ -1,7 +1,7 @@
 // Playwright config for e2e/selfhost-signin.spec.ts, kept apart from the scenario suite like
 // owui-migrate.config.ts: the suite's testDir is ./scenarios, so no PR check, gallery run or persona run
 // collects this spec. It needs the self-host compose stack running, which only
-// .github/workflows/selfhost-smoke.yml provides; SELFHOST_SIGNIN_MODE picks which sign-in it walks.
+// the source repository's self-host CI provides; SELFHOST_SIGNIN_MODE picks which sign-in it walks.
 import { defineConfig } from '@playwright/test';
 
 const mode = process.env.SELFHOST_SIGNIN_MODE ?? 'password';

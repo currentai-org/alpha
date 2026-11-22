@@ -36,8 +36,8 @@ export const STAFF_TIER = {
 	 *  still ends. The chat surface's agent ceiling (AGENT_CALLER_DAILY_TASKS) is 10,000 so ten team
 	 *  accounts at this cap still leave the day's room for visitors. */
 	agentTasksPerDay: 1000,
-	/** Stored conversations, 10x USAGE_LIMITS.conversations (100). A teammate who has tested for weeks
-	 *  is past 100, and a full account refuses every new chat until some are deleted. */
+	/** Stored conversations, 10x USAGE_LIMITS.conversations (100). A teammate who tests every day
+	 *  passes 100, and a full account refuses every new chat until some are deleted. */
 	conversations: 1000,
 	/** Chat turns per 24 hours, 10x a visitor's CHAT_TURNS_PER_DAY (web/config/chatTurns.ts). A
 	 *  teammate testing all day sends a few hundred; a runaway script still stops. */

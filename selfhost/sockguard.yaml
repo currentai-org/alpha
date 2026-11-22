@@ -10,7 +10,7 @@
 # system endpoint are refused. Every create must set no-new-privileges and may not bind a host path, run
 # privileged, share a host namespace, add a capability or pass a device; an exec may not run as root.
 #
-# .github/workflows/selfhost-smoke.yml (the socket-proxy job) sends a `-v /:/host`, a `--privileged`, a
+# The source repository's self-host CI (its socket-proxy job) sends a `-v /:/host`, a `--privileged`, a
 # `--pid host` and a `--network host` create through this proxy and fails unless each is refused, then runs the
 # sandbox backend's contract tests through it and requires a privileged create, a host-root bind and a root
 # exec to come back 403. So a sockguard upgrade or a policy edit that reopens host root fails CI, and so does

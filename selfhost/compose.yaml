@@ -4,6 +4,7 @@
 #   cp .env.example .env            # then pick one of the two model blocks in it
 #   docker compose up --build                     # a hosted OpenAI-compatible provider (Mistral, ...)
 #   docker compose --profile local up --build     # a small open-weight model on CPU, no key at all
+#   docker compose --profile local --profile safety up --build   # ...and a safety screen (README.md)
 #
 # Then open http://localhost:3000. The app reaches every model through OPENAI_BASE_URL, so any server
 # that answers GET /models and POST /chat/completions works: vLLM, Ollama, LiteLLM, a Cairn gateway.
@@ -66,6 +67,46 @@ services:
       retries: 120
       start_period: 30s
 
+  # Only with --profile safety: Mistral's Shieldstral-1.0-3B safety classifier (Apache-2.0), served on CPU
+  # by the llama.cpp image the local profile pins. It does nothing until .env also sets
+  # GUARD_SHADOW_URL=http://shieldstral:8080, which turns the screen on for every turn (guardGate.ts) and
+  # it then blocks, it does not just log. With the URL set and this service down or too slow, a turn fails
+  # closed: README.md, "A safety screen", has the latency this costs on CPU.
+  # Mistral publishes no GGUF, so this pins a community conversion by commit (Abiray/Shieldstral-1.0-3B-GGUF,
+  # Q4_K_M, sha256 c76cb8e1...33b3), text only: no vision projector is loaded, so a picture is not screened
+  # and its turn fails closed. The alias is the model id the app asks for, which its health probe expects back.
+  shieldstral:
+    profiles: [safety]
+    image: ${LLAMACPP_IMAGE:-ghcr.io/ggml-org/llama.cpp:server@sha256:41988e510b6fe0a0b5b9be00a9dbf91d9f0fa691da173d7b06d97d370329fe84}
+    command:
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      # Without --model, this llama.cpp build ignores --model-url and starts as a model router with no
+      # model, which still answers /health. The file name keeps a cached download from another URL apart.
+      - --model-url
+      - ${SAFETY_MODEL_URL:-https://huggingface.co/Abiray/Shieldstral-1.0-3B-GGUF/resolve/45dfb4247226b53cbcfeaa43b735bd0beb9a07c8/Shieldstral-1.0-3B-Q4_K_M.gguf}
+      - --model
+      - /models/${SAFETY_MODEL_FILE:-Shieldstral-1.0-3B-Q4_K_M-45dfb42.gguf}
+      - --alias
+      - mistralai/Shieldstral-1.0-3B
+      # Four slots of 6,144 tokens: a screened chunk is at most 12,000 characters plus the question.
+      - --parallel
+      - "4"
+      - --ctx-size
+      - "24576"
+      - --jinja
+    environment:
+      LLAMA_CACHE: /models
+    volumes: ["${LOCAL_MODELS_DIR:-models}:/models"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 120
+      start_period: 30s
+
   # Only with --profile s3: SeaweedFS (Apache-2.0) as the S3-compatible store for people's files, for
   # CUSTODIAL_STORAGE_BACKEND=s3 (block S in .env.example). Not MinIO: AGPL, and its repo is archived.
   # Onyx runs SeaweedFS the same way in its compose file: only the S3 gateway listens beyond the
@@ -108,7 +149,7 @@ services:
   # through, so no other service mounts the Docker socket. sockguard (MIT) reads each create body and
   # refuses a host bind mount, a privileged container, host namespaces, added capabilities and devices;
   # sockguard.yaml beside this file is the policy. Pinned by digest because the policy is only as good as
-  # the proxy enforcing it: the socket-proxy job in .github/workflows/selfhost-smoke.yml sends `-v /:/host`,
+  # the proxy enforcing it: the source repository's self-host CI sends `-v /:/host`,
   # `--privileged`, `--pid host` and `--network host` creates through it and fails unless all are refused.
   # Anyone who can reach port 2375 on the compose network can create containers within that policy; it
   # is not published.
@@ -262,6 +303,7 @@ services:
     depends_on:
       db: { condition: service_healthy }
       llama: { condition: service_healthy, required: false }
+      shieldstral: { condition: service_healthy, required: false }
       seaweedfs: { condition: service_healthy, required: false }
       agent-init: { condition: service_completed_successfully, required: false }
       agent: { condition: service_healthy, required: false }

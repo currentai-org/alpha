@@ -1,7 +1,7 @@
 // Playwright config for e2e/owui-migrate.spec.ts, kept apart from the scenario suite like the
 // cold walk's: the suite's testDir is ./scenarios, so no PR check, gallery run or persona run collects
 // this spec. It needs the self-host compose stack running and `docker compose` on the host, which only
-// .github/workflows/selfhost-smoke.yml provides.
+// the source repository's self-host CI provides.
 import { defineConfig } from '@playwright/test';
 
 export default defineConfig({

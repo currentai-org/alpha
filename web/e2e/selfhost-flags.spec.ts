@@ -3,7 +3,7 @@
 // that wait on a service are named in the boot log with the setting that turns them on.
 //
 //   cd web && pnpm exec playwright test --config=e2e/selfhost-flags.config.ts
-// Run by .github/workflows/selfhost-smoke.yml before the steps that recreate the web service.
+// Run by the source repository's self-host CI before the steps that recreate the web service.
 import { test, expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import { compose, signInByEmailCode } from './selfhost-stack';

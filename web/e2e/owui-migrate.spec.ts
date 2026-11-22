@@ -14,7 +14,7 @@
 //
 // Sign-in is by email code read from the stack's database (selfhost-stack.ts says how).
 //
-// Run by .github/workflows/selfhost-smoke.yml after the walk:
+// Run by the source repository's self-host CI after the walk:
 //   cd web && pnpm exec playwright test --config=e2e/owui-migrate.config.ts
 // Environment: OWUI_BASE_URL (default http://localhost:3000), SELFHOST_DIR (default ../selfhost, relative to web/),
 // SELFHOST_COMPOSE_PROFILE (default local), POSTGRES_PASSWORD (default alpha), OWUI_MODEL (the model id

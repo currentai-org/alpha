@@ -17,7 +17,7 @@
 // server holds a session for that address, not that a page looked right. Lines starting
 // "SELFHOST SIGNIN" go to the workflow's step summary.
 //
-// Run by .github/workflows/selfhost-smoke.yml:
+// Run by the source repository's self-host CI:
 //   cd web && SELFHOST_SIGNIN_MODE=password pnpm exec playwright test --config=e2e/selfhost-signin.config.ts
 // Environment: SELFHOST_BASE_URL (default http://localhost:3000), MAILPIT_URL (default http://localhost:8025).
 import { test, expect, type Browser, type Page } from '@playwright/test';
