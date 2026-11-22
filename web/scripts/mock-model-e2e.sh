@@ -16,6 +16,11 @@
 #
 #   DATABASE_URL=postgres://... web/scripts/mock-model-e2e.sh
 #   MOCK_E2E_GREP='@mock-model' web/scripts/mock-model-e2e.sh e2e/scenarios/chat-at-root.spec.ts
+#
+# MOCK_E2E_IMAGE=<image> serves the app from that container image (web/Dockerfile built with
+# APP_SURFACE=chat, as the published self-host image is) instead of a build of this tree, with the same
+# environment, the same mock model and the same scenarios. web-image.yml runs it against the image it
+# just built. The container shares the host network, so it reaches the mock and Postgres on localhost.
 set -euo pipefail
 
 WEB_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -35,6 +40,10 @@ if [ -f "$WEB_DIR/.env.local" ]; then
 	exit 1
 fi
 mkdir -p "$LOG_DIR"
+
+# The names exported below are the app's environment; an image run passes exactly those, and not the
+# runner's PATH, HOME and the rest, into the container.
+ENV_BEFORE="$(compgen -e | sort)"
 
 export DEPLOY_ENV=development
 export APP_SURFACE=chat
@@ -60,6 +69,10 @@ cleanup() {
 	docker logs mock-model-e2e-aimock > "$LOG_DIR/aimock.log" 2>&1 || true
 	curl -s --max-time 5 "http://127.0.0.1:$MOCK_PORT/__aimock/journal?limit=500" > "$LOG_DIR/aimock-journal.json" 2>/dev/null || true
 	docker rm -f mock-model-e2e-aimock > /dev/null 2>&1 || true
+	if [ -n "${MOCK_E2E_IMAGE:-}" ]; then
+		docker logs mock-model-e2e-app > "$LOG_DIR/app.log" 2>&1 || true
+		docker rm -f mock-model-e2e-app > /dev/null 2>&1 || true
+	fi
 	[ -n "${APP_PID:-}" ] && kill -- "-$APP_PID" 2>/dev/null || true
 }
 trap cleanup EXIT
@@ -80,17 +93,25 @@ if ! printf '%s' "$models" | grep -q "\"$MOCK_MODEL_ID\""; then
 	exit 1
 fi
 
-(cd "$WEB_DIR" && ADAPTER=node pnpm exec vite build) > "$LOG_DIR/build.log" 2>&1 || {
-	echo "mock-model-e2e: the build failed; see $LOG_DIR/build.log" >&2
-	echo "::group::last 80 lines of build.log"
-	tail -n 80 "$LOG_DIR/build.log"
-	echo "::endgroup::"
-	exit 1
-}
+if [ -n "${MOCK_E2E_IMAGE:-}" ]; then
+	APP_ENV_NAMES="$( (comm -13 <(printf '%s\n' "$ENV_BEFORE") <(compgen -e | sort); printf '%s\n' DATABASE_URL) | sort -u)"
+	docker_env=(-e PORT="$APP_PORT" -e ORIGIN="$PUBLIC_ORIGIN")
+	while IFS= read -r name; do docker_env+=(-e "$name"); done <<< "$APP_ENV_NAMES"
+	docker rm -f mock-model-e2e-app > /dev/null 2>&1 || true
+	docker run -d --name mock-model-e2e-app --network host "${docker_env[@]}" "$MOCK_E2E_IMAGE" > "$LOG_DIR/container-id.txt"
+else
+	(cd "$WEB_DIR" && ADAPTER=node pnpm exec vite build) > "$LOG_DIR/build.log" 2>&1 || {
+		echo "mock-model-e2e: the build failed; see $LOG_DIR/build.log" >&2
+		echo "::group::last 80 lines of build.log"
+		tail -n 80 "$LOG_DIR/build.log"
+		echo "::endgroup::"
+		exit 1
+	}
 
-# Its own process group, so cleanup stops the whole tree.
-(cd "$WEB_DIR" && PORT="$APP_PORT" ORIGIN="$PUBLIC_ORIGIN" exec setsid node build) > "$LOG_DIR/app.log" 2>&1 &
-APP_PID=$!
+	# Its own process group, so cleanup stops the whole tree.
+	(cd "$WEB_DIR" && PORT="$APP_PORT" ORIGIN="$PUBLIC_ORIGIN" exec setsid node build) > "$LOG_DIR/app.log" 2>&1 &
+	APP_PID=$!
+fi
 
 ready=""
 for _ in $(seq 1 90); do
@@ -100,6 +121,7 @@ for _ in $(seq 1 90); do
 done
 if [ -z "$ready" ]; then
 	echo "mock-model-e2e: $PUBLIC_ORIGIN/ never answered 200 (last: ${code:-none}); see $LOG_DIR/app.log" >&2
+	[ -n "${MOCK_E2E_IMAGE:-}" ] && docker logs mock-model-e2e-app > "$LOG_DIR/app.log" 2>&1
 	tail -n 60 "$LOG_DIR/app.log" >&2 || true
 	exit 1
 fi

@@ -1440,3 +1440,36 @@ describe("warm groups — page ping, process keepalive, scheduled job", () => {
 		expect(countTurnOutcomeWindowsMock).toHaveBeenCalledTimes(1);
 	});
 });
+
+describe("warmAgentTokenExpiry — the agent token's exp, read before agent mode stops", () => {
+	const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString("base64url");
+	const tokenExpiringIn = (days: number) =>
+		`${b64({ alg: "HS256" })}.${b64({ exp: Math.floor(Date.now() / 1000 + days * 86_400) })}.c2ln`;
+
+	it("goes unhealthy (degraded) when 21 days or fewer are left on the token", async () => {
+		cfg.AGENT_SERVICE_TOKEN = tokenExpiringIn(20);
+		const { warmAgentTokenExpiry } = await import("./warm");
+		await warmAgentTokenExpiry();
+		const call = recordProbeMock.mock.calls.find(([key]) => key === "agent:token-expiry");
+		expect(call?.[1]).toBe(false);
+		expect(call?.[2].severity).toBe("degraded");
+		expect(call?.[2].runbook).not.toContain(cfg.AGENT_SERVICE_TOKEN);
+	});
+
+	it("stays healthy with more than 21 days left", async () => {
+		cfg.AGENT_SERVICE_TOKEN = tokenExpiringIn(58);
+		const { warmAgentTokenExpiry } = await import("./warm");
+		await warmAgentTokenExpiry();
+		expect(recordProbeMock).toHaveBeenCalledWith("agent:token-expiry", true, expect.anything());
+	});
+
+	it("records nothing when there is no token or it has no exp", async () => {
+		const { warmAgentTokenExpiry } = await import("./warm");
+		await warmAgentTokenExpiry();
+		cfg.AGENT_SERVICE_TOKEN = "opaque-self-host-token";
+		vi.resetModules();
+		const fresh = await import("./warm");
+		await fresh.warmAgentTokenExpiry();
+		expect(recordProbeMock).not.toHaveBeenCalledWith("agent:token-expiry", expect.anything(), expect.anything());
+	});
+});

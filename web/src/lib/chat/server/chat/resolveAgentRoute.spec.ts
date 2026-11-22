@@ -146,7 +146,7 @@ describe("resolveAgentRoute", () => {
 		const [url, init] = fetchImpl.mock.calls[0];
 		expect(url).toBe("http://agent.test/route"); // trailing slash on baseURL normalized
 		expect((init.headers as Record<string, string>).authorization).toBe("Bearer tok-123");
-		expect(JSON.parse(init.body)).toEqual({ prompt: "build X" });
+		expect(JSON.parse(init.body)).toEqual({ prompt: "build X", budget_ms: expect.any(Number) });
 	});
 
 	it("auto + classifier says direct → stays on the selected model", async () => {

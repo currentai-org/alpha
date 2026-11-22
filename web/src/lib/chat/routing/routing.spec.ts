@@ -8,7 +8,7 @@ import { SHIPPED_BENCHMARKS, languageSupport, parseBenchmarkTable, type Benchmar
 import { localClassifier } from './localClassifier';
 import { DEFAULT_ROUTING, intelligenceFit, route, scoreModels, shownLanguage } from './router';
 import { AUTO, pickerChoice } from './choice';
-import { PICKER, pickerSites } from '../../../../config/picker';
+import { PICKER, PICKER_BEFORE_WITHDRAWALS, pickerSites } from '../../../../config/picker';
 
 const ALL_LIVE = catalog.filter((m) => m.status === 'live').map((m) => m.gatewayId!);
 const APERTUS_ONLY = ['swiss-ai/apertus-v1.5-70b'];
@@ -264,7 +264,7 @@ describe('router', () => {
 	// Catalan is measured for other models and not for ALIA, so ALIA is held to the lowest
 	// measured Catalan score, and its hand-set estimate does not count.
 	it('sends a confident Catalan message to Medium, not ALIA, while ALIA is unmeasured in Catalan', () => {
-		const withAlia = [...PICKER.production];
+		const withAlia = [...PICKER_BEFORE_WITHDRAWALS.production];
 		expect(withAlia).toContain('BSC-LT/ALIA-40b-instruct');
 		expect(route(analysis('cat', 'M'), withAlia)?.model.id).toBe('mistral-medium');
 		expect(route(analysis('cat-valencia', 'M'), withAlia)?.model.id).not.toBe('alia-40b');

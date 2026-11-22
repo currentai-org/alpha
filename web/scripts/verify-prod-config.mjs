@@ -14,7 +14,7 @@
 //
 // RUNS OFF OUR INFRASTRUCTURE, like synthetic-turn.mjs and for the same reason: a probe inside the
 // thing it tests is silenced when that thing is down. It is also NOT sufficient to gate this at deploy time —
-// pushing to main auto-deploys and promotes without running deploy-prod.sh at all.
+// pushing to main auto-deploys and promotes with no deploy-time gate in its path.
 //
 // TWO ASSERTIONS, deliberately different failures:
 //
@@ -175,8 +175,8 @@ if (expectedStrategy !== "margin") {
 // classify answers an uncredentialed GET ({"shouldSearch":true,"ok":true} on the develop preview,
 //). Harvesting Set-Cookie from GET /chat/ cannot work: it 308-redirects to /chat, and
 // handle.ts:231-234 only calls refreshSessionCookie on POST or login paths, so no GET of any chat
-// URL sets a cookie. A hard failure on a missing cookie would fail every prod deploy, and
-// deploy-prod.sh would read that as a bad deployment and revert it.
+// URL sets a cookie. A hard failure on a missing cookie would fail every run against a healthy
+// production and read as a bad deployment.
 const classifyUrl = `${BASE}/chat/api/search/classify?q=${encodeURIComponent(CLASSIFY_PROBE)}`;
 const clsRes = await fetchOrDie(classifyUrl, {}, "the classify endpoint");
 const cls = await clsRes.json();

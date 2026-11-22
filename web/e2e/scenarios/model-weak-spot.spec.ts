@@ -87,7 +87,7 @@ async function landingFor(page: Page, model: { id: string; name: string }) {
 
 test(
 	'a model with a measured weak spot names it on the chat it was picked for in plain words, and the picker row and a model with none stay clean',
-	{ tag: ['@preview-only', '@F2', '@CUR-3911', '@CUR-4262'] },
+	{ tag: ['@preview-only', '@F2', '@CUR-3911', '@CUR-4262', '@needs-alia'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });

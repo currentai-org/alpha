@@ -3893,6 +3893,67 @@ def test_route_endpoint():
         app._ROUTE_MEMO.clear()
 
 
+def test_route_answers_direct_within_the_callers_budget_when_the_classify_is_slow(monkeypatch):
+    """The chat waits a little past the `budget_ms` it sends, and shows "The agent wasn't reachable" when
+    nothing arrives. So a classify call that runs long must come back as a DIRECT fallback inside that
+    budget, counted from when the request arrived, input screen included. Before, the service waited its
+    own 20 s from after the screen, and the chat's equal 20 s, started earlier, always ran out first.
+    Driven over a real socket against a gateway that takes longer than any budget here."""
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    from starlette.testclient import TestClient
+
+    release = threading.Event()
+    calls: list = []
+
+    class SlowGateway(BaseHTTPRequestHandler):
+        def do_POST(self):
+            calls.append(self.path)
+            self.rfile.read(int(self.headers.get("content-length") or 0))
+            release.wait(10)
+            body = json.dumps({"choices": [{"message": {"content": '{"agentic": true, "reason": "late"}'}}]})
+            self.send_response(200)
+            self.send_header("content-type", "application/json")
+            self.send_header("content-length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body.encode())
+
+        def log_message(self, *a):
+            pass
+
+    gw = ThreadingHTTPServer(("127.0.0.1", 0), SlowGateway)
+    threading.Thread(target=gw.serve_forever, daemon=True).start()
+    monkeypatch.setattr(app, "MODEL_PROXY_URL", f"http://127.0.0.1:{gw.server_address[1]}")
+    monkeypatch.setattr(app, "PROXY_ADMIN_KEY", "k")
+    monkeypatch.setattr(app, "_gateway_grant", lambda *a, **k: None)
+    monkeypatch.setattr(app, "_gateway_revoke", lambda *a, **k: None)
+    monkeypatch.setattr(app, "AUTH_DISABLED", True)
+    monkeypatch.setattr(app, "moderate", lambda *a, **k: time.sleep(0.3))   # the input screen's share
+    app._ROUTE_MEMO.clear()
+    _tc = TestClient(app.app)
+    try:
+        t0 = time.monotonic()
+        r = _tc.post("/route", json={"prompt": "is this slow?", "budget_ms": 1000})
+        took = time.monotonic() - t0
+        assert r.status_code == 200, r.text
+        assert r.json()["source"] == "fallback" and r.json()["agentic"] is False, r.json()
+        # Upper bound loose for slow CI runners: the gateway holds its answer for 10 s, so anything well under
+        # that is the service's own deadline firing, not the gateway finally replying.
+        assert 0.9 <= took < 4.0, f"the fallback must land at the budget's end, counted from arrival; took {took:.2f}s"
+        assert calls == ["/v1/chat/completions"]
+
+        # A screen that spends the whole budget leaves nothing for the classify: DIRECT, no gateway call.
+        calls.clear()
+        r = _tc.post("/route", json={"prompt": "screened slowly", "budget_ms": 200})
+        assert r.json()["source"] == "fallback" and calls == [], "no classify call once the budget is gone"
+        assert _tc.post("/route", json={"prompt": "x", "budget_ms": 0}).status_code == 422
+    finally:
+        release.set()
+        gw.shutdown()
+        app._ROUTE_MEMO.clear()
+
+
 class _FakeRouteResponse:
     """What the gateway returns for a route call: a content-JSON verdict plus its provenance headers."""
     def __init__(self, agentic: bool):

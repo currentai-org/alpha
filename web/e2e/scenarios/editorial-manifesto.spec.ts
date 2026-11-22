@@ -141,16 +141,22 @@ async function signatureWidth(page: Page) {
 
 test.describe('manifesto signature at desktop width', () => {
 	test.use({ viewport: { width: 1280, height: 800 } });
-	test('keeps its 237px design width', { tag: ['@W1', '@CUR-4250'] }, async ({ page }) => {
-		expect(await signatureWidth(page)).toBeCloseTo(237, 0);
-	});
+	// @prod-safe: it only loads the manifesto and measures one image, so the one-spec run can drive it on www.
+	test(
+		'keeps its 237px design width',
+		{ tag: ['@W1', '@CUR-4250', '@prod-safe'] },
+		async ({ page }) => {
+			expect(await signatureWidth(page)).toBeCloseTo(237, 0);
+		}
+	);
 });
 
 test.describe('manifesto signature at phone width', () => {
 	test.use({ viewport: { width: 375, height: 800 } });
 	test(
 		'is 30% narrower than on desktop, 166px',
-		{ tag: ['@W1', '@CUR-4250'] },
+		// @prod-safe: it only loads the manifesto and measures one image, so the one-spec run can drive it on www.
+		{ tag: ['@W1', '@CUR-4250', '@prod-safe'] },
 		async ({ page }) => {
 			expect(await signatureWidth(page)).toBeCloseTo(166, 0);
 		}

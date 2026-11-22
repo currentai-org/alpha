@@ -1,6 +1,6 @@
 /**
  * The healthcheck has to answer "can this instance serve a chat turn", because that is what everything
- * reading it is asking: deploy-prod.sh's gate, post-deploy-smoke's rollback net, and anyone checking prod
+ * reading it is asking: the Redeploy www workflow's smoke, post-deploy-smoke's rollback net, and anyone checking prod
  * during an incident.
  *
  * A literal "OK"/200 returned unconditionally would let a deployment serving "No models available" pass

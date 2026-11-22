@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const cfg: Record<string, string> = {};
 vi.mock("$lib/chat/server/config", () => ({ config: cfg }));
 
-const DEFAULT = "https://us.i.posthog.com";
+const DEFAULT = "https://eu.i.posthog.com";
 
 beforeEach(() => {
 	for (const k of Object.keys(cfg)) delete cfg[k];
@@ -43,7 +43,7 @@ describe("serverPosthogHost — a relative browser proxy path is never a server 
 	});
 
 	it("trims surrounding whitespace on an absolute host", async () => {
-		cfg.PUBLIC_POSTHOG_HOST = "  https://us.i.posthog.com  ";
+		cfg.PUBLIC_POSTHOG_HOST = "  https://eu.i.posthog.com  ";
 		const { serverPosthogHost } = await import("./posthogHost");
 		expect(serverPosthogHost()).toBe(DEFAULT);
 	});
@@ -53,9 +53,9 @@ describe("serverPosthogHost — a relative browser proxy path is never a server 
 describe("serverPosthogHost — follows POSTHOG_INGEST_HOST when the browser host is relative", () => {
 	it("uses POSTHOG_INGEST_HOST behind a relative /rs browser host", async () => {
 		cfg.PUBLIC_POSTHOG_HOST = "/rs";
-		cfg.POSTHOG_INGEST_HOST = "https://eu.i.posthog.com";
+		cfg.POSTHOG_INGEST_HOST = "https://ph.example.org";
 		const { serverPosthogHost } = await import("./posthogHost");
-		expect(serverPosthogHost()).toBe("https://eu.i.posthog.com");
+		expect(serverPosthogHost()).toBe("https://ph.example.org");
 	});
 
 	it("an absolute PUBLIC_POSTHOG_HOST still wins over POSTHOG_INGEST_HOST", async () => {

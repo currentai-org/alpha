@@ -151,7 +151,7 @@ const ALIA = 'BSC-LT/ALIA-40b-instruct';
 
 test(
 	'an ALIA answer names the host its routing record holds, never "not recorded"',
-	{ tag: ['@preview-only', '@CUR-3941', '@CUR-4472'] },
+	{ tag: ['@preview-only', '@CUR-3941', '@CUR-4472', '@needs-alia'] },
 	async ({ page }) => {
 		test.setTimeout(180_000);
 		const { compute, recorded, org } = await askWhoRunsIt(page, ALIA);

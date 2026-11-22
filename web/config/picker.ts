@@ -39,7 +39,15 @@ type Withdrawal = { model: string; ticket: string; until: string; why: string; s
  * cannot outlive the reason for it unnoticed. While a model is here, specs tagged with its `specTag` stay out of the
  * scenario run (e2e/playwright.config.ts), and they come back with the model.
  */
-export const WITHDRAWN: readonly Withdrawal[] = [];
+export const WITHDRAWN: readonly Withdrawal[] = [
+	{
+		model: "BSC-LT/ALIA-40b-instruct",
+		ticket: "CUR-4228",
+		until: "2026-12-05",
+		why: "hand-picked ALIA turns can end failed and empty at about 60 s; it comes back once a picker probe answers 9 of 9",
+		specTag: "needs-alia",
+	},
+];
 
 const withdrawn = new Set(WITHDRAWN.map((w) => w.model));
 const offered = (ids: readonly string[]) => ids.filter((id) => !withdrawn.has(id));
@@ -50,7 +58,7 @@ const offered = (ids: readonly string[]) => ids.filter((id) => !withdrawn.has(id
  * deployment PICKER below wins over MODEL_ALLOWLIST; off Vercel (local dev, CI, evals) MODEL_ALLOWLIST
  * still overrides it. Nothing outside this file reads this list directly.
  */
-const PICKER_BEFORE_WITHDRAWALS: Readonly<Record<PickerSite, readonly string[]>> = {
+export const PICKER_BEFORE_WITHDRAWALS: Readonly<Record<PickerSite, readonly string[]>> = {
 	develop: [
 		"mistral-medium-2604",
 		"mistral-large-2610",

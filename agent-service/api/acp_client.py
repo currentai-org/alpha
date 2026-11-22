@@ -297,6 +297,11 @@ class _AttemptClock:
         whichever is first."""
         return min(self.deadline, self.hard_deadline)
 
+    def expired(self) -> bool:
+        """The attempt is out of time. Never true while another card holds the clock paused, except past the
+        hard limit."""
+        return self._loop.time() >= self.ends_at()
+
     def pause(self) -> None:
         if self._pause_depth == 0:
             self._banked = max(0.0, self.deadline - self._loop.time())
@@ -863,7 +868,13 @@ class _AgentClient:
         CLOSED — a timeout is a deny, not an allow). confirm_id is uuid4, not an attempt-local counter:
         each attempt gets a fresh _AgentClient/registry, so a counter would restart at 1 every attempt
         and a stale UI could POST an attempt-1 id into attempt-2's window and hit the wrong live
-        request. uuid4 sidesteps the reset entirely."""
+        request. uuid4 sidesteps the reset entirely.
+
+        An attempt already out of time opens no card and is denied at once. Otherwise an unanswered card that
+        used up the clock is followed, before the watchdog's next tick, by another full card timeout."""
+        if self._clock is not None and self._clock.expired():
+            self._log_permission(str(getattr(tool_call, "kind", "") or ""), "deny", "clock", "past_deadline")
+            return _selected(self._pick(options, allow=False))
         confirm_id = uuid.uuid4().hex[:12]
         fut: asyncio.Future = asyncio.get_running_loop().create_future()
         self._pending_confirms[confirm_id] = fut

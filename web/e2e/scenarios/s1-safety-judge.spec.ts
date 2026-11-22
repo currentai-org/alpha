@@ -4,7 +4,7 @@ import { test, expect, type Page } from './helpers/test';
 import { chatEntry } from './helpers/chatEntry';
 import { setFlagOverrides } from './helpers/flagOverride';
 import { turnDone } from './helpers/turn';
-import { composerHydrated, sendOpensConversation } from './helpers/composer';
+import { composerHydrated, pasteAndSend, sendOpensConversation } from './helpers/composer';
 import { startChattingPastWelcome } from './helpers/welcome';
 
 // With s1-safety-judge on, Zentropi S1 (zentropi-ai/cope-b-s1 on our own Hugging Face endpoint)
@@ -25,15 +25,25 @@ const DECLINE = /goes against our content policy|can't help with that|Trained pe
 type Assist = { role: string; model: string; backend?: string };
 type Stored = { id: string; routerMetadata?: { assistedBy?: Assist[] } };
 
-/** Sends `text` in a new chat; returns the answer locator and its stored safety-screen helper. */
-async function send(page: Page, text: string) {
+/** Sends `text` in a new chat, after `paste` as a clipboard paste when given (so it becomes a chip,
+ *  the way a person's long paste does); returns the answer locator and its stored safety-screen helper. */
+async function send(
+	page: Page,
+	text: string,
+	{ paste, timeout }: { paste?: string; timeout: number } = { timeout: 90_000 }
+) {
 	await page.goto(chatEntry(), { waitUntil: 'commit' });
 	await composerHydrated(page);
-	await page.getByLabel('Message AI Potluck').fill(text);
-	await sendOpensConversation(page);
+	if (paste) {
+		await pasteAndSend(page, paste, text);
+		await page.waitForURL(/\/conversation\/[a-f0-9]+/, { timeout: 30_000 });
+	} else {
+		await page.getByLabel('Message AI Potluck').fill(text);
+		await sendOpensConversation(page);
+	}
 	const answer = page.locator('[data-message-role="assistant"]').last();
-	await expect(turnDone(answer), `"${text}" never finished within 90s`).toBeVisible({
-		timeout: 90_000
+	await expect(turnDone(answer), `"${text}" never finished within ${timeout / 1000}s`).toBeVisible({
+		timeout
 	});
 	const conversationId = page.url().match(/\/conversation\/([a-f0-9]+)/)?.[1] ?? '';
 	const res = await page.request.get(`/chat/api/v2/conversations/${conversationId}`);
@@ -137,5 +147,44 @@ test(
 				`"${text}": safety-screen helper was ${JSON.stringify(screen)}`
 			).toMatch(/Shieldstral/i);
 		}
+	}
+);
+
+// A paste long enough for four 12,000-character windows, screened side by side under one shared cap on
+// S1 calls. The turn is screened by S1 and answered, with no unfinished-check notice.
+const PROSE = [
+	'It is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife.',
+	'However little known the feelings or views of such a man may be on his first entering a neighbourhood, this truth is so well fixed in the minds of the surrounding families, that he is considered the rightful property of some one or other of their daughters.',
+	'"My dear Mr. Bennet," said his lady to him one day, "have you heard that Netherfield Park is let at last?"',
+	'Mr. Bennet replied that he had not.'
+].join('\n\n');
+const SCREEN_UNFINISHED = /couldn['’]t finish the safety check/i;
+
+test(
+	'with s1-safety-judge on, a four-window paste of ordinary prose is screened by S1 and answered, not left unchecked',
+	{ tag: ['@A5', '@CUR-5043', '@real-screen'] },
+	async ({ page, context, baseURL }) => {
+		test.setTimeout(300_000);
+		await setFlagOverrides(context, baseURL!, { 's1-safety-judge': true, multimodal: false });
+		await pastWelcome(page);
+
+		const story = PROSE.repeat(Math.ceil(45_000 / PROSE.length)).slice(0, 45_000);
+		const { answer, screen } = await send(page, 'Summarize this story in one sentence.', {
+			paste: story,
+			timeout: 180_000
+		});
+		// Both are notices our code writes in place of an answer, so their absence means the model answered.
+		await expect(
+			answer.getByText(SCREEN_UNFINISHED),
+			'the four-window paste ran out of time in the S1 screen'
+		).toHaveCount(0);
+		await expect(
+			answer.getByText(DECLINE),
+			'the long paste of ordinary prose was declined'
+		).toHaveCount(0);
+		expect(
+			screen?.model,
+			`the long paste's safety-screen helper was ${JSON.stringify(screen)}: S1 did not screen it`
+		).toBe(S1_MODEL);
 	}
 );

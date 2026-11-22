@@ -113,7 +113,14 @@ type S1UnitResult = {
 	escalated: boolean;
 };
 
-type S1UnitCtx = { opSignal: AbortSignal; log: MinimalLogger; userContext?: string };
+type S1UnitCtx = {
+	opSignal: AbortSignal;
+	log: MinimalLogger;
+	userContext?: string;
+	/** Caps in-flight S1 calls across every chunk of one screen. Without one, this chunk gets its own
+	 *  cap of `header.concurrency`, so a screen of n chunks run side by side sends up to n times that. */
+	limiter?: S1CallLimiter;
+};
 
 /** One chunk through S1. NEVER rejects: every failure is an unknown state. */
 export type S1UnitJudge = (text: string, phase: S1Phase, ctx: S1UnitCtx) => Promise<S1UnitResult>;
@@ -144,8 +151,9 @@ export function s1Configured(): boolean {
 type CallKind = "broad" | "single" | "escalation" | "crisis";
 type CallResult = { scores: Map<string, number>; ok: boolean; servedBackend?: string };
 
-/** A per-chunk cap on in-flight S1 calls. */
-class Limiter {
+/** A cap on in-flight S1 calls. The guard gate shares one across a screen's chunks, because the S1
+ *  endpoint answers in about a second when idle but queues a burst past each call's timeout. */
+export class S1CallLimiter {
 	private active = 0;
 	private readonly waiters: Array<() => void> = [];
 	constructor(private readonly limit: number) {}
@@ -174,7 +182,7 @@ export function makeS1Judge(overrides: S1Overrides = {}): S1UnitJudge {
 		const nonCritical = blocking.filter((p) => !p.critical);
 		const crisis = policies.filter((p) => p.action === "log");
 		const content = s1Content(phase, text, ctx.userContext);
-		const limiter = new Limiter(header.concurrency);
+		const limiter = ctx.limiter ?? new S1CallLimiter(header.concurrency);
 		const key = overrides.key ?? s1Key();
 		const doFetch = overrides.fetchImpl ?? globalThis.fetch;
 		const apiBase = overrides.endpoint ? undefined : s1ApiBase();

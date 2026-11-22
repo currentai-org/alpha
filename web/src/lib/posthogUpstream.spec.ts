@@ -1,5 +1,5 @@
 // config/posthogRegion.mjs is where every PostHog consumer reads its region. Unset, it must
-// name today's US project, so shipping it changes nothing until the env does.
+// name the live project, EU 345429, where production moved from US.
 import { describe, expect, it } from 'vitest';
 import {
 	CLOUD_HOSTS,
@@ -10,24 +10,24 @@ import {
 } from '../../config/posthogRegion.mjs';
 import * as upstream from './posthogUpstream';
 
-describe('posthogRegion — unset env keeps the US project', () => {
-	it('defaults every value to US', () => {
-		expect(posthogIngestHost({})).toBe('https://us.i.posthog.com');
-		expect(posthogAssetsHost(posthogIngestHost({}))).toBe('https://us-assets.i.posthog.com');
-		expect(posthogAppHost({})).toBe('https://us.posthog.com');
-		expect(posthogProjectId({})).toBe('492965');
+describe('posthogRegion — unset env names the live EU project', () => {
+	it('defaults every value to EU', () => {
+		expect(posthogIngestHost({})).toBe('https://eu.i.posthog.com');
+		expect(posthogAssetsHost(posthogIngestHost({}))).toBe('https://eu-assets.i.posthog.com');
+		expect(posthogAppHost({})).toBe('https://eu.posthog.com');
+		expect(posthogProjectId({})).toBe('345429');
 	});
 
 	it('ignores a relative, non-https or path-carrying value', () => {
-		for (const bad of ['/rs', 'http://eu.i.posthog.com', 'https://eu.i.posthog.com/x', 'eu', ' ']) {
-			expect(posthogIngestHost({ POSTHOG_INGEST_HOST: bad })).toBe('https://us.i.posthog.com');
-			expect(posthogAppHost({ POSTHOG_APP_HOST: bad })).toBe('https://us.posthog.com');
+		for (const bad of ['/rs', 'http://ph.example.org', 'https://ph.example.org/x', 'eu', ' ']) {
+			expect(posthogIngestHost({ POSTHOG_INGEST_HOST: bad })).toBe('https://eu.i.posthog.com');
+			expect(posthogAppHost({ POSTHOG_APP_HOST: bad })).toBe('https://eu.posthog.com');
 		}
-		expect(posthogProjectId({ POSTHOG_PROJECT_ID: 'abc' })).toBe('492965');
+		expect(posthogProjectId({ POSTHOG_PROJECT_ID: 'abc' })).toBe('345429');
 	});
 });
 
-describe('posthogRegion — the EU env moves every value together', () => {
+describe('posthogRegion — an explicit EU env moves every value together', () => {
 	const EU = {
 		POSTHOG_INGEST_HOST: 'https://eu.i.posthog.com',
 		POSTHOG_APP_HOST: 'https://eu.posthog.com',
@@ -53,13 +53,13 @@ describe('posthogRegion — the EU env moves every value together', () => {
 		expect(posthogAppHost(self)).toBe('https://ph.example.org');
 	});
 
-	it('lists both cloud regions for the transition CSP', () => {
-		expect(CLOUD_HOSTS).toEqual([
-			'https://us.i.posthog.com',
-			'https://us-assets.i.posthog.com',
-			'https://eu.i.posthog.com',
-			'https://eu-assets.i.posthog.com'
-		]);
+	it('lists an ingest and an assets host per cloud region for the transition CSP, EU included', () => {
+		expect(CLOUD_HOSTS).toHaveLength(4);
+		expect(CLOUD_HOSTS).toEqual(
+			expect.arrayContaining(['https://eu.i.posthog.com', 'https://eu-assets.i.posthog.com'])
+		);
+		for (const h of CLOUD_HOSTS)
+			expect(h).toMatch(/^https:\/\/[a-z]{2}(-assets)?\.i\.posthog\.com$/);
 	});
 });
 

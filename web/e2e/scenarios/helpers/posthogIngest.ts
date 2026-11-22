@@ -5,7 +5,7 @@ import type { Page, Request } from '@playwright/test';
 export type CapturedEvent = { event: string; properties?: Record<string, unknown> };
 
 // posthog-js posts to `<api_host>/e/` (or `/i/v0/e/`), where api_host is the same-origin `/rs`
-// proxy or us.i.posthog.com depending on PUBLIC_POSTHOG_HOST. Both are matched.
+// proxy or a PostHog Cloud ingest host depending on PUBLIC_POSTHOG_HOST. Both are matched.
 function isIngest(url: URL): boolean {
 	const viaProxy = url.pathname.startsWith('/rs/');
 	const direct = url.hostname.endsWith('.posthog.com');

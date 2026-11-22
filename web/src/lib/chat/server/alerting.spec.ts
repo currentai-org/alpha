@@ -33,9 +33,11 @@ vi.stubGlobal("fetch", fetchMock);
 // fired — asserting on a raw call count would let a missing Slack post hide behind a heartbeat ping.
 const SLACK_URL = "https://hooks.slack.test/triggers/x";
 const HB_URL = "https://uptime.test/api/v1/heartbeat/dep";
+// INSTANCE, read the same way; "" is www. A test sets it to stand in for an event instance.
+const instanceEnv = vi.hoisted(() => ({ value: "" }));
 vi.mock("$lib/chat/server/env/firstKey", () => ({
 	firstKey: (_keys: string[], name: string) =>
-		name === "betterstackDependencyHeartbeat" ? HB_URL : SLACK_URL,
+		name === "instance" ? instanceEnv.value : name === "betterstackDependencyHeartbeat" ? HB_URL : SLACK_URL,
 }));
 vi.mock("$lib/chat/server/logger", () => ({
 	logger: { info: vi.fn(), warn: vi.fn() },
@@ -287,5 +289,21 @@ describe("clearRateLimitTrip", () => {
 		});
 		await expect(clearRateLimitTrip(QUOTA_KEY)).resolves.toBeUndefined();
 		boom.mockRestore();
+	});
+});
+
+describe("an event instance's alert names the instance", () => {
+	it("a firing alert from an event instance says which one, so it is not read as www's or alpha's", async () => {
+		instanceEnv.value = "lugano";
+		try {
+			for (let i = 0; i < 3; i++) await recordProbe(KEY, false, opts);
+		} finally {
+			instanceEnv.value = "";
+		}
+		expect(bodyOf(0)).toContain("aipotluck prod (lugano) — Coop verdict path");
+	});
+	it("a firing alert on www, where INSTANCE is unset, stays plain", async () => {
+		for (let i = 0; i < 3; i++) await recordProbe(KEY, false, opts);
+		expect(bodyOf(0)).toContain("aipotluck prod — Coop verdict path");
 	});
 });

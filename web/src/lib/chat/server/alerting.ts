@@ -9,6 +9,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "$lib/chat/server/db/client";
 import { alertState } from "$lib/chat/server/db/schema";
 import { firstKey } from "$lib/chat/server/env/firstKey";
+import { DEFAULT_INSTANCE, deploymentInstance } from "$lib/chat/server/instance";
 import { logger, securityLogger } from "$lib/chat/server/logger";
 import { postSlackWebhook } from "../../../../scripts/lib/slackWebhook.mjs";
 
@@ -36,6 +37,13 @@ type ProbeOpts = {
 	 *  and a muted channel is worse than no channel. */
 	severity?: "outage" | "degraded";
 };
+
+/** The deployment an alert comes from. An event instance names itself, so its alert can't be read as
+ *  www's or alpha's: each instance runs its own probes against its own config. */
+function alertSource(): string {
+	const instance = deploymentInstance({ INSTANCE: firstKey(["INSTANCE"], "instance", { allowEmpty: true }) });
+	return instance === DEFAULT_INSTANCE ? "aipotluck prod" : `aipotluck prod (${instance})`;
+}
 
 type AlertVals = {
 	consecutiveFailures: number;
@@ -162,7 +170,7 @@ export async function recordProbe(key: string, healthy: boolean, opts: ProbeOpts
 			if (wasFiring) {
 				await postSlack(
 					key,
-					`🟢 aipotluck prod — ${opts.label} recovered (healthy probe after ${prevFailures} consecutive failures).`
+					`🟢 ${alertSource()} — ${opts.label} recovered (healthy probe after ${prevFailures} consecutive failures).`
 				);
 			}
 			return;
@@ -183,7 +191,7 @@ export async function recordProbe(key: string, healthy: boolean, opts: ProbeOpts
 			const [icon, state] = opts.severity === "degraded" ? ["🟠", "DEGRADED"] : ["🔴", "DOWN"];
 			await postSlack(
 				key,
-				`${icon} aipotluck prod — ${opts.label} ${state} (${failures} consecutive failed health probes). ${opts.runbook}`
+				`${icon} ${alertSource()} — ${opts.label} ${state} (${failures} consecutive failed health probes). ${opts.runbook}`
 			);
 		}
 	} catch (e) {
@@ -229,7 +237,7 @@ export async function recordRateLimitTrip(
 		if (dueToFire) {
 			await postSlack(
 				key,
-				`🟠 aipotluck prod — ${opts.limitName} tripped ${trips} times by ${opts.identity}. Possible scripted abuse.`
+				`🟠 ${alertSource()} — ${opts.limitName} tripped ${trips} times by ${opts.identity}. Possible scripted abuse.`
 			);
 		}
 	} catch (e) {

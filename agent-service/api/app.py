@@ -7595,6 +7595,9 @@ def run(req: RunRequest, user: str = Depends(require_user), _account: None = Dep
 # no AGENT_ROUTE_ENABLED kill switch. Who may be routed is the web side's per-user agent
 # flag (resolveAgentRoute.ts), and a 404 here only showed those users a "route failed" notice.
 ROUTE_MAX_TOKENS = int(os.environ.get("AGENT_ROUTE_MAX_TOKENS", "1024"))  # Large 4 thinks before the verdict
+# The ceiling on one /route answer. A caller that sends `budget_ms` gets the smaller of the two, counted from
+# when its request arrived, so the input screen's time comes out of it and the fallback lands before the
+# caller stops waiting.
 ROUTE_TIMEOUT_SECS = float(os.environ.get("AGENT_ROUTE_TIMEOUT_SECS", "20"))
 _ROUTE_MEMO: dict[str, dict] = {}                                  # prompt-hash -> {"agentic","reason"} (temp-0 deterministic)
 _ROUTE_MEMO_MAX = 512
@@ -7664,7 +7667,7 @@ def _extract_route_args(msg: dict) -> dict | None:
     return _loose_route_parse(content)                         # last resort: regex a boolean out of prose
 
 
-def _classify_agentic(prompt: str, use_memo: bool = True) -> dict:
+def _classify_agentic(prompt: str, use_memo: bool = True, deadline: float | None = None) -> dict:
     """Forced-choice agentic router (bare prompt — see /route note). Returns
     {"agentic": bool, "reason": str, "source": "memo|model|fallback", "backend": str|None,
     "served_model": str|None}. Never raises; on any failure defaults to DIRECT (agentic=False) — the cheap
@@ -7673,7 +7676,8 @@ def _classify_agentic(prompt: str, use_memo: bool = True) -> dict:
     `backend`/`served_model` name who actually answered (the gateway's x-agent-backend header and the
     response's own `model`). A memo hit carries the ones recorded when the verdict was made, so a cached
     answer still says where it came from. `use_memo=False` skips the memo READ only (an eval that
-    reads from the memo grades its own cache); a fresh verdict is still stored."""
+    reads from the memo grades its own cache); a fresh verdict is still stored. `deadline` is a
+    time.monotonic() mark the classify call must finish by; without one it gets ROUTE_TIMEOUT_SECS."""
     key = hashlib.sha256(prompt.encode("utf-8", "replace")).hexdigest()
     if use_memo and key in _ROUTE_MEMO:
         return {"backend": None, "served_model": None, **_ROUTE_MEMO[key], "source": "memo"}
@@ -7690,6 +7694,9 @@ def _classify_agentic(prompt: str, use_memo: bool = True) -> dict:
         return fallback
     decision = fallback
     try:
+        timeout = ROUTE_TIMEOUT_SECS if deadline is None else deadline - time.monotonic()
+        if timeout <= 0:
+            raise TimeoutError("route budget spent before the classify call")
         r = httpx.post(MODEL_PROXY_URL + "/v1/chat/completions",
                        headers={"authorization": f"Bearer {nonce}"},
                        # No tools/tool_choice — text protocol (see _ROUTE_SYSTEM note). Same shape as the
@@ -7698,7 +7705,7 @@ def _classify_agentic(prompt: str, use_memo: bool = True) -> dict:
                              "messages": [{"role": "system", "content": _ROUTE_SYSTEM},
                                           {"role": "user", "content": prompt}],
                              "temperature": 0.0, "max_tokens": ROUTE_MAX_TOKENS},
-                       timeout=ROUTE_TIMEOUT_SECS)
+                       timeout=timeout)
         r.raise_for_status()
         payload = r.json()
         args = _extract_route_args(payload["choices"][0]["message"])
@@ -7725,6 +7732,7 @@ def _classify_agentic(prompt: str, use_memo: bool = True) -> dict:
 class RouteRequest(BaseModel):
     prompt: str                          # the turn to classify (latest user message, optionally with brief context)
     fresh: bool = False                  # skip the memo read; honoured for OPERATOR_SUBS only
+    budget_ms: int | None = Field(default=None, gt=0)  # how long the caller waits for a verdict, from arrival
 
 
 class RouteResponse(BaseModel):
@@ -7741,6 +7749,8 @@ def route_turn(req: RouteRequest, user: str = Depends(require_user)) -> RouteRes
     """Agentic-vs-direct classifier for the chat's 'auto' mode. One forced-choice model call through the
     gateway (bare prompt, temp 0, memoized) — the decision only, never the agent loop. Same auth +
     moderation boundary as /run. Fail-open to DIRECT so a router hiccup degrades to the normal model."""
+    arrived = time.monotonic()
+    limit = ROUTE_TIMEOUT_SECS if req.budget_ms is None else min(ROUTE_TIMEOUT_SECS, req.budget_ms / 1000)
     p = req.prompt.strip()
     if not p:
         raise HTTPException(400, "empty prompt")
@@ -7750,7 +7760,7 @@ def route_turn(req: RouteRequest, user: str = Depends(require_user)) -> RouteRes
     # a fresh verdict is for our own measurement runs. An invitee asking for one would only spend
     # a gateway call the memo exists to save, so the flag is ignored for them rather than refused.
     fresh = req.fresh and _caller_of(user) in OPERATOR_SUBS
-    d = _classify_agentic(p, use_memo=not fresh)
+    d = _classify_agentic(p, use_memo=not fresh, deadline=arrived + limit)
     _metric_inc("agent_route_total")
     _metric_inc("agent_route_agentic_total" if d["agentic"] else "agent_route_direct_total")
     _log_event("route.decided", user=user, agentic=d["agentic"], source=d["source"], fresh=fresh,

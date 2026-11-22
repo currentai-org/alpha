@@ -70,7 +70,7 @@ test.beforeEach(async ({ context, baseURL }) => {
 // standing in for the composer was thrown away without a word.
 test(
 	'on a text-only model a file attaches from the + menu, and a file dropped on the conversation attaches too',
-	{ tag: ['@preview-only', '@A6'] },
+	{ tag: ['@preview-only', '@A6', '@needs-alia'] },
 	async ({ page }) => {
 		test.setTimeout(90_000);
 		await openSignedIn(page, `/chat/models/${TEXT_ONLY_MODEL}`);
@@ -115,7 +115,7 @@ test(
 
 test(
 	'picking a text-only model with a photo attached says it will not see the photo, and Use <model> switches to one that will',
-	{ tag: ['@preview-only', '@A6'] },
+	{ tag: ['@preview-only', '@A6', '@needs-alia'] },
 	async ({ page }) => {
 		test.setTimeout(90_000);
 		await openSignedIn(page, `/chat/models/${LARGE4_MODEL}`);

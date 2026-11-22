@@ -23,7 +23,17 @@ import { endpointApiKey } from "$lib/chat/server/endpointKey";
  */
 
 export const AGENT_MODEL_ID = "potluck-agent";
-const ROUTE_TIMEOUT_MS = 20_000; // the classify is a single small model call; bound it well under the run wall-clock
+/** How long the agent service has to give a verdict, sent with each /route request as `budget_ms`. The
+ *  service counts it from the moment the request arrives, its input screen included, and answers
+ *  "direct" (`source: "fallback"`) when its classify call runs past it. This is the one place the number
+ *  lives: the service takes it from the request rather than keeping a copy. */
+const ROUTE_BUDGET_MS = 20_000;
+/** How much longer than the budget the chat waits for that answer to arrive, for the network round trip
+ *  and the service's own cleanup. A service still silent past budget plus margin is treated as
+ *  unreachable. When the two waits were equal, the chat's clock, which starts before the service's
+ *  input screen runs, always ran out first on a slow classify, and a service that did answer was
+ *  reported as unreachable. */
+const ROUTE_REPLY_MARGIN_MS = 5_000;
 
 export interface AgentRouteDecision {
 	model: ProcessedModel;
@@ -121,6 +131,10 @@ async function decideAgentRoute(opts: {
 	webSearchAlways?: boolean;
 	/** Injectable for tests; defaults to the platform fetch. */
 	fetchImpl?: typeof fetch;
+	/** Injectable for tests, so a spec can drive the budget race in milliseconds; default ROUTE_BUDGET_MS
+	 *  and ROUTE_REPLY_MARGIN_MS. */
+	routeBudgetMs?: number;
+	routeReplyMarginMs?: number;
 }): Promise<AgentRouteDecision> {
 	const { selected, models, agentMode, prompt, agentAllowed, carriesDocument } = opts;
 	const doFetch = opts.fetchImpl ?? fetch;
@@ -174,6 +188,7 @@ async function decideAgentRoute(opts: {
 		return { model: selected, route: "selected", reason: "auto: agent baseURL missing" };
 	}
 
+	const budgetMs = opts.routeBudgetMs ?? ROUTE_BUDGET_MS;
 	try {
 		const headers: Record<string, string> = { "content-type": "application/json" };
 		const apiKey = endpointApiKey(ep);
@@ -181,8 +196,8 @@ async function decideAgentRoute(opts: {
 		const res = await doFetch(`${baseURL}/route`, {
 			method: "POST",
 			headers,
-			body: JSON.stringify({ prompt: task }),
-			signal: AbortSignal.timeout(ROUTE_TIMEOUT_MS),
+			body: JSON.stringify({ prompt: task, budget_ms: budgetMs }),
+			signal: AbortSignal.timeout(budgetMs + (opts.routeReplyMarginMs ?? ROUTE_REPLY_MARGIN_MS)),
 		});
 		// /route runs the agent service's own input screen first and answers 403 "blocked by
 		// moderation" when it refuses. The service was reached and gave a verdict, so the turn goes to the

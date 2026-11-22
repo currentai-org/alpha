@@ -48,7 +48,7 @@ export type SiteEvent =
 //
 // The default host is the same-origin /rs proxy (routes/rs/[...path]), which every deployment serves
 // and which forwards to POSTHOG_INGEST_HOST. PUBLIC_POSTHOG_HOST overrides it; set
-// PUBLIC_POSTHOG_UI_HOST (e.g. https://us.posthog.com) so the toolbar / "view in PostHog" links resolve
+// PUBLIC_POSTHOG_UI_HOST (e.g. https://eu.posthog.com) so the toolbar / "view in PostHog" links resolve
 // while the API host is a proxy.
 //
 // legacyKey is PUBLIC_POSTHOG_LEGACY_KEY, the previous project token while a region move settles; see

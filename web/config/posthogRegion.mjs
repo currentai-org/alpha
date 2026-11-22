@@ -1,10 +1,11 @@
 // Which PostHog this deployment and its tooling talk to, read in one place. Every consumer
 // (the /rs proxy, the server flag and error clients, the CSP, the flag scripts, the source-map upload,
 // the release-note draft) takes its hosts and project from here, so moving region is an env change.
+// Production moved from PostHog's US cloud to EU project 345429, so unset means EU.
 //
-//   POSTHOG_INGEST_HOST  where events and flag reads go     unset: https://us.i.posthog.com
+//   POSTHOG_INGEST_HOST  where events and flag reads go     unset: https://eu.i.posthog.com
 //   POSTHOG_APP_HOST     the app and its management API     unset: derived from the ingest host
-//   POSTHOG_PROJECT_ID   the project the management API reads   unset: 492965
+//   POSTHOG_PROJECT_ID   the project the management API reads   unset: 345429
 //
 // The assets host (JS bundle, remote config) is derived: PostHog Cloud serves it from a sibling
 // `<region>-assets` host, a self-hosted PostHog from its one origin.
@@ -12,9 +13,8 @@
 // Server and Node only. It reads `process.env` when one exists and never a browser variable, so a
 // browser bundle that pulled it in would read the defaults rather than throw.
 
-const US_INGEST = "https://us.i.posthog.com";
-const US_APP = "https://us.posthog.com";
-const US_PROJECT_ID = "492965";
+const DEFAULT_INGEST = "https://eu.i.posthog.com";
+const DEFAULT_PROJECT_ID = "345429";
 
 /**
  * An absolute https origin, or undefined. A relative path, a path or query, or a typo is never honoured,
@@ -38,7 +38,7 @@ function httpsOrigin(raw) {
  * @returns {string}
  */
 export function posthogIngestHost(env) {
-	return httpsOrigin(env.POSTHOG_INGEST_HOST) ?? US_INGEST;
+	return httpsOrigin(env.POSTHOG_INGEST_HOST) ?? DEFAULT_INGEST;
 }
 
 /**
@@ -62,8 +62,7 @@ export function posthogAppHost(env) {
 	if (set) return set;
 	const ingest = posthogIngestHost(env);
 	const m = /^https:\/\/([a-z]+)\.i\.posthog\.com$/.exec(ingest);
-	if (m) return `https://${m[1]}.posthog.com`;
-	return ingest === US_INGEST ? US_APP : ingest;
+	return m ? `https://${m[1]}.posthog.com` : ingest;
 }
 
 /**
@@ -72,10 +71,10 @@ export function posthogAppHost(env) {
  */
 export function posthogProjectId(env) {
 	const id = (env.POSTHOG_PROJECT_ID ?? "").trim();
-	return /^\d+$/.test(id) ? id : US_PROJECT_ID;
+	return /^\d+$/.test(id) ? id : DEFAULT_PROJECT_ID;
 }
 
-/** Every PostHog Cloud region's ingest and assets hosts, for a CSP that must allow either while a move is under way. */
+/** Every PostHog Cloud region's ingest and assets hosts, for a CSP that allows either while the move from US settles. */
 export const CLOUD_HOSTS = ["us", "eu"].flatMap((r) => [
 	`https://${r}.i.posthog.com`,
 	`https://${r}-assets.i.posthog.com`,

@@ -1,6 +1,7 @@
 // e2e-product: @chat
 // e2e-area: @turn
 import { test, expect, type Page } from './helpers/test';
+import { CLOUD_HOSTS } from '../../config/posthogRegion.mjs';
 
 // A page the model read can steer its answer, and any image that answer names is
 // fetched the moment the answer renders, carrying whatever the model put in the URL. The renderer
@@ -83,9 +84,11 @@ for (const path of ['/', '/chat']) {
 
 			// The case the policy exists for: an <img> naming another host, carrying data in its URL.
 			// The control image beside it is our own, so a pass cannot come from injection not working.
-			// Both PostHog Cloud regions' ingest hosts, since the CSP allows either for fetches while the
-			// project moves from US to EU (config/posthogRegion.mjs CLOUD_HOSTS); neither may load an image.
-			const ingestHosts = ['us.i.posthog.com', 'eu.i.posthog.com'];
+			// Every PostHog Cloud region's ingest host, since the CSP allows each for fetches while the
+			// move to EU settles (config/posthogRegion.mjs CLOUD_HOSTS); none may load an image.
+			const ingestHosts = CLOUD_HOSTS.filter((h) => !h.includes('-assets.')).map(
+				(h) => new URL(h).host
+			);
 			const result = await page.evaluate(async (ingestHosts) => {
 				const violations: string[] = [];
 				document.addEventListener('securitypolicyviolation', (event) => {

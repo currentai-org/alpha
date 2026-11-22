@@ -47,7 +47,7 @@ function releaseVersion() {
 }
 
 // The CLI's global `--host` flag (posthog-cli --help: "The PostHog host to connect to"; unset it uses
-// https://us.posthog.com). It goes before the subcommand, and takes the app host, not the ingest one.
+// PostHog's US cloud, not ours). It goes before the subcommand, and takes the app host, not the ingest one.
 function run(args) {
 	execFileSync(CLI, ["--host", appHost, ...args], { stdio: "inherit" });
 }

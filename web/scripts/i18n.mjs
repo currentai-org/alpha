@@ -19,6 +19,7 @@ import { parseArgs } from "node:util";
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
+import { logLlmUsage } from "./lib/llmUsage.mjs";
 
 const WEB = join(dirname(fileURLToPath(import.meta.url)), "..");
 const MESSAGES = join(WEB, "messages");
@@ -147,6 +148,7 @@ async function translateBatch(client, locale, entries) {
 			},
 		],
 	});
+	logLlmUsage(`translate:${locale}`, MODEL, response.usage);
 	if (response.stop_reason === "refusal") throw new Error(`${locale}: request declined`);
 	if (!response.parsed_output) throw new Error(`${locale}: no structured output (${response.stop_reason})`);
 	return response.parsed_output.translations;

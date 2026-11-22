@@ -14,6 +14,8 @@ import { safetyScreenToken } from "$lib/chat/server/safetyScreen";
 import { takeErrorCount, captureServerException } from "$lib/chat/server/errorTracking";
 import { takeAgentRouteFailureCount } from "$lib/chat/server/chat/resolveAgentRoute";
 import { recordProbe } from "$lib/chat/server/alerting";
+import { agentServiceToken } from "$lib/chat/server/agentMode";
+import { AGENT_TOKEN_WARN_DAYS, agentTokenExpiry } from "$lib/chat/server/agentTokenExpiry";
 import { countFailClosedChildDeclines } from "$lib/chat/server/db/safetyEvents";
 import {
 	countTurnOutcomeWindows,
@@ -629,6 +631,30 @@ export async function warmMistralVersions(): Promise<void> {
 	});
 }
 
+/** The agent service refuses every task once chat's AGENT_SERVICE_TOKEN passes its `exp`, and only a
+ *  person can mint the next one. This reads the date off the token hourly and goes degraded when
+ *  AGENT_TOKEN_WARN_DAYS or fewer remain, so the swap happens before agent mode stops. It logs the
+ *  expiry date and days left, never the token. No token, or one with no `exp`, records nothing. */
+const AGENT_TOKEN_EXPIRY_THROTTLE_MS = 60 * 60_000;
+let lastAgentTokenExpiryAt = 0;
+export async function warmAgentTokenExpiry(): Promise<void> {
+	const now = Date.now();
+	if (now - lastAgentTokenExpiryAt < throttleMs(AGENT_TOKEN_EXPIRY_THROTTLE_MS)) return;
+	lastAgentTokenExpiryAt = now;
+	const expiry = agentTokenExpiry(agentServiceToken(), now);
+	if (!expiry) return;
+	const ok = expiry.daysLeft > AGENT_TOKEN_WARN_DAYS;
+	logger[ok ? "info" : "warn"](
+		{ leg: "agent-token-expiry", ok, expiresAt: expiry.expiresAt, daysLeft: Math.floor(expiry.daysLeft) },
+		"[warm] leg"
+	);
+	await recordProbe("agent:token-expiry", ok, {
+		label: "Agent service token expiry",
+		severity: "degraded",
+		runbook: `Chat's AGENT_SERVICE_TOKEN expires ${expiry.expiresAt} (${Math.floor(expiry.daysLeft)} days). After that the agent service refuses every agent task. Mint a replacement with the agent service's mint script, write it to the chat deployment's Doppler config (AGENT_SERVICE_TOKEN), redeploy chat, and run one agent task to confirm.`,
+	});
+}
+
 // Coop is the REVIEW plane, not a detector: the guard screens every chat turn, so there is no Coop
 // verdict path to probe. This leg keeps the rule-free origin ping (warmModeration → pingCoopOrigin) as
 // review-service reachability, and alerts when the review keys are missing (warmCoopReviewConfig).
@@ -1074,6 +1100,7 @@ async function deploymentLegs(): Promise<unknown> {
 		warmCoopHealth(),
 		warmGuardHealth(),
 		warmS1Health(),
+		warmAgentTokenExpiry(),
 		warmDeclineRate(),
 		warmTurnOutcomeRate(),
 		warmTurnSpeed(),

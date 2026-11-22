@@ -671,6 +671,28 @@ def test_an_unanswered_confirmation_is_charged_to_the_attempt_and_never_reimburs
     assert clock.deadline == loop.time(), "out of clock: the watchdog ends the attempt on its next tick"
 
 
+def test_a_confirmation_requested_after_the_attempt_deadline_opens_no_card_and_is_denied():
+    """Past the 300 s cap an attempt gets no new card: one unanswered card may run over, a second may not."""
+    async def ask(past_deadline: bool):
+        c = acp_client._AgentClient(work="/tmp", buf=_CapBuf(), attempt=1, permission_policy="confirm",
+                                    confirm_timeout_secs=0.05)
+        loop = asyncio.get_running_loop()
+        c._clock = acp_client._AttemptClock(loop, timeout_secs=0.0 if past_deadline else 10.0)
+        task = asyncio.ensure_future(
+            c.request_permission([_opt("allow_once", "yes"), _opt("reject_once", "no")], "s", _tool_call()))
+        await asyncio.sleep(0.01)
+        opened = len(c._pending_confirms)
+        started = loop.time()
+        resp = await task
+        cards = [d for t, d in c._buf.frames if t == "awaiting_confirmation"]
+        return opened, len(cards), resp.outcome.option_id, loop.time() - started
+
+    opened, cards, choice, _ = _run(ask(True))
+    assert (opened, cards, choice) == (0, 0, "no"), "out of time: denied at once, no card shown"
+    opened, cards, choice, waited = _run(ask(False))
+    assert (opened, cards) == (1, 1) and waited > 0.02, "inside the cap: the card opens and waits for an answer"
+
+
 def test_an_unanswered_card_charges_the_window_it_shared_with_an_answered_one():
     """Two cards open at once and one goes unanswered: nobody was there for the window, so it is charged."""
     loop = _FakeLoop(0.0)

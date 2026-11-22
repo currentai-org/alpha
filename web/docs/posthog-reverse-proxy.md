@@ -11,24 +11,25 @@ The app includes the proxy. Turning it on is a configuration change.
 
 PostHog has two upstreams:
 
-- **Assets.** The bundle, recorder and surveys are at `us-assets.i.posthog.com/static/*`. Remote
-  config is at `us-assets.i.posthog.com/array/*`.
-- **Ingestion.** Events, decide and flags are at `us.i.posthog.com/*` (`/e`, `/i/v0/e`, `/decide`,
+- **Assets.** The bundle, recorder and surveys are at `eu-assets.i.posthog.com/static/*`. Remote
+  config is at `eu-assets.i.posthog.com/array/*`.
+- **Ingestion.** Events, decide and flags are at `eu.i.posthog.com/*` (`/e`, `/i/v0/e`, `/decide`,
   `/flags`, …).
 
 `src/routes/rs/[...path]/+server.ts` forwards `/rs/*` to the matching upstream. It works on any
 SvelteKit adapter and in `pnpm dev`. The endpoint:
 
-- hardcodes both upstream hosts, so it can't be used for SSRF
+- takes both upstream hosts from deployment config, never from the request, so it can't be used for SSRF
 - sets `trailingSlash: 'ignore'`, so posthog-js's `/rs/e/` isn't redirected with a 308
 - forwards the exact path from `url.pathname`
 - removes `cookie` and `host` from the forwarded request
 - removes `content-encoding` and `content-length` from the response, because undici decodes gzip
 - accepts GET, POST, OPTIONS and HEAD
 
-The upstreams are US cloud. For an EU project, change them to `eu.i.posthog.com` and
-`eu-assets.i.posthog.com`. Your dashboard URL (`us.posthog.com` or `eu.posthog.com`) shows which
-region your project is in.
+The upstreams default to PostHog's EU cloud. `POSTHOG_INGEST_HOST` picks another: a PostHog Cloud
+region's ingest host, whose assets host is derived from it, or a self-hosted PostHog's one origin
+(`config/posthogRegion.mjs`). The region prefix of your dashboard URL shows which region your
+project is in.
 
 ### Path name
 
@@ -46,10 +47,10 @@ On Vercel, you can serve `/rs/*` at the edge and skip the function. Add these re
 	"rewrites": [
 		{
 			"source": "/rs/static/:path*",
-			"destination": "https://us-assets.i.posthog.com/static/:path*"
+			"destination": "https://eu-assets.i.posthog.com/static/:path*"
 		},
-		{ "source": "/rs/array/:path*", "destination": "https://us-assets.i.posthog.com/array/:path*" },
-		{ "source": "/rs/:path*", "destination": "https://us.i.posthog.com/:path*" }
+		{ "source": "/rs/array/:path*", "destination": "https://eu-assets.i.posthog.com/array/:path*" },
+		{ "source": "/rs/:path*", "destination": "https://eu.i.posthog.com/:path*" }
 	]
 }
 ```
@@ -65,7 +66,7 @@ Set these environment variables:
 
 ```
 PUBLIC_POSTHOG_HOST=/rs
-PUBLIC_POSTHOG_UI_HOST=https://us.posthog.com
+PUBLIC_POSTHOG_UI_HOST=https://eu.posthog.com
 ```
 
 Use the relative path `/rs`, as PostHog recommends. posthog-js resolves it against the current
@@ -91,6 +92,6 @@ analytics requests fail.
 
 ## Roll back
 
-To send events directly to PostHog again, unset `PUBLIC_POSTHOG_HOST` and
-`PUBLIC_POSTHOG_UI_HOST`. posthog-js falls back to the `us.i.posthog.com` default after the rebuild
-that the environment change triggers.
+To send events directly to PostHog again, set `PUBLIC_POSTHOG_HOST` to your region's ingest host
+(for EU, `https://eu.i.posthog.com`). posthog-js uses it after the rebuild that the environment
+change triggers.

@@ -101,7 +101,9 @@ test(
 		// The walk above signs in as the mock identity, which leaves its account row on that user.
 		await deleteTestUsers([MOCK_IDENTITY_EMAIL]);
 		try {
-			await signInWithEmailOtp(page, DATABASE_URL!, email);
+			// The pending-label timing is the sign-in suite's claim; this test only needs a signed-in
+			// account, and a fast local redirect lands before that 5 s window sees the label.
+			await signInWithEmailOtp(page, DATABASE_URL!, email, { skipPendingLabelCheck: true });
 			await journeyStep(page, 'A1', 9, async () => {
 				await page.goto('/chat/settings/account', { waitUntil: 'load' });
 				await expect(page.getByText('Linked providers')).toBeVisible({ timeout: 15_000 });

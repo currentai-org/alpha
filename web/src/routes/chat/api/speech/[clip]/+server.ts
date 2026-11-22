@@ -15,7 +15,9 @@ import { openSpeechClip, synthesizeSpeech } from "$lib/chat/server/mcp/readAloud
 import { resolveFaultInjection } from "$lib/chat/server/textGeneration/faultInjection";
 import type { RequestHandler } from "./$types";
 
-// Chatterbox typically answers in 1–3 s, with outliers at 11–14 s.
+// Kokoro on DeepInfra, the one read-aloud host: in production over 14 days a clip took 2.1 s at the median
+// and 12 s at the slowest. A synthesis past this limit ends in a 504 the player shows as an error; there
+// is no second host to try.
 const SYNTH_TIMEOUT_MS = 25_000;
 
 export const GET: RequestHandler = async ({ params, locals, getClientAddress, request }) => {

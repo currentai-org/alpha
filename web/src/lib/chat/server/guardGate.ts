@@ -61,7 +61,7 @@ import {
 	shieldstralConfigured,
 	SHIELDSTRAL_MODEL,
 } from "$lib/chat/server/detectors/shieldstral";
-import { makeS1Judge, s1Configured, s1RuleIdsFor, S1_RULES, type S1UnitJudge } from "$lib/chat/server/detectors/s1";
+import { makeS1Judge, S1CallLimiter, s1Configured, s1RuleIdsFor, S1_RULES, type S1UnitJudge } from "$lib/chat/server/detectors/s1";
 import { S1_JUDGE } from "../../../../config/safetyScreen";
 import {
 	guardInputIsEmpty,
@@ -501,6 +501,10 @@ async function screenOnce(input: GuardScreenInput, deps: GuardScreenDeps): Promi
 		log,
 	};
 	const sem = new Semaphore(concurrency);
+	// The S1 endpoint queues a burst, so every chunk of one screen shares one cap on in-flight S1 calls.
+	// Each call's timeout starts when it gets a slot; time spent waiting counts only against the screen's
+	// deadline.
+	const s1Limiter = s1 ? new S1CallLimiter(S1_RULES.header.concurrency) : undefined;
 
 	try {
 		// One flat fan-out: every (unit, category) pair, on the one global pool, rule-major so all child
@@ -514,7 +518,7 @@ async function screenOnce(input: GuardScreenInput, deps: GuardScreenDeps): Promi
 				if (target.kind !== "text") return;
 				childJobs.push(
 					sem.run(async () => {
-						const r = await s1(target.text, s1Phase, { opSignal: ctx.opSignal, log, userContext: deps.s1UserContext });
+						const r = await s1(target.text, s1Phase, { opSignal: ctx.opSignal, log, userContext: deps.s1UserContext, limiter: s1Limiter });
 						// One failed call marks transport, but the calls that answered still name the served model.
 						if (!r.httpOk) transportOk = false;
 						if (r.servedModel) record({ answer: { kind: "unknown" }, httpOk: true, servedModel: r.servedModel, servedBackend: r.servedBackend });

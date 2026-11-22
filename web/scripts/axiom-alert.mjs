@@ -146,6 +146,19 @@ const CHECKS = [
 			"Someone asked for a sign-in or invitation email and Resend refused it. A 429 or a quota message in the logged body means the daily cap: check usage in the Resend dashboard (the prod key is send-only). Sends vs failures over time: the same query on 'Resend' in Axiom's vercel dataset, split by whether the message says 'send failed'.",
 	},
 	{
+		key: "email-share",
+		label: "site-wide email share reached",
+		// Sign-in codes to new addresses and workspace invites each have a site-wide daily share of the
+		// email provider's quota (betterAuth.ts). Reaching one logs "[auth] site-wide … ceiling …
+		// reached" at warn, one line per refused send. Zero is the bar: the shares sit far above real use,
+		// so reaching either is a script spending the quota, or real growth that needs the share raised.
+		perGroup: "share",
+		threshold: 0,
+		apl: `['aipotluck-eu'] | where env == 'production' | where message startswith '[auth] site-wide' and message contains 'ceiling' | extend share = iff(message contains 'sign-in codes', 'sign-in-codes', 'invites')`,
+		runbook:
+			"A site-wide email share is spent, so new addresses get no sign-in code (sign-in-codes) or new workspace invitations are refused (invites) until the day turns. Codes to existing accounts still send. Read the '[auth] site-wide' lines and the nearby rate-limit trips in Axiom to tell a script from real use; for real use, raise OTP_SITE_NEW_MAX_PER_DAY or WORKSPACE_INVITE_SITE_MAX_PER_DAY in Doppler.",
+	},
+	{
 		key: "search-refusals",
 		label: "search engine refusals (402/403/429)",
 		// One line per engine or reranker, with its own bar: a paid one refusing us (Firecrawl out of

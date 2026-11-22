@@ -113,7 +113,7 @@ async function storedTurn(page: Page, answer: Locator): Promise<Stored | undefin
 
 test(
 	'a picked ALIA turn ends its blank wait within 30 s, with the held-reasoning panel or its streamed text, and stores none of its reasoning as the answer',
-	{ tag: ['@F2', '@CUR-3942'] },
+	{ tag: ['@F2', '@CUR-3942', '@needs-alia'] },
 	async ({ page, context }) => {
 		test.setTimeout(150_000);
 		const composer = await openChat(page, context, 'alia-40b');

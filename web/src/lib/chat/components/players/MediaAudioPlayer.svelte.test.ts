@@ -5,9 +5,12 @@ import { describe, expect, it, vi } from 'vitest';
 // Read-aloud autoplay starts the clip before its metadata has loaded, so for a moment the element
 // plays with `duration` still NaN. The readout must not print that as 0:00 / 0:00, which
 // reads as an empty clip.
-const clip = vi.hoisted(() => ({ el: undefined as unknown as HTMLAudioElement }));
+const clip = vi.hoisted(() => ({ el: undefined as unknown as HTMLAudioElement, fails: false }));
 vi.mock('$lib/chat/stores/audioPlayback', () => ({
-	clipAudio: async () => clip.el,
+	clipAudio: async () => {
+		if (clip.fails) throw new Error('504 Read aloud took too long');
+		return clip.el;
+	},
 	playExclusive: async () => {}
 }));
 
@@ -19,6 +22,19 @@ function playingBeforeMetadata(): HTMLAudioElement {
 }
 
 describe('MediaAudioPlayer readout', () => {
+	// Read aloud has one host and no second path, so a failed synthesis (the speech route's 502 or 504)
+	// must reach the visitor as an error in place of the player, never as a play button that does nothing.
+	it('shows an error and no play button when the clip cannot be fetched (no silent failure)', async () => {
+		clip.fails = true;
+		try {
+			const screen = await render(MediaAudioPlayer, { src: '/chat/api/clip/failed' });
+			await expect.element(screen.getByText("Couldn't load this audio")).toBeVisible();
+			expect(screen.container.querySelector('[data-audio-player] button')).toBeNull();
+		} finally {
+			clip.fails = false;
+		}
+	});
+
 	it('shows no 0:00 length while a playing clip has not reported its length yet', async () => {
 		clip.el = playingBeforeMetadata();
 		const screen = await render(MediaAudioPlayer, { src: '/chat/api/clip/a' });

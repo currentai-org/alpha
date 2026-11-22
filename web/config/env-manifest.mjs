@@ -406,13 +406,13 @@ export const ENV_MANIFEST = {
 		desc: "This deployment's own hostname, no scheme (runtimeEnv.js deploymentUrl()). Unset on Vercel, which supplies VERCEL_URL instead and that is the fallback. A per-PR preview's passkey RP ID is this host.",
 	},
 	POSTHOG_INGEST_HOST: {
-		desc: "Absolute https origin of this deployment's PostHog (CUR-4833): where the /rs proxy forwards and where the server-side flag and error clients send when PUBLIC_POSTHOG_HOST is relative. Unset means https://us.i.posthog.com. PostHog Cloud's assets host is derived (us. -> us-assets.); a self-hosted PostHog serves both from this origin. The EU move is CUR-439.",
+		desc: "Absolute https origin of this deployment's PostHog (CUR-4833): where the /rs proxy forwards and where the server-side flag and error clients send when PUBLIC_POSTHOG_HOST is relative. Unset means https://eu.i.posthog.com, where production's project 345429 lives since it moved from US (CUR-439). PostHog Cloud's assets host is derived (eu. -> eu-assets.); a self-hosted PostHog serves both from this origin.",
 	},
 	POSTHOG_APP_HOST: {
-		desc: "Absolute https origin of this deployment's PostHog app and management API (config/posthogRegion.mjs, CUR-439): the source-map upload's --host and the flag scripts' API reads. Unset, it follows POSTHOG_INGEST_HOST (eu.i.posthog.com -> eu.posthog.com), which unset means https://us.posthog.com.",
+		desc: "Absolute https origin of this deployment's PostHog app and management API (config/posthogRegion.mjs, CUR-439): the source-map upload's --host and the flag scripts' API reads. Unset, it follows POSTHOG_INGEST_HOST (eu.i.posthog.com -> eu.posthog.com), which unset means https://eu.posthog.com.",
 	},
 	POSTHOG_PROJECT_ID: {
-		desc: "The PostHog project the flag scripts read through the management API (config/posthogRegion.mjs, CUR-439). Unset means 492965, the US project. Not a credential.",
+		desc: "The PostHog project the flag scripts read through the management API (config/posthogRegion.mjs, CUR-439). Unset means 345429, the EU project. Not a credential.",
 	},
 	PRODUCTION_URL: {
 		desc: "The project's production hostname, no scheme (runtimeEnv.js productionUrl()), read at BUILD time by vite.config.ts for the canonical origin of prerendered pages. Unset on Vercel, which supplies VERCEL_PROJECT_PRODUCTION_URL instead and that is the fallback.",
@@ -896,7 +896,7 @@ export const ENV_MANIFEST = {
 		desc: "Plausible analytics script URL.",
 	},
 	PUBLIC_POSTHOG_HOST: {
-		desc: "PostHog host. Default https://us.i.posthog.com.",
+		desc: "PostHog host for the browser. Default the same-origin /rs proxy, which forwards to POSTHOG_INGEST_HOST.",
 	},
 	PUBLIC_POSTHOG_KEY: {
 		desc: "PostHog project token. Public by design (write-only). Unset, analytics are off.",
