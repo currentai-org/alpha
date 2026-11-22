@@ -241,9 +241,9 @@ test(
 	}
 );
 
-// A card nobody answers. The route's generation watchdog ends the turn while the card is
-// still open (its deadline, about 155s, falls before agent-service's own 180s deny), and the person
-// must be told that the approval went unanswered: the card reads as a timed-out deny and the answer
+// A card nobody answers. The turn ends when the card does: the route's watchdog ends a run that was not
+// handed off, and a handed-off run ends when agent-service denies the card at its own 180s timeout. The
+// person must be told that the approval went unanswered: the card reads as a timed-out deny and the answer
 // names the unanswered approval, never "stopped" or "Canceled.", which read as though someone else
 // ended the run.
 test(

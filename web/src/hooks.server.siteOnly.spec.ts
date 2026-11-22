@@ -220,10 +220,20 @@ describe('site-only: a guest still carries their session to alpha', () => {
 });
 
 describe('site-only: boot and the error and fetch hooks', () => {
-	it("checks the site's env at boot and never starts chat's server", async () => {
+	it("checks the site's own env at boot, with neither chat's env check nor chat's server", async () => {
+		vi.stubEnv('PUBLIC_ORIGIN', 'https://www.example.test');
+		vi.stubEnv('PUBLIC_CMS_PAYLOAD_URL', 'https://cms.example.test');
 		const { init } = await import('./hooks.server');
 		await init();
-		expect(validateEnv).toHaveBeenCalled();
+		expect(validateEnv).not.toHaveBeenCalled();
+		expect(initServer).not.toHaveBeenCalled();
+	});
+
+	it("refuses to boot production's site-only build without the CMS origin", async () => {
+		vi.stubEnv('PUBLIC_ORIGIN', 'https://www.example.test');
+		vi.stubEnv('PUBLIC_CMS_PAYLOAD_URL', '');
+		const { init } = await import('./hooks.server');
+		await expect(init()).rejects.toThrow(/PUBLIC_CMS_PAYLOAD_URL/);
 		expect(initServer).not.toHaveBeenCalled();
 	});
 

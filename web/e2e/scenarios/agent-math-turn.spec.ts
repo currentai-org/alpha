@@ -21,8 +21,8 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // `@real-agent`: the answer must be the real product, which only a real agent computes, so
 // this is the suite's one live agent smoke. It runs on develop's push run and is left out of PR runs.
 test(
-	'with Agent on, a question with a number to work out runs the agent rather than the math planner',
-	{ tag: ['@preview-only', '@A7', '@CUR-3884', '@real-agent'] },
+	'with Agent on, a question with a number to work out runs the agent rather than the math planner, and X-ray says where it ran',
+	{ tag: ['@preview-only', '@A7', '@CUR-3884', '@CUR-2812', '@real-agent'] },
 	async ({ page, context, baseURL }) => {
 		// An agent turn runs a sandbox and several model rounds, as agent-file-download.spec.ts measures.
 		test.setTimeout(300_000);
@@ -117,6 +117,20 @@ test(
 			stored?.mathLedger,
 			"the planner's ledger is on the turn, so its model answered in place of the agent (CUR-3884)"
 		).toBeUndefined();
+
+		// X-ray's "Where it ran" on an agent turn reads agent-service's compute provider off the `done`
+		// frame. The frame once left it out, so every agent turn read "Not recorded for this answer."
+		await page.getByRole('button', { name: 'X-ray — see what happened behind the answer' }).click();
+		const receipt = page.locator('[data-xray-panel] [data-answer-receipt]');
+		await expect(
+			receipt.locator('[data-ran-on]:not([data-ran-on="not-recorded"])'),
+			'X-ray on the agent turn names no place it ran'
+		).toContainText(/\S/, { timeout: 15_000 });
+		await expect(
+			receipt.locator('[data-ran-on="not-recorded"]'),
+			'X-ray on the agent turn says where it ran was not recorded (CUR-2812)'
+		).toHaveCount(0);
+		await page.keyboard.press('Escape');
 
 		const work = answer.getByRole('button', { name: /expand|collapse/i }).filter({
 			hasText: /\b(Working|Predicted|Did not finish)\b/

@@ -35,6 +35,8 @@ beforeEach(() => {
 	vi.resetModules();
 	vi.useFakeTimers();
 	vi.stubEnv('DATABASE_URL', 'postgres://chat:secret@chat-db.invalid:5432/chat');
+	// The site-only boot checks the site's own env (website/siteOnly.ts), which needs its origin.
+	vi.stubEnv('PUBLIC_ORIGIN', 'https://www.example.test');
 });
 
 afterEach(() => {

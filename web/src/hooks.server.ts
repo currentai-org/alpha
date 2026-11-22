@@ -10,27 +10,120 @@ import {
 	type HandleFetch,
 	type Cookies
 } from '@sveltejs/kit';
+import { env as privateEnv } from '$env/dynamic/private';
+import { env as publicEnv } from '$env/dynamic/public';
 import { entityBases } from '$lib/website';
-import { cmsRedirect, gapMapAliasTarget, startCms } from '$lib/website.server';
 import {
-	CHAT_ALIAS_HOSTS,
-	CHAT_ALIAS_PATHS,
-	CHAT_HOST,
-	GUEST_HANDOFF_PATH,
-	chatHome,
-	chatSurfaceRedirect,
-	chatSurfaceSiteRedirect,
-	siteOnlyChatRedirect
-} from '$lib/chat/paths';
-import { isPageLoad, wwwChatRedirect } from '$lib/chat/wwwChatRedirect';
+	checkSiteOnlyEnv,
+	cmsRedirect,
+	gapMapAliasTarget,
+	siteOnlyChatTarget,
+	startCms
+} from '$lib/website.server';
 import { APP_SURFACE, CHAT_ROUTE_ROOT, chatRoutePath, isChatRoute } from '$lib/surface';
 import { expiredPreviewMessage } from '$lib/server/expiredPreview';
 import { deployEnvName } from '$lib/server/runtimeEnv';
 import { CSP_REPORT_GROUP, cspReportEndpoint } from '$lib/cspReportEndpoint';
 import { cdnCacheFor } from '$lib/cache/cdn';
 import { addVaryAccept, negotiateType } from '$lib/acceptNegotiation';
-import { expireLegacySessionCookies } from '$lib/chat/server/legacySessionCookie';
 import vercelConfig from '../vercel.json';
+
+// ── Chat's modules, through a seam ───────────────────────────────────────────────────────────────
+//
+// Chat leaves this repo for the public alpha repo, and the site must build from a tree without chat's
+// files. So this shell names no chat module in an import: it loads each through
+// `import.meta.glob`, which Vite resolves at build time to an empty object when the file is absent,
+// the way the $lib/website* seams load the site. With chat's files present nothing changes: the eager
+// globs are the static imports they replace and the lazy ones the dynamic imports. Without them, every
+// chat-only branch below is skipped, and the site-only path runs on the site's own code
+// ($lib/website/siteOnly.ts, through the website.server seam), with the console as its logger and
+// error report. config/product-boundary.mjs lists each glob under SEAM_LOADS_OF_CHAT.
+//
+// The types are written out here, since even a type import would name chat's module.
+const only = <T>(found: Record<string, T>): T | undefined => Object.values(found)[0];
+async function loadChat<T>(found: Record<string, () => Promise<T>>): Promise<T | undefined> {
+	const loader = only(found);
+	return loader ? loader() : undefined;
+}
+
+type ChatLogFn = (detail: Record<string, unknown>, message?: string) => void;
+type ChatLogger = { info: ChatLogFn; warn: ChatLogFn; error: ChatLogFn };
+
+const chatPaths = only(
+	import.meta.glob<{
+		CHAT_ALIAS_HOSTS: readonly string[];
+		CHAT_ALIAS_PATHS: readonly string[];
+		CHAT_HOST: string | null;
+		GUEST_HANDOFF_PATH: string;
+		chatHome: string;
+		chatSurfaceRedirect(pathname: string, method: string): string | null;
+		chatSurfaceSiteRedirect(req: {
+			pathname: string;
+			search: string;
+			method: string;
+			routeId: string | null;
+			vercelEnv: string | undefined;
+		}): string | null;
+	}>('/src/lib/chat/paths.ts', { eager: true })
+);
+const chatWwwRedirect = only(
+	import.meta.glob<{
+		isPageLoad(method: string, headers: Pick<Headers, 'get'>): boolean;
+		wwwChatRedirect(
+			url: URL,
+			method: string,
+			headers: Pick<Headers, 'get'>,
+			pathname: string
+		): string | null;
+	}>('/src/lib/chat/wwwChatRedirect.ts', { eager: true })
+);
+const chatLegacyCookie = only(
+	import.meta.glob<{
+		expireLegacySessionCookies(cookies: Cookies | undefined, env: typeof process.env): void;
+	}>('/src/lib/chat/server/legacySessionCookie.ts', { eager: true })
+);
+const chatLogger = import.meta.glob<{ logger: ChatLogger }>('/src/lib/chat/server/logger.ts');
+const chatFlags = import.meta.glob<{
+	flagEnabledOr(key: string, fallback: () => boolean): boolean;
+}>('/src/lib/chat/server/flags.ts');
+const chatCmsPublish = import.meta.glob<{ cmsPublished(body: unknown): Promise<void> }>(
+	'/src/lib/chat/server/cmsPublish.ts'
+);
+const chatDbClient = import.meta.glob<{ preconnectDb(): unknown }>(
+	'/src/lib/chat/server/db/client.ts'
+);
+const chatEnvValidate = import.meta.glob<{ validateEnv(): void }>(
+	'/src/lib/chat/server/env/validate.ts'
+);
+const chatInit = import.meta.glob<{ initServer(): Promise<void> }>(
+	'/src/lib/chat/server/hooks/init.ts'
+);
+const chatHandle = import.meta.glob<{
+	handleRequest(input: Parameters<Handle>[0]): Promise<Response>;
+}>('/src/lib/chat/server/hooks/handle.ts');
+const chatError = import.meta.glob<{
+	handleServerError(
+		input: Parameters<HandleServerError>[0]
+	): Promise<App.Error & Record<string, unknown>>;
+}>('/src/lib/chat/server/hooks/error.ts');
+const chatFetch = import.meta.glob<{
+	handleFetchRequest(input: Parameters<HandleFetch>[0]): Promise<Response>;
+}>('/src/lib/chat/server/hooks/fetch.ts');
+const chatErrorTracking = import.meta.glob<{
+	captureServerException(
+		error: unknown,
+		context: { url?: string; routeId?: string | null; status?: number; method?: string }
+	): Promise<void>;
+}>('/src/lib/chat/server/errorTracking.ts');
+const chatGuestHandoff = import.meta.glob<{
+	acceptGuestHandoff(
+		request: Request,
+		cookies: Cookies
+	): Promise<{ next: string; outcome: string }>;
+}>('/src/lib/chat/server/guestHandoff.ts');
+const chatGuestHandoffPage = import.meta.glob<{
+	guestHandoffPage(cookies: Cookies, target: URL): Response | null;
+}>('/src/lib/chat/server/guestHandoffPage.ts');
 
 // How long the module graph took to load before hooks evaluated, since `performance.now()` counts from
 // process start. Each stage logs once per instance, as a
@@ -41,8 +134,8 @@ let chatPipelineTimed = false;
 async function logBootStage(stage: string, startMs: number, extra: Record<string, number> = {}) {
 	const ms = Math.round(performance.now() - startMs);
 	try {
-		const { logger } = await import('$lib/chat/server/logger');
-		logger.info({ leg: 'boot', stage, ms, ...extra }, '[boot] stage timing');
+		const chat = await loadChat(chatLogger);
+		chat?.logger.info({ leg: 'boot', stage, ms, ...extra }, '[boot] stage timing');
 	} catch {
 		// Timing is diagnostic; a logger that failed to load must not fail the request.
 	}
@@ -63,7 +156,7 @@ const isChatPath = (pathname: string | undefined) => isChatRoute(pathname);
 
 // Retired chat entry paths: each 308s to /chat before the CMS or the catch-all sees it.
 const isChatAliasRoot = (pathname: string) =>
-	(CHAT_ALIAS_PATHS as readonly string[]).includes(pathname);
+	chatPaths?.CHAT_ALIAS_PATHS.includes(pathname) ?? false;
 
 // /map/product/* and /map/org/* were retired when those routes moved to /product/* and /org/*
 // (top-level). Every request under the old prefixes must 308 to the new one in a single hop —
@@ -126,7 +219,10 @@ async function cmsRedirectTarget(
 // client hitting a genuine 404 sees no change.
 const CHAT_MARKDOWN_TYPES = ['text/html', 'text/markdown'];
 
-async function negotiateChatMarkdown(input: Parameters<Handle>[0]): Promise<Response> {
+async function negotiateChatMarkdown(
+	input: Parameters<Handle>[0],
+	chatHome: string
+): Promise<Response> {
 	const { event } = input;
 	const routePath = chatRoutePath(event.url.pathname);
 	const isChatRoot = routePath === CHAT_ROUTE_ROOT || routePath === `${CHAT_ROUTE_ROOT}/`;
@@ -157,12 +253,13 @@ async function negotiateChatMarkdown(input: Parameters<Handle>[0]): Promise<Resp
 	}
 
 	const importStart = performance.now();
-	const { handleRequest } = await import('$lib/chat/server/hooks/handle');
+	const chat = await loadChat(chatHandle);
+	if (!chat) throw new Error("chat's request handler is not in this build");
 	if (!chatPipelineTimed) {
 		chatPipelineTimed = true;
 		void logBootStage('chat-pipeline-import', importStart);
 	}
-	const response = withResponseHeaders(await handleRequest(input));
+	const response = withResponseHeaders(await chat.handleRequest(input));
 
 	if (isChatRoot) {
 		addVaryAccept(response.headers);
@@ -233,8 +330,8 @@ function withResponseHeaders(response: Response): Response {
 // never pulls postgres.js; non-blocking + non-throwing; `PG_PRECONNECT=off` disables it. See
 // docs/plans/ttft-critical-path.md §B.
 if (!building && !siteOnly) {
-	void import('$lib/chat/server/db/client')
-		.then(({ preconnectDb }) => preconnectDb())
+	void loadChat(chatDbClient)
+		.then((chat) => chat?.preconnectDb())
 		.catch(() => {});
 }
 
@@ -250,34 +347,48 @@ export const init: ServerInit = async () => {
 	// the browser. Site code gets the same logger and chat's flag reader here, so it imports
 	// neither from chat (payload/hostServices.ts). Where chat runs in this app, the site's CMS webhook
 	// also hands each publish to chat's side of it; a site-only build forwards it to the
-	// chat host instead.
+	// chat host instead. In a build without chat's files, site code keeps its own defaults: the
+	// console for its lines, and each flag's fallback.
 	try {
-		const { logger } = await import('$lib/chat/server/logger');
-		const { flagEnabledOr } = await import('$lib/chat/server/flags');
-		await startCms((detail, message) => logger.error(detail, message), {
-			logger: {
-				info: (detail, message) => logger.info(detail, message),
-				warn: (detail, message) => logger.warn(detail, message),
-				error: (detail, message) => logger.error(detail, message)
-			},
-			flagEnabledOr,
-			...(siteOnly
-				? {}
-				: {
-						onCmsPublish: async (body: unknown) => {
-							const { cmsPublished } = await import('$lib/chat/server/cmsPublish');
-							await cmsPublished(body);
+		const [chatLog, chatFlagReader] = await Promise.all([
+			loadChat(chatLogger),
+			loadChat(chatFlags)
+		]);
+		const logger = chatLog?.logger;
+		await startCms(
+			(detail, message) =>
+				logger ? logger.error(detail, message) : console.error(message, detail),
+			{
+				...(logger
+					? {
+							logger: {
+								info: (detail, message) => logger.info(detail, message),
+								warn: (detail, message) => logger.warn(detail, message),
+								error: (detail, message) => logger.error(detail, message)
+							}
 						}
-					})
-		});
+					: {}),
+				...(chatFlagReader ? { flagEnabledOr: chatFlagReader.flagEnabledOr } : {}),
+				...(siteOnly
+					? {}
+					: {
+							onCmsPublish: async (body: unknown) => {
+								const chat = await loadChat(chatCmsPublish);
+								await chat?.cmsPublished(body);
+							}
+						})
+			}
+		);
 	} catch (err) {
 		console.error('[cms] failed to start the CMS client (dropped-doc sink):', err);
 	}
 
 	// A site-only build checks the site's own env and stops: chat's init would demand chat's keys.
+	// The check is the site's (website/siteOnly.ts), so it runs the same with chat's files absent, and
+	// logs through the logger startCms just registered.
 	if (siteOnly) {
-		const { validateEnv } = await import('$lib/chat/server/env/validate');
-		validateEnv();
+		// What SvelteKit loaded (the .env files in dev) and the process environment, which wins.
+		await checkSiteOnlyEnv({ ...publicEnv, ...privateEnv, ...process.env }, deployEnvName());
 		return;
 	}
 
@@ -286,10 +397,13 @@ export const init: ServerInit = async () => {
 	// without chat secrets. Chat code is dynamically imported so its import-time side
 	// effects (config load, model fetch) don't run unless we actually init it.
 	try {
-		const { validateEnv } = await import('$lib/chat/server/env/validate');
-		const { initServer } = await import('$lib/chat/server/hooks/init');
-		validateEnv();
-		await initServer();
+		const [chatEnv, chatServer] = await Promise.all([
+			loadChat(chatEnvValidate),
+			loadChat(chatInit)
+		]);
+		if (!chatEnv || !chatServer) throw new Error("chat's server is not in this build");
+		chatEnv.validateEnv();
+		await chatServer.initServer();
 		void logBootStage('init', initStart, {
 			hooksLoadedMs,
 			initStartMs: Math.round(initStart)
@@ -297,7 +411,7 @@ export const init: ServerInit = async () => {
 		// Loading chat's request handler takes about 2s on the first /chat request of a cold instance,
 		// often long after init has finished. Start it here, unawaited: a /chat request
 		// awaits the same in-flight module in negotiateChatMarkdown, and a map request never waits on it.
-		void import('$lib/chat/server/hooks/handle').catch(() => {});
+		void loadChat(chatHandle).catch(() => {});
 	} catch (err) {
 		if (dev) {
 			console.warn(
@@ -317,8 +431,8 @@ async function guestHandoff(
 	target: string
 ): Promise<Response | null> {
 	if (!cookies || cookies.getAll().length === 0) return null;
-	const { guestHandoffPage } = await import('$lib/chat/server/guestHandoffPage');
-	return guestHandoffPage(cookies, new URL(target));
+	const chat = await loadChat(chatGuestHandoffPage);
+	return chat ? chat.guestHandoffPage(cookies, new URL(target)) : null;
 }
 
 // Whether this answer is a 308 or the handoff page depends on the request's fetch metadata
@@ -334,6 +448,83 @@ function movedToChatHost(target: string): Response {
 	});
 }
 
+// Chat's hosts and its in-app address rules: an alias host
+// sends every path to the same place on the chat host, the chat host's bare root opens chat, the chat
+// surface moves old `/chat/...` addresses and site pages, and www's /chat page loads move to the chat
+// host. A Response or a thrown redirect when one applies, null otherwise. Runs only where chat's files
+// are in the build.
+async function chatHostRules(
+	input: Parameters<Handle>[0],
+	req: { pathname: string; method: string; headers: Pick<Headers, 'get'> }
+): Promise<Response | null> {
+	const paths = chatPaths;
+	const www = chatWwwRedirect;
+	if (!paths || !www) return null;
+	const { pathname, method, headers } = req;
+	const { hostname, search } = input.event.url;
+
+	// The chat host takes a guest's session handed over from www or chat. (guestHandoff.ts).
+	if (
+		!siteOnly &&
+		hostname === paths.CHAT_HOST &&
+		pathname === paths.GUEST_HANDOFF_PATH &&
+		method === 'POST'
+	) {
+		const [handoff, chatLog] = await Promise.all([
+			loadChat(chatGuestHandoff),
+			loadChat(chatLogger)
+		]);
+		if (handoff) {
+			const { next, outcome } = await handoff.acceptGuestHandoff(
+				input.event.request,
+				input.event.cookies
+			);
+			chatLog?.logger.info({ outcome }, '[guest-handoff] chat host');
+			throw redirect(303, next);
+		}
+	}
+
+	if (paths.CHAT_ALIAS_HOSTS.includes(hostname)) {
+		const target = `https://${paths.CHAT_HOST}${pathname}${search}`;
+		if (method === 'GET' && www.isPageLoad(method, headers)) {
+			const handoff = await guestHandoff(input.event.cookies, target);
+			if (handoff) return handoff;
+		}
+		return movedToChatHost(target);
+	}
+	// On the chat surface the root IS chat, so only the site surface sends it on.
+	if (APP_SURFACE === 'site' && hostname === paths.CHAT_HOST && pathname === '/') {
+		throw redirect(308, `${paths.chatHome}${search}`);
+	}
+	// On the chat surface, an old `/chat/...` address moves to the same path at the root.
+	// Reserved paths (CHAT_RESERVED_PATHS) are served in place, and only a GET or HEAD moves.
+	const atRoot = paths.chatSurfaceRedirect(pathname, method);
+	if (atRoot !== null) throw redirect(308, `${atRoot}${search}`);
+	// On the chat surface, a site page (`/map`, a CMS slug) matches no chat route after
+	// `reroute`, so it moves to the same path on the site's host instead of 404ing here.
+	const toSite = paths.chatSurfaceSiteRedirect({
+		pathname,
+		search,
+		method,
+		routeId: input.event.route?.id ?? null,
+		vercelEnv: deployEnvName()
+	});
+	if (toSite !== null) throw redirect(308, toSite);
+	// A page load of www's /chat moves to the chat host; API calls keep answering on www.
+	const chatHostTarget = www.wwwChatRedirect(input.event.url, method, headers, pathname);
+	if (chatHostTarget) {
+		const handoff =
+			method === 'GET' ? await guestHandoff(input.event.cookies, chatHostTarget) : null;
+		if (handoff) return handoff;
+		return movedToChatHost(chatHostTarget);
+	}
+
+	if (isChatAliasRoot(pathname)) {
+		throw redirect(308, `${paths.chatHome}${search}`);
+	}
+	return null;
+}
+
 export const handleApplication: Handle = async (input) => {
 	if (building) {
 		// During prerender/build, neutralize chat's %gaId% placeholder (no-op on map pages).
@@ -342,17 +533,15 @@ export const handleApplication: Handle = async (input) => {
 		});
 	}
 	// Clear production's old apex-wide session cookies wherever a browser still sends them.
-	expireLegacySessionCookies(input.event.cookies, process.env);
-	const { hostname, search } = input.event.url;
+	chatLegacyCookie?.expireLegacySessionCookies(input.event.cookies, process.env);
 	const pathname = unlocalizedPath(input.event.url.pathname);
-
-	// Chat's hosts: an alias host sends every path to the same place on the chat host, and
-	// the chat host's bare root opens chat. No other host is affected.
 	const method = input.event.request?.method ?? 'GET';
 	const headers = input.event.request?.headers ?? new Headers();
 
 	// Site-only: every chat address, a page load or an API call of any method, moves to the chat host.
-	// A page load still carries a guest's session there first.
+	// A page load still carries a guest's session there first, where chat's handoff is in the build.
+	// Where each address goes is the site's own rule (website/siteOnly.ts), so a
+	// build without chat's files moves them the same way.
 	if (siteOnly) {
 		if (CRON_PATHS.includes(pathname)) {
 			return new Response(
@@ -363,13 +552,16 @@ export const handleApplication: Handle = async (input) => {
 				}
 			);
 		}
-		const toChat = siteOnlyChatRedirect({
+		const toChat = await siteOnlyChatTarget({
 			url: input.event.url,
 			pathname,
-			vercelEnv: deployEnvName()
+			deployEnv: deployEnvName()
 		});
 		if (toChat !== null) {
-			if (isPageLoad(method, headers) && new URL(toChat).hostname === CHAT_HOST) {
+			if (
+				chatWwwRedirect?.isPageLoad(method, headers) &&
+				new URL(toChat).hostname === chatPaths?.CHAT_HOST
+			) {
 				const handoff = method === 'GET' ? await guestHandoff(input.event.cookies, toChat) : null;
 				if (handoff) return handoff;
 			}
@@ -377,58 +569,16 @@ export const handleApplication: Handle = async (input) => {
 		}
 	}
 
-	// The chat host takes a guest's session handed over from www or chat. (guestHandoff.ts).
-	if (!siteOnly && hostname === CHAT_HOST && pathname === GUEST_HANDOFF_PATH && method === 'POST') {
-		const { acceptGuestHandoff } = await import('$lib/chat/server/guestHandoff');
-		const { next, outcome } = await acceptGuestHandoff(input.event.request, input.event.cookies);
-		const { logger } = await import('$lib/chat/server/logger');
-		logger.info({ outcome }, '[guest-handoff] chat host');
-		throw redirect(303, next);
+	// Chat's own host rules, which need chat's files; a build without them has none of these hosts.
+	if (chatPaths && chatWwwRedirect) {
+		const chatResponse = await chatHostRules(input, { pathname, method, headers });
+		if (chatResponse) return chatResponse;
 	}
 
-	if ((CHAT_ALIAS_HOSTS as readonly string[]).includes(hostname)) {
-		const target = `https://${CHAT_HOST}${pathname}${search}`;
-		if (method === 'GET' && isPageLoad(method, headers)) {
-			const handoff = await guestHandoff(input.event.cookies, target);
-			if (handoff) return handoff;
-		}
-		return movedToChatHost(target);
-	}
-	// On the chat surface the root IS chat, so only the site surface sends it on.
-	if (APP_SURFACE === 'site' && hostname === CHAT_HOST && pathname === '/') {
-		throw redirect(308, `${chatHome}${search}`);
-	}
-	// On the chat surface, an old `/chat/...` address moves to the same path at the root.
-	// Reserved paths (CHAT_RESERVED_PATHS) are served in place, and only a GET or HEAD moves.
-	const atRoot = chatSurfaceRedirect(pathname, method);
-	if (atRoot !== null) throw redirect(308, `${atRoot}${search}`);
-	// On the chat surface, a site page (`/map`, a CMS slug) matches no chat route after
-	// `reroute`, so it moves to the same path on the site's host instead of 404ing here.
-	const toSite = chatSurfaceSiteRedirect({
-		pathname,
-		search,
-		method,
-		routeId: input.event.route?.id ?? null,
-		vercelEnv: deployEnvName()
-	});
-	if (toSite !== null) throw redirect(308, toSite);
-	// A page load of www's /chat moves to the chat host; API calls keep answering on www.
-	const chatHostTarget = wwwChatRedirect(input.event.url, method, headers, pathname);
-	if (chatHostTarget) {
-		const handoff =
-			method === 'GET' ? await guestHandoff(input.event.cookies, chatHostTarget) : null;
-		if (handoff) return handoff;
-		return movedToChatHost(chatHostTarget);
-	}
-
-	if (isChatAliasRoot(pathname)) {
-		throw redirect(308, `${chatHome}${input.event.url.search}`);
-	}
-
-	if (!siteOnly && isChatPath(pathname)) {
+	if (chatPaths && !siteOnly && isChatPath(pathname)) {
 		// Chat's full request pipeline (auth, CSRF, CSP) — loaded on demand, wrapped by the
 		// Accept: text/markdown negotiation above.
-		return negotiateChatMarkdown(input);
+		return negotiateChatMarkdown(input, chatPaths.chatHome);
 	}
 
 	if (shouldCheckCmsRedirects(pathname, input.event.request?.method ?? 'GET')) {
@@ -449,11 +599,30 @@ export const handleApplication: Handle = async (input) => {
 
 export const handle: Handle = sequence(handleLocale, handleApplication);
 
+/**
+ * A site error reported where chat's error tracking is not in the build: one console line with the
+ * request's url, route, status and method and the error's stack, never a request body or header. Never
+ * throws, since it runs inside the error handler.
+ */
+function reportSiteError(
+	error: unknown,
+	context: { url?: string; routeId?: string | null; status?: number; method?: string }
+): void {
+	try {
+		const detail =
+			error instanceof Error ? (error.stack ?? `${error.name}: ${error.message}`) : String(error);
+		console.error('[site-error] unhandled server error', { ...context, error: detail });
+	} catch {
+		// Reporting is best-effort; the error page still renders.
+	}
+}
+
 export const handleError: HandleServerError = async (input) => {
 	if (building) throw input.error;
-	if (!siteOnly && isChatPath(input.event?.url?.pathname)) {
-		const { handleServerError } = await import('$lib/chat/server/hooks/error');
-		const result = await handleServerError(input);
+	const chatErrors =
+		!siteOnly && isChatPath(input.event?.url?.pathname) ? await loadChat(chatError) : undefined;
+	if (chatErrors) {
+		const result = await chatErrors.handleServerError(input);
 		const expired = expiredPreviewMessage(input.error, process.env);
 		return expired ? { ...result, message: expired } : result;
 	}
@@ -486,14 +655,17 @@ export const handleError: HandleServerError = async (input) => {
 
 	// The SITE half (map, marketing pages) errors here. Reported through the same path as chat's —
 	// otherwise "we have error tracking" would silently mean "on /chat only", which is the kind of
-	// half-coverage that reads as covered.
-	const { captureServerException } = await import('$lib/chat/server/errorTracking');
-	await captureServerException(input.error, {
+	// half-coverage that reads as covered. In a build without chat's files the report is a structured
+	// console line, which the host's log capture keeps.
+	const context = {
 		url: input.event?.url?.href,
 		routeId: input.event?.route?.id,
 		status: input.status,
 		method: input.event?.request?.method
-	});
+	};
+	const tracking = await loadChat(chatErrorTracking);
+	if (tracking) await tracking.captureServerException(input.error, context);
+	else reportSiteError(input.error, context);
 	return {
 		message:
 			expiredPreviewMessage(input.error, process.env) ??
@@ -504,9 +676,8 @@ export const handleError: HandleServerError = async (input) => {
 
 export const handleFetch: HandleFetch = async (input) => {
 	if (building) return input.fetch(input.request);
-	if (!siteOnly && isChatPath(input.event?.url?.pathname)) {
-		const { handleFetchRequest } = await import('$lib/chat/server/hooks/fetch');
-		return handleFetchRequest(input);
-	}
+	const chatFetches =
+		!siteOnly && isChatPath(input.event?.url?.pathname) ? await loadChat(chatFetch) : undefined;
+	if (chatFetches) return chatFetches.handleFetchRequest(input);
 	return input.fetch(input.request);
 };

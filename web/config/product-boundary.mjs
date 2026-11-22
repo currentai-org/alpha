@@ -46,29 +46,42 @@ export const SITE = [
 // Shell files match neither CHAT nor SITE, so a change to one runs both products' specs.
 export const SHELL = [/^web\/src\/hooks(\.server)?\.ts$/, /^web\/src\/app\.d\.ts$/];
 
-// The chat modules the shell imports, keyed by shell file. www runs each of them on every request, so a
-// change to one runs the site's specs too (pathProducts reads this). Same rules as the maps below: an
-// unlisted import fails, and so does a listed one the file no longer makes.
+// The chat modules the shell imports by name, keyed by shell file. Each must resolve at build time, so
+// the site cannot build from a tree without chat while one is listed. A change to one runs the site's
+// specs too (pathProducts reads this). Same rules as the maps below: an unlisted import fails, and so
+// does a listed one the file no longer makes. The hooks reach chat through SEAM_LOADS_OF_CHAT instead;
+// app.d.ts's import is a type, erased from the build.
 export const SHELL_IMPORTS_OF_CHAT = {
-	'web/src/app.d.ts': ['$lib/chat/types/User'],
+	'web/src/app.d.ts': ['$lib/chat/types/User']
+};
+
+// The chat modules the shell loads through `import.meta.glob`, keyed by shell file: the shell's seam
+// into chat, the mirror of SEAM_LOADS_OF_SITE. A glob that matches no file is an empty object, so the
+// site builds from a tree with chat's files removed, and the shell skips each chat-only branch when its
+// module is absent; the site-only path runs on the site's own code. With chat present they
+// load as the imports they replaced, and the site surface (develop, previews) still runs them, so a
+// change to one runs the site's specs too (pathProducts reads this). The import check reads the glob
+// literals in the shell, so an unlisted glob fails, and so does a listed one the file no longer makes.
+// Exact glob paths, extension included.
+export const SEAM_LOADS_OF_CHAT = {
 	'web/src/hooks.server.ts': [
-		'$lib/chat/paths',
-		'$lib/chat/server/cmsPublish',
-		'$lib/chat/server/db/client',
-		'$lib/chat/server/env/validate',
-		'$lib/chat/server/errorTracking',
-		'$lib/chat/server/flags',
-		'$lib/chat/server/guestHandoff',
-		'$lib/chat/server/guestHandoffPage',
-		'$lib/chat/server/hooks/error',
-		'$lib/chat/server/hooks/fetch',
-		'$lib/chat/server/hooks/handle',
-		'$lib/chat/server/hooks/init',
-		'$lib/chat/server/legacySessionCookie',
-		'$lib/chat/server/logger',
-		'$lib/chat/wwwChatRedirect'
+		'$lib/chat/paths.ts',
+		'$lib/chat/server/cmsPublish.ts',
+		'$lib/chat/server/db/client.ts',
+		'$lib/chat/server/env/validate.ts',
+		'$lib/chat/server/errorTracking.ts',
+		'$lib/chat/server/flags.ts',
+		'$lib/chat/server/guestHandoff.ts',
+		'$lib/chat/server/guestHandoffPage.ts',
+		'$lib/chat/server/hooks/error.ts',
+		'$lib/chat/server/hooks/fetch.ts',
+		'$lib/chat/server/hooks/handle.ts',
+		'$lib/chat/server/hooks/init.ts',
+		'$lib/chat/server/legacySessionCookie.ts',
+		'$lib/chat/server/logger.ts',
+		'$lib/chat/wwwChatRedirect.ts'
 	],
-	'web/src/hooks.ts': ['$lib/chat/utils/PublicConfig.svelte']
+	'web/src/hooks.ts': ['$lib/chat/utils/PublicConfig.svelte.ts']
 };
 
 // Every chat module a site or shared file under web/src imports (the shell aside), keyed by the
@@ -97,6 +110,7 @@ export const SEAM_LOADS_OF_SITE = {
 	'web/src/lib/website.ts': ['$lib/gapmap/entityUrl.ts'],
 	'web/src/lib/website.server.ts': [
 		'$lib/payload/cached-client.ts',
+		'$lib/website/siteOnly.ts',
 		'$lib/payload/client.ts',
 		'$lib/payload/alpha-landing.ts',
 		'$lib/payload/preview.server.ts',

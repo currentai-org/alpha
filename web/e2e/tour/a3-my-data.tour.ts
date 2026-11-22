@@ -15,10 +15,10 @@ import { accountButton, accountMenuItem } from '../scenarios/helpers/accountMenu
 import { setFlagOverrides } from '../scenarios/helpers/flagOverride';
 import { turnDone } from '../scenarios/helpers/turn';
 
-// The A3 walkthrough: docs/journeys/a3-my-data.md walked as one signed-in person, rows 29, 6, 7, 21,
-// 14, 3–4, 9 and 12, so the story ends on the account being deleted. Sign-in is A1's tour, so it
-// happens off camera in a browser of its own and the take starts signed in, on the home page. Alex
-// attaches a photo so My files has a row to open and the receipt has a file to count.
+// The A3 walkthrough: docs/journeys/a3-my-data.md walked as one signed-in person, rows 30, 16, 29,
+// 3–4, 6, 11, 31, 7, 21, 14, 9 and 12, so the story ends on the account being deleted. Sign-in is A1's
+// tour, so it happens off camera in a browser of its own and the take starts signed in, on the home
+// page. Alex attaches a photo so Files has a row to open and the receipt has a file to count.
 //
 // It is filmed for people. data-portability.spec.ts holds the assertions; the expects here are only
 // the ones a viewer would notice going wrong, so a broken take fails instead of rendering.
@@ -87,6 +87,7 @@ test('A3: your data is yours to take, see, and delete', async ({ page, context, 
 	await meetAlpha(page);
 	await expect(accountButton(page)).toHaveAccessibleName(/signed in as /i, { timeout: 15_000 });
 
+	// Row 16: the photo goes with the question, with nothing marked not added.
 	await narrate('First, something worth keeping: a photo of a plant, a question, and an answer.');
 	await click(page.getByRole('button', { name: /^Add files and tools/ }));
 	const chooser = page.waitForEvent('filechooser');
@@ -103,7 +104,7 @@ test('A3: your data is yours to take, see, and delete', async ({ page, context, 
 	});
 	await waitForNarration(page);
 
-	// Row 29
+	// Row 29. The Files page holds the files, under a tab for each place they live.
 	await narrate('The photo is now one of Alex’s files. Files in the sidebar lists it.');
 	const openSidebar = page.getByRole('button', { name: 'Open sidebar' });
 	if (await openSidebar.isVisible()) await click(openSidebar);
@@ -112,6 +113,13 @@ test('A3: your data is yours to take, see, and delete', async ({ page, context, 
 	const row = page.locator('[data-file-row]').filter({ hasText: PHOTO });
 	const added = row.getByText(/^Added .*\d{4}/);
 	await expect(added).toBeVisible({ timeout: 30_000 });
+	const alphaTab = page
+		.getByRole('tablist', { name: 'Storage location' })
+		.getByRole('tab', { name: /Alpha storage/ });
+	await expect(alphaTab).toHaveAttribute('aria-selected', 'true');
+	await narrate('Each place files are kept gets a tab. Alex has one so far: Alpha storage.');
+	await highlight(alphaTab);
+	await waitForNarration(page);
 	await highlight(added);
 	await narrate('Its row says when it was added and which chat it came from.');
 	await waitForNarration(page);
@@ -127,8 +135,28 @@ test('A3: your data is yours to take, see, and delete', async ({ page, context, 
 	await page.waitForURL((url) => url.pathname === conversation, { timeout: 30_000 });
 	await waitForNarration(page);
 
+	// Rows 3 and 4, told without confirming, since the tour ends on the stronger delete. The way out is
+	// one tap from the chat: the “Where it goes” pill under the message box.
+	await narrate('The way out is one tap from the chat. Where it goes, under the message box…');
+	await click(page.getByRole('button', { name: 'Where your message goes' }));
+	const dataLink = page.getByRole('link', { name: 'Data & privacy' });
+	await expect(dataLink).toBeVisible({ timeout: 10_000 });
+	await highlight(dataLink);
+	await waitForNarration(page);
+	await narrate(
+		'…leads to Data and privacy, and Forget everything, which clears every conversation and file but keeps the account.'
+	);
+	await click(dataLink);
+	await page.waitForURL(/\/settings\/data/, { timeout: 30_000 });
+	const forget = page.getByRole('button', { name: /^Forget everything/ });
+	await expect(forget).toBeVisible({ timeout: 15_000 });
+	await highlight(forget);
+	await waitForNarration(page);
+
 	// Row 6
-	await narrate('The account page is one click from the account menu.');
+	await narrate(
+		'A copy of everything starts on the account page, one click from the account menu.'
+	);
 	await click(await accountMenuItem(page, 'Account', { timeout: 20_000 }));
 	await page.waitForURL(/\/settings\/account/, { timeout: 30_000 });
 	const exportRow = page.getByRole('link', {
@@ -150,6 +178,26 @@ test('A3: your data is yours to take, see, and delete', async ({ page, context, 
 	);
 	await waitForNarration(page);
 
+	// Row 11: a second export inside the hour is refused in the row, before and after a reload.
+	const locked = page.getByTestId('export-row-locked');
+	await expect(locked.getByRole('status')).toContainText('You can download again after', {
+		timeout: 15_000
+	});
+	await expect(locked.getByRole('button', { name: 'Download' })).toBeDisabled();
+	await narrate('There is one export an hour, and the row says when the next one is possible.');
+	await highlight(locked);
+	await waitForNarration(page);
+	await page.reload({ waitUntil: 'load' });
+	await expect(locked.getByRole('status')).toContainText('You can download again after', {
+		timeout: 30_000
+	});
+	await narrate('A reload keeps the same answer, right where Alex clicked.');
+	await highlight(locked);
+	await waitForNarration(page);
+
+	// Rows 30-31 (Your key) wait for history-key-enrollment, which is team-only on preview and off in
+	// production, so a visitor's tour does not film them yet.
+
 	// Rows 7 and 21. Settings → Storage holds the storage settings; the files are a link away.
 	await narrate('Settings, Storage says how much is stored, and where.');
 	await click(section(page, 'storage'));
@@ -158,11 +206,12 @@ test('A3: your data is yours to take, see, and delete', async ({ page, context, 
 	await expect(usage.getByRole('meter')).toBeVisible({ timeout: 30_000 });
 	await zoom(usage, 1.4);
 	await waitForNarration(page);
-	await highlight(page.getByText('Everything stored is listed here', { exact: false }));
-	await narrate(
-		'It says who stores the files and promises that the list is complete, and deleting a file removes it from storage.'
-	);
-	await waitForNarration(page);
+	const locations = page.getByTestId('storage-locations');
+	if (await locations.isVisible().catch(() => false)) {
+		await narrate('Locations lists each place files are kept, with how many files each one holds.');
+		await highlight(locations);
+		await waitForNarration(page);
+	}
 	const linkSection = page.getByTestId('storage-link-section');
 	if (await linkSection.isVisible().catch(() => false)) {
 		await narrate(
@@ -171,6 +220,11 @@ test('A3: your data is yours to take, see, and delete', async ({ page, context, 
 		await highlight(linkSection);
 		await waitForNarration(page);
 	}
+	await highlight(page.getByText('Everything stored is listed here', { exact: false }));
+	await narrate(
+		'It says who stores the files and promises that the list is complete, and deleting a file removes it from storage.'
+	);
+	await waitForNarration(page);
 	await narrate('Open your files lists the same files, with a download and a delete on each.');
 	await click(page.getByRole('link', { name: 'Open your files' }));
 	await expect(page.getByRole('heading', { name: 'Your files', level: 1 })).toBeVisible({
@@ -192,17 +246,6 @@ test('A3: your data is yours to take, see, and delete', async ({ page, context, 
 	const memory = page.getByRole('heading', { name: /Alpha memory/ });
 	await expect(memory).toContainText('Coming soon', { timeout: 15_000 });
 	await highlight(memory);
-	await waitForNarration(page);
-
-	// Rows 3 and 4, told without confirming, since the tour ends on the stronger delete
-	await narrate(
-		'Data and privacy holds Forget everything, which clears every conversation and file but keeps the account.'
-	);
-	await click(section(page, 'data'));
-	await page.waitForURL(/\/settings\/data/, { timeout: 30_000 });
-	const forget = page.getByRole('button', { name: /^Forget everything/ });
-	await expect(forget).toBeVisible({ timeout: 15_000 });
-	await highlight(forget);
 	await waitForNarration(page);
 
 	// Row 9

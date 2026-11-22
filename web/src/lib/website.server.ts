@@ -157,6 +157,39 @@ export async function startCms(
 	(await load(hostServicesModule))?.setSiteHostServices(services);
 }
 
+const siteOnlyModule = import.meta.glob<{
+	siteOnlyChatRedirect(req: {
+		url: URL;
+		pathname: string;
+		deployEnv: string | undefined;
+	}): string | null;
+	checkSiteOnlyEnv(all: Record<string, string | undefined>, deployEnv: string | undefined): void;
+}>('/src/lib/website/siteOnly.ts');
+
+/**
+ * On a site-only build, where a request for one of chat's addresses goes: the same address on the chat
+ * host, or null for a site address. Null too when the website is not in the build, which serves no
+ * site-only surface.
+ */
+export async function siteOnlyChatTarget(req: {
+	url: URL;
+	pathname: string;
+	deployEnv: string | undefined;
+}): Promise<string | null> {
+	return (await load(siteOnlyModule))?.siteOnlyChatRedirect(req) ?? null;
+}
+
+/**
+ * A site-only build's boot check of the site's own env; throws when a key it needs is unset. Nothing to
+ * check when the website is not in the build.
+ */
+export async function checkSiteOnlyEnv(
+	all: Record<string, string | undefined>,
+	deployEnv: string | undefined
+): Promise<void> {
+	(await load(siteOnlyModule))?.checkSiteOnlyEnv(all, deployEnv);
+}
+
 const invalidationKeysModule = import.meta.glob<{
 	keysForInvalidation(req: never): (readonly unknown[])[];
 }>('/src/lib/payload/invalidationKeys.ts');

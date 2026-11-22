@@ -257,6 +257,41 @@ describe("Forget everything keeps the account able to upload", () => {
 	});
 });
 
+describe("Forget everything on a deployment with no master identity", () => {
+	beforeEach(() => {
+		delete H.cfg.CUSTODIAL_MASTER_IDENTITIES;
+		delete H.cfg.CUSTODIAL_MASTER_ACTIVE;
+		H.cfg.CUSTODIAL_SEAL_WRITES = "";
+	});
+
+	it("a kept-account wipe with no master completes, deletes the files and leaves no tombstone behind", async () => {
+		await storeChatAttachment({ userId: ME }, attachment(1), text("plain before"));
+		await expect(wipeCustodialFiles(ME, { keepAccount: true })).resolves.toBe(1);
+		expect(H.objects.has(`users/${ME}/${attachment(1)}`)).toBe(false);
+		expect(H.objects.has(ownerRecipientPath(mine))).toBe(false);
+		expect(H.objects.has(ownerKeyPath(mine))).toBe(false);
+		await storeChatAttachment({ userId: ME }, attachment(2), text("plain after"));
+		expect(stored(`users/${ME}/${attachment(2)}`)).toBe("plain after");
+	});
+
+	it("once the operator turns sealing on, that owner's next write is sealed rather than refused", async () => {
+		await wipeCustodialFiles(ME, { keepAccount: true });
+		Object.assign(H.cfg, {
+			CUSTODIAL_MASTER_IDENTITIES: JSON.stringify({ k1: master }),
+			CUSTODIAL_MASTER_ACTIVE: "k1",
+			CUSTODIAL_SEAL_WRITES: "true",
+		});
+		await storeChatAttachment({ userId: ME }, attachment(1), text("sealed later"));
+		expect(stored(`users/${ME}/${attachment(1)}`).startsWith(AGE_MAGIC)).toBe(true);
+		expect(await (await readCustodialAttachment(ME, attachment(1)))!.text()).toBe("sealed later");
+	});
+
+	it("account deletion with no master still keeps the tombstone for good", async () => {
+		await wipeCustodialFiles(ME);
+		expect(stored(ownerRecipientPath(mine))).toBe(KEY_TOMBSTONE);
+	});
+});
+
 describe("account wipe destroys the key first", () => {
 	it("a wiped account's file that a failed delete left behind fails to open as tombstoned", async () => {
 		await storeChatAttachment({ userId: ME }, attachment(1), text("kept by a failed delete"));

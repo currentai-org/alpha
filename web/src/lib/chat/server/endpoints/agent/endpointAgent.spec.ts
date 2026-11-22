@@ -3654,6 +3654,60 @@ describe("an agent run longer than one request is handed off to the page, not cu
 		expect(terminal?.generated_text).not.toContain("No answer arrived in time");
 	});
 
+	it("an approval card on a handed-off run that runs out agent-service's clock unanswered ends the turn: the run is canceled and the answer says the approval went unanswered", async () => {
+		// The page's attach of a handed-off run: the card opens, agent-service denies it on its own timeout,
+		// and the run goes on (it would open the next card). The stream stays open, as a live run's does.
+		const enc = new TextEncoder();
+		const calls: { url: string; method: string }[] = [];
+		const fetchMock = vi.fn(async (url: string | URL, init?: RequestInit) => {
+			const u = String(url);
+			calls.push({ url: u, method: init?.method ?? "GET" });
+			if (u.includes("/run/t1/events")) {
+				const signal = init?.signal as AbortSignal;
+				let sent = false;
+				const body = new ReadableStream<Uint8Array>({
+					pull(controller) {
+						if (sent)
+							return new Promise<void>((_resolve, reject) => {
+								const fail = () => reject(new DOMException("aborted", "AbortError"));
+								if (signal?.aborted) fail();
+								else signal?.addEventListener("abort", fail, { once: true });
+							});
+						sent = true;
+						controller.enqueue(
+							enc.encode(
+								frame("awaiting_confirmation", { confirm_id: "c1", kind: "edit", title: "Write plan.txt", summary: "plan.txt" })
+							)
+						);
+						controller.enqueue(enc.encode(frame("confirm_result", { confirm_id: "c1", decision: "deny", reason: "timeout" })));
+					},
+				});
+				return { ok: true, status: 200, body } as unknown as Response;
+			}
+			return { ok: true, status: 200, json: async () => ({}), text: async () => "" } as Response;
+		});
+		vi.stubGlobal("fetch", fetchMock);
+		const factory = await endpointAgent({ type: "agent", baseURL: "http://agent.test", model: {} });
+		const stream = await factory({
+			messages: [{ from: "user", content: "make plan.txt" }],
+			abortSignal: new AbortController().signal,
+			// Short enough that, without the fix, the request hands the run off again at its mark.
+			turnDeadlineAt: Date.now() + 800,
+			agentAttach: { taskId: "t1", handoff: true },
+		} as Parameters<typeof factory>[0]);
+		const chunks: Chunk[] = [];
+		for await (const c of stream) chunks.push(c as Chunk);
+
+		const terminal = chunks.at(-1);
+		expect(terminal?.agentHandoff).toBeUndefined();
+		expect(terminal?.generated_text).toContain("No answer arrived in time for the agent's approval request");
+		expect(terminal?.generated_text).not.toContain(AGENT_HANDOFF_TEXT);
+		expect(chunks.filter((c) => c.agentConfirmResult).map((c) => c.agentConfirmResult)).toEqual([
+			{ confirmId: "c1", decision: "deny", reason: "timeout" },
+		]);
+		expect(calls).toContainEqual({ url: "http://agent.test/run/t1", method: "DELETE" });
+	});
+
 	it("a turn with no deadline never hands off (a Stop still ends it as stopped)", async () => {
 		const ctrl = new AbortController();
 		setTimeout(() => ctrl.abort(), 300);

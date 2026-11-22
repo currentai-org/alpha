@@ -3075,6 +3075,21 @@ def test_status_and_done_payload_carry_machine_id(monkeypatch):
     assert app._done_payload(t)["machine_id"] == "3d8d9djklxyz01"
 
 
+def test_done_frame_names_where_the_agent_ran_as_the_status_response_does(monkeypatch):
+    """Chat reads compute_provider off the live `done` frame for X-ray's "Where it ran". The frame
+    once left it out while StatusResponse carried it, so every agent turn read "not recorded". The
+    live reading wins over the configured value, and nothing configured or observed gives None."""
+    t = app.Task(id="tr-compute-payload", prompt="hi", user="u")
+    monkeypatch.setattr(app, "AGENT_COMPUTE_PROVIDER", "Infomaniak")
+    monkeypatch.setattr(app, "_LIVE_COMPUTE_PROVIDER", {"provider": "mistral"})
+    assert app._done_payload(t)["compute_provider"] == "mistral"
+    assert app._done_payload(t)["compute_provider"] == app._status_of(t).model_dump(mode="json")["compute_provider"]
+    monkeypatch.setattr(app, "_LIVE_COMPUTE_PROVIDER", {})
+    assert app._done_payload(t)["compute_provider"] == "Infomaniak"
+    monkeypatch.setattr(app, "AGENT_COMPUTE_PROVIDER", "")
+    assert app._done_payload(t)["compute_provider"] is None
+
+
 def test_machine_id_is_none_off_fly(monkeypatch):
     """Local dev and tests run with no FLY_MACHINE_ID — both shapes must report None, not the string
     'None' or a KeyError, since a caller checks this field's truthiness before setting the pin header."""

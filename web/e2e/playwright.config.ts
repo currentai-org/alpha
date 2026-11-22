@@ -104,6 +104,9 @@ const EXCLUDED_TAGS = [
 	// (PR previews, develop, www, the gallery) leaves them out.
 	process.env.SCENARIO_CHAT_SURFACE === '1' ? null : 'root',
 	process.env.SCENARIO_LOCAL_MOCK === '1' ? null : 'local-mock',
+	// @mock-only specs read the mock model's request journal (aimock), which only mock-model-e2e.sh starts;
+	// it sets SCENARIO_MOCK_MODEL=1.
+	process.env.SCENARIO_MOCK_MODEL === '1' ? null : 'mock-only',
 	// @local-storage specs read the custodial store directly (a local S3-compatible server or directory),
 	// which only storage-local.yml starts beside the app; it sets SCENARIO_LOCAL_STORAGE=1.
 	process.env.SCENARIO_LOCAL_STORAGE === '1' ? null : 'local-storage',

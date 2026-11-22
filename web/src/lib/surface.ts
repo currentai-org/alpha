@@ -8,7 +8,7 @@
  *   starts with `/chat` on both surfaces.
  * - `site-only` (APP_SURFACE=site-only, www once chat lives on alpha): the site at `/` and none of
  *   chat. Every `/chat` path and chat's root paths answer 308 to the same address on the chat host
- *   (chat/paths.ts `siteOnlyChatRedirect`), chat's server init never runs, and the build boots
+ *   (website/siteOnly.ts `siteOnlyChatRedirect`), chat's server init never runs, and the build boots
  *   without chat's env.
  *
  * Config that names the deployment, like INSTANCE (chat/server/instance.ts); it turns no feature on

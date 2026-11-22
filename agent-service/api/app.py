@@ -5392,6 +5392,9 @@ def _done_payload(task: Task) -> dict:
             # else answered under its name.
             "model": task.model or AGENT_MODEL or None,
             "served_models": list(task.served_models),
+            # where the executor ran, the value StatusResponse carries. Chat reads it off this frame
+            # (endpointAgent.ts) for X-ray's "Where it ran"; without it an agent turn reads "not recorded".
+            "compute_provider": _effective_compute_provider(),
             "verified": task.verified, "verify_method": task.verify_method,
             # An execution check off an auto-derived spec is weaker than one off a spec the caller wrote:
             # the CHECKING is deterministic, but the choosing of what to check was a model reading the

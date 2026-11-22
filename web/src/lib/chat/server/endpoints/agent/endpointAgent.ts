@@ -1647,6 +1647,20 @@ export async function endpointAgent(
 										},
 									});
 									openConfirms.delete(ev.confirm_id);
+									// A run handed off to the page is not ended by the route's watchdog, so a card
+									// nobody answers runs out agent-service's own clock instead, and the agent goes on
+									// to open the next card, each one another full timeout. The turn ends here, as the
+									// watchdog ended it before hand-off: the run is canceled below, every card still
+									// open reads as unanswered, and the answer says the approval went unanswered.
+									if (handoff && ev.decision === "deny" && ev.reason === "timeout") {
+										approvalUnanswered = true;
+										yield* closeThink();
+										answer = unansweredApprovalAnswer(openConfirms.size + 1);
+										yield* push(answer);
+										await reader.cancel().catch(() => {});
+										done = true;
+										break;
+									}
 								}
 							} else if (etype === "message") {
 								if (ev.text) yield* pushLine(`note: ${ev.text}\n`);
@@ -2022,8 +2036,9 @@ export async function endpointAgent(
 			// alone it goes on into its next best-of attempt for up to two more wall clocks, so the person's
 			// "carry on" is refused with "another task is running in this conversation".
 			// A run submitted to hand off is never canceled here. The page follows it on purpose, so
-			// no request's end, the watchdog's included, is the end of the run; only Stop is.
-			if (!handoff && !sawDone && !serviceLostTask && (!abortSignal?.aborted || endedByWatchdog(abortSignal))) {
+			// no request's end, the watchdog's included, is the end of the run; only Stop is, and an
+			// approval nobody answered (above).
+			if ((!handoff || approvalUnanswered) && !sawDone && !serviceLostTask && (!abortSignal?.aborted || endedByWatchdog(abortSignal))) {
 				try {
 					const status = await cancelAgentTask(input, locals, { taskId, machineId });
 					logger.info({ taskId, status, timedOut }, "[agent] turn ended without a result; canceled its task");

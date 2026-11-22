@@ -385,6 +385,19 @@ export async function tombstoneOwnerKey(grant: Grant, bucket: KeyBucket, lock: O
 	logger.info({ event: "custodial-key-tombstoned", ownerHash: hash16(`${grant.root}:${grant.id}`) }, "[custodial-crypto] owner key destroyed");
 }
 
+/** Lift an owner's tombstone, leaving them as an owner who never had a key. "Forget everything" uses it
+ *  in place of `replaceOwnerKey` on a deployment with no master identity, which cannot wrap a new key:
+ *  its writes are unsealed and read no recipient, and once a master is set the first sealed write makes
+ *  a key as it does for any new owner. The key object goes first and the recipient last, the reverse
+ *  of `tombstoneOwnerKey`, so a sealed write stays refused until the slot is empty. */
+export async function clearOwnerKey(grant: Grant, remove: (keyPath: string) => Promise<void>, lock: OwnerLock): Promise<void> {
+	await lock(ownerLockName(grant), async () => {
+		await remove(ownerKeyPath(grant));
+		await remove(ownerRecipientPath(grant));
+	});
+	logger.info({ event: "custodial-key-cleared", ownerHash: hash16(`${grant.root}:${grant.id}`) }, "[custodial-crypto] owner key slot emptied (no master)");
+}
+
 function ownerLockName(grant: Grant): string {
 	return `custodial-key:${grant.root}:${grant.id}`;
 }

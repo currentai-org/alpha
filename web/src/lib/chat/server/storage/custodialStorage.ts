@@ -44,6 +44,8 @@ import {
 	sealToRecipient,
 	tombstoneOwnerKey,
 	replaceOwnerKey,
+	clearOwnerKey,
+	activeMasterKid,
 	type Grant,
 	type KeyBucket,
 	type KeyStore,
@@ -698,10 +700,14 @@ export async function wipeCustodialFiles(
 	step("deleteMs");
 	// "Forget everything" keeps the account, which must be able to upload again, so it gets a
 	// new key once every file is gone. A failed delete has already thrown, leaving the tombstone in place
-	// until the person retries. Account deletion keeps the tombstone for good.
+	// until the person retries. Account deletion keeps the tombstone for good. A deployment with no
+	// master identity (a self-host that never turned sealing on) cannot wrap a new key, so the slot is
+	// emptied instead, as for an owner who never had one.
 	if (opts.keepAccount) {
 		try {
-			await replaceOwnerKey(ownerGrant("users", userId), bucketKeys, timedLock(t, "replace"));
+			const grant = ownerGrant("users", userId);
+			if (activeMasterKid()) await replaceOwnerKey(grant, bucketKeys, timedLock(t, "replace"));
+			else await clearOwnerKey(grant, async (keyPath) => (await custodialBackend()).delete(keyPath), timedLock(t, "replace"));
 		} catch (e) {
 			throw new CustodialWipeError(deleted, 0, e);
 		}

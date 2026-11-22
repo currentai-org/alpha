@@ -50,6 +50,12 @@ export APP_SURFACE=chat
 # What selfhost/compose.yaml sets: an operator's own copy, which runs with no safety classifier and no
 # Coop by choice, so a turn reaches the model instead of failing closed on a screen nobody configured.
 export ALPHA_EDITION=selfhost
+# Uploads as selfhost/.env.example and compose.yaml set them: stored unscanned (CSAM_SCAN=off, the
+# operator's own decision) in a local directory. A path under /tmp exists both on the runner and inside
+# the image, where the app runs as a non-root user.
+export CSAM_SCAN=off
+export CUSTODIAL_STORAGE_BACKEND=local
+export CUSTODIAL_LOCAL_DIR=/tmp/mock-model-e2e-files
 export PUBLIC_ORIGIN="http://localhost:$APP_PORT"
 export BETTER_AUTH_SECRET="${BETTER_AUTH_SECRET:-$(openssl rand -hex 32)}"
 export OPENAI_BASE_URL="http://127.0.0.1:$MOCK_PORT/v1"
@@ -66,6 +72,7 @@ export MISTRAL_CHAT_API_KEY=mock-model-no-key
 export MISTRAL_MODELS="$MOCK_MODEL_ID"
 
 cleanup() {
+	local code=$?
 	docker logs mock-model-e2e-aimock > "$LOG_DIR/aimock.log" 2>&1 || true
 	curl -s --max-time 5 "http://127.0.0.1:$MOCK_PORT/__aimock/journal?limit=500" > "$LOG_DIR/aimock-journal.json" 2>/dev/null || true
 	docker rm -f mock-model-e2e-aimock > /dev/null 2>&1 || true
@@ -74,6 +81,12 @@ cleanup() {
 		docker rm -f mock-model-e2e-app > /dev/null 2>&1 || true
 	fi
 	[ -n "${APP_PID:-}" ] && kill -- "-$APP_PID" 2>/dev/null || true
+	# A failed run prints the app's warnings and errors, since the job keeps no artifact of app.log.
+	if [ "$code" != 0 ] && [ -f "$LOG_DIR/app.log" ]; then
+		echo "::group::app.log warnings and errors (last 40)"
+		grep -E '"level":"?(warn|error|fatal|40|50|60)"?' "$LOG_DIR/app.log" | cut -c1-800 | tail -n 40 || true
+		echo "::endgroup::"
+	fi
 }
 trap cleanup EXIT
 
@@ -130,6 +143,7 @@ cd "$WEB_DIR"
 # E2E_REPLAY_MODE=off: every model call reaches the mock, none is answered by the replay layer.
 # SCENARIO_SKIP_LIVE_MODEL=1 leaves out the specs that need a real model's answer.
 E2E_REPLAY_MODE=off \
+	SCENARIO_MOCK_MODEL=1 \
 	SCENARIO_CHAT_SURFACE=1 \
 	SCENARIO_SKIP_LIVE_MODEL=1 \
 	SCENARIO_BASE_URL="$PUBLIC_ORIGIN" \
