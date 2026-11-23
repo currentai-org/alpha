@@ -40,7 +40,7 @@ python-docx==1.2.0
 reportlab==5.0.1
 # Reads the text of the agent's PDFs for the artifacts screen (api/doc_text.py, which also uses
 # python-docx and openpyxl above). 6.19.0 is the first release clear of the 2026-10-01 parser advisories.
-pypdf==6.19.0
+pypdf==6.21.4
 
 # Hermes (the agent harness) is installed separately in the Dockerfile from a pinned
 # PUBLIC upstream commit; locally it lives in its own venv. See deploy/Dockerfile.

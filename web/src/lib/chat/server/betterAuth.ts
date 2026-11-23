@@ -519,8 +519,11 @@ export async function sendVerificationOTP({
 		return;
 	}
 
-	if (sent.via === "resend") logger.info({ type, resendId: sent.id }, "[auth] email-OTP sent via Resend");
-	else logger.info({ type, messageId: sent.id }, "[auth] email-OTP sent via SMTP");
+	// `newAddress` lets the `email-share-ceiling` verify query tell a code to an existing account, which
+	// still sends past the site-wide ceiling, from one to a new address, which must not.
+	if (sent.via === "resend")
+		logger.info({ type, resendId: sent.id, newAddress: isNewAddress }, "[auth] email-OTP sent via Resend");
+	else logger.info({ type, messageId: sent.id, newAddress: isNewAddress }, "[auth] email-OTP sent via SMTP");
 }
 
 /** The transport's name in a log line. */
