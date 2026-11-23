@@ -74,7 +74,7 @@ let warnedNoRerankerGrounding = false;
  *  OpenSearchResult raw; SearchContext is the zod-validated client payload), so a verification bit on
  *  either would let a client *claim* it. It rides this distinct type instead — the chat route reads it
  *  for the groundedWeb gate, then builds the persisted searchContext / message.webSearch from the wire
- *  fields only. See docs/plan-websearch-grounding-fix.md. */
+ *  fields only. */
 export type WebSearchOutcome = OpenSearchResult & {
 	relevanceVerified: boolean;
 	timings?: WebTimings;

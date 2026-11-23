@@ -12,7 +12,7 @@
 // Cost & latency are bounded by ONE deadline owned here: `querySyftSources` starts an
 // AbortController, and `withDeadline` aborts the (metered) `search.query` and resolves [] if the
 // deadline fires — so an abandoned metered call cannot keep running and settle. There is no second
-// timer in index.ts. See docs/plans/syfthub-pattern-a.md.
+// timer in index.ts.
 
 import { EndpointType, type SourceInfo } from "@syfthub/sdk";
 import type { RagSource } from "$lib/chat/types/Rag";

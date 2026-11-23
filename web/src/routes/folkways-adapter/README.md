@@ -163,7 +163,7 @@ Set it to 0% or 100% only (see `flag.ts`).
 | `FOLKWAYS_UPSTREAM_API_KEY`          | falls back to `HF_TOKEN`, `OPENAI_API_KEY` | provider auth                |
 | `FOLKWAYS_UPSTREAM_BILL_TO`          | falls back to `HF_BILL_TO`                 | HF router `X-HF-Bill-To` org |
 | `FOLKWAYS_MISTRAL_UPSTREAM_BASE_URL` | `https://api.mistral.ai/v1`                | Mistral lane upstream        |
-| `FOLKWAYS_CATALOG_BASE_URL`          | `https://api-internal.publicai.co/v1`      | real catalog for `/models`   |
+| `FOLKWAYS_CATALOG_BASE_URL`          | none; required, unset answers 503          | real catalog for `/models`   |
 | `FOLKWAYS_CATALOG_API_KEY`           | falls back to `OPENAI_API_KEY`, `HF_TOKEN` | catalog auth                 |
 | `FOLKWAYS_COMMUNITY`                 | `pottsboro-library`                        | deployment context           |
 | `FOLKWAYS_DEPLOYMENT`                | `public-chat`                              | deployment context           |

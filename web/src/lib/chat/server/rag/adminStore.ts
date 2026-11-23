@@ -1,5 +1,5 @@
 // Admin-authored RAG store: in-memory cosine search over the `active` rows of the
-// rag_chunks table (the upload feature; see docs/plan-rag-admin-upload.md). Sibling to the
+// rag_chunks table (the upload feature). Sibling to the
 // committed catalog store (localStore.ts) — same cosine scan, but the corpus is editable
 // Postgres rows instead of a build artifact, so it carries a serverless-safe cache.
 //

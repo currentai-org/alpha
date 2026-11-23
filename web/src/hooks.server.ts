@@ -319,8 +319,7 @@ function withResponseHeaders(response: Response): Response {
 // guard keeps it out of the prerender/build pass; the guard lives HERE (not in db/client.ts) because
 // `$app/env` must not enter db/client.ts — the plain-tsx verify scripts import that module
 // directly. Dynamic-imported (like the rest of chat's server code) so a map-only request
-// never pulls postgres.js; non-blocking + non-throwing; `PG_PRECONNECT=off` disables it. See
-// docs/plans/ttft-critical-path.md §B.
+// never pulls postgres.js; non-blocking + non-throwing; `PG_PRECONNECT=off` disables it.
 if (!building && !siteOnly) {
 	void loadChat(chatDbClient)
 		.then((chat) => chat?.preconnectDb())

@@ -1,4 +1,4 @@
-// SyftHub data-source CATALOG for the pre-flight LLM router (docs/plans/syfthub-preflight-router.md).
+// SyftHub data-source CATALOG for the pre-flight LLM router.
 //
 // The hub's data-source catalog is small and fully enumerable: `hub.browse({ endpointType:
 // DATA_SOURCE }).all()` yields every published source with its owner/slug, name, description, tags and

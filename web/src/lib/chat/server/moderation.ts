@@ -41,7 +41,7 @@
 // with no actionsTriggered[] as UNKNOWN. checkChildSafety fails CLOSED on UNKNOWN; checkContentPolicy
 // fails OPEN. (CAVEAT — a Zentropi signal failing while Coop is UP is NOT UNKNOWN here: Coop marks the
 // leaf ERRORED, the rule doesn't fire, and Coop returns 200 []. Keeping child truly fail-closed in
-// that case needs a user-authored IS_UNAVAILABLE companion child rule in Coop. See docs/v6-async-plane.md.)
+// that case needs a user-authored IS_UNAVAILABLE companion child rule in Coop.)
 
 import { randomUUID } from "node:crypto";
 import type { GuardHit } from "$lib/chat/server/guardScreenTypes";
@@ -540,8 +540,7 @@ export async function probeCoopHealth(): Promise<boolean | null> {
 // Opt-in: requires Coop configured AND OUTPUT_MODERATION on. You CANNOT screen an answer and stream it
 // live at the same time (the user would see unscreened tokens), so the caller SUPPRESSES live token
 // streaming and holds the whole answer until this clears — a real UX change (no token-by-token), which
-// is why it's behind a flag and OFF by default. See the chat handler's generation loop and
-// docs/v6-runbook.md "Output gating".
+// is why it's behind a flag and OFF by default. See the chat handler's generation loop.
 // The ENV parse only — is OUTPUT_MODERATION requested? (coop-review-plane Step 3a). Split out from
 // outputModerationEnabled so resolveTurnPolicy can branch by source: under guard-primary the guard is the
 // detector, so requested-ON is enough (its OWN loud-UNKNOWN handles a missing endpoint — never a silent

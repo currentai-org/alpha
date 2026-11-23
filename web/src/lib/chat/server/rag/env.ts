@@ -175,8 +175,7 @@ export function ragVisionModel(): string {
  *  disables the federated store entirely (fail-open). Identity is the service token (or guest
  *  mode) — `search.query` takes no per-user email, so chat users are never passed through.
  *  The token pays metered sources directly: it is injected as the aggregator's MPP `user_token`
- *  (see syftClient.getSyftClient), so no username/password login is needed.
- *  See docs/plans/syfthub-pattern-a.md. */
+ *  (see syftClient.getSyftClient), so no username/password login is needed. */
 export function syft() {
 	return {
 		token: read("SYFTHUB_API_TOKEN"),
@@ -290,8 +289,7 @@ export function syftPromptOnly(): boolean {
 /** SyftHub PRE-FLIGHT ROUTER config (RAG_ROUTER_*). An LLM reasons over the small data-source catalog
  *  to pick endpoints, replacing the weak cosine-over-metadata discovery. ALL gated, default OFF — with
  *  the router off, discoverSources is byte-for-byte today's embedding path. Distinct prefix from the
- *  unrelated `LLM_ROUTER_*` (Arch-Router model selection) so the two subsystems are never conflated.
- *  See docs/plans/syfthub-preflight-router.md. */
+ *  unrelated `LLM_ROUTER_*` (Arch-Router model selection) so the two subsystems are never conflated. */
 export function syftRouter() {
 	// PROMPT-ONLY mode force-disables the router (and, via warmSyftCatalog's `enabled||shadow` gate, the
 	// off-turn warm catalog leg): in that mode SyftHub must fire ONLY on matched prompts, which retrieve

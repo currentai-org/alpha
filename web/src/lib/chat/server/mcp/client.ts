@@ -5,8 +5,8 @@
 // list its tools as OpenAI-shaped function schemas, and call them. Thin wrapper over the
 // official @modelcontextprotocol/client (SDK v2, the split successor to the single
 // @modelcontextprotocol/sdk package). The tool DECISION is made elsewhere by a bare-prompt
-// router (the persona suppresses in-context tool-choice by design — see
-// docs/mcp-restoration-scope.md); this module is just the transport + invocation.
+// router (the persona suppresses in-context tool-choice by design); this module is just the
+// transport + invocation.
 import { APP_USER_AGENT } from "$lib/chat/constants/app";
 import {
 	Client,

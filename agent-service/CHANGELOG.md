@@ -25,5 +25,5 @@ The service reached a deployed, validated state before this changelog began: a c
 app/proxy boundary, per-user budgets, a fail-closed bwrap sandbox, an SSE live event stream, a
 multi-provider sovereign compute-router with failover, and a hybrid code-as-controller loop
 (including a text-protocol mode for upstreams whose tool-calling serving is broken) that has since been
-retired. `docs/decision-history.md` records why past design calls were
-made.
+retired. `docs/decision-history.md` (not in the public snapshot) records
+why past design calls were made.

@@ -34,7 +34,7 @@ export type CatalogEntry = z.infer<typeof catalogEntrySchema>;
 /**
  * The committed boot snapshot: exactly what `fetchModelCatalog` RETURNS (`CatalogEntry[]`, i.e. the
  * `data` array — NOT the raw `{data: […]}` wire envelope) plus the configured PRIMARY baseURL it was
- * fetched for and a build timestamp. See docs/plans/ttft-critical-path.md §C.
+ * fetched for and a build timestamp.
  */
 export interface ModelsSnapshot {
 	fetchedAt: string;

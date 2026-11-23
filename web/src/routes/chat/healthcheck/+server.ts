@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2018- The Hugging Face team
 // SPDX-License-Identifier: Apache-2.0
 // Modified by Current AI from huggingface/chat-ui.
+import { cronAuthorized } from "$lib/chat/server/cronAuth";
+import { logger } from "$lib/chat/server/logger";
 import { ensureModelsReady, registryCanServe } from "$lib/chat/server/models";
 import { activeMasterKid, runCustodialCanary } from "$lib/chat/server/storage/custodialCrypto";
 import { runInBackground } from "$lib/chat/server/vercelBackground";
@@ -20,12 +22,16 @@ import { runInBackground } from "$lib/chat/server/vercelBackground";
 //
 // Cheap: both are synchronous once the registry is populated.
 //
-// The response also names the custodial master kid this instance would seal new keys to,
-// so a key rotation can be confirmed per deployment, and the first call per instance starts the
+// To an operator (a request carrying `Authorization: Bearer ${CRON_SECRET}`), the response also names
+// the custodial master kid this instance would seal new keys to, so a key rotation can be confirmed
+// per deployment. Nobody else is told which key id is active. The first call per instance starts the
 // seal-and-open canary. Neither changes the status: storage is not what this endpoint answers for.
 // The canary runs under waitUntil so it is not frozen with the response; a floating
 // promise would count the frozen time in its `ms`.
-export async function GET() {
+//
+// The endpoint is public, so a failure body says only which condition failed. The underlying error
+// can name hosts or upstream messages; it goes to the server log, not to the caller.
+export async function GET({ request }: { request: Request }) {
 	void runInBackground(runCustodialCanary());
 	try {
 		await ensureModelsReady();
@@ -35,16 +41,18 @@ export async function GET() {
 	if (!registryCanServe()) {
 		return unavailable("the model registry holds no model a visitor can send a message to");
 	}
-	return new Response("OK", { status: 200, headers: { "x-custodial-master-kid": activeMasterKid() ?? "none" } });
+	const headers: Record<string, string> = {};
+	if (await cronAuthorized(request)) headers["x-custodial-master-kid"] = activeMasterKid() ?? "none";
+	return new Response("OK", { status: 200, headers });
 }
 
 function unavailable(reason: string, err?: unknown): Response {
+	logger.error(
+		err === undefined ? {} : { err: err instanceof Error ? err.message : String(err) },
+		`[healthcheck] 503: ${reason}`
+	);
 	return new Response(
-		JSON.stringify({
-			ok: false,
-			reason: `${reason} — this instance cannot serve a chat turn`,
-			...(err === undefined ? {} : { detail: err instanceof Error ? err.message : String(err) }),
-		}),
+		JSON.stringify({ ok: false, reason: `${reason} — this instance cannot serve a chat turn` }),
 		{ status: 503, headers: { "content-type": "application/json" } }
 	);
 }

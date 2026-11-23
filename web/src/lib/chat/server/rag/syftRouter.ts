@@ -1,4 +1,4 @@
-// SyftHub pre-flight LLM ROUTER (docs/plans/syfthub-preflight-router.md).
+// SyftHub pre-flight LLM ROUTER.
 //
 // Selects endpoints by LLM reasoning over the data-source metadata, in place of cosine similarity over it:
 // given the user query and the small scoped data-source catalog, the served chat model picks which

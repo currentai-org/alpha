@@ -14,6 +14,9 @@ metering spend, and keeping the model credential off the agent.
 > gotchas worth knowing are in `docs/DEV.md`. Streaming/ACP design in
 > `docs/streaming-spec.md`. Which model, hosted where, driven how:
 > `docs/model-tradeoffs.md`.
+>
+> **In the public snapshot:** `docs/`, `fly/` and `deploy/aws/` hold the hosted deployment's notes and
+> config and are left out, so the paths under them named in this README are not in that copy.
 
 ## Why it's interesting
 
@@ -150,8 +153,8 @@ closes the gap where a `terminal`/`process`/`execute_code` call never reached `r
 all, by proposing those tool names from the same chokepoint edit approval already uses. It runs
 unconditionally: `api/acp_client.py`'s `_ALWAYS_CONFIRM_KINDS` is what decides whether the resulting
 `kind="execute"` proposal actually pauses. Stock Hermes's own `HERMES_INTERACTIVE=1` (set by
-`acp_adapter/server.py` for the duration of every ACP session, pre-dating this patch) is what already
-routes `tools.approval.check_dangerous_command`'s pattern-matched dangerous-command prompt to the
+upstream Hermes's `acp_adapter/server.py` for the duration of every ACP session, pre-dating this
+patch) is what already routes `tools.approval.check_dangerous_command`'s pattern-matched dangerous-command prompt to the
 interactive/callback path instead of auto-approving — this patch's requester binds beside that
 mechanism, not through it, so a genuinely dangerous terminal command can now surface two separate
 confirms rather than one. Stock Hermes's `HERMES_SESSION_KEY` (also pre-dating this patch, set per ACP
@@ -166,8 +169,9 @@ sits in this patch's own diff context.
   egress and the Plane B app is credential-free. `entrypoint.sh` installs default-deny egress so the
   agent's only outbound is the gateway (the network half of the exfil control). `deploy/aws/` stands the
   pair up on EC2 beside the E2B hosts.
-- **`fly/`** — the retired Fly app configs and deploy scripts. The hosted service deploys to AWS
-  (`deploy/aws/agent/`); `fly/verify-deploy.sh` and `fly/mint-token.sh` are still used there.
+- **`fly/`** — configs and scripts from when the service ran on Fly. No Fly app runs it now; the hosted
+  service deploys to AWS (`deploy/aws/agent/`), which still reads the `[env]` tables of
+  `fly/agent-app.toml` and `fly/agent-proxy.toml` and uses `fly/verify-deploy.sh` and `fly/mint-token.sh`.
 
 ## Giving agent mode an MCP server
 

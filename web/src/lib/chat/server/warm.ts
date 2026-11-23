@@ -1127,7 +1127,7 @@ export async function warmProcess(): Promise<void> {
  *  enabled in project settings — the cron hits the deployment's own *.vercel.app URL, which platform
  *  SSO otherwise 401s before the app ever runs. See the PG_IDLE_TIMEOUT coupling note above warmDb
  *  before changing the cadence. Dedicated always-warm HF Inference Endpoints (min-replicas=1) cover the
- *  embeddings lane regardless; see docs/setup-warm-embeddings-endpoint.md. All legs best-effort. */
+ *  embeddings lane regardless. All legs best-effort. */
 export async function warmAll(): Promise<void> {
 	// Every leg already swallows on its own; allSettled is belt-and-braces.
 	await Promise.allSettled([pageLegs(), processLegs(), deploymentLegs()]);

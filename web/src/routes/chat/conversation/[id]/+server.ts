@@ -2767,7 +2767,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 						// failed reranker, or a live-stale page that slipped the floor — is DROPPED for grounding:
 						// no webSearch stamp, no evidence, no [n] citations, so the turn answers ungrounded rather
 						// than fabricating a grounded look. relevanceVerified is the server-local carrier off
-						// WebSearchOutcome (never a wire type). See docs/plan-websearch-grounding-fix.md.
+						// WebSearchOutcome (never a wire type).
 						groundedWeb = !!(webSearchCtx?.relevanceVerified && webSearchCtx.sources.length > 0);
 						const webStamp = groundedWeb ? searchProvenance(webSearchCtx) : undefined;
 						if (webStamp) {

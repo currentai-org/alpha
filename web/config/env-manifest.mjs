@@ -339,7 +339,7 @@ export const ENV_MANIFEST = {
 		desc: "Bearer token the scheduled cleanup and probes jobs present. Outside local dev both routes refuse every call while it is unset, so expired rows are never deleted and the probes never alert.",
 	},
 	CUSTODIAL_MASTER_ACTIVE: {
-		desc: "Which key id in CUSTODIAL_MASTER_IDENTITIES or CUSTODIAL_MASTER_KMS_KEYS new stored files are encrypted to; /chat/healthcheck reports it as x-custodial-master-kid.",
+		desc: "Which key id in CUSTODIAL_MASTER_IDENTITIES or CUSTODIAL_MASTER_KMS_KEYS new stored files are encrypted to; /chat/healthcheck reports it as x-custodial-master-kid to a request carrying the CRON_SECRET bearer.",
 	},
 	CUSTODIAL_MASTER_IDENTITIES: {
 		secret: true,
