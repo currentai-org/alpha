@@ -47,8 +47,8 @@ docker compose up --build
 ```
 
 `./smoke.sh` brings the local stack up, sends one chat turn as a guest and checks that an answer
-comes back. It exits non-zero on any failure, and CI runs it on every change to this directory or the image
-definition.
+comes back. It exits non-zero on any failure, and the self-host CI's `smoke` job runs it on every pull
+request.
 
 ## A safety screen (optional)
 
@@ -69,15 +69,21 @@ answers (`inputGate.ts`, `guardGate.ts`). The profile alone, without the line, s
 
 What to expect:
 
-- **It fails closed, and on CPU that happens often.** One short message is 17 classifier calls, one per
-  rule. The app gives each call 8 s and the whole screen 20 s (`guardGate.ts`, `GUARD_TIMEOUT_MS` and
+- **It runs out of time often on CPU, and what happens then depends on the rule.** One short message is 17 classifier calls, one per
+  rule. The app gives each call 8 s and the whole screen 20 s (`GUARD_TIMEOUT_MS` in `guardGate.ts`,
   `operationDeadlineMs` in `rules.json`). On an 8-CPU machine under other load, with the classifier
   capped at 4 CPUs, a warm screen took 25 to 36 s and its slowest call 11 to 17 s; the first screen after
   start took 121 s. On CI's 8-CPU runner, the first turn after start ran out of time at 20 s and the
-  second, a blocked one, finished in 18 s. A screen that runs out of time is unknown, and an unknown
-  screen declines the turn (the child-safety rules fail closed), so on CPU expect declined turns. A screen
-  that finds a block before it runs out of time still blocks. For a usable screen, give it a GPU: set
-  `LLAMACPP_IMAGE` to a CUDA build of the same server. CI's `safety-profile` job prints the times.
+  second, a blocked one, finished in 18 s. Only the child-safety rules fail closed: when one of their
+  checks runs out of time, the turn is declined as unchecked. When only content checks (violence,
+  self-harm and the rest) run out of time on a short message, the turn is answered without them and
+  the web log records a `[failopen]` warning (`guardGate.ts`). A long message whose content checks were
+  still waiting when the screen ran out of time is declined as unchecked. So on CPU expect both declined
+  turns and turns answered unscreened. A screen that finds a block before it runs out of time still
+  blocks. For a usable screen, give it a GPU: set `LLAMACPP_IMAGE` to a CUDA build of the same server.
+  The self-host CI's `safety-profile` job prints the times on every pull request. Its chat turns report
+  and never fail, because on a CPU runner the screen often runs out of time; only its direct classifier
+  check, which does not depend on CPU speed, is a failure of its own (for now it raises a warning).
 - **Text only.** No vision projector is loaded, so a turn with a picture cannot be screened and is
   declined, and a stored picture is refused.
 - **The weights are a community conversion.** Mistral publishes no GGUF. The profile pins
@@ -124,7 +130,11 @@ starts agent-service, its model gateway and a socket proxy beside the app, and w
   home that holds its files, 1 CPU, 1 GB of memory and 256 processes, and no host path mounted. Its network
   has no route out: it reaches the model gateway and nothing else, so it cannot download packages or
   call the internet. Containers are created through a socket proxy (sockguard) that refuses a host bind
-  mount, a privileged container, host namespaces, added capabilities and devices, and CI checks that it does.
+  mount, a privileged container, host namespaces, added capabilities and devices. The self-host CI's
+  `socket-proxy` job fails when any of these gets through it: a host-root bind (by `-v`, by `--mount`
+  or as a local-driver volume), a bind of the Docker socket, a privileged container, an added
+  capability, a device, the host PID or IPC namespace, the host network or an unconfined seccomp
+  profile.
 - **What it does not isolate.** The container shares your host's kernel (runc, no gVisor), so a kernel
   flaw is a way out. The socket proxy's policy is all that stands between agent-service and root on the
   host through the Docker socket: anyone who can reach port 2375 on the compose network can create
@@ -168,15 +178,17 @@ stays off while its config is unset.
 ### Feature flags
 
 With `PUBLIC_POSTHOG_KEY` unset (the case here), each flag reads its `selfHost` value from the registry in
-`web/src/lib/chat/server/flagKeys.ts`, not its code default (`flags.ts:75-77`, `flags.ts:106-115`). Set
-`ALPHA_FLAGS="+key,-key"` in `.env` to override single flags: `+` turns one on, `-` turns it off, a bare key
-counts as `+`, and the last mention wins (`flags.ts:95-109`). It is read only when PostHog is unset
-(`flags.ts:64-66`). Compose passes it through to the app. An `on when its env is set` flag stays off
+`web/src/lib/chat/server/flagKeys.ts`, not its code default (`selfHostDefaultsApply` and `selfHostFlagValue` in
+`web/src/lib/chat/server/flags.ts`). Set `ALPHA_FLAGS="+key,-key"` in `.env` to override single flags: `+` turns
+one on, `-` turns it off, a bare key counts as `+`, and the last mention wins (`alphaFlagOverrides` in
+`web/src/lib/chat/server/flags.ts`). It is read only when PostHog is unset (`selfHostDefaultsApply` in
+`web/src/lib/chat/server/flags.ts`). Compose passes it through to the app. An `on when its env is set` flag stays off
 until every variable in its last column is set; a flag turned on with `ALPHA_FLAGS` but missing its
-config logs a configuration error and stays withheld (`multimodalMode.ts:69-78`, `agentMode.ts:78-84`).
+config logs a configuration error and stays withheld (`multimodalEnabled` in
+`web/src/lib/chat/server/multimodalMode.ts`, `agentModeEnabled` in `web/src/lib/chat/server/agentMode.ts`).
 
-This table is generated from `flagKeys.ts` (`pnpm selfhost:flag-table:write` in `web/`), and CI warns when
-it is stale.
+This table is generated from `flagKeys.ts` (`pnpm selfhost:flag-table:write` in `web/`), and CI fails when
+it is stale (`pnpm selfhost:flag-table`, in the `web-lint` job).
 
 <!-- selfhost-flag-table:begin -->
 | Flag | Self-host default | Env it needs |
@@ -268,8 +280,8 @@ My files and chat uploads are on by default. My files needs only a store, any va
 `.env.example` makes explicit (see File uploads below), because every upload is refused without one.
 
 **Files are stored in plaintext unless you turn sealing on.** Writes are sealed to their owner's age key
-only when `CUSTODIAL_SEAL_WRITES=true` (`custodialStorage.ts:233-235`), and sealing needs a master key
-(`custodialCrypto.ts:142-166`). Compose sets neither. To seal new files, generate an age identity, name it
+only when `CUSTODIAL_SEAL_WRITES=true` (`sealWritesOn` in `web/src/lib/chat/server/storage/custodialStorage.ts`), and
+sealing needs a master key (`masterSet` in `web/src/lib/chat/server/storage/custodialCrypto.ts`). Compose sets neither. To seal new files, generate an age identity, name it
 in `.env`, and make it the active one:
 
 ```sh
@@ -346,8 +358,8 @@ its sandboxed frame.
   that fails, it logs the provider and skips it, and every other sign-in method still works.
 - **Moderation.** No safety classifier is configured, so nothing checks a message before the model sees
   it. That holds with `DEPLOY_ENV=production` too, because compose sets `ALPHA_EDITION=selfhost`, and the
-  boot log then says `SELF-HOST, NO SCREEN`, so the gap is never silent (`guardGate.ts`,
-  `selfHostWithoutScreen`). "A safety screen (optional)", above, runs one beside the stack. To screen every turn, name a classifier: a Shieldstral endpoint in
+  boot log then says `SELF-HOST, NO SCREEN`, so the gap is never silent (`selfHostWithoutScreen` in
+  `guardGate.ts`). "A safety screen (optional)", above, runs one beside the stack. To screen every turn, name a classifier: a Shieldstral endpoint in
   `GUARD_SHADOW_URL` (`detectors/shieldstral.ts`), which also screens pictures, or Zentropi S1 for text
   with `ZENTROPI_S1_ENDPOINT_URL` and `HF_TOKEN` (`detectors/s1.ts`); `s1-safety-judge` turns on by itself
   when both are set. A configured classifier turns the screen on, and `violence-recheck` and
@@ -362,7 +374,7 @@ its sandboxed frame.
 - **Embeddings.** Nothing is embedded unless `RAG_EMBEDDING_BASE_URL` (or a dedicated `*_ENDPOINT_URL`) names
   an embedder, so no text goes to Hugging Face; the features that use embeddings fall back without them.
 - **A CSAM scanner for file uploads.** Uploads are on by default (`ALPHA_EDITION=selfhost` stands in for
-  `MULTIMODAL_ENABLED`, `multimodalMode.ts:47-52`; set `MULTIMODAL_ENABLED=false` to turn them off) once you
+  `MULTIMODAL_ENABLED`, `multimodalConfigured` in `web/src/lib/chat/server/multimodalMode.ts`; set `MULTIMODAL_ENABLED=false` to turn them off) once you
   make a scan decision: name a CSAM hash-matching scanner (`CSAM_SCAN_PROVIDER`, `CSAM_SCAN_BASE_URL` and
   `CSAM_SCAN_TOKEN`; not part of this directory), which then checks every picture and refuses an upload it
   cannot check, or set `CSAM_SCAN=off`. `.env.example` sets `CSAM_SCAN=off`, so uploads work on first
@@ -374,12 +386,13 @@ its sandboxed frame.
   (`documentAttachmentsGate.ts`), and their text is screened with the turn by whichever classifier
   Moderation (above) names; with none, it reaches the model unscreened like the rest of the turn.
 - **Agent mode** needs `AGENT_SERVICE_URL` and `AGENT_SERVICE_TOKEN` (the agent service in
-  `agent-service/`, read at `agentMode.ts:60-70`). `--profile agent` starts one and sets both (Agent mode
-  (demo), above); together they turn the `agent-mode` flag on in
-  self-host (`flagKeys.ts:314`). A self-host edition (`ALPHA_EDITION=selfhost`, which compose sets) may
-  offer agent mode whatever `DEPLOY_ENV` says (`agentMode.ts:76-78`), and `agent-mode-access` is on in
-  self-host (`flagKeys.ts:518`), so no `ALPHA_FLAGS` entry is needed. A URL with no token logs a warning and
-  stays off (`agentMode.ts:93-96`).
+  `agent-service/`, read by `agentServiceUrl` and `agentServiceToken` in `web/src/lib/chat/server/agentMode.ts`).
+  `--profile agent` starts one and sets both (Agent mode (demo), above); together they turn the
+  `agent-mode` flag on in self-host (its entry in `FLAG_KEYS` in `web/src/lib/chat/server/flagKeys.ts`). A self-host
+  edition (`ALPHA_EDITION=selfhost`, which compose sets) may offer agent mode whatever `DEPLOY_ENV` says
+  (`agentModeDeployment` in `web/src/lib/chat/server/agentMode.ts`), and `agent-mode-access` is on in self-host (the
+  same registry), so no `ALPHA_FLAGS` entry is needed. A URL with no token logs a warning and stays off
+  (`agentModeEnabled` in `web/src/lib/chat/server/agentMode.ts`).
 - **Document RAG and the full web search engine** need `RAG_ENABLED` with an embeddings endpoint, and
   `FIRECRAWL_API_KEY`. `FIRECRAWL_BASE_URL` points search and scrape at your own Firecrawl (AGPL, same v2
   API) instead of api.firecrawl.dev.

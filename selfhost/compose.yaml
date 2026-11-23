@@ -149,7 +149,7 @@ services:
   # through, so no other service mounts the Docker socket. sockguard (MIT) reads each create body and
   # refuses a host bind mount, a privileged container, host namespaces, added capabilities and devices;
   # sockguard.yaml beside this file is the policy. Pinned by digest because the policy is only as good as
-  # the proxy enforcing it: the source repository's self-host CI sends `-v /:/host`,
+  # the proxy enforcing it: the self-host CI's socket-proxy job sends `-v /:/host`,
   # `--privileged`, `--pid host` and `--network host` creates through it and fails unless all are refused.
   # Anyone who can reach port 2375 on the compose network can create containers within that policy; it
   # is not published.

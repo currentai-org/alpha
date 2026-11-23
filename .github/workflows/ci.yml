@@ -36,6 +36,11 @@ jobs:
       - name: Lint
         working-directory: web
         run: pnpm lint
+      # selfhost/README.md's flag table is generated from flagKeys.ts; a stale table fails here.
+      # Fix it with `pnpm selfhost:flag-table:write` in web/ and commit the result.
+      - name: Self-host flag table is current
+        working-directory: web
+        run: pnpm selfhost:flag-table
 
   web-check:
     name: web type check

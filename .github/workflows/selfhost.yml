@@ -1,6 +1,9 @@
-# What a stranger does with this repository: `selfhost/smoke.sh` writes selfhost/.env from .env.example,
-# runs `docker compose --profile local up --build` with a small local model, and sends one chat turn as a
-# signed-out guest. No secret: the model downloads from Hugging Face without a token.
+# What a stranger does with this repository, and the two self-host claims a privacy-minded operator most
+# wants proven. `smoke`: `selfhost/smoke.sh` writes selfhost/.env from .env.example, runs
+# `docker compose --profile local up --build` with a small local model, and sends one chat turn as a
+# signed-out guest. `safety-profile`: the Shieldstral screen beside it (report only). `socket-proxy`: the
+# agent profile's socket proxy refuses host-root creates. No job reads a secret: models download from
+# Hugging Face without a token.
 name: Self-host smoke
 
 on:
@@ -55,3 +58,145 @@ jobs:
         with:
           path: ${{ env.LOCAL_MODELS_DIR }}
           key: ${{ env.MODEL_CACHE_KEY }}
+
+  safety-profile:
+    # The safety profile (selfhost/compose.yaml, service shieldstral): Shieldstral-1.0-3B on llama.cpp on
+    # the runner's CPU beside the local profile, with GUARD_SHADOW_URL pointed at it, so the screen
+    # enforces. .github/selfhost-safety-smoke.sh sends one benign and one clearly disallowed guest turn and
+    # reports each verdict from the turn's stream and the web log, plus whether llama.cpp returned the
+    # top_logprobs the app scores with, and prints the classifier's timings to the run summary.
+    # No secret: both models download from Hugging Face without a token. The two chat turns are report-only:
+    # on a CPU runner the screen often runs out of time and declines (selfhost/README.md says why), so a
+    # wrong turn outcome annotates the run and the job stays green. The direct classifier call does not
+    # depend on CPU speed, so a missing yes/no top_logprobs pair is a failure of its own (exit 2 from the
+    # script); while that check is new it too only warns (see the smoke step).
+    # The disallowed turn's answer text is neither printed nor uploaded.
+    name: safety profile screens two turns (report only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    env:
+      # The key names both GGUFs compose.yaml defaults to; bump it when either changes.
+      MODEL_CACHE_KEY: selfhost-gguf-qwen2.5-0.5b-q4_k_m-shieldstral-1.0-3b-q4_k_m-abiray-45dfb42-v1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Model directory
+        run: |
+          echo "LOCAL_MODELS_DIR=$RUNNER_TEMP/selfhost-models" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/selfhost-models"
+
+      # Restore only: a pull request never writes the cache, so a pull request cannot poison what main reads.
+      - name: Restore the model cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ env.LOCAL_MODELS_DIR }}
+          key: ${{ env.MODEL_CACHE_KEY }}
+
+      - name: Boot the stack with the safety profile and screen two turns
+        id: smoke
+        run: |
+          set +e
+          mkdir -p smoke-logs
+          echo "$(nproc) CPUs, $(free -g | awk '/^Mem:/ {print $2}') GiB" >> "$GITHUB_STEP_SUMMARY"
+          # .env.example as a forker copies it, plus the one line README.md's safety section adds.
+          sed "s/^BETTER_AUTH_SECRET=.*/BETTER_AUTH_SECRET=$(openssl rand -hex 32)/" selfhost/.env.example > selfhost/.env
+          echo "GUARD_SHADOW_URL=http://shieldstral:8080" >> selfhost/.env
+          started=$(date +%s)
+          (cd selfhost && docker compose --profile local --profile safety up -d --build --wait --wait-timeout 1500) 2>&1 | tee smoke-logs/up.log
+          up=${PIPESTATUS[0]}
+          echo "stack up exited $up in $(($(date +%s) - started)) s" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$up" = 0 ]; then
+            ./.github/selfhost-safety-smoke.sh 2>&1 | tee smoke-logs/safety.log
+            code=${PIPESTATUS[0]}
+          else
+            code=$up
+            (cd selfhost && docker compose --profile local --profile safety logs --no-color --tail 120 web shieldstral) > smoke-logs/up-failure.log 2>&1
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "safety profile smoke exited $code" >> "$GITHUB_STEP_SUMMARY"
+          grep -E '^SAFETY |^classifier calls timed|prompt eval time|^classifier container|"msg"' smoke-logs/safety.log >> "$GITHUB_STEP_SUMMARY" || true
+          if [ "$code" = 2 ]; then
+            # The classifier returned no yes/no top_logprobs pair, so the app cannot score any rule; CPU speed
+            # does not explain that. Capture-and-warn while the check is new to this workflow. Follow-up: once
+            # a run on main has shown it passes, change this branch to exit 1 so it fails the job.
+            echo "::warning title=selfhost safety classifier::the classifier returned no yes/no top_logprobs pair, so the screen cannot score its rules. Read safety-direct.json in the selfhost-safety artifact."
+          elif [ "$code" != 0 ]; then
+            echo "::warning title=selfhost safety profile::the safety profile smoke exited $code. Read safety.log in the selfhost-safety artifact."
+          fi
+          exit 0
+
+      - name: Save the model cache
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.smoke.outputs.code == '0'
+        continue-on-error: true
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ env.LOCAL_MODELS_DIR }}
+          key: ${{ env.MODEL_CACHE_KEY }}
+
+      - name: Tear the stack down
+        if: always() && steps.smoke.outcome != 'skipped'
+        continue-on-error: true
+        working-directory: selfhost
+        run: docker compose --profile local --profile safety down -v
+
+      - name: Keep the smoke's log
+        if: always() && steps.smoke.outcome != 'skipped'
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: selfhost-safety
+          # The smoke keeps no raw stream of the disallowed turn; the exclusion keeps one out if it ever does.
+          path: |
+            smoke-logs/
+            !smoke-logs/safety-disallowed.ndjson
+          retention-days: 7
+          if-no-files-found: warn
+
+  socket-proxy:
+    # The Docker socket proxy agent mode's sandbox goes through (sockguard, agent profile in
+    # selfhost/compose.yaml, policy in selfhost/sockguard.yaml). .github/selfhost-socket-proxy-smoke.sh
+    # starts only that service and requires a plain create and an internal network's lifecycle to pass,
+    # and each of these creates to be refused with sockguard's own message: a `-v /:/host` bind, a bind of
+    # the Docker socket, a `--mount` bind of /, a local-driver volume bound to /, `--privileged`,
+    # `--cap-add SYS_ADMIN`, `--device /dev/null`, `--pid host`, `--ipc host`, `--network host` and
+    # `--security-opt seccomp=unconfined`. So a sockguard upgrade or a policy edit that lets a caller of
+    # the proxy reach host root fails here.
+    # Then agent-service's docker sandbox backend runs its contract and live hardening tests through the
+    # same proxy: a command runs as uid 1000 with no capability on a read-only root, run-code reaches no
+    # network, an agent sandbox reaches only the gateway, and a privileged create, a host-root bind and a
+    # root exec sent the backend's way come back 403. A skipped test fails the job too.
+    # No secret, no model, two small images pulled. Blocking: a FAIL line fails the job.
+    name: socket proxy refuses host-root creates
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Refuse host-root creates through the socket proxy
+        env:
+          SOCKET_PROXY_LOG: sockguard.log
+        run: |
+          set +e
+          ./.github/selfhost-socket-proxy-smoke.sh 2>&1 | tee socket-proxy.log
+          code=${PIPESTATUS[0]}
+          set -e
+          {
+            echo "### socket proxy"
+            echo '```'
+            grep -E '^(sockguard:|sandbox backend:|PASS|FAIL|"reason"|SOCKET PROXY)' socket-proxy.log || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$code" -ne 0 ]; then
+            echo "::error title=selfhost socket proxy::the socket-proxy check exited $code. A FAIL line on a host-root create means the proxy let it through. Read socket-proxy.log in the job log."
+          fi
+          exit "$code"

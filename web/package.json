@@ -53,6 +53,8 @@
 		"build:rag-index": "node scripts/build-rag-index.mjs",
 		"check:rag-index": "node scripts/build-rag-index.mjs --check",
 		"gen:source-credibility": "node scripts/gen-source-credibility.mjs",
+		"selfhost:flag-table": "node scripts/selfhost-flag-table.mjs --check",
+		"selfhost:flag-table:write": "node scripts/selfhost-flag-table.mjs --write",
 		"warm-cache": "node scripts/warm-cache.mjs",
 		"check:node-pin": "node scripts/check-node-pin.mjs",
 		"check:guard-policy": "node scripts/check-guard-policy.mjs",

@@ -1,9 +1,8 @@
 # Sizing an Alpha deployment
 
 How many people one deployment holds, and how big its database gets, from a measured load run and from
-production's own aggregates. The load run is
-the `web-load-run` workflow. `web/loadtest/` holds the harness and `.github/workflows/web-load-run.yml`
-runs it: add the `load-run` label to a PR.
+production's own aggregates. The load run is a k6 harness in the source repository, run by a workflow
+there on a pull request labelled `load-run`. Neither ships with the public snapshot.
 
 ## What the run measured
 
@@ -25,7 +24,7 @@ numbers measure the app and its database, never inference.
 | seeded | 60    | 618       | 0.8 s    | 1.3 s    | 0.3 s          | 0%     | 22                  |
 | seeded | 150   | 1,328     | 1.1 s    | 5.1 s    | 0.3 s          | 0%     | 29                  |
 
-The seeded pass ran after `web/loadtest/seed.sql` added 2,000 synthetic accounts and 10,000
+The seeded pass ran after the harness's seed script added 2,000 synthetic accounts and 10,000
 conversations of four messages each. Peak connections for the seeded pass include connections left
 over from the bare pass. There were no 429s and no 5xx at any level.
 
