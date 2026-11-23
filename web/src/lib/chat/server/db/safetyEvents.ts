@@ -10,6 +10,7 @@
  */
 import { and, count, desc, eq, gte, isNull, not } from "drizzle-orm";
 import { getDb } from "./client";
+import { logger } from "$lib/chat/server/logger";
 import { newId } from "./ids";
 import { safetyEvents, type SafetyEventRow } from "./schema";
 
@@ -44,7 +45,7 @@ export async function logDecline(input: LogDeclineInput): Promise<void> {
 
 /** Fire-and-forget wrapper for the chat hot path: never throws, never blocks the turn on a log write. */
 export function logDeclineSafe(input: LogDeclineInput): void {
-	logDecline(input).catch((e) => console.error("[safety-events] decline log failed:", e));
+	logDecline(input).catch((err) => logger.error({ err }, "[safety-events] decline log failed"));
 }
 
 /** Recent visitor declines for /admin/safety (probe rows left out). Read-only, newest first, bounded. */

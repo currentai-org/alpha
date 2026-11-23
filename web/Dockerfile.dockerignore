@@ -15,6 +15,9 @@ payload/**
 agent-service
 pangolin
 notebooks
+# Database dumps and volume copies backup.sh writes beside the compose file: people's data, never in an image.
+selfhost/backups
+deploy/backups
 .git
 # Nothing the server or the operator CLIs read: test fixtures, the end-to-end specs and load test, and the repository's root data/ (the gap map dataset the server reads
 # is web/static/data, which stays).

@@ -150,12 +150,14 @@ export async function handleRequest({ event, resolve }: HandleInput): Promise<Re
 			await ready.then(() => config.checkForUpdates());
 			markStage("configDoneMs");
 
+			// Named fields only. `event.locals` holds the user record and a Hugging Face session's
+			// access token, and `event.request` holds cookies and the Authorization header, so neither
+			// goes on a line even at debug.
 			logger.debug(
 				{
-					locals: event.locals,
+					method: event.request.method,
 					url: event.url.pathname,
-					params: event.params,
-					request: event.request,
+					routeId: event.route.id,
 				},
 				"Request received"
 			);

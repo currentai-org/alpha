@@ -21,6 +21,7 @@
 
 import RULES from "$lib/chat/server/rules.json";
 import { validateGuardPolicy } from "$lib/chat/server/guardPolicyCore.mjs";
+import { logger } from "$lib/chat/server/logger";
 
 export type GuardAction = "block" | "log";
 export type GuardTier = "child" | "content";
@@ -77,9 +78,9 @@ export function loadGuardPolicy(): GuardPolicy | null {
 	if (cached !== undefined) return cached;
 	const { errors, entries, shield } = validateGuardPolicy(RULES);
 	if (errors.length > 0 || !shield) {
-		console.error(
-			"[guard-policy] rules.json failed validation — the guard gate will fail loud (UNKNOWN) until this is fixed:",
-			errors
+		logger.error(
+			{ errors },
+			"[guard-policy] rules.json failed validation — the guard gate will fail loud (UNKNOWN) until this is fixed"
 		);
 		cached = null;
 		return cached;

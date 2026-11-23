@@ -55,10 +55,24 @@ To pin what you verified exactly, set `ALPHA_IMAGE=ghcr.io/currentai-org/alpha@s
 
 ## Upgrade
 
-1. Read the release notes for the new version.
-2. Back up the database: `docker compose exec db pg_dump -U alpha alpha > alpha-$(date +%F).sql`.
+The app applies database migrations when it starts, and only forward: starting an older image does not
+undo them. Back up first, every time.
+
+1. Read the release notes for each version between yours and the new one.
+2. Back up the database and the `files` volume, which holds SeaweedFS's data, that is people's files:
+   `ALPHA_COMPOSE_DIR=. ../selfhost/backup.sh` writes `backups/<UTC time>/` here, with `db.sql.gz` and
+   `files.tar.gz`. It stops `web` and `files` for the seconds the volume copy takes.
 3. Verify the new tag as above, then set it in `.env`: `ALPHA_IMAGE=ghcr.io/currentai-org/alpha:<version>`.
 4. `docker compose pull && docker compose up -d`.
 
-The app applies database migrations when it starts. To roll back, set `ALPHA_IMAGE` back to the old
-tag and restore the dump: a migration is not undone by starting an older image.
+To roll back, set `ALPHA_IMAGE` back to the old tag and restore the backup from step 2 into a fresh
+stack. Anything written after that backup is lost:
+
+```sh
+docker compose down -v      # deletes the db and files volumes
+docker compose up -d
+ALPHA_COMPOSE_DIR=. ../selfhost/restore.sh backups/<the backup from step 2>
+```
+
+Keep `.env` safe apart from the backups: `BETTER_AUTH_SECRET` signs every session, and
+`../selfhost/README.md` ("What to keep safe") lists what each piece protects.

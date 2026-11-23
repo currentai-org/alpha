@@ -519,8 +519,15 @@ async function enrichFirecrawlSnippet(
 		return { snippet: excerpt, ...(asOf ? { asOf } : {}) };
 	} catch (err) {
 		// The status is logged beside the search call's, so one query counts Firecrawl 429s across both calls.
+		// The host only: a result's full address can say what the person searched for.
+		let host: string | undefined;
+		try {
+			host = new URL(url).hostname;
+		} catch {
+			host = undefined;
+		}
 		logger.warn(
-			{ url, ...engineErrorFields(err) },
+			{ host, ...engineErrorFields(err) },
 			"[search] Firecrawl enrichment scrape failed — keeping original snippet"
 		);
 		return undefined;

@@ -5,6 +5,7 @@ import type { RequestHandler } from "@sveltejs/kit";
 import { requireAuth } from "$lib/chat/server/api/utils/requireAuth";
 import { collections } from "$lib/chat/server/database";
 import { authCondition } from "$lib/chat/server/auth";
+import { logger } from "$lib/chat/server/logger";
 import { isAssistantGenerationTerminal, isGenerationStale } from "$lib/chat/utils/generationState";
 import type { Message } from "$lib/chat/types/Message";
 // The stream's lifetime and the platform kill it must stay under live in ./lifetime.ts (SvelteKit
@@ -173,7 +174,7 @@ export const GET: RequestHandler = async ({ locals, url, request }) => {
 					}
 				} catch (err) {
 					// Log and continue — transient DB errors should not kill the stream.
-					console.error("[conversation-updates SSE] poll error", err);
+					logger.error({ err }, "[conversation-updates SSE] poll error");
 					sendHeartbeat();
 				}
 			}

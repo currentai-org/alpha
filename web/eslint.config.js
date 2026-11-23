@@ -204,6 +204,15 @@ export default defineConfig(
 		}
 	},
 	{
+		// Server log lines go through pino, where logRedaction.ts cuts user content and hashes user ids.
+		// A console call writes straight to stdout, which the log drain keeps, past all of that.
+		files: ['src/lib/chat/server/**/*.{ts,js}', 'src/routes/chat/**/+server.ts'],
+		ignores: ['**/*.spec.ts', '**/*.test.ts'],
+		rules: {
+			'no-console': 'error'
+		}
+	},
+	{
 		// Override or add rule settings here, such as:
 		// 'svelte/button-has-type': 'error'
 		rules: {}

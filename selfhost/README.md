@@ -262,8 +262,9 @@ The app image is `web/Dockerfile`, the definition the published image is built f
 `APP_SURFACE=chat`, so the chat is served at the root of the host. The map site and its CMS pages are
 not part of this build, and a chat build boots without a CMS origin (`PUBLIC_CMS_PAYLOAD_URL`).
 
-People's files (`CUSTODIAL_STORAGE_BACKEND=local`) are kept in the `files` volume. Back it up with the
-`db` volume, which holds the files' key objects. To keep them in an S3-compatible bucket instead, fill
+People's files (`CUSTODIAL_STORAGE_BACKEND=local`) are kept in the `files` volume, beside each
+person's key object under `_keys/` (`ownerKeyPath` in `web/src/lib/chat/server/storage/custodialCrypto.ts`).
+`backup.sh` copies it (see Back up and restore). To keep them in an S3-compatible bucket instead, fill
 in block S of `.env` and start with the `s3` profile, which adds SeaweedFS (Apache-2.0) as the bucket
 server, its data in the `objects` volume:
 
@@ -298,6 +299,84 @@ Turning sealing off later leaves already sealed files readable. Files written be
 plaintext. `storage-locations`, which links a person's own Hugging Face bucket as a second place for
 their files, still turns on only with `HF_BUCKETS_TOKEN` and `HF_BUCKETS_REPO` set (`flagKeys.ts`, see the
 table); without it My files shows your store alone.
+
+## Back up and restore
+
+`backup.sh` writes one directory, by default `backups/<UTC time>/` beside this file (git and the image
+build both ignore it):
+
+```sh
+./backup.sh                 # or ./backup.sh /path/to/backups/today
+```
+
+It holds `db.sql.gz`, a `pg_dump --clean --if-exists` of the database taken while the app serves, and a
+tarball of each of these volumes the stack has: `files`, `objects` (the `s3` profile), `agent-secrets`
+and `agent-data` (the `agent` profile). The services that write to those volumes stop for the seconds
+the copy takes, then start again. The `models` volume is not copied: the model downloads again. Run it
+from cron for a nightly copy, and keep copies somewhere other than this machine.
+
+To restore, start a fresh stack from the same release with the profiles you run, then load the backup:
+
+```sh
+docker compose --profile local down -v          # deletes every volume of this stack, the model cache too
+docker compose --profile local up -d --wait
+./restore.sh backups/20261122T030000Z
+```
+
+`restore.sh` loads the dump with `psql --single-transaction -v ON_ERROR_STOP=1`, so a failed restore
+changes nothing in the database. It replaces each volume it has a tarball for, and refuses to start when
+the backup holds a volume the running stack lacks (add that profile and run it again). It needs the same
+`.env` the backup was taken under. The self-host CI's `smoke` job runs this round trip on every pull
+request: a guest conversation and a file in the `files` volume, `backup.sh`, `down -v`, `up`,
+`restore.sh`, then the conversation and the file must come back unchanged
+(`.github/selfhost-restore-smoke.sh`).
+
+### What to keep safe
+
+| What | Where | What you lose without it |
+| --- | --- | --- |
+| The database | `db.sql.gz` from `backup.sh` | Every account, conversation, setting and workspace. |
+| People's files | `files.tar.gz`, or `objects.tar.gz` on the `s3` profile | Every file in My files and every chat upload. Each person's file key lives here too, under `_keys/`. |
+| `CUSTODIAL_MASTER_IDENTITIES` | `.env` only; `backup.sh` never copies it | With sealing on, every sealed file: each person's file key is encrypted to this master, and there is no other copy. |
+| `BETTER_AUTH_SECRET` | `.env` only | Everyone is signed out, guests without a saved conversation start over, and a linked Hugging Face bucket asks to be reconnected (`sealedSecret.ts`). |
+| `agent-secrets` | `agent-secrets.tar.gz`, `agent` profile only | Nothing lasting: delete it and `agent-token`, and the next start makes new keys (see Agent mode). |
+
+Keep `.env` in a password manager or another place apart from the backups. A copy of the backups plus
+`.env` is everything: whoever holds both can read every file, sealed or not.
+
+## Upgrade
+
+Web applies the database migrations every time it starts (`node scripts/db-migrate.mjs` in
+`compose.yaml`), and they only go forward: starting an older release does not undo them. So every
+upgrade begins with a backup, and rolling back means the older release plus that backup.
+
+1. Read the release notes for each version between yours and the new one, and compare `.env.example`
+   with your `.env` for new keys.
+2. `./backup.sh`
+3. Move to the new version and start it:
+   - From source (`compose.yaml` alone): `git fetch --tags && git checkout <tag>`, then
+     `docker compose --profile local up -d --build`.
+   - The published image (`compose.release.yaml`): verify the new tag (`../deploy/README.md`), set
+     `ALPHA_IMAGE=ghcr.io/currentai-org/alpha:<tag>` in `.env`, then
+     `docker compose -f compose.yaml -f compose.release.yaml --profile local pull` and the same command
+     with `up -d`.
+4. `SMOKE_NO_UP=1 ./smoke.sh` sends one guest turn to the running stack.
+
+No release has been tagged yet, so today there is no tag to check out or pull: the source path follows
+`main`, which can change on any commit. `git checkout <commit>` pins one, so you choose when to move.
+
+To roll back, go back to the previous tag or commit (or `ALPHA_IMAGE`), then restore the backup from
+step 2 into a fresh stack, as above:
+
+```sh
+docker compose --profile local down -v
+git checkout <previous tag>
+docker compose --profile local up -d --build --wait
+./restore.sh backups/<the backup from step 2>
+```
+
+Anything written after that backup is lost. The image-only stack in `../deploy/` upgrades the same way;
+its README has the commands.
 
 ## Every service a request passes through
 

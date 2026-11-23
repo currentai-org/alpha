@@ -1,6 +1,7 @@
 import { createHmac } from "crypto";
 import { Address4, Address6 } from "ip-address";
 import { config } from "$lib/chat/server/config";
+import { logger } from "$lib/chat/server/logger";
 
 // Pseudonymise a client IP before it is ever persisted (the "Get involved" per-IP daily cap AND the
 // per-IP rate-limit events). We NEVER persist a raw IP: an IP is personal data (GDPR Art. 4 / EDPB),
@@ -39,9 +40,7 @@ function peppered(raw: string, domain: string): string | null {
 	).trim();
 	if (!pepper) {
 		if (!warnedNoPepper) {
-			console.warn(
-				"[ip-hash] CONTRIBUTION_IP_PEPPER unset — per-identifier caps DISABLED (no hash stored)"
-			);
+			logger.warn("[ip-hash] CONTRIBUTION_IP_PEPPER unset — per-identifier caps DISABLED (no hash stored)");
 			warnedNoPepper = true;
 		}
 		return null;

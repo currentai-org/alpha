@@ -34,6 +34,15 @@ const SECURITY_HEADERS: HeadersInit = {
  * response is cut off as it streams in. The answer is `private, no-store`: it is per-visitor, and no
  * shared cache should hold it.
  */
+/** The address a person pasted is theirs, path and query included; a log line names only its host. */
+function hostOf(u: string): string {
+	try {
+		return new URL(u).hostname;
+	} catch {
+		return "<unparseable>";
+	}
+}
+
 export async function GET({ url, locals, getClientAddress }) {
 	if (!locals.user && locals.guestSessionMinted) {
 		throw error(401, "Reload the page to start a session, then try the link again.");
@@ -47,7 +56,7 @@ export async function GET({ url, locals, getClientAddress }) {
 	}
 
 	if (!isValidUrlStrict(targetUrl)) {
-		logger.warn({ targetUrl }, "Invalid or unsafe URL (only HTTPS is supported)");
+		logger.warn({ targetHost: hostOf(targetUrl) }, "Invalid or unsafe URL (only HTTPS is supported)");
 		throw error(400, "Invalid or unsafe URL (only HTTPS is supported)");
 	}
 
@@ -72,7 +81,7 @@ export async function GET({ url, locals, getClientAddress }) {
 		const response = await fetchFollowingSafeRedirects(targetUrl, controller.signal);
 
 		if (!response.ok) {
-			logger.error({ targetUrl, response }, "Error fetching URL. Response not ok.");
+			logger.error({ targetHost: hostOf(targetUrl), status: response.status }, "Error fetching URL. Response not ok.");
 			throw error(response.status, `Failed to fetch: ${response.statusText}`);
 		}
 
@@ -123,7 +132,7 @@ async function fetchFollowingSafeRedirects(targetUrl: string, signal: AbortSigna
 		}
 		const redirectUrl = new URL(location, currentUrl).toString();
 		if (!isValidUrlStrict(redirectUrl)) {
-			securityLogger.warn({ redirectUrl, originalUrl: targetUrl }, "Redirect to unsafe URL blocked (SSRF)");
+			securityLogger.warn({ redirectHost: hostOf(redirectUrl), originalHost: hostOf(targetUrl) }, "Redirect to unsafe URL blocked (SSRF)");
 			throw error(403, "Redirect target is not allowed");
 		}
 		currentUrl = redirectUrl;

@@ -6,6 +6,7 @@
  */
 import { desc } from "drizzle-orm";
 import { getDb } from "./client";
+import { logger } from "$lib/chat/server/logger";
 import { newId } from "./ids";
 import { hashIp } from "./ipHash";
 import { adminAudit, type AdminAuditRow } from "./schema";
@@ -39,7 +40,7 @@ export async function logAdminAction(input: LogAdminActionInput): Promise<void> 
 
 /** Fire-and-forget wrapper: never throws, never blocks the admin action on the audit write. */
 export function logAdminActionSafe(input: LogAdminActionInput): void {
-	logAdminAction(input).catch((e) => console.error("[admin-audit] log failed:", e));
+	logAdminAction(input).catch((err) => logger.error({ err }, "[admin-audit] log failed"));
 }
 
 /** Recent admin actions for /admin/audit. Read-only, newest first, bounded. */

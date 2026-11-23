@@ -9,6 +9,7 @@
 import { buildPrompt } from "$lib/chat/buildPrompt";
 import { effectivePreprompt, resolveTurnPreferences } from "$lib/chat/server/textGeneration/turnPreferences";
 import { authCondition } from "$lib/chat/server/auth";
+import { logger } from "$lib/chat/server/logger";
 import { collections } from "$lib/chat/server/database";
 import { defaultModel } from "$lib/chat/server/models";
 import { resolveConversationModel } from "$lib/chat/server/conversationModel";
@@ -55,7 +56,7 @@ async function promptResponse(conv: Conversation, messageId: string, locals: App
 		messages: messagesUpTo,
 		model,
 	}).catch((err) => {
-		console.error(err);
+		logger.error({ err }, "[prompt] building the prompt failed");
 		return "Prompt generation failed";
 	});
 

@@ -65,6 +65,9 @@ export function recordStaffContentRead(read: StaffContentRead): void {
 			"[security] staff read conversation content"
 		);
 	} catch (e) {
+		// The logger itself just threw, so the console is the one sink left, and the admin_audit write
+		// below must still run.
+		// eslint-disable-next-line no-console -- the pino logger is what failed here
 		console.error("[staff-read] security log failed:", e);
 	}
 	logAdminActionSafe({

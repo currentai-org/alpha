@@ -16,7 +16,8 @@ export type ConfigKey = keyof typeof keysFromEnv;
 
 // Open WebUI's OPENAI_API_BASE_URLS / OPENAI_API_KEYS stand in for OPENAI_BASE_URL / OPENAI_API_KEY only
 // when OPENAI_BASE_URL is unset, so a deployment that sets it (www does) never reaches the alias path.
-// console, not the logger: the logger reads this module's config.
+// console, not the logger: the logger reads this module's config. Every line is a fixed string or a count.
+/* eslint-disable no-console -- the logger imports this module, so these lines cannot use it */
 function applyOpenWebUiNames(env: Record<string, string | undefined>) {
 	const r = resolveOpenAiEnv(env);
 	if (r.source === "open-webui") {
@@ -42,6 +43,7 @@ function applyOpenWebUiNames(env: Record<string, string | undefined>) {
 		);
 	}
 }
+/* eslint-enable no-console -- end of the config-time lines above */
 
 class ConfigManager {
 	private keysFromDB: Partial<Record<ConfigKey, string>> = {};

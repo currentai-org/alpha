@@ -1,7 +1,7 @@
 # What a stranger does with this repository, and the two self-host claims a privacy-minded operator most
 # wants proven. `smoke`: `selfhost/smoke.sh` writes selfhost/.env from .env.example, runs
 # `docker compose --profile local up --build` with a small local model, and sends one chat turn as a
-# signed-out guest. `safety-profile`: the Shieldstral screen beside it (report only). `socket-proxy`: the
+# signed-out guest; then the README's backup and restore run on that stack. `safety-profile`: the Shieldstral screen beside it (report only). `socket-proxy`: the
 # agent profile's socket proxy refuses host-root creates. No job reads a secret: models download from
 # Hugging Face without a token.
 name: Self-host smoke
@@ -50,7 +50,29 @@ jobs:
           key: ${{ env.MODEL_CACHE_KEY }}
 
       - name: Build, boot and chat
-        run: SMOKE_DOWN=1 ./selfhost/smoke.sh
+        id: smoke
+        run: ./selfhost/smoke.sh
+
+      # The README's backup and restore, on the stack the smoke left up: a guest conversation and a file in
+      # the `files` volume, selfhost/backup.sh, `down -v`, `up`, selfhost/restore.sh, then every conversation
+      # must read back identical, the guest must open theirs with the same cookie, and the file must hold
+      # what was written (.github/selfhost-restore-smoke.sh). Capture-and-warn for its first runs.
+      - name: Back up, wipe, restore, and find the conversation and the file again
+        if: steps.smoke.outcome == 'success'
+        run: |
+          set +e
+          ./.github/selfhost-restore-smoke.sh 2>&1 | tee restore.log
+          code=${PIPESTATUS[0]}
+          {
+            echo "### restore round trip"
+            echo '```'
+            grep -E '^(ok|RESTORE|BACKUP)' restore.log || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$code" != 0 ]; then
+            echo "::warning title=selfhost restore::the restore round trip exited $code. Read this step's log."
+          fi
+          exit 0
 
       - name: Save the model cache
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -58,6 +80,12 @@ jobs:
         with:
           path: ${{ env.LOCAL_MODELS_DIR }}
           key: ${{ env.MODEL_CACHE_KEY }}
+
+      - name: Tear the stack down
+        if: always() && steps.smoke.outcome != 'skipped'
+        continue-on-error: true
+        working-directory: selfhost
+        run: docker compose --profile local down -v
 
   safety-profile:
     # The safety profile (selfhost/compose.yaml, service shieldstral): Shieldstral-1.0-3B on llama.cpp on
