@@ -79,7 +79,7 @@ export function createLandingSend(draft: { get: () => string; set: (text: string
 			await goto(`${base}/conversation/${conversationId}`, {
 				// SvelteKit scrolls to the top on navigation, and sending a first message is an in-place
 				// action: on the marketing-embedded page the jump yanked the just-sent turn off screen.
-				noScroll: true,
+				reset: false,
 				state: { pendingMessage: message, pendingFilesNonce },
 			});
 			handedOff = true;

@@ -5,9 +5,9 @@
  */
 import { describe, expect, it } from "vitest";
 import { convertChat } from "../convert";
-import { toOpenWebUiChat } from "../chatFile";
+import { toOpenWebUiChat } from "../../../shared/openWebUiImport/chatFile";
 import { CHAT_FILE_OWNER_ID, readOpenWebUiChatFile } from "../readChatFile";
-import { CHAT_FILE_REVISION, KNOWN_REVISIONS, UnsupportedSourceError } from "../sourceSchema";
+import { CHAT_FILE_REVISION, KNOWN_REVISIONS, UnsupportedSourceError } from "../../../shared/openWebUiImport/sourceSchema";
 import { branchedConversation, treeShape } from "./alphaFixture";
 
 const owner = { email: "fresh@example.org" };

@@ -7,7 +7,7 @@
  * Mistral side calls, compare panel, agent), the real registry boots, and its serialization is checked
  * for every key value. The lane builds are then checked to send the same key each lane sent before.
  *
- * Idioms mirror models.sideCall.spec.ts: `config` is a Proxy over a mutable object, `$app/environment`
+ * Idioms mirror models.sideCall.spec.ts: `config` is a Proxy over a mutable object, `$app/env`
  * says `building: true` so the module-eval boot is skipped, and bootModels runs against a stubbed
  * live catalog.
  */
@@ -66,7 +66,7 @@ vi.mock("$lib/chat/server/deployEnv", async (importOriginal) => ({
 	deployEnv: () => "preview",
 }));
 
-vi.mock("$app/environment", () => ({ building: true, dev: false, browser: false, version: "test" }));
+vi.mock("$app/env", () => ({ building: true, dev: false, browser: false, version: "test" }));
 
 vi.mock("$lib/chat/server/data/models-snapshot.json", () => ({
 	default: { fetchedAt: "", baseURL: "", entries: [] },

@@ -6,7 +6,7 @@
  * two things CSS cannot do: persist the user's choice, and expose the RESOLVED mode to legacy
  * markup that still keys off a `.dark` class (Tailwind `dark:` variants in the chat code).
  */
-import { browser } from '$app/environment';
+import { browser } from '$app/env';
 import { on } from 'svelte/events';
 
 export type ColorMode = 'light' | 'dark' | 'system';

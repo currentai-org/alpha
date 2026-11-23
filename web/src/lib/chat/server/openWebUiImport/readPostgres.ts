@@ -11,7 +11,7 @@
  * decides, as it does for Open WebUI.
  */
 import postgres from "postgres";
-import { UnsupportedSourceError } from "./sourceSchema";
+import { UnsupportedSourceError } from "../../shared/openWebUiImport/sourceSchema";
 import { checkSource, groupMessages, sourceQueries, toChat, toFile, toTag, toUser, type Row, type SourceData } from "./sourceRows";
 
 const TABLES = ["user", "chat", "chat_message", "file", "tag"] as const;

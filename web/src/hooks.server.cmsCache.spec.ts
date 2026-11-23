@@ -9,7 +9,7 @@ import type { AppSurface } from '$lib/surface';
 const connections: string[] = [];
 
 function mockServerBoot(surface: AppSurface) {
-	vi.doMock('$app/environment', () => ({ building: false, dev: false }));
+	vi.doMock('$app/env', () => ({ building: false, dev: false }));
 	vi.doMock('$lib/surface', async (importOriginal) => ({
 		...(await importOriginal<typeof import('$lib/surface')>()),
 		APP_SURFACE: surface

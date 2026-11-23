@@ -100,7 +100,7 @@ export async function closeDb() {
  *
  * Bundler-neutral: NO `$app/*` import lives here, because `database.ts`/this module are imported
  * DIRECTLY by the plain-tsx verify scripts (scripts/verify-drizzle-slice.ts, verify-cleanup.ts) where
- * `$app/environment` does not resolve — the SvelteKit-only `!building` guard lives at the
+ * `$app/env` does not resolve — the SvelteKit-only `!building` guard lives at the
  * hooks.server.ts call site instead. Inert unless CALLED, so a tsx script importing this
  * module is untouched.
  *

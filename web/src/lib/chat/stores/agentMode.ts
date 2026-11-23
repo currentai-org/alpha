@@ -1,4 +1,4 @@
-import { browser } from "$app/environment";
+import { browser } from "$app/env";
 import { get, writable } from "svelte/store";
 
 // Should a turn run through the Public AI AGENT (multi-step plan/exec on the open Apertus model) instead

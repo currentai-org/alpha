@@ -5,7 +5,7 @@ import type { Response } from '@playwright/test';
 import { CHAT_ENTRY } from './helpers/chatEntry';
 import { warmupContext } from './helpers/warmup';
 import { setFlagOverrides } from './helpers/flagOverride';
-import { HF_PROVIDER_PIN } from '../../src/lib/chat/server/hfProviderPin';
+import { HF_PROVIDER_PIN } from '../../src/lib/chat/shared/hfProviderPin';
 import { catalog, MODEL_HOSTS, orgs } from '../../src/lib/chat/routing/catalog';
 import { startChattingPastWelcome } from './helpers/welcome';
 import { sameServedModel } from '../../config/picker';

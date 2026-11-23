@@ -3,7 +3,7 @@ import { isRedirect } from "@sveltejs/kit";
 
 // The routing lab is developer-only: a production build (`dev` false) lets an admin in and sends
 // every other visitor who has the URL to Settings, the same gate as its Dev-badged nav entry.
-vi.mock("$app/environment", () => ({ dev: false, browser: false, building: false, version: "test" }));
+vi.mock("$app/env", () => ({ dev: false, browser: false, building: false, version: "test" }));
 
 const { load } = await import("./+page");
 

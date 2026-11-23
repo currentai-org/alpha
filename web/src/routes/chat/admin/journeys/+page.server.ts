@@ -15,7 +15,7 @@ import { env } from "$env/dynamic/private";
 import { gitSha } from "$lib/server/runtimeEnv";
 import { getDb } from "$lib/chat/server/db/client";
 import { configKv } from "$lib/chat/server/db/schema";
-import { MANIFEST_KEY, withUndocumentedAsNotCovered, type JourneyManifest } from "$lib/chat/server/journeyGallery";
+import { MANIFEST_KEY, withUndocumentedAsNotCovered, type JourneyManifest } from "$lib/chat/shared/journeyGallery";
 import { isAdminPermitted } from "$lib/chat/server/adminAuth";
 
 // NO per-route `export const config` here — a per-route config splits the adapter-vercel build and

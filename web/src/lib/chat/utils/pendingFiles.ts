@@ -13,7 +13,7 @@
  * the module exports a no-op API so imports never crash during SSR.
  */
 
-import { browser } from "$app/environment";
+import { browser } from "$app/env";
 
 const store: Map<string, File[]> = browser ? new Map() : (null as unknown as Map<string, File[]>);
 

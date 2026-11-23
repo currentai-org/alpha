@@ -385,11 +385,6 @@
       "count": 4
     }
   },
-  "src/lib/alpha-landing/PageOptions.svelte": {
-    "@eslint-community/eslint-comments/require-description": {
-      "count": 1
-    }
-  },
   "src/lib/alpha-landing/looks/bold/BoldBuildField.svelte": {
     "alpha-ds/no-raw-colors": {
       "count": 5
@@ -1163,11 +1158,6 @@
       "count": 1
     }
   },
-  "src/lib/chat/server/exportFormat.ts": {
-    "alpha-ds/require-static-classes": {
-      "count": 1
-    }
-  },
   "src/lib/chat/server/guestHandoff.spec.ts": {
     "@eslint-community/eslint-comments/require-description": {
       "count": 1
@@ -1191,6 +1181,11 @@
   "src/lib/chat/server/tuning.spec.ts": {
     "@eslint-community/eslint-comments/require-description": {
       "count": 5
+    }
+  },
+  "src/lib/chat/shared/exportFormat.ts": {
+    "alpha-ds/require-static-classes": {
+      "count": 1
     }
   },
   "src/lib/chat/stores/agentMode.ts": {
@@ -1247,11 +1242,6 @@
     }
   },
   "src/lib/components/ui/data-table/render-helpers.ts": {
-    "@eslint-community/eslint-comments/require-description": {
-      "count": 1
-    }
-  },
-  "src/lib/i18n/client.svelte.ts": {
     "@eslint-community/eslint-comments/require-description": {
       "count": 1
     }

@@ -3,7 +3,7 @@
 // Modified by Current AI from huggingface/chat-ui.
 import { error } from "@sveltejs/kit";
 import { json } from "$lib/chat/server/api/utils/json";
-import { dev } from "$app/environment";
+import { dev } from "$app/env";
 import { config } from "$lib/chat/server/config";
 const DEFAULT_OPENAI_BASE = "https://router.huggingface.co/v1";
 

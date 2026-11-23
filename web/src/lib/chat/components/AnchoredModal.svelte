@@ -4,7 +4,7 @@
 	import { fade, fly } from 'svelte/transition';
 	import Portal from './Portal.svelte';
 	import { getThemeContext } from '@aipotluck/alpha-ds';
-	import { browser } from '$app/environment';
+	import { browser } from '$app/env';
 	import { setupDialogChrome } from '$lib/chat/utils/dialogChrome';
 
 	interface Props {

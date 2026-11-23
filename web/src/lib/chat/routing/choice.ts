@@ -4,7 +4,7 @@
  * conversation starts. Persisted per device; nothing about it is sent anywhere except the chosen id.
  */
 import { writable } from 'svelte/store';
-import { browser } from '$app/environment';
+import { browser } from '$app/env';
 import { catalog, servedKey } from './catalog';
 import { heuristicClassify } from './heuristic';
 import type { DraftAnalysis } from './classifier';

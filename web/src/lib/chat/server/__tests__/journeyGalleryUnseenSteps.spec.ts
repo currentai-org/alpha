@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { unseenSteps, type JourneyCard } from "../journeyGallery";
+import { unseenSteps, type JourneyCard } from "../../shared/journeyGallery";
 
 /**
  * The board's summary sentence names every step a passing test claims and no frame shows,

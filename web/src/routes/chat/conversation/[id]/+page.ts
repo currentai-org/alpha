@@ -4,7 +4,7 @@
 import { useAPIClient, handleResponse, ApiError } from "$lib/chat/APIClient";
 import { UrlDependency } from "$lib/chat/types/UrlDependency";
 import { error as kitError, redirect } from "@sveltejs/kit";
-import { browser } from "$app/environment";
+import { browser } from "$app/env";
 import { base } from "$lib/chat/paths";
 import { ERROR_MESSAGES, error } from "$lib/chat/stores/errors";
 import type { PageLoad } from "./$types";

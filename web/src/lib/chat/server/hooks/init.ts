@@ -3,7 +3,7 @@
 // Modified by Current AI from huggingface/chat-ui.
 import { config, ready } from "$lib/chat/server/config";
 import { logger } from "$lib/chat/server/logger";
-import { dev } from "$app/environment";
+import { dev } from "$app/env";
 import { initExitHandler, onExit } from "$lib/chat/server/exitHandler";
 import { startProcessKeepalive } from "$lib/chat/server/keepalive";
 import { AbortedGenerations } from "$lib/chat/server/abortedGenerations";

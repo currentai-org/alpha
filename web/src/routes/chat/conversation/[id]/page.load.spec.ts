@@ -4,7 +4,7 @@ import { get } from "svelte/store";
 import superjson from "superjson";
 
 const env = vi.hoisted(() => ({ browser: false }));
-vi.mock("$app/environment", () => ({
+vi.mock("$app/env", () => ({
 	get browser() {
 		return env.browser;
 	},

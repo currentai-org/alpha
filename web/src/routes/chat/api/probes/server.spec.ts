@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const env = vi.hoisted(() => ({ CRON_SECRET: "cron-secret" as string | undefined }));
 vi.mock("$env/dynamic/private", () => ({ env }));
-vi.mock("$app/environment", () => ({ dev: false, building: false, browser: false, version: "test" }));
+vi.mock("$app/env", () => ({ dev: false, building: false, browser: false, version: "test" }));
 const warmAll = vi.hoisted(() => vi.fn(async () => {}));
 vi.mock("$lib/chat/server/warm", () => ({ warmAll }));
 

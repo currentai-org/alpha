@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { splitRecordingsByOutcome } from "../journeyGallery";
+import { splitRecordingsByOutcome } from "../../shared/journeyGallery";
 
 /**
  * Named for the contract, not the behaviour (a test's name states the contract): what breaks this is a skip getting

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { journeyGroup, journeyGroups, runVerdict, sortFailuresFirst, type JourneyState } from "../journeyGallery";
+import { journeyGroup, journeyGroups, runVerdict, sortFailuresFirst, type JourneyState } from "../../shared/journeyGallery";
 
 type JourneyRecording = Parameters<typeof runVerdict>[0][number]["recordings"][number];
 

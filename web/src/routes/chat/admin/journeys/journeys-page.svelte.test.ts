@@ -1,7 +1,7 @@
 import { render, cleanup } from "vitest-browser-svelte";
 import { page } from "vitest/browser";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { JourneyCard, JourneyManifest } from "$lib/chat/server/journeyGallery";
+import type { JourneyCard, JourneyManifest } from "$lib/chat/shared/journeyGallery";
 
 // The page reads `page.url` only in onMount and on selection, and calls replaceState only on a
 // click; neither router exists when the page is mounted bare, as every client-project test does.

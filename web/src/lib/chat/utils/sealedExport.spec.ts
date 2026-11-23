@@ -8,8 +8,8 @@ import {
 	exportedConversation,
 	readableName,
 	type ExportEnvelope,
-} from "$lib/chat/server/exportFormat";
-import { toOpenWebUiChat } from "$lib/chat/server/openWebUiImport/chatFile";
+} from "$lib/chat/shared/exportFormat";
+import { toOpenWebUiChat } from "$lib/chat/shared/openWebUiImport/chatFile";
 import { toThunderbolt } from "$lib/chat/server/thunderboltExport";
 import {
 	openForExport,

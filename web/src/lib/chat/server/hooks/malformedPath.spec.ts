@@ -27,7 +27,7 @@ vi.mock("$lib/chat/server/config", () => ({
 vi.mock("$lib/chat/server/logger", () => ({
 	logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }));
-vi.mock("$app/environment", () => ({ dev: false, building: false }));
+vi.mock("$app/env", () => ({ dev: false, building: false }));
 
 const resolve = vi.fn(async () => new Response("resolved", { status: 200 }));
 

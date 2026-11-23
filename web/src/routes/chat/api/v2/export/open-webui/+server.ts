@@ -1,7 +1,7 @@
 import type { RequestHandler } from "@sveltejs/kit";
 import { requireExportUser } from "$lib/chat/server/dataPortability";
 import { fileExportResponse } from "$lib/chat/server/fileExport";
-import { toOpenWebUiChat } from "$lib/chat/server/openWebUiImport/chatFile";
+import { toOpenWebUiChat } from "$lib/chat/shared/openWebUiImport/chatFile";
 
 // Every conversation as the file Open WebUI's Settings → Data Controls → Import chats reads,
 // so a person who moved from Open WebUI can move back, and `pnpm import:open-webui <file> --as <email>`

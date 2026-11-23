@@ -5,7 +5,7 @@ Modified by Current AI from huggingface/chat-ui.
 -->
 <script lang="ts">
 	import { onDestroy } from "svelte";
-	import { browser, dev } from "$app/environment";
+	import { browser, dev } from "$app/env";
 	import { page } from "$app/state";
 	import { base } from "$lib/chat/paths";
 	import { safeInvalidate } from "$lib/chat/utils/safeInvalidate";

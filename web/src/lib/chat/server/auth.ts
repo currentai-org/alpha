@@ -22,7 +22,7 @@ import { subMinutes } from "date-fns/subMinutes";
 import { config } from "$lib/chat/server/config";
 import { sha256 } from "$lib/chat/utils/sha256";
 import { z } from "zod";
-import { dev } from "$app/environment";
+import { dev } from "$app/env";
 import { error, type Cookies } from "@sveltejs/kit";
 import { collections } from "$lib/chat/server/database";
 import { withTransaction } from "$lib/chat/server/db/client";
@@ -78,7 +78,7 @@ export const secure = z
  * nothing embeds it in a Space; the only HF references in `src/` are provenance links and an unrelated
  * audio-clip spec.
  *
- * `svelte.config.js` does allow two cross-site framers, `frame-ancestors: ['https://huggingface.co',
+ * `sveltekit.config.js` does allow two cross-site framers, `frame-ancestors: ['https://huggingface.co',
  * <CMS url>]`, and `lax` stops the cookie being sent in a third-party frame, so each was checked
  * against what an embed would need:
  *

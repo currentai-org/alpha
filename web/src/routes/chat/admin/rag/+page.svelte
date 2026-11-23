@@ -2,7 +2,7 @@
 <script lang="ts">
 	import { enhance } from "$app/forms";
 	import { base } from "$lib/chat/paths";
-	import type { SubmitFunction } from "@sveltejs/kit";
+	import type { SubmitFunction } from "$app/forms";
 	import type { PageData, ActionData } from "./$types";
 	import FileDropZone from "$lib/chat/components/rag/FileDropZone.svelte";
 	import StaffSignIn from "$lib/chat/components/StaffSignIn.svelte";

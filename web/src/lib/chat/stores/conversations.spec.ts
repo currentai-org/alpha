@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // refresh() fetches through the API client; each test sets what the server list returns.
 let serverList: Array<{ _id: string; title: string; updatedAt: string; model?: string }> = [];
-vi.mock("$app/environment", () => ({ browser: true }));
+vi.mock("$app/env", () => ({ browser: true }));
 vi.mock("$lib/chat/APIClient", () => ({
 	useAPIClient: () => ({
 		conversations: {

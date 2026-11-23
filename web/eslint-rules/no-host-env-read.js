@@ -8,7 +8,7 @@
 // drive Vercel itself (verify-prod-build.mjs, resolve-deployment-url.mjs), not something the platform
 // tells a deployment about itself. Those scripts go with the platform rather than moving.
 //
-// Used by eslint.config.js (src/, svelte.config.js, vite.config.ts) and eslint.scripts.config.js
+// Used by eslint.config.js (src/, sveltekit.config.js, vite.config.ts) and eslint.scripts.config.js
 // (scripts/ and config/; config/ gets this rule alone, since eslint.config.js ignores it). Specs are
 // exempt: they set VERCEL_* to simulate a deployment, which the fallback in
 // runtimeEnv.js keeps working.

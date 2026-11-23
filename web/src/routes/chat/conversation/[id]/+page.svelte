@@ -90,7 +90,7 @@ Modified by Current AI from huggingface/chat-ui.
 	} from "$lib/chat/utils/messageUpdates";
 	import { getCachedAnswer } from "$lib/chat/utils/starterCache";
 	import { v4 } from "uuid";
-	import { browser } from "$app/environment";
+	import { browser } from "$app/env";
 	import {
 		addBackgroundGeneration,
 		removeBackgroundGeneration,
@@ -283,7 +283,8 @@ Modified by Current AI from huggingface/chat-ui.
 		if (initialRun) {
 			if (!msgId && page.url.searchParams.get("leafId")) {
 				msgId = page.url.searchParams.get("leafId") as string;
-				page.url.searchParams.delete("leafId");
+				// The type is read-only in SvelteKit 3; this edits the in-memory copy only, as before.
+				(page.url.searchParams as URLSearchParams).delete("leafId");
 			}
 			initialRun = false;
 		}

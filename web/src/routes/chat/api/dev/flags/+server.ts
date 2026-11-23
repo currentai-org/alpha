@@ -1,4 +1,4 @@
-import { dev } from "$app/environment";
+import { dev } from "$app/env";
 import { error } from "@sveltejs/kit";
 import { json } from "$lib/chat/server/api/utils/json";
 import { FLAG_KEYS } from "$lib/chat/server/flagKeys";

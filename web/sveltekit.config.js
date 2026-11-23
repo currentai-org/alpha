@@ -116,7 +116,11 @@ process.env.PUBLIC_VERSION ??= process.env.npm_package_version;
 process.env.PUBLIC_COMMIT_SHA ??= getCurrentCommitSHA();
 process.env.PUBLIC_APP_ASSETS ??= 'chatui';
 
-/** @type {import('@sveltejs/kit').Config} */
+/**
+ * SvelteKit 3 reads its options from the `sveltekit()` Vite plugin (vite.config.ts), which imports this
+ * object. It is a module of its own because specs read the built CSP from it.
+ * @type {import('@sveltejs/kit/vite').Config}
+ */
 const config = {
 	preprocess: [vitePreprocess()],
 
@@ -134,105 +138,107 @@ const config = {
 		}
 	},
 
-	kit: {
-		adapter:
-			adapterChoice === 'static'
-				? adapterStatic({ fallback: 'index.html', strict: false })
-				: adapterChoice === 'node'
-					? adapterNode()
-					: // Vercel serverless on the Node runtime — chat needs postgres.js + Node APIs.
-						adapterVercel({
-							runtime: 'nodejs22.x',
-							...(functionRegions.length ? { regions: functionRegions } : {})
-						}),
-		paths: {
-			// Empty app-wide: the map owns "/" and the chat lives under the filesystem route
-			// /chat (its code builds URLs via the $lib/chat/paths `base = "/chat"` constant).
-			base: ''
+	adapter:
+		adapterChoice === 'static'
+			? adapterStatic({ fallback: 'index.html', strict: false })
+			: adapterChoice === 'node'
+				? adapterNode()
+				: // Vercel serverless on the Node runtime — chat needs postgres.js + Node APIs.
+					adapterVercel({
+						runtime: 'nodejs22.x',
+						...(functionRegions.length ? { regions: functionRegions } : {})
+					}),
+	paths: {
+		// Empty app-wide: the map owns "/" and the chat lives under the filesystem route
+		// /chat (its code builds URLs via the $lib/chat/paths `base = "/chat"` constant).
+		base: ''
+	},
+	alias: {
+		// SvelteKit 3 stopped generating `$lib`. Declared here so the 1,500-odd existing imports keep
+		// resolving; moving them to the `#lib` subpath import is a separate, repo-wide change.
+		$lib: 'src/lib',
+		'$lib/*': 'src/lib/*',
+		// Every reusable Payload block component (Button, Cards, Faqs, IconGrid, TextMedia,
+		// EmailSignup, ...) — mirrors the `@blocks` alias already used on the payload/ side
+		// (payload/tsconfig.json), so a block's import path reads the same regardless of
+		// which app you're in.
+		'@blocks': 'src/lib/components/blocks',
+		'@blocks/*': 'src/lib/components/blocks/*',
+		'@templates': 'src/lib/components/page-templates',
+		'@templates/*': 'src/lib/components/page-templates/*'
+	},
+	csrf: {
+		// Chat handles CSRF in its own hook (multiple valid origins).
+		trustedOrigins: ['*']
+	},
+	csp: {
+		directives: {
+			'img-src': imageSources,
+			// Read-aloud plays a clip it fetched itself, from a blob: URL (loadAudioClip.ts).
+			'media-src': ["'self'", 'data:', 'blob:'],
+			// no <base href> may repoint relative URLs, and a form may submit only here, to
+			// the Contribute dialog's Tally form (a GET in a new tab), or on to huggingface.co.
+			// Chrome checks form-action against every redirect a submission follows, and Settings →
+			// Storage's Connect Hugging Face form GETs our connect route, which 303s to Hugging Face's
+			// OAuth consent; without huggingface.co the browser drops that navigation and the
+			// button does nothing.
+			'base-uri': ["'self'"],
+			'form-action': ["'self'", 'https://tally.so', 'https://huggingface.co'],
+			// Enforced once seven days of CSP reports showed nothing legitimate outside these lists.
+			'connect-src': connectSources,
+			'script-src': scriptSources,
+			// Without its own list worker-src falls back to script-src, which has no blob:, and a
+			// srcdoc artifact inherits this policy, so every artifact worker would stop
+			// (previewSrcdoc.ts allows `worker-src blob:` for them).
+			'worker-src': ["'self'", 'blob:'],
+			// An artifact script can navigate its own srcdoc frame anywhere, and only the
+			// embedding page's frame-src can stop that. The app frames nothing else but the notebooks
+			// block's OSO marimo pages and the Tally popup, whose embed widget (lib/tally.ts) opens the
+			// form in a tally.so iframe; srcdoc frames make no fetch, so frame-src leaves the artifact
+			// previews themselves alone. Every notebook src on the production CMS is www.oso.xyz, which
+			// 301s to www.artio.so, and a browser checks each hop of a framed redirect, so both are
+			// needed while the CMS srcs point at oso.xyz.
+			'frame-src': ["'self'", 'https://www.oso.xyz', 'https://www.artio.so', 'https://tally.so'],
+			// Without a report-uri an enforced block is silent, so a legitimate origin missing from a
+			// list above would break with nothing in PostHog to say so. report-to names the Reporting
+			// API group that hooks.server.ts declares in Reporting-Endpoints: a browser that supports
+			// it batches reports and ignores report-uri, which stays for the ones that don't (Firefox).
+			...(cspReportUri ? { 'report-uri': [cspReportUri], 'report-to': [CSP_REPORT_GROUP] } : {}),
+			...(process.env.ALLOW_IFRAME === 'true'
+				? {}
+				: {
+						// Also allow the Payload CMS admin origin, for its Live Preview iframe.
+						'frame-ancestors': ['https://huggingface.co', ...(cmsOrigin ? [cmsOrigin] : [])]
+					})
+		}
+	},
+	prerender: {
+		// Payload-backed content routes ([...slug], /) set `prerender = false` on themselves.
+		// `'*'` crawls the rest.
+		entries: ['*'],
+		handleHttpError({ path, message }) {
+			// The /chat subtree is dynamic (auth/DB/streaming) and opts out of prerender;
+			// ignore any crawl links into it rather than failing the build.
+			if (path === '/chat' || path.startsWith('/chat/')) return;
+			throw new Error(message);
 		},
-		alias: {
-			// Every reusable Payload block component (Button, Cards, Faqs, IconGrid, TextMedia,
-			// EmailSignup, ...) — mirrors the `@blocks` alias already used on the payload/ side
-			// (payload/tsconfig.json), so a block's import path reads the same regardless of
-			// which app you're in.
-			'@blocks': 'src/lib/components/blocks',
-			'@blocks/*': 'src/lib/components/blocks/*',
-			'@templates': 'src/lib/components/page-templates',
-			'@templates/*': 'src/lib/components/page-templates/*'
-		},
-		csrf: {
-			// Chat handles CSRF in its own hook (multiple valid origins).
-			trustedOrigins: ['*']
-		},
-		csp: {
-			directives: {
-				'img-src': imageSources,
-				// Read-aloud plays a clip it fetched itself, from a blob: URL (loadAudioClip.ts).
-				'media-src': ["'self'", 'data:', 'blob:'],
-				// no <base href> may repoint relative URLs, and a form may submit only here, to
-				// the Contribute dialog's Tally form (a GET in a new tab), or on to huggingface.co.
-				// Chrome checks form-action against every redirect a submission follows, and Settings →
-				// Storage's Connect Hugging Face form GETs our connect route, which 303s to Hugging Face's
-				// OAuth consent; without huggingface.co the browser drops that navigation and the
-				// button does nothing.
-				'base-uri': ["'self'"],
-				'form-action': ["'self'", 'https://tally.so', 'https://huggingface.co'],
-				// Enforced once seven days of CSP reports showed nothing legitimate outside these lists.
-				'connect-src': connectSources,
-				'script-src': scriptSources,
-				// Without its own list worker-src falls back to script-src, which has no blob:, and a
-				// srcdoc artifact inherits this policy, so every artifact worker would stop
-				// (previewSrcdoc.ts allows `worker-src blob:` for them).
-				'worker-src': ["'self'", 'blob:'],
-				// An artifact script can navigate its own srcdoc frame anywhere, and only the
-				// embedding page's frame-src can stop that. The app frames nothing else but the notebooks
-				// block's OSO marimo pages and the Tally popup, whose embed widget (lib/tally.ts) opens the
-				// form in a tally.so iframe; srcdoc frames make no fetch, so frame-src leaves the artifact
-				// previews themselves alone. Every notebook src on the production CMS is www.oso.xyz, which
-				// 301s to www.artio.so, and a browser checks each hop of a framed redirect, so both are
-				// needed while the CMS srcs point at oso.xyz.
-				'frame-src': ["'self'", 'https://www.oso.xyz', 'https://www.artio.so', 'https://tally.so'],
-				// Without a report-uri an enforced block is silent, so a legitimate origin missing from a
-				// list above would break with nothing in PostHog to say so. report-to names the Reporting
-				// API group that hooks.server.ts declares in Reporting-Endpoints: a browser that supports
-				// it batches reports and ignores report-uri, which stays for the ones that don't (Firefox).
-				...(cspReportUri ? { 'report-uri': [cspReportUri], 'report-to': [CSP_REPORT_GROUP] } : {}),
-				...(process.env.ALLOW_IFRAME === 'true'
-					? {}
-					: {
-							// Also allow the Payload CMS admin origin, for its Live Preview iframe.
-							'frame-ancestors': ['https://huggingface.co', ...(cmsOrigin ? [cmsOrigin] : [])]
-						})
-			}
-		},
-		prerender: {
-			// Payload-backed content routes ([...slug], /) set `prerender = false` on themselves.
-			// `'*'` crawls the rest.
-			entries: ['*'],
-			handleHttpError({ path, message }) {
-				// The /chat subtree is dynamic (auth/DB/streaming) and opts out of prerender;
-				// ignore any crawl links into it rather than failing the build.
-				if (path === '/chat' || path.startsWith('/chat/')) return;
-				throw new Error(message);
-			},
-			// A prerenderable route that produced no pages is normally a bug and fails the build.
-			// The chat surface (APP_SURFACE=chat) is the exception for routes outside /chat:
-			// `reroute` maps every crawled path into the /chat tree, so a site route such as /roadmap-v2
-			// is unreachable there by design. Read from the env here because src/lib/surface.ts's
-			// APP_SURFACE comes from Vite's `define`, which config time does not have; vite.config.ts
-			// rejects any value other than unset, "site" or "chat".
-			handleUnseenRoutes({ routes }) {
-				const chatSurface = process.env.APP_SURFACE?.trim() === 'chat';
-				const unseen = chatSurface
-					? routes.filter((id) => id === '/chat' || id.startsWith('/chat/'))
-					: routes;
-				if (unseen.length > 0) {
-					throw new Error(
-						'The following routes were marked as prerenderable, but were not prerendered ' +
-							'because they were not found while crawling your app:\n' +
-							unseen.map((id) => `  - ${id}`).join('\n')
-					);
-				}
+		// A prerenderable route that produced no pages is normally a bug and fails the build.
+		// The chat surface (APP_SURFACE=chat) is the exception for routes outside /chat:
+		// `reroute` maps every crawled path into the /chat tree, so a site route such as /roadmap-v2
+		// is unreachable there by design. Read from the env here because src/lib/surface.ts's
+		// APP_SURFACE comes from Vite's `define`, which config time does not have; vite.config.ts
+		// rejects any value other than unset, "site" or "chat".
+		handleUnseenRoutes({ routes }) {
+			const chatSurface = process.env.APP_SURFACE?.trim() === 'chat';
+			const unseen = chatSurface
+				? routes.filter((id) => id === '/chat' || id.startsWith('/chat/'))
+				: routes;
+			if (unseen.length > 0) {
+				throw new Error(
+					'The following routes were marked as prerenderable, but were not prerendered ' +
+						'because they were not found while crawling your app:\n' +
+						unseen.map((id) => `  - ${id}`).join('\n')
+				);
 			}
 		}
 	}

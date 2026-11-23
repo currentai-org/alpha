@@ -1,4 +1,5 @@
-import { redirect, type Handle } from '@sveltejs/kit';
+import { redirect } from '@sveltejs/kit';
+import type { Handle } from '@sveltejs/kit/hooks';
 import { defineCustomServerStrategy, getTextDirection } from '$lib/paraglide/runtime.js';
 import { paraglideMiddleware } from '$lib/paraglide/server.js';
 import { isTranslatedRoute, resolveLocale, unlocalizedPath } from './routing';
@@ -36,7 +37,8 @@ export const handleLocale: Handle = async ({ event, resolve }) => {
 		throw redirect(308, `${bare}${event.url.search}`);
 	}
 	return paraglideMiddleware(event.request, ({ request, locale }) => {
-		event.request = request;
+		// Read-only in the SvelteKit 3 types; the request Paraglide hands back replaces it for this event.
+		(event as { request: Request }).request = request;
 		event.locals.locale = locale;
 		// Following /fr/alpha into the demo or chat keeps French: a prefixed URL is a language choice.
 		if (pathname !== bare && event.cookies.get(localeCookieName) !== locale) {

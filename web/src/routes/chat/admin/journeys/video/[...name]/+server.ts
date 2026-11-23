@@ -17,7 +17,7 @@ import { isAdminPermitted } from '$lib/chat/server/adminAuth';
 import { getUnscopedFileByFilename } from '$lib/chat/server/db/files';
 import { logger } from '$lib/chat/server/logger';
 import { readJourneyRecording } from '$lib/chat/server/storage/custodialStorage';
-import { VIDEO_PREFIX, parseRange } from '$lib/chat/server/journeyGallery';
+import { VIDEO_PREFIX, parseRange } from '$lib/chat/shared/journeyGallery';
 
 export const GET: RequestHandler = async ({ params, cookies, locals, request }) => {
 	// 404 rather than 401: an unauthenticated caller learns nothing about what is stored here.

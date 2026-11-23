@@ -27,7 +27,7 @@ vi.mock("$lib/chat/server/config", () => {
 	});
 	return { config, ready: Promise.resolve() };
 });
-vi.mock("$app/environment", () => ({ building: true, dev: false, browser: false, version: "test" }));
+vi.mock("$app/env", () => ({ building: true, dev: false, browser: false, version: "test" }));
 vi.mock("$lib/chat/server/data/models-snapshot.json", () => ({
 	get default() {
 		return H.snap.current;

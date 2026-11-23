@@ -114,7 +114,7 @@ export async function enforceRequestRateLimits(opts: {
 			const retryAfterSeconds =
 				(await secondsUntilRoom({ type, userId }, perSessionLimit, "rate-limit:session")) ||
 				Math.ceil(windowMs / 1000);
-			error(429, { message: ERROR_MESSAGES.rateLimited, retryAfterSeconds });
+			error(429, ERROR_MESSAGES.rateLimited, { retryAfterSeconds });
 		}
 		// Per-IP ceiling, ON by default and deliberately loose: a conference or
 		// lecture-hall NAT puts hundreds of phones behind ONE address, so this is a room-sized abuse
@@ -138,7 +138,7 @@ export async function enforceRequestRateLimits(opts: {
 				const retryAfterSeconds =
 					(await secondsUntilRoom({ type, ipHash }, perSessionLimit * multiplier, "rate-limit:ip")) ||
 					Math.ceil(windowMs / 1000);
-				error(429, { message: IP_CEILING_MESSAGE, retryAfterSeconds });
+				error(429, IP_CEILING_MESSAGE, { retryAfterSeconds });
 			}
 		}
 	}

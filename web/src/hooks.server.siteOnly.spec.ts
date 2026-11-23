@@ -11,7 +11,7 @@ const preconnectDb = vi.fn();
 const validateEnv = vi.fn();
 const initServer = vi.fn(async () => {});
 
-vi.mock('$app/environment', () => ({ building: false, dev: false }));
+vi.mock('$app/env', () => ({ building: false, dev: false }));
 vi.mock('$lib/surface', async (importOriginal) => ({
 	...(await importOriginal<typeof import('$lib/surface')>()),
 	APP_SURFACE: 'site-only'
@@ -258,9 +258,8 @@ describe.skipIf(!SITE_CODE)('site-only: boot and the error and fetch hooks', () 
 		const { handleError, handleFetch } = await import('./hooks.server');
 		const url = new URL('https://www.example.test/chat/x');
 		await handleError({
+			kind: 'unknown',
 			error: new Error('x'),
-			status: 500,
-			message: 'Internal Error',
 			event: { url, route: { id: null }, request: new Request(url) }
 		} as never);
 		expect(handleServerError).not.toHaveBeenCalled();

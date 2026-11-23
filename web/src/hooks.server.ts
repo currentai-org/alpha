@@ -1,15 +1,9 @@
 import { sequence } from '@sveltejs/kit/hooks';
 import { handleLocale } from '$lib/i18n/server';
 import { localizedHref, unlocalizedPath } from '$lib/i18n/routing';
-import { building, dev } from '$app/environment';
-import {
-	redirect,
-	type Handle,
-	type HandleServerError,
-	type ServerInit,
-	type HandleFetch,
-	type Cookies
-} from '@sveltejs/kit';
+import { building, dev } from '$app/env';
+import { redirect, type Cookies, type RequestEvent } from '@sveltejs/kit';
+import type { Handle, HandleServerError, ServerInit, HandleFetch } from '@sveltejs/kit/hooks';
 import { env as privateEnv } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';
 import { entityBases } from '$lib/website';
@@ -102,9 +96,7 @@ const chatHandle = import.meta.glob<{
 	handleRequest(input: Parameters<Handle>[0]): Promise<Response>;
 }>('/src/lib/chat/server/hooks/handle.ts');
 const chatError = import.meta.glob<{
-	handleServerError(
-		input: Parameters<HandleServerError>[0]
-	): Promise<App.Error & Record<string, unknown>>;
+	handleServerError(input: CaughtServerError): Promise<App.Error & Record<string, unknown>>;
 }>('/src/lib/chat/server/hooks/error.ts');
 const chatFetch = import.meta.glob<{
 	handleFetchRequest(input: Parameters<HandleFetch>[0]): Promise<Response>;
@@ -298,7 +290,7 @@ const BASELINE_SECURITY_HEADERS: Record<string, string> = {
 	'Referrer-Policy': 'strict-origin-when-cross-origin'
 };
 
-// The CSP's report-to directive (svelte.config.js) names a Reporting API group, and the
+// The CSP's report-to directive (sveltekit.config.js) names a Reporting API group, and the
 // browser looks the group up in this header. Same env, same URL as the policy's report-uri.
 const cspReportUrl = cspReportEndpoint(process.env);
 if (cspReportUrl) {
@@ -325,7 +317,7 @@ function withResponseHeaders(response: Response): Response {
 // request's first query doesn't pay the Neon pooler connect on its critical path. Module scope runs
 // once per instance at bundle load — the same cold-start window we want to overlap. The `!building`
 // guard keeps it out of the prerender/build pass; the guard lives HERE (not in db/client.ts) because
-// `$app/environment` must not enter db/client.ts — the plain-tsx verify scripts import that module
+// `$app/env` must not enter db/client.ts — the plain-tsx verify scripts import that module
 // directly. Dynamic-imported (like the rest of chat's server code) so a map-only request
 // never pulls postgres.js; non-blocking + non-throwing; `PG_PRECONNECT=off` disables it. See
 // docs/plans/ttft-critical-path.md §B.
@@ -480,7 +472,7 @@ async function chatHostRules(
 				input.event.cookies
 			);
 			chatLog?.logger.info({ outcome }, '[guest-handoff] chat host');
-			throw redirect(303, next);
+			throw redirect(303, next, { external: true });
 		}
 	}
 
@@ -494,7 +486,7 @@ async function chatHostRules(
 	}
 	// On the chat surface the root IS chat, so only the site surface sends it on.
 	if (APP_SURFACE === 'site' && hostname === paths.CHAT_HOST && pathname === '/') {
-		throw redirect(308, `${paths.chatHome}${search}`);
+		throw redirect(308, `${paths.chatHome}${search}`, { external: true });
 	}
 	// On the chat surface, an old `/chat/...` address moves to the same path at the root.
 	// Reserved paths (CHAT_RESERVED_PATHS) are served in place, and only a GET or HEAD moves.
@@ -509,7 +501,7 @@ async function chatHostRules(
 		routeId: input.event.route?.id ?? null,
 		vercelEnv: deployEnvName()
 	});
-	if (toSite !== null) throw redirect(308, toSite);
+	if (toSite !== null) throw redirect(308, toSite, { external: true });
 	// A page load of www's /chat moves to the chat host; API calls keep answering on www.
 	const chatHostTarget = www.wwwChatRedirect(input.event.url, method, headers, pathname);
 	if (chatHostTarget) {
@@ -520,7 +512,7 @@ async function chatHostRules(
 	}
 
 	if (isChatAliasRoot(pathname)) {
-		throw redirect(308, `${paths.chatHome}${search}`);
+		throw redirect(308, `${paths.chatHome}${search}`, { external: true });
 	}
 	return null;
 }
@@ -586,12 +578,14 @@ export const handleApplication: Handle = async (input) => {
 		if (cmsTarget)
 			throw redirect(
 				cmsTarget.status,
-				localizedHref(cmsTarget.location, input.event.locals?.locale)
+				localizedHref(cmsTarget.location, input.event.locals?.locale),
+				{ external: true }
 			);
 	}
 
 	const target = await aliasTarget(pathname);
-	if (target) throw redirect(308, localizedHref(target, input.event.locals?.locale));
+	if (target)
+		throw redirect(308, localizedHref(target, input.event.locals?.locale), { external: true });
 
 	const response = await handleSite(input);
 	return withResponseHeaders(cdnCacheFor(response, input.event));
@@ -617,7 +611,43 @@ function reportSiteError(
 	}
 }
 
-export const handleError: HandleServerError = async (input) => {
+/**
+ * An error as the handlers below read it. SvelteKit 3 passes `{ kind, error }`, where the thrown value
+ * of an `unknown` error is raw and a `framework` error (a 404 for no route, say) is a plain
+ * `{ status, message }`; this is the shape SvelteKit 2 passed, with the status and message beside it.
+ */
+type CaughtServerError = {
+	error: unknown;
+	event: RequestEvent;
+	status: number;
+	message: string;
+};
+
+/**
+ * `null` for an error thrown with `error(...)` or a remote-function validation failure: SvelteKit 2
+ * never passed those to `handleError`, SvelteKit 3 does, and the response they carry is already the
+ * one meant for the visitor, so there is nothing to log, report or rewrite.
+ */
+function caughtError(input: Parameters<HandleServerError>[0]): CaughtServerError | null {
+	switch (input.kind) {
+		case 'app':
+		case 'validation':
+			return null;
+		case 'framework':
+			return {
+				error: new Error(input.error.message),
+				event: input.event,
+				status: input.error.status,
+				message: input.error.message
+			};
+		case 'unknown':
+			return { error: input.error, event: input.event, status: 500, message: 'Internal Error' };
+	}
+}
+
+export const handleError: HandleServerError = async (caughtInput) => {
+	const input = caughtError(caughtInput);
+	if (!input) return;
 	if (building) throw input.error;
 	const chatErrors =
 		!siteOnly && isChatPath(input.event?.url?.pathname) ? await loadChat(chatError) : undefined;

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Modified by Current AI from huggingface/chat-ui.
 import pino from "pino";
-import { dev } from "$app/environment";
+import { dev } from "$app/env";
 import { config } from "$lib/chat/server/config";
 import { buildLoggerOptions } from "$lib/chat/server/loggerOptions";
 import { createAxiomStream } from "$lib/chat/server/axiomStream";

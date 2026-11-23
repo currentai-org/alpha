@@ -5,7 +5,7 @@
 	import { on } from 'svelte/events';
 	import { fly } from 'svelte/transition';
 	import { prefersReducedMotion } from 'svelte/motion';
-	import { dev } from '$app/environment';
+	import { dev } from '$app/env';
 	import { Badge, ComposerAccessory, Menu, Sheet, Ticker, buttonRecipe, cn, useCompact } from '@aipotluck/alpha-ds';
 	import { catalog, catalogByGatewayId, orgs, servedKey, type CatalogModel } from '$lib/chat/routing/catalog';
 	import { DIFFICULTY_LABEL } from '$lib/chat/routing/classifier';

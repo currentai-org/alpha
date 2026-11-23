@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { ExportedConversation } from "$lib/chat/server/exportFormat";
+import type { ExportedConversation } from "$lib/chat/shared/exportFormat";
 import { inertWidgets } from "../utils/inertWidgets";
 
 // Converts Alpha's conversations.json into a file Thunderbird's Thunderbolt can import, and reads one

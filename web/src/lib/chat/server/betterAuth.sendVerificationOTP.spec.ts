@@ -19,7 +19,7 @@ vi.mock("$lib/chat/server/logger", () => ({
 
 // `dev` decides whether the no-Resend stub may log the code at all. Mutable so one file covers both.
 const env = { dev: false };
-vi.mock("$app/environment", () => ({
+vi.mock("$app/env", () => ({
 	get dev() {
 		return env.dev;
 	},

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { badgeLabel, findingCounts, NEXT_STEP } from "../journeyGallery";
+import { badgeLabel, findingCounts, NEXT_STEP } from "../../shared/journeyGallery";
 
 const note = { area: "layout", severity: "minor" as const, observation: "a decorative graphic overlaps the nav" };
 

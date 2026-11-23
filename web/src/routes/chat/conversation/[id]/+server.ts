@@ -88,7 +88,7 @@ import {
 	lowResourceFallbackMessage,
 	lowResourceNoticeAlreadyShown,
 	withLowResourceNoticeSummarized,
-} from "$lib/chat/server/textGeneration/languageFallback";
+} from "$lib/chat/shared/languageFallback";
 import { preferredLanguage } from "$lib/chat/constants/starterShelf";
 import { lowResourceLanguageFallbackEnabled } from "$lib/chat/server/languageFallbackGate";
 import { withTruncationNotice } from "$lib/chat/server/endpoints/openai/openAIChatToTextGenerationStream";

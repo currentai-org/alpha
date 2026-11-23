@@ -3,7 +3,7 @@
 // Modified by Current AI from huggingface/chat-ui.
 import { models } from "$lib/chat/server/models";
 import { evalFingerprint } from '$lib/chat/server/evalFingerprint';
-import evaluationGeneration from '$lib/chat/server/data/eval/generation-v1.json';
+import evaluationGeneration from '$lib/chat/shared/data/eval/generation-v1.json';
 import { modelTakesImagesNow } from "$lib/chat/server/textOnly";
 import type { RequestHandler } from "@sveltejs/kit";
 

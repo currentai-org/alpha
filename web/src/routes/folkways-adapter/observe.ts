@@ -8,12 +8,12 @@
 
 import { createHash } from 'node:crypto';
 import { env } from '$env/dynamic/private';
-// Static, not dynamic: PUBLIC_COMMIT_SHA is set by svelte.config.js's own top-level code
+// Static, not dynamic: PUBLIC_COMMIT_SHA is set by sveltekit.config.js's own top-level code
 // (`process.env.PUBLIC_COMMIT_SHA ??= ...`, from VERCEL_GIT_COMMIT_SHA or `git rev-parse HEAD`)
 // while the BUILD is being configured, not by anything present in the running Vercel function's
 // actual environment. $env/dynamic/public reads real runtime process.env, which never had this
 // var set on it, so the commit would read `None`. $env/static/public instead inlines
-// whatever process.env held at BUILD time, which is exactly when svelte.config.js set it, so this
+// whatever process.env held at BUILD time, which is exactly when sveltekit.config.js set it, so this
 // is always populated. See the folkways-adapter README for why there's no `branch` here: nothing
 // in this host exposes one at runtime.
 import { PUBLIC_COMMIT_SHA } from '$env/static/public';

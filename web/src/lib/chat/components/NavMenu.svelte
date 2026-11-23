@@ -8,7 +8,7 @@ Modified by Current AI from huggingface/chat-ui.
 	import { base } from '$lib/chat/paths';
 	import { goto } from '$app/navigation';
 	import { page, navigating } from '$app/state';
-	import { browser } from '$app/environment';
+	import { browser } from '$app/env';
 	import { untrack } from 'svelte';
 
 	import RiChatNewLine from '~icons/ri/chat-new-line';

@@ -6,7 +6,7 @@ Modified by Current AI from huggingface/chat-ui.
 <script lang="ts">
 	import type { Token } from "$lib/chat/utils/marked";
 	import CodeBlock from "../CodeBlock.svelte";
-	import { browser } from "$app/environment";
+	import { browser } from "$app/env";
 	import { trackEvent } from "$lib/analytics";
 	import { loadPurify, reportSanitizerDiff, sanitizerDiff } from "$lib/chat/utils/answerHtmlShadow";
 

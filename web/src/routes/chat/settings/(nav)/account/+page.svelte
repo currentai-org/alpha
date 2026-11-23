@@ -205,7 +205,7 @@
 		const errorCode = page.url.searchParams.get("error");
 		if (errorCode) {
 			actionError = friendlyAuthErrorMessage(errorCode);
-			goto(page.url.pathname, { replaceState: true, noScroll: true, keepFocus: true });
+			goto(page.url.pathname, { replace: true, reset: false });
 		}
 		if (ready) return;
 		const sessionPromise = initial.session.ok ? null : authClient.getSession();

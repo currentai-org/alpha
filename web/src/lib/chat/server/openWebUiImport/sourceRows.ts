@@ -8,7 +8,7 @@
  * for identical rows. The idempotence keys and the parity report are built from that data, so they
  * cannot differ between the two either.
  */
-import { assertKnownRevision, FILE_TABLE_COLUMNS, MESSAGE_TABLE_COLUMNS, REQUIRED_COLUMNS, TAG_TABLE_COLUMNS, UnsupportedSourceError } from "./sourceSchema";
+import { assertKnownRevision, FILE_TABLE_COLUMNS, MESSAGE_TABLE_COLUMNS, REQUIRED_COLUMNS, TAG_TABLE_COLUMNS, UnsupportedSourceError } from "../../shared/openWebUiImport/sourceSchema";
 
 export interface SourceUser {
 	id: string;

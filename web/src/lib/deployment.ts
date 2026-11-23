@@ -26,7 +26,7 @@ export type Deployment = {
 	/** Older chat hosts; each one 308s to chatHost. */
 	chatAliasHosts: string[];
 	/** Origins besides the CMS itself that pages may load images from (a CMS media CDN). Read by
-	 *  svelte.config.js for the CSP. */
+	 *  sveltekit.config.js for the CSP. */
 	mediaOrigins: string[];
 	/** better-auth origin patterns for this installation's own preview deployments, trusted on a
 	 *  preview build only. Empty: none. */

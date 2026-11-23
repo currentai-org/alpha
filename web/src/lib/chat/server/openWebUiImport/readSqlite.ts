@@ -7,7 +7,7 @@
  * kept as null and counted by the caller as unreadable, never guessed at.
  */
 import { DatabaseSync } from "node:sqlite";
-import { UnsupportedSourceError } from "./sourceSchema";
+import { UnsupportedSourceError } from "../../shared/openWebUiImport/sourceSchema";
 import { checkSource, groupMessages, sourceQueries, toChat, toFile, toTag, toUser, type Row, type SourceData } from "./sourceRows";
 
 export type { SourceChat, SourceData, SourceMessageRow } from "./sourceRows";

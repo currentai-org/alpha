@@ -30,7 +30,7 @@ const PROFILES = verified as unknown as Readonly<
 	Record<string, Readonly<Record<string, ProviderProfile>>>
 >;
 
-export { HF_PROVIDER_PIN } from "./hfProviderPin";
+export { HF_PROVIDER_PIN } from "../shared/hfProviderPin";
 
 /** The verified row for one model on one provider, or undefined when nothing was measured. */
 function profileFor(

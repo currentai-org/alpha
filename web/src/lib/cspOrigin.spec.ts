@@ -20,9 +20,9 @@ describe('originOf — a CSP source is a real http(s) origin or nothing', () => 
 	});
 });
 
-// The built policy itself, not just the helper: svelte.config.js read with the CMS unset must list no
+// The built policy itself, not just the helper: sveltekit.config.js read with the CMS unset must list no
 // CMS origin and no empty, "null" or "undefined" source in any directive.
-describe('svelte.config.js CSP — no broken source when PUBLIC_CMS_PAYLOAD_URL is unset', () => {
+describe('sveltekit.config.js CSP — no broken source when PUBLIC_CMS_PAYLOAD_URL is unset', () => {
 	afterEach(() => {
 		vi.unstubAllEnvs();
 		vi.doUnmock('dotenv');
@@ -36,11 +36,11 @@ describe('svelte.config.js CSP — no broken source when PUBLIC_CMS_PAYLOAD_URL 
 		vi.stubEnv('ALLOW_IFRAME', '');
 		vi.resetModules();
 		// A computed specifier, so svelte-check does not pull the untyped config into the TS program.
-		const configUrl = new URL('../../svelte.config.js', import.meta.url).href;
+		const configUrl = new URL('../../sveltekit.config.js', import.meta.url).href;
 		const { default: config } = (await import(/* @vite-ignore */ configUrl)) as {
-			default: { kit?: { csp?: { directives?: Record<string, unknown[]> } } };
+			default: { csp?: { directives?: Record<string, unknown[]> } };
 		};
-		return config.kit?.csp?.directives ?? {};
+		return config.csp?.directives ?? {};
 	}
 
 	it.each([

@@ -12,7 +12,7 @@
 #
 # Needs DATABASE_URL naming a migrated Postgres this run may write to (CI gives it a service
 # container), docker, and Playwright's chromium. Arguments after the script name go to Playwright.
-# Run it from a checkout with no web/.env.local: svelte.config.js loads that file with override.
+# Run it from a checkout with no web/.env.local: sveltekit.config.js loads that file with override.
 #
 #   DATABASE_URL=postgres://... web/scripts/mock-model-e2e.sh
 #   MOCK_E2E_GREP='@mock-model' web/scripts/mock-model-e2e.sh e2e/scenarios/chat-at-root.spec.ts
@@ -36,7 +36,7 @@ MOCK_MODEL_ID="${MOCK_MODEL_ID:-mistral-large-2610}"
 
 : "${DATABASE_URL:?DATABASE_URL must name a migrated Postgres this run may write to}"
 if [ -f "$WEB_DIR/.env.local" ]; then
-	echo "mock-model-e2e: $WEB_DIR/.env.local exists and svelte.config.js loads it with override; run from a clean checkout" >&2
+	echo "mock-model-e2e: $WEB_DIR/.env.local exists and sveltekit.config.js loads it with override; run from a clean checkout" >&2
 	exit 1
 fi
 mkdir -p "$LOG_DIR"

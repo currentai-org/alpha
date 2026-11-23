@@ -46,7 +46,7 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 		// AGENT_SERVICE_URL unset is the same class of loud misconfiguration agentModeEnabled() and the
 		// agent-artifact route guard — log it, don't leak internal config state to the response.
 		logger.warn("[agent-confirm] AGENT_SERVICE_URL is unset; no agent-service to deliver the answer to");
-		error(404, { message: "The agent service isn't reachable right now.", reason: "service_unreachable" });
+		error(404, "The agent service isn't reachable right now.", { reason: "service_unreachable" });
 	}
 
 	const token = agentServiceToken();
@@ -69,12 +69,12 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 		});
 	} catch (err) {
 		logger.warn({ err }, "[agent-confirm] /confirm submission failed before a response arrived");
-		error(502, { message: "The agent service is unreachable right now.", reason: "service_unreachable" });
+		error(502, "The agent service is unreachable right now.", { reason: "service_unreachable" });
 	}
 
-	if (upstream.status === 404) error(404, { message: "No such agent task.", reason: "not_found" });
+	if (upstream.status === 404) error(404, "No such agent task.", { reason: "not_found" });
 	if (upstream.status === 403) {
-		error(403, { message: "This confirmation doesn't belong to you.", reason: "not_yours" });
+		error(403, "This confirmation doesn't belong to you.", { reason: "not_yours" });
 	}
 	if (upstream.status === 409) {
 		// Already resolved — another click, or agent-service's own timeout beat this one there. Not an
@@ -83,7 +83,7 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
 		return json({ ok: false, reason: "already_resolved" }, { status: 409 });
 	}
 	if (!upstream.ok) {
-		error(502, { message: "The agent service rejected the confirmation.", reason: "upstream_error" });
+		error(502, "The agent service rejected the confirmation.", { reason: "upstream_error" });
 	}
 
 	return json({ ok: true });

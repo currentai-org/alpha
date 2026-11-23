@@ -48,7 +48,7 @@ async function promptResponse(conv: Conversation, messageId: string, locals: App
 	const messagesUpTo = buildSubtree(conv, messageId);
 	// A message still sealed here was never opened, so a prompt built from it would be missing its words.
 	if (messagesUpTo.some((m) => m.sealed)) {
-		error(409, { message: "Part of this chat is sealed and was not opened, so its prompt can't be rebuilt.", reason: SEALED_PROMPT_REASON });
+		error(409, "Part of this chat is sealed and was not opened, so its prompt can't be rebuilt.", { reason: SEALED_PROMPT_REASON });
 	}
 
 	const prompt = await buildPrompt({
@@ -84,10 +84,7 @@ async function promptResponse(conv: Conversation, messageId: string, locals: App
 export async function GET({ params, locals }) {
 	const conv = await loadConversation(params, locals);
 	if (hasSealedFields(conv)) {
-		error(409, {
-			message: "This chat is sealed with your history key. Its prompt is rebuilt from what your browser opens.",
-			reason: SEALED_PROMPT_REASON,
-		});
+		error(409, "This chat is sealed with your history key. Its prompt is rebuilt from what your browser opens.", { reason: SEALED_PROMPT_REASON });
 	}
 	return promptResponse(conv, params.messageId, locals);
 }

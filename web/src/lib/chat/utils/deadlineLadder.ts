@@ -39,7 +39,7 @@
  * The serverless platform kill. There is deliberately no per-route `export const config` anywhere:
  * one changes the adapter's function layout and can drop routes from the catchall manifest
  * (scripts/verify-route-configs.mjs guards it). `vercel.json` has no `functions` block and
- * `svelte.config.js` sets no global `maxDuration`, so every route inherits the Vercel project
+ * `sveltekit.config.js` sets no global `maxDuration`, so every route inherits the Vercel project
  * default of 300s, the mark at which a hung route is killed.
  *
  * Single source of truth on purpose: restating this number elsewhere lets the copies drift.

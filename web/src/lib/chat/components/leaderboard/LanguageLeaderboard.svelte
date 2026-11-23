@@ -71,7 +71,7 @@
 		]
 			.map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
 			.join('&');
-		void goto(`?${q}`, { replaceState: true, noScroll: true, keepFocus: true });
+		void goto(`?${q}`, { replace: true, reset: false });
 	}
 
 	const contributeHref = $derived(

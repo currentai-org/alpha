@@ -2,7 +2,7 @@
 	import { base } from '$lib/chat/paths';
 	import { accountInitials } from '$lib/chat/accountInitials';
 	import { page } from '$app/state';
-	import { dev } from '$app/environment';
+	import { dev } from '$app/env';
 	import { goto, invalidate } from '$app/navigation';
 	import { m } from '$lib/paraglide/messages.js';
 	import { localeName, locales, type Locale } from '$lib/i18n/locales';

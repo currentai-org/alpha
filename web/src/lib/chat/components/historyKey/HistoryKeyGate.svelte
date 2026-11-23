@@ -5,7 +5,7 @@
   imported only once layout data says the flag is on here.
 -->
 <script lang="ts">
-	import { browser } from '$app/environment';
+	import { browser } from '$app/env';
 	import { page } from '$app/state';
 
 	const enabled = $derived(browser && page.data.historyKeyEnabled === true);

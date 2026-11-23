@@ -44,6 +44,7 @@ declare global {
 		}
 
 		interface Error {
+			status: number;
 			message: string;
 			errorId?: ReturnType<typeof crypto.randomUUID>;
 			/** Stable machine-readable cause code, set by routes whose client needs to tell error

@@ -23,7 +23,7 @@ import { env } from "$env/dynamic/private";
 import { gitSha } from "$lib/server/runtimeEnv";
 import { getDb } from "$lib/chat/server/db/client";
 import { configKv } from "$lib/chat/server/db/schema";
-import { MANIFEST_KEY, type JourneyManifest } from "$lib/chat/server/journeyGallery";
+import { MANIFEST_KEY, type JourneyManifest } from "$lib/chat/shared/journeyGallery";
 import { isAdminPermitted } from "$lib/chat/server/adminAuth";
 
 export const GET: RequestHandler = async ({ cookies, locals }) => {

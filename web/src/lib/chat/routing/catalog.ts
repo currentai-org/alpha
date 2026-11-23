@@ -1,5 +1,5 @@
 import { modelIdServedAs } from '../../../../config/picker';
-import { HF_PROVIDER_PIN } from '../server/hfProviderPin';
+import { HF_PROVIDER_PIN } from '../shared/hfProviderPin';
 /**
  * Who makes each model Alpha can route to, and who runs it — the facts behind the model picker and
  * the provenance panel. Plain data, safe on client and server.

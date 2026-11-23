@@ -64,7 +64,7 @@ anyway, logs what is missing, and leaves `/chat` degraded (`web/src/hooks.server
 `POSTGRES_URL` when it connects, but the boot check does not accept `POSTGRES_URL` in its place.
 
 The content management system is not in this snapshot, and no code here fetches from
-`PUBLIC_CMS_PAYLOAD_URL`. `web/svelte.config.js` only adds its origin to the content security policy, so
+`PUBLIC_CMS_PAYLOAD_URL`. `web/sveltekit.config.js` only adds its origin to the content security policy, so
 any URL satisfies the check.
 
 Sign-in needs one more: `BETTER_AUTH_SECRET`, 32 or more random bytes. Without it Better Auth uses its
@@ -270,7 +270,7 @@ make test
 
 ### Build it
 
-`web/svelte.config.js` picks the SvelteKit adapter from `ADAPTER`: `vercel` (the default), `node` or
+`web/sveltekit.config.js` picks the SvelteKit adapter from `ADAPTER`: `vercel` (the default), `node` or
 `static`. To build for a plain Node host:
 
 ```sh
@@ -344,7 +344,7 @@ derived files stay under Apache-2.0 (`web/LICENSE.chat-ui`). The Hermes patches 
 `agent-service/deploy/hermes/` stay under Hermes's MIT licence. The human-evaluation rubric is adapted from the
 [Multilingual AI Safety Evaluation Lab by Roya Pakzad](https://github.com/royapakzad/ai-safety-evaluation-lab)
 and keeps its MIT licence with attribution
-(`web/src/lib/chat/server/data/eval/LICENSE.multilingual-ai-safety-lab`). `THIRD_PARTY_NOTICES.md` lists every
+(`web/src/lib/chat/shared/data/eval/LICENSE.multilingual-ai-safety-lab`). `THIRD_PARTY_NOTICES.md` lists every
 third-party piece with its source, licence and location.
 
 Other organisations' names and logos, such as the model makers' marks in `web/static/logos/`, belong to

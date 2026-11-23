@@ -13,7 +13,7 @@ Modified by Current AI from huggingface/chat-ui.
 -->
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
-	import { browser } from '$app/environment';
+	import { browser } from '$app/env';
 	import { Dialog } from '@aipotluck/alpha-ds';
 	import { tap } from '$lib/chat/utils/haptics';
 

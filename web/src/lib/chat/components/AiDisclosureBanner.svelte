@@ -13,7 +13,7 @@
 	//
 	// Not yet localized into the person's language, like WelcomeModal; that remainder is tracked on
 	//.
-	import { browser } from '$app/environment';
+	import { browser } from '$app/env';
 	import RiRobot from '~icons/ri/robot-line';
 	import RiCloseLine from '~icons/ri/close-line';
 

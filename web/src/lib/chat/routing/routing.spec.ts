@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MODEL_HOSTS, catalog, catalogByGatewayId, orgs } from './catalog';
-import { HF_PROVIDER_PIN } from '../server/hfProviderPin';
+import { HF_PROVIDER_PIN } from '../shared/hfProviderPin';
 import { detectLanguage, detectSkills, estimateDifficulty, heuristicClassify } from './heuristic';
 import type { DraftAnalysis, Difficulty } from './classifier';
 import { languageName, parentLanguage } from './languages';

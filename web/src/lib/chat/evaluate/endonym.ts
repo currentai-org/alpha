@@ -1,4 +1,4 @@
-import languagesFile from '$lib/chat/server/data/eval/languages.json';
+import languagesFile from '$lib/chat/shared/data/eval/languages.json';
 
 /**
  * A language's name in its own language and script ("français", "العربية", "اردو"), for the

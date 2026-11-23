@@ -40,5 +40,5 @@ export const GET: RequestHandler = async ({ locals, cookies, url }) => {
 		sameSite: "lax",
 		maxAge: CONNECT_TTL_SECONDS,
 	});
-	redirect(303, authorizeUrl(app, state, challenge));
+	redirect(303, authorizeUrl(app, state, challenge), { external: true });
 };

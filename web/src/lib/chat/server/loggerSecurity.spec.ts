@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 const cfg: Record<string, string | undefined> = {};
 const written: Record<string, Record<string, unknown>[]> = {};
 
-vi.mock("$app/environment", () => ({ dev: false }));
+vi.mock("$app/env", () => ({ dev: false }));
 vi.mock("$lib/chat/server/config", () => ({ config: new Proxy({}, { get: (_t, k: string) => cfg[k] }) }));
 vi.mock("$lib/chat/server/axiomStream", () => ({
 	createAxiomStream: ({ dataset }: { dataset: string }) => ({

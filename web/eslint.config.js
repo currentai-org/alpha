@@ -197,7 +197,7 @@ export default defineConfig(
 		// Host-neutral plan, sub-issue 1: the deployment's identity (VERCEL_ENV, VERCEL_GIT_COMMIT_REF,
 		// VERCEL_URL, ...) is read only in src/lib/server/runtimeEnv.js. eslint-rules/no-host-env-read.js
 		// says why and what it leaves out; eslint.scripts.config.js applies the same entries to scripts/.
-		files: ['src/**/*.{ts,js,svelte}', 'svelte.config.js', 'vite.config.ts'],
+		files: ['src/**/*.{ts,js,svelte}', 'sveltekit.config.js', 'vite.config.ts'],
 		ignores: [RUNTIME_ENV_MODULE, '**/*.spec.ts', '**/*.test.ts', '**/*.svelte.test.ts'],
 		rules: {
 			'no-restricted-syntax': ['error', ...noHostEnvRead]

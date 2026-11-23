@@ -6,7 +6,7 @@ import { ROLE_MODELS, roleModelSetting } from "../../../../config/inference";
 const env = vi.hoisted(() => ({ server: {} as Record<string, string> }));
 vi.mock("$env/dynamic/public", () => ({ env: {} }));
 vi.mock("$env/dynamic/private", () => ({ env: env.server }));
-vi.mock("$app/environment", () => ({ building: false }));
+vi.mock("$app/env", () => ({ building: false }));
 
 async function configWith(vars: Record<string, string>) {
 	for (const k of Object.keys(env.server)) delete env.server[k];

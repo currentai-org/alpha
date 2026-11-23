@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2018- The Hugging Face team
 // SPDX-License-Identifier: Apache-2.0
 // Modified by Current AI from huggingface/chat-ui.
-import { building } from "$app/environment";
+import { building } from "$app/env";
 import { APP_SURFACE } from "$lib/surface";
 import { config } from "$lib/chat/server/config";
 import { mistralChatLane, ticketBranchAllowlist } from "$lib/chat/server/mistralKey";

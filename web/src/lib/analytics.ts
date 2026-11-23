@@ -1,5 +1,5 @@
 import posthog from 'posthog-js';
-import { browser } from '$app/environment';
+import { browser } from '$app/env';
 import { isChatRoute } from '$lib/surface';
 import { DEPLOYMENT } from '$lib/deployment';
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { viewportNote } from "../journeyGallery";
+import { viewportNote } from "../../shared/journeyGallery";
 
 // Mobile recording is off by default
 // (playwright.config.ts gates the project on JOURNEY_MOBILE_VIEWPORT), so the page shows no mobile

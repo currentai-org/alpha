@@ -20,7 +20,7 @@
  * account-cumulative total.
  */
 
-import { browser } from "$app/environment";
+import { browser } from "$app/env";
 import { getContext, setContext } from "svelte";
 import { estimateTokensFromText } from "$lib/chat/utils/energyEstimate";
 import type { MessageFootprintUpdate } from "$lib/chat/types/MessageUpdate";

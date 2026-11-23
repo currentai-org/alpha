@@ -25,14 +25,13 @@ is Current AI's.
 | Markdown block splitter | [vercel/streamdown](https://github.com/vercel/streamdown) `parse-blocks.tsx`, Copyright 2023 Vercel, Inc. | Apache-2.0 | `web/src/lib/chat/utils/parseBlocks.ts` (upstream header kept) |
 | Tool-run summary table | [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) `summarizeToolRun`, Copyright (c) 2025 Nous Research | MIT (text below) | `web/src/lib/chat/utils/trace/toolRunSummary.ts` |
 | ACP edit-approval patch | hermes-agent, Copyright (c) 2025 Nous Research | MIT (text below) | `agent-service/deploy/hermes/0002-acp-confirm-execute.patch` |
-| SvelteKit status patch | [sveltejs/kit](https://github.com/sveltejs/kit) 2.70.4 | MIT | `web/patches/@sveltejs__kit@2.70.4.patch` |
 | Guest-library list for the code sandbox | e2b-dev/code-interpreter `template/requirements.txt` | Apache-2.0 | `agent-service/deploy/e2b-template/guest-libraries.txt` (a list of package names) |
 
 ## Prompt and evaluation text taken from elsewhere
 
 | What | Source | Licence | Where |
 | --- | --- | --- | --- |
-| Answer-rating rubric and its questions, adapted from the Multilingual AI Safety Evaluation Lab | Roya Pakzad (Taraaz), built during a Mozilla Foundation fellowship. The credit is shown to raters on the page. | MIT with an attribution clause, Copyright (c) 2025 Roya Pakzad and contributors; full text in `web/src/lib/chat/server/data/eval/LICENSE.multilingual-ai-safety-lab` | `web/src/lib/chat/server/data/eval/rubric-r1.json`, `web/src/lib/chat/server/humanEval/`, `web/src/lib/chat/evaluate/fixtures.ts` |
+| Answer-rating rubric and its questions, adapted from the Multilingual AI Safety Evaluation Lab | Roya Pakzad (Taraaz), built during a Mozilla Foundation fellowship. The credit is shown to raters on the page. | MIT with an attribution clause, Copyright (c) 2025 Roya Pakzad and contributors; full text in `web/src/lib/chat/shared/data/eval/LICENSE.multilingual-ai-safety-lab` | `web/src/lib/chat/shared/data/eval/rubric-r1.json`, `web/src/lib/chat/server/humanEval/`, `web/src/lib/chat/evaluate/fixtures.ts` |
 
 ## Fonts
 
@@ -75,8 +74,7 @@ repository.
 Installed from the lockfile, not shipped as source. A licence scan of the `web/` workspace
 (`pnpm licenses list`) found MIT (1,069), Apache-2.0 (97), ISC (43), BSD (45), OFL-1.1 (6),
 MPL-2.0 (7), BlueOak-1.0.0 (9) and a handful of others. No GPL or AGPL package is required. Each package
-below is fetched from its registry at install time. None is copied into this tree, and none is patched (the
-one patch in `web/patches/` is to `@sveltejs/kit`, which is MIT). Anyone who redistributes a build, a
+below is fetched from its registry at install time. None is copied into this tree, and none is patched. Anyone who redistributes a build, a
 container image or a modified copy should check these terms for themselves:
 
 - LGPL-3.0: `@img/sharp-libvips-linux-x64` 1.3.4, a prebuilt library that `sharp` loads at run time, and

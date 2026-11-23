@@ -14,7 +14,7 @@
 // so a call site that reads `process.env.VERCEL_X` sees the same value. Of the neutral names, only
 // DEPLOY_ENV is set on Vercel, to the value VERCEL_ENV carries.
 //
-// Plain JS with no imports, so svelte.config.js, vite.config.ts, config/inference.ts and the .mjs
+// Plain JS with no imports, so sveltekit.config.js, vite.config.ts, config/inference.ts and the .mjs
 // scripts can import it as well as server code. It does not validate: `deployEnv()` in
 // $lib/chat/server/deployEnv is the checked reading of the environment name, built on deployEnvName().
 //

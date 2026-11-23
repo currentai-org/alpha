@@ -340,7 +340,7 @@ describe("POST /conversation/[id] — pre-stream overlap", () => {
 	// e2e-moved: scenarios/edit-refused.spec.ts › an edit refused by the server's own message limit holds the edit box Send for the wait the server sent
 	it("a message-limit refusal streams Status=Error 429 carrying the server's wait, and runs no model", async () => {
 		vi.mocked(enforceRequestRateLimits).mockImplementationOnce(async () => {
-			error(429, { message: "You've sent a lot of messages. Try again shortly.", retryAfterSeconds: 30 });
+			error(429, "You've sent a lot of messages. Try again shortly.", { retryAfterSeconds: 30 });
 		});
 
 		const res = await makePost({ [PRESTREAM_EVENTS_HEADER]: "1" });

@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { convertChat, epochToMs, flattenContent } from "../convert";
 import { readOpenWebUiSqlite, type SourceChat } from "../readSqlite";
-import { KNOWN_REVISIONS, UnsupportedSourceError } from "../sourceSchema";
+import { KNOWN_REVISIONS, UnsupportedSourceError } from "../../../shared/openWebUiImport/sourceSchema";
 import { formatReport, reportParity, userParity } from "../report";
 import { buildFixture, FIXTURE_REVISION } from "./owuiFixture";
 

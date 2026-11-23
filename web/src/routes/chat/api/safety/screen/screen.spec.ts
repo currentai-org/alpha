@@ -73,7 +73,7 @@ vi.mock("$lib/chat/server/logger", () => ({
 	logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }));
 
-vi.mock("$app/environment", () => ({ dev: false, building: false }));
+vi.mock("$app/env", () => ({ dev: false, building: false }));
 
 // The detector itself: real toHits, stubbed runGuardScreen (offline, controllable verdict).
 vi.mock("$lib/chat/server/guardGate", async (orig) => {

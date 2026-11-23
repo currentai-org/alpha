@@ -1,4 +1,4 @@
-// The origin a CSP source list may name for a configured URL, shared by svelte.config.js. A URL that
+// The origin a CSP source list may name for a configured URL, shared by sveltekit.config.js. A URL that
 // is unset, blank, unparsable or not http(s) yields nothing, so the directive leaves it out rather
 // than carrying a broken source: `new URL("cms.example.org")` throws, and an opaque URL such as
 // `foo:bar` parses with the origin "null", which a browser reads as a host named null.

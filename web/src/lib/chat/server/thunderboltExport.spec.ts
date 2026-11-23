@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ExportedConversation } from "./exportFormat";
+import type { ExportedConversation } from "../shared/exportFormat";
 import { fromThunderbolt, toThunderbolt, uuidv7At, uuidv7Time } from "./thunderboltExport";
 
 const USER = { id: "u1", email: "walker@example.org" };

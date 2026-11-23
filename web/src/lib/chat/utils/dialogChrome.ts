@@ -1,5 +1,5 @@
 import { onDestroy, onMount } from "svelte";
-import { browser } from "$app/environment";
+import { browser } from "$app/env";
 import { tap } from "$lib/chat/utils/haptics";
 
 interface DialogChromeOptions {

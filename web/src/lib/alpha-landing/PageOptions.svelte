@@ -5,7 +5,7 @@
   the product; choosing a look writes `?look=<id>`, so both survive a reload and can be shared.
 -->
 <script lang="ts">
-	import { dev } from '$app/environment';
+	import { dev } from '$app/env';
 	import { goto } from '$app/navigation';
 	import { Menu } from '@aipotluck/alpha-ds';
 	import { setInterfaceLocale } from '$lib/i18n/client.svelte';
@@ -23,8 +23,8 @@
 		const url = new URL(location.href);
 		url.searchParams.set(LOOK_PARAM, id);
 		// A query-only change on this page; reroute owns the localized path.
-		// eslint-disable-next-line svelte/no-navigation-without-resolve
-		void goto(url, { noScroll: true, replaceState: true, keepFocus: true });
+
+		void goto(url, { replace: true, reset: false });
 	}
 </script>
 

@@ -14,7 +14,7 @@ import { DatabaseSync } from "node:sqlite";
 import postgres from "postgres";
 import { readOpenWebUiPostgres, normalizePostgresUrl } from "../readPostgres";
 import { readOpenWebUiSqlite } from "../readSqlite";
-import { UnsupportedSourceError } from "../sourceSchema";
+import { UnsupportedSourceError } from "../../../shared/openWebUiImport/sourceSchema";
 import { buildFixture, PG_COLUMN_TYPES as PG_TYPES } from "./owuiFixture";
 
 const url = process.env.DATABASE_URL!;

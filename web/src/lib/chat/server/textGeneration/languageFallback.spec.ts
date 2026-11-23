@@ -4,7 +4,7 @@ import {
 	lowResourceFallbackMessage,
 	lowResourceNoticeAlreadyShown,
 	withLowResourceNoticeSummarized,
-} from "./languageFallback";
+} from "../../shared/languageFallback";
 
 describe("detectLowResourceLanguage", () => {
 	// Real excerpts from the actual UDHR translations this table is sourced from (see the module

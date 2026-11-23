@@ -1,11 +1,18 @@
 // SPDX-FileCopyrightText: 2018- The Hugging Face team
 // SPDX-License-Identifier: Apache-2.0
 // Modified by Current AI from huggingface/chat-ui.
-import type { HandleServerError } from "@sveltejs/kit";
+import type { RequestEvent } from "@sveltejs/kit";
 import { logger } from "$lib/chat/server/logger";
 import { captureServerException } from "$lib/chat/server/errorTracking";
 
-type HandleServerErrorInput = Parameters<HandleServerError>[0];
+// The caught error with its status and message beside it, which src/hooks.server.ts builds from the
+// `{ kind, error }` SvelteKit 3 passes to handleError.
+type HandleServerErrorInput = {
+	error: unknown;
+	event: RequestEvent;
+	status: number;
+	message: string;
+};
 
 export async function handleServerError({
 	error,
@@ -16,6 +23,7 @@ export async function handleServerError({
 	// handle 404
 	if (event.route.id === null) {
 		return {
+			status: 404,
 			message: `Page ${event.url.pathname} not found`,
 		};
 	}
@@ -56,6 +64,7 @@ export async function handleServerError({
 	});
 
 	return {
+		status,
 		message: "An error occurred",
 		errorId,
 	};

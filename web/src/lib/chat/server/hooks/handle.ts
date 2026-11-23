@@ -1,12 +1,13 @@
 // SPDX-FileCopyrightText: 2018- The Hugging Face team
 // SPDX-License-Identifier: Apache-2.0
 // Modified by Current AI from huggingface/chat-ui.
-import type { Handle, RequestEvent } from "@sveltejs/kit";
+import type { RequestEvent } from "@sveltejs/kit";
+import type { Handle } from "@sveltejs/kit/hooks";
 import { error } from "@sveltejs/kit";
 import { collections } from "$lib/chat/server/database";
 import { base } from "$lib/chat/paths";
 import { CHAT_ROUTE_ROOT, chatRoutePath } from "$lib/surface";
-import { dev } from "$app/environment";
+import { dev } from "$app/env";
 import {
 	authenticateRequest,
 	loginEnabled,
@@ -396,7 +397,7 @@ export async function handleRequest({ event, resolve }: HandleInput): Promise<Re
 			}
 
 			// CSP frame-ancestors (huggingface.co + Payload's Live Preview) is set once, for every
-			// route, via svelte.config.js's kit.csp — SvelteKit's own resolve() above already
+			// route, via sveltekit.config.js's kit.csp — SvelteKit's own resolve() above already
 			// applies it, so it doesn't need to be duplicated here.
 
 			if (

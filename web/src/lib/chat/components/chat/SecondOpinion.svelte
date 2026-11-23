@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { page } from "$app/stores";
+	import { page } from "$app/state";
 	import { base } from "$lib/chat/paths";
 	import { elapsedSeconds } from "$lib/chat/utils/elapsed.svelte";
 	import CarbonRenew from "~icons/carbon/renew";
@@ -150,7 +150,7 @@
 			// the main site and return non-JSON ("unavailable"). Locally base="" hides this.
 			const ac = new AbortController();
 			controller = ac;
-			const conversationId = $page.params.id;
+			const conversationId = page.params.id;
 			// A sealed chat is read from what this tab opens of it; the server cannot open it.
 			// Loaded on click, so the API client stays out of this component's import graph.
 			const sealed = conversationId

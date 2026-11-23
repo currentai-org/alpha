@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseRange } from "../journeyGallery";
+import { parseRange } from "../../shared/journeyGallery";
 
 // The video route must answer Range requests, or Chrome cannot seek and every
 // tile previews a blank first frame. These pin the

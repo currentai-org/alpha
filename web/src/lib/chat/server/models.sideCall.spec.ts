@@ -5,7 +5,7 @@
  * routing would log "plan model is not registered" and plan nothing, and titles would fall back to the
  * default chat model.
  *
- * Idioms mirror models.boot.spec.ts: `config` is a Proxy over a mutable object, `$app/environment`
+ * Idioms mirror models.boot.spec.ts: `config` is a Proxy over a mutable object, `$app/env`
  * says `building: true` so the module-eval boot is skipped, and each test drives bootModels against
  * a stubbed live catalog.
  */
@@ -41,7 +41,7 @@ vi.mock("$lib/chat/server/config", () => {
 	return { config, ready: Promise.resolve() };
 });
 
-vi.mock("$app/environment", () => ({ building: true, dev: false, browser: false, version: "test" }));
+vi.mock("$app/env", () => ({ building: true, dev: false, browser: false, version: "test" }));
 
 // No committed snapshot, so bootModels() takes the live catalog path.
 vi.mock("$lib/chat/server/data/models-snapshot.json", () => ({

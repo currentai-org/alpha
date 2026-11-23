@@ -9,5 +9,5 @@ import { deployEnvName } from "$lib/server/runtimeEnv";
 export const load: PageServerLoad = () => {
 	const href = sitePageHref("/privacy-notice", deployEnvName());
 	if (!href) error(404, "Not found");
-	redirect(301, href);
+	redirect(301, href, { external: true });
 };

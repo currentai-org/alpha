@@ -17,7 +17,7 @@
   again after "Not now" closed it.
 -->
 <script lang="ts">
-	import { browser } from '$app/environment';
+	import { browser } from '$app/env';
 	import { invalidate } from '$app/navigation';
 	import { page } from '$app/state';
 	import { UrlDependency } from '$lib/chat/types/UrlDependency';

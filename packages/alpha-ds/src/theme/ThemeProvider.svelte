@@ -15,7 +15,7 @@
 	import { untrack } from 'svelte';
 	import type { Snippet } from 'svelte';
 	import type { HTMLAttributes } from 'svelte/elements';
-	import { browser } from '$app/environment';
+	import { browser } from '$app/env';
 	import { Tooltip } from 'bits-ui';
 	import { cn } from '../internal/cn.ts';
 	import type { SurfaceLevel } from '../internal/types.ts';

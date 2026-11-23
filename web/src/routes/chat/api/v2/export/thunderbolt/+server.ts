@@ -1,7 +1,7 @@
 import { error, type RequestHandler } from "@sveltejs/kit";
 import { requireExportUser, thunderboltExportEnabled } from "$lib/chat/server/dataPortability";
 import { fileExportResponse } from "$lib/chat/server/fileExport";
-import { exportedConversation } from "$lib/chat/server/exportFormat";
+import { exportedConversation } from "$lib/chat/shared/exportFormat";
 import { toThunderbolt } from "$lib/chat/server/thunderboltExport";
 
 // The same conversations as the ZIP's conversations.json, written as a file Thunderbird's Thunderbolt

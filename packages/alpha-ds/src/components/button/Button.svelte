@@ -6,7 +6,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import type { HTMLAnchorAttributes, HTMLButtonAttributes } from 'svelte/elements';
-	import { dev } from '$app/environment';
+	import { dev } from '$app/env';
 	import { cn } from '../../internal/cn.ts';
 	import { buttonRecipe, isIconSize, type ButtonVariants } from './button.recipe.ts';
 

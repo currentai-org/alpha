@@ -7,7 +7,7 @@
  *   - the last language gap Alpha noticed, and the gaps the person has dismissed.
  */
 import { derived, get, writable, type Writable } from 'svelte/store';
-import { browser } from '$app/environment';
+import { browser } from '$app/env';
 import { SHIPPED_BENCHMARKS, parseBenchmarkTable, type BenchmarkTable } from './benchmarks';
 import { DEFAULT_ROUTING, type LanguageGap, type RoutingConfig } from './router';
 import type { DraftAnalysis } from './classifier';

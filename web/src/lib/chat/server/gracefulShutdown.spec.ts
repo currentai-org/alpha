@@ -6,7 +6,7 @@
 // it cannot exit by its event loop running dry: only gracefulShutdown's exit ends it.
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { spawn, type ChildProcess } from "node:child_process";
-import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -14,18 +14,19 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
-const adapterFiles = join(dirname(require.resolve("@sveltejs/adapter-node/package.json")), "files");
+const adapterFiles = join(dirname(require.resolve("@sveltejs/adapter-node/package.json")), "src");
 
 let dir: string;
 
 beforeAll(async () => {
 	dir = await mkdtemp(join(tmpdir(), "graceful-shutdown-"));
-	for (const f of ["index.js", "utils.js", "chunks"]) {
-		await cp(join(adapterFiles, f), join(dir, f), { recursive: true });
+	for (const f of ["index.js", "utils.js", "env.js"]) {
+		await cp(join(adapterFiles, f), join(dir, f));
 	}
-	// env.js reads a build-time ENV_PREFIX global; the adapter's build replaces it with a string.
-	const env = await readFile(join(adapterFiles, "env.js"), "utf8");
-	await writeFile(join(dir, "env.js"), env.replace("const env_prefix = ENV_PREFIX;", 'const env_prefix = "";'));
+	// env.js imports the build-time ENV_PREFIX through a package `imports` entry that the adapter's
+	// build writes; stand in for it with the empty prefix.
+	await writeFile(join(dir, "package.json"), JSON.stringify({ type: "module", imports: { "#@sveltejs/adapter-node": "./env-prefix.js" } }));
+	await writeFile(join(dir, "env-prefix.js"), 'export const env_prefix = "";\n');
 
 	const bg = pathToFileURL(join(here, "vercelBackground.ts")).href;
 	const gs = pathToFileURL(join(here, "gracefulShutdown.ts")).href;

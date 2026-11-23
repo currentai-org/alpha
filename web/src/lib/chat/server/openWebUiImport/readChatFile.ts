@@ -3,7 +3,7 @@
  * Kept apart from the writer so the export route does not pull the importer's readers in.
  */
 import { createHash } from "node:crypto";
-import { assertKnownRevision, CHAT_FILE_REVISION, UnsupportedSourceError } from "./sourceSchema";
+import { assertKnownRevision, CHAT_FILE_REVISION, UnsupportedSourceError } from "../../shared/openWebUiImport/sourceSchema";
 import { tagIds, type SourceChat, type SourceData, type SourceUser } from "./sourceRows";
 
 /** The id the reader files every chat under: a chat file belongs to whoever exported it, and names nobody. */

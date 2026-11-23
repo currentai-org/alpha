@@ -294,7 +294,7 @@ async function questionAttachments(
 // routes from the catchall manifest. The Vercel project default of 300s is ample against this route's
 // ~50s worst case (30s settle-deadline panel + 20s aggregator, see the deadline constants above), and
 // a `maxDuration` below it would only lower the ceiling. If a non-default timeout is ever genuinely
-// needed, set it adapter-globally in svelte.config.js, never here.
+// needed, set it adapter-globally in sveltekit.config.js, never here.
 
 
 export const POST: RequestHandler = async ({ request, locals, getClientAddress }) => {

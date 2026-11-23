@@ -10,7 +10,7 @@
 	import { SHARE_TAGLINE, SHARE_TEXT, SHARE_IMAGE } from '$lib/chat/constants/share';
 	import { APP_NAME } from '$lib/chat/constants/app';
 	import { initAnalytics, trackEvent, markInternalIfNeeded } from '$lib/analytics';
-	import { browser } from '$app/environment';
+	import { browser } from '$app/env';
 
 	import { ERROR_MESSAGES, error, errorHeld, isRateLimitMessage } from '$lib/chat/stores/errors';
 	import { createSettingsStore } from '$lib/chat/stores/settings';

@@ -10,7 +10,7 @@ import {
 	readableName,
 	readme,
 	validateExportFile,
-} from "./exportFormat";
+} from "../shared/exportFormat";
 
 const APERTUS = "swiss-ai/apertus-v1.5-70b";
 

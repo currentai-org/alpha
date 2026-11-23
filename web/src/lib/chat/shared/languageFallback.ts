@@ -54,7 +54,7 @@
  */
 
 import { chromeLanguage } from "$lib/chat/chromeCopy";
-import languageProfiles from "$lib/chat/server/data/language-profiles.json";
+import languageProfiles from "$lib/chat/shared/data/language-profiles.json";
 import { trigrams } from "./trigrams";
 
 // Apostrophe-like marks vary by source transcription (U+02BC MODIFIER LETTER APOSTROPHE in the Yucatec

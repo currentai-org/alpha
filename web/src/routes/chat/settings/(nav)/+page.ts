@@ -1,5 +1,5 @@
 import { redirect } from "@sveltejs/kit";
-import { browser } from "$app/environment";
+import { browser } from "$app/env";
 import { base } from "$lib/chat/paths";
 import type { PageLoad } from "./$types";
 

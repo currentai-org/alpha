@@ -20,7 +20,7 @@ vi.mock("$lib/chat/server/logger", () => ({
 }));
 
 const env = { dev: false };
-vi.mock("$app/environment", () => ({
+vi.mock("$app/env", () => ({
 	get dev() {
 		return env.dev;
 	},

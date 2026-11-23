@@ -5,7 +5,7 @@ import type { env as publicEnv } from "$env/dynamic/public";
 import { page } from "$app/state";
 import { staticAssetPath } from "$lib/chat/paths";
 
-import type { Transporter } from "@sveltejs/kit";
+import type { Transporter } from "@sveltejs/kit/hooks";
 import { getContext } from "svelte";
 
 type PublicConfigKey = keyof typeof publicEnv;

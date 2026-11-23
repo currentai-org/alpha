@@ -28,7 +28,7 @@
 		viewportNote,
 		type JourneyCard,
 		type JourneyState,
-	} from "$lib/chat/server/journeyGallery";
+	} from "$lib/chat/shared/journeyGallery";
 	import type { PageData } from "./$types";
 	import StaffSignIn from "$lib/chat/components/StaffSignIn.svelte";
 

@@ -29,7 +29,7 @@
  * replacement re-applies it where that title is still the one shown.
  */
 
-import { browser } from "$app/environment";
+import { browser } from "$app/env";
 import { getContext, setContext } from "svelte";
 import type { ConvSidebar } from "$lib/chat/types/ConvSidebar";
 import type { TitleSource } from "$lib/chat/types/MessageUpdate";

@@ -42,7 +42,7 @@ import { logger, securityLogger } from "$lib/chat/server/logger";
 import { hashIp } from "$lib/chat/server/db/ipHash";
 import { hmacSha256, timingSafeEqual } from "$lib/chat/server/crypto";
 import { getRequestEvent } from "$app/server";
-import { dev } from "$app/environment";
+import { dev } from "$app/env";
 import { deployEnv, isTestDeployment, type DeployEnv } from "$lib/chat/server/deployEnv";
 import { mockOidcProvider } from "$lib/chat/server/mockOidc";
 import { ORG_OIDC_ENV_KEYS, orgOidcProvider } from "$lib/chat/server/orgOidc";

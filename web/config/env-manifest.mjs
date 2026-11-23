@@ -112,7 +112,7 @@ export const ENV_MANIFEST = {
 		desc: "Model that writes the second-opinion verdict. Off a Vercel deployment only; on Vercel, config/inference.ts decides.",
 	},
 	ALLOW_IFRAME: {
-		desc: "\"true\" allows the app to be embedded in an iframe on other sites. Read at build time by svelte.config.js.",
+		desc: "\"true\" allows the app to be embedded in an iframe on other sites. Read at build time by sveltekit.config.js.",
 	},
 	ALLOW_INSECURE_COOKIES: {
 		desc: "\"true\" sends session cookies without the Secure attribute. For local HTTP only.",
@@ -400,7 +400,7 @@ export const ENV_MANIFEST = {
 		desc: "The git branch this deployment was built from (runtimeEnv.js gitRef()). Unset on Vercel, which supplies VERCEL_GIT_COMMIT_REF instead and that is the fallback. Decides the Mistral key lane, the passkey RP ID on develop, the per-PR preview checks and the replay scope, so a host that serves previews must set it.",
 	},
 	GIT_SHA: {
-		desc: "The commit this deployment was built from (runtimeEnv.js gitSha()). Unset on Vercel, which supplies VERCEL_GIT_COMMIT_SHA instead and that is the fallback. Read at build time for PUBLIC_COMMIT_SHA (svelte.config.js, which then asks git) and the PostHog source-map release, and at runtime for log lines and the journeys page.",
+		desc: "The commit this deployment was built from (runtimeEnv.js gitSha()). Unset on Vercel, which supplies VERCEL_GIT_COMMIT_SHA instead and that is the fallback. Read at build time for PUBLIC_COMMIT_SHA (sveltekit.config.js, which then asks git) and the PostHog source-map release, and at runtime for log lines and the journeys page.",
 	},
 	DEPLOYMENT_URL: {
 		desc: "This deployment's own hostname, no scheme (runtimeEnv.js deploymentUrl()). Unset on Vercel, which supplies VERCEL_URL instead and that is the fallback. A per-PR preview's passkey RP ID is this host.",

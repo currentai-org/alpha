@@ -5,7 +5,7 @@ import { get } from "svelte/store";
 // GATE of the same base name (server/agentMode.ts, agentModeEnabled/agentModeEnabledForUser). Easy to
 // open the wrong file; they test unrelated things.
 
-vi.mock("$app/environment", () => ({ building: false, dev: false, browser: true, version: "test" }));
+vi.mock("$app/env", () => ({ building: false, dev: false, browser: true, version: "test" }));
 
 const KEY = "ap:agentMode";
 

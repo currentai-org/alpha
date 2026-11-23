@@ -27,7 +27,7 @@ import { IMPORT_ORIGIN } from "../convert";
 import { formatReport, reportParity, type ImportReport } from "../report";
 import { importedPath, sidecarPath, type FileDeps } from "../files";
 import { addChat, attachment, buildFixture, FIXTURE_FILES, NEW_CHAT } from "./owuiFixture";
-import { toOpenWebUiChat } from "../chatFile";
+import { toOpenWebUiChat } from "../../../shared/openWebUiImport/chatFile";
 import { readOpenWebUiChatFile } from "../readChatFile";
 import { branchedConversation, treeShape } from "./alphaFixture";
 import { generateHybridIdentity, identityToRecipient } from "age-encryption";

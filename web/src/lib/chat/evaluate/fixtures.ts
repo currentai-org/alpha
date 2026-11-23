@@ -4,7 +4,7 @@
  * generated pool replaces them when supplied. Both are labeled samples, and nothing rated is saved.
  *
  * The rubric questions, consent text and credit are copies of rubric-r1.json and consent-c1.json in
- * server/data/eval; the French prompts and worked example are from its fra.json localization.
+ * shared/data/eval; the French prompts and worked example are from its fra.json localization.
  *
  * `scenario` reproduces the states the page has to handle: `signed-out`, `limit` (the daily cap
  * after one rating), `offline` (a submission that never reaches the server), `done` (no answers

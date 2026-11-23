@@ -1,4 +1,4 @@
-import { browser } from '$app/environment';
+import { browser } from '$app/env';
 import { goto, invalidateAll } from '$app/navigation';
 import { defineCustomClientStrategy, getTextDirection } from '$lib/paraglide/runtime.js';
 import { defaultLocale, localeCookieName, normalizeLocale, type Locale } from './locales';
@@ -38,11 +38,10 @@ export async function setInterfaceLocale(value: Locale): Promise<void> {
 	const { pathname, search, hash } = location;
 	if (isTranslatedRoute(pathname)) {
 		// Locale prefixes are handled by reroute, outside the generated filesystem RouteId union.
-		// eslint-disable-next-line svelte/no-navigation-without-resolve
+
 		await goto(localizedHref(`${pathname}${search}${hash}`, locale), {
 			invalidateAll: true,
-			noScroll: true,
-			keepFocus: true
+			reset: false
 		});
 	} else {
 		syncInterfaceLocale(locale);

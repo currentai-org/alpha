@@ -193,7 +193,7 @@
 
 	function start() {
 		if (!language) return;
-		goto(`?${new URLSearchParams({ ...Object.fromEntries(params), language })}`, { replaceState: true, keepFocus: true, noScroll: true });
+		goto(`?${new URLSearchParams({ ...Object.fromEntries(params), language })}`, { replace: true, reset: false });
 		const remembered = rememberedProfile(language);
 		level = remembered?.level ?? '';
 		variety = remembered?.variety ?? '';

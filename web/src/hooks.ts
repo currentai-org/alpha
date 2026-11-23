@@ -1,6 +1,6 @@
 import { unlocalizedPath } from '$lib/i18n/routing';
 import { chatRoutePath } from '$lib/surface';
-import type { Reroute, Transport, Transporter } from '@sveltejs/kit';
+import type { Reroute, Transport, Transporter } from '@sveltejs/kit/hooks';
 
 // Chat ships a custom PublicConfig instance across the SSR boundary. Its transporter is loaded through
 // `import.meta.glob`, which is an empty object when chat's files are absent, so the site builds from a

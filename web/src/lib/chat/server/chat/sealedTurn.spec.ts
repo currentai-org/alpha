@@ -436,18 +436,18 @@ describe("whether an owner holds their own history key", () => {
 describe("the shared HTTP mapping for a refused history (share, second opinion, prompt view, turn, stop)", () => {
 	it("is 409 with the code as `reason` for a refusal the browser fixes, and 503 with no MAC key", () => {
 		expect(() => sealedHistoryHttpError(new SealedHistoryError("history_mismatch", "no match"))).toThrow(
-			expect.objectContaining({ status: 409, body: { message: "no match", reason: "history_mismatch" } })
+			expect.objectContaining({ status: 409, body: { message: "no match", reason: "history_mismatch", status: 409 } })
 		);
 		expect(() => sealedHistoryHttpError(new SealedHistoryError("history_missing", "missing"))).toThrow(
-			expect.objectContaining({ status: 409, body: { message: "missing", reason: "history_missing" } })
+			expect.objectContaining({ status: 409, body: { message: "missing", reason: "history_missing", status: 409 } })
 		);
 		expect(() => sealedHistoryHttpError(new SealedHistoryError("mac_key_missing", "no key"))).toThrow(
-			expect.objectContaining({ status: 503, body: { message: "no key", reason: "mac_key_missing" } })
+			expect.objectContaining({ status: 503, body: { message: "no key", reason: "mac_key_missing", status: 503 } })
 		);
 	});
 
 	it("rejects a malformed post with 400 \"invalid history\", and passes a well-formed one through", () => {
-		expect(() => parsePostedHistory({ history: "nope" })).toThrow(expect.objectContaining({ status: 400, body: { message: "invalid history" } }));
+		expect(() => parsePostedHistory({ history: "nope" })).toThrow(expect.objectContaining({ status: 400, body: { message: "invalid history", status: 400 } }));
 		expect(parsePostedHistory({ preprompt: { rev: 0, text: "x" } })).toEqual({ preprompt: { rev: 0, text: "x" } });
 		expect(parsePostedHistory(null)).toEqual({});
 	});

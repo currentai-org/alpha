@@ -6,6 +6,7 @@ import { dirname, resolve as resolvePath, sep } from 'node:path';
 import type { Plugin } from 'vite';
 import tailwindcss from '@tailwindcss/vite';
 import { sveltekit } from '@sveltejs/kit/vite';
+import kitConfig from './sveltekit.config.js';
 import { paraglideOptions } from './paraglide.config.js';
 import { paraglideVitePlugin } from '@inlang/paraglide-js';
 import Icons from 'unplugin-icons/vite';
@@ -188,13 +189,13 @@ function copyEditMessages(): Plugin {
 	};
 }
 
-// SvelteKit options (adapter, compilerOptions, preprocess, prerender) live in svelte.config.js.
+// SvelteKit options (adapter, compilerOptions, preprocess, prerender) live in sveltekit.config.js.
 export default defineConfig({
 	plugins: [
 		paraglideVitePlugin(paraglideOptions),
 		...(copyEditEnabled ? [copyEditMessages()] : []),
 		tailwindcss(),
-		sveltekit(),
+		sveltekit(kitConfig),
 		Icons({ compiler: 'svelte' }),
 		loadTTFAsArrayBuffer()
 	],

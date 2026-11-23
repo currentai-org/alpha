@@ -7,4 +7,4 @@ import type { RequestHandler } from './$types';
 // Every way in now goes to the real chat, which a guest can use without signing in. On www that is
 // the chat host; develop, previews and event instances still serve /chat themselves (chatLinkHref).
 // A 308 so old links, bookmarks and search results land there too.
-export const GET: RequestHandler = () => redirect(308, chatLinkHref('/chat'));
+export const GET: RequestHandler = () => redirect(308, chatLinkHref('/chat'), { external: true });

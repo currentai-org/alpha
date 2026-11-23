@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2018- The Hugging Face team
 // SPDX-License-Identifier: Apache-2.0
 // Modified by Current AI from huggingface/chat-ui.
-import type { HandleFetch } from "@sveltejs/kit";
+import type { HandleFetch } from "@sveltejs/kit/hooks";
 import { isHostLocalhost } from "$lib/chat/server/isURLLocal";
 
 type HandleFetchInput = Parameters<HandleFetch>[0];

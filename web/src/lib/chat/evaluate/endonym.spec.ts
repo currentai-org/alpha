@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import languagesFile from '$lib/chat/server/data/eval/languages.json';
+import languagesFile from '$lib/chat/shared/data/eval/languages.json';
 import { langAttr } from './endonym';
 
 describe('langAttr', () => {

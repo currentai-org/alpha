@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findingOwner, gradedRecordingIndex, recordingRefs } from "../journeyGallery";
+import { findingOwner, gradedRecordingIndex, recordingRefs } from "../../shared/journeyGallery";
 
 const card = {
 	journey: "A3",

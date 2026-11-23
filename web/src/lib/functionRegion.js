@@ -1,4 +1,4 @@
-// Which Vercel region the functions run in, read by svelte.config.js at build time. Every database
+// Which Vercel region the functions run in, read by sveltekit.config.js at build time. Every database
 // query crosses from the function to the database and back, so the functions belong in the database's
 // region. A PR preview's own database is a Neon branch in Frankfurt (the CI database branch) while Vercel's
 // default region is iad1, and that crossing cost about 188 ms per query against 8 ms on develop,

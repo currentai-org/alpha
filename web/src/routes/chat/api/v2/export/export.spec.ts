@@ -16,7 +16,7 @@ import {
 	EXPORT_SCHEMA_VERSION,
 	ExportFileError,
 	validateExportFile,
-} from "$lib/chat/server/exportFormat";
+} from "$lib/chat/shared/exportFormat";
 import { setConversationTags } from "$lib/chat/server/db/conversationTags";
 
 // Contract test for the export route. The load-bearing property is the TEXT-ONLY-ALPHA guard in

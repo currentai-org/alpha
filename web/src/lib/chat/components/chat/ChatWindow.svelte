@@ -82,7 +82,7 @@ Modified by Current AI from huggingface/chat-ui.
 	import ConnectionStatus from './ConnectionStatus.svelte';
 	import ScrollToBottomBtn from '../ScrollToBottomBtn.svelte';
 	import ChatBackdrop from '../ChatBackdrop.svelte';
-	import { browser } from '$app/environment';
+	import { browser } from '$app/env';
 	import { snapScrollToBottom } from '$lib/chat/actions/snapScrollToBottom';
 	import SystemPromptModal from '../SystemPromptModal.svelte';
 	import ChatIntroduction from './ChatIntroduction.svelte';

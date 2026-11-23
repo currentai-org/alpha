@@ -5,7 +5,7 @@
 // src/routes/tuning/rag/upload/+server.ts) — this makes the prose a hard, deterministic gate.
 //
 // If a route GENUINELY needs a non-default timeout/runtime/region, set it adapter-globally in
-// svelte.config.js (the Vercel default function timeout is 300s — ample for our routes),
+// sveltekit.config.js (the Vercel default function timeout is 300s — ample for our routes),
 // never per-route. See the deploy runbook.
 //
 //   npm run verify:route-configs   # exit 1 if any route file exports `const config`
@@ -72,7 +72,7 @@ console.error("verify-route-configs: FAIL — per-route `export const config` fo
 for (const o of offenders) console.error(`  ${o.file}:${o.line}  ${o.text}`);
 console.error(
 	"\n  A per-route config silently splits adapter-vercel's function layout and can drop routes from the\n" +
-		"  catchall manifest → /chat/* 500s. Set timeouts/runtime/regions adapter-GLOBALLY in svelte.config.js\n" +
+		"  catchall manifest → /chat/* 500s. Set timeouts/runtime/regions adapter-GLOBALLY in sveltekit.config.js\n" +
 		"  instead (Vercel default timeout is 300s). See the deploy runbook."
 );
 process.exit(1);

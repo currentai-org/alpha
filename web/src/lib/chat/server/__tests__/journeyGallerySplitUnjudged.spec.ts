@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { splitUnjudgedByDoc, withUndocumentedAsNotCovered, type JourneyCard } from "../journeyGallery";
+import { splitUnjudgedByDoc, withUndocumentedAsNotCovered, type JourneyCard } from "../../shared/journeyGallery";
 
 /**
  * Named for the contract, not the behaviour: what breaks this is a no-doc journey counted as a run

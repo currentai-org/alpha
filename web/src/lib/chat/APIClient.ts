@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Modified by Current AI from huggingface/chat-ui.
 import { base } from "$lib/chat/paths";
-import { browser } from "$app/environment";
+import { browser } from "$app/env";
 import superjson from "superjson";
 import ObjectId from "bson-objectid";
 

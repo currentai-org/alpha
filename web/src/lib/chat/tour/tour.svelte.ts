@@ -10,7 +10,7 @@
  * A stop's "try it" pauses the tour rather than ending it: the person explores the feature, and a
  * "Resume tour" chip takes them on to the next stop.
  */
-import { browser } from '$app/environment';
+import { browser } from '$app/env';
 import { trackEvent } from '$lib/analytics';
 import { TOUR_STEPS, visibleTarget, type TourStep } from './steps';
 

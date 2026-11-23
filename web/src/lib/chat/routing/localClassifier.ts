@@ -34,7 +34,7 @@ export function loadDetectors(): Promise<Detectors> {
 	detectors ??= Promise.all([
 		import('franc'),
 		import('eld/extrasmall'),
-		import('$lib/chat/server/textGeneration/languageFallback')
+		import('$lib/chat/shared/languageFallback')
 	]).then(([franc, eld, fallback]) => ({
 		francAll: franc.francAll as FrancAll,
 		eld: eld.eld,

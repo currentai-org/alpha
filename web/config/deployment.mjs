@@ -1,6 +1,6 @@
 // Reads the installation's identity file for src/lib/deployment.ts: the JSON file DEPLOYMENT_CONFIG
 // names, else config/deployment.json, both relative to web/. No file is an empty object, and every
-// key then takes its neutral default in deployment.ts. Plain JS so svelte.config.js can read it too.
+// key then takes its neutral default in deployment.ts. Plain JS so sveltekit.config.js can read it too.
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';

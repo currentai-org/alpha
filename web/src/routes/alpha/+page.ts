@@ -4,7 +4,7 @@ import type { PageLoad } from './$types';
 // A composed layout using the Alpha product-page global in Payload.
 //
 // Prerender stays off. The root layout loads the live menu on each request, and
-// an unlinked prerenderable route fails the crawl check in svelte.config.js.
+// an unlinked prerenderable route fails the crawl check in sveltekit.config.js.
 export const prerender = false;
 
 export const load: PageLoad = ({ url, data }) => ({

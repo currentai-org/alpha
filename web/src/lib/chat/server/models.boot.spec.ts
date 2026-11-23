@@ -7,7 +7,7 @@
  * Idioms (mirrors warm.spec.ts + models.publish.spec.ts):
  *  - `config` is a Proxy over a MUTABLE object so the base URL / allowlist are fixed once here; the
  *    committed models-snapshot.json import is mocked through a getter over a MUTABLE holder so each test
- *    varies the snapshot. `$app/environment` is mocked with `building: true` so the module-eval boot at the
+ *    varies the snapshot. `$app/env` is mocked with `building: true` so the module-eval boot at the
  *    bottom of models.ts is SKIPPED — we then drive the EXPORTED bootModels() explicitly, per scenario,
  *    which is why the spec needs `bootModels` exported (the sole non-test change to models.ts).
  *  - `vi.resetModules()` re-evaluates models.ts fresh per test (module-scope consts, empty registry).
@@ -36,7 +36,7 @@ vi.mock("$lib/chat/server/config", () => {
 });
 
 // Skip models.ts's module-eval boot (`if (!building) await bootModels()`) so we drive bootModels() by hand.
-vi.mock("$app/environment", () => ({ building: true, dev: false, browser: false, version: "test" }));
+vi.mock("$app/env", () => ({ building: true, dev: false, browser: false, version: "test" }));
 
 // The committed boot snapshot import — read through a getter so each test sets H.snap.current before import.
 vi.mock("$lib/chat/server/data/models-snapshot.json", () => ({

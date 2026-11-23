@@ -17,9 +17,9 @@ import { loadAttachmentsFromUrls } from "$lib/chat/utils/loadAttachmentsFromUrls
  * `/chat` (ChatLanding) and `/chat/models/<id>`.
  */
 export function takeLinkPromptRequest(): LinkPromptRequest | null {
-	const request = readLinkPromptRequest(page.url.searchParams);
+	const request = readLinkPromptRequest(new URLSearchParams(page.url.search));
 	if (!request || requireAuthUser()) return null;
-	const url = new URL(page.url);
+	const url = new URL(page.url.href);
 	for (const name of LINK_PARAM_NAMES) url.searchParams.delete(name);
 	tick().then(() => {
 		replaceState(url, page.state);

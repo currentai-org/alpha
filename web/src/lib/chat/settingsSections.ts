@@ -1,7 +1,7 @@
 import { m } from '$lib/paraglide/messages.js';
 import type { Component } from 'svelte';
 import { writable } from 'svelte/store';
-import { dev } from '$app/environment';
+import { dev } from '$app/env';
 import { redirect } from '@sveltejs/kit';
 import { base } from '$lib/chat/paths';
 import RiPaletteLine from '~icons/ri/palette-line';

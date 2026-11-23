@@ -15,7 +15,7 @@ import {
 	readableName,
 	exportEnvelope,
 	readme,
-} from "$lib/chat/server/exportFormat";
+} from "$lib/chat/shared/exportFormat";
 import {
 	custodialStorageConfigured,
 	downloadCustodialFile,

@@ -7,7 +7,7 @@ Modified by Current AI from huggingface/chat-ui.
 	import { processBlocks, processBlocksSync, type BlockToken } from "$lib/chat/utils/marked";
 	import MarkdownWorker from "$lib/chat/workers/markdownWorker?worker";
 	import MarkdownBlock from "./MarkdownBlock.svelte";
-	import { browser } from "$app/environment";
+	import { browser } from "$app/env";
 
 	import { onMount, onDestroy } from "svelte";
 	import { updateDebouncer } from "$lib/chat/utils/updates";

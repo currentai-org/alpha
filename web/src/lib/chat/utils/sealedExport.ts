@@ -19,8 +19,8 @@ import {
 	exportedConversation,
 	type ExportedConversation,
 	type ExportEnvelope,
-} from "$lib/chat/server/exportFormat";
-import { toOpenWebUiChat, type ChatFileEntry } from "$lib/chat/server/openWebUiImport/chatFile";
+} from "$lib/chat/shared/exportFormat";
+import { toOpenWebUiChat, type ChatFileEntry } from "$lib/chat/shared/openWebUiImport/chatFile";
 import type { ThunderboltEnvelope } from "$lib/chat/server/thunderboltExport";
 import { inertWidgets } from "$lib/chat/utils/inertWidgets";
 import { showsClosedSealedParts, type SealableConversation } from "$lib/chat/crypto/sealedShape";

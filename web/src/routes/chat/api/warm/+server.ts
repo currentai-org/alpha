@@ -19,7 +19,7 @@ import type { RequestHandler } from "./$types";
 // and the Vercel project default of 300s covers them with room to spare. NO per-route
 // `export const config` here: it splits adapter-vercel's function layout and can drop routes from
 // the catchall manifest, and any `maxDuration` below 300 would only lower the ceiling. Set any
-// genuine non-default adapter-globally in svelte.config.js.
+// genuine non-default adapter-globally in sveltekit.config.js.
 
 export const GET: RequestHandler = async ({ platform, request }) => {
 	// A spec runs the cron's model probe on one model now, under its own busy scope, and reads

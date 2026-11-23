@@ -12,7 +12,7 @@ const H = vi.hoisted(() => ({
 	errors: [] as unknown[][],
 }));
 
-vi.mock("$app/environment", () => ({ building: false, dev: false, browser: false, version: "test" }));
+vi.mock("$app/env", () => ({ building: false, dev: false, browser: false, version: "test" }));
 
 vi.mock("$lib/surface", async (importOriginal) => {
 	const real = await importOriginal<typeof import("$lib/surface")>();

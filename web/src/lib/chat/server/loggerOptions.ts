@@ -20,7 +20,7 @@
 // that fails.
 //
 // Takes `dev` and `level` as arguments rather than importing them, which keeps this module free of
-// $app/environment and $lib/chat/server/config. That is what lets the spec import it directly and
+// $app/env and $lib/chat/server/config. That is what lets the spec import it directly and
 // exercise the real mixin against a real AsyncLocalStorage context instead of a hand-built copy of
 // these options — a copy would drift, and would be measuring itself.
 import { createRequire } from "node:module";

@@ -2,7 +2,7 @@
 // a PostHog cloud host, so a deployment's analytics follow its own POSTHOG_INGEST_HOST.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('$app/environment', () => ({
+vi.mock('$app/env', () => ({
 	browser: true,
 	dev: false,
 	building: false,

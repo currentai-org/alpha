@@ -3,10 +3,10 @@
 // what is produced against them (db/schema.ts, "human evaluation"). Nothing here is read on the chat
 // turn path.
 
-import languagesFile from "$lib/chat/server/data/eval/languages.json";
-import rubricFile from "$lib/chat/server/data/eval/rubric-r1.json";
-import consentFile from "$lib/chat/server/data/eval/consent-c1.json";
-import tasksFile from "$lib/chat/server/data/eval/taskset-v1/tasks.json";
+import languagesFile from "$lib/chat/shared/data/eval/languages.json";
+import rubricFile from "$lib/chat/shared/data/eval/rubric-r1.json";
+import consentFile from "$lib/chat/shared/data/eval/consent-c1.json";
+import tasksFile from "$lib/chat/shared/data/eval/taskset-v1/tasks.json";
 
 import type { Consent, Credit, EvalLanguage, Localization, Rubric, RubricQuestion, TaskDef, TaskSet } from "./types";
 
@@ -19,7 +19,7 @@ export const CONSENT = consentFile as Consent;
 // One file per language, named by its id. A language with no file is not open for evaluation. A new
 // file is picked up without a code change (scripts/import-language-review.mjs writes them).
 const LOCALIZATIONS = Object.values(
-	import.meta.glob("$lib/chat/server/data/eval/taskset-v1/localizations/*.json", { eager: true, import: "default" })
+	import.meta.glob("$lib/chat/shared/data/eval/taskset-v1/localizations/*.json", { eager: true, import: "default" })
 ) as Localization[];
 
 /** Added to every variety list, for raters whose variety is not listed. */

@@ -3,16 +3,16 @@
 // Modified by Current AI from huggingface/chat-ui.
 import { env as publicEnv } from "$env/dynamic/public";
 import { env as serverEnv } from "$env/dynamic/private";
-import { building } from "$app/environment";
+import { building } from "$app/env";
 import type { Collections } from "./database";
 import { Semaphores } from "$lib/chat/types/Semaphore";
 import { resolveOpenAiEnv } from "./env/openWebUiAliases";
 import { committedConfigEnv, isRoleModelKey, roleModelSetting } from "../../../../config/inference";
 
-export type PublicConfigKey = keyof typeof publicEnv;
+export type PublicConfigKey = Extract<keyof typeof publicEnv, string>;
 const keysFromEnv = { ...publicEnv, ...serverEnv };
 applyOpenWebUiNames(keysFromEnv as Record<string, string | undefined>);
-export type ConfigKey = keyof typeof keysFromEnv;
+export type ConfigKey = Extract<keyof typeof keysFromEnv, string>;
 
 // Open WebUI's OPENAI_API_BASE_URLS / OPENAI_API_KEYS stand in for OPENAI_BASE_URL / OPENAI_API_KEY only
 // when OPENAI_BASE_URL is unset, so a deployment that sets it (www does) never reaches the alias path.
@@ -177,9 +177,9 @@ class ConfigManager {
 		if (this.ConfigManagerEnabled) {
 			config = {
 				...config,
-				...Object.fromEntries(
+				...(Object.fromEntries(
 					Object.entries(this.keysFromDB).filter(([key]) => key.startsWith("PUBLIC_"))
-				),
+				) as Record<string, string>),
 			};
 		}
 
