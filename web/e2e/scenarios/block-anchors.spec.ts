@@ -44,63 +44,62 @@ const anchoredSections = (page: Page) =>
 test.describe('block anchors', () => {
 	test.use({ viewport: { width: 1280, height: 800 } });
 
-	test(
-		'content pages render unique, slug-safe block anchors first on each section, and a #anchor link lands below the nav bar',
-		{ tag: '@CUR-2215' },
-		async ({ page, request }) => {
-			test.setTimeout(180_000);
-			const paths = (await contentPaths(request)).slice(0, PAGES_TO_TRY);
-			const checked: string[] = [];
-			let scrolled = false;
+	test('content pages render unique, slug-safe block anchors first on each section, and a #anchor link lands below the nav bar', async ({
+		page,
+		request
+	}) => {
+		test.setTimeout(180_000);
+		const paths = (await contentPaths(request)).slice(0, PAGES_TO_TRY);
+		const checked: string[] = [];
+		let scrolled = false;
 
-			for (const path of paths) {
-				await page.goto(path, { waitUntil: 'domcontentloaded' });
-				const { navOffset, sections } = await anchoredSections(page);
-				if (sections.length === 0) continue;
-				checked.push(path);
+		for (const path of paths) {
+			await page.goto(path, { waitUntil: 'domcontentloaded' });
+			const { navOffset, sections } = await anchoredSections(page);
+			if (sections.length === 0) continue;
+			checked.push(path);
 
-				const ids = sections.map((s) => s.id);
-				expect(new Set(ids).size, `${path} renders duplicate anchors: ${ids.join(', ')}`).toBe(
-					ids.length
+			const ids = sections.map((s) => s.id);
+			expect(new Set(ids).size, `${path} renders duplicate anchors: ${ids.join(', ')}`).toBe(
+				ids.length
+			);
+			for (const { id, idFirst } of sections) {
+				expect(id, `${path}#${id} is not slug-safe`).toMatch(SLUG);
+				expect(idFirst, `${path}: id is not the first attribute of <section id="${id}">`).toBe(
+					true
 				);
-				for (const { id, idFirst } of sections) {
-					expect(id, `${path}#${id} is not slug-safe`).toMatch(SLUG);
-					expect(idFirst, `${path}: id is not the first attribute of <section id="${id}">`).toBe(
-						true
-					);
-				}
-
-				const target = sections.find((s) => s.scrollable);
-				if (!target) continue;
-				await page.goto(`${path}#${target.id}`, { waitUntil: 'domcontentloaded' });
-				await expect
-					.poll(
-						() =>
-							page.evaluate(
-								([id, offset]) => {
-									const top = document.getElementById(id)?.getBoundingClientRect().top;
-									return top === undefined ? null : Math.abs(top - offset);
-								},
-								[target.id, navOffset] as const
-							),
-						{
-							message: `${path}#${target.id} did not land just below the nav bar (${navOffset}px)`,
-							timeout: 10_000
-						}
-					)
-					.toBeLessThanOrEqual(2);
-				scrolled = true;
-				break;
 			}
 
-			expect(
-				checked.length,
-				`none of the first ${paths.length} content pages in the sitemap renders an anchored block section`
-			).toBeGreaterThan(0);
-			expect(
-				scrolled,
-				`no page with anchors (${checked.join(', ')}) has a section far enough down to scroll to`
-			).toBe(true);
+			const target = sections.find((s) => s.scrollable);
+			if (!target) continue;
+			await page.goto(`${path}#${target.id}`, { waitUntil: 'domcontentloaded' });
+			await expect
+				.poll(
+					() =>
+						page.evaluate(
+							([id, offset]) => {
+								const top = document.getElementById(id)?.getBoundingClientRect().top;
+								return top === undefined ? null : Math.abs(top - offset);
+							},
+							[target.id, navOffset] as const
+						),
+					{
+						message: `${path}#${target.id} did not land just below the nav bar (${navOffset}px)`,
+						timeout: 10_000
+					}
+				)
+				.toBeLessThanOrEqual(2);
+			scrolled = true;
+			break;
 		}
-	);
+
+		expect(
+			checked.length,
+			`none of the first ${paths.length} content pages in the sitemap renders an anchored block section`
+		).toBeGreaterThan(0);
+		expect(
+			scrolled,
+			`no page with anchors (${checked.join(', ')}) has a section far enough down to scroll to`
+		).toBe(true);
+	});
 });

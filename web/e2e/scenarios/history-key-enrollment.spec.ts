@@ -47,7 +47,7 @@ const keyStatus = async (page: Page) => (await page.request.get(KEY_ROUTE)).stat
 
 test(
 	'a signed-in person is asked nothing at sign-in, turns on encryption from Settings only once a recovery key is saved, and their existing chat is sealed with nothing deleted',
-	{ tag: ['@preview-only', '@CUR-4979', '@A3'] },
+	{ tag: ['@preview-only', '@A3'] },
 	async ({ page, context, baseURL }) => {
 		expect(
 			DATABASE_URL,
@@ -170,7 +170,7 @@ test(
 
 test(
 	'after turning encryption on, a fresh browser unlocks with the recovery key and lists both ways in',
-	{ tag: ['@preview-only', '@CUR-4939', '@CUR-4979'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, browser, baseURL }) => {
 		test.setTimeout(240_000);
 		const email = freshTestEmail();
@@ -242,7 +242,7 @@ test(
 
 test(
 	'with two tabs turning encryption on, the recovery key saved in the tab that answered second is kept and unlocks a fresh browser',
-	{ tag: ['@preview-only', '@CUR-4939', '@CUR-4979'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, browser, baseURL }) => {
 		test.setTimeout(300_000);
 		await setFlagOverrides(context, baseURL!, { 'history-key-enrollment': true });
@@ -310,7 +310,7 @@ test(
 
 test(
 	"a guest's device key is made on the first turn, with no prompt",
-	{ tag: ['@preview-only', '@CUR-4939'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(180_000);
 		await setFlagOverrides(context, baseURL!, { 'history-key-enrollment': true });
@@ -348,7 +348,7 @@ test(
 
 test(
 	'with history-key-enrollment off, Your key is not in Settings and no key is stored',
-	{ tag: ['@preview-only', '@CUR-4939'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(120_000);
 		await setFlagOverrides(context, baseURL!, { 'history-key-enrollment': false });
@@ -370,7 +370,7 @@ test(
 
 test(
 	'after two junk rewraps of the key, the browser that turned encryption on still opens its sealed chat with no unlock prompt',
-	{ tag: ['@preview-only', '@CUR-4982'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		expect(
 			DATABASE_URL,

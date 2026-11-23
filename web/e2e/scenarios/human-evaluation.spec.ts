@@ -13,7 +13,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 
 test(
 	'with human-eval off, the evaluation API answers 404 for everyone',
-	{ tag: ['@preview-only', '@CUR-1914'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		await setFlagOverrides(context, baseURL!, { 'human-eval': false });
 
@@ -33,7 +33,7 @@ test(
 
 test(
 	'with human-eval on, a signed-in person picks an open language, agrees to the consent text and is offered the worked example',
-	{ tag: ['@preview-only', '@CUR-1914'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		await setFlagOverrides(context, baseURL!, { 'human-eval': true });
 
@@ -128,7 +128,7 @@ async function answerEveryQuestion(page: Page) {
 
 test(
 	'with human-eval off, the evaluation page is a 404 and Contribute offers no way to it',
-	{ tag: ['@preview-only', '@CUR-1914'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		await setFlagOverrides(context, baseURL!, { 'human-eval': false });
 
@@ -146,7 +146,7 @@ test(
 
 test(
 	'with human-eval on, a signed-in person goes from the sidebar’s Contribute link to the evaluation in French, and the page saves their profile and worked example through the API',
-	{ tag: ['@preview-only', '@CUR-1914'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(150_000);
 		await setFlagOverrides(context, baseURL!, { 'human-eval': true });
@@ -274,7 +274,7 @@ test(
 
 test(
 	'in sample mode the page says plainly that sample ratings are not saved, and posts nothing',
-	{ tag: ['@preview-only', '@CUR-1914'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(90_000);
 		await setFlagOverrides(context, baseURL!, { 'human-eval': true });
@@ -323,7 +323,7 @@ test(
 
 test(
 	'picking a language shows how models do there: a share only past the thresholds, counts below them, and no zero for an unrated model',
-	{ tag: ['@preview-only', '@CUR-1914'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		await setFlagOverrides(context, baseURL!, { 'human-eval': true });
 		await page.goto('/chat/settings/evaluate?sample=1&language=fra');
@@ -349,7 +349,7 @@ test(
 
 test(
 	'an open language with no stored answers says so before consent, and never says every answer was rated',
-	{ tag: ['@preview-only', '@CUR-4263'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(120_000);
 		await setFlagOverrides(context, baseURL!, { 'human-eval': true });
@@ -399,7 +399,7 @@ test(
 
 test(
 	'a language the service does not list says evaluation is not open yet, with no Start or sign-in',
-	{ tag: ['@preview-only', '@CUR-4263'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(120_000);
 		await setFlagOverrides(context, baseURL!, { 'human-eval': true });

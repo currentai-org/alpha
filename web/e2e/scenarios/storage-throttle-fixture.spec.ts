@@ -13,7 +13,7 @@ import { failIfStorageThrottled } from './helpers/storageThrottle';
 // fails within seconds with the throttle message. The real shared token is never spent on purpose.
 test(
 	'failIfStorageThrottled fails at once, naming the throttle, when the storage listing answers the busy 503',
-	{ tag: ['@preview-only', '@A3', '@CUR-3680'] },
+	{ tag: ['@preview-only', '@A3'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(90_000);
 		await setFlagOverrides(context, baseURL!, { 'custodial-storage-view': true });

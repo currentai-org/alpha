@@ -20,7 +20,7 @@ const MODEL = LARGE4_MODEL;
 
 test(
 	'a budget question pinned to Large 4 shows the evaluated expression and the right total',
-	{ tag: ['@preview-only', '@CUR-2273', '@mock-model', '@provider-contract'] },
+	{ tag: ['@preview-only', '@mock-model', '@provider-contract'] },
 	async ({ page }) => {
 		test.setTimeout(140_000);
 
@@ -115,7 +115,7 @@ test(
 // product, and the answer must state it.
 test(
 	'an 18-digit product pinned to Large 4 comes back exact from the calculator',
-	{ tag: ['@preview-only', '@CUR-5021', '@provider-contract'] },
+	{ tag: ['@preview-only', '@provider-contract'] },
 	async ({ page }) => {
 		test.setTimeout(140_000);
 

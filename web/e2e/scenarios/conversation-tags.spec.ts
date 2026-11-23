@@ -34,7 +34,7 @@ async function tagThroughMenu(
 
 test(
 	'two chats tagged from the chat menu are the only ones the tag filter shows, and tag: search finds the same two',
-	{ tag: ['@preview-only', '@CUR-4789'] },
+	{ tag: ['@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(180_000);
 		await signInAsFreshUser(page);

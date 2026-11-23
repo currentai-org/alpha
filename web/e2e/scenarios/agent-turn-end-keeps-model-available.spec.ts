@@ -25,7 +25,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 
 test(
 	'an agent turn the watchdog ends leaves the chosen model available: no "unavailable right now" notice under the composer',
-	{ tag: ['@preview-only', '@F2', '@CUR-4661'] },
+	{ tag: ['@preview-only', '@F2'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(300_000);
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });

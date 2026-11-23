@@ -188,58 +188,57 @@ async function homepageSalmonButton(page: Page) {
 	return page.locator(SWEEPERS).nth(hit.i);
 }
 
-test(
-	'the banner "Go to roadmap" button and the homepage salmon button hover with the same wipe and frame',
-	{ tag: '@CUR-4254' },
-	async ({ page, request }) => {
-		const banner = await bannerButton(page, request);
+test('the banner "Go to roadmap" button and the homepage salmon button hover with the same wipe and frame', async ({
+	page,
+	request
+}) => {
+	const banner = await bannerButton(page, request);
+	expect(
+		banner,
+		'no page in this environment has a dark-tone promo banner with a button'
+	).not.toBeNull();
+	const bannerHover = await hoverAndRead(page, banner!);
+
+	const salmon = await homepageSalmonButton(page);
+	const salmonHover = await hoverAndRead(page, salmon);
+
+	// One clean animation: the button's own background never changes on the way, so no fill
+	// animation runs under the wipe (the report was an outline and a fill animating together).
+	for (const [name, hover] of [
+		['banner', bannerHover],
+		['homepage salmon', salmonHover]
+	] as const) {
 		expect(
-			banner,
-			'no page in this environment has a dark-tone promo banner with a button'
-		).not.toBeNull();
-		const bannerHover = await hoverAndRead(page, banner!);
-
-		const salmon = await homepageSalmonButton(page);
-		const salmonHover = await hoverAndRead(page, salmon);
-
-		// One clean animation: the button's own background never changes on the way, so no fill
-		// animation runs under the wipe (the report was an outline and a fill animating together).
-		for (const [name, hover] of [
-			['banner', bannerHover],
-			['homepage salmon', salmonHover]
-		] as const) {
-			expect(
-				hover.backgroundsSeen,
-				`the ${name} button's own background changed during the hover`
-			).toEqual([hover.restBackground]);
-			expect(hover.wipe.scaleY, `the ${name} wipe did not reach full height`).toBe(1);
-			expect(
-				hover.frame.borderColor,
-				`the ${name} frame is not drawn in the button's resting colour`
-			).toBe(hover.restBackground);
-			expect(hover.frame.borderWidth, `the ${name} frame is not 2px`).toBe('2px');
-		}
-
-		// The same animation: identical wipe, label and frame transitions and frame geometry.
-		expect(bannerHover.wipe.transitions, 'the wipe columns transition differently').toEqual(
-			salmonHover.wipe.transitions
-		);
-		expect(bannerHover.label.transitions, 'the label transitions differently').toEqual(
-			salmonHover.label.transitions
-		);
-		expect(bannerHover.frame.transitions, 'the ::after frame transitions differently').toEqual(
-			salmonHover.frame.transitions
-		);
-		expect({ ...bannerHover.frame, borderColor: '', transitions: '' }).toEqual({
-			...salmonHover.frame,
-			borderColor: '',
-			transitions: ''
-		});
-		for (const p of TRANSITION_PROPS) {
-			expect(bannerHover.button[p], `the button body's ${p} differs`).toBe(salmonHover.button[p]);
-		}
-		// They differ only in colour: both wipe to dark blue.
-		expect(bannerHover.wipe.fill).toBe('rgb(20, 46, 62)');
-		expect(salmonHover.wipe.fill).toBe('rgb(20, 46, 62)');
+			hover.backgroundsSeen,
+			`the ${name} button's own background changed during the hover`
+		).toEqual([hover.restBackground]);
+		expect(hover.wipe.scaleY, `the ${name} wipe did not reach full height`).toBe(1);
+		expect(
+			hover.frame.borderColor,
+			`the ${name} frame is not drawn in the button's resting colour`
+		).toBe(hover.restBackground);
+		expect(hover.frame.borderWidth, `the ${name} frame is not 2px`).toBe('2px');
 	}
-);
+
+	// The same animation: identical wipe, label and frame transitions and frame geometry.
+	expect(bannerHover.wipe.transitions, 'the wipe columns transition differently').toEqual(
+		salmonHover.wipe.transitions
+	);
+	expect(bannerHover.label.transitions, 'the label transitions differently').toEqual(
+		salmonHover.label.transitions
+	);
+	expect(bannerHover.frame.transitions, 'the ::after frame transitions differently').toEqual(
+		salmonHover.frame.transitions
+	);
+	expect({ ...bannerHover.frame, borderColor: '', transitions: '' }).toEqual({
+		...salmonHover.frame,
+		borderColor: '',
+		transitions: ''
+	});
+	for (const p of TRANSITION_PROPS) {
+		expect(bannerHover.button[p], `the button body's ${p} differs`).toBe(salmonHover.button[p]);
+	}
+	// They differ only in colour: both wipe to dark blue.
+	expect(bannerHover.wipe.fill).toBe('rgb(20, 46, 62)');
+	expect(salmonHover.wipe.fill).toBe('rgb(20, 46, 62)');
+});

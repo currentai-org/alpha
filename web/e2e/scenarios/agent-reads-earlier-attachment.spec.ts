@@ -20,7 +20,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // the agent off, so no earlier agent answer can carry the nonce forward instead.
 test(
 	'the agent reads the whole of a file attached on an earlier turn, not its first 600 characters',
-	{ tag: ['@preview-only', '@CUR-4104'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(240_000);
 

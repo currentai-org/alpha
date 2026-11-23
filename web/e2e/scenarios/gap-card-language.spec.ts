@@ -70,7 +70,7 @@ test.describe('an English browser', () => {
 
 	test(
 		'asking in French gets no English open-gap card under the French answer',
-		{ tag: ['@A2', '@CUR-2377'] },
+		{ tag: ['@A2'] },
 		async ({ page }) => {
 			test.setTimeout(150_000);
 			const message = await askWithWebSearch(
@@ -86,7 +86,7 @@ test.describe('an English browser', () => {
 
 	test(
 		'asking the same question in English still gets the open-gap card, in words for the person who asked',
-		{ tag: ['@A2', '@F2', '@CUR-2377', '@CUR-2885'] },
+		{ tag: ['@A2', '@F2'] },
 		async ({ page }) => {
 			test.setTimeout(150_000);
 			const message = await askWithWebSearch(
@@ -114,25 +114,19 @@ test.describe('an English browser', () => {
 test.describe('a French browser', () => {
 	test.use({ locale: 'fr-FR' });
 
-	test(
-		'asking in French gets the open-gap card in French',
-		{ tag: ['@A2', '@CUR-2394'] },
-		async ({ page }) => {
-			test.setTimeout(150_000);
-			const message = await askWithWebSearch(
-				page,
-				'Quelle est la capitale du Japon ? Réponds en une phrase.',
-				'fr'
-			);
-			const card = message.locator('[data-gap-invite]');
-			await expect(
-				card,
-				'the first web-searched French answer in a French browser got no open-gap card'
-			).toHaveCount(1, { timeout: 15_000 });
-			await expect(card, 'the open-gap card is not in French').toContainText(
-				'Aider à la construire'
-			);
-			await expect(card).not.toContainText(/Open gap|Help build it|open stack/);
-		}
-	);
+	test('asking in French gets the open-gap card in French', { tag: ['@A2'] }, async ({ page }) => {
+		test.setTimeout(150_000);
+		const message = await askWithWebSearch(
+			page,
+			'Quelle est la capitale du Japon ? Réponds en une phrase.',
+			'fr'
+		);
+		const card = message.locator('[data-gap-invite]');
+		await expect(
+			card,
+			'the first web-searched French answer in a French browser got no open-gap card'
+		).toHaveCount(1, { timeout: 15_000 });
+		await expect(card, 'the open-gap card is not in French').toContainText('Aider à la construire');
+		await expect(card).not.toContainText(/Open gap|Help build it|open stack/);
+	});
 });

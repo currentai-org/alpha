@@ -12,7 +12,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // call. Its 3115 arrives in two tokens, as "31" then "15".
 test(
 	'a crisis answer naming a recalled helpline number shows findahelpline.com in its place and keeps 112',
-	{ tag: ['@preview-only', '@CUR-4061', '@CUR-4488', '@stub-screen'] },
+	{ tag: ['@preview-only', '@stub-screen'] },
 	async ({ page }) => {
 		test.setTimeout(150_000);
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });
@@ -76,7 +76,7 @@ test(
 // screen in the gallery too (@stub-screen): the real input screen declined this question there.
 test(
 	"a crisis answer naming another country's police number keeps it",
-	{ tag: ['@preview-only', '@CUR-4122', '@stub-screen'] },
+	{ tag: ['@preview-only', '@stub-screen'] },
 	async ({ page }) => {
 		test.setTimeout(150_000);
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });

@@ -14,7 +14,7 @@ const START_CHATTING = /start chatting/i;
 // row is read after a reload, so it comes from the stored message rather than the live stream.
 test(
 	'X-ray’s fact check step says how many claims were removed from the answer',
-	{ tag: ['@F2', '@CUR-2927', '@preview-only'] },
+	{ tag: ['@F2', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });

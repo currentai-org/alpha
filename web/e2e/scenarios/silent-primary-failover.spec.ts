@@ -66,7 +66,7 @@ async function storedAnswer(page: Page, conversationId: string) {
 const GIVE_UP_BOUND_MS = 59_000;
 test(
 	'a stalled Apertus primary is answered by Apertus or ends on an error notice, never by another model',
-	{ tag: ['@F2', '@preview-only', '@CUR-2316', '@CUR-3936', '@CUR-3939', '@needs-apertus'] },
+	{ tag: ['@F2', '@preview-only', '@needs-apertus'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		const { reply, conversationId, sentAt } = await askWithSilentPrimary(
@@ -113,7 +113,7 @@ test(
 // counts toward it.
 test(
 	"after a picked Apertus goes silent, its row in the next new chat's picker says it is busy",
-	{ tag: ['@F2', '@preview-only', '@CUR-4098', '@needs-apertus'] },
+	{ tag: ['@F2', '@preview-only', '@needs-apertus'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(120_000);
 		await setFlagOverrides(context, baseURL!, {

@@ -60,7 +60,7 @@ test.beforeEach(async ({ context, baseURL }) => {
 // token detail behind a disclosure each rather than a paragraph under every field.
 test(
 	'Link your own bucket offers Make a new bucket (recommended) before Link a bucket you already have, with the approval and token detail one click away',
-	{ tag: ['@preview-only', '@A3', '@CUR-4659'] },
+	{ tag: ['@preview-only', '@A3'] },
 	async ({ page }) => {
 		test.setTimeout(90_000);
 		await signInAsFreshUser(page);
@@ -92,7 +92,7 @@ test(
 
 test(
 	'Connect Hugging Face asks the storage app for contribute-repos only, with PKCE, and returns to this deployment’s callback',
-	{ tag: ['@preview-only', '@A3', '@CUR-2932'] },
+	{ tag: ['@preview-only', '@A3'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		await signInAsFreshUser(page);
@@ -119,7 +119,7 @@ test(
 
 test(
 	'a callback carrying a forged state is refused with a plain message and links nothing, while the minted state gets past that check',
-	{ tag: ['@preview-only', '@A3', '@CUR-2932'] },
+	{ tag: ['@preview-only', '@A3'] },
 	async ({ page }) => {
 		test.setTimeout(150_000);
 		await signInAsFreshUser(page);
@@ -168,7 +168,7 @@ test(
 // stubbed: the click has to leave the page for Hugging Face's authorize URL.
 test(
 	'clicking Connect Hugging Face takes the browser to Hugging Face, with no CSP block on the redirect',
-	{ tag: ['@preview-only', '@A3', '@CUR-2932'] },
+	{ tag: ['@preview-only', '@A3'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		await signInAsFreshUser(page);
@@ -212,7 +212,7 @@ test(
 // leaves for the consent.
 test(
 	'Connect with a bucket name still asks Hugging Face for contribute-repos only, and a name that is not a repo name is refused before the consent',
-	{ tag: ['@preview-only', '@A3', '@CUR-2930'] },
+	{ tag: ['@preview-only', '@A3'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		await signInAsFreshUser(page);
@@ -233,7 +233,7 @@ test(
 // `trail-` got past our check to fail at Hugging Face as "try again in a minute".
 test(
 	'a bucket name Hugging Face would refuse comes back to Storage with a message saying why and the name still in the field',
-	{ tag: ['@preview-only', '@A3', '@CUR-4234'] },
+	{ tag: ['@preview-only', '@A3'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		await signInAsFreshUser(page);
@@ -262,7 +262,7 @@ test(
 // report a new connection over an unchanged list.
 test(
 	'connecting again to a bucket that is already linked says so, and points at the bucket name for a second one',
-	{ tag: ['@preview-only', '@A3', '@CUR-3326'] },
+	{ tag: ['@preview-only', '@A3'] },
 	async ({ page }) => {
 		test.setTimeout(90_000);
 		await signInAsFreshUser(page);

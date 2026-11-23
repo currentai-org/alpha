@@ -44,7 +44,7 @@ async function expectElapsedCounting(reply: Locator) {
 
 test(
 	'a searched turn our time limit ends offers Retry and another model, and never calls the model unavailable',
-	{ tag: ['@preview-only', '@F2', '@C3', '@CUR-4719'] },
+	{ tag: ['@preview-only', '@F2', '@C3'] },
 	async ({ page }) => {
 		test.setTimeout(180_000);
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });
@@ -91,7 +91,7 @@ test(
 
 test(
 	'a long web search shows the turn is still searching and counts the time',
-	{ tag: ['@preview-only', '@F2', '@CUR-4719'] },
+	{ tag: ['@preview-only', '@F2'] },
 	async ({ page }) => {
 		test.setTimeout(180_000);
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });

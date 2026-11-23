@@ -130,7 +130,7 @@ test.describe('a French browser', () => {
 
 	test(
 		'writing to Alpha in French gets a French reply, rendered on screen',
-		{ tag: ['@A2', '@no-replay', '@CUR-1575', '@provider-contract'] },
+		{ tag: ['@A2', '@no-replay', '@provider-contract'] },
 		async ({ page }) => {
 			// Same overlay hazard as chat-message-send.spec.ts: an async settings load can mount the
 			// welcome dialog at any point after first paint, including mid-action. Registered before

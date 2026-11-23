@@ -331,9 +331,9 @@ code for a coding agent working in a fork.
 
 ## Reading the code
 
-The team's internal tracker is not public. The export removes its ticket ids from comments and test
-names; a few remain in code and data, such as test tags and flag descriptions, and cannot be looked up
-from here.
+The team's internal tracker is not public. The export strips most of its ticket ids from comments and
+test names, but many remain in comments, test tags, flag descriptions and data. They cannot be looked
+up from here, and are being removed.
 
 `web/UPSTREAM.md` records the chat-ui commit Alpha forked from and which directories descend from it.
 

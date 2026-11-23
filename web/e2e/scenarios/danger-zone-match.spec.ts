@@ -40,7 +40,7 @@ async function measure(page: Page, path: string, button: RegExp | string): Promi
 
 test(
 	'Forget everything and Delete account sit in danger zones of the same button height, padding and frame',
-	{ tag: ['@A3', '@CUR-4071'] },
+	{ tag: ['@A3'] },
 	async ({ page }) => {
 		await signInAsFreshUser(page);
 		const forget = await measure(page, '/chat/settings/data', /^Forget everything/);

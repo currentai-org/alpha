@@ -642,7 +642,7 @@ test(
 );
 test(
 	'a native turn on Large 4 also gets its conversation named in the side rail after one answer',
-	{ tag: ['@F2', '@preview-only', '@CUR-2734'] },
+	{ tag: ['@F2', '@preview-only'] },
 	async ({ page, context, baseURL }) => sideRailNamesConversation({ page, context, baseURL }, true)
 );
 
@@ -1055,8 +1055,8 @@ for (const { fault: faultName, kept } of [
 	{ fault: 'chat_500', kept: false }
 ] as const) {
 	test(
-		`CUR-4494: after a ${faultName} failure the composer takes a reworded question and it is answered in its own turn`,
-		{ tag: ['@A5', '@C3', '@preview-only', '@CUR-4494'] },
+		`after a ${faultName} failure the composer takes a reworded question and it is answered in its own turn`,
+		{ tag: ['@A5', '@C3', '@preview-only'] },
 		async ({ page }) => {
 			test.setTimeout(180_000);
 			const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });
@@ -1419,7 +1419,7 @@ test(
 // numbers come from the typed text's own length, not from anything the page reports.
 test(
 	'an over-long message is refused with its length, the limit and how much to cut',
-	{ tag: ['@F2', '@C3', '@preview-only', '@CUR-3695'] },
+	{ tag: ['@F2', '@C3', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(90_000);
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });
@@ -1457,7 +1457,7 @@ test(
 // still looks the same in a recording is the defect.
 test(
 	'Send looks blocked while the message is over the length limit, and a click still says why',
-	{ tag: ['@F2', '@C3', '@preview-only', '@CUR-2703'] },
+	{ tag: ['@F2', '@C3', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(90_000);
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });
@@ -1750,7 +1750,7 @@ const TIMED_OUT = /took too long to respond\. Please try again\./;
 
 test(
 	'pressing Retry after a timed-out turn brings one fresh answer, with no duplicate question or answer',
-	{ tag: ['@F2', '@C3', '@CUR-2803', '@preview-only'] },
+	{ tag: ['@F2', '@C3', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(150_000);
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });
@@ -1802,7 +1802,7 @@ test(
 // shortened watchdog ends the turn; on the Continue it writes the second.
 test(
 	'a turn the time limit cuts off keeps its partial answer, saved, and Continue finishes it in place',
-	{ tag: ['@C3', '@preview-only', '@CUR-5187'] },
+	{ tag: ['@C3', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(150_000);
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });

@@ -33,7 +33,7 @@ import {
 
 test(
 	'a run on a full sandbox host shows "Waiting for a free sandbox…" while it waits, then the run’s result',
-	{ tag: ['@preview-only', '@CUR-4584'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(240_000);
 		await setFlagOverrides(context, baseURL!, { 'one-chat-sandbox': true });

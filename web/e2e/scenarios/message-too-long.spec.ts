@@ -51,7 +51,7 @@ async function pasteAndSend(page: Page, paste: string, question: string) {
 
 test(
 	'a message over the model context is refused up front with "shorten it", never "press Retry"',
-	{ tag: ['@CUR-2893', '@CUR-3731', '@preview-only'] },
+	{ tag: ['@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(240_000);
 		const model = await selfHostedModel(page);
@@ -178,7 +178,7 @@ async function growPastContext(page: Page, modelId: string) {
 
 test(
 	'a chat grown past the model context answers with a note that older messages were left out',
-	{ tag: ['@CUR-2893', '@preview-only', '@stub-screen'] },
+	{ tag: ['@preview-only', '@stub-screen'] },
 	async ({ page }) => {
 		test.setTimeout(420_000);
 		const model = await selfHostedModel(page);

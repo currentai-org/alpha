@@ -16,7 +16,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // Preview-only: the fault switch is never armed on production.
 test(
 	'reloading before the question is saved still shows the question and its answer, with no second reload',
-	{ tag: ['@C3', '@preview-only', '@CUR-1893'] },
+	{ tag: ['@C3', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(150_000);
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });

@@ -39,7 +39,7 @@ test(
 	'a passkey registered through the UI survives sign-out and signs back in, bound to a valid RP ID',
 	// @apex-rp: develop's own build sets rpID to the apex (computePasskeyRp), so the gallery runs this
 	// test against the alias rather than develop's raw deployment URL.
-	{ tag: ['@A1', '@apex-rp', '@CUR-1696'] },
+	{ tag: ['@A1', '@apex-rp'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(180_000);
 		// A guest who lands on the chat entry may get the first-visit welcome, which covers the composer.

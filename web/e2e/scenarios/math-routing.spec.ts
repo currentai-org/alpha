@@ -28,7 +28,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // Preview-only: the flag is forced through the fuzz_override cookie, which production refuses.
 test(
 	'with math-routing on, a three-turn FTE question with two resignations gets a code-checked total that is right every time',
-	{ tag: ['@preview-only', '@CUR-2065', '@CUR-2198'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		// Three real turns of up to 60s each, after up to 60s of setup.
 		test.setTimeout(260_000);
@@ -169,7 +169,7 @@ test(
 // ledger that timed out would also print no total, and that is the lane's miss, not this contract.
 test(
 	'with math-routing on, a request to summarise an agenda that contains figures gets no code-checked total',
-	{ tag: ['@preview-only', '@CUR-2161'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(140_000);
 		await setFlagOverrides(context, baseURL!, { 'math-routing': true });
@@ -238,7 +238,7 @@ test(
 // missed (no total at all) is named as the lane, not passed as cents.
 test(
 	'with math-routing on, a shopping total with sales tax reads in cents, not six decimals',
-	{ tag: ['@preview-only', '@CUR-2206'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(140_000);
 		await setFlagOverrides(context, baseURL!, { 'math-routing': true });

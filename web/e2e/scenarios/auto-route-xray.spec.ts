@@ -101,7 +101,7 @@ const xrayTimeouts = {
 
 test(
 	"an answer whose model Auto chose stores Auto's choice, and X-ray's Step by step says Auto chose it",
-	{ tag: ['@F2', '@CUR-3944'] },
+	{ tag: ['@F2'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(150_000);
 		const composer = await openChat(page, context, baseURL!, 'auto');
@@ -131,7 +131,7 @@ test(
 
 test(
 	'an answer whose model the person picked stores no Auto choice, and Step by step has no Auto step',
-	{ tag: ['@F2', '@CUR-3944'] },
+	{ tag: ['@F2'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(150_000);
 		const composer = await openChat(page, context, baseURL!, 'mistral-large-4');
@@ -150,7 +150,7 @@ test(
 
 test(
 	'a model link opened on a device left on Auto picks that model, so the pill names it and the answer claims no Auto choice',
-	{ tag: ['@F2', '@CUR-4021'] },
+	{ tag: ['@F2'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(150_000);
 		// The link page sent every message to its model while the pill and the empty state said
@@ -179,7 +179,7 @@ test(
 
 test(
 	"mid-chat, a turn Auto moves to another model stores Auto's choice, though the switch waits on a PATCH",
-	{ tag: ['@F2', '@CUR-3944'] },
+	{ tag: ['@F2'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(240_000);
 		const composer = await openChat(page, context, baseURL!, 'auto');
@@ -230,7 +230,7 @@ test(
 // the model itself, and the pick is read from it.
 test(
 	'on Auto, a short English question names Mistral Medium, keeping Large 4 for large tasks',
-	{ tag: ['@F2', '@CUR-4035'] },
+	{ tag: ['@F2'] },
 	async ({ page, context, baseURL }) => {
 		const composer = await openChat(page, context, baseURL!, 'auto');
 		await composer.fill('What is the capital of France? Answer in one sentence.');
@@ -257,7 +257,7 @@ const HARD_DRAFT =
 
 test(
 	"on Auto, a hard English question is answered by Mistral Large 4, and X-ray's Step by step says Auto chose it",
-	{ tag: ['@F2', '@CUR-4574'] },
+	{ tag: ['@F2'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(240_000);
 		const composer = await openChat(page, context, baseURL!, 'auto');
@@ -294,7 +294,7 @@ test(
 
 test(
 	"mid-chat, a turn sent straight after typing, before Auto's draft reading settles, still goes where Auto sends it and stores Auto's choice",
-	{ tag: ['@F2', '@CUR-3944'] },
+	{ tag: ['@F2'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(240_000);
 		const composer = await openChat(page, context, baseURL!, 'auto');
@@ -337,7 +337,7 @@ test(
 // "<family> · <size>", once the draft has rested.
 test(
 	'on Auto, an Arabic draft names the model measured best in Arabic, not Apertus on a hand-set estimate',
-	{ tag: ['@F2', '@CUR-4042'] },
+	{ tag: ['@F2'] },
 	async ({ page, context, baseURL }) => {
 		const composer = await openChat(page, context, baseURL!, 'auto');
 		await composer.fill('اشرح لي الفرق بين الفيروس والبكتيريا');
@@ -360,7 +360,7 @@ test(
 // Belebele's noise of each other, so either is a right pick; Medium is not. Read the same way as Arabic.
 test(
 	'on Auto, an Amharic draft names a model measured near the best in Amharic, never Mistral Medium',
-	{ tag: ['@F2', '@CUR-4078'] },
+	{ tag: ['@F2'] },
 	async ({ page, context, baseURL }) => {
 		const composer = await openChat(page, context, baseURL!, 'auto');
 		await composer.fill('በቫይረስ እና በባክቴሪያ መካከል ያለውን ልዩነት አስረዳኝ');
@@ -398,7 +398,7 @@ test(
 // Medium 3.5's rating, 38 Large 4's, 3 Bielik's. Read the same way as Arabic; the draft is never sent.
 test(
 	'on Auto, a short Polish draft names Mistral Medium 3.5, rated 14, not Bielik',
-	{ tag: ['@F2', '@CUR-4294'] },
+	{ tag: ['@F2'] },
 	async ({ page, context, baseURL }) => {
 		const composer = await openChat(page, context, baseURL!, 'auto');
 		await composer.fill('Czy możesz mi pomóc z tym? Nie jest to łatwe.');
@@ -432,7 +432,7 @@ test(
 // offers runs on them, and "Model chooser: Being built" though Auto chooses the model.
 test(
 	'X-ray\'s stack claims no "open parts", says public computers are not in use, and lights the model chooser on an Auto answer',
-	{ tag: ['@F2', '@CUR-4328'] },
+	{ tag: ['@F2'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(150_000);
 		const composer = await openChat(page, context, baseURL!, 'auto');

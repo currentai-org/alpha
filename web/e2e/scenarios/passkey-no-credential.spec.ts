@@ -10,7 +10,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // to do instead, with the other ways in still on screen.
 test(
 	'a passkey tap on a device with no passkey points to the other sign-in methods, never a bare "Auth cancelled"',
-	{ tag: ['@A1', '@CUR-2924'] },
+	{ tag: ['@A1'] },
 	async ({ page, context }) => {
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });
 		await page.addLocatorHandler(welcomeDialog, async () => {

@@ -72,7 +72,7 @@ async function readsAndContinues(page: Page, id: string, canary: string): Promis
 
 test(
 	"a guest's chat opens and goes on after the guest signs in to a new account",
-	{ tag: ['@preview-only', '@CUR-4981'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(300_000);
 		await setFlagOverrides(context, baseURL!, { 'history-key-enrollment': true });
@@ -87,7 +87,7 @@ test(
 
 test(
 	"a guest's chat opens and goes on after the guest signs in to an account that already has a history key",
-	{ tag: ['@preview-only', '@CUR-4981'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, browser, baseURL }) => {
 		expect(
 			DATABASE_URL,

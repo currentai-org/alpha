@@ -11,7 +11,7 @@ import { CHAT_ENTRY } from './helpers/chatEntry';
 
 test(
 	'the language leaderboard opens from the Language panel; unmeasured rows never show a %, measured rows show their evidence',
-	{ tag: ['@preview-only', '@CUR-2230'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context }) => {
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });
 		await page.addLocatorHandler(welcomeDialog, async () => {

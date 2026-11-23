@@ -161,3 +161,15 @@ describe("boot validation — Open WebUI's model env names count for OPENAI_BASE
 		expect(() => validateEnvFor(neither, { surface: "chat", deployEnv: null })).toThrow(/OPENAI_BASE_URL/);
 	});
 });
+
+describe("boot validation — ALPHA_MODELS_FILE counts for OPENAI_BASE_URL", () => {
+	const example = new URL("../../../../../../selfhost/config/models.example.json", import.meta.url).pathname;
+	const fileOnly = () => ({ ...complete(), ALPHA_EDITION: "selfhost", OPENAI_BASE_URL: "", ALPHA_MODELS_FILE: example });
+	it("boots a self-host in production with OPENAI_BASE_URL empty when ALPHA_MODELS_FILE names a valid file", () => {
+		expect(() => validateEnvFor(fileOnly(), { surface: "chat", deployEnv: "production" })).not.toThrow();
+	});
+	it("refuses to boot (fails loud) when ALPHA_MODELS_FILE names a file that does not exist, naming the path", () => {
+		const missing = { ...fileOnly(), ALPHA_MODELS_FILE: "/nowhere/models.json" };
+		expect(() => validateEnvFor(missing, { surface: "chat", deployEnv: "production" })).toThrow("/nowhere/models.json");
+	});
+});

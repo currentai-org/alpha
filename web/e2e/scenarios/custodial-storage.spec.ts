@@ -443,7 +443,7 @@ test(
 // to it would save the file instead; the download listener is what tells the two apart.
 test(
 	'My files shows an image as a thumbnail and opens a row in place without downloading it',
-	{ tag: ['@preview-only', '@A3', '@CUR-3289'] },
+	{ tag: ['@preview-only', '@A3'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(120_000);
 		await setFlagOverrides(context, baseURL!, {
@@ -552,7 +552,7 @@ async function dropRotaOnComposer(page: Page, name: string) {
 // anywhere but under the conversation it was attached to.
 test(
 	'a file attached in chat lands in My files under its conversation, dated and linked back to it, reaches a later turn, and goes when the conversation is deleted',
-	{ tag: ['@preview-only', '@A3', '@CUR-3289'] },
+	{ tag: ['@preview-only', '@A3'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(180_000);
 		await setFlagOverrides(context, baseURL!, {
@@ -715,7 +715,7 @@ test(
 // the first row.
 test(
 	'a file just attached in chat is the first row in My files, above an older file',
-	{ tag: ['@preview-only', '@A3', '@CUR-4355'] },
+	{ tag: ['@preview-only', '@A3'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(180_000);
 		await setFlagOverrides(context, baseURL!, {
@@ -771,7 +771,7 @@ test(
 // question the file has nothing to do with: red if that turn is held instead of answered.
 test(
 	'deleting a chat attachment from My files does not hold the later turns in that chat as unchecked',
-	{ tag: ['@preview-only', '@A3', '@CUR-4773'] },
+	{ tag: ['@preview-only', '@A3'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(180_000);
 		await setFlagOverrides(context, baseURL!, {
@@ -856,7 +856,7 @@ test(
 // or if the wipe leaves it behind.
 test(
 	'a file attached in chat is in the data export once, and goes when the account is deleted',
-	{ tag: ['@preview-only', '@A3', '@CUR-2172'] },
+	{ tag: ['@preview-only', '@A3'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(180_000);
 		await setFlagOverrides(context, baseURL!, {
@@ -945,7 +945,7 @@ test(
 for (const fault of ['storage_hub_rate_limited'] as const) {
 	test(
 		`an attachment the bucket refuses (${fault}) still reaches the model, through the files table`,
-		{ tag: ['@preview-only', '@A3', '@CUR-2183'] },
+		{ tag: ['@preview-only', '@A3'] },
 		async ({ page, context, baseURL }) => {
 			test.setTimeout(180_000);
 			await setFlagOverrides(context, baseURL!, { 'custodial-storage-view': true });
@@ -1032,7 +1032,7 @@ async function answerMyFilesAsFull(page: Page) {
 // fresh account can't be filled to 250 MB in a spec; red if the file still sits on the composer.
 test(
 	'a file that would take a full My files past its limit is refused when it is attached, before Send',
-	{ tag: ['@preview-only', '@A6', '@CUR-3235'] },
+	{ tag: ['@preview-only', '@A6'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(120_000);
 		await setFlagOverrides(context, baseURL!, { 'custodial-storage-view': true });
@@ -1078,7 +1078,7 @@ test(
 // account, so the count is the composer's own requests and no Hub call is spent; red if each drop lists.
 test(
 	'three files dropped one after another check My files headroom with one listing, not three',
-	{ tag: ['@preview-only', '@A6', '@CUR-3681'] },
+	{ tag: ['@preview-only', '@A6'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(120_000);
 		await setFlagOverrides(context, baseURL!, { 'custodial-storage-view': true });
@@ -1128,7 +1128,7 @@ test(
 // the files table. The fault answers the bucket write as a full quota on the live preview.
 test(
 	'a send that finds My files full is refused with the quota line, keeps the question, and stores the file nowhere',
-	{ tag: ['@preview-only', '@A6', '@CUR-3235'] },
+	{ tag: ['@preview-only', '@A6'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(180_000);
 		await setFlagOverrides(context, baseURL!, { 'custodial-storage-view': true });
@@ -1197,7 +1197,7 @@ test(
 // frees up. The send-time 413 is parseRequest.spec.ts's.
 test(
 	'an attached file counts against the 24-hour allowance, and a spent allowance refuses the next file at attach',
-	{ tag: ['@preview-only', '@A6', '@CUR-3235'] },
+	{ tag: ['@preview-only', '@A6'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(180_000);
 		await setFlagOverrides(context, baseURL!, {
@@ -1312,7 +1312,7 @@ test(
 // second leaves 20 and says so. Removing the files takes the line away with them.
 test(
 	'the composer says how much of the 24-hour allowance is left once a fifth or less remains',
-	{ tag: ['@preview-only', '@A6', '@CUR-3235'] },
+	{ tag: ['@preview-only', '@A6'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(120_000);
 		await setFlagOverrides(context, baseURL!, {
@@ -1363,7 +1363,7 @@ test(
 // whole turn for child safety, which the stub screen never showed.
 test(
 	'a stored attachment the bucket will not read back is named on the turn, and its download answers busy, never 500',
-	{ tag: ['@preview-only', '@A3', '@CUR-3291', '@CUR-3680', '@real-screen'] },
+	{ tag: ['@preview-only', '@A3', '@real-screen'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(180_000);
 		await setFlagOverrides(context, baseURL!, { 'custodial-storage-view': true });
@@ -1433,7 +1433,7 @@ test(
 // after the bucket reads normally, so the advice would be wrong.
 test(
 	'asking again after the bucket read recovers gets an answer that uses the stored file',
-	{ tag: ['@preview-only', '@A3', '@CUR-3291', '@real-screen'] },
+	{ tag: ['@preview-only', '@A3', '@real-screen'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(240_000);
 		await setFlagOverrides(context, baseURL!, { 'custodial-storage-view': true });
@@ -1491,7 +1491,7 @@ test(
 // which is the same shape without driving two chat turns.
 test(
 	'two stored files with the same name both list, each downloads its own file, and each deletes on its own',
-	{ tag: ['@preview-only', '@A3', '@CUR-3198'] },
+	{ tag: ['@preview-only', '@A3'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(120_000);
 		await setFlagOverrides(context, baseURL!, {

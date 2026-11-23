@@ -6,6 +6,7 @@ import { logger } from "$lib/chat/server/logger";
 import { dev } from "$app/env";
 import { initExitHandler, onExit } from "$lib/chat/server/exitHandler";
 import { startProcessKeepalive } from "$lib/chat/server/keepalive";
+import { startDailyCleanupSchedule } from "$lib/chat/server/dailyCleanupSchedule";
 import { AbortedGenerations } from "$lib/chat/server/abortedGenerations";
 import { adminTokenManager } from "$lib/chat/server/adminToken";
 import { MetricsServer } from "$lib/chat/server/metrics";
@@ -55,6 +56,14 @@ export async function initServer(): Promise<void> {
 			tick: async () => (await import("$lib/chat/server/warm")).warmProcess(),
 		});
 		if (stop) onExit(stop);
+	}
+
+	// Off Vercel there is no cron to call /chat/api/cleanup, so this process deletes expired guest
+	// data on its own daily timer. On Vercel the cron runs it and no timer starts.
+	const stopCleanup = startDailyCleanupSchedule({ dev });
+	if (stopCleanup) {
+		onExit(stopCleanup);
+		logger.info("[cleanup] daily cleanup scheduled in this process");
 	}
 
 	adminTokenManager.displayToken();

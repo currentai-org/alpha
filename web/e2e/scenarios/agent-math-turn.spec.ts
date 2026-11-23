@@ -22,7 +22,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // this is the suite's one live agent smoke. It runs on develop's push run and is left out of PR runs.
 test(
 	'with Agent on, a question with a number to work out runs the agent rather than the math planner, and X-ray says where it ran',
-	{ tag: ['@preview-only', '@A7', '@CUR-3884', '@CUR-2812', '@real-agent'] },
+	{ tag: ['@preview-only', '@A7', '@real-agent'] },
 	async ({ page, context, baseURL }) => {
 		// An agent turn runs a sandbox and several model rounds, as agent-file-download.spec.ts measures.
 		test.setTimeout(300_000);

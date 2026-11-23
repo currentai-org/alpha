@@ -9,6 +9,7 @@ import { captureServerException } from "$lib/chat/server/errorTracking";
 import { logger } from "$lib/chat/server/logger";
 import { APP_SURFACE, type AppSurface } from "$lib/surface";
 import { resolveOpenAiEnv } from "./openWebUiAliases";
+import { applyOperatorModels } from "./operatorModels";
 import { bootRequiredKeys, bootWarnKeys, surfaceRequiredKeys } from "../../../../../config/env-manifest.mjs";
 
 export function validateEnv(): void {
@@ -23,6 +24,11 @@ export function validateEnvFor(
 	const required = bootRequiredKeys(where) as string[];
 	const warned = bootWarnKeys(where) as string[];
 	// config.ts maps Open WebUI's OPENAI_API_BASE_URLS onto OPENAI_BASE_URL; check what it will serve, not the raw name.
+	// Likewise ALPHA_MODELS_FILE, which config.ts has already read and validated: check the endpoint it sets.
+	if ((all.ALPHA_MODELS_FILE ?? "").trim()) {
+		all = { ...all };
+		applyOperatorModels(all);
+	}
 	const owui = resolveOpenAiEnv(all);
 	if (owui.source === "open-webui") all = { ...all, OPENAI_BASE_URL: owui.baseUrl };
 	const present = (k: string) => (all[k] ?? "").trim().length > 0;

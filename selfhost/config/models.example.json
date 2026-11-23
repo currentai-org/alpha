@@ -1,0 +1,21 @@
+{
+	"providers": [
+		{
+			"name": "local",
+			"api_base": "http://llama:8080/v1",
+			"api_key_env": "OPENAI_API_KEY",
+			"lists_models": true
+		}
+	],
+	"model_list": [
+		{
+			"model_name": "qwen2.5-0.5b-instruct",
+			"litellm_params": { "model": "qwen2.5-0.5b-instruct", "provider": "local" }
+		}
+	],
+	"roles": {
+		"default_chat": "qwen2.5-0.5b-instruct",
+		"task": "qwen2.5-0.5b-instruct",
+		"picker": ["qwen2.5-0.5b-instruct"]
+	}
+}

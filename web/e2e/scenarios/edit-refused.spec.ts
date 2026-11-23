@@ -36,7 +36,7 @@ async function answeredChat(page: Page) {
 
 test(
 	'an edit over the length cap keeps its edit box open with the text and says the message is too long',
-	{ tag: ['@C2', '@preview-only', '@CUR-2825'] },
+	{ tag: ['@C2', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(150_000);
 		const composer = await answeredChat(page);
@@ -78,7 +78,7 @@ test(
 // the box then shows the countdown in place of the reason (the test below).
 test(
 	"an edit the server refuses reopens its edit box with the text and the server's reason",
-	{ tag: ['@C2', '@CUR-2825'] },
+	{ tag: ['@C2'] },
 	async ({ page }) => {
 		test.setTimeout(150_000);
 		const composer = await answeredChat(page);
@@ -121,7 +121,7 @@ test(
 // same refusal and, being recorded, pushed the window further out.
 test(
 	'an edit refused by our message limit holds the edit box Send and counts the wait down',
-	{ tag: ['@C2', '@CUR-3410'] },
+	{ tag: ['@C2'] },
 	async ({ page }) => {
 		test.setTimeout(150_000);
 		await answeredChat(page);

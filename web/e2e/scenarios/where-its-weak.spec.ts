@@ -10,7 +10,7 @@ import { installCannedReplies } from './helpers/faultInjection';
 
 test(
 	'the "?" under an answer describes today\'s Alpha: several models answer, and web search needs no switch',
-	{ tag: ['@F3', '@CUR-4262'] },
+	{ tag: ['@F3'] },
 	async ({ page }) => {
 		// Sends a real turn and waits up to 90s for it, after up to 60s of setup.
 		test.setTimeout(180_000);

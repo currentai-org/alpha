@@ -28,7 +28,7 @@ async function sendAndAwaitAnswer(page: Page, text: string, answers: number): Pr
 
 test(
 	"an account past its day's turns reads the limit message, and another account still gets answers",
-	{ tag: ['@preview-only', '@CUR-4861'] },
+	{ tag: ['@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(240_000);
 		const welcome = page.getByRole('dialog', { name: 'Welcome to Alpha' });

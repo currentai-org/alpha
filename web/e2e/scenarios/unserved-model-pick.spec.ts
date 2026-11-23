@@ -17,7 +17,7 @@ const QUESTION = 'What is the capital of Austria? One word.';
 
 test(
 	'a picked model that is not served stops the send, says so, and keeps the draft, with no conversation made',
-	{ tag: ['@F2', '@CUR-4073'] },
+	{ tag: ['@F2'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(90_000);
 		await setFlagOverrides(context, baseURL!, { 'auto-routing': true });
@@ -71,7 +71,7 @@ const UNLISTED_LINK_MODEL = 'example-org/unlisted-model-for-cur-3936';
 
 test(
 	'a model link to a model the registry does not list stops the send and names it, with no conversation made on another model',
-	{ tag: ['@F2', '@CUR-3936'] },
+	{ tag: ['@F2'] },
 	async ({ page }) => {
 		test.setTimeout(90_000);
 		const created: string[] = [];

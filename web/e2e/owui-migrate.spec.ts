@@ -133,8 +133,7 @@ const runs: {
 	statePath: string;
 } = { postgres: [], conversationUrl: '', statePath: join(tmpdir(), 'owui-migrate-alice.json') };
 
-test.describe
-	.serial('Open WebUI install migrates onto the composed self-host stack (CUR-4909)', () => {
+test.describe.serial('Open WebUI install migrates onto the composed self-host stack', () => {
 	let sqlitePath: string;
 
 	test.beforeAll(() => {

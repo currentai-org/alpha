@@ -16,7 +16,7 @@ type Stored = { id: string; verdict?: { agreement?: string } };
 
 test(
 	"an answer's Second opinion action opens the offer in X-ray, and the panel returns a verdict that is stored on the answer",
-	{ tag: ['@preview-only', '@CUR-4187'] },
+	{ tag: ['@preview-only'] },
 	async ({ page }) => {
 		// One turn (up to 90s) and one panel fan-out (30-50s, up to 120s), after setup.
 		test.setTimeout(300_000);

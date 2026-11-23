@@ -12,7 +12,7 @@ test.use({ welcome: 'show' });
 // the interface in French, so either source gives French.
 test(
 	'a person writing in French gets the support card in French',
-	{ tag: ['@CUR-4094', '@real-screen'] },
+	{ tag: ['@real-screen'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(90_000);
 		await context.addCookies([{ name: 'PARAGLIDE_LOCALE', value: 'fr', url: baseURL as string }]);
@@ -53,7 +53,7 @@ test(
 // language detection; without it the card falls back to the interface language and reads in English.
 test(
 	'a person writing in French under an English interface gets the support card in French',
-	{ tag: ['@CUR-4093', '@CUR-4094', '@real-screen'] },
+	{ tag: ['@real-screen'] },
 	async ({ page }) => {
 		test.setTimeout(90_000);
 		const welcomeDialog = page

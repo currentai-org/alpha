@@ -24,7 +24,7 @@ import { ANSWERED_BY_CALCULATOR, CALCULATOR_STEP, RUN_CODE_PROMPT } from './help
 
 test(
 	'a sandbox that never answers ends the turn inside its budget, the code step says it timed out, and an answer follows',
-	{ tag: ['@preview-only', '@CUR-4627'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(180_000);
 		await setFlagOverrides(context, baseURL!, { 'one-chat-sandbox': true });

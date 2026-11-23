@@ -1,0 +1,85 @@
+{
+  "about": "How Open WebUI's env names resolve to the one model endpoint. Read by web/src/lib/chat/server/env/openWebUiAliases.spec.ts (resolveOpenAiEnv, the web app) and agent-service/api/test_openwebui_env.py (resolve_openai_env, the self-host agent gateway), so the two copies cannot drift. Each case: env in; `expect` lists the fields the result must have with these values; `absent` lists fields it must not have; `throws` means the resolver refuses this env.",
+  "cases": [
+    {
+      "name": "uses Open WebUI's first URL and key when OPENAI_BASE_URL is unset",
+      "env": { "OPENAI_API_BASE_URLS": "http://llama:8080/v1", "OPENAI_API_KEYS": "sk-one" },
+      "expect": { "source": "open-webui", "baseUrl": "http://llama:8080/v1", "apiKey": "sk-one", "ignoredEndpoints": 0, "openWebUiShadowed": false },
+      "absent": ["keysGiven"]
+    },
+    {
+      "name": "keeps Alpha's own OPENAI_BASE_URL when both name sets are set, and says the Open WebUI set was shadowed",
+      "env": {
+        "OPENAI_BASE_URL": "https://alpha.example/v1",
+        "OPENAI_API_KEY": "alpha-key",
+        "OPENAI_API_BASE_URLS": "http://other/v1",
+        "OPENAI_API_KEYS": "other-key"
+      },
+      "expect": { "source": "alpha", "openWebUiShadowed": true },
+      "absent": ["baseUrl", "apiKey"]
+    },
+    {
+      "name": "does nothing when only Alpha's names are set (the www shape)",
+      "env": { "OPENAI_BASE_URL": "https://gw/v1", "OPENAI_API_KEY": "k" },
+      "expect": { "source": "alpha", "ignoredEndpoints": 0, "openWebUiShadowed": false },
+      "absent": ["baseUrl", "apiKey", "keysGiven"]
+    },
+    {
+      "name": "reports neither set as none",
+      "env": {},
+      "expect": { "source": "none", "ignoredEndpoints": 0, "openWebUiShadowed": false },
+      "absent": ["baseUrl", "apiKey"]
+    },
+    {
+      "name": "treats a blank OPENAI_BASE_URL as unset",
+      "env": { "OPENAI_BASE_URL": "  ", "OPENAI_API_BASE_URLS": "http://a/v1", "OPENAI_API_KEYS": "ka" },
+      "expect": { "source": "open-webui", "baseUrl": "http://a/v1", "apiKey": "ka" }
+    },
+    {
+      "name": "boots like Open WebUI when keys are fewer than URLs: the first pair is used and the key count is reported",
+      "env": { "OPENAI_API_BASE_URLS": "http://a/v1;http://b/v1", "OPENAI_API_KEYS": "k1" },
+      "expect": { "source": "open-webui", "baseUrl": "http://a/v1", "apiKey": "k1", "keysGiven": 1, "ignoredEndpoints": 1 }
+    },
+    {
+      "name": "treats a URL with no key at all as a keyless endpoint, as Open WebUI does, instead of refusing to boot",
+      "env": { "OPENAI_API_BASE_URLS": "http://llama:8080/v1" },
+      "expect": { "source": "open-webui", "baseUrl": "http://llama:8080/v1", "apiKey": "", "keysGiven": 0 }
+    },
+    {
+      "name": "falls back to OPENAI_API_KEY when OPENAI_API_KEYS is unset, as Open WebUI does",
+      "env": { "OPENAI_API_BASE_URLS": "http://a/v1", "OPENAI_API_KEY": "single" },
+      "expect": { "source": "open-webui", "apiKey": "single" },
+      "absent": ["keysGiven"]
+    },
+    {
+      "name": "drops keys past the last URL and reports how many were given",
+      "env": { "OPENAI_API_BASE_URLS": "http://a/v1", "OPENAI_API_KEYS": "k1;k2" },
+      "expect": { "apiKey": "k1", "keysGiven": 2, "ignoredEndpoints": 0 }
+    },
+    {
+      "name": "takes the first pair of several and counts the endpoints it cannot serve",
+      "env": { "OPENAI_API_BASE_URLS": "http://a/v1;http://b/v1;http://c/v1", "OPENAI_API_KEYS": "ka;kb;kc" },
+      "expect": { "baseUrl": "http://a/v1", "apiKey": "ka", "ignoredEndpoints": 2 }
+    },
+    {
+      "name": "accepts a keyless first endpoint written as an empty key",
+      "env": { "OPENAI_API_BASE_URLS": "http://a/v1;http://b/v1", "OPENAI_API_KEYS": ";kb" },
+      "expect": { "apiKey": "", "ignoredEndpoints": 1 }
+    },
+    {
+      "name": "ignores one trailing separator on both lists",
+      "env": { "OPENAI_API_BASE_URLS": "http://a/v1;", "OPENAI_API_KEYS": "ka;" },
+      "expect": { "baseUrl": "http://a/v1", "ignoredEndpoints": 0 }
+    },
+    {
+      "name": "trims spaces around each entry",
+      "env": { "OPENAI_API_BASE_URLS": " http://a/v1 ; http://b/v1 ", "OPENAI_API_KEYS": " ka ; kb " },
+      "expect": { "baseUrl": "http://a/v1", "apiKey": "ka", "ignoredEndpoints": 1 }
+    },
+    {
+      "name": "refuses a list whose first URL is empty rather than starting on the second",
+      "env": { "OPENAI_API_BASE_URLS": ";http://b/v1", "OPENAI_API_KEYS": "ka;kb" },
+      "throws": true
+    }
+  ]
+}

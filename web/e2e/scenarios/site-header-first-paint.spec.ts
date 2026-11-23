@@ -29,50 +29,49 @@ test.beforeAll(async ({ playwright }, testInfo) => {
 	await api.dispose();
 });
 
-test(
-	"the site header's first frame already has its icons, its font and its logo, even on a slow connection",
-	{ tag: '@CUR-2269' },
-	async ({ page, context }) => {
-		test.setTimeout(90_000);
-		const cdp = await context.newCDPSession(page);
-		await cdp.send('Network.emulateNetworkConditions', {
-			offline: false,
-			latency: 150,
-			downloadThroughput: 200 * 1024,
-			uploadThroughput: 100 * 1024
-		});
+test("the site header's first frame already has its icons, its font and its logo, even on a slow connection", async ({
+	page,
+	context
+}) => {
+	test.setTimeout(90_000);
+	const cdp = await context.newCDPSession(page);
+	await cdp.send('Network.emulateNetworkConditions', {
+		offline: false,
+		latency: 150,
+		downloadThroughput: 200 * 1024,
+		uploadThroughput: 100 * 1024
+	});
 
-		// Record the state on the first animation frame the header has height. A later read would
-		// pass on a page that had already swapped.
-		await page.addInitScript(() => {
-			const w = window as unknown as { __headerFirstPaint?: Record<string, boolean> };
-			const tick = () => {
-				const header = document.querySelector('header');
-				if (!header || header.getBoundingClientRect().height === 0)
-					return requestAnimationFrame(tick);
-				const logo = header.querySelector<HTMLImageElement>('img[alt="AI Potluck"]');
-				w.__headerFirstPaint = {
-					'icon font': document.fonts.check('16px aipotluck-icons', '\uf119' /* chevron-down */),
-					'Plus Jakarta Sans': document.fonts.check('13px "Plus Jakarta Sans"', 'Products'),
-					logo: !!logo && logo.complete && logo.naturalWidth > 0
-				};
+	// Record the state on the first animation frame the header has height. A later read would
+	// pass on a page that had already swapped.
+	await page.addInitScript(() => {
+		const w = window as unknown as { __headerFirstPaint?: Record<string, boolean> };
+		const tick = () => {
+			const header = document.querySelector('header');
+			if (!header || header.getBoundingClientRect().height === 0)
+				return requestAnimationFrame(tick);
+			const logo = header.querySelector<HTMLImageElement>('img[alt="AI Potluck"]');
+			w.__headerFirstPaint = {
+				'icon font': document.fonts.check('16px aipotluck-icons', '\uf119' /* chevron-down */),
+				'Plus Jakarta Sans': document.fonts.check('13px "Plus Jakarta Sans"', 'Products'),
+				logo: !!logo && logo.complete && logo.naturalWidth > 0
 			};
-			requestAnimationFrame(tick);
-		});
+		};
+		requestAnimationFrame(tick);
+	});
 
-		// Wait on the probe itself, not on the header being visible: Playwright reads visibility from
-		// layout, which settles seconds before a render-blocked page paints its first frame here.
-		await page.goto('/map', { waitUntil: 'commit' });
-		const handle = await page.waitForFunction(
-			() =>
-				(window as unknown as { __headerFirstPaint?: Record<string, boolean> }).__headerFirstPaint,
-			undefined,
-			{ timeout: 60_000 }
-		);
-		const state = (await handle.jsonValue()) as Record<string, boolean>;
-		expect(
-			state,
-			'the header painted before its icons, font or logo had loaded, so it pops in a moment later'
-		).toEqual({ 'icon font': true, 'Plus Jakarta Sans': true, logo: true });
-	}
-);
+	// Wait on the probe itself, not on the header being visible: Playwright reads visibility from
+	// layout, which settles seconds before a render-blocked page paints its first frame here.
+	await page.goto('/map', { waitUntil: 'commit' });
+	const handle = await page.waitForFunction(
+		() =>
+			(window as unknown as { __headerFirstPaint?: Record<string, boolean> }).__headerFirstPaint,
+		undefined,
+		{ timeout: 60_000 }
+	);
+	const state = (await handle.jsonValue()) as Record<string, boolean>;
+	expect(
+		state,
+		'the header painted before its icons, font or logo had loaded, so it pops in a moment later'
+	).toEqual({ 'icon font': true, 'Plus Jakarta Sans': true, logo: true });
+});

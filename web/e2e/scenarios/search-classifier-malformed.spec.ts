@@ -24,7 +24,7 @@ type Decision = {
 
 test(
 	'a classifier reply that is neither yes nor no is logged as malformed on the search decision, apart from a real verdict',
-	{ tag: ['@preview-only', '@CUR-2141'] },
+	{ tag: ['@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(90_000);
 		// The probe needs a session, which the first visit to chat mints.

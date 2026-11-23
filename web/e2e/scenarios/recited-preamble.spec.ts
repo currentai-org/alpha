@@ -12,7 +12,7 @@ const START_CHATTING = /start chatting/i;
 // gets the canned reply, so this spec calls no model. Without the guard the recital is the saved answer.
 test(
 	'an answer that recites the wrapped turn’s instructions is replaced by a retried answer',
-	{ tag: ['@A5', '@CUR-3886', '@preview-only'] },
+	{ tag: ['@A5', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });

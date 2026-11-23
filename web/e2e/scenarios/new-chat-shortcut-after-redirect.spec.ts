@@ -56,21 +56,17 @@ async function shortcutOpensNewChatAfterLanding(page: Page, query: string) {
 	expect(errors, 'the page threw while loading or handling the shortcut').toEqual([]);
 }
 
-test(
-	'after landing from a conversation the visitor cannot open (?unavailable=1), the page throws nothing and Ctrl/Cmd+Shift+O opens a new chat',
-	{ tag: ['@CUR-4743'] },
-	async ({ page }) => {
-		test.setTimeout(180_000);
-		await shortcutOpensNewChatAfterLanding(page, 'unavailable=1');
-	}
-);
+test('after landing from a conversation the visitor cannot open (?unavailable=1), the page throws nothing and Ctrl/Cmd+Shift+O opens a new chat', async ({
+	page
+}) => {
+	test.setTimeout(180_000);
+	await shortcutOpensNewChatAfterLanding(page, 'unavailable=1');
+});
 
-test(
-	'after landing from a ?model= link, the page throws nothing and Ctrl/Cmd+Shift+O opens a new chat',
-	{ tag: ['@CUR-4743'] },
-	async ({ page }) => {
-		test.setTimeout(180_000);
-		const model = await firstServedModel(page);
-		await shortcutOpensNewChatAfterLanding(page, `model=${encodeURIComponent(model)}`);
-	}
-);
+test('after landing from a ?model= link, the page throws nothing and Ctrl/Cmd+Shift+O opens a new chat', async ({
+	page
+}) => {
+	test.setTimeout(180_000);
+	const model = await firstServedModel(page);
+	await shortcutOpensNewChatAfterLanding(page, `model=${encodeURIComponent(model)}`);
+});

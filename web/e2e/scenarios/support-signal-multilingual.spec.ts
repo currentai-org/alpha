@@ -32,7 +32,7 @@ async function ask(page: Page, text: string) {
 
 test(
 	'distress in French, and a Spanish message about a friend, get the support card; a French bug report does not',
-	{ tag: ['@CUR-4093', '@real-screen'] },
+	{ tag: ['@real-screen'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(300_000);
 		await setFlagOverrides(context, baseURL!, { 'support-signal-classifier': true });
@@ -80,7 +80,7 @@ test(
 
 test(
 	'a distress message another rule declines still gets the support card',
-	{ tag: ['@CUR-4093', '@real-screen'] },
+	{ tag: ['@real-screen'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(180_000);
 		await setFlagOverrides(context, baseURL!, { 'support-signal-classifier': true });

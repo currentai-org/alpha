@@ -47,7 +47,7 @@ async function onAuto(page: Page, context: BrowserContext, baseURL: string) {
 // half stays, because only a real classifier answering proves the note isn't shown by default.
 test(
 	'on Auto, a route check that answers "direct" puts no agent-unreachable note on the answer',
-	{ tag: ['@preview-only', '@A7', '@CUR-2830'] },
+	{ tag: ['@preview-only', '@A7'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(180_000);
 		const composer = await onAuto(page, context, baseURL!);
@@ -72,7 +72,7 @@ test(
 // check and put "The agent wasn't reachable" under the refusal. The fault answers /route exactly so.
 test(
 	'on Auto, a prompt the agent service screens out puts no agent-unreachable note on the answer',
-	{ tag: ['@preview-only', '@A7', '@CUR-4056'] },
+	{ tag: ['@preview-only', '@A7'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(180_000);
 		const composer = await onAuto(page, context, baseURL!);

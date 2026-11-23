@@ -26,51 +26,49 @@ async function smoothed(page: Page) {
 	await page.waitForTimeout(600);
 }
 
-test(
-	'hovering a footer chevron button fills the label side only and swaps the icon box to salmon',
-	{ tag: '@CUR-4031' },
-	async ({ page }) => {
-		await page.goto('/');
-		const button = page.locator('footer .site-footer-intro [data-slot="button"]').first();
-		await expect(button, 'the footer has no chevron button').toBeAttached();
-		await smoothed(page);
-		// Scrolled to the bottom, where the footer sits, rather than with scrollIntoViewIfNeeded(), and
-		// hovered once the button has held still on screen (helpers/footer.ts).
-		await scrollFooterToRest(page, button);
-		const iconBox = button.locator(':scope > span').last();
-		const columns = button.locator('span[aria-hidden="true"] > span');
-		await expect(columns, 'the button has no wipe columns').toHaveCount(3);
+test('hovering a footer chevron button fills the label side only and swaps the icon box to salmon', async ({
+	page
+}) => {
+	await page.goto('/');
+	const button = page.locator('footer .site-footer-intro [data-slot="button"]').first();
+	await expect(button, 'the footer has no chevron button').toBeAttached();
+	await smoothed(page);
+	// Scrolled to the bottom, where the footer sits, rather than with scrollIntoViewIfNeeded(), and
+	// hovered once the button has held still on screen (helpers/footer.ts).
+	await scrollFooterToRest(page, button);
+	const iconBox = button.locator(':scope > span').last();
+	const columns = button.locator('span[aria-hidden="true"] > span');
+	await expect(columns, 'the button has no wipe columns').toHaveCount(3);
 
-		await expect(
-			button,
-			"the button's background stops at its padding edge, leaving the page to show through the border's inner edge"
-		).toHaveCSS('background-clip', 'border-box');
-		await expect(iconBox).toHaveCSS('background-color', DARK_BLUE);
+	await expect(
+		button,
+		"the button's background stops at its padding edge, leaving the page to show through the border's inner edge"
+	).toHaveCSS('background-clip', 'border-box');
+	await expect(iconBox).toHaveCSS('background-color', DARK_BLUE);
 
-		await button.hover();
-		const geometry = () =>
-			button.evaluate((el) => {
-				const box = (el.lastElementChild as HTMLElement).getBoundingClientRect();
-				const border = parseFloat(getComputedStyle(el.lastElementChild!).borderLeftWidth);
-				const wipe = el.querySelector('span[aria-hidden="true"]')!.getBoundingClientRect();
-				const cols = [...el.querySelectorAll('span[aria-hidden="true"] > span')];
-				return {
-					filled: cols.every((c) => c.getBoundingClientRect().height >= el.clientHeight),
-					// How far the wipe reaches past the icon box's own border, into what its fill covers.
-					underBox: wipe.right - (box.left + border)
-				};
-			});
-		await expect
-			.poll(async () => (await geometry()).filled, { message: 'the wipe never filled the label' })
-			.toBe(true);
-		expect(
-			(await geometry()).underBox,
-			'the wipe runs under the icon box, where its edge shows through as a hairline'
-		).toBeLessThanOrEqual(0.5);
-		await expect(iconBox).toHaveCSS('background-color', SALMON);
-		await expect(iconBox).toHaveCSS('color', DARK_BLUE);
-	}
-);
+	await button.hover();
+	const geometry = () =>
+		button.evaluate((el) => {
+			const box = (el.lastElementChild as HTMLElement).getBoundingClientRect();
+			const border = parseFloat(getComputedStyle(el.lastElementChild!).borderLeftWidth);
+			const wipe = el.querySelector('span[aria-hidden="true"]')!.getBoundingClientRect();
+			const cols = [...el.querySelectorAll('span[aria-hidden="true"] > span')];
+			return {
+				filled: cols.every((c) => c.getBoundingClientRect().height >= el.clientHeight),
+				// How far the wipe reaches past the icon box's own border, into what its fill covers.
+				underBox: wipe.right - (box.left + border)
+			};
+		});
+	await expect
+		.poll(async () => (await geometry()).filled, { message: 'the wipe never filled the label' })
+		.toBe(true);
+	expect(
+		(await geometry()).underBox,
+		'the wipe runs under the icon box, where its edge shows through as a hairline'
+	).toBeLessThanOrEqual(0.5);
+	await expect(iconBox).toHaveCSS('background-color', SALMON);
+	await expect(iconBox).toHaveCSS('color', DARK_BLUE);
+});
 
 type Glide = {
 	/** How far `#smooth-content` trailed the native scroll position, at most. */
@@ -120,30 +118,28 @@ function glide(page: Page, ms: number) {
 	);
 }
 
-test(
-	'while the page glides, the content, its lagged blocks and the footer only ever sit on whole pixels',
-	{ tag: '@CUR-4031' },
-	async ({ page }) => {
-		await page.goto('/');
-		await smoothed(page);
+test('while the page glides, the content, its lagged blocks and the footer only ever sit on whole pixels', async ({
+	page
+}) => {
+	await page.goto('/');
+	await smoothed(page);
 
-		const result = await glide(page, 1_500);
-		expect(result.maxTrail, 'the content jumped instead of gliding').toBeGreaterThan(50);
-		expect(result.maxLag, 'no block or footer lagged behind the scroll').toBeGreaterThan(1);
-		expect
-			.soft(
-				result.contentOff.slice(0, 5),
-				"#smooth-content sat between pixels (ScrollSmoother's `wholePixels`)"
-			)
-			.toEqual([]);
-		expect
-			.soft(
-				result.laggedOff.slice(0, 5),
-				'a lagged block or the footer sat between pixels (roundLagged in smooth-scroll.ts)'
-			)
-			.toEqual([]);
-	}
-);
+	const result = await glide(page, 1_500);
+	expect(result.maxTrail, 'the content jumped instead of gliding').toBeGreaterThan(50);
+	expect(result.maxLag, 'no block or footer lagged behind the scroll').toBeGreaterThan(1);
+	expect
+		.soft(
+			result.contentOff.slice(0, 5),
+			"#smooth-content sat between pixels (ScrollSmoother's `wholePixels`)"
+		)
+		.toEqual([]);
+	expect
+		.soft(
+			result.laggedOff.slice(0, 5),
+			'a lagged block or the footer sat between pixels (roundLagged in smooth-scroll.ts)'
+		)
+		.toEqual([]);
+});
 
 type ContrastSample = { ms: number; fill: string; chevron: string; ratio: number };
 
@@ -187,38 +183,36 @@ function sampleIconContrast(iconBox: Locator, ms: number) {
 // cross-fade through each other drop to about 1.6:1 halfway.
 const CONTRAST_FLOOR = 3;
 
-test(
-	'hovering in and out of a footer chevron button never drops the chevron below 3:1 against its icon box',
-	{ tag: '@CUR-4031' },
-	async ({ page }) => {
-		await page.goto('/');
-		const button = page.locator('footer .site-footer-intro [data-slot="button"]').first();
-		await expect(button, 'the footer has no chevron button').toBeAttached();
-		await smoothed(page);
-		await scrollFooterToRest(page, button);
-		const iconBox = button.locator(':scope > span').last();
-		await expect(iconBox.locator('svg'), 'the icon box has no chevron').toBeAttached();
+test('hovering in and out of a footer chevron button never drops the chevron below 3:1 against its icon box', async ({
+	page
+}) => {
+	await page.goto('/');
+	const button = page.locator('footer .site-footer-intro [data-slot="button"]').first();
+	await expect(button, 'the footer has no chevron button').toBeAttached();
+	await smoothed(page);
+	await scrollFooterToRest(page, button);
+	const iconBox = button.locator(':scope > span').last();
+	await expect(iconBox.locator('svg'), 'the icon box has no chevron').toBeAttached();
 
-		const box = (await button.boundingBox())!;
-		const away = { x: box.x + box.width / 2, y: Math.max(0, box.y - 60) };
-		await page.mouse.move(away.x, away.y);
+	const box = (await button.boundingBox())!;
+	const away = { x: box.x + box.width / 2, y: Math.max(0, box.y - 60) };
+	await page.mouse.move(away.x, away.y);
 
-		// Both directions: a cross-fade passes its midpoint on the way in and again on the way out.
-		for (const [direction, target, settled] of [
-			['hover in', { x: box.x + box.width / 2, y: box.y + box.height / 2 }, SALMON],
-			['hover out', away, DARK_BLUE]
-		] as const) {
-			const sampling = sampleIconContrast(iconBox, 600);
-			await page.mouse.move(target.x, target.y);
-			const samples = await sampling;
-			expect(samples.length, `${direction}: too few frames sampled`).toBeGreaterThan(10);
-			expect(samples.at(-1)!.fill, `${direction}: the icon box never changed colour`).toBe(settled);
-			const worst = samples.reduce((a, b) => (b.ratio < a.ratio ? b : a));
-			expect(
-				worst.ratio,
-				`${direction}: the chevron lost contrast against its icon box at ${worst.ms} ms ` +
-					`(fill ${worst.fill}, chevron ${worst.chevron})`
-			).toBeGreaterThanOrEqual(CONTRAST_FLOOR);
-		}
+	// Both directions: a cross-fade passes its midpoint on the way in and again on the way out.
+	for (const [direction, target, settled] of [
+		['hover in', { x: box.x + box.width / 2, y: box.y + box.height / 2 }, SALMON],
+		['hover out', away, DARK_BLUE]
+	] as const) {
+		const sampling = sampleIconContrast(iconBox, 600);
+		await page.mouse.move(target.x, target.y);
+		const samples = await sampling;
+		expect(samples.length, `${direction}: too few frames sampled`).toBeGreaterThan(10);
+		expect(samples.at(-1)!.fill, `${direction}: the icon box never changed colour`).toBe(settled);
+		const worst = samples.reduce((a, b) => (b.ratio < a.ratio ? b : a));
+		expect(
+			worst.ratio,
+			`${direction}: the chevron lost contrast against its icon box at ${worst.ms} ms ` +
+				`(fill ${worst.fill}, chevron ${worst.chevron})`
+		).toBeGreaterThanOrEqual(CONTRAST_FLOOR);
 	}
-);
+});

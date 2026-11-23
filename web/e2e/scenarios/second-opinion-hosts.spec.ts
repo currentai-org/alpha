@@ -19,7 +19,7 @@ type Stored = { id: string; opinions?: Opinion[] };
 
 test(
 	'after a second opinion, each stored take carries the host it ran on and Step by step names it',
-	{ tag: ['@preview-only', '@CUR-3563', '@CUR-2203'] },
+	{ tag: ['@preview-only'] },
 	async ({ page }) => {
 		// One turn (90s) plus the panel (up to 120s), after up to 60s of setup.
 		test.setTimeout(300_000);

@@ -58,67 +58,63 @@ async function readHero(page: import('@playwright/test').Page): Promise<HeroRead
 test.describe('desktop width', () => {
 	test.use({ viewport: { width: 1280, height: 800 } });
 
-	test(
-		'/about is on the Hero template: light band, image beside the text, a Solid and an Outline button',
-		{ tag: ['@CUR-3322'] },
-		async ({ page }) => {
-			const res = await page.goto('/about', { waitUntil: 'domcontentloaded' });
-			expect(res?.status(), '/about did not load').toBe(200);
-			await expect(page.locator('[data-hero-bg] h1')).toBeVisible();
-			await imageLoaded(page);
+	test('/about is on the Hero template: light band, image beside the text, a Solid and an Outline button', async ({
+		page
+	}) => {
+		const res = await page.goto('/about', { waitUntil: 'domcontentloaded' });
+		expect(res?.status(), '/about did not load').toBe(200);
+		await expect(page.locator('[data-hero-bg] h1')).toBeVisible();
+		await imageLoaded(page);
 
-			const hero = await readHero(page);
-			expect(hero.template, '/about is not rendered by the Hero template').toBe(true);
-			expect(hero.bg, 'the hero band is not the light variant the About page is set to').toBe(
-				'light'
-			);
-			expect(hero.bandColour, 'the light hero band is not white').toBe(WHITE);
-			expect(hero.textColour, 'the title on the light band is not dark blue').toBe(DARK_BLUE);
+		const hero = await readHero(page);
+		expect(hero.template, '/about is not rendered by the Hero template').toBe(true);
+		expect(hero.bg, 'the hero band is not the light variant the About page is set to').toBe(
+			'light'
+		);
+		expect(hero.bandColour, 'the light hero band is not white').toBe(WHITE);
+		expect(hero.textColour, 'the title on the light band is not dark blue').toBe(DARK_BLUE);
 
-			expect(hero.text && hero.image, 'the hero has no title or no image').toBeTruthy();
-			expect(
-				hero.image!.left,
-				'the image is not in its own column to the right of the text'
-			).toBeGreaterThanOrEqual(hero.text!.right - 1);
+		expect(hero.text && hero.image, 'the hero has no title or no image').toBeTruthy();
+		expect(
+			hero.image!.left,
+			'the image is not in its own column to the right of the text'
+		).toBeGreaterThanOrEqual(hero.text!.right - 1);
 
-			const solid = hero.buttons.find((b) => b.bg === DARK_BLUE);
-			const outline = hero.buttons.find((b) => b.bg === WHITE);
-			expect(
-				solid,
-				`no Solid button (dark-blue fill) among ${JSON.stringify(hero.buttons)}`
-			).toBeTruthy();
-			expect(solid!.color, 'the Solid button text is not white').toBe(WHITE);
-			expect(
-				outline,
-				`no Outline button (white fill) among ${JSON.stringify(hero.buttons)}`
-			).toBeTruthy();
-			expect(outline!.color, 'the Outline button text is not dark blue').toBe(DARK_BLUE);
-			expect(outline!.border, 'the Outline button has no dark-blue border').toBe(DARK_BLUE);
-		}
-	);
+		const solid = hero.buttons.find((b) => b.bg === DARK_BLUE);
+		const outline = hero.buttons.find((b) => b.bg === WHITE);
+		expect(
+			solid,
+			`no Solid button (dark-blue fill) among ${JSON.stringify(hero.buttons)}`
+		).toBeTruthy();
+		expect(solid!.color, 'the Solid button text is not white').toBe(WHITE);
+		expect(
+			outline,
+			`no Outline button (white fill) among ${JSON.stringify(hero.buttons)}`
+		).toBeTruthy();
+		expect(outline!.color, 'the Outline button text is not dark blue').toBe(DARK_BLUE);
+		expect(outline!.border, 'the Outline button has no dark-blue border').toBe(DARK_BLUE);
+	});
 });
 
 test.describe('phone width', () => {
 	test.use({ viewport: { width: 390, height: 844 } });
 
-	test(
-		'/about on a phone stacks the hero image under the text, inside the window',
-		{ tag: ['@CUR-3322'] },
-		async ({ page }) => {
-			const res = await page.goto('/about', { waitUntil: 'domcontentloaded' });
-			expect(res?.status(), '/about did not load').toBe(200);
-			await expect(page.locator('[data-hero-bg] h1')).toBeVisible();
-			await imageLoaded(page);
+	test('/about on a phone stacks the hero image under the text, inside the window', async ({
+		page
+	}) => {
+		const res = await page.goto('/about', { waitUntil: 'domcontentloaded' });
+		expect(res?.status(), '/about did not load').toBe(200);
+		await expect(page.locator('[data-hero-bg] h1')).toBeVisible();
+		await imageLoaded(page);
 
-			const hero = await readHero(page);
-			expect(hero.text && hero.image, 'the hero has no title or no image').toBeTruthy();
-			expect(hero.image!.top, 'the image is not under the text on a phone').toBeGreaterThanOrEqual(
-				hero.text!.bottom - 1
-			);
-			expect(
-				hero.image!.right,
-				'the image runs past the right edge of the window'
-			).toBeLessThanOrEqual(390 + 1);
-		}
-	);
+		const hero = await readHero(page);
+		expect(hero.text && hero.image, 'the hero has no title or no image').toBeTruthy();
+		expect(hero.image!.top, 'the image is not under the text on a phone').toBeGreaterThanOrEqual(
+			hero.text!.bottom - 1
+		);
+		expect(
+			hero.image!.right,
+			'the image runs past the right edge of the window'
+		).toBeLessThanOrEqual(390 + 1);
+	});
 });

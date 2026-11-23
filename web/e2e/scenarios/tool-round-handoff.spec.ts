@@ -20,7 +20,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 const LARGE4 = LARGE4_MODEL;
 test(
 	'a Large 4 tool round that stays over-cap ends on the busy notice naming Large 4, never answered by Mistral Medium',
-	{ tag: ['@F2', '@preview-only', '@CUR-4383', '@provider-contract'] },
+	{ tag: ['@F2', '@preview-only', '@provider-contract'] },
 	async ({ page }) => {
 		test.setTimeout(150_000);
 		const databaseUrl = process.env.SCENARIO_DATABASE_URL;

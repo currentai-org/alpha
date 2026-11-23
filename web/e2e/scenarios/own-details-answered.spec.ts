@@ -33,7 +33,7 @@ const INPUT_PRIVACY_DECLINE =
 
 test(
 	'a CV header built from the details the person typed is shown to them, not withheld as private information',
-	{ tag: ['@CUR-1837', '@real-screen', '@output-screen'] },
+	{ tag: ['@real-screen', '@output-screen'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });
@@ -93,7 +93,7 @@ test(
 // accounts only.
 test(
 	"a rota the person attached is answered with the names in it, not withheld as someone's private information",
-	{ tag: ['@CUR-1837', '@real-screen', '@preview-only', '@output-screen'] },
+	{ tag: ['@real-screen', '@preview-only', '@output-screen'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(300_000);
 		await setFlagOverrides(context, baseURL!, { multimodal: true, 'document-attachments': true });

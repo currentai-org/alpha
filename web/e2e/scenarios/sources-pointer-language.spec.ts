@@ -12,7 +12,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // the visitor reads.
 test(
 	'an Amharic question whose grounded answer bails gets the sources pointer in Amharic, naming the sources, with no English pointer and no hedge',
-	{ tag: ['@preview-only', '@CUR-4339'] },
+	{ tag: ['@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(150_000);
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });

@@ -95,7 +95,7 @@ async function signedInWithSealedChat(page: Page, canary: string): Promise<strin
 
 test(
 	"Search chats finds an archived chat by a word of its sealed title, which the server can't read",
-	{ tag: ['@preview-only', '@CUR-4963'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		expect(
 			DATABASE_URL,
@@ -137,7 +137,7 @@ test(
 
 test(
 	'the account download writes a sealed chat into the ZIP and the Open WebUI file, opened in the browser',
-	{ tag: ['@preview-only', '@CUR-4963'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		expect(
 			DATABASE_URL,
@@ -201,7 +201,7 @@ test(
 
 test(
 	'a shared sealed chat opens at its link after the disclosure, and the stored row stays sealed',
-	{ tag: ['@preview-only', '@CUR-4963'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, browser, baseURL }) => {
 		expect(
 			DATABASE_URL,

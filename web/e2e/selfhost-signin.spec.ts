@@ -60,7 +60,7 @@ async function freshPage(browser: Browser): Promise<Page> {
 	return context.newPage();
 }
 
-test.describe.serial(`self-host sign-in, ${mode} (CUR-4930)`, () => {
+test.describe.serial(`self-host sign-in, ${mode}`, () => {
 	if (mode === 'password') {
 		test('with no mailer, a visitor reached from the product creates an account with email and password and is signed in', async ({
 			page

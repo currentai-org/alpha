@@ -16,7 +16,7 @@ const ROTA = 'Volunteer rota\nSaturday: bake the bread\nSunday: wash the cups\n'
 
 test(
 	"with agent on Auto, a new chat's empty composer offers Attach files, and the first message's answer reads the file",
-	{ tag: ['@preview-only', '@A6', '@CUR-4087'] },
+	{ tag: ['@preview-only', '@A6'] },
 	async ({ page }) => {
 		test.setTimeout(180_000);
 		await signInAsFreshUser(page);

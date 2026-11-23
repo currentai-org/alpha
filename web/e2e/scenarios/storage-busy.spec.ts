@@ -87,7 +87,7 @@ const CHAT_DELETE = /\/api\/v2\/conversations\/[a-f0-9]{24}$/;
 
 test(
 	'when Hugging Face throttles storage, deleting a chat says storage is busy, keeps it, and a retry deletes it',
-	{ tag: ['@preview-only', '@A3', '@CUR-3666'] },
+	{ tag: ['@preview-only', '@A3'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		await signInAsFreshUser(page);
@@ -151,7 +151,7 @@ test(
 // same button loads the list once the page's own request no longer carries the fault.
 test(
 	'when Hugging Face throttles storage, My files says storage is busy and Try again loads the list',
-	{ tag: ['@preview-only', '@A3', '@CUR-3680'] },
+	{ tag: ['@preview-only', '@A3'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(120_000);
 		await setFlagOverrides(context, baseURL!, { 'custodial-storage-view': true });
@@ -182,7 +182,7 @@ const WIPE = /\/chat\/api\/v2\/conversations$/;
 
 test(
 	'when Hugging Face throttles storage, Forget everything says storage is busy, clears nothing, and Try again clears it',
-	{ tag: ['@preview-only', '@A3', '@CUR-3680'] },
+	{ tag: ['@preview-only', '@A3'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		await signInAsFreshUser(page);

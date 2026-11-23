@@ -19,7 +19,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 
 test(
 	'with past-chat search switched on, a new chat answers from an earlier one and links it under the answer',
-	{ tag: ['@preview-only', '@no-replay', '@CUR-4576'] },
+	{ tag: ['@preview-only', '@no-replay'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(300_000);
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });

@@ -90,7 +90,7 @@ async function thisAnswer(page: Page): Promise<string> {
 
 test(
 	'a configured MCP server reads a setting and, once the person allows it, changes it in one turn',
-	{ tag: ['@preview-only', '@CUR-3026'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(180_000);
 		await setFlagOverrides(context, baseURL!, { 'mcp-servers': true });
@@ -173,7 +173,7 @@ test(
 // account with no flag override, so the flag is PostHog's own team condition, as a team member reaches it.
 test(
 	'a team account asks Alpha to change a setting through the configured tool server and confirms it',
-	{ tag: ['@F1', '@preview-only', '@CUR-3026', '@CUR-4727'] },
+	{ tag: ['@F1', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(180_000);
 		await installFaultInjectionHeader(page, 'mcp_stub_server');
@@ -227,7 +227,7 @@ test(
 
 test(
 	'with mcp-servers off, the configured server is never offered and no confirmation appears',
-	{ tag: ['@preview-only', '@CUR-3026'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(150_000);
 		await setFlagOverrides(context, baseURL!, { 'mcp-servers': false });
@@ -252,7 +252,7 @@ test(
 // reached a write tool chat never offered.
 test(
 	'a pinned MCP server that rewrites a tool after it was pinned has that tool left out of chat, and keeps its unchanged tools',
-	{ tag: ['@preview-only', '@CUR-3985'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(180_000);
 		await setFlagOverrides(context, baseURL!, { 'mcp-servers': true });
@@ -306,7 +306,7 @@ test(
 // chat send.
 test(
 	'a tool set to always allow in Settings → Connectors runs on the next turn with no confirmation card',
-	{ tag: ['@preview-only', '@CUR-3984'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(180_000);
 		await setFlagOverrides(context, baseURL!, { 'mcp-servers': true });
@@ -374,7 +374,7 @@ test(
 // entry, so the tool the turn calls can only have come from the person's own server.
 test(
 	'a person adds their own MCP server in Settings → Connectors, calls its tool in chat, and removes it',
-	{ tag: ['@preview-only', '@CUR-4016', '@CUR-4038', '@CUR-4727'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(180_000);
 		await setFlagOverrides(context, baseURL!, { 'mcp-servers': true });

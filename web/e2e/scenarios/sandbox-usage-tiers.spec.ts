@@ -46,7 +46,7 @@ async function ask(page: Page, prompt: string): Promise<{ answer: string; trace:
 
 test(
 	'a new account gets one live sandbox: code runs in one conversation, and a run in a second is refused with when it frees up',
-	{ tag: ['@preview-only', '@CUR-4578'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(360_000);
 		await setFlagOverrides(context, baseURL!, { 'one-chat-sandbox': true });

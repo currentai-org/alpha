@@ -26,7 +26,7 @@ const lead = (t: string) => t.replace(/\s+/g, ' ').slice(0, 60);
 
 test(
 	'a visitor stops a reply, retries it, copies it, and edits their question with a way back',
-	{ tag: ['@C2', '@CUR-2625', '@CUR-3329'] },
+	{ tag: ['@C2'] },
 	async ({ page, context }) => {
 		test.setTimeout(240_000);
 		await context.grantPermissions(['clipboard-read', 'clipboard-write']);
@@ -194,7 +194,7 @@ test(
 // failure line "No answer was produced". Preview-only, like the fault.
 test(
 	'a reply stopped before any of the reply arrived says so and offers Retry',
-	{ tag: ['@C2', '@preview-only', '@CUR-2824'] },
+	{ tag: ['@C2', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		const welcome = page.getByRole('dialog', { name: 'Welcome to Alpha' });
@@ -238,7 +238,7 @@ test(
 // marked the turn interrupted once the server did save it. Preview-only, like the fault.
 test(
 	'a first question stopped before the server saved it stays on screen as stopped, and after a reload',
-	{ tag: ['@C2', '@preview-only', '@CUR-3018'] },
+	{ tag: ['@C2', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		const welcome = page.getByRole('dialog', { name: 'Welcome to Alpha' });
@@ -362,7 +362,7 @@ test(
 // Preview-only, like the fault.
 test(
 	'Stop pressed on /chat before the conversation opens stops the reply and keeps the question',
-	{ tag: ['@C2', '@preview-only', '@CUR-2971'] },
+	{ tag: ['@C2', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		const welcome = page.getByRole('dialog', { name: 'Welcome to Alpha' });
@@ -416,7 +416,7 @@ test(
 // copy. The footer used to swallow the rejection and leave the Copy button as it was.
 test(
 	'a Copy the browser refuses says it could not copy, instead of doing nothing',
-	{ tag: ['@C2', '@CUR-2823'] },
+	{ tag: ['@C2'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		await page.addInitScript(() => {

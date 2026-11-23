@@ -50,7 +50,7 @@ function bigText(bytes: number): Buffer {
 
 test(
 	'a 15 MB file uploads in chunks and downloads byte for byte, and a file over 20 MB never reaches the bucket',
-	{ tag: ['@preview-only', '@CUR-1780'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(240_000);
 		await setFlagOverrides(context, baseURL!, {

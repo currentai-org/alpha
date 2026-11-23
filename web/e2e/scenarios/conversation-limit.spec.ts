@@ -32,7 +32,7 @@ type LimitTiming = { pressedAt?: number; requestAt?: number; refusedAt?: number;
 
 test(
 	'a guest at the conversation limit is told so at once and keeps what they typed',
-	{ tag: ['@A1', '@CUR-2875', '@preview-only'] },
+	{ tag: ['@A1', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		const step = await journeyStep(page, 'A1', 18, async () => {
@@ -180,7 +180,7 @@ test(
 // never drove that path.
 test(
 	'a signed-in account at the conversation limit is told so and keeps what they typed',
-	{ tag: ['@A1', '@CUR-2875', '@preview-only'] },
+	{ tag: ['@A1', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		const databaseUrl = process.env.SCENARIO_DATABASE_URL;
@@ -226,7 +226,7 @@ test(
 // (ChatShell.svelte) has taken the first one down.
 test(
 	'a signed-in account at the conversation limit with a workspace selected is told so on the first Enter and again after the toast clears',
-	{ tag: ['@A1', '@CUR-2875', '@preview-only'] },
+	{ tag: ['@A1', '@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(150_000);
 		const databaseUrl = process.env.SCENARIO_DATABASE_URL;
@@ -314,7 +314,7 @@ async function createChat(page: Page, model: string | undefined): Promise<string
 // stops a spec making 99 that way.
 test(
 	'a guest with chats who signs into an account near the cap is refused the next new chat, told the count and how many to delete',
-	{ tag: ['@A1', '@CUR-2891', '@preview-only'] },
+	{ tag: ['@A1', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(180_000);
 		const databaseUrl = process.env.SCENARIO_DATABASE_URL;

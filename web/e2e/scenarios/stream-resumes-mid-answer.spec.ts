@@ -99,7 +99,7 @@ async function startDroppedAnswer(page: import('@playwright/test').Page) {
 
 test(
 	'with stream-follow on, an answer whose stream closes halfway keeps growing live and finishes without a reload',
-	{ tag: ['@C3', '@CUR-4716', '@preview-only'] },
+	{ tag: ['@C3', '@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(180_000);
 		await setFlagOverrides(context, baseURL!, { 'stream-follow': true });
@@ -128,7 +128,7 @@ test(
 
 test(
 	'Stop during a follow ends the turn and nothing grows back',
-	{ tag: ['@C3', '@CUR-4716', '@preview-only'] },
+	{ tag: ['@C3', '@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(180_000);
 		await setFlagOverrides(context, baseURL!, { 'stream-follow': true });
@@ -159,7 +159,7 @@ test(
 
 test(
 	'with stream-follow off, a stream that closes halfway never asks the follow route for the rest',
-	{ tag: ['@C3', '@CUR-4716', '@preview-only'] },
+	{ tag: ['@C3', '@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(120_000);
 		await setFlagOverrides(context, baseURL!, { 'stream-follow': false });

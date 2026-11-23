@@ -67,7 +67,7 @@ test.describe('CLI pairing link', () => {
 
 	test(
 		'a signed-out person opening the CLI link signs in, lands back on it, and the device pairs: the poll gets its install flags once and Settings lists it',
-		{ tag: ['@preview-only', '@CUR-4110'] },
+		{ tag: ['@preview-only'] },
 		async ({ page, request }) => {
 			const pairingId = newPairingId();
 			const name = `Desk ${Date.now().toString(36)}`;
@@ -135,7 +135,7 @@ test.describe('CLI pairing link', () => {
 
 	test(
 		'a link reached from another web page pairs nothing until the person confirms the device by name',
-		{ tag: ['@preview-only', '@CUR-4110'] },
+		{ tag: ['@preview-only'] },
 		async ({ page, request, baseURL }) => {
 			await signInAsFreshUser(page);
 			const pairingId = newPairingId();

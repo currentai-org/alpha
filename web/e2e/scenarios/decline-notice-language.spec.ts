@@ -25,7 +25,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 
 test(
 	'a Spanish request the input screen declines shows the notice and its rule in Spanish',
-	{ tag: ['@A2', '@CUR-4051', '@CUR-5186', '@real-screen'] },
+	{ tag: ['@A2', '@real-screen'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		const answer = await declinedAnswer(
@@ -57,7 +57,7 @@ test(
 
 test(
 	'the same request in English still shows the English notice',
-	{ tag: ['@A2', '@CUR-4051', '@real-screen'] },
+	{ tag: ['@A2', '@real-screen'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		const answer = await declinedAnswer(
@@ -96,7 +96,7 @@ async function declinedAnswer(
 
 test(
 	'a Spanish turn the output screen cuts shows the notice and its rule in Spanish',
-	{ tag: ['@A2', '@CUR-4051', '@preview-only', '@output-screen'] },
+	{ tag: ['@A2', '@preview-only', '@output-screen'] },
 	async ({ page }) => {
 		test.setTimeout(90_000);
 		const answer = await declinedAnswer(
@@ -119,7 +119,7 @@ test(
 
 test(
 	'an English turn the output screen cuts still shows the English notice',
-	{ tag: ['@A2', '@CUR-4051', '@preview-only', '@output-screen'] },
+	{ tag: ['@A2', '@preview-only', '@output-screen'] },
 	async ({ page }) => {
 		test.setTimeout(90_000);
 		const answer = await declinedAnswer(

@@ -12,7 +12,7 @@ test.use({ viewport: { width: 1280, height: 800 } });
 
 test(
 	'a conversation renamed from the side rail keeps its new title after a reload',
-	{ tag: ['@preview-only', '@C1', '@CUR-2629', '@mock-model'] },
+	{ tag: ['@preview-only', '@C1', '@mock-model'] },
 	async ({ page }) => {
 		await signInAsFreshUser(page);
 

@@ -194,7 +194,7 @@ describe("the [loop-cut] log line keeps answer text out of every deployment's lo
 	};
 
 	for (const env of ["production", "preview"]) {
-		it(`on ${env} logs the span's length and no text (CUR-5006)`, async () => {
+		it(`on ${env} logs the span's length and no text`, async () => {
 			vi.stubEnv("DEPLOY_ENV", env);
 			const fields = await cutLine();
 			expect(fields.span).toBeUndefined();

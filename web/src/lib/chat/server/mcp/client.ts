@@ -65,7 +65,7 @@ export async function connectMcp(
 	// clean decline.
 	const capabilities = elicitationEnabled() ? { elicitation: { form: {}, url: {} } } : {};
 	const client = new Client(
-		{ name: APP_USER_AGENT, version: "0.1.0" },
+		{ name: APP_USER_AGENT, version: __APP_VERSION__ },
 		{
 			capabilities,
 			// SDK v2 defaults to 'legacy' — never negotiating, always the 2025 handshake.

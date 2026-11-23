@@ -26,7 +26,7 @@ test.beforeEach(async ({ context, baseURL }) => {
 
 test(
 	'Settings > Storage in French shows the new-bucket choice, its Recommended badge and the connecting help in French, none of the English it used to show',
-	{ tag: ['@preview-only', '@A2', '@CUR-4395'] },
+	{ tag: ['@preview-only', '@A2'] },
 	async ({ page }) => {
 		test.setTimeout(90_000);
 		await signInAsFreshUser(page);

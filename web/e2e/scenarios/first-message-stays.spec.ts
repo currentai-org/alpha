@@ -75,7 +75,7 @@ async function sendAndCheck(page: Page, entry: string, text: string) {
 
 test(
 	'a first message sent from the landing screen stays on screen while the conversation is created, and shows once after',
-	{ tag: ['@F2', '@CUR-1676'] },
+	{ tag: ['@F2'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		await sendAndCheck(page, chatEntry(), TEXT);
@@ -87,7 +87,7 @@ test(
 // pins the model page so develop's default runs check it too.
 test(
 	"a first message sent from a model's own page stays on screen while the conversation is created, and shows once after",
-	{ tag: ['@F2', '@CUR-2618'] },
+	{ tag: ['@F2'] },
 	async ({ page, request }) => {
 		test.setTimeout(120_000);
 		const model = await defaultModel(request);

@@ -39,7 +39,7 @@ async function keyStored(page: Page) {
 
 test(
 	"XRAY shows the prompt behind a sealed answer, opened in the browser, though the stored row can't be read",
-	{ tag: ['@preview-only', '@CUR-4964'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		expect(
 			DATABASE_URL,

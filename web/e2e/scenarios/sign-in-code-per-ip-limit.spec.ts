@@ -14,44 +14,43 @@ const DATABASE_URL = process.env.SCENARIO_DATABASE_URL;
 const SEND_PATH = '/chat/api/auth/email-otp/send-verification-otp';
 const PER_IP_LIMIT = 60;
 
-test(
-	'a script requesting sign-in codes past the per-IP limit is refused, and the count is stored in the database',
-	{ tag: ['@CUR-4172'] },
-	async ({ request, baseURL }) => {
-		test.setTimeout(180_000);
-		const origin = new URL(baseURL!).origin;
-		let refusedAt = -1;
-		const seen = new Map<number, number>();
-		for (let i = 0; i <= PER_IP_LIMIT + 10; i++) {
-			const res = await request.post(SEND_PATH, {
-				data: { email: freshTestEmail(), type: 'sign-in' },
-				headers: { origin }
-			});
-			seen.set(res.status(), (seen.get(res.status()) ?? 0) + 1);
-			if (res.status() === 429) {
-				refusedAt = i;
-				break;
-			}
-		}
-		expect(
-			refusedAt,
-			`${PER_IP_LIMIT + 11} code requests from one address were never refused (statuses ${JSON.stringify([...seen])}): the per-IP limit on sign-in codes is not applied`
-		).toBeGreaterThanOrEqual(0);
-		// Repeats run in parallel and share one count, so another repeat's requests can leave this one refused at once. An earlier repeat of this spec inside the same minute leaves a count behind, so the refusal may
-		// come sooner than 60; it never comes later.
-		expect(refusedAt).toBeLessThanOrEqual(PER_IP_LIMIT);
-
-		const sql = postgres(DATABASE_URL!, { ssl: sslFor(DATABASE_URL!), max: 1 });
-		try {
-			const rows = await sql<{ count: number }[]>`
-				select count from rate_limit where key like ${'%' + 'email-otp/send-verification-otp'}
-			`;
-			expect(
-				rows.length,
-				'the refusal came from instance memory: no rate_limit row holds the count'
-			).toBeGreaterThan(0);
-		} finally {
-			await sql.end({ timeout: 5 });
+test('a script requesting sign-in codes past the per-IP limit is refused, and the count is stored in the database', async ({
+	request,
+	baseURL
+}) => {
+	test.setTimeout(180_000);
+	const origin = new URL(baseURL!).origin;
+	let refusedAt = -1;
+	const seen = new Map<number, number>();
+	for (let i = 0; i <= PER_IP_LIMIT + 10; i++) {
+		const res = await request.post(SEND_PATH, {
+			data: { email: freshTestEmail(), type: 'sign-in' },
+			headers: { origin }
+		});
+		seen.set(res.status(), (seen.get(res.status()) ?? 0) + 1);
+		if (res.status() === 429) {
+			refusedAt = i;
+			break;
 		}
 	}
-);
+	expect(
+		refusedAt,
+		`${PER_IP_LIMIT + 11} code requests from one address were never refused (statuses ${JSON.stringify([...seen])}): the per-IP limit on sign-in codes is not applied`
+	).toBeGreaterThanOrEqual(0);
+	// Repeats run in parallel and share one count, so another repeat's requests can leave this one refused at once. An earlier repeat of this spec inside the same minute leaves a count behind, so the refusal may
+	// come sooner than 60; it never comes later.
+	expect(refusedAt).toBeLessThanOrEqual(PER_IP_LIMIT);
+
+	const sql = postgres(DATABASE_URL!, { ssl: sslFor(DATABASE_URL!), max: 1 });
+	try {
+		const rows = await sql<{ count: number }[]>`
+				select count from rate_limit where key like ${'%' + 'email-otp/send-verification-otp'}
+			`;
+		expect(
+			rows.length,
+			'the refusal came from instance memory: no rate_limit row holds the count'
+		).toBeGreaterThan(0);
+	} finally {
+		await sql.end({ timeout: 5 });
+	}
+});

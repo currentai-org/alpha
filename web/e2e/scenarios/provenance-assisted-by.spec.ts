@@ -70,7 +70,7 @@ async function storedTurn(page: Page, answer: Locator): Promise<Stored | undefin
 test(
 	'X-ray names the model that decided to search, and the host it ran on',
 	// @real-screen: the preview stub screens with no model, so it stores no safety-screen helper.
-	{ tag: ['@A5', '@CUR-984', '@real-screen'] },
+	{ tag: ['@A5', '@real-screen'] },
 	async ({ page }) => {
 		test.setTimeout(150_000);
 		const composer = await openScaffoldedChat(page);
@@ -152,7 +152,7 @@ async function expectStepsNameHosts(page: Page, answer: Locator, helpers: Assist
 
 test(
 	'a follow-up whose search query needs the earlier turn stores the rewrite model',
-	{ tag: ['@A5', '@CUR-3563'] },
+	{ tag: ['@A5'] },
 	async ({ page }) => {
 		test.setTimeout(150_000);
 		const composer = await openScaffoldedChat(page);

@@ -125,6 +125,9 @@ export const ENV_MANIFEST = {
 	ALPHA_FLAGS: {
 		desc: "Self-hosted only (read when PUBLIC_POSTHOG_KEY is unset). Comma-separated flag overrides: \"+key\" turns a flag on, \"-key\" turns it off, on top of each key's self-host default in flagKeys.ts. Ignored when PostHog is configured.",
 	},
+	ALPHA_MODELS_FILE: {
+		desc: "Self-hosting: path to a JSON model list in config/inference.ts's schema (providers, model_list, roles). When set it decides OPENAI_BASE_URL, OPENAI_API_KEY, MODEL_ALLOWLIST and the role models, and a bad file stops the boot with its path in the error. Read only on a self-host edition.",
+	},
 	ALPHA_OPEN_SIGNUP: {
 		desc: "Self-host with no mailer only. Unset, the first email-and-password account succeeds and password sign-up closes after it, as Open WebUI does; \"true\" keeps sign-up open to anyone who reaches the stack. A hosted deployment, or a self-host with a mailer, ignores it.",
 	},
@@ -382,6 +385,9 @@ export const ENV_MANIFEST = {
 	},
 	CUSTODIAL_LOCAL_DIR: {
 		desc: "The absolute directory CUSTODIAL_STORAGE_BACKEND=local keeps files in. Back it up with the database: it holds every person's sealed files and their key objects.",
+	},
+	DAILY_CLEANUP_FIRST_RUN_DELAY_MS: {
+		desc: "Off Vercel only: a fixed delay in ms before the in-process daily cleanup's first run (dailyCleanupSchedule.ts), in place of the one-to-ten-minute jitter. For CI smokes; leave unset in production. Ignored unless a whole number of at least 1000.",
 	},
 	DATABASE_URL: {
 		req: true,
@@ -688,6 +694,9 @@ export const ENV_MANIFEST = {
 	},
 	LOCAL_GENERATION_TIMEOUT_MS: {
 		desc: "Watchdog for a turn on a user-run local model, in ms. Default 155000, the ceiling, because a cold local model can take a long time to load. Needs a redeploy to change.",
+	},
+	LOCAL_INFERENCE_INTERNAL_ADDRESSES: {
+		desc: "\"allow\" lets the people signed in add a local inference endpoint at a private address: localhost, the LAN, RFC1918, the VPC. Set it only where everyone who can sign in may reach this host's network, such as a single-user self-host whose Ollama runs beside it. Unset, a self-host (ALPHA_EDITION=selfhost) refuses private addresses whatever DEPLOY_ENV says, and other deployments allow them only under DEPLOY_ENV=development. Cloud-metadata and container-credential addresses (169.254.0.0/16, fd00:ec2::254) are refused either way.",
 	},
 	LOG_LEVEL: {
 		desc: "Log level. Default \"info\".",

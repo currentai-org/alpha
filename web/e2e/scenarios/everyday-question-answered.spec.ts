@@ -14,7 +14,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 
 test(
 	'an ordinary question about registering for a Brazilian tax number is answered, not declined as fraud',
-	{ tag: ['@CUR-2422', '@real-screen'] },
+	{ tag: ['@real-screen'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });

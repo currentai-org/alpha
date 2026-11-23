@@ -564,7 +564,7 @@ test(
 // now opens a flyout listing Personal and each workspace, and one click switches.
 test(
 	'a person switches workspace from the account menu, and the switch survives a reload',
-	{ tag: ['@preview-only', '@A8', '@CUR-3407'] },
+	{ tag: ['@preview-only', '@A8'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(120_000);
 		await setFlagOverrides(context, baseURL!, {
@@ -670,7 +670,7 @@ test(
 // menu read as frozen. The clicked row now says "Switching…" and the others keep their contrast.
 test(
 	'a switch from the account menu labels the clicked row Switching… and leaves the other rows enabled',
-	{ tag: ['@preview-only', '@A8', '@CUR-4237'] },
+	{ tag: ['@preview-only', '@A8'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(120_000);
 		await setFlagOverrides(context, baseURL!, {

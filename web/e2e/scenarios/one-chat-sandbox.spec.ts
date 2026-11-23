@@ -56,7 +56,7 @@ const EXPECTED_DAYS = (Date.UTC(2027, 0, 1) - Date.UTC(2026, 9, 28)) / 86_400_00
 
 test(
 	'with one-chat-sandbox on, a question needing the web and code searches, then runs code, in one turn with no card',
-	{ tag: ['@preview-only', '@no-replay', '@CUR-4232'] },
+	{ tag: ['@preview-only', '@no-replay'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(240_000);
 		await setFlagOverrides(context, baseURL!, { 'one-chat-sandbox': true });
@@ -82,7 +82,7 @@ test(
 
 test(
 	'with one-chat-sandbox off, the same turn offers no sandbox tool',
-	{ tag: ['@preview-only', '@no-replay', '@CUR-4232'] },
+	{ tag: ['@preview-only', '@no-replay'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(240_000);
 		await setFlagOverrides(context, baseURL!, { 'one-chat-sandbox': false });

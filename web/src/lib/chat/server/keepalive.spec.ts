@@ -54,4 +54,27 @@ describe("startProcessKeepalive — each process keeps its own flags, registry a
 		await vi.advanceTimersByTimeAsync(5_000);
 		expect(tick).not.toHaveBeenCalled();
 	});
+
+	it("with firstDelayMs, waits that long before the first pass and counts the interval from it", async () => {
+		const tick = vi.fn(async () => {});
+		const stop = startProcessKeepalive({ tick, intervalMs: 1_000, firstDelayMs: 500, onVercel: false });
+		expect(tick).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(499);
+		expect(tick).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(1);
+		expect(tick).toHaveBeenCalledTimes(1);
+		await vi.advanceTimersByTimeAsync(2_000);
+		expect(tick).toHaveBeenCalledTimes(3);
+		stop!();
+		await vi.advanceTimersByTimeAsync(5_000);
+		expect(tick).toHaveBeenCalledTimes(3);
+	});
+
+	it("stopped before a delayed first pass, never runs one", async () => {
+		const tick = vi.fn(async () => {});
+		const stop = startProcessKeepalive({ tick, intervalMs: 1_000, firstDelayMs: 500, onVercel: false });
+		stop!();
+		await vi.advanceTimersByTimeAsync(5_000);
+		expect(tick).not.toHaveBeenCalled();
+	});
 });

@@ -124,7 +124,7 @@ async function expectStoredFinished(page: Page, conversationId: string, nonce: s
 
 test(
 	'an agent run longer than its request is followed on the same page to a finished, stored answer',
-	{ tag: ['@preview-only', '@CUR-4410', '@CUR-993'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(240_000);
 		const { conversationId, nonce, counter } = await sendLongAgentTurn(page, context, baseURL!);
@@ -155,7 +155,7 @@ test(
 // there by itself, not leave "still working" up until the visitor reloads a second time.
 test(
 	'a reload while the page follows an agent run still ends on the finished answer, with no second reload',
-	{ tag: ['@preview-only', '@CUR-4410', '@CUR-993'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(240_000);
 		const { conversationId, nonce, counter } = await sendLongAgentTurn(page, context, baseURL!);
@@ -191,7 +191,7 @@ test(
 test(
 	'an approval asked for after the run is handed off shows its card in the same tab, takes Allow, and the run finishes',
 	{
-		tag: ['@preview-only', '@CUR-4699', '@CUR-4410', '@agent-knob:confirm_after_handoff']
+		tag: ['@preview-only', '@agent-knob:confirm_after_handoff']
 	},
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(240_000);

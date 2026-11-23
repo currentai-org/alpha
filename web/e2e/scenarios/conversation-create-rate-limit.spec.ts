@@ -15,7 +15,7 @@ import { turnDone } from './helpers/turn';
 
 test(
 	'a second new chat inside the create window is refused, and the guest keeps the text',
-	{ tag: ['@CUR-3529', '@preview-only'] },
+	{ tag: ['@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		const welcome = page.getByRole('dialog', { name: 'Welcome to Alpha' });

@@ -134,7 +134,7 @@ async function freezeAnswerStream(page: Page) {
 
 test(
 	'a page hidden mid-answer for longer than the watchdog comes back to the answer finishing, logged as resumed and not as a dead connection',
-	{ tag: ['@C3', '@CUR-4718', '@preview-only'] },
+	{ tag: ['@C3', '@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(180_000);
 		await setFlagOverrides(context, baseURL!, { 'stream-follow': true });
@@ -192,7 +192,7 @@ test(
 
 test(
 	'a page visible throughout whose answer goes silent still fires the watchdog at 8 s and logs a stale connection',
-	{ tag: ['@C3', '@CUR-4718', '@preview-only'] },
+	{ tag: ['@C3', '@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(180_000);
 		await setFlagOverrides(context, baseURL!, { 'stream-follow': true });

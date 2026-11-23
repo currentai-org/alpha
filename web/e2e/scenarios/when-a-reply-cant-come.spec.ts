@@ -27,7 +27,7 @@ async function sendUnderFault(page: Page, fault: FaultInjectionName, question: s
 
 test(
 	'an answer whose lane drops partway says the connection dropped and offers Retry, not raw "terminated"',
-	{ tag: ['@C3', '@CUR-2628', '@preview-only'] },
+	{ tag: ['@C3', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		await journeyStep(page, 'C3', 4, async () => {
@@ -54,7 +54,7 @@ test(
 
 test(
 	'a send the server fails outright says the connection dropped and keeps the question',
-	{ tag: ['@C3', '@CUR-2628', '@preview-only'] },
+	{ tag: ['@C3', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		await journeyStep(page, 'C3', 5, async () => {
@@ -85,7 +85,7 @@ test(
 
 test(
 	'a model error no named copy covers says the model could not answer, with no status code or SDK text',
-	{ tag: ['@C3', '@CUR-2829', '@preview-only'] },
+	{ tag: ['@C3', '@preview-only'] },
 	async ({ page, request }) => {
 		test.setTimeout(120_000);
 		// The notice names the model the turn ran on. Auto may route the turn to any listed model, so the
@@ -125,7 +125,7 @@ test(
 // A grader read the held Send as ready, so the spec also checks it is drawn dimmed, not only disabled.
 test(
 	'a send past our own message limit says so, keeps the typed text, counts down with Send held and dimmed, and goes through once the window passes',
-	{ tag: ['@C3', '@CUR-2804', '@CUR-3216', '@CUR-3800', '@preview-only'] },
+	{ tag: ['@C3', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(180_000);
 		await journeyStep(page, 'C3', 8, async () => {

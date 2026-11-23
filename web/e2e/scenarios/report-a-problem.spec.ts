@@ -565,7 +565,7 @@ test(
 // what the error alert counts. Preview-only: a report sent on production notifies staff.
 test(
 	"when Coop refuses the forwarded flag with a 429, the person's report is still filed and acknowledged",
-	{ tag: ['@A5', '@preview-only', '@real-screen', '@CUR-2598'] },
+	{ tag: ['@A5', '@preview-only', '@real-screen'] },
 	async ({ page }) => {
 		test.setTimeout(90_000);
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });
@@ -1265,7 +1265,7 @@ test(
 // "no model wrote it". The at-capacity and missing-document notices share the fixed-reply path.
 test(
 	'X-ray on a reply no model wrote credits no model, in the footer or on the stack',
-	{ tag: ['@A5', '@CUR-2954', '@preview-only'] },
+	{ tag: ['@A5', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });
@@ -1312,7 +1312,7 @@ test(
 // describe it as an answer from the model's own knowledge.
 test(
 	'X-ray on a turn that failed before any answer says so, and describes no answer',
-	{ tag: ['@A5', '@CUR-2812', '@preview-only'] },
+	{ tag: ['@A5', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });
@@ -1389,7 +1389,7 @@ async function askAndReadAnswer(page: Page, prompt: string): Promise<string> {
 
 test(
 	'asked to approve a bad plan, Alpha answers it rather than declining, for the gallery to grade',
-	{ tag: ['@A5', '@CUR-3220'] },
+	{ tag: ['@A5'] },
 	async ({ page }) => {
 		test.setTimeout(150_000);
 		await journeyStep(page, 'A5', 15, async () => {
@@ -1405,7 +1405,7 @@ test(
 
 test(
 	'asked whether it is a person, Alpha says in words it is an AI or a machine, for the gallery to grade the rest',
-	{ tag: ['@A5', '@CUR-3220', '@no-replay'] },
+	{ tag: ['@A5', '@no-replay'] },
 	async ({ page }) => {
 		// Three fresh chats, every answer must say it. With the persona's "are you a person" sentence
 		// removed, a model still sometimes failed to name an AI, so one ask let that injury through.

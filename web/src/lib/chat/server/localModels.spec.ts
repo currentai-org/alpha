@@ -590,7 +590,12 @@ describe("prewarmLocalModel / prewarmLocalModelForUser — Ollama keep_alive pre
 });
 
 describe("normalizeLocalBaseUrl — create-time normalization and the private-address guard", () => {
+	beforeEach(() => {
+		vi.stubEnv("ALPHA_EDITION", "");
+		vi.stubEnv("LOCAL_INFERENCE_INTERNAL_ADDRESSES", "");
+	});
 	afterEach(() => {
+		vi.unstubAllEnvs();
 		if (savedDeployEnv === undefined) delete process.env.DEPLOY_ENV;
 		else process.env.DEPLOY_ENV = savedDeployEnv;
 	});
@@ -652,6 +657,62 @@ describe("normalizeLocalBaseUrl — create-time normalization and the private-ad
 			});
 		}
 	);
+
+	// A self-host's compose file defaults DEPLOY_ENV to development on every install, shared
+	// ones included, so the edition must not read development as "the server is the visitor's machine".
+	describe("on a self-host edition with DEPLOY_ENV=development and no operator opt-in, private addresses are refused", () => {
+		beforeEach(() => {
+			process.env.DEPLOY_ENV = "development";
+			vi.stubEnv("ALPHA_EDITION", "selfhost");
+		});
+
+		it.each([
+			["http://localhost:11434"],
+			["http://127.0.0.1:11434"],
+			["http://10.0.0.5:5432"],
+			["http://169.254.170.2"],
+			["http://[fd00:ec2::254]"],
+		])("rejects %s", (url) => {
+			expect(normalizeLocalBaseUrl(url)).toBeNull();
+			expect(isRefusedLocalBaseUrl(url)).toBe(true);
+		});
+
+		it("accepts a public https server", () => {
+			expect(normalizeLocalBaseUrl("https://ollama.example.com")).toBe("https://ollama.example.com/v1");
+		});
+	});
+
+	describe("with LOCAL_INFERENCE_INTERNAL_ADDRESSES=allow, private addresses are accepted and cloud-metadata addresses are not", () => {
+		beforeEach(() => {
+			process.env.DEPLOY_ENV = "production";
+			vi.stubEnv("ALPHA_EDITION", "selfhost");
+			vi.stubEnv("LOCAL_INFERENCE_INTERNAL_ADDRESSES", "allow");
+		});
+
+		it.each([["http://localhost:11434"], ["http://192.168.1.50:11434"], ["http://10.0.0.5:11434"]])(
+			"accepts %s",
+			(url) => {
+				expect(isRefusedLocalBaseUrl(url)).toBe(false);
+				expect(normalizeLocalBaseUrl(url)).toBe(`${url}/v1`);
+			}
+		);
+
+		it.each([
+			["http://169.254.169.254"],
+			["http://169.254.170.2"],
+			["http://[::ffff:169.254.169.254]"],
+			["http://[fd00:ec2::254]"],
+			["http://100.100.100.200"],
+		])("rejects %s", (url) => {
+			expect(normalizeLocalBaseUrl(url)).toBeNull();
+			expect(isRefusedLocalBaseUrl(url)).toBe(true);
+		});
+
+		it("any value but \"allow\" leaves the self-host refusing", () => {
+			vi.stubEnv("LOCAL_INFERENCE_INTERNAL_ADDRESSES", "true");
+			expect(isRefusedLocalBaseUrl("http://localhost:11434")).toBe(true);
+		});
+	});
 
 	it("rejects a non-URL string, without calling it a refused address", () => {
 		expect(normalizeLocalBaseUrl("not a url")).toBeNull();

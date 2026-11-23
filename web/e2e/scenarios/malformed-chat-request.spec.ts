@@ -10,7 +10,7 @@ import { signInAsFreshUser } from './helpers/session';
 
 test(
 	'a chat turn posted with a malformed body is answered 400 naming the bad field, not 500',
-	{ tag: ['@preview-only', '@CUR-4879'] },
+	{ tag: ['@preview-only'] },
 	async ({ page }) => {
 		await signInAsFreshUser(page);
 		const models = (await (await page.request.get('/chat/api/models')).json()) as {

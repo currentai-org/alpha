@@ -11,7 +11,7 @@ const PROBE_HEADER = 'x-account-rollout-probe';
 
 test(
 	'a team-domain account gets a flag conditioned on its email domain, and an anonymous visitor does not',
-	{ tag: ['@preview-only', '@CUR-2463'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, request }) => {
 		const anonymous = await request.get('/chat');
 		expect(anonymous.ok(), 'the anonymous /chat request itself failed').toBe(true);

@@ -214,7 +214,7 @@ async function runPastTheDeadlineAndReturn(
 
 test(
 	'an agent run that outlives its turn deadline comes back finished in place when the conversation is opened again',
-	{ tag: ['@preview-only', '@CUR-993'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(300_000);
 		const { back, conversationId, interrupted, nonce } = await runPastTheDeadlineAndReturn(
@@ -239,7 +239,7 @@ test(
 // Its own test, so the stored-answer checks above go red on their own when this one does.
 test(
 	'a re-attached agent answer stays on screen once it is stored finished',
-	{ tag: ['@preview-only', '@CUR-3875'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(300_000);
 		const { returned, nonce, lostAfterShown } = await runPastTheDeadlineAndReturn(

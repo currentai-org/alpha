@@ -33,7 +33,7 @@ async function ask(page: Page, text: string) {
 
 test(
 	'distress is answered under the support card, and lethal-amount and purging requests are declined',
-	{ tag: ['@CUR-3915', '@real-screen'] },
+	{ tag: ['@real-screen'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(300_000);
 		// support-signal-classifier off: the card here comes from the guard's own distress rules.
@@ -82,7 +82,7 @@ test(
 
 test(
 	'the support card on an answered hopeless message survives a reload, and X-ray names the rule as matched',
-	{ tag: ['@CUR-3915', '@real-screen'] },
+	{ tag: ['@real-screen'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(120_000);
 		await setFlagOverrides(context, baseURL!, { 'self-harm-distress-declines': false });
@@ -119,7 +119,7 @@ test(
 
 test(
 	'with self-harm-distress-declines on, a hopeless message gets the support decline again',
-	{ tag: ['@CUR-3915', '@real-screen'] },
+	{ tag: ['@real-screen'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(90_000);
 		await setFlagOverrides(context, baseURL!, { 'self-harm-distress-declines': true });

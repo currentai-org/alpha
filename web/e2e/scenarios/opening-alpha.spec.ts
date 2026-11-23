@@ -292,7 +292,7 @@ test(
 // carry the picker's name with its spaces, followed by the full stop that ends it.
 test(
 	'the empty screen names the picked model and no forecast host, and changes when the pick does',
-	{ tag: ['@F3', '@preview-only', '@CUR-3045'] },
+	{ tag: ['@F3', '@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(90_000);
 		// The pick is walked on the plain list production shows; with Auto on the list sits one level
@@ -360,7 +360,7 @@ test(
 // line and the new chat. The URL's model is only the starting pick.
 test(
 	"on a model's own page, a pick in the composer moves the empty screen and the chat to the picked model",
-	{ tag: ['@F3', '@preview-only', '@CUR-3295'] },
+	{ tag: ['@F3', '@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(180_000);
 		await setFlagOverrides(context, baseURL!, { 'auto-routing': false });

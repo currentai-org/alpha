@@ -40,7 +40,7 @@ test.use({ viewport: { width: 1280, height: 800 } });
 
 test(
 	'a visitor reaches the manifesto from the navigation through About, and it renders as an Editorial page',
-	{ tag: ['@W1', '@CUR-3541'] },
+	{ tag: ['@W1'] },
 	async ({ page }) => {
 		const res = await page.goto('/', { waitUntil: 'domcontentloaded' });
 		expect(res?.status(), '/ did not load').toBe(200);
@@ -142,13 +142,9 @@ async function signatureWidth(page: Page) {
 test.describe('manifesto signature at desktop width', () => {
 	test.use({ viewport: { width: 1280, height: 800 } });
 	// @prod-safe: it only loads the manifesto and measures one image, so the one-spec run can drive it on www.
-	test(
-		'keeps its 237px design width',
-		{ tag: ['@W1', '@CUR-4250', '@prod-safe'] },
-		async ({ page }) => {
-			expect(await signatureWidth(page)).toBeCloseTo(237, 0);
-		}
-	);
+	test('keeps its 237px design width', { tag: ['@W1', '@prod-safe'] }, async ({ page }) => {
+		expect(await signatureWidth(page)).toBeCloseTo(237, 0);
+	});
 });
 
 test.describe('manifesto signature at phone width', () => {
@@ -156,7 +152,7 @@ test.describe('manifesto signature at phone width', () => {
 	test(
 		'is 30% narrower than on desktop, 166px',
 		// @prod-safe: it only loads the manifesto and measures one image, so the one-spec run can drive it on www.
-		{ tag: ['@W1', '@CUR-4250', '@prod-safe'] },
+		{ tag: ['@W1', '@prod-safe'] },
 		async ({ page }) => {
 			expect(await signatureWidth(page)).toBeCloseTo(166, 0);
 		}

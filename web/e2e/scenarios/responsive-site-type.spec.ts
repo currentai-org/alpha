@@ -23,55 +23,48 @@ for (const { name, width, height, body } of WIDTHS) {
 	test.describe(`${name} width (${width}px)`, () => {
 		test.use({ viewport: { width, height } });
 
-		test(
-			`the home page title renders at the display clamp's size for a ${width}px window`,
-			{ tag: ['@CUR-2888'] },
-			async ({ page }) => {
-				const res = await page.goto('/', { waitUntil: 'domcontentloaded' });
-				expect(res?.status(), '/ did not load').toBe(200);
-				const h1 = page.locator('main h1').first();
-				await expect(h1, 'the home page has no title').toBeVisible();
+		test(`the home page title renders at the display clamp's size for a ${width}px window`, async ({
+			page
+		}) => {
+			const res = await page.goto('/', { waitUntil: 'domcontentloaded' });
+			expect(res?.status(), '/ did not load').toBe(200);
+			const h1 = page.locator('main h1').first();
+			await expect(h1, 'the home page has no title').toBeVisible();
 
-				const { size, rem, innerWidth } = await h1.evaluate((el) => ({
-					size: parseFloat(getComputedStyle(el).fontSize),
-					rem: parseFloat(getComputedStyle(document.documentElement).fontSize),
-					innerWidth: window.innerWidth
-				}));
-				expect(rem, 'the root font size is not 16px, so every rem size below is off').toBe(REM);
-				expect(size, 'the home title is below the 44px floor').toBeGreaterThanOrEqual(
-					2.75 * REM - 0.5
-				);
-				expect(
-					size,
-					`the home title is ${size}px where the display clamp gives ${displaySize(innerWidth).toFixed(1)}px at ${innerWidth}px`
-				).toBeCloseTo(displaySize(innerWidth), 0);
+			const { size, rem, innerWidth } = await h1.evaluate((el) => ({
+				size: parseFloat(getComputedStyle(el).fontSize),
+				rem: parseFloat(getComputedStyle(document.documentElement).fontSize),
+				innerWidth: window.innerWidth
+			}));
+			expect(rem, 'the root font size is not 16px, so every rem size below is off').toBe(REM);
+			expect(size, 'the home title is below the 44px floor').toBeGreaterThanOrEqual(
+				2.75 * REM - 0.5
+			);
+			expect(
+				size,
+				`the home title is ${size}px where the display clamp gives ${displaySize(innerWidth).toFixed(1)}px at ${innerWidth}px`
+			).toBeCloseTo(displaySize(innerWidth), 0);
+		});
+
+		test(`roadmap rich text with no size of its own renders at ${body}px`, async ({ page }) => {
+			const res = await page.goto('/roadmap', { waitUntil: 'domcontentloaded' });
+			expect(res?.status(), '/roadmap did not load').toBe(200);
+			await expect(page.locator('main .richtext').first()).toBeVisible();
+
+			// A component may size its rich text with a utility on the wrapper (`text-sm` on cards), and
+			// that wins on purpose. Only a wrapper with no size utility of its own shows the body default.
+			const sizes = await page.locator('main .richtext').evaluateAll((els) =>
+				els
+					.filter((el) => !/(^|\s)(\w+:)*text-(xs|sm|base|lg|xl|\d)/.test(el.className))
+					.filter((el) => el.getBoundingClientRect().height > 0)
+					.map((el) => parseFloat(getComputedStyle(el).fontSize))
+			);
+			expect(sizes.length, 'no rich text on /roadmap is left at the body default').toBeGreaterThan(
+				0
+			);
+			for (const size of sizes) {
+				expect(size, `rich-text body is ${size}px at ${width}px, expected ${body}px`).toBe(body);
 			}
-		);
-
-		test(
-			`roadmap rich text with no size of its own renders at ${body}px`,
-			{ tag: ['@CUR-2888'] },
-			async ({ page }) => {
-				const res = await page.goto('/roadmap', { waitUntil: 'domcontentloaded' });
-				expect(res?.status(), '/roadmap did not load').toBe(200);
-				await expect(page.locator('main .richtext').first()).toBeVisible();
-
-				// A component may size its rich text with a utility on the wrapper (`text-sm` on cards), and
-				// that wins on purpose. Only a wrapper with no size utility of its own shows the body default.
-				const sizes = await page.locator('main .richtext').evaluateAll((els) =>
-					els
-						.filter((el) => !/(^|\s)(\w+:)*text-(xs|sm|base|lg|xl|\d)/.test(el.className))
-						.filter((el) => el.getBoundingClientRect().height > 0)
-						.map((el) => parseFloat(getComputedStyle(el).fontSize))
-				);
-				expect(
-					sizes.length,
-					'no rich text on /roadmap is left at the body default'
-				).toBeGreaterThan(0);
-				for (const size of sizes) {
-					expect(size, `rich-text body is ${size}px at ${width}px, expected ${body}px`).toBe(body);
-				}
-			}
-		);
+		});
 	});
 }

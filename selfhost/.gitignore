@@ -1,2 +1,4 @@
 # backup.sh writes here by default: database dumps and volume copies, never committed.
 backups/
+# The operator model list (ALPHA_MODELS_FILE). models.example.json is the committed template.
+config/models.json

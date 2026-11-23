@@ -17,7 +17,7 @@ test.use({ viewport: { width: 1280, height: 720 } });
 
 test(
 	'the scroll-to-bottom button sits over a fully covered strip, never over readable answer text',
-	{ tag: ['@A5', '@CUR-1630'] },
+	{ tag: ['@A5'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });

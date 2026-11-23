@@ -115,7 +115,7 @@ async function markAutosPickBusy(
 
 test(
 	'one warm probe on a model whose lanes refuse every call marks it busy with no visitor turn, and Auto sends the same question to another model and says the first is busy',
-	{ tag: ['@F2', '@CUR-4042', '@CUR-4043'] },
+	{ tag: ['@F2'] },
 	async ({ page, context, baseURL }, testInfo) => {
 		test.setTimeout(240_000);
 		const picked = await markAutosPickBusy(page, context, baseURL!, testInfo);
@@ -141,7 +141,7 @@ test(
 
 test(
 	'the picker shows a probe-marked model as unavailable right now, and a hand pick of it stays on it and says so before sending',
-	{ tag: ['@F2', '@CUR-4042', '@CUR-4043'] },
+	{ tag: ['@F2'] },
 	async ({ page, context, baseURL }, testInfo) => {
 		test.setTimeout(240_000);
 		const picked = await markAutosPickBusy(page, context, baseURL!, testInfo);
@@ -175,7 +175,7 @@ test(
 // mark the model busy, the way a 429 does, and the picker must show it unavailable.
 test(
 	'one warm probe on a model whose host answers 402 payment required marks it unavailable in the picker',
-	{ tag: ['@F2', '@CUR-4814', '@CUR-4042'] },
+	{ tag: ['@F2'] },
 	async ({ page, context, baseURL }, testInfo) => {
 		test.setTimeout(240_000);
 		const scope = `cur4814-${testInfo.workerIndex}-${testInfo.retry}-${Date.now()}`;
@@ -201,7 +201,7 @@ test(
 const CLEAR_AFTER = 3; // modelBusy.ts; a spec cannot import server code
 test(
 	'a model marked down stays busy after one successful warm check and returns to Auto in an already open tab after three in a row, with no reload',
-	{ tag: ['@F2', '@CUR-4629', '@CUR-4042', '@CUR-4742'] },
+	{ tag: ['@F2'] },
 	async ({ page, context, baseURL }, testInfo) => {
 		test.setTimeout(300_000);
 		const scope = `cur4629-${testInfo.workerIndex}-${testInfo.retry}-${Date.now()}`;

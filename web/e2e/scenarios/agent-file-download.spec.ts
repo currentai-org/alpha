@@ -31,14 +31,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 test(
 	'a file the agent writes can be downloaded from the turn, and the bytes are the ones it was asked for',
 	{
-		tag: [
-			'@preview-only',
-			'@A7',
-			'@CUR-546',
-			'@CUR-4398',
-			'@CUR-2172',
-			'@agent-knob:workdir_cleared'
-		]
+		tag: ['@preview-only', '@A7', '@agent-knob:workdir_cleared']
 	},
 	async ({ page, context, baseURL }) => {
 		// An agent turn runs a sandbox and several model rounds; three minutes is the observed ceiling

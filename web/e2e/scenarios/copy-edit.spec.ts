@@ -76,7 +76,7 @@ test(
 // `fr`, which is where `pnpm i18n:apply` writes it back.
 test(
 	'French text edited in place changes on the page, survives a reload, and is in the file under fr',
-	{ tag: ['@copy-edit', '@CUR-3660'] },
+	{ tag: ['@copy-edit'] },
 	async ({ page, context, baseURL }) => {
 		await context.addCookies([{ name: 'PARAGLIDE_LOCALE', value: 'fr', url: baseURL as string }]);
 		// The welcome is in French too, so it is pressed by its data hook, not its English name.

@@ -88,7 +88,7 @@ async function conversationMessages(page: Page, id: string) {
 
 test(
 	"the account page downloads Open WebUI's chat file, and the importer brings it into a fresh account with every branch, pin and archive at parity",
-	{ tag: ['@preview-only', '@CUR-4860'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(360_000);
 		const databaseUrl = process.env.SCENARIO_DATABASE_URL;

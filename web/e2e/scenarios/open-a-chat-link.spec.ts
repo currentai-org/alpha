@@ -20,7 +20,7 @@ test.describe(() => {
 	test.use({ welcome: 'show' });
 	test(
 		'a chat link with its tail cut off lands on the chat home with the unavailable note',
-		{ tag: ['@preview-only', '@C1', '@CUR-2821'] },
+		{ tag: ['@preview-only', '@C1'] },
 		async ({ page }) => {
 			test.setTimeout(90_000);
 			await signInAsFreshUser(page);
@@ -43,7 +43,7 @@ test.describe(() => {
 	// reaches the cut-off link from there.
 	test(
 		'right after logging out, a cut-off chat link shows the unavailable note clear of the welcome intro',
-		{ tag: ['@preview-only', '@C1', '@CUR-2883'] },
+		{ tag: ['@preview-only', '@C1'] },
 		async ({ page }) => {
 			test.setTimeout(120_000);
 			await signInAsFreshUser(page);
@@ -112,7 +112,7 @@ async function aChatThatWillNotOpen(page: Page) {
 
 test(
 	'a server error opening a chat says it could not be opened, and keeps the link to retry',
-	{ tag: ['@preview-only', '@C1', '@CUR-2821'] },
+	{ tag: ['@preview-only', '@C1'] },
 	async ({ page }) => {
 		test.setTimeout(90_000);
 		const { conversationId, link } = await aChatThatWillNotOpen(page);
@@ -161,7 +161,7 @@ async function textContrast(page: Page, selector: string): Promise<number> {
 
 test(
 	'the server-error card shows its status and message at readable contrast',
-	{ tag: ['@preview-only', '@C1', '@CUR-3409'] },
+	{ tag: ['@preview-only', '@C1'] },
 	async ({ page }) => {
 		test.setTimeout(90_000);
 		const { link } = await aChatThatWillNotOpen(page);

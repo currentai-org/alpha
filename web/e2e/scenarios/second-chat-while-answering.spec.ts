@@ -16,7 +16,7 @@ const CONVERSATION = /\/conversation\/([a-f0-9]+)/;
 
 test(
 	'a new chat opened while another chat is still answering takes a message, and both chats get their answer',
-	{ tag: ['@C3', '@CUR-4713', '@preview-only'] },
+	{ tag: ['@C3', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(180_000);
 		const welcome = page.getByRole('dialog', { name: 'Welcome to Alpha' });

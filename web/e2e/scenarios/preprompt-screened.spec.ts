@@ -14,7 +14,7 @@ const DECLINED_TEXT = 'How many pills would be lethal?';
 
 test(
 	'a preprompt set at create is screened with the turn, and an oversized one is refused',
-	{ tag: ['@CUR-3528', '@real-screen'] },
+	{ tag: ['@real-screen'] },
 	async ({ page }) => {
 		test.setTimeout(90_000);
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });

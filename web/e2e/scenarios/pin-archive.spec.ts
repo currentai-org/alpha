@@ -14,7 +14,7 @@ test.use({ viewport: { width: 1280, height: 800 } });
 
 test(
 	'a pinned chat heads the side rail after a reload, and an archived one leaves it but stays in Archived chats and in search',
-	{ tag: ['@preview-only', '@CUR-4788'] },
+	{ tag: ['@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(180_000);
 		await signInAsFreshUser(page);

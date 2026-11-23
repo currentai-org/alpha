@@ -60,7 +60,7 @@ async function sendAndFinish(page: Page, text: string): Promise<void> {
 
 test(
 	'a sealed turn leaves no copy of its words in the stored row, and a forged history is refused',
-	{ tag: ['@preview-only', '@CUR-4941'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		expect(
 			DATABASE_URL,
@@ -146,7 +146,7 @@ async function historyKeyBody(): Promise<{ wrapped: string; recipient: string; f
 
 test(
 	'after Forget everything, an account enrolls a new history key with a new recipient',
-	{ tag: ['@preview-only', '@CUR-4941'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(180_000);
 		// The recovery step is not what this tests, and the key route does not depend on the flag.

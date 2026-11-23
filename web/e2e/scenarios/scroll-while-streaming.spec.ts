@@ -52,7 +52,7 @@ async function scrollState(page: Page): Promise<ScrollState> {
 
 test(
 	'the view follows a streaming answer until the reader scrolls, then never pulls them back up',
-	{ tag: ['@CUR-2526', '@no-replay'] },
+	{ tag: ['@no-replay'] },
 	async ({ page }) => {
 		test.setTimeout(150_000);
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });

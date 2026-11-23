@@ -62,7 +62,7 @@ async function dropPdf(page: Page, path = FIXTURE, name = NAME) {
 
 test(
 	'a PDF dropped in chat is read, and the answer comes from what the document says',
-	{ tag: ['@preview-only', '@A6', '@CUR-987', '@CUR-4102'] },
+	{ tag: ['@preview-only', '@A6'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(180_000);
 		await setFlagOverrides(context, baseURL!, {
@@ -131,7 +131,7 @@ test(
 
 test(
 	'with document attachments off, the composer refuses a PDF before anything is sent',
-	{ tag: ['@preview-only', '@A6', '@CUR-987'] },
+	{ tag: ['@preview-only', '@A6'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(120_000);
 		await setFlagOverrides(context, baseURL!, {
@@ -160,7 +160,7 @@ test(
 test(
 	"with the input screen's guard unreachable, a PDF turn is declined, never answered from the unscreened document",
 	// @real-screen: the fault replaces the real screen's guard, and a PR preview otherwise stubs the screen.
-	{ tag: ['@preview-only', '@real-screen', '@A6', '@CUR-987', '@CUR-4101'] },
+	{ tag: ['@preview-only', '@real-screen', '@A6'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(150_000);
 		const token = process.env.E2E_FAULT_INJECT_TOKEN;
@@ -204,7 +204,7 @@ test(
 
 test(
 	'a PDF over the page limit is left out with a line naming the limit, and the text is still answered',
-	{ tag: ['@preview-only', '@A6', '@CUR-3837', '@CUR-3405'] },
+	{ tag: ['@preview-only', '@A6'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(150_000);
 		await setFlagOverrides(context, baseURL!, {
@@ -244,7 +244,7 @@ test(
 
 test(
 	'under document-text-only, a PDF is answered from its text and only a .txt of that text is stored',
-	{ tag: ['@preview-only', '@A6', '@A3', '@CUR-987'] },
+	{ tag: ['@preview-only', '@A6', '@A3'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(180_000);
 		await setFlagOverrides(context, baseURL!, {

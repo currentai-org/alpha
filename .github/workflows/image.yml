@@ -15,7 +15,7 @@
 # never fail the run. Only after the blocking gates does the last job put the version tags on that same
 # digest, so a version tag never names an image that was not scanned and booted.
 #
-# It runs only when asked for: on a version tag vX.Y.Z, which gives `X.Y.Z`, `X.Y` and `stable`, and
+# It runs only when asked for: on a version tag vX.Y.Z, which gives `X.Y.Z`, `X.Y` and `stable` (a pre-release tag such as vX.Y.Z-rc.1 gets only its own version), and
 # on a manual run (workflow_dispatch) from main, which gives `main` and `sha-<commit>`. A manual run from
 # any other branch publishes nothing: it fails before any job gets a token that can write the package,
 # so an unreviewed branch never reaches it. A push to main publishes nothing, so a new image exists only
@@ -343,7 +343,7 @@ jobs:
             type=ref,event=branch
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=stable,enable=${{ github.ref_type == 'tag' }}
+            type=raw,value=stable,enable=${{ github.ref_type == 'tag' && !contains(github.ref_name, '-') }}
 
       - name: Tag the digest
         env:

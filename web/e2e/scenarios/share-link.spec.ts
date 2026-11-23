@@ -64,7 +64,7 @@ async function strangerOpening(browser: Browser, baseURL: string, url: string) {
 
 test(
 	'a shared chat opens signed out in a fresh browser, and after Stop sharing the link is gone',
-	{ tag: ['@preview-only', '@C1', '@CUR-2632'] },
+	{ tag: ['@preview-only', '@C1'] },
 	async ({ page, context, browser, baseURL }) => {
 		test.setTimeout(240_000);
 		await setFlagOverrides(context, baseURL!, { 'share-links': true });
@@ -126,7 +126,7 @@ test(
 
 test(
 	'Forget everything leaves no live share link for the account',
-	{ tag: ['@preview-only', '@C1', '@CUR-2632'] },
+	{ tag: ['@preview-only', '@C1'] },
 	async ({ page, context, browser, baseURL }) => {
 		test.setTimeout(240_000);
 		await setFlagOverrides(context, baseURL!, { 'share-links': true });
@@ -164,7 +164,7 @@ test(
 
 test(
 	'with share-links off, a chat offers no Share chat row and the share routes answer 404',
-	{ tag: ['@preview-only', '@C1', '@CUR-2632'] },
+	{ tag: ['@preview-only', '@C1'] },
 	async ({ page, context, browser, baseURL }) => {
 		test.setTimeout(120_000);
 		await setFlagOverrides(context, baseURL!, { 'share-links': false });
@@ -219,7 +219,7 @@ test(
 
 test(
 	"a shared chat's HTML page opens as code, and its script runs only once the reader picks Preview",
-	{ tag: ['@preview-only', '@CUR-3187'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, browser, baseURL }) => {
 		test.setTimeout(240_000);
 		await setFlagOverrides(context, baseURL!, { 'share-links': true });

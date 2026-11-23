@@ -20,7 +20,7 @@ test.beforeEach(async ({ context, baseURL }) => {
 
 test(
 	'Settings > Your reports in French shows the intro, the empty state, and a sent report with its category, status and date in French, none of the English it used to show',
-	{ tag: ['@preview-only', '@A5', '@CUR-3921'] },
+	{ tag: ['@preview-only', '@A5'] },
 	async ({ page }) => {
 		test.setTimeout(90_000);
 		await page.goto('/chat/settings/reports', { waitUntil: 'commit' });

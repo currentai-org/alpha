@@ -1,0 +1,38 @@
+# The local model and the safety screen on an NVIDIA GPU. An override, layered on compose.yaml:
+#
+#   docker compose -f compose.yaml -f compose.gpu.yaml --profile local up --build
+#   docker compose -f compose.yaml -f compose.gpu.yaml --profile local --profile safety up --build
+#
+# Needs an NVIDIA driver and the NVIDIA Container Toolkit on the host; without them `up` stops with
+# "could not select device driver". It swaps llama.cpp's CPU image for the CUDA 12 build of the same
+# release (b12169, the build compose.yaml pins), asks Docker for every GPU, and tells llama.cpp to put
+# every layer on it. LLAMACPP_IMAGE in .env still picks another image; LLAMA_ARG_N_GPU_LAYERS takes a
+# number to keep some layers on the CPU when the model does not fit in VRAM.
+#
+# No CI runner has a GPU, so CI checks only that this file merges into a config that requests the device
+# (the self-host workflow's gpu-config job). AMD (server-rocm) and Vulkan (server-vulkan) builds are not
+# covered here and are untested.
+services:
+  llama:
+    image: ${LLAMACPP_IMAGE:-ghcr.io/ggml-org/llama.cpp:server-cuda@sha256:5bb779a449a18d8f4333e9814e887746342fe555c528f5eabc92b2093e32673a}
+    environment:
+      LLAMA_ARG_N_GPU_LAYERS: ${LLAMA_ARG_N_GPU_LAYERS:-all}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  shieldstral:
+    image: ${LLAMACPP_IMAGE:-ghcr.io/ggml-org/llama.cpp:server-cuda@sha256:5bb779a449a18d8f4333e9814e887746342fe555c528f5eabc92b2093e32673a}
+    environment:
+      LLAMA_ARG_N_GPU_LAYERS: ${LLAMA_ARG_N_GPU_LAYERS:-all}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

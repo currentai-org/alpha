@@ -21,7 +21,7 @@ for (const locale of ['fr', 'es', 'de'] as const) {
 
 	test(
 		`a ${locale} visitor who sends Report a problem reads the thank-you and the link to their reports in ${locale}, not English`,
-		{ tag: ['@A5', '@CUR-3921'] },
+		{ tag: ['@A5'] },
 		async ({ page, context, baseURL }) => {
 			test.setTimeout(90_000);
 			await context.addCookies([

@@ -35,87 +35,85 @@ test.beforeAll(async ({ playwright }, testInfo) => {
 	await api.dispose();
 });
 
-test(
-	"the Welcome to Alpha card's first frame is already in its own fonts, even on a slow connection",
-	{ tag: '@CUR-2385' },
-	async ({ page: firstPage, context }) => {
-		test.setTimeout(90_000);
+test("the Welcome to Alpha card's first frame is already in its own fonts, even on a slow connection", async ({
+	page: firstPage,
+	context
+}) => {
+	test.setTimeout(90_000);
 
-		// Record the font state on the first animation frame the heading exists, before anything can
-		// settle. A later read would pass on a page that had already swapped. On the context, so a
-		// second page below gets it too.
-		await context.addInitScript(() => {
-			const w = window as unknown as { __firstPaintFonts?: Record<string, boolean> };
-			const tick = () => {
-				// The dialog's title is a level-1 heading by role (bits-ui renders it as a div), not an h1.
-				const heading = [...document.querySelectorAll('h1, [role="heading"][aria-level="1"]')].find(
-					(h) =>
-						h.textContent?.trim() === 'Welcome to Alpha' && h.getBoundingClientRect().height > 0
-				);
-				if (!heading) return requestAnimationFrame(tick);
-				w.__firstPaintFonts = {
-					'Noto Serif': document.fonts.check('32px "Noto Serif"', 'Welcome to Alpha'),
-					'Plus Jakarta Sans': document.fonts.check('16px "Plus Jakarta Sans"', 'An AI assistant')
-				};
+	// Record the font state on the first animation frame the heading exists, before anything can
+	// settle. A later read would pass on a page that had already swapped. On the context, so a
+	// second page below gets it too.
+	await context.addInitScript(() => {
+		const w = window as unknown as { __firstPaintFonts?: Record<string, boolean> };
+		const tick = () => {
+			// The dialog's title is a level-1 heading by role (bits-ui renders it as a div), not an h1.
+			const heading = [...document.querySelectorAll('h1, [role="heading"][aria-level="1"]')].find(
+				(h) => h.textContent?.trim() === 'Welcome to Alpha' && h.getBoundingClientRect().height > 0
+			);
+			if (!heading) return requestAnimationFrame(tick);
+			w.__firstPaintFonts = {
+				'Noto Serif': document.fonts.check('32px "Noto Serif"', 'Welcome to Alpha'),
+				'Plus Jakarta Sans': document.fonts.check('16px "Plus Jakarta Sans"', 'An AI assistant')
 			};
-			requestAnimationFrame(tick);
-		});
-
-		const open = async (page: Page) => {
-			const cdp = await context.newCDPSession(page);
-			await cdp.send('Network.emulateNetworkConditions', {
-				offline: false,
-				latency: 150,
-				downloadThroughput: 200 * 1024,
-				uploadThroughput: 100 * 1024
-			});
-			await page.goto(chatEntry(), { waitUntil: 'commit' });
-			try {
-				await page
-					.getByRole('dialog', { name: 'Welcome to Alpha' })
-					.waitFor({ state: 'visible', timeout: 30_000 });
-				return true;
-			} catch {
-				// Under the emulated slow network Chromium can hand none of the page's script responses to the page
-				// in 60s even though the server answered each with a 200 inside a second. That is
-				// a browser stall, not a page that failed to show
-				// the card, so it is told apart by whether any of the app's own scripts finished arriving.
-				const scripts = await page.evaluate(
-					() =>
-						performance
-							.getEntriesByType('resource')
-							.filter((e) => /\/_app\/immutable\/.*\.js$/.test(new URL(e.name).pathname)).length
-				);
-				return scripts > 0;
-			}
 		};
+		requestAnimationFrame(tick);
+	});
 
-		let page = firstPage;
-		if (!(await open(page))) {
-			test.info().annotations.push({
-				type: 'throttle stall',
-				description:
-					'none of the app scripts arrived under the emulated network; reloaded in a new tab'
-			});
-			await page.close();
-			page = await context.newPage();
-			expect(
-				await open(page),
-				'none of the app scripts arrived under the emulated slow network, twice; the page never started'
-			).toBe(true);
+	const open = async (page: Page) => {
+		const cdp = await context.newCDPSession(page);
+		await cdp.send('Network.emulateNetworkConditions', {
+			offline: false,
+			latency: 150,
+			downloadThroughput: 200 * 1024,
+			uploadThroughput: 100 * 1024
+		});
+		await page.goto(chatEntry(), { waitUntil: 'commit' });
+		try {
+			await page
+				.getByRole('dialog', { name: 'Welcome to Alpha' })
+				.waitFor({ state: 'visible', timeout: 30_000 });
+			return true;
+		} catch {
+			// Under the emulated slow network Chromium can hand none of the page's script responses to the page
+			// in 60s even though the server answered each with a 200 inside a second. That is
+			// a browser stall, not a page that failed to show
+			// the card, so it is told apart by whether any of the app's own scripts finished arriving.
+			const scripts = await page.evaluate(
+				() =>
+					performance
+						.getEntriesByType('resource')
+						.filter((e) => /\/_app\/immutable\/.*\.js$/.test(new URL(e.name).pathname)).length
+			);
+			return scripts > 0;
 		}
-		await expect(
-			page.getByRole('dialog', { name: 'Welcome to Alpha' }),
-			'a fresh visitor was not shown the Welcome to Alpha card'
-		).toBeVisible({ timeout: 60_000 });
+	};
 
-		const fonts = await page.evaluate(
-			() => (window as unknown as { __firstPaintFonts?: Record<string, boolean> }).__firstPaintFonts
-		);
-		expect(fonts, 'the heading was never seen by the first-frame probe').toBeTruthy();
+	let page = firstPage;
+	if (!(await open(page))) {
+		test.info().annotations.push({
+			type: 'throttle stall',
+			description:
+				'none of the app scripts arrived under the emulated network; reloaded in a new tab'
+		});
+		await page.close();
+		page = await context.newPage();
 		expect(
-			fonts,
-			'the Welcome to Alpha card painted before its fonts had loaded, so it rewraps a moment later'
-		).toEqual({ 'Noto Serif': true, 'Plus Jakarta Sans': true });
+			await open(page),
+			'none of the app scripts arrived under the emulated slow network, twice; the page never started'
+		).toBe(true);
 	}
-);
+	await expect(
+		page.getByRole('dialog', { name: 'Welcome to Alpha' }),
+		'a fresh visitor was not shown the Welcome to Alpha card'
+	).toBeVisible({ timeout: 60_000 });
+
+	const fonts = await page.evaluate(
+		() => (window as unknown as { __firstPaintFonts?: Record<string, boolean> }).__firstPaintFonts
+	);
+	expect(fonts, 'the heading was never seen by the first-frame probe').toBeTruthy();
+	expect(
+		fonts,
+		'the Welcome to Alpha card painted before its fonts had loaded, so it rewraps a moment later'
+	).toEqual({ 'Noto Serif': true, 'Plus Jakarta Sans': true });
+});

@@ -22,7 +22,7 @@ const SOURCES = {
 
 test(
 	'a caret-cited, range-cited, bold-wrapped or bracket-escaped answer shows each citation as a link to its source numbered from [1], with no caret, dash, asterisks or math block',
-	{ tag: ['@preview-only', '@CUR-3551', '@CUR-2393', '@CUR-3933'] },
+	{ tag: ['@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(150_000);
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });

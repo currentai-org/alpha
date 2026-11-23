@@ -101,7 +101,7 @@ async function askOnce(
 
 test(
 	'asked which model it is and who runs it, Alpha does not search the web',
-	{ tag: ['@preview-only', '@CUR-2038'] },
+	{ tag: ['@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		const { stored, text, liveLines, searchingShown } = await askOnce(
@@ -133,7 +133,7 @@ test(
 // so the turn is pinned to a model without tools, which always gets the scaffolded plan.
 test(
 	"when the gate declines a search, X-ray's receipt says it decided against one, never that one ran",
-	{ tag: ['@preview-only', '@CUR-2657'] },
+	{ tag: ['@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		const { stored } = await askOnce(
@@ -168,7 +168,7 @@ test(
 // nearest exemplars being fresh "where is X running" lookups.
 test(
 	'asked who serves it and where the answer runs, Alpha does not search the web',
-	{ tag: ['@preview-only', '@CUR-2135'] },
+	{ tag: ['@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		const turn = await askOnce(page, 'Who serves you, and where does this answer run?');
@@ -196,7 +196,7 @@ for (const [lang, question] of [
 ] as const) {
 	test(
 		`asked in ${lang} which model it is and who runs it, Alpha does not search the web`,
-		{ tag: ['@preview-only', '@CUR-2135'] },
+		{ tag: ['@preview-only'] },
 		async ({ page, context, baseURL }) => {
 			test.setTimeout(120_000);
 			await setFlagOverrides(context, baseURL!, {
@@ -220,7 +220,7 @@ for (const [lang, question] of [
 
 test(
 	'asked for this week’s news, Alpha still searches the web',
-	{ tag: ['@preview-only', '@CUR-2038'] },
+	{ tag: ['@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		const { stored, liveLines, searchingShown } = await askOnce(
@@ -244,7 +244,7 @@ test(
 // "what is the sales tax in Texas" still searches. Neither question below is one of those exemplars.
 test(
 	'asked to write a letter that needs no lookup, Alpha does not search the web',
-	{ tag: ['@preview-only', '@CUR-2038'] },
+	{ tag: ['@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		const turn = await askOnce(
@@ -264,7 +264,7 @@ test(
 
 test(
 	'a shopping total answered by math routing shows no web search',
-	{ tag: ['@preview-only', '@CUR-2038'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(120_000);
 		await setFlagOverrides(context, baseURL!, {
@@ -295,7 +295,7 @@ test(
 
 test(
 	'asked about a product in our catalog, Alpha says it is searching our documents, not the web',
-	{ tag: ['@preview-only', '@CUR-2223'] },
+	{ tag: ['@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		const { stored, liveLines, searchingShown } = await askOnce(

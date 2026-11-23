@@ -31,7 +31,7 @@ async function send(page: import('@playwright/test').Page, message: string) {
 
 test(
 	'a request that uses a violent idiom is answered, not declined by the violence screen',
-	{ tag: ['@CUR-1853', '@real-screen'] },
+	{ tag: ['@real-screen'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		const answer = await send(
@@ -52,7 +52,7 @@ test(
 
 test(
 	'a real request for violence is still declined by the violence screen after the re-check',
-	{ tag: ['@CUR-1853', '@real-screen'] },
+	{ tag: ['@real-screen'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		const answer = await send(

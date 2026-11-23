@@ -129,7 +129,7 @@ for (const { modelId, name, needs } of [
 ]) {
 	test(
 		`asked who runs it on ${name}, the answer carries no routing line and X-ray names where it ran, as the badge does`,
-		{ tag: ['@preview-only', '@CUR-2921', ...needs] },
+		{ tag: ['@preview-only', ...needs] },
 		async ({ page }) => {
 			// One real turn, waited on for up to 90s, after up to 60s of setup (the budget check).
 			test.setTimeout(180_000);
@@ -151,7 +151,7 @@ const ALIA = 'BSC-LT/ALIA-40b-instruct';
 
 test(
 	'an ALIA answer names the host its routing record holds, never "not recorded"',
-	{ tag: ['@preview-only', '@CUR-3941', '@CUR-4472', '@needs-alia'] },
+	{ tag: ['@preview-only', '@needs-alia'] },
 	async ({ page }) => {
 		test.setTimeout(180_000);
 		const { compute, recorded, org } = await askWhoRunsIt(page, ALIA);
@@ -181,7 +181,7 @@ test(
 // backend, the way a lane that sends no host header leaves it.
 test(
 	'an answer whose routing record names no host says "not recorded" in its footer and X-ray, and names no configured host',
-	{ tag: ['@preview-only', '@CUR-3562'] },
+	{ tag: ['@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(180_000);
 		await installFaultInjectionHeader(page, 'provenance_host_stripped');

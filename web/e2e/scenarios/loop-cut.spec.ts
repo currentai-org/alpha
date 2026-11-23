@@ -51,7 +51,7 @@ const repeats = (text: string) => text.split(LOOP_SPAN).length - 1;
 
 test(
 	'an answer that loops is cut within a few repeats and ends with the repetition notice',
-	{ tag: ['@F2', '@preview-only', '@CUR-3318'] },
+	{ tag: ['@F2', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(150_000);
 		const stored = await askAndReadStored(page);
@@ -71,7 +71,7 @@ test(
 // repeat, so the first test cannot pass because the fault stopped looping.
 test(
 	'with loop-cut off, the same looping answer streams in full and carries no notice',
-	{ tag: ['@F2', '@preview-only', '@CUR-3318'] },
+	{ tag: ['@F2', '@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(150_000);
 		await setFlagOverrides(context, baseURL!, { 'loop-cut': false });
@@ -83,7 +83,7 @@ test(
 
 test(
 	'a French turn that loops ends with the repetition notice in French, not English',
-	{ tag: ['@F2', '@preview-only', '@CUR-4052'] },
+	{ tag: ['@F2', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(150_000);
 		// The detector reads some plain French as Catalan (a question built on "la" and "de", which its
@@ -104,7 +104,7 @@ test(
 
 test(
 	'a French turn built on la and de, which the old word lists read as Catalan, loops and ends with the French notice',
-	{ tag: ['@F2', '@preview-only', '@CUR-4080'] },
+	{ tag: ['@F2', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(150_000);
 		// The Observed draft shape: a short question carried by "la" and "de". The old word-list

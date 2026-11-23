@@ -11,7 +11,7 @@ import { setFlagOverrides } from './helpers/flagOverride';
 
 test(
 	'the Language panel names Auto’s pick: not GLM for Pashto, not Apertus for English, GLM for Chinese',
-	{ tag: ['@preview-only', '@CUR-4692'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		await setFlagOverrides(context, baseURL!, { 'auto-routing': true });
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });

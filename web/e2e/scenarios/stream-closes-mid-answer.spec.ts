@@ -67,7 +67,7 @@ const WRAP_ANSWER_STREAM = () => {
 
 test(
 	'an answer whose stream closes cleanly halfway (a phone locking) is replaced by the full saved answer without a reload',
-	{ tag: ['@C3', '@CUR-4714', '@preview-only'] },
+	{ tag: ['@C3', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(180_000);
 		const welcome = page.getByRole('dialog', { name: 'Welcome to Alpha' });

@@ -41,59 +41,57 @@ async function send(page: Page, text: string, nth: number): Promise<Locator> {
 	return answer;
 }
 
-test(
-	'Arabic and Urdu messages and answers read right to left, and an English message beside them left to right',
-	{ tag: '@CUR-1917' },
-	async ({ page }) => {
-		// Three live turns in one test: passes took 33-60s, and a slow preview ran past the 90s
-		// default while answer 3 was still streaming. send still fails any single
-		// answer that takes over 90s, so a hung turn is caught and named.
-		test.setTimeout(240_000);
-		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });
-		await page.addLocatorHandler(welcomeDialog, async () => {
-			await startChattingPastWelcome(welcomeDialog);
+test('Arabic and Urdu messages and answers read right to left, and an English message beside them left to right', async ({
+	page
+}) => {
+	// Three live turns in one test: passes took 33-60s, and a slow preview ran past the 90s
+	// default while answer 3 was still streaming. send still fails any single
+	// answer that takes over 90s, so a hung turn is caught and named.
+	test.setTimeout(240_000);
+	const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });
+	await page.addLocatorHandler(welcomeDialog, async () => {
+		await startChattingPastWelcome(welcomeDialog);
+	});
+	await page.goto(answerShapeEntry(), { waitUntil: 'commit' });
+	await page.getByLabel('Message AI Potluck').click({ timeout: 30_000 });
+
+	// Test 1: the Arabic question and its answer.
+	const arabicAnswer = await send(page, ARABIC, 1);
+	const arabicQuestion = page.getByText(ARABIC, { exact: true });
+	expect(await direction(arabicQuestion), 'the Arabic question is laid out left to right').toBe(
+		'rtl'
+	);
+	const arabicParagraph = arabicAnswer.locator('.prose p').first();
+	await expect(arabicParagraph).toBeVisible();
+	expect(
+		await direction(arabicParagraph),
+		'the Arabic answer is laid out left to right, so its full stops land at the wrong end'
+	).toBe('rtl');
+
+	// Test 2: Urdu. The request asks for three tips, so the answer usually carries a list, and a
+	// list's bullets sit on the side its direction starts from.
+	const urduAnswer = await send(page, URDU, 2);
+	expect(
+		await direction(page.getByText(URDU, { exact: true })),
+		'the Urdu question is laid out left to right'
+	).toBe('rtl');
+	const firstBlock = urduAnswer.locator('.prose :is(p, ul, ol)').first();
+	await expect(firstBlock).toBeVisible();
+	expect(await direction(firstBlock), 'the Urdu answer is laid out left to right').toBe('rtl');
+	const list = urduAnswer.locator('.prose :is(ul, ol)').first();
+	if ((await list.count()) > 0) {
+		expect(await direction(list), 'the Urdu list puts its bullets on the left').toBe('rtl');
+	} else {
+		test.info().annotations.push({
+			type: 'no-list',
+			description: 'the Urdu answer had no list this run, so bullet side was not checked'
 		});
-		await page.goto(answerShapeEntry(), { waitUntil: 'commit' });
-		await page.getByLabel('Message AI Potluck').click({ timeout: 30_000 });
-
-		// Test 1: the Arabic question and its answer.
-		const arabicAnswer = await send(page, ARABIC, 1);
-		const arabicQuestion = page.getByText(ARABIC, { exact: true });
-		expect(await direction(arabicQuestion), 'the Arabic question is laid out left to right').toBe(
-			'rtl'
-		);
-		const arabicParagraph = arabicAnswer.locator('.prose p').first();
-		await expect(arabicParagraph).toBeVisible();
-		expect(
-			await direction(arabicParagraph),
-			'the Arabic answer is laid out left to right, so its full stops land at the wrong end'
-		).toBe('rtl');
-
-		// Test 2: Urdu. The request asks for three tips, so the answer usually carries a list, and a
-		// list's bullets sit on the side its direction starts from.
-		const urduAnswer = await send(page, URDU, 2);
-		expect(
-			await direction(page.getByText(URDU, { exact: true })),
-			'the Urdu question is laid out left to right'
-		).toBe('rtl');
-		const firstBlock = urduAnswer.locator('.prose :is(p, ul, ol)').first();
-		await expect(firstBlock).toBeVisible();
-		expect(await direction(firstBlock), 'the Urdu answer is laid out left to right').toBe('rtl');
-		const list = urduAnswer.locator('.prose :is(ul, ol)').first();
-		if ((await list.count()) > 0) {
-			expect(await direction(list), 'the Urdu list puts its bullets on the left').toBe('rtl');
-		} else {
-			test.info().annotations.push({
-				type: 'no-list',
-				description: 'the Urdu answer had no list this run, so bullet side was not checked'
-			});
-		}
-
-		// Test 3: an English message in the same conversation stays left to right.
-		await send(page, ENGLISH, 3);
-		expect(
-			await direction(page.getByText(ENGLISH, { exact: true })),
-			'an English message beside right-to-left ones was laid out right to left'
-		).toBe('ltr');
 	}
-);
+
+	// Test 3: an English message in the same conversation stays left to right.
+	await send(page, ENGLISH, 3);
+	expect(
+		await direction(page.getByText(ENGLISH, { exact: true })),
+		'an English message beside right-to-left ones was laid out right to left'
+	).toBe('ltr');
+});

@@ -29,7 +29,7 @@ for (const on of [true, false]) {
 		on
 			? 'with low-resource-per-model on, a Hausa question to Apertus is asked for in Hausa, and XRAY says so'
 			: 'with low-resource-per-model off, a Hausa question to Apertus names no language',
-		{ tag: ['@A2', '@preview-only', '@CUR-2237', '@needs-apertus'] },
+		{ tag: ['@A2', '@preview-only', '@needs-apertus'] },
 		async ({ page, context, baseURL }) => {
 			test.setTimeout(120_000);
 			if (on) await setFlagOverrides(context, baseURL!, { 'low-resource-per-model': true });

@@ -36,7 +36,7 @@ async function chatWithSearchAlways(page: Page) {
 
 test(
 	'a web search that does not finish puts a note on the answer, which stays after reload',
-	{ tag: ['@preview-only', '@A5', '@CUR-4091'] },
+	{ tag: ['@preview-only', '@A5'] },
 	async ({ page }) => {
 		test.setTimeout(180_000);
 		await installFaultInjectionHeader(page, 'web_search_hangs');
@@ -63,7 +63,7 @@ test(
 
 test(
 	'a web search that finishes puts no unfinished-search note on the answer',
-	{ tag: ['@preview-only', '@A5', '@CUR-4091'] },
+	{ tag: ['@preview-only', '@A5'] },
 	async ({ page }) => {
 		test.setTimeout(180_000);
 		await installModelReplay(page);

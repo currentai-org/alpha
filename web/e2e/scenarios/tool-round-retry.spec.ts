@@ -17,7 +17,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 const LARGE4 = LARGE4_MODEL;
 test(
 	'a Large 4 tool round refused as over-cap is retried on the same lane and the turn answers',
-	{ tag: ['@F2', '@preview-only', '@CUR-2432'] },
+	{ tag: ['@F2', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(150_000);
 		const databaseUrl = process.env.SCENARIO_DATABASE_URL;

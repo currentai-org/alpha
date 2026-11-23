@@ -125,6 +125,8 @@ const STATEFUL_SERVER_SPECS = [
 	'src/lib/chat/server/api/__tests__/localInferenceEndpoints.spec.ts',
 	'src/lib/chat/server/api/__tests__/localInferencePairingLink.spec.ts',
 	'src/lib/chat/server/api/__tests__/cleanupRoute.spec.ts',
+	// A self-host's in-process daily cleanup deletes expired guest rows and files.
+	'src/lib/chat/server/__tests__/dailyCleanupSchedule.stateful.spec.ts',
 	'src/routes/chat/conversation/[id]/report/report.spec.ts',
 	'src/routes/chat/conversation/[id]/server.turn.spec.ts',
 	'src/routes/chat/api/v2/export/export.spec.ts',

@@ -26,7 +26,7 @@ async function createTitledChat(page: Page, model: string | undefined, title: st
 
 test(
 	'a signed-in person finds an old chat by searching, deletes it, then deletes the rest',
-	{ tag: ['@preview-only', '@local-build', '@C1', '@CUR-2626', '@mock-model'] },
+	{ tag: ['@preview-only', '@local-build', '@C1', '@mock-model'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		await signInAsFreshUser(page);
@@ -163,7 +163,7 @@ async function openRailWithGoneChat(page: Page, title: string) {
 
 test(
 	'deleting a chat that is already gone takes it off the rail, with no raw error',
-	{ tag: ['@preview-only', '@local-build', '@C1', '@CUR-2819', '@mock-model'] },
+	{ tag: ['@preview-only', '@local-build', '@C1', '@mock-model'] },
 	async ({ page }) => {
 		const link = await openRailWithGoneChat(page, 'Bike repair notes');
 		await journeyStep(page, 'C1', 7, async () => {
@@ -188,7 +188,7 @@ test(
 
 test(
 	'renaming a chat that is already gone says so in a sentence and takes it off the rail',
-	{ tag: ['@preview-only', '@local-build', '@C1', '@CUR-2819', '@mock-model'] },
+	{ tag: ['@preview-only', '@local-build', '@C1', '@mock-model'] },
 	async ({ page }) => {
 		const link = await openRailWithGoneChat(page, 'Garden planting plan');
 		await journeyStep(page, 'C1', 7, async () => {
@@ -215,7 +215,7 @@ test(
 // nothing was cleared. The modal used to hedge ("may not be fully cleared") over that body in code font.
 test(
 	'a Forget everything the server refuses says nothing was cleared, in a sentence, and keeps the chats',
-	{ tag: ['@preview-only', '@local-build', '@C1', '@CUR-2822', '@mock-model'] },
+	{ tag: ['@preview-only', '@local-build', '@C1', '@mock-model'] },
 	async ({ page }) => {
 		await signInAsFreshUser(page);
 		const models = (await (await page.request.get('/chat/api/models')).json()) as {
@@ -303,7 +303,7 @@ async function contrastAgainstBackground(target: Locator): Promise<number> {
 // near-black in dark mode, so the dialog's `dark:text-gray-200` title read 1.07:1 on its panel.
 test(
 	"the delete-conversation dialog's title, close × and Cancel label meet 4.5:1 contrast in dark mode",
-	{ tag: ['@preview-only', '@C1', '@CUR-4218'] },
+	{ tag: ['@preview-only', '@C1'] },
 	async ({ page }) => {
 		test.setTimeout(90_000);
 		await page.emulateMedia({ colorScheme: 'dark' });

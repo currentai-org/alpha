@@ -25,7 +25,7 @@ test.describe('the chrome in a French browser', () => {
 
 	test(
 		'a French browser gets the sidebar, Get involved card, account row and retention badge in French',
-		{ tag: ['@CUR-2866', '@A2'] },
+		{ tag: ['@A2'] },
 		async ({ page }) => {
 			test.setTimeout(120_000);
 			const composer = await openChat(page);
@@ -55,7 +55,7 @@ test.describe('the chrome in an English browser', () => {
 
 	test(
 		'an English browser keeps the English sidebar labels the other specs read',
-		{ tag: ['@CUR-2866', '@A2'] },
+		{ tag: ['@A2'] },
 		async ({ page }) => {
 			await openChat(page);
 			await expect(page.getByRole('link', { name: /^New chat/ })).toBeVisible();

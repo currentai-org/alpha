@@ -75,7 +75,7 @@ async function longHistoryThenHarmfulTurn(page: Page) {
 for (const capped of [true, false]) {
 	test(
 		`a chat with a long history still answers, and a harmful last turn after it is still declined (guard-history-cap ${capped ? 'on' : 'off'})`,
-		{ tag: ['@CUR-3532', '@CUR-3749', '@CUR-4764', '@real-screen'] },
+		{ tag: ['@real-screen'] },
 		async ({ page, context, baseURL }) => {
 			test.setTimeout(300_000);
 			// Two literal calls, so flagKeys.spec.ts can read which states this file forces.

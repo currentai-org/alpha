@@ -114,7 +114,7 @@ describe("ordinary sentences the word list missed", () => {
 	it("detects the Quechua repro, whose `yanapawankimanchu` is one suffix past the listed form", () => {
 		expect(
 			detectLowResourceLanguage(
-				"Allillanchu. Ñuqaqa Coralie kani. Ayllunchikpaq huk qillqata qillqayta munani, wawakunata yanapanapaq. Yanapawankimanchu?"
+				"Allillanchu. Ñuqaqa Ada kani. Ayllunchikpaq huk qillqata qillqayta munani, wawakunata yanapanapaq. Yanapawankimanchu?"
 			)
 		).toBe("quz");
 	});

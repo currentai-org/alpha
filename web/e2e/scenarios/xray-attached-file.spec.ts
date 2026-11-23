@@ -13,7 +13,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // the answer read, so X-ray names it under "Looked up".
 test(
 	'an answer to a question with a file attached names that file in X-ray, never "nothing was looked up"',
-	{ tag: ['@preview-only', '@CUR-4150', '@CUR-4353'] },
+	{ tag: ['@preview-only'] },
 	async ({ page }) => {
 		// One real turn, waited on for up to 120s, after up to 60s of setup.
 		test.setTimeout(240_000);

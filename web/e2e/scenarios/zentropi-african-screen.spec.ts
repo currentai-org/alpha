@@ -57,13 +57,13 @@ async function screenedBy(
 }
 
 for (const [label, text, tags] of [
-	['a Kiswahili turn', KISWAHILI, ['@CUR-4340']],
-	['a Hausa turn the language detector is not sure of', HAUSA_NEAR_MISS, ['@CUR-4423']],
-	['an English turn', ENGLISH, ['@CUR-4340']]
+	['a Kiswahili turn', KISWAHILI, []],
+	['a Hausa turn the language detector is not sure of', HAUSA_NEAR_MISS, []],
+	['an English turn', ENGLISH, []]
 ] as const) {
 	test(
-		`${label} is screened by S1, the live guard, and never by CoPE-B (CUR-4527)`,
-		{ tag: ['@A5', '@CUR-4527', ...tags, '@real-screen'] },
+		`${label} is screened by S1, the live guard, and never by CoPE-B`,
+		{ tag: ['@A5', ...tags, '@real-screen'] },
 		async ({ page }) => {
 			test.setTimeout(150_000);
 			const { helpers, screen } = await screenedBy(page, text);

@@ -82,7 +82,7 @@ async function storedAnswers(page: Page): Promise<Stored[]> {
 
 test(
 	"when Auto's choice refuses a question, Auto asks another model and the answer names both",
-	{ tag: ['@F2', '@CUR-4384', '@preview-only'] },
+	{ tag: ['@F2', '@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(180_000);
 		const { sends } = await refuseFirstSend(page);
@@ -129,7 +129,7 @@ test(
 
 test(
 	"when Auto's choice stays silent until its give-up, Auto asks another model and the answer names both",
-	{ tag: ['@F2', '@CUR-4384', '@preview-only'] },
+	{ tag: ['@F2', '@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(180_000);
 		const { sends } = await refuseFirstSend(page, 'every_lane_hangs');
@@ -196,7 +196,7 @@ test(
 
 test(
 	'a hand-picked model that refuses ends on its own error, and no other model is asked',
-	{ tag: ['@F2', '@CUR-4384', '@preview-only'] },
+	{ tag: ['@F2', '@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(120_000);
 		const { sends } = await refuseFirstSend(page);
@@ -215,7 +215,7 @@ test(
 
 test(
 	"with auto-repick off, Auto's refused turn ends on its error as before",
-	{ tag: ['@F2', '@CUR-4384', '@preview-only'] },
+	{ tag: ['@F2', '@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(120_000);
 		const { sends } = await refuseFirstSend(page);
@@ -240,7 +240,7 @@ test(
 // router's 404 (`lane_not_found`) before any text, and Auto asks another model, as it does for a 429.
 test(
 	"when Auto's choice fails with the router's 404 before any text, Auto asks another model and the answer names both",
-	{ tag: ['@F2', '@CUR-4629', '@CUR-4384', '@preview-only'] },
+	{ tag: ['@F2', '@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(180_000);
 		const { sends } = await refuseFirstSend(page, 'lane_not_found');
@@ -279,7 +279,7 @@ test(
 
 test(
 	"a hand-picked model that fails with the router's 404 ends on its own error, and no other model is asked",
-	{ tag: ['@F2', '@CUR-4629', '@preview-only'] },
+	{ tag: ['@F2', '@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(120_000);
 		const { sends } = await refuseFirstSend(page, 'lane_not_found');

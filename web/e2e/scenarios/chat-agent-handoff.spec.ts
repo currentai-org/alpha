@@ -56,7 +56,7 @@ async function traceOf(page: Page, reply: ReturnType<Page['locator']>): Promise<
 
 test(
 	'with chat-agent-handoff on, a handed-off task waits for Allow, then the agent writes its files into the same workspace chat reads',
-	{ tag: ['@preview-only', '@no-replay', '@CUR-4388'] },
+	{ tag: ['@preview-only', '@no-replay'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(420_000);
 		await setFlagOverrides(context, baseURL!, {
@@ -96,7 +96,7 @@ test(
 
 test(
 	'with chat-agent-handoff off, the same request shows no handoff card',
-	{ tag: ['@preview-only', '@no-replay', '@CUR-4388'] },
+	{ tag: ['@preview-only', '@no-replay'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(240_000);
 		await setFlagOverrides(context, baseURL!, {

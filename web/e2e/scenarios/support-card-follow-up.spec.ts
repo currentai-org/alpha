@@ -32,7 +32,7 @@ async function send(page: Page, text: string) {
 
 test(
 	'after a distress message, an unrelated follow-up gets no support card, and a later distress message does',
-	{ tag: ['@CUR-4493', '@real-screen'] },
+	{ tag: ['@real-screen'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(300_000);
 		await setFlagOverrides(context, baseURL!, {

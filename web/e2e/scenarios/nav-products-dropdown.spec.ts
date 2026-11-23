@@ -91,123 +91,113 @@ async function expectCloses(page: Page, message: string) {
 }
 
 test.describe('Products dropdown timing', () => {
-	test(
-		'a quick pass over Products does not open it, and resting on it opens it after about 120 ms',
-		{ tag: '@CUR-3973' },
-		async ({ page }) => {
-			await openPageWithPausedClock(page);
+	test('a quick pass over Products does not open it, and resting on it opens it after about 120 ms', async ({
+		page
+	}) => {
+		await openPageWithPausedClock(page);
 
-			// "it no longer flickers open when the mouse passes over it"
-			await pointAtTrigger(page);
-			await page.clock.runFor(60);
-			await moveAway(page);
-			await page.clock.runFor(500);
-			await expect(panel(page), 'a 60 ms pass over the trigger opened the panel').toBeHidden();
+		// "it no longer flickers open when the mouse passes over it"
+		await pointAtTrigger(page);
+		await page.clock.runFor(60);
+		await moveAway(page);
+		await page.clock.runFor(500);
+		await expect(panel(page), 'a 60 ms pass over the trigger opened the panel').toBeHidden();
 
-			await pointAtTrigger(page);
-			await page.clock.runFor(100);
-			await expect(panel(page), 'the panel opened before about 120 ms').toBeHidden();
-			await page.clock.runFor(30);
-			await expectOpens(page, 4, 'resting on Products did not open it by about 190 ms');
-		}
-	);
+		await pointAtTrigger(page);
+		await page.clock.runFor(100);
+		await expect(panel(page), 'the panel opened before about 120 ms').toBeHidden();
+		await page.clock.runFor(30);
+		await expectOpens(page, 4, 'resting on Products did not open it by about 190 ms');
+	});
 
-	test(
-		'leaving Products closes it about 300 ms later, and coming back within that time keeps it open',
-		{ tag: '@CUR-3973' },
-		async ({ page }) => {
-			await openPageWithPausedClock(page);
-			await pointAtTrigger(page);
-			await page.clock.runFor(150);
-			await expectOpens(page, 3, 'resting on Products did not open it by about 190 ms');
+	test('leaving Products closes it about 300 ms later, and coming back within that time keeps it open', async ({
+		page
+	}) => {
+		await openPageWithPausedClock(page);
+		await pointAtTrigger(page);
+		await page.clock.runFor(150);
+		await expectOpens(page, 3, 'resting on Products did not open it by about 190 ms');
 
-			// Still open 250 ms after leaving, and still open 50 ms after coming back, before the 120 ms
-			// hover delay could have reopened a menu that had closed in between.
-			await moveAway(page);
-			await page.clock.runFor(250);
-			await expectStillOpen(page, 'the menu closed within 250 ms of the pointer leaving');
-			await pointAtTrigger(page);
-			await page.clock.runFor(50);
-			await expectStillOpen(page, 'coming back within 300 ms let the menu close');
-			await page.clock.runFor(600);
-			await expect(panel(page), 'coming back within 300 ms did not keep it open').toBeVisible();
+		// Still open 250 ms after leaving, and still open 50 ms after coming back, before the 120 ms
+		// hover delay could have reopened a menu that had closed in between.
+		await moveAway(page);
+		await page.clock.runFor(250);
+		await expectStillOpen(page, 'the menu closed within 250 ms of the pointer leaving');
+		await pointAtTrigger(page);
+		await page.clock.runFor(50);
+		await expectStillOpen(page, 'coming back within 300 ms let the menu close');
+		await page.clock.runFor(600);
+		await expect(panel(page), 'coming back within 300 ms did not keep it open').toBeVisible();
 
-			await moveAway(page);
-			await page.clock.runFor(250);
-			await expectStillOpen(page, 'the menu closed before about 300 ms');
-			await page.clock.runFor(60);
-			await expectCloses(page, 'the panel stayed open after the pointer left');
-		}
-	);
+		await moveAway(page);
+		await page.clock.runFor(250);
+		await expectStillOpen(page, 'the menu closed before about 300 ms');
+		await page.clock.runFor(60);
+		await expectCloses(page, 'the panel stayed open after the pointer left');
+	});
 
-	test(
-		'moving from Products down into its panel keeps it open, and a click after hovering keeps it open',
-		{ tag: '@CUR-3973' },
-		async ({ page }) => {
-			await openPageWithPausedClock(page);
-			await pointAtTrigger(page);
-			await page.clock.runFor(150);
-			await expectOpens(page, 3, 'resting on Products did not open it by about 190 ms');
+	test('moving from Products down into its panel keeps it open, and a click after hovering keeps it open', async ({
+		page
+	}) => {
+		await openPageWithPausedClock(page);
+		await pointAtTrigger(page);
+		await page.clock.runFor(150);
+		await expectOpens(page, 3, 'resting on Products did not open it by about 190 ms');
 
-			// Down through the gap between the bar and the panel, in small steps, into the panel.
-			const box = await panel(page).boundingBox();
-			if (!box) throw new Error('the open panel has no box');
-			await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 12 });
-			await page.clock.runFor(600);
-			await expect(panel(page), 'moving into the panel closed it').toBeVisible();
+		// Down through the gap between the bar and the panel, in small steps, into the panel.
+		const box = await panel(page).boundingBox();
+		if (!box) throw new Error('the open panel has no box');
+		await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 12 });
+		await page.clock.runFor(600);
+		await expect(panel(page), 'moving into the panel closed it').toBeVisible();
 
-			await pointAtTrigger(page);
-			await page.mouse.down();
-			await page.mouse.up();
-			await page.clock.runFor(600);
-			await expect(panel(page), 'a click after hovering closed the panel').toBeVisible();
-		}
-	);
+		await pointAtTrigger(page);
+		await page.mouse.down();
+		await page.mouse.up();
+		await page.clock.runFor(600);
+		await expect(panel(page), 'a click after hovering closed the panel').toBeVisible();
+	});
 });
 
-test(
-	'the keyboard toggles Products with Enter and Space and closes it with Escape',
-	{ tag: '@CUR-3973' },
-	async ({ page }) => {
-		await page.goto('/');
-		await waitHydrated(page);
-		const button = trigger(page);
-		await button.focus();
-		await expect(button).toBeFocused();
-		await page.keyboard.press('Enter');
-		await expect(panel(page), 'Enter did not open Products').toBeVisible();
-		await button.focus();
-		await page.keyboard.press('Enter');
-		await expect(panel(page), 'Enter did not close Products').toBeHidden();
-		await page.keyboard.press('Space');
-		await expect(panel(page), 'Space did not open Products').toBeVisible();
-		await page.keyboard.press('Escape');
-		await expect(panel(page), 'Escape did not close Products').toBeHidden();
-	}
-);
+test('the keyboard toggles Products with Enter and Space and closes it with Escape', async ({
+	page
+}) => {
+	await page.goto('/');
+	await waitHydrated(page);
+	const button = trigger(page);
+	await button.focus();
+	await expect(button).toBeFocused();
+	await page.keyboard.press('Enter');
+	await expect(panel(page), 'Enter did not open Products').toBeVisible();
+	await button.focus();
+	await page.keyboard.press('Enter');
+	await expect(panel(page), 'Enter did not close Products').toBeHidden();
+	await page.keyboard.press('Space');
+	await expect(panel(page), 'Space did not open Products').toBeVisible();
+	await page.keyboard.press('Escape');
+	await expect(panel(page), 'Escape did not close Products').toBeHidden();
+});
 
-test(
-	'while Products is closed, tabbing through the header never lands on one of its links',
-	{ tag: '@CUR-3973' },
-	async ({ page }) => {
-		await page.goto('/');
-		await waitHydrated(page);
-		await page.locator('header a').first().focus();
-		for (let i = 0; i < 20; i++) {
-			const where = await page.evaluate(() => {
-				const el = document.activeElement;
-				return {
-					inPanel: !!el?.closest('[data-slot="navigation-menu-content"]'),
-					inHeader: !!el?.closest('header')
-				};
-			});
-			expect(where.inPanel, `Tab ${i} focused a link in the closed Products panel`).toBe(false);
-			if (!where.inHeader) break;
-			await page.keyboard.press('Tab');
-		}
-		await expect(panel(page), 'tabbing past Products opened it').toBeHidden();
+test('while Products is closed, tabbing through the header never lands on one of its links', async ({
+	page
+}) => {
+	await page.goto('/');
+	await waitHydrated(page);
+	await page.locator('header a').first().focus();
+	for (let i = 0; i < 20; i++) {
+		const where = await page.evaluate(() => {
+			const el = document.activeElement;
+			return {
+				inPanel: !!el?.closest('[data-slot="navigation-menu-content"]'),
+				inHeader: !!el?.closest('header')
+			};
+		});
+		expect(where.inPanel, `Tab ${i} focused a link in the closed Products panel`).toBe(false);
+		if (!where.inHeader) break;
+		await page.keyboard.press('Tab');
 	}
-);
+	await expect(panel(page), 'tabbing past Products opened it').toBeHidden();
+});
 
 // Records each animation that starts on the panel, with the duration and easing it ran with.
 async function recordPanelAnimations(page: Page) {
@@ -250,10 +240,43 @@ const panelAnimations = (page: Page) =>
 			).__panelAnimations
 	);
 
-test(
-	'Products fades in and slides down over about 200 ms, ease-out, and fades back out the same way',
-	{ tag: '@CUR-3973' },
-	async ({ page }) => {
+test('Products fades in and slides down over about 200 ms, ease-out, and fades back out the same way', async ({
+	page
+}) => {
+	await page.goto('/');
+	await expect(trigger(page)).toBeVisible();
+	await recordPanelAnimations(page);
+	await expect
+		.poll(
+			async () => {
+				await trigger(page).hover();
+				return panel(page).isVisible();
+			},
+			{ message: 'hovering Products never opened it', timeout: 15_000 }
+		)
+		.toBe(true);
+	await moveAway(page);
+	await expect(panel(page)).toBeHidden();
+
+	const runs = await panelAnimations(page);
+	const enter = runs.find((r) => r.name === 'enter');
+	const exit = runs.find((r) => r.name === 'exit');
+	expect(enter, `no enter animation on open: ${JSON.stringify(runs)}`).toBeTruthy();
+	expect(exit, `no exit animation on close: ${JSON.stringify(runs)}`).toBeTruthy();
+	for (const run of [enter!, exit!]) {
+		expect(run.duration, `${run.name} did not run for 200 ms`).toBe('0.2s');
+		expect(run.easing, `${run.name} is not the ease-out curve`).toBe(
+			'cubic-bezier(0.22, 1, 0.36, 1)'
+		);
+	}
+	expect(enter!.enterOpacity, 'the panel does not fade in from transparent').toBe('0');
+	expect(enter!.enterY, 'the panel does not slide down from above').not.toBe('');
+});
+
+test.describe('with reduced motion', () => {
+	test.use({ reducedMotion: 'reduce' });
+
+	test('Products opens and closes without the animation', async ({ page }) => {
 		await page.goto('/');
 		await expect(trigger(page)).toBeVisible();
 		await recordPanelAnimations(page);
@@ -266,69 +289,26 @@ test(
 				{ message: 'hovering Products never opened it', timeout: 15_000 }
 			)
 			.toBe(true);
+		expect(
+			await panel(page).evaluate((el) => getComputedStyle(el).animationName),
+			'the panel animates with reduced motion on'
+		).toBe('none');
 		await moveAway(page);
 		await expect(panel(page)).toBeHidden();
-
-		const runs = await panelAnimations(page);
-		const enter = runs.find((r) => r.name === 'enter');
-		const exit = runs.find((r) => r.name === 'exit');
-		expect(enter, `no enter animation on open: ${JSON.stringify(runs)}`).toBeTruthy();
-		expect(exit, `no exit animation on close: ${JSON.stringify(runs)}`).toBeTruthy();
-		for (const run of [enter!, exit!]) {
-			expect(run.duration, `${run.name} did not run for 200 ms`).toBe('0.2s');
-			expect(run.easing, `${run.name} is not the ease-out curve`).toBe(
-				'cubic-bezier(0.22, 1, 0.36, 1)'
-			);
-		}
-		expect(enter!.enterOpacity, 'the panel does not fade in from transparent').toBe('0');
-		expect(enter!.enterY, 'the panel does not slide down from above').not.toBe('');
-	}
-);
-
-test.describe('with reduced motion', () => {
-	test.use({ reducedMotion: 'reduce' });
-
-	test(
-		'Products opens and closes without the animation',
-		{ tag: '@CUR-3973' },
-		async ({ page }) => {
-			await page.goto('/');
-			await expect(trigger(page)).toBeVisible();
-			await recordPanelAnimations(page);
-			await expect
-				.poll(
-					async () => {
-						await trigger(page).hover();
-						return panel(page).isVisible();
-					},
-					{ message: 'hovering Products never opened it', timeout: 15_000 }
-				)
-				.toBe(true);
-			expect(
-				await panel(page).evaluate((el) => getComputedStyle(el).animationName),
-				'the panel animates with reduced motion on'
-			).toBe('none');
-			await moveAway(page);
-			await expect(panel(page)).toBeHidden();
-			expect(await panelAnimations(page), 'an animation ran with reduced motion on').toEqual([]);
-		}
-	);
+		expect(await panelAnimations(page), 'an animation ran with reduced motion on').toEqual([]);
+	});
 });
 
 test.describe('on a touch screen', () => {
 	test.use({ hasTouch: true });
 
-	test(
-		'a tap opens Products and a second tap closes it',
-		{ tag: '@CUR-3973' },
-		async ({ page }) => {
-			await page.goto('/');
-			await waitHydrated(page);
-			const button = trigger(page);
-			await button.tap();
-			await expect(panel(page), 'a tap did not open Products').toBeVisible();
-			await button.tap();
-			await expect(panel(page), 'a second tap did not close Products').toBeHidden();
-		}
-	);
+	test('a tap opens Products and a second tap closes it', async ({ page }) => {
+		await page.goto('/');
+		await waitHydrated(page);
+		const button = trigger(page);
+		await button.tap();
+		await expect(panel(page), 'a tap did not open Products').toBeVisible();
+		await button.tap();
+		await expect(panel(page), 'a second tap did not close Products').toBeHidden();
+	});
 });

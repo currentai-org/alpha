@@ -64,7 +64,7 @@ async function openTrace(turn: ReturnType<Page['locator']>) {
 
 test(
 	'auto mode makes and changes a file with no approval card, lists both in the trace, and asks in plain words before a delete',
-	{ tag: ['@preview-only', '@A7', '@CUR-3142', '@CUR-4486', '@CUR-4709', '@real-agent'] },
+	{ tag: ['@preview-only', '@A7', '@real-agent'] },
 	async ({ page, context, baseURL }) => {
 		// Three agent turns, each a sandbox and several model rounds.
 		test.setTimeout(600_000);
@@ -111,9 +111,27 @@ test(
 			'the trace does not list the change auto mode ran'
 		).toBeAttached();
 
-		await send(page, composer, `Delete ${filename}.`);
+		const deleting = await send(page, composer, `Delete ${filename}.`);
 		const card = page.getByText(CARD).last();
-		await expect(card, 'a delete ran without asking first').toBeVisible({ timeout: 240_000 });
+		// A turn that died before asking (a full sandbox host, a model error) is not a delete that skipped
+		// its card, so each fails with its own message.
+		const seen: { outcome: FirstOutcome } = { outcome: 'still-running' };
+		await expect
+			.poll(async () => (seen.outcome = await firstOutcome(page, deleting, 'last')), {
+				timeout: 240_000,
+				intervals: [1_000]
+			})
+			.not.toBe('still-running')
+			.catch(() => undefined);
+		const deleteFailures: Record<Exclude<FirstOutcome, 'card'>, string> = {
+			'ran-without-card':
+				'a delete ran without asking first: the trace lists it as "ran without asking"',
+			'ended-without-card':
+				'the delete turn ended with no approval card and nothing in its trace: the agent never asked to delete',
+			'still-running':
+				'after 240s the delete turn showed no approval card and nothing in its trace: it had not asked yet, or its card never reached the page'
+		};
+		expect(seen.outcome, seen.outcome === 'card' ? '' : deleteFailures[seen.outcome]).toBe('card');
 		const headline = (await card.textContent()) ?? '';
 		expect(
 			headline,
@@ -166,8 +184,13 @@ async function askEveryStep(page: Page) {
 // one, so each fails with its own message.
 type FirstOutcome = 'card' | 'ran-without-card' | 'ended-without-card' | 'still-running';
 
-async function firstOutcome(page: Page, turn: ReturnType<Page['locator']>): Promise<FirstOutcome> {
-	if (await page.getByText(CARD).first().isVisible()) return 'card';
+async function firstOutcome(
+	page: Page,
+	turn: ReturnType<Page['locator']>,
+	which: 'first' | 'last' = 'first'
+): Promise<FirstOutcome> {
+	const card = page.getByText(CARD);
+	if (await (which === 'first' ? card.first() : card.last()).isVisible()) return 'card';
 	if ((await turn.getByText(/ran without asking:/).count()) > 0) return 'ran-without-card';
 	if (!(await turnDone(turn).isVisible())) return 'still-running';
 	// The trace panel closes when the turn ends and then holds no text; open it before reading.
@@ -215,7 +238,7 @@ async function makeFileOpensACard(
 
 test(
 	'a person who turns on Ask before every step gets an approval card for making a file',
-	{ tag: ['@preview-only', '@A7', '@CUR-3142', '@CUR-4486', '@CUR-4669', '@real-agent'] },
+	{ tag: ['@preview-only', '@A7', '@real-agent'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(300_000);
 		await setFlagOverrides(context, baseURL!, {
@@ -229,7 +252,7 @@ test(
 
 test(
 	'with the agent-auto-mode kill switch off, making a file opens an approval card for everyone',
-	{ tag: ['@preview-only', '@A7', '@CUR-3142', '@CUR-4486', '@real-agent'] },
+	{ tag: ['@preview-only', '@A7', '@real-agent'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(300_000);
 		await setFlagOverrides(context, baseURL!, {
@@ -282,7 +305,7 @@ async function leaveTheCardUnanswered(page: Page, context: BrowserContext, baseU
 
 test(
 	'an approval card left unanswered pauses the run there, and the turn offers a Retry that asks again',
-	{ tag: ['@preview-only', '@A7', '@CUR-4660', '@real-agent'] },
+	{ tag: ['@preview-only', '@A7', '@real-agent'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(480_000);
 		const retry = await leaveTheCardUnanswered(page, context, baseURL!);
@@ -298,7 +321,7 @@ test(
 // Its own test, since a second card adds a full run to the paused test's time.
 test(
 	'Retry on a turn paused at an unanswered approval runs the request again to a new approval card',
-	{ tag: ['@preview-only', '@A7', '@CUR-5255', '@real-agent'] },
+	{ tag: ['@preview-only', '@A7', '@real-agent'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(720_000);
 		const retry = await leaveTheCardUnanswered(page, context, baseURL!);

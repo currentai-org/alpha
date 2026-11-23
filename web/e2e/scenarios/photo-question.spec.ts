@@ -139,7 +139,7 @@ async function modelsTakingImages(page: Page): Promise<string[]> {
 // attachment-limits.spec.ts and custodial-storage.spec.ts, which force the flag off.
 test(
 	'a guest on preview is offered a model that takes images, and a pasted photo asks them to sign in rather than attaching',
-	{ tag: ['@A6', '@preview-only', '@CUR-2725', '@CUR-3979'] },
+	{ tag: ['@A6', '@preview-only'] },
 	async ({ page }) => {
 		await page.goto('/chat', { waitUntil: 'commit' });
 		expect(
@@ -175,7 +175,7 @@ test(
 
 test(
 	'a pasted photo reaches the model: asked the colour of the circle, the answer says blue, and a follow-up still sees it',
-	{ tag: ['@A6', '@preview-only', '@CUR-454'] },
+	{ tag: ['@A6', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(240_000);
 		await openChat(page);
@@ -246,7 +246,7 @@ test(
 // on develop's push run, not on PR runs, where the stand-in answers.
 test(
 	'with Agent set to On, a photo question is still answered from the photo',
-	{ tag: ['@A6', '@preview-only', '@CUR-3155', '@real-agent'] },
+	{ tag: ['@A6', '@preview-only', '@real-agent'] },
 	async ({ page, context, baseURL }) => {
 		// An agent turn runs a sandbox and several model rounds (agent-math-turn.spec.ts).
 		test.setTimeout(300_000);
@@ -307,7 +307,7 @@ test(
 // again. The decline now carries a labelled Retry, and pressing it answers from the same photo.
 test(
 	'a photo turn the safety check could not finish offers a labelled Retry that answers from the same photo',
-	{ tag: ['@A6', '@preview-only', '@CUR-3739', '@real-screen'] },
+	{ tag: ['@A6', '@preview-only', '@real-screen'] },
 	async ({ page }) => {
 		test.setTimeout(240_000);
 		await openChat(page);
@@ -369,7 +369,7 @@ test(
 
 test(
 	'the attach button takes a photo from the file picker, and the answer says what is in it',
-	{ tag: ['@A6', '@preview-only', '@CUR-2725'] },
+	{ tag: ['@A6', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(150_000);
 		await openChat(page);
@@ -459,7 +459,7 @@ async function shapesBmp(circle: string): Promise<Buffer> {
 
 test(
 	'an avif and a bmp from the file picker are redrawn as photos the model reads, and the answer names both circles',
-	{ tag: ['@A6', '@preview-only', '@CUR-3073'] },
+	{ tag: ['@A6', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(150_000);
 		await openChat(page);
@@ -516,7 +516,7 @@ test(
 // the page and set on the input directly, the way such a picker leaves them.
 test(
 	'an avif and a bmp the picker hands over with no type are redrawn as photos and get thumbnails',
-	{ tag: ['@A6', '@preview-only', '@CUR-3073'] },
+	{ tag: ['@A6', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(90_000);
 		await openChat(page);
@@ -571,7 +571,7 @@ test(
 
 test(
 	'a HEIC this browser cannot open is refused by name with the photo types that work, and a photo still attaches after it',
-	{ tag: ['@A6', '@preview-only', '@CUR-3073'] },
+	{ tag: ['@A6', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(90_000);
 		await openChat(page);
@@ -621,7 +621,7 @@ test(
 // the attach button has to come from the flag's own targeting, on the model a visitor gets by default.
 test(
 	'a currentai.org team account gets the attach button on Mistral Medium 3.5 with no flag override, and the answer names the photo',
-	{ tag: ['@A6', '@preview-only', '@CUR-2725'] },
+	{ tag: ['@A6', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(150_000);
 		await openChat(page, freshTestEmail('currentai.org'), `/chat/models/${MEDIUM_MODEL}`);
@@ -661,7 +661,7 @@ test(
 
 test(
 	'a photo dropped onto the chat is attached through the dropzone, and the answer says what is in it',
-	{ tag: ['@A6', '@preview-only', '@CUR-454'] },
+	{ tag: ['@A6', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(150_000);
 		await openChat(page);
@@ -704,7 +704,7 @@ test(
 
 test(
 	"the sent photo stays on screen when the turn ends: drawn from the browser's own copy, never re-downloaded",
-	{ tag: ['@A6', '@preview-only', '@CUR-2761'] },
+	{ tag: ['@A6', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(150_000);
 		await openChat(page);
@@ -780,7 +780,7 @@ test(
 
 test(
 	'a 6 MB phone photo, over the 3 MB message limit, is shrunk in the browser, attached, and read',
-	{ tag: ['@A6', '@preview-only', '@CUR-2633'] },
+	{ tag: ['@A6', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(150_000);
 		// The chat opens first: the recording starts with the page, so a photo built before it would
@@ -835,7 +835,7 @@ test(
 
 test(
 	'a photo attached on the empty composer is gone after New chat, so it never rides into the next question',
-	{ tag: ['@A6', '@preview-only', '@CUR-3052'] },
+	{ tag: ['@A6', '@preview-only'] },
 	async ({ page }) => {
 		await openChat(page);
 		await pasteImage(page, 'shapes.png', 'image/png', await shapesPng());
@@ -975,7 +975,7 @@ async function attachLeavesTheBoxInPlace(page: Page, name: string, pinned: boole
 
 test(
 	'attaching a photo on the empty chat leaves the message box where it was',
-	{ tag: ['@A6', '@preview-only', '@CUR-3617'] },
+	{ tag: ['@A6', '@preview-only'] },
 	async ({ page }) => attachLeavesTheBoxInPlace(page, 'on a window the greeting fills', false)
 );
 
@@ -986,7 +986,7 @@ test.describe('on a window with some centring room, less than the photo row need
 	test.use({ viewport: { width: 1280, height: 620 } });
 	test(
 		'attaching a photo on the empty chat leaves the message box where it was, with the block pinned and the column scrolled',
-		{ tag: ['@A6', '@preview-only', '@CUR-3617'] },
+		{ tag: ['@A6', '@preview-only'] },
 		async ({ page }) => attachLeavesTheBoxInPlace(page, 'with some centring room', true)
 	);
 });
@@ -997,7 +997,7 @@ test.describe('on a window with some centring room, less than the photo row need
 // `fill`, because `fill` focuses the box itself and would hide the first defect.
 test(
 	'typing straight after choosing a large photo lands in the box, and Enter sends the text with the photo',
-	{ tag: ['@A6', '@preview-only', '@CUR-3197'] },
+	{ tag: ['@A6', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(180_000);
 		const photo = await phonePhotoJpeg();
@@ -1040,7 +1040,7 @@ test(
 
 test(
 	'a question about an attached photo is answered from the photo, with no web search, and names the logo it shows',
-	{ tag: ['@A6', '@preview-only', '@CUR-3192', '@CUR-3616'] },
+	{ tag: ['@A6', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(180_000);
 		// The picture answers this question, so a search here is the defect and not a judgement call.
@@ -1120,7 +1120,7 @@ test(
 
 test(
 	'a photo question sent from a new chat stays on screen with its photo in every frame from send to answer',
-	{ tag: ['@A6', '@preview-only', '@CUR-3506', '@CUR-3402'] },
+	{ tag: ['@A6', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(180_000);
 		await openChat(page);

@@ -122,6 +122,38 @@ export function isPrivateHostname(hostname: string): boolean {
 	return isIP(host) ? isUnsafeIpStrict(host) : false;
 }
 
+// Cloud-metadata and container-credential services: the IPv4 link-local block (AWS, GCP and
+// Azure metadata at 169.254.169.254, ECS task credentials at 169.254.170.2), Alibaba's 100.100.100.200,
+// and AWS's IPv6 metadata address. Refused even where a deployment lets users reach private addresses,
+// since a LAN model server never lives there and the credentials behind them are the host's.
+const METADATA_IPV4 = [new Address4("169.254.0.0/16"), new Address4("100.100.100.200/32")];
+const METADATA_IPV6 = [new Address6("fd00:ec2::254/128")];
+
+function isCloudMetadataIp(address: string): boolean {
+	const family = isIP(address);
+	if (family === 4) {
+		const addr = new Address4(address);
+		return METADATA_IPV4.some((subnet) => addr.isInSubnet(subnet));
+	}
+	if (family === 6) {
+		const addr = new Address6(address);
+		const v4 = mappedV4(addr);
+		if (v4) return METADATA_IPV4.some((subnet) => v4.isInSubnet(subnet));
+		return METADATA_IPV6.some((subnet) => addr.isInSubnet(subnet));
+	}
+	return true; // Unknown format → block
+}
+
+/**
+ * Does `hostname` (as `URL.hostname` gives it) name a cloud-metadata address as an IP literal, mapped
+ * forms included? A name that merely RESOLVES to one returns false; `metadataGuardedFetch` catches that
+ * at connect time.
+ */
+export function isCloudMetadataHostname(hostname: string): boolean {
+	const host = stripBrackets(hostname.toLowerCase()).replace(/\.$/, "");
+	return isIP(host) ? isCloudMetadataIp(host) : false;
+}
+
 /**
  * Synchronous URL validation: checks protocol and hostname string.
  */
@@ -203,24 +235,32 @@ const ssrfSafeAgent = new Agent({
 	},
 });
 
+/** An undici agent that refuses, at connection time, any resolved address `unsafe` names. */
+function resolvedAddressGuardAgent(unsafe: (ip: string) => boolean, kind: string): Agent {
+	return new Agent({
+		connect: {
+			lookup: (hostname, options, callback) => {
+				dns.lookup(hostname, options, (err, address, family) => {
+					if (err) return callback(err, "", 4);
+					const ips = typeof address === "string" ? [address] : address.map((a) => a.address);
+					for (const ip of ips) {
+						if (unsafe(ip)) {
+							return callback(new Error(`Resolved IP for ${hostname} is ${kind} (${ip})`), "", 4);
+						}
+					}
+					return callback(null, address, family);
+				});
+			},
+		},
+	});
+}
+
 // Stricter agent for the admin URL-ingest path: rejects the cluster-internal ranges at connection
 // time too (RFC1918 10/8 + IPv6 ULA), so a hostname that RESOLVES to 10.x can't slip through via DNS.
-const ssrfStrictAgent = new Agent({
-	connect: {
-		lookup: (hostname, options, callback) => {
-			dns.lookup(hostname, options, (err, address, family) => {
-				if (err) return callback(err, "", 4);
-				const ips = typeof address === "string" ? [address] : address.map((a) => a.address);
-				for (const ip of ips) {
-					if (isUnsafeIpStrict(ip)) {
-						return callback(new Error(`Resolved IP for ${hostname} is internal (${ip})`), "", 4);
-					}
-				}
-				return callback(null, address, family);
-			});
-		},
-	},
-});
+const ssrfStrictAgent = resolvedAddressGuardAgent(isUnsafeIpStrict, "internal");
+
+// Agent for metadataGuardedFetch: refuses a resolved cloud-metadata address at connection time.
+const metadataGuardAgent = resolvedAddressGuardAgent(isCloudMetadataIp, "a cloud-metadata address");
 
 const MAX_REDIRECTS = 5;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
@@ -333,4 +373,18 @@ export async function ssrfSafeFetch(url: string | URL, init?: RequestInit): Prom
  *  at connection time and on every redirect hop. */
 export async function ssrfStrictFetch(url: string | URL, init?: RequestInit): Promise<Response> {
 	return ssrfFetchImpl(url, init, ssrfStrictAgent, isValidUrlStrict, isUnsafeIpStrict);
+}
+
+/** For a deployment whose users may reach private addresses (localEndpointFetch.ts): refuses only
+ *  cloud-metadata addresses, as a literal, at connection time and on every redirect hop. */
+export async function metadataGuardedFetch(url: string | URL, init?: RequestInit): Promise<Response> {
+	// ssrfFetchImpl builds each hop with new URL(), so this parse cannot throw; undici itself refuses a
+	// scheme other than http(s).
+	return ssrfFetchImpl(
+		url,
+		init,
+		metadataGuardAgent,
+		(hop) => !isCloudMetadataHostname(new URL(hop).hostname),
+		isCloudMetadataIp
+	);
 }

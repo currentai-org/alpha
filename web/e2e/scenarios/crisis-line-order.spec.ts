@@ -13,7 +13,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // model call, through the same output screen and honesty stream a model's answer goes through.
 test(
 	'a crisis answer that names 988 first shows findahelpline.com and local emergency services ahead of it, with no 112',
-	{ tag: ['@preview-only', '@CUR-2697', '@CUR-4141'] },
+	{ tag: ['@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(150_000);
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });

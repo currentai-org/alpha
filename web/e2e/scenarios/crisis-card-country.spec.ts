@@ -14,7 +14,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // demo recordings.
 test(
 	'the support card on a crisis message links findahelpline’s page for the visitor’s country',
-	{ tag: ['@preview-only', '@CUR-3912'] },
+	{ tag: ['@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(90_000);
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });
@@ -54,7 +54,7 @@ test(
 // must survive a reload.
 test(
 	'a crisis message that names Portugal gets Portugal’s helplines page, whatever the visitor’s country',
-	{ tag: ['@preview-only', '@CUR-4488'] },
+	{ tag: ['@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });

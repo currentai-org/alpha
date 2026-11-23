@@ -29,7 +29,7 @@ test.beforeEach(async ({ context, baseURL }) => {
 
 test(
 	'a signed-in turn carrying a 7z is answered, the archive is not stored, and the answer says why',
-	{ tag: ['@preview-only', '@CUR-3832'] },
+	{ tag: ['@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		await signInAsFreshUser(page);

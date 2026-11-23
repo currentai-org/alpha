@@ -219,7 +219,7 @@ test.describe('x-ray card links', () => {
 
 	test(
 		"a Mistral Large 4 answer's X-Ray names Large 4 by Mistral AI; sent straight to La Plateforme it lights no gateway or compute row and names La Plateforme on each, and sent through a router it never says direct",
-		{ tag: ['@F3', '@CUR-2287', '@CUR-2850', '@CUR-3966', '@CUR-4577'] },
+		{ tag: ['@F3'] },
 		async ({ page }) => {
 			// Sends a real turn and waits up to 90s for it, after up to 60s of setup (the budget check).
 			test.setTimeout(180_000);
@@ -343,7 +343,7 @@ test.describe('x-ray on a short window', () => {
 	test.use({ viewport: { width: 1280, height: 690 } });
 	test(
 		'opening X-ray on a 690px-tall window leaves the answer it describes in view',
-		{ tag: ['@preview-only', '@F3', '@CUR-3934'] },
+		{ tag: ['@preview-only', '@F3'] },
 		async ({ page }) => {
 			test.setTimeout(120_000);
 			const welcome = page.getByRole('dialog', { name: 'Welcome to Alpha' });
@@ -386,7 +386,7 @@ test.describe('x-ray on a short window', () => {
 	// panel now gives back the height the footer is short of.
 	test(
 		'X-ray opened from the composer chip on a 690px window keeps the whole answer and its footer above the panel',
-		{ tag: ['@preview-only', '@F6', '@CUR-3951'] },
+		{ tag: ['@preview-only', '@F6'] },
 		async ({ page }) => {
 			test.setTimeout(120_000);
 			const welcome = page.getByRole('dialog', { name: 'Welcome to Alpha' });

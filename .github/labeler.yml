@@ -1,0 +1,10 @@
+# Labels a pull request by the paths it changes, for the release-note groups in release.yml. Only the
+# labels a path can decide: whether a change is breaking, a security fix, a bug fix or a feature is the
+# author's call, and the pull request template asks for it.
+# https://github.com/actions/labeler
+selfhost:
+  - changed-files:
+      - any-glob-to-any-file: ["selfhost/**", "deploy/**"]
+ci:
+  - changed-files:
+      - all-globs-to-all-files: [".github/**"]

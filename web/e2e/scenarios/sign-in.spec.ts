@@ -157,7 +157,7 @@ test.describe('email-OTP sign-in', () => {
 	// @preview-only: production is the one deployment that keeps the default name and the apex Domain.
 	test(
 		"a preview's session cookie has its own name and no Domain, so signing in here cannot sign anyone out of production",
-		{ tag: ['@A1', '@preview-only', '@CUR-1904'] },
+		{ tag: ['@A1', '@preview-only'] },
 		async ({ page, context, baseURL }) => {
 			await signInWithEmailOtp(page, DATABASE_URL!, freshTestEmail());
 			await expect(page).toHaveURL(/\/chat\/?(\?|$)/);
@@ -1272,7 +1272,7 @@ test.describe('email-OTP sign-in', () => {
 
 		test(
 			'the header names the signed-in account without the drawer open, and a guest has no avatar',
-			{ tag: ['@A1', '@CUR-1466'] },
+			{ tag: ['@A1'] },
 			async ({ page }) => {
 				test.setTimeout(150_000);
 				const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });

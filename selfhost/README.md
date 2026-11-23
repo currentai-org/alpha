@@ -39,6 +39,20 @@ step (`smoke.sh`) prints llama.cpp's `prompt eval` line. Slower CPUs and larger 
 proportionally longer. Later turns reuse the cached prompt and start in seconds. With a GPU or a fast
 CPU, set `LOCAL_MODEL_*` in `.env` to a larger model.
 
+**On an NVIDIA GPU**, add `compose.gpu.yaml`. It needs the NVIDIA driver and the
+[NVIDIA Container Toolkit](https://github.com/NVIDIA/nvidia-container-toolkit) on the host. It swaps in
+llama.cpp's CUDA build of the same release, asks Docker for every GPU, and puts every layer on it
+(`LLAMA_ARG_N_GPU_LAYERS=all`; set a number in `.env` when the model does not fit in VRAM). It covers
+the `safety` profile's screen too:
+
+```sh
+docker compose -f compose.yaml -f compose.gpu.yaml --profile local up --build
+```
+
+GPU use is untested in CI, because no runner has a GPU: the self-host CI's `gpu-config` job checks only
+that the merged config requests the device. AMD (llama.cpp's `server-rocm` image) and Vulkan
+(`server-vulkan`) are untested, and this file does not set them up.
+
 To use a hosted provider in place of the local model, fill in block B of `.env` and start without
 the profile:
 
@@ -80,7 +94,7 @@ What to expect:
   the web log records a `[failopen]` warning (`guardGate.ts`). A long message whose content checks were
   still waiting when the screen ran out of time is declined as unchecked. So on CPU expect both declined
   turns and turns answered unscreened. A screen that finds a block before it runs out of time still
-  blocks. For a usable screen, give it a GPU: set `LLAMACPP_IMAGE` to a CUDA build of the same server.
+  blocks. For a usable screen, give it a GPU: add `compose.gpu.yaml` ("On an NVIDIA GPU", above).
   The self-host CI's `safety-profile` job prints the times on every pull request. Its chat turns report
   and never fail, because on a CPU runner the screen often runs out of time; only its direct classifier
   check, which does not depend on CPU speed, is a failure of its own (for now it raises a warning).
@@ -123,8 +137,10 @@ starts agent-service, its model gateway and a socket proxy beside the app, and w
 - **The engine is Kilo.** Each task is driven by Kilo (Kilo-Org/kilocode, MIT) over ACP, inside the
   sandbox, pointed at your endpoint through the gateway; it needs no Kilo account.
   `AGENT_ENGINE=hermes` in `.env` runs the previous engine instead.
-- **The model is the one chat uses.** The gateway forwards to `OPENAI_BASE_URL` with `OPENAI_API_KEY`. The
-  agent's sandbox never holds that key: it holds a one-task grant the gateway honours.
+- **The model is the one chat uses.** The gateway forwards to `OPENAI_BASE_URL` with `OPENAI_API_KEY`, or,
+  with those unset, to the first URL and key of Open WebUI's `OPENAI_API_BASE_URLS` / `OPENAI_API_KEYS`,
+  read as chat reads them (`agent-service/api/openwebui_env.py`). The agent's sandbox never holds that key:
+  it holds a one-task grant the gateway honours.
 - **What the sandbox isolates.** Each conversation's agent runs in a container of its own: a non-root user,
   every Linux capability dropped, `no-new-privileges`, a read-only root filesystem, a 512 MB in-memory
   home that holds its files, 1 CPU, 1 GB of memory and 256 processes, and no host path mounted. Its network
@@ -158,22 +174,47 @@ Compose reads `.env` next to `compose.yaml`.
 | `OPENAI_API_KEY` | `none` | Sent as `Bearer` to that endpoint. Keyless servers ignore it. |
 | `OPENAI_API_BASE_URLS`, `OPENAI_API_KEYS` | none | Open WebUI's names, for an install moving over with its env file. Read only while `OPENAI_BASE_URL` is unset; when both are set, `OPENAI_BASE_URL` wins and the log says so. `;`-separated, one key per URL (an empty key is a keyless endpoint); with fewer keys the rest are keyless and extra keys are dropped, as in Open WebUI, and `OPENAI_API_KEY` stands in when `OPENAI_API_KEYS` is unset. Alpha serves one endpoint, so with several the first is used and the log says how many were ignored. |
 | `MODEL_ALLOWLIST` | `*` | Comma-separated model ids from `GET /models` to offer, first one the default. `*` offers all of them. |
+| `ALPHA_MODELS_FILE` | none | A model list file of your own, read in place of the five model settings above. See [Your own model list](#your-own-model-list). |
 | `PORT` | `3000` | The host port, bound to 127.0.0.1. |
 | `PUBLIC_ORIGIN` | `http://localhost:3000` | The origin people reach the app at. Set it when you put a proxy in front. |
-| `POSTGRES_PASSWORD` | `alpha` | The bundled database's password. |
+| `POSTGRES_PASSWORD` | `alpha` | The bundled database's password. Set it before the first start: Postgres reads it only when it creates the database in an empty `db` volume. Changed later, it changes only what the app connects with, and the app is locked out. To change it later, run `./db-passwd.sh`, then put the new value here and run `docker compose up -d`. Already locked out? Run `NEW_POSTGRES_PASSWORD=<the value here> ./db-passwd.sh`, then `docker compose restart web`. Letters, digits and `. _ ~ -` only: the app puts it in a URL. |
 | `GENERATION_TIMEOUT_MS`, `SILENCE_TIMEOUT_MS` | `150000` | How long a turn may wait for the model before it is ended as an error. The app's own default is 45 s, too short for a CPU model's first turn. |
 | `LOCAL_MODEL_REPO`, `LOCAL_MODEL_FILE`, `LOCAL_MODEL_ALIAS`, `LOCAL_MODEL_CTX` | Qwen2.5 0.5B Instruct, Q4_K_M, 16k context | Which GGUF llama.cpp downloads from Hugging Face, and the model id it reports. Keep `MODEL_ALLOWLIST` in step with the alias. |
 | `LOCAL_MODELS_DIR` | the `models` volume | A host directory to keep the downloaded GGUF in. CI points it at a cached directory. |
-| `LLAMACPP_IMAGE` | llama.cpp's `server` image, pinned by digest | Another llama.cpp server build, such as a CUDA one. The `safety` profile uses it too. |
+| `LLAMACPP_IMAGE` | llama.cpp's `server` image, pinned by digest; its `server-cuda` build with `compose.gpu.yaml` | Another llama.cpp server build. The `safety` profile uses it too. |
+| `LLAMA_ARG_N_GPU_LAYERS` | `all`, with `compose.gpu.yaml` only | How many of the model's layers llama.cpp puts on the GPU: a number, `auto` or `all`. |
 | `GUARD_SHADOW_URL` | none | A Shieldstral endpoint's base. Set, every turn is screened and a block stops it; with the `safety` profile, `http://shieldstral:8080`. |
 | `SAFETY_MODEL_URL`, `SAFETY_MODEL_FILE` | a pinned Shieldstral Q4_K_M GGUF | With `--profile safety`: the GGUF the classifier downloads, and the file name it is kept under. Change both together. |
-| `ALPHA_IMAGE` | `ghcr.io/currentai-org/alpha:0.1.0` | With `compose.release.yaml` only: another release tag or a digest of the app image. |
+| `ALPHA_IMAGE` | `ghcr.io/currentai-org/alpha:0.3.0-preview.1` | With `compose.release.yaml` only: another release tag or a digest of the app image. |
 | `SMTP_URL` | none | Your mail server, as `smtp://user:password@host:587` (or `smtps://` on 465). Sign-in codes and workspace invitations go out through it. Unset, people sign in with email and password instead. |
 | `SMTP_FROM` | `Alpha <noreply@` your `PUBLIC_ORIGIN` host `>` | The sender address. Set it to one your mail server accepts. |
 | `ALPHA_OPEN_SIGNUP` | unset: closed after the first account | With no mailer, password sign-up closes once one account exists. `true` keeps it open to anyone who reaches the stack. Ignored when a mailer is set. |
+| `LOCAL_INFERENCE_INTERNAL_ADDRESSES` | unset: refused | `allow` lets people add a local model endpoint (Settings, `local-inference`) at a private address, such as an Ollama on `localhost` or your LAN. Unset, only public addresses are accepted, whatever `DEPLOY_ENV` says, because on a shared install a private address reaches this host's network: its databases, and on a cloud VM the instance credentials. Set it only when everyone who can sign in may reach that network, as on a single-user install. Cloud-metadata addresses (`169.254.0.0/16`, `fd00:ec2::254`) stay refused either way. |
 
 The app reads many more variables (`web/.env.example` lists every one). Each feature they configure
 stays off while its config is unset.
+
+### Your own model list
+
+To choose which models Alpha offers, and which model does each job, from one file of your own instead of
+env settings:
+
+1. Copy `config/models.example.json` to a file named models.json in the same directory (git ignores it) and edit that copy.
+2. Set `ALPHA_MODELS_FILE=/config/models.json` in `.env`. Compose mounts `config/` into the web container read-only.
+3. Restart: `docker compose up -d web`.
+
+The file holds `providers` (a base URL, and `api_key_env`, the name of the env var that holds the key,
+never the key), `model_list` (each model's id and provider) and `roles`: `default_chat`, and optionally
+`picker` (the models offered, in order, starting with `default_chat`; every listed model when left out),
+`task` (titles and other side calls), `arithmetic_route`, `compare_panel` and `aggregator`. The shape is
+the one hosted Alpha's own `web/config/inference.ts` validates, which follows LiteLLM's `model_list`.
+
+With the file set, `OPENAI_BASE_URL`, `OPENAI_API_KEY`, the Open WebUI names, `MODEL_ALLOWLIST`, `TASK_MODEL`
+and the other role settings in `.env` are ignored, and the log names any that held a value. `OPENAI_BASE_URL` may then be left unset. The web
+service refuses to start, with the file's path in the error, when the file is not valid JSON, when a role
+names a model the file does not list, when the models it offers sit on more than one provider (Alpha
+serves one endpoint), when `model_name` differs from the id the server reports, or when the provider's
+key variable is unset (set `OPENAI_API_KEY=none` for a keyless server).
 
 ### Feature flags
 
@@ -299,6 +340,27 @@ Turning sealing off later leaves already sealed files readable. Files written be
 plaintext. `storage-locations`, which links a person's own Hugging Face bucket as a second place for
 their files, still turns on only with `HF_BUCKETS_TOKEN` and `HF_BUCKETS_REPO` set (`flagKeys.ts`, see the
 table); without it My files shows your store alone.
+
+## Expired guest data
+
+The web server deletes expired data itself, once a day: guest conversations untouched for 30 days, guest
+files 30 days after upload, and the other short-lived records `cleanupExpired` in
+`web/src/lib/chat/server/db/cleanup.ts` lists. It needs no cron, no extra container and no `CRON_SECRET`.
+The first run comes a few minutes after the server starts, then one every 24 hours. Each replica runs its
+own, and a second run deletes nothing the first already did. The `deploy/compose.yaml` stack runs the same
+image and gets the same cleanup, whatever `ALPHA_EDITION` says. Only a server running on Vercel skips it,
+because a Vercel cron calls `/chat/api/cleanup` there instead.
+
+To confirm it ran, look for its lines in the web log:
+
+```sh
+docker compose logs web | grep '\[cleanup\]'
+```
+
+`[cleanup] daily cleanup scheduled in this process` appears at start, and
+`[cleanup] daily cleanup finished` after each run, with `total` (rows deleted), `guestConversations`,
+`guestFilesDeleted`, and `expiredConversations` (what the `conversation-expiry` flag's sweep deleted; with
+that flag on, guest conversations are counted there instead of under `guestConversations`). A failed run logs `[cleanup] daily cleanup failed`, and the next day's run goes ahead.
 
 ## Back up and restore
 

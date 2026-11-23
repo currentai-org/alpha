@@ -7,10 +7,12 @@ import { building } from "$app/env";
 import type { Collections } from "./database";
 import { Semaphores } from "$lib/chat/types/Semaphore";
 import { resolveOpenAiEnv } from "./env/openWebUiAliases";
+import { applyOperatorModels } from "./env/operatorModels";
 import { committedConfigEnv, isRoleModelKey, roleModelSetting } from "../../../../config/inference";
 
 export type PublicConfigKey = Extract<keyof typeof publicEnv, string>;
 const keysFromEnv = { ...publicEnv, ...serverEnv };
+applyOperatorModelsFile(keysFromEnv as Record<string, string | undefined>);
 applyOpenWebUiNames(keysFromEnv as Record<string, string | undefined>);
 export type ConfigKey = Extract<keyof typeof keysFromEnv, string>;
 
@@ -18,6 +20,19 @@ export type ConfigKey = Extract<keyof typeof keysFromEnv, string>;
 // when OPENAI_BASE_URL is unset, so a deployment that sets it (www does) never reaches the alias path.
 // console, not the logger: the logger reads this module's config. Every line is a fixed string or a count.
 /* eslint-disable no-console -- the logger imports this module, so these lines cannot use it */
+// A self-host's model list file (ALPHA_MODELS_FILE) decides the endpoint, the picker and the role models
+// before anything reads them. A bad file throws here, so the server does not start.
+function applyOperatorModelsFile(env: Record<string, string | undefined>) {
+	const loaded = applyOperatorModels(env);
+	if (!loaded) return;
+	console.info(
+		`[config] model list from ${loaded.path} (ALPHA_MODELS_FILE): ${loaded.env.MODEL_ALLOWLIST.split(",").length} model(s) offered, endpoint ${new URL(loaded.env.OPENAI_BASE_URL).host}`
+	);
+	if (loaded.replaced.length) {
+		console.warn(`[config] ALPHA_MODELS_FILE replaces these settings, which are ignored: ${loaded.replaced.join(", ")}`);
+	}
+}
+
 function applyOpenWebUiNames(env: Record<string, string | undefined>) {
 	const r = resolveOpenAiEnv(env);
 	if (r.source === "open-webui") {

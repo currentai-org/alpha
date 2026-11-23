@@ -63,7 +63,7 @@ test(
 
 test(
 	'an answer whose routing record names no host shows no host in its footer',
-	{ tag: ['@preview-only', '@CUR-3562'] },
+	{ tag: ['@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(180_000);
 		await installFaultInjectionHeader(page, 'provenance_host_stripped');

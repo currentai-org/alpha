@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import dns from "node:dns";
 import { localEndpointFetch, privateLocalAddressesAllowed } from "./localEndpointFetch";
 import { endpointOai } from "./endpoints/openai/endpointOai";
 
@@ -52,9 +53,13 @@ async function startLoopbackServer(): Promise<string> {
 
 beforeEach(() => {
 	undiciStub.impl = null;
+	vi.stubEnv("ALPHA_EDITION", "");
+	vi.stubEnv("LOCAL_INFERENCE_INTERNAL_ADDRESSES", "");
 });
 
 afterEach(async () => {
+	vi.unstubAllEnvs();
+	vi.restoreAllMocks();
 	setDeployEnv(savedDeployEnv);
 	if (server) await new Promise<void>((resolve) => server?.close(() => resolve()));
 	server = undefined;
@@ -73,6 +78,106 @@ describe("privateLocalAddressesAllowed", () => {
 			expect(privateLocalAddressesAllowed()).toBe(false);
 		}
 	);
+
+	// The self-host compose file defaults DEPLOY_ENV to development on every install.
+	it("refuses them on a self-host edition even with DEPLOY_ENV=development, when the operator has not opted in", () => {
+		setDeployEnv("development");
+		vi.stubEnv("ALPHA_EDITION", "selfhost");
+		expect(privateLocalAddressesAllowed()).toBe(false);
+	});
+
+	it.each([
+		["selfhost", "production"],
+		["selfhost", "development"],
+		["", "preview"],
+	])("allows them whenever the operator sets LOCAL_INFERENCE_INTERNAL_ADDRESSES=allow (edition %j, %s)", (edition, env) => {
+		setDeployEnv(env);
+		vi.stubEnv("ALPHA_EDITION", edition);
+		vi.stubEnv("LOCAL_INFERENCE_INTERNAL_ADDRESSES", " Allow ");
+		expect(privateLocalAddressesAllowed()).toBe(true);
+	});
+
+	it("reads any other opt-in value as no opt-in", () => {
+		setDeployEnv("development");
+		vi.stubEnv("ALPHA_EDITION", "selfhost");
+		vi.stubEnv("LOCAL_INFERENCE_INTERNAL_ADDRESSES", "true");
+		expect(privateLocalAddressesAllowed()).toBe(false);
+	});
+});
+
+describe("localEndpointFetch on a self-host edition with DEPLOY_ENV=development and no opt-in refuses private addresses", () => {
+	beforeEach(() => {
+		setDeployEnv("development");
+		vi.stubEnv("ALPHA_EDITION", "selfhost");
+	});
+
+	it.each([
+		["the container credentials endpoint", "http://169.254.170.2/v2/credentials"],
+		["RFC1918 10/8, where a VPC database lives", "http://10.0.0.5:5432/v1/models"],
+	])("refuses %s before a socket opens", async (_label, url) => {
+		await expect(localEndpointFetch(url)).rejects.toThrow(/SSRF|internal/);
+	});
+
+	it("refuses a hostname that resolves to loopback, and the server behind it receives nothing", async () => {
+		const hostPort = await startLoopbackServer();
+		const port = hostPort.split(":")[1];
+		await expect(localEndpointFetch(`http://localhost:${port}/v1/models`)).rejects.toThrow();
+		expect(requests).toBe(0);
+	});
+});
+
+describe("localEndpointFetch with LOCAL_INFERENCE_INTERNAL_ADDRESSES=allow reaches private addresses but never cloud metadata", () => {
+	beforeEach(() => {
+		setDeployEnv("production");
+		vi.stubEnv("ALPHA_EDITION", "selfhost");
+		vi.stubEnv("LOCAL_INFERENCE_INTERNAL_ADDRESSES", "allow");
+	});
+
+	it("fetches a loopback server, as an operator's own Ollama needs", async () => {
+		const hostPort = await startLoopbackServer();
+		const res = await localEndpointFetch(`http://${hostPort}/v1/models`);
+		expect(res.ok).toBe(true);
+		expect(requests).toBe(1);
+	});
+
+	it.each([
+		["the cloud-metadata address", "http://169.254.169.254/latest/meta-data/"],
+		["the container credentials endpoint", "http://169.254.170.2/v2/credentials"],
+		["the IPv4-mapped cloud-metadata address", "http://[::ffff:169.254.169.254]/latest/meta-data/"],
+		["the AWS IPv6 metadata address", "http://[fd00:ec2::254]/latest/meta-data/"],
+	])("refuses %s before a socket opens", async (_label, url) => {
+		await expect(localEndpointFetch(url)).rejects.toThrow(/SSRF/);
+	});
+
+	it("refuses a hostname that resolves to the metadata address, at connect time", async () => {
+		const lookups: string[] = [];
+		vi.spyOn(dns, "lookup").mockImplementation(((
+			hostname: string,
+			options: { all?: boolean },
+			callback: (err: null, address: unknown, family?: number) => void
+		) => {
+			lookups.push(hostname);
+			if (options?.all) callback(null, [{ address: "169.254.169.254", family: 4 }]);
+			else callback(null, "169.254.169.254", 4);
+		}) as unknown as typeof dns.lookup);
+		const err = await localEndpointFetch("http://metadata.example.test/latest/meta-data/").catch((e: unknown) => e);
+		expect(err).toBeInstanceOf(Error);
+		expect(String((err as Error & { cause?: unknown }).cause ?? err)).toMatch(/cloud-metadata/);
+		expect(lookups).toEqual(["metadata.example.test"]);
+	});
+
+	it("refuses a URL that redirects to the metadata address, without following the hop", async () => {
+		const fetched: string[] = [];
+		undiciStub.impl = async (url) => {
+			fetched.push(url);
+			return new Response(null, {
+				status: 302,
+				headers: { location: "http://169.254.169.254/latest/meta-data/" },
+			});
+		};
+		await expect(localEndpointFetch("http://192.168.1.50:11434/v1/models")).rejects.toThrow(/unsafe URL blocked/);
+		expect(fetched).toEqual(["http://192.168.1.50:11434/v1/models"]);
+	});
 });
 
 describe("localEndpointFetch outside development refuses every private address", () => {

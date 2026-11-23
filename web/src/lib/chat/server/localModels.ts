@@ -30,7 +30,7 @@ import { catalogEntrySchema } from "$lib/chat/server/modelsSnapshot";
 import { DEFAULT_LOCAL_GENERATION_TIMEOUT_MS } from "$lib/chat/utils/deadlineLadder";
 import { logger } from "$lib/chat/server/logger";
 import { localEndpointFetch, privateLocalAddressesAllowed } from "$lib/chat/server/localEndpointFetch";
-import { isPrivateHostname } from "$lib/chat/server/urlSafety";
+import { isCloudMetadataHostname, isPrivateHostname } from "$lib/chat/server/urlSafety";
 import {
 	models,
 	processModel,
@@ -72,12 +72,13 @@ function parseLocalModelId(modelId: string): { endpointId: string; servedModelId
 // fetched from server-side. It turns what the UI's placeholder asks for ("http://localhost:11434", no
 // path) into the OpenAI-compatible base this table stores ("http://localhost:11434/v1"), and it refuses
 // an address the server must not reach.
-// Outside local development that means every private address (localhost, loopback, RFC1918,
-// link-local, ULA and their IPv4-mapped forms). On a hosted deployment a private address names the
-// host's own network, never the visitor's machine; a visitor's own server is reached through a managed
-// (tunnel) endpoint instead. The cloud-metadata address is refused everywhere. This check reads the
-// typed hostname only, so localEndpointFetch repeats it on the resolved address at connect time.
-const CLOUD_METADATA_HOST = "169.254.169.254";
+// Unless privateLocalAddressesAllowed() (an operator's LOCAL_INFERENCE_INTERNAL_ADDRESSES=allow, or local
+// development of the hosted app) that means every private address (localhost, loopback, RFC1918,
+// link-local, ULA and their IPv4-mapped forms). On a hosted deployment, or a shared self-host, a private
+// address names the host's own network, never the visitor's machine; a visitor's own server is reached
+// through a managed (tunnel) endpoint instead. Cloud-metadata addresses are refused everywhere. This
+// check reads the typed hostname only, so localEndpointFetch repeats it on the resolved address at
+// connect time, under the same predicate.
 
 /** True when `input` parses but names an address this deployment refuses (see above). */
 export function isRefusedLocalBaseUrl(input: string): boolean {
@@ -87,7 +88,7 @@ export function isRefusedLocalBaseUrl(input: string): boolean {
 	} catch {
 		return false;
 	}
-	if (url.hostname === CLOUD_METADATA_HOST) return true;
+	if (isCloudMetadataHostname(url.hostname)) return true;
 	return !privateLocalAddressesAllowed() && isPrivateHostname(url.hostname);
 }
 

@@ -67,7 +67,7 @@ function pastWelcome(page: Page) {
 
 test(
 	'with s1-safety-judge on, Zentropi S1 declines a harmful English turn, answers a safe Amharic turn, and answers distress under the support card',
-	{ tag: ['@A5', '@CUR-4527', '@real-screen'] },
+	{ tag: ['@A5', '@real-screen'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(300_000);
 		// The support classifier off, so the card can only come from S1's crisis policy. Distress declines
@@ -119,7 +119,7 @@ test(
 
 test(
 	'with s1-safety-judge forced off, the same turns are screened by Shieldstral',
-	{ tag: ['@A5', '@CUR-4527', '@real-screen'] },
+	{ tag: ['@A5', '@real-screen'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(300_000);
 		// Forced false, not left unset, so a later preview default cannot change it.
@@ -162,7 +162,7 @@ const SCREEN_UNFINISHED = /couldn['’]t finish the safety check/i;
 
 test(
 	'with s1-safety-judge on, a four-window paste of ordinary prose is screened by S1 and answered, not left unchecked',
-	{ tag: ['@A5', '@CUR-5043', '@real-screen'] },
+	{ tag: ['@A5', '@real-screen'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(300_000);
 		await setFlagOverrides(context, baseURL!, { 's1-safety-judge': true, multimodal: false });

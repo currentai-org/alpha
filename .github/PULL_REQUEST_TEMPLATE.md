@@ -11,6 +11,13 @@
 <!-- What you ran or clicked, and what you saw. "pnpm test:ci:fast passes" is a start; a spec that drives
      the change, or the steps to see it in the app, is better. -->
 
+## Kind
+
+<!-- Add the label that fits, so the release notes put this change in the right group: `breaking` if
+     someone running their own copy must do something when they upgrade, `security`, `bug` for a fix,
+     `enhancement` for something new. A bot adds `selfhost` and `ci` from the paths you change. Use
+     `skip-changelog` for a change nobody running Alpha would notice. -->
+
 ## Checklist
 
 - [ ] `pnpm lint` and `pnpm test:ci:fast` pass in `web/` (or `make test` in `agent-service/`)

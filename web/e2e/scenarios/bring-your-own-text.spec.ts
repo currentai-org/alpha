@@ -48,42 +48,42 @@ async function finishedAnswer(page: Page, why: string) {
 // every send after one was refused and the message vanished. Preview has `multimodal` on for
 // everyone, which is why no run here ever saw it: this test forces it off to stand where production
 // stands. The answer has to use the pasted text, so a turn that merely arrived isn't enough.
-test(
-	'a long paste is read as text with attachments off: the answer uses what was pasted',
-	{ tag: '@CUR-1895' },
-	async ({ page, context, baseURL }) => {
-		await setFlagOverrides(context, baseURL!, { multimodal: false });
-		await openChat(page);
+test('a long paste is read as text with attachments off: the answer uses what was pasted', async ({
+	page,
+	context,
+	baseURL
+}) => {
+	await setFlagOverrides(context, baseURL!, { multimodal: false });
+	await openChat(page);
 
-		const filler = 'This paragraph is office filler about the quarterly supply order. '.repeat(70);
-		const memo = `${filler}\nThe meeting room door code is 4417.\n${filler}`;
-		expect(memo.length).toBeGreaterThan(4000);
+	const filler = 'This paragraph is office filler about the quarterly supply order. '.repeat(70);
+	const memo = `${filler}\nThe meeting room door code is 4417.\n${filler}`;
+	expect(memo.length).toBeGreaterThan(4000);
 
-		await page.getByLabel('Message AI Potluck').evaluate((el, text) => {
-			const data = new DataTransfer();
-			data.setData('text/plain', text);
-			el.dispatchEvent(
-				new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true })
-			);
-		}, memo);
-		await expect(
-			page.getByText('Pasted Content').first(),
-			'the long paste did not turn into a chip, so this test is not exercising the path it is named for'
-		).toBeVisible({ timeout: 10_000 });
-
-		const composer = page.getByLabel('Message AI Potluck');
-		await composer.fill(
-			'What is the meeting room door code in the text I pasted? Answer with the number.'
+	await page.getByLabel('Message AI Potluck').evaluate((el, text) => {
+		const data = new DataTransfer();
+		data.setData('text/plain', text);
+		el.dispatchEvent(
+			new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true })
 		);
-		await composer.press('Enter');
+	}, memo);
+	await expect(
+		page.getByText('Pasted Content').first(),
+		'the long paste did not turn into a chip, so this test is not exercising the path it is named for'
+	).toBeVisible({ timeout: 10_000 });
 
-		const answer = await finishedAnswer(
-			page,
-			'no finished answer after a long paste: with the old gate the send is refused with a 415 and nothing is ever answered'
-		);
-		await expect(answer, 'the answer did not use the pasted text').toContainText('4417');
-	}
-);
+	const composer = page.getByLabel('Message AI Potluck');
+	await composer.fill(
+		'What is the meeting room door code in the text I pasted? Answer with the number.'
+	);
+	await composer.press('Enter');
+
+	const answer = await finishedAnswer(
+		page,
+		'no finished answer after a long paste: with the old gate the send is refused with a 415 and nothing is ever answered'
+	);
+	await expect(answer, 'the answer did not use the pasted text').toContainText('4417');
+});
 
 // A paste of about 100,000 characters of ordinary prose runs the input screen past its 20s
 // deadline (9 chunks × 14 rules). Unanswered queries read as UNKNOWN and child safety fails closed on
@@ -103,7 +103,7 @@ const PRIDE_AND_PREJUDICE = [
 
 test(
 	'a 100,000-character paste of ordinary prose is answered or told it could not be checked, never flagged for child safety',
-	{ tag: ['@CUR-2301', '@real-screen'] },
+	{ tag: ['@real-screen'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(240_000);
 		await setFlagOverrides(context, baseURL!, { multimodal: false });
@@ -166,7 +166,7 @@ test(
 // couldn't-check notice and never as an answer.
 test(
 	'a long paste whose content rules the screen never got to is declined as could-not-check, not answered',
-	{ tag: ['@CUR-3531', '@real-screen', '@preview-only'] },
+	{ tag: ['@real-screen', '@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(150_000);
 		await setFlagOverrides(context, baseURL!, { multimodal: false });
@@ -218,56 +218,56 @@ test(
 // after a paste answered that no text was included. The test above asks in the same turn as the
 // paste; this one asks in the NEXT turn, so the pasted text has to survive as history. The first
 // turn names nothing about the code, so only the pasted chip can supply the number.
-test(
-	'a follow-up in the next turn still reads a long paste from the turn before',
-	{ tag: '@CUR-2077' },
-	async ({ page, context, baseURL }) => {
-		await setFlagOverrides(context, baseURL!, { multimodal: false });
-		await openChat(page);
+test('a follow-up in the next turn still reads a long paste from the turn before', async ({
+	page,
+	context,
+	baseURL
+}) => {
+	await setFlagOverrides(context, baseURL!, { multimodal: false });
+	await openChat(page);
 
-		const filler = 'This paragraph is office filler about the quarterly supply order. '.repeat(70);
-		const memo = `${filler}\nThe meeting room door code is 4417.\n${filler}`;
-		expect(memo.length).toBeGreaterThan(4000);
+	const filler = 'This paragraph is office filler about the quarterly supply order. '.repeat(70);
+	const memo = `${filler}\nThe meeting room door code is 4417.\n${filler}`;
+	expect(memo.length).toBeGreaterThan(4000);
 
-		await page.getByLabel('Message AI Potluck').evaluate((el, text) => {
-			const data = new DataTransfer();
-			data.setData('text/plain', text);
-			el.dispatchEvent(
-				new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true })
-			);
-		}, memo);
-		await expect(
-			page.getByText('Pasted Content').first(),
-			'the long paste did not turn into a chip, so this test is not exercising the path it is named for'
-		).toBeVisible({ timeout: 10_000 });
-
-		const composer = page.getByLabel('Message AI Potluck');
-		await composer.fill('Here is a memo from the office. Reply with just "Got it."');
-		await composer.press('Enter');
-		await finishedAnswer(page, 'no finished answer to the turn that carried the paste');
-
-		const answers = page.locator('[data-message-role="assistant"]');
-		const before = await answers.count();
-		await composer.fill(
-			'What is the meeting room door code in the memo I pasted? Answer with the number.'
+	await page.getByLabel('Message AI Potluck').evaluate((el, text) => {
+		const data = new DataTransfer();
+		data.setData('text/plain', text);
+		el.dispatchEvent(
+			new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true })
 		);
-		await composer.press('Enter');
-		await expect(answers, 'the follow-up never got an answer of its own').toHaveCount(before + 1, {
-			timeout: 30_000
-		});
-		const followUp = answers.last();
-		await expect(
-			followUp.getByRole('button', { name: 'Copy to clipboard', exact: true }),
-			'the follow-up never finished' + warmupContext()
-		).toBeVisible({
-			timeout: 60_000
-		});
-		await expect(
-			followUp,
-			'the follow-up did not use the text pasted one turn earlier, so history lost the paste'
-		).toContainText('4417');
-	}
-);
+	}, memo);
+	await expect(
+		page.getByText('Pasted Content').first(),
+		'the long paste did not turn into a chip, so this test is not exercising the path it is named for'
+	).toBeVisible({ timeout: 10_000 });
+
+	const composer = page.getByLabel('Message AI Potluck');
+	await composer.fill('Here is a memo from the office. Reply with just "Got it."');
+	await composer.press('Enter');
+	await finishedAnswer(page, 'no finished answer to the turn that carried the paste');
+
+	const answers = page.locator('[data-message-role="assistant"]');
+	const before = await answers.count();
+	await composer.fill(
+		'What is the meeting room door code in the memo I pasted? Answer with the number.'
+	);
+	await composer.press('Enter');
+	await expect(answers, 'the follow-up never got an answer of its own').toHaveCount(before + 1, {
+		timeout: 30_000
+	});
+	const followUp = answers.last();
+	await expect(
+		followUp.getByRole('button', { name: 'Copy to clipboard', exact: true }),
+		'the follow-up never finished' + warmupContext()
+	).toBeVisible({
+		timeout: 60_000
+	});
+	await expect(
+		followUp,
+		'the follow-up did not use the text pasted one turn earlier, so history lost the paste'
+	).toContainText('4417');
+});
 
 // A link pasted with "summarise this" used to go to search as part of a sentence, so the
 // model saw only a search snippet (title, byline, first paragraph) and answered that it couldn't
@@ -323,16 +323,16 @@ async function linkedPageIsRead({ page }: Fixtures, native: boolean): Promise<vo
 		/(can(no|['’])t|unable to|not able to) (access|open|read|browse)/i
 	);
 }
-test(
-	'a linked page is read and cited as the first source, the answer uses text past its opening, and it does not claim it cannot open links',
-	{ tag: '@CUR-1897' },
-	async ({ page, context, baseURL }) => linkedPageIsRead({ page, context, baseURL }, false)
-);
-test(
-	'a linked page is read and cited as the first source, the answer uses text past its opening, and it does not claim it cannot open links (native harness)',
-	{ tag: ['@CUR-1897', '@CUR-2734'] },
-	async ({ page, context, baseURL }) => linkedPageIsRead({ page, context, baseURL }, true)
-);
+test('a linked page is read and cited as the first source, the answer uses text past its opening, and it does not claim it cannot open links', async ({
+	page,
+	context,
+	baseURL
+}) => linkedPageIsRead({ page, context, baseURL }, false));
+test('a linked page is read and cited as the first source, the answer uses text past its opening, and it does not claim it cannot open links (native harness)', async ({
+	page,
+	context,
+	baseURL
+}) => linkedPageIsRead({ page, context, baseURL }, true));
 
 // A link sent with search off got "I don't have access to external links", and after search was
 // switched on, the same request came back "paste the text here" with the page already fetched and
@@ -443,16 +443,16 @@ async function linkReadOnSecondSend({ page }: Fixtures, native: boolean): Promis
 		'the page was read, and the answer still claims it cannot open links'
 	).not.toMatch(cannotOpen);
 }
-test(
-	'a link sent with search off, then again with search on, is read the second time despite the first reply',
-	{ tag: '@CUR-2032' },
-	async ({ page, context, baseURL }) => linkReadOnSecondSend({ page, context, baseURL }, false)
-);
-test(
-	'a link sent with search off, then again with search on, is read the second time despite the first reply (native harness)',
-	{ tag: ['@CUR-2032', '@CUR-2734'] },
-	async ({ page, context, baseURL }) => linkReadOnSecondSend({ page, context, baseURL }, true)
-);
+test('a link sent with search off, then again with search on, is read the second time despite the first reply', async ({
+	page,
+	context,
+	baseURL
+}) => linkReadOnSecondSend({ page, context, baseURL }, false));
+test('a link sent with search off, then again with search on, is read the second time despite the first reply (native harness)', async ({
+	page,
+	context,
+	baseURL
+}) => linkReadOnSecondSend({ page, context, baseURL }, true));
 
 // On the old floating rail, the expanded sidebar stayed open after "Log in" was clicked from
 // it and covered the email field at narrow desktop widths. The design system's sidebar sits beside the
@@ -468,58 +468,54 @@ test(
 test.describe('at a 900px-wide desktop window', () => {
 	test.use({ viewport: { width: 900, height: 800 } });
 
-	test(
-		'signing in from the sidebar leaves the email field usable at a narrow desktop width',
-		{ tag: '@CUR-1899' },
-		async ({ page }) => {
-			const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });
-			await page.addLocatorHandler(welcomeDialog, async () => {
-				await startChattingPastWelcome(welcomeDialog);
-			});
-			await page.goto(`/chat/models/${LARGE_4}`, { waitUntil: 'commit' });
-			// A model's page opens on the welcome dialog. Clicking the composer waits for hydration and lets
-			// the handler above close it now, not part-way through the sign-in below.
-			await page.getByLabel('Message AI Potluck').click({ timeout: 30_000 });
+	test('signing in from the sidebar leaves the email field usable at a narrow desktop width', async ({
+		page
+	}) => {
+		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });
+		await page.addLocatorHandler(welcomeDialog, async () => {
+			await startChattingPastWelcome(welcomeDialog);
+		});
+		await page.goto(`/chat/models/${LARGE_4}`, { waitUntil: 'commit' });
+		// A model's page opens on the welcome dialog. Clicking the composer waits for hydration and lets
+		// the handler above close it now, not part-way through the sign-in below.
+		await page.getByLabel('Message AI Potluck').click({ timeout: 30_000 });
 
-			// "Log in" lives in the account menu at the foot of the sidebar. The sidebar is persistent and
-			// sits beside the page rather than over it, so the claim to prove is the one a person feels: the
-			// email field is on screen, nothing covers it, and it takes a click.
-			const accountMenu = page.locator('[data-account-trigger]:visible').first();
-			const logIn = page.getByRole('menuitem', { name: 'Log in' });
-			// A click that lands before hydration does nothing, so retry until the menu opens.
-			await expect(async () => {
-				if (!(await logIn.isVisible())) await accountMenu.click({ timeout: 2_000 });
-				await expect(logIn).toBeVisible({ timeout: 1_000 });
-			}, 'the account menu never opened, so this test is not exercising the path it is named for').toPass(
-				{
-					timeout: 20_000
-				}
-			);
-			await logIn.click();
-			await page.waitForURL(/\/chat\/login/, { timeout: 15_000 });
+		// "Log in" lives in the account menu at the foot of the sidebar. The sidebar is persistent and
+		// sits beside the page rather than over it, so the claim to prove is the one a person feels: the
+		// email field is on screen, nothing covers it, and it takes a click.
+		const accountMenu = page.locator('[data-account-trigger]:visible').first();
+		const logIn = page.getByRole('menuitem', { name: 'Log in' });
+		// A click that lands before hydration does nothing, so retry until the menu opens.
+		await expect(async () => {
+			if (!(await logIn.isVisible())) await accountMenu.click({ timeout: 2_000 });
+			await expect(logIn).toBeVisible({ timeout: 1_000 });
+		}, 'the account menu never opened, so this test is not exercising the path it is named for').toPass(
+			{
+				timeout: 20_000
+			}
+		);
+		await logIn.click();
+		await page.waitForURL(/\/chat\/login/, { timeout: 15_000 });
 
-			const email = page.locator('#signin-email');
-			await expect(email, 'the email field is off screen at a narrow desktop width').toBeInViewport(
+		const email = page.locator('#signin-email');
+		await expect(email, 'the email field is off screen at a narrow desktop width').toBeInViewport({
+			timeout: 5_000
+		});
+		await expect
+			.poll(
+				() =>
+					email.evaluate((el) => {
+						const r = el.getBoundingClientRect();
+						const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+						return hit === el || el.contains(hit);
+					}),
 				{
+					message: 'something covers the email field after navigating to sign-in',
 					timeout: 5_000
 				}
-			);
-			await expect
-				.poll(
-					() =>
-						email.evaluate((el) => {
-							const r = el.getBoundingClientRect();
-							const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-							return hit === el || el.contains(hit);
-						}),
-					{
-						message: 'something covers the email field after navigating to sign-in',
-						timeout: 5_000
-					}
-				)
-				.toBe(true);
-			await email.click({ timeout: 5_000 });
-			await expect(page.locator('#signin-email')).toBeFocused();
-		}
-	);
+			)
+			.toBe(true);
+		await email.click({ timeout: 5_000 });
+		await expect(page.locator('#signin-email')).toBeFocused();
+	});
 });

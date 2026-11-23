@@ -12,7 +12,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // so the answer can only list both if the page arrived raw.
 test(
 	'an attached web page reaches the model as its article: the nav codeword never appears in the answer',
-	{ tag: ['@preview-only', '@CUR-4767'] },
+	{ tag: ['@preview-only'] },
 	async ({ page }) => {
 		// One real turn, waited on for up to 120s, after up to 60s of setup.
 		test.setTimeout(240_000);

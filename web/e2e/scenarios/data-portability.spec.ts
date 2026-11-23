@@ -575,7 +575,7 @@ test(
 // the route now sends a navigation back to the Account page, which reads the hour itself.
 test(
 	'Download on an Account page opened before an export in another tab shows the refusal in the row',
-	{ tag: ['@preview-only', '@A3', '@CUR-3849'] },
+	{ tag: ['@preview-only', '@A3'] },
 	async ({ page, context }) => {
 		await signInAsFreshUser(page);
 		const rowName = 'Download a ZIP of your conversations, files, and where each answer came from';

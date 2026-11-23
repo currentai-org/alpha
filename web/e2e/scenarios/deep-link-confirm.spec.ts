@@ -46,7 +46,7 @@ test.beforeEach(async ({ page }) => {
 
 test(
 	'a crafted /chat link sends nothing and fetches nothing until the visitor confirms, and Cancel drops it',
-	{ tag: ['@preview-only', '@CUR-2644'] },
+	{ tag: ['@preview-only'] },
 	async ({ page }) => {
 		const prompt = `Deep link prompt ${Date.now()}`;
 		const actions = watchActions(page);
@@ -73,7 +73,7 @@ test(
 
 test(
 	'confirming a crafted /chat link fetches its attachment and starts the conversation',
-	{ tag: ['@preview-only', '@CUR-2644'] },
+	{ tag: ['@preview-only'] },
 	async ({ page }) => {
 		// The positive control: without it, a dialog whose Send did nothing would pass the test above.
 		await page.route('**/chat/conversation/*', (route) =>

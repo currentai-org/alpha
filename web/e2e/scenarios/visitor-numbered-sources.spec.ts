@@ -115,79 +115,73 @@ async function cleanUp(page: Page, id: string): Promise<void> {
 	await page.request.delete(`${origin}/chat/api/v2/conversations/${id}`, { headers: { origin } });
 }
 
-test(
-	"with search off, the visitor's pasted [1] and [2] survive in the answer as their own sources",
-	{ tag: ['@CUR-3844'] },
-	async ({ page }) => {
-		test.setTimeout(180_000);
-		let id = '';
-		try {
-			const turn = await askWithSearch(page, 'off', OFF_PROMPT);
-			id = turn.id;
-			const text = turn.stored?.content ?? '';
-			test.info().annotations.push({ type: 'answer', description: text.slice(0, 400) });
-			expect(
-				turn.stored?.webSearch?.sources ?? [],
-				'search was off but the turn stored web sources'
-			).toHaveLength(0);
-			expect(
-				text,
-				"the answer kept neither of the visitor's [1] or [2]: the no-source guard deleted them, or the model cited nothing"
-			).toMatch(/\[(1|2)\]/);
-			expect(await linkedVisitorMarkers(page), "a visitor's [1] or [2] rendered as a link").toEqual(
-				[]
-			);
-		} finally {
-			await cleanUp(page, id);
-		}
+test("with search off, the visitor's pasted [1] and [2] survive in the answer as their own sources", async ({
+	page
+}) => {
+	test.setTimeout(180_000);
+	let id = '';
+	try {
+		const turn = await askWithSearch(page, 'off', OFF_PROMPT);
+		id = turn.id;
+		const text = turn.stored?.content ?? '';
+		test.info().annotations.push({ type: 'answer', description: text.slice(0, 400) });
+		expect(
+			turn.stored?.webSearch?.sources ?? [],
+			'search was off but the turn stored web sources'
+		).toHaveLength(0);
+		expect(
+			text,
+			"the answer kept neither of the visitor's [1] or [2]: the no-source guard deleted them, or the model cited nothing"
+		).toMatch(/\[(1|2)\]/);
+		expect(await linkedVisitorMarkers(page), "a visitor's [1] or [2] rendered as a link").toEqual(
+			[]
+		);
+	} finally {
+		await cleanUp(page, id);
 	}
-);
+});
 
-test(
-	"with search on, our sources are numbered after the visitor's [1] and [2], which never link to a result",
-	{ tag: ['@CUR-3844'] },
-	async ({ page }) => {
-		test.setTimeout(TURN_WAIT_MS.always + 60_000);
-		let id = '';
-		try {
-			const turn = await askWithSearch(page, 'always', ON_PROMPT);
-			id = turn.id;
-			const numbers = [
-				...(turn.stored?.rag?.sources ?? []).map((s) => s.n),
-				...(turn.stored?.webSearch?.sources ?? []).map((s) => s.n)
-			];
-			test.info().annotations.push({
-				type: 'sources',
-				description: JSON.stringify({ numbers, answer: (turn.stored?.content ?? '').slice(0, 400) })
-			});
-			expect(numbers.length, 'search was "always" but the turn stored no sources').toBeGreaterThan(
-				0
+test("with search on, our sources are numbered after the visitor's [1] and [2], which never link to a result", async ({
+	page
+}) => {
+	test.setTimeout(TURN_WAIT_MS.always + 60_000);
+	let id = '';
+	try {
+		const turn = await askWithSearch(page, 'always', ON_PROMPT);
+		id = turn.id;
+		const numbers = [
+			...(turn.stored?.rag?.sources ?? []).map((s) => s.n),
+			...(turn.stored?.webSearch?.sources ?? []).map((s) => s.n)
+		];
+		test.info().annotations.push({
+			type: 'sources',
+			description: JSON.stringify({ numbers, answer: (turn.stored?.content ?? '').slice(0, 400) })
+		});
+		expect(numbers.length, 'search was "always" but the turn stored no sources').toBeGreaterThan(0);
+		expect(
+			numbers.filter((n) => n <= 2),
+			`a retrieved source took one of the visitor's numbers (stored: ${JSON.stringify(numbers)})`
+		).toEqual([]);
+		expect(
+			await linkedVisitorMarkers(page),
+			"a visitor's [1] or [2] linked to one of our results"
+		).toEqual([]);
+		// Each of our markers that links goes to a page this turn retrieved.
+		const urls = new Set((turn.stored?.webSearch?.sources ?? []).map((s) => s.url));
+		const ours = await page
+			.locator('[data-message-role="assistant"]')
+			.last()
+			.locator('a')
+			.evaluateAll((links) =>
+				links
+					.filter((a) => /^\[\d+\]$/.test((a.textContent ?? '').trim()))
+					.map((a) => a.getAttribute('href') ?? '')
 			);
-			expect(
-				numbers.filter((n) => n <= 2),
-				`a retrieved source took one of the visitor's numbers (stored: ${JSON.stringify(numbers)})`
-			).toEqual([]);
-			expect(
-				await linkedVisitorMarkers(page),
-				"a visitor's [1] or [2] linked to one of our results"
-			).toEqual([]);
-			// Each of our markers that links goes to a page this turn retrieved.
-			const urls = new Set((turn.stored?.webSearch?.sources ?? []).map((s) => s.url));
-			const ours = await page
-				.locator('[data-message-role="assistant"]')
-				.last()
-				.locator('a')
-				.evaluateAll((links) =>
-					links
-						.filter((a) => /^\[\d+\]$/.test((a.textContent ?? '').trim()))
-						.map((a) => a.getAttribute('href') ?? '')
-				);
-			expect(
-				ours.filter((href) => !urls.has(href)),
-				`an [n] marker links to a page the turn did not retrieve (retrieved: ${JSON.stringify([...urls])})`
-			).toEqual([]);
-		} finally {
-			await cleanUp(page, id);
-		}
+		expect(
+			ours.filter((href) => !urls.has(href)),
+			`an [n] marker links to a page the turn did not retrieve (retrieved: ${JSON.stringify([...urls])})`
+		).toEqual([]);
+	} finally {
+		await cleanUp(page, id);
 	}
-);
+});

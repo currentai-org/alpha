@@ -34,7 +34,7 @@ const DAY = 24 * 60 * 60 * 1000;
 
 test(
 	'with conversation expiry on, a chat shows its days left and the preview line reaches the Open WebUI export in one click',
-	{ tag: ['@preview-only', '@A3', '@CUR-4990'] },
+	{ tag: ['@preview-only', '@A3'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(300_000);
 		await setFlagOverrides(context, baseURL!, {
@@ -87,7 +87,7 @@ test(
 
 test(
 	'with conversation expiry off, a signed-in chat shows no countdown, no preview line and no banner',
-	{ tag: ['@preview-only', '@A3', '@CUR-4990'] },
+	{ tag: ['@preview-only', '@A3'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(240_000);
 		await setFlagOverrides(context, baseURL!, {
@@ -117,7 +117,7 @@ test(
 
 test(
 	'a chat 24 days old shows the delete-date banner with Export and Continue, and one 10 days old does not',
-	{ tag: ['@preview-only', '@A3', '@CUR-4990'] },
+	{ tag: ['@preview-only', '@A3'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(300_000);
 		const databaseUrl = process.env.SCENARIO_DATABASE_URL;
@@ -199,7 +199,7 @@ test(
 
 test(
 	'Continue in a new chat opens a new chat whose composer holds an editable summary, storing nothing and leaving the old chat unchanged',
-	{ tag: ['@preview-only', '@A3', '@CUR-4990'] },
+	{ tag: ['@preview-only', '@A3'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(300_000);
 		const databaseUrl = process.env.SCENARIO_DATABASE_URL;

@@ -72,7 +72,7 @@ const WRAP_ANSWER_STREAM = () => {
 
 test(
 	'an answer cut off by the visitor going offline says their connection dropped, and a reload recovers the chat',
-	{ tag: ['@C3', '@CUR-2805', '@preview-only'] },
+	{ tag: ['@C3', '@preview-only'] },
 	async ({ page, context }) => {
 		test.setTimeout(180_000);
 		const welcome = page.getByRole('dialog', { name: 'Welcome to Alpha' });

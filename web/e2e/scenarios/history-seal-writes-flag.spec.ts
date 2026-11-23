@@ -87,7 +87,7 @@ async function canaryTurnStored(page: Page, sealing: boolean): Promise<void> {
 
 test(
 	'with history-seal-writes on, an account with a history key stores its turn sealed',
-	{ tag: ['@preview-only', '@CUR-5015'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(240_000);
 		await setFlagOverrides(context, baseURL!, {
@@ -100,7 +100,7 @@ test(
 
 test(
 	'with history-seal-writes off, an account with a history key stores its turn in plaintext as before',
-	{ tag: ['@preview-only', '@CUR-5015'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(240_000);
 		await setFlagOverrides(context, baseURL!, {
@@ -116,7 +116,7 @@ test(
 // the second turn's words reach the row only sealed, and the chat still reads back in the browser.
 test(
 	'a chat sealed with history-seal-writes on, continued after the flag is turned off, stores no plaintext',
-	{ tag: ['@preview-only', '@CUR-4983'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(300_000);
 		await setFlagOverrides(context, baseURL!, {
@@ -183,7 +183,7 @@ async function continueChat(page: Page, text: string, count: number): Promise<vo
 // old MACs and re-takes them under the new key, and a further turn is checked against those new MACs.
 test(
 	'a sealed chat continues in the browser after the MAC key rotates, and its MACs move to the new key',
-	{ tag: ['@preview-only', '@CUR-4983'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(360_000);
 		await setFlagOverrides(context, baseURL!, {

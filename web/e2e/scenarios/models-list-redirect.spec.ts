@@ -7,12 +7,10 @@ import { test, expect } from './helpers/test';
 // list would open a chat with no model in it. A crawler or an old bookmark reads the raw response, so
 // the check reads it without following the redirect.
 
-test(
-	'/chat/models, the removed models list, redirects permanently to the chat instead of opening a chat with no model',
-	{ tag: ['@CUR-1385'] },
-	async ({ request }) => {
-		const res = await request.get('/chat/models', { maxRedirects: 0 });
-		expect(res.status(), 'the bare models URL did not redirect').toBe(308);
-		expect(new URL(res.headers()['location'], 'http://x').pathname).toBe('/chat/');
-	}
-);
+test('/chat/models, the removed models list, redirects permanently to the chat instead of opening a chat with no model', async ({
+	request
+}) => {
+	const res = await request.get('/chat/models', { maxRedirects: 0 });
+	expect(res.status(), 'the bare models URL did not redirect').toBe(308);
+	expect(new URL(res.headers()['location'], 'http://x').pathname).toBe('/chat/');
+});

@@ -304,7 +304,7 @@ async function useFixtureMicrophone(page: Page): Promise<void> {
 // takes for a whole file.)
 test(
 	'pressing Dictate and confirming puts the spoken words in the composer, unsent',
-	{ tag: ['@A6', '@preview-only', '@CUR-2723'] },
+	{ tag: ['@A6', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(150_000);
 		await useFixtureMicrophone(page);
@@ -367,7 +367,7 @@ test(
 // server's own 504; the retry goes through to the real endpoint.
 test(
 	'a dictation that times out says to try a shorter recording, keeps the draft, and a retry still works',
-	{ tag: ['@A6', '@preview-only', '@CUR-2801'] },
+	{ tag: ['@A6', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(150_000);
 		await useFixtureMicrophone(page);
@@ -436,7 +436,7 @@ async function recordableTypes(page: Page, types: string[]): Promise<void> {
 // and showed the browser's own exception text. The transcribe endpoint already takes mp4.
 test(
 	'a browser that records only mp4 still dictates, and the clip goes up as mp4',
-	{ tag: ['@A6', '@preview-only', '@CUR-2802'] },
+	{ tag: ['@A6', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(150_000);
 		await recordableTypes(page, ['audio/mp4']);
@@ -472,7 +472,7 @@ test(
 
 test(
 	'a browser that can record no audio is told so in plain words, and never asked for the microphone',
-	{ tag: ['@A6', '@preview-only', '@CUR-2802'] },
+	{ tag: ['@A6', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(90_000);
 		await recordableTypes(page, []);
@@ -510,7 +510,7 @@ test(
 // pressable, so a person who allows the microphone can press it again and record.
 test(
 	'after the microphone is refused, the Dictate button dims and says why, and pressing it once allowed records',
-	{ tag: ['@A6', '@preview-only', '@CUR-3403'] },
+	{ tag: ['@A6', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(90_000);
 		await useFixtureMicrophone(page);
@@ -570,7 +570,7 @@ test(
 
 test(
 	'on a browser that can record no audio, the Dictate button dims and says dictation is not available here',
-	{ tag: ['@A6', '@preview-only', '@CUR-3403'] },
+	{ tag: ['@A6', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(90_000);
 		await recordableTypes(page, []);
@@ -597,7 +597,7 @@ test(
 
 test(
 	'read-aloud names its current mode, and one tap advances it by exactly one step',
-	{ tag: ['@A6', '@CUR-3570'] },
+	{ tag: ['@A6'] },
 	async ({ page }) => {
 		await openComposer(page);
 
@@ -790,7 +790,7 @@ test(
 );
 test(
 	'read-aloud set to always produces a playable audio clip for the reply (native harness)',
-	{ tag: ['@A6', '@preview-only', '@CUR-2734'] },
+	{ tag: ['@A6', '@preview-only'] },
 	async ({ page, context, baseURL }) => alwaysReadsAloud({ page, context, baseURL }, true)
 );
 
@@ -822,7 +822,7 @@ function longClip(seconds: number): Buffer {
 // in its place.
 test(
 	'an answer read aloud on its own shows as playing in its player, and sending the next message stops it',
-	{ tag: ['@A6', '@preview-only', '@CUR-2299'] },
+	{ tag: ['@A6', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(240_000);
 		await installFaultInjectionHeader(page, 'tts_canned_clip');
@@ -927,7 +927,7 @@ test(
 // says there is no German voice, and the English voice reads it only after the visitor asks.
 test(
 	'a German answer has no German voice, so the English voice plays only when the visitor asks for it, on that one tap',
-	{ tag: ['@A6', '@preview-only', '@CUR-4085'] },
+	{ tag: ['@A6', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(180_000);
 		// The English clip is synthesized when the player fetches it, so the canned clip stands in
@@ -1051,7 +1051,7 @@ test(
 );
 test(
 	'"read this aloud: X" on auto plays a clip of X once the turn has answered (native harness)',
-	{ tag: ['@A6', '@preview-only', '@CUR-2734'] },
+	{ tag: ['@A6', '@preview-only'] },
 	async ({ page, context, baseURL }) => readThisAloudPlaysX({ page, context, baseURL }, true)
 );
 
@@ -1115,7 +1115,7 @@ test(
 // player first appears, whichever element draws it.
 test(
 	'the read-aloud player appears only once the answer it reads is on screen',
-	{ tag: ['@A6', '@preview-only', '@CUR-2048'] },
+	{ tag: ['@A6', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(240_000);
 		await installFaultInjectionHeader(page, 'tts_canned_clip');
@@ -1253,7 +1253,7 @@ test(
 // the lead is twenty seconds less the screen: wide enough to tell the two orders apart.
 test(
 	"read-aloud set to always shows the reply's text before its audio is ready",
-	{ tag: ['@A6', '@CUR-3810', '@preview-only'] },
+	{ tag: ['@A6', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(240_000);
 		await installFaultInjectionHeader(page, 'tts_slow_canned_clip');
@@ -1315,7 +1315,7 @@ test(
 // carry a clip.
 test(
 	'read-aloud set to always plays nothing for an answer the output screen declined',
-	{ tag: ['@A6', '@CUR-3847', '@preview-only', '@output-screen'] },
+	{ tag: ['@A6', '@preview-only', '@output-screen'] },
 	async ({ page }) => {
 		test.setTimeout(240_000);
 		await installFaultInjectionHeader(page, 'tts_canned_clip_output_blocked');
@@ -1479,7 +1479,7 @@ test.describe('on a phone', () => {
 	// counts: the tooltip is opaque.
 	test(
 		'on a phone the Dictate hover text covers none of the composer controls',
-		{ tag: ['@A6', '@preview-only', '@CUR-2720'] },
+		{ tag: ['@A6', '@preview-only'] },
 		async ({ page }) => {
 			await openComposer(page);
 			const dictate = page.getByRole('button', { name: DICTATE });

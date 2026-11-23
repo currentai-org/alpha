@@ -219,8 +219,9 @@ services:
     volumes: [agent-secrets:/secrets, agent-token:/agent-token]
 
   # The model gateway: the agent's sandbox never holds your model key. It holds a one-task grant that this
-  # service honours and forwards to your OPENAI_BASE_URL, the same endpoint chat uses. Each sandbox's
-  # internal network gets this container joined to it, which is the only thing a sandbox can reach.
+  # service honours and forwards to your OPENAI_BASE_URL, the same endpoint chat uses, or with that unset to
+  # the first of Open WebUI's OPENAI_API_BASE_URLS, as web reads them (agent-service/api/openwebui_env.py).
+  # Each sandbox's internal network gets this container joined to it, which is the only thing a sandbox can reach.
   gateway:
     profiles: [agent]
     image: alpha-selfhost-agent
@@ -232,14 +233,17 @@ services:
       - sh
       - -c
       - |
-        [ -n "$$PROVIDER_STACK_BASE" ] || { echo "the agent profile needs OPENAI_BASE_URL in .env" >&2; exit 1; }
         export PROXY_ADMIN_KEY="$$(cat /secrets/proxy-admin-key)"
-        exec python gateway_serve.py
+        exec python openwebui_env.py
     environment:
       GATEWAY_PRIVATE_HOST: 0.0.0.0
       MODEL_PROVIDERS: stack
-      PROVIDER_STACK_BASE: ${OPENAI_BASE_URL:-}
-      PROVIDER_STACK_TOKEN: ${OPENAI_API_KEY:-none}
+      # openwebui_env.py turns these into PROVIDER_STACK_BASE / PROVIDER_STACK_TOKEN and exits naming the
+      # missing setting when no endpoint is set.
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_API_BASE_URLS: ${OPENAI_API_BASE_URLS:-}
+      OPENAI_API_KEYS: ${OPENAI_API_KEYS:-}
     volumes: [agent-secrets:/secrets:ro]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8732/healthz').status==200 else 1)"]
@@ -336,6 +340,10 @@ services:
       # The app requires a key; a keyless server (llama.cpp, Ollama) ignores whatever is sent.
       OPENAI_API_KEY: ${OPENAI_API_KEY:-none}
       MODEL_ALLOWLIST: ${MODEL_ALLOWLIST:-*}
+      # Or your own model list: copy config/models.example.json to config/models.json, edit it, and set
+      # ALPHA_MODELS_FILE=/config/models.json. The file then decides the endpoint, the picker and the role
+      # models, and the five settings above are ignored. A bad file stops the web service at boot.
+      ALPHA_MODELS_FILE: ${ALPHA_MODELS_FILE:-}
       # The committed boot snapshot lists our hosted gateway's models, not yours.
       MODELS_BOOT_SNAPSHOT: "off"
       # A CPU model spends tens of seconds reading the prompt before its first token, which the 45 s
@@ -382,7 +390,7 @@ services:
           export AGENT_SERVICE_URL="$${AGENT_SERVICE_URL:-http://agent:8731}"
         fi
         node scripts/db-migrate.mjs && exec node build
-    volumes: [files:/data/files, "agent-token:/agent-token:ro"]
+    volumes: [files:/data/files, "agent-token:/agent-token:ro", "./config:/config:ro"]
     restart: unless-stopped
 
 volumes:

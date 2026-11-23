@@ -530,7 +530,7 @@ const ERROR_NOTICE = /Apertus 1\.5 70B (couldn't answer this time|is busy right 
 
 test(
 	'a substituted answer never carries the badge of the model that was asked for, and no other model answers in its place',
-	{ tag: ['@F6', '@preview-only', '@CUR-3936', '@needs-apertus'] },
+	{ tag: ['@F6', '@preview-only', '@needs-apertus'] },
 	async ({ page }) => {
 		test.setTimeout(150_000);
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });

@@ -120,7 +120,7 @@ test(
 // so it still sends with attachments on.
 test(
 	"a guest's crafted send with a file is refused 403 and asked to sign in, while a guest's long paste still sends",
-	{ tag: ['@preview-only', '@A6', '@CUR-3997'] },
+	{ tag: ['@preview-only', '@A6'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		const composer = await openAsGuest(page);

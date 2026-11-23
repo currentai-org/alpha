@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: 2018- The Hugging Face team
 // SPDX-License-Identifier: Apache-2.0
 // Modified by Current AI from huggingface/chat-ui.
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
+import dns from "node:dns";
 import { isValidUrl, isValidUrlStrict, ssrfSafeFetch, ssrfStrictFetch } from "./urlSafety";
 
 describe("isValidUrl", () => {
@@ -167,5 +168,33 @@ describe("special-use IPv4 and IPv4 carried inside IPv6 are refused", () => {
 	it("refuses the same in the strict variant", () => {
 		expect(isValidUrlStrict("https://[64:ff9b::a00:1]")).toBe(false); // NAT64 10.0.0.1
 		expect(isValidUrlStrict("https://198.18.0.1")).toBe(false);
+	});
+});
+
+describe("ssrfStrictFetch refuses shared address space (100.64.0.0/10) as a literal, mapped, and by resolved address", () => {
+	afterEach(() => vi.restoreAllMocks());
+
+	it.each([["http://100.64.0.1/"], ["http://100.127.255.254/"], ["http://[::ffff:100.64.0.1]/"]])(
+		"refuses the literal %s before a socket opens",
+		async (url) => {
+			await expect(ssrfStrictFetch(url)).rejects.toThrow(/unsafe IP \(SSRF\)/);
+		}
+	);
+
+	it("refuses a hostname that resolves to 100.64.0.1, at connect time", async () => {
+		const lookups: string[] = [];
+		vi.spyOn(dns, "lookup").mockImplementation(((
+			hostname: string,
+			options: { all?: boolean },
+			callback: (err: null, address: unknown, family?: number) => void
+		) => {
+			lookups.push(hostname);
+			if (options?.all) callback(null, [{ address: "100.64.0.1", family: 4 }]);
+			else callback(null, "100.64.0.1", 4);
+		}) as unknown as typeof dns.lookup);
+		const err = await ssrfStrictFetch("http://cgnat.example.test/").catch((e: unknown) => e);
+		expect(err).toBeInstanceOf(Error);
+		expect(String((err as Error & { cause?: unknown }).cause ?? err)).toMatch(/is internal \(100\.64\.0\.1\)/);
+		expect(lookups).toEqual(["cgnat.example.test"]);
 	});
 });

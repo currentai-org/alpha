@@ -198,7 +198,7 @@ test(
 // person picking it gets Large 4.
 test(
 	'the picker offers Mistral Large 4 by its plain name and no Mistral Large 3, and picking Large 4 makes it the model',
-	{ tag: ['@preview-only', '@F3', '@CUR-4683'] },
+	{ tag: ['@preview-only', '@F3'] },
 	async ({ page }) => {
 		test.setTimeout(60_000);
 		await openChatEntry(page);
@@ -640,7 +640,7 @@ test(
 const GLM = 'zai-org/GLM-5.2';
 test(
 	'picking GLM 5.2 gets an answer whose footer names GLM 5.2 and the provider it is pinned to, with its reasoning in the collapsed panel',
-	{ tag: ['@preview-only', '@F3', '@CUR-4189'] },
+	{ tag: ['@preview-only', '@F3'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		const entry = catalog.find((m) => m.gatewayId === GLM);
@@ -731,7 +731,7 @@ test(
 // on or off. auto-routing reads per request (flagEnabledOr), so the override cookie reaches it.
 test(
 	'the model menu offers no link to the routing lab, with Auto on: the lab is a developer page',
-	{ tag: ['@preview-only', '@F3', '@CUR-3252'] },
+	{ tag: ['@preview-only', '@F3'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(90_000);
 		await setFlagOverrides(context, baseURL!, { 'auto-routing': true });
@@ -757,7 +757,7 @@ const LAB_ENTRY = { name: 'Model routing', exact: true };
 
 test(
 	'a guest cannot reach the routing lab with Auto on: no Settings entry, and its URL redirects to Settings',
-	{ tag: ['@preview-only', '@F3', '@CUR-3252'] },
+	{ tag: ['@preview-only', '@F3'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(90_000);
 		await setFlagOverrides(context, baseURL!, { 'auto-routing': true });

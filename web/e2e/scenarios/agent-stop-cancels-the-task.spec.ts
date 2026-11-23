@@ -40,7 +40,7 @@ const PAST_THE_RUN_MS = 45_000;
 
 test(
 	'Stop on an agent turn cancels its task, and a reload after the run would have ended shows it stopped with no file',
-	{ tag: ['@preview-only', '@CUR-4602', '@CUR-993'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(240_000);
 
@@ -177,7 +177,7 @@ test(
 // reload after the run would have ended shows no file and no receipt line.
 test(
 	'Stop on the re-attached view of a handed-off agent run cancels its task and keeps nothing the run would have written',
-	{ tag: ['@preview-only', '@CUR-993', '@CUR-4410'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(240_000);
 

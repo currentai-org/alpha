@@ -124,7 +124,7 @@ test(
 // follows reliably, and the answer is asserted on.
 test(
 	'an instruction saved in Personalization reaches the next answer in a chat that was already open',
-	{ tag: ['@A4', '@CUR-1443'] },
+	{ tag: ['@A4'] },
 	async ({ page }) => {
 		// Two whole chat turns, settings and a reload: past the default budget on a cold preview.
 		test.setTimeout(180_000);
@@ -323,7 +323,7 @@ test.describe('settings tabs at phone width', () => {
 	// with Personalization sat one tap behind a "Settings" back button. A phone now lands on the list.
 	test(
 		'at phone width, Settings from the account menu opens the section list, and Personalization is one tap from it',
-		{ tag: ['@A4', '@CUR-3601', '@preview-only'] },
+		{ tag: ['@A4', '@preview-only'] },
 		async ({ page }) => {
 			test.setTimeout(120_000);
 			await signInAsFreshUser(page, freshTestEmail());
@@ -485,7 +485,7 @@ test(
 // records whether the held request could still be sent.
 test(
 	'dismissing Welcome to Alpha and reloading at once still keeps the intro down on the next load',
-	{ tag: ['@A4', '@CUR-2574', '@preview-only'] },
+	{ tag: ['@A4', '@preview-only'] },
 	async ({ page }, testInfo) => {
 		test.setTimeout(90_000);
 		const context = page.context();
@@ -809,7 +809,7 @@ test.describe('how Alpha answers', () => {
 
 	test(
 		'a signed-in person sets tone and length, each saves at once, survives a reload, resets to Default and reaches a second device',
-		{ tag: ['@A4', '@CUR-3929'] },
+		{ tag: ['@A4'] },
 		async ({ page, browser }) => {
 			test.setTimeout(120_000);
 			const userId = await mintUser(page);
@@ -935,7 +935,7 @@ test.describe('how Alpha answers', () => {
 	// else: the "How this was made" link stays, since X-ray is the person's to open.
 	test(
 		'a preset sets several rows in one save, a later change reads Custom, and the receipt toggle hides the model and host',
-		{ tag: ['@A4', '@CUR-549'] },
+		{ tag: ['@A4'] },
 		async ({ page }) => {
 			// A preset, a reload, one whole chat turn and two more settings saves: past the default budget.
 			test.setTimeout(180_000);
@@ -1072,7 +1072,7 @@ test.describe('how Alpha answers', () => {
 	// recovers per key to the value the server last took, and the error stays until that key saves.
 	test(
 		'answer-preference saves go out one at a time in order, coalesce while one is in flight, and recover per key when one fails',
-		{ tag: ['@A4', '@CUR-3929', '@preview-only'] },
+		{ tag: ['@A4', '@preview-only'] },
 		async ({ page }) => {
 			test.setTimeout(150_000);
 			await mintUser(page);

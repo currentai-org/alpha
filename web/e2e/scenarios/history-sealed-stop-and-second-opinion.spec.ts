@@ -79,7 +79,7 @@ async function accountWithSealedChat(
 
 test(
 	"a stopped answer's stored clamp holds no canary in plaintext",
-	{ tag: ['@preview-only', '@CUR-4962'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		expect(
 			DATABASE_URL,
@@ -193,7 +193,7 @@ async function openBlob(
 
 test(
 	'a sealed answer that finished before Stop is cut from the body the browser opened, and a forged body is refused',
-	{ tag: ['@preview-only', '@CUR-4962'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		expect(
 			DATABASE_URL,
@@ -291,7 +291,7 @@ test(
 
 test(
 	'a second-opinion result is stored sealed',
-	{ tag: ['@preview-only', '@CUR-4962'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		expect(
 			DATABASE_URL,

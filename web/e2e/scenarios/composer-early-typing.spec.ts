@@ -39,7 +39,7 @@ async function holdClientBundle(page: Page) {
 // text and then drop it.
 test(
 	'text typed into the composer before /chat has loaded is kept once it loads, never shown and then dropped, and text typed after sends',
-	{ tag: ['@preview-only', '@CUR-3311'] },
+	{ tag: ['@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		await signInAsFreshUser(page);
@@ -79,7 +79,7 @@ test(
 // accepted and vanish, so the button is disabled until the app can act on it.
 test(
 	'a prompt example cannot be clicked before /chat has loaded, so a click is never silently dropped',
-	{ tag: ['@preview-only', '@CUR-3311'] },
+	{ tag: ['@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		await signInAsFreshUser(page);

@@ -53,7 +53,7 @@ async function send(page: Page, text: string): Promise<void> {
 
 test(
 	'two turns sent without a reload both answer, and usage counts the sealed turns',
-	{ tag: ['@preview-only', '@CUR-4961'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		expect(
 			DATABASE_URL,
@@ -141,7 +141,7 @@ async function historyKeyBody(): Promise<{ wrapped: string; recipient: string; f
 
 test(
 	"a guest's Forget everything lets the guest enroll a new history key",
-	{ tag: ['@preview-only', '@CUR-4961'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(180_000);
 		// The guest's silent enrollment is not what this tests, and the key route does not read the flag.

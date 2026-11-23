@@ -21,13 +21,9 @@ function jpegSize(jpg: Buffer): { width: number; height: number } | null {
 	return null;
 }
 
-test(
-	'the default share image is served as a 1200 x 630 JPEG',
-	{ tag: ['@CUR-2991', '@CUR-4690'] },
-	async ({ request }) => {
-		const res = await request.get('/ai-potluck-og-home.jpg');
-		expect(res.status(), 'the default share image does not load').toBe(200);
-		expect(res.headers()['content-type']).toBe('image/jpeg');
-		expect(jpegSize(await res.body())).toEqual({ width: 1200, height: 630 });
-	}
-);
+test('the default share image is served as a 1200 x 630 JPEG', async ({ request }) => {
+	const res = await request.get('/ai-potluck-og-home.jpg');
+	expect(res.status(), 'the default share image does not load').toBe(200);
+	expect(res.headers()['content-type']).toBe('image/jpeg');
+	expect(jpegSize(await res.body())).toEqual({ width: 1200, height: 630 });
+});

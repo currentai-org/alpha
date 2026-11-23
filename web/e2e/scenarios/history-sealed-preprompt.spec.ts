@@ -41,7 +41,7 @@ async function storedConversation(id: string): Promise<{ text: string; sealedPre
 
 test(
 	"an enrolled owner's new chat stores its preprompt sealed, and continues for two turns under personal instructions",
-	{ tag: ['@preview-only', '@CUR-4962'] },
+	{ tag: ['@preview-only'] },
 	async ({ page, context, baseURL }) => {
 		expect(
 			DATABASE_URL,

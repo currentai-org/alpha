@@ -94,7 +94,7 @@ test(
 
 test(
 	'signed in, a rate-limited Large 4 turn ends on the busy notice, never answered by Mistral Medium',
-	{ tag: ['@F2', '@preview-only', '@CUR-4383'] },
+	{ tag: ['@F2', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		await signedInAt(page, pinnedChatEntry(LARGE4), 'primary_lane_rate_limited');

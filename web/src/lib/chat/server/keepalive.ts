@@ -14,12 +14,15 @@ interface KeepaliveOptions {
 	/** One keepalive pass. Must not throw; a rejection is swallowed anyway. */
 	tick: () => Promise<unknown>;
 	intervalMs?: number;
+	/** Wait this long before the first pass instead of running it at once. */
+	firstDelayMs?: number;
 	/** process.env.VERCEL by default. */
 	onVercel?: boolean;
 }
 
 /** Start this process's keepalive. Returns a stop function, or null when it does not run here (on
- *  Vercel). The first pass runs at once, so a fresh process does not wait a minute for fresh flags.
+ *  Vercel). The first pass runs at once, so a fresh process does not wait a minute for fresh flags,
+ *  unless `firstDelayMs` asks it to wait; the interval then counts from that first pass.
  *  A pass still running when the next is due is not doubled up. The timer is unref'd, so it never
  *  holds a stopping process open. */
 export function startProcessKeepalive(opts: KeepaliveOptions): (() => void) | null {
@@ -35,8 +38,21 @@ export function startProcessKeepalive(opts: KeepaliveOptions): (() => void) | nu
 				running = false;
 			});
 	};
-	pass();
-	const timer = setInterval(pass, opts.intervalMs ?? KEEPALIVE_INTERVAL_MS);
-	timer.unref?.();
-	return () => clearInterval(timer);
+	const intervalMs = opts.intervalMs ?? KEEPALIVE_INTERVAL_MS;
+	let timer: ReturnType<typeof setInterval> | undefined;
+	const startInterval = () => {
+		pass();
+		timer = setInterval(pass, intervalMs);
+		timer.unref?.();
+	};
+	if (opts.firstDelayMs === undefined) {
+		startInterval();
+		return () => clearInterval(timer);
+	}
+	const first = setTimeout(startInterval, opts.firstDelayMs);
+	first.unref?.();
+	return () => {
+		clearTimeout(first);
+		clearInterval(timer);
+	};
 }

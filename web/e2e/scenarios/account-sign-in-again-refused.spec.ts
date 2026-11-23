@@ -13,65 +13,63 @@ import { sslFor } from './helpers/db';
 // here with the same button and no word of why. When the sign-out is refused, the page has to say so,
 // stay where it is, and leave the button ready for another try.
 
-test(
-	'a refused sign-out behind Sign in again says so on the account page and leaves the button ready',
-	{ tag: ['@CUR-4011'] },
-	async ({ page }) => {
-		const databaseUrl = process.env.SCENARIO_DATABASE_URL;
-		if (!databaseUrl)
-			throw new Error('SCENARIO_DATABASE_URL is not set — global-setup.ts should have caught this');
+test('a refused sign-out behind Sign in again says so on the account page and leaves the button ready', async ({
+	page
+}) => {
+	const databaseUrl = process.env.SCENARIO_DATABASE_URL;
+	if (!databaseUrl)
+		throw new Error('SCENARIO_DATABASE_URL is not set — global-setup.ts should have caught this');
 
-		const email = freshTestEmail();
-		await signInAsFreshUser(page, email);
+	const email = freshTestEmail();
+	await signInAsFreshUser(page, email);
 
-		// Age this account's session past Better Auth's one-day freshness window, so the account page
-		// shows the Sign in again state a person signed in since yesterday sees.
-		const sql = postgres(databaseUrl, { ssl: sslFor(databaseUrl), max: 1 });
-		try {
-			const aged = await sql`
+	// Age this account's session past Better Auth's one-day freshness window, so the account page
+	// shows the Sign in again state a person signed in since yesterday sees.
+	const sql = postgres(databaseUrl, { ssl: sslFor(databaseUrl), max: 1 });
+	try {
+		const aged = await sql`
 				update session set created_at = now() - interval '3 days'
 				where user_id = (select id from "user" where email = ${email})
 				returning id
 			`;
-			expect(aged.length, 'the minted session was not found to age').toBeGreaterThan(0);
-		} finally {
-			await sql.end();
-		}
-
-		await page.goto('/chat/settings/account');
-		const signInAgain = page.getByRole('button', { name: 'Sign in again' });
-		await expect(signInAgain, 'an older session does not see Sign in again').toBeVisible();
-
-		let signOutCalls = 0;
-		await page.route('**/chat/api/auth/sign-out', async (route) => {
-			signOutCalls++;
-			if (signOutCalls === 1) {
-				await route.fulfill({
-					status: 503,
-					contentType: 'application/json',
-					body: JSON.stringify({ code: 'SERVICE_UNAVAILABLE', message: 'Service unavailable' })
-				});
-				return;
-			}
-			await route.continue();
-		});
-		const logoutPosts: string[] = [];
-		page.on('request', (req) => {
-			if (req.method() === 'POST' && new URL(req.url()).pathname === '/chat/logout')
-				logoutPosts.push(req.url());
-		});
-
-		await signInAgain.click();
-
-		await expect(
-			page.getByText("Signing out didn't go through, so you're still signed in here."),
-			'the refused sign-out is not explained on the page'
-		).toBeVisible();
-		expect(signOutCalls, 'Sign in again never asked to sign out').toBe(1);
-		await expect(page, 'the page left for sign-in with the session still live').toHaveURL(
-			/\/chat\/settings\/account/
-		);
-		await expect(signInAgain, 'Sign in again is not ready for another try').toBeEnabled();
-		expect(logoutPosts, 'the page went on to log out after the sign-out was refused').toEqual([]);
+		expect(aged.length, 'the minted session was not found to age').toBeGreaterThan(0);
+	} finally {
+		await sql.end();
 	}
-);
+
+	await page.goto('/chat/settings/account');
+	const signInAgain = page.getByRole('button', { name: 'Sign in again' });
+	await expect(signInAgain, 'an older session does not see Sign in again').toBeVisible();
+
+	let signOutCalls = 0;
+	await page.route('**/chat/api/auth/sign-out', async (route) => {
+		signOutCalls++;
+		if (signOutCalls === 1) {
+			await route.fulfill({
+				status: 503,
+				contentType: 'application/json',
+				body: JSON.stringify({ code: 'SERVICE_UNAVAILABLE', message: 'Service unavailable' })
+			});
+			return;
+		}
+		await route.continue();
+	});
+	const logoutPosts: string[] = [];
+	page.on('request', (req) => {
+		if (req.method() === 'POST' && new URL(req.url()).pathname === '/chat/logout')
+			logoutPosts.push(req.url());
+	});
+
+	await signInAgain.click();
+
+	await expect(
+		page.getByText("Signing out didn't go through, so you're still signed in here."),
+		'the refused sign-out is not explained on the page'
+	).toBeVisible();
+	expect(signOutCalls, 'Sign in again never asked to sign out').toBe(1);
+	await expect(page, 'the page left for sign-in with the session still live').toHaveURL(
+		/\/chat\/settings\/account/
+	);
+	await expect(signInAgain, 'Sign in again is not ready for another try').toBeEnabled();
+	expect(logoutPosts, 'the page went on to log out after the sign-out was refused').toEqual([]);
+});

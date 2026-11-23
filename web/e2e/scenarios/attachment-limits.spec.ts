@@ -100,7 +100,7 @@ test(
 // word. `setFiles` skips the dialog's own type filter, the way choosing "All files" in it does.
 test(
 	'a .zip or a .tiff chosen in the file picker is refused in the banner by name, and never attached',
-	{ tag: ['@preview-only', '@A6', '@CUR-3051', '@CUR-3615'] },
+	{ tag: ['@preview-only', '@A6'] },
 	async ({ page }) => {
 		test.setTimeout(90_000);
 		await openComposer(page);
@@ -143,7 +143,7 @@ test(
 // composer says to sign in rather than letting them vanish.
 test(
 	'a photo and a text file a guest pastes are not attached, and the composer asks them to sign in rather than dropping them silently',
-	{ tag: ['@preview-only', '@A6', '@CUR-2949'] },
+	{ tag: ['@preview-only', '@A6'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(90_000);
 		await setFlagOverrides(context, baseURL!, { multimodal: false });

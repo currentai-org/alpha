@@ -1,9 +1,10 @@
 # What a stranger does with this repository, and the two self-host claims a privacy-minded operator most
 # wants proven. `smoke`: `selfhost/smoke.sh` writes selfhost/.env from .env.example, runs
 # `docker compose --profile local up --build` with a small local model, and sends one chat turn as a
-# signed-out guest; then the README's backup and restore run on that stack. `safety-profile`: the Shieldstral screen beside it (report only). `socket-proxy`: the
-# agent profile's socket proxy refuses host-root creates. No job reads a secret: models download from
-# Hugging Face without a token.
+# signed-out guest; then the daily cleanup deletes an aged guest conversation, and the README's backup and restore run on that stack. `safety-profile`: the Shieldstral screen beside it (report only). `socket-proxy`: the
+# agent profile's socket proxy refuses host-root creates. `agent-owui-names`: the agent profile's model
+# gateway starts on Open WebUI's env names. No job reads a secret: models download from Hugging Face
+# without a token.
 name: Self-host smoke
 
 on:
@@ -53,12 +54,33 @@ jobs:
         id: smoke
         run: ./selfhost/smoke.sh
 
+      # The daily cleanup the README describes ("Expired guest data"), on the stack the smoke left up: a guest
+      # conversation aged 40 days is deleted by the web server's own timer, with its first run brought to 5 s
+      # after a recreate, and a fresh one is kept (.github/selfhost-cleanup-smoke.sh). Before the restore,
+      # which wipes the stack. A failure fails the job.
+      - name: The daily cleanup deletes an expired guest conversation
+        if: steps.smoke.outcome == 'success'
+        run: |
+          set +e
+          ./.github/selfhost-cleanup-smoke.sh 2>&1 | tee cleanup.log
+          code=${PIPESTATUS[0]}
+          {
+            echo "### daily cleanup"
+            echo '```'
+            grep -E '^(ok|CLEANUP)' cleanup.log || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$code" != 0 ]; then
+            echo "::error title=selfhost cleanup::the daily cleanup smoke exited $code. Read this step's log."
+          fi
+          exit "$code"
+
       # The README's backup and restore, on the stack the smoke left up: a guest conversation and a file in
       # the `files` volume, selfhost/backup.sh, `down -v`, `up`, selfhost/restore.sh, then every conversation
       # must read back identical, the guest must open theirs with the same cookie, and the file must hold
       # what was written (.github/selfhost-restore-smoke.sh). Capture-and-warn for its first runs.
       - name: Back up, wipe, restore, and find the conversation and the file again
-        if: steps.smoke.outcome == 'success'
+        if: always() && steps.smoke.outcome == 'success'
         run: |
           set +e
           ./.github/selfhost-restore-smoke.sh 2>&1 | tee restore.log
@@ -71,6 +93,27 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           if [ "$code" != 0 ]; then
             echo "::warning title=selfhost restore::the restore round trip exited $code. Read this step's log."
+          fi
+          exit 0
+
+      # The README's database password change, on the stack the smoke left up: selfhost/db-passwd.sh, the
+      # new value in selfhost/.env, `up -d`, and the app must reconnect and read back a guest's conversation;
+      # then .env changed alone must lock the app out, and the script must bring it back
+      # (.github/selfhost-db-passwd-smoke.sh). Capture-and-warn for its first runs.
+      - name: Change the database password and find the app reconnected
+        if: steps.smoke.outcome == 'success'
+        run: |
+          set +e
+          ./.github/selfhost-db-passwd-smoke.sh 2>&1 | tee db-passwd.log
+          code=${PIPESTATUS[0]}
+          {
+            echo "### database password change"
+            echo '```'
+            grep -E '^(ok|DB PASSWD)' db-passwd.log || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$code" != 0 ]; then
+            echo "::warning title=selfhost db password::the password change check exited $code. Read this step's log."
           fi
           exit 0
 
@@ -186,6 +229,38 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
+  gpu-config:
+    # selfhost/compose.gpu.yaml without a GPU, since no runner has one: .github/selfhost-gpu-config-check.sh
+    # requires `docker compose -f compose.yaml -f compose.gpu.yaml config` to give llama and shieldstral an
+    # NVIDIA device request, the pinned server-cuda image and LLAMA_ARG_N_GPU_LAYERS=all, compose.yaml alone
+    # to give them none, and both llama.cpp pins to be the same release. Starts nothing. Whether a model
+    # actually runs on a GPU is untested in CI. Capture-and-warn for its first runs.
+    name: GPU override requests the device
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: The merged GPU config requests an NVIDIA device
+        run: |
+          set +e
+          ./.github/selfhost-gpu-config-check.sh 2>&1 | tee gpu-config.log
+          code=${PIPESTATUS[0]}
+          {
+            echo "### GPU override"
+            echo '```'
+            grep -E '^(PASS|FAIL|releases:|GPU CONFIG)' gpu-config.log || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$code" -ne 0 ]; then
+            echo "::warning title=selfhost gpu config::the GPU config check exited $code. Read the FAIL lines in this step's log."
+          fi
+          exit 0
+
   socket-proxy:
     # The Docker socket proxy agent mode's sandbox goes through (sockguard, agent profile in
     # selfhost/compose.yaml, policy in selfhost/sockguard.yaml). .github/selfhost-socket-proxy-smoke.sh
@@ -228,3 +303,51 @@ jobs:
             echo "::error title=selfhost socket proxy::the socket-proxy check exited $code. A FAIL line on a host-root create means the proxy let it through. Read socket-proxy.log in the job log."
           fi
           exit "$code"
+
+  agent-owui-names:
+    # Agent mode for an operator moving from Open WebUI: the agent profile's model gateway started with only
+    # Open WebUI's OPENAI_API_BASE_URLS / OPENAI_API_KEYS in selfhost/.env (block C of .env.example, block A's
+    # OPENAI_BASE_URL removed). .github/selfhost-agent-owui-smoke.sh requires the gateway to refuse to start
+    # with neither name set, then to come up healthy on the Open WebUI names with the list's first URL as its
+    # one provider, and a /v1/models call on a grant to come back from the local llama.cpp through it.
+    # No secret: the local model downloads from Hugging Face without a token. Capture-and-warn while new.
+    name: agent gateway starts on Open WebUI's env names
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    env:
+      MODEL_CACHE_KEY: selfhost-gguf-qwen2.5-0.5b-instruct-q4_k_m-v1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Model directory
+        run: |
+          echo "LOCAL_MODELS_DIR=$RUNNER_TEMP/selfhost-models" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/selfhost-models"
+
+      # Restore only: the smoke job on main writes this cache.
+      - name: Restore the model cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ env.LOCAL_MODELS_DIR }}
+          key: ${{ env.MODEL_CACHE_KEY }}
+
+      - name: The agent gateway starts on Open WebUI's env names and forwards to the first URL
+        run: |
+          set +e
+          ./.github/selfhost-agent-owui-smoke.sh 2>&1 | tee agent-owui-names.log
+          code=${PIPESTATUS[0]}
+          set -e
+          {
+            echo "### agent gateway on Open WebUI's env names"
+            echo '```'
+            grep -E '^(PASS|FAIL|gateway log:|healthz providers:|models via gateway:|AGENT OWUI NAMES)' agent-owui-names.log | cut -c1-400 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$code" -ne 0 ]; then
+            echo "::warning title=selfhost agent on Open WebUI names::the check exited $code. Read agent-owui-names.log in the job log: a FAIL line names the claim, and the gateway log follows it."
+          fi
+          exit 0

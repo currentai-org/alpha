@@ -55,7 +55,7 @@ async function listedNames(page: Page): Promise<string[]> {
 
 test(
 	'an image added to My files is stored and listed, with no could-not-check refusal',
-	{ tag: ['@preview-only', '@A3', '@CUR-4855'] },
+	{ tag: ['@preview-only', '@A3'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(150_000);
 		await setFlagOverrides(context, baseURL!, { 'custodial-storage-view': true });
@@ -94,7 +94,7 @@ test(
 // harmless picture with an everyday question must be answered, not declined.
 test(
 	'a photo attached in chat is sent with the question and answered, never left out as unchecked or declined',
-	{ tag: ['@preview-only', '@real-screen', '@A3', '@A6', '@CUR-4855'] },
+	{ tag: ['@preview-only', '@real-screen', '@A3', '@A6'] },
 	async ({ page }) => {
 		test.setTimeout(150_000);
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });

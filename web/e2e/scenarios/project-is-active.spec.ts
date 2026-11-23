@@ -17,7 +17,7 @@ import { postedAt, recentUpdatesWindow } from './helpers/recentUpdates';
 
 test(
 	'a stranger can tell in one hop that the project shipped something recently, and what',
-	{ tag: ['@W1', '@CUR-3700'] },
+	{ tag: ['@W1'] },
 	async ({ page }) => {
 		// Step 1 and 2. The home page carries a dated sign of recent activity, and a named route to it.
 		// that sign is the hero's updates tile ("11 Updates / In the past 8 weeks"). It

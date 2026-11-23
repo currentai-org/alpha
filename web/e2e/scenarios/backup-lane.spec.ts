@@ -22,7 +22,7 @@ const ERROR_NOTICE = /took too long to respond|at capacity right now/i;
 
 test(
 	'with the Apertus primary lane down, the turn is answered by Apertus or ends on an error notice, never by another model, so no backup notice is rewritten to a second one',
-	{ tag: ['@F2', '@preview-only', '@CUR-3936', '@CUR-3876', '@needs-apertus'] },
+	{ tag: ['@F2', '@preview-only', '@needs-apertus'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });
@@ -96,7 +96,7 @@ type StoredTurn = {
 // a lane that asks for Medium again and Medium answers here, and this goes red.
 test(
 	'a rate-limited Large 4 turn ends on the busy notice naming Large 4, never answered by Mistral Medium',
-	{ tag: ['@F2', '@preview-only', '@CUR-4383'] },
+	{ tag: ['@F2', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });
@@ -155,7 +155,7 @@ test(
 // Remove the same-lane retry and the turn ends on the error notice with its Retry button, and this goes red.
 test(
 	'a Mistral Medium stream that errors before any text is asked for again and answers from Medium, never an error or another model',
-	{ tag: ['@F2', '@preview-only', '@CUR-4734'] },
+	{ tag: ['@F2', '@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(120_000);
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });

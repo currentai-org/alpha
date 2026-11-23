@@ -84,7 +84,7 @@ async function flagsOn(
 
 test(
 	'Settings → Storage shows usage, Locations, linking your own bucket and where files are kept as headed sections with no file list, and refuses a token Hugging Face does not accept, with its reason',
-	{ tag: ['@preview-only', '@A3', '@CUR-2930'] },
+	{ tag: ['@preview-only', '@A3'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(120_000);
 		await flagsOn(context, baseURL!);
@@ -152,7 +152,7 @@ test(
 
 test(
 	'with storage-locations off, the Storage page shows no place to link a bucket and every location route is a 404',
-	{ tag: ['@preview-only', '@A3', '@CUR-2930'] },
+	{ tag: ['@preview-only', '@A3'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(90_000);
 		await setFlagOverrides(context, baseURL!, {
@@ -191,7 +191,7 @@ test(
 
 test(
 	'a location id that is not this account’s is a 404 on every location route, never someone else’s files',
-	{ tag: ['@preview-only', '@A3', '@CUR-2930'] },
+	{ tag: ['@preview-only', '@A3'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(90_000);
 		await flagsOn(context, baseURL!);
@@ -258,7 +258,7 @@ async function linkedWithAskSaved(
 
 test(
 	'with a bucket linked and "Ask every time" as the default, adding a file asks where it should go first, and it lands where the person chose',
-	{ tag: ['@preview-only', '@A3', '@CUR-2930', '@CUR-3077', '@linked-bucket'] },
+	{ tag: ['@preview-only', '@A3', '@linked-bucket'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(120_000);
 		const token = process.env.E2E_LINKED_BUCKET_TOKEN;
@@ -308,7 +308,7 @@ test(
 
 test(
 	'with "Ask every time" still saved after the only linked bucket is unlinked, Alpha storage is the one place left, so there is no picker and every upload goes there with no prompt',
-	{ tag: ['@preview-only', '@A3', '@CUR-3077', '@linked-bucket'] },
+	{ tag: ['@preview-only', '@A3', '@linked-bucket'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(180_000);
 		const token = process.env.E2E_LINKED_BUCKET_TOKEN;
@@ -361,7 +361,7 @@ test(
 
 test(
 	'link my own bucket, make it the default, add a file that lands there, then unlink and the file stays in my bucket',
-	{ tag: ['@preview-only', '@A3', '@CUR-2930', '@linked-bucket'] },
+	{ tag: ['@preview-only', '@A3', '@linked-bucket'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(180_000);
 		const token = process.env.E2E_LINKED_BUCKET_TOKEN;
@@ -470,7 +470,7 @@ test(
 
 test(
 	'Forget everything names my linked bucket as staying in my Hugging Face account, then forgets only the link',
-	{ tag: ['@preview-only', '@A3', '@CUR-2932', '@CUR-3386', '@linked-bucket'] },
+	{ tag: ['@preview-only', '@A3', '@linked-bucket'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(120_000);
 		const token = process.env.E2E_LINKED_BUCKET_TOKEN;
@@ -527,7 +527,7 @@ test(
 // done panel says where to remove Alpha's access, and with nothing linked neither line appears.
 test(
 	'Delete account names my linked bucket as staying and says where to remove Alpha’s access, and says neither with no bucket linked',
-	{ tag: ['@preview-only', '@A3', '@CUR-2932', '@linked-bucket'] },
+	{ tag: ['@preview-only', '@A3', '@linked-bucket'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(150_000);
 		const token = process.env.E2E_LINKED_BUCKET_TOKEN;
@@ -586,7 +586,7 @@ test(
 
 test(
 	'move a file from Alpha storage to my bucket and it is only there, copy it back and it is in both, and a second copy is refused rather than overwriting',
-	{ tag: ['@preview-only', '@A3', '@CUR-2931', '@linked-bucket'] },
+	{ tag: ['@preview-only', '@A3', '@linked-bucket'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(240_000);
 		const token = process.env.E2E_LINKED_BUCKET_TOKEN;
@@ -687,7 +687,7 @@ test(
 
 test(
 	'with a bucket linked, "Last used" is the default, and after a file goes to my bucket the next upload goes there too',
-	{ tag: ['@preview-only', '@A3', '@CUR-3077', '@linked-bucket'] },
+	{ tag: ['@preview-only', '@A3', '@linked-bucket'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(180_000);
 		const token = process.env.E2E_LINKED_BUCKET_TOKEN;
@@ -788,7 +788,7 @@ test(
 
 test(
 	'a linked bucket’s tab lists the file added last first, not in the order the bucket returned them',
-	{ tag: ['@preview-only', '@A3', '@CUR-5170', '@CUR-4355', '@linked-bucket'] },
+	{ tag: ['@preview-only', '@A3', '@linked-bucket'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(180_000);
 		const token = process.env.E2E_LINKED_BUCKET_TOKEN;
@@ -852,7 +852,7 @@ test(
 // outside the chat's folder in the bucket, or the second turn cannot read it.
 test(
 	'with my linked bucket as the default, a file attached in chat lands in that bucket under its conversation and a later turn still reads it',
-	{ tag: ['@preview-only', '@A3', '@CUR-2930', '@linked-bucket'] },
+	{ tag: ['@preview-only', '@A3', '@linked-bucket'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(240_000);
 		const token = process.env.E2E_LINKED_BUCKET_TOKEN;
@@ -997,7 +997,7 @@ async function linkedWithTwoAlphaFiles(
 
 test(
 	'right after linking my own bucket, Alpha offers to save new files there and to copy my two files, and afterwards they are in both places and the bucket is the default',
-	{ tag: ['@preview-only', '@A3', '@CUR-2941', '@linked-bucket'] },
+	{ tag: ['@preview-only', '@A3', '@linked-bucket'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(240_000);
 		const token = process.env.E2E_LINKED_BUCKET_TOKEN;
@@ -1038,7 +1038,7 @@ test(
 
 test(
 	'when the second file fails its check during the copy, every file is still in Alpha storage and Retry resumes from that file',
-	{ tag: ['@preview-only', '@A3', '@CUR-2941', '@linked-bucket'] },
+	{ tag: ['@preview-only', '@A3', '@linked-bucket'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(240_000);
 		const token = process.env.E2E_LINKED_BUCKET_TOKEN;
@@ -1088,7 +1088,7 @@ test(
 
 test(
 	'when my bucket already holds a different file with the same name, the copy keeps both, saves mine as name (2), and still finishes',
-	{ tag: ['@preview-only', '@A3', '@CUR-2941', '@linked-bucket'] },
+	{ tag: ['@preview-only', '@A3', '@linked-bucket'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(240_000);
 		const token = process.env.E2E_LINKED_BUCKET_TOKEN;
@@ -1138,7 +1138,7 @@ test(
 // visible label mid-word. Four folders of the e2e bucket plus Alpha storage make five tabs.
 test(
 	'with four places linked, Your files shows every location tab whole, with no sideways scroll in the tab strip',
-	{ tag: ['@preview-only', '@A3', '@CUR-4436', '@linked-bucket'] },
+	{ tag: ['@preview-only', '@A3', '@linked-bucket'] },
 	async ({ page, context, baseURL }) => {
 		test.setTimeout(180_000);
 		const token = process.env.E2E_LINKED_BUCKET_TOKEN;

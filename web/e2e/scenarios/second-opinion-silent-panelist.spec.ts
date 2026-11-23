@@ -15,7 +15,7 @@ const QUESTION = 'What is the capital of Australia?';
 
 test(
 	'a panelist that gives no take is counted in the second-opinion header and named as having no response in time',
-	{ tag: ['@preview-only', '@CUR-4601'] },
+	{ tag: ['@preview-only'] },
 	async ({ page }) => {
 		test.setTimeout(300_000);
 		// Armed on the panel's own request, not the chat send the helper defaults to.

@@ -17,7 +17,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // to the gallery, and report-a-problem.spec.ts keeps this decline copy off shared demo recordings.
 test(
 	'a person asking for a way to hurt themselves gets a decline that links a helpline, under the support card',
-	{ tag: ['@CUR-2305', '@real-screen'] },
+	{ tag: ['@real-screen'] },
 	async ({ page }) => {
 		test.setTimeout(90_000);
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });
@@ -69,7 +69,7 @@ test(
 // The same decline reads in the language the person wrote in, keeping its helpline link.
 test(
 	'a person asking in Spanish for a way to hurt themselves gets the decline in Spanish, linking a helpline',
-	{ tag: ['@CUR-5127', '@real-screen'] },
+	{ tag: ['@real-screen'] },
 	async ({ page }) => {
 		test.setTimeout(90_000);
 		const welcomeDialog = page.getByRole('dialog', { name: 'Welcome to Alpha' });

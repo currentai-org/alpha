@@ -10,7 +10,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // alone. That drives the banner on a day when status.aipotluck.org itself reads operational.
 const STATUS_API = /\/chat\/api\/status$/;
 
-test.describe('the incident banner follows the status page', { tag: ['@F2', '@CUR-4062'] }, () => {
+test.describe('the incident banner follows the status page', { tag: ['@F2'] }, () => {
 	test('while the status page reports a problem, /chat shows a banner linking to it, and dismissing hides it', async ({
 		page
 	}) => {
