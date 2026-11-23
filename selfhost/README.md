@@ -313,6 +313,10 @@ server, its data in the `objects` volume:
 docker compose --profile local --profile s3 up --build
 ```
 
+SeaweedFS refuses to start while `AWS_ACCESS_KEY_ID` or `AWS_SECRET_ACCESS_KEY` is blank, and its log
+says how to make the secret (`openssl rand -hex 32`). `FILES_ACCESS_KEY` and `FILES_SECRET_KEY`, the
+names `deploy/.env.example` uses, work in their place. Without the `s3` profile neither key is needed.
+
 To use your own S3-compatible server or AWS S3, set the same variables without the profile, with
 `CUSTODIAL_S3_ENDPOINT` naming your server (unset for AWS). No Hugging Face account or token is involved
 on either backend.

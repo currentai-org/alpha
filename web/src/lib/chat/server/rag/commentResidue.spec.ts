@@ -17,6 +17,16 @@ describe("commentResidueReason", () => {
 		expect(commentResidueReason("Please review, @alex@example.org, before Friday.")).toMatch(/@-mention/);
 	});
 
+	// Joined at runtime: a literal personal address in source fails the public export's leak scan.
+	it("refuses a personal mailbox address even outside a comment thread, naming its provider", () => {
+		expect(commentResidueReason(`Questions go to ${["sam.example", "gmail.com"].join("@")} for now.`)).toMatch(/personal email address at gmail\.com/);
+		expect(commentResidueReason(`Contact: Alex <${["Alex.Doe", "Outlook.COM"].join("@")}>`)).toMatch(/personal email address at outlook\.com/);
+	});
+
+	it("allows an organisation's contact address on a subdomain that only looks like a provider", () => {
+		expect(commentResidueReason("Write to privacy@mail.example.org.")).toBeUndefined();
+	});
+
 	it("allows a plain contact address, which a public policy page can carry", () => {
 		expect(commentResidueReason("Report a problem to safety@example.org and we reply within a week.")).toBeUndefined();
 	});

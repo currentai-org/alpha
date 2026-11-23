@@ -3,8 +3,9 @@
 # `docker compose --profile local up --build` with a small local model, and sends one chat turn as a
 # signed-out guest; then the daily cleanup deletes an aged guest conversation, and the README's backup and restore run on that stack. `safety-profile`: the Shieldstral screen beside it (report only). `socket-proxy`: the
 # agent profile's socket proxy refuses host-root creates. `agent-owui-names`: the agent profile's model
-# gateway starts on Open WebUI's env names. No job reads a secret: models download from Hugging Face
-# without a token.
+# gateway starts on Open WebUI's env names. `s3-secret`: the s3 profile's SeaweedFS refuses a blank
+# secret, and leaving the profile out needs no key. No job reads a secret: models download from
+# Hugging Face without a token.
 name: Self-host smoke
 
 on:
@@ -140,7 +141,7 @@ jobs:
     # on a CPU runner the screen often runs out of time and declines (selfhost/README.md says why), so a
     # wrong turn outcome annotates the run and the job stays green. The direct classifier call does not
     # depend on CPU speed, so a missing yes/no top_logprobs pair is a failure of its own (exit 2 from the
-    # script); while that check is new it too only warns (see the smoke step).
+    # script) and fails the job.
     # The disallowed turn's answer text is neither printed nor uploaded.
     name: safety profile screens two turns (report only)
     runs-on: ubuntu-latest
@@ -194,9 +195,9 @@ jobs:
           grep -E '^SAFETY |^classifier calls timed|prompt eval time|^classifier container|"msg"' smoke-logs/safety.log >> "$GITHUB_STEP_SUMMARY" || true
           if [ "$code" = 2 ]; then
             # The classifier returned no yes/no top_logprobs pair, so the app cannot score any rule; CPU speed
-            # does not explain that. Capture-and-warn while the check is new to this workflow. Follow-up: once
-            # a run on main has shown it passes, change this branch to exit 1 so it fails the job.
-            echo "::warning title=selfhost safety classifier::the classifier returned no yes/no top_logprobs pair, so the screen cannot score its rules. Read safety-direct.json in the selfhost-safety artifact."
+            # does not explain that, so it fails the job.
+            echo "::error title=selfhost safety classifier::the classifier returned no yes/no top_logprobs pair, so the screen cannot score its rules. Read safety-direct.json in the selfhost-safety artifact."
+            exit 1
           elif [ "$code" != 0 ]; then
             echo "::warning title=selfhost safety profile::the safety profile smoke exited $code. Read safety.log in the selfhost-safety artifact."
           fi
@@ -261,6 +262,38 @@ jobs:
           fi
           exit 0
 
+  env-drift:
+    # selfhost/.env.example against the compose files, both ways (.github/selfhost-env-drift.sh): every
+    # ${NAME} a compose file reads must appear in .env.example, and every .env.example key must be read by
+    # a compose file or declared in web/config/env-manifest.mjs, since web loads all of .env. Then
+    # `docker compose config` must render for each profile and for the GPU override. Starts nothing.
+    # Capture-and-warn for its first runs.
+    name: env file and compose agree
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Every setting compose reads is in .env.example, and every .env.example key is read
+        run: |
+          set +e
+          ./.github/selfhost-env-drift.sh 2>&1 | tee env-drift.log
+          code=${PIPESTATUS[0]}
+          {
+            echo "### env file and compose"
+            echo '```'
+            grep -E '^(ok|DRIFT|ENV DRIFT)' env-drift.log || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$code" -ne 0 ]; then
+            echo "::warning title=selfhost env drift::the env drift check exited $code. Read the DRIFT lines in this step's log."
+          fi
+          exit 0
+
   socket-proxy:
     # The Docker socket proxy agent mode's sandbox goes through (sockguard, agent profile in
     # selfhost/compose.yaml, policy in selfhost/sockguard.yaml). .github/selfhost-socket-proxy-smoke.sh
@@ -303,6 +336,40 @@ jobs:
             echo "::error title=selfhost socket proxy::the socket-proxy check exited $code. A FAIL line on a host-root create means the proxy let it through. Read socket-proxy.log in the job log."
           fi
           exit "$code"
+
+  s3-secret:
+    # The s3 profile's SeaweedFS refuses a blank key pair, and people who leave the profile out need no
+    # key (.github/selfhost-s3-secret-smoke.sh). Compose renders the file and runs `down` with no S3 key;
+    # SeaweedFS with a blank secret exits non-zero and prints `openssl rand -hex 32`; with a secret, and
+    # with only deploy/'s FILES_ACCESS_KEY and FILES_SECRET_KEY, it comes up healthy.
+    # No secret, no model, one image pulled. Capture-and-warn for its first runs: a FAIL line is a
+    # ::warning:: and the job stays green, so read the step summary, not the check's colour.
+    name: s3 profile refuses a blank secret
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Boot the s3 profile with a blank secret, then with a secret
+        run: |
+          set +e
+          ./.github/selfhost-s3-secret-smoke.sh 2>&1 | tee s3-secret.log
+          code=${PIPESTATUS[0]}
+          set -e
+          {
+            echo "### s3 profile secret"
+            echo '```'
+            grep -E '^(seaweedfs:|blank secret:|PASS|FAIL|S3 SECRET)' s3-secret.log || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$code" -ne 0 ]; then
+            echo "::warning title=selfhost s3 secret::the s3-secret check exited $code. Read the FAIL lines in s3-secret.log in the job log."
+          fi
+          exit 0
 
   agent-owui-names:
     # Agent mode for an operator moving from Open WebUI: the agent profile's model gateway started with only

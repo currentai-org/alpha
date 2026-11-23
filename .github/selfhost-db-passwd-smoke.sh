@@ -98,7 +98,8 @@ since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 docker compose up -d
 seen=""
 for _ in $(seq 1 30); do
-	if docker compose logs --no-color --since "$since" db 2>&1 | grep -q 'password authentication failed for user "alpha"'; then
+	# A variable, not a pipe: under pipefail grep -q closes the pipe on a match and fails the test.
+	if grep -q 'password authentication failed for user "alpha"' <<<"$(docker compose logs --no-color --since "$since" db 2>&1)"; then
 		seen=1
 		break
 	fi

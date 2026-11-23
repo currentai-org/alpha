@@ -113,13 +113,17 @@ services:
   # container's loopback, because the filer, master and volume HTTP APIs take no credentials, and a filer
   # rule turns fsync on for bucket writes. The S3 port is not published; the web service reaches it on
   # the compose network. AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY from .env become its admin identity,
-  # the same pair the web service signs with. The bucket CUSTODIAL_S3_BUCKET names is created at start.
+  # the same pair the web service signs with; FILES_ACCESS_KEY and FILES_SECRET_KEY, deploy/'s names for
+  # the pair, are read when the AWS_* ones are unset. The bucket CUSTODIAL_S3_BUCKET names is created at
+  # start. A blank key or secret stops it before it starts, with how to make one. That check sits here and
+  # not in a `${VAR:?}`, because compose interpolates the whole file for every command, so a `:?` would
+  # fail `down` and `pull` for everyone who never uses this profile.
   seaweedfs:
     profiles: [s3]
     image: ${SEAWEEDFS_IMAGE:-chrislusf/seaweedfs:4.50@sha256:c2658820e763294a9e9de7b36c81e59b879e3459148351aee4e31a126ca64860}
     environment:
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-${FILES_ACCESS_KEY:-}}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-${FILES_SECRET_KEY:-}}
       S3_BUCKET: ${CUSTODIAL_S3_BUCKET:-alpha-files}
       # A bucket grows one volume at a time, not seven, so it writes with as little as one volume of free disk.
       WEED_MASTER_VOLUME_GROWTH_COPY_1: "1"
@@ -127,6 +131,12 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
+        if [ -z "$$AWS_ACCESS_KEY_ID" ] || [ -z "$$AWS_SECRET_ACCESS_KEY" ]; then
+          echo "seaweedfs: refusing to start with a blank S3 key. Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY" >&2
+          echo "seaweedfs: (or FILES_ACCESS_KEY and FILES_SECRET_KEY) in selfhost/.env, block S of .env.example." >&2
+          echo "seaweedfs: make the secret with: openssl rand -hex 32" >&2
+          exit 1
+        fi
         /entrypoint.sh server -s3 -ip=127.0.0.1 -ip.bind=127.0.0.1 -s3.ip.bind=0.0.0.0 &
         pid=$$!
         trap 'kill -TERM $$pid; wait $$pid' TERM INT
@@ -383,6 +393,10 @@ services:
       - sh
       - -c
       - |
+        # deploy/'s names for the S3 key pair, for an .env carried over from that stack. The app reads only
+        # the AWS_* pair, through the AWS SDK's default chain, so they are copied in here, from .env alone.
+        if [ -z "$$AWS_ACCESS_KEY_ID" ] && [ -n "$$FILES_ACCESS_KEY" ]; then export AWS_ACCESS_KEY_ID="$$FILES_ACCESS_KEY"; fi
+        if [ -z "$$AWS_SECRET_ACCESS_KEY" ] && [ -n "$$FILES_SECRET_KEY" ]; then export AWS_SECRET_ACCESS_KEY="$$FILES_SECRET_KEY"; fi
         # The token volume outlives the profile, so also require that an agent is running on the network now.
         if [ -z "$$AGENT_SERVICE_TOKEN" ] && [ -s /agent-token/token ] \
           && node -e "require('dns').lookup('agent',e=>process.exit(e?1:0))"; then

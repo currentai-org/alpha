@@ -70,8 +70,11 @@ else
 	exit 1
 fi
 
-compose logs --no-color --no-log-prefix gateway 2>&1 | grep '^gateway: ' | sed 's/^/gateway log: /'
-if compose logs --no-color --no-log-prefix gateway 2>&1 | grep -qF "model endpoint from OPENAI_API_BASE_URLS: $first_url"; then
+# Read the log once: under pipefail, `compose logs | grep -q` fails on a match, because grep -q
+# exits at the first hit and compose logs dies on the closed pipe.
+gw_log=$(compose logs --no-color --no-log-prefix gateway 2>&1)
+grep '^gateway: ' <<<"$gw_log" | sed 's/^/gateway log: /'
+if grep -qF "model endpoint from OPENAI_API_BASE_URLS: $first_url" <<<"$gw_log"; then
 	pass "the gateway logged the endpoint it took from OPENAI_API_BASE_URLS"
 else
 	bad "the gateway did not log taking its endpoint from OPENAI_API_BASE_URLS"

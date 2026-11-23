@@ -15,7 +15,8 @@ packages:
 # pnpm 11 fails the install on any build script left unlisted, where pnpm 10 only warned, so the three
 # that never ran under pnpm 10 are listed as false. @ast-grep/cli and @posthog/cli resolve their
 # platform binary at runtime without it (both print their version from a fresh install), and core-js's
-# script only prints a funding notice.
+# script only prints a funding notice. free-email-domains' script would re-download its domain list
+# at every install; the list it ships is used as is, so installs stay reproducible.
 allowBuilds:
   '@ast-grep/cli': false
   '@posthog/cli': false
@@ -24,6 +25,7 @@ allowBuilds:
   bufferutil: true
   core-js: false
   esbuild: true
+  free-email-domains: false
   sharp: true
   unrs-resolver: true
 

@@ -66,8 +66,9 @@ services:
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:?set OPENAI_BASE_URL}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-none}
       MODEL_ALLOWLIST: ${MODEL_ALLOWLIST:-*}
-      # People's files go to the bundled SeaweedFS. Set CUSTODIAL_STORAGE_BACKEND to local to keep them
-      # on the web container's disk instead.
+      # People's files go to the bundled SeaweedFS. This stack fixes the backend here and reads no other
+      # value for it from .env; ../selfhost/compose.yaml keeps files on local disk by default, with S3 as
+      # its --profile s3.
       CUSTODIAL_STORAGE_BACKEND: s3
       CUSTODIAL_S3_ENDPOINT: http://files:8333
       CUSTODIAL_S3_BUCKET: alpha-files

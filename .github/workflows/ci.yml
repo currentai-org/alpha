@@ -244,13 +244,15 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       # The change under test must not choose its own config or scripts, so they come from the base commit.
-      # Only the change that first adds .github/leak-check/ uses its own copy.
+      # Only the change that first adds .github/leak-check/ uses its own copy, and so does a push to main: it
+      # was checked as a pull request or merge group, or scanned whole before the export pushed it, and the
+      # base commit's checksum is the old list's whenever a snapshot carries a new one.
       - name: Leak check files from the base commit
         run: |
-          if git cat-file -e "$BASE:.github/leak-check/check-new-lines.sh" 2> /dev/null; then
+          if [ "$EVENT" != push ] && git cat-file -e "$BASE:.github/leak-check/check-new-lines.sh" 2> /dev/null; then
             git archive --format=tar "$BASE" .github/leak-check | tar -x -C "$RUNNER_TEMP" --strip-components=1
           else
-            echo "::notice::The base commit has no .github/leak-check/; using this change's copy."
+            echo "::notice::Using this change's .github/leak-check/ (a push to main, or a base commit without one)."
             cp -a .github/leak-check "$RUNNER_TEMP/"
           fi
       - name: Install ripgrep
