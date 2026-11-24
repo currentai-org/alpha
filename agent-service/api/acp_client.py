@@ -232,7 +232,7 @@ _ALWAYS_CONFIRM_KINDS = ("edit", "delete", "execute")
 # about every one: an everyday request (a budget in a spreadsheet) would otherwise raise a card for
 # each piece of raw Python the agent runs to create the file it was asked for. The sandbox is what makes
 # deciding safe: bwrap leaves only this attempt's work dir writable, and egress is default-deny
-# (agent-app.toml AGENT_EGRESS), so the worst an approved call can do is change or remove files in
+# (deploy/env/agent.toml AGENT_EGRESS), so the worst an approved call can do is change or remove files in
 # that dir. Auto mode therefore asks only about the second of those.
 #   edit:    allowed with no model call when every target path resolves inside the work dir and none
 #            is a sensitive name. The same rule as upstream Hermes's "workspace" auto-approve policy

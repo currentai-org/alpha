@@ -310,7 +310,7 @@ export const DEFAULT_LOCAL_GENERATION_TIMEOUT_MS = MAX_SAFE_GENERATION_TIMEOUT_M
 export const AGENT_TERMINAL_TAIL_MS = EMERGENCY_CLEANUP_BUDGET_MS;
 
 /**
- * agent-service's own ceiling on one attempt (`AGENT_WALL_CLOCK_SECS` in agent-service/fly/agent-app.toml)
+ * agent-service's own ceiling on one attempt (`AGENT_WALL_CLOCK_SECS` in agent-service/deploy/env/agent.toml)
  * and how many attempts a task may make (`AGENT_BEST_OF` there). /healthz reports both, as
  * `wall_clock_s` and `wall_clock_task_s` (the product). Restated here because the chat side has to know
  * how long a run can last to keep following it; change both together.

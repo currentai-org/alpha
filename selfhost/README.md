@@ -32,12 +32,13 @@ docker compose -f compose.yaml -f compose.release.yaml --profile local up
 image's signature. No tag can be pulled until the first release is published.
 
 The default local model is Qwen2.5 0.5B Instruct, chosen so the first answer arrives on a plain CPU,
-not for its quality. A CPU reads Alpha's system prompt, about 2,600 tokens, before the first word
-appears: on a standard GitHub-hosted Linux runner the 0.5B model reads it in about 30 s and the whole
-first answer arrives in under a minute. The self-host CI workflow measures this on every run: its smoke
-step (`smoke.sh`) prints llama.cpp's `prompt eval` line. Slower CPUs and larger models take
-proportionally longer. Later turns reuse the cached prompt and start in seconds. With a GPU or a fast
-CPU, set `LOCAL_MODEL_*` in `.env` to a larger model.
+not for its quality. A CPU reads Alpha's system prompt, 2,613 tokens, before the first word appears:
+on a standard GitHub-hosted Linux runner the 0.5B model read it in 18 to 32 s across three runs, and
+the whole first answer arrives in under a minute. The self-host CI workflow measures this on every run:
+its smoke step (`smoke.sh`) prints each turn's time to first word and llama.cpp's `prompt eval` lines.
+Slower CPUs and larger models take proportionally longer. Later turns reuse the cached prompt: on an
+8-vCPU CI runner a follow-up turn read 146 new tokens, not 2,613, and its first word came after 0.9 s,
+against 20 s for the first turn. With a GPU or a fast CPU, set `LOCAL_MODEL_*` in `.env` to a larger model.
 
 **On an NVIDIA GPU**, add `compose.gpu.yaml`. It needs the NVIDIA driver and the
 [NVIDIA Container Toolkit](https://github.com/NVIDIA/nvidia-container-toolkit) on the host. It swaps in

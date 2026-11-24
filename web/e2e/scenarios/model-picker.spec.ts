@@ -309,10 +309,19 @@ test(
 
 		const checkTurn = async ({ id, page, conversationId }: (typeof turns)[number]) => {
 			const answer = page.locator('[data-message-role="assistant"]').last();
+			// A turn that ends on an error ("… is busy right now" when the upstream rate-limits) shows a
+			// role="alert" notice in the message. Waiting only for the copy button turned that into a 60 s
+			// "never finished", hiding the error, so either end stops the wait, and a notice fails the turn
+			// at once: toHaveText([]) prints the notice's words as the received value.
+			const notice = answer.getByRole('alert');
 			await expect(
-				answer.getByRole('button', { name: 'Copy to clipboard', exact: true }),
+				answer.getByRole('button', { name: 'Copy to clipboard', exact: true }).or(notice).first(),
 				`the turn after picking ${id} never finished within 60s` + warmupContext()
 			).toBeVisible({ timeout: 60_000 });
+			// eslint-disable-next-line e2e/no-model-wording-assertion -- the text read is our error notice, not model output
+			await expect(notice, `the turn after picking ${id} ended on an error notice`).toHaveText([], {
+				timeout: 1_000
+			});
 
 			// What the reader sees: no `<answer>` wrapper (ALIA wraps its reply in one), and the asked-for
 			// word survives to the end. A one-word reply with no reasoning is the case whose last characters

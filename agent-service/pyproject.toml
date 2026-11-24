@@ -67,7 +67,6 @@ ignore = [
   "RUF059",  # unused unpacked value — naming the whole tuple documents the shape under test
 ]
 "scripts/tests/test_*.py" = ["S101", "B011"]
-"loadtest/test_*.py" = ["S101", "S310"]   # S310: urlopen on the mock's own loopback URL
 # Measurement and ops glue: these shell out, poll URLs and write scratch files by design. The rules
 # are still on for api/, which is the part that runs in production.
 "scripts/*.py" = ["S101", "S108", "S310", "S603", "S607", "SIM115"]

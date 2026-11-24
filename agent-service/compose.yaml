@@ -26,7 +26,7 @@ services:
     command: ["uvicorn", "proxy:app", "--host", "0.0.0.0", "--port", "8732"]
     environment:
       PROXY_ADMIN_KEY: ${PROXY_ADMIN_KEY:?set PROXY_ADMIN_KEY in .env}
-      # Named-provider chain (see proxy.py _load_providers), matching what fly/agent-proxy.toml deploys.
+      # Named-provider chain (see proxy.py _load_providers), matching what deploy/env/gateway.toml deploys.
       # MODEL_UPSTREAM_TOKEN is deliberately absent: the legacy pair is only consulted when the named
       # chain resolves empty, so leaving it unset means a broken cscs config 503s instead of silently
       # serving whatever the legacy credential reaches.

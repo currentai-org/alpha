@@ -26,10 +26,6 @@ htmlcov/
 .env.local
 *.token
 
-# Rendered Fly configs (fly/deploy.sh fills account-specific values into these; the
-# tracked *.toml keep their REPLACE placeholders) — NEVER commit account values
-fly/*.local.toml
-
 # Local logs / scratch
 *.log
 

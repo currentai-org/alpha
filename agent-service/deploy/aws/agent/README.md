@@ -53,8 +53,8 @@ off the two instances. A test stack that never sees load can run its agent on a 
 Nothing secret is in Terraform state. `deploy.sh` renders each role's env from three sources (`render_env.py`) and
 writes it to one SecureString parameter per role, which only that role's instance can read:
 
-1. the tracked Fly toml's `[env]` (`fly/agent-app.toml`, `fly/agent-proxy.toml`), so model and limit changes still
-   land in one file for both platforms;
+1. the tracked env table for the role (`deploy/env/agent.toml`, `deploy/env/gateway.toml`), so a model or limit
+   change lands in one reviewed file;
 2. the Doppler keys named in `agent.keys` or `gateway.keys`, plus the stack's own `<role>.<stack>.keys` where one
    exists, from the Doppler project `agent-service` and the config named by `DOPPLER_CONFIG` (required; there is
    no default). `agent.production.keys` carries production's staged permission policy, trust thresholds and slot

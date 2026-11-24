@@ -8,7 +8,8 @@
 #                                                              # HEAD); needs no AWS, Doppler or Terraform
 #   AWS_PROFILE=<account profile> ./deploy.sh --rollback      # both hosts back to their previous release
 #
-# Source: the agent-service/ tree at the stack's branch tip, or at AGENT_DEPLOY_REF when set (a branch, a tag or a commit), uploaded as a tarball and built on each host. Env: the tracked Fly toml's [env], the role's Doppler keys (agent.keys,
+# Source: the agent-service/ tree at the stack's branch tip, or at AGENT_DEPLOY_REF when set (a branch, a tag or a commit),
+# uploaded as a tarball and built on each host. Env: the role's tracked [env] table (deploy/env/), its Doppler keys (agent.keys,
 # gateway.keys) and this stack's addresses, rendered by render_env.py into one SecureString parameter per role.
 # Rendered values touch disk only in a 0700 temporary directory, deleted as each parameter is written and again on
 # exit. agent-service-deploy.yml runs this from CI.

@@ -123,8 +123,8 @@ interface AgentEvent {
 	// `done` frame: agent-service's own verify tier for the task — "" (unverified) |
 	// "execution" | "judge" | "execution+judge" (agent-service's `_done_payload`, api/app.py). Unlike
 	// `verified` above, this one IS read — it feeds the provenance badge's trust segment. No model name
-	// travels with it; the verifier model is a live config value (fly/agent-app.toml's
-	// AGENT_VERIFIER_MODEL), so naming it in the badge would drift the moment that config changes.
+	// travels with it; the verifier model is a live config value (AGENT_VERIFIER_MODEL, a Doppler secret
+	// described in agent-service/deploy/env/agent.toml), so naming it in the badge would drift the moment that config changes.
 	verify_method?: string;
 	// `done` frame reports the model that actually served the task (e.g. swiss-ai/Apertus-1.5-70B-SFT-RL-DPO-SDPO); used
 	// to correct the provenance badge instead of trusting the endpoint's configured default.
@@ -748,7 +748,7 @@ export function renderArtifacts(
 
 	if (dropped) blocks.push("_The agent produced more files than are listed here._");
 	// The files live in agent-service's session workdir, which its idle reaper deletes after
-	// AGENT_SESSION_IDLE_SECS (14400, agent-service/fly/agent-app.toml). The conversation itself is
+	// AGENT_SESSION_IDLE_SECS (14400, agent-service/deploy/env/agent.toml). The conversation itself is
 	// kept far longer, so the window is stated in hours rather than tied to the conversation.
 	const allSaved = artifacts.every((a) => saved.has((a.name ?? "").trim()));
 	const availability = !downloadBaseHref

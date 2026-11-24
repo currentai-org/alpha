@@ -6331,7 +6331,7 @@ def test_frozen_wire_contract():
 
     its AWAITING_CONFIRMATION is a deliberate, documented exception to "changed enum membership
     bumps the version": it is reachable ONLY when ACP_PERMISSION_POLICY=confirm, which nothing sets —
-    not the code default ("allow"), not fly/agent-app.toml — so no live consumer's exhaustive
+    not the code default ("allow"), not deploy/env/agent.toml — so no live consumer's exhaustive
     state-handling can observe it unless an operator deliberately opts in, which this plan does not do
     anywhere. See streaming-spec.md's own carve-out note for the same reasoning."""
     assert isinstance(app.API_VERSION, int), "API_VERSION is an int (the handshake field)"
@@ -6475,7 +6475,7 @@ def test_prodcheck_catches_the_four_mistakes_that_actually_happened():
     pc = _prodcheck()
     prod = pc.prod_env()
     ok = {k: prod[k] for k in pc.COMPARED if k in prod}
-    assert pc.compare(ok, {}) == [], "a harness matching agent-app.toml must report no divergence"
+    assert pc.compare(ok, {}) == [], "a harness matching the tracked env must report no divergence"
 
     inherited_transport = {**ok, "AGENT_ACP": "0"}
     assert any("AGENT_ACP" in p for p in pc.compare(inherited_transport, {}))
@@ -6524,10 +6524,10 @@ def test_prodcheck_reads_the_proxy_config_not_just_the_app_config():
     """The harness proxy runs PROXY_DESTREAM=1 and the deployed one does not, which changes whether SSE
     frames arrive during a model call or all at once after it. prodcheck must not say "matches prod on every
     compared knob" when the knob lives in a file it never
-    opens. Both fly configs are the reference, and a key in both with different values is an error
+    opens. Both env tables are the reference, and a key in both with different values is an error
     rather than a precedence rule."""
     pc = _prodcheck()
-    assert pc.PROXY_TOML.is_file(), "the proxy config is half the model boundary — it must be read"
+    assert pc.GATEWAY_ENV.is_file(), "the proxy config is half the model boundary — it must be read"
     prod = pc.prod_env()
     assert "MODEL_PROVIDERS" in prod, "prod_env must include the proxy's [env], not only the app's"
     assert "AGENT_ACP" in prod, "merging the proxy config must not drop the app's own keys"
@@ -6550,7 +6550,7 @@ def test_harness_proxy_knobs_are_declared_where_prodcheck_can_see_them():
     df = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(df)
     assert "PROXY_DESTREAM" not in df.PROXY_ENV, \
-        ("destream must be OFF by default — it is off in fly/agent-proxy.toml, and with it on no frame "
+        ("destream must be OFF by default — it is off in deploy/env/gateway.toml, and with it on no frame "
          "can arrive mid-call, so the harness measures a frame regime prod does not serve. When off the "
          "key is omitted, never set to '0', so prodcheck sees prod's own code default.")
     assert df.PROXY_ENV.get("PROXY_LOG_REQUESTS") == "1", \
@@ -6602,7 +6602,7 @@ def test_operator_exemption_does_not_reach_the_per_task_caps():
     assert "OPERATOR_SUBS" not in inspect.getsource(app._effective_caps), \
         "per-task ceilings must clamp identically for every sub"
     assert frozenset() == app.OPERATOR_SUBS, \
-        "the code default must exempt nobody; prod opts in via fly/agent-app.local.toml"
+        "the code default must exempt nobody; prod opts in via deploy/env/agent.toml"
 
 
 def test_healthz_exposes_the_knobs_a_user_would_feel():
@@ -6771,7 +6771,7 @@ def test_dogfood_refuses_a_run_when_tool_calling_is_down():
 def test_prod_smoke_reads_its_token_without_printing_it(monkeypatch):
     """The smoke token is a real bearer for the deployed service, so the two ways to get it wrong are
     leaking it and reading the wrong thing. Real env only (no .env fallback, since Doppler is the
-    source of truth — see fly/deploy.sh); a JWT's own '=' padding must survive; and nothing in the
+    source of truth — see deploy/aws/agent/render_env.py); a JWT's own '=' padding must survive; and nothing in the
     module may print it."""
     import importlib.util
     path = Path(__file__).resolve().parents[1] / "scripts" / "prod_smoke.py"
@@ -7096,50 +7096,29 @@ def test_execution_alone_is_unreachable_once_the_judge_is_on_for_artifact_backed
     assert ok3 and method3 == "execution", "execution alone also reachable the ordinary way: judge OFF"
 
 
-def test_prodcheck_prefers_the_deployed_config_over_the_template():
-    """`fly/agent-app.toml` carries `app = "REPLACE-agent-app"` and deploys nothing. Reading it and
-    calling the result prod would let config changes be believed live while /healthz reports the
-    old values, with "matches prod on every compared knob" printing clean throughout."""
-    pc = _prodcheck()
+def test_prodcheck_and_the_deploy_read_the_same_env_tables():
+    """"matches prod" is only worth something if prodcheck compares against the [env] tables the deploy
+    actually renders each role's container env from. Two readers on two different files is how a harness
+    ends up checked against a config no host runs."""
+    import importlib.util
     import tomllib
-    assert 'REPLACE' in pc.FLY_TOML.read_text(), \
-        "if the tracked config stops being a template, this whole preference is wrong — revisit it"
-    if not pc.LOCAL_TOML.is_file():
-        return                                  # fresh clone / CI: the deployed pair is gitignored
-    assert 'REPLACE' not in tomllib.loads(pc.LOCAL_TOML.read_text())["app"], \
-        "the .local config is the one naming a real app"
-    assert "DEPLOYED" in pc.source(), "with a deployed config on disk, that is what prod must mean"
-    live = pc.prod_env()
-    deployed = tomllib.loads(pc.LOCAL_TOML.read_text())["env"]
-    for k in ("AGENT_MAX_TOKENS", "AGENT_WALL_CLOCK_SECS"):
-        if k in deployed:
-            assert live[k] == str(deployed[k]), f"{k}: prod_env must report the DEPLOYED value"
-
-
-def test_prodcheck_source_admits_when_it_is_reading_a_template():
-    """The fallback has to announce itself. A run with no deployed config on disk is not a prod
-    measurement, and silently comparing against the template would hide that."""
     pc = _prodcheck()
-    _lt, _lp = pc.LOCAL_TOML, pc.LOCAL_PROXY_TOML
-    try:
-        pc.LOCAL_TOML = pc.LOCAL_PROXY_TOML = pc.ROOT / "fly" / "does-not-exist.toml"
-        assert "TEMPLATE ONLY" in pc.source() and "not a prod measurement" in pc.source(), \
-            f"the fallback must say what it is; got {pc.source()!r}"
-        assert pc.drift() == [], "nothing to drift against when there is no deployed config"
-        assert pc.prod_env(), "it must still fall back rather than fail — CI has no .local files"
-    finally:
-        pc.LOCAL_TOML, pc.LOCAL_PROXY_TOML = _lt, _lp
+    spec = importlib.util.spec_from_file_location(
+        "render_env_probe", pc.ROOT / "deploy" / "aws" / "agent" / "render_env.py")
+    render_env = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(render_env)
+    assert {pc.AGENT_ENV.resolve(), pc.GATEWAY_ENV.resolve()} == \
+        {render_env.TOML["agent"].resolve(), render_env.TOML["gateway"].resolve()}
+    deployed = {}
+    for role in ("agent", "gateway"):
+        deployed.update({k: str(v) for k, v in
+                         tomllib.loads(render_env.TOML[role].read_text()).get("env", {}).items()})
+    assert pc.prod_env() == deployed
 
 
-def test_prodcheck_reports_template_vs_deployed_drift():
-    """The template and the deployed config carry the same keys and nothing else diffs them, so a change
-    edited into the wrong one is invisible until someone reads /healthz. This is that diff."""
+def test_prodcheck_compares_both_spellings_of_the_quota_knobs():
+    """A quota knob prodcheck does not compare can differ between harness and prod in silence."""
     pc = _prodcheck()
-    if not pc.LOCAL_TOML.is_file():
-        return
-    for line in pc.drift():
-        assert "template=" in line and "DEPLOYED" in line, \
-            f"a drift line must name both sides or it cannot be acted on: {line!r}"
     assert "AGENT_USER_DAILY_TOKENS" in pc.COMPARED, \
         "the deployed 500000 survived a commit setting it to 0 because nothing compared the key"
     # BOTH spellings, for the duration of the rename. The old name is still honoured by the app, so a
@@ -7176,8 +7155,8 @@ def test_stale_deploy_compares_counted_fields_by_cardinality():
 
 def test_prodcheck_probes_the_running_app_not_only_the_config_file():
     """File drift and deploy drift are different failures and the first check cannot see the second.
-    Once a config file is corrected both files agree and drift() goes quiet, while the machine keeps
-    serving the old values until someone runs `fly deploy`."""
+    Once a config file is corrected the file check goes quiet, while the host keeps serving the old
+    values until the next deploy."""
     pc = _prodcheck()
     _saved = os.environ.get("PRODCHECK_HEALTHZ_URL")
     try:
@@ -7206,13 +7185,10 @@ def test_verifier_model_and_its_route_are_configured_as_a_pair():
     _providers_for falls through to the normal chain, the judge request reaches CSCS, CSCS 503s on an
     id it does not serve, and _judge_result fails CLOSED — so every chat turn burns all three best-of
     attempts and finishes unverified at 3x the spend, with nothing logged saying the verifier is gone.
-    Checked on BOTH pairs: the template, so a fresh deploy is not born broken, and the deployed config."""
+    Checked on the tracked env tables, so a deploy is not born broken."""
     import tomllib
     pc = _prodcheck()
-    pairs = [(pc.FLY_TOML, pc.PROXY_TOML)]
-    if pc.LOCAL_TOML.is_file():
-        pairs.append((pc.LOCAL_TOML, pc.LOCAL_PROXY_TOML))
-    for app_toml, proxy_toml in pairs:
+    for app_toml, proxy_toml in [(pc.AGENT_ENV, pc.GATEWAY_ENV)]:
         app = tomllib.loads(app_toml.read_text()).get("env") or {}
         proxy = tomllib.loads(proxy_toml.read_text()).get("env") or {}
         want = app.get("AGENT_VERIFIER_MODEL")
@@ -7223,22 +7199,6 @@ def test_verifier_model_and_its_route_are_configured_as_a_pair():
             f"{proxy.get('MODEL_VERIFIER_MODEL')!r} — the judge would fail closed on every turn")
         assert proxy.get("MODEL_VERIFIER_BASE"), \
             f"{proxy_toml.name}: a verifier model with no base is a route to nowhere"
-
-
-def test_deploy_script_cannot_clobber_a_live_deployment():
-    """fly/deploy.sh advertises itself as safe to re-run. It re-rendered .local.toml from the template
-    and re-set MODEL_UPSTREAM_TOKEN, either of which silently reverts a live decision: the first kills
-    the verifier route and rewrites primary_region, the second re-arms the back-compat fallback that
-    serves the legacy upstream under the Apertus label."""
-    src = (_prodcheck().ROOT / "fly" / "deploy.sh").read_text()
-    render = src[src.index("render() {"):src.index("render \"$FLY_DIR/agent-proxy.toml\"")]
-    assert 'if [[ -f "$dst" ]]' in render and "will not overwrite" in render, \
-        "render() must refuse to overwrite an existing .local.toml"
-    redeploy = src[src.index("already set on $APP"):]
-    assert "fly secrets set" not in redeploy, \
-        "the redeploy branch must not set any secret — that is the path taken on every code redeploy"
-    assert "fly secrets unset" in redeploy, \
-        "it should tell the operator how to remove MODEL_UPSTREAM_TOKEN, not set it for them"
 
 
 def test_hermes_patches_are_applied_by_the_build_not_just_stored():
@@ -7659,7 +7619,7 @@ def test_the_fallback_allowlist_is_never_wider_than_what_ships():
     A fallback wider than any real config is not dead code. It is what the NEXT surface inherits, and it
     would give that surface more egress than anything we run, quietly.
 
-    Compared against fly/agent-app.toml rather than a literal, so that widening what we actually deploy is
+    Compared against deploy/env/agent.toml rather than a literal, so that widening what we actually deploy is
     a deliberate edit to a deployed config, while widening the default ALONE — the drift nobody sees — is
     the thing that fails."""
     import subprocess as sp
@@ -7676,11 +7636,11 @@ def test_the_fallback_allowlist_is_never_wider_than_what_ships():
     fallback = set(r.stdout.split())
     assert fallback, "the default resolved to nothing — allow_names or the fallback broke, not the policy"
 
-    shipped = tomllib.loads((root / "fly" / "agent-app.toml").read_text()).get("env", {})
+    shipped = tomllib.loads((root / "deploy" / "env" / "agent.toml").read_text()).get("env", {})
     stated = shipped.get("AGENT_EGRESS_ALLOW_HOSTS")
     # Guard the guard: if the deployed config stops stating this, the comparison silently has nothing to
     # compare against and would pass forever.
-    assert stated, "fly/agent-app.toml no longer sets AGENT_EGRESS_ALLOW_HOSTS — this check cannot run"
+    assert stated, "deploy/env/agent.toml no longer sets AGENT_EGRESS_ALLOW_HOSTS — this check cannot run"
     deployed = {h.strip() for h in stated.split(",") if h.strip()}
 
     assert fallback <= deployed, (

@@ -286,7 +286,7 @@ export const DATA_HOME = {
 export const BACKEND_HOSTS: Record<string, { org: OrgId; service?: string }> = {
 	'api.inference.cscs.ch': { org: 'cscs' },
 	// CSCS's own inference API, which agent-service dials directly (PROVIDER_CSCS_BASE,
-	// agent-service/fly/agent-proxy.toml). The chat's direct CSCS lane is retired.
+	// agent-service/deploy/env/gateway.toml). The chat's direct CSCS lane is retired.
 	'api.swissai.svc.cscs.ch': { org: 'cscs' },
 	'api.infomaniak.com': { org: 'infomaniak' },
 	// Apertus 1.5 70B's host, as its turns record it on www and alpha.

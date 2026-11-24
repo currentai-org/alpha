@@ -12,7 +12,7 @@ Modes:
              pick a winner it can't check). Upstream: the real LiteLLM gateway prod routes
              through, the same path `MODEL_PROVIDERS=gateway` selects in the deployed
              proxy — not CSCS direct, which prod's real config only ever reaches via a one-line
-             manual rollback (`fly/agent-proxy.local.toml`'s `MODEL_PROVIDERS`), never live
+             manual rollback (`deploy/env/gateway.toml`'s `MODEL_PROVIDERS`), never live
              failover. Needs PROVIDER_GATEWAY_BASE and PROVIDER_GATEWAY_TOKEN set.
   mistral    Mistral-Small-4-119B — the earlier default, kept as a comparison baseline.
              Upstream: Infomaniak.
@@ -77,9 +77,9 @@ APORT = int(os.environ.get("APORT", "8751"))
 ADMIN = os.environ.get("PROXY_ADMIN_KEY", "dogfoodadmin")
 CAP = int(os.environ.get("AGENT_MAX_STEPS", "12"))
 WALL = int(os.environ.get("AGENT_WALL_CLOCK_SECS", "240"))
-# Prod (fly/agent-app.toml) sets a real 60k spend cap. Without a token ceiling here, one runaway trial can
-# burn several hundred thousand tokens before the wall-clock stops it, so mirror prod's guardrail and keep
-# local runs inside what a production task could spend.
+# Prod caps each attempt at AGENT_MAX_TOKENS (150k in deploy/env/agent.toml). Without a token ceiling here,
+# one runaway trial can burn several hundred thousand tokens before the wall-clock stops it, so local runs
+# default to a tighter 60k, well inside what one production attempt may spend.
 TOKEN_CAP = int(os.environ.get("AGENT_MAX_TOKENS", "60000"))
 
 # Per mode: model id + upstream (base/token/name) + the env that selects the toolset/best-of config.
@@ -90,9 +90,9 @@ MODES = {
         # Goes through the gateway, the path prod takes. The deployed proxy's compute-router
         # (`_load_providers`, api/proxy.py) reads an ORDERED `MODEL_PROVIDERS` list, and the deployed value
         # is `MODEL_PROVIDERS = "gateway"`, a single entry. CSCS is not a live failover partner:
-        # `fly/agent-proxy.local.toml` keeps it as a manual rollback (put cscs back in MODEL_PROVIDERS and
+        # `deploy/env/gateway.toml` keeps it as a manual rollback (put cscs back in MODEL_PROVIDERS and
         # deploy), so a CSCS-direct mode would test a path prod doesn't take. The model id below is the
-        # gateway catalog alias (fly/agent-app.toml's AGENT_MODEL), so a rate limit on this model group
+        # gateway catalog alias (deploy/env/agent.toml's AGENT_MODEL), so a rate limit on this model group
         # shows up here as it would in prod.
         "model": "swiss-ai/apertus-v1.5-70b",
         "env": {"AGENT_TOOLSETS": "coding", "AGENT_BEST_OF": "3"},
@@ -266,19 +266,19 @@ def _wait_health(port: int, tries: int = 40) -> bool:
 PROXY_LOG = "/tmp/dogfood_proxy.log"
 
 # Proxy-side knobs this harness pins, named once so eval/prodcheck.py can assert them against
-# fly/agent-proxy.toml instead of asserting only what the app process sets. They live in a separate
+# deploy/env/gateway.toml instead of asserting only what the app process sets. They live in a separate
 # process from the app's env, so a parity check that reads only the app's env would miss them.
 PROXY_ENV = {
     # A measurement run without per-call timing cannot be traced afterwards; see _plog in api/proxy.py.
     "PROXY_LOG_REQUESTS": "1",
     # The two halves of the upstream-silence ceiling. MODEL_UPSTREAM_TIMEOUT bounds silence BETWEEN
     # frames and is left to its code default, the same as prod. These bound silence BEFORE the first
-    # frame, and prod states them (fly/agent-proxy.toml), so the harness has to state them too or a
+    # frame, and prod states them (deploy/env/gateway.toml), so the harness has to state them too or a
     # stall costs 120s here and ~30s in prod — a different failure rate measured on the same upstream.
     "MODEL_FIRST_TOKEN_TIMEOUT": os.environ.get("MODEL_FIRST_TOKEN_TIMEOUT", "30"),
     "MODEL_FIRST_TOKEN_ATTEMPTS": os.environ.get("MODEL_FIRST_TOKEN_ATTEMPTS", "2"),
 }
-# PROXY_DESTREAM is OFF here, which is what fly/agent-proxy.toml ships. It exists for an upstream whose
+# PROXY_DESTREAM is OFF here, which is what deploy/env/gateway.toml ships. It exists for an upstream whose
 # tool-call parser only runs on the non-streaming codepath. Against CSCS/Apertus-1.5 the streaming path
 # returns real `tool_calls` deltas and no call-shaped prose in `content` (first frame at ~0.55s), so
 # destreaming buys nothing and costs the thing that matters: every streaming request becomes a blocking

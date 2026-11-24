@@ -126,7 +126,7 @@ describe("deadline ladder ordering", () => {
 	});
 
 	test("with agent-run-handoff on, a run is not cut at the chat watchdog: we ask for the whole attempt", () => {
-		// agent-service/fly/agent-app.toml AGENT_WALL_CLOCK_SECS, the most its lower-only clamp gives.
+		// agent-service/deploy/env/agent.toml AGENT_WALL_CLOCK_SECS, the most its lower-only clamp gives.
 		expect(AGENT_HANDOFF_WALL_CLOCK_SECS).toBe(300);
 		expect(AGENT_HANDOFF_WALL_CLOCK_SECS * 1000).toBeGreaterThan(DEFAULT_AGENT_GENERATION_TIMEOUT_MS);
 	});

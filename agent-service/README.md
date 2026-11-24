@@ -10,10 +10,9 @@ from the web app. It *consumes* the platform's shared auth and moderation rather
 them; its own novel work is the **execution delta** — running model-driven tool calls and shell safely,
 metering spend, and keeping the model credential off the agent.
 
-> **Local dev:** `make venv && make test` (offline test suite, no network/model/Docker). Setup and the
-> gotchas worth knowing are in `docs/DEV.md`. Streaming/ACP design in
-> `docs/streaming-spec.md`. Which model, hosted where, driven how:
-> `docs/model-tradeoffs.md`.
+> **Local dev:** `make venv && make test` (offline test suite, no network/model/Docker). The longer
+> setup notes, the streaming/ACP design and the model trade-off write-up are internal documents and
+> are not part of the public repository.
 >
 > **In the public snapshot:** `docs/`, `fly/` and `deploy/aws/` hold the hosted deployment's notes and
 > config and are left out, so the paths under them named in this README are not in that copy.
@@ -66,7 +65,7 @@ substitute anywhere else in the system:
   (`_grant_attempt_budget` in `api/app.py`); the app never falls back to passing the real token through.
 
 The fourth job, multi-provider failover, is unused in production: `MODEL_PROVIDERS` is a one-element
-chain (`mistral` in `fly/agent-proxy.toml`). That is deliberate. Failing over to a host that serves a
+chain (`mistral` in `deploy/env/gateway.toml`). That is deliberate. Failing over to a host that serves a
 different model would make the model a response reports untrue, so a provider outage fails the task
 instead. The nonce, cap and credential layer beneath the router is what the gateway is for.
 
@@ -90,7 +89,7 @@ Expect: `PASS: agent counted 3 .py files …`.
 ./gateway-test.sh   # starts proxy.py (holds the ONLY real token) + app.py (started WITHOUT one)
 ```
 A task can only complete if the agent was credentialed via the per-task nonce — that *is* the secrets
-boundary. The test then proves the step cap forces a verified failure. Enable the gateway in `app.py`
+boundary. The test then proves the step cap forces a verified failure. Enable the gateway in `api/app.py`
 with `AGENT_MODEL_PROXY_URL` + `PROXY_ADMIN_KEY`; per-run `max_steps`/`max_tokens` can only tighten the
 server ceilings. (A gateway, rather than Hermes' own cap, because the `hermes -z` one-shot path doesn't
 enforce config `max_turns` — so the cap, secrets, and spend metering all live at one owned chokepoint.)
@@ -111,8 +110,8 @@ enforce config `max_turns` — so the cap, secrets, and spend metering all live 
 ## Models
 
 **Production:** the default executor is Mistral Large 4 (`AGENT_MODEL = "mistral-large-2610"` in
-`fly/agent-app.toml`), served through Public AI's inference router as a single-provider chain
-(`MODEL_PROVIDERS = "mistral"` in `fly/agent-proxy.toml`). A task runs on the model the chat names for
+`deploy/env/agent.toml`), served through Public AI's inference router as a single-provider chain
+(`MODEL_PROVIDERS = "mistral"` in `deploy/env/gateway.toml`). A task runs on the model the chat names for
 it when `PROVIDER_MISTRAL_MODEL_MAP` lists that model, and is refused when it does not; the default
 applies only when the chat names none. Hermes drives its own multi-turn loop over ACP with the
 `file,terminal,todo,code_execution` toolsets and `AGENT_BEST_OF=3`. On chat turns a separate verifier model,
@@ -130,8 +129,8 @@ timescale, so `scripts/dogfood.py` snapshots `/v1/models` before every run and f
 configured id has moved. A 503 `"No provider found for the requested service."` from that endpoint
 means an unrecognized model id, not a bad credential; a bad credential returns 401.
 
-The model × host × controller matrix and the reliability measurements behind these choices are in
-`docs/model-tradeoffs.md`.
+The model × host × controller matrix and the reliability measurements behind these choices are in an
+internal write-up that is not part of the public repository.
 
 The Hermes harness is pinned (so "it works" survives drift): the deploy image clones stock upstream at a
 pinned SHA, then applies everything in `deploy/hermes/` on top, in filename order. This is deliberately
@@ -169,14 +168,15 @@ sits in this patch's own diff context.
   egress and the Plane B app is credential-free. `entrypoint.sh` installs default-deny egress so the
   agent's only outbound is the gateway (the network half of the exfil control). `deploy/aws/` stands the
   pair up on EC2 beside the E2B hosts.
-- **`fly/`** — configs and scripts from when the service ran on Fly. No Fly app runs it now; the hosted
-  service deploys to AWS (`deploy/aws/agent/`), which still reads the `[env]` tables of
-  `fly/agent-app.toml` and `fly/agent-proxy.toml` and uses `fly/verify-deploy.sh` and `fly/mint-token.sh`.
+- **`deploy/env/`** — `agent.toml` and `gateway.toml`, each role's runtime settings (the `[env]` table).
+  The AWS deploy (`deploy/aws/agent/render_env.py`) renders each container's env from them plus Doppler.
+- **`fly/`** — scripts kept from when the service ran on Fly. No Fly app runs it now; the AWS deploy still
+  uses `fly/verify-deploy.sh`.
 
 ## Giving agent mode an MCP server
 
 Set one env var and the agent's Hermes session gets that server's tools. It needs the ACP
-transport (`AGENT_ACP=1`, already on in `fly/agent-app.toml`).
+transport (`AGENT_ACP=1`, already on in `deploy/env/agent.toml`).
 
 ```sh
 AGENT_MCP_SERVERS='[{"name": "folkways", "url": "https://folkways.example.org/mcp",

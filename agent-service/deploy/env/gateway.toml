@@ -1,0 +1,143 @@
+# The model gateway's runtime settings: the [env] table the gateway container starts with. The gateway
+# holds the real model tokens; the agent reaches it on a private address and never sees them.
+#
+# deploy/aws/agent/render_env.py reads this table, adds the Doppler secrets named in
+# deploy/aws/agent/gateway.keys (a secret of the same name wins over a value here) and the addresses only
+# the deploy knows, and writes the env file the container runs with. Secrets never go in this file.
+
+[env]
+  # Legacy single-upstream base, kept only as a reference value. It is NOT the executor path, and
+  # MODEL_UPSTREAM_TOKEN is deliberately UNSET as a secret for the gateway. With that token set,
+  # _load_providers()'s back-compat branch would silently route the executor to this base whenever the
+  # configured providers went missing (a typo, a secret that was never set) while app.py kept reporting
+  # the configured model — the silent-substitution failure MODEL_PROVIDERS below exists to avoid. With no
+  # token, a broken provider config empties PROVIDERS and answers 503 rather than swapping the model out
+  # from under the provenance badge.
+  # HF router "https://router.huggingface.co/v1" remains the dev/CI alternative.
+  MODEL_UPSTREAM_BASE = "https://REPLACE-with-your-openai-compatible-base/v1"
+  # The executor chain is a SINGLE provider, deliberately with no fallback partner. A failover to a host
+  # that does not serve the same model would mean silently substituting a different model while app.py's
+  # StatusResponse.model keeps reporting the configured id — a provenance lie, not resilience. An outage
+  # fails the task cleanly (502) instead. Add a failover partner only if it serves the same weights under
+  # its own catalog id.
+  #
+  # The executor is Mistral, through the gateway at PROVIDER_MISTRAL_BASE. PROVIDER_MISTRAL_TOKEN is a
+  # gateway key, a Doppler secret and never in this file; the develop pair and production use
+  # different keys.
+  MODEL_PROVIDERS = "mistral"
+  PROVIDER_MISTRAL_BASE = "https://REPLACE-with-your-mistral-gateway/v1"
+  # PER-TASK MODELS: a task runs on the model the chat names, so the gateway is sent each one's own id,
+  # rewritten to the gateway's name for it (`mistral-medium-2604` is `mistralai/mistral-medium-3-5` there,
+  # and the gateway answers 400 to a bare id). A model the map lacks is refused (400), and the app refuses
+  # the task first (422), because the map's keys are what /healthz reports as `models`. It must name
+  # AGENT_MODEL (agent.toml), which the side calls (route, derive, judge) still use. The ids match
+  # chat's own MISTRAL_CHAT_MODEL_MAP.
+  # Model choices live here, never in Doppler: a secret of the same name wins over [env], so this
+  # line would silently stop doing anything.
+  PROVIDER_MISTRAL_MODEL_MAP = "mistral-medium-2604=mistralai/mistral-medium-3-5,mistral-large-2512=mistralai/mistral-large-2512,mistral-large-2610=mistralai/mistral-large-2610"
+  # The gateway's backup for Large 4 is a different model (Large 3) served under Large 4's name. Chat
+  # refuses that backup the same way (CROSS_MODEL_ROUTER_BACKUP in
+  # web/src/lib/chat/server/gatewayFallbackGate.ts). Large 3's
+  # backup is Large 3 itself, so Large 3 keeps its fallback.
+  PROVIDER_MISTRAL_NO_FALLBACK_MODELS = "mistral-large-2610"
+  # Fields Large 4 needs that callers don't send. With its fallback off, Large 4 answers 400 to
+  # temperature 0 unless top_p is 1. Per model, because Large 3 answers 400 to any reasoning_effort. The
+  # caller's own value wins.
+  PROVIDER_MISTRAL_MODEL_EXTRA = '{"mistral-large-2610":{"top_p":1}}'
+  # The gateway refuses reasoning_effort none for Large 4, and an unstreamed Large 4 call fails with a
+  # 500 after about half a minute, so the app's stream=false calls (route, review, derive) go upstream
+  # streamed and come back joined. They also carry reasoning_effort low, which keeps a short verdict to
+  # around a hundred tokens and a second or two; with no effort set, the same call reasons for thousands
+  # of tokens.
+  PROVIDER_MISTRAL_MODEL_UNSTREAMED_EXTRA = '{"mistral-large-2610":{"reasoning_effort":"low"}}'
+  PROVIDER_MISTRAL_STREAM_UPSTREAM_MODELS = "mistral-large-2610"
+  # The gateway sends UNSTREAMED Large 4 calls to its backup model. This proxy streams every executor call
+  # while PROXY_DESTREAM is unset, so keep it unset while Large 4 can run a task.
+  # Large 3's account allows 150 requests a minute, shared by every site's chat (web routing/catalog.ts
+  # requestsPerMinute). Agent tasks take at most a third of it; Medium and Large 4 allow 4,000 and need none.
+  MODEL_RPM_LIMITS = "mistral-large-2512=50"
+  # ROLLBACK to GLM: MODEL_PROVIDERS = "hf" plus AGENT_MODEL = "zai-org/GLM-5.2" in agent.toml. The HF
+  # settings stay live for that. The `:scaleway` suffix pins HF's router to one provider; _record_backend
+  # reads `x-inference-provider` off every response and logs pin_ok=false if a different provider answered.
+  # PROVIDER_HF_TOKEN is a gateway secret: set it in your secrets manager, never in this file. HF has no
+  # org-owned token, so the token belongs to a person and PROVIDER_HF_BILL_TO sends the spend to the org.
+  PROVIDER_HF_BASE = "https://router.huggingface.co/v1"
+  PROVIDER_HF_MODEL = "zai-org/GLM-5.2:scaleway"
+  PROVIDER_HF_BILL_TO = "REPLACE-with-your-hf-org"
+  # ROLLBACK to Apertus: MODEL_PROVIDERS = "gateway" plus AGENT_MODEL = "swiss-ai/apertus-v1.5-70b" in
+  # agent.toml. The gateway's settings below stay live for that. The gateway routes that id to CSCS,
+  # and each response's `x-agent-backend` header says where it ran. A gateway keeps the destination in its
+  # own config, so read the header rather than inferring a location from the base URL.
+  PROVIDER_GATEWAY_BASE = "https://REPLACE-with-your-gateway/v1"
+  # PROVIDER_GATEWAY_TOKEN is a gateway secret: set it in your secrets manager, never in this file.
+  # The gateway answers from a RESPONSE cache, on by default. Leave this at 1. Without it, best-of-3 is
+  # best-of-1 at best-of-3's wall clock — each attempt opens with a request that is identical by design,
+  # so each attempt opens with attempt 1's answer — and an agent repeating a call inside one attempt is
+  # locked into its loop rather than able to sample out of it. See proxy._no_cache.
+  PROVIDER_GATEWAY_NO_CACHE = "1"
+  # ROLLBACK, kept live rather than deleted: put "cscs" in MODEL_PROVIDERS and the chain goes direct to
+  # CSCS. PROVIDER_CSCS_MODEL stays unset (no rewrite) — app.py's AGENT_MODEL carries the catalog id
+  # directly, so the id the badge reports is the id that goes on the wire. The two hops use DIFFERENT
+  # ids for the same weights (direct apertus-ai/Apertus-v1.5-70B, gateway swiss-ai/apertus-v1.5-70b),
+  # so a rollback moves AGENT_MODEL with it or CSCS 503s on an id it does not serve. That 503 is also
+  # how an id ROTATION presents ("No provider found for the requested service" — a bad credential
+  # returns 401 instead); the CSCS research catalog changes often, so re-check against /v1/models via
+  # scripts/dogfood.py check_model_live when a run starts failing that way.
+  PROVIDER_CSCS_BASE = "https://api.swissai.svc.cscs.ch/v1"
+  # VERIFIER route: a different model from the executor judges its work, because a model judging itself
+  # misses subtle errors that another model catches. Selected by model-id match, OUTSIDE the primary
+  # failover chain. 11B-class judges can lose recall under a narrow rubric, and this seat fails closed,
+  # so re-check RECALL specifically after any change to the judge prompt or model.
+  #
+  # WHERE IT RUNS is read from each response, never assumed from the base URL. A gateway host fronts
+  # several backends, so `x-litellm-model-api-base` on the response is the only honest source for where a
+  # given model actually ran, and a single sample cannot rule out a multi-backend group. This matters most
+  # here: the judge is handed the task prompt AND the agent's answer, so it is the most content-exposed call
+  # the service makes. AGENT_COMPUTE_PROVIDER describes the executor only; the verifier sits outside the
+  # reported chain.
+  #
+  # The route and the app's AGENT_VERIFIER_MODEL only work as a pair. With the app naming a verifier and
+  # no route here, `_providers_for` (api/proxy.py) falls through to the normal chain, the judge request
+  # reaches a host that does not serve that model id and gets a 503, and `_judge_result` fails CLOSED: every
+  # chat turn burns all its best-of attempts and finishes unverified, with nothing in the log saying the
+  # verifier is gone. Set MODEL_VERIFIER_TOKEN alongside the route, or unset BOTH the route and the app's
+  # AGENT_VERIFIER_MODEL together.
+  #
+  # MODEL_VERIFIER_MODEL / MODEL_VERIFIER_BASE / MODEL_VERIFIER_BILL_TO: DOPPLER-MANAGED, not set here.
+  # A plain value in this file would duplicate the Doppler secret, which wins over it, so the file would
+  # name a route the gateway does not use. The secrets manager has the live
+  # values. Never re-add plain values here.
+  # MODEL_VERIFIER_NO_CACHE is deliberately UNSET while the executor's is on, and the asymmetry is a
+  # decision. A cache hit on the executor destroys best-of-N, because the N attempts open with a request
+  # that is identical BY DESIGN. A cache hit here needs the task AND the agent's answer to be
+  # byte-identical — the same question, whose same verdict is the right answer, for free. The seat is
+  # fail-closed, so re-check this if the judge prompt ever starts carrying something that varies without
+  # changing the question.
+  GRANT_MAX_REQUESTS = "200"     # gateway-side hard ceiling (defense-in-depth)
+  # Time-to-first-token ceiling, separate from MODEL_UPSTREAM_TIMEOUT (which bounds silence BETWEEN
+  # frames and stays at its 120s code default — it is a per-chunk read timeout, so lowering it kills
+  # healthy calls mid-answer). A stream that opens and then goes quiet would otherwise burn the full 120s,
+  # a large share of the app's 300s wall clock, on a chain with no failover partner. A healthy first token
+  # lands in under a second, so 30s is far outside the healthy range and a stall costs ~30s and a silent
+  # retry instead. Set here rather than left to the code default so a harness that
+  # checks prod compares against a value prod actually states.
+  MODEL_FIRST_TOKEN_TIMEOUT = "30"
+  MODEL_FIRST_TOKEN_ATTEMPTS = "2"
+  # Off-box structured logs. Same dataset as the app plane on purpose — the two planes' `ts` fields are
+  # aligned so one query can answer "what was the gateway doing while that run was failing", and a
+  # `service` field ("app" / "gateway") separates them. AXIOM_TOKEN is a Doppler secret, and it needs
+  # INGEST rights, not query. Unset token = the sink is a no-op and nothing else changes.
+  AXIOM_DATASET = "agent-service"
+  # ON, because of the sink above. `upstream.request`, `upstream.usage` and `upstream.error` are ALL gated
+  # on this flag; only `router.failover` / `router.stall` are not. With it off, a healthy turn emits no
+  # gateway lines at all, so the gateway half of the shared timeline is empty unless something has already
+  # gone wrong: no per-call latency, no provider attribution, no prompt/completion split for any successful
+  # turn. It is verbose, which is what you want in a dataset you can filter.
+  #
+  # Content-safe: `_request_meta` (api/proxy.py) emits model, tool_choice, temperature, stream, byte count,
+  # tool/message counts, the list of ROLES and a sha of the cacheable prefix — no message text, no tool
+  # arguments. `upstream.error`'s body is redacted by logsink anyway.
+  PROXY_LOG_REQUESTS = "1"
+  # PROVIDER_CSCS_TOKEN, MODEL_VERIFIER_TOKEN, PROXY_ADMIN_KEY and AXIOM_TOKEN are Doppler secrets
+  # (gateway.keys) — never in this file. MODEL_UPSTREAM_TOKEN is deliberately absent from that list; see the note
+  # above MODEL_UPSTREAM_BASE.

@@ -1,4 +1,4 @@
-"""What isolates the agent's work, as config and /healthz state it. Every Fly deploy runs the E2B backend while
+"""What isolates the agent's work, as config and /healthz state it. Every deploy runs the E2B backend while
 the image still bakes AGENT_SANDBOX=bwrap, and /healthz reports the backend in use, not the baked value."""
 import importlib.util
 import os
@@ -82,28 +82,15 @@ def test_the_docker_backend_refuses_to_boot_without_its_config_or_on_the_raw_soc
         assert r.returncode != 0
         assert said in r.stderr, r.stderr[-2000:]
 
-def test_the_fly_template_sets_no_bwrap_profile_knob():
+# The bwrap profile's knobs. They configure nothing under E2B, so the tracked env leaves them out.
+BWRAP_PROFILE_KEYS = {"AGENT_SANDBOX", "AGENT_SANDBOX_REQUIRED", "AGENT_RLIMITS", "AGENT_RLIMIT_NPROC",
+                      "AGENT_RLIMIT_FSIZE", "AGENT_TMPFS_BYTES"}
+
+
+def test_the_tracked_agent_env_sets_no_bwrap_profile_knob():
     import tomllib
-    env = tomllib.loads((ROOT / "fly" / "agent-app.toml").read_text())["env"]
-    drift = _load("check_toml_drift", ROOT / "scripts" / "check-toml-drift.py")
-    assert not drift.RETIRED & set(env), drift.RETIRED & set(env)
-
-
-def test_a_retired_key_left_in_the_deployed_copy_is_a_note_not_a_deploy_blocking_finding(tmp_path, monkeypatch):
-    """CI rebuilds the deployed copies from repo secrets nobody can read back, so a key removed from the tracked
-    toml stays in them until someone rewrites the secret. That must not fail every deploy in the meantime."""
-    drift = _load("check_toml_drift", ROOT / "scripts" / "check-toml-drift.py")
-    (tmp_path / "agent-app.toml").write_text('[env]\n  AGENT_BEST_OF = "3"\n')
-    (tmp_path / "agent-app.local.toml").write_text('[env]\n  AGENT_BEST_OF = "3"\n  AGENT_SANDBOX = "bwrap"\n')
-    monkeypatch.setattr(drift, "FLY_DIR", tmp_path)
-    findings, _ = drift.check_pair("agent-app.toml", "agent-app.local.toml")
-    assert findings == []
-    notes = drift.retired_leftovers("agent-app.local.toml")
-    assert len(notes) == 1 and "AGENT_SANDBOX" in notes[0]
-    # An unknown leftover is still a finding: only the retired list is allowed through.
-    (tmp_path / "agent-app.local.toml").write_text('[env]\n  AGENT_BEST_OF = "3"\n  AGENT_SOMETHING = "1"\n')
-    findings, _ = drift.check_pair("agent-app.toml", "agent-app.local.toml")
-    assert len(findings) == 1 and "AGENT_SOMETHING" in findings[0]
+    env = tomllib.loads((ROOT / "deploy" / "env" / "agent.toml").read_text())["env"]
+    assert not BWRAP_PROFILE_KEYS & set(env), BWRAP_PROFILE_KEYS & set(env)
 
 
 def test_prodcheck_requires_the_bwrap_profile_only_where_bwrap_runs():
@@ -118,14 +105,25 @@ def test_prodcheck_requires_the_bwrap_profile_only_where_bwrap_runs():
     assert any("AGENT_EGRESS" in p for p in pc._closed_problems({**closed, "AGENT_EGRESS": "off"}))
 
 
-def test_session_workdirs_live_on_the_mounted_volume_so_a_restarted_machine_keeps_them():
-    """On the root filesystem a restart or deploy drops every session workdir, and the next
-    follow-up is told its session expired. The scratch root has to sit under the [mounts] destination."""
+def test_session_workdirs_and_the_task_db_live_on_the_persistent_volume_so_a_restarted_host_keeps_them():
+    """On the container's own filesystem a restart or deploy drops every session workdir, and the next
+    follow-up is told its session expired. The host mounts its /data volume into the agent container, and the
+    scratch root and the task DB have to sit under that mount."""
+    import re
     import tomllib
-    cfg = tomllib.loads((ROOT / "fly" / "agent-app.toml").read_text())
-    dest = cfg["mounts"]["destination"].rstrip("/")
-    scratch = cfg["env"].get("AGENT_SCRATCH_ROOT", "").rstrip("/")
-    assert scratch == dest or scratch.startswith(dest + "/"), (scratch, dest)
-    db_dir = os.path.dirname(cfg["env"]["AGENT_DB_PATH"])
+    env = tomllib.loads((ROOT / "deploy" / "env" / "agent.toml").read_text())["env"]
+    host_setup = (ROOT / "deploy" / "aws" / "agent" / "host-setup.sh.tftpl").read_text()
+    agent_run = host_setup[host_setup.index('%{ if role == "agent"'):]
+    agent_run = agent_run[:agent_run.index("%{ else")]
+    mounts = re.findall(r"-v\s+(/\S+?):(/\S+?)(?::\S+)?\s", agent_run)
+    assert mounts, "the agent container runs with no bind mount, so nothing survives a restart"
+    # Each mount's host side must be a volume the host mounts at boot (fstab), not the root disk's dir.
+    fstab_mounts = set(re.findall(r"LABEL=\S+ (/\S+) ", host_setup))
+    dests = [dest.rstrip("/") for src, dest in mounts if src.rstrip("/") in fstab_mounts]
+    assert dests, (mounts, fstab_mounts)
+    scratch = env.get("AGENT_SCRATCH_ROOT", "").rstrip("/")
+    assert any(scratch == d or scratch.startswith(d + "/") for d in dests), (scratch, dests)
+    db_dir = os.path.dirname(env["AGENT_DB_PATH"])
+    assert any(db_dir == d or db_dir.startswith(d + "/") for d in dests), (db_dir, dests)
     assert scratch == db_dir or scratch.startswith(db_dir + "/"), \
         "entrypoint.sh chowns only the DB dir to the server's uid, so the scratch root must sit inside it"

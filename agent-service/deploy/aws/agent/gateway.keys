@@ -2,7 +2,8 @@
 # gateway.<stack>.keys adds the providers only that stack routes to.
 PROXY_ADMIN_KEY
 WEBUI_SECRET_KEY
-MODEL_UPSTREAM_TOKEN
+# MODEL_UPSTREAM_TOKEN stays out: with it set, proxy.py's _load_providers() would route to the legacy
+# MODEL_UPSTREAM_BASE whenever no MODEL_PROVIDERS provider has both a base and a token (deploy/env/gateway.toml).
 MODEL_UPSTREAM_BASE?
 PROVIDER_MISTRAL_TOKEN
 PROVIDER_CSCS_TOKEN

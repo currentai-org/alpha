@@ -112,12 +112,24 @@ if [ -n "$(find "$mirror" -type f -name '*.json' -size +1000000c -print -quit)" 
 	done <<< "$huge"
 fi
 
+# The export replaces the hosted agent service's [env] values with placeholders before it scans
+# (export-public-snapshot.sh, scrub-hosted-env.mjs), so the same scrub runs on the added lines here: a
+# value the export rewrites never ships and is not a finding. A listed key it cannot rewrite still fails.
+# The public repo's tree is already scrubbed and has no allowlist.txt, so this runs only in the monorepo.
+scrub=0
+if [ -f "$cfg/allowlist.txt" ] && [ -d "$mirror/agent-service/deploy/env" ]; then
+	command -v node > /dev/null || { echo "check-new-lines: node not found (needed for scrub-hosted-env.mjs)" >&2; exit 2; }
+	node "$here/scrub-hosted-env.mjs" "$mirror" > /dev/null || scrub=$?
+	[ "$scrub" -le 1 ] || exit 2
+fi
+
 # shellcheck source=scan-patterns.sh
 . "$here/scan-patterns.sh"
 rc=0
 scan_patterns "$cfg" "$mirror" 1 "$patterns" || rc=$?
 [ "$rc" -eq 0 ] || exit "$rc"
 fail=$scan_fail
+[ "$scrub" -eq 0 ] || fail=1
 
 echo "check-new-lines: $n shipped file(s) with added lines checked against $base" >&2
 exit "$fail"

@@ -36,7 +36,7 @@ if [ -z "${AGENT_BASE:-}" ] && [ -z "$APP" ]; then
     exit 2
 fi
 BASE=${AGENT_BASE:-https://$APP.fly.dev}
-# Computed the same way redeploy.sh stamps it, from the same checkout. `git rev-parse --short` picks a
+# Computed the same way the deploy stamps GIT_SHA, from the same checkout. `git rev-parse --short` picks a
 # length that makes the hash unambiguous IN THIS OBJECT DATABASE — 7 for one commit here today, 10 for
 # another, and shorter again in CI's shallow clone. So the comparison below is prefix-based rather than
 # string equality: a gate that false-fails on an abbreviation length would block a healthy deploy, and a
@@ -54,7 +54,7 @@ if [ "$EXPECT" = "unknown" ]; then
     exit 2
 fi
 
-# redeploy.sh appends `-dirty` when the tree had uncommitted changes. That is a real fact about the
+# A build stamped from a tree with uncommitted changes carries `-dirty`. That is a real fact about the
 # image and is preserved in the reported value, but it must not break the prefix match.
 _matches() {
     local got=${1%-dirty}

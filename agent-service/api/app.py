@@ -71,7 +71,7 @@ WALL_CLOCK_SECS = int(os.environ.get("AGENT_WALL_CLOCK_SECS", "300"))   # hard w
 # hermes-agent, acp_adapter/permissions.py), or Hermes gives up silently and the chat keeps showing "still
 # waiting" for a decision already made. A confirmation can open minutes into a run while the chat gives no
 # signal that one has, so the window has to allow for someone who isn't watching the tab. The default
-# lives here as well as in fly/agent-app.toml so a deployment that never sets the env var still gets it.
+# lives here as well as in deploy/env/agent.toml so a deployment that never sets the env var still gets it.
 # It stays well inside WALL_CLOCK_TASK_SECS, and silence still denies.
 CONFIRM_TIMEOUT_SECS = float(os.environ.get("AGENT_CONFIRM_TIMEOUT_SECS", "180"))
 # The one clock that never pauses: from submission to the end of the last attempt, approval-card waits and the
@@ -225,7 +225,7 @@ AGENT_MODEL_PROVIDER = os.environ.get("AGENT_MODEL_PROVIDER", "")        # herme
 # and keeps the ~/.hermes/config fallback.
 if os.environ.get("AGENT_MODEL_REQUIRED", "") == "1" and not AGENT_MODEL:
     raise RuntimeError("AGENT_MODEL is unset and AGENT_MODEL_REQUIRED=1: refusing to start rather than run "
-                       "an unnamed model. Set it to what the proxy serves (fly/agent-app.toml).")
+                       "an unnamed model. Set it to what the proxy serves (deploy/env/agent.toml).")
 # Human-facing COMPUTE provenance (the badge: "<model> — <provider> — Running on <X>, <country>"). This is
 # the sovereign compute host (e.g. "Infomaniak"), distinct from AGENT_MODEL_PROVIDER (wire format). It MUST
 # reflect where the model actually runs. Surfaced in /healthz + the run status.
@@ -387,7 +387,7 @@ MODEL_PROXY_URL = os.environ.get("AGENT_MODEL_PROXY_URL", "").rstrip("/")     # 
 # offline tests leave it unset and keep the passthrough.
 if os.environ.get("AGENT_MODEL_PROXY_REQUIRED", "") == "1" and not MODEL_PROXY_URL:
     raise RuntimeError("AGENT_MODEL_PROXY_URL is unset and AGENT_MODEL_PROXY_REQUIRED=1: refusing to start "
-                       "with the secrets boundary off. Point it at the proxy app (fly/agent-app.toml).")
+                       "with the secrets boundary off. Point it at the proxy app (deploy/env/agent.toml).")
 PROXY_ADMIN_KEY = os.environ.get("PROXY_ADMIN_KEY", "")                       # shared with proxy.py to grant/revoke nonces
 # Where Hermes and the run-code tools run. `e2b` (the default, and what every Fly deploy runs) is the
 # conversation's own microVM on our E2B install (sandbox_e2b.py), which never sees one of our credentials. An E2B
@@ -480,8 +480,8 @@ def _renamed_int(new: str, old: str, default: str = "0") -> tuple[int, str]:
 
     The old name is still honoured because dropping it makes the rename a SILENT FAIL-OPEN: any config not
     updated in the same commit sets neither name, `.get(default="0")` returns 0, and 0 means OFF for every
-    quota below — the control disappears with no error anywhere, which is how a config
-    template and a deployed `.local.toml` drift apart. /healthz reports which spelling was read, so
+    quota below — the control disappears with no error anywhere, which is how a tracked
+    config and a deployed env drift apart. /healthz reports which spelling was read, so
     prodcheck can see "still on the deprecated name" instead of "quota quietly stopped existing"."""
     for name in (new, old):
         if name in os.environ:
@@ -505,8 +505,7 @@ SUBJECT_DAILY_TASKS = int(os.environ.get("AGENT_SUBJECT_DAILY_TASKS", "0"))  # p
 # visitor with a few tabs could hold every one of MAX_CONCURRENCY's slots and leave everyone else a
 # capacity 429. Checked and reserved in one step under _USER_LOCK, since a separate check would let a
 # burst of submits all pass it before any reserved. Same subject-only rule as the allowance above.
-# On by default: the deployed config is a gitignored local toml (with-tracked-vm.sh carries only named
-# lines from the template), so a default of off would ship off.
+# On by default, so an env that leaves the setting out still gets the cap; a default of off would ship off.
 SUBJECT_MAX_CONCURRENCY = int(os.environ.get("AGENT_SUBJECT_MAX_CONCURRENCY", "2"))  # per-visitor live runs, 0 = off
 SUBJECT_MAX_CHARS = int(os.environ.get("AGENT_SUBJECT_MAX_CHARS", "64"))     # bounded: it is a store key and a task owner
 RATE_WINDOW_SECS = int(os.environ.get("AGENT_RATE_WINDOW_SECS", "86400"))    # the rolling window every limit uses
@@ -5643,7 +5642,7 @@ def _write_hermes_home_config(home_dir: str, global_cfg: Path) -> None:
 # so this replaces the instruction where it is given. It also drops "You are Hermes Agent, built by Nous
 # Research": who the model is comes from the task prompt's identity line.
 #
-# The figures sentence: the ACP toolset (fly/agent-app.toml HERMES_ACP_TOOLSETS) has no web tool and the
+# The figures sentence: the ACP toolset (deploy/env/agent.toml HERMES_ACP_TOOLSETS) has no web tool and the
 # sandbox blocks egress, so real-world figures (rents, travel times) the model puts in a file are
 # invented unless the person supplied them, and without this the answer presents them as facts. It lives
 # here rather than in the task-prompt tail for the same system-prompt-precedence reason as above, and so
@@ -6997,8 +6996,8 @@ def _stuck_task_reaper_loop() -> None:
 # policy restarts on. This thread asks the server for its own /healthz over localhost, the path a request
 # from Fly's proxy takes, and exits the process after WATCHDOG_MISSES misses in a row. Running tasks die
 # with it; on restart `recover_orphans` marks them failed, which is what they already were. A freeze of
-# the whole process stops this thread too, so that case is left to the service check in agent-app.toml,
-# which takes the machine out of routing but does not restart it. On by default on Fly only, where an exit
+# the whole process stops this thread too, so that case is left to an outside health check,
+# which can take the machine out of routing but does not restart it. On by default on Fly only, where an exit
 # restarts the machine. The AWS deploy turns it on too (deploy/aws/agent/render_env.py), since systemd
 # restarts its container; a plain local run has nothing to restart it, so it stays off.
 WATCHDOG_SECS = int(os.environ.get("AGENT_WATCHDOG_SECS", "20" if FLY_MACHINE_ID else "0") or 0)
@@ -7167,7 +7166,8 @@ def _lease_loop() -> None:
 # ---- drain on the stop signal ------------------------------------------------------------
 # A deploy replaces this app's one Fly machine in place, and a task's run lives in this process, so a stop
 # that does not wait kills every running task and the person reads "The agent stream dropped". Fly sends
-# kill_signal, waits kill_timeout (at most 300 s), then stops the machine regardless (fly/agent-app.toml).
+# kill_signal, waits kill_timeout (at most 300 s), then stops the machine regardless; the AWS host's
+# `docker run --stop-timeout 300` (deploy/aws/agent/host-setup.sh.tftpl) gives the same 300 s.
 # serve.py hands the first stop signal here instead of straight to uvicorn, which would close the listening
 # socket at once. While draining, /run answers 503 with Retry-After and every other route keeps serving,
 # so a running task's event stream, its file downloads, a confirm and a cancel all still reach it. Once no

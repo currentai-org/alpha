@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Render one role's container env for the AWS hosts, from the same sources the Fly deploy reads.
+"""Render one role's container env for the AWS hosts.
 
     doppler secrets download --no-file --format json ... | \\
         render_env.py --role agent --deploy deploy.json > env
 
-Three layers, later ones winning, as Fly's secrets win over its [env]:
+Three layers, later ones winning:
 
-1. The tracked Fly toml's [env] (fly/agent-app.toml or fly/agent-proxy.toml), so a model or limit change still
-   lands in one place for both platforms.
+1. The role's tracked [env] table (deploy/env/agent.toml or deploy/env/gateway.toml), so a model or limit change
+   lands in one reviewed file.
 2. The Doppler secrets this role takes, named in <role>.keys plus <role>.<stack>.keys when that file exists (the
    settings only one stack runs with, such as production's staged permission policy). A name with a trailing `?`
    is optional; any other missing name stops the render. Nothing else from the Doppler config reaches the role,
@@ -25,8 +25,8 @@ import tomllib
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-FLY = HERE.parents[2] / "fly"
-TOML = {"agent": FLY / "agent-app.toml", "gateway": FLY / "agent-proxy.toml"}
+ENV_DIR = HERE.parents[1] / "env"
+TOML = {"agent": ENV_DIR / "agent.toml", "gateway": ENV_DIR / "gateway.toml"}
 
 
 def platform_env(role: str, deploy: dict) -> dict[str, str]:

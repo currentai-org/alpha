@@ -1,6 +1,6 @@
 # Providers the production gateway holds tokens for, beside gateway.keys (render_env.py). MODEL_PROVIDERS in
-# fly/agent-proxy.toml decides which one serves; these carry the LiteLLM upstream production keeps on Fly, so
-# naming it there is a toml change and not a secrets hunt.
+# deploy/env/gateway.toml decides which one serves; these carry production's LiteLLM upstream, so naming it there
+# is a toml change and not a secrets hunt.
 PROVIDER_LITELLM_BASE?
 PROVIDER_LITELLM_MODEL?
 PROVIDER_LITELLM_TOKEN?

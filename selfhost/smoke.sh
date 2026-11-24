@@ -40,5 +40,8 @@ if [ -z "${SMOKE_NO_UP:-}" ]; then
 fi
 
 # The chat surface serves chat at the root, so deploy/smoke.sh's paths drop their /chat prefix. The
-# first turn on a CPU model reads the whole system prompt first; allow for it.
-SMOKE_CHAT_PATH="" SMOKE_TURN_TIMEOUT="${SMOKE_TURN_TIMEOUT:-300}" ../deploy/smoke.sh
+# first turn on a CPU model reads the whole system prompt first; allow for it. The second turn, in the same
+# conversation, times the README's claim that later turns reuse the cached prompt; llama.cpp's prompt eval line
+# for it (printed on exit) shows how much of the prompt it read again.
+SMOKE_CHAT_PATH="" SMOKE_TURN_TIMEOUT="${SMOKE_TURN_TIMEOUT:-300}" \
+	SMOKE_SECOND_PROMPT="${SMOKE_SECOND_PROMPT-And of Italy?}" ../deploy/smoke.sh

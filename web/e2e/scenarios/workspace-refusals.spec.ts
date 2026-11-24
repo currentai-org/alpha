@@ -716,10 +716,12 @@ test(
 		await expect(refusal, 'the sole admin is not told why they cannot leave').toBeVisible({
 			timeout: 30_000
 		});
-		await refusal.scrollIntoViewIfNeeded();
-		await expect(refusal, 'the sole-admin Leave refusal is off screen').toBeInViewport({
-			ratio: 1
-		});
+		// The Usage section loads after the workspace and grows by about 116px, pushing the refusal down,
+		// so a single scroll can land before that shift. Scroll and check again until the layout settles.
+		await expect(async () => {
+			await refusal.scrollIntoViewIfNeeded();
+			await expect(refusal).toBeInViewport({ ratio: 1 });
+		}, 'the sole-admin Leave refusal is off screen').toPass({ timeout: 15_000 });
 		// A Leave that answered "Leaving…" and then refused contradicted itself, so none is offered.
 		await expect(
 			page.getByRole('button', { name: /^Leave workspace/ }),

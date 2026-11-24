@@ -1,0 +1,278 @@
+# The agent service's runtime settings: the [env] table the agent container starts with.
+#
+# deploy/aws/agent/render_env.py reads this table, adds the Doppler secrets named in
+# deploy/aws/agent/agent.keys (a secret of the same name wins over a value here) and the addresses only
+# the deploy knows, and writes the env file the container runs with. Secrets never go in this file.
+#
+# A value starting with REPLACE is a placeholder: the render either overrides it or refuses to run.
+
+[env]
+  AGENT_MODEL_PROXY_URL = "http://REPLACE-agent-proxy.internal:8732"   # placeholder; render_env.py sets the gateway's private address
+  # The default model: Mistral Large, through the gateway's Mistral route. AGENT_MODEL is the default only:
+  # a task the chat names a model for runs on that model when gateway.toml's
+  # PROVIDER_MISTRAL_MODEL_MAP has it, and is refused when it does not.
+  #
+  # Rollbacks. Each one moves AGENT_MODEL here and MODEL_PROVIDERS in gateway.toml together, because
+  # neither hop serves the other's ids and moving one alone fails every call:
+  #   - Mistral Medium: AGENT_MODEL = "mistral-medium-2604", already in PROVIDER_MISTRAL_MODEL_MAP.
+  #   - GLM-5.2 through Hugging Face's router: AGENT_MODEL = "zai-org/GLM-5.2" with MODEL_PROVIDERS = "hf".
+  #     The proxy rewrites the id to PROVIDER_HF_MODEL (`zai-org/GLM-5.2:scaleway`), which pins the
+  #     provider instead of taking the router's pick; the badge's id stays unsuffixed. GLM reasons before
+  #     answering, and its `reasoning` field counts against max_tokens.
+  #   - Apertus: AGENT_MODEL = "swiss-ai/apertus-v1.5-70b" with MODEL_PROVIDERS = "gateway".
+  AGENT_MODEL = "mistral-large-2610"
+  AGENT_MODEL_PROVIDER = "huggingface"          # the OpenAI-compatible wire format, not the host
+  # Static fallback for the "what's running" badge, shown only until the app's first poll of the proxy.
+  # After that the badge carries the provider the response named (proxy._record_backend).
+  AGENT_COMPUTE_PROVIDER = "Mistral"
+  AGENT_TOOLSETS = "coding"            # read_file/write_file/patch/search_files + terminal — NOT terminal-only.
+                                      # An agentic-trained model reaches for write_file on its own prior; a
+                                      # terminal-only toolset makes it repeat a dead "tool does not exist" call
+                                      # instead of falling back to a heredoc, and finishes fewer multi-file
+                                      # tasks than `coding` does.
+  # THE TOOLSET THAT ACTUALLY SHIPS. AGENT_TOOLSETS above is inert under ACP (`hermes acp` takes no
+  # -t); this is the knob that moves the wire, via the build-time patch in deploy/hermes/. Against the
+  # stock 25-tool `hermes-acp` it roughly halves the tokens per model call, because the prompt carries
+  # four toolsets' schemas instead of all of them, without raising the number of model calls a task takes.
+  #
+  # The call count is what limits trimming further. `file,terminal` alone cuts the prompt more but doubles
+  # the calls: `code_execution` is the one tool that batches actions into a single round-trip, and `todo`
+  # is the multi-step scratchpad. Do not drop either without re-measuring.
+  # Unset this to fall back to stock `hermes-acp`.
+  HERMES_ACP_TOOLSETS = "file,terminal,todo,code_execution"
+  # Best-of-N: up to this many attempts per task, with a selector choosing among them. The selector is
+  # only worth trusting where it can tell a good attempt from a bad one. On a file or shell spec it can:
+  # `_verify` reads disk and is deterministic. On a chat turn the selector is an LLM judge, which can
+  # accept a wrong answer to a freeform riddle.
+  #
+  # So api/app.py's _select_attempt gives the judge a vote only when the effective spec (after any
+  # overrule resolves) is artifact-backed (expect_file/check_cmd). An expect_count-only spec (which checks
+  # shape, not content) or an overruled derived spec falls through to accept-UNVERIFIED instead.
+  # scripts/judge_probe.py --hard runs the trap set this guards against.
+  #
+  # Coupling: `may_judge` requires BEST_OF > 1 (`_best_of_gates`), so N=1 also switches the judge off and
+  # chat turns return verify_method=null. "No judge" and "no retries" are one switch here.
+  #
+  # The gateway grants this PER ATTEMPT, and it is the only step cap, since `hermes -z` ignores config
+  # max_turns, so the gateway must be on.
+  AGENT_BEST_OF = "3"
+  AGENT_AUTODERIVE_VERIFY = "1"       # chat turns (synthesize) arrive WITHOUT a spec → derive a declarative one
+                                      # so best-of-N re-engages on a checkable task. "0" = off.
+  # AGENT_JUDGE_VERIFY defaults to "1" in code (api/app.py) even though unset here — chat turns with no
+  # file-spec get an independent model judging result-vs-task, gating best-of-N, fail-closed. Set to "0"
+  # to disable; left commented here only to document the default, not to imply it's off.
+  # AGENT_VERIFIER_MODEL: DOPPLER-MANAGED, not set here. A different model from the executor judges its
+  # work, because a model judging itself misses subtle errors that a different model catches. The seat
+  # fails CLOSED, so a judge that loses recall rejects correct turns: re-check recall after any change to
+  # the judge prompt or model. Needs the proxy's matching MODEL_VERIFIER_* route
+  # (also Doppler-managed).
+  #
+  # Deliberately unset here: a plain value in this file would duplicate the Doppler secret of the same
+  # name, which wins over it, so the file would claim a model the service does not run. The one source of
+  # truth is the deployment's secrets manager. Never re-add a plain value here.
+  AGENT_DB_PATH = "/data/tasks.db"
+  # Session workdirs (and per-task scratch) live on the persistent /data volume, not the root filesystem's
+  # /tmp, so a restart or deploy keeps them. A follow-up whose workdir is gone is told its session expired
+  # (_resolve_workdir), even when its E2B sandbox still holds the files. entrypoint.sh hands /data to the
+  # server's uid at boot; the boot sweep only reaps `agent-run-*` dirs no session row names.
+  AGENT_SCRATCH_ROOT = "/data"
+  # ARTIFACT DELIVERY. Files the agent writes during a turn are returned with the result; without this,
+  # the scratch directory is deleted when the turn ends and an answer that says "the files are in your
+  # working directory" hands the user nothing. 20 files is generous for a chat turn and the per-file cap
+  # is sized for source and CSV, the two things the executor actually produces. A file over a cap still
+  # comes back LISTED with its true size.
+  AGENT_ARTIFACT_MAX_FILES = "20"
+  AGENT_ARTIFACT_MAX_BYTES = "65536"
+  AGENT_ARTIFACT_TOTAL_BYTES = "262144"
+  # SESSION-SCOPED WORKDIRS. Opt-in via RunRequest.session_id — absent, behavior is unchanged.
+  # 4h idle expiry (not AGENT_TASK_RETENTION_SECS's 30d — that's a spend-ledger window, this is a
+  # disk-budget one, and disk is the real constraint on this single /data volume). 512MB/session is 4x the
+  # per-task AGENT_SCRATCH_MAX_BYTES cap. Explicit here rather than left at code defaults, same convention
+  # as the ARTIFACT block above.
+  AGENT_SESSION_IDLE_SECS = "14400"
+  AGENT_SESSION_SWEEP_SECS = "900"
+  AGENT_SESSION_SCRATCH_MAX_BYTES = "536870912"
+  # Moderation uses ONE detector, chat's web screen endpoint (POST /chat/api/safety/screen).
+  # SAFETY_SCREEN_URL/SAFETY_SCREEN_TOKEN: DOPPLER-MANAGED, not set here — same reason as
+  # AGENT_VERIFIER_MODEL above (a value here would be overridden by the secret and only mislead a reader
+  # about which credential and endpoint are live); the secrets manager has the live values.
+  # `moderate()` fails CLOSED (503) when neither is set, so leaving
+  # this "0" only works once those are actually configured in Doppler.
+  AGENT_MODERATION_DISABLED = "0"
+  # COOP_URL/COOP_API_KEY are also Doppler-managed secrets, the same instance chat's own Coop config
+  # points at — used here as REPORT credentials only (POST /api/v1/report), never a detector; Coop
+  # renders no verdict on this surface. COOP_USER_TYPE_ID/COOP_ITEM_TYPE_ID/
+  # COOP_SYSTEM_REPORTER_ID (also Doppler) are the rest of the report contract — unset means a guard hit
+  # cannot reach Coop for review (a loud, once-per-process log line, never a silent skip; the turn itself
+  # is unaffected, since reporting is fire-and-forget).
+  # Explicit, not inherited from the code default of 2. A screen call that times out usually succeeds on
+  # a fresh call moments later, so a third attempt saves the turn. Worst case before a fail-closed 502 is
+  # 3x AGENT_MODERATION_HTTP_TIMEOUT_SECS (the guard POST's own client timeout, default 25s — deliberately
+  # above the screen endpoint's ~20s internal deadline).
+  AGENT_MODERATION_ATTEMPTS = "3"
+  # Bearer token for /metrics. The counters are aggregate, so an open endpoint would leak traffic volume
+  # rather than content, but there is no reason to leave it open.
+  AGENT_METRICS_TOKEN = "REPLACE-with-a-random-token"
+  # SANDBOX: AGENT_SANDBOX_BACKEND=e2b (the code default). Hermes and the run-code tools run in the
+  # conversation's own E2B microVM, never on this host, so the bwrap profile's knobs (AGENT_SANDBOX,
+  # AGENT_SANDBOX_REQUIRED, AGENT_RLIMIT*, AGENT_TMPFS_BYTES) configure nothing here and are not set.
+  # /healthz `sandbox` names the backend. The E2B key is a Doppler secret and the E2B host comes from the deploy.
+  #
+  # EGRESS — this host's own outbound filter, ON (AGENT_EGRESS below). Without it, anything running in
+  # the container could reach any host on the internet, which behind an open-signup front door makes the
+  # service an open HTTP proxy on our egress IP. The allowlist covers everything the SERVICE needs: the
+  # gateway's private address, Axiom, and the hosts in AGENT_EGRESS_ALLOW_HOSTS.
+  #
+  # The chain refuses with REJECT, not DROP (deploy/entrypoint.sh). The agent's HF client reaches
+  # huggingface.co for tokenizer metadata, and a dropped SYN costs the caller a full TCP retry ladder,
+  # which stalls a turn for over a minute; a REJECT is exactly as closed and returns immediately. Do not
+  # widen the allowlist to chase those CDN addresses: they rotate, and boot-time resolution can disagree
+  # with what the agent actually dials.
+  # SERVER-SIDE SHELL, OFF. verify.check_cmd runs `bash -c` inside the agent sandbox for anyone who can
+  # POST /run, and the front door is open signup, so it would be a free, unmetered shell for every
+  # account, with the model removed from the loop entirely.
+  #
+  # Nothing live needs it: the chat surface sends no verify spec at all and the auto-derive REFUSES to emit
+  # check_cmd (api/app.py `_parse_derived_spec` — model-emitted shell from an untrusted prompt is the
+  # injection it exists to stop); scripts/prod_smoke.py asserts with expect_file; and the eval fixtures
+  # that do use check_cmd run against a local stack on 127.0.0.1, not this app.
+  # Requests carrying one get a 400 rather than being silently ignored.
+  # The per-task disk ration on this host's copy of the workspace. Per task, so with
+  # AGENT_MAX_CONCURRENCY=32 the aggregate worst case is 4GB, and one task cannot starve the rest. Scratch
+  # lives under AGENT_SCRATCH_ROOT (/data), the host's data volume (20 GB by default, deploy/aws/agent).
+  AGENT_SCRATCH_MAX_BYTES = "134217728"   # 128MB/task; 0 disables the watchdog
+  AGENT_CHECK_CMD_DISABLED = "1"
+  AGENT_EGRESS = "allowlist"          # off | allowlist
+  AGENT_EGRESS_REQUIRED = "1"         # refuse to boot rather than run unfiltered
+  AGENT_EGRESS_ALLOW_HOSTS = "api.axiom.co,www.aipotluck.org,develop.aipotluck.org,alpha.aipotluck.org,alpha-develop.aipotluck.org"   # public hosts the SERVICE needs; the gateway is pinned by address in deploy/entrypoint.sh; www/develop and alpha/alpha-develop serve SAFETY_SCREEN_URL
+  # The NAME half of the same control. With only the address allowlist, the sandbox could still resolve
+  # anything through the host's resolver, which is an exfiltration channel (the query text is
+  # attacker-chosen and reaches a third party's authoritative server) and can map the private network. `hosts` refuses :53 to every uid but root and serves the service's own names
+  # from /etc/hosts, re-resolved every AGENT_DNS_REFRESH seconds so a CDN or a recreated gateway host
+  # does not strand us on a dead address.
+  # REQUIRES AGENT_EGRESS=allowlist: the :53 rules live in that ruleset, and entrypoint.sh refuses to
+  # claim the name filter is on when it is not part of any installed chain.
+  AGENT_DNS = "hosts"                 # off | hosts
+  AGENT_DNS_REQUIRED = "1"            # refuse to boot rather than resolve freely
+  # Per-ATTEMPT spend ceiling (best-of-N can spend up to N x this on one task). Realistic multi-file tasks
+  # take a dozen or more model calls at roughly 10k tokens each, so the cap sits above the most expensive
+  # task that has verified, with headroom, while still bounding a runaway. The 90-step cap bounds it from
+  # above regardless.
+  AGENT_MAX_TOKENS = "150000"
+  # Token budget OFF (0); tasks are the rationing unit. Almost all of a task's tokens are prompt (the tool
+  # schemas re-sent on every call), and _check_user_budget reserves each task's WORST case
+  # (AGENT_MAX_TOKENS) before admitting it, so a token budget refuses a caller after a handful of ordinary
+  # tasks, long before AGENT_CALLER_DAILY_TASKS would.
+  #
+  # Rationing that prefix also rations little: the provider serves a repeated prefix without re-prefilling
+  # it, so a token budget is denominated in a unit the provider barely spends.
+  #
+  # What still bounds a runaway: AGENT_MAX_TOKENS per ATTEMPT, AGENT_MAX_CONCURRENCY, and the task cap
+  # below. The worst case is AGENT_CALLER_DAILY_TASKS x AGENT_MAX_TOKENS x AGENT_BEST_OF tokens a day;
+  # recompute it from the values in this file whenever any of the three changes, rather than trusting a
+  # number written here. Nothing on this side stops spend at a dollar figure; the provider key's own budget
+  # is the backstop.
+  #
+  # PER CALLER, not per person. The bucket key is the authenticated token subject, and chat calls with ONE
+  # static AGENT_SERVICE_TOKEN for every visitor (endpointAgent.ts builds the header once at endpoint
+  # construction), so this is a ceiling for the whole chat surface. The older AGENT_USER_DAILY_* names are
+  # still read as a fallback so a config left behind does not silently set the quota to 0 = off; /healthz
+  # `quota_vars` reports which spelling the process actually used.
+  AGENT_CALLER_DAILY_TOKENS = "0"
+  # A spend breaker, not a fairness limit: fairness comes from the per-visitor allowance and live cap
+  # below, so this sits well above real use and must not be the limit a visitor hits. At this size it is
+  # not what binds: AGENT_MAX_CONCURRENCY's live-task cap below (and the E2B host they run on) refuses a
+  # burst long before the day's count does.
+  AGENT_CALLER_DAILY_TASKS = "10000"
+  # PER VISITOR inside that ceiling, keyed on the optional X-Agent-Subject header (a chat session id).
+  # Inert until a caller sends one: no header means no subject means the check is skipped. Self-asserted,
+  # so clearing a cookie buys a fresh allowance — a courtesy quota, never a boundary, which is why the
+  # caller ceiling above is checked first and independently.
+  # Chat raises it for a team account with X-Agent-Subject-Daily-Tasks; raise-only, still under the caller
+  # ceiling above.
+  AGENT_SUBJECT_DAILY_TASKS = "25"
+  # Live runs per visitor. The allowance above counts tasks started, so without this one visitor with a
+  # few tabs could hold all of AGENT_MAX_CONCURRENCY's slots. 2 leaves room for a second tab, and is also
+  # the code's default, so an env without this line still gets the cap.
+  AGENT_SUBJECT_MAX_CONCURRENCY = "2"
+  # Subs whose traffic is the operator's, not an invitee's — smoke checks, health probes, measurement
+  # runs. They skip the count above and nothing else: AGENT_MAX_TOKENS, AGENT_MAX_CONCURRENCY and
+  # AGENT_WALL_CLOCK_SECS still bound every task an exempt sub starts. Empty means nobody is exempt.
+  AGENT_OPERATOR_SUBS = "agent-service-smoke"
+  # 32 slots on a 4-CPU, 8GB host. Hermes runs in each task's E2B guest, so this host only orchestrates
+  # and the in-process cap, not CPU or memory, is what binds. The scratch cap above makes 32 a 4GB
+  # aggregate worst case. Raising it needs the gateway to keep accepting at least one model stream per
+  # slot.
+  AGENT_MAX_CONCURRENCY = "32"
+  # How much history a caller needs before ACP_PERMISSION_POLICY="staged" lets it write files and run code.
+  # Zero means every caller writes from its first task. Every signed-in production account can reach agent
+  # mode, and the code runs in the E2B sandbox, so the code defaults (3 tasks over 3 days) would only make a
+  # new account wait before the agent can write a file.
+  # Inert where the policy is not "staged" (develop runs "allow").
+  AGENT_TRUST_MIN_TASKS = "0"
+  AGENT_TRUST_ACCRUAL_SECS = "0"
+  # Off-box structured logs. Same dataset as the gateway plane deliberately — the two planes' `ts`
+  # fields are aligned so one query answers "what was the gateway doing while that run was failing",
+  # and a `service` field separates them. AXIOM_TOKEN is a Doppler secret, INGEST rights not query.
+  # Unset token = the sink is a no-op, stdout unchanged; that is what every local run and CI sees.
+  #
+  # AXIOM_SEND_CONTENT is deliberately NOT here. `detail`, `artifacts`, `expect_file` and `structural`
+  # can each quote a fragment of a user's task, so they leave as `<redacted:N>` — the field and its size
+  # still ship, the value stays on our box. `user` is hashed. Setting it to 1 sends task fragments to a
+  # US SaaS, which in this project should be a decision rather than a side effect. See api/logsink.py.
+  AXIOM_DATASET = "agent-service"
+  # Per ATTEMPT, matching AGENT_MAX_TOKENS above; the task ceiling is this x AGENT_BEST_OF, so 900s here.
+  # Sized at about three times the slowest task that has verified, so the clock cuts off runaways rather
+  # than slow successes. A per-task clock with a per-attempt spend cap would let attempt 1 use the whole
+  # budget and leave the later attempts nothing. The cost is worst-case latency: a task that fails every
+  # attempt takes up to 900s. /healthz reports both numbers (wall_clock_s, wall_clock_task_s) so neither is
+  # mistaken for the other.
+  AGENT_WALL_CLOCK_SECS = "300"
+  # How long request_permission's confirm branch waits for a human before failing CLOSED. A confirmation
+  # can open at any point in a multi-minute run, so the code default of 45s is only enough for someone
+  # already watching the tab. 180 is still far inside AGENT_WALL_CLOCK_TASK_SECS (900), so a paused task
+  # cannot hold one of MAX_CONCURRENCY's slots indefinitely, and silence still means deny. The chat tells
+  # the user a confirmation opened with a title badge; see web/src/lib/chat/stores/pendingConfirm.svelte.ts.
+  AGENT_CONFIRM_TIMEOUT_SECS = "180"
+  # Bytes of a spec'd expect_file's content shown to the judge. Matches the code default (4000)
+  # explicitly, same "make a shipped feature's tunable explicit" convention as the knob above.
+  # The judge only runs when may_judge holds: AGENT_BEST_OF>1 AND synthesize=True (_best_of_gates). Read
+  # AGENT_BEST_OF in this file rather than trusting a comment's copy of it. With best-of-N on,
+  # judge-excerpting is live for any synthesize turn whose spec is artifact-backed (expect_file/
+  # check_cmd) — a shape-only expect_count spec never reaches the judge at all, by design.
+  AGENT_JUDGE_EXCERPT_BYTES = "4000"
+  # Self-consistency over independently-sampled best-of-N generations, applied to a deterministic computed
+  # value. Explicit "0" (off), same "make a shipped feature's tunable explicit" convention as the two knobs
+  # above. It needs a spec's expect_file (a computed VALUE to compare), and turning it on is a real,
+  # permanent cost increase on every turn that has one (up to best_of attempts instead of stopping at the
+  # first success), not just a latency/acceptance-bar change. Raise ONLY after measuring whether the judge
+  # with file access already catches the same failure class more cheaply.
+  AGENT_VALUE_CONSISTENCY_CHECK = "0"
+  AGENT_ACP = "1"                     # ACP transport (live plan/tool_call/tool_result progress), validated +
+                                      # pressure-tested; oneshot is the explicit opt-out
+                                      # (RunRequest.transport="oneshot"). Routes through the SAME gateway nonce
+                                      # swap as oneshot — no separate credential of any kind, HF or otherwise.
+  AGENT_STREAM_TOKENS = "1"           # Answer text streams as `token` frames as it is generated rather than
+                                      # landing whole at the end. With best-of-N on, a streamed attempt can be
+                                      # rejected after a reader has seen it: the server emits `attempt_rejected`
+                                      # the instant an attempt is rejected, and the chat client keys its render
+                                      # buffer by `attempt`, discarding it on that event.
+                                      # done.result is unchanged either way, so a consumer
+                                      # that ignores `attempt` and only reads done.result is correct.
+  AGENT_STREAM_MAX_FRAMES = "400"     # per attempt, then ONE token_truncated frame. The buffer trims oldest-
+                                      # first at AGENT_SSE_MAX_EVENTS, so an uncapped answer stream evicts its
+                                      # own turn's plan/tool_call and a client resuming on Last-Event-ID finds
+                                      # a turn that never planned. 0 = uncapped.
+  AGENT_EARLY_EXIT = "1"              # On a verify-spec'd task (ACP only — oneshot's -z redirects stdout to
+                                      # devnull until the process exits naturally, so an early kill there would
+                                      # blank the result entirely, not just truncate it),
+                                      # cancels the prompt as soon as _verify() passes
+                                      # on 2 consecutive tool-call checks, instead of waiting for the model to
+                                      # decide to stop. A model that has already finished correctly then gets
+                                      # no chance to wander into a malformed follow-up tool call.
+  AGENT_REPAIR_TURNS = "2"            # STATED, not inherited, though 2 is also the code default. The repair
+                                      # loop runs on every chat turn (a None spec is admitted), so this number
+                                      # is a live latency and token cost, bounded by AGENT_WALL_CLOCK_SECS.
+                                      # 0 = off.
+  # PROXY_ADMIN_KEY (matches the gateway) + WEBUI_SECRET_KEY are Doppler secrets (agent.keys).
+  # Do NOT set AGENT_AUTH_DISABLED here — that would make it open.

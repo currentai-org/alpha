@@ -34,16 +34,41 @@ path and line number where possible. Report a vulnerability as `SECURITY.md` des
 
 ## Run the checks
 
-CI runs these on every pull request and every push to `main`, and none of them reads a secret:
+CI runs these on every pull request and every push to `main`:
 
 ```sh
 pnpm install --frozen-lockfile
 cd web
-pnpm lint
-pnpm check
+pnpm lint && pnpm selfhost:flag-table
+node scripts/gen-env-ci.mjs && cp .env.ci .env && pnpm check
 pnpm i18n:compile && pnpm test:ci:fast
 pnpm build
 ```
+
+### Run the whole pull request gate with act
+
+[act](https://github.com/nektos/act) runs `.github/workflows/ci.yml` itself in Docker, so a local pass
+covers the same jobs as the pull request gate. From your branch, with `upstream` pointing at this
+repository:
+
+```sh
+git fetch upstream main
+printf '{"pull_request":{"base":{"sha":"%s"},"head":{"sha":"%s"}}}' \
+  "$(git merge-base HEAD upstream/main)" "$(git rev-parse HEAD)" > /tmp/act-event.json
+act pull_request -W .github/workflows/ci.yml -e /tmp/act-event.json --privileged \
+  -P ubuntu-latest=catthehacker/ubuntu:act-latest
+```
+
+The event file gives the two leak checks the commit to diff against; without it they fail at once.
+`--privileged` lets the agent-service sandbox tests create namespaces. It gives the job containers
+full access to your Docker host, so drop it if you'd rather not, and expect those tests to fail.
+
+What a local pass leaves unchecked:
+
+- **Forbidden text in added lines.** Its pattern list is a repository secret you don't have, so the job
+  passes with a warning and the merge queue runs the check.
+- **The self-host smoke and image jobs** (`selfhost.yml`, `image.yml`). They aren't in `ci.yml`.
+- **The end-to-end suite** (`e2e.yml`), which needs a preview deployment.
 
 `selfhost/smoke.sh` boots the self-host stack and sends one chat turn; CI runs it when `selfhost/` or the
 image changes. The end-to-end suite runs against a preview deployment and needs maintainer approval, so

@@ -24,7 +24,7 @@ export PROXY_ADMIN_KEY="${PROXY_ADMIN_KEY:-devlocaladmin}"
 export PROXY_DESTREAM="${PROXY_DESTREAM:-1}"
 # proxy.py's own default upstream is the HF router, which won't serve the model named below whatever
 # credential you hand it, so the chain has to be set explicitly — dogfood.py overrides it the same way.
-# Named-provider chain rather than the legacy MODEL_UPSTREAM_* pair, matching what fly/agent-proxy.toml
+# Named-provider chain rather than the legacy MODEL_UPSTREAM_* pair, matching what deploy/env/gateway.toml
 # deploys. MODEL_UPSTREAM_TOKEN is deliberately NOT exported: _load_providers() falls back to it only
 # when the named chain resolves empty, which would silently serve a different model than the one below.
 export MODEL_PROVIDERS="${MODEL_PROVIDERS:-cscs}"
