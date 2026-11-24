@@ -554,7 +554,7 @@ test(
 		]);
 
 		// Chromium decodes both types whatever the file's stated type, so each must become a thumbnail
-		// under its redrawn .jpg name. A refusal naming the type is a failure: it is what the walk saw.
+		// under its redrawn .jpg name. A refusal naming the type is a failure: it is what a visitor would see.
 		for (const jpg of ['blue.jpg', 'red.jpg']) {
 			await expect(
 				page.getByAltText(jpg),
@@ -784,7 +784,7 @@ test(
 	async ({ page }) => {
 		test.setTimeout(150_000);
 		// The chat opens first: the recording starts with the page, so a photo built before it would
-		// show as a blank tab the gallery grades as the site's load time.
+		// show as a blank tab in the recording, read as the site's load time.
 		await openChat(page);
 		const photo = await phonePhotoJpeg();
 		expect(

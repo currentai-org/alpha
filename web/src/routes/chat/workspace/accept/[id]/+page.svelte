@@ -8,6 +8,7 @@
 	import { authClient } from "$lib/chat/authClient";
 	import { ORGANIZATION_ERROR_CODES } from "better-auth/client/plugins";
 	import { base } from "$lib/chat/paths";
+	import { m } from "$lib/paraglide/messages.js";
 
 	import type { PageData } from "./$types";
 	let { data }: { data: PageData } = $props();
@@ -34,15 +35,14 @@
 		});
 		if (error?.code === ORGANIZATION_ERROR_CODES.YOU_ARE_NOT_THE_RECIPIENT_OF_THE_INVITATION.code) {
 			wrongAccount = true;
-			loadError =
-				"This invitation was sent to a different email address. Sign out, then open the link again and sign in with the address it was sent to.";
+			loadError = m.workspace_acceptWrongAccount();
 		} else if (error?.status === 400) {
 			// Every 400 from get-invitation means the link is dead: cancelled, used or expired (sent with no
 			// code at all), its workspace deleted, or its inviter gone.
-			loadError =
-				"This invitation was cancelled or has expired. Ask the person who invited you for a new one.";
+			loadError = m.workspace_acceptExpired();
 		} else if (error) {
-			loadError = error.message ?? "Couldn't load that invitation.";
+			// The auth client's error text is English; show the visitor's own language instead.
+			loadError = m.workspace_acceptLoadFailed();
 		} else {
 			invitation = res as InvitationDetail;
 		}
@@ -56,7 +56,7 @@
 		const { error } = await authClient.organization.acceptInvitation({ invitationId: invitation.id });
 		if (error) {
 			busy = null;
-			actionError = error.message ?? "Couldn't accept that invitation.";
+			actionError = m.workspace_acceptFailed();
 			return;
 		}
 		// busy stays "accept" through the navigation, so the button keeps saying Joining….
@@ -79,7 +79,7 @@
 		const { error } = await authClient.organization.rejectInvitation({ invitationId: invitation.id });
 		busy = null;
 		if (error) {
-			actionError = error.message ?? "Couldn't decline that invitation.";
+			actionError = m.workspace_declineInviteFailed();
 			return;
 		}
 		outcome = "declined";
@@ -92,41 +92,40 @@
 </script>
 
 <svelte:head>
-	<title>Workspace invitation — Alpha</title>
+	<title>{m.workspace_acceptPageTitle()}</title>
 </svelte:head>
 
 <div class="mx-auto flex w-full max-w-md flex-col gap-4 p-6 text-[length:var(--ap-text-3)] text-[color:var(--ap-ink)]">
 	{#if !ready}
-		<p class="text-[color:var(--ap-ink-3)]">Loading invitation…</p>
+		<p class="text-[color:var(--ap-ink-3)]">{m.workspace_acceptLoading()}</p>
 	{:else if loadError}
 		<p class="border border-[var(--ap-border-2)] bg-[var(--ap-paper-2)] px-3 py-2 rounded-card">{loadError}</p>
 		<div class="flex gap-2">
 			{#if wrongAccount}
-				<button type="button" class={buttonClass} onclick={signOut}>Sign out</button>
+				<button type="button" class={buttonClass} onclick={signOut}>{m.workspace_acceptSignOut()}</button>
 			{/if}
-			<a class={buttonClass} href={`${base}/`}>Back to chat</a>
+			<a class={buttonClass} href={`${base}/`}>{m.workspace_acceptBackToChat()}</a>
 		</div>
 	{:else if outcome === "declined"}
 		<p class="border border-[var(--ap-border-2)] bg-[var(--ap-paper-2)] px-3 py-2 rounded-card">
-			You've declined this invitation.
+			{m.workspace_acceptDeclined()}
 		</p>
 	{:else if invitation}
 		<h2 class="text-[length:var(--ap-text-5)] font-semibold">
-			Join {invitation.organizationName}
+			{m.workspace_acceptHeading({ name: invitation.organizationName })}
 		</h2>
 		<p class="text-[color:var(--ap-ink-2)]">
-			{invitation.inviterEmail} invited you to join <strong>{invitation.organizationName}</strong> as
-			a member.
+			{m.workspace_acceptInvitedYou({ email: invitation.inviterEmail, name: invitation.organizationName })}
 		</p>
 		{#if actionError}
 			<p class="border border-[var(--ap-border-2)] bg-[var(--ap-paper-2)] px-3 py-2 rounded-card">{actionError}</p>
 		{/if}
 		<div class="flex gap-2">
 			<button type="button" class={buttonClass} disabled={!!busy} onclick={accept}>
-				{busy === "accept" ? "Joining…" : "Accept"}
+				{busy === "accept" ? m.workspace_accepting() : m.workspace_accept()}
 			</button>
 			<button type="button" class={buttonClass} disabled={!!busy} onclick={decline}>
-				{busy === "reject" ? "Declining…" : "Decline"}
+				{busy === "reject" ? m.workspace_declining() : m.workspace_declineInvite()}
 			</button>
 		</div>
 	{/if}

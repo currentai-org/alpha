@@ -83,7 +83,7 @@ echo "ok   the new password logs in"
 set_env_password "$new"
 docker compose up -d --wait --wait-timeout 300
 healthy "after up -d" 60 || fail "GET /healthcheck never returned 200 after .env and up -d"
-web_url_pw=$(docker compose exec -T web printenv DATABASE_URL | sed -n 's|^postgres://alpha:\([^@]*\)@.*|\1|p')
+web_url_pw=$(docker compose exec -T web node -p "process.env.DATABASE_URL ?? ''" | sed -n 's|^postgres://alpha:\([^@]*\)@.*|\1|p')
 [ "$web_url_pw" = "$new" ] || fail "the recreated web service does not connect with the new password"
 got=$(read_back "$cid")
 [ "$got" = "$cid" ] || fail "the guest cannot read their conversation after the change: $got"

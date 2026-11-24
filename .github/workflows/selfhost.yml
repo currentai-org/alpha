@@ -56,10 +56,10 @@ jobs:
         run: ./selfhost/smoke.sh
 
       # The daily cleanup the README describes ("Expired guest data"), on the stack the smoke left up: a guest
-      # conversation aged 40 days is deleted by the web server's own timer, with its first run brought to 5 s
-      # after a recreate, and a fresh one is kept (.github/selfhost-cleanup-smoke.sh). Before the restore,
-      # which wipes the stack. A failure fails the job.
-      - name: The daily cleanup deletes an expired guest conversation
+      # conversation and a guest file aged 40 days are deleted by the web server's own timer, with its first
+      # run brought to 5 s after a recreate, and a fresh one of each is kept (.github/selfhost-cleanup-smoke.sh).
+      # Before the restore, which wipes the stack. A failure fails the job.
+      - name: The daily cleanup deletes an expired guest conversation and guest file
         if: steps.smoke.outcome == 'success'
         run: |
           set +e
@@ -79,7 +79,7 @@ jobs:
       # The README's backup and restore, on the stack the smoke left up: a guest conversation and a file in
       # the `files` volume, selfhost/backup.sh, `down -v`, `up`, selfhost/restore.sh, then every conversation
       # must read back identical, the guest must open theirs with the same cookie, and the file must hold
-      # what was written (.github/selfhost-restore-smoke.sh). Capture-and-warn for its first runs.
+      # what was written (.github/selfhost-restore-smoke.sh). Blocking: a failure fails the job.
       - name: Back up, wipe, restore, and find the conversation and the file again
         if: always() && steps.smoke.outcome == 'success'
         run: |
@@ -93,14 +93,15 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           if [ "$code" != 0 ]; then
-            echo "::warning title=selfhost restore::the restore round trip exited $code. Read this step's log."
+            echo "::error title=selfhost restore::the restore round trip exited $code. Read this step's log."
+            exit 1
           fi
           exit 0
 
       # The README's database password change, on the stack the smoke left up: selfhost/db-passwd.sh, the
       # new value in selfhost/.env, `up -d`, and the app must reconnect and read back a guest's conversation;
       # then .env changed alone must lock the app out, and the script must bring it back
-      # (.github/selfhost-db-passwd-smoke.sh). Capture-and-warn for its first runs.
+      # (.github/selfhost-db-passwd-smoke.sh). Blocking: a failure fails the job.
       - name: Change the database password and find the app reconnected
         if: steps.smoke.outcome == 'success'
         run: |
@@ -114,7 +115,8 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           if [ "$code" != 0 ]; then
-            echo "::warning title=selfhost db password::the password change check exited $code. Read this step's log."
+            echo "::error title=selfhost db password::the password change check exited $code. Read this step's log."
+            exit 1
           fi
           exit 0
 
@@ -235,7 +237,7 @@ jobs:
     # requires `docker compose -f compose.yaml -f compose.gpu.yaml config` to give llama and shieldstral an
     # NVIDIA device request, the pinned server-cuda image and LLAMA_ARG_N_GPU_LAYERS=all, compose.yaml alone
     # to give them none, and both llama.cpp pins to be the same release. Starts nothing. Whether a model
-    # actually runs on a GPU is untested in CI. Capture-and-warn for its first runs.
+    # actually runs on a GPU is untested in CI. Blocking: a FAIL line fails the job.
     name: GPU override requests the device
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -258,7 +260,8 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           if [ "$code" -ne 0 ]; then
-            echo "::warning title=selfhost gpu config::the GPU config check exited $code. Read the FAIL lines in this step's log."
+            echo "::error title=selfhost gpu config::the GPU config check exited $code. Read the FAIL lines in this step's log."
+            exit 1
           fi
           exit 0
 
@@ -267,7 +270,7 @@ jobs:
     # ${NAME} a compose file reads must appear in .env.example, and every .env.example key must be read by
     # a compose file or declared in web/config/env-manifest.mjs, since web loads all of .env. Then
     # `docker compose config` must render for each profile and for the GPU override. Starts nothing.
-    # Capture-and-warn for its first runs.
+    # Blocking: a DRIFT line fails the job.
     name: env file and compose agree
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -290,7 +293,8 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           if [ "$code" -ne 0 ]; then
-            echo "::warning title=selfhost env drift::the env drift check exited $code. Read the DRIFT lines in this step's log."
+            echo "::error title=selfhost env drift::the env drift check exited $code. Read the DRIFT lines in this step's log."
+            exit 1
           fi
           exit 0
 
@@ -342,8 +346,7 @@ jobs:
     # key (.github/selfhost-s3-secret-smoke.sh). Compose renders the file and runs `down` with no S3 key;
     # SeaweedFS with a blank secret exits non-zero and prints `openssl rand -hex 32`; with a secret, and
     # with only deploy/'s FILES_ACCESS_KEY and FILES_SECRET_KEY, it comes up healthy.
-    # No secret, no model, one image pulled. Capture-and-warn for its first runs: a FAIL line is a
-    # ::warning:: and the job stays green, so read the step summary, not the check's colour.
+    # No secret, no model, one image pulled. Blocking: a FAIL line fails the job.
     name: s3 profile refuses a blank secret
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -367,7 +370,8 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           if [ "$code" -ne 0 ]; then
-            echo "::warning title=selfhost s3 secret::the s3-secret check exited $code. Read the FAIL lines in s3-secret.log in the job log."
+            echo "::error title=selfhost s3 secret::the s3-secret check exited $code. Read the FAIL lines in s3-secret.log in the job log."
+            exit 1
           fi
           exit 0
 
@@ -377,7 +381,7 @@ jobs:
     # OPENAI_BASE_URL removed). .github/selfhost-agent-owui-smoke.sh requires the gateway to refuse to start
     # with neither name set, then to come up healthy on the Open WebUI names with the list's first URL as its
     # one provider, and a /v1/models call on a grant to come back from the local llama.cpp through it.
-    # No secret: the local model downloads from Hugging Face without a token. Capture-and-warn while new.
+    # No secret: the local model downloads from Hugging Face without a token. Blocking: a FAIL line fails the job.
     name: agent gateway starts on Open WebUI's env names
     runs-on: ubuntu-latest
     timeout-minutes: 40
@@ -415,6 +419,7 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           if [ "$code" -ne 0 ]; then
-            echo "::warning title=selfhost agent on Open WebUI names::the check exited $code. Read agent-owui-names.log in the job log: a FAIL line names the claim, and the gateway log follows it."
+            echo "::error title=selfhost agent on Open WebUI names::the check exited $code. Read agent-owui-names.log in the job log: a FAIL line names the claim, and the gateway log follows it."
+            exit 1
           fi
           exit 0

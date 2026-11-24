@@ -40,7 +40,7 @@ import { probeDueModels, type ProbeTarget } from "$lib/chat/server/modelProbe";
 import { ensureFlagsPolled, refreshFlags } from "$lib/chat/server/flags";
 import { resolveProviderModelId } from "$lib/chat/server/endpoints/openai/providerPin";
 import { primaryModelId } from "$lib/chat/server/primaryModel";
-import { directWire, mistralChatEndpoint } from "$lib/chat/server/modelsCatalog";
+import { mistralLaneFor } from "$lib/chat/server/modelsCatalog";
 import { rolesNeedFlattening } from "$lib/chat/server/modelProfiles";
 import { mistralChatLane, onRouterLane } from "$lib/chat/server/mistralKey";
 import { probeMistralModelList } from "$lib/chat/server/mistralVersions";
@@ -179,14 +179,8 @@ async function resolveWarmLane(): Promise<WarmLane | null> {
 
 /** The Mistral lane when it serves `model`, as a real turn would reach it; null when it doesn't. */
 function mistralPrimaryLane(model: string): WarmLane | null {
-	const direct = mistralChatEndpoint();
-	if (!direct?.modelIds.includes(model)) return null;
-	return {
-		name: "mistral",
-		baseURL: direct.baseURL,
-		key: mistralChatLane().apiKey,
-		wireId: directWire(direct, model).modelId ?? model,
-	};
+	const lane = mistralLaneFor(model);
+	return lane ? { name: "mistral", baseURL: lane.baseURL, key: lane.apiKey, wireId: lane.wireId } : null;
 }
 
 /**

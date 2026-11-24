@@ -5,10 +5,9 @@ Both planes already emit one JSON object per line with a shared `ts` — `_log_e
 merge is theoretical: both end at stdout, which on most hosts is a live tail and not
 a history. If nobody was watching, it did not happen.
 
-WHY AN HTTP SINK IN-PROCESS, AND NOT A PLATFORM LOG DRAIN. The platform is the thing that is
-changing. Fly is the interim testbed; the eventual sovereign deployment target is still undecided,
-and a platform-specific shipper would be thrown away at that boundary. A POST from inside the process
-depends on none of that, so this survives whatever the migration turns out to be.
+WHY AN HTTP SINK IN-PROCESS, AND NOT A PLATFORM LOG DRAIN. The service can run on any
+platform, and a platform-specific shipper would not move with it. A POST from inside the process
+depends on none of that, so this survives a change of host.
 
 OFF UNLESS `AXIOM_TOKEN` IS SET. No token means every function here is a cheap no-op: stdout keeps
 its current behavior, and local runs, pytest and CI are unaffected without opting out of anything.

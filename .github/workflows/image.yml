@@ -6,14 +6,14 @@
 # multi-arch index, tags it, attests its build provenance (`gh attestation verify`) and signs it with
 # cosign keyless (`cosign verify`). deploy/README.md has both verify commands.
 #
-# Three blocking gates stand between a build and a release tag. Each platform image is scanned for secrets by
-# gitleaks over its filesystem (deploy/scan-image.sh) before its digest is handed on. The signed index
-# is then pulled by digest into the self-host stack (selfhost/compose.release.yaml, no local build) and
-# must answer a guest chat turn. Before it is attested and signed, the index's SBOM is read back from the
-# registry and must list packages on every platform (deploy/check-sbom.sh). Each platform image is also
-# scanned for known vulnerabilities by Grype, report-only: high and critical counts go to the run summary and
-# never fail the run. Only after the blocking gates does the last job put the version tags on that same
-# digest, so a version tag never names an image that was not scanned and booted.
+# Four blocking gates stand between a build and a release tag. Each platform image is scanned for secrets by
+# gitleaks over its filesystem (deploy/scan-image.sh), and for known vulnerabilities by Grype, before its
+# digest is handed on: a high or critical finding with a fix available fails the build (.grype.yaml holds
+# the reasoned ignore list). The signed index is then pulled by digest into the self-host stack
+# (selfhost/compose.release.yaml, no local build) and must answer a guest chat turn. Before it is attested
+# and signed, the index's SBOM is read back from the registry and must list packages on every platform
+# (deploy/check-sbom.sh). Only after the blocking gates does the last job put the version tags on that
+# same digest, so a version tag never names an image that was not scanned and booted.
 #
 # It runs only when asked for: on a version tag vX.Y.Z, which gives `X.Y.Z`, `X.Y` and `stable` (a pre-release tag such as vX.Y.Z-rc.1 gets only its own version), and
 # on a manual run (workflow_dispatch) from main, which gives `main` and `sha-<commit>`. A manual run from
@@ -119,45 +119,30 @@ jobs:
           DIGEST: ${{ steps.build.outputs.digest }}
         run: ./deploy/scan-image.sh "$IMAGE@$DIGEST"
 
-      # Report-only. Grype reads the platform image from the registry by digest, on this platform's own runner,
-      # so the platform it scans is the one it was built for. A scan that cannot run, or a finding of any
-      # severity, never fails the job: the counts below are for a person to read before a release.
-      # To make high or critical findings block, add `fail-build: true` and `severity-cutoff: high` here and
-      # drop `continue-on-error`.
-      - name: Scan the image for known vulnerabilities (report only)
+      # Grype reads the platform image from the registry by digest, on this platform's own runner, so the
+      # platform it scans is the one it was built for. The scan reports every finding, unfixed ones included,
+      # as a self-hoster's own scan would; the step after it is the gate.
+      - name: Scan the image for known vulnerabilities
         id: grype
-        continue-on-error: true
         uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
         with:
           image: registry:${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
           fail-build: false
-          output-format: json
           only-fixed: false
+          output-format: json
 
-      - name: Vulnerability summary (report only)
+      # Blocking. A high or critical finding with a fixed version available fails the job, so the digest is
+      # never handed on; so does a scan that wrote no report. A finding with no fix upstream is counted in the
+      # run summary and does not block. .grype.yaml at the repository root is the ignore list, and every
+      # entry in it says why.
+      - name: Fail on a fixable high or critical vulnerability
         if: ${{ !cancelled() }}
         env:
           REPORT: ${{ steps.grype.outputs.json }}
           PLATFORM: ${{ matrix.platform }}
-          OUTCOME: ${{ steps.grype.outcome }}
         run: |
-          {
-            echo "### Known vulnerabilities, $PLATFORM (Grype, report only)"
-            echo
-            if [ "$OUTCOME" != success ] || [ ! -s "$REPORT" ]; then
-              echo "The scan did not run (outcome: $OUTCOME). Nothing was counted."
-            else
-              jq -r '
-                [.matches[] | .vulnerability.severity] as $sev
-                | "| Critical | High | Medium | Low | Other |\n|---|---|---|---|---|\n| \([$sev[] | select(. == "Critical")] | length) | \([$sev[] | select(. == "High")] | length) | \([$sev[] | select(. == "Medium")] | length) | \([$sev[] | select(. == "Low")] | length) | \([$sev[] | select(. as $s | ["Critical","High","Medium","Low"] | index($s) | not)] | length) |"' "$REPORT"
-              echo
-              echo "Of the high and critical, with a fix available (package: vulnerability):"
-              echo
-              echo '```'
-              jq -r '[.matches[] | select(.vulnerability.severity == "Critical" or .vulnerability.severity == "High") | select((.vulnerability.fix.versions // []) | length > 0) | "\(.artifact.name) \(.artifact.version): \(.vulnerability.id) (\(.vulnerability.severity)), fixed in \(.vulnerability.fix.versions | join(", "))"] | unique | .[:40][]' "$REPORT"
-              echo '```'
-            fi
-          } | tee -a "$GITHUB_STEP_SUMMARY"
+          set -o pipefail
+          ./deploy/grype-summary.sh "$REPORT" "$PLATFORM" --gate | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Record the digest
         env:
@@ -306,13 +291,30 @@ jobs:
           key: ${{ env.MODEL_CACHE_KEY }}
 
       - name: Boot the pulled image and chat
+        id: smoke
         env:
           DIGEST: ${{ needs.publish.outputs.digest }}
           COMPOSE_FILE: compose.yaml:compose.release.yaml
         run: |
           export ALPHA_IMAGE="$IMAGE@$DIGEST"
-          SMOKE_DOWN=1 ./selfhost/smoke.sh
+          ./selfhost/smoke.sh
+          echo "ALPHA_IMAGE=$ALPHA_IMAGE" >> "$GITHUB_ENV"
           echo "smoke ran $ALPHA_IMAGE" >> "$GITHUB_STEP_SUMMARY"
+
+      # The daily cleanup on the image deploy/compose.yaml pulls: the same check selfhost.yml runs on a
+      # build (.github/selfhost-cleanup-smoke.sh), here on the pulled digest, so a release whose server
+      # never deletes expired guest data gets no version tag.
+      - name: The daily cleanup deletes an expired guest conversation and guest file
+        env:
+          COMPOSE_FILE: compose.yaml:compose.release.yaml
+        run: ./.github/selfhost-cleanup-smoke.sh
+
+      - name: Tear the stack down
+        if: always()
+        working-directory: selfhost
+        env:
+          COMPOSE_FILE: compose.yaml:compose.release.yaml
+        run: docker compose --profile local down -v || true
 
   # The version tags, put on the digest that passed the scan and the smoke. Retagging moves no bytes,
   # and the signature and attestation are on the digest, so they stay valid.

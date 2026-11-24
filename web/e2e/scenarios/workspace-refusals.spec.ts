@@ -160,7 +160,7 @@ test(
 				page.getByText(/\b5 invitations a day/i),
 				'a new account’s 6th invite in a day was not refused with the limit named'
 			).toBeVisible({ timeout: 15_000 });
-			// Visible in the DOM is not the same as on screen; the graded recording had it below the fold.
+			// Visible in the DOM is not the same as on screen; a recording had it below the fold.
 			await expect(
 				page.getByRole('alert').filter({ hasText: /\b5 invitations a day/i }),
 				'the invite-limit refusal is off screen'

@@ -9,7 +9,7 @@ import { convertChat, epochToMs, flattenContent } from "../convert";
 import { readOpenWebUiSqlite, type SourceChat } from "../readSqlite";
 import { KNOWN_REVISIONS, UnsupportedSourceError } from "../../../shared/openWebUiImport/sourceSchema";
 import { formatReport, reportParity, userParity } from "../report";
-import { buildFixture, FIXTURE_REVISION } from "./owuiFixture";
+import { buildFixture, FIXTURE_REVISION, OWUI_0_13_4_REVISION } from "./owuiFixture";
 
 let dir: string;
 beforeEach(() => {
@@ -47,6 +47,32 @@ describe("schema version gate", () => {
 		db.close();
 		expect(() => readOpenWebUiSqlite(join(dir, "webui.db"))).toThrow(UnsupportedSourceError);
 		expect(() => readOpenWebUiSqlite(join(dir, "webui.db"))).toThrow(/deadbeef0000/);
+	});
+
+	it("lists the 0.12.0 through 0.13.4 heads, newest last, and reads the fixture at each", () => {
+		expect(Object.entries(KNOWN_REVISIONS)).toEqual([
+			["b8f2c6d91a04", "Open WebUI 0.12.0"],
+			["0bd252b206fb", "Open WebUI 0.12.1-0.12.5"],
+			["e42c8f710a36", "Open WebUI 0.13.0"],
+			["9f6c2a8d1b43", "Open WebUI 0.13.1-0.13.4"],
+		]);
+		expect(Object.keys(KNOWN_REVISIONS).at(-1)).toBe(OWUI_0_13_4_REVISION);
+		for (const revision of Object.keys(KNOWN_REVISIONS)) {
+			const path = join(dir, `at-${revision}.db`);
+			buildFixture(path, revision).close();
+			const data = readOpenWebUiSqlite(path);
+			expect(data.revision).toBe(revision);
+			expect(data.chats).toHaveLength(6);
+		}
+	});
+
+	it("refuses a revision newer than the last one listed, naming it and the newest it knows", () => {
+		// A head a later Open WebUI might ship: any revision not listed, whatever its age.
+		buildFixture(join(dir, "newer.db"), "a0b1c2d3e4f5").close();
+		const read = () => readOpenWebUiSqlite(join(dir, "newer.db"));
+		expect(read).toThrow(UnsupportedSourceError);
+		expect(read).toThrow(/revision a0b1c2d3e4f5 is not one this importer knows/);
+		expect(read).toThrow(/newest it knows is 9f6c2a8d1b43 \(Open WebUI 0\.13\.1-0\.13\.4\)/);
 	});
 
 	it("refuses a SQLite file that is not an Open WebUI database", async () => {

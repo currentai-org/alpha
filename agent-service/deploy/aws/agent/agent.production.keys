@@ -1,0 +1,7 @@
+# Settings the production agent runs with, beside agent.keys (render_env.py). Each is a Doppler key there.
+# The staged policy keeps a first-time caller from writing files or running code (api/app.py); render_env.py
+# refuses a production env where it is allow or missing. The trust thresholds decide when a caller graduates.
+ACP_PERMISSION_POLICY
+AGENT_TRUST_MIN_TASKS
+AGENT_TRUST_ACCRUAL_SECS
+E2B_SLOT_CAPACITY

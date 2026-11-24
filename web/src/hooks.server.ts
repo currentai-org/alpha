@@ -338,8 +338,9 @@ export const init: ServerInit = async () => {
 	// the browser. Site code gets the same logger and chat's flag reader here, so it imports
 	// neither from chat (payload/hostServices.ts). Where chat runs in this app, the site's CMS webhook
 	// also hands each publish to chat's side of it; a site-only build forwards it to the
-	// chat host instead. In a build without chat's files, site code keeps its own defaults: the
-	// console for its lines, and each flag's fallback.
+	// chat host instead. In a build without chat's files (www's site-only build strips them), startCms
+	// builds the site's own logger and flag reader (website/siteHost.ts), so its lines still reach
+	// Axiom and its flags still read PostHog.
 	try {
 		const [chatLog, chatFlagReader] = await Promise.all([
 			loadChat(chatLogger),

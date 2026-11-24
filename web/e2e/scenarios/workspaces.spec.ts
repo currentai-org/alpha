@@ -1,5 +1,6 @@
 // e2e-product: @chat
 // e2e-area: @storage
+import { readFileSync } from 'node:fs';
 import { test, expect } from './helpers/test';
 import type { Locator, Page } from '@playwright/test';
 import { setFlagOverrides } from './helpers/flagOverride';
@@ -227,7 +228,7 @@ test(
 		});
 		await nameInput.fill(first);
 		// After Create the new row lit up at once while Personal kept Current and the heading,
-		// for the ~2 s the new workspace's detail took to load (graded recordings caught it).
+		// for the ~2 s the new workspace's detail took to load.
 		// Hold that load: nothing is highlighted until the new workspace is Current.
 		{
 			let releaseDetail!: () => void;
@@ -514,7 +515,7 @@ test(
 
 		// Current stays on the team until the switch and the shell reload land, and the
 		// Personal row said nothing meanwhile, so the pointer's hover fill on it read as a second
-		// selection beside the team's Current (a graded recording caught it). Hold the switch.
+		// selection beside the team's Current. Hold the switch.
 		let releaseSwitch!: () => void;
 		const switchHeld = new Promise<void>((resolve) => (releaseSwitch = resolve));
 		const setActive = '**/chat/api/auth/organization/set-active*';
@@ -543,7 +544,7 @@ test(
 		).toBeVisible({ timeout: 15_000 });
 		await expect(isCurrent(name)).toHaveCount(0);
 		// Read once, with no retry: Current moved to Personal while the account row still named the
-		// team for about a second (a graded recording caught it), and both move in one step now.
+		// team for about a second, and both move in one step now.
 		expect(
 			(await accountStatus.textContent())?.trim(),
 			'Personal was marked Current while the account row still named the team'
@@ -1438,5 +1439,78 @@ test(
 			accountStatus,
 			'after the chosen workspace was deleted, a new sign-in did not start in Personal'
 		).toHaveText('Personal workspace', { timeout: 15_000 });
+	}
+);
+
+// The invitation page is localized: a German invitee reads its heading, invite line, buttons and
+// declined line in German. The expected text comes from the German catalog, so the spec follows a
+// copy edit, and the English strings must be absent.
+const de = JSON.parse(
+	readFileSync(new URL('../../messages/de.json', import.meta.url), 'utf8')
+) as Record<string, string>;
+const en = JSON.parse(
+	readFileSync(new URL('../../messages/en.json', import.meta.url), 'utf8')
+) as Record<string, string>;
+
+test(
+	'a German invitee reads the invitation page in German, heading, invite line and both buttons, and declining says so in German',
+	{ tag: ['@preview-only', '@A2', '@A8'] },
+	async ({ page, context, baseURL }) => {
+		const flags = { 'workspace-org-creation': true };
+		const origin = { origin: new URL(baseURL!).origin };
+		await setFlagOverrides(context, baseURL!, flags);
+		const adminEmail = freshTestEmail();
+		await signInAsFreshUser(page, adminEmail);
+
+		const name = `E2E Einladung ${Date.now()}`;
+		const created = await page.request.post('/chat/api/auth/organization/create', {
+			data: { name, slug: `e2e-einladung-${Date.now()}` },
+			headers: origin
+		});
+		expect(created.status(), `creating the workspace answered ${created.status()}`).toBe(200);
+		const { id: organizationId } = (await created.json()) as { id: string };
+		const inviteeEmail = freshTestEmail();
+		const invited = await page.request.post('/chat/api/auth/organization/invite-member', {
+			data: { organizationId, email: inviteeEmail, role: 'member' },
+			headers: origin
+		});
+		expect(invited.status(), `inviting ${inviteeEmail} answered ${invited.status()}`).toBe(200);
+		const { id: invitationId } = (await invited.json()) as { id: string };
+
+		// The invitee is someone else, on a German browser.
+		await context.clearCookies();
+		await context.addCookies([{ name: 'PARAGLIDE_LOCALE', value: 'de', url: baseURL as string }]);
+		await setFlagOverrides(context, baseURL!, flags);
+		await signInAsFreshUser(page, inviteeEmail);
+
+		await page.goto(`/chat/workspace/accept/${invitationId}`);
+		await expect(
+			page.getByRole('heading', { name: de.workspace_acceptHeading.replace('{name}', name) }),
+			'the invitation heading is not the German one'
+		).toBeVisible({ timeout: 30_000 });
+		await expect(
+			page.getByText(
+				de.workspace_acceptInvitedYou.replace('{email}', adminEmail).replace('{name}', name)
+			)
+		).toBeVisible();
+		await expect(
+			page.getByRole('button', { name: de.workspace_accept, exact: true })
+		).toBeVisible();
+		const decline = page.getByRole('button', { name: de.workspace_declineInvite, exact: true });
+		await expect(decline).toBeVisible();
+		for (const key of ['workspace_accept', 'workspace_declineInvite', 'workspace_acceptHeading']) {
+			expect(de[key], `${key} has its own German text`).not.toBe(en[key]);
+		}
+		await expect(page.getByRole('button', { name: en.workspace_accept, exact: true })).toHaveCount(
+			0
+		);
+		await expect(page.getByText(`${adminEmail} invited you to join`)).toHaveCount(0);
+		await holdForRecording(page);
+
+		await decline.click();
+		await expect(
+			page.getByText(de.workspace_acceptDeclined),
+			'after declining, the page did not say so in German'
+		).toBeVisible({ timeout: 15_000 });
 	}
 );

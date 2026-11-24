@@ -12,13 +12,24 @@
 // Usage:
 //   node scripts/check-guard-policy.mjs                 validate src/lib/chat/server/rules.json
 //   node scripts/check-guard-policy.mjs --file <path>   validate an alternate file (the injury spec)
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
-import { validateGuardPolicy } from "../src/lib/chat/server/guardPolicyCore.mjs";
-
 const here = dirname(fileURLToPath(import.meta.url));
+const core = resolve(here, "../src/lib/chat/server/guardPolicyCore.mjs");
+
+// www's site-only build removes chat's files before it builds (site-without-alpha.mjs strip), and the
+// guard policy is chat's: nothing to validate there. Anywhere else a missing validator is a broken tree.
+if (!existsSync(core)) {
+	if (process.env.APP_SURFACE === "site-only") {
+		console.log("[guard-policy] chat's files are not in this build (site-only): nothing to check");
+		process.exit(0);
+	}
+	console.error(`[guard-policy] ${core} is missing`);
+	process.exit(1);
+}
+const { validateGuardPolicy } = await import(core);
 const args = process.argv.slice(2);
 const fileFlag = args.indexOf("--file");
 const rulesPath =

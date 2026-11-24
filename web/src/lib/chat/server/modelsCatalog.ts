@@ -265,6 +265,21 @@ export function mistralChatEndpoint(): DirectEndpoint | null {
 }
 
 /**
+ * Where a turn on `model` goes when chat's Mistral lane serves it: that host, its key, and the host's own
+ * name for the model. Null when MISTRAL_MODELS does not list `model`, so the caller takes its own lane.
+ * The model warm probe and the live specs both read it, so each reaches the host a real turn does.
+ */
+export function mistralLaneFor(model: string): { baseURL: string; apiKey: string; wireId: string } | null {
+	const direct = mistralChatEndpoint();
+	if (!direct?.modelIds.includes(model)) return null;
+	return {
+		baseURL: direct.baseURL,
+		apiKey: mistralChatLane().apiKey,
+		wireId: directWire(direct, model).modelId ?? model,
+	};
+}
+
+/**
  * The endpoint fields that send `id` under the host's own name and record the answer under ours.
  * Empty when the host uses our id, so the endpoint is exactly what it was before.
  */

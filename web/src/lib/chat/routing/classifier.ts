@@ -63,6 +63,17 @@ export interface DraftAnalysis {
 	elapsedMs?: number;
 }
 
+/**
+ * A draft of `size` (medium by default) read as written in `tag`, surely unless `confidence` says
+ * otherwise, with `sizeConfidence` in the size reading. The one hand-made draft for panels and specs.
+ */
+export const draftIn = (tag: string, size: Difficulty = 'M', confidence = 1, sizeConfidence = 1): DraftAnalysis => ({
+	language: { value: tag, confidence, alternatives: [], signal: 'words' },
+	difficulty: { value: size, confidence: sizeConfidence },
+	skills: [],
+	source: 'manual'
+});
+
 export type DraftClassifier = (text: string, opts?: { signal?: AbortSignal }) => Promise<DraftAnalysis>;
 
 // Getters, so every read is in the interface language at the moment it is read.

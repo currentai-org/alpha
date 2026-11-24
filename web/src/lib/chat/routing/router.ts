@@ -53,7 +53,11 @@ export interface RoutingConfig {
 	 * their ratios count. A skill criterion missing here uses DEFAULT_SKILL_WEIGHT.
 	 */
 	weights: Partial<Record<CriterionId, number>>;
-	/** Below this best-available support a confidently detected language counts as a gap. */
+	/**
+	 * Below this support, rescaled above chance, the model answering a confidently detected language is
+	 * still learning it and the still-learning notice shows (`stillLearning`). The default is
+	 * STILL_LEARNING_RAW on Belebele's scale.
+	 */
 	weakSupport: number;
 	/** Language confidence needed before a gap is reported. */
 	gapConfidence: number;
@@ -71,11 +75,21 @@ export interface RoutingConfig {
 	languageMargin: number;
 }
 
+/**
+ * The raw Belebele accuracy below which a model is still learning a language. Four choices
+ * per question, so 0.25 is guessing and 0.75 sits two thirds of the way from guessing to perfect. In
+ * Amharic, GLM 5.2 (0.86) clears it; Large 4 (0.71), Apertus 70B (0.566), Medium 3.5 (0.441) and
+ * Bielik 11B (0.32) do not.
+ */
+const STILL_LEARNING_RAW = 0.75;
+const BELEBELE_CHANCE = 0.25;
+
 export const DEFAULT_ROUTING: RoutingConfig = {
 	target: { S: 0, M: 4, L: 8 },
 	underCost: 0.04,
 	weights: DEFAULT_WEIGHTS,
-	weakSupport: 0.5,
+	// Unrounded, so a raw 0.75 (rescaled and rounded to 0.67) clears the line and a raw 0.745 (0.66) does not.
+	weakSupport: (STILL_LEARNING_RAW - BELEBELE_CHANCE) / (1 - BELEBELE_CHANCE),
 	gapConfidence: 0.55,
 	continuity: 0.06,
 	capacityCost: 0.15,
@@ -117,11 +131,18 @@ export interface ModelScore {
 	total: number;
 }
 
-/** A language Alpha can detect but none of its models serve well. Drives the dataset CTA. */
+/**
+ * A language the model answering is still learning: drives the still-learning notice, before sending
+ * and on the sent answer, and the dataset call-to-action.
+ */
 export interface LanguageGap {
 	tag: string;
 	name: string;
-	/** Best support among the models Alpha serves now. */
+	/** Catalog id of the model answering, the one still learning the language. */
+	model: string;
+	/** That model's support for the language, 0–1 above chance. */
+	support: number;
+	/** Best support among the models Alpha serves now (Auto's choice; for a hand pick, among every model). */
 	bestAvailable: number;
 	/** Best support among every catalog model, served or not. */
 	bestAnywhere: number;
@@ -336,14 +357,7 @@ export function route(analysis: DraftAnalysis, servedIds: string[], opts: RouteO
 		servedIds.some((id) => servedKey(id) === servedKey(ideal.gatewayId!));
 
 	const shown = shownLanguage(analysis, config);
-	let gap: LanguageGap | undefined;
-	if (shown !== 'und') {
-		const bestAvailable = Math.max(...available.map((s) => s.language));
-		if (bestAvailable < config.weakSupport) {
-			const benchmarked = scores.filter((s) => s.benchmarked);
-			gap = { tag, name, bestAvailable, bestAnywhere: Math.max(...benchmarked.map((s) => s.language)) };
-		}
-	}
+	const gap = stillLearning(analysis, pick.model.id, opts, scores);
 
 	// Another model of the pick's family in the picker, Auto's to choose or not: Large 3 and Large 4 sit beside
 	// Medium on every site, so "Mistral answers" would not say which of the three did.
@@ -368,13 +382,60 @@ export function route(analysis: DraftAnalysis, servedIds: string[], opts: RouteO
 		reasons,
 		explanation: keptForContinuity
 			? m.routing_keptForContinuity({ family: pick.model.family })
-			: explain(analysis, shown, pick, available, target, ideal, gap, busy, idealPickable, familyShared),
+			: explain(
+					analysis,
+					shown,
+					pick,
+					available,
+					target,
+					ideal,
+					// "None of Alpha's models handle it well" only when none does, not just the one answering.
+					gap && Math.max(...available.map((s) => s.language)) < config.weakSupport ? gap : undefined,
+					busy,
+					idealPickable,
+					familyShared
+				),
 		scores,
 		target,
 		languageWeight: round(shares.language ?? 0),
 		shares,
 		gap,
 		keptForContinuity
+	};
+}
+
+/**
+ * Whether `modelId`, answering this draft, is still learning its language: the draft's language is
+ * confidently detected (`shownLanguage`) and the model's support for it sits under `weakSupport`. The
+ * one test behind the still-learning notice, whoever chose the model (Auto, or the person by hand),
+ * before sending and on the sent answer alike. Support comes from the measured language scores, so no
+ * model list is kept by hand.
+ *
+ * @param scores `scoreModels`' result for this draft, when the caller has it; it fills `bestAvailable`
+ *   and `bestAnywhere`. Without it both are the model's own support.
+ */
+export function stillLearning(
+	analysis: DraftAnalysis,
+	modelId: string,
+	opts: RouteOptions = {},
+	scores?: ModelScore[]
+): LanguageGap | undefined {
+	const config = opts.config ?? DEFAULT_ROUTING;
+	const tag = shownLanguage(analysis, config);
+	if (tag === 'und') return undefined;
+	const own =
+		scores?.find((s) => s.model.id === modelId)?.language ??
+		languageSupport(opts.benchmarks ?? SHIPPED_BENCHMARKS, modelId, tag, opts.languageScores ?? SHIPPED_LANGUAGE_SCORES)
+			.value;
+	if (own >= config.weakSupport) return undefined;
+	const best = (rows: ModelScore[]) => (rows.length ? Math.max(own, ...rows.map((s) => s.language)) : own);
+	return {
+		tag,
+		name: localLanguageName(tag, getLocale()),
+		model: modelId,
+		support: own,
+		bestAvailable: best((scores ?? []).filter((s) => s.available && s.benchmarked)),
+		bestAnywhere: best((scores ?? []).filter((s) => s.benchmarked))
 	};
 }
 

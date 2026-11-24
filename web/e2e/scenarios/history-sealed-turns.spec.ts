@@ -4,13 +4,16 @@
 // with a history key (a guest's chats are not sealed) sends a turn carrying a canary; afterwards no copy of the canary is anywhere in
 // the conversation's stored row, and the chat still reads back in the browser. A turn whose posted
 // history changes an earlier message is refused and stores nothing. After Forget everything, an
-// account can enroll a new history key with a new recipient.
+// account can enroll a new history key with a new recipient. After account deletion, both stored history
+// objects are the tombstone.
 //
 // Sealing is the history-seal-writes flag; with it off, the canary is stored in
 // plaintext and the first test fails on that. The history key is made only where the
 // history-key-enrollment flag is on, so it is forced the documented way (`setFlagOverrides`).
 import { test, expect, type Page } from './helpers/test';
+import { createHash } from 'node:crypto';
 import postgres from 'postgres';
+import { downloadFile } from '@huggingface/hub';
 import { Encrypter, generateHybridIdentity, identityToRecipient } from 'age-encryption';
 import { chatPath } from './helpers/chatEntry';
 import { freshAccountWithHistoryKey } from './helpers/historyKey';
@@ -179,5 +182,86 @@ test(
 			`a new history key was refused: ${(await stored.text()).slice(0, 200)}`
 		).toBe(201);
 		expect((await (await page.request.get(KEY_ROUTE)).json()).recipient).toBe(second.recipient);
+	}
+);
+
+// What account deletion writes over each history object: `KEY_TOMBSTONE` in
+// src/lib/chat/server/storage/custodialCrypto.ts (that module imports `$lib`, which specs cannot).
+const KEY_TOMBSTONE = 'alpha-custodial-key-tombstone\n';
+
+/** The chat's id for a Better Auth user, which names its key objects: `shadowUserId` in
+ *  src/lib/chat/server/auth.ts, the first 24 hex characters of the auth id's SHA-256. */
+const chatUserId = (authUserId: string) =>
+	createHash('sha256').update(authUserId).digest('hex').slice(0, 24);
+
+/** The run's custodial bucket. A run that reads the bucket directly must name it. */
+function bucketRepo(): string {
+	const repo = process.env.HF_BUCKETS_REPO;
+	if (!repo) throw new Error('HF_BUCKETS_REPO is unset, so the key bucket cannot be read');
+	return repo;
+}
+
+/** One key object read straight from the bucket with the run's read-only token, bypassing the app. */
+async function bucketObject(path: string, accessToken: string): Promise<string | null> {
+	try {
+		const blob = await downloadFile({
+			repo: bucketRepo(),
+			path,
+			accessToken
+		});
+		return blob ? await blob.text() : null;
+	} catch (err) {
+		// The shared token's 3,000-calls-per-5-minutes cap says nothing about the bucket.
+		if ((err as { statusCode?: number }).statusCode === 429) {
+			throw new Error(
+				'Hugging Face is throttling the shared storage token (429 on a key read): infrastructure, not this change',
+				{ cause: err }
+			);
+		}
+		throw err;
+	}
+}
+
+// A deleted account has no session, so no browser request can ask the key route anything; the 410 that
+// GET and PUT answer afterwards is covered in history-key.spec.ts. What only a live run can show is that
+// the deletion overwrote the stored objects themselves, so `readHistoryRecipient` refuses and no turn can
+// seal to the old recipient. Two key reads per run, to stay clear of the shared token's cap.
+test(
+	'after account deletion, the stored history recipient and wrap are both the tombstone, so nothing can seal to the old key',
+	{ tag: ['@preview-only'] },
+	async ({ page, context, baseURL }) => {
+		const token = process.env.HF_BUCKETS_TOKEN;
+		expect(token, 'HF_BUCKETS_TOKEN is unset, so the key bucket cannot be read').toBeTruthy();
+		test.setTimeout(180_000);
+		await setFlagOverrides(context, baseURL!, { 'history-key-enrollment': false });
+		const userId = chatUserId(await signInAsFreshUser(page));
+		await composerHydrated(page);
+
+		const key = await historyKeyBody();
+		expect(
+			(await page.request.put(KEY_ROUTE, { data: key })).status(),
+			'the history key was not stored'
+		).toBe(201);
+		const recipientPath = `_keys/user/${userId}.history.recipient`;
+		const wrapPath = `_keys/user/${userId}.history.age`;
+
+		await page.goto(chatPath('/settings/account'), { waitUntil: 'commit' });
+		await page
+			.getByRole('button', { name: 'Delete your account, conversations, and sign-in methods' })
+			.click({ timeout: 30_000 });
+		await page.getByLabel('Type DELETE to confirm').fill('DELETE');
+		await page.getByRole('button', { name: 'Delete account', exact: true }).click();
+		await expect(page.getByRole('heading', { name: 'Your data has been cleared' })).toBeVisible({
+			timeout: 60_000
+		});
+
+		expect(
+			await bucketObject(recipientPath, token!),
+			'the history recipient outlived account deletion: a turn could still seal to it'
+		).toBe(KEY_TOMBSTONE);
+		expect(
+			await bucketObject(wrapPath, token!),
+			'the wrapped history key outlived account deletion'
+		).toBe(KEY_TOMBSTONE);
 	}
 );

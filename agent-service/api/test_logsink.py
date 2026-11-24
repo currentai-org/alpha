@@ -264,11 +264,11 @@ def test_posts_a_json_array_to_the_dataset_ingest_path(sink, monkeypatch):
 # ---- the Fly app stamp ----------------------------------------------------------------------
 
 def test_emitted_record_carries_fly_app_from_env_and_keeps_an_explicit_one(sink, monkeypatch):
-    monkeypatch.setenv("FLY_APP_NAME", "potluck-agent-test")
+    monkeypatch.setenv("FLY_APP_NAME", "example-agent-app")
     sink.emit({"ts": 1.0, "event": "run.finished", "id": "t1"})
     sink.emit({"ts": 2.0, "event": "sandbox.pool", "fly_app": "explicit-app"})
     first, second = _drain(sink)
-    assert first["fly_app"] == "potluck-agent-test"
+    assert first["fly_app"] == "example-agent-app"
     assert second["fly_app"] == "explicit-app"
 
 

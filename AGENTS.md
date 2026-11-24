@@ -64,6 +64,25 @@ read them for expected behaviour rather than running them on a fresh clone.
   code under test. A change to a prompt or a classifier needs a check against a real model as well as unit
   tests, since a unit test cannot show what the model says.
 
+## Branches, releases and deploys
+
+Once development happens in this repository (until then it is a snapshot and `CONTRIBUTING.md` says
+how to take part), the model is this. Follow it when you branch, open a pull request or touch a release.
+
+- **Trunk on `main`.** Work on a short-lived branch off `main` and open a pull request; the merge queue
+  merges it. Do not create or target a long-lived `develop` or `release` branch. A `release/vX.Y`
+  maintenance branch exists only once an older line needs a patch.
+- **Releases are semver tags** (`v0.x.y`), never date tags. A release pull request writes the changelog
+  entry and names every database migration and every breaking configuration change in it; merging it
+  and tagging the merge commit cuts the release.
+- **Each tag has one container image** on GHCR, signed with cosign and carrying an SBOM and a provenance
+  attestation (`.github/workflows/image.yml`, `deploy/README.md`). The `main` tag is the edge build for
+  testing, not for running anything you depend on.
+- **The hosted instance deploys like any self-hoster.** A push to `main` goes to a staging deploy;
+  production moves only when a tag is cut. The git tag is the trigger, so never add a deploy step that
+  works only through one hosting vendor's dashboard or branch setting.
+- **Self-hosters pin a tag or a digest**, never `main` (`deploy/README.md`, "Upgrade").
+
 ## Things that look wrong but are not
 
 - A few ticket ids from an internal tracker that is not public remain in code and data, such as test

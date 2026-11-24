@@ -9,7 +9,7 @@
 	import { LAUNCH_LANGUAGES, partnerHref } from "$lib/chat/languageData";
 	import { fromIso1, languageName, localLanguageName } from "$lib/chat/routing/languages";
 	import { getLocale } from "$lib/paraglide/runtime.js";
-	import { recentLanguageGap } from "$lib/chat/routing/state";
+	import { activeRoutingConfig, recentLanguageGap } from "$lib/chat/routing/state";
 	import { settingsDevTools } from "$lib/chat/settingsSections";
 	import ReportProblemDialog from "$lib/chat/components/ReportProblemDialog.svelte";
 	import OrgMention from "$lib/chat/components/provenance/OrgMention.svelte";
@@ -189,7 +189,8 @@
 				<h2 id="data-heading" class="type-label text-fg-1">
 					{languageLabel ? m.contribute_dataIn({ language: languageLabel }) : m.contribute_dataYours()}
 				</h2>
-				{#if $recentLanguageGap && $recentLanguageGap.tag === language}
+				<!-- "None of Alpha's models handle it": only when none does, not just the one that answered. -->
+				{#if $recentLanguageGap && $recentLanguageGap.tag === language && $recentLanguageGap.bestAvailable < $activeRoutingConfig.weakSupport}
 					<p class="type-body text-fg-2" data-contribute-gap={$recentLanguageGap.tag}>
 						{m.contribute_gapNotice({ language: localLanguageName($recentLanguageGap.tag, getLocale()), percent: Math.round($recentLanguageGap.bestAvailable * 100) })}
 					</p>

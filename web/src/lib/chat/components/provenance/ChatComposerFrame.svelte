@@ -10,7 +10,7 @@
 	import { catalog, catalogByGatewayId, orgs, servedKey, type CatalogModel } from '$lib/chat/routing/catalog';
 	import { DIFFICULTY_LABEL } from '$lib/chat/routing/classifier';
 	import { localLanguageName } from '$lib/chat/routing/languages';
-	import { route, shownLanguage } from '$lib/chat/routing/router';
+	import { route, shownLanguage, stillLearning } from '$lib/chat/routing/router';
 	import { languageSupport } from '$lib/chat/routing/benchmarks';
 	import { AUTO, modelChoice, modelPickRequest, modelPickerOpenRequest, pickerChoice } from '$lib/chat/routing/choice';
 	import { useDraftAnalysis } from '$lib/chat/routing/draftAnalysis.svelte';
@@ -317,13 +317,24 @@
 			: undefined;
 	const choice = $derived(routeFor(routedIds));
 
-	// A language none of the models handle well gets a pill left of Private, labelled with the language
-	// and following the draft as it's detected. It goes (and its panel closes) once the draft is cleared
-	// or moves to a well-covered language. The first time a language shows up on this device the
-	// panel opens by itself (desktop only, and only when no other panel is open).
-	const shownGap = $derived(choice?.gap ? { gap: choice.gap, scores: choice.scores } : undefined);
+	// A language the model the next message goes to is still learning (Auto's choice or a hand pick,
+	// `stillLearning`) gets a pill left of Private, labelled with the language and following the draft
+	// as it's detected. It goes (and its panel closes) once the draft is cleared, moves to a language
+	// that model handles well, or another model is picked. The first time a language shows up on this
+	// device the panel opens by itself (desktop only, and only when no other panel is open). The sent
+	// answer says the same (ChatMessage's still-learning note).
+	const shownGap = $derived.by(() => {
+		if (!decision || !choice || !next) return undefined;
+		const gap = stillLearning(
+			decision,
+			next.id,
+			{ benchmarks: $activeBenchmarks, config: $activeRoutingConfig },
+			choice.scores
+		);
+		return gap ? { gap, scores: choice.scores } : undefined;
+	});
 	$effect(() => {
-		const g = choice?.gap;
+		const g = shownGap?.gap;
 		// The sidebar's "Get involved" card and the Contribute page follow the same signal, so they
 		// return to their general copy once the draft is cleared or moves to a well-covered language.
 		recentLanguageGap.set(g ?? null);

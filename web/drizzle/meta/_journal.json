@@ -323,6 +323,13 @@
       "when": 1795175265230,
       "tag": "0045_rate_limit",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1795286833622,
+      "tag": "0046_safety_events_evidence",
+      "breakpoints": true
     }
   ]
 }

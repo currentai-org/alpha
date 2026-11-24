@@ -307,7 +307,7 @@ async function createChat(page: Page, model: string | undefined): Promise<string
 }
 
 // sign-in moves every guest conversation onto the account with no cap check, so a guest with
-// chats who signs into an account near the cap lands past it. The cap stays on accounts (Q1, 10-20),
+// chats who signs into an account near the cap lands past it. The cap stays on accounts,
 // so the next new chat is refused, and the refusal names the real count and how many to delete. No
 // fault here: the account's chats are real rows and the carry-over is the real sign-in. The account's
 // first 98 rows are copies of one chat made through the API, because the create route's rate limit

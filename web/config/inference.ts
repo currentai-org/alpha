@@ -219,8 +219,7 @@ export const ROLE_MODELS = {
 	/**
 	 * The RAG entity-scope guard's model. It is TASK_MODEL's Mistral Small, so it rides the same
 	 * api-internal side-call lane (MISTRAL_MODELS, `side-call-own-lane`) rather than one pinned HF
-	 * provider: while DeepInfra paused Qwen 3.6 the guard failed open on every call and 2 of 8
-	 * colliders grounded wrong. Collision probe on this model, 2 runs: 0/8 colliders wrong,
+	 * provider, so a provider pausing a model cannot make the guard fail open. Collision probe on this model, 2 runs: 0/8 colliders wrong,
 	 * 0/3 controls lost, 198 of 198 calls gave a verdict, p50 723 ms. Qwen3.5-35B-A3B on the same
 	 * router also scored 0/8 and 0/3 but reasons by default (16 to 23 s a call without a reasoning-off
 	 * field) at p50 1,080 ms with one; Qwen3.8-27B answered every call 400 there.

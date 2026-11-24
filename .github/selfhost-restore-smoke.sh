@@ -55,9 +55,12 @@ got=$(read_back "$cid")
 [ "$got" = "$cid" ] || fail "the guest cannot read their new conversation before the backup: $got"
 echo "ok   guest conversation $cid reads back over HTTP"
 token="restore-smoke-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
-dc exec -T web sh -c "mkdir -p ${canary_path%/*} && cat > $canary_path" <<<"$token"
-owner_before=$(dc exec -T web stat -c '%u:%g %a' "$canary_path")
-echo "ok   wrote $canary_path as $(dc exec -T web id -un) ($owner_before)"
+# The web image has no shell or coreutils (distroless), so each step in it is a line of Node.
+web_node() { dc exec -T web node "$@"; }
+web_stat() { web_node -p 'const s = require("fs").statSync(process.argv[1]); `${s.uid}:${s.gid} ${(s.mode & 0o777).toString(8)}`' "$1"; }
+web_node -e 'const fs = require("fs"), p = process.argv[1]; fs.mkdirSync(require("path").dirname(p), { recursive: true }); fs.writeFileSync(p, fs.readFileSync(0))' "$canary_path" <<<"$token"
+owner_before=$(web_stat "$canary_path")
+echo "ok   wrote $canary_path as uid:gid $(web_node -p 'process.getuid() + ":" + process.getgid()') ($owner_before)"
 before=$(fingerprint)
 case "$before" in "0 conversations"*) fail "no conversation in the database before the backup" ;; esac
 echo "ok   before: $before"
@@ -72,7 +75,7 @@ dc up -d --wait --wait-timeout 900
 healthy "fresh stack"
 empty=$(sql "select count(*) from conversations")
 [ "$empty" = 0 ] || fail "down -v left $empty conversations; the round trip would prove nothing"
-if dc exec -T web test -e "$canary_path"; then fail "down -v left $canary_path in place"; fi
+if web_node -e 'process.exit(require("fs").existsSync(process.argv[1]) ? 0 : 1)' "$canary_path"; then fail "down -v left $canary_path in place"; fi
 echo "ok   fresh stack: 0 conversations, no $canary_path"
 
 # 3. Restore and compare.
@@ -84,11 +87,11 @@ echo "ok   after: $after (identical)"
 got=$(read_back "$cid")
 [ "$got" = "$cid" ] || fail "the guest cannot read their conversation after the restore: $got"
 echo "ok   guest conversation $cid reads back over HTTP with the same cookie"
-content=$(dc exec -T web cat "$canary_path" 2>/dev/null || true)
+content=$(web_node -e 'process.stdout.write(require("fs").readFileSync(process.argv[1]))' "$canary_path" 2>/dev/null || true)
 [ "$content" = "$token" ] || fail "$canary_path holds '$content' after the restore, not what was written"
-owner_after=$(dc exec -T web stat -c '%u:%g %a' "$canary_path")
+owner_after=$(web_stat "$canary_path")
 [ "$owner_after" = "$owner_before" ] || fail "$canary_path was $owner_before before and is $owner_after after"
-dc exec -T web sh -c "echo ok > ${canary_path%/*}/after-restore.txt" \
+web_node -e 'require("fs").writeFileSync(process.argv[1], "ok\n")' "${canary_path%/*}/after-restore.txt" \
 	|| fail "the app's user cannot write to the restored files volume"
 echo "ok   $canary_path came back ($owner_after), and the app writes beside it"
 echo "RESTORE PASS in $(($(date +%s) - started)) s"

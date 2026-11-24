@@ -19,9 +19,9 @@
 // logging. A stream that awaits its POST would put an external service in the path of every log
 // call, and an unbounded buffer would turn a stalled sink into an app OOM. So: fixed-size queue, oldest dropped
 // first, drops counted and reported. Losing the tail of a log batch is the correct thing to lose.
-import { Writable } from "node:stream";
+import { Writable } from 'node:stream';
 
-const INGEST_HOST = "https://api.axiom.co";
+const INGEST_HOST = 'https://api.axiom.co';
 // Flush on whichever comes first. 100 lines is well inside Axiom's request limits, and one second is
 // short enough that a crash loses at most a second of context.
 const BATCH_LINES = 100;
@@ -54,9 +54,13 @@ export interface AxiomStream extends Writable {
 
 /** Where to POST a dataset's events: the edge's own ingest path when the dataset lives on a non-default
  *  edge, otherwise the default-edge path on api.axiom.co. */
-function axiomIngestEndpoint(dataset: string, edgeUrl?: string, host: string = INGEST_HOST): string {
+function axiomIngestEndpoint(
+	dataset: string,
+	edgeUrl?: string,
+	host: string = INGEST_HOST
+): string {
 	const name = encodeURIComponent(dataset);
-	const edge = edgeUrl?.trim().replace(/\/+$/, "");
+	const edge = edgeUrl?.trim().replace(/\/+$/, '');
 	return edge ? `${edge}/v1/ingest/${name}` : `${host}/v1/datasets/${name}/ingest`;
 }
 
@@ -81,12 +85,12 @@ export function createAxiomStream(opts: AxiomStreamOptions): AxiomStream {
 		if (batch.length === 0) return;
 		try {
 			const res = await doFetch(endpoint, {
-				method: "POST",
+				method: 'POST',
 				headers: {
 					Authorization: `Bearer ${token}`,
-					"Content-Type": "application/x-ndjson",
+					'Content-Type': 'application/x-ndjson'
 				},
-				body: batch.join("\n"),
+				body: batch.join('\n')
 			});
 			if (!res.ok) {
 				// A 4xx here is ours to fix — a wrong dataset name or a token without ingest scope both
@@ -145,7 +149,7 @@ export function createAxiomStream(opts: AxiomStreamOptions): AxiomStream {
 				() => callback(),
 				() => callback()
 			);
-		},
+		}
 	}) as AxiomStream;
 
 	stream.flushNow = () =>
@@ -166,7 +170,7 @@ export function createAxiomStream(opts: AxiomStreamOptions): AxiomStream {
 function stampTime(line: string): string {
 	try {
 		const obj = JSON.parse(line) as Record<string, unknown>;
-		if (obj._time === undefined && typeof obj.time === "number") {
+		if (obj._time === undefined && typeof obj.time === 'number') {
 			obj._time = new Date(obj.time).toISOString();
 			return JSON.stringify(obj);
 		}

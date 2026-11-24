@@ -50,6 +50,29 @@ test.describe('the chrome in a French browser', () => {
 	);
 });
 
+test.describe('the first visit in a French browser', () => {
+	test.use({ locale: 'fr-FR' });
+
+	test(
+		"a French browser's first visit says in French that Alpha is an AI, before anything else is asked",
+		{ tag: ['@A2'] },
+		async ({ page }) => {
+			// EU AI Act Art. 50: a person is told at first interaction that they are dealing with an AI.
+			// The welcome dialog is that disclosure on a first visit, and it must be in the visitor's language.
+			await page.goto('/chat', { waitUntil: 'commit' });
+			const welcome = page.locator('[data-welcome]').first();
+			await expect(welcome, 'a first visit showed no welcome dialog').toBeVisible({
+				timeout: 30_000
+			});
+			await expect(
+				welcome,
+				'the first-visit disclosure is not in French in a French browser'
+			).toContainText('Un assistant IA', { timeout: 15_000 });
+			await expect(welcome).not.toContainText('An AI assistant');
+		}
+	);
+});
+
 test.describe('the chrome in an English browser', () => {
 	test.use({ locale: 'en-US' });
 

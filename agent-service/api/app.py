@@ -1,7 +1,7 @@
 """
-Public AI Agent Service — scrappy `POST /run` API (SOW 1.2).
+Public AI Agent Service — `POST /run` API.
 
-Instantiates a Hermes agent per task and runs one multi-step task end-to-end (the SOW "done when").
+Instantiates a Hermes agent per task and runs one multi-step task end-to-end.
 
 Design:
   - Two planes: this is Plane B (ephemeral per-task execution); Plane A is whatever
@@ -555,7 +555,7 @@ UPSTREAM_RETRY_BASE_SECS = float(os.environ.get("AGENT_UPSTREAM_RETRY_BASE_SECS"
 # (run below, without the model or its token) confirms the actual side-effects. See VerifySpec / _verify.
 
 # ---- INHERIT-FROM-CHAT seams (brief §6A) --------------------------------------------------
-# Auth: validate the SAME OpenWebUI JWT chat issues (shared auth across surfaces, PRD §2.2).
+# Auth: validate the SAME OpenWebUI JWT chat issues (shared auth across surfaces).
 #   Primary path: HS256 with the shared WEBUI_SECRET_KEY (OpenWebUI signs session JWTs with it).
 #   Alt path (OIDC): validate against the IdP JWKS — wire OIDC_JWKS_URL if the deployment uses OIDC.
 WEBUI_SECRET_KEY = os.environ.get("WEBUI_SECRET_KEY", "")               # PROVIDED BY CHAT/PLATFORM OWNER
@@ -611,9 +611,8 @@ MODERATION_HTTP_TIMEOUT_SECS = float(os.environ.get("AGENT_MODERATION_HTTP_TIMEO
 # type(e).__name__. The type alone can't say what an unparseable answer contained; the message can.
 # Bounded so a malformed answer stays visible without unbounded log volume.
 MODERATION_ERROR_DETAIL_MAX = 200
-# Pause between the attempts above. The screen endpoint is Vercel-hosted and can drop requests briefly
-# during its own deploy cutover; a short fixed sleep gives that a chance to clear. A genuine outage still
-# fails closed in bounded time, at most 2x this value later.
+# Pause between the attempts above. A request the screen endpoint drops briefly is retried after this
+# fixed sleep. A genuine outage still fails closed in bounded time, at most 2x this value later.
 MODERATION_RETRY_BACKOFF_SECS = float(os.environ.get("AGENT_MODERATION_RETRY_BACKOFF_SECS", "1.5"))
 
 # Every stage runs through the same guard now (the old Coop-can't-see-these-stages split, COOP_ELIGIBLE_
@@ -2381,7 +2380,7 @@ def _screen_and_log(text: str, stage: str, user: str, task_id: str | None) -> No
 
 def _screen(text: str, stage: str, user: str, task_id: str | None = None, enforce: bool = True) -> None:
     """Screen text; raise if it must not proceed. Pre-checks the prompt and post-checks the agent output
-    (brief §6A; PRD §4.5 mandates ROOST for agent surfaces).
+    (ROOST moderation is required for agent surfaces).
 
     Fail-closed on an OUTAGE, allow on UNCERTAINTY — those are different failures and deserve opposite
     answers. An outage means nothing was screened, so proceeding would run unmoderated. Uncertainty means
@@ -6999,8 +6998,9 @@ def _stuck_task_reaper_loop() -> None:
 # from Fly's proxy takes, and exits the process after WATCHDOG_MISSES misses in a row. Running tasks die
 # with it; on restart `recover_orphans` marks them failed, which is what they already were. A freeze of
 # the whole process stops this thread too, so that case is left to the service check in agent-app.toml,
-# which takes the machine out of routing but does not restart it. On by default on Fly only: off Fly
-# nothing restarts the process, so an exit would just stop it.
+# which takes the machine out of routing but does not restart it. On by default on Fly only, where an exit
+# restarts the machine. The AWS deploy turns it on too (deploy/aws/agent/render_env.py), since systemd
+# restarts its container; a plain local run has nothing to restart it, so it stays off.
 WATCHDOG_SECS = int(os.environ.get("AGENT_WATCHDOG_SECS", "20" if FLY_MACHINE_ID else "0") or 0)
 WATCHDOG_MISSES = 3
 WATCHDOG_TIMEOUT_SECS = 10.0

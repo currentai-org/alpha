@@ -10,10 +10,13 @@ import { freshTestEmail } from './signIn';
 //
 // The real sign-in flow stays covered by sign-in.spec.ts, passkey-sign-in.spec.ts and
 // mock-oidc-sign-in.spec.ts, which still walk the screen.
+//
+// Resolves to the new user's Better Auth id. The chat keys what it stores by a shadow id derived from it
+// (`shadowUserId` in src/lib/chat/server/auth.ts).
 export async function signInAsFreshUser(
 	page: Page,
 	email: string = freshTestEmail()
-): Promise<void> {
+): Promise<string> {
 	const test = await testAuthHelpers();
 	const user = test.createUser({ email });
 	// A first email-code sign-in stores an empty name (email-otp's `name || ""`); the factory
@@ -22,4 +25,5 @@ export async function signInAsFreshUser(
 	await test.saveUser(user);
 	await page.context().addCookies(await test.getCookies({ userId: user.id }));
 	await page.goto('/chat');
+	return user.id;
 }

@@ -218,7 +218,7 @@ export const ready = (async () => {
 type ExtraConfigKeys =
 	| "HF_TOKEN"
 	// Fine-grained HF PAT (repo read+write, current-ai-official/* only) for @huggingface/hub calls
-	// against buckets/current-ai-official/custodial-storage-eu. Distinct credential
+	// against the custodial bucket (custodialBucketRepo.ts). Distinct credential
 	// class from HF_TOKEN (inference) — never fall back between them.
 	| "HF_BUCKETS_TOKEN"
 	// Which bucket custodial storage uses, as buckets/<owner>/<name>. Unset → production's bucket on a

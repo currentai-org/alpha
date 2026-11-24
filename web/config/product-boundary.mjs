@@ -119,7 +119,8 @@ export const SEAM_LOADS_OF_SITE = {
 		'$lib/payload/log.ts',
 		'$lib/payload/hostServices.ts',
 		'$lib/payload/invalidationKeys.ts',
-		'$lib/website/layoutData.ts'
+		'$lib/website/layoutData.ts',
+		'$lib/website/siteHost.ts'
 	],
 	'web/src/lib/websiteChrome.ts': ['$lib/website/SiteChrome.svelte']
 };
@@ -172,7 +173,9 @@ export const SHARED_REACHED_BY_CHAT = {
 	'web/src/lib/i18n/server.ts': { disposition: 'split' },
 	'web/src/lib/paraglide': { disposition: 'split' },
 	'web/src/lib/posthogUpstream.js': { disposition: 'moves', siteImporters: 1 },
+	'web/src/lib/server/axiomStream.ts': { disposition: 'split' },
 	'web/src/lib/server/expiredPreview.ts': { disposition: 'split' },
+	'web/src/lib/server/flagDefinitionsBaked.ts': { disposition: 'split' },
 	'web/src/lib/server/runtimeEnv.js': { disposition: 'moves', siteImporters: 1 },
 	'web/src/lib/surface.ts': { disposition: 'moves', siteImporters: 2 },
 	'web/src/lib/types/category.ts': { disposition: 'split' },

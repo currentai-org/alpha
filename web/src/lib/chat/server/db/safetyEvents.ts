@@ -24,6 +24,8 @@ export interface LogDeclineInput {
 	score?: number;
 	/** The verified production probe that sent the turn (probeMarker.ts); absent for every other turn. */
 	probe?: string;
+	/** Quarantine paths of the pictures a child-safety decline kept for review (quarantineDeclinedPictures.ts). */
+	evidence?: string[];
 }
 
 /** Persist one decline. Throws on DB error — callers MUST treat it as best-effort (a logging hiccup
@@ -40,6 +42,7 @@ export async function logDecline(input: LogDeclineInput): Promise<void> {
 		label: input.label,
 		score: input.score,
 		probe: input.probe,
+		...(input.evidence?.length ? { evidence: input.evidence } : {}),
 	});
 }
 

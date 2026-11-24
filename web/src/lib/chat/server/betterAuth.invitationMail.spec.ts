@@ -1,6 +1,6 @@
 /**
  * The mail a real workspace invite produces, read at the last point this app controls: the request
- * it hands Resend. Nobody can read a received invite (the walker inbox has no reader, and our Resend
+ * it hands Resend. Nobody can read a received invite (a test inbox has no reader, and our Resend
  * keys are send-only), so this is the nearest check to "what arrives".
  *
  * It runs the organization plugin's own invite endpoint, with a real session cookie, on real

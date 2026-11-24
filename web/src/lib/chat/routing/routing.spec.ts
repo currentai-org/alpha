@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { MODEL_HOSTS, catalog, catalogByGatewayId, orgs } from './catalog';
 import { HF_PROVIDER_PIN } from '../shared/hfProviderPin';
 import { detectLanguage, detectSkills, estimateDifficulty, heuristicClassify } from './heuristic';
-import type { DraftAnalysis, Difficulty } from './classifier';
+import { draftIn, type DraftAnalysis, type Difficulty } from './classifier';
 import { languageName, parentLanguage } from './languages';
 import { SHIPPED_BENCHMARKS, languageSupport, parseBenchmarkTable, type BenchmarkTable } from './benchmarks';
 import { localClassifier } from './localClassifier';
@@ -21,12 +21,7 @@ const PROD_SHAPED = ALL_LIVE.filter((id) => id !== 'zai-org/GLM-5.2');
 const HARD_DRAFT =
 	'Compare the tradeoffs between event sourcing and a plain relational schema for an invoicing system with about two million invoices a year. Explain why each choice affects auditing, corrections and reporting, evaluate which one a small team should pick, and design a migration from the relational schema if they later need event sourcing. What breaks first? What would you measure? How would you roll it back?';
 
-const analysis = (lang: string, size: Difficulty, conf = 0.9): DraftAnalysis => ({
-	language: { value: lang, confidence: conf, alternatives: [], signal: 'words' },
-	difficulty: { value: size, confidence: 0.8 },
-	skills: [],
-	source: 'manual'
-});
+const analysis = (lang: string, size: Difficulty, conf = 0.9): DraftAnalysis => draftIn(lang, size, conf, 0.8);
 
 describe('catalog', () => {
 	it('references only known orgs, and every live model has a gateway id', () => {

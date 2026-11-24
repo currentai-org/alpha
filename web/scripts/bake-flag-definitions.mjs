@@ -20,7 +20,7 @@ import { fileURLToPath } from "node:url";
 import { deployEnvName, gitRef } from "../src/lib/server/runtimeEnv.js";
 import { posthogIngestHost } from "../src/lib/posthogUpstream.js";
 
-const OUT = fileURLToPath(new URL("../src/lib/chat/server/flag-definitions.baked.json", import.meta.url));
+const OUT = fileURLToPath(new URL("../src/lib/server/flag-definitions.baked.json", import.meta.url));
 
 /**
  * Whether this build bakes, and how the runtime uses what it baked: `frozen` (a PR preview, never

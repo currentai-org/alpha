@@ -11,11 +11,11 @@
 	// sessionStorage matches that literally and needs no new settings column. Same `ap:`-prefixed key
 	// convention as ChatShell.svelte's SESSION_STARTED_KEY.
 	//
-	// Not yet localized into the person's language, like WelcomeModal; that remainder is tracked on
-	//.
+	// In the person's interface language, like WelcomeModal.
 	import { browser } from '$app/env';
 	import RiRobot from '~icons/ri/robot-line';
 	import RiCloseLine from '~icons/ri/close-line';
+	import { m } from '$lib/paraglide/messages.js';
 
 	const STORAGE_KEY = 'ap:aiDisclosureSeen';
 
@@ -50,11 +50,11 @@
 	>
 		<RiRobot class="size-4 shrink-0" aria-hidden="true" />
 		<div class="min-w-0 flex-1 leading-snug">
-			You're talking to Alpha, an AI system — not a human.
+			{m.aiDisclosure_banner()}
 		</div>
 		<button
 			type="button"
-			aria-label="Dismiss"
+			aria-label={m.aiDisclosure_dismiss()}
 			class="-mr-0.5 shrink-0 cursor-pointer rounded p-0.5 opacity-70 transition hover:opacity-100"
 			onclick={dismiss}
 		>

@@ -1,6 +1,7 @@
 // An Open WebUI install moves onto the composed self-host stack. The importer
-// (`pnpm import:open-webui`, web/src/lib/chat/server/openWebUiImport/) runs inside the stack's own web
-// container, so it writes the stack's Postgres and its `files` volume exactly as a forker's run would;
+// (`node build/cli/import-open-webui.mjs`, web/src/lib/chat/server/openWebUiImport/) runs inside the
+// stack's own web container as the published image ships it, so it writes the stack's Postgres and its
+// `files` volume exactly as a forker's run would;
 // then a browser signs the imported person in and finds their history.
 //
 //   1. SQLite fixture (the 0.12.0 head revision, built by the importer's own test builder) imported twice:
@@ -41,16 +42,14 @@ const ALICE = 'alice@example.org';
 const ATTACHED_CHAT = 'Potluck basics';
 const NEW_CHAT_TITLE = 'Potluck follow-up';
 
-/** The importer, as `pnpm import:open-webui` runs it, inside the web container (its source, deps and env are the stack's own). */
+/** The importer as an operator runs it: the image's bundled CLI, inside the web container, with the stack's own env. */
 function runImporter(source: string, env: Record<string, string> = {}): string {
 	const report = compose(
 		[
 			'exec',
 			'web',
-			'node_modules/.bin/vite-node',
-			'--options.transformMode.ssr=/.*/',
-			'scripts/import-open-webui.ts',
-			'--',
+			'node',
+			'build/cli/import-open-webui.mjs',
 			source,
 			'--data-dir',
 			REMOTE_DIR,
@@ -145,9 +144,19 @@ test.describe.serial('Open WebUI install migrates onto the composed self-host st
 			writeFileSync(join(dir, 'uploads', name), bytes);
 		// The install's DATA_DIR (webui.db beside uploads/) goes into the web container, where the importer reads it.
 		compose(['cp', dir, `web:${REMOTE_DIR}`]);
-		// `docker compose cp` keeps the runner's uid and mkdtemp's 0700 mode, which the image's node user
-		// cannot enter, so the copy is handed to node the way an operator's mounted install would be.
-		compose(['exec', '-u', 'root', 'web', 'chown', '-R', 'node:node', REMOTE_DIR]);
+		// `docker compose cp` keeps the runner's uid and mkdtemp's 0700 mode, which the image's user (uid
+		// 1000) cannot enter, so the copy is handed to it the way an operator's mounted install would be.
+		// The image has no chown (distroless), so Node does it, as root.
+		compose([
+			'exec',
+			'-u',
+			'root',
+			'web',
+			'node',
+			'-e',
+			'const fs = require("fs"), path = require("path"), d = process.argv[1]; fs.chownSync(d, 1000, 1000); for (const f of fs.readdirSync(d, { recursive: true })) fs.chownSync(path.join(d, f), 1000, 1000)',
+			REMOTE_DIR
+		]);
 	});
 
 	test('SQLite source: the first run stores everything and the second imports nothing new', () => {

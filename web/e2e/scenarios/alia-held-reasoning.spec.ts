@@ -13,9 +13,8 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // panel for 5-36 s. The server now says the reasoning is held, without its text, and the page opens the
 // reasoning panel for the wait. The stored answer is still built from released tokens alone.
 //
-// since about 10-23 ALIA (NextBit) opens with an explicit `<think>`, so the hold releases at once
-// and the reasoning streams under its tag, shown as it arrives (4-5 s after send on alpha-develop, 11-04,
-// twice). Either path ends the blank wait, so the turn passes when either shows first.
+// ALIA opens with an explicit `<think>`, so the hold releases at once
+// and the reasoning streams under its tag, shown as it arrives (4-5 s after send on a preview deployment). Either path ends the blank wait, so the turn passes when either shows first.
 
 type Stored = { id: string; content: string };
 

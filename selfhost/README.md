@@ -28,7 +28,7 @@ local build when the tag cannot be pulled:
 docker compose -f compose.yaml -f compose.release.yaml --profile local up
 ```
 
-`ALPHA_IMAGE` in `.env` picks another tag or a digest. `../deploy/README.md` says how to verify the
+`ALPHA_IMAGE` in `.env` picks another tag or a digest; pin one, never `main`. `../deploy/README.md` says how to verify the
 image's signature. No tag can be pulled until the first release is published.
 
 The default local model is Qwen2.5 0.5B Instruct, chosen so the first answer arrives on a plain CPU,
@@ -412,8 +412,8 @@ Keep `.env` in a password manager or another place apart from the backups. A cop
 
 ## Upgrade
 
-Web applies the database migrations every time it starts (`node scripts/db-migrate.mjs` in
-`compose.yaml`), and they only go forward: starting an older release does not undo them. So every
+Web applies the database migrations every time it starts (the image's start,
+`web/scripts/serve.mjs`), and they only go forward: starting an older release does not undo them. So every
 upgrade begins with a backup, and rolling back means the older release plus that backup.
 
 1. Read the release notes for each version between yours and the new one, and compare `.env.example`
@@ -465,6 +465,24 @@ With profile B, the model calls go to the provider you set in place of `llama`.
 The browser loads scripts, styles and fonts from the app only. An artifact preview, opened by the user,
 can load code from cdn.tailwindcss.com, unpkg.com, cdn.jsdelivr.net and cdnjs.cloudflare.com inside
 its sandboxed frame.
+
+## Scanning the image
+
+The app image runs on distroless Node (`gcr.io/distroless/nodejs24-debian13`): Node, glibc and CA
+certificates, with no shell, package manager or coreutils. Its base images are pinned by digest in
+`web/Dockerfile`.
+
+A release is built only if Grype finds no high or critical vulnerability that has a fixed version,
+in the image's own packages or in the Debian base. The release workflow's run summary lists every
+finding, split into those with a fix and those without. A scan of your own, for example
+`grype ghcr.io/currentai-org/alpha:<tag>`, will still report findings with no fix upstream yet, in
+the libraries Node links against: OpenSSL, glibc and the GCC runtime. Each one is in the run summary, by package. The
+repository's `.grype.yaml` lists any finding the release ignores, each with its reason.
+
+With no shell in the container, run a command in it through Node, for example
+`docker compose exec web node -p process.env.APP_SURFACE`. For a shell beside it, start a
+throwaway container in its namespaces:
+`docker run --rm -it --pid=container:<web container> --network=container:<web container> busybox sh`.
 
 ## What is not here yet
 

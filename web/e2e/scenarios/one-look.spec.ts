@@ -9,17 +9,15 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // F5 ("Alpha looks and behaves the same everywhere") — "How Alpha looks, one design system":
 // type sizes, spacing, colours, icons and settings screens all coming from one place.
 //
-// WRITTEN AGAINST the "Done when", NOT ITS "Tests". The ticket for this
-// ("Chat, settings and workspace look and behave like one product") carries both, and the two are
-// different kinds of thing. Its Tests are moderated sessions — sit someone who has never seen Alpha
-// in front of it and record where they look first. That is real and it is UX research; it cannot
-// gate a merge and nothing here pretends to stand in for it. The Done-when list is checkable, and
-// the subset of it reachable signed out without a workspace is what this walks:
+// WHAT IT COVERS. The checkable half of the ticket: the subset reachable signed out without a
+// workspace. The ticket's moderated-session half (sit someone who has never seen Alpha in front of
+// it and record where they look first) is UX research; it cannot gate a merge and nothing here
+// stands in for it. This walks:
 //
 //   • every control that changes how an answer is produced is in one place   → steps 2 and 3
 //   • moving between chatting and settings without relearning where things are → steps 1, 4, 6
 //
-// The three Done-when items about workspaces (which one you are in, admin versus member, the three
+// The three workspace items (which one you are in, admin versus member, the three
 // switches) need an org and an admin account. They belong with A8's spec, and saying so here is
 // what keeps this card from reading as coverage of the whole ticket.
 //
@@ -29,8 +27,8 @@ import { startChattingPastWelcome } from './helpers/welcome';
 // same custom properties rather than from hardcoded values — so the assertion is that the tokens
 // resolve, and that two surfaces built at different times resolve them to the same value.
 //
-// Vercel's preview toolbar is not part of that one design system, and the journey critic kept
-// grading it as ours. It is off for previews in the Vercel project's settings now, and
+// Vercel's preview toolbar is not part of that one design system, and a journey recording that showed it
+// would read as ours. It is off for previews in the Vercel project's settings, and
 // this file deliberately sends no `x-vercel-skip-toolbar` header: the absence assertion at the end of
 // the first test is what goes red if the setting is ever turned back on, and an opt-out here would
 // hide exactly that.

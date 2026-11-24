@@ -5,7 +5,7 @@ import pino from "pino";
 import { dev } from "$app/env";
 import { config } from "$lib/chat/server/config";
 import { buildLoggerOptions } from "$lib/chat/server/loggerOptions";
-import { createAxiomStream } from "$lib/chat/server/axiomStream";
+import { createAxiomStream } from "$lib/server/axiomStream";
 import { deploymentInstance } from "$lib/chat/server/instance";
 import { deployEnvName, gitRef, gitSha } from "$lib/server/runtimeEnv";
 

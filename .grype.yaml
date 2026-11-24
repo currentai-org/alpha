@@ -1,0 +1,14 @@
+# Grype's ignore list for the image scan (the public repository's .github/workflows/image.yml, and
+# .github/workflows/web-image.yml here). Grype reads this file from the working directory.
+#
+# Empty on purpose: a high or critical finding with a fix available fails the image build, and the fix
+# is to take the fixed version. An entry belongs here only for a finding that does not apply to this
+# image (the vulnerable code is never loaded, or the CVE is disputed upstream), and each one carries a
+# comment saying which, with a link and the date it was added, so it can be re-checked and removed.
+#
+# ignore:
+#   - vulnerability: CVE-0000-00000
+#     package:
+#       name: example
+#     # Why it does not apply, with a link. Added YYYY-MM-DD.
+ignore: []

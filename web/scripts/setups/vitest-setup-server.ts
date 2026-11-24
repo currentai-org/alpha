@@ -25,6 +25,17 @@ const envVars: Record<string, string> = {
 	...(fs.existsSync(envPath) ? dotenv.parse(fs.readFileSync(envPath, "utf-8")) : {}),
 };
 
+// A live run (`pnpm test:live`, VITEST_LIVE=1) is launched inside `doppler run` and calls the real
+// vendors, so the app's config has to see the values that run was given, not the file's blanks.
+// Without this a live spec that goes through the app's own routing (mistralChatLane, the catalog)
+// sees no Mistral models and posts a Mistral id to the wrong gateway. Hermetic runs are unchanged.
+if (process.env.VITEST_LIVE === "1") {
+	for (const key of Object.keys(envVars)) {
+		const shell = process.env[key];
+		if (shell) envVars[key] = shell;
+	}
+}
+
 const publicEnv: Record<string, string> = {};
 const privateEnv: Record<string, string> = {};
 

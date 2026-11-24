@@ -54,8 +54,8 @@ async function shareFromMenu(page: Page, id: string): Promise<string> {
 }
 
 /** A fresh, signed-out browser context with the flag forced, as a stranger handed the link. */
-async function strangerOpening(browser: Browser, baseURL: string, url: string) {
-	const context = await browser.newContext({ baseURL });
+async function strangerOpening(browser: Browser, baseURL: string, url: string, locale?: string) {
+	const context = await browser.newContext({ baseURL, ...(locale ? { locale } : {}) });
 	await setFlagOverrides(context, baseURL, { 'share-links': true });
 	const page = await context.newPage();
 	const response = await page.goto(url, { waitUntil: 'load' });
@@ -118,6 +118,39 @@ test(
 			const again = await reader.page.reload({ waitUntil: 'load' });
 			expect(again?.status(), 'the revoked link still opens').toBe(404);
 			await expect(reader.page.getByText(prompt)).toHaveCount(0);
+		} finally {
+			await reader.context.close();
+		}
+	}
+);
+
+test(
+	'a stranger whose browser is in French is told in French that an AI model wrote the answers',
+	{ tag: ['@preview-only', '@C1'] },
+	async ({ page, context, browser, baseURL }) => {
+		// EU AI Act Art. 50: the disclosure is made at first interaction, and opening a shared link is a
+		// stranger's first interaction with Alpha. A notice in a language they may not read discloses
+		// nothing, so the read-only notice follows the browser's language like the rest of the chrome.
+		test.setTimeout(240_000);
+		await setFlagOverrides(context, baseURL!, { 'share-links': true });
+		await signInAsFreshUser(page);
+		const id = await chatWithOneTurn(
+			page,
+			`Share-link language check ${Date.now()}: name one lake`
+		);
+		const url = await shareFromMenu(page, id);
+
+		const reader = await strangerOpening(browser, baseURL!, url, 'fr-FR');
+		try {
+			expect(reader.status, 'the link did not open for a signed-out reader').toBe(200);
+			const notice = reader.page.getByTestId('shared-chat-notice');
+			await expect(
+				notice,
+				'the read-only notice does not say in French that an AI wrote the answers'
+			).toContainText(/un modèle d.IA, (?:et )?(?:non|pas) (?:par )?une personne/, {
+				timeout: 20_000
+			});
+			await expect(notice).not.toContainText('an AI model, not a person');
 		} finally {
 			await reader.context.close();
 		}

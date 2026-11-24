@@ -4,18 +4,13 @@ import { languageName } from './languages';
 import { LAUNCH_LANGUAGES } from '../languageData';
 import { DEFAULT_ROUTING, route } from './router';
 import { PICKER } from '../../../../config/picker';
-import type { DraftAnalysis } from './classifier';
+import { draftIn, type DraftAnalysis } from './classifier';
 
 const served = [...PICKER.production];
 const coverageOf = (ids = served, opts: Parameters<typeof languageCoverage>[1] = {}) =>
 	languageCoverage(ids, opts, languageName, LAUNCH_LANGUAGES);
 
-const medium = (tag: string): DraftAnalysis => ({
-	language: { value: tag, confidence: 1, alternatives: [], signal: 'words' },
-	difficulty: { value: 'M', confidence: 1 },
-	skills: [],
-	source: 'manual'
-});
+const medium = (tag: string): DraftAnalysis => draftIn(tag);
 
 describe('languageCoverage: the Languages panel names Auto’s medium-size pick per launch language', () => {
 	const { strong, learning } = coverageOf();
@@ -34,12 +29,11 @@ describe('languageCoverage: the Languages panel names Auto’s medium-size pick 
 		expect(all.find((l) => l.tag === 'cmn')?.model.id).toBe('glm-5.2');
 	});
 
-	it('files a language as still-learning by Auto’s best choosable support, the same figure as the gap pill', () => {
+	it('files a language as still-learning exactly when the still-learning notice shows for Auto’s pick', () => {
 		for (const lang of all) {
-			const choice = route(medium(lang.tag), served);
-			const choosable = (choice?.scores ?? []).filter((s) => s.available && s.benchmarked);
-			const best = Math.max(...choosable.map((s) => s.language));
-			expect(lang.support).toBe(best);
+			const choice = route(medium(lang.tag), served)!;
+			expect(lang.support).toBe(choice.scores.find((s) => s.model.id === choice.model.id)!.language);
+			expect(learning.some((l) => l.tag === lang.tag), lang.tag).toBe(!!choice.gap);
 			expect(lang.support >= DEFAULT_ROUTING.weakSupport).toBe(strong.some((l) => l.tag === lang.tag));
 		}
 	});

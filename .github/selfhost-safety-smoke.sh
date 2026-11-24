@@ -35,7 +35,7 @@ finish() {
 }
 failopen_count() { compose logs --no-color --no-log-prefix web 2>/dev/null | grep -c '\[failopen\] guard' || true; }
 
-echo "web GUARD_SHADOW_URL=$(compose exec -T web printenv GUARD_SHADOW_URL)"
+echo "web GUARD_SHADOW_URL=$(compose exec -T web node -p "process.env.GUARD_SHADOW_URL ?? ''")"
 
 # One direct classifier call, shaped as detectors/shieldstral.ts sends it.
 compose exec -T shieldstral curl -sS --max-time 120 http://127.0.0.1:8080/v1/chat/completions \

@@ -1,0 +1,4 @@
+# Providers the develop gateway holds tokens for, beside gateway.keys (render_env.py): the HF and gateway
+# rollbacks fly/agent-proxy.toml names. Production has never held them.
+PROVIDER_HF_TOKEN
+PROVIDER_GATEWAY_TOKEN

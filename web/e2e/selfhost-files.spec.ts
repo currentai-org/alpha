@@ -23,7 +23,16 @@ const EXPECT_SEALED = process.env.SELFHOST_FILES_EXPECT_SEALED === '1';
 
 /** The stored object's bytes, read from the store itself rather than through the app. */
 function storedBytes(objectPath: string): string {
-	if (BACKEND === 'local') return compose(['exec', 'web', 'cat', `/data/files/${objectPath}`]);
+	// The web image has no cat (distroless), so Node reads the file.
+	if (BACKEND === 'local')
+		return compose([
+			'exec',
+			'web',
+			'node',
+			'-e',
+			'process.stdout.write(require("fs").readFileSync(process.argv[1]))',
+			`/data/files/${objectPath}`
+		]);
 	// The filer's HTTP API, which compose keeps on the SeaweedFS container's loopback: an S3 object
 	// lives at /buckets/<bucket>/<key>.
 	return compose([
@@ -44,9 +53,10 @@ function storedHeadBase64(objectPath: string): string {
 		return compose([
 			'exec',
 			'web',
-			'sh',
-			'-c',
-			`head -c 32 '/data/files/${objectPath}' | base64`
+			'node',
+			'-p',
+			'require("fs").readFileSync(process.argv[1]).subarray(0, 32).toString("base64")',
+			`/data/files/${objectPath}`
 		]).trim();
 	return compose([
 		'exec',
@@ -174,12 +184,13 @@ test(`a signed-in person attaches a file in chat and finds it in My files, kept 
 	test.setTimeout(240_000);
 	expect(['local', 's3'], 'SELFHOST_FILES_BACKEND names the store under test').toContain(BACKEND);
 
+	// The web image has no shell (distroless), so Node reads its environment.
 	const configured = compose([
 		'exec',
 		'web',
-		'sh',
-		'-c',
-		'echo "backend=$CUSTODIAL_STORAGE_BACKEND hf_token_chars=${#HF_BUCKETS_TOKEN} hf_repo_chars=${#HF_BUCKETS_REPO}"'
+		'node',
+		'-p',
+		'const e = process.env; `backend=${e.CUSTODIAL_STORAGE_BACKEND ?? ""} hf_token_chars=${(e.HF_BUCKETS_TOKEN ?? "").length} hf_repo_chars=${(e.HF_BUCKETS_REPO ?? "").length}`'
 	]).trim();
 	console.log(`web container: ${configured}`);
 	expect(

@@ -6,6 +6,8 @@
 	import { base } from '$lib/chat/paths';
 	import { Message, Stack } from '@aipotluck/alpha-ds';
 	import MarkdownRenderer from '$lib/chat/components/chat/MarkdownRenderer.svelte';
+	import { m } from '$lib/paraglide/messages.js';
+	import { getLocale } from '$lib/paraglide/runtime.js';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -22,7 +24,7 @@
 		const d = new Date(shared.sharedAt);
 		return Number.isNaN(d.getTime())
 			? ''
-			: d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+			: d.toLocaleDateString(getLocale(), { year: 'numeric', month: 'long', day: 'numeric' });
 	});
 </script>
 
@@ -36,9 +38,9 @@
 		<header class="flex flex-col gap-2 border-b border-line-2 pb-4">
 			<h1 class="type-heading text-fg-1">{shared.title}</h1>
 			<p class="type-caption text-fg-2" data-testid="shared-chat-notice">
-				A read-only copy of a chat with Alpha{sharedOn ? `, as it stood on ${sharedOn}` : ''}. The answers
-				were written by {modelName}, an AI model, not a person. Anything said in the chat after it was
-				shared isn't here.
+				{sharedOn
+					? m.share_readOnlyNoticeDated({ date: sharedOn, model: modelName })
+					: m.share_readOnlyNotice({ model: modelName })}
 			</p>
 		</header>
 

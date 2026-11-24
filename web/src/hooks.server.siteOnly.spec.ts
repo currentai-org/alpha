@@ -1,7 +1,7 @@
 // A site-only build (www once chat lives on alpha) serves the site and none of chat. Every
 // chat address answers 308 to the chat host, whatever the method or the Accept header, and chat's
 // request chain never loads. The names state the contract: a test that only checked "redirects pages"
-// would stay green while www kept answering chat's API, which is the hole a cold walk found.
+// would stay green while www kept answering chat's API, which is the hole this guards.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const handleRequest = vi.fn(async () => new Response('chat answered', { status: 200 }));

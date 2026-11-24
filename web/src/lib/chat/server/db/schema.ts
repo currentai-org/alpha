@@ -798,6 +798,9 @@ export const safetyEvents = pgTable(
 		// verified probe token (probeMarker.ts); null on every other turn. A count of real declines leaves
 		// out rows where it is set.
 		probe: text("probe"),
+		// Where a child-safety decline's pictures were kept for review: object paths in the owner's
+		// quarantine folder, which no owner path can reach. Null on every other row.
+		evidence: text("evidence").array(),
 		createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 	},
 	(t) => [index("safety_events_created_idx").on(t.createdAt)]

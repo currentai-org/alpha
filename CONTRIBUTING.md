@@ -12,6 +12,21 @@ will say how they are reviewed and merged.
 Until then, a code pull request can't be merged here. If you have a change in mind, open an issue that
 describes it. The maintainers read every issue and carry worthwhile changes into the next snapshot.
 
+## Branches and releases
+
+When development moves here, the model is trunk-based:
+
+- Branch off `main`, keep the branch short-lived, and open a pull request. The merge queue merges it
+  once its checks pass. There is no long-lived `develop` or `release` branch. A maintenance branch
+  `release/vX.Y` appears only when an older line needs a patch.
+- A release is a semver tag, `v0.x.y`; there are no date tags. A release pull request writes the
+  changelog and calls out any database migration and any breaking configuration change.
+- Each tag gets one container image on GHCR, signed with cosign, with an SBOM and a provenance
+  attestation. The `main` tag is the edge build.
+- The hosted instance deploys the way a self-hoster would: `main` goes to staging, and production moves
+  when a tag is cut.
+- If you run Alpha yourself, pin a tag or a digest, not `main`.
+
 ## Report an issue
 
 Open a GitHub issue for bugs, unclear code, or a hosted service you couldn't replace. Include the file

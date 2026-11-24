@@ -7,11 +7,14 @@
 // A glob rather than an import because the file is absent from the repo and from most builds, and a
 // static import of a missing file fails the build.
 
-import type { FlagDefinitionCacheData, FlagDefinitionCacheProvider } from "posthog-node";
+import type { FlagDefinitionCacheData, FlagDefinitionCacheProvider } from 'posthog-node';
 
-type Baked = FlagDefinitionCacheData & { bakedAt?: string; mode?: "frozen" | "seed" };
+type Baked = FlagDefinitionCacheData & { bakedAt?: string; mode?: 'frozen' | 'seed' };
 
-const files = import.meta.glob<Baked>("./flag-definitions.baked.json", { eager: true, import: "default" });
+const files = import.meta.glob<Baked>('./flag-definitions.baked.json', {
+	eager: true,
+	import: 'default'
+});
 
 export const bakedFlagDefinitions: Baked | undefined = Object.values(files)[0];
 
@@ -25,12 +28,12 @@ export function bakedCacheProvider(data: Baked): FlagDefinitionCacheProvider {
 	return {
 		getFlagDefinitions: () => data,
 		shouldFetchFlagDefinitions: () => {
-			if (data.mode !== "seed") return false;
+			if (data.mode !== 'seed') return false;
 			const fetch = seeded;
 			seeded = true;
 			return fetch;
 		},
 		onFlagDefinitionsReceived: () => {},
-		shutdown: () => {},
+		shutdown: () => {}
 	};
 }

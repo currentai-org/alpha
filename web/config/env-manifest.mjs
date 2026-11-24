@@ -640,7 +640,7 @@ export const ENV_MANIFEST = {
 		desc: "Hugging Face organisation billed for router calls.",
 	},
 	HF_BUCKETS_REPO: {
-		desc: "The custodial storage bucket, as buckets/<owner>/<name>. Unset on a production deployment (DEPLOY_ENV or VERCEL_ENV production) → buckets/current-ai-official/custodial-storage-eu (production's, EU region). Unset anywhere else (preview, local dev, CI, a self-host) → custodial storage is unavailable: the surface is off whatever its flag says, one error is logged, and a direct storage call throws CustodialBucketUnsetError (storage/custodialBucketRepo.ts). Preview sets its own, paired with a HF_BUCKETS_TOKEN scoped to that bucket only, so preview never reads or writes production files (CUR-1288). A malformed value throws on first storage call; it never falls back.",
+		desc: "The custodial storage bucket, as buckets/<owner>/<name>. Unset on a production deployment (DEPLOY_ENV or VERCEL_ENV production) → production's own bucket (PRODUCTION_CUSTODIAL_BUCKET_REPO in custodialBucketRepo.ts). Unset anywhere else (preview, local dev, CI, a self-host) → custodial storage is unavailable: the surface is off whatever its flag says, one error is logged, and a direct storage call throws CustodialBucketUnsetError (storage/custodialBucketRepo.ts). Preview sets its own, paired with a HF_BUCKETS_TOKEN scoped to that bucket only, so preview never reads or writes production files. A malformed value throws on first storage call; it never falls back.",
 	},
 	HF_BUCKETS_TOKEN: {
 		secret: true,

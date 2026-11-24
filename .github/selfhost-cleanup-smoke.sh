@@ -6,6 +6,12 @@
 # first run comes 5 seconds after boot instead of 1 to 10 minutes. The aged conversation must be gone,
 # the fresh one must remain, and the web log must carry `[cleanup] daily cleanup finished`.
 #
+# Guest files get the same check when the web service stores files on local disk: two files under one
+# guest's folder in the `files` volume, one with its mtime set 40 days back (the local backend dates a
+# file by its mtime). The aged one must be gone and the fresh one kept. An S3 store dates an object by
+# its upload and nothing can backdate it, so on that backend the file check prints a skip line; the
+# local-profile runs (selfhost.yml, image.yml) cover it.
+#
 #   .github/selfhost-cleanup-smoke.sh                                 # a stack smoke.sh left up
 #   CLEANUP_PROFILES="--profile local --profile s3" .github/selfhost-cleanup-smoke.sh
 #
@@ -46,6 +52,28 @@ age=$(sql "select extract(day from now() - updated_at)::int from conversations w
 [ "$age" -ge 30 ] || fail "the aged conversation is $age days old, not past the 30-day retention"
 echo "ok   guest conversation $expired aged $age days; $fresh left fresh"
 
+# 1b. Two guest files on a local store; one aged past retention. Written inside the web container, as
+# the user that owns the volume, under a guest id shaped like a real one (sha256 hex of a cookie).
+backend=$(dc exec -T web node -p 'process.env.CUSTODIAL_STORAGE_BACKEND ?? ""' | tr -d '\r')
+files_checked=""
+if [ "$backend" = local ]; then
+	gid=$(openssl rand -hex 32)
+	dir="guests/$gid/conversations/$(openssl rand -hex 12)"
+	dc exec -T -e DIR="$dir" web node -e '
+		const fs = require("fs"), path = require("path");
+		const d = path.join(process.env.CUSTODIAL_LOCAL_DIR, process.env.DIR);
+		fs.mkdirSync(d, { recursive: true });
+		fs.writeFileSync(path.join(d, "aged.txt"), "aged guest file");
+		fs.writeFileSync(path.join(d, "fresh.txt"), "fresh guest file");
+		const t = new Date(Date.now() - 40 * 24 * 3600 * 1000);
+		fs.utimesSync(path.join(d, "aged.txt"), t, t);
+	'
+	files_checked=1
+	echo "ok   guest files $dir/aged.txt aged 40 days and $dir/fresh.txt left fresh"
+else
+	echo "skip guest files: the web service stores files on '${backend:-unset}', whose upload date cannot be set back"
+fi
+
 # 2. Recreate web with a 5-second first run.
 sed -i "/^$KNOB=/d" .env
 echo "$KNOB=5000" >> .env
@@ -72,5 +100,16 @@ echo "ok   web log: $(cut -c1-400 <<<"$line")"
 echo "ok   aged guest conversation $expired deleted"
 [ "$(rows "$fresh")" = 1 ] || fail "the fresh guest conversation $fresh was deleted too"
 echo "ok   fresh guest conversation $fresh kept"
+
+if [ -n "$files_checked" ]; then
+	present() {
+		dc exec -T -e F="$dir/$1" web node -p \
+			'require("fs").existsSync(require("path").join(process.env.CUSTODIAL_LOCAL_DIR, process.env.F))' | tr -d '\r'
+	}
+	[ "$(present aged.txt)" = false ] || fail "the aged guest file $dir/aged.txt is still in the files volume"
+	echo "ok   aged guest file deleted from the files volume"
+	[ "$(present fresh.txt)" = true ] || fail "the fresh guest file $dir/fresh.txt was deleted too"
+	echo "ok   fresh guest file kept"
+fi
 
 echo "CLEANUP PASS in $(( $(date +%s) - started )) s"

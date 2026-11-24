@@ -10,6 +10,7 @@ import { noDiscardedEffectRoot } from './eslint-rules/no-discarded-effect-root.j
 import { noChatPathLiteral } from './eslint-rules/no-chat-path-literal.js';
 import { noModelWordingAssertion } from './eslint-rules/no-model-wording-assertion.js';
 import { noHostEnvRead, RUNTIME_ENV_MODULE } from './eslint-rules/no-host-env-read.js';
+import { noModelAllowlistRead } from './eslint-rules/no-model-allowlist-read.js';
 import alphaDs, {
 	internal as alphaDsInternal,
 	strict as alphaDsStrict
@@ -201,6 +202,15 @@ export default defineConfig(
 		ignores: [RUNTIME_ENV_MODULE, '**/*.spec.ts', '**/*.test.ts', '**/*.svelte.test.ts'],
 		rules: {
 			'no-restricted-syntax': ['error', ...noHostEnvRead]
+		}
+	},
+	{
+		// MODEL_ALLOWLIST is read only in config/picker.ts; eslint-rules/no-model-allowlist-read.js says
+		// why. Specs are linted too: the live specs are where the stale reads were.
+		files: ['src/**/*.{ts,js,svelte}', 'e2e/**/*.{ts,js,mjs}'],
+		plugins: { 'model-allowlist': { rules: { 'no-model-allowlist-read': noModelAllowlistRead } } },
+		rules: {
+			'model-allowlist/no-model-allowlist-read': 'error'
 		}
 	},
 	{

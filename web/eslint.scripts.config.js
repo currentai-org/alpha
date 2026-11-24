@@ -1,7 +1,8 @@
 // Correctness lint for `scripts/`. The main gate (eslint.config.js) ignores the
 // directory and `lint:quality` only warns, so before this nothing failed on an undefined name or a
 // dead import in the ops tooling that deploys, gates and probes the app. Run via `pnpm lint:scripts`,
-// which also runs the host-env rule (and nothing else) over config/.
+// which also runs the host-env and MODEL_ALLOWLIST rules over config/, and the MODEL_ALLOWLIST rule
+// alone over evals/.
 //
 // Correctness only, no style: formatting is prettier's job (scripts/.prettierrc.json), enforced on
 // the files a commit or PR touches rather than by reformatting the whole directory at once.
@@ -10,6 +11,10 @@ import globals from 'globals';
 import ts from 'typescript-eslint';
 import { defineConfig } from 'eslint/config';
 import { noHostEnvRead } from './eslint-rules/no-host-env-read.js';
+import {
+	MODEL_ALLOWLIST_MODULE,
+	noModelAllowlistRead
+} from './eslint-rules/no-model-allowlist-read.js';
 
 const unusedVars = [
 	'error',
@@ -63,6 +68,21 @@ export default defineConfig(
 		languageOptions: { parser: ts.parser },
 		rules: {
 			'no-restricted-syntax': ['error', ...noHostEnvRead]
+		}
+	},
+	{
+		// MODEL_ALLOWLIST is read only in config/picker.ts (eslint-rules/no-model-allowlist-read.js). evals/
+		// is linted for this rule alone: the harnesses there are where most of the direct reads were.
+		files: [
+			'scripts/**/*.{js,mjs,cjs,ts,mts}',
+			'config/**/*.{js,mjs,cjs,ts,mts}',
+			'evals/**/*.{js,mjs,ts}'
+		],
+		ignores: [MODEL_ALLOWLIST_MODULE],
+		languageOptions: { parser: ts.parser },
+		plugins: { 'model-allowlist': { rules: { 'no-model-allowlist-read': noModelAllowlistRead } } },
+		rules: {
+			'model-allowlist/no-model-allowlist-read': 'error'
 		}
 	},
 	{

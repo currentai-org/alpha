@@ -191,8 +191,8 @@ test.describe('x-ray card links', () => {
 				).not.toContainText(
 					'Swiss National Supercomputing Centre by Swiss National Supercomputing Centre'
 				);
-				// The compute card's only way out was its name, underlined on hover alone, so the
-				// A5 grader read it as a component with nothing behind it. It now carries a visible CSCS link.
+				// The compute card carries a visible CSCS link, so it never reads as a component with
+				// nothing behind it.
 				const cscsLink = computeCard.getByRole('link', { name: 'CSCS', exact: true });
 				await expect(cscsLink, 'the compute card shows no visible link to CSCS').toBeVisible();
 				await expect(cscsLink).toHaveAttribute('href', 'https://cscs.ch');

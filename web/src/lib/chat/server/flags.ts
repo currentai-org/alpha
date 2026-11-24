@@ -38,7 +38,7 @@ import { createHash } from "node:crypto";
 import { config } from "$lib/chat/server/config";
 import { hmacSha256, timingSafeEqual } from "$lib/chat/server/crypto";
 import { deployEnv, isTestDeployment } from "$lib/chat/server/deployEnv";
-import { bakedCacheProvider, bakedFlagDefinitions } from "$lib/chat/server/flagDefinitionsBaked";
+import { bakedCacheProvider, bakedFlagDefinitions } from "$lib/server/flagDefinitionsBaked";
 import { runInBackground } from "$lib/chat/server/vercelBackground";
 import { deploymentInstance } from "$lib/chat/server/instance";
 import {
@@ -824,7 +824,7 @@ export async function guestSignInFlagValues(
  * person, as it always has.
  *
  * `fallback` is a thunk, as in `flagEnabledOr`, so it is evaluated only when needed. It is optional
- * only so chunkedUploadGate.ts, which PR #4561 deletes, compiles unchanged; the default is off, the
+ * only so older callers compile unchanged; the default is off, the
  * value every caller got before the hook existed. A new caller passes its own.
  *
  * `distinctId` MUST be the account's real id. It is the hash input that decides the answer, so a

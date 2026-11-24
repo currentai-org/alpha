@@ -17,3 +17,6 @@ agents-md-refs	.github/leak-check/allow.tsv	this list, shipped for the public re
 personal-emails	.github/leak-check/allow.tsv	the same list: a reason quotes the synthetic address its spec uses
 profanity	.github/leak-check/allow.tsv	the same list: a path names the third-party domain it allows
 staff-names	web/src/lib/chat/server/rag/data/catalog-entities.json	generated from the public gap-map catalog; first names there belong to third-party projects and their maintainers, not staff
+custodial-bucket	web/src/lib/chat/server/storage/custodialBucketRepo.ts	the production fallback bucket, by design: a production deployment with HF_BUCKETS_REPO unset writes there
+custodial-bucket	web/src/lib/chat/server/storage/custodialBucketRepo.spec.ts	asserts that production fallback
+custodial-bucket	web/src/lib/chat/server/storage/custodialStorage.spec.ts	asserts that production fallback and that a set HF_BUCKETS_REPO overrides it

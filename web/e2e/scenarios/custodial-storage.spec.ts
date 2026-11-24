@@ -16,7 +16,7 @@ import { startChattingPastWelcome } from './helpers/welcome';
 import { openArchive } from './helpers/exportArchive';
 
 // The bucket the target deployment writes to; unset means production's, same as the app.
-const BUCKET = process.env.HF_BUCKETS_REPO || 'buckets/current-ai-official/custodial-storage-eu';
+const BUCKET = process.env.HF_BUCKETS_REPO;
 
 /**
  * Uploads one text file through the page's own file input. Retried until the upload request is
@@ -64,6 +64,8 @@ function userPrefix(path: string): string {
 async function bucketFilesUnder(prefix: string): Promise<string[] | null> {
 	const token = process.env.HF_BUCKETS_TOKEN;
 	if (!token) return null;
+	if (!BUCKET)
+		throw new Error('HF_BUCKETS_TOKEN is set but HF_BUCKETS_REPO is not, so no bucket to read');
 	// A 429 is the shared token's 3,000-calls-per-5-minutes cap, which says nothing about the bucket.
 	// Waiting it out spends the next window alongside every other waiting shard, so fail
 	// at once and name it, as failIfStorageThrottled does for the storage routes. Any other error
@@ -211,7 +213,7 @@ test(
 );
 
 // The other direction of the same gate, forced rather than left to the live flag. My files
-// is on for everyone in production, so no walker account can show the off state; the override cookie
+// is on for everyone in production, so no real account can show the off state; the override cookie
 // can. The same account is walked with the flag on first, so the tab's locator is proven to find it
 // before its absence counts for anything.
 test(

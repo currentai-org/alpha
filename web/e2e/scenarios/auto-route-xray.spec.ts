@@ -392,6 +392,72 @@ test(
 	}
 );
 
+// Mistral Large 4 scores 0.71 raw on Belebele's Amharic, under the 0.75 line where a model counts as
+// still learning a language; GLM 5.2's 0.86 is over it. The notice keys on the model that answers, not
+// on Auto's best available model, so a visitor who picks Large 4 sees it in the composer and beside the
+// sent answer, after a reload too.
+test(
+	'with Mistral Large 4 picked by hand, an Amharic answer carries the still-learning notice, before sending and after',
+	{ tag: ['@F2'] },
+	async ({ page, context, baseURL }) => {
+		test.setTimeout(150_000);
+		const composer = await openChat(page, context, baseURL!, 'auto', CHAT_ENTRY);
+
+		// Picked the way a visitor picks it: the composer's model button, then "Choose a model yourself".
+		await page
+			.getByRole('button', { name: /^Model: / })
+			.first()
+			.click({ timeout: 10_000 });
+		const row = page.getByRole('menuitemradio', { name: /^Mistral Large 4\b/ });
+		const yourself = page.getByRole('menuitem', { name: /^Choose a model yourself/ });
+		await expect(row.or(yourself).first()).toBeVisible({ timeout: 10_000 });
+		if (await yourself.isVisible()) await yourself.click();
+		await row.click({ timeout: 10_000 });
+		// With Auto on, a hand-picked model's pill names its family ("Model: Mistral"), which Medium
+		// shares, so the exact pick is read from the device's saved choice.
+		await expect(
+			page.locator('[data-model-pill]').first(),
+			'the pill still reads Auto after picking Large 4 by hand'
+		).toHaveAttribute('aria-label', /^Model: Mistral\b/, { timeout: 10_000 });
+		await expect
+			.poll(() => page.evaluate((key) => localStorage.getItem(key), CHOICE_KEY), {
+				message: 'the device did not save Large 4 as its pick',
+				timeout: 10_000
+			})
+			.toBe('mistral-large-4');
+
+		const question = 'የኢትዮጵያ ዋና ከተማ ማን ናት? በአንድ ዓረፍተ ነገር መልስ።';
+		await composer.fill(question);
+		await expect(
+			page.getByRole('button', { name: /^Amharic: Alpha is still learning it\b/ }),
+			'the composer shows no still-learning pill for an Amharic draft going to Large 4'
+		).toBeVisible({ timeout: 15_000 });
+
+		const answer = await ask(page, composer, question);
+		const note = answer.locator('[data-still-learning="amh"]');
+		await expect(
+			note,
+			'the sent Amharic answer from Large 4 carries no still-learning notice'
+		).toBeVisible({
+			timeout: 15_000
+		});
+		const stored = await storedTurn(page, answer);
+		expect(
+			stored?.autoRoute,
+			'a hand-picked Large 4 was recorded as chosen by Auto'
+		).toBeUndefined();
+
+		await page.reload({ waitUntil: 'commit' });
+		await expect(
+			page
+				.locator('[data-message-role="assistant"]')
+				.first()
+				.locator('[data-still-learning="amh"]'),
+			'the still-learning notice is gone after a reload'
+		).toBeVisible({ timeout: 30_000 });
+	}
+);
+
 // Polish follows the scores: Mistral Medium 3.5 carries its Artificial Analysis rating of 14
 // against Bielik's hand-set 3, so Auto sends a short Polish draft to Medium, and Bielik is for picking by
 // hand. The family alone can't tell Medium from Large 4, so read the pick's Intelligence meter: 14 is

@@ -8,7 +8,7 @@ const written: Record<string, Record<string, unknown>[]> = {};
 
 vi.mock("$app/env", () => ({ dev: false }));
 vi.mock("$lib/chat/server/config", () => ({ config: new Proxy({}, { get: (_t, k: string) => cfg[k] }) }));
-vi.mock("$lib/chat/server/axiomStream", () => ({
+vi.mock("$lib/server/axiomStream", () => ({
 	createAxiomStream: ({ dataset }: { dataset: string }) => ({
 		write: (line: string) => void (written[dataset] ??= []).push(JSON.parse(line)),
 	}),

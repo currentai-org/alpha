@@ -12,12 +12,10 @@
 //
 // Anything else answers 404 and fails loud.
 import { createServer } from 'node:http';
+import { servedModels } from '../../config/picker.ts';
 
 const PORT = Number(process.env.UPSTREAM_STUB_PORT || 18081);
-const IDS = (process.env.MODEL_ALLOWLIST ?? '')
-	.split(',')
-	.map((id) => id.trim())
-	.filter(Boolean);
+const IDS = [...servedModels('production')].map((id) => id.trim()).filter(Boolean);
 
 if (IDS.length === 0) {
 	console.error(

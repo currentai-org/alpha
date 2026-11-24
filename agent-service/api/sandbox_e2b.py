@@ -135,8 +135,8 @@ def by_address(url: str) -> str:
     """`url` with its host swapped for the address it resolves to now.
 
     E2B's client proxy reads the sandbox and port from `E2b-Sandbox-*` headers only when the request's host is
-    localhost or an IP address; any other host is parsed as `<port>-<sandbox>.<domain>`, so the link's
-    `potluck-e2b-link.internal` reads as port "potluck" and every call is refused. The name stays in config,
+    localhost or an IP address; any other host is parsed as `<port>-<sandbox>.<domain>`, so a link name such as
+    `e2b-link.internal` reads as port "e2b" and every call is refused. The name stays in config,
     since the egress allowlist resolves it too, and the lookup is a read of /etc/hosts, which the entrypoint keeps
     current. A name that does not resolve is passed through, so the failure names it."""
     parts = urlsplit(url)

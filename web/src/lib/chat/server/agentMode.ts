@@ -47,8 +47,8 @@ import { ensureFlagsPolled, flagEnabledForUser, flagEnabledOr } from "$lib/chat/
 import { flagEmail } from "$lib/chat/server/flagEmail";
 import { logger } from "$lib/chat/server/logger";
 
-/** PostHog flag key. Owner: agent-service. A temporary rollout flag, to be removed once agent mode
- *  no longer needs a switch — a flag nobody removes is worse than no flag. */
+/** PostHog flag key. Owner: agent-service. Turns agent mode on or off for the deployment; the
+ *  accounts that see it are chosen by the flag below. */
 export const AGENT_MODE_FLAG = "agent-mode";
 
 /** PostHog flag key for WHICH ACCOUNTS see agent mode, as opposed to whether it exists on this

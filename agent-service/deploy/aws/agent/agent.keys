@@ -1,0 +1,17 @@
+# Doppler keys the agent container takes on every stack (render_env.py). A trailing ? marks an optional key.
+# agent.<stack>.keys adds the settings only that stack runs with.
+# Never list a model or provider token here: the agent holds none, the gateway does.
+PROXY_ADMIN_KEY
+WEBUI_SECRET_KEY
+AGENT_METRICS_TOKEN
+AGENT_VERIFIER_MODEL
+AXIOM_TOKEN
+SAFETY_SCREEN_URL
+SAFETY_SCREEN_TOKEN
+COOP_ITEM_TYPE_ID
+COOP_SYSTEM_REPORTER_ID
+COOP_USER_TYPE_ID
+E2B_API_KEY
+E2B_TEMPLATE
+AGENT_OUTPUT_SCREEN_MODE?
+AGENT_OPERATOR_SUBS?

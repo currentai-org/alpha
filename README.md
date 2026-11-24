@@ -22,6 +22,8 @@ at startup, and [Hosted services](#hosted-services) says what each of the others
 without it. The code is MIT, with the files derived from chat-ui under Apache-2.0 (see
 [Licence](#licence)).
 
+The `CUR-` and `SOL-` ids in comments and tests refer to the project's internal issue tracker.
+
 ## Run it with Docker Compose
 
 `selfhost/` runs Alpha on one machine: the app, Postgres, and a small open model on CPU, with no key and
@@ -326,7 +328,9 @@ They run against a deployed instance with the hosted services, so they will not 
 This repository is a published snapshot. Development still happens in a private monorepo, and new
 versions of this code arrive here as snapshots until development moves here. Issues are welcome; code
 pull requests open once this repository becomes the source of truth.
-`CONTRIBUTING.md` says how, `SECURITY.md` how to report a vulnerability, and `AGENTS.md` is a map of the
+Once it does, work lands on `main` through short-lived pull request branches, and a release is a
+semver tag (`v0.x.y`) with a signed image; run a tag, not `main`. `CONTRIBUTING.md` says how,
+`SECURITY.md` how to report a vulnerability, and `AGENTS.md` is a map of the
 code for a coding agent working in a fork.
 
 ## Reading the code

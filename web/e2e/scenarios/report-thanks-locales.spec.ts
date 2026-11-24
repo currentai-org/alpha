@@ -6,7 +6,7 @@ import { chatEntry } from './helpers/chatEntry';
 
 // A French, Spanish or German visitor who sends "Report a problem" reads the thank-you and its link to
 // their reports in their own language. The three strings first shipped in English only, so
-// the runtime fell back to English. Cold walks cannot send a report, since a real one reaches staff, so
+// the runtime fell back to English. A browser walk cannot send a report, since a real one reaches staff, so
 // this spec answers the send itself: the thank-you is what the dialog renders for any 2xx, and nothing
 // lands in the shared preview's reports table. The expected text comes from each catalog, so a copy
 // edit moves the spec with it, and each locale also refuses the English.

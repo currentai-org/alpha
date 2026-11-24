@@ -95,7 +95,7 @@ test(
 		// spare, and every assertion below is about the panel STILL being there.
 		//
 		// The toast clears itself after 5s, so a check at each end of the window misses one raised in
-		// the middle, which is where the graded recordings caught it. Watch for it the whole
+		// the middle, which is where it showed. Watch for it the whole
 		// time instead.
 		const toastRaised = await errorToast.waitFor({ state: 'visible', timeout: 25_000 }).then(
 			() => true,

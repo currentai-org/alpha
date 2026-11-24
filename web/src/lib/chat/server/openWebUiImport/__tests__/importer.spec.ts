@@ -26,7 +26,8 @@ import { readOpenWebUiSqlite } from "../readSqlite";
 import { IMPORT_ORIGIN } from "../convert";
 import { formatReport, reportParity, type ImportReport } from "../report";
 import { importedPath, sidecarPath, type FileDeps } from "../files";
-import { addChat, attachment, buildFixture, FIXTURE_FILES, NEW_CHAT } from "./owuiFixture";
+import { addChat, applyOpenWebUi013Shapes, attachment, buildFixture, FIXTURE_FILES, NEW_CHAT, OWUI_0_13_4_REVISION } from "./owuiFixture";
+import { KNOWN_REVISIONS } from "../../../shared/openWebUiImport/sourceSchema";
 import { toOpenWebUiChat } from "../../../shared/openWebUiImport/chatFile";
 import { readOpenWebUiChatFile } from "../readChatFile";
 import { branchedConversation, treeShape } from "./alphaFixture";
@@ -290,6 +291,43 @@ describe.sequential("Open WebUI import", () => {
 		expect(userOf(report, "alice@example.org").messages).toEqual({ in: 11, skipped: 1, stored: 10 });
 		expect(await collections.conversations.countDocuments({})).toBe(0);
 		expect(await getDb().select().from(schema.user)).toHaveLength(0);
+	});
+});
+
+describe.sequential("an install updated past 0.12.0", () => {
+	it("imports a synthetic Open WebUI 0.13.4 database into Postgres with the parity report matching the source counts", async () => {
+		const path = join(dir, "webui-0.13.4.db");
+		const db = buildFixture(path, OWUI_0_13_4_REVISION);
+		applyOpenWebUi013Shapes(db);
+		db.close();
+
+		const source = readOpenWebUiSqlite(path);
+		expect(KNOWN_REVISIONS[source.revision]).toBe("Open WebUI 0.13.1-0.13.4");
+		const report = await runImport(source, { model: "fixture-model", oauthProvider: "oidc" });
+
+		expect(report.revision).toBe(OWUI_0_13_4_REVISION);
+		expect(reportParity(report)).toBe(true);
+		// The report's in-counts are the source's own rows, and its stored counts are what Postgres holds.
+		const reported = report.users.reduce((n, u) => n + u.conversations.in, 0);
+		expect(reported).toBe(source.chats.length);
+		const stored = report.users.reduce((n, u) => n + u.conversations.imported, 0);
+		expect(stored).toBe(await collections.conversations.countDocuments({ syncOrigin: IMPORT_ORIGIN }));
+		expect(userOf(report, "alice@example.org").conversations).toMatchObject({ in: 3, imported: 3, skipped: [] });
+		expect(userOf(report, "alice@example.org").messages).toEqual({ in: 11, skipped: 1, stored: 10 });
+		expect(userOf(report, "bob@example.org").conversations).toMatchObject({ in: 1, imported: 1 });
+		expect(userOf(report, "alice@example.org").tags).toEqual({ in: 2, stored: 2, skipped: [] });
+
+		// A message 0.13.x stored with created_at 0 takes the chat's time; a millisecond one keeps its own.
+		const basics = (await collections.conversations.findOne({ userId: await shadowOf("alice@example.org"), syncClientId: "chat-a1" }))!;
+		const zeroed = basics.messages.find((m) => m.content === "A shared meal where everyone brings a dish.")!;
+		expect(new Date(zeroed.createdAt!).getTime()).toBe(new Date(basics.createdAt).getTime());
+		const bobs = (await collections.conversations.findOne({ userId: await shadowOf("bob@example.org"), syncClientId: "chat-b1" }))!;
+		const inMs = bobs.messages.find((m) => m.content.startsWith("Usually"))!;
+		expect(new Date(inMs.createdAt!).getTime()).toBe((1_760_000_000 + 402) * 1000);
+
+		const again = await runImport(readOpenWebUiSqlite(path), { model: "fixture-model", oauthProvider: "oidc" });
+		expect(reportParity(again)).toBe(true);
+		expect(again.users.reduce((n, u) => n + u.conversations.imported + u.conversations.updated, 0)).toBe(0);
 	});
 });
 

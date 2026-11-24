@@ -5,7 +5,7 @@
 // contract).
 //
 // The bytes go through custodialBackend.ts: the Hugging Face bucket (hf;
-// buckets/current-ai-official/custodial-storage-eu on production), an S3-compatible bucket or a
+// production's own bucket, custodialBucketRepo.ts), an S3-compatible bucket or a
 // local directory, whichever CUSTODIAL_STORAGE_BACKEND names. It has no default. Sealing happens here, above that seam, so a backend
 // only ever holds ciphertext. Every backend's listing returns each entry's full store-relative path
 // whatever prefix scoped the request, which is what makes checking assertOwnership against each
@@ -433,11 +433,7 @@ async function screenUpload(owner: Owner, relativePath: string, content: Blob, o
 	}
 	const collected: Buffer[] = [];
 	const scanResult = await scanFileForCsam(content, relativePath, scanTarget, { collected });
-	const quarantine = async () => {
-		const quarantinePath = `${ownerPrefix(owner.root, owner.id)}${CUSTODIAL_QUARANTINE_DIRNAME}/${Date.now()}-${relativePath.split("/").pop()}`;
-		await (await custodialBackend()).put(quarantinePath, content);
-		return quarantinePath;
-	};
+	const quarantine = () => putQuarantined(owner, relativePath, content);
 	if (scanResult.status === "match") {
 		const quarantinePath = await quarantine();
 		// Chat's upload guard files the same alert and report (parseRequest.ts); the quarantined copy is
@@ -484,6 +480,56 @@ async function screenUpload(owner: Owner, relativePath: string, content: Blob, o
 	}
 }
 
+/**
+ * Writes evidence into the owner's quarantine folder and returns its path. Unsealed, so a reviewer
+ * can still open it after the owner's key is tombstoned by an account wipe. No owner path reaches the
+ * folder: listOwnerFiles skips it, and every read, download and delete refuses it.
+ */
+async function putQuarantined(owner: Owner, relativePath: string, content: Blob): Promise<string> {
+	const quarantinePath = `${ownerPrefix(owner.root, owner.id)}${CUSTODIAL_QUARANTINE_DIRNAME}/${Date.now()}-${relativePath.split("/").pop()}`;
+	await (await custodialBackend()).put(quarantinePath, content);
+	return quarantinePath;
+}
+
+/** The owner of a chat attachment, as storeChatAttachment takes it. */
+export type AttachmentOwnerRef = { userId: string } | { guestSessionId: string };
+
+const ownerOf = (owner: AttachmentOwnerRef): Owner =>
+	"userId" in owner ? { root: "users", id: owner.userId } : { root: "guests", id: owner.guestSessionId };
+
+/**
+ * Moves one stored chat attachment out of its owner's reach and into their quarantine folder, for a
+ * turn the screen declined under a child-safety rule. The copy is opened first and kept unsealed, then
+ * the original is deleted, so a failed write leaves the original where it was rather than losing it.
+ * `accept` sees the opened bytes and says whether this file is one to move; a file it turns down is
+ * left in place.
+ * @returns the quarantine path, or null when there is no stored copy or `accept` turned it down.
+ */
+export async function quarantineChatAttachment(
+	ref: AttachmentOwnerRef,
+	relativePath: string,
+	accept: (content: Blob) => Promise<boolean>
+): Promise<string | null> {
+	const owner = ownerOf(ref);
+	const bucketPath = resolveOwnerPath(owner.root, owner.id, relativePath); // throws PathEscapesUserPrefixError
+	assertOwnerOwnership(owner.root, owner.id, bucketPath);
+	if (path.posix.normalize(bucketPath).startsWith(`${ownerPrefix(owner.root, owner.id)}${CUSTODIAL_QUARANTINE_DIRNAME}/`)) {
+		throw new OwnershipMismatchError(owner.id, bucketPath);
+	}
+	const content = await readOpened(ownerGrant(owner.root, owner.id), bucketPath);
+	if (!content || !(await accept(content))) return null;
+	const quarantinePath = await putQuarantined(owner, relativePath, content);
+	await (await custodialBackend()).delete(bucketPath);
+	forgetQuotaListing(owner);
+	return quarantinePath;
+}
+
+/** Quarantines bytes held outside the bucket (a chat attachment the files table took on a bucket
+ *  timeout), as quarantineChatAttachment does for a bucket copy. */
+export async function quarantineAttachmentBytes(ref: AttachmentOwnerRef, name: string, content: Blob): Promise<string> {
+	return putQuarantined(ownerOf(ref), name, content);
+}
+
 /** The mime file-type reads from a file's first bytes, or undefined when it recognises none. */
 async function sniffMime(header: Uint8Array): Promise<string | undefined> {
 	try {
@@ -525,13 +571,12 @@ const ownerLimits = (owner: Owner) =>
  * @throws StorageQuotaExceededError when it does not fit, or the Hub's own error (hubRateLimitedUrl).
  */
 export async function storeChatAttachment(
-	owner: { userId: string } | { guestSessionId: string },
+	owner: AttachmentOwnerRef,
 	relativePath: string,
 	content: Blob,
 	opts: { signal?: AbortSignal } = {}
 ): Promise<void> {
-	const o: Owner =
-		"userId" in owner ? { root: "users", id: owner.userId } : { root: "guests", id: owner.guestSessionId };
+	const o = ownerOf(owner);
 	const bucketPath = resolveOwnerPath(o.root, o.id, relativePath); // throws PathEscapesUserPrefixError
 	assertOwnerOwnership(o.root, o.id, bucketPath);
 	if (isPastePath(relativePath)) {

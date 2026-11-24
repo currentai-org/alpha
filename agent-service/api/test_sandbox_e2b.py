@@ -386,7 +386,7 @@ def _resolves_to(monkeypatch, addr):
 
 def test_the_sandbox_url_reaches_the_proxy_by_address_so_it_routes_by_header(monkeypatch):
     _resolves_to(monkeypatch, "fdaa::2")
-    cfg = sandbox_e2b.E2BConfig(api_url="http://e2b.invalid", api_key="k", sandbox_url="http://potluck-e2b-link.internal:3002")
+    cfg = sandbox_e2b.E2BConfig(api_url="http://e2b.invalid", api_key="k", sandbox_url="http://e2b-link.internal:3002")
     assert cfg.api()["sandbox_url"] == "http://[fdaa::2]:3002"
     _resolves_to(monkeypatch, "10.0.0.7")
     assert sandbox_e2b.by_address("http://link.internal:3002/x") == "http://10.0.0.7:3002/x"

@@ -213,9 +213,9 @@ test(
 
 			// The menu's reasons render synchronously off a static array — nothing here
 			// waits on a mount, so every assertion above resolves in the same tick the click does, and the
-			// very next step closes the menu. The gallery's grader reads sampled video frames, never the
+			// very next step closes the menu. Journey recordings are read from sampled video frames, never the
 			// DOM (docs/journeys/README.md), so a state open for under ~100ms has nothing for a sample
-			// frame to land on — the menu was never caught open in a graded recording.
+			// frame to land on — the menu would never show open in a recording.
 			// Same deliberate-dwell shape journey-gallery.spec.ts already uses for the same reason.
 			await page.waitForTimeout(1_000);
 		});
@@ -1353,10 +1353,10 @@ test(
 );
 
 // The site promises Alpha "won't flatter you" and says it is a machine. Whether a reply
-// names a risk, or claims feelings, is a judgement about its words, so the gallery's grader reads
+// names a risk, or claims feelings, is a judgement about its words, so journey recordings are checked on
 // rows 15 and 16 against the journey doc; `pnpm probe:pushback` makes the same judgement on ten turns
 // with an injury run. These tests make sure a real answer reached the screen for it to read: a
-// decline or an empty turn would leave the grader nothing to judge. Row 16 also checks the one fact a
+// decline or an empty turn would leave the recording nothing to judge. Row 16 also checks the one fact a
 // word can settle: the answer says AI or machine. A bare "No." once passed
 // a length check because it counted the message chrome. The answer's paragraphs
 // are read (`.chat-answer`), so text in the badge beside them can't stand in for the words.

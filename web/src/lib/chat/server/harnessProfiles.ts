@@ -234,8 +234,7 @@ const HARNESS_PROFILES: Readonly<Record<string, HarnessProfile>> = {
 	// Context: Mistral `GET /v1/models` `max_context_length` for `mistral-large-4`; published, not
 	// probed at length.
 	// reasoningTokens,: reasoning and answer shared the 4,096 cap, and 1 of 25 production
-	// finishes in three days ended on `length` at 17,963 characters, the cap. Both develop replays of a
-	// Barcelona itinerary ran out the same way, one before any answer. 12,288 brings the cap to 16,384,
+	// finishes in three days ended on `length` at the cap (17,963 characters). 12,288 brings the cap to 16,384,
 	// the conversation-API eval ceiling: a bound until `reasoningChars` on `[generation] finish` gives a
 	// p99, since the cap censors every longer run. It costs the history 3% of this context.
 	"mistral-large-2610": { contextTokens: 524_288, reasoningTokens: 12_288 },

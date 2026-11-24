@@ -19,7 +19,7 @@ app's uid off port 53, so the entrypoint runs `python3 home_machine.py --write <
 the server reads the file. No file, one machine, or no Fly environment means every request is served where it
 lands, today's behaviour.
 
-This is the interim for the planned move of workspaces off the machine altogether.
+This is a stopgap until workspaces live off the machine altogether.
 """
 
 from __future__ import annotations

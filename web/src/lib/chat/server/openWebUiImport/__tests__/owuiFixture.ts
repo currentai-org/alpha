@@ -1,12 +1,16 @@
 /**
- * A synthetic Open WebUI SQLite database at the 0.12.0 head revision. Every name, address and
- * message here is invented; nothing in it came from a real install. The tables carry the columns the
- * importer selects, in the shape the 0.12.0 migrations leave them (JSON columns are text, timestamps are
- * epoch seconds, a `chat_message` id is `{chat_id}-{message_id}`).
+ * A synthetic Open WebUI SQLite database at the 0.12.0 head revision, or at a later head.
+ * Every name, address and message here is invented; nothing in it came from a real install.
+ * The tables carry the columns the importer selects, in the shape the 0.12.0 migrations leave them (JSON
+ * columns are text, timestamps are epoch seconds, a `chat_message` id is `{chat_id}-{message_id}`).
+ * The migrations up to the 0.13.4 head leave those columns as they were, so the same tables stand for
+ * every listed head; {@link applyOpenWebUi013Shapes} adds the values 0.13.x writes into them.
  */
 import { DatabaseSync } from "node:sqlite";
 
 export const FIXTURE_REVISION = "b8f2c6d91a04";
+/** The head Open WebUI 0.13.1 through 0.13.4 ship. */
+export const OWUI_0_13_4_REVISION = "9f6c2a8d1b43";
 const T0 = 1_760_000_000;
 
 const DDL = [
@@ -188,6 +192,16 @@ export function buildFixture(path: string, revision: string = FIXTURE_REVISION):
 	for (const t of FIXTURE_TAGS) tag.run(t.id, t.name, t.userId, t.meta === null ? null : JSON.stringify(t.meta));
 	addChat(db, { id: "chat-ghost", userId: "u-ghost", title: "Owner left", at: T0 + 600, rows: [{ id: "g1", parent: null, role: "user", content: "x", at: T0 + 601 }] });
 	return db;
+}
+
+/**
+ * Rewrites two message rows the way Open WebUI 0.13.x stores them: a message saved with a
+ * timestamp it could not read keeps `created_at` 0, and one carried over from an older client keeps its
+ * millisecond timestamp. Neither changes a count; both must still import.
+ */
+export function applyOpenWebUi013Shapes(db: DatabaseSync) {
+	db.prepare("UPDATE chat_message SET created_at = 0 WHERE id = 'chat-a1-m2'").run();
+	db.prepare("UPDATE chat_message SET created_at = ? WHERE id = 'chat-b1-p2'").run((T0 + 402) * 1000);
 }
 
 export const NEW_CHAT = (n: number) => ({

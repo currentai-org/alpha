@@ -82,6 +82,47 @@ export const PICKER: Readonly<Record<PickerSite, readonly string[]>> = {
 };
 
 /**
+ * MODEL_ALLOWLIST as set in `env`, read here and nowhere else: the self-host and off-Vercel override of
+ * PICKER (local dev, CI, evals). Undefined when unset; an empty string when set but blank (a scaffolded
+ * `.env` key), which a caller may want to tell apart from unset. A deployment ignores it
+ * (src/lib/chat/server/primaryModel.ts); eslint-rules/no-model-allowlist-read.js fails a read elsewhere.
+ */
+export function modelAllowlist(
+	env: Record<string, string | undefined> = process.env
+): string | undefined {
+	return env.MODEL_ALLOWLIST;
+}
+
+/** MODEL_ALLOWLIST's first entry, or "" when it is unset or blank: the model a harness was told to call. */
+export function overrideModel(env: Record<string, string | undefined> = process.env): string {
+	return (modelAllowlist(env) ?? "").split(",")[0].trim();
+}
+
+/**
+ * The models `site` serves, the default first: MODEL_ALLOWLIST when it names at least one id, otherwise
+ * the committed PICKER for that site. Every eval, live spec and stub that needs "the model a turn is
+ * served" reads this rather than an env var of its own.
+ */
+export function servedModels(
+	site: PickerSite = "production",
+	env: Record<string, string | undefined> = process.env
+): readonly string[] {
+	const ids = (modelAllowlist(env) ?? "")
+		.split(",")
+		.map((s) => s.trim())
+		.filter(Boolean);
+	return ids.length ? ids : PICKER[site];
+}
+
+/** The first of servedModels: the model a default turn on `site` is served. */
+export function defaultModel(
+	site: PickerSite = "production",
+	env: Record<string, string | undefined> = process.env
+): string {
+	return servedModels(site, env)[0] ?? "";
+}
+
+/**
  * Other names a router reports for a model id when another host serves the same weights. The staging
  * router answers Mistral Medium 3.5 from Scaleway as well as from Mistral, and Scaleway's copy reports
  * `mistral-medium-3.5-128b`. A served-model check reads a listed name as the model it asked

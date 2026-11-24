@@ -40,6 +40,13 @@ export async function getFileByFilename(
 	return row;
 }
 
+/** Deletes one conversation's file row by name. Scoped to the conversation, like getFileByFilename. */
+export async function deleteFileByFilename(filename: string, conversationId: string): Promise<void> {
+	await getDb()
+		.delete(files)
+		.where(and(eq(files.filename, filename), eq(files.conversationId, conversationId)));
+}
+
 /**
  * A file row belonging to NO conversation, by name.
  *

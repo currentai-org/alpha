@@ -81,6 +81,9 @@
 // attachment text could not be screened declined before any model call, never answered unscreened.
 // `input_screen_declines_rule` answers the input screen's harassment question yes and every
 // other no, so a spec sees a message declined under "Respectful communication".
+// `input_screen_declines_child_picture` answers yes to the child sexual content rule's question on
+// every picture and no to everything else, so a spec sends a plain test picture and sees the decline
+// take it out of My files and into quarantine (quarantineDeclinedPictures.ts).
 // `output_screen_recheck_clears` flags every output batch on one content rule and answers the
 // re-check with a stub "no", so a spec sees the flagged answer released whole.
 // `session_rate_limit_low` lowers the per-session send limit to one message per
@@ -158,6 +161,14 @@ export const harassmentRuleJudge: JudgeFn = async (_target, query) => ({
 	httpOk: true,
 });
 
+const CHILD_SEXUAL_CONTENT_QUERY = RULES["chat-block-child-sexual-content"].guard.query;
+/** `input_screen_declines_child_picture`'s guard: yes to the child sexual content rule on a picture,
+ *  no to every other question and to all text, so the decline comes from the picture alone. */
+export const childPictureJudge: JudgeFn = async (target, query) => ({
+	answer: { kind: "token", yes: target.kind === "image" && query === CHILD_SEXUAL_CONTENT_QUERY },
+	httpOk: true,
+});
+
 export const FAULT_NAMES = [
 	"no_assistant_reply",
 	"generation_timeout",
@@ -214,6 +225,7 @@ export const FAULT_NAMES = [
 	"output_guard_unreachable",
 	"input_guard_unreachable",
 	"input_screen_declines_rule",
+	"input_screen_declines_child_picture",
 	"output_screen_recheck_clears",
 	"session_rate_limit_low",
 	// The send route's per-account daily turn cap drops to DAILY_TURN_CAP_FAULT, so a spec sends past it

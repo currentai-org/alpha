@@ -162,7 +162,7 @@ export type FlagSelfHostCondition = keyof typeof SELF_HOST_CONDITIONS;
 export type FlagSelfHost =
 	/** On. */
 	| "on"
-	/** Off. Also the value for a flag whose self-host default is a pending decision for the project lead. */
+	/** Off. Also the value for a flag whose self-host default is a pending product decision. */
 	| "off"
 	/** The call site's own fallback, unchanged: there is no better self-host answer than what the code does without PostHog. */
 	| "code"
@@ -406,7 +406,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		owner: "chat",
 		expires: "2026-12-31",
 		gates:
-			"a TASK_MODEL forced tool call that reads the user's message in any language and stamps the Support resources card on distress, the writer's or a friend's (supportSignal.ts, called from the conversation endpoint). Production is CUR-4096, on the project lead's word",
+			"a TASK_MODEL forced tool call that reads the user's message in any language and stamps the Support resources card on distress, the writer's or a friend's (supportSignal.ts, called from the conversation endpoint). Production enable is its own ticket",
 		whenAbsent: "OFF — only the guard's English distress rules stamp the card",
 		ticket: "CUR-4093",
 	},
@@ -572,7 +572,7 @@ export const FLAG_KEYS = defineFlagKeys([
 			"distress gets Alpha's answer with the Support resources card on top; only a request for a method, a means or a lethal amount (`chat-block-self-harm`) is declined",
 		ticket: "CUR-3915",
 		specs: { on: "self-harm-hedged.spec.ts", off: "self-harm-hedged.spec.ts" },
-		// Answer-plus-card is the project lead's call; the trust-and-safety lead holds the sign-off.
+		// Answer-plus-card is a product decision, signed off.
 		// Turn this ON to restore the declines without a redeploy.
 	},
 	{
@@ -616,7 +616,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		owner: "trust-and-safety",
 		expires: "2027-03-31",
 		gates:
-			"the chat turn's input screen reading only the newest user message whole plus the end of the earlier ones, up to SCREEN_HISTORY_CAP (4,000 chars) in total, in place of every user message (capScreenHistory in guardScreenTypes.ts, read in chat/prepareTurnMedia.ts). A newest message of 4,000 chars or more is screened alone. A message further back is not screened again; it passed on its own turn. Production on the product lead's word (CUR-4765)",
+			"the chat turn's input screen reading only the newest user message whole plus the end of the earlier ones, up to SCREEN_HISTORY_CAP (4,000 chars) in total, in place of every user message (capScreenHistory in guardScreenTypes.ts, read in chat/prepareTurnMedia.ts). A newest message of 4,000 chars or more is screened alone. A message further back is not screened again; it passed on its own turn. Production enable is its own ticket",
 		whenAbsent:
 			"OFF — every turn screens the finalText of every user message, so a long chat splits into several 12,000-char windows and waits on each",
 		ticket: "CUR-4764",
@@ -702,7 +702,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		gates:
 			"creating an ADDITIONAL workspace and inviting anyone into one (workspacesGate.ts) — the 'Create another workspace'/'Invite by email' UI and better-auth's organization plugin routes (routes/chat/api/auth/[...all]) — both read this so a hidden option and a reachable route can't disagree. Split from `workspaces` (CUR-957) because seeing your own workspace is a personal-account concept, safe for anyone signed in, while org creation is a privilege Current AI grants to partners after a conversation",
 		whenAbsent:
-			"creation/invite UI hidden, organization routes 404 — the personal workspace view (on for everyone signed in) still works. This is the intended production state until cycle 4's real partner-gate exists",
+			"creation/invite UI hidden, organization routes 404 — the personal workspace view (on for everyone signed in) still works. This is the intended production state until a partner gate exists",
 		ticket: "CUR-957",
 	},
 	{
@@ -787,7 +787,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		class: "feature",
 		owner: "chat",
 		gates:
-			"the storage-view surface (custodialStorage.ts, CUR-899): list/upload/download/delete against buckets/current-ai-official/custodial-storage-eu, scoped per user by custodialBucket.ts's users/<id>/ layout and assertOwnership check (CUR-412/CUR-928)",
+			"the storage-view surface (custodialStorage.ts): list/upload/download/delete against the deployment's custodial bucket (custodialBucketRepo.ts), scoped per user by custodialBucket.ts's users/<id>/ layout and assertOwnership check",
 		whenAbsent:
 			"dark — no storage-view route or UI reachable, same as before this ticket. New, not-yet-trusted surface against a shared credential; fails closed if PostHog is ever unreachable, not open",
 		ticket: "CUR-899",
@@ -923,7 +923,7 @@ export const FLAG_KEYS = defineFlagKeys([
 			"no configured server is contacted and no tool of theirs is offered",
 		ticket: "CUR-3026",
 		specs: { on: "mcp-servers.spec.ts", off: "mcp-servers.spec.ts" },
-		// Production enable is its own ticket, and the flip is the product leads'.
+		// Production enable is its own ticket and a flag flip.
 	},
 	{
 		key: "one-chat-sandbox",
@@ -1152,7 +1152,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		gates:
 			"a plain turn recording what its stream sent into generation_events (chat/generationLog.ts) and GET /chat/conversation/[id]/generation/[generationId] answering a follow (404 when off); the page follows a dropped turn through it before falling back to the saved-copy poller (CUR-4716)",
 		whenAbsent:
-			"dark: no turn writes the log, the follow route answers 404, and a dropped stream waits for the saved copy as in CUR-4714. Production enable: its own ticket, on the product lead's word",
+			"dark: no turn writes the log, the follow route answers 404, and a dropped stream waits for the saved copy. Production enable is its own ticket",
 		ticket: "CUR-4716",
 	},
 	{
@@ -1178,9 +1178,9 @@ export const FLAG_KEYS = defineFlagKeys([
 		class: "feature",
 		owner: "chat",
 		gates:
-			"enrolling and unlocking the conversation-history key in the browser (historyKeyGate.ts, stage 2 of CUR-4137): a guest's silent device key on the first turn, the signed-in recovery step (recovery key, passkey where PRF works, or accepting loss), the unlock prompt in a browser with no device key, and Settings → Account → Your key. Withheld, with an error logged, on a deployment with no custodial storage (CUR-4939)",
+			"enrolling and unlocking the conversation-history key in the browser (historyKeyGate.ts, the browser-key stage of history sealing): a guest's silent device key on the first turn, the signed-in recovery step (recovery key, passkey where PRF works, or accepting loss), the unlock prompt in a browser with no device key, and Settings → Account → Your key. Withheld, with an error logged, on a deployment with no custodial storage",
 		whenAbsent:
-			"dark: no device key is made, no recovery step or unlock prompt shows, and Your key is not in Settings. Nothing is sealed before stage 3, so history reads as it does today. Production enable: stage 6 of CUR-4137, on the product owner's word",
+			"dark: no device key is made, no recovery step or unlock prompt shows, and Your key is not in Settings. Nothing is sealed before stage 3, so history reads as it does today. Production enable is its own ticket",
 		ticket: "CUR-4939",
 	},
 	{
@@ -1198,7 +1198,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		gates:
 			"conversation expiry (conversationExpiry.ts): the daily cleanup cron deleting every conversation (signed in or a guest's, pinned and sealed included) and every My files file 30 days after it was created (or after launch day, for one that predates it), the composer's preview line linking export and self-hosting, each chat's days-left badge, and from day 23 the delete-date banner with Export and Continue in a new chat (POST conversations/[id]/continue). Off, the cron refuses to delete, clears the launch marker, keeps the older guest sweep by last activity, and logs counts by age only",
 		whenAbsent:
-			"off: no signed-in conversation or file is deleted by age, guests keep the 30-days-since-last-activity sweep, no line, badge or banner shows, Continue answers 404, and the cron only logs what it would delete. Production enable is its own ticket, on the product owner's word",
+			"off: no signed-in conversation or file is deleted by age, guests keep the 30-days-since-last-activity sweep, no line, badge or banner shows, Continue answers 404, and the cron only logs what it would delete. Production enable is its own ticket",
 		ticket: "CUR-4990",
 	},
 	{
@@ -1210,9 +1210,9 @@ export const FLAG_KEYS = defineFlagKeys([
 		class: "feature",
 		owner: "chat",
 		gates:
-			"sealing conversation writes to the owner's history key (sealedTurn.ts `conversationSealWritesOn`, stage 4 of CUR-4137): each new turn, title and preprompt, the backfill, the Open WebUI import and sealing a person's existing chats when they enroll. A chat already sealed keeps sealing with the flag off (CUR-4983). On with no custodial storage, a write fails loudly with `history-seal-no-storage` (CUR-5015)",
+			"sealing conversation writes to the owner's history key (sealedTurn.ts `conversationSealWritesOn`, the write-sealing stage of history sealing): each new turn, title and preprompt, the backfill, the Open WebUI import and sealing a person's existing chats when they enroll. A chat already sealed keeps sealing with the flag off. On with no custodial storage, a write fails loudly with `history-seal-no-storage`",
 		whenAbsent:
-			"off: new chats are written in plaintext as before; already sealed chats stay sealed. Production enable is CUR-5016, on the product owner's word",
+			"off: new chats are written in plaintext as before; already sealed chats stay sealed. Production enable is its own ticket",
 		ticket: "CUR-5015",
 	},
 	// Deliberately NOT here: `disable_fallbacks` on the answer lane (gatewayFallbackGate.ts,

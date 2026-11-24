@@ -73,7 +73,7 @@ beforeEach(() => {
 	for (const k of Object.keys(cfg)) delete cfg[k];
 	cfg.CUSTODIAL_STORAGE_BACKEND = "hf";
 	cfg.HF_BUCKETS_TOKEN = "hf_test_token";
-	cfg.HF_BUCKETS_REPO = "buckets/current-ai-official/custodial-storage-eu";
+	cfg.HF_BUCKETS_REPO = "buckets/example-org/custodial-storage-test";
 	order.length = 0;
 	listFiles.mockReset().mockImplementation(async function* () {});
 	uploadFile.mockReset().mockImplementation(async ({ file }: { file: { path: string } }) => {

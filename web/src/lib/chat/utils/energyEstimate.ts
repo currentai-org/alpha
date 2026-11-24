@@ -125,7 +125,7 @@ export function energyAnchor(wh: number): { wh: number; label: string; short: st
 export function formatEnergyShort(wh: number): string {
 	if (wh <= 0) return "0Wh";
 	// One decimal of Wh rounds a real first reply (~10 mWh) to "0.0Wh", which reads as the
-	// counter resetting right after the bloom card showed "~10 mWh". Below that rounding floor, mWh.
+	// counter resetting after a "~10 mWh" estimate. Below that rounding floor, mWh.
 	if (wh < 0.05) return `${Math.max(1, Math.round(wh * 1000))}mWh`;
 	if (wh < 10) return `${wh.toFixed(1)}Wh`;
 	return `${Math.round(wh)}Wh`;

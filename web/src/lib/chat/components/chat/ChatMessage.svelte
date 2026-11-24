@@ -70,6 +70,7 @@ Modified by Current AI from huggingface/chat-ui.
 	import CacheNotice from './CacheNotice.svelte';
 	import { provenanceFacts } from '$lib/chat/utils/trace/provenanceFacts';
 	import GapInvite from './GapInvite.svelte';
+	import StillLearningNote from './StillLearningNote.svelte';
 	import type { StarterGap } from '$lib/chat/constants/starterGaps';
 	import ReportButton from './ReportButton.svelte';
 	import DeclineChallenge from './DeclineChallenge.svelte';
@@ -1125,6 +1126,11 @@ Modified by Current AI from huggingface/chat-ui.
 						})}
 					/>
 				</div>
+			{/if}
+
+			<!-- the question's language is one the model that answered is still learning. -->
+			{#if question && badgeModelId && !loading && message.content && !message.moderation?.flagged}
+				<StillLearningNote {question} modelId={badgeModelId} />
 			{/if}
 
 			<!-- the files sent with this turn could not be scanned, so none was stored. -->

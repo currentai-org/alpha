@@ -1,16 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { SHIPPED_BENCHMARKS, parseBenchmarkTable, skillScoreOf, type BenchmarkTable } from './benchmarks';
-import type { DraftAnalysis } from './classifier';
+import { draftIn, type DraftAnalysis } from './classifier';
 import { criteriaFor, fullShares, sharesFor } from './criteria';
 import { DEFAULT_ROUTING, route } from './router';
 
 const SERVED = ['swiss-ai/apertus-v1.5-70b', 'mistral-medium-2604'];
 
 const draft = (lang: string, conf: number, code = 0): DraftAnalysis => ({
-	language: { value: lang, confidence: conf, alternatives: [], signal: 'words' },
-	difficulty: { value: 'M', confidence: 0.8 },
-	skills: code ? [{ id: 'code', confidence: code, reason: 'Has code' }] : [],
-	source: 'manual'
+	...draftIn(lang, 'M', conf, 0.8),
+	skills: code ? [{ id: 'code', confidence: code, reason: 'Has code' }] : []
 });
 
 /** The shipped table plus a coding benchmark on which Apertus beats Mistral. */

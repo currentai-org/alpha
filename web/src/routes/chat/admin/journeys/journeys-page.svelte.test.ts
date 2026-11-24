@@ -73,9 +73,9 @@ const pageData = (m: JourneyManifest) => ({
 
 afterEach(() => cleanup());
 
-// The gallery's self-check reads the failed-recordings sentence alone. A known-broken
+// The journeys page's self-check reads the failed-recordings sentence alone. A known-broken
 // (test.fail()) recording that failed as declared belongs in the expected-failures sentence and must
-// never be counted among the failures, or a promotion's graded run reads red when the board is right.
+// never be counted among the failures, or the board reads red when it is right.
 describe("the journeys page's failed-recordings sentence", () => {
 	it("names the failed recording and omits the known-broken one, which reads as expected instead", async () => {
 		const m = manifest([

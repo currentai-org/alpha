@@ -58,6 +58,7 @@ export type FaultInjectionName =
 	| 'output_guard_unreachable'
 	| 'input_guard_unreachable'
 	| 'input_screen_declines_rule'
+	| 'input_screen_declines_child_picture'
 	| 'output_screen_recheck_clears'
 	| 'session_rate_limit_low'
 	| 'daily_turn_cap_low'

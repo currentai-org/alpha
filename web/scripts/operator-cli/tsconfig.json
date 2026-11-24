@@ -1,0 +1,15 @@
+{
+	// The operator CLI build's tsconfig: web/tsconfig.json extends $app/tsconfig, which only SvelteKit's
+	// plugin provides, and vite.operator-cli.config.ts builds without it. Transform options only.
+	"compilerOptions": {
+		"target": "es2024",
+		"module": "esnext",
+		"moduleResolution": "bundler",
+		"esModuleInterop": true,
+		"resolveJsonModule": true,
+		"allowJs": true,
+		"verbatimModuleSyntax": false,
+		"skipLibCheck": true,
+		"strict": true
+	}
+}

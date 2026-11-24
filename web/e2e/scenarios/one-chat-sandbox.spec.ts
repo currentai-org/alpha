@@ -18,9 +18,9 @@ import { turnDone } from './helpers/turn';
 import { openStepByStep } from './helpers/xray';
 import { startChattingPastWelcome } from './helpers/welcome';
 
-// count to a fixed date, never to today. Asked "how many days from today", the answer went
-// negative once MozFest had started (28 October 2026), and a model then says it already happened
-// rather than counting, so the test went red on the calendar alone.
+// count to a fixed date, never to today. Asked "how many days from today", the answer goes
+// negative once the event has started (28 October 2026), and a model then says it already happened
+// rather than counting, so the test would go red on the calendar alone.
 const PROMPT =
 	'Where and when is MozFest 2026? Then work out exactly how many days there are from its first day until 1 January 2027, using code to count.';
 

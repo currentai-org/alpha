@@ -471,7 +471,7 @@ describe('snapshot selection', () => {
 	const matched = [...page.querySelectorAll(INTERACTIVE_SELECTOR)];
 	const names = matched.map((el) => el.textContent?.trim() || el.getAttribute('placeholder'));
 
-	it('lists an open menu’s radio choices as things a walker can click', () => {
+	it('lists an open menu’s radio choices as things the persona can click', () => {
 		expect(names).toEqual(
 			expect.arrayContaining(['Off', 'When you ask', 'Every reply', 'Web search'])
 		);
@@ -557,7 +557,7 @@ describe('reading the page in one pass', () => {
 		}
 	});
 
-	it('hides every control an open modal dialog covers, so the walker acts on the modal', () => {
+	it('hides every control an open modal dialog covers, so the persona acts on the modal', () => {
 		const { document } = parseHTML(`<!doctype html><html><body>
 			<button>Tools: web search, read aloud</button>
 			<div role="dialog" aria-modal="true" data-closed style="visibility:hidden"><button>Old</button></div>

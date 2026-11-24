@@ -6,6 +6,7 @@ import type { Cookies } from '@sveltejs/kit';
 import { env } from '$env/dynamic/public';
 import type { AlphaLandingContent } from '$lib/alpha-landing/content';
 import type { Locale } from '$lib/i18n/locales';
+import { deployEnvName, gitRef, gitSha } from '$lib/server/runtimeEnv';
 
 type Fetch = typeof fetch;
 
@@ -136,6 +137,15 @@ const hostServicesModule = import.meta.glob<{
 	}): void;
 }>('/src/lib/payload/hostServices.ts');
 
+const siteHostModule = import.meta.glob<{
+	buildSiteLogger(id: SiteDeployIdentity): SiteHostLogger;
+	buildSiteFlagReader(
+		log: SiteHostLogger,
+		id: SiteDeployIdentity
+	): (key: string, fallback: () => boolean) => boolean;
+}>('/src/lib/website/siteHost.ts');
+
+type SiteDeployIdentity = { env?: string; commit?: string; branch?: string };
 type SiteHostLogFn = (detail: Record<string, unknown>, message: string) => void;
 type SiteHostLogger = { info: SiteHostLogFn; warn: SiteHostLogFn; error: SiteHostLogFn };
 
@@ -153,6 +163,25 @@ export async function startCms(
 		onCmsPublish?: (body: unknown) => Promise<void>;
 	} = {}
 ): Promise<void> {
+	// A build without chat's files has no host logger or flag reader to hand in: the site builds its
+	// own (website/siteHost.ts), and a dropped doc goes to that logger, so it still reaches Axiom.
+	if (!services.logger || !services.flagEnabledOr) {
+		const own = await load(siteHostModule);
+		if (own) {
+			const id = {
+				env: deployEnvName() || undefined,
+				commit: gitSha() || undefined,
+				branch: gitRef() || undefined
+			};
+			const logger = services.logger ?? own.buildSiteLogger(id);
+			if (!services.logger) sink = (detail, message) => logger.error(detail, message);
+			services = {
+				...services,
+				logger,
+				flagEnabledOr: services.flagEnabledOr ?? own.buildSiteFlagReader(logger, id)
+			};
+		}
+	}
 	(await load(droppedDocModule))?.setDroppedDocSink(sink);
 	(await load(hostServicesModule))?.setSiteHostServices(services);
 }

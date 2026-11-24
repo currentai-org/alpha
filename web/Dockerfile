@@ -12,11 +12,17 @@
 # GIT_SHA and GIT_REF name the commit inside the image; runtimeEnv.js reads them where Vercel would
 # set VERCEL_GIT_COMMIT_*.
 
-# Docker Hub's library images through AWS's public mirror, so no anonymous pull limit fails a build.
-# The version matches web/.nvmrc's major.
-ARG NODE_IMAGE=public.ecr.aws/docker/library/node:24-bookworm-slim
+# Each base image is pinned by digest on its FROM line, so a rebuild of the same commit gets the same
+# operating system, and Dependabot's docker entry (.github/dependabot.yml) proposes each new digest as
+# a pull request the image scan runs on. Dependabot reads only a literal FROM line, so no ARG.
+#
+# The build stages use Node's Debian 13 slim image through AWS's public mirror of Docker Hub's library
+# images, so no anonymous pull limit fails a build. The version matches web/.nvmrc's major.
+# The image that serves is distroless Node on the same Debian release: Node, glibc, CA certificates and
+# nothing else, with no shell or package manager. Most of the base image's scan findings were in
+# packages the server never runs (util-linux, PAM, perl, ncurses).
 
-FROM ${NODE_IMAGE} AS build
+FROM public.ecr.aws/docker/library/node:24-trixie-slim@sha256:af02d57b57719b9657a45199a79264a9437940cd55b3c7b3fc99615654f124a0 AS build
 WORKDIR /app
 # The version in package.json's packageManager field.
 RUN npm install -g pnpm@11.0.8
@@ -28,39 +34,51 @@ ARG GIT_REF=""
 ARG APP_SURFACE=""
 ENV ADAPTER=node CI=true GIT_SHA=${GIT_SHA} GIT_REF=${GIT_REF} APP_SURFACE=${APP_SURFACE} NODE_OPTIONS=--max-old-space-size=6144
 RUN pnpm exec vite build
+# The operator CLIs (`node build/cli/import-open-webui.mjs`) as plain Node scripts, so the image runs
+# them with no dev dependency: vite.operator-cli.config.ts.
+RUN pnpm build:operator-cli
 
-FROM ${NODE_IMAGE}
+# Production dependencies only, from the same lockfile: the runtime stage below copies this tree, not
+# the build's, so no dev dependency ships. drizzle-kit and vite's tooling bring esbuild's Go binaries,
+# which carried every Go finding the image scan reported.
+FROM public.ecr.aws/docker/library/node:24-trixie-slim@sha256:af02d57b57719b9657a45199a79264a9437940cd55b3c7b3fc99615654f124a0 AS prod-deps
+WORKDIR /app
+RUN npm install -g pnpm@11.0.8
+COPY . .
+RUN pnpm install --frozen-lockfile --prod --filter aipotluck-web...
+# The one directory the process writes, made here because the image that serves has no shell to run
+# mkdir: CUSTODIAL_STORAGE_BACKEND=local's files, where selfhost/compose.yaml mounts a volume.
+RUN mkdir -p /data/files
+
+# The image that serves, and the last stage, so a build with no --target builds it.
+FROM gcr.io/distroless/nodejs24-debian13:latest@sha256:ba59ac9916b424cdfaaa8299695530251535843623a6d8f93d40b0a2ef69e390
 ARG GIT_SHA=""
 ARG GIT_REF=""
 ARG APP_SURFACE=""
 LABEL org.opencontainers.image.source="https://github.com/currentai-org/alpha" \
 	org.opencontainers.image.revision="${GIT_SHA}" \
 	org.opencontainers.image.licenses="MIT"
-WORKDIR /app
-# The built server imports its dependencies from node_modules at runtime, and db-migrate.mjs needs
-# drizzle-orm, postgres and the drizzle/ folder, so the installed workspace comes along whole. Owned
-# by root and read-only to the process, which runs as the image's unprivileged `node` user.
-COPY --from=build /app /app
-# The one directory the process writes: CUSTODIAL_STORAGE_BACKEND=local's files, where
-# selfhost/compose.yaml mounts a volume. A new volume takes this directory's owner.
-RUN mkdir -p /data/files && chown node:node /data/files
-# The operator CLIs (`pnpm import:open-webui` and the rest) run through vite-node, which loads
-# vite.config.ts: it writes the bundled config to node_modules/.vite-temp, its cache to
-# node_modules/.vite, and SvelteKit's sync rewrites .svelte-kit (generated types and env). The
-# server runs from build/ and never reads .svelte-kit, so those three are the node user's and the rest
-# of the tree stays read-only.
-RUN mkdir -p /app/web/node_modules/.vite-temp /app/web/node_modules/.vite /app/web/.svelte-kit \
-	&& chown node:node /app/web/node_modules/.vite-temp /app/web/node_modules/.vite \
-	&& chown -R node:node /app/web/.svelte-kit
+# The built server imports its production dependencies from node_modules at runtime, and
+# db-migrate.mjs needs drizzle-orm, postgres and the drizzle/ folder: the workspace with production
+# dependencies only, plus the server the build stage built. Owned by root and read-only to the process.
+COPY --from=prod-deps /app /app
+COPY --from=build /app/web/build /app/web/build
+# A new volume mounted here takes this directory's owner. uid 1000 is the `node` user of the images
+# before this one, so a volume they created stays writable.
+COPY --from=prod-deps --chown=1000:1000 /data/files /data/files
 WORKDIR /app/web
-ENV NODE_ENV=production PORT=3000 HOST=0.0.0.0 GIT_SHA=${GIT_SHA} GIT_REF=${GIT_REF} APP_SURFACE=${APP_SURFACE}
-USER node
+# The base image runs node by absolute path and leaves it off PATH; on PATH, `docker exec <container>
+# node …` and the operator CLIs (`node build/cli/<name>.mjs`) work as on the images before this one.
+ENV PATH=/nodejs/bin:/usr/local/bin:/usr/bin:/bin \
+	NODE_ENV=production PORT=3000 HOST=0.0.0.0 GIT_SHA=${GIT_SHA} GIT_REF=${GIT_REF} APP_SURFACE=${APP_SURFACE}
+USER 1000:1000
 EXPOSE 3000
 # /chat/healthcheck answers 200 only when the model registry can serve a turn; a chat-surface build
-# serves it at /healthcheck. The slim image has no curl, so Node's own fetch asks.
+# serves it at /healthcheck. There is no curl, so Node's own fetch asks.
 HEALTHCHECK --interval=15s --timeout=5s --start-period=60s --retries=4 \
-	CMD ["node", "-e", "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+(process.env.APP_SURFACE==='chat'?'':'/chat')+'/healthcheck').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
-# Migrations on every start, as Vercel's build runs them on every deploy: the migrator is idempotent
-# and records what it applied. `exec` replaces the shell with node, so SIGTERM reaches the server's
-# graceful shutdown.
-CMD ["sh", "-c", "node scripts/db-migrate.mjs && exec node build"]
+	CMD ["/nodejs/bin/node", "-e", "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+(process.env.APP_SURFACE==='chat'?'':'/chat')+'/healthcheck').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+# Migrations on every start, as Vercel's build runs them on every deploy (the migrator is idempotent and
+# records what it applied), then the server, in the one Node process the base image's entrypoint
+# starts, so SIGTERM reaches the server's graceful shutdown.
+ENTRYPOINT ["/nodejs/bin/node"]
+CMD ["scripts/serve.mjs"]

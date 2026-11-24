@@ -45,6 +45,7 @@ import { detectNameAdoption } from "$lib/chat/server/nameGuard";
 import { stripFenceTags, stripResponseTags } from "$lib/chat/server/textGeneration/grounding";
 import {
 	harassmentRuleJudge,
+	childPictureJudge,
 	QUESTION_SAVE_DELAY_MS,
 	outputScreenWindowFaultMs,
 	resolveFakeAgent,
@@ -134,6 +135,10 @@ import { clientAuthoredInstructions, withClientInstructions } from "$lib/chat/se
 import { personalInstructionsFrom } from "$lib/chat/personalInstructions";
 import { documentAttachmentsEnabled } from "$lib/chat/server/documentAttachmentsGate";
 import { CLIPBOARD_MIME, DOCUMENT_MIME_ALLOWLIST } from "$lib/chat/constants/mime";
+import {
+	declineQuarantinesPictures,
+	quarantineDeclinedPictures,
+} from "$lib/chat/server/storage/quarantineDeclinedPictures";
 import { blockedRuleLabels, declineCarriesSupport, isSupportRule, resolveActionLabel, resolveActionMessage } from "$lib/chat/server/ruleLabel";
 import { declineLanguageFromTag, logDeclineLanguage, readMessageLanguage } from "$lib/chat/server/declineCopy";
 import { stampSupportFromSignal, supportSignal, supportSignalEnabled } from "$lib/chat/server/supportSignal";
@@ -1035,6 +1040,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 								// does for the output screen.
 								...(faultInjection === "input_guard_unreachable" ? { judge: unreachableGuardJudge } : {}),
 								...(faultInjection === "input_screen_declines_rule" ? { judge: harassmentRuleJudge } : {}),
+								...(faultInjection === "input_screen_declines_child_picture" ? { judge: childPictureJudge } : {}),
 							},
 						}
 			);
@@ -2328,6 +2334,16 @@ export async function POST({ request, locals, params, getClientAddress }) {
 					// sources" and light the web-search node on a turn the model never ran.)
 					delete messageToWriteTo.webSearch;
 					delete messageToWriteTo.rag;
+					// A child-safety rule's decline takes the turn's pictures out of the sender's files and keeps
+					// them for review in quarantine; the sent message keeps them by name only. The terminal
+					// persist saves that message, and the safety_events row below names where the copies are.
+					const declinedQuestion = conv.messages.find(
+						(m) => m.id === messageToWriteTo.ancestors?.at(-1) && m.from === "user"
+					);
+					const evidence =
+						declinedQuestion && declineQuarantinesPictures(moderation)
+							? await quarantineDeclinedPictures(conv, declinedQuestion)
+							: [];
 					// Queryable T&S log (/admin/safety) — declines otherwise live only in the conversation
 					// JSONB. Best-effort + fire-and-forget so a log hiccup never fails the user's turn; stores
 					// verdict metadata only, never the user's text.
@@ -2343,6 +2359,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 						userId: userId ? String(userId) : undefined,
 						sessionId: conv.sessionId ?? undefined,
 						probe: probe ?? undefined,
+						...(evidence.length ? { evidence } : {}),
 					});
 					await update({
 						type: MessageUpdateType.Safety,

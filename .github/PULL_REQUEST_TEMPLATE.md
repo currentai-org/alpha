@@ -21,5 +21,8 @@
 ## Checklist
 
 - [ ] `pnpm lint` and `pnpm test:ci:fast` pass in `web/` (or `make test` in `agent-service/`)
+- [ ] The pull request targets `main`; this repository has no `develop` or `release` branch
+- [ ] If it adds a database migration or changes configuration in a way that breaks an existing install,
+      the description says so, so the release pull request can carry it into the changelog
 - [ ] No secrets, private hostnames or personal data in the diff, the title or this description
 - [ ] If an AI tool wrote part of this, I say which one here, and I understand every line of the change

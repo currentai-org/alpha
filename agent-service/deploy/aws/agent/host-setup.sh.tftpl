@@ -1,0 +1,137 @@
+#!/bin/bash
+# First boot of a ${role} host (compute.tf). Installs Docker, the release and run scripts, and the systemd unit that
+# keeps the container up. It starts nothing: the first `deploy.sh` uploads source, writes the env parameter and runs
+# potluck-release, which builds the image here and starts it.
+set -euo pipefail
+
+dnf install -y -q docker
+mkdir -p /etc/docker
+cat > /etc/docker/daemon.json <<'JSON'
+{ "log-driver": "json-file", "log-opts": { "max-size": "50m", "max-file": "5" } }
+JSON
+systemctl enable --now docker
+
+install -d -m 0755 /var/lib/potluck
+install -d -m 0700 /var/lib/potluck/src
+
+%{ if role == "agent" ~}
+# The agent's /data is its own EBS volume, attached after the instance starts, so wait for it. Format it only when it
+# has no filesystem, which is the first boot of a new volume and never a later one.
+dev=""
+for _ in $(seq 1 120); do
+  dev=$(lsblk -dnpo NAME,SERIAL | awk '$2 == "${data_vol}" { print $1 }')
+  [ -n "$dev" ] && break
+  sleep 5
+done
+[ -n "$dev" ] || { echo "data volume ${data_vol} never attached" >&2; exit 1; }
+blkid "$dev" >/dev/null || mkfs.ext4 -q -L agent-data "$dev"
+mkdir -p /data
+grep -q 'LABEL=agent-data' /etc/fstab || echo 'LABEL=agent-data /data ext4 defaults,nofail 0 2' >> /etc/fstab
+mount -a
+%{ endif ~}
+
+# Starts the container from the release in /var/lib/potluck/current, with that release's env. A release's env is
+# read from SSM the first time it starts and kept beside it (root only, on the encrypted root volume), so a rollback
+# runs the previous release with the env it last ran with, never with an env written for a newer one.
+cat > /usr/local/sbin/potluck-run <<'RUN'
+#!/bin/bash
+set -euo pipefail
+sha=$(cat /var/lib/potluck/current)
+env=/var/lib/potluck/env/$sha
+install -d -m 0700 /var/lib/potluck/env
+umask 077
+if [ ! -s "$env" ]; then
+  aws ssm get-parameter --region ${region} --with-decryption --name '${env_param}' \
+    --query Parameter.Value --output text > "$env.tmp"
+  mv "$env.tmp" "$env"
+fi
+docker rm -f potluck-${role} >/dev/null 2>&1 || true
+%{ if role == "agent" ~}
+# NET_ADMIN for the one `nft -f` entrypoint.sh runs as root before dropping to uid 10001: the egress allowlist lives
+# in the container's own network namespace, so it narrows the agent and nothing else on the host.
+exec docker run --name potluck-agent --env-file "$env" --cap-add NET_ADMIN \
+  -p 8731:8731 -v /data:/data --stop-timeout 300 "potluck-agent-service:$sha"
+%{ else ~}
+exec docker run --name potluck-gateway --env-file "$env" \
+  -p 8732:8732 -p 8733:8733 --stop-timeout 60 "potluck-agent-service:$sha" python gateway_serve.py
+%{ endif ~}
+RUN
+chmod 0700 /usr/local/sbin/potluck-run
+
+cat > /etc/systemd/system/potluck.service <<'UNIT'
+[Unit]
+Description=Potluck ${role} container
+After=docker.service network-online.target
+Requires=docker.service
+ConditionPathExists=/var/lib/potluck/current
+
+[Service]
+ExecStart=/usr/local/sbin/potluck-run
+ExecStop=/usr/bin/docker stop potluck-${role}
+Restart=always
+RestartSec=5
+TimeoutStopSec=330
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+# potluck-release <sha> | --previous
+# Builds the image for <sha> from the tarball deploy.sh uploaded, switches to it, and waits for the container's own
+# health check. When the new release does not come up healthy, it switches back and exits non-zero, so a bad deploy
+# leaves the last good release serving. --previous switches back by hand.
+cat > /usr/local/sbin/potluck-release <<'REL'
+#!/bin/bash
+set -euo pipefail
+cd /var/lib/potluck
+old=$(cat current 2>/dev/null || true)
+if [ "$1" = "--previous" ]; then
+  sha=$(cat previous)
+else
+  sha=$1
+  # A deploy, even of the release already running, takes the env deploy.sh just wrote.
+  rm -f "env/$sha"
+  if ! docker image inspect "potluck-agent-service:$sha" >/dev/null 2>&1; then
+    rm -rf "src/$sha" && mkdir -p "src/$sha"
+    aws s3 cp --region ${region} --quiet "s3://${bucket}/src/$sha.tar.gz" - | tar -xz -C "src/$sha"
+    docker build -q --build-arg GIT_SHA="$sha" -f "src/$sha/deploy/Dockerfile" -t "potluck-agent-service:$sha" "src/$sha"
+  fi
+fi
+
+healthy() {
+%{ if role == "agent" ~}
+  curl -sf --max-time 5 http://127.0.0.1:8731/healthz | grep "$${1:0:7}" >/dev/null
+%{ else ~}
+  curl -sf --max-time 5 -o /dev/null http://127.0.0.1:8733/healthz
+%{ endif ~}
+}
+
+switch_to() {
+  echo "$1" > current
+  systemctl daemon-reload
+  systemctl enable potluck.service >/dev/null
+  systemctl restart potluck.service
+  for _ in $(seq 1 60); do healthy "$1" && return 0; sleep 5; done
+  return 1
+}
+
+if switch_to "$sha"; then
+  [ -n "$old" ] && [ "$old" != "$sha" ] && echo "$old" > previous
+  echo "release.ok role=${role} sha=$sha"
+  # Keep this release, the previous one and the build cache's base layers; drop older images and sources.
+  keep="$sha $(cat previous 2>/dev/null || true)"
+  for img in $(docker images potluck-agent-service --format '{{.Tag}}'); do
+    case " $keep " in *" $img "*) ;; *) docker rmi -f "potluck-agent-service:$img" >/dev/null || true ;; esac
+  done
+  for d in src/* env/*; do case " $keep " in *" $${d#*/} "*) ;; *) rm -rf "$d" ;; esac; done
+  exit 0
+fi
+
+echo "release.unhealthy role=${role} sha=$sha; container log tail:" >&2
+docker logs --tail 40 potluck-${role} >&2 || true
+if [ -n "$old" ] && [ "$old" != "$sha" ]; then
+  if switch_to "$old"; then echo "release.rolled_back role=${role} to=$old" >&2; else echo "release.rollback_unhealthy role=${role} to=$old" >&2; fi
+fi
+exit 1
+REL
+chmod 0700 /usr/local/sbin/potluck-release

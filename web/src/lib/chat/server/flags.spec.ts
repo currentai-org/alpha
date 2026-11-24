@@ -38,8 +38,8 @@ const baked: {
 	data: { flags: unknown[]; groupTypeMapping: object; cohorts: object; bakedAt?: string; mode?: string } | undefined;
 } =
 	{ data: undefined };
-vi.mock("$lib/chat/server/flagDefinitionsBaked", async (orig) => {
-	const real = await orig<typeof import("./flagDefinitionsBaked")>();
+vi.mock("$lib/server/flagDefinitionsBaked", async (orig) => {
+	const real = await orig<typeof import("$lib/server/flagDefinitionsBaked")>();
 	return {
 		bakedCacheProvider: real.bakedCacheProvider,
 		get bakedFlagDefinitions() {

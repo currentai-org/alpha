@@ -21,7 +21,7 @@ test.use({ welcome: 'show' });
 // visitor can use, and keeps About & Privacy and the status page at the foot of its list, each opening
 // in a new tab so settings stays where it was. Nothing here is behind a flag, and a guest sees all of it.
 //
-// Visible copy is asserted with `toContainText`, because the journey gallery's grader reads sampled
+// Visible copy is asserted with `toContainText`, because journey recordings are read from sampled
 // video frames, never the DOM (docs/journeys/README.md).
 test(
 	'a visitor opening Settings lands on Personalization, with no General page and no streaming or paste switches',

@@ -19,10 +19,15 @@ SMOKE_CHAT_PATH= ./smoke.sh   # one guest chat turn, end to end
 Open http://localhost:3000. The app listens on 127.0.0.1 only. Before anyone else uses it, put a
 TLS proxy in front, set `PUBLIC_ORIGIN` to its https origin and set `ALLOW_INSECURE_COOKIES=false`.
 
+The server deletes expired guest data itself, once a day, with no cron: `../selfhost/README.md`
+("Expired guest data") says what goes and how to confirm a run with `docker compose logs web`.
+
 The image is `ghcr.io/currentai-org/alpha`, for linux/amd64 and linux/arm64. `compose.yaml` pins a
 release tag (`0.3.0-preview.1`). Other tags: `X.Y.Z` and `X.Y` for each release, `stable` for the newest
 release, `main` and `sha-<commit>` when a maintainer runs the workflow by hand on main. There is no
 `latest`. Pre-release tags (`X.Y.Z-preview.N`, `-rc.N`) publish only their own tag, never `X.Y` or `stable`.
+Releases are semver tags (`vX.Y.Z` in git, `X.Y.Z` on the image), never date tags. `main` is the
+edge build for testing: pin a release tag or a digest, not `main`.
 
 No image can be pulled until the repository's first release tag has been published. This file never
 builds, so what runs is always the pulled image. Until then, or to run your own changes, use
@@ -58,7 +63,8 @@ To pin what you verified exactly, set `ALPHA_IMAGE=ghcr.io/currentai-org/alpha@s
 The app applies database migrations when it starts, and only forward: starting an older image does not
 undo them. Back up first, every time.
 
-1. Read the release notes for each version between yours and the new one.
+1. Read the release notes for each version between yours and the new one. They name every database
+   migration and every breaking configuration change in it.
 2. Back up the database and the `files` volume, which holds SeaweedFS's data, that is people's files:
    `ALPHA_COMPOSE_DIR=. ../selfhost/backup.sh` writes `backups/<UTC time>/` here, with `db.sql.gz` and
    `files.tar.gz`. It stops `web` and `files` for the seconds the volume copy takes.

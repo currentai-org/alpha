@@ -50,6 +50,12 @@ overrides:
   # esbuild below 0.25 carries the dev-server advisory web/ moved past. Only those are lifted:
   # payload's tsx runs on 0.28, which a bare `esbuild: ^0.25.0` would pull back down.
   esbuild@<0.25.0: ^0.25.0
+  # drizzle-kit and its TypeScript loader pin esbuild 0.25, whose binary is built with a Go toolchain
+  # carrying fixable high and critical findings. drizzle-kit is a peer of better-auth, so pnpm keeps it in
+  # the production install the self-host image ships. 0.28 is what vite and tsx already use;
+  # `pnpm db:drift` (drizzle-kit generate) exercises the loader in CI.
+  drizzle-kit>esbuild: ^0.28.2
+  '@esbuild-kit/core-utils>esbuild': ^0.28.2
   postcss>nanoid: ^3.3.18
   satori>fflate: ^0.7.5
   posthog-js>dompurify: ^3.4.17

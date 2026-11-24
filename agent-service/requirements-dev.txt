@@ -4,8 +4,8 @@
 
 pytest==9.2.0
 pytest-cov==7.1.0
-coverage==7.17.3
-ruff==0.17.5
+coverage==7.17.4
+ruff==0.17.6
 mutmut==3.8.1
 # Type checker; see [tool.pyright] in pyproject.toml for why this one and not ty or mypy.
 # It runs on node, and prefers whatever `node` is on PATH (pyright-python's USE_GLOBAL_NODE default) —
