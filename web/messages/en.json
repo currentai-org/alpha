@@ -108,6 +108,8 @@
 	"product_availableLocally": "Available locally",
 	"product_notAvailable": "Not available yet",
 	"product_localServer": "Local server",
+	"product_onThisServer": "On this server",
+	"product_thisServer": "This server's model",
 	"product_lastUsed": "Last used in this chat",
 	"product_autoModelHelp": "Alpha picks the model that fits each message",
 	"product_chooseModel": "Choose a model yourself",

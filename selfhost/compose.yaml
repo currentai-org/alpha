@@ -107,6 +107,49 @@ services:
       retries: 120
       start_period: 30s
 
+  # Only with --profile rerank: BAAI's bge-reranker-v2-m3 cross-encoder (Apache-2.0, multilingual), the
+  # reranker the hosted Alpha uses, served on CPU by the llama.cpp image the local profile pins. Web search
+  # cites a page only after a reranker has scored it as relevant to the question, so with search on and
+  # no reranker every searched turn answers without sources. It does nothing until .env also sets
+  # RERANK_MODEL, RERANK_ENDPOINT_URL=http://rerank:8080 and RERANK_SCORES=logits (the web search
+  # lines in .env.example): llama.cpp returns the raw logit, which the app turns into a 0-1 relevance.
+  # The GGUF is a community conversion pinned by commit (gpustack/bge-reranker-v2-m3-GGUF, Q8_0,
+  # sha256 a43c7c9b...aaa1d3).
+  rerank:
+    profiles: [rerank]
+    image: ${LLAMACPP_IMAGE:-ghcr.io/ggml-org/llama.cpp:server@sha256:41988e510b6fe0a0b5b9be00a9dbf91d9f0fa691da173d7b06d97d370329fe84}
+    command:
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --model-url
+      - ${RERANK_MODEL_URL:-https://huggingface.co/gpustack/bge-reranker-v2-m3-GGUF/resolve/3093af03b1a635e67b084b1d8c03c5f5e020fd05/bge-reranker-v2-m3-Q8_0.gguf}
+      - --model
+      - /models/${RERANK_MODEL_FILE:-bge-reranker-v2-m3-Q8_0-3093af0.gguf}
+      - --alias
+      - BAAI/bge-reranker-v2-m3
+      - --reranking
+      # Four slots of 1,024 tokens: a scored document is at most 1,200 characters plus the question. A
+      # reranked sequence must fit one micro-batch, hence the 1,024-token ubatch.
+      - --parallel
+      - "4"
+      - --ctx-size
+      - "4096"
+      - --batch-size
+      - "4096"
+      - --ubatch-size
+      - "1024"
+    environment:
+      LLAMA_CACHE: /models
+    volumes: ["${LOCAL_MODELS_DIR:-models}:/models"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 120
+      start_period: 30s
+
   # Only with --profile s3: SeaweedFS (Apache-2.0) as the S3-compatible store for people's files, for
   # CUSTODIAL_STORAGE_BACKEND=s3 (block S in .env.example). Not MinIO: AGPL, and its repo is archived.
   # Onyx runs SeaweedFS the same way in its compose file: only the S3 gateway listens beyond the
@@ -318,6 +361,7 @@ services:
       db: { condition: service_healthy }
       llama: { condition: service_healthy, required: false }
       shieldstral: { condition: service_healthy, required: false }
+      rerank: { condition: service_healthy, required: false }
       seaweedfs: { condition: service_healthy, required: false }
       agent-init: { condition: service_completed_successfully, required: false }
       agent: { condition: service_healthy, required: false }
@@ -369,7 +413,7 @@ services:
       # Plain http on localhost: a Secure cookie would never come back.
       ALLOW_INSECURE_COOKIES: ${ALLOW_INSECURE_COOKIES:-true}
       # Feature switches the README explains. Each is read by the app only when set (flags.ts, multimodalMode.ts,
-      # agentMode.ts, custodialCrypto.ts, moderation.ts, csamScan.ts); each reader treats an empty
+      # agentMode.ts, custodialCrypto.ts, moderation.ts, csamScan.ts, rerank.ts); each reader treats an empty
       # string as unset.
       ALPHA_FLAGS: ${ALPHA_FLAGS:-}
       MULTIMODAL_ENABLED: ${MULTIMODAL_ENABLED:-}
@@ -379,6 +423,17 @@ services:
       CUSTODIAL_MASTER_IDENTITIES: ${CUSTODIAL_MASTER_IDENTITIES:-}
       CUSTODIAL_MASTER_ACTIVE: ${CUSTODIAL_MASTER_ACTIVE:-}
       GUARD_SHADOW_URL: ${GUARD_SHADOW_URL:-}
+      RERANK_MODEL: ${RERANK_MODEL:-}
+      RERANK_ENDPOINT_URL: ${RERANK_ENDPOINT_URL:-}
+      RERANK_SCORES: ${RERANK_SCORES:-}
+      # Sized for the bundled CPU reranker, which scores about 1,000 characters in 0.74 s on 4 cores: 12
+      # documents of 600 characters take about 5.3 s there, and the 32 x 1,200 a hosted reranker gets 28.5 s.
+      # These assume 4 cores; on 2, 6 documents of 300 fit the deadline. Raise all three for a faster
+      # reranker (README.md, "Web search with sources"); the bundled `rerank` service's 1,024-token
+      # micro-batch holds about 1,200 characters of Latin-script text, fewer in CJK.
+      RERANK_MAX_DOCS: ${RERANK_MAX_DOCS:-12}
+      RERANK_DOC_CHARS: ${RERANK_DOC_CHARS:-600}
+      RERANK_TIMEOUT_MS: ${RERANK_TIMEOUT_MS:-8000}
       CSAM_SCAN_PROVIDER: ${CSAM_SCAN_PROVIDER:-}
       CSAM_SCAN_BASE_URL: ${CSAM_SCAN_BASE_URL:-}
       CSAM_SCAN_TOKEN: ${CSAM_SCAN_TOKEN:-}

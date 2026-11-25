@@ -75,7 +75,7 @@ test.describe('gap map served from the database', { tag: '@G1' }, () => {
 		page
 	}) => {
 		await installPageFaultHeader(page, 'gap_map_db_down', '/product/vllm');
-		const res = await page.goto(`/product/vllm?cur2304=${Date.now()}`, {
+		const res = await page.goto(`/product/vllm?nocache=${Date.now()}`, {
 			waitUntil: 'domcontentloaded'
 		});
 		expect(res?.status(), 'with the database read failing, /product/vllm did not answer 200').toBe(

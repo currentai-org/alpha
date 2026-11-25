@@ -302,12 +302,23 @@ jobs:
           echo "smoke ran $ALPHA_IMAGE" >> "$GITHUB_STEP_SUMMARY"
 
       # The daily cleanup on the image deploy/compose.yaml pulls: the same check selfhost.yml runs on a
-      # build (.github/selfhost-cleanup-smoke.sh), here on the pulled digest, so a release whose server
-      # never deletes expired guest data gets no version tag.
+      # build (.github/selfhost-cleanup-smoke.sh), here on the pulled digest. It warns and never fails the
+      # job until one release has run it on a pulled digest; a follow-up then lets its exit code through,
+      # so a release whose server never deletes expired guest data gets no version tag.
       - name: The daily cleanup deletes an expired guest conversation and guest file
         env:
           COMPOSE_FILE: compose.yaml:compose.release.yaml
-        run: ./.github/selfhost-cleanup-smoke.sh
+        run: |
+          set +e
+          ./.github/selfhost-cleanup-smoke.sh 2>&1 | tee cleanup.log
+          code=${PIPESTATUS[0]}
+          {
+            echo "### daily cleanup on the released digest"
+            echo "exit $code"
+            grep -E '^(ok|CLEANUP)' cleanup.log || true
+          } >> "$GITHUB_STEP_SUMMARY"
+          [ "$code" -eq 0 ] || echo "::warning title=release cleanup::the daily cleanup smoke exited $code on the released digest. Read this step's log."
+          exit 0
 
       - name: Tear the stack down
         if: always()

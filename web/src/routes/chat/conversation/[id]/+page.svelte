@@ -2134,9 +2134,16 @@ Modified by Current AI from huggingface/chat-ui.
 				config: get(activeRoutingConfig),
 				stickTo: catalogByGatewayId(onNow)?.id,
 				busy: busyNow(serverBusyNow(page.data.busyModels as string[] | undefined, get(serverBusy)), get(busyHere)),
+				largeTaskModel: page.data.autoLargeTaskModel as string | undefined,
 			}
 		);
-		if (!resolved.modelId || !resolved.route) return undefined;
+		if (!resolved.modelId) return undefined;
+		// A self-host's large-task model has no catalog entry for X-ray to explain, so the turn moves without
+		// a note.
+		if (!resolved.route) {
+			nextTurnModel.set({ modelId: resolved.modelId, text: content.trim() });
+			return undefined;
+		}
 		nextTurnModel.set({ modelId: resolved.modelId, text: content.trim() });
 		return autoRouteNote(resolved.route);
 	}

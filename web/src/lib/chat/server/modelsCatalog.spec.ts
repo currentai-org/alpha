@@ -17,7 +17,9 @@ import {
 	toModelConfigs,
 	withOnlyPickedModelLanes,
 	withDirectModels,
+	withExtraEndpoints,
 } from "./modelsCatalog";
+import { extraEndpointEnv, openWebUiExtraEndpoints } from "./env/openWebUiAliases";
 import type { CatalogEntry, ModelConfig, ModelOverride } from "./models";
 
 // Minimal CatalogEntry fixtures. The shape mirrors the upstream /models payload (id required, the
@@ -558,5 +560,59 @@ describe("withOnlyPickedModelLanes: a pick is answered by itself, retried, or no
 	it("returns a single-lane model unchanged", () => {
 		const solo = model("zai-org/GLM-5.2", [at("https://router.example/v1", "zai-org/GLM-5.2:novita", "zai-org/GLM-5.2")]);
 		expect(withOnlyPickedModelLanes([solo])[0]).toBe(solo);
+	});
+});
+
+// Open WebUI's OPENAI_API_BASE_URLS lists several endpoints, and Alpha offers every one's models.
+describe("withExtraEndpoints", () => {
+	const small = "http://llama:8080/v1";
+	const frontier = "https://frontier.example/v1";
+	const extrasFor = (env: Record<string, string>, catalogs: Record<string, CatalogEntry[]>) =>
+		openWebUiExtraEndpoints(env).map((e) => ({
+			endpoint: { baseURL: e.baseUrl, apiKeyEnv: extraEndpointEnv(e.n).keyEnv },
+			entries: catalogs[e.baseUrl] ?? [],
+		}));
+
+	it("lists the models of both OPENAI_API_BASE_URLS endpoints, each sent to its own host", () => {
+		const env = { OPENAI_API_BASE_URLS: `${small};${frontier}`, OPENAI_API_KEYS: "none;sk-frontier" };
+		const { catalog, endpoints } = withExtraEndpoints(
+			[entry("qwen2.5-0.5b-instruct")],
+			extrasFor(env, { [frontier]: [entry("frontier-large")] })
+		);
+		expect(catalog.map((m) => m.id)).toEqual(["qwen2.5-0.5b-instruct", "frontier-large"]);
+		const configs = toModelConfigs(catalog, { baseURL: small, isHFRouter: false, multimodalEnabled: false });
+		const routed = endpoints.reduce((acc, e) => routeDirectModels(acc, e), configs);
+		const hostOf = (id: string) => routed.find((m) => m.id === id)?.endpoints?.map((e) => e.baseURL);
+		expect(hostOf("qwen2.5-0.5b-instruct")).toEqual([small]);
+		expect(hostOf("frontier-large")).toEqual([frontier]);
+		expect(routed.find((m) => m.id === "frontier-large")?.endpoints?.[0]).toMatchObject({
+			apiKeyEnv: "OWUI_ENDPOINT_2_KEY",
+		});
+	});
+
+	it("with one OPENAI_API_BASE_URLS entry the catalog is the primary's, unchanged", () => {
+		const primary = [entry("qwen2.5-0.5b-instruct"), entry("other")];
+		const { catalog, endpoints, shadowed } = withExtraEndpoints(
+			primary,
+			extrasFor({ OPENAI_API_BASE_URLS: small }, {})
+		);
+		expect(catalog).toEqual(primary);
+		expect(endpoints).toEqual([]);
+		expect(shadowed).toEqual([]);
+	});
+
+	it("an id two endpoints both list stays with the earlier one, and the later is named as shadowed", () => {
+		const third = "http://third:9000/v1";
+		const env = { OPENAI_API_BASE_URLS: `${small};${frontier};${third}` };
+		const { catalog, endpoints, shadowed } = withExtraEndpoints(
+			[entry("shared")],
+			extrasFor(env, { [frontier]: [entry("shared"), entry("frontier-large")], [third]: [entry("frontier-large")] })
+		);
+		expect(catalog.map((m) => m.id)).toEqual(["shared", "frontier-large"]);
+		expect(endpoints.map((e) => [e.baseURL, e.modelIds])).toEqual([[frontier, ["frontier-large"]]]);
+		expect(shadowed).toEqual([
+			{ id: "shared", baseURL: frontier },
+			{ id: "frontier-large", baseURL: third },
+		]);
 	});
 });

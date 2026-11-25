@@ -51,7 +51,7 @@ test.describe('a browser error reaches PostHog as a $exception event', () => {
 		await page.goto(chatEntry());
 		await expect(page.getByLabel('Message AI Potluck')).toBeVisible({ timeout: 30_000 });
 
-		const marker = `cur-1510 uncaught probe ${Date.now()}`;
+		const marker = `capture-probe uncaught ${Date.now()}`;
 		// posthog-js loads its exception hook after init, so throw on each poll until one is caught;
 		// every throw is answered locally above.
 		await expect
@@ -92,7 +92,7 @@ test.describe('a browser error reaches PostHog as a $exception event', () => {
 		await page.goto(chatEntry());
 		await expect(page.getByLabel('Message AI Potluck')).toBeVisible({ timeout: 30_000 });
 
-		const marker = `cur-3039 real error after the warning ${Date.now()}`;
+		const marker = `capture-probe real error after the warning ${Date.now()}`;
 		await expect
 			.poll(
 				async () => {
@@ -127,7 +127,7 @@ test.describe('a browser error reaches PostHog as a $exception event', () => {
 		await page.goto(chatEntry());
 		await expect(page.getByLabel('Message AI Potluck')).toBeVisible({ timeout: 30_000 });
 
-		const marker = `cur-1510 rejection probe ${Date.now()}`;
+		const marker = `capture-probe rejection ${Date.now()}`;
 		await expect
 			.poll(
 				async () => {

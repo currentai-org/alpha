@@ -19,7 +19,7 @@ import { correctEntityQuery } from "./entityCorrection";
 import { entityNameCorrectionEnabled } from "$lib/chat/server/entityCorrectionGate";
 import { decodeHTML } from "entities";
 import { parseArxivAtom } from "./arxivAtom";
-import { rerankByRelevance, rerankEnabled } from "./rerank";
+import { rerankByRelevance, rerankEnabled, rerankMaxDocs, rerankTimeoutMs } from "./rerank";
 import { reconstructAbstract, detectWikiLang } from "./searchUtil";
 import { config } from "$lib/chat/server/config";
 import { captureServerException } from "$lib/chat/server/errorTracking";
@@ -31,7 +31,11 @@ import {
 	unionSignals,
 	type SearchIntent,
 } from "$lib/chat/search/queryIntent";
-import { resolveEngineBudgets, NO_RERANK_DEFAULTS } from "$lib/chat/search/engineBudgets";
+import {
+	capEngineBudgets,
+	resolveEngineBudgets,
+	NO_RERANK_DEFAULTS,
+} from "$lib/chat/search/engineBudgets";
 import { sourcePrior } from "$lib/chat/search/sourcePrior";
 import {
 	classifyHost,
@@ -931,7 +935,10 @@ export async function retrieveWeb(query: string, opts: RetrieveWebOpts = {}): Pr
 	const searchQuery = preShaped ? (query ?? "").trim() : distillQuery(query);
 	const { intent, signals: finalizedSignals, confident } = classifyQueryIntent(searchQuery);
 	const signals = unionSignals(rawSignals, finalizedSignals);
-	const base = reranking ? resolveEngineBudgets({ intent, confident, signals }) : NO_RERANK_DEFAULTS;
+	// RERANK_MAX_DOCS shrinks the wide net for a reranker that can't score 32 in time (a CPU one).
+	const base = reranking
+		? capEngineBudgets(resolveEngineBudgets({ intent, confident, signals }), rerankMaxDocs())
+		: NO_RERANK_DEFAULTS;
 	const wikipedia = opts.wikipedia ?? base.wikipedia;
 	const wikinews = opts.wikinews ?? base.wikinews;
 	const firecrawl = opts.firecrawl ?? base.firecrawl;
@@ -1161,7 +1168,7 @@ export async function retrieveWeb(query: string, opts: RetrieveWebOpts = {}): Pr
 				allowEmpty: true,
 				...(relativeFloor ? { relativeFloor } : {}),
 				...(scoreAdjust ? { scoreAdjust } : {}),
-				timeoutMs: 6000,
+				timeoutMs: rerankTimeoutMs(),
 			});
 			merged = rr.items;
 			relevanceVerified = rr.verified;

@@ -28,6 +28,7 @@
 		recentLanguageGap
 	} from '$lib/chat/routing/state';
 	import { describeLocalServer, isLocalModelId, pickerDisplayName } from '$lib/chat/identity';
+	import { serverModels } from '$lib/chat/routing/serverModels';
 	import { page } from '$app/state';
 	import { useSettingsStore } from '$lib/chat/stores/settings';
 	import ProvenanceBreakdown from './ProvenanceBreakdown.svelte';
@@ -180,9 +181,14 @@
 	let midChatPick = $state<{ conv: string; id: string } | null>(null);
 	const convId = $derived(page.params.id);
 	const pendingPick = $derived(started && convId && midChatPick?.conv === convId ? midChatPick.id : undefined);
-	// The picker id of the model this chat uses: a local id as is, a catalog entry by its catalog id.
+	// A self-hosted stack's own models have no catalog entry, so like a local model each is its own picker
+	// id and gets a row of its own. Empty on a hosted site, where every served model is catalogued.
+	const ownServerModels = $derived(serverModels(servedIds, page.data.models));
+	const isOwnId = (id: string | undefined) =>
+		!!id && (isLocalModelId(id) || ownServerModels.some((sm) => sm.id === id));
+	// The picker id of the model this chat uses: a local or server id as is, a catalog entry by its catalog id.
 	const currentPickerId = $derived(
-		isLocalModelId(currentModelId) ? currentModelId : catalogByGatewayId(currentModelId)?.id
+		isOwnId(currentModelId) ? currentModelId : catalogByGatewayId(currentModelId)?.id
 	);
 	const chosenId = $derived(
 		started
@@ -190,14 +196,14 @@
 			: pickerChoice(
 					autoOn,
 					$modelChoice,
-					isLocalModelId($settings.activeModel)
+					isOwnId($settings.activeModel)
 						? $settings.activeModel
 						: catalogByGatewayId($settings.activeModel)?.id
 				)
 	);
 	/** The served id for a picker id: a local id is its own; a catalog entry goes through the registry. */
 	function servedIdFor(id: string): string | undefined {
-		if (isLocalModelId(id)) return servedIds.includes(id) ? id : undefined;
+		if (isOwnId(id)) return servedIds.includes(id) ? id : undefined;
 		// The registry's own id (its casing), which is what settings validates against.
 		const gatewayId = catalog.find((m) => m.id === id)?.gatewayId;
 		return gatewayId ? servedById.get(servedKey(gatewayId)) : undefined;
@@ -439,10 +445,12 @@
 	// Sparkles mean Auto is choosing. A model picked by hand shows its maker's mark instead, the same
 	// one its row in the picker shows, and a local model its server.
 	const pillAuto = $derived(autoOn && chosenId === AUTO);
-	const pillLocal = $derived(!pillAuto && isLocalModelId(chosenId));
+	const pillLocal = $derived(!pillAuto && isOwnId(chosenId));
+	const pickedServerModel = $derived(pillAuto ? undefined : ownServerModels.find((sm) => sm.id === chosenId));
 	const pillModel = $derived(pillAuto || pillLocal ? undefined : !autoOn && started ? next : (manual ?? current));
 
 	const pillLabel = $derived.by(() => {
+		if (pickedServerModel) return pickedServerModel.name;
 		// With Auto off the pill names the exact model (two Apertus sizes share a family).
 		if (!autoOn) return started ? (next?.family ?? m.product_model()) : (manual?.name ?? current?.name ?? m.product_model());
 		if (manual) return manual.family;
@@ -681,7 +689,7 @@
 	</button>
 {/snippet}
 
-{#snippet localModelRow(lm: { id: string; name: string })}
+{#snippet localModelRow(lm: { id: string; name: string }, caption: string)}
 	<button
 		type="button"
 		role="radio"
@@ -696,7 +704,7 @@
 		<RiServerLine aria-hidden="true" class="size-5 shrink-0 text-fg-2" />
 		<span class="flex min-w-0 flex-1 flex-col">
 			<span class="truncate type-body text-fg-1">{lm.name}</span>
-			<span class="truncate type-caption text-fg-3">{m.product_localServer()}</span>
+			<span class="truncate type-caption text-fg-3">{caption}</span>
 		</span>
 		{#if chosenId === lm.id}<span class="size-1.5 bg-fg-1 rounded-pill" aria-hidden="true"></span>{/if}
 	</button>
@@ -715,6 +723,19 @@
 				</span>
 			</Menu.RadioItem>
 		{/each}
+		{#if ownServerModels.length}
+			{#if available.length}<Menu.Separator />{/if}
+			<Menu.GroupLabel>{m.product_onThisServer()}</Menu.GroupLabel>
+			{#each ownServerModels as sm (sm.id)}
+				<Menu.RadioItem value={sm.id} data-model-id={sm.id}>
+					<RiServerLine aria-hidden="true" class="size-5 shrink-0 text-fg-2" />
+					<span class="flex min-w-0 flex-col">
+						<span class="truncate">{sm.name}</span>
+						<span class="truncate type-caption text-fg-3">{m.product_thisServer()}</span>
+					</span>
+				</Menu.RadioItem>
+			{/each}
+		{/if}
 		{#if localModels.length}
 			<Menu.Separator />
 			<Menu.GroupLabel>{m.product_availableLocally()}</Menu.GroupLabel>
@@ -832,9 +853,13 @@
 							{/if}
 							<p class="px-3 pt-3 type-label text-fg-3">{m.product_available()}</p>
 							{#each available as m (m.id)}{@render modelRow(m, true)}{/each}
+							{#if ownServerModels.length}
+								<p class="px-3 pt-3 type-label text-fg-3">{m.product_onThisServer()}</p>
+								{#each ownServerModels as sm (sm.id)}{@render localModelRow(sm, m.product_thisServer())}{/each}
+							{/if}
 							{#if localModels.length}
 								<p class="px-3 pt-3 type-label text-fg-3">{m.product_availableLocally()}</p>
-								{#each localModels as m (m.id)}{@render localModelRow(m)}{/each}
+								{#each localModels as lm (lm.id)}{@render localModelRow(lm, m.product_localServer())}{/each}
 							{/if}
 							{#if upcoming.length}
 								<p class="flex items-center gap-2 px-3 pt-3 type-label text-fg-3">{m.product_notAvailable()} <Badge>Dev</Badge></p>

@@ -222,6 +222,45 @@ describe('a model registered for CI and not offered', () => {
 });
 
 
+// A self-hosted stack serves its operator's models, which the hosted catalog does not know.
+describe('a self-hosted stack’s own models', () => {
+	const SERVER_ID = 'qwen2.5-0.5b-instruct';
+	const serverRow = () => page.getByRole('menu').element().querySelector(`[data-model-id="${SERVER_ID}"]`);
+
+	it('get a row under "On this server", and picking one makes it the chosen model', async () => {
+		cleanup();
+		render(Harness, { props: { serverIds: [SERVER_ID] } });
+		await modelButton().click();
+		await expect.element(page.getByText('On this server')).toBeVisible();
+		await expect.poll(() => serverRow()?.getAttribute('aria-checked')).toBe('false');
+
+		(serverRow() as HTMLElement).click();
+		await expect.element(page.getByRole('button', { name: new RegExp(`^Model: ${SERVER_ID}`) })).toBeVisible();
+		await modelButton().click();
+		await expect.poll(() => serverRow()?.getAttribute('aria-checked')).toBe('true');
+	});
+
+	// A self-hosted stack runs with Auto on, where the model rows sit in the "Choose a model yourself" submenu.
+	it('get a row in the Choose a model yourself submenu when Auto is on', async () => {
+		cleanup();
+		autoFlag.on = true;
+		try {
+			render(Harness, { props: { serverIds: [SERVER_ID] } });
+			await modelButton().click();
+			await page.getByRole('menuitem', { name: /Choose a model yourself/ }).click();
+			await expect.poll(() => document.querySelector(`[role="menu"] [data-model-id="${SERVER_ID}"]`)).not.toBeNull();
+		} finally {
+			autoFlag.on = false;
+		}
+	});
+
+	it('leave the menu without that group when every served model is catalogued, as on a hosted site', async () => {
+		await modelButton().click();
+		await expect.element(page.getByRole('menu')).toBeVisible();
+		await expect.poll(() => page.getByText('On this server').elements().length).toBe(0);
+	});
+});
+
 describe('the Local marker', () => {
 	// `local:{24-hex endpointId}:{servedModelId}` — localModels.ts's own shape.
 	const LOCAL_ID = `local:${'a'.repeat(24)}:llama3.2:latest`;

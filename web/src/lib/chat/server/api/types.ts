@@ -99,6 +99,8 @@ export interface FeatureFlags {
 	// Auto model routing (autoRoutingGate.ts): deployment-wide. Off, the composer's model menu offers
 	// no Auto and a new chat starts on the model chosen in settings.
 	autoRoutingEnabled: boolean;
+	// A self-host's model for large tasks (AUTO_LARGE_TASK_MODEL), when Auto has no catalogued model to rank.
+	autoLargeTaskModel?: string;
 	// Auto picks again inside a turn its first choice did not answer (autoRepickGate.ts).
 	autoRepickEnabled: boolean;
 	// Each listed model's wait for a first word before Auto asks another, in ms; empty while off.

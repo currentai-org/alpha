@@ -60,8 +60,11 @@ import {
 	selectAllowedModels,
 	toModelConfigs,
 	withDirectModels,
+	withExtraEndpoints,
+	type ExtraCatalog,
 } from "$lib/chat/server/modelsCatalog";
 import { firstKey } from "$lib/chat/server/env/firstKey";
+import { filedExtraEndpoints } from "$lib/chat/server/env/openWebUiAliases";
 import {
 	catalogEntrySchema,
 	computeModelDrift,
@@ -925,6 +928,32 @@ const loadCatalog = async (baseURL: string): Promise<CatalogEntry[]> => {
 	}
 };
 
+// The extra OPENAI_API_BASE_URLS endpoints config.ts filed, each with its own key by name.
+const extraEndpoints = (): Omit<DirectEndpoint, "modelIds">[] =>
+	filedExtraEndpoints((name) => configKey(name)).map((e) => ({ baseURL: e.baseURL, apiKeyEnv: e.apiKeyEnv }));
+
+// Each extra endpoint's /models. One that cannot be read is left out with an error, and the rest still
+// load: the primary decides whether the stack has models at all.
+const loadExtraCatalogs = async (): Promise<ExtraCatalog[]> => {
+	const loaded = await Promise.all(
+		extraEndpoints().map(async (endpoint) => {
+			try {
+				const entries = await fetchModelCatalog(endpoint.baseURL, configKey(endpoint.apiKeyEnv) ?? "");
+				extraListed.set(endpoint.baseURL, new Set(entries.map((e) => e.id)));
+				return { endpoint, entries };
+			} catch (err) {
+				logger.error(
+					{ baseURL: endpoint.baseURL, err: err instanceof Error ? err.message : String(err) },
+					"[models] an OPENAI_API_BASE_URLS endpoint did not list its models; its models are not offered"
+				);
+				void captureServerException(err);
+				return null;
+			}
+		})
+	);
+	return loaded.filter((c): c is ExtraCatalog => c !== null);
+};
+
 /** The gates the published registry was built with. */
 let lastKnownGates: RegistryGates | null = null;
 
@@ -932,8 +961,9 @@ let lastKnownGates: RegistryGates | null = null;
 // live fetch and the boot snapshot — only WHERE the raw `catalog` comes from differs (§C): the snapshot
 // only replaces the catalog SOURCE, never how it is allowlisted/shaped/overridden/decorated.
 const buildModelsFromCatalog = async (
-	catalog: CatalogEntry[],
-	baseURL: string
+	primaryCatalog: CatalogEntry[],
+	baseURL: string,
+	extraCatalogs: ExtraCatalog[] = []
 ): Promise<ProcessedModel[]> => {
 	// EVERY flag this build reads is answered here, against one fresh poll, BEFORE anything reads a
 	// gate. The registry builds once per instance, so a gate read against a cold-start snapshot would be
@@ -951,16 +981,21 @@ const buildModelsFromCatalog = async (
 	const direct = mistralEndpoint();
 	const allowlistSpec = resolveAllowlistSpec();
 	const hfPinned = hfEndpoint(allowlistSpec);
+	// Open WebUI's later OPENAI_API_BASE_URLS entries: their models join before the allowlist.
+	const extra = withExtraEndpoints(primaryCatalog, extraCatalogs);
+	if (extra.shadowed.length) {
+		logger.warn(
+			{ shadowed: extra.shadowed },
+			"[models] an id is listed by more than one OPENAI_API_BASE_URLS endpoint; the earliest in the list serves it"
+		);
+	}
+	const catalog = extra.catalog;
 	const allowed = selectAllowedModels(
 		withDirectModels(withDirectModels(catalog, direct), hfPinned),
 		allowlistSpec
 	);
 	// The lane guard runs last so a MODELS override can't reintroduce a substitute.
-	const configs = withOnlyPickedModelLanes(
-		applyOverrides(
-			routeDirectModels(
-				routeDirectModels(
-					toModelConfigs(allowed, {
+	const shaped = toModelConfigs(allowed, {
 						baseURL,
 						isHFRouter,
 						multimodalEnabled: multimodalConfigured(),
@@ -968,13 +1003,12 @@ const buildModelsFromCatalog = async (
 						fallbackApiKeyEnv: catalogBackup.apiKeyEnv,
 						fallbackModelId,
 						fallbackBillTo: catalogBackup.billTo,
-					}),
-					direct
-				),
-				hfPinned
-			),
-			getModelOverrides()
-		)
+					});
+	// Each extra endpoint's models go to that endpoint alone, with no backup lane: the backup serves
+	// the primary's checkpoints.
+	const onExtras = extra.endpoints.reduce((acc, e) => routeDirectModels(acc, e), shaped);
+	const configs = withOnlyPickedModelLanes(
+		applyOverrides(routeDirectModels(routeDirectModels(onExtras, direct), hfPinned), getModelOverrides())
 	);
 
 	let decorated = await processConfigs(configs);
@@ -994,8 +1028,8 @@ const buildModels = async (): Promise<ProcessedModel[]> => {
 	const baseURL = openaiBaseUrl;
 
 	try {
-		const catalog = await loadCatalog(baseURL);
-		return await buildModelsFromCatalog(catalog, baseURL);
+		const [catalog, extras] = await Promise.all([loadCatalog(baseURL), loadExtraCatalogs()]);
+		return await buildModelsFromCatalog(catalog, baseURL, extras);
 	} catch (e) {
 		logger.error(e, "Failed to load models from OpenAI base URL");
 		throw e;
@@ -1025,6 +1059,8 @@ export const publishRegistry = (newModels: ProcessedModel[]): void => {
 // What the primary catalog listed when this module last read it (the live fetch or the boot snapshot),
 // so the role check reuses it rather than asking the gateway again.
 let gatewayListed: Set<string> | null = null;
+// The same for each extra OPENAI_API_BASE_URLS endpoint, by base URL.
+const extraListed = new Map<string, Set<string>>();
 
 // Every lane this module can send a request to, for config/inference.ts. The key VALUES are
 // here only so the check can read each lane's /models; the config records the env var names.
@@ -1047,6 +1083,13 @@ const inferenceLanes = (): Lane[] => {
 			? [{ name: "hf", baseURL: fallbackBaseURL, keyEnv: "HF_TOKEN", listsModels: true, apiKey: fallbackApiKey || undefined }]
 			: []),
 		...(direct ? [{ name: "mistral", baseURL: direct.baseURL, keyEnv: mistralChatLane().keyEnv, listsModels: false }] : []),
+		...extraEndpoints().map((e, i) => ({
+			name: `owui-${i + 2}`,
+			baseURL: e.baseURL,
+			keyEnv: e.apiKeyEnv,
+			listsModels: true,
+			apiKey: configKey(e.apiKeyEnv),
+		})),
 		...(env("SECOND_OPINION_BASE_URL")
 			? [{ name: "compare", baseURL: env("SECOND_OPINION_BASE_URL"), keyEnv: "SECOND_OPINION_API_KEY", listsModels: false }]
 			: []),
@@ -1085,6 +1128,10 @@ const reportInferenceTopology = async (registry: ProcessedModel[]): Promise<void
 		const served = servableModels(registry).map((m) => m.id).sort();
 		logger.info({ environment, roles: describeRoles(cfg), served }, "[inference] topology");
 		const known = gatewayListed ? new Map([["gateway", gatewayListed]]) : new Map<string, Set<string>>();
+		for (const [i, e] of extraEndpoints().entries()) {
+			const ids = extraListed.get(e.baseURL);
+			if (ids) known.set(`owui-${i + 2}`, ids);
+		}
 		const { unserved, fetchErrors } = await checkRoles(cfg, lanes, known);
 		for (const r of unserved.filter((u) => u.reason === "absent")) {
 			logger.error(r, "[inference] a role names a model its provider does not serve");

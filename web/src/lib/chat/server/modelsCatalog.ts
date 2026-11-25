@@ -380,6 +380,39 @@ export function routeDirectModels(configs: ModelConfig[], direct: DirectEndpoint
 	) as ModelConfig[];
 }
 
+/** An extra OpenAI-compatible endpoint and the /models list it answered with. */
+export type ExtraCatalog = {
+	endpoint: Omit<DirectEndpoint, "modelIds">;
+	entries: CatalogEntry[];
+};
+
+/**
+ * Join extra endpoints' models to the primary catalog, before allowlisting, the way Open WebUI offers
+ * the models of every OPENAI_API_BASE_URLS entry. Returns the joined catalog and, per endpoint, the ids it
+ * serves, ready for `routeDirectModels`. An id an earlier endpoint already lists stays with that one,
+ * so the list's order decides, and the endpoint that lost it is named in `shadowed`.
+ */
+export function withExtraEndpoints(
+	catalog: CatalogEntry[],
+	extras: ExtraCatalog[]
+): { catalog: CatalogEntry[]; endpoints: DirectEndpoint[]; shadowed: { id: string; baseURL: string }[] } {
+	const taken = new Set(catalog.map((m) => m.id));
+	const joined = [...catalog];
+	const endpoints: DirectEndpoint[] = [];
+	const shadowed: { id: string; baseURL: string }[] = [];
+	for (const { endpoint, entries } of extras) {
+		const mine = entries.filter((m) => {
+			if (!taken.has(m.id)) return true;
+			shadowed.push({ id: m.id, baseURL: endpoint.baseURL });
+			return false;
+		});
+		for (const m of mine) taken.add(m.id);
+		joined.push(...mine);
+		if (mine.length) endpoints.push({ ...endpoint, modelIds: mine.map((m) => m.id) });
+	}
+	return { catalog: joined, endpoints, shadowed };
+}
+
 /** The model a lane asks for, in our spelling: its `servedAs`, else its wire id, else the pick. */
 function laneModel(lane: { modelId?: string; servedAs?: string }, picked: string): string {
 	return (lane.servedAs ?? lane.modelId ?? picked).trim().toLowerCase();

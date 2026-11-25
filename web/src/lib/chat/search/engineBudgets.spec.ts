@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+	capEngineBudgets,
 	resolveEngineBudgets,
 	WIDE_NET_DEFAULTS,
 	RERANK_BATCH_CAP,
@@ -96,5 +97,29 @@ describe("resolveEngineBudgets", () => {
 		});
 		expect(sum(b)).toBeLessThanOrEqual(RERANK_BATCH_CAP);
 		expect(b.huggingface).toBeGreaterThan(0);
+	});
+});
+
+describe("capEngineBudgets", () => {
+	it("leaves a net already within the cap unchanged", () => {
+		expect(capEngineBudgets(WIDE_NET_DEFAULTS, 32)).toEqual(WIDE_NET_DEFAULTS);
+	});
+
+	it("shrinks the 32-document wide net to the cap, every engine still launched", () => {
+		const capped = capEngineBudgets(WIDE_NET_DEFAULTS, 12);
+		expect(sum(capped)).toBeLessThanOrEqual(12);
+		for (const v of Object.values(capped)) expect(v).toBeGreaterThanOrEqual(1);
+		expect(capped.firecrawl).toBeGreaterThanOrEqual(capped.wikinews);
+	});
+
+	it("keeps an engine at zero unlaunched", () => {
+		const news: EngineBudgets = { wikipedia: 7, wikinews: 6, firecrawl: 9, openalex: 3, arxiv: 3, huggingface: 0 };
+		const capped = capEngineBudgets(news, 10);
+		expect(capped.huggingface).toBe(0);
+		expect(sum(capped)).toBeLessThanOrEqual(10);
+	});
+
+	it("a cap under the number of launched engines keeps one each rather than dropping an engine", () => {
+		expect(sum(capEngineBudgets(WIDE_NET_DEFAULTS, 3))).toBe(6);
 	});
 });

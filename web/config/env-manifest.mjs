@@ -140,6 +140,9 @@ export const ENV_MANIFEST = {
 	AUTOMATIC_LOGIN: {
 		desc: "\"true\" makes sign-in mandatory.",
 	},
+	AUTO_LARGE_TASK_MODEL: {
+		desc: "Self-host: a served model id where Auto sends a turn it grades as a large task, such as a frontier model listed in OPENAI_API_BASE_URLS. It applies only when Auto has no catalogued model to rank; unset, every turn stays on the default model. A name no endpoint serves is logged as an error and ignored.",
+	},
 	// Better Auth's session/cookie signing key. Not req:true: that would hard-crash local dev
 	// boot for anyone without it in their local env. warn:true instead, because the
 	// better-auth-signin flag gates only the /chat/login redirect, not the /chat/api/auth/* routes,
@@ -1048,6 +1051,18 @@ export const ENV_MANIFEST = {
 	},
 	RERANK_MAX_BATCH: {
 		desc: "Most results sent to the reranker at once. Default 32.",
+	},
+	RERANK_MAX_DOCS: {
+		desc: "Most documents a web search gathers for the reranker; every engine's share shrinks to fit. Default 32. The self-host stack sets 12 for its CPU reranker.",
+	},
+	RERANK_DOC_CHARS: {
+		desc: "Characters of each document the reranker scores. Default 1200.",
+	},
+	RERANK_TIMEOUT_MS: {
+		desc: "How long a web search waits for the reranker before answering without sources. Default 6000.",
+	},
+	RERANK_SCORES: {
+		desc: "Set to logits when the reranker returns raw logits (llama.cpp's /rerank does), so each score goes through a sigmoid before the 0-1 relevance floor. Unset, scores are read as 0-1.",
 	},
 	RERANK_MODEL: {
 		warn: true,

@@ -67,6 +67,42 @@ function rerankEndpointUrl(): string {
 	return readKey("RERANK_ENDPOINT_URL").replace(/\/+$/, "");
 }
 
+/** RERANK_SCORES=logits: the endpoint returns the cross-encoder's raw logit rather than a 0-1 relevance.
+ *  llama.cpp's /rerank does this whatever `raw_scores` asks for (it returns the classifier output as is),
+ *  so the self-host `rerank` service sets it. Every floor in this file and in openSearch assumes 0-1, and a
+ *  logit read as-is would put the 0.02 floor at about 0.5 relevance. */
+function rerankScoresAreLogits(): boolean {
+	return readKey("RERANK_SCORES").toLowerCase() === "logits";
+}
+
+/** The logistic function, mapping a cross-encoder logit to the 0-1 relevance TEI and Cohere return. */
+function sigmoid(x: number): number {
+	return 1 / (1 + Math.exp(-x));
+}
+
+function positiveIntKey(key: string, fallback: number): number {
+	const n = Number(readKey(key));
+	return Number.isInteger(n) && n > 0 ? n : fallback;
+}
+
+/** RERANK_MAX_DOCS: the most documents a web search gathers for the reranker (default 32, the wide net).
+ *  A reranker's cost grows with the characters it scores, and on CPU bge-reranker-v2-m3 takes about
+ *  0.74 s per thousand, so the self-host stack sets 12. openSearch shrinks every engine's share to fit. */
+export function rerankMaxDocs(): number {
+	return positiveIntKey("RERANK_MAX_DOCS", 32);
+}
+
+/** RERANK_DOC_CHARS: how much of each document the reranker scores (default 1,200). */
+function rerankDocChars(): number {
+	return positiveIntKey("RERANK_DOC_CHARS", 1200);
+}
+
+/** RERANK_TIMEOUT_MS: how long a web search waits for the reranker before answering without sources
+ *  (default 6,000). It has to fit inside the search's 15 s retrieval deadline with the engines. */
+export function rerankTimeoutMs(): number {
+	return positiveIntKey("RERANK_TIMEOUT_MS", 6000);
+}
+
 /** Max documents per /rerank call. TEI enforces max_client_batch_size (32 on our endpoint) and 422s a
  *  larger batch. The wide net is right-sized to ≤32 so this is a SINGLE call in normal operation; a net
  *  that ever exceeds it is chunked (see rerankByRelevance) rather than 422'd. */
@@ -418,9 +454,10 @@ export async function rerankByRelevance<
 				: firstKey(["OPENAI_API_KEY", "HF_TOKEN"], "rerankCohereToken");
 	// Score the reranker-only `rerankText` when a candidate carries one (richer document for
 	// metadata-thin engines like HF/OpenAlex — #3), else the model-facing title + snippet. Capped at
-	// 1200 either way; rerankText never reaches the wire type (it's built server-local by openSearch).
+	// RERANK_DOC_CHARS (1200) either way; rerankText never reaches the wire type (it's built server-local by openSearch).
+	const docChars = rerankDocChars();
 	const documents = candidates.map((c) =>
-		(c.rerankText ?? `${c.title}\n${c.snippet}`).slice(0, 1200)
+		(c.rerankText ?? `${c.title}\n${c.snippet}`).slice(0, docChars)
 	);
 	// Own timeout — NOT the caller's retrieval budget. Reranking runs after the engines, so sharing their
 	// (often nearly-spent) abort signal starved the call and silently degraded to retrieval order. A warm
@@ -428,12 +465,17 @@ export async function rerankByRelevance<
 	const ac = new AbortController();
 	const timer = setTimeout(() => ac.abort(), opts.timeoutMs ?? 3000);
 	// One transport call for a batch of documents (the whole set, or one chunk of it).
-	const call = (docs: string[]): Promise<RerankResult[] | null> =>
-		kind === "tei"
+	const logits = rerankScoresAreLogits();
+	const call = async (docs: string[]): Promise<RerankResult[] | null> => {
+		const raw = await (kind === "tei"
 			? rerankTei(query, docs, key, ac.signal)
 			: kind === "hf"
 				? rerankHf(model, query, docs, key, ac.signal)
-				: rerankCohere(model, query, docs, key, ac.signal);
+				: rerankCohere(model, query, docs, key, ac.signal));
+		return logits && raw
+			? raw.map((r) => ({ index: r.index, relevance_score: sigmoid(r.relevance_score) }))
+			: raw;
+	};
 	try {
 		const maxBatch = rerankMaxBatch();
 		const raw =
@@ -457,7 +499,21 @@ export async function rerankByRelevance<
 		// leaves its sibling chunk fetches running, and on a single-call throw this is a harmless no-op —
 		// either way, don't let orphaned requests outlive the failed rerank.
 		ac.abort();
-		logger.warn(e, "[rerank] failed; unverified (retrieval order only off the gate path)");
+		if (timedOut) {
+			// The one failure an operator fixes with settings, so the line names them: a CPU reranker on
+			// fewer cores than compose's defaults assume misses every deadline, and each searched answer
+			// then comes back without sources (selfhost/README.md, "Web search with sources").
+			logger.warn(
+				{
+					timeoutMs: opts.timeoutMs ?? 3000,
+					documents: documents.length,
+					docChars,
+				},
+				"[rerank] timed out, so this search answers without sources; lower RERANK_MAX_DOCS or RERANK_DOC_CHARS, or raise RERANK_TIMEOUT_MS"
+			);
+		} else {
+			logger.warn(e, "[rerank] failed; unverified (retrieval order only off the gate path)");
+		}
 		failOpenDeparture("rerank", timedOut ? "timeout" : "error", {
 			kind,
 			candidates: candidates.length,

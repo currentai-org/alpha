@@ -8,19 +8,22 @@
 	let {
 		currentModelId,
 		started = false,
-		chatModelId
+		chatModelId,
+		serverIds = []
 	}: {
 		currentModelId?: string;
 		/** Whether a conversation is already under way — the app passes `messages.length > 0`. */
 		started?: boolean;
 		/** The model a started conversation is on, held whatever is picked, as the conversation page holds it. */
 		chatModelId?: string;
+		/** A self-hosted stack's own models, which have no catalog entry; served after the catalog's. */
+		serverIds?: string[];
 	} = $props();
 
 	const live = catalog.filter((m) => m.status === 'live' && m.gatewayId).map((m) => m.gatewayId!);
 	const current = currentModelId ?? live[0];
 	// The deployment's default is the first served id, as `models[0]` is on the server.
-	const served = [current, ...live.filter((id) => id !== current)];
+	const served = [current, ...live.filter((id) => id !== current), ...serverIds];
 
 	// The picker reads the settings store (the model chosen in Settings, used while Auto is off); the app
 	// provides it from ChatShell. The field the composer reads, and the setter a pick calls, are enough here.

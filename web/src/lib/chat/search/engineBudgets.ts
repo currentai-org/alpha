@@ -113,3 +113,27 @@ export function resolveEngineBudgets(opts: {
 	}
 	return b;
 }
+
+/** Shrink a budget set to at most `cap` documents in all, for a reranker too slow to score the full
+ *  net in time (a CPU reranker on a self-host: RERANK_MAX_DOCS). Each launched engine keeps one or
+ *  more and the split stays proportional; an engine at zero stays unlaunched. A cap at or above the
+ *  total, or below the number of launched engines, changes only what it must. */
+export function capEngineBudgets(budgets: EngineBudgets, cap: number): EngineBudgets {
+	const keys = Object.keys(budgets) as (keyof EngineBudgets)[];
+	const total = keys.reduce((n, k) => n + budgets[k], 0);
+	if (!Number.isFinite(cap) || cap >= total) return budgets;
+	const out = { ...budgets };
+	for (const k of keys) {
+		if (budgets[k] > 0) out[k] = Math.max(1, Math.floor((budgets[k] * cap) / total));
+	}
+	// Flooring keeps the sum at or under cap except where the one-each floor pushes it over: take the
+	// excess from the largest engine still above one.
+	let sum = keys.reduce((n, k) => n + out[k], 0);
+	while (sum > cap) {
+		const largest = keys.reduce((a, k) => (out[k] > out[a] ? k : a), keys[0]);
+		if (out[largest] <= 1) break;
+		out[largest] -= 1;
+		sum -= 1;
+	}
+	return out;
+}

@@ -11,6 +11,7 @@ import { readAloudEnabled } from "$lib/chat/server/readAloudGate";
 import { knownWeakSpotFor } from "$lib/chat/server/modelWeakSpots";
 import { workspaceOrgCreationEnabled } from "$lib/chat/server/workspacesGate";
 import { autoRoutingEnabled } from "$lib/chat/server/autoRoutingGate";
+import { autoLargeTaskModel } from "$lib/chat/server/autoLargeTask";
 import { autoRepickEnabled, autoRepickGiveUpFor } from "$lib/chat/server/autoRepickGate";
 import { clefRoutingEnabled } from "$lib/chat/server/clefRoutingGate";
 import { humanEvalEnabled } from "$lib/chat/server/humanEval/gate";
@@ -190,6 +191,11 @@ export async function getLayoutFeatureFlags(locals: App.Locals): Promise<Feature
 		// Auto model routing (autoRoutingGate.ts). Off: no Auto row in the composer's model menu, and a new
 		// chat starts on the model chosen in settings.
 		autoRoutingEnabled: autoRoutingEnabled(),
+		// The operator's model for large tasks (AUTO_LARGE_TASK_MODEL, autoLargeTask.ts), where Auto sends
+		// a turn it grades large when no catalogued model is served.
+		autoLargeTaskModel: autoRoutingEnabled()
+			? autoLargeTaskModel(models.filter((m) => !m.unlisted).map((m) => m.id))
+			: undefined,
 		// Auto picks again inside a turn its first choice did not answer (autoRepickGate.ts).
 		autoRepickEnabled: autoRoutingEnabled() && autoRepickEnabled(),
 		// How long Auto waits on each listed model's first word, so the live log can say a model is slow to start

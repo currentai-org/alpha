@@ -12,6 +12,8 @@
 //      leaves the five already imported alone.
 //   4. Sign-in as the imported account, the chats (the new one included) in the sidebar, the imported
 //      conversation whose first message carried files shows them, and one of them opens from My files.
+//   5. On the stack's two endpoints, Auto keeps a routine turn on the first and sends a large task to the
+//      frontier model AUTO_LARGE_TASK_MODEL names.
 //
 // Sign-in is by email code read from the stack's database (selfhost-stack.ts says how).
 //
@@ -259,9 +261,8 @@ test.describe.serial('Open WebUI install migrates onto the composed self-host st
 			await page.screenshot({ path: test.info().outputPath('sidebar.png'), fullPage: true });
 
 			// The web container was recreated on Open WebUI's names alone (OPENAI_BASE_URL empty), so the
-			// models it serves came through OPENAI_API_BASE_URLS: the llama model's id is the contract. The
-			// composer picker lists only the hosted catalog and a person's own endpoints, so read the models
-			// list the page itself is built from instead.
+			// models it serves came through OPENAI_API_BASE_URLS: the llama model's id is the contract, in the
+			// models list the page is built from and in the composer's model switcher.
 			const llamaModel = process.env.OWUI_EXPECT_MODEL ?? 'qwen2.5-0.5b-instruct';
 			const res = await page.request.get('/chat/api/v2/models');
 			expect(res.ok(), `/chat/api/v2/models answered ${res.status()}`).toBe(true);
@@ -271,6 +272,21 @@ test.describe.serial('Open WebUI install migrates onto the composed self-host st
 				served,
 				`a stack configured only with OPENAI_API_BASE_URLS serves the llama model ${llamaModel}`
 			).toContain(llamaModel);
+			const switcher = page.getByRole('button', { name: /^Model:/ });
+			await expect(switcher, 'the composer has a model switcher').toBeVisible({ timeout: 30_000 });
+			await switcher.click();
+			// The stack runs with Auto on, so the model rows sit behind the "Choose a model yourself" submenu.
+			const chooseYourself = page.getByRole('menuitem', { name: 'Choose a model yourself' });
+			await expect(chooseYourself, 'the switcher offers choosing a model yourself').toBeVisible({
+				timeout: 10_000
+			});
+			await chooseYourself.click();
+			await expect(
+				page.locator(`[data-model-id="${llamaModel}"]`).first(),
+				`the operator's own model ${llamaModel} has a row in the composer's model switcher`
+			).toBeVisible({ timeout: 30_000 });
+			await page.screenshot({ path: test.info().outputPath('switcher.png'), fullPage: true });
+			await page.keyboard.press('Escape');
 
 			await link.click();
 			await page.waitForURL(/\/conversation\/[a-f0-9]+/, { timeout: 30_000 });
@@ -283,6 +299,98 @@ test.describe.serial('Open WebUI install migrates onto the composed self-host st
 			await page.screenshot({ path: test.info().outputPath('conversation.png'), fullPage: true });
 			runs.conversationUrl = page.url();
 			await context.storageState({ path: runs.statePath });
+		} finally {
+			await context.close();
+		}
+	});
+
+	// The stack serves two endpoints, the llama model and a stand-in frontier model, and the smoke names the
+	// frontier one in AUTO_LARGE_TASK_MODEL. Auto ranks only catalogued models, so neither is one it can rank:
+	// a routine first turn must stay on the first endpoint's model, a large task must go to the frontier one,
+	// and that chat must stay there for a routine follow-up (escalate-only),
+	// read from each conversation's stored model and, for the frontier, its fixed answer.
+	test('Auto keeps a routine turn on the first endpoint and sends a large task to the frontier endpoint', async ({
+		browser
+	}) => {
+		const llamaModel = process.env.OWUI_EXPECT_MODEL ?? 'qwen2.5-0.5b-instruct';
+		const frontier = 'frontier-stub';
+		// The hard draft routing.spec.ts and the auto-route X-ray scenario grade large.
+		const LARGE_TASK =
+			'Compare the tradeoffs between event sourcing and a plain relational schema for an invoicing system with about two million invoices a year. Explain why each choice affects auditing, corrections and reporting, evaluate which one a small team should pick, and design a migration from the relational schema if they later need event sourcing. What breaks first? What would you measure? How would you roll it back?';
+		const context = await browser.newContext({
+			baseURL: base,
+			viewport: { width: 1280, height: 900 }
+		});
+		try {
+			await signInByEmailCode(context.request, base, ALICE);
+			const page = await context.newPage();
+			await dismissWelcome(page);
+
+			const res = await page.request.get('/chat/api/v2/models');
+			const body = (await res.json()) as { json?: { id: string }[] } | { id: string }[];
+			const served = (Array.isArray(body) ? body : (body.json ?? [])).map((m) => m.id);
+			expect(served, "the stack serves both endpoints' models").toEqual(
+				expect.arrayContaining([llamaModel, frontier])
+			);
+
+			/** Sends `text` from a new chat and returns the model the conversation was started on. */
+			const startChat = async (text: string, shot: string) => {
+				await page.goto('/', { waitUntil: 'domcontentloaded' });
+				const composer = page.getByRole('textbox', { name: /^Message/ }).first();
+				await composer.click({ timeout: 60_000 });
+				await composer.fill(text);
+				await composer.press('Enter');
+				await page.waitForURL(/\/conversation\/[a-f0-9]+/, { timeout: 60_000 });
+				const id = new URL(page.url()).pathname.split('/').pop()!;
+				const conv = await page.request.get(`/chat/api/v2/conversations/${id}`);
+				expect(conv.ok(), `GET the conversation answered ${conv.status()}`).toBe(true);
+				const raw = (await conv.json()) as { json?: { model?: string }; model?: string };
+				await page.screenshot({ path: test.info().outputPath(shot), fullPage: true });
+				return raw.json?.model ?? raw.model;
+			};
+
+			expect(
+				await startChat('What is a potluck?', 'auto-routine.png'),
+				"a routine turn stays on the first endpoint's model"
+			).toBe(llamaModel);
+			expect(
+				await startChat(LARGE_TASK, 'auto-large.png'),
+				'a large task goes to the model AUTO_LARGE_TASK_MODEL names'
+			).toBe(frontier);
+			// The stub's answer is a fixed string, so the stored answer says which endpoint served the turn.
+			const largeId = new URL(page.url()).pathname.split('/').pop()!;
+			await expect(async () => {
+				const conv = await page.request.get(`/chat/api/v2/conversations/${largeId}`);
+				const raw = (await conv.json()) as {
+					json?: { messages?: { from?: string; content?: string }[] };
+				};
+				const answers = (raw.json?.messages ?? []).filter((m) => m.from === 'assistant');
+				expect(
+					answers.map((m) => m.content ?? '').join(' '),
+					'the frontier endpoint answered the large task'
+				).toContain('Answered by the frontier stub.');
+			}).toPass({ timeout: 60_000 });
+			// Escalate-only: a chat that moved to the frontier model stays there for its follow-ups, so the
+			// model that wrote the answer answers questions about it, and its prompt cache is kept.
+			const composer = page.getByRole('textbox', { name: /^Message/ }).first();
+			await composer.fill('Thanks!');
+			const followUp = page.waitForResponse(
+				(r) =>
+					r.request().method() === 'POST' &&
+					new URL(r.url()).pathname.endsWith(`/conversation/${largeId}`),
+				{ timeout: 60_000 }
+			);
+			await composer.press('Enter');
+			expect((await followUp).ok(), 'the follow-up was sent').toBe(true);
+			const after = await page.request.get(`/chat/api/v2/conversations/${largeId}`);
+			const afterRaw = (await after.json()) as { json?: { model?: string } };
+			expect(afterRaw.json?.model, 'a routine follow-up keeps the chat on the frontier model').toBe(
+				frontier
+			);
+			await page.screenshot({
+				path: test.info().outputPath('auto-large-answer.png'),
+				fullPage: true
+			});
 		} finally {
 			await context.close();
 		}

@@ -558,6 +558,45 @@ describe("rerankByRelevance — TEI transport (dedicated warm endpoint)", () => 
 		expect(headers.Authorization).toBe("Bearer hf_tok");
 	});
 
+	it("RERANK_SCORES=logits puts each raw logit through a sigmoid before the 0.02 floor", async () => {
+		configValues.RERANK_MODEL = "BAAI/bge-reranker-v2-m3";
+		configValues.RERANK_ENDPOINT_URL = "http://rerank:8080";
+		configValues.RERANK_SCORES = "logits";
+		// llama.cpp's shape: TEI's [{index,score}], but raw logits. sigmoid(-3) ≈ 0.047 clears the floor,
+		// sigmoid(-5) ≈ 0.0067 does not; read as-is, the -3 would be dropped and the 6.2 kept alone.
+		vi.stubGlobal(
+			"fetch",
+			vi.fn().mockResolvedValue({
+				ok: true,
+				json: async () => [
+					{ index: 1, score: 6.2 },
+					{ index: 2, score: -3 },
+					{ index: 0, score: -5 },
+				],
+			})
+		);
+		const out = await rerankByRelevance("q", cands, { topK: 6, minScore: 0.02, allowEmpty: true });
+		expect(out).toEqual({ items: [cands[1], cands[2]], verified: true });
+	});
+
+	it("without RERANK_SCORES a logit-scale response is read as relevance, so the -3 falls under the floor", async () => {
+		configValues.RERANK_MODEL = "BAAI/bge-reranker-v2-m3";
+		configValues.RERANK_ENDPOINT_URL = "http://rerank:8080";
+		vi.stubGlobal(
+			"fetch",
+			vi.fn().mockResolvedValue({
+				ok: true,
+				json: async () => [
+					{ index: 1, score: 6.2 },
+					{ index: 2, score: -3 },
+					{ index: 0, score: -5 },
+				],
+			})
+		);
+		const out = await rerankByRelevance("q", cands, { topK: 6, minScore: 0.02, allowEmpty: true });
+		expect(out).toEqual({ items: [cands[1]], verified: true });
+	});
+
 	it("TEI malformed 200 (non-array body) → unverified (fail-closed)", async () => {
 		configValues.RERANK_MODEL = "m";
 		configValues.RERANK_ENDPOINT_URL = "https://svc";
@@ -717,5 +756,31 @@ describe("rerankByRelevance fail-open departures", () => {
 		vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("boom")));
 		await rerankByRelevance("q", cands);
 		expect(departures()).toEqual(["rerank:error"]);
+	});
+
+	// A CPU reranker on too few cores misses every deadline, and the operator's fix is a setting, so the
+	// timeout line names the settings and carries the shape that missed (selfhost/README.md).
+	it("a reranker that misses its deadline logs the timeout with the settings that size it", async () => {
+		configValues.RERANK_MODEL = "m";
+		configValues.RERANK_ENDPOINT_URL = "http://rerank:8080";
+		configValues.RERANK_DOC_CHARS = "300";
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(
+				(_url: string, init: { signal: AbortSignal }) =>
+					new Promise((_resolve, reject) =>
+						init.signal.addEventListener("abort", () => reject(new Error("aborted")))
+					)
+			)
+		);
+		expect(await rerankByRelevance("q", cands, { timeoutMs: 5, allowEmpty: true })).toEqual({
+			items: [],
+			verified: false,
+		});
+		expect(departures()).toEqual(["rerank:timeout"]);
+		const calls = vi.mocked(logger.warn).mock.calls as unknown as [Record<string, unknown>, string][];
+		const line = calls.find(([, msg]) => typeof msg === "string" && msg.startsWith("[rerank] timed out"));
+		expect(line?.[0]).toEqual({ timeoutMs: 5, documents: 2, docChars: 300 });
+		expect(line?.[1]).toMatch(/RERANK_MAX_DOCS.*RERANK_DOC_CHARS.*RERANK_TIMEOUT_MS/);
 	});
 });

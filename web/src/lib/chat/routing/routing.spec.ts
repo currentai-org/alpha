@@ -673,6 +673,39 @@ describe('resolveModel', async () => {
 		expect(resolveModel('glm-5.2', 'hello', APERTUS_ONLY).unavailable).toBeTruthy();
 	});
 
+	// A self-hosted stack serving only its operator's own models: Auto has no catalogued model to rank, so
+	// without the operator's large-task model every turn stays on the default, the frontier one never used.
+	describe('a stack serving only uncatalogued models, with AUTO_LARGE_TASK_MODEL set', () => {
+		const SELF_HOSTED = ['qwen2.5-0.5b-instruct', 'frontier-stub'];
+		const opts = { largeTaskModel: 'frontier-stub' };
+
+		it('sends a turn Auto grades large to the large-task model', () => {
+			const r = resolveModel('auto', HARD_DRAFT, SELF_HOSTED, opts);
+			expect(r.analysis?.difficulty.value).toBe('L');
+			expect(r.modelId).toBe('frontier-stub');
+		});
+
+		it('leaves a routine turn on the caller’s default (no id), never the large-task model', () => {
+			const r = resolveModel('auto', 'What is a potluck?', SELF_HOSTED, opts);
+			expect(r.analysis?.difficulty.value).not.toBe('L');
+			expect(r.modelId).toBeUndefined();
+		});
+
+		it('never chooses a large-task model the stack does not serve', () => {
+			expect(resolveModel('auto', HARD_DRAFT, ['qwen2.5-0.5b-instruct'], opts).modelId).toBeUndefined();
+		});
+
+		it('with no large-task model named, a large turn keeps the default, as before', () => {
+			expect(resolveModel('auto', HARD_DRAFT, SELF_HOSTED).modelId).toBeUndefined();
+		});
+
+		it('a catalogued model Auto can rank still decides, over the large-task model', () => {
+			const r = resolveModel('auto', HARD_DRAFT, [...APERTUS_ONLY, 'frontier-stub'], opts);
+			expect(r.modelId).toBe('swiss-ai/apertus-v1.5-70b');
+			expect(r.route).toBeDefined();
+		});
+	});
+
 	it('a manual pick that is served resolves to it', () => {
 		expect(resolveModel('apertus-70b', 'hi', APERTUS_ONLY).modelId).toBe('swiss-ai/apertus-v1.5-70b');
 	});

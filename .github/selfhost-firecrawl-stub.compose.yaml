@@ -1,0 +1,88 @@
+# CI-only override for selfhost/compose.yaml (.github/workflows/selfhost-smoke.yml). A
+# self-hoster's `docker compose up` never reads this file; the workflow adds it through COMPOSE_FILE.
+#
+# `firecrawl` stands in for a self-hosted Firecrawl, which serves the same v2 API as api.firecrawl.dev.
+# It answers POST /v2/search with one fixed result and POST /v2/scrape with a fixed page, and prints each
+# request's path, query and whether it carried the bearer key on one `firecrawl-stub request` line, which
+# the web-search step reads back. It sits behind the `firecrawl` profile, so only that step starts it.
+#
+# The web service reads FIRECRAWL_BASE_URL and FIRECRAWL_API_KEY from the shell here, empty unless the
+# web-search step sets them, so every other boot keeps compose's default (no Firecrawl).
+services:
+  firecrawl:
+    profiles: [firecrawl]
+    # python:3.13-alpine, the multi-arch index, pinned by digest (the speech stub's image).
+    image: python@sha256:9ef1a599f863231c3d91e941389bfdc4a2d6070557243d54df1a4e57015b960e
+    command: ["python", "-u", "/stub/firecrawl_stub.py"]
+    configs:
+      - source: firecrawl_stub
+        target: /stub/firecrawl_stub.py
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:3002/health')"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  web:
+    environment:
+      FIRECRAWL_BASE_URL: ${FIRECRAWL_BASE_URL:-}
+      FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY:-}
+
+configs:
+  firecrawl_stub:
+    content: |
+      import json
+      import os
+      import sys
+      from http.server import BaseHTTPRequestHandler, HTTPServer
+
+      KEY = os.environ.get("STUB_KEY", "selfhost-search-stub-key")
+      URL = "https://example.org/selfhost-search-stub-page"
+      PAGE = "The self-host search stub page says the Eiffel Tower is in Paris."
+
+
+      class Handler(BaseHTTPRequestHandler):
+          def do_GET(self):
+              self.send_response(200 if self.path == "/health" else 404)
+              self.end_headers()
+
+          def _send(self, payload):
+              body = json.dumps(payload).encode()
+              self.send_response(200)
+              self.send_header("content-type", "application/json")
+              self.send_header("content-length", str(len(body)))
+              self.end_headers()
+              self.wfile.write(body)
+
+          def do_POST(self):
+              raw = self.rfile.read(int(self.headers.get("content-length") or 0))
+              try:
+                  req = json.loads(raw or b"{}")
+              except ValueError:
+                  req = {}
+              path = self.path.rstrip("/")
+              fields = {
+                  "path": path,
+                  "query": req.get("query"),
+                  "url": req.get("url"),
+                  "bearer": self.headers.get("authorization") == "Bearer " + KEY,
+              }
+              print("firecrawl-stub request " + json.dumps(fields, sort_keys=True), flush=True)
+              if path == "/v2/search":
+                  self._send({"success": True, "data": {"web": [
+                      {"url": URL, "title": "self-host search stub result", "description": PAGE}
+                  ]}})
+              elif path == "/v2/scrape":
+                  self._send({"success": True, "data": {"markdown": PAGE, "metadata": {"title": "self-host search stub result", "statusCode": 200}}})
+              else:
+                  self.send_response(404)
+                  self.end_headers()
+
+          def log_message(self, *args):
+              pass
+
+
+      if __name__ == "__main__":
+          print("firecrawl-stub listening on 3002", flush=True)
+          sys.stdout.flush()
+          HTTPServer(("0.0.0.0", 3002), Handler).serve_forever()

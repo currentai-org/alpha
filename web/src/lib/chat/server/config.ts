@@ -6,7 +6,7 @@ import { env as serverEnv } from "$env/dynamic/private";
 import { building } from "$app/env";
 import type { Collections } from "./database";
 import { Semaphores } from "$lib/chat/types/Semaphore";
-import { resolveOpenAiEnv } from "./env/openWebUiAliases";
+import { extraEndpointEnv, openWebUiExtraEndpoints, resolveOpenAiEnv } from "./env/openWebUiAliases";
 import { applyOperatorModels } from "./env/operatorModels";
 import { committedConfigEnv, isRoleModelKey, roleModelSetting } from "../../../../config/inference";
 
@@ -35,6 +35,8 @@ function applyOperatorModelsFile(env: Record<string, string | undefined>) {
 
 function applyOpenWebUiNames(env: Record<string, string | undefined>) {
 	const r = resolveOpenAiEnv(env);
+	// Read before OPENAI_BASE_URL is set below, which would make the Open WebUI names lose.
+	const extras = openWebUiExtraEndpoints(env);
 	if (r.source === "open-webui") {
 		env.OPENAI_BASE_URL = r.baseUrl;
 		// An empty first key is a keyless endpoint; it must not wipe a key that is already set (compose sets "none").
@@ -47,9 +49,16 @@ function applyOpenWebUiNames(env: Record<string, string | undefined>) {
 				`[config] OPENAI_API_KEYS holds ${r.keysGiven} key(s) for ${r.ignoredEndpoints + 1} URL(s); missing keys are empty and extra keys are dropped, as Open WebUI does`
 			);
 		}
-		if (r.ignoredEndpoints > 0) {
-			console.warn(
-				`[config] OPENAI_API_BASE_URLS lists ${r.ignoredEndpoints + 1} endpoints; Alpha serves one, so the first is used and ${r.ignoredEndpoints} ignored`
+		// Later endpoints are filed under numbered names for models.ts, which lists each one's models.
+		for (const e of extras) {
+			const names = extraEndpointEnv(e.n);
+			env[names.urlEnv] = e.baseUrl;
+			// A keyless endpoint gets "none", as compose gives the first one, so the request still sends a bearer.
+			env[names.keyEnv] = e.apiKey || "none";
+		}
+		if (extras.length) {
+			console.info(
+				`[config] OPENAI_API_BASE_URLS lists ${extras.length + 1} endpoints; models from all of them are offered`
 			);
 		}
 	} else if (r.openWebUiShadowed) {

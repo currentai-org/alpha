@@ -81,7 +81,9 @@
 							benchmarks: $activeBenchmarks,
 							config: $activeRoutingConfig,
 							// The same busy list the composer's forecast routed around.
-							busy: busyNow(serverBusyNow(page.data.busyModels as string[] | undefined, $serverBusy), $busyHere)
+							busy: busyNow(serverBusyNow(page.data.busyModels as string[] | undefined, $serverBusy), $busyHere),
+							// A self-host's model for large tasks, used when Auto has no catalogued model to rank.
+							largeTaskModel: page.data.autoLargeTaskModel as string | undefined
 						})
 					: undefined;
 				// A pick that isn't served stops the send; sendFromLanding shows this and puts the

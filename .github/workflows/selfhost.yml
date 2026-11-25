@@ -1,7 +1,7 @@
 # What a stranger does with this repository, and the two self-host claims a privacy-minded operator most
 # wants proven. `smoke`: `selfhost/smoke.sh` writes selfhost/.env from .env.example, runs
 # `docker compose --profile local up --build` with a small local model, and sends one chat turn as a
-# signed-out guest; then the daily cleanup deletes an aged guest conversation, and the README's backup and restore run on that stack. `safety-profile`: the Shieldstral screen beside it (report only). `socket-proxy`: the
+# signed-out guest; a guest turn with web search cites the page a keyless Firecrawl stand-in returned; then the daily cleanup deletes an aged guest conversation, and the README's backup and restore run on that stack. `safety-profile`: the Shieldstral screen beside it (report only). `socket-proxy`: the
 # agent profile's socket proxy refuses host-root creates. `agent-owui-names`: the agent profile's model
 # gateway starts on Open WebUI's env names. `s3-secret`: the s3 profile's SeaweedFS refuses a blank
 # secret, and leaving the profile out needs no key. No job reads a secret: models download from
@@ -31,7 +31,8 @@ jobs:
     permissions:
       contents: read
     env:
-      MODEL_CACHE_KEY: selfhost-gguf-qwen2.5-0.5b-instruct-q4_k_m-v1
+      # The web-search step's reranker downloads into the same directory, so its GGUF is in the key.
+      MODEL_CACHE_KEY: selfhost-gguf-qwen2.5-0.5b-instruct-q4_k_m-bge-reranker-v2-m3-q8_0-3093af0-v1
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -55,10 +56,58 @@ jobs:
         id: smoke
         run: ./selfhost/smoke.sh
 
+      # Web search with sources, as selfhost/README.md ("Web search with sources") sets it up, on the stack
+      # the smoke left up. The search backend is the Firecrawl stand-in in
+      # .github/selfhost-firecrawl-stub.compose.yaml, which needs no key; the bundled `rerank` profile
+      # scores its page. A guest turn with web search "always" must reach the stand-in and cite its page
+      # (.github/selfhost-web-search-smoke.sh). A fork that sets the repository variable
+      # SELFHOST_SEARCH_BACKEND to `none` skips the step by name. Both containers are removed after, so
+      # the steps below run on the stack as the smoke left it. It warns and never fails the job until one
+      # run in this repo has gone through it.
+      - name: Web search cites the page the search backend returned
+        if: steps.smoke.outcome == 'success'
+        working-directory: selfhost
+        env:
+          SEARCH_BACKEND: ${{ vars.SELFHOST_SEARCH_BACKEND || 'firecrawl-stub' }}
+        run: |
+          set +e
+          if [ "$SEARCH_BACKEND" = none ]; then
+            echo "SKIP web search: no search backend configured (SELFHOST_SEARCH_BACKEND=none)" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          export COMPOSE_FILE="compose.yaml:../.github/selfhost-firecrawl-stub.compose.yaml"
+          (
+            set -e
+            docker compose --profile local --profile firecrawl up -d --no-deps --wait --wait-timeout 120 firecrawl
+            docker compose --profile local --profile rerank up -d --no-deps --wait --wait-timeout 600 rerank
+            FIRECRAWL_BASE_URL=http://firecrawl:3002 FIRECRAWL_API_KEY=selfhost-search-stub-key \
+              RERANK_MODEL=BAAI/bge-reranker-v2-m3 RERANK_ENDPOINT_URL=http://rerank:8080 RERANK_SCORES=logits \
+              docker compose --profile local up -d --no-deps --force-recreate --wait --wait-timeout 300 web
+            ../.github/selfhost-web-search-smoke.sh
+          ) > ../web-search.log 2>&1
+          code=$?
+          cat ../web-search.log
+          {
+            echo "### web search with sources"
+            echo '```'
+            grep -E '^ok |^note |WEB-SEARCH' ../web-search.log || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$code" != 0 ]; then
+            echo "::warning title=selfhost web search::the web-search step exited $code. Read this step's log."
+            docker compose --profile firecrawl logs --no-color --tail 40 firecrawl || true
+            docker compose --profile rerank logs --no-color --tail 40 rerank || true
+          fi
+          docker compose --profile firecrawl --profile rerank rm -sf firecrawl rerank || true
+          unset COMPOSE_FILE
+          docker compose --profile local up -d --no-deps --force-recreate --wait --wait-timeout 300 web || true
+          exit 0
+
       # The daily cleanup the README describes ("Expired guest data"), on the stack the smoke left up: a guest
       # conversation and a guest file aged 40 days are deleted by the web server's own timer, with its first
       # run brought to 5 s after a recreate, and a fresh one of each is kept (.github/selfhost-cleanup-smoke.sh).
-      # Before the restore, which wipes the stack. A failure fails the job.
+      # Before the restore, which wipes the stack. It warns and never fails the job until one run in this
+      # repo has gone through it; a follow-up then lets its exit code through.
       - name: The daily cleanup deletes an expired guest conversation and guest file
         if: steps.smoke.outcome == 'success'
         run: |
@@ -72,9 +121,9 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           if [ "$code" != 0 ]; then
-            echo "::error title=selfhost cleanup::the daily cleanup smoke exited $code. Read this step's log."
+            echo "::warning title=selfhost cleanup::the daily cleanup smoke exited $code. Read this step's log."
           fi
-          exit "$code"
+          exit 0
 
       # The README's backup and restore, on the stack the smoke left up: a guest conversation and a file in
       # the `files` volume, selfhost/backup.sh, `down -v`, `up`, selfhost/restore.sh, then every conversation

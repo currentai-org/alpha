@@ -61,12 +61,15 @@ export interface Resolution {
  * @param servedIds ids the registry serves now; the result is always one of these, or undefined.
  * @param opts.analysis the composer's finished analysis of this exact message, when it has one;
  *   otherwise the synchronous heuristic classifies it here.
+ * @param opts.largeTaskModel the served id a self-hosted operator names for large tasks
+ *   (AUTO_LARGE_TASK_MODEL). Auto ranks catalogued models only, so on a stack serving none of them it
+ *   would otherwise keep every turn on the default model, the frontier endpoint included.
  */
 export function resolveModel(
 	choice: string,
 	message: string,
 	servedIds: string[],
-	opts: RouteOptions & { analysis?: DraftAnalysis } = {}
+	opts: RouteOptions & { analysis?: DraftAnalysis; largeTaskModel?: string } = {}
 ): Resolution {
 	const servedById = new Map(servedIds.map((id) => [servedKey(id), id]));
 	if (choice !== AUTO) {
@@ -81,7 +84,12 @@ export function resolveModel(
 	const analysis = opts.analysis ?? heuristicClassify(message);
 	const r = route(analysis, servedIds, opts);
 	const id = r?.model.gatewayId && servedById.get(servedKey(r.model.gatewayId));
-	return { modelId: id || undefined, analysis, route: r };
+	if (id) return { modelId: id, analysis, route: r };
+	// No catalogued model Auto could rank is served. A large task goes to the operator's large-task model
+	// when it is served; anything else keeps the caller's default.
+	const large = opts.largeTaskModel;
+	if (large && analysis.difficulty.value === 'L' && servedIds.includes(large)) return { modelId: large, analysis };
+	return { modelId: undefined, analysis, route: r };
 }
 
 /**

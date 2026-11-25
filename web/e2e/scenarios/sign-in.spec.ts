@@ -1339,11 +1339,15 @@ test.describe('email-OTP sign-in', () => {
 				// A full page load remounts the rail collapsed and would pass this test with or without the
 				// fix, which is how it passed against a pre-fix build entered from /alpha/chat. The marker
 				// survives only an in-app navigation, the one path where the rail's own state carries over.
-				await page.evaluate(() => ((window as unknown as { cur1899?: boolean }).cur1899 = true));
+				await page.evaluate(
+					() => ((window as unknown as { signInReloadProbe?: boolean }).signInReloadProbe = true)
+				);
 				await (await accountMenuItem(page, 'Log in', { timeout: 20_000 })).click();
 				await page.waitForURL(/\/chat\/login/);
 				expect(
-					await page.evaluate(() => (window as unknown as { cur1899?: boolean }).cur1899),
+					await page.evaluate(
+						() => (window as unknown as { signInReloadProbe?: boolean }).signInReloadProbe
+					),
 					'Log in should navigate within the app; a full page load resets the sidebar and tests nothing'
 				).toBe(true);
 

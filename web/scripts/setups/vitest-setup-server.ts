@@ -115,7 +115,7 @@ const tick = setInterval(() => {
 }, 1000);
 `;
 
-const STARTED = Symbol.for("sol-205.blockedLoopWatchdog");
+const STARTED = Symbol.for("vitest-setup.blockedLoopWatchdog");
 
 function startBlockedLoopWatchdog(label: string, stallMs = 20_000): void {
 	const g = globalThis as Record<symbol, unknown>;

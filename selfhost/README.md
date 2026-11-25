@@ -88,8 +88,8 @@ What to expect:
   rule. The app gives each call 8 s and the whole screen 20 s (`GUARD_TIMEOUT_MS` in `guardGate.ts`,
   `operationDeadlineMs` in `rules.json`). On an 8-CPU machine under other load, with the classifier
   capped at 4 CPUs, a warm screen took 25 to 36 s and its slowest call 11 to 17 s; the first screen after
-  start took 121 s. On CI's 8-CPU runner, the first turn after start ran out of time at 20 s and the
-  second, a blocked one, finished in 18 s. Only the child-safety rules fail closed: when one of their
+  start took 121 s. On a second 8-CPU machine, the first turn after start ran out
+  of time at 20 s and the second, a blocked one, finished in 18 s. Only the child-safety rules fail closed: when one of their
   checks runs out of time, the turn is declined as unchecked. When only content checks (violence,
   self-harm and the rest) run out of time on a short message, the turn is answered without them and
   the web log records a `[failopen]` warning (`guardGate.ts`). A long message whose content checks were
@@ -139,8 +139,8 @@ starts agent-service, its model gateway and a socket proxy beside the app, and w
   sandbox, pointed at your endpoint through the gateway; it needs no Kilo account.
   `AGENT_ENGINE=hermes` in `.env` runs the previous engine instead.
 - **The model is the one chat uses.** The gateway forwards to `OPENAI_BASE_URL` with `OPENAI_API_KEY`, or,
-  with those unset, to the first URL and key of Open WebUI's `OPENAI_API_BASE_URLS` / `OPENAI_API_KEYS`,
-  read as chat reads them (`agent-service/api/openwebui_env.py`). The agent's sandbox never holds that key:
+  with those unset, to the first URL and key of Open WebUI's `OPENAI_API_BASE_URLS` / `OPENAI_API_KEYS`
+  (`agent-service/api/openwebui_env.py`). Chat offers every URL's models; the agent uses the first. The agent's sandbox never holds that key:
   it holds a one-task grant the gateway honours.
 - **What the sandbox isolates.** Each conversation's agent runs in a container of its own: a non-root user,
   every Linux capability dropped, `no-new-privileges`, a read-only root filesystem, a 512 MB in-memory
@@ -164,6 +164,55 @@ starts agent-service, its model gateway and a socket proxy beside the app, and w
 
 Treat it as a demo: run it for yourself or people you trust, not for the public.
 
+## Web search with sources (optional)
+
+A turn that searches the web cites a page only after a reranker has scored it as relevant to the
+question. With no reranker, the search still runs, but the answer has no sources: nothing vouches that
+the pages it found are about the question. `--profile rerank` adds one, BAAI's bge-reranker-v2-m3
+(Apache-2.0, multilingual), served on CPU by the same llama.cpp image as the local model. It is the
+reranker our hosted Alpha uses. Its GGUF, about 640 MB, downloads on the first start. Then set these
+three lines in `.env`:
+
+```sh
+RERANK_MODEL=BAAI/bge-reranker-v2-m3
+RERANK_ENDPOINT_URL=http://rerank:8080
+RERANK_SCORES=logits   # llama.cpp returns raw scores; the app turns them into a 0-1 relevance
+```
+
+```sh
+docker compose --profile local --profile rerank up --build
+```
+
+Search itself goes to the open engines in the table under "Every service a request passes through",
+and to Firecrawl if you set `FIRECRAWL_API_KEY` (and `FIRECRAWL_BASE_URL` for your own). A page scoring
+under 0.02 is dropped, and when none is left the turn answers without sources. If the reranker
+is down or slower than `RERANK_TIMEOUT_MS`, the turn answers without sources, never with unscored ones.
+
+On CPU the reranker is the slow part, and compose's defaults assume 4 cores. On 4 cores it scores
+about 1,000 characters in 0.74 s, so compose gives it 12 documents of 600 characters a search (about
+5.3 s) and waits up to 8 s, where the hosted Alpha's reranker gets 32 of 1,200 (about 28.5 s on 4
+cores). `RERANK_MAX_DOCS`, `RERANK_DOC_CHARS` and `RERANK_TIMEOUT_MS` change the three; a search's
+whole retrieval stops at 15 s.
+
+On 2 cores the defaults take about 22 s, past the deadline, so every search answers without sources.
+Add these two lines to `.env` on a 2-core machine:
+
+```sh
+RERANK_MAX_DOCS=6
+RERANK_DOC_CHARS=300
+```
+
+On 2 cores that takes 3.7 to 5.6 s. Six shorter documents give the answer fewer sources to choose
+from, but it still cites them. On 2 cores, 1,000 characters take about 3.1 s, so 8 documents of 400 (9.9 s) or 6 of 400 (7.4 s) already miss or crowd the 8 s deadline. A
+search that misses it logs `[rerank] timed out` with the three settings to change.
+
+Any other reranker that serves llama.cpp's or Hugging Face TEI's `/rerank` works at the same URL; leave
+`RERANK_SCORES` unset for one that returns 0-1 scores, as TEI does, and raise the three for a GPU one. The
+bundled `rerank` service's 1,024-token micro-batch holds the question and one document, about 1,200
+characters of Latin-script text but fewer in Chinese, Japanese or other scripts that take a token or
+more per character. A document past that makes llama.cpp refuse the call, and the search answers
+without sources, so keep `RERANK_DOC_CHARS` at 600 or below for those languages.
+
 ## Configuration
 
 Compose reads `.env` next to `compose.yaml`.
@@ -173,7 +222,7 @@ Compose reads `.env` next to `compose.yaml`.
 | `BETTER_AUTH_SECRET` | none, required | Signs session cookies. Any long random string. |
 | `OPENAI_BASE_URL` | none, required unless the Open WebUI names below are set | The model endpoint's base, ending in `/v1`. It must answer `GET /models` and `POST /chat/completions`. |
 | `OPENAI_API_KEY` | `none` | Sent as `Bearer` to that endpoint. Keyless servers ignore it. |
-| `OPENAI_API_BASE_URLS`, `OPENAI_API_KEYS` | none | Open WebUI's names, for an install moving over with its env file. Read only while `OPENAI_BASE_URL` is unset; when both are set, `OPENAI_BASE_URL` wins and the log says so. `;`-separated, one key per URL (an empty key is a keyless endpoint); with fewer keys the rest are keyless and extra keys are dropped, as in Open WebUI, and `OPENAI_API_KEY` stands in when `OPENAI_API_KEYS` is unset. Alpha serves one endpoint, so with several the first is used and the log says how many were ignored. |
+| `OPENAI_API_BASE_URLS`, `OPENAI_API_KEYS` | none | Open WebUI's names, for an install moving over with its env file. Read only while `OPENAI_BASE_URL` is unset; when both are set, `OPENAI_BASE_URL` wins and the log says so. `;`-separated, one key per URL (an empty key is a keyless endpoint); with fewer keys the rest are keyless and extra keys are dropped, as in Open WebUI, and `OPENAI_API_KEY` stands in when `OPENAI_API_KEYS` is unset. Chat offers the models of every URL, each sent to its own endpoint with its own key; an id two endpoints both list goes to the earlier one, and the log names it. |
 | `MODEL_ALLOWLIST` | `*` | Comma-separated model ids from `GET /models` to offer, first one the default. `*` offers all of them. |
 | `ALPHA_MODELS_FILE` | none | A model list file of your own, read in place of the five model settings above. See [Your own model list](#your-own-model-list). |
 | `PORT` | `3000` | The host port, bound to 127.0.0.1. |
@@ -455,7 +504,8 @@ involved:
 | `web`, the Alpha app (SvelteKit on Node) | your machine | every request |
 | `db`, Postgres 17 | your machine | sessions, conversations, messages |
 | `llama`, llama.cpp server | your machine | every model call: the answer, and the search decision |
-| huggingface.co | Hugging Face | the `llama` container's first start only, to download the GGUF |
+| huggingface.co | Hugging Face | the `llama` and `rerank` containers' first start only, to download each GGUF |
+| `rerank`, llama.cpp server with bge-reranker-v2-m3 | your machine | only with the `rerank` profile: every turn that searches, to score the pages it found |
 | `seaweedfs`, SeaweedFS's S3 gateway | your machine | only with the `s3` profile and block S: every read and write of a person's files |
 | api.openalex.org, export.arxiv.org, huggingface.co/api/models, `<lang>`.wikipedia.org, wikinews.org | third parties | only when a turn searches the web. The composer's search setting defaults to Auto, and the model decides whether to search. Turn search off in the composer to stop this. |
 | `sockguard`, `gateway`, `agent`, `agent-init` | your machine | only with the `agent` profile: agent mode's socket proxy, model gateway, task service and one-shot secret maker. The sandbox containers it creates run on your Docker host. |
