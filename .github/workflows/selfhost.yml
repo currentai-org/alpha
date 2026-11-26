@@ -410,7 +410,11 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           if [ "$code" -ne 0 ]; then
-            echo "::error title=selfhost socket proxy::the socket-proxy check exited $code. A FAIL line on a host-root create means the proxy let it through. Read socket-proxy.log in the job log."
+            if [ "$code" -eq 2 ]; then
+              echo "::error title=selfhost socket proxy::a setup step failed before any create reached the proxy (the SOCKET PROXY SMOKE SETUP FAIL line names it), so this says nothing about the proxy. Rerun once the cause, often a registry limit, clears."
+            else
+              echo "::error title=selfhost socket proxy::the socket-proxy check exited $code. A FAIL line on a host-root create means the proxy let it through. Read socket-proxy.log in the job log."
+            fi
           fi
           exit "$code"
 

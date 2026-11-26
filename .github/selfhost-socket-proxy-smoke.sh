@@ -40,9 +40,12 @@ cleanup() {
 	compose down -v >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
+# A step that fails before any create reaches the proxy (an image pull, the proxy's own start, the test venv)
+# exits 2 and says so, so a registry limit never reads as the proxy letting something through.
+setup() { "$@" || { echo "SOCKET PROXY SMOKE SETUP FAIL: $*" >&2; exit 2; }; }
 
-docker pull -q "$image" >/dev/null
-compose up -d --wait sockguard
+setup docker pull -q "$image" >/dev/null
+setup compose up -d --wait sockguard
 ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$project-sockguard-1")
 proxy="tcp://$ip:2375"
 echo "sockguard: $(docker inspect -f '{{.Config.Image}}' "$project-sockguard-1") at $proxy"
@@ -102,12 +105,12 @@ compose logs --no-color sockguard 2>/dev/null | grep -o '"reason":"container cre
 # is pulled straight from the daemon (the proxy refuses pulls), then named by digest as the backend requires.
 # The gateway stand-in is any running container: agent sandboxes must resolve it by name and reach nothing else.
 sandbox_tag=${SANDBOX_CONTRACT_IMAGE_TAG:-mirror.gcr.io/library/python:3.12-slim}
-docker pull -q "$sandbox_tag" >/dev/null
+setup docker pull -q "$sandbox_tag" >/dev/null
 sandbox_image=$(docker inspect -f '{{index .RepoDigests 0}}' "$sandbox_tag")
 docker run -d --name "$project-gateway" "$image" sleep 600 >/dev/null
 venv=$(mktemp -d)
-python3 -m venv "$venv"
-"$venv/bin/pip" install -q pytest==9.2.0 docker==7.1.0
+setup python3 -m venv "$venv"
+setup "$venv/bin/pip" install -q pytest==9.2.0 docker==7.1.0
 echo "sandbox backend: $sandbox_image through $proxy"
 set +e
 DOCKER_HOST=$proxy SANDBOX_CONTRACT_BACKEND=docker SANDBOX_CONTRACT_IMAGE=$sandbox_image \

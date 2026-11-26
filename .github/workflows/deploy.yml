@@ -1,0 +1,124 @@
+# Deploys main to the Vercel project's production. The Vercel project is not connected to this repository,
+# so no branch, pull request, fork or Dependabot update ever builds there with the project's secrets; this
+# workflow is the only way a commit reaches it, and it only ever runs code already merged to main.
+#
+# The job runs in the `web-production` environment, which holds VERCEL_TOKEN and admits only `main`. It has no
+# required reviewers, by design: a reviewed merge to main is the gate, and the job's own ref check below backs
+# the environment's branch rule. It is not `production`, which admits only `v*` tags for the agent service's
+# deploys, so neither job's secrets reach the other's. Repository variables name the
+# target: VERCEL_SCOPE (the Vercel team), VERCEL_PROJECT, and PRODUCTION_HOST (the domain it serves; unset
+# means the deployment takes its domains straight away, with no smoke of the domain and no rollback).
+# A fork or a copy without them gets a notice and deploys nothing.
+#
+# The build is deployed without its domain and smoked at its own URL first, so a broken build never takes
+# the domain. Then the domain moves to it and is smoked again; if that fails, the domain goes back to the
+# deployment it served before this run.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  production:
+    name: Deploy main to production
+    # main only, and never for Dependabot: its updates reach main through a reviewed pull request like any other.
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      !startsWith(github.ref_name, 'dependabot/') &&
+      github.actor != 'dependabot[bot]' &&
+      github.triggering_actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: web-production
+    env:
+      VERCEL_SCOPE: ${{ vars.VERCEL_SCOPE }}
+      VERCEL_PROJECT: ${{ vars.VERCEL_PROJECT }}
+      PRODUCTION_HOST: ${{ vars.PRODUCTION_HOST }}
+      VERCEL_CLI: vercel@65.14.0
+    steps:
+      - name: Is a Vercel project configured
+        id: configured
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_SCOPE" ] || [ -z "$VERCEL_PROJECT" ]; then
+            echo "::notice title=deploy skipped::VERCEL_TOKEN (web-production environment), VERCEL_SCOPE or VERCEL_PROJECT is not set, so nothing was deployed."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        if: steps.configured.outputs.run == 'true'
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        if: steps.configured.outputs.run == 'true'
+        with:
+          node-version-file: .nvmrc
+
+      - name: Deploy without the domain
+        id: deploy
+        if: steps.configured.outputs.run == 'true'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          npx --yes "$VERCEL_CLI" link --yes --project "$VERCEL_PROJECT" --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN"
+          args=(deploy --prod --yes --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN")
+          if [ -n "$PRODUCTION_HOST" ]; then args+=(--skip-domain); fi
+          url=$(npx --yes "$VERCEL_CLI" "${args[@]}")
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "deployed $VERCEL_PROJECT (production) at $url from $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Smoke the deployment before the domain moves
+        if: steps.configured.outputs.run == 'true'
+        env:
+          BASE: ${{ steps.deploy.outputs.url }}
+        run: .github/scripts/deploy-smoke.sh
+
+      - name: Record the deployment the domain serves now
+        id: prev
+        if: steps.configured.outputs.run == 'true' && env.PRODUCTION_HOST != ''
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -o pipefail
+          prev=$(npx --yes "$VERCEL_CLI" api "/v13/deployments/$PRODUCTION_HOST" --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN" | jq -er .url)
+          echo "url=https://$prev" >> "$GITHUB_OUTPUT"
+          echo "$PRODUCTION_HOST served https://$prev before this run" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Move the domain to this deployment
+        if: steps.configured.outputs.run == 'true' && env.PRODUCTION_HOST != ''
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          set -o pipefail
+          id_of() { npx --yes "$VERCEL_CLI" api "/v13/deployments/$1" --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN" | jq -er .id; }
+          want=$(id_of "${URL#https://}")
+          npx --yes "$VERCEL_CLI" promote "$URL" --yes --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN"
+          got=$(id_of "$PRODUCTION_HOST")
+          if [ "$got" != "$want" ]; then
+            echo "::error::$PRODUCTION_HOST serves $got, not this run's deployment $want."
+            exit 1
+          fi
+
+      - name: Smoke the domain, and move it back if broken
+        if: steps.configured.outputs.run == 'true' && env.PRODUCTION_HOST != ''
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          PREV: ${{ steps.prev.outputs.url }}
+        run: |
+          if BASE="https://$PRODUCTION_HOST" .github/scripts/deploy-smoke.sh; then exit 0; fi
+          echo "::error::the smoke failed on $PRODUCTION_HOST; moving it back to $PREV"
+          npx --yes "$VERCEL_CLI" promote "$PREV" --yes --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN"
+          exit 1

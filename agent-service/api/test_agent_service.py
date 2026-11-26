@@ -10467,10 +10467,10 @@ def test_admin_grant_refuses_a_near_miss_or_missing_bearer_and_accepts_the_exact
 def test_a_run_whose_attempt_clocks_keep_being_reimbursed_still_ends_at_the_hard_limit(monkeypatch):
     """The attempt and task clocks pause for every answered approval card, so a run could go on for as long
     as cards kept opening. The hard limit never pauses. Each fake attempt here banks 1000 s of answered card waits and
-    runs out its own clock; best-of 3 would run all three, but the 0.3 s hard limit is gone after two, so the third
-    never starts, the task fails naming the hard limit, and each attempt was handed the time left on it."""
-    import asyncio
-
+    runs out its own clock; best-of 3 would run all three, but the 300 s hard limit is gone after two, so the third
+    never starts, the task fails naming the hard limit, and each attempt was handed the time left on it.
+    The run's deadlines read app._monotonic, driven here by a fake clock each attempt advances by 200 s, so no
+    real time passes and runner speed can't change how many attempts fit."""
     import acp_client
     monkeypatch.setattr(app, "HERMES_BIN", "/bin/true")
     monkeypatch.setattr(app, "AGENT_ACP", True)
@@ -10479,14 +10479,16 @@ def test_a_run_whose_attempt_clocks_keep_being_reimbursed_still_ends_at_the_hard
     monkeypatch.setattr(app, "MODEL_PROXY_URL", "http://gateway.invalid")
     monkeypatch.setattr(app, "PROXY_ADMIN_KEY", "unit-key")
     monkeypatch.setattr(app, "BEST_OF", 3)
-    monkeypatch.setattr(app, "TASK_HARD_CAP_SECS", 0.3)
+    monkeypatch.setattr(app, "TASK_HARD_CAP_SECS", 300)
     monkeypatch.setattr(app, "_gateway_grant", lambda *a, **kw: None)
     monkeypatch.setattr(app, "_gateway_revoke", lambda _n, _s=None: (1, 100, True, False))
+    clock = [1000.0]
+    monkeypatch.setattr(app, "_monotonic", lambda: clock[0])
     handed: list[float] = []
 
     async def _fake_acp_run(work, attempt_home, prompt, nonce, timeout_secs, buf, task, **kw):
         handed.append(kw["hard_timeout_secs"])
-        await asyncio.sleep(0.2)
+        clock[0] += 200.0                      # this attempt took 200 s of the hard limit
         task._confirm_wait_secs = 1000.0      # as if a person had answered cards for 1000 s
         raise TimeoutError                     # this attempt's own clock ran out
 
@@ -10496,6 +10498,6 @@ def test_a_run_whose_attempt_clocks_keep_being_reimbursed_still_ends_at_the_hard
     app._run(t)
 
     assert len(handed) == 2, f"the third attempt must never start past the hard limit (ran {len(handed)})"
-    assert handed[0] <= 0.3 and handed[1] <= 0.1, f"each attempt gets only what is left of the hard limit: {handed}"
+    assert handed == [300.0, 100.0], f"each attempt gets only what is left of the hard limit: {handed}"
     assert t.state == app.State.FAILED
     assert "hard time limit" in f"{t.error} {t.summary} {t.unrun_detail}", (t.error, t.summary)

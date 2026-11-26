@@ -170,8 +170,10 @@ def test_status_and_every_event_of_a_task_on_another_machine_are_served_here(sha
 
     def finish():  # the owner writes the rest while this machine is streaming
         time.sleep(0.3)
-        s.append_events([("far", 2, "done", {"state": "COMPLETED", "result": "4"})])
+        # In the order the owner does (app.py _run: _persist, then the done frame), so a reader that sees
+        # done also sees the final state. The other order raced the status read below on a slow runner.
         s.update("far", state="COMPLETED", result="4")
+        s.append_events([("far", 2, "done", {"state": "COMPLETED", "result": "4"})])
 
     threading.Thread(target=finish).start()
     frames = _read_sse(client.get("/run/far/events").text)

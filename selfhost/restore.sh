@@ -21,11 +21,25 @@ src=$(cd "$src" && pwd)
 cd "${ALPHA_COMPOSE_DIR:-$here}"
 
 fail() { echo "restore: $*" >&2; exit 1; }
-[ -s "$src/db.sql.gz" ] || fail "no db.sql.gz in $src"
-db=$(docker compose ps -q db)
-[ -n "$db" ] || fail "the db service is not running here ($(pwd)); start the stack first"
-project=$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project" }}' "$db")
-helper=$(docker inspect -f '{{ .Config.Image }}' "$db")
+# DATABASE_URL naming a host other than the bundled `db` means the data lives in a Postgres this stack
+# does not run: its database is that server's to restore, and only the volumes are restored here.
+dburl=${DATABASE_URL:-$(sed -n 's/^[[:space:]]*DATABASE_URL=//p' .env 2>/dev/null | tail -n 1)}
+dburl=${dburl#[\"\']}; dburl=${dburl%[\"\']}
+dbhost=$(printf '%s' "$dburl" | sed -E 's#^[a-z]+://([^@/]*@)?([^:/?]*).*#\2#')
+external=
+if [ -n "$dburl" ] && [ "$dbhost" != db ]; then external=$dbhost; fi
+if [ -n "$external" ]; then
+	web=$(docker compose ps -q web)
+	[ -n "$web" ] || fail "the web service is not running here ($(pwd)); start the stack first"
+	project=$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project" }}' "$web")
+	helper=${POSTGRES_IMAGE:-postgres:17-alpine}
+else
+	[ -s "$src/db.sql.gz" ] || fail "no db.sql.gz in $src"
+	db=$(docker compose ps -q db)
+	[ -n "$db" ] || fail "the db service is not running here ($(pwd)); start the stack first"
+	project=$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project" }}' "$db")
+	helper=$(docker inspect -f '{{ .Config.Image }}' "$db")
+fi
 
 vols=()
 for vol in files objects agent-secrets agent-data; do
@@ -45,9 +59,13 @@ trap 'echo "restore: failed; the stopped services stay stopped. Fix the cause an
 [ "${#writers[@]}" = 0 ] || docker stop -t 30 "${writers[@]}" >/dev/null
 
 started=$(date +%s)
-gzip -dc "$src/db.sql.gz" | docker compose exec -T -e PGOPTIONS=--client-min-messages=warning db \
-	psql -U alpha -d alpha --single-transaction -v ON_ERROR_STOP=1 -q >/dev/null
-echo "ok   database <- $src/db.sql.gz"
+if [ -n "$external" ]; then
+	echo "skip database: DATABASE_URL points at a Postgres outside this stack ($external); restore it there, for example with gzip -dc db.sql.gz | psql against it"
+else
+	gzip -dc "$src/db.sql.gz" | docker compose exec -T -e PGOPTIONS=--client-min-messages=warning db \
+		psql -U alpha -d alpha --single-transaction -v ON_ERROR_STOP=1 -q >/dev/null
+	echo "ok   database <- $src/db.sql.gz"
+fi
 
 for vol in "${vols[@]}"; do
 	docker run --rm --entrypoint sh -v "${project}_$vol:/volume" -v "$src:/backup:ro" "$helper" \

@@ -573,6 +573,28 @@ docker compose --profile local up -d --build --wait
 Anything written after that backup is lost. The image-only stack in `../deploy/` upgrades the same way;
 its README has the commands.
 
+## Use a service you already run
+
+Every service the stack bundles or calls can be one you already run, set in `.env` with no change to
+`compose.yaml`:
+
+| Service | `.env` keys | Without them |
+| --- | --- | --- |
+| The model | `OPENAI_BASE_URL`, `OPENAI_API_KEY` | `llama` with the `local` profile (block A of `.env.example`) |
+| Postgres | `DATABASE_URL`, and `BUNDLED_DB=0` so the bundled one does not start | `db`, Postgres 17 in the `db` volume |
+| File storage | `CUSTODIAL_STORAGE_BACKEND=s3` and `CUSTODIAL_S3_*` (block S) | the `files` volume |
+| Search reranker | `RERANK_ENDPOINT_URL` | none, or `rerank` with the `rerank` profile |
+| Safety screen | `GUARD_SHADOW_URL` | none, or `shieldstral` with the `safety` profile |
+| Picture scanner | `CSAM_SCAN_PROVIDER`, `CSAM_SCAN_BASE_URL`, `CSAM_SCAN_TOKEN` | none |
+| Moderation (Coop) | `COOP_URL`, `COOP_API_KEY` | none |
+| Agent mode | `AGENT_SERVICE_URL`, `AGENT_SERVICE_TOKEN` | none, or `agent` with the `agent` profile |
+| Google connector | `GOOGLE_CONNECTOR_URL` | none, or `google` with the `google` profile |
+
+With your own Postgres, the app creates its tables there on first start, as it does in the bundled one.
+`DATABASE_URL` takes the form `postgres://<user>:<password>@<host>:5432/<database>`; the user needs to
+create tables in that database. `backup.sh` and `restore.sh` then skip the database, saying so, and
+still copy and restore the file volumes: back that database up on its own server.
+
 ## Every service a request passes through
 
 With the files here unchanged and the local profile running, these are all the network services

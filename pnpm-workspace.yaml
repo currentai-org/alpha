@@ -64,7 +64,7 @@ overrides:
   devalue: ^5.9.4
   # payload's minimatch 3 needs brace-expansion 1; only web's 5.x line is lifted.
   brace-expansion@^5: ^5.0.12
-  fast-uri: ^3.1.8
+  fast-uri: ^3.1.9
   qs: ^6.16.0
   source-map-js: ^1.2.2
   # sprintf-js has no fixed release (GHSA-hp3w-g68c-fv3c). Only mammoth's CLI (bin/mammoth)
@@ -86,10 +86,12 @@ overrides:
   proxy-addr: ^2.0.8
   '@modelcontextprotocol/sdk': ^1.31.0
   # Quadratic-time parse advisories in lint tooling: knip's smol-toml and
-  # svelte-eslint-parser's postcss-selector-parser 7. @tailwindcss/typography pins
-  # postcss-selector-parser 6.0.10 exactly and 6.x has no fixed release, so that copy is left.
+  # svelte-eslint-parser's postcss-selector-parser 7. @tailwindcss/typography (0.5.20, its latest)
+  # pins postcss-selector-parser 6.0.10 exactly; 6.1.5 fixes it, so only copies below that are raised,
+  # and the override can go once typography drops the pin.
   smol-toml: ^1.9.0
   postcss-selector-parser@^7: ^7.1.6
+  postcss-selector-parser@<6.1.5: ^6.1.5
   # Security advisory overrides. dompurify 3.4.17 and undici 7.30.1 are
   # raised on the lines above. These sit under payload's @modelcontextprotocol/sdk (zod, express >
   # body-parser), the alpha-ds vitest peer (happy-dom, test-only) and vite-node ^6, which locks vite

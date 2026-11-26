@@ -4,6 +4,8 @@
 # build-on-host.sh. Usage: run-contract-on-host.sh <instance-id> [aws profile]
 # An empty profile ('') uses the ambient credentials, as agent-service-e2b-contract.yml does after assuming its
 # OIDC role. Exits with pytest's exit code: 0 when it passed, 1 when a test failed, non-zero for anything else.
+# Exits 3 when SSM marks the command Undeliverable (response code -1, no output, about two seconds): the host's
+# SSM agent is offline, so the suite never ran. Without this it reads like a suite that failed at once.
 # The fixture prefixes every principal with the run's id and kills the sandboxes it made (_FreshKeys.close).
 set -euo pipefail
 instance=$1 profile=${2-${AWS_PROFILE:?pass the aws profile of the account holding the E2B hosts, or '' for ambient credentials}}
@@ -42,5 +44,10 @@ echo "ssm command $cmd"
 until status=$(aws_ ssm get-command-invocation --command-id "$cmd" --instance-id "$instance" \
   --query Status --output text 2>/dev/null) && [ "$status" != InProgress ] && [ "$status" != Pending ]; do sleep 15; done
 aws_ ssm get-command-invocation --command-id "$cmd" --instance-id "$instance" \
-  --query '[StandardOutputContent,StandardErrorContent]' --output text
+  --query '[StatusDetails,ResponseCode,StandardOutputContent,StandardErrorContent]' --output text
+details=$(aws_ ssm get-command-invocation --command-id "$cmd" --instance-id "$instance" --query StatusDetails --output text)
+if [ "$details" = Undeliverable ]; then
+  echo "SSM could not deliver the command: the SSM agent on $instance is offline, so the suite did not run" >&2
+  exit 3
+fi
 [ "$status" = Success ]

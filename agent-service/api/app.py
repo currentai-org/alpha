@@ -5949,6 +5949,12 @@ def _salvage_structural_failure(
     return True, ""
 
 
+def _monotonic() -> float:
+    """The clock a run's deadlines read: its start, the attempt clock carved from it and the hard limit. One
+    seam, so a test can drive the hard limit from a fake clock instead of racing real time."""
+    return time.monotonic()
+
+
 def _backoff_before_retry(task: Task, last_structural: str, attempts: int, best_of: int) -> None:
     """Wait out an upstream failure before the next attempt, but never past the task's own deadline."""
     if attempts >= best_of or task._canceled:
@@ -5956,9 +5962,9 @@ def _backoff_before_retry(task: Task, last_structural: str, attempts: int, best_
     delay = _upstream_backoff_secs(last_structural, attempts, UPSTREAM_RETRY_BASE_SECS)
     if delay <= 0:
         return
-    remaining, stop = _remaining_timeout(_RUN_START[task.id], time.monotonic(),
+    remaining, stop = _remaining_timeout(_RUN_START[task.id], _monotonic(),
                                          task._wall_clock, best_of)
-    remaining = min(remaining, task._hard_deadline - time.monotonic())   # nor past the hard limit
+    remaining = min(remaining, task._hard_deadline - _monotonic())   # nor past the hard limit
     if not stop and remaining > 0:   # no time left → let the next loop iteration's own check break cleanly
         time.sleep(min(delay, remaining))   # rather than oversleeping past the deadline here
 
@@ -6069,7 +6075,7 @@ def _execute_attempt(
                 confirm_timeout_secs=CONFIRM_TIMEOUT_SECS,
                 # the attempt clock pauses for a card; this one does not, and ends the attempt even
                 # mid-wait once the task's hard limit passes.
-                hard_timeout_secs=max(0.0, task._hard_deadline - time.monotonic()),
+                hard_timeout_secs=max(0.0, task._hard_deadline - _monotonic()),
                 approval_mode=task._approval_mode,
                 auto_reviewer=(_make_auto_reviewer(task.prompt, review_work, _gateway_post(nonce),
                                                    files_at_start=_start_listing(review_work))
@@ -6135,7 +6141,7 @@ def _run(task: Task) -> None:
     # orphan-reaper startup race — setdefault so a caller that drives _run() directly (tests; any future
     # in-process caller) still gets one, since _run's own wall-clock math below reads _RUN_START[task.id]
     # unconditionally.
-    _RUN_START.setdefault(task.id, time.monotonic())
+    _RUN_START.setdefault(task.id, _monotonic())
     # fixed here, before any confirmation wait has moved _RUN_START, and never moved after.
     task._hard_deadline = _RUN_START[task.id] + TASK_HARD_CAP_SECS
     # session_id present -> reuse (or create) a workdir keyed on (task.user, session_id) that
@@ -6474,11 +6480,11 @@ def _run(task: Task) -> None:
             Path(attempt_home).mkdir(parents=True, exist_ok=True)
             _write_hermes_home_config(attempt_home, global_cfg)
             # Per-attempt wall-clock carved from the shared task deadline (S2): never run N×WALL_CLOCK.
-            timeout_secs, stop = _remaining_timeout(_RUN_START[task.id], time.monotonic(),
+            timeout_secs, stop = _remaining_timeout(_RUN_START[task.id], _monotonic(),
                                                      task._wall_clock, best_of)
             # and never past the task's hard deadline, which no approval wait pauses. Checked first, so
             # when both have run out the error names the limit that actually holds.
-            hard_left = task._hard_deadline - time.monotonic()
+            hard_left = task._hard_deadline - _monotonic()
             if hard_left <= 0:
                 last_structural = _hard_cap_text()
                 _log_event("run.hard_cap", id=task.id, attempt=attempts, cap_s=TASK_HARD_CAP_SECS)
@@ -7568,7 +7574,7 @@ def run(req: RunRequest, user: str = Depends(require_user), _account: None = Dep
         task._approval_mode = req.approval_mode
         task._attachments = attachments
         task.model = task_model
-        _RUN_START[task.id] = time.monotonic()  # before _store_task, so the task is never
+        _RUN_START[task.id] = _monotonic()  # before _store_task, so the task is never
         # visible in TASKS without a matching _RUN_START entry — closes the orphan-reaper startup race.
         _store_task(task)
         _metric_inc("agent_runs_submitted_total")

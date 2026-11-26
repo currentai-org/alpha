@@ -4,9 +4,12 @@
 #   reads no secret: the app, Postgres and a mock OpenAI-compatible model (aimock, answering from
 #   web/e2e/mock-model/fixtures.json) all run on the runner, and the @mock-model scenarios drive them
 #   (web/scripts/mock-model-e2e.sh). The self-host smoke (selfhost.yml) runs beside it.
-# - `provider-contract` runs the @provider-contract scenarios against real models, on the batch's own
-#   Vercel preview. It runs only in the merge queue, in the `merge-queue-e2e` environment, which only
-#   the queue's own branches can deploy to, so a pull request's code never runs with a model key.
+# - `provider-contract` runs the @provider-contract scenarios against real models, on a Vercel preview of
+#   the queue batch that the job deploys itself: the Vercel project is not connected to this repository,
+#   so nothing else builds one. It runs only for a queue batch (a merge_group event, or a push to one of
+#   Mergify's `mergify/merge-queue/` branches), never for Dependabot, and never in a fork of this repository.
+#   It runs in the `merge-queue-e2e` environment, which alone holds VERCEL_TOKEN and SCENARIO_ENV, so a pull
+#   request's code never runs with a model key or the project's token.
 #
 # With no secrets set (a fork, or before the environment is configured) `provider-contract` says so in
 # a notice and passes.
@@ -15,6 +18,8 @@ name: E2E
 on:
   pull_request:
   merge_group:
+  push:
+    branches: ["mergify/merge-queue/**"]
 
 permissions: {}
 
@@ -79,23 +84,33 @@ jobs:
 
   provider-contract:
     name: provider-contract scenarios against real models
-    if: github.event_name == 'merge_group'
+    if: >-
+      (github.event_name == 'merge_group' ||
+        (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/mergify/merge-queue/'))) &&
+      !github.event.repository.fork &&
+      github.actor != 'dependabot[bot]' &&
+      github.triggering_actor != 'dependabot[bot]' &&
+      !startsWith(github.event.merge_group.head_ref || github.ref_name, 'dependabot/')
     runs-on: ubuntu-latest
     timeout-minutes: 60
     environment: merge-queue-e2e
     permissions:
       contents: read
-      deployments: read # the Vercel git integration reports each preview as a deployment on the commit
+      pull-requests: read # to read who opened each pull request in the batch
     env:
-      HEAD_SHA: ${{ github.event.merge_group.head_sha }}
+      HEAD_SHA: ${{ github.event.merge_group.head_sha || github.sha }}
+      VERCEL_SCOPE: ${{ vars.VERCEL_SCOPE }}
+      VERCEL_PROJECT: ${{ vars.VERCEL_PROJECT }}
+      VERCEL_CLI: vercel@65.14.0
     steps:
       - name: Are the secrets here?
         id: gate
         env:
           SCENARIO_ENV: ${{ secrets.SCENARIO_ENV }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
-          if [ -z "$SCENARIO_ENV" ]; then
-            echo "::notice title=e2e skipped::the SCENARIO_ENV secret is not set in this environment, so the provider-contract scenarios did not run."
+          if [ -z "$SCENARIO_ENV" ] || [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_SCOPE" ] || [ -z "$VERCEL_PROJECT" ]; then
+            echo "::notice title=e2e skipped::SCENARIO_ENV or VERCEL_TOKEN (merge-queue-e2e environment), VERCEL_SCOPE or VERCEL_PROJECT is not set, so the provider-contract scenarios did not run."
             echo "run=false" >> "$GITHUB_OUTPUT"
           else
             echo "run=true" >> "$GITHUB_OUTPUT"
@@ -107,43 +122,69 @@ jobs:
           ref: ${{ env.HEAD_SHA }}
           persist-credentials: false
 
-      - name: Wait for the commit's Vercel preview
-        id: preview
+      # A Vercel preview build gets every Preview variable on the project, so only code from people trusted
+      # with this repository reaches one: every pull request in the batch must be opened by an account with
+      # write, maintain or admin permission on this repository itself. Membership of the owning organisation
+      # is not enough, since an organisation member may have no access to this repository. Any other batch
+      # deploys nothing and is covered by the mock-model job alone. A commit's author is not checked, since
+      # anyone can write any name on a commit; the pull request's opener is the account GitHub saw.
+      - name: Is every pull request in the batch from someone with write access
+        id: trusted
         if: steps.gate.outputs.run == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
+          BASE: ${{ github.event.repository.default_branch }}
         run: |
-          deadline=$(( $(date +%s) + 1200 ))
-          while [ "$(date +%s)" -lt "$deadline" ]; do
-            for id in $(gh api "repos/$REPO/deployments?sha=$HEAD_SHA&per_page=20" --jq '.[] | select(.environment | test("^Preview")) | .id'); do
-              url=$(gh api "repos/$REPO/deployments/$id/statuses" --jq '[.[] | select(.state == "success")][0].environment_url // empty')
-              if [ -n "$url" ]; then
-                echo "base_url=$url" >> "$GITHUB_OUTPUT"
-                echo "preview: $url"
-                exit 0
-              fi
-            done
-            sleep 20
+          set -euo pipefail
+          prs=$(gh api "repos/$REPO/compare/$BASE...$HEAD_SHA" --paginate --jq '.commits[].sha' | while read -r sha; do
+            gh api "repos/$REPO/commits/$sha/pulls" --jq '.[] | select(.state == "open") | .number'
+            sleep 1
+          done | sort -u)
+          if [ -z "$prs" ]; then
+            echo "::notice title=no preview::no open pull request found in this batch, so no preview was deployed."
+            echo "ok=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          ok=true
+          for pr in $prs; do
+            login=$(gh api "repos/$REPO/pulls/$pr" --jq .user.login)
+            sleep 1
+            perm=$(gh api "repos/$REPO/collaborators/$login/permission" --jq .permission 2>/dev/null || echo none)
+            echo "#$pr: $login ($perm)"
+            case "$perm" in admin | maintain | write) ;; *) ok=false ;; esac
+            sleep 1
           done
-          echo "::error::no successful Vercel preview deployment for $HEAD_SHA within 20 minutes"
-          exit 1
+          if [ "$ok" != true ]; then
+            echo "::notice title=no preview::a pull request in this batch was not opened by someone with write access to this repository, so no preview was deployed and the provider-contract scenarios did not run."
+          fi
+          echo "ok=$ok" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy this batch's preview
+        id: preview
+        if: steps.gate.outputs.run == 'true' && steps.trusted.outputs.ok == 'true'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          npx --yes "$VERCEL_CLI" link --yes --project "$VERCEL_PROJECT" --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN"
+          url=$(npx --yes "$VERCEL_CLI" deploy --yes --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN")
+          echo "base_url=$url" >> "$GITHUB_OUTPUT"
+          echo "preview: $url (from $HEAD_SHA)"
 
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
-        if: steps.gate.outputs.run == 'true'
+        if: steps.gate.outputs.run == 'true' && steps.trusted.outputs.ok == 'true'
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
-        if: steps.gate.outputs.run == 'true'
+        if: steps.gate.outputs.run == 'true' && steps.trusted.outputs.ok == 'true'
         with:
           node-version-file: .nvmrc
 
       - name: Install
-        if: steps.gate.outputs.run == 'true'
+        if: steps.gate.outputs.run == 'true' && steps.trusted.outputs.ok == 'true'
         run: |
           pnpm install --frozen-lockfile
           cd web && pnpm exec playwright install --with-deps chromium
 
       - name: Provider-contract scenarios
-        if: steps.gate.outputs.run == 'true'
+        if: steps.gate.outputs.run == 'true' && steps.trusted.outputs.ok == 'true'
         working-directory: web
         env:
           # The contents of a dotenv file: one KEY=value per line, with the keys web/.env.example names.
@@ -157,7 +198,7 @@ jobs:
           pnpm test:e2e:scenarios --grep @provider-contract
 
       - name: Upload the report
-        if: failure() && steps.gate.outputs.run == 'true'
+        if: failure() && steps.gate.outputs.run == 'true' && steps.trusted.outputs.ok == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: playwright-report
