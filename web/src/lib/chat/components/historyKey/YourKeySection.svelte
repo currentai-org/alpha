@@ -7,6 +7,8 @@
   so the section needs the key unlocked here first; a locked browser is offered the unlock prompt.
 -->
 <script lang="ts">
+	import { brandOf } from '$lib/chat/brand';
+	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import { Button, Dialog, Stack, Surface } from '@aipotluck/alpha-ds';
 	import RiKey2Line from '~icons/ri/key-2-line';
@@ -158,7 +160,7 @@
 			<div class="flex flex-col gap-3 px-3 py-3" data-testid="history-key-off">
 				<p class="type-caption text-fg-2">
 					Your chat history isn't encrypted. Turn it on and your chats are sealed to a key only you
-					hold, so AI Potluck can't read them. You'll set up a recovery key or a passkey first.
+					hold, so {brandOf(page.data).product} can't read them. You'll set up a recovery key or a passkey first.
 					Attachments and uploaded files are not covered by your own key.
 				</p>
 				<div>
@@ -193,7 +195,7 @@
 				</p>
 			{/if}
 			<p class="border-b border-line-surface px-3 py-3 type-caption text-fg-3">
-				These open your chat history. AI Potluck can't open it without one of them. If you lose all of
+				These open your chat history. {brandOf(page.data).product} can't open it without one of them. If you lose all of
 				them, your history is lost.
 			</p>
 			{#each ways as r (wayId(r))}

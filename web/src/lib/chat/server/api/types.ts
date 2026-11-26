@@ -96,6 +96,8 @@ export interface FeatureFlags {
 	// The `mcp-servers` flag (mcp/servers.ts) for this request's account. Drives the settings
 	// nav "Connectors" tab; the page 404s on the same read.
 	mcpServersEnabled: boolean;
+	// The `google-connector` flag (connectors/google.ts): Connect Google, which also opens the Connectors tab.
+	googleConnectorEnabled: boolean;
 	// Auto model routing (autoRoutingGate.ts): deployment-wide. Off, the composer's model menu offers
 	// no Auto and a new chat starts on the model chosen in settings.
 	autoRoutingEnabled: boolean;

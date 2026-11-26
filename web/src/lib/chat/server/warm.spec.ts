@@ -6,6 +6,22 @@ import type { OutcomeAgg } from "./turnBurnRate";
 const cfg: Record<string, string> = {};
 vi.mock("$lib/chat/server/config", () => ({ config: cfg }));
 
+// The flags leg: pass through to the real module unless a test sets these.
+const flagsOverride = vi.hoisted(() => ({
+	configured: undefined as boolean | undefined,
+	refresh: undefined as (() => Promise<void>) | undefined,
+	state: undefined as { polledOk: boolean; lastRefreshAt: number; size: number } | undefined,
+}));
+vi.mock("$lib/chat/server/flags", async (importOriginal) => {
+	const real = await importOriginal<typeof import("$lib/chat/server/flags")>();
+	return {
+		...real,
+		postHogConfigured: () => flagsOverride.configured ?? real.postHogConfigured(),
+		refreshFlags: () => (flagsOverride.refresh ? flagsOverride.refresh() : real.refreshFlags()),
+		flagsDebugState: () => flagsOverride.state ?? real.flagsDebugState(),
+	};
+});
+
 // warmModel now reports its (honest) outcome to alerting.recordProbe, which reads/writes the
 // alert_state row. Mock it so the warm tests stay hermetic — and so we can assert WHAT gets reported,
 // which is the whole point of the model leg carrying an alert.
@@ -1471,5 +1487,45 @@ describe("warmAgentTokenExpiry — the agent token's exp, read before agent mode
 		const fresh = await import("./warm");
 		await fresh.warmAgentTokenExpiry();
 		expect(recordProbeMock).not.toHaveBeenCalledWith("agent:token-expiry", expect.anything(), expect.anything());
+	});
+});
+
+describe("warmProcess — each process logs its own flag refresh", () => {
+	afterEach(() => {
+		flagsOverride.configured = undefined;
+		flagsOverride.refresh = undefined;
+		flagsOverride.state = undefined;
+	});
+
+	const flagLines = () =>
+		[...loggerInfoMock.mock.calls, ...loggerWarnMock.mock.calls].filter(
+			(c) => (c[0] as { leg?: string })?.leg === "flags"
+		);
+
+	it("logs one flags line per tick with this process's pid when the refresh lands", async () => {
+		flagsOverride.configured = true;
+		flagsOverride.refresh = async () => {};
+		flagsOverride.state = { polledOk: true, lastRefreshAt: Date.now(), size: 7 };
+		const { warmProcess } = await import("./warm");
+		await warmProcess();
+		const lines = flagLines();
+		expect(lines).toHaveLength(1);
+		expect(lines[0][0]).toMatchObject({ leg: "flags", ok: true, pid: process.pid, flagCount: 7 });
+	});
+
+	it("reports ok=false when the poll failed and the snapshot is stale", async () => {
+		flagsOverride.configured = true;
+		flagsOverride.refresh = async () => {};
+		flagsOverride.state = { polledOk: true, lastRefreshAt: Date.now() - 10 * 60_000, size: 7 };
+		const { warmProcess } = await import("./warm");
+		await warmProcess();
+		expect(flagLines()[0][0]).toMatchObject({ leg: "flags", ok: false });
+	});
+
+	it("logs nothing with PostHog unset, where flags read the self-host defaults", async () => {
+		flagsOverride.configured = false;
+		const { warmProcess } = await import("./warm");
+		await warmProcess();
+		expect(flagLines()).toHaveLength(0);
 	});
 });

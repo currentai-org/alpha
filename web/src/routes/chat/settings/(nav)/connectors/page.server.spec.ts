@@ -1,11 +1,12 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Settings → Connectors exists only where the `mcp-servers` flag is on for the account, the
 // same read the turn makes, and lists what a turn would offer: each server, its tools, which ones can
 // change something, and the person's saved choice for each.
-const flag = vi.hoisted(() => ({ on: false }));
+const flag = vi.hoisted(() => ({ on: false, google: false }));
 vi.mock("$lib/chat/server/flags", () => ({
-	flagEnabledOr: (key: string, fallback: () => boolean) => (key === "mcp-servers" ? flag.on : fallback()),
+	flagEnabledOr: (key: string, fallback: () => boolean) =>
+		key === "mcp-servers" ? flag.on : key === "google-connector" ? flag.google : fallback(),
 	ensureFlagsPolled: async () => {},
 }));
 vi.mock("$lib/chat/server/logger", () => ({
@@ -37,6 +38,21 @@ vi.mock("$lib/chat/server/db/userMcpServers", () => ({
 	},
 }));
 vi.mock("$lib/chat/server/config", () => ({ config: { BETTER_AUTH_SECRET: "page-test-secret" } }));
+
+// A person's Google connection. The store is faked; the turn's token exchange is
+// connectors/google.spec.ts's, so the server it would add is left out here.
+const google = vi.hoisted(() => ({ rows: new Map<string, { email: string }>(), deleted: [] as string[] }));
+vi.mock("$lib/chat/server/db/userGoogleConnections", () => ({
+	getUserGoogleConnection: async (userId: string) => google.rows.get(userId) ?? null,
+	deleteUserGoogleConnection: async (userId: string) => {
+		google.deleted.push(userId);
+		return google.rows.delete(userId);
+	},
+}));
+vi.mock("$lib/chat/server/connectors/google", async (importOriginal) => ({
+	...(await importOriginal<typeof import("$lib/chat/server/connectors/google")>()),
+	googleServerFor: async () => null,
+}));
 
 const { load, actions } = await import("./+page.server");
 const { resetServerToolsCache } = await import("$lib/chat/server/mcp/serverTools");
@@ -141,5 +157,59 @@ describe("adding and removing a server of your own", () => {
 		expect(data.signedIn).toBe(true);
 		expect(data.servers.map((s) => [s.name, s.ownId])).toEqual([["mine", "r1"]]);
 		expect(data.servers[0].tools.length).toBe(3);
+	});
+});
+
+describe("Connect Google on Settings → Connectors", () => {
+	beforeEach(() => {
+		flag.on = false;
+		flag.google = false;
+		google.rows.clear();
+		google.deleted = [];
+	});
+
+	it("opens with only google-connector on, without listing or offering the general servers", async () => {
+		flag.google = true;
+		const data = (await load(event())) as { mcpServers: boolean; servers: unknown[]; google: unknown };
+		expect(data.mcpServers).toBe(false);
+		expect(data.servers).toEqual([]);
+		// The operator has not set the client up in this test's config, so the page says it is unavailable.
+		expect(data.google).toEqual({ available: false, email: null });
+	});
+
+	it("shows the connected account's Google email, and only theirs", async () => {
+		flag.google = true;
+		google.rows.set("acct-2", { email: "someone-else@example.org" });
+		const signedIn = { ...event(), locals: SIGNED_IN } as unknown as LoadEvent;
+		expect(((await load(signedIn)) as { google: { email: string | null } }).google.email).toBeNull();
+		google.rows.set("acct-1", { email: "me@example.org" });
+		expect(((await load(signedIn)) as { google: { email: string | null } }).google.email).toBe("me@example.org");
+	});
+
+	it("says nothing about Google while its flag is off (null, not a disconnected state)", async () => {
+		flag.on = true;
+		expect(((await load(event())) as { google: unknown }).google).toBeNull();
+	});
+
+	it("Disconnect removes the signed-in account's connection and no other, and refuses a guest", async () => {
+		flag.google = true;
+		google.rows.set("acct-1", { email: "me@example.org" });
+		google.rows.set("acct-2", { email: "someone-else@example.org" });
+		expect(await actions.disconnectGoogle(post({ sessionId: "guest" }, {}))).toMatchObject({ status: 401 });
+		expect(google.deleted).toEqual([]);
+		expect(await actions.disconnectGoogle(post(SIGNED_IN, {}))).toEqual({ googleDisconnected: true });
+		expect(google.deleted).toEqual(["acct-1"]);
+		expect([...google.rows.keys()]).toEqual(["acct-2"]);
+	});
+
+	it("Disconnect is a 404 while the flag is off", async () => {
+		await expect(actions.disconnectGoogle(post(SIGNED_IN, {}))).rejects.toMatchObject({ status: 404 });
+	});
+
+	it("keeps the name google for Connect Google: a server of your own cannot take it", async () => {
+		flag.on = true;
+		const res = await actions.add(post(SIGNED_IN, { name: "google", url: "https://notes.example.com/mcp" }));
+		expect(res).toMatchObject({ status: 400 });
+		expect(store.created).toEqual([]);
 	});
 });

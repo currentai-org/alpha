@@ -10,6 +10,8 @@
   server then seals the account's existing chats to it. Nothing is deleted.
 -->
 <script lang="ts">
+	import { brandOf } from '$lib/chat/brand';
+	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import { Button, Dialog, Inline, Stack } from '@aipotluck/alpha-ds';
 	import RiKey2Line from '~icons/ri/key-2-line';
@@ -118,13 +120,13 @@
 					/>
 				{:else}
 					<Dialog.Description>
-						Your chats get a key that only you hold, kept in this browser. AI Potluck stores them but
+						Your chats get a key that only you hold, kept in this browser. {brandOf(page.data).product} stores them but
 						can't read them. The chats you already have are then sealed to the same key, and none are
 						deleted. Your own key does not cover attachments or uploaded files: those stay on the
 						server-held key for now.
 					</Dialog.Description>
 					<p class="type-body text-fg-1" data-testid="history-key-loss-warning">
-						If you lose every way in, your chat history is lost for good. AI Potluck can't recover it.
+						If you lose every way in, your chat history is lost for good. {brandOf(page.data).product} can't recover it.
 					</p>
 					{#if method}
 						<p class="flex items-center gap-2 type-body text-fg-1" data-testid="history-key-method-ready">

@@ -18,20 +18,40 @@ import {
 	type UserMcpServerRow,
 } from "$lib/chat/server/db/userMcpServers";
 import { resolveFaultInjection } from "$lib/chat/server/textGeneration/faultInjection";
+import {
+	forgetAccessToken,
+	GOOGLE_SERVER_NAME,
+	googleConnectApp,
+	googleConnectorEnabled,
+	googleServerFor,
+} from "$lib/chat/server/connectors/google";
+import { deleteUserGoogleConnection, getUserGoogleConnection } from "$lib/chat/server/db/userGoogleConnections";
 
 const accountOf = (locals: App.Locals): string | undefined => locals.user?._id?.toString();
 
 export const load: PageServerLoad = async ({ locals, request }) => {
-	if (!mcpServersEnabled()) throw error(404, "Not found");
+	// Either flag opens the page: Connect Google is offered without the general MCP servers.
+	const mcpServers = mcpServersEnabled();
+	const googleOn = googleConnectorEnabled();
+	if (!mcpServers && !googleOn) throw error(404, "Not found");
 	const faultInjection = await resolveFaultInjection(request);
 	const accountId = accountOf(locals);
-	const ownRows: UserMcpServerRow[] = accountId ? await listUserMcpServers(accountId) : [];
+	const ownRows: UserMcpServerRow[] = accountId && mcpServers ? await listUserMcpServers(accountId) : [];
 	// The e2e stub is listed when the request carries its fault, so a spec sees what its turn will use.
-	const servers = serversForRequest(faultInjection, userServerConfigs(ownRows, { faultInjection }));
+	const general = mcpServers ? serversForRequest(faultInjection, userServerConfigs(ownRows, { faultInjection })) : [];
+	// Listed with its tools when connected, so the page shows what a turn would offer and each tool's choice.
+	const googleServer = googleOn ? await googleServerFor(locals) : null;
+	const servers = googleServer ? [...general.filter((s) => s.name !== GOOGLE_SERVER_NAME), googleServer] : general;
+	const googleRow = googleOn && accountId ? await getUserGoogleConnection(accountId) : null;
 	const ownIdByName = new Map(ownRows.map((r) => [r.name, r.id]));
 	const [tools, policies] = await Promise.all([listServerTools(servers), readMcpToolPolicies(locals)]);
 	return {
 		signedIn: Boolean(accountId),
+		mcpServers,
+		// Null when the flag is off. `available` is false when the operator has not finished setting it up.
+		google: googleOn
+			? { available: googleConnectApp() !== null, email: googleRow?.email ?? null }
+			: null,
 		servers: servers.map((s) => ({
 			name: s.name,
 			// The host only: a path or query string can carry something an operator would not show.
@@ -63,7 +83,7 @@ export const actions: Actions = {
 			token: String(form.get("token") ?? ""),
 		};
 		const own = await listUserMcpServers(accountId);
-		const taken = [...configuredMcpServers().map((s) => s.name), ...own.map((r) => r.name)];
+		const taken = [...configuredMcpServers().map((s) => s.name), ...own.map((r) => r.name), GOOGLE_SERVER_NAME];
 		const checked = checkNewServer(input, taken, own.length);
 		// The token is never echoed back, even on a refusal.
 		if (!checked.ok) return fail(400, { error: checked.error, name: input.name, url: input.url });
@@ -82,5 +102,15 @@ export const actions: Actions = {
 		const id = String((await request.formData()).get("id") ?? "");
 		if (!(await deleteUserMcpServer(accountId, id))) return fail(404, { error: "That server is already gone." });
 		return { removed: id };
+	},
+	disconnectGoogle: async ({ locals }) => {
+		if (!googleConnectorEnabled()) throw error(404, "Not found");
+		const accountId = accountOf(locals);
+		if (!accountId) return fail(401, { error: "Sign in to manage your Google connection." });
+		// Our sealed copy goes, so nothing here can use the grant again. Google keeps the grant itself until
+		// the person removes Alpha at their Google account, which the page links to.
+		await deleteUserGoogleConnection(accountId);
+		forgetAccessToken(accountId);
+		return { googleDisconnected: true };
 	},
 };

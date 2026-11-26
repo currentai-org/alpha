@@ -39,7 +39,7 @@ export type SlowTest = {
 	leaves: { title: string; ms: number }[];
 };
 
-type Tally = { hits: number; misses: { path: string; ms: number }[] };
+type Tally = { hits: number; misses: { path: string; ms: number }[]; retries?: number };
 
 /** Every step with no children, depth first. */
 function leavesOf(steps: TestStep[]): TestStep[] {
@@ -89,6 +89,7 @@ export class StepTimings {
 	/** Asset fetches per worker: which paths it missed, and how long each fetch took. */
 	readonly assetMisses = new Map<number, { path: string; ms: number }[]>();
 	assetHits = 0;
+	assetRetries = 0;
 	testMs = 0;
 	tests = 0;
 
@@ -110,6 +111,7 @@ export class StepTimings {
 			if (a.type !== ASSET_CACHE_ANNOTATION || !a.description) continue;
 			const tally = JSON.parse(a.description) as Tally;
 			this.assetHits += tally.hits;
+			this.assetRetries += tally.retries ?? 0;
 			const worker = result.workerIndex ?? 0;
 			this.assetMisses.set(worker, [...(this.assetMisses.get(worker) ?? []), ...tally.misses]);
 		}
@@ -140,6 +142,7 @@ export class StepTimings {
 		uniquePaths: number;
 		redundant: number;
 		redundantMs: number;
+		retries: number;
 	} {
 		const seen = new Set<string>();
 		let misses = 0;
@@ -159,7 +162,15 @@ export class StepTimings {
 			}
 			mine.forEach((p) => seen.add(p));
 		}
-		return { hits: this.assetHits, misses, missMs, uniquePaths: seen.size, redundant, redundantMs };
+		return {
+			hits: this.assetHits,
+			misses,
+			missMs,
+			uniquePaths: seen.size,
+			redundant,
+			redundantMs,
+			retries: this.assetRetries
+		};
 	}
 
 	/** One block per slow test, slowest first: its largest top-level steps, then its largest leaves. */
@@ -214,7 +225,8 @@ export default class StepTimingsReporter implements Reporter {
 		console.log(
 			`-- static asset cache (SOL-354) --\n` +
 				`hits=${a.hits} misses=${a.misses} fetch=${(a.missMs / 1000).toFixed(0)}s unique=${a.uniquePaths} ` +
-				`refetched-by-another-worker=${a.redundant} (${(a.redundantMs / 1000).toFixed(0)}s)\n` +
+				`refetched-by-another-worker=${a.redundant} (${(a.redundantMs / 1000).toFixed(0)}s) ` +
+				`retried-after-a-dropped-connection=${a.retries}\n` +
 				`-- tests over ${SLOW_TEST_MS / 1000}s (SOL-354): ${t.slow.length} --\n${t.slowTable()}\n`
 		);
 		mkdirSync(dirname(STEP_TIMINGS_FILE), { recursive: true });

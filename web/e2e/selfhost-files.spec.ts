@@ -283,6 +283,27 @@ test(`a signed-in person attaches a file in chat and finds it in My files, kept 
 			fullPage: true
 		});
 
+		// Data & privacy and the storage settings say where the files really are: this stack's own store,
+		// never Hugging Face, which holds nothing here.
+		const storeWords =
+			BACKEND === 'local' ? /on the server .+ runs this app on/ : /S3-compatible file store/;
+		for (const [route, testId] of [
+			['/settings/data', 'data-home-files'],
+			['/settings/storage', 'storage-where-kept']
+		] as const) {
+			await page.goto(route, { waitUntil: 'domcontentloaded' });
+			const line = page.getByTestId(testId);
+			await expect(line, `${route} says where files are kept`).toHaveText(storeWords, {
+				timeout: 30_000
+			});
+			await expect(line, `${route} names no Hugging Face storage`).not.toContainText(
+				'Hugging Face'
+			);
+			console.log(
+				`SELFHOST FILES STORE COPY ${BACKEND} ${route}: ${(await line.textContent())?.trim()}`
+			);
+		}
+
 		// The store itself holds it: the plaintext, or an age file when the operator turned sealing on.
 		const raw = storedBytes(stored!);
 		const sealed = raw.startsWith('age-encryption.org/v1');

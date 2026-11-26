@@ -133,6 +133,22 @@ describe("applyRerank — relative floor (#2)", () => {
 		).toEqual(["A"]);
 	});
 
+	it("RAG's self-host gate (floor 0.005, ratio 0.05, minTop 0): keeps a low-scored right passage, drops a stray above the floor", () => {
+		const results = [
+			{ index: 0, relevance_score: 0.12 }, // anchor, a modest top: minTop 0 still engages the cut
+			{ index: 1, relevance_score: 0.008 }, // a French right passage: ≥ 0.12*0.05 = 0.006 and ≥ 0.005 → kept
+			{ index: 2, relevance_score: 0.0055 }, // a stray page: clears the 0.005 floor, < 0.006 → dropped
+			{ index: 3, relevance_score: 0.004 }, // below the absolute floor → dropped
+		];
+		expect(
+			applyRerank(cands, results, {
+				minScore: 0.005,
+				allowEmpty: true,
+				relativeFloor: { ratio: 0.05, minTop: 0 },
+			})
+		).toEqual(["A", "B"]);
+	});
+
 	it("anchor survives even a pathological ratio > 1 (defense-in-depth; can't empty a non-empty set)", () => {
 		const results = [
 			{ index: 0, relevance_score: 0.9 },

@@ -32,6 +32,7 @@ import { documentAttachmentsOffered } from "$lib/chat/server/documentAttachments
 import { readAloudEnabled } from "$lib/chat/server/readAloudGate";
 import { csamScanAllowsUploads } from "$lib/chat/server/storage/csamScan";
 import { RETENTION_DAYS } from "$lib/chat/constants/retention";
+import { aboutProjectSentence, assistantNameSentence, fillBrand } from "$lib/chat/server/serverBrand";
 import policyContext from "./data/policyContext.json";
 
 // The decoding params. Merged OVER model.parameters
@@ -374,7 +375,7 @@ export const LOCALITY_INVITE_CLAUSE =
 export const LOCALITY_NO_INVITE_CLAUSE =
 	"When an answer depends on the user's country, jurisdiction, or culture, note in one sentence that specifics vary, then give your best general answer.";
 
-export const DEFAULT_PERSONA_TEMPLATE = `You are {model}, an open-weights model developed by {maker}. You answer inside AI Potluck, a chat app that Current AI runs; Current AI did not build you and does not run you. {serving} You are the open, map-grounded chat surface of AI Potluck — Current AI's nonprofit effort to assemble a full-stack, open source alternative to closed AI from open components. The live stack you run on is shown alongside this chat in the "XRAY VIEW" panel; you may refer to it. Do not invent or name any other app section, screen, or menu — refer only to features that actually exist ("XRAY VIEW", the map, provenance, search).
+export const DEFAULT_PERSONA_TEMPLATE = `You are {model}, an open-weights model developed by {maker}.{assistantName} You answer inside {product}, a chat app that {organisation} runs; {organisation} did not build you and does not run you. {serving} {aboutProject} The live stack you run on is shown alongside this chat in the "XRAY VIEW" panel; you may refer to it. Do not invent or name any other app section, screen, or menu — refer only to features that actually exist ("XRAY VIEW", the map, provenance, search).
 
 {style}
 
@@ -468,7 +469,7 @@ ${INVESTMENT_RISK_CLAUSE}`;
 // company, and "served here by Current AI" gets repeated as "served directly by Current AI", though
 // Current AI runs the app and only the host runs the model. Which host served an answer is the
 // badge's to say.
-const DEFAULT_COMPUTE_FEW_SHOT = "used here through AI Potluck, the chat app Current AI runs";
+const DEFAULT_COMPUTE_FEW_SHOT = "used here through {product}, the chat app {organisation} runs";
 
 function fillIdentityTokens(
 	template: string,
@@ -479,8 +480,13 @@ function fillIdentityTokens(
 	const trainingReminder = training
 		? " If asked what you were trained on, say this honestly — do not claim those details are undisclosed."
 		: "";
-	return template
-		.replaceAll("{computeFewShot}", DEFAULT_COMPUTE_FEW_SHOT)
+	// The brand's sentences go in first: the assistant-name sentence carries {model}.
+	return fillBrand(
+		template
+			.replaceAll("{assistantName}", assistantNameSentence())
+			.replaceAll("{aboutProject}", aboutProjectSentence())
+			.replaceAll("{computeFewShot}", DEFAULT_COMPUTE_FEW_SHOT)
+	)
 		.replaceAll("{model}", id.short)
 		.replaceAll("{maker}", id.maker)
 		.replaceAll("{served}", id.served ?? "")
@@ -932,7 +938,7 @@ function modelChoiceFact(otherModels: OfferedModel[], answering?: OfferedModel, 
 	const count = answering ? ` That is ${all.length} models${allOpen ? ", all open" : ""}; when asked which there are, name all ${all.length} and never give another number.` : "";
 	const unrecorded = allOpen ? "" : " For a model whose openness is not on record, say so rather than call it open or closed.";
 	const details = `Name each model exactly as listed, size included, never a size from another model. The model button shows names only, so give a model card's link yourself rather than saying it is in the button. Those makers and openness are the facts; never credit a model to anyone else or call it more or less open.${catalogTool ? " For anything else about a model, call search_catalog and answer from what it returns." : ""}`;
-	return `The model button at the right of the message box shows which model answers and switches to another for the next message: ${listed}.${count} If asked which models are available or whether they can switch, say yes and point to that button; never say this app offers only one model or that they can't switch. Current AI runs this app and made none of these models.${unrecorded} ${details} For a licence, give the licence and model card listed above; for a model with no licence listed, say to check its card, and for one with no card listed, say it has no public card to link. Asked about a model not in this list, say this app does not offer it and give no link or licence for it. Never name a licence from memory or give any other link to a model. Asked which model suits a language, recommend the one listed as built for it, and say so when none is. A model's parameter count is the one listed above, never a number in its name or version (GLM 5.2 is not 5.2 billion). Asked whether one runs on a given GPU or machine, work from that count: weights alone take about 2 bytes per parameter at 16-bit and half a byte at 4-bit, before any cache or overhead, and say these are estimates. For a model with no count listed, say you have no verified size and point to its model card.`;
+	return fillBrand(`The model button at the right of the message box shows which model answers and switches to another for the next message: ${listed}.${count} If asked which models are available or whether they can switch, say yes and point to that button; never say this app offers only one model or that they can't switch. {organisation} runs this app and made none of these models.${unrecorded} ${details} For a licence, give the licence and model card listed above; for a model with no licence listed, say to check its card, and for one with no card listed, say it has no public card to link. Asked about a model not in this list, say this app does not offer it and give no link or licence for it. Never name a licence from memory or give any other link to a model. Asked which model suits a language, recommend the one listed as built for it, and say so when none is. A model's parameter count is the one listed above, never a number in its name or version (GLM 5.2 is not 5.2 billion). Asked whether one runs on a given GPU or machine, work from that count: weights alone take about 2 bytes per parameter at 16-bit and half a byte at 4-bit, before any cache or overhead, and say these are estimates. For a model with no count listed, say you have no verified size and point to its model card.`);
 }
 
 // A turn that knows it ran no search says so. Told only that the answer cites what search found, a
@@ -984,7 +990,7 @@ function readAloudFact(mode: FeatureFacts["readAloudMode"]): string {
 // (ChatWindow.svelte), counting active minutes and an energy estimate in this browser tab's
 // sessionStorage. Nothing posts those numbers to the server, so the sentence says so.
 export const SESSION_METER_FACT =
-	"The chat header shows a session meter: the minutes you've actively spent in this tab and an estimate of the energy this session's answers used, with a breakdown when opened. It is counted in the browser and not sent to Current AI. If asked whether this app tracks time spent or energy, point to that meter; never say the app doesn't track or show them.";
+	"The chat header shows a session meter: the minutes you've actively spent in this tab and an estimate of the energy this session's answers used, with a breakdown when opened. It is counted in the browser and not sent to {organisation}. If asked whether this app tracks time spent or energy, point to that meter; never say the app doesn't track or show them.";
 
 // Alpha itself, as an open source builder asks about it. Each sentence corrects a prior the
 // model answers from with confidence, so a lookup it would have to choose to make never runs:
@@ -1000,7 +1006,9 @@ export const ABOUT_ALPHA_FACT =
 /** The fixed facts about this app that every turn with {@link FeatureFacts} carries, after the features
  *  sentence: the native base guards and the persona read this one list. */
 export function appFacts(features: FeatureFacts): string[] {
-	return [featuresClause(features), SESSION_METER_FACT, CONVERSATION_EXPORT_FACT, ABOUT_ALPHA_FACT].filter(Boolean);
+	return [featuresClause(features), SESSION_METER_FACT, CONVERSATION_EXPORT_FACT, ABOUT_ALPHA_FACT]
+		.filter(Boolean)
+		.map((fact) => fillBrand(fact));
 }
 
 // Conversation export. Without this, asked "Can I export my conversations? Which button do I press?",

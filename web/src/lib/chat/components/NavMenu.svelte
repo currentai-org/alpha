@@ -4,6 +4,7 @@ SPDX-License-Identifier: Apache-2.0
 Modified by Current AI from huggingface/chat-ui.
 -->
 <script lang="ts">
+	import { brandOf } from '$lib/chat/brand';
 	import { m } from '$lib/paraglide/messages.js';
 	import { base } from '$lib/chat/paths';
 	import { goto } from '$app/navigation';
@@ -313,7 +314,7 @@ Modified by Current AI from huggingface/chat-ui.
      header, so the brand here is the way back to AI Potluck. -->
 <Sidebar.Header expandLabel={m.product_expandSidebar()} collapseLabel={m.product_collapseSidebar()} closeLabel={m.product_closeSidebar()}>
 	{#snippet mark()}
-		<PotluckMark class="size-5" label="AI Potluck" />
+		<PotluckMark class="size-5" label={brandOf(page.data).product} />
 	{/snippet}
 	<!-- Brand: "Alpha", with AI Potluck as the sub-brand. The glyph lines up with the row icons below
 	     (16px from the edge: the rows' 8px list inset + 8px row padding; 12px + 20px icons on phones). -->
@@ -324,11 +325,11 @@ Modified by Current AI from huggingface/chat-ui.
 		<a
 			href="/"
 			class="group/potluck flex min-w-0 items-center gap-1 type-label text-fg-3 hover:text-fg-1 focus-visible:text-fg-1"
-			aria-label={m.product_home()}
+			aria-label={m.product_home({ product: brandOf(page.data).product })}
 			data-sidebar-home
 			data-sveltekit-reload
 		>
-			<span class="truncate">AI Potluck</span>
+			<span class="truncate">{brandOf(page.data).product}</span>
 			<RiArrowRightUpLine
 				class="size-3.5 shrink-0 opacity-0 transition-opacity group-hover/potluck:opacity-100 group-focus-visible/potluck:opacity-100"
 				aria-hidden="true"

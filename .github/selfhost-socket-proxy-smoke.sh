@@ -22,7 +22,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../selfhost"
 project=alpha-socket-proxy-smoke
 # Pulled straight from the daemon, not through the proxy, whose policy refuses pulls.
-image=${SOCKET_PROXY_SMOKE_IMAGE:-public.ecr.aws/docker/library/alpine:3.22}
+image=${SOCKET_PROXY_SMOKE_IMAGE:-mirror.gcr.io/library/alpine:3.22}
 export DOCKER_SOCK_GID=${DOCKER_SOCK_GID:-$(stat -c %g /var/run/docker.sock)}
 # compose.yaml requires this for the web service; nothing here starts web.
 export BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-unused-by-this-check}
@@ -101,7 +101,7 @@ compose logs --no-color sockguard 2>/dev/null | grep -o '"reason":"container cre
 # The sandbox backend through the same proxy. The image has the python3 and bash the contract tests run, and
 # is pulled straight from the daemon (the proxy refuses pulls), then named by digest as the backend requires.
 # The gateway stand-in is any running container: agent sandboxes must resolve it by name and reach nothing else.
-sandbox_tag=${SANDBOX_CONTRACT_IMAGE_TAG:-public.ecr.aws/docker/library/python:3.12-slim}
+sandbox_tag=${SANDBOX_CONTRACT_IMAGE_TAG:-mirror.gcr.io/library/python:3.12-slim}
 docker pull -q "$sandbox_tag" >/dev/null
 sandbox_image=$(docker inspect -f '{{index .RepoDigests 0}}' "$sandbox_tag")
 docker run -d --name "$project-gateway" "$image" sleep 600 >/dev/null

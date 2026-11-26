@@ -426,6 +426,9 @@
 					<Menu.LinkItem href={`${base}/trust-and-safety`}>
 						<RiShieldCheckLine aria-hidden="true" /> {m.product_trustSafety()}
 					</Menu.LinkItem>
+					<Menu.LinkItem href={`${base}/terms-of-use`}>
+						<RiFileTextLine aria-hidden="true" /> {m.product_termsOfUse()}
+					</Menu.LinkItem>
 					{#if __COPY_EDIT__}
 						<Menu.Item onSelect={() => void startCopyEdit()} data-dev-edit-text>
 							<RiEditLine aria-hidden="true" /> Edit text

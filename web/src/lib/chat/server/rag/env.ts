@@ -116,6 +116,18 @@ export function ragRerankMinScore(): number {
 	return readFloat("RAG_RERANK_MIN_SCORE", 0.02);
 }
 
+/** Relative cut on the RAG rerank: besides clearing RAG_RERANK_MIN_SCORE, a passage must score at least
+ *  this share of the call's best passage (the best one is always kept). Default 0 = off. It lets a low
+ *  absolute floor keep French, Spanish and German right passages, which the multilingual reranker scores
+ *  lower than English ones, without letting a stray page ground a question about something else: on the
+ *  committed eval set, bge-reranker-v2-m3 at floor 0.005 with 0.05 kept 38 of 45 non-English right
+ *  passages against 28 at 0.02 alone, with none of 32 collision questions grounding on a stray page
+ *  (web/evals/embedder-compare.mjs, app text). Outside 0-1 it reads as off. */
+export function ragRerankRelativeRatio(): number {
+	const r = readFloat("RAG_RERANK_RELATIVE_RATIO", 0);
+	return r > 0 && r < 1 ? r : 0;
+}
+
 /** Timeout (ms) for the RAG rerank call. Deliberately short (default 3000, the shared reranker's own
  *  default) because it STACKS after retrieval (local ≤ 8s, SyftHub ≤ 9s) and before generation AND
  *  because degrade-to-cosine is an acceptable outcome — so unlike web search (6000ms, which WANTS to ride

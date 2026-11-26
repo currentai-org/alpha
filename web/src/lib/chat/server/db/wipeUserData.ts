@@ -217,6 +217,9 @@ export async function wipeUserData(keys: WipeKeys): Promise<WipeSummary> {
 	//     token. The FK cascades too; deleting here keeps the wipe from depending on the account row going.
 	if (uid) {
 		await db.delete(schema.userMcpServers).where(eq(schema.userMcpServers.userId, uid));
+		// The connected Google account's sealed refresh token. Google keeps the grant until the person
+		// revokes it at their Google account; without our copy, nothing here can use it again.
+		await db.delete(schema.userGoogleConnections).where(eq(schema.userGoogleConnections.userId, uid));
 	}
 
 	// 2e. Sync tombstones left by the removed Thunderbolt sync: ids this account deleted.

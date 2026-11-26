@@ -123,7 +123,7 @@ A second stack (production beside a test stack) is the same steps in its own wor
 5. **Roll back** a bad release with `./deploy.sh --rollback`, which returns both hosts to their previous release.
 
 `.github/workflows/agent-service-deploy.yml` runs `deploy.sh` from CI with a deploy role, a read-only Doppler service token for the stack's config, and the state bucket,
-all from repository variables and secrets. It verifies with `fly/verify-deploy.sh` (the script keeps its old
+all from repository variables and secrets. The bucket is `AGENT_AWS_STATE_BUCKET_DEVELOP` or `_PRODUCTION`, falling back to the shared `AGENT_AWS_STATE_BUCKET` when unset. It verifies with `fly/verify-deploy.sh` (the script keeps its old
 directory) and, when that fails, runs `deploy.sh --rollback` and verifies the build that was serving. A run with
 any of them missing fails rather than skipping.
 

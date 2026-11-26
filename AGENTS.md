@@ -24,7 +24,7 @@ file covers what an agent needs to change the code safely.
 Run these from `web/` unless noted.
 
 ```sh
-pnpm install --no-frozen-lockfile   # the lockfile also lists packages this snapshot leaves out
+pnpm install --frozen-lockfile
 pnpm check                          # i18n checks and svelte-check
 pnpm lint                           # prettier, eslint and the design-system rules
 pnpm test:ci:fast                   # server unit tests; no outside services needed

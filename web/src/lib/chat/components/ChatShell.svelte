@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { brandOf } from '$lib/chat/brand';
 	import '../../../styles/main.css';
 
 	import { onDestroy, onMount, untrack } from 'svelte';
@@ -463,7 +464,8 @@
 	const chatOrigin = $derived(
 		page.url.hostname === CHAT_HOST ? page.url.origin : publicConfig.PUBLIC_ORIGIN || page.url.origin
 	);
-	let appName = APP_NAME;
+	// Today's name is the meta default; an install's own name replaces it once the shell has loaded.
+	const appName = $derived(brandOf(page.data).product || APP_NAME);
 
 	// Split so the literal substring can't be mistaken for a real tag by tooling that scans raw
 	// source text for it (the svelte/eslint parsers both do, even inside a JS string) — see

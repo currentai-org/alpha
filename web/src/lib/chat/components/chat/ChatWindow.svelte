@@ -4,6 +4,7 @@ SPDX-License-Identifier: Apache-2.0
 Modified by Current AI from huggingface/chat-ui.
 -->
 <script lang="ts">
+	import { brandOf } from '$lib/chat/brand';
 	import { m } from '$lib/paraglide/messages.js';
 	import { messageTooLongMessage } from '$lib/chat/utils/messageTooLong';
 	import type { Message, MessageFile } from '$lib/chat/types/Message';
@@ -1281,7 +1282,7 @@ Modified by Current AI from huggingface/chat-ui.
 	<WeakSpotsModal />
 	<div role="main" aria-label={m.product_chat()} class="relative flex min-h-0 min-w-0 flex-1 flex-col">
 		<!-- One per-page H1 for the screen-reader/document outline; the ThreadHeader title is visual. -->
-		<h1 class="sr-only">{m.chat_pageHeading()}</h1>
+		<h1 class="sr-only">{m.chat_pageHeading({ product: brandOf(page.data).product })}</h1>
 
 		<ThreadHeader openSidebarLabel={m.product_openSidebar()}>
 			{#snippet title()}

@@ -3,7 +3,7 @@
 import { test, expect, type Page } from './helpers/test';
 import type { BrowserContext, TestInfo } from '@playwright/test';
 import { CHAT_ENTRY } from './helpers/chatEntry';
-import { sendOpensConversation } from './helpers/composer';
+import { composerHydrated, sendOpensConversation } from './helpers/composer';
 import { setFlagOverrides } from './helpers/flagOverride';
 import {
 	installBusyScopeHeader,
@@ -147,6 +147,9 @@ test(
 		const picked = await markAutosPickBusy(page, context, baseURL!, testInfo);
 
 		await page.reload({ waitUntil: 'commit' });
+		// A click on the server-rendered picker before hydration opens nothing, and the wait for its menu item
+		// then times out.
+		await composerHydrated(page);
 		await page.getByRole('button', { name: PICKER_TRIGGER }).click({ timeout: 30_000 });
 		await page.getByRole('menuitem', { name: 'Choose a model yourself' }).click();
 		const row = page.locator(`[data-model-id="${picked}"]`);
@@ -182,6 +185,9 @@ test(
 		const picked = await markAutosPickBusy(page, context, baseURL!, testInfo, scope, 402);
 
 		await page.reload({ waitUntil: 'commit' });
+		// A click on the server-rendered picker before hydration opens nothing, and the wait for its menu item
+		// then times out.
+		await composerHydrated(page);
 		await page.getByRole('button', { name: PICKER_TRIGGER }).click({ timeout: 30_000 });
 		await page.getByRole('menuitem', { name: 'Choose a model yourself' }).click();
 		const note = page.locator(`[data-model-id="${picked}"]`).locator('[data-model-unavailable]');

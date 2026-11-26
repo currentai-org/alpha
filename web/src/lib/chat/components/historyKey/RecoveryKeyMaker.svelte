@@ -5,6 +5,8 @@
   typed back. Used by the recovery step and by Settings → Your key.
 -->
 <script lang="ts">
+	import { brandOf } from '$lib/chat/brand';
+	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import { Button, Field, Inline, Stack } from '@aipotluck/alpha-ds';
 	import RiDownload2Line from '~icons/ri/download-2-line';
@@ -46,13 +48,14 @@
 
 	function download() {
 		if (!made) return;
+		const { product } = brandOf(page.data);
 		const text = [
-			'AI Potluck recovery key',
+			`${product} recovery key`,
 			'',
 			made.recoveryKey,
 			'',
-			'This key opens your AI Potluck chat history if you lose access in every browser you use.',
-			'Keep it somewhere safe, such as a password manager. AI Potluck cannot recover it for you.',
+			`This key opens your ${product} chat history if you lose access in every browser you use.`,
+			`Keep it somewhere safe, such as a password manager. ${product} cannot recover it for you.`,
 			''
 		].join('\n');
 		downloadBlob(new Blob([text], { type: 'text/plain' }), 'ai-potluck-recovery-key.txt');

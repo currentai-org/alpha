@@ -17,6 +17,7 @@ import { clefRoutingEnabled } from "$lib/chat/server/clefRoutingGate";
 import { humanEvalEnabled } from "$lib/chat/server/humanEval/gate";
 import { localInferenceEndpointsEnabled } from "$lib/chat/server/localEndpointsGate";
 import { mcpServersEnabled } from "$lib/chat/server/mcp/servers";
+import { googleConnectorEnabled } from "$lib/chat/server/connectors/google";
 import { usageLimits } from "$lib/chat/server/usageLimits";
 import { thunderboltExportEnabled } from "$lib/chat/server/dataPortability";
 import { pastChatSearchEnabled } from "$lib/chat/server/pastChatSearchGate";
@@ -188,6 +189,8 @@ export async function getLayoutFeatureFlags(locals: App.Locals): Promise<Feature
 		localInferenceEnabled: localInferenceEndpointsEnabled(),
 		// The settings nav "Connectors" tab, gated on the same flag the page and the turn read.
 		mcpServersEnabled: mcpServersEnabled(),
+		// Connect Google lives on the same tab, so either flag shows it.
+		googleConnectorEnabled: googleConnectorEnabled(),
 		// Auto model routing (autoRoutingGate.ts). Off: no Auto row in the composer's model menu, and a new
 		// chat starts on the model chosen in settings.
 		autoRoutingEnabled: autoRoutingEnabled(),

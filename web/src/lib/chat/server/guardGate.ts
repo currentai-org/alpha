@@ -63,6 +63,7 @@ import {
 } from "$lib/chat/server/detectors/shieldstral";
 import { makeS1Judge, S1CallLimiter, s1Configured, s1RuleIdsFor, S1_RULES, type S1UnitJudge } from "$lib/chat/server/detectors/s1";
 import { S1_JUDGE } from "../../../../config/safetyScreen";
+import { SELFHOST_CLASSIFIER_SLOTS, SELFHOST_FIRST_PASSES } from "../../../../config/selfhostScreen.mjs";
 import {
 	guardInputIsEmpty,
 	textOnlyGuardInput,
@@ -306,7 +307,23 @@ export type GuardScreenDeps = {
 	/** Flags this caller evaluated as on for the visitor. A rule with `guard.flag` runs only when its key
 	 *  is here, so every caller that never evaluates the flag leaves the rule off. */
 	enabledFlags?: ReadonlySet<string>;
+	/** The first-pass groups a Shieldstral text unit asks before their rules. Absent: firstPassesFor
+	 *  decides. An empty list asks every rule on every unit. */
+	firstPasses?: readonly FirstPassGroup[];
 };
+
+type FirstPassGroup = { name: string; query: string; threshold: number; rules: readonly string[] };
+
+/** The first passes for this operation. On a self-host edition, a Shieldstral input screen
+ *  asks each text unit one question per SELFHOST_FIRST_PASSES group, and that group's rules only when
+ *  its answer is yes or missing; every other rule is asked as before. The safety profile runs
+ *  Shieldstral on CPU, where one call per rule runs a benign turn past the screen's 20 s deadline.
+ *  Hosted screens, S1, the output screen and image units keep one call per rule. */
+function firstPassesFor(deps: Pick<GuardScreenDeps, "firstPasses" | "s1" | "screen">): readonly FirstPassGroup[] {
+	if (deps.firstPasses) return deps.firstPasses;
+	if (deps.s1 || (deps.screen ?? "input") !== "input" || !isSelfHostEdition()) return [];
+	return SELFHOST_FIRST_PASSES;
+}
 
 /** The rules this operation asks: the ones meant for its screen, minus any whose flag is off for the
  *  visitor.
@@ -469,10 +486,26 @@ async function screenOnce(input: GuardScreenInput, deps: GuardScreenDeps): Promi
 	// every image did; the violence re-check reads that to re-judge a text-only block as text.
 	const imageClearCount = new Map<string, number>();
 
-	const baseConcurrency = deps.concurrency ?? shield.concurrency;
+	// A group none of whose rules this screen asks is dropped, and a rule belongs to its first group only.
+	const grouped = new Set<string>();
+	const firstPasses = (s1 ? [] : firstPassesFor(deps))
+		.map((g) => {
+			const own = rules.filter((r) => g.rules.includes(r.key) && r.tier !== "child" && !grouped.has(r.key));
+			for (const r of own) grouped.add(r.key);
+			return { ...g, own };
+		})
+		.filter((g) => g.own.length > 0);
+	// The self-host classifier serves SELFHOST_CLASSIFIER_SLOTS calls at once. A call sent past that waits
+	// in its queue with its per-call timeout already running, so the self-host screen holds the rest here.
+	const baseConcurrency =
+		deps.concurrency ?? (firstPasses.length > 0 ? Math.min(shield.concurrency, SELFHOST_CLASSIFIER_SLOTS) : shield.concurrency);
 	const concurrency =
 		units.length > 1 ? Math.min(baseConcurrency, deps.longScreenConcurrency ?? LONG_SCREEN_CONCURRENCY) : baseConcurrency;
-	const totalCalls = s1 ? s1Rules.length * chunks.length + rules.length * input.images.length : rules.length * units.length;
+	// Each group adds one call per text chunk, counted up front so the deadline covers a chunk whose
+	// groups all say yes.
+	const totalCalls = s1
+		? s1Rules.length * chunks.length + rules.length * input.images.length
+		: rules.length * units.length + firstPasses.length * chunks.length;
 	let doneCalls = 0;
 	let reportedPart = 0;
 	const progress = () => {
@@ -497,7 +530,10 @@ async function screenOnce(input: GuardScreenInput, deps: GuardScreenDeps): Promi
 	const ctx: JudgeCtx = {
 		instruct: deps.instruct ?? shield.instruct,
 		opSignal: opController.signal,
-		timeoutMs: deps.timeoutMs ?? GUARD_TIMEOUT_MS,
+		// On the self-host CPU classifier a request can wait inside llama.cpp for a slot before it starts,
+		// and that wait counts against its timer, so there the screen's own deadline bounds each call
+		// instead of 8 s.
+		timeoutMs: deps.timeoutMs ?? (firstPasses.length > 0 ? deadlineMs : GUARD_TIMEOUT_MS),
 		log,
 	};
 	const sem = new Semaphore(concurrency);
@@ -543,22 +579,44 @@ async function screenOnce(input: GuardScreenInput, deps: GuardScreenDeps): Promi
 				);
 			});
 		}
+		const ask = (rule: GuardRule, target: JudgeTarget, ui: number) =>
+			sem.run(async () => {
+				const o = await judge(target, rule.query, thresholdFor(policy, rule), ctx);
+				record(o);
+				progress();
+				if (target.kind === "image" && rule.action === "block" && o.answer.kind !== "unknown" && !o.answer.yes)
+					imageClearCount.set(rule.key, (imageClearCount.get(rule.key) ?? 0) + 1);
+				if (o.answer.kind === "unknown") {
+					unitUnknown[ui] = true;
+					if (rule.tier === "child") childUnknown = true;
+					else if (units.length > 1 && opController.signal.aborted) contentDeadlineUnasked = true;
+				} else if (o.answer.yes) fire(rule);
+			});
+		// On a text unit, a grouped rule is asked only after its group's question answers yes or
+		// unknown, so it queues behind every child query already on the pool.
 		for (const rule of rules) {
 			units.forEach((target, ui) => {
 				if (s1 && target.kind === "text") return;
-				(rule.tier === "child" ? childJobs : jobs).push(
-					sem.run(async () => {
-						const o = await judge(target, rule.query, thresholdFor(policy, rule), ctx);
-						record(o);
-						progress();
-						if (target.kind === "image" && rule.action === "block" && o.answer.kind !== "unknown" && !o.answer.yes)
-							imageClearCount.set(rule.key, (imageClearCount.get(rule.key) ?? 0) + 1);
-						if (o.answer.kind === "unknown") {
-							unitUnknown[ui] = true;
-							if (rule.tier === "child") childUnknown = true;
-							else if (units.length > 1 && opController.signal.aborted) contentDeadlineUnasked = true;
-						} else if (o.answer.yes) fire(rule);
-					})
+				if (target.kind === "text" && grouped.has(rule.key)) return;
+				(rule.tier === "child" ? childJobs : jobs).push(ask(rule, target, ui));
+			});
+		}
+		for (const group of firstPasses) {
+			units.forEach((target, ui) => {
+				if (target.kind !== "text") return;
+				jobs.push(
+					sem
+						.run(async () => {
+							const o = await judge(target, group.query, group.threshold, ctx);
+							record(o);
+							progress();
+							return o.answer.kind === "unknown" || o.answer.yes;
+						})
+						.then(async (askRules) => {
+							// The permit is released before the group's rules queue, so they never wait on it.
+							if (askRules) await Promise.all(group.own.map((rule) => ask(rule, target, ui)));
+							else for (let i = 0; i < group.own.length; i++) progress();
+						})
 				);
 			});
 		}

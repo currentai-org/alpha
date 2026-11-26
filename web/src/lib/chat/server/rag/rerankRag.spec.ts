@@ -12,8 +12,10 @@ vi.mock("$lib/chat/server/search/rerank", () => ({
 // Controllable skip-floor (RAG_RERANK_SKIP_COSINE_BELOW); 0 = disabled, the default, so every
 // pre-existing test runs the unskipped path byte-for-byte.
 const skipBelow = { v: 0 };
+const relRatio = { v: 0 };
 vi.mock("./env", () => ({
 	ragRerankMinScore: () => 0.02,
+	ragRerankRelativeRatio: () => relRatio.v,
 	ragRerankTimeoutMs: () => 3000,
 	ragRerankSkipBelow: () => skipBelow.v,
 }));
@@ -39,6 +41,7 @@ beforeEach(() => {
 	rerankByRelevance.mockReset();
 	rerankEnabled.mockReset();
 	skipBelow.v = 0;
+	relRatio.v = 0;
 });
 
 describe("rerankRagHits — enabled / verified / degrade policy", () => {
@@ -86,6 +89,19 @@ describe("rerankRagHits — enabled / verified / degrade policy", () => {
 		await rerankRagHits("the query", [A]);
 		expect(rerankByRelevance).toHaveBeenCalledWith("the query", [A], {
 			minScore: 0.02,
+			allowEmpty: true,
+			timeoutMs: 3000,
+		});
+	});
+
+	it("RAG_RERANK_RELATIVE_RATIO set → passes it as a relative floor anchored on every call (minTop 0)", async () => {
+		rerankEnabled.mockReturnValue(true);
+		relRatio.v = 0.05;
+		rerankByRelevance.mockResolvedValue({ items: [A], verified: true });
+		await rerankRagHits("the query", [A, B]);
+		expect(rerankByRelevance).toHaveBeenCalledWith("the query", [A, B], {
+			minScore: 0.02,
+			relativeFloor: { ratio: 0.05, minTop: 0 },
 			allowEmpty: true,
 			timeoutMs: 3000,
 		});

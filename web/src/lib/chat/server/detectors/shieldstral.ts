@@ -119,6 +119,7 @@ export function makeShieldstralJudge(overrides: ShieldstralOverrides = {}): Judg
 						},
 					];
 
+		const started = Date.now();
 		try {
 			const res = await doFetch(endpoint, {
 				method: "POST",
@@ -138,7 +139,10 @@ export function makeShieldstralJudge(overrides: ShieldstralOverrides = {}): Judg
 				}),
 				signal: AbortSignal.any([ctx.opSignal, AbortSignal.timeout(ctx.timeoutMs)]),
 			});
-			if (!res.ok) return { answer: { kind: "unknown" }, httpOk: false };
+			if (!res.ok) {
+				ctx.log.warn({ gateSource: "guard", status: res.status, ms: Date.now() - started }, "[guard] classifier call failed");
+				return { answer: { kind: "unknown" }, httpOk: false };
+			}
 			let data: {
 				model?: unknown;
 				choices?: Array<{
@@ -175,8 +179,11 @@ export function makeShieldstralJudge(overrides: ShieldstralOverrides = {}): Judg
 				servedBackend: res.url || undefined,
 				servedProvider: res.headers?.get?.("x-inference-provider") ?? undefined,
 			};
-		} catch {
-			// Network error / op-deadline or per-call abort — could not reach a verdict.
+		} catch (e) {
+			// Network error / op-deadline or per-call abort — could not reach a verdict. The line names
+			// which, so a screen that failed open as "transport" can be traced to its call.
+			const error = ctx.opSignal.aborted ? "operation-deadline" : e instanceof Error ? e.name : "unknown";
+			ctx.log.warn({ gateSource: "guard", error, ms: Date.now() - started }, "[guard] classifier call failed");
 			return { answer: { kind: "unknown" }, httpOk: false };
 		}
 	};

@@ -19,8 +19,9 @@ name: alpha
 
 services:
   db:
-    # Docker Hub's library image through AWS's public mirror, so no anonymous pull limit stops a start.
-    image: public.ecr.aws/docker/library/postgres:17-alpine
+    # Docker Hub's library image. POSTGRES_IMAGE pulls the same image from another registry, as CI
+    # does (mirror.gcr.io), since Docker Hub limits anonymous pulls from shared addresses.
+    image: ${POSTGRES_IMAGE:-postgres:17-alpine}
     environment:
       POSTGRES_USER: alpha
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-alpha}

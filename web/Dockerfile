@@ -16,13 +16,13 @@
 # operating system, and Dependabot's docker entry (.github/dependabot.yml) proposes each new digest as
 # a pull request the image scan runs on. Dependabot reads only a literal FROM line, so no ARG.
 #
-# The build stages use Node's Debian 13 slim image through AWS's public mirror of Docker Hub's library
+# The build stages use Node's Debian 13 slim image through Google's mirror of Docker Hub's library
 # images, so no anonymous pull limit fails a build. The version matches web/.nvmrc's major.
 # The image that serves is distroless Node on the same Debian release: Node, glibc, CA certificates and
 # nothing else, with no shell or package manager. Most of the base image's scan findings were in
 # packages the server never runs (util-linux, PAM, perl, ncurses).
 
-FROM public.ecr.aws/docker/library/node:24-trixie-slim@sha256:af02d57b57719b9657a45199a79264a9437940cd55b3c7b3fc99615654f124a0 AS build
+FROM mirror.gcr.io/library/node:24-trixie-slim@sha256:af02d57b57719b9657a45199a79264a9437940cd55b3c7b3fc99615654f124a0 AS build
 WORKDIR /app
 # The version in package.json's packageManager field.
 RUN npm install -g pnpm@11.0.8
@@ -41,7 +41,7 @@ RUN pnpm build:operator-cli
 # Production dependencies only, from the same lockfile: the runtime stage below copies this tree, not
 # the build's, so no dev dependency ships. drizzle-kit and vite's tooling bring esbuild's Go binaries,
 # which carried every Go finding the image scan reported.
-FROM public.ecr.aws/docker/library/node:24-trixie-slim@sha256:af02d57b57719b9657a45199a79264a9437940cd55b3c7b3fc99615654f124a0 AS prod-deps
+FROM mirror.gcr.io/library/node:24-trixie-slim@sha256:af02d57b57719b9657a45199a79264a9437940cd55b3c7b3fc99615654f124a0 AS prod-deps
 WORKDIR /app
 RUN npm install -g pnpm@11.0.8
 COPY . .

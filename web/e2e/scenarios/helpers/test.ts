@@ -33,6 +33,7 @@ import {
 	turnWatcherScript
 } from '../../reporters/footprints';
 import { isCacheable } from './cacheable';
+import { serveFromCache, type Cached, type CacheTally } from './assetCache';
 import { ASSET_CACHE_ANNOTATION } from '../../reporters/stepTimings';
 import { startChattingPastWelcome } from './welcome';
 import {
@@ -44,31 +45,6 @@ import {
 } from './layoutShifts';
 
 export * from '@playwright/test';
-
-type Cached = { status: number; headers: Record<string, string>; body: Buffer };
-
-/** One test's asset-cache traffic, read by reporters/stepTimings.ts as an annotation. */
-type CacheTally = { hits: number; misses: { path: string; ms: number }[] };
-
-async function serveFromCache(route: Route, cache: Map<string, Cached>, tally: CacheTally) {
-	const request = route.request();
-	if (request.method() !== 'GET') return route.fallback();
-	const key = request.url();
-	const hit = cache.get(key);
-	if (hit) {
-		tally.hits += 1;
-		return route.fulfill(hit);
-	}
-	const started = Date.now();
-	const response = await route.fetch();
-	tally.misses.push({ path: new URL(key).pathname, ms: Date.now() - started });
-	if (response.status() !== 200) return route.fulfill({ response });
-	// A cookie set on one test's response must not be replayed into the next test's context.
-	const { 'set-cookie': _dropped, ...headers } = response.headers();
-	const entry: Cached = { status: 200, headers, body: await response.body() };
-	cache.set(key, entry);
-	return route.fulfill(entry);
-}
 
 /**
  * The replay mode the `modelReplay` fixture gives this test's browser sends, and whether it replays
@@ -161,7 +137,7 @@ export const test = base.extend<
 		async ({ context, baseURL, staticAssetCache, cacheStaticAssets }, use, testInfo) => {
 			const origin = baseURL ? new URL(baseURL).origin : null;
 			const sameOrigin = (url: URL) => origin !== null && url.origin === origin;
-			const tally: CacheTally = { hits: 0, misses: [] };
+			const tally: CacheTally = { hits: 0, misses: [], retries: 0 };
 
 			if (cacheStaticAssets) {
 				await context.route(

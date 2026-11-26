@@ -37,7 +37,13 @@ import {
 import { TURN_SPEED_SAMPLE, TURN_SPEED_WINDOW_MS, turnSpeedVerdict } from "$lib/chat/server/turnSpeedVerdict";
 import { refreshRegistryGatesIfChanged } from "$lib/chat/server/models";
 import { probeDueModels, type ProbeTarget } from "$lib/chat/server/modelProbe";
-import { ensureFlagsPolled, refreshFlags } from "$lib/chat/server/flags";
+import {
+	ensureFlagsPolled,
+	FLAG_SNAPSHOT_MAX_AGE_MS,
+	flagsDebugState,
+	postHogConfigured,
+	refreshFlags,
+} from "$lib/chat/server/flags";
 import { resolveProviderModelId } from "$lib/chat/server/endpoints/openai/providerPin";
 import { primaryModelId } from "$lib/chat/server/primaryModel";
 import { mistralLaneFor } from "$lib/chat/server/modelsCatalog";
@@ -1082,9 +1088,27 @@ async function processLegs(): Promise<unknown> {
 		// bare call below can't do — but its own doc comment says its effect on Vercel is unconfirmed. Keep both rather than let one subsume the other: this
 		// leg is the only thing standing between a PostHog flip and a flag actually taking effect within a
 		// cron tick instead of a lambda recycle.
-		refreshFlags(),
+		warmFlags(),
 		warmRegistryGates(),
 	]);
+}
+
+/** Refresh this process's flag snapshot and say so, one line per process per tick, with its pid: the
+ *  record that each process keeps its own flags fresh, not only whichever one a scheduler
+ *  reached. `ok` is whether the snapshot is now younger than FLAG_SNAPSHOT_MAX_AGE_MS: refreshFlags
+ *  swallows a failed poll and keeps the last values, so only the age tells a refresh from a miss.
+ *  Silent with PostHog unset, where flags read the self-host defaults and there is nothing to refresh. */
+async function warmFlags(): Promise<void> {
+	if (!postHogConfigured()) return;
+	await timedWarm(
+		"flags",
+		async () => {
+			await refreshFlags();
+			const s = flagsDebugState();
+			return s.polledOk && Date.now() - s.lastRefreshAt < FLAG_SNAPSHOT_MAX_AGE_MS;
+		},
+		() => ({ pid: process.pid, flagCount: flagsDebugState().size })
+	);
 }
 
 async function deploymentLegs(): Promise<unknown> {

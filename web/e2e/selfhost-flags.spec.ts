@@ -1,6 +1,7 @@
 // On the composed self-host stack as `selfhost/smoke.sh` booted it (no speech, agent, judge or classifier
 // endpoint set), the features that are on in production and default on for a self-host work, and the ones
-// that wait on a service are named in the boot log with the setting that turns them on.
+// that wait on a service are named in the boot log with the setting that turns them on, and
+// Settings → Connectors is there for a signed-in person.
 //
 //   cd web && pnpm exec playwright test --config=e2e/selfhost-flags.config.ts
 // Run by the source repository's self-host CI before the steps that recreate the web service.
@@ -86,6 +87,32 @@ test('the self-host defaults that are on work for a signed-in person: a PDF is s
 		);
 		expect(follow.status(), 'following the finished turn is answered, not 404').toBe(200);
 		console.log('SELFHOST FLAGS stream-follow: a finished turn was followed');
+	} finally {
+		await context.close();
+	}
+});
+
+test('a signed-in person on a fresh self-host stack reaches Settings → Connectors from the settings nav and can add a server', async ({
+	browser
+}) => {
+	// mcp-servers defaults on for a self-host: with it off, the nav has no Connectors entry and
+	// /chat/settings/connectors answers 404.
+	const context = await browser.newContext({ baseURL: base });
+	try {
+		await signInByEmailCode(
+			context.request,
+			base,
+			`selfhost-connectors-${randomUUID()}@example.org`
+		);
+		const page = await context.newPage();
+		await page.goto('/chat/settings');
+		await page
+			.getByRole('link', { name: /connectors/i })
+			.first()
+			.click();
+		await expect(page).toHaveURL(/\/settings\/connectors/);
+		await expect(page.getByRole('heading', { name: 'Add your own server' })).toBeVisible();
+		console.log('SELFHOST FLAGS mcp-servers: Settings → Connectors reached from the nav');
 	} finally {
 		await context.close();
 	}

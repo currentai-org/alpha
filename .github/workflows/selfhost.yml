@@ -1,7 +1,7 @@
 # What a stranger does with this repository, and the two self-host claims a privacy-minded operator most
 # wants proven. `smoke`: `selfhost/smoke.sh` writes selfhost/.env from .env.example, runs
 # `docker compose --profile local up --build` with a small local model, and sends one chat turn as a
-# signed-out guest; a guest turn with web search cites the page a keyless Firecrawl stand-in returned; then the daily cleanup deletes an aged guest conversation, and the README's backup and restore run on that stack. `safety-profile`: the Shieldstral screen beside it (report only). `socket-proxy`: the
+# signed-out guest; a guest turn with web search cites the page a keyless Firecrawl stand-in returned; then the daily cleanup deletes an aged guest conversation, and the README's backup and restore run on that stack, and every service must come back by itself after a crash and a daemon restart. `safety-profile`: the Shieldstral screen beside it (report only). `socket-proxy`: the
 # agent profile's socket proxy refuses host-root creates. `agent-owui-names`: the agent profile's model
 # gateway starts on Open WebUI's env names. `s3-secret`: the s3 profile's SeaweedFS refuses a blank
 # secret, and leaving the profile out needs no key. No job reads a secret: models download from
@@ -166,6 +166,30 @@ jobs:
           if [ "$code" != 0 ]; then
             echo "::error title=selfhost db password::the password change check exited $code. Read this step's log."
             exit 1
+          fi
+          exit 0
+
+      # Every long-running service restarts by itself (selfhost/README.md, "When a service crashes"): llama's
+      # and web's main processes are killed with SIGKILL and must come back healthy with no compose command,
+      # then the Docker daemon restarts, as on a reboot, and every service that was running must come back
+      # healthy (.github/selfhost-crash-restart-smoke.sh). Last on the stack, because the daemon restart
+      # stops every container on the runner. It warns and never fails the job until one run in this repo
+      # has gone through it.
+      - name: Every service comes back by itself after a crash and a daemon restart
+        if: steps.smoke.outcome == 'success'
+        run: |
+          set +e
+          ./.github/selfhost-crash-restart-smoke.sh 2>&1 | tee crash-restart.log
+          code=${PIPESTATUS[0]}
+          {
+            echo "### crash and reboot recovery"
+            echo '```'
+            grep -E '^(ok|RESTART)' crash-restart.log || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$code" != 0 ]; then
+            echo "::warning title=selfhost crash restart::the crash and reboot check exited $code. Read this step's log."
+            (cd selfhost && docker compose --profile local ps -a) || true
           fi
           exit 0
 

@@ -1,5 +1,7 @@
 <!-- Admin RAG console (session-admin), beside the tuning panel. -->
 <script lang="ts">
+	import { brandOf } from "$lib/chat/brand";
+	import { page } from "$app/state";
 	import { enhance } from "$app/forms";
 	import { base } from "$lib/chat/paths";
 	import type { SubmitFunction } from "$app/forms";
@@ -165,7 +167,7 @@
 	});
 </script>
 
-<svelte:head><title>RAG admin · AI Potluck</title></svelte:head>
+<svelte:head><title>RAG admin · {brandOf(page.data).product}</title></svelte:head>
 
 <div class="mx-auto max-w-4xl px-4 py-8">
 	{#if data.needsLogin}

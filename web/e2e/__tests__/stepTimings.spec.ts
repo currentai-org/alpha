@@ -88,7 +88,22 @@ describe('stepTimings', () => {
 			missMs: 800,
 			uniquePaths: 2,
 			redundant: 1,
-			redundantMs: 300
+			redundantMs: 300,
+			retries: 0
 		});
+	});
+
+	it('adds up the asset fetches retried after a dropped connection across tests', () => {
+		const t = new StepTimings();
+		const tally = (retries?: number) => [
+			{
+				type: ASSET_CACHE_ANNOTATION,
+				description: JSON.stringify({ hits: 0, misses: [], retries })
+			}
+		];
+		t.addResult({ duration: 1, steps: [], annotations: tally(2) });
+		t.addResult({ duration: 1, steps: [], annotations: tally(1) });
+		t.addResult({ duration: 1, steps: [], annotations: tally() });
+		expect(t.assetSummary().retries).toBe(3);
 	});
 });

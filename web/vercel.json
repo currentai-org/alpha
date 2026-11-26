@@ -2,6 +2,11 @@
 	"installCommand": "pnpm install --frozen-lockfile --filter aipotluck-web...",
 	"buildCommand": "pnpm run vercel-build",
 	"ignoreCommand": "node scripts/vercel-ignore-build.mjs",
+	"git": {
+		"deploymentEnabled": {
+			"gh-readonly-queue/**": false
+		}
+	},
 	"crons": [
 		{
 			"path": "/chat/api/cleanup",

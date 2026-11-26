@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { enhance } from "$app/forms";
 	import { Badge, Button, Field, Inline, Stack, Toggle, ToggleGroup } from "@aipotluck/alpha-ds";
-	import { base } from "$lib/chat/paths";
+	import { page } from "$app/state";
+	import { base, CHAT_API_PATH } from "$lib/chat/paths";
 	import { mcpToolPolicyFor, type McpToolPolicy } from "$lib/chat/mcpToolPolicy";
 	import type { ActionData, PageData } from "./$types";
 
@@ -24,6 +25,24 @@
 	// svelte-ignore state_referenced_locally
 	let policies = $state<Record<string, McpToolPolicy>>({ ...data.policies });
 	let status = $state<"idle" | "saving" | "saved" | "failed">("idle");
+
+	// What the Google callback sent back to this page (connectors/google/callback/+server.ts). It reports
+	// the callback only: any later action on this page leaves the URL unchanged, so it clears the note
+	// rather than let "Google is connected." stand beside an account just disconnected.
+	let googleNoteCleared = $state(false);
+	const clearGoogleNote = () => {
+		googleNoteCleared = true;
+	};
+	const googleNote = $derived.by(() => {
+		if (googleNoteCleared) return undefined;
+		const q = page.url.searchParams;
+		if (q.get("google") === "connected") return "Google is connected.";
+		const err = q.get("google_error");
+		if (err === "denied") return "Google wasn’t connected: you cancelled on Google’s screen.";
+		if (err === "scopes") return "Google wasn’t connected: both Gmail and Calendar need to be ticked on Google’s screen.";
+		if (err) return "Google couldn’t be connected just now. Try again.";
+		return undefined;
+	});
 
 	const WRITE_OPTIONS: [McpToolPolicy, string][] = [
 		["allow", "Always allow"],
@@ -67,6 +86,42 @@
 		something asks you before it runs, unless you set it to always allow.
 	</p>
 
+	{#if data.google}
+		<section class="flex flex-col gap-3" aria-labelledby="connector-google-account" data-connector-google>
+			<h2 id="connector-google-account" class="type-subhead text-fg-1">Google</h2>
+			{#if !data.google.available}
+				<p class="type-body text-fg-2" data-connector-google-state="unconfigured">
+					Google isn’t set up on this server yet. Whoever runs it can turn it on (selfhost/README.md, “Google”).
+				</p>
+			{:else if !data.signedIn}
+				<p class="type-body text-fg-2" data-connector-google-state="signed-out">Sign in to connect your Google account.</p>
+			{:else if data.google.email}
+				<div class="flex flex-wrap items-center justify-between gap-2" data-connector-google-state="connected">
+					<span class="type-body text-fg-1">Connected as {data.google.email}</span>
+					<form method="POST" action="?/disconnectGoogle" use:enhance={clearGoogleNote}>
+						<Button type="submit" variant="secondary" size="sm">Disconnect</Button>
+					</form>
+				</div>
+				<p class="type-body text-fg-2">
+					Chat can read your Gmail and Calendar, and never sends, deletes or changes anything there. Disconnect
+					removes our copy of your Google sign-in. To remove Alpha at Google as well, take it off the
+					third-party connections in your Google account.
+				</p>
+			{:else}
+				<p class="type-body text-fg-2" data-connector-google-state="disconnected">
+					Let chat read your Gmail and Calendar, for questions like “what’s on my calendar tomorrow?”. It can’t
+					send, delete or change anything there.
+				</p>
+				<Inline justify="start">
+					<Button href="{CHAT_API_PATH}/connectors/google/connect" variant="primary" data-sveltekit-reload>Connect Google</Button>
+				</Inline>
+			{/if}
+			{#if googleNote}
+				<p class="m-0 type-body text-fg-1" role="status" data-connector-google-note>{googleNote}</p>
+			{/if}
+		</section>
+	{/if}
+
 	{#if data.servers.length === 0}
 		<p class="type-body text-fg-2" data-connectors-empty>No services are connected to this chat yet.</p>
 	{/if}
@@ -82,7 +137,7 @@
 					{#if server.tools.length > 0}Connected · {server.tools.length} {server.tools.length === 1 ? "tool" : "tools"}{:else}Not answering{/if}
 				</span>
 				{#if server.ownId}
-					<form method="POST" action="?/remove" use:enhance>
+					<form method="POST" action="?/remove" use:enhance={clearGoogleNote}>
 						<input type="hidden" name="id" value={server.ownId} />
 						<Button type="submit" variant="secondary" size="sm" aria-label="Remove {server.name}">Remove</Button>
 					</form>
@@ -121,6 +176,7 @@
 		</section>
 	{/each}
 
+	{#if data.mcpServers}
 	<section class="flex flex-col gap-3" aria-labelledby="connector-add">
 		<h2 id="connector-add" class="type-subhead text-fg-1">Add your own server</h2>
 		{#if data.signedIn}
@@ -130,6 +186,7 @@
 				class="flex flex-col gap-3"
 				data-testid="connector-add-form"
 				use:enhance={() => {
+					clearGoogleNote();
 					adding = true;
 					return async ({ update }) => {
 						await update();
@@ -165,6 +222,7 @@
 			<p class="type-body text-fg-2" data-connector-add-signin>Sign in to add an MCP server of your own.</p>
 		{/if}
 	</section>
+	{/if}
 
 	<p class="type-caption text-fg-2" aria-live="polite" data-connectors-status={status}>
 		{#if status === "saving"}Saving…{:else if status === "saved"}Saved{:else if status === "failed"}Couldn’t save that change. Try again.{/if}

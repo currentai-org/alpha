@@ -22,9 +22,13 @@
 name: alpha
 
 services:
+  # Every long-running service has `restart: unless-stopped`: after a crash, an out-of-memory kill or a
+  # reboot, Docker starts it again by itself, and only `docker compose stop` or `down` keeps it down. A
+  # service that is up but unhealthy is not restarted (README.md, "When a service crashes").
   db:
-    # Docker Hub's library image through AWS's public mirror, so no anonymous pull limit stops a start.
-    image: public.ecr.aws/docker/library/postgres:17-alpine
+    # Docker Hub's library image. POSTGRES_IMAGE pulls the same image from another registry, as CI
+    # does (mirror.gcr.io), since Docker Hub limits anonymous pulls from shared addresses.
+    image: ${POSTGRES_IMAGE:-postgres:17-alpine}
     environment:
       POSTGRES_USER: alpha
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-alpha}
@@ -35,6 +39,7 @@ services:
       interval: 3s
       timeout: 3s
       retries: 20
+    restart: unless-stopped
 
   # Only with --profile local: llama.cpp's OpenAI-compatible server, downloading a GGUF from Hugging Face
   # on first start (cached in the `models` volume, or the directory LOCAL_MODELS_DIR names). The alias is
@@ -66,6 +71,7 @@ services:
       timeout: 3s
       retries: 120
       start_period: 30s
+    restart: unless-stopped
 
   # Only with --profile safety: Mistral's Shieldstral-1.0-3B safety classifier (Apache-2.0), served on CPU
   # by the llama.cpp image the local profile pins. It does nothing until .env also sets
@@ -92,6 +98,8 @@ services:
       - --alias
       - mistralai/Shieldstral-1.0-3B
       # Four slots of 6,144 tokens: a screened chunk is at most 12,000 characters plus the question.
+      # The app sends at most this many calls at once (SELFHOST_CLASSIFIER_SLOTS in
+      # web/config/selfhostScreen.mjs); change the two together.
       - --parallel
       - "4"
       - --ctx-size
@@ -106,6 +114,7 @@ services:
       timeout: 3s
       retries: 120
       start_period: 30s
+    restart: unless-stopped
 
   # Only with --profile rerank: BAAI's bge-reranker-v2-m3 cross-encoder (Apache-2.0, multilingual), the
   # reranker the hosted Alpha uses, served on CPU by the llama.cpp image the local profile pins. Web search
@@ -149,6 +158,7 @@ services:
       timeout: 3s
       retries: 120
       start_period: 30s
+    restart: unless-stopped
 
   # Only with --profile s3: SeaweedFS (Apache-2.0) as the S3-compatible store for people's files, for
   # CUSTODIAL_STORAGE_BACKEND=s3 (block S in .env.example). Not MinIO: AGPL, and its repo is archived.
@@ -349,6 +359,37 @@ services:
       start_period: 20s
     restart: unless-stopped
 
+  # Only with --profile google: Connect Google, a person's own Gmail and Calendar, read-only, in chat.
+  # taylorwilsdon/google_workspace_mcp (MIT) as an MCP server in external-provider mode: the web service
+  # runs the OAuth with your Google client, keeps each person's refresh token sealed in Postgres, and sends
+  # the connector a short-lived access token per turn. The connector holds no client secret and stores
+  # nothing (stateless). Read-only and the two services are fixed here, so it asks Google for nothing that
+  # could send, change or delete. Not published: only the web service reaches it, on the compose network.
+  # Its signing key is for its own OAuth server, which external-provider mode never uses; a fresh one is
+  # made at each start so no secret sits in .env. README.md's Connect Google section has the setup.
+  google:
+    profiles: [google]
+    image: ${GOOGLE_CONNECTOR_IMAGE:-ghcr.io/taylorwilsdon/google_workspace_mcp:2.7.0@sha256:02d62876993f24de7e2268edd1bae8aef34d1bbd3991eeeca4d32ee8046b3cc6}
+    # The image's entrypoint is `sh -c`, so this is the script it runs.
+    command:
+      - |
+        export FASTMCP_SERVER_AUTH_GOOGLE_JWT_SIGNING_KEY="$$(/app/.venv/bin/python -c 'import secrets; print(secrets.token_hex(32))')"
+        exec /app/.venv/bin/python main.py --transport streamable-http --tool-tier core --tools gmail calendar
+    environment:
+      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_CONNECT_CLIENT_ID:-}
+      MCP_ENABLE_OAUTH21: "true"
+      EXTERNAL_OAUTH21_PROVIDER: "true"
+      WORKSPACE_MCP_STATELESS_MODE: "true"
+      WORKSPACE_MCP_READ_ONLY: "true"
+      PORT: "8000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+    restart: unless-stopped
+
   web:
     # Only ever this checkout's build. compose.release.yaml names the published image instead.
     image: alpha-selfhost-web
@@ -365,6 +406,7 @@ services:
       seaweedfs: { condition: service_healthy, required: false }
       agent-init: { condition: service_completed_successfully, required: false }
       agent: { condition: service_healthy, required: false }
+      google: { condition: service_healthy, required: false }
     ports: ["127.0.0.1:${PORT:-3000}:3000"]
     # On SIGTERM the server drains open chat streams and background work within this grace period.
     stop_grace_period: 30s
@@ -434,6 +476,16 @@ services:
       RERANK_MAX_DOCS: ${RERANK_MAX_DOCS:-12}
       RERANK_DOC_CHARS: ${RERANK_DOC_CHARS:-600}
       RERANK_TIMEOUT_MS: ${RERANK_TIMEOUT_MS:-8000}
+      # Document RAG scores its top five passages with the same reranker: about 320 characters each took
+      # 4.3 s at the median and 5.8 s at p95 on 2 cores (1.1 s on 8). Past this deadline RAG answers on the
+      # embedder's similarity alone, so it sits above the 2-core p95 (the app's own default is 3 s).
+      RAG_RERANK_TIMEOUT_MS: ${RAG_RERANK_TIMEOUT_MS:-6000}
+      # The bundled reranker scores French, Spanish and German right passages lower than English ones, so
+      # RAG keeps a passage at 0.005 when it also scores at least 5% of the best one. On the committed eval
+      # set that kept 38 of 45 non-English right passages against 28 at the app's 0.02, and none of 32
+      # questions about a similarly named organisation grounded on its page (README.md, "Document RAG and the full web search engine").
+      RAG_RERANK_MIN_SCORE: ${RAG_RERANK_MIN_SCORE:-0.005}
+      RAG_RERANK_RELATIVE_RATIO: ${RAG_RERANK_RELATIVE_RATIO:-0.05}
       CSAM_SCAN_PROVIDER: ${CSAM_SCAN_PROVIDER:-}
       CSAM_SCAN_BASE_URL: ${CSAM_SCAN_BASE_URL:-}
       CSAM_SCAN_TOKEN: ${CSAM_SCAN_TOKEN:-}
@@ -441,6 +493,12 @@ services:
       COOP_API_KEY: ${COOP_API_KEY:-}
       HF_BUCKETS_TOKEN: ${HF_BUCKETS_TOKEN:-}
       HF_BUCKETS_REPO: ${HF_BUCKETS_REPO:-}
+      # Connect Google (--profile google): your Google OAuth client and the connector's address. Connect
+      # Google turns on when all three are set. The address defaults to the bundled connector, so setting
+      # the two client values is what turns it on (README.md, Connect Google).
+      GOOGLE_CONNECT_CLIENT_ID: ${GOOGLE_CONNECT_CLIENT_ID:-}
+      GOOGLE_CONNECT_CLIENT_SECRET: ${GOOGLE_CONNECT_CLIENT_SECRET:-}
+      GOOGLE_CONNECTOR_URL: ${GOOGLE_CONNECTOR_URL:-http://google:8000/mcp}
       PUBLIC_APP_DESCRIPTION: ${PUBLIC_APP_DESCRIPTION:-An open AI chat, self-hosted}
     # With --profile agent, agent-init leaves the token for agent-service in agent-token, and the image's
     # start (web/scripts/serve.mjs) takes it while the agent runs. Set AGENT_SERVICE_TOKEN and

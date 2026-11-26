@@ -46,6 +46,11 @@ import { saveReport } from "$lib/chat/server/db/reports";
 import { wipeUserData } from "$lib/chat/server/db/wipeUserData";
 import { setConversationTags } from "$lib/chat/server/db/conversationTags";
 import {
+	deleteUserGoogleConnection,
+	getUserGoogleConnection,
+	saveUserGoogleConnection,
+} from "$lib/chat/server/db/userGoogleConnections";
+import {
 	createTestLocals,
 	createTestConversation,
 	createTestUser,
@@ -343,6 +348,23 @@ describe.sequential("wipeUserData", () => {
 		expect(summary.accountDeleted).toBe(false);
 		expect(await rows(userId)).toEqual([]);
 		expect(await rows(theirId)).toEqual([{ id: "grant" }]);
+	});
+
+	it("Forget everything removes the account's sealed Google token, without deleting the account, and a stranger keeps theirs", async () => {
+		const me = await createTestUser();
+		const them = await createTestUser();
+		const userId = me.locals.user!._id.toString();
+		const theirId = them.locals.user!._id.toString();
+		await saveUserGoogleConnection({ userId, email: "me@example.org", scopes: "openid", credential: "sealed-mine" });
+		await saveUserGoogleConnection({ userId: theirId, email: "them@example.org", scopes: "openid", credential: "sealed-theirs" });
+		expect(await getUserGoogleConnection(userId)).not.toBeNull();
+
+		const summary = await wipeUserData({ userId });
+
+		expect(summary.accountDeleted).toBe(false);
+		expect(await getUserGoogleConnection(userId)).toBeNull();
+		expect((await getUserGoogleConnection(theirId))?.credential).toBe("sealed-theirs");
+		await deleteUserGoogleConnection(theirId);
 	});
 
 	it("keeps the account and the signed-in session when the wipe does not ask to delete the account", async () => {

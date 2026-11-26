@@ -33,6 +33,8 @@ import { busyModels } from '$lib/chat/server/modelBusy';
 import { SERVER_BUSY_REFRESH_MS } from '$lib/chat/routing/busyHere';
 import { resolveBusyScope } from '$lib/chat/server/textGeneration/faultInjection';
 import { countryFromHeader } from '$lib/chat/crisisLocale';
+import { serverBrand } from '$lib/chat/server/serverBrand';
+import { configuredKind } from '$lib/chat/server/storage/custodialBackend';
 
 // The tuning panel warns at save time when a starters override is too small to rotate.
 export { STARTER_COUNT };
@@ -141,6 +143,10 @@ export async function loadChatShellData(
 	const defaultModelId = models[0]?.id ?? defaultModel?.id;
 
 	return {
+		// This install's names, read at runtime so a prebuilt self-host image can carry its own.
+		brand: serverBrand(),
+		// Where this deployment keeps files, so Data & privacy names the real store. Null when unset.
+		fileStore: ((kind) => (typeof kind === 'string' ? kind : null))(configuredKind()),
 		// The live request log and the lines under an answer follow the language the
 		// visitor chose for the interface, else the one their browser asks for first (chromeCopy.ts,
 		// which also covers languages the main catalogs don't yet); model reply language stays separate.

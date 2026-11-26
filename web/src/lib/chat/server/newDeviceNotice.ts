@@ -28,6 +28,7 @@ import { accountFlagValues, flagEnabledOr, fuzzOverrideValue } from "$lib/chat/s
 import { flagEmail } from "$lib/chat/server/flagEmail";
 import { logger } from "$lib/chat/server/logger";
 import { isReservedTestAddress, sendViaResend } from "$lib/chat/server/resend";
+import { serverBrand } from "$lib/chat/server/serverBrand";
 import { describePlatform } from "$lib/chat/utils/describePlatform";
 
 /** PostHog flag key. Owner: chat. Gates the new-device sign-in email. */
@@ -101,10 +102,11 @@ async function classifyDevice(userId: string, deviceId: string): Promise<"known"
 
 function noticeEmail(label: string, at: Date, sessionsUrl: string) {
 	const when = at.toUTCString();
+	const { product } = serverBrand();
 	return {
-		subject: "New sign-in to your AI Potluck account",
+		subject: `New sign-in to your ${product} account`,
 		text:
-			`Your AI Potluck account was signed in from ${label} on ${when}.\n\n` +
+			`Your ${product} account was signed in from ${label} on ${when}.\n\n` +
 			`If that was you, there is nothing to do.\n\n` +
 			`If it wasn't, open Active sessions and sign that device out, then sign in again yourself:\n${sessionsUrl}\n`,
 	};

@@ -1387,6 +1387,23 @@ export const userMcpServers = pgTable(
 
 export type UserMcpServerRow = typeof userMcpServers.$inferSelect;
 
+// ── userGoogleConnections (a person's Google account, connected in Settings → Connectors) ────
+// At most one per person. `credential` is Google's refresh token, sealed with
+// storage/locations/sealedSecret.ts under its own info string; it never leaves the server. A turn trades
+// it for a short-lived access token and sends only that, to the operator's Google connector
+// (connectors/google.ts). `email` is what the Connectors page shows; `scopes` is what Google granted.
+export const userGoogleConnections = pgTable("user_google_connections", {
+	userId: text("user_id")
+		.primaryKey()
+		.references(() => users.id, { onDelete: "cascade" }),
+	email: text("email").notNull(),
+	scopes: text("scopes").notNull(),
+	credential: text("credential").notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type UserGoogleConnectionRow = typeof userGoogleConnections.$inferSelect;
+
 // One row per account that has chosen where new files go or has uploaded with locations on. No row,
 // or a null `default_location`, is "Last used"; "alpha" is Alpha storage; "ask" asks on
 // every upload once a second location is linked; anything else is a storage_locations id.

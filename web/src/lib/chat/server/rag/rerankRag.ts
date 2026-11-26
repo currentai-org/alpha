@@ -31,7 +31,7 @@
 
 import type { RagSource } from "$lib/chat/types/Rag";
 import { rerankByRelevance, rerankEnabled } from "$lib/chat/server/search/rerank";
-import { ragRerankMinScore, ragRerankSkipBelow, ragRerankTimeoutMs } from "./env";
+import { ragRerankMinScore, ragRerankRelativeRatio, ragRerankSkipBelow, ragRerankTimeoutMs } from "./env";
 import { logger } from "$lib/chat/server/logger";
 import { failOpenDeparture } from "$lib/chat/server/failOpen";
 
@@ -74,8 +74,12 @@ export async function rerankRagHits(
 		return { hits: [], relevanceVerified: false };
 	}
 	try {
+		const ratio = ragRerankRelativeRatio();
 		const rr = await rerankByRelevance(query, hits, {
 			minScore: ragRerankMinScore(),
+			// minTop 0: the cut applies on every verified call, since the absolute floor already decides
+			// whether anything is grounded at all.
+			...(ratio > 0 ? { relativeFloor: { ratio, minTop: 0 } } : {}),
 			// Gate path: a VERIFIED all-below-floor result comes back as [] (→ the caller answers
 			// ungrounded), never the raw input order. On the UNVERIFIED path this same [] is discarded below.
 			allowEmpty: true,

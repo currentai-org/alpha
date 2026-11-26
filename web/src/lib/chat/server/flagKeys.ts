@@ -915,7 +915,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		scope: "account",
 		class: "feature",
 		codeDefault: "off",
-		selfHost: "off",
+		selfHost: "on",
 		owner: "chat",
 		gates:
 			"whether the tools of the operator-configured MCP servers (MCP_SERVERS, mcp/servers.ts), and of servers a signed-in person added in Settings → Connectors (CUR-4016), are offered on a chat turn: in the tool loop for a model that calls tools, through the router pre-pass otherwise. A tool not marked readOnlyHint runs only after the person allows it",
@@ -923,7 +923,23 @@ export const FLAG_KEYS = defineFlagKeys([
 			"no configured server is contacted and no tool of theirs is offered",
 		ticket: "CUR-3026",
 		specs: { on: "mcp-servers.spec.ts", off: "mcp-servers.spec.ts" },
-		// Production enable is its own ticket and a flag flip.
+		// On by default in self-host only. Production enable is its own ticket and a flag flip.
+	},
+	{
+		key: "google-connector",
+		scope: "account",
+		class: "feature",
+		codeDefault: "off",
+		// A self-host operator turns it on by running the `google` compose profile with their own
+		// Google OAuth client, which sets all three.
+		selfHost: { onWhenEnv: ["GOOGLE_CONNECT_CLIENT_ID", "GOOGLE_CONNECT_CLIENT_SECRET", "GOOGLE_CONNECTOR_URL"] },
+		owner: "chat",
+		gates:
+			"Connect Google in Settings → Connectors, and whether a signed-in person's connected Google account (Gmail and Calendar, read-only) is offered to chat turns through the operator's Google connector (connectors/google.ts)",
+		whenAbsent: "no Connect Google button, no Google token is stored or refreshed, and no turn reaches the connector",
+		ticket: "CUR-5321",
+		// Hosted www is not in scope: its product claim says Alpha never asks for a mailbox, so
+		// turning this on there is that ticket's decision, never a flag flip on its own.
 	},
 	{
 		key: "one-chat-sandbox",

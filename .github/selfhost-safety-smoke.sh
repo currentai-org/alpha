@@ -124,7 +124,7 @@ compose logs --no-color --no-log-prefix web > "$logs/web.log" 2>&1
 compose logs --no-color --no-log-prefix shieldstral > "$logs/shieldstral.log" 2>&1
 echo "--- web log: screen timing, fail-open departures, token-mode verdicts"
 grep -E 'pre-model screen timing|\[failopen\] guard|token-mode verdict|NO SCREEN|\[guard\]' "$logs/web.log" \
-	| jq -Rrc 'fromjson? | {msg: (.message // .msg), guardStatus, gateMs, guardChunks, scoreSource, failopen, reason} | with_entries(select(.value != null))' \
+	| jq -Rrc 'fromjson? | {msg: (.message // .msg), guardStatus, gateMs, guardChunks, scoreSource, failopen, reason, status, error, ms} | with_entries(select(.value != null))' \
 	| tee "$out/safety-web.extract.log"
 echo "--- classifier: requests and prompt eval"
 grep -E 'prompt eval time|eval time|total time|slot|error' "$logs/shieldstral.log" | cut -c1-300 > "$out/safety-shieldstral.extract.log" || true

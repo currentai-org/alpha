@@ -57,7 +57,7 @@ export interface SettingsSectionInput {
 	autoRoutingEnabled?: boolean;
 	/** The `human-eval` flag (layout data's `humanEvalEnabled`): Evaluate language opens /chat/settings/evaluate. */
 	humanEvalEnabled?: boolean;
-	/** The `mcp-servers` flag (layout data's `mcpServersEnabled`): Connectors shows only with it on. */
+	/** The `mcp-servers` or `google-connector` flag (layout data's `mcpServersEnabled`, `googleConnectorEnabled`): Connectors shows with either on. */
 	connectorsEnabled?: boolean;
 }
 
@@ -93,6 +93,7 @@ export function settingsNavInputs(pageData: object): Omit<SettingsSectionInput, 
 		autoRoutingEnabled?: boolean;
 		humanEvalEnabled?: boolean;
 		mcpServersEnabled?: boolean;
+		googleConnectorEnabled?: boolean;
 	};
 	return {
 		signedIn: Boolean(data.loginEnabled && data.user),
@@ -102,7 +103,7 @@ export function settingsNavInputs(pageData: object): Omit<SettingsSectionInput, 
 		devTools: settingsDevTools(pageData),
 		autoRoutingEnabled: data.autoRoutingEnabled === true,
 		humanEvalEnabled: data.humanEvalEnabled === true,
-		connectorsEnabled: data.mcpServersEnabled === true
+		connectorsEnabled: data.mcpServersEnabled === true || data.googleConnectorEnabled === true
 	};
 }
 

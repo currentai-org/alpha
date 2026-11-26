@@ -9,5 +9,9 @@
 	name="data"
 	icon={RiShieldCheckLine}
 	title={m.welcome_dataTitle()}
-	body={m.welcome_dataBodyGuest({ days: GUEST_RETENTION_DAYS })}
+	body={m.welcome_dataBodyGuest({
+		days: GUEST_RETENTION_DAYS,
+		// The landing is www's own page, so it names who runs www.
+		organisation: 'Current AI'
+	})}
 />

@@ -27,6 +27,7 @@ import { visitorSourcesNote } from "$lib/chat/utils/visitorSources";
 import type { PromptSection } from "./renderSections";
 import type { AnswerPreferences } from "$lib/chat/answerPreferences";
 import { answerShapeFor, answerVoiceFor } from "./answerClauses";
+import { fillBrand } from "$lib/chat/server/serverBrand";
 
 interface BaseGuardContext {
 	modelId: string;
@@ -52,7 +53,7 @@ const BASE_GUARD_SECTIONS: ReadonlyArray<PromptSection<BaseGuardContext>> = [
 		ticket: "CUR-3200",
 		render: ({ modelId }) => {
 			const id = resolveModelIdentity(modelId);
-			return `You are ${id.short}, made by ${id.maker}, answering in AI Potluck, a chat app that Current AI runs; Current AI did not build you and does not run you.`;
+			return fillBrand(`You are ${id.short}, made by ${id.maker}, answering in {product}, a chat app that {organisation} runs; {organisation} did not build you and does not run you.`);
 		},
 	},
 	{ id: "identity-honesty", stability: "static", ticket: "CUR-3220", render: () => IDENTITY_HONESTY_INVARIANT },

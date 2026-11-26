@@ -84,9 +84,13 @@ answers (`inputGate.ts`, `guardGate.ts`). The profile alone, without the line, s
 
 What to expect:
 
-- **It runs out of time often on CPU, and what happens then depends on the rule.** One short message is 17 classifier calls, one per
-  rule. The app gives each call 8 s and the whole screen 20 s (`GUARD_TIMEOUT_MS` in `guardGate.ts`,
-  `operationDeadlineMs` in `rules.json`). On an 8-CPU machine under other load, with the classifier
+- **It runs out of time often on CPU, and what happens then depends on the rule.** One short message is 11 classifier calls, where hosted
+  Alpha makes 17, one per rule. The child-safety rules and six others are asked one by one; for the
+  other nine, three grouped questions are asked first, and a group's rules only when its answer is yes
+  (`web/config/selfhostScreen.mjs`). The app sends at most 4 calls at once, one per classifier slot, and gives
+  the whole screen at least 20 s (`operationDeadlineMs` in `rules.json`), 5 s more per extra round of
+  4 calls. A call can take until the screen's deadline, since a request waits inside llama.cpp for a
+  slot. On an 8-CPU machine under other load, with the classifier
   capped at 4 CPUs, a warm screen took 25 to 36 s and its slowest call 11 to 17 s; the first screen after
   start took 121 s. On a second 8-CPU machine, the first turn after start ran out
   of time at 20 s and the second, a blocked one, finished in 18 s. Only the child-safety rules fail closed: when one of their
@@ -164,6 +168,58 @@ starts agent-service, its model gateway and a socket proxy beside the app, and w
 
 Treat it as a demo: run it for yourself or people you trust, not for the public.
 
+## Connect Google (optional)
+
+With this on, a signed-in person can connect their own Google account in Settings → Connectors and ask
+chat about their Gmail and Calendar ("what's on my calendar tomorrow"). Access is read-only: nothing on
+this stack can send mail, change an event or delete anything. It needs a Google OAuth client of your
+own, because Google shows its name on the consent screen and holds you to its terms.
+
+1. In the [Google Cloud console](https://console.cloud.google.com/), create or pick a project and enable
+   the **Gmail API** and the **Google Calendar API** for it.
+2. Configure its consent screen (Google Auth Platform → Branding and Audience) and pick the user
+   type that fits who will connect:
+   - **Internal**, if the project sits in a Google Workspace organization and only its members
+     connect. No verification, no test-user list, and connections don't expire after a week. Your
+     Workspace admin may still have to allow the app to read Gmail.
+   - **Personal**, if only you connect. It allows just the account that created the project, needs
+     no verification, and can't be changed to another type later.
+   - **External** for anyone else. While its publishing status is **Testing**, only the test users you
+     list (up to 100) can connect, and each connection lasts seven days before it must be made again.
+     Publishing it needs Google's verification, and because Gmail read access is a restricted scope,
+     that includes a security review.
+
+   Google's [Manage App Audience](https://support.google.com/cloud/answer/15549945) page defines the
+   three types.
+3. Create an OAuth client ID of type **Web application**, with this authorized redirect URI:
+   `<PUBLIC_ORIGIN>/chat/api/connectors/google/callback`. On a local stack that is
+   `http://localhost:3000/chat/api/connectors/google/callback`.
+4. Put its two values in `.env` and start the stack with the profile:
+
+   ```sh
+   # in .env
+   GOOGLE_CONNECT_CLIENT_ID=<the client id>
+   GOOGLE_CONNECT_CLIENT_SECRET=<the client secret>
+   ```
+
+   ```sh
+   docker compose --profile local --profile google up --build
+   ```
+
+The profile runs the connector, [taylorwilsdon/google_workspace_mcp](https://github.com/taylorwilsdon/google_workspace_mcp)
+(MIT), on the compose network, unpublished, fixed to read-only Gmail and Calendar. The web service does
+the OAuth: it keeps each person's refresh token sealed in Postgres, the way it keeps their own servers'
+tokens, and on each turn hands the connector a short-lived access token for that person only. The
+connector holds no client secret and stores nothing. `GOOGLE_CONNECTOR_URL` points web at a connector of
+your own instead.
+
+- **Disconnect** in Settings → Connectors deletes the stored token, and so does **Forget everything**.
+  Google keeps the grant itself until the person removes it at
+  [their Google account](https://myaccount.google.com/connections).
+- Agent mode tasks do not reach Google yet; only chat turns do.
+- Our CI boots the connector and checks that it asks Google for nothing
+  wider than read-only. A real connect needs a person at Google's consent screen, so CI does not walk it.
+
 ## Web search with sources (optional)
 
 A turn that searches the web cites a page only after a reranker has scored it as relevant to the
@@ -219,7 +275,7 @@ Compose reads `.env` next to `compose.yaml`.
 
 | Variable | Default | What it is |
 | --- | --- | --- |
-| `BETTER_AUTH_SECRET` | none, required | Signs session cookies. Any long random string. |
+| `BETTER_AUTH_SECRET` | none, required | Signs session cookies and seals the tokens people save in Settings → Connectors. Any long random string. |
 | `OPENAI_BASE_URL` | none, required unless the Open WebUI names below are set | The model endpoint's base, ending in `/v1`. It must answer `GET /models` and `POST /chat/completions`. |
 | `OPENAI_API_KEY` | `none` | Sent as `Bearer` to that endpoint. Keyless servers ignore it. |
 | `OPENAI_API_BASE_URLS`, `OPENAI_API_KEYS` | none | Open WebUI's names, for an install moving over with its env file. Read only while `OPENAI_BASE_URL` is unset; when both are set, `OPENAI_BASE_URL` wins and the log says so. `;`-separated, one key per URL (an empty key is a keyless endpoint); with fewer keys the rest are keyless and extra keys are dropped, as in Open WebUI, and `OPENAI_API_KEY` stands in when `OPENAI_API_KEYS` is unset. Chat offers the models of every URL, each sent to its own endpoint with its own key; an id two endpoints both list goes to the earlier one, and the log names it. |
@@ -227,6 +283,8 @@ Compose reads `.env` next to `compose.yaml`.
 | `ALPHA_MODELS_FILE` | none | A model list file of your own, read in place of the five model settings above. See [Your own model list](#your-own-model-list). |
 | `PORT` | `3000` | The host port, bound to 127.0.0.1. |
 | `PUBLIC_ORIGIN` | `http://localhost:3000` | The origin people reach the app at. Set it when you put a proxy in front. |
+| `BRAND_ORGANISATION_NAME`, `BRAND_PRODUCT_NAME` | `Current AI`, `AI Potluck` | Who runs this install and what the app is called. The header, sidebar, page title, data and privacy notes and sign-in email show them, and the model says it answers inside your app, run by you. Credits to the upstream project keep its own name. `WEBUI_NAME` is read as the product name when `BRAND_PRODUCT_NAME` is unset. Read at start, so a change needs `docker compose up -d`, not a rebuild. |
+| `BRAND_ASSISTANT_NAME` | none | A name the assistant answers to. It still says which model it runs on. The model has to follow its system prompt for this: the default Qwen2.5 0.5B does not, and answers "what are you called?" without the name. CI checks the name on a hosted model. |
 | `POSTGRES_PASSWORD` | `alpha` | The bundled database's password. Set it before the first start: Postgres reads it only when it creates the database in an empty `db` volume. Changed later, it changes only what the app connects with, and the app is locked out. To change it later, run `./db-passwd.sh`, then put the new value here and run `docker compose up -d`. Already locked out? Run `NEW_POSTGRES_PASSWORD=<the value here> ./db-passwd.sh`, then `docker compose restart web`. Letters, digits and `. _ ~ -` only: the app puts it in a URL. |
 | `GENERATION_TIMEOUT_MS`, `SILENCE_TIMEOUT_MS` | `150000` | How long a turn may wait for the model before it is ended as an error. The app's own default is 45 s, too short for a CPU model's first turn. |
 | `LOCAL_MODEL_REPO`, `LOCAL_MODEL_FILE`, `LOCAL_MODEL_ALIAS`, `LOCAL_MODEL_CTX` | Qwen2.5 0.5B Instruct, Q4_K_M, 16k context | Which GGUF llama.cpp downloads from Hugging Face, and the model id it reports. Keep `MODEL_ALLOWLIST` in step with the alias. |
@@ -305,6 +363,7 @@ it is stale (`pnpm selfhost:flag-table`, in the `web-lint` job).
 | `document-text-only` | off | none |
 | `entity-name-correction` | on | none |
 | `folkways-adapter` | on when all of its env is set | `FOLKWAYS_ENABLED`, `FOLKWAYS_URL` |
+| `google-connector` | on when all of its env is set | `GOOGLE_CONNECT_CLIENT_ID`, `GOOGLE_CONNECT_CLIENT_SECRET`, `GOOGLE_CONNECTOR_URL` |
 | `groundcheck` | off | none |
 | `guard-history-cap` | off | none |
 | `guard-primary` | off | none |
@@ -321,7 +380,7 @@ it is stale (`pnpm selfhost:flag-table`, in the `web-lint` job).
 | `low-resource-per-model` | on | none |
 | `math-routing` | on when all of its env is set | `ARITHMETIC_ROUTE_MODEL`, `SECOND_OPINION_BASE_URL`, `SECOND_OPINION_API_KEY` |
 | `mcp-elicitation` | off | none |
-| `mcp-servers` | off | none |
+| `mcp-servers` | on | none |
 | `mila-sp-output-guard` | off | none |
 | `multimodal` | on when all of its env is set | `MULTIMODAL_ENABLED`, `CSAM_SCAN_BASE_URL`, `CSAM_SCAN_TOKEN`; `ALPHA_EDITION=selfhost` stands in for `MULTIMODAL_ENABLED` when it is unset; `CSAM_SCAN=off` (with `ALPHA_EDITION` set to something other than `hosted`) stands in for `CSAM_SCAN_BASE_URL` and `CSAM_SCAN_TOKEN` |
 | `new-device-notice` | on when all of its env is set | `RESEND_API_KEY` |
@@ -416,6 +475,26 @@ docker compose logs web | grep '\[cleanup\]'
 `guestFilesDeleted`, and `expiredConversations` (what the `conversation-expiry` flag's sweep deleted; with
 that flag on, guest conversations are counted there instead of under `guestConversations`). A failed run logs `[cleanup] daily cleanup failed`, and the next day's run goes ahead.
 
+## When a service crashes
+
+Every long-running service in `compose.yaml` has `restart: unless-stopped`. When one crashes, is killed
+for running out of memory, or the machine reboots, Docker starts it again by itself, with no compose
+command, as long as the Docker daemon starts at boot (`systemctl enable docker` on most Linux
+distributions). Only `docker compose stop` or `down` keeps a service down. The one-shot `agent-init`
+runs once per `up` and is not restarted.
+
+A service that is still running but no longer answers is not restarted. Its healthcheck turns it
+`unhealthy`, which `docker compose ps` shows, and it stays that way until you restart it:
+
+```sh
+docker compose ps                  # STATUS says (healthy) or (unhealthy) for each service
+docker compose restart web         # or whichever service is unhealthy
+```
+
+The web service's health is `GET /healthcheck`, which answers 200 only when the app can serve a chat
+turn. Public CI kills llama and web with SIGKILL, then restarts the Docker daemon, and requires every
+service to come back healthy on its own (`.github/selfhost-crash-restart-smoke.sh`).
+
 ## Back up and restore
 
 `backup.sh` writes one directory, by default `backups/<UTC time>/` beside this file (git and the image
@@ -454,7 +533,7 @@ request: a guest conversation and a file in the `files` volume, `backup.sh`, `do
 | The database | `db.sql.gz` from `backup.sh` | Every account, conversation, setting and workspace. |
 | People's files | `files.tar.gz`, or `objects.tar.gz` on the `s3` profile | Every file in My files and every chat upload. Each person's file key lives here too, under `_keys/`. |
 | `CUSTODIAL_MASTER_IDENTITIES` | `.env` only; `backup.sh` never copies it | With sealing on, every sealed file: each person's file key is encrypted to this master, and there is no other copy. |
-| `BETTER_AUTH_SECRET` | `.env` only | Everyone is signed out, guests without a saved conversation start over, and a linked Hugging Face bucket asks to be reconnected (`sealedSecret.ts`). |
+| `BETTER_AUTH_SECRET` | `.env` only | Everyone is signed out, guests without a saved conversation start over, a linked Hugging Face bucket asks to be reconnected, and every server people added in Settings → Connectors stops being offered until they add its token again; the log says why (`sealedSecret.ts`). |
 | `agent-secrets` | `agent-secrets.tar.gz`, `agent` profile only | Nothing lasting: delete it and `agent-token`, and the next start makes new keys (see Agent mode). |
 
 Keep `.env` in a password manager or another place apart from the backups. A copy of the backups plus
@@ -609,7 +688,14 @@ throwaway container in its namespaces:
   (`agentModeEnabled` in `web/src/lib/chat/server/agentMode.ts`).
 - **Document RAG and the full web search engine** need `RAG_ENABLED` with an embeddings endpoint, and
   `FIRECRAWL_API_KEY`. `FIRECRAWL_BASE_URL` points search and scrape at your own Firecrawl (AGPL, same v2
-  API) instead of api.firecrawl.dev.
+  API) instead of api.firecrawl.dev. With `--profile rerank`, RAG scores its top five passages
+  with the bundled reranker and waits `RAG_RERANK_TIMEOUT_MS` (compose's 6000) for it: on 2 cores that takes 4.3 s
+  at the median and 5.8 s at p95, so keep it at 6000 or above there. A RAG rerank that misses it answers
+  from the embedder's similarity ranking alone, without the reranker's relevance check. A passage is kept
+  at `RAG_RERANK_MIN_SCORE` (compose's 0.005) when it also scores `RAG_RERANK_RELATIVE_RATIO` (0.05) of
+  the best one: the reranker scores French, Spanish and German right passages lower than English ones, and
+  on the committed eval set this kept 38 of 45 of them against 28 at the app's 0.02 alone, with none of 32
+  questions about a similarly named organisation grounding on its page.
 - **Read-aloud** posts to `READ_ALOUD_BASE_URL` + `/audio/speech`, any OpenAI-compatible speech endpoint (a
   base ending in `/v1`); unset, it uses the Hugging Face router and `HF_TOKEN`. With the base set, no Hugging Face token is needed, and a bearer is sent only if `READ_ALOUD_API_KEY` is set. `READ_ALOUD_MODEL` and `READ_ALOUD_VOICE` set the model and voice names your endpoint expects (one voice for every language); either unset sends the Kokoro value, and the Hugging Face route ignores both.
 - **TLS.** The port is bound to 127.0.0.1 and cookies are sent without the Secure flag. Put a TLS

@@ -139,13 +139,13 @@ describe("self-host defaults, PostHog not configured", () => {
 	it("with PostHog unset, the safety, access and security flags still awaiting a decision read off, each though its code fallback is on", () => {
 		const awaitingDecision = [
 			"groundcheck", "guard-primary", "self-harm-distress-declines", "mila-sp-output-guard",
-			"guard-history-cap", "document-text-only", "mcp-servers",
+			"guard-history-cap", "document-text-only",
 		];
 		for (const k of awaitingDecision) expect(flagEnabledOr(k, () => true), k).toBe(false);
 	});
 
-	it("with PostHog unset, document-attachments, workspace-org-creation and stream-follow read on with nothing configured", () => {
-		for (const k of ["document-attachments", "workspace-org-creation", "stream-follow"]) {
+	it("with PostHog unset, document-attachments, workspace-org-creation, stream-follow and mcp-servers read on with nothing configured", () => {
+		for (const k of ["document-attachments", "workspace-org-creation", "stream-follow", "mcp-servers"]) {
 			expect(flagEnabledOr(k, () => false), k).toBe(true);
 		}
 	});

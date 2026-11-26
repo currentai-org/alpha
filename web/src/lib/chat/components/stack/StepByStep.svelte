@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { brandOf } from '$lib/chat/brand';
+	import { page } from '$app/state';
 	import type { Component } from 'svelte';
 	import type { AssistRole, AssistedBy, Message } from '$lib/chat/types/Message';
 	import { Badge, Collapsible, Favicon } from '@aipotluck/alpha-ds';
@@ -558,7 +560,7 @@
 				id: 'saved',
 				icon: RiSave3Line,
 				title: m.message_stepSavedTitle(),
-				what: m.message_stepSavedWhat(),
+				what: m.message_stepSavedWhat({ organisation: brandOf(page.data).organisation }),
 				tone: 'ok',
 				ms: t?.totalMs,
 				timeLabel: (time) => m.message_stepTimeDone({ time })

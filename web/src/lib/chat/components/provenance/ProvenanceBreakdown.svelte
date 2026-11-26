@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { brandOf } from '$lib/chat/brand';
+	import { page } from '$app/state';
 	import { base } from '$lib/chat/paths';
 	import { Badge } from '@aipotluck/alpha-ds';
 	import { orgs, type CatalogModel, type Org } from '$lib/chat/routing/catalog';
@@ -156,7 +158,7 @@
 		<div class="flex min-w-0 flex-col gap-0.5">
 			<dt class="type-label text-fg-3">{m.message_yourData()}</dt>
 			<dd class="type-body text-fg-2">
-				{m.message_dataHome()}
+				{m.message_dataHome({ organisation: brandOf(page.data).organisation })}
 				<span class="block type-caption text-fg-3">
 					{signedIn ? m.message_dataKeptSignedIn() : m.message_dataKeptGuest({ days: RETENTION_DAYS })}
 					{#each eraseSentence as part, i (i)}{#if part === '{link}'}<a

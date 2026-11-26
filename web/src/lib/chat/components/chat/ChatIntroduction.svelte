@@ -4,6 +4,7 @@ SPDX-License-Identifier: Apache-2.0
 Modified by Current AI from huggingface/chat-ui.
 -->
 <script lang="ts">
+	import { brandOf } from '$lib/chat/brand';
 	import PotluckMark from "$lib/chat/components/PotluckMark.svelte";
 	import type { Model } from '$lib/chat/types/Model';
 	import { page } from '$app/state';
@@ -126,7 +127,7 @@ Modified by Current AI from huggingface/chat-ui.
 				class="potluck-mark-egg -m-1 p-1"
 				style:--turns={markClicks}
 				class:invisible={runOpen}
-				aria-label="AI Potluck"
+				aria-label={brandOf(page.data).product}
 				onclick={tapMark}
 				data-potluck-mark-egg
 			>

@@ -330,6 +330,13 @@
       "when": 1795286833622,
       "tag": "0046_safety_events_evidence",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1795560448917,
+      "tag": "0047_user_google_connections",
+      "breakpoints": true
     }
   ]
 }

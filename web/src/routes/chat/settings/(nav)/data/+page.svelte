@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { brandOf } from '$lib/chat/brand';
+	import { fileStoreOf, filesHomeCopy } from '$lib/chat/fileStoreCopy';
+	import RiHardDrive2Line from '~icons/ri/hard-drive-2-line';
 	import { m } from '$lib/paraglide/messages.js';
 	import { page } from "$app/state";
 	import { base } from "$lib/chat/paths";
@@ -53,7 +56,7 @@
 				<PotluckMark class="size-4" />
 			</span>
 			<div class="flex flex-col gap-1">
-				<p class="type-body text-fg-2">{m.data_chatsHome()}</p>
+				<p class="type-body text-fg-2">{m.data_chatsHome({ organisation: brandOf(page.data).organisation })}</p>
 				<p class="type-caption text-fg-3">
 					{#if signedIn}
 						{m.data_keptSignedIn()}
@@ -68,9 +71,16 @@
 		the line about where uploads are stored is only true once signed in. -->
 		{#if signedIn}
 			<div class="flex gap-3">
-				<OrgLogo org={filesHost} size="md" />
+				<!-- The Hugging Face logo only where Hugging Face holds the files; another store gets a plain mark. -->
+				{#if fileStoreOf(page.data) === "hf-bucket"}
+					<OrgLogo org={filesHost} size="md" />
+				{:else}
+					<span class="grid size-8 shrink-0 place-items-center rounded-sharp border border-line-2 bg-surface-1">
+						<RiHardDrive2Line class="size-4" aria-hidden="true" />
+					</span>
+				{/if}
 				<p class="type-body text-fg-2" data-testid="data-home-files">
-					{hasLinkedBucket ? m.data_filesHomeLinked() : m.data_filesHome()}
+					{filesHomeCopy(fileStoreOf(page.data), hasLinkedBucket, brandOf(page.data).organisation)}
 				</p>
 			</div>
 		{/if}

@@ -1,6 +1,7 @@
 import { flagEnabledOr } from "$lib/chat/server/flags";
 import { resolveModelIdentity } from "$lib/chat/identity";
 import { backendDisplay } from "$lib/chat/servingProvenance";
+import { fillBrand } from "$lib/chat/server/serverBrand";
 
 // Provenance at answer time.
 //
@@ -63,7 +64,7 @@ const PROVENANCE_FACTS_HEADER = "Background about you for this turn, never part 
 export function buildProvenanceFacts(input: { modelId: string; previous?: ServedRecord }): string {
 	const id = resolveModelIdentity(input.modelId);
 	const lines = [
-		`You are ${id.short}, built by ${id.maker}. You answer inside AI Potluck, a chat app that Current AI runs; Current AI did not build you and does not run you.`,
+		fillBrand(`You are ${id.short}, built by ${id.maker}. You answer inside {product}, a chat app that {organisation} runs; {organisation} did not build you and does not run you.`),
 		// A block headed "Provenance facts for this answer" that speaks of "the provenance
 		// line under this answer" leads some models to end with their own "Provenance: Served by
 		// <invented host>" line, and telling them not to write one does not help, so neither word

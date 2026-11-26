@@ -22,6 +22,7 @@ import { dbConfirmStore } from "./confirm";
 import { STUB_URL, stubMcpServer, stubMcpServerSwapped, stubSandboxServer } from "./e2eStub";
 import { sandboxHangStubServer, sandboxWaitStubServer } from "./sandboxWaitStub";
 import { userMcpServersFor } from "./userServers";
+import { googleServerFor } from "$lib/chat/server/connectors/google";
 import { routerLane } from "./router";
 import {
 	SANDBOX_CLAUSE,
@@ -108,7 +109,12 @@ export async function mcpServersKitForTurn(
 	},
 	readPolicies: PolicyReader = readMcpToolPolicies,
 	readOwn: typeof userMcpServersFor = userMcpServersFor,
-	opts: { withSandbox?: boolean; sandboxFor?: typeof sandboxServerFor; handoffEnabled?: () => boolean } = {}
+	opts: {
+		withSandbox?: boolean;
+		sandboxFor?: typeof sandboxServerFor;
+		handoffEnabled?: () => boolean;
+		googleFor?: typeof googleServerFor;
+	} = {}
 ): Promise<McpServersKit | undefined> {
 	const offered = opts.withSandbox ? (opts.sandboxFor ?? sandboxServerFor)(ctx.conv._id.toString(), ctx.locals) : undefined;
 	// `sandbox_stub` swaps the sandbox for one answered in-process, only where it would be offered.
@@ -126,8 +132,12 @@ export async function mcpServersKitForTurn(
 	const general = mcpServersEnabled()
 		? serversForRequest(ctx.faultInjection, await readOwn(ctx.locals, ctx.faultInjection))
 		: [];
+	// The person's connected Google account, behind its own flag, so an operator can offer it without
+	// turning on configured and hand-added servers. Its name is reserved the same way as the sandbox's.
+	const google = await (opts.googleFor ?? googleServerFor)(ctx.locals);
+	const withGoogle = google ? [...general.filter((s) => s.name !== google.name), google] : general;
 	// The sandbox's name is reserved: a configured or own server using it would take over its prefix.
-	const servers = sandbox ? [sandbox, ...general.filter((s) => s.name !== sandbox.name)] : general;
+	const servers = sandbox ? [sandbox, ...withGoogle.filter((s) => s.name !== sandbox.name)] : withGoogle;
 	if (servers.length === 0) return undefined;
 	const [tools, chosen] = await Promise.all([listServerTools(servers), readPolicies(ctx.locals)]);
 	if (tools.length === 0) return undefined;

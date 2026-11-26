@@ -201,6 +201,18 @@ export const ENV_MANIFEST = {
 	CSAM_SCAN_PROVIDER: {
 		desc: "Which hash-matching provider answers at CSAM_SCAN_BASE_URL (storage/csamScan.ts). Defaults to \"hma\", a self-run HMA instance. A name no provider answers to, or a provider with no CSAM_SCAN_BASE_URL, refuses every upload.",
 	},
+	BRAND_ORGANISATION_NAME: {
+		desc: "Who runs this install, as the chat and the model name them (\"a chat app that <name> runs\"). Unset or blank: \"Current AI\". Read at runtime, so a self-host renames a prebuilt image without rebuilding it.",
+	},
+	BRAND_PRODUCT_NAME: {
+		desc: "The app's name in the chat header, the sidebar, the page title, the sign-in email and what the model says it answers inside. Unset or blank: WEBUI_NAME if set, else \"AI Potluck\".",
+	},
+	BRAND_ASSISTANT_NAME: {
+		desc: "A name the assistant answers to on this install; it still names the model it runs on. Unset or blank: it answers with its model's name.",
+	},
+	WEBUI_NAME: {
+		desc: "Open WebUI's name for the app, read as BRAND_PRODUCT_NAME when that is unset, so an install moving from Open WebUI keeps its name.",
+	},
 	CSAM_SCAN: {
 		desc: "Self-host only. \"off\" records that the operator chose to run no CSAM hash check and owns detecting and reporting CSAM: uploads are stored unscanned (each picture logs a line), and it stands in for the scanner keys in the self-host flag defaults. Honoured only when ALPHA_EDITION is set and is not \"hosted\"; a hosted deployment ignores it and logs an error once.",
 	},
@@ -660,6 +672,16 @@ export const ENV_MANIFEST = {
 		secret: true,
 		desc: "Client secret for HF_STORAGE_OAUTH_CLIENT_ID. Never falls back to OPENID_CLIENT_SECRET.",
 	},
+	GOOGLE_CONNECT_CLIENT_ID: {
+		desc: "Self-host only: the operator's own Google OAuth client (Web application type) behind Connect Google in Settings → Connectors. Its redirect URI is <PUBLIC_ORIGIN>/chat/api/connectors/google/callback. With GOOGLE_CONNECT_CLIENT_SECRET and GOOGLE_CONNECTOR_URL it turns the google-connector flag on in self-host (selfhost/README.md).",
+	},
+	GOOGLE_CONNECT_CLIENT_SECRET: {
+		secret: true,
+		desc: "Client secret for GOOGLE_CONNECT_CLIENT_ID. Stays in the web service; the Google connector never sees it.",
+	},
+	GOOGLE_CONNECTOR_URL: {
+		desc: "Self-host only: the MCP endpoint of the Google connector the `google` compose profile runs (http://google:8000/mcp there). Each connected person's short-lived Google access token is sent to this origin and no other.",
+	},
 	HF_RAG_EMBEDDINGS_TOKEN: {
 		secret: true,
 		desc: "Hugging Face token for retrieval embeddings. Falls back to HF_TOKEN.",
@@ -961,6 +983,9 @@ export const ENV_MANIFEST = {
 	},
 	RAG_RERANK_MIN_SCORE: {
 		desc: "Minimum reranker score for a retrieved chunk to count. Default 0.02.",
+	},
+	RAG_RERANK_RELATIVE_RATIO: {
+		desc: "A retrieved chunk must also score this share of the best chunk's reranker score. Default 0 (off).",
 	},
 	RAG_RERANK_SKIP_COSINE_BELOW: {
 		desc: "Below this similarity a turn is treated as off-topic without calling the reranker.",

@@ -4,6 +4,7 @@ SPDX-License-Identifier: Apache-2.0
 Modified by Current AI from huggingface/chat-ui.
 -->
 <script lang="ts">
+	import { brandOf } from '$lib/chat/brand';
 	import { m } from '$lib/paraglide/messages.js';
 	import { getLocale } from '$lib/paraglide/runtime.js';
 	import { onMount, tick, untrack } from 'svelte';
@@ -495,7 +496,7 @@ Modified by Current AI from huggingface/chat-ui.
 			rows="1"
 			tabindex="0"
 			inputmode="text"
-			aria-label={m.product_messageAria()}
+			aria-label={m.product_messageAria({ product: brandOf(page.data).product })}
 			data-chat-input
 			class={[
 				'scrollbar-custom relative block max-h-[4lh] w-full resize-none overflow-x-hidden overflow-y-auto border-0 bg-transparent px-2.5 py-2.5 outline-hidden focus:ring-0 focus-visible:ring-0 sm:px-3 md:max-h-[8lh]',
@@ -645,7 +646,7 @@ Modified by Current AI from huggingface/chat-ui.
 									</Menu.Portal>
 								</Menu.SubmenuRoot>
 							{/each}
-							{#if (page.data as { mcpServersEnabled?: boolean }).mcpServersEnabled}
+							{#if (page.data as { mcpServersEnabled?: boolean }).mcpServersEnabled || (page.data as { googleConnectorEnabled?: boolean }).googleConnectorEnabled}
 								<!-- connected services, and adding one of your own, live in Settings → Connectors. -->
 								<Menu.Separator />
 								<Menu.Item onSelect={() => goto(`${base}/settings/connectors`)} data-testid="composer-connectors">

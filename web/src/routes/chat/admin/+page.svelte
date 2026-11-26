@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { brandOf } from "$lib/chat/brand";
+	import { page } from "$app/state";
 	import { base } from "$lib/chat/paths";
 	import type { PageData } from "./$types";
 	import StaffSignIn from "$lib/chat/components/StaffSignIn.svelte";
@@ -41,7 +43,7 @@
 	];
 </script>
 
-<svelte:head><title>Admin · AI Potluck</title></svelte:head>
+<svelte:head><title>Admin · {brandOf(page.data).product}</title></svelte:head>
 
 <div class="mx-auto w-full max-w-3xl px-4 py-8">
 	<header class="mb-6 flex items-center justify-between gap-3">

@@ -151,6 +151,10 @@ const COVERAGE: Record<string, { verdict: Verdict; why: string }> = {
 		verdict: "wiped",
 		why: "CUR-4016: MCP servers a person added in Settings → Connectors, with our sealed copy of each bearer token. Cascades from users, and deleted explicitly by wipeUserData (step 2d).",
 	},
+	user_google_connections: {
+		verdict: "wiped",
+		why: "CUR-5321: the Google account a person connected in Settings → Connectors, with our sealed copy of its refresh token. Cascades from users, and deleted explicitly by wipeUserData (step 2d).",
+	},
 	oauth_client: {
 		verdict: "wiped",
 		why: "CUR-4312: an OAuth client a person registered. Nothing creates one since Thunderbolt sync was removed, and the seeded Thunderbolt client had no user_id; any that did is deleted by wipeUserData's account step and cascades from `user`.",

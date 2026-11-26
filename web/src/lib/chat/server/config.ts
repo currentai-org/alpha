@@ -260,6 +260,11 @@ type ExtraConfigKeys =
 	// The storage OAuth app behind "Connect Hugging Face". Not sign-in's app, never a fallback for it.
 	| "HF_STORAGE_OAUTH_CLIENT_ID"
 	| "HF_STORAGE_OAUTH_CLIENT_SECRET"
+	// The operator's Google OAuth client behind "Connect Google", and the Google connector it hands each
+	// person's access token to (connectors/google.ts).
+	| "GOOGLE_CONNECT_CLIENT_ID"
+	| "GOOGLE_CONNECT_CLIENT_SECRET"
+	| "GOOGLE_CONNECTOR_URL"
 	// HF inference base URL — the backup serving lane for the primary model (same checkpoint, non-
 	// sovereign host) when CSCS is the primary OPENAI_BASE_URL. Unset → primary is single-lane.
 	| "HF_BASE_URL"

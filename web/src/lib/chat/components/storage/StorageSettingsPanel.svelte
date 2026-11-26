@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { brandOf } from '$lib/chat/brand';
+	import { fileStoreOf, whereKeptCopy } from '$lib/chat/fileStoreCopy';
+	import { page } from '$app/state';
 	import { m } from '$lib/paraglide/messages.js';
 	import { onMount } from 'svelte';
 	import { Button } from '@aipotluck/alpha-ds';
@@ -87,14 +90,14 @@
 
 	<section class="flex flex-col gap-3" aria-labelledby="storage-where-kept-heading" data-testid="storage-where-kept-section">
 		<h2 id="storage-where-kept-heading" class="m-0 type-label text-fg-1">{m.storage_whereKept()}</h2>
-		<!-- Only what is true today: the files sit in a Hugging Face storage bucket
-		     Current AI holds (custodialStorage.ts, custodialBucketRepo), not "inside Alpha". Nothing
+		<!-- Only what is true on this deployment: the sentence names the store CUSTODIAL_STORAGE_BACKEND
+		     picks (a Hugging Face bucket, an S3-compatible store, or the server's own disk), not "inside Alpha". Nothing
 		     here claims per-person isolation or where Hugging Face's own servers are.
 		     It says who Current AI is, since the sentence is the first place a visitor meets it.
 		     Once a bucket of the person's own is linked, "you don't need a Hugging Face
 		     account" is false for that bucket, so the sentence speaks of Alpha storage alone. -->
 		<p class="m-0 type-body text-fg-2" data-testid="storage-where-kept">
-			{hasLinkedBucket ? m.storage_whereKeptBodyLinked() : m.storage_whereKeptBody()}
+			{whereKeptCopy(fileStoreOf(page.data), hasLinkedBucket, brandOf(page.data).organisation)}
 		</p>
 	</section>
 </div>

@@ -220,6 +220,16 @@ jobs:
         run: |
           "$RUNNER_TEMP/gitleaks" git --log-opts="$BASE..$HEAD" --config "$RUNNER_TEMP/leak-check/gitleaks.toml" \
             --redact --no-banner --exit-code 1 -v .
+      # Rules on trial (gitleaks-warn.toml): a finding is a warning on the run, never a failure. A rule
+      # that has proved itself moves into gitleaks.toml, where it blocks.
+      - name: gitleaks (warn-only rules)
+        run: |
+          config="$RUNNER_TEMP/leak-check/gitleaks-warn.toml"
+          if [ ! -f "$config" ]; then echo "::notice::No warn-only gitleaks rules at the base commit."; exit 0; fi
+          if ! "$RUNNER_TEMP/gitleaks" git --log-opts="$BASE..$HEAD" --config "$config" \
+            --redact --no-banner --exit-code 1 -v .; then
+            echo "::warning::gitleaks warn-only rules found something in this change; see the lines above."
+          fi
 
   # The lines the change adds, against the patterns the public snapshot is exported under: staff names,
   # private paths, internal hosts and ids. The list itself names people and hosts, so it is not in this

@@ -1,0 +1,25 @@
+# Rules that report without failing, for their first runs, since a new check starts warn-only. The export and the
+# public repo's leak check run this config after gitleaks.toml and print its findings as warnings. Once
+# a run's findings have been read and the rule is trusted, move it into gitleaks.toml to make it block.
+title = "warn-only rules"
+
+# A path into someone's home directory names them and how their machine is laid out. The path must
+# start a token (line start, space, quote, bracket, `=`, `:` or `,`), so a URL or an import such as
+# `@/collections/Users/` is not one. The allowlist holds the stock names a doc example or a sandbox
+# uses, never a real person's.
+[[rules]]
+id = "home-directory-path"
+description = "An absolute path into a person's home directory"
+regex = '''(?:^|[\s"'`(=,;:\[])((?:/home|/Users)/[A-Za-z0-9][A-Za-z0-9._-]*)/'''
+secretGroup = 1
+keywords = ["/home/", "/users/"]
+
+[rules.allowlist]
+description = "example and sandbox account names, and third-party text quoted in a data file"
+regexes = [
+  '''^/home/(user|runner|node|ubuntu|username|example|you|me)$''',
+  '''^/Users/(user|runner|username|example|you|me|Shared)$''',
+]
+paths = [
+  '''web/static/data/notebook_data\.json''',
+]

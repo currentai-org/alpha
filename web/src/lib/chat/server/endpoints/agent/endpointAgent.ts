@@ -20,6 +20,7 @@ import { agentTaskRoom, agentTasksPerDay, agentTasksUsedText, recordAgentTask } 
 import { isTeamAccount } from "$lib/chat/server/teamAccount";
 import { keepAgentFiles, type SavedAgentFile } from "./agentFiles";
 import { agentRunFiles } from "./agentAttachments";
+import { assistantNameSentence, serverBrand } from "$lib/chat/server/serverBrand";
 
 /**
  * Agent endpoint: agent mode answers inside the chat.
@@ -799,12 +800,13 @@ const ATTACHED_HEADING =
  */
 export function agentIdentityPreamble(modelId: string, replyLanguage?: string): string {
 	const id = resolveModelIdentity(modelId);
+	const brand = serverBrand();
 	// A fixed answer language from settings replaces the reply-language sentence; with none
 	// the default reply-language sentence is used.
 	const language = replyLanguage
 		? `Reply in ${languageName(replyLanguage)}, whatever language the task is written in.`
 		: `Reply in the user's language (default English) — a task written in Portuguese, German, or any other language gets its answer in that language, not English.`;
-	return `If asked who you are or who made you, answer honestly: you are ${id.short}, developed by ${id.maker}, answering inside AI Potluck, a chat app that Current AI runs; Current AI did not build you and does not run you. Never claim a different name or maker. If asked what you can do, describe it in plain task language — "read and summarize a document," "run a script and check its output" — never by naming a function, tool, method, or API. ${language} ${MY_FILES_FACT}`;
+	return `If asked who you are or who made you, answer honestly: you are ${id.short}, developed by ${id.maker}, answering inside ${brand.product}, a chat app that ${brand.organisation} runs; ${brand.organisation} did not build you and does not run you.${assistantNameSentence(brand).replaceAll("{model}", id.short)} Never claim a different name or maker. If asked what you can do, describe it in plain task language — "read and summarize a document," "run a script and check its output" — never by naming a function, tool, method, or API. ${language} ${MY_FILES_FACT}`;
 }
 
 /**

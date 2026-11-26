@@ -1,3 +1,4 @@
+import { fillBrand } from "$lib/chat/server/serverBrand";
 import { describe, it, expect } from "vitest";
 import {
 	accountClause,
@@ -1209,29 +1210,31 @@ describe("featuresClause read aloud", () => {
 // meter (time and energy) sits in the header. The meter is in every chat header, so every prompt path
 // that states the app's features states the meter too, even when the composer offers nothing else.
 describe("SESSION_METER_FACT", () => {
+	// The fact as a prompt carries it, with the install's names filled in.
+	const METER = fillBrand(SESSION_METER_FACT);
 	const NONE = { dictation: false, textFiles: false, images: false, documents: false, readAloud: false };
 
 	it("names the meter, says the numbers stay in the browser, and forbids denying it", () => {
-		expect(SESSION_METER_FACT).toMatch(/session meter/);
-		expect(SESSION_METER_FACT).toMatch(/minutes/);
-		expect(SESSION_METER_FACT).toMatch(/energy/);
-		expect(SESSION_METER_FACT).toMatch(/not sent to Current AI/);
-		expect(SESSION_METER_FACT).toMatch(/never say the app doesn't track or show them/);
+		expect(METER).toMatch(/session meter/);
+		expect(METER).toMatch(/minutes/);
+		expect(METER).toMatch(/energy/);
+		expect(METER).toMatch(/not sent to Current AI/);
+		expect(METER).toMatch(/never say the app doesn't track or show them/);
 	});
 
 	it("reaches the persona, native and guards-only prompts, even with every composer feature off", () => {
-		expect(buildPersonaPrompt("m", undefined, { features: NONE })).toContain(SESSION_METER_FACT);
+		expect(buildPersonaPrompt("m", undefined, { features: NONE })).toContain(METER);
 		expect(nativeSystemPrompt({ ...NATIVE_BASE, web: true, features: NONE })).toContain(
-			SESSION_METER_FACT
+			METER
 		);
 		expect(guardsOnlyPrompt({ modelId: "m", today: "2026-10-01", account: GUEST, features: NONE })).toContain(
-			SESSION_METER_FACT
+			METER
 		);
 	});
 
 	it("stays out when the caller passes no features (the tuning tools)", () => {
-		expect(buildPersonaPrompt("m")).not.toContain(SESSION_METER_FACT);
-		expect(nativeSystemPrompt({ ...NATIVE_BASE, web: true })).not.toContain(SESSION_METER_FACT);
+		expect(buildPersonaPrompt("m")).not.toContain(METER);
+		expect(nativeSystemPrompt({ ...NATIVE_BASE, web: true })).not.toContain(METER);
 	});
 });
 

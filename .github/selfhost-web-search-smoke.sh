@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Web search on the self-host stack goes to the self-hoster's own Firecrawl. Run from
 # selfhost/ by .github/workflows/selfhost-smoke.yml, and by the public repo's selfhost.yml smoke job
-# (scripts/public-snapshot/overlay/.github/workflows/selfhost.yml), once web is recreated with FIRECRAWL_BASE_URL naming
+# (.github/workflows/selfhost.yml), once web is recreated with FIRECRAWL_BASE_URL naming
 # the `firecrawl` stub (.github/selfhost-firecrawl-stub.compose.yaml) and FIRECRAWL_API_KEY set to the
 # stub's key.
 #

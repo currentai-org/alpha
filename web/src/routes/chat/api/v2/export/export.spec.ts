@@ -398,6 +398,13 @@ async function personWithEveryCredential(locals: App.Locals) {
 		url: "https://mcp.example.org/",
 		credential: leak("user_mcp_servers.credential"),
 	});
+	// A connected Google account: its sealed refresh token.
+	await db.insert(schema.userGoogleConnections).values({
+		userId,
+		email: `walker-${tag}@example.org`,
+		scopes: "openid https://www.googleapis.com/auth/calendar.readonly",
+		credential: leak("user_google_connections.credential"),
+	});
 	await db.insert(schema.localInferencePairings).values({
 		pairingIdHash: `pair-${tag}`,
 		userId,
@@ -453,6 +460,7 @@ async function personWithEveryCredential(locals: App.Locals) {
 			"account.password": leak("account.password"),
 			"storage_locations.credential": leak("storage_locations.credential"),
 			"user_mcp_servers.credential": leak("user_mcp_servers.credential"),
+			"user_google_connections.credential": leak("user_google_connections.credential"),
 			"local_inference_pairings.credentials": leak("local_inference_pairings.credentials"),
 			"token_caches.tokenHash": leak("token_caches.tokenHash"),
 			"oauth_client.clientSecret": leak("oauth_client.clientSecret"),
