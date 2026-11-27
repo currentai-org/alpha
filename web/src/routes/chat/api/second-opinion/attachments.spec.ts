@@ -3,19 +3,19 @@ import type { Message } from "$lib/chat/types/Message";
 
 vi.mock("$lib/chat/server/api/utils/requireAuth", () => ({ requireAuth: vi.fn() }));
 vi.mock("$lib/chat/server/chat/rateLimit", () => ({ enforceRequestRateLimits: vi.fn(async () => {}) }));
-// One panel model that reads images (Gemma 4, by the HF router's listing) and one that doesn't (GLM-5.2,
-// by the routing catalog), so each half of the contract has a real model id behind it.
-const VISION = "google/gemma-4-31B-it";
-const TEXT_ONLY = "zai-org/GLM-5.2";
+// One panel model that reads images (Apertus 1.5 70B) and one that doesn't (Bielik 11B v3), both by
+// the routing catalog, so each half of the contract has a real panel model id behind it.
+const VISION = "swiss-ai/apertus-v1.5-70b";
+const TEXT_ONLY = "speakleash/Bielik-11B-v3.0-Instruct";
 vi.mock("$lib/chat/server/models", () => ({
 	models: [
-		{ id: "google/gemma-4-31B-it", displayName: "Gemma" },
-		{ id: "zai-org/GLM-5.2", displayName: "GLM" },
+		{ id: "swiss-ai/apertus-v1.5-70b", displayName: "Apertus" },
+		{ id: "speakleash/Bielik-11B-v3.0-Instruct", displayName: "Bielik" },
 		{ id: "aggregator", displayName: "Aggregator" },
 	],
 }));
 vi.mock("$lib/chat/server/config", () => ({
-	config: { COMPARE_PANEL: "google/gemma-4-31B-it,zai-org/GLM-5.2", AGGREGATOR_MODEL: "aggregator" },
+	config: { COMPARE_PANEL: "swiss-ai/apertus-v1.5-70b,speakleash/Bielik-11B-v3.0-Instruct", AGGREGATOR_MODEL: "aggregator" },
 }));
 vi.mock("$lib/chat/server/tuning", () => ({ getTuning: vi.fn(async () => ({})) }));
 vi.mock("$lib/chat/server/chat/conversationWrites", () => ({

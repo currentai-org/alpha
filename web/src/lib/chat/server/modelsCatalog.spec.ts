@@ -452,21 +452,13 @@ describe("a pinned model on the HF router as a picker lane", () => {
 			multimodalEnabled: false,
 		});
 
-	it("offers an allowlisted id with a provider pin from the router, billed", () => {
-		const allowlist = "swiss-ai/apertus-v1.5-70b, google/gemma-4-31B-it";
+	it("offers nothing from the router, not even a model it used to pin", () => {
+		const allowlist = "swiss-ai/apertus-v1.5-70b, google/gemma-4-31B-it, Qwen/Qwen3.6-35B-A3B";
 		const lane = hfPinnedLane(`${HF}/`, "HF_TOKEN", "test-org", allowlist);
-		expect(lane?.modelIds).toEqual(["google/gemma-4-31B-it"]);
+		expect(lane).toBeNull();
 		const allowed = selectAllowedModels(withDirectModels(gateway, lane), allowlist);
-		expect(allowed.map((m) => m.id)).toEqual(["swiss-ai/apertus-v1.5-70b", "google/gemma-4-31B-it"]);
-		const pinned = routeDirectModels(shape(allowed), lane).find((m) => m.id === "google/gemma-4-31B-it");
-		expect(pinned?.endpoints).toEqual([
-			{
-				type: "openai",
-				baseURL: HF,
-				apiKeyEnv: "HF_TOKEN",
-				defaultHeaders: { "X-HF-Bill-To": "test-org" },
-			},
-		]);
+		expect(allowed.map((m) => m.id)).toEqual(["swiss-ai/apertus-v1.5-70b"]);
+		expect(JSON.stringify(routeDirectModels(shape(allowed), lane).map((m) => m.endpoints))).not.toContain(HF);
 	});
 
 	it("never offers a GLM id with no provider pin, so the router cannot pick who receives its text", () => {

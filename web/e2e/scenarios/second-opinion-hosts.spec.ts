@@ -70,6 +70,12 @@ test(
 			opinions.some((o) => assistHostLabel(o)),
 			`no stored take records where it ran: ${JSON.stringify(opinions)}`
 		).toBe(true);
+		// The Hugging Face router serves no chat model from a host the privacy notice names, so no
+		// panel model runs there.
+		expect(
+			opinions.filter((o) => o.backend === 'router.huggingface.co').map((o) => o.modelShort),
+			'a panel model ran on the Hugging Face router'
+		).toEqual([]);
 
 		await page.reload({ waitUntil: 'commit' });
 		const reloaded = page.locator(`[data-message-id="${messageId}"]`);

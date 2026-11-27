@@ -1169,11 +1169,6 @@ describe("thinking is off on a GLM side call, and only there", () => {
 		expect(body.model).toBe("zai-org/GLM-5.2:featherless-ai");
 	});
 
-	it("pins a table model on an answer that asked for provider auto, so the router never picks who gets the text", async () => {
-		const body = await sentBody("google/gemma-4-31B-it", { servesUserAnswer: true, provider: "auto" });
-		expect(body.model).toBe("google/gemma-4-31B-it:featherless-ai");
-	});
-
 	it("lets an explicit per-request provider win over the pin", async () => {
 		const body = await sentBody("zai-org/GLM-5.3", { servesUserAnswer: true, provider: "baseten" });
 		expect(body.model).toBe("zai-org/GLM-5.3:baseten");

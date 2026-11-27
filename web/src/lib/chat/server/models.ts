@@ -11,6 +11,7 @@ import type { ChatTemplateInput } from "$lib/chat/types/Template";
 import { z } from "zod";
 import endpoints from "./endpoints/endpoints";
 import { endpointOAIParametersSchema } from "./endpoints/openai/endpointOai";
+import { isHfRouter } from "./endpoints/openai/providerPin";
 import { endpointAgentParametersSchema } from "./endpoints/agent/endpointAgent";
 import {
 	configKey,
@@ -786,8 +787,11 @@ const maybeAddCompareModels = async (
 		.map((key) => ((Reflect.get(config, key) as string | undefined) ?? "").trim())
 		.filter((id) => id && !decorated.some((m) => m.id === id || m.name === id));
 	// A side-call id Mistral serves goes to Mistral: on the compare endpoint it would be sent to a
-	// provider that does not have it.
-	const lane = sideCallLane ? direct : null;
+	// provider that does not have it. With the compare endpoint on the Hugging Face router it
+	// goes there whatever the flag says: the router registers nothing (below), and a flag read that
+	// falls back to off must not leave TASK_MODEL unregistered.
+	const compareOnRouter = isHfRouter(soBaseURL);
+	const lane = sideCallLane || compareOnRouter ? direct : null;
 	const directSideCallIds = lane
 		? [...new Set(sideCallIds.filter((id) => lane.modelIds.includes(id)))]
 		: [];
@@ -848,6 +852,16 @@ const maybeAddCompareModels = async (
 	}
 
 	if (!(soBaseURL && soApiKey && compareIds.length)) {
+		return result;
+	}
+	// The Hugging Face router serves no chat model from a host the privacy notice names, so no compare
+	// or side-call model registers there. Unregistered, the panel skips the id; a
+	// side-call id Mistral serves is already on the Mistral lane above.
+	if (compareOnRouter) {
+		logger.error(
+			{ refused: compareIds },
+			"[models] SECOND_OPINION_BASE_URL is the Hugging Face router; compare models are not registered there"
+		);
 		return result;
 	}
 

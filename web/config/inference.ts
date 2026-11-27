@@ -209,9 +209,8 @@ export const ROLE_MODELS = {
 	/**
 	 * The collective second-opinion panel, in fan-out order: picker models the gateway serves from
 	 * their own hosts (SEA-LION at AI Singapore, Apertus at Phoeniqs, Bielik at PLGrid), none of them
-	 * Mistral, the default answer's family. GLM 5.2 and Gemma 4 left it: the Hugging Face router no longer
-	 * offers Featherless for either, and every router host it does offer passes the text through
-	 * OpenRouter, which the privacy notice does not name. Qwen 3.6 left for the same reason.
+	 * Mistral, the default answer's family. A panel model is one a host the privacy notice names
+	 * serves directly.
 	 */
 	COMPARE_PANEL: [
 		"aisingapore/Nemotron-SEA-LION-v4.8-120B-A12B",
@@ -231,7 +230,11 @@ export const ROLE_MODELS = {
 	 * field) at p50 1,080 ms with one; Qwen3.8-27B answered every call 400 there.
 	 */
 	ENTITY_SCOPE_MODEL: "mistral-small-2603",
-	THIRD_OPINION_MODEL: "utter-project/EuroLLM-22B-Instruct-2512",
+	/**
+	 * The sequential panel's second seat. Empty, so dormant: COMPARE_PANEL decides the panel, and
+	 * EuroLLM, which sat here, is offered by no Hugging Face router provider.
+	 */
+	THIRD_OPINION_MODEL: "",
 	/**
 	 * The catalog backup lane's spelling of the primary's id, for a backup host that cases it
 	 * differently. Empty: every backup host here spells Apertus, ALIA and Bielik as the primary does.

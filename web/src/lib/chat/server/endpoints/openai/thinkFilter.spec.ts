@@ -282,24 +282,16 @@ describe("reasoningOffRequest pins a multi-provider GLM to a measured provider o
 		expect(reasoningOffRequest("zai-org/GLM-5.2:deepinfra", HF).fields).toEqual({ reasoning_effort: "none" });
 	});
 
-	it("pins Gemma 4 to featherless-ai and sends it no reasoning field, since its verified row has none", () => {
-		const req = reasoningOffRequest("google/gemma-4-31B-it", HF);
-		expect(req.model).toBe("google/gemma-4-31B-it:featherless-ai");
-		expect(req.fields).toEqual({});
-	});
-
 	// Featherless honours neither `thinking` nor `reasoning_effort` for GLM-5.2, so its profile row sends
 	// nothing rather than a guess.
 	it("sends no reasoning field to GLM-5.2 named on featherless-ai, since Featherless honours none", () => {
 		expect(reasoningOffRequest("zai-org/GLM-5.2:featherless-ai", HF).fields).toEqual({});
 	});
 
-	// The entity-scope guard runs on Qwen3.6, which DeepInfra serves with reasoning turned off by
-	// reasoning_effort "none".
-	it("pins Qwen3.6 to deepinfra and turns its reasoning off with reasoning_effort none", () => {
-		const req = reasoningOffRequest("Qwen/Qwen3.6-35B-A3B", HF);
-		expect(req.model).toBe("Qwen/Qwen3.6-35B-A3B:deepinfra");
-		expect(req.fields).toEqual({ reasoning_effort: "none" });
+	// Qwen 3.6's DeepInfra row still holds for a call that names the provider; nothing pins it by default
+	// any more.
+	it("turns Qwen3.6's reasoning off with reasoning_effort none on a call that names deepinfra", () => {
+		expect(reasoningOffRequest("Qwen/Qwen3.6-35B-A3B:deepinfra", HF).fields).toEqual({ reasoning_effort: "none" });
 	});
 });
 

@@ -20,8 +20,7 @@ export type PickerSite = (typeof pickerSites)[number];
 // Its lane needs `mistral-large-2610` in each prd config's MISTRAL_MODELS.
 // Mistral Large 3 (`mistral-large-2512`) is on no site's picker: Large 4 replaces it, and Medium is
 // Large 4's only stand-in.
-// GLM 5.2 is on no site's picker: every host the Hugging Face router offers for it, or for GLM 5.3,
-// passes the text through OpenRouter, which the privacy notice does not name.
+// GLM is on no site's picker: no host the privacy notice names serves it directly.
 const PRODUCTION_PICKER = [
 	"mistral-medium-2604",
 	"mistral-large-2610",

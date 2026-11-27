@@ -265,7 +265,7 @@ test(
 		// the next model once this page's conversation exists cannot change the turn already started.
 		//
 		// The exception is a model pinned to the provider whose concurrency units production shares
-		// (hfProviderPin.ts: Featherless caps our account at 10 units). Its turn is sent alone, after the
+		// (hfProviderPin.ts). Its turn is sent alone, after the
 		// others have finished, so this test never holds more than one call there and never pushes a
 		// visitor's turn onto the busy notice.
 		const turns: Array<{ id: string; page: Page; conversationId: string }> = [];

@@ -11,16 +11,9 @@
  * a pin to a provider with no verified row fails `modelProfiles.spec.ts`. Keys are lower-case.
  */
 export const HF_PROVIDER_PIN: Readonly<Record<string, string>> = {
-	// Hosts in the EU first, then the US, never China, so neither Z.ai's own endpoint nor Novita.
-	// GLM has no row: no router host serves GLM 5.2 or 5.3 without passing the text through OpenRouter,
-	// so Alpha calls no GLM model.
-	// The second-opinion panel's other two members. Unpinned, the router sends them to Novita
-	// or DeepInfra. Featherless caps our account at 10 units and a Qwen call costs 2, so a burst answers
-	// 429; DeepInfra answered 30 of 30 at once and stores no prompts or answers. Qwen's
-	// DeepInfra calls now pass through OpenRouter as GLM's did, so Qwen is off the panel
-	// (ROLE_MODELS.COMPARE_PANEL); the pin stays so a call that still names it never goes where the
-	// router picks. No direct provider fits: on Featherless it wrote its reasoning into the answer and
-	// ran two of six calls to the 4,096-token cap, and Scaleway answers 402.
-	"qwen/qwen3.6-35b-a3b": "deepinfra",
-	"google/gemma-4-31b-it": "featherless-ai",
+	// Empty: no chat model is pinned. A pin names the host that receives visitor text, and the Hugging
+	// Face router serves none of our chat models from a host the privacy notice names, so a router call
+	// that names one is refused (providerPin.ts) and no compare or pinned model registers on the router
+	// (models.ts, modelsCatalog.ts). A new row needs the privacy notice to name its
+	// host first, and a probe showing the router serves the model from that host.
 };

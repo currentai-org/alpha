@@ -252,24 +252,20 @@ describe("a side-call model that Mistral serves registers on the Mistral lane", 
 	});
 });
 
-describe("a pinned id in the allowlist is offered from the HF router, independent of the compare panel", () => {
+describe("no picker model is offered from the HF router", () => {
 	const HF = "https://router.huggingface.co/v1";
-	const PINNED = "google/gemma-4-31B-it";
+	const FORMER_PIN = "google/gemma-4-31B-it";
 
 	beforeEach(() => {
 		Object.assign(H.cfg, { HF_BASE_URL: HF, HF_TOKEN: "hf-key", HF_BILL_TO: "test-org" });
 	});
 
-	it("offers it listed on the router, though no second-opinion setting names it", async () => {
-		H.cfg.MODEL_ALLOWLIST = `${CHAT_MODEL},${PINNED}`;
+	it("leaves out an allowlisted id that used to be pinned to a router provider, so no picker turn goes to the router", async () => {
+		H.cfg.MODEL_ALLOWLIST = `${CHAT_MODEL},${FORMER_PIN}`;
 		const mod = await boot();
 
-		const offered = mod.models.filter((m) => m.id === PINNED);
-		expect(offered).toHaveLength(1);
-		expect(offered[0].unlisted).toBe(false);
-		expect(offered[0].endpoints).toMatchObject([
-			{ baseURL: HF, apiKeyEnv: "HF_TOKEN", defaultHeaders: { "X-HF-Bill-To": "test-org" } },
-		]);
+		expect(mod.models.map((m) => m.id)).not.toContain(FORMER_PIN);
+		expect(mod.models.filter((m) => !m.unlisted).map((m) => m.id)).toEqual([CHAT_MODEL]);
 		expect(mod.defaultModel.id).toBe(CHAT_MODEL);
 	});
 
@@ -278,5 +274,42 @@ describe("a pinned id in the allowlist is offered from the HF router, independen
 		const mod = await boot();
 
 		expect(mod.models.filter((m) => !m.unlisted).map((m) => m.id)).toEqual([CHAT_MODEL]);
+	});
+});
+
+describe("no compare or side-call model registers on the HF router", () => {
+	const HF = "https://router.huggingface.co/v1";
+
+	it("registers no panelist or planner when SECOND_OPINION_BASE_URL is the router", async () => {
+		Object.assign(H.cfg, { SECOND_OPINION_BASE_URL: HF, ARITHMETIC_ROUTE_MODEL: PLANNER });
+		const mod = await boot();
+
+		const ids = mod.models.map((m) => m.id);
+		expect(ids).not.toContain(PANELIST);
+		expect(ids).not.toContain(PLANNER);
+		expect(JSON.stringify(mod.models.map((m) => m.endpoints))).not.toContain(HF);
+	});
+
+	it("still registers them on a compare endpoint that is not the router (the guard names one host)", async () => {
+		Object.assign(H.cfg, { ARITHMETIC_ROUTE_MODEL: PLANNER, TASK_MODEL: TITLER });
+		const mod = await boot();
+
+		const ids = mod.models.map((m) => m.id);
+		expect(ids).toEqual(expect.arrayContaining([PANELIST, PLANNER, TITLER]));
+	});
+
+	it("puts a Mistral TASK_MODEL on the Mistral lane when the compare endpoint is the router, even with side-call-own-lane read as off", async () => {
+		Object.assign(H.cfg, {
+			SECOND_OPINION_BASE_URL: HF,
+			MISTRAL_BASE_URL: MISTRAL_BASE,
+			MISTRAL_API_KEY: "mistral-key",
+			MISTRAL_MODELS: MISTRAL_SMALL,
+			TASK_MODEL: MISTRAL_SMALL,
+		});
+		const mod = await boot();
+
+		const small = mod.models.find((m) => m.id === MISTRAL_SMALL);
+		expect(JSON.stringify(small?.endpoints)).toContain(MISTRAL_BASE);
+		expect(JSON.stringify(small?.endpoints)).not.toContain(HF);
 	});
 });

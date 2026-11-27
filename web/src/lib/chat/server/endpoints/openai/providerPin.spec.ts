@@ -258,23 +258,16 @@ describe("wireModelId pins a table model on every HF-router call, whatever the c
 		);
 	});
 
-	it("pins the second-opinion panel's Qwen to deepinfra and Gemma to featherless-ai, never the router's pick", () => {
-		expect(wire({ baseModelId: "Qwen/Qwen3.6-35B-A3B", provider: "auto" })).toBe("Qwen/Qwen3.6-35B-A3B:deepinfra");
-		expect(wire({ baseModelId: "Qwen/Qwen3.6-35B-A3B", defaultProvider: "publicai" })).toBe(
-			"Qwen/Qwen3.6-35B-A3B:deepinfra"
-		);
-		expect(wire({ baseModelId: "google/gemma-4-31B-it", provider: "auto" })).toBe(
-			"google/gemma-4-31B-it:featherless-ai"
-		);
-		expect(wire({ laneModelId: "google/gemma-4-31B-it" })).toBe("google/gemma-4-31B-it:featherless-ai");
+	it("no longer pins Qwen 3.6 or Gemma 4, since no model registers on the router any more", () => {
+		expect(wire({ baseModelId: "Qwen/Qwen3.6-35B-A3B", provider: "auto" })).toBe("Qwen/Qwen3.6-35B-A3B");
+		expect(wire({ laneModelId: "google/gemma-4-31B-it" })).toBe("google/gemma-4-31B-it");
 	});
 
 	it("lets an explicit provider win", () => {
 		expect(wire({ provider: "baseten" })).toBe("zai-org/GLM-5.3:baseten");
 	});
 
-	it("pins a lane modelId too, and leaves one that already names a provider alone", () => {
-		expect(wire({ laneModelId: "Qwen/Qwen3.6-35B-A3B" })).toBe("Qwen/Qwen3.6-35B-A3B:deepinfra");
+	it("leaves a lane modelId that already names a provider alone", () => {
 		expect(wire({ laneModelId: "zai-org/GLM-5.3:scaleway" })).toBe("zai-org/GLM-5.3:scaleway");
 	});
 
