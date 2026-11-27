@@ -336,15 +336,32 @@
 		await loadSessions();
 	}
 
+	// What the ZIP will hold, said on the row before anyone downloads it, so a person can see
+	// their conversations, files and each answer's provenance are in it without unzipping anything.
+	// Until the counts arrive (or if they can't be read) the row keeps its general description.
+	let exportSummary = $state<{
+		conversations: number;
+		answers: number;
+		files: number;
+		sealed?: number;
+		nextExportAt?: string | null;
+	} | null>(
+		null
+	);
+
 	// One export an hour (api/v2/export). The server says when the last one's hour ends; a click on
 	// this page starts the hour locally, since the page doesn't reload after a download.
 	let exportedAt = $state<Date | null>(null);
+	// A click before hydration follows the plain link and never reaches exportClick, so the summary
+	// fetched on mount carries the server's hour too.
 	let exportLockedUntil = $derived(
 		data.nextExportAt
 			? new Date(data.nextExportAt)
-			: exportedAt
-				? new Date(exportedAt.getTime() + 60 * 60 * 1000)
-				: null
+			: exportSummary?.nextExportAt
+				? new Date(exportSummary.nextExportAt)
+				: exportedAt
+					? new Date(exportedAt.getTime() + 60 * 60 * 1000)
+					: null
 	);
 
 	// The Thunderbolt file's own window: ten minutes, kept apart from the ZIP's hour.
@@ -365,13 +382,6 @@
 			: openWebUiExportedAt
 				? new Date(openWebUiExportedAt.getTime() + 10 * 60 * 1000)
 				: null
-	);
-
-	// What the ZIP will hold, said on the row before anyone downloads it, so a person can see
-	// their conversations, files and each answer's provenance are in it without unzipping anything.
-	// Until the counts arrive (or if they can't be read) the row keeps its general description.
-	let exportSummary = $state<{ conversations: number; answers: number; files: number; sealed?: number } | null>(
-		null
 	);
 
 	// A sealed conversation's text opens only with the person's history key, which the server does not

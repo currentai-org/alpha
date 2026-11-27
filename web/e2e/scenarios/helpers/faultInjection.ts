@@ -83,6 +83,7 @@ export type FaultInjectionName =
 	| 'model_replay_none'
 	| 'mcp_stub_server'
 	| 'mcp_stub_server_swapped'
+	| 'google_connector_stub'
 	| 'sandbox_host_full'
 	| 'input_screen_unfinished'
 	| 'agent_route_down'
@@ -103,11 +104,13 @@ export type FaultInjectionName =
  *  a spec whose own route handler sends the request (`route.fetch`): Playwright runs the newest
  *  matching route first, and a handler that fulfills ends the chain, so installFaultInjectionHeader's
  *  handler never runs. Throws on a missing token for the reason installFaultInjectionHeader gives. */
-export function faultInjectionHeaders(fault: FaultInjectionName): Record<string, string> {
-	const token = process.env.E2E_FAULT_INJECT_TOKEN;
+export function faultInjectionHeaders(
+	fault: FaultInjectionName,
+	token: string | undefined = process.env.E2E_FAULT_INJECT_TOKEN
+): Record<string, string> {
 	if (!token) {
 		throw new Error(
-			'E2E_FAULT_INJECT_TOKEN is not set — the fault-injection proof cannot run without it ' +
+			'The fault token is not set (E2E_FAULT_INJECT_TOKEN, or MOCK_E2E_FAULT_TOKEN under mock-model-e2e.sh) — the fault-injection proof cannot run without it ' +
 				'(set in Doppler preview/dev configs only, never prd; see config/env-manifest.mjs).'
 		);
 	}

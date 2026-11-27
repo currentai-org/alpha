@@ -80,7 +80,7 @@ def _log_stderr_tail(task_id: str, attempt: int, tail: str) -> None:
         return
     rec = {"ts": round(time.time(), 3), "event": "acp.hermes_stderr", "task_id": task_id,
            "attempt": attempt, "detail": tail}
-    print(json.dumps(rec, default=str), flush=True)
+    logsink.stdout_line(rec)
     logsink.emit(rec)
 
 
@@ -641,7 +641,7 @@ class _AgentClient:
                "attempt": self._attempt, "kind": kind,
                "decision": decision, "by": by, "reason": reason, "approval_mode": self.approval_mode,
                "policy": self.permission_policy}
-        print(json.dumps(rec), flush=True)
+        logsink.stdout_line(rec)
         logsink.emit(rec)
 
     def emit_policy(self, decision: dict) -> None:
@@ -852,7 +852,7 @@ class _AgentClient:
                 status = getattr(getattr(exc, "response", None), "status_code", None)
                 if isinstance(status, int):
                     rec["status"] = status    # a 404, a 429 and a 500 need different fixes
-                print(json.dumps(rec), flush=True)
+                logsink.stdout_line(rec)
                 logsink.emit(rec)
                 if not retry:
                     return {"decision": "ask", "plain": "", "by": "reviewer"}
@@ -991,7 +991,7 @@ def build_mcp_servers(cfg, env, task_id: str = "") -> list[HttpMcpServer]:
             if _LOG:
                 rec = {"ts": round(time.time(), 3), "event": "mcp.server_skipped", "task_id": task_id,
                        "server": spec.name, "missing_header_env": missing}
-                print(json.dumps(rec), flush=True)
+                logsink.stdout_line(rec)
                 logsink.emit(rec)
             continue
         out.append(HttpMcpServer(type="http", name=spec.name, url=spec.url,

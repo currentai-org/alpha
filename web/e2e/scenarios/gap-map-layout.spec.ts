@@ -1,5 +1,6 @@
 // e2e-product: @site
 import { test, expect, type Locator, type Page } from './helpers/test';
+import { datasetRows } from './helpers/datasetRows';
 
 // G1, the gap map's layout. Each test is one
 // "Done when" line from that spec, asserted on the rendered page rather than on the markup that
@@ -35,23 +36,6 @@ async function openMap(page: Page) {
 	// tab means the page has hydrated.
 	await expect(page.getByTestId('layer-bar').locator('[aria-current="location"]')).toHaveCount(1, {
 		timeout: 30_000
-	});
-}
-
-/**
- * Every product the full dataset lists, read from its server-rendered page so a search test is not
- * pinned to a catalog value. `bucket` is the openness bucket (open, open-ish or closed);
- * `org` is set when the org has a page.
- */
-async function datasetRows(page: Page) {
-	return page.evaluate(async () => {
-		const html = await (await fetch('/map/dataset')).text();
-		const doc = new DOMParser().parseFromString(html, 'text/html');
-		return [...doc.querySelectorAll('tr[data-product-id]')].map((r) => ({
-			name: r.querySelector('[data-testid="product-name"]')?.textContent?.trim() ?? '',
-			bucket: r.getAttribute('data-bucket') ?? '',
-			org: r.querySelector('a[href^="/org/"]')?.textContent?.trim() ?? null
-		}));
 	});
 }
 

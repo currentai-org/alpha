@@ -12,8 +12,8 @@
  */
 export const HF_PROVIDER_PIN: Readonly<Record<string, string>> = {
 	// Empty: no chat model is pinned. A pin names the host that receives visitor text, and the Hugging
-	// Face router serves none of our chat models from a host the privacy notice names, so a router call
-	// that names one is refused (providerPin.ts) and no compare or pinned model registers on the router
-	// (models.ts, modelsCatalog.ts). A new row needs the privacy notice to name its
+	// Face router serves none of our chat models from a host the privacy notice names, so no compare or
+	// pinned model registers on the router (models.ts, modelsCatalog.ts), and a router call that names a
+	// GLM id is refused by name (providerPin.ts). A new row needs the privacy notice to name its
 	// host first, and a probe showing the router serves the model from that host.
 };

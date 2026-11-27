@@ -53,7 +53,7 @@ export const load: PageServerLoad = async (event) => {
 	const next = safeNext(event.url.searchParams.get("next"));
 
 	if (event.locals.user) {
-		throw redirect(302, next ?? `${base}/`);
+		throw redirect(302, next ?? `${base}/`, { external: false });
 	}
 
 	return {

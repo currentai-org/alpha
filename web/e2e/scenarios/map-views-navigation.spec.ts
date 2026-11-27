@@ -1,6 +1,7 @@
 // e2e-product: @site
 import { test, expect, type Page } from './helpers/test';
 import { pageDataNode } from './helpers/pageData';
+import { datasetRows } from './helpers/datasetRows';
 
 // The gap map and the full dataset are two views of one dataset that share a header —
 // a breadcrumb back to the map intro, a toggle between the two views, and four figures, each
@@ -36,6 +37,42 @@ async function readKpis(page: Page) {
 	return Object.fromEntries(rows.map((r) => [r.label, { value: r.value, href: r.href }]));
 }
 
+/**
+ * Runs one view switch and records how long it kept the main thread busy, from Chrome's own
+ * counters: TaskDuration is all main-thread work, ScriptDuration the JavaScript within it, and
+ * LayoutDuration and RecalcStyleDuration the layout and style work. A switch that spends its
+ * time in script points at reactive work. One that spends it in layout and style points at
+ * the size of the page. The row is logged even when the switch times out.
+ */
+async function measureSwitch(page: Page, label: string, run: () => Promise<void>) {
+	const cdp = await page.context().newCDPSession(page);
+	await cdp.send('Performance.enable');
+	const read = async () =>
+		Object.fromEntries(
+			(await cdp.send('Performance.getMetrics')).metrics.map((m) => [m.name, m.value])
+		);
+	const before = await read();
+	const started = Date.now();
+	try {
+		await run();
+	} finally {
+		const after = await read().catch(() => before);
+		const ms = (k: string) => Math.round(((after[k] ?? 0) - (before[k] ?? 0)) * 1000);
+		const row = {
+			label,
+			wallMs: Date.now() - started,
+			taskMs: ms('TaskDuration'),
+			scriptMs: ms('ScriptDuration'),
+			layoutMs: ms('LayoutDuration'),
+			styleMs: ms('RecalcStyleDuration'),
+			nodesAfter: after.Nodes ?? null
+		};
+		test.info().annotations.push({ type: 'map-view-switch', description: JSON.stringify(row) });
+		console.log(`MAP VIEW SWITCH ${JSON.stringify(row)}`);
+		await cdp.detach().catch(() => {});
+	}
+}
+
 test.describe('the gap map and full dataset share one header', { tag: '@G1' }, () => {
 	for (const { path, title } of [
 		{ path: GAP_MAP, title: 'gap map' },
@@ -69,19 +106,23 @@ test.describe('the gap map and full dataset share one header', { tag: '@G1' }, (
 			'aria-current',
 			'page'
 		);
-		await toggle.getByRole('link', { name: 'Full dataset' }).click();
-		await expect(page).toHaveURL(new RegExp(`${DATASET}$`), { timeout: 20_000 });
-		await expect(
-			page
-				.getByRole('navigation', { name: 'Map views' })
-				.getByRole('link', { name: 'Full dataset' })
-		).toHaveAttribute('aria-current', 'page');
+		await measureSwitch(page, 'gap map to dataset', async () => {
+			await toggle.getByRole('link', { name: 'Full dataset' }).click();
+			await expect(page).toHaveURL(new RegExp(`${DATASET}$`), { timeout: 20_000 });
+			await expect(
+				page
+					.getByRole('navigation', { name: 'Map views' })
+					.getByRole('link', { name: 'Full dataset' })
+			).toHaveAttribute('aria-current', 'page');
+		});
 
-		await page
-			.getByRole('navigation', { name: 'Map views' })
-			.getByRole('link', { name: 'Open source Gap Map' })
-			.click();
-		await expect(page).toHaveURL(new RegExp(`${GAP_MAP}$`), { timeout: 20_000 });
+		await measureSwitch(page, 'dataset to gap map', async () => {
+			await page
+				.getByRole('navigation', { name: 'Map views' })
+				.getByRole('link', { name: 'Open source Gap Map' })
+				.click();
+			await expect(page).toHaveURL(new RegExp(`${GAP_MAP}$`), { timeout: 20_000 });
+		});
 	});
 
 	test('each figure links to the page that shows it, except the page you are on', async ({
@@ -494,6 +535,9 @@ test.describe('Back from a product or org page', { tag: '@G1' }, () => {
 		await expect(page).toHaveURL(new RegExp(`${DATASET}$`), { timeout: 20_000 });
 		await page.locator('#layer-product_ux').getByRole('button', { name: 'Collapse all' }).click();
 		await expect(expandedIn(page, '#layer-product_ux')).toHaveCount(0);
+		// Reached by a click, the dataset renders a category's rows as it comes near the screen, so
+		// the visitor scrolls down to the layer before choosing a product in it, as they would.
+		await page.locator('#layer-model_components').scrollIntoViewIfNeeded();
 		await page
 			.locator('#layer-model_components tr[data-product-id]')
 			.first()
@@ -641,15 +685,7 @@ test.describe('Back from a product or org page', { tag: '@G1' }, () => {
 		await expect(page).toHaveURL(/[?&]sort=open&dir=desc/);
 
 		// An open(ish) product, read from the dataset so the test is not pinned to a catalog value.
-		const name = await page.evaluate(async () => {
-			const html = await (await fetch('/map/dataset')).text();
-			const doc = new DOMParser().parseFromString(html, 'text/html');
-			return doc
-				.querySelector(
-					'tr[data-product-id]:not([data-bucket="closed"]) [data-testid="product-name"]'
-				)
-				?.textContent?.trim();
-		});
+		const name = (await datasetRows(page)).find((r) => r.bucket !== 'closed')?.name;
 		expect(name, 'no open(ish) product in the dataset').toBeTruthy();
 		await page.getByRole('combobox').fill(name!);
 		await page
@@ -678,14 +714,18 @@ test.describe('Back from a product or org page', { tag: '@G1' }, () => {
 	test('the back link names the product or org page the visitor came from, and steps back through each in turn', async ({
 		page
 	}) => {
-		await openHydrated(page, DATASET);
-		await page
-			.locator('tr[data-product-id]')
-			.filter({ has: page.locator('a[href^="/org/"]') })
-			.first()
-			.getByTestId('product-name')
-			.click();
-		await expect(page).toHaveURL(/\/product\//, { timeout: 20_000 });
+		// A direct load is how a shared link or a reload reaches the dataset, so this test also records
+		// how long that load and the first product click keep the main thread busy.
+		await measureSwitch(page, 'open the dataset directly', () => openHydrated(page, DATASET));
+		await measureSwitch(page, 'directly loaded dataset to product', async () => {
+			await page
+				.locator('tr[data-product-id]')
+				.filter({ has: page.locator('a[href^="/org/"]') })
+				.first()
+				.getByTestId('product-name')
+				.click();
+			await expect(page).toHaveURL(/\/product\//, { timeout: 20_000 });
+		});
 		const productPath = new URL(page.url()).pathname;
 		const productName = (await page.locator('main h1').textContent())!.trim();
 		await page.locator('main header a[href^="/org/"]').click();
@@ -708,6 +748,53 @@ test.describe('Back from a product or org page', { tag: '@G1' }, () => {
 		await expect(page).toHaveURL(new RegExp(`${productPath}$`), { timeout: 20_000 });
 		await page.getByRole('link', { name: 'Back to the full dataset' }).click();
 		await expect(page).toHaveURL(new RegExp(`${DATASET}$`), { timeout: 20_000 });
+	});
+
+	test("a directly loaded dataset reserves each category's height before its rows render, so scrolling there does not jump", async ({
+		page
+	}, testInfo) => {
+		await openHydrated(page, DATASET);
+		// Every category still waiting for its rows, with the height its placeholder reserves.
+		const reserved = await page.evaluate(() =>
+			[...document.querySelectorAll('tr[data-rows-pending]')].map((tr, i) => {
+				tr.parentElement!.setAttribute('data-fit', String(i));
+				return tr.getBoundingClientRect().height;
+			})
+		);
+		expect(
+			reserved.length,
+			'a direct load leaves categories below the screen unrendered'
+		).toBeGreaterThan(0);
+		const pending = page.locator('tr[data-rows-pending]');
+		for (let i = 0; i < 80 && (await pending.count()) > 0; i++) {
+			await page.evaluate(() => window.scrollBy({ top: 2500, behavior: 'instant' }));
+			await page.waitForTimeout(100);
+		}
+		await expect(pending).toHaveCount(0);
+		const rendered = await page.evaluate(
+			(n) =>
+				Array.from(
+					{ length: n },
+					(_, i) => document.querySelector(`[data-fit="${i}"]`)!.getBoundingClientRect().height
+				),
+			reserved.length
+		);
+		const ratios = rendered.map((h, i) => h / reserved[i]);
+		const fit = {
+			categories: reserved.length,
+			reservedPx: Math.round(reserved.reduce((a, b) => a + b, 0)),
+			renderedPx: Math.round(rendered.reduce((a, b) => a + b, 0)),
+			worstRatio: Math.max(...ratios.map((r) => Math.max(r, 1 / r)))
+		};
+		console.log(`PLACEHOLDER FIT ${JSON.stringify(fit)}`);
+		testInfo.annotations.push({ type: 'placeholder-fit', description: JSON.stringify(fit) });
+		// Rows whose text wraps grow past the 52 px a placeholder reserves per row, so the bounds allow
+		// 5% overall and 15% for one category, and fail on a row style that grows every row.
+		expect(
+			fit.renderedPx / fit.reservedPx,
+			"placeholders reserve the rows' height overall"
+		).toBeLessThan(1.05);
+		expect(fit.worstRatio, 'no category grows much past its placeholder').toBeLessThan(1.15);
 	});
 
 	test('a product or org page opened directly, with nothing to step back to, links to the Gap Map', async ({

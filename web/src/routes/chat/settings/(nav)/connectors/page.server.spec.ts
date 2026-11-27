@@ -41,7 +41,8 @@ vi.mock("$lib/chat/server/config", () => ({ config: { BETTER_AUTH_SECRET: "page-
 
 // A person's Google connection. The store is faked; the turn's token exchange is
 // connectors/google.spec.ts's, so the server it would add is left out here.
-const google = vi.hoisted(() => ({ rows: new Map<string, { email: string }>(), deleted: [] as string[] }));
+const FULL_GRANT = "openid https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/drive.readonly";
+const google = vi.hoisted(() => ({ rows: new Map<string, { email: string; scopes: string }>(), deleted: [] as string[] }));
 vi.mock("$lib/chat/server/db/userGoogleConnections", () => ({
 	getUserGoogleConnection: async (userId: string) => google.rows.get(userId) ?? null,
 	deleteUserGoogleConnection: async (userId: string) => {
@@ -174,15 +175,28 @@ describe("Connect Google on Settings → Connectors", () => {
 		expect(data.mcpServers).toBe(false);
 		expect(data.servers).toEqual([]);
 		// The operator has not set the client up in this test's config, so the page says it is unavailable.
-		expect(data.google).toEqual({ available: false, email: null });
+		expect(data.google).toEqual({ available: false, email: null, driveMissing: false });
+	});
+
+	it("offers a reconnect for Drive to a connection granted before Drive, and keeps it connected", async () => {
+		flag.google = true;
+		google.rows.set("acct-1", {
+			email: "me@example.org",
+			scopes: "openid https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly",
+		});
+		const signedIn = { ...event(), locals: SIGNED_IN } as unknown as LoadEvent;
+		const g = ((await load(signedIn)) as { google: { email: string | null; driveMissing: boolean } }).google;
+		expect(g).toMatchObject({ email: "me@example.org", driveMissing: true });
+		google.rows.set("acct-1", { email: "me@example.org", scopes: FULL_GRANT });
+		expect(((await load(signedIn)) as { google: { driveMissing: boolean } }).google.driveMissing).toBe(false);
 	});
 
 	it("shows the connected account's Google email, and only theirs", async () => {
 		flag.google = true;
-		google.rows.set("acct-2", { email: "someone-else@example.org" });
+		google.rows.set("acct-2", { email: "someone-else@example.org", scopes: FULL_GRANT });
 		const signedIn = { ...event(), locals: SIGNED_IN } as unknown as LoadEvent;
 		expect(((await load(signedIn)) as { google: { email: string | null } }).google.email).toBeNull();
-		google.rows.set("acct-1", { email: "me@example.org" });
+		google.rows.set("acct-1", { email: "me@example.org", scopes: FULL_GRANT });
 		expect(((await load(signedIn)) as { google: { email: string | null } }).google.email).toBe("me@example.org");
 	});
 
@@ -193,8 +207,8 @@ describe("Connect Google on Settings → Connectors", () => {
 
 	it("Disconnect removes the signed-in account's connection and no other, and refuses a guest", async () => {
 		flag.google = true;
-		google.rows.set("acct-1", { email: "me@example.org" });
-		google.rows.set("acct-2", { email: "someone-else@example.org" });
+		google.rows.set("acct-1", { email: "me@example.org", scopes: FULL_GRANT });
+		google.rows.set("acct-2", { email: "someone-else@example.org", scopes: FULL_GRANT });
 		expect(await actions.disconnectGoogle(post({ sessionId: "guest" }, {}))).toMatchObject({ status: 401 });
 		expect(google.deleted).toEqual([]);
 		expect(await actions.disconnectGoogle(post(SIGNED_IN, {}))).toEqual({ googleDisconnected: true });

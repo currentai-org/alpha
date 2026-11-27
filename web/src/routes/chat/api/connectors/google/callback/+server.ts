@@ -9,8 +9,10 @@ import {
 	GoogleConnectError,
 	googleConnectApp,
 	googleConnectorEnabled,
+	googleFaultDeps,
 	sealRefreshToken,
 } from "$lib/chat/server/connectors/google";
+import { resolveFaultInjection } from "$lib/chat/server/textGeneration/faultInjection";
 import { saveUserGoogleConnection } from "$lib/chat/server/db/userGoogleConnections";
 import { checkConnectState } from "$lib/chat/server/storage/locations/connectState";
 import { credentialSecret } from "$lib/chat/server/storage/locations/sealedSecret";
@@ -24,7 +26,7 @@ function back(outcome: "connected" | "denied" | "scopes" | "failed"): never {
 // Google sends the browser back here after its consent screen. Check the sealed state against the
 // account, trade the code for tokens, seal the refresh token for this account, and go back to Connectors,
 // which reads `google` or `google_error` and says what happened.
-export const GET: RequestHandler = async ({ locals, cookies, url }) => {
+export const GET: RequestHandler = async ({ locals, cookies, url, request }) => {
 	if (!googleConnectorEnabled()) error(404, "Not found");
 	const accountId = locals.user?._id?.toString();
 	if (!accountId) error(401, "Sign in to connect your Google account.");
@@ -41,7 +43,12 @@ export const GET: RequestHandler = async ({ locals, cookies, url }) => {
 	if (!app) error(503, "Connecting Google isn't set up on this server.");
 	let grant: Awaited<ReturnType<typeof finishConnect>>;
 	try {
-		grant = await finishConnect(app, url, { state: url.searchParams.get("state") ?? "", verifier: checked.verifier });
+		grant = await finishConnect(
+			app,
+			url,
+			{ state: url.searchParams.get("state") ?? "", verifier: checked.verifier },
+			googleFaultDeps(await resolveFaultInjection(request))
+		);
 	} catch (e) {
 		if (e instanceof GoogleConnectError && e.reason === "missing-scope") back("scopes");
 		logger.warn(

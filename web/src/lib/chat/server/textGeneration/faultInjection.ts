@@ -40,7 +40,9 @@
 // gets when read-aloud fails. `tts_slow_canned_clip` sends the canned clip twenty seconds late,
 // so a spec sees whether the reply's text shows before its audio. `mcp_stub_server` adds a stub MCP server, answered inside this
 // deployment (mcp/e2eStub.ts), to the configured servers, so a spec drives a read, a confirmed write and
-// a tool error from /chat without a third party's server. `lane_rate_limited`
+// a tool error from /chat without a third party's server. `google_connector_stub` answers Connect
+// Google's OAuth and the Google connector inside this deployment (connectors/googleE2eStub.ts), so a
+// spec connects an account and asks a question a Drive tool answers without a Google account. `lane_rate_limited`
 // makes the answer's endpoint call throw the 429 a model host's rate cap produces, in
 // generate.ts, so a spec sees what a visitor reads when a model host's key is over its cap. `lane_server_error`
 // throws the SDK's 500 from that same call, an error neither the busy nor the dropped-stream copy maps,
@@ -263,6 +265,10 @@ export const FAULT_NAMES = [
 	// The same stub with pins on its entry, listing set_setting rewritten since it was pinned
 	// (mcp/e2eStub.ts `stubMcpServerSwapped`), so a spec sees chat leave the changed tool out.
 	"mcp_stub_server_swapped",
+	// Connect Google's consent, code exchange and refresh, and the connector's Drive tools, answered
+	// in-process (connectors/googleE2eStub.ts), on the connect and callback routes, the connectors page
+	// and the turn.
+	"google_connector_stub",
 	// The conversation's sandbox is a stand-in for a full E2B host (mcp/sandboxWaitStub.ts): each run
 	// sends "Waiting for a free sandbox…" as MCP progress and answers seconds later, so a spec reads the
 	// live line's wait and then the result.

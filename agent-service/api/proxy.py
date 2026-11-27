@@ -423,7 +423,7 @@ def _plog(event: str, **fields) -> None:
     merge once both planes reach the same sink, hence the logsink.emit below (a no-op without a
     token). `upstream.error`'s `body` is a provider's error text and is redacted on the way out."""
     rec = {"ts": round(time.time(), 3), "event": event, **fields}
-    print(json.dumps(rec), flush=True)
+    logsink.stdout_line(rec)
     logsink.emit(rec)
 
 

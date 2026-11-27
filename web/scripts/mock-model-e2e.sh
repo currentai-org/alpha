@@ -70,6 +70,19 @@ export MODELS_BOOT_SNAPSHOT=off
 export MISTRAL_CHAT_BASE_URL="$OPENAI_BASE_URL"
 export MISTRAL_CHAT_API_KEY=mock-model-no-key
 export MISTRAL_MODELS="$MOCK_MODEL_ID"
+# Connect Google, configured as an operator would (selfhost/.env.example), which turns its flag on under
+# the self-host defaults. Nothing here reaches Google or a connector: google-drive-connect.spec.ts asks
+# for the `google_connector_stub` fault, which answers both inside the app, and these placeholders
+# only make Settings → Connectors offer Connect Google.
+export GOOGLE_CONNECT_CLIENT_ID=mock-model-e2e.apps.googleusercontent.com
+export GOOGLE_CONNECT_CLIENT_SECRET=mock-model-no-secret
+export GOOGLE_CONNECTOR_URL=https://google-connector.e2e.invalid/mcp
+# A fault token for this run alone, so a spec can ask for a named fault (DEPLOY_ENV=development above is
+# a test deployment, the other half of the gate in faultInjection.ts). It reaches Playwright only as
+# MOCK_E2E_FAULT_TOKEN: under its own name every spec would arm the fixtures that read it
+# (helpers/test.ts's preview screen stub, canned replies), which the other @mock-model specs never asked for.
+E2E_FAULT_INJECT_TOKEN="$(openssl rand -hex 32)"
+export E2E_FAULT_INJECT_TOKEN
 
 cleanup() {
 	local code=$?
@@ -142,7 +155,9 @@ fi
 cd "$WEB_DIR"
 # E2E_REPLAY_MODE=off: every model call reaches the mock, none is answered by the replay layer.
 # SCENARIO_SKIP_LIVE_MODEL=1 leaves out the specs that need a real model's answer.
-E2E_REPLAY_MODE=off \
+env -u E2E_FAULT_INJECT_TOKEN \
+	MOCK_E2E_FAULT_TOKEN="$E2E_FAULT_INJECT_TOKEN" \
+	E2E_REPLAY_MODE=off \
 	SCENARIO_MOCK_MODEL=1 \
 	SCENARIO_CHAT_SURFACE=1 \
 	SCENARIO_SKIP_LIVE_MODEL=1 \

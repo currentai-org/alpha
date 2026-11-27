@@ -32,6 +32,7 @@ import atexit
 import hashlib
 import json
 import os
+import sys
 import threading
 import time
 from collections import deque
@@ -95,6 +96,20 @@ def _redact(rec: dict) -> dict:
         else:
             out[k] = v
     return out
+
+
+_stdout_lock = threading.Lock()
+
+
+def stdout_line(rec: dict) -> None:
+    """Write one record to stdout as one JSON line. `print` writes the text and its newline as two
+    writes, so two threads printing at once can put two records on one line, which every reader that
+    parses a line as one record then drops. One write under a lock keeps each record on its own line,
+    the same way logging.StreamHandler does."""
+    line = json.dumps(rec, default=str) + "\n"
+    with _stdout_lock:
+        sys.stdout.write(line)
+        sys.stdout.flush()
 
 
 def emit(rec: dict) -> None:

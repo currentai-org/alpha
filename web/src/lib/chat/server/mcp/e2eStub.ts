@@ -103,8 +103,8 @@ function callStubTool(tool: string, args: Record<string, unknown>): ToolCallResu
 const STUB_FIXTURE: McpFixture = { serverName: "aipotluck-e2e-stub", tools: TOOLS, call: callStubTool };
 
 /** A fetch that answers each Streamable HTTP request from `fixture`, the way a JSON-response MCP
- *  server does. */
-function fixtureFetch(fixture: McpFixture) {
+ *  server does. Also the Google connector's stand-in (connectors/googleE2eStub.ts). */
+export function fixtureFetch(fixture: McpFixture) {
 	return async (_url: string | URL, init?: RequestInit): Promise<Response> => {
 		if ((init?.method ?? "GET").toUpperCase() !== "POST") return new Response(null, { status: 405 });
 		const { status, payload } = answerMcpRequest(String(init?.body ?? "{}"), fixture);

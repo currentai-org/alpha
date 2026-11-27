@@ -3,7 +3,7 @@ import { json } from "$lib/chat/server/api/utils/json";
 import { collections } from "$lib/chat/server/database";
 import { authCondition } from "$lib/chat/server/auth";
 import { multimodalEnabled } from "$lib/chat/server/textOnly";
-import { requireExportUser } from "$lib/chat/server/dataPortability";
+import { nextExportAt, requireExportUser } from "$lib/chat/server/dataPortability";
 import {
 	custodialStorageConfigured,
 	listCustodialFiles,
@@ -53,5 +53,14 @@ export const GET: RequestHandler = async ({ locals }) => {
 		}
 	}
 
-	return json({ conversations: conversations.length, answers, files, sealed });
+	// Read last, so an export whose click landed before the page hydrated has recorded its hour by
+	// now (../+server.ts records it first). The page locks the row from this.
+	const next = await nextExportAt(user._id);
+	return json({
+		conversations: conversations.length,
+		answers,
+		files,
+		sealed,
+		nextExportAt: next ? next.toISOString() : null,
+	});
 };

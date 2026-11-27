@@ -164,6 +164,39 @@ services:
       start_period: 30s
     restart: unless-stopped
 
+  # Only with --profile searxng: SearXNG (AGPL-3.0), a metasearch engine, for open-web search without a
+  # Firecrawl key. It does nothing until .env also sets SEARXNG_URL=http://searxng:8080, and the app asks it
+  # only while FIRECRAWL_API_KEY is unset. It queries the search engines its default settings enable
+  # (Brave, DuckDuckGo, Google, Startpage, Wikipedia and others) from this machine, so they see this
+  # machine's address and never the person's. The settings at the end of this file add the `json` format
+  # the app reads and keep the bot limiter off, since only the web service reaches it: its port is not
+  # published. With no SEARXNG_SECRET in .env each start picks a random secret, which signs only SearXNG's
+  # own preference cookies, which the app never sends.
+  searxng:
+    profiles: [searxng]
+    # searxng/searxng:2026.11.20-cd6d28091, the multi-arch index, pinned by digest.
+    image: searxng/searxng@sha256:b513f1ad02c1b0a985d801190eafc3cbcacdf661de8b1fe7b54fa67bafe97a7e
+    entrypoint:
+      - /bin/sh
+      - -c
+      - 'export SEARXNG_SECRET="$${SEARXNG_SECRET:-$$(head -c 24 /dev/urandom | base64 | tr -dc a-zA-Z0-9)}"; exec /usr/local/searxng/entrypoint.sh'
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:-}
+      SEARXNG_BIND_ADDRESS: 0.0.0.0
+      SEARXNG_PORT: "8080"
+      # settings.yml arrives read-only from `configs`, so the entrypoint must not chown its directory.
+      FORCE_OWNERSHIP: "false"
+    configs:
+      - source: searxng_settings
+        target: /etc/searxng/settings.yml
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz')"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+      start_period: 10s
+    restart: unless-stopped
+
   # Only with --profile s3: SeaweedFS (Apache-2.0) as the S3-compatible store for people's files, for
   # CUSTODIAL_STORAGE_BACKEND=s3 (block S in .env.example). Not MinIO: AGPL, and its repo is archived.
   # Onyx runs SeaweedFS the same way in its compose file: only the S3 gateway listens beyond the
@@ -363,7 +396,7 @@ services:
       start_period: 20s
     restart: unless-stopped
 
-  # Only with --profile google: Connect Google, a person's own Gmail and Calendar, read-only, in chat.
+  # Only with --profile google: Connect Google, a person's own Gmail, Calendar and Drive, read-only, in chat.
   # taylorwilsdon/google_workspace_mcp (MIT) as an MCP server in external-provider mode: the web service
   # runs the OAuth with your Google client, keeps each person's refresh token sealed in Postgres, and sends
   # the connector a short-lived access token per turn. The connector holds no client secret and stores
@@ -378,7 +411,7 @@ services:
     command:
       - |
         export FASTMCP_SERVER_AUTH_GOOGLE_JWT_SIGNING_KEY="$$(/app/.venv/bin/python -c 'import secrets; print(secrets.token_hex(32))')"
-        exec /app/.venv/bin/python main.py --transport streamable-http --tool-tier core --tools gmail calendar
+        exec /app/.venv/bin/python main.py --transport streamable-http --tool-tier core --tools gmail calendar drive
     environment:
       GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_CONNECT_CLIENT_ID:-}
       MCP_ENABLE_OAUTH21: "true"
@@ -407,6 +440,7 @@ services:
       llama: { condition: service_healthy, required: false }
       shieldstral: { condition: service_healthy, required: false }
       rerank: { condition: service_healthy, required: false }
+      searxng: { condition: service_healthy, required: false }
       seaweedfs: { condition: service_healthy, required: false }
       agent-init: { condition: service_completed_successfully, required: false }
       agent: { condition: service_healthy, required: false }
@@ -472,6 +506,9 @@ services:
       RERANK_MODEL: ${RERANK_MODEL:-}
       RERANK_ENDPOINT_URL: ${RERANK_ENDPOINT_URL:-}
       RERANK_SCORES: ${RERANK_SCORES:-}
+      # A SearXNG with the json format on (--profile searxng is one), searched in Firecrawl's place while
+      # FIRECRAWL_API_KEY is unset.
+      SEARXNG_URL: ${SEARXNG_URL:-}
       # Sized for the bundled CPU reranker, which scores about 1,000 characters in 0.74 s on 4 cores: 12
       # documents of 600 characters take about 5.3 s there, and the 32 x 1,200 a hosted reranker gets 28.5 s.
       # These assume 4 cores; on 2, 6 documents of 300 fit the deadline. Raise all three for a faster
@@ -510,6 +547,22 @@ services:
     # copies deploy/'s FILES_ACCESS_KEY/FILES_SECRET_KEY to the AWS_* names the app reads.
     volumes: [files:/data/files, "agent-token:/agent-token:ro", "./config:/config:ro"]
     restart: unless-stopped
+
+configs:
+  # --profile searxng's settings: SearXNG's defaults, plus the json format the app reads, with the bot
+  # limiter and image proxy off.
+  searxng_settings:
+    content: |
+      use_default_settings: true
+      general:
+        instance_name: Alpha search
+      server:
+        limiter: false
+        image_proxy: false
+        public_instance: false
+      search:
+        safe_search: 1
+        formats: [html, json]
 
 volumes:
   db:

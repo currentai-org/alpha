@@ -290,6 +290,8 @@ type ExtraConfigKeys =
 	| "FIRECRAWL_TBS"
 	// Base URL of a self-hosted Firecrawl (same v2 API). Unset → api.firecrawl.dev.
 	| "FIRECRAWL_BASE_URL"
+	// A self-hoster's SearXNG (JSON API), searched in Firecrawl's place when FIRECRAWL_API_KEY is unset.
+	| "SEARXNG_URL"
 	// Base URL of an OpenAI-compatible speech API for read-aloud. Unset → the Hugging Face router.
 	| "READ_ALOUD_BASE_URL"
 	// Optional bearer for READ_ALOUD_BASE_URL; unset sends no Authorization header.

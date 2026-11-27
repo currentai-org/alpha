@@ -171,12 +171,13 @@ Treat it as a demo: run it for yourself or people you trust, not for the public.
 ## Connect Google (optional)
 
 With this on, a signed-in person can connect their own Google account in Settings → Connectors and ask
-chat about their Gmail and Calendar ("what's on my calendar tomorrow"). Access is read-only: nothing on
-this stack can send mail, change an event or delete anything. It needs a Google OAuth client of your
+chat about their Gmail, Calendar and Drive ("what's on my calendar tomorrow", "find my budget
+spreadsheet"). Access is read-only: nothing on this stack can send mail, change an event, edit a file or
+delete anything. It needs a Google OAuth client of your
 own, because Google shows its name on the consent screen and holds you to its terms.
 
 1. In the [Google Cloud console](https://console.cloud.google.com/), create or pick a project and enable
-   the **Gmail API** and the **Google Calendar API** for it.
+   the **Gmail API**, the **Google Calendar API** and the **Google Drive API** for it.
 2. Configure its consent screen (Google Auth Platform → Branding and Audience) and pick the user
    type that fits who will connect:
    - **Internal**, if the project sits in a Google Workspace organization and only its members
@@ -186,8 +187,8 @@ own, because Google shows its name on the consent screen and holds you to its te
      no verification, and can't be changed to another type later.
    - **External** for anyone else. While its publishing status is **Testing**, only the test users you
      list (up to 100) can connect, and each connection lasts seven days before it must be made again.
-     Publishing it needs Google's verification, and because Gmail read access is a restricted scope,
-     that includes a security review.
+     Publishing it needs Google's verification, and because Gmail and Drive read access are restricted
+     scopes, that includes a security review.
 
    Google's [Manage App Audience](https://support.google.com/cloud/answer/15549945) page defines the
    three types.
@@ -207,11 +208,16 @@ own, because Google shows its name on the consent screen and holds you to its te
    ```
 
 The profile runs the connector, [taylorwilsdon/google_workspace_mcp](https://github.com/taylorwilsdon/google_workspace_mcp)
-(MIT), on the compose network, unpublished, fixed to read-only Gmail and Calendar. The web service does
+(MIT), on the compose network, unpublished, fixed to read-only Gmail, Calendar and Drive. The web service does
 the OAuth: it keeps each person's refresh token sealed in Postgres, the way it keeps their own servers'
 tokens, and on each turn hands the connector a short-lived access token for that person only. The
 connector holds no client secret and stores nothing. `GOOGLE_CONNECTOR_URL` points web at a connector of
 your own instead.
+
+Drive reads every file the person can see (`drive.readonly`), since the narrower `drive.file` scope sees
+only files the app made and could not answer "find my budget spreadsheet". A person may untick Drive on
+Google's screen and still connect Gmail and Calendar. Someone who connected before Drive was added keeps
+Gmail and Calendar, and Settings → Connectors offers them a reconnect for Drive.
 
 - **Disconnect** in Settings → Connectors deletes the stored token, and so does **Forget everything**.
   Google keeps the grant itself until the person removes it at
@@ -268,6 +274,31 @@ bundled `rerank` service's 1,024-token micro-batch holds the question and one do
 characters of Latin-script text but fewer in Chinese, Japanese or other scripts that take a token or
 more per character. A document past that makes llama.cpp refuse the call, and the search answers
 without sources, so keep `RERANK_DOC_CHARS` at 600 or below for those languages.
+
+### Open-web search without a Firecrawl key: SearXNG
+
+Without `FIRECRAWL_API_KEY`, search reaches only Wikipedia, Wikinews, OpenAlex, arXiv and Hugging Face,
+so a question about a recent event or an ordinary website has little to cite. `--profile searxng` runs
+SearXNG (AGPL-3.0), a metasearch engine that asks Brave, DuckDuckGo, Google, Startpage and others from
+your machine, so they see your machine's address and never the person's. Alpha reads its JSON API. Turn
+it on with one line in `.env`:
+
+```sh
+SEARXNG_URL=http://searxng:8080
+```
+
+```sh
+docker compose --profile local --profile rerank --profile searxng up --build
+```
+
+Search still cites only what the reranker scored as relevant, so run it with `--profile rerank`. With
+`FIRECRAWL_API_KEY` set, Firecrawl keeps the open-web slot and SearXNG is never asked. Its port is not
+published, and its settings, at the end of `compose.yaml`, turn the bot limiter off because only the web
+service reaches it. Your own SearXNG elsewhere works too, at its URL, if its settings file lists `json`
+under `search.formats` (the default is `html` only, and SearXNG answers 403 to a JSON request then) and
+its limiter lets this server through. Public SearXNG instances usually refuse server-to-server calls, so
+run your own. Our CI boots the profile's image with a stand-in engine and checks that a turn's search
+goes through it and cites its page.
 
 ## Configuration
 

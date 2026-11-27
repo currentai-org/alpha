@@ -11,6 +11,8 @@ export const SEARCH_ENGINES = [
 	"Wikipedia",
 	"Wikinews",
 	"Firecrawl",
+	// A self-hoster's own SearXNG, in Firecrawl's place when there is no Firecrawl key.
+	"SearXNG",
 	"OpenAlex",
 	"arXiv",
 	"Hugging Face",

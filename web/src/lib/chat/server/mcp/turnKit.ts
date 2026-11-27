@@ -134,7 +134,7 @@ export async function mcpServersKitForTurn(
 		: [];
 	// The person's connected Google account, behind its own flag, so an operator can offer it without
 	// turning on configured and hand-added servers. Its name is reserved the same way as the sandbox's.
-	const google = await (opts.googleFor ?? googleServerFor)(ctx.locals);
+	const google = await (opts.googleFor ?? googleServerFor)(ctx.locals, {}, ctx.faultInjection);
 	const withGoogle = google ? [...general.filter((s) => s.name !== google.name), google] : general;
 	// The sandbox's name is reserved: a configured or own server using it would take over its prefix.
 	const servers = sandbox ? [sandbox, ...withGoogle.filter((s) => s.name !== sandbox.name)] : withGoogle;

@@ -491,7 +491,7 @@ async function chatHostRules(
 	// On the chat surface, an old `/chat/...` address moves to the same path at the root.
 	// Reserved paths (CHAT_RESERVED_PATHS) are served in place, and only a GET or HEAD moves.
 	const atRoot = paths.chatSurfaceRedirect(pathname, method);
-	if (atRoot !== null) throw redirect(308, `${atRoot}${search}`);
+	if (atRoot !== null) throw redirect(308, `${atRoot}${search}`, { external: false });
 	// On the chat surface, a site page (`/map`, a CMS slug) matches no chat route after
 	// `reroute`, so it moves to the same path on the site's host instead of 404ing here.
 	const toSite = paths.chatSurfaceSiteRedirect({

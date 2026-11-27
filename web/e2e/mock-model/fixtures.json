@@ -29,6 +29,33 @@
 			}
 		},
 		{
+			"match": {
+				"model": "mistral-large-2610",
+				"userMessage": "What does the allotment rota in my Drive say about plot 7?",
+				"toolName": "google__search_drive_files",
+				"hasToolResult": false
+			},
+			"response": {
+				"toolCalls": [
+					{
+						"name": "google__search_drive_files",
+						"arguments": {
+							"query": "allotment rota"
+						}
+					}
+				]
+			}
+		},
+		{
+			"match": {
+				"userMessage": "What does the allotment rota in my Drive say about plot 7?",
+				"hasToolResult": true
+			},
+			"response": {
+				"content": "Your allotment rota in Drive says plot 7 waters on Thursdays."
+			}
+		},
+		{
 			"match": {},
 			"response": {
 				"content": "Hello. This answer comes from the mock model the end-to-end tests run against, so no real model was called."

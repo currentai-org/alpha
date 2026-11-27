@@ -39,7 +39,7 @@
 		if (q.get("google") === "connected") return "Google is connected.";
 		const err = q.get("google_error");
 		if (err === "denied") return "Google wasn’t connected: you cancelled on Google’s screen.";
-		if (err === "scopes") return "Google wasn’t connected: both Gmail and Calendar need to be ticked on Google’s screen.";
+		if (err === "scopes") return "Google wasn’t connected: Gmail and Calendar both need to be ticked on Google’s screen.";
 		if (err) return "Google couldn’t be connected just now. Try again.";
 		return undefined;
 	});
@@ -103,14 +103,26 @@
 					</form>
 				</div>
 				<p class="type-body text-fg-2">
-					Chat can read your Gmail and Calendar, and never sends, deletes or changes anything there. Disconnect
-					removes our copy of your Google sign-in. To remove Alpha at Google as well, take it off the
-					third-party connections in your Google account.
+					{#if data.google.driveMissing}
+						Chat can read your Gmail and Calendar, and never sends, deletes or changes anything there.
+					{:else}
+						Chat can read your Gmail, Calendar and Drive, and never sends, deletes or changes anything there.
+					{/if}
+					Disconnect removes our copy of your Google sign-in. To remove Alpha at Google as well, take it off
+					the third-party connections in your Google account.
 				</p>
+				{#if data.google.driveMissing}
+					<div class="flex flex-wrap items-center justify-between gap-2" data-connector-google-drive="missing">
+						<span class="type-body text-fg-2">Reconnect to let chat read your Drive files too, read-only.</span>
+						<Button href="{CHAT_API_PATH}/connectors/google/connect" variant="secondary" size="sm" data-sveltekit-reload
+							>Reconnect for Drive</Button
+						>
+					</div>
+				{/if}
 			{:else}
 				<p class="type-body text-fg-2" data-connector-google-state="disconnected">
-					Let chat read your Gmail and Calendar, for questions like “what’s on my calendar tomorrow?”. It can’t
-					send, delete or change anything there.
+					Let chat read your Gmail, Calendar and Drive, for questions like “what’s on my calendar tomorrow?”. It
+					can’t send, delete or change anything there.
 				</p>
 				<Inline justify="start">
 					<Button href="{CHAT_API_PATH}/connectors/google/connect" variant="primary" data-sveltekit-reload>Connect Google</Button>

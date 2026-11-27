@@ -935,7 +935,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		selfHost: { onWhenEnv: ["GOOGLE_CONNECT_CLIENT_ID", "GOOGLE_CONNECT_CLIENT_SECRET", "GOOGLE_CONNECTOR_URL"] },
 		owner: "chat",
 		gates:
-			"Connect Google in Settings → Connectors, and whether a signed-in person's connected Google account (Gmail and Calendar, read-only) is offered to chat turns through the operator's Google connector (connectors/google.ts)",
+			"Connect Google in Settings → Connectors, and whether a signed-in person's connected Google account (Gmail, Calendar and Drive, read-only) is offered to chat turns through the operator's Google connector (connectors/google.ts)",
 		whenAbsent: "no Connect Google button, no Google token is stored or refreshed, and no turn reaches the connector",
 		ticket: "CUR-5321",
 		// Hosted www is not in scope: its product claim says Alpha never asks for a mailbox, so

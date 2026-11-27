@@ -34,7 +34,7 @@ export const handleLocale: Handle = async ({ event, resolve }) => {
 		pathname !== bare &&
 		(!isTranslatedRoute(bare) || pathname === '/en' || pathname.startsWith('/en/'))
 	) {
-		throw redirect(308, `${bare}${event.url.search}`);
+		throw redirect(308, `${bare}${event.url.search}`, { external: false });
 	}
 	return paraglideMiddleware(event.request, ({ request, locale }) => {
 		// Read-only in the SvelteKit 3 types; the request Paraglide hands back replaces it for this event.

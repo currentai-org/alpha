@@ -18,6 +18,8 @@ const TRUST_PCT: Record<SearchEngine, number> = {
 	Wikipedia: 0.05,
 	OpenAlex: 0.05,
 	Firecrawl: -0.05,
+	// The same broader open web as Firecrawl, through a self-hoster's metasearch.
+	SearXNG: -0.05,
 	arXiv: 0,
 	Wikinews: 0,
 	"Hugging Face": 0,

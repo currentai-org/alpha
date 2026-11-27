@@ -530,6 +530,9 @@ export const ENV_MANIFEST = {
 	FIRECRAWL_BASE_URL: {
 		desc: "Base URL of a self-hosted Firecrawl, which serves the same v2 API (Firecrawl is AGPL). Unset, search and scrape go to https://api.firecrawl.dev.",
 	},
+	SEARXNG_URL: {
+		desc: "Base URL of a SearXNG instance with the json format enabled (selfhost/compose.yaml's searxng profile is one). Searched for the open web in Firecrawl's place, and only while FIRECRAWL_API_KEY is unset. Unset, nothing changes.",
+	},
 	READ_ALOUD_BASE_URL: {
 		desc: "Base URL of an OpenAI-compatible speech API for read-aloud, ending in /v1; Alpha posts to <base>/audio/speech. Unset, the Hugging Face router route, which uses HF_TOKEN. With this set, read-aloud needs no Hugging Face credential.",
 	},

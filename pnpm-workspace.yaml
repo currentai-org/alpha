@@ -65,7 +65,7 @@ overrides:
   # payload's minimatch 3 needs brace-expansion 1; only web's 5.x line is lifted.
   brace-expansion@^5: ^5.0.12
   fast-uri: ^3.1.9
-  qs: ^6.16.0
+  qs: ^6.16.1
   source-map-js: ^1.2.2
   # sprintf-js has no fixed release (GHSA-hp3w-g68c-fv3c). Only mammoth's CLI (bin/mammoth)
   # loads argparse; the library we call never does, and argparse 2 drops sprintf-js.

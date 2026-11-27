@@ -8,6 +8,7 @@ import globals from 'globals';
 import ts from 'typescript-eslint';
 import { noDiscardedEffectRoot } from './eslint-rules/no-discarded-effect-root.js';
 import { noChatPathLiteral } from './eslint-rules/no-chat-path-literal.js';
+import { redirectStatesExternal } from './eslint-rules/redirect-states-external.js';
 import { noModelWordingAssertion } from './eslint-rules/no-model-wording-assertion.js';
 import { noHostEnvRead, RUNTIME_ENV_MODULE } from './eslint-rules/no-host-env-read.js';
 import { noModelAllowlistRead } from './eslint-rules/no-model-allowlist-read.js';
@@ -192,6 +193,16 @@ export default defineConfig(
 		plugins: { 'chat-paths': { rules: { 'no-chat-path-literal': noChatPathLiteral } } },
 		rules: {
 			'chat-paths/no-chat-path-literal': 'error'
+		}
+	},
+	{
+		// SvelteKit 3 500s an off-origin redirect() that lacks `{ external: true }`;
+		// eslint-rules/redirect-states-external.js says what it flags.
+		files: ['src/**/*.{ts,js}'],
+		ignores: ['**/*.spec.ts', '**/*.test.ts'],
+		plugins: { redirects: { rules: { 'redirect-states-external': redirectStatesExternal } } },
+		rules: {
+			'redirects/redirect-states-external': 'error'
 		}
 	},
 	{

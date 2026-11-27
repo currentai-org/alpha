@@ -23,6 +23,7 @@ import {
 	GOOGLE_SERVER_NAME,
 	googleConnectApp,
 	googleConnectorEnabled,
+	googleGrantLacksDrive,
 	googleServerFor,
 } from "$lib/chat/server/connectors/google";
 import { deleteUserGoogleConnection, getUserGoogleConnection } from "$lib/chat/server/db/userGoogleConnections";
@@ -40,7 +41,7 @@ export const load: PageServerLoad = async ({ locals, request }) => {
 	// The e2e stub is listed when the request carries its fault, so a spec sees what its turn will use.
 	const general = mcpServers ? serversForRequest(faultInjection, userServerConfigs(ownRows, { faultInjection })) : [];
 	// Listed with its tools when connected, so the page shows what a turn would offer and each tool's choice.
-	const googleServer = googleOn ? await googleServerFor(locals) : null;
+	const googleServer = googleOn ? await googleServerFor(locals, {}, faultInjection) : null;
 	const servers = googleServer ? [...general.filter((s) => s.name !== GOOGLE_SERVER_NAME), googleServer] : general;
 	const googleRow = googleOn && accountId ? await getUserGoogleConnection(accountId) : null;
 	const ownIdByName = new Map(ownRows.map((r) => [r.name, r.id]));
@@ -50,7 +51,12 @@ export const load: PageServerLoad = async ({ locals, request }) => {
 		mcpServers,
 		// Null when the flag is off. `available` is false when the operator has not finished setting it up.
 		google: googleOn
-			? { available: googleConnectApp() !== null, email: googleRow?.email ?? null }
+			? {
+					available: googleConnectApp() !== null,
+					email: googleRow?.email ?? null,
+					// A connection from before Drive, or with Drive unticked: it still serves Gmail and Calendar.
+					driveMissing: googleRow ? googleGrantLacksDrive(googleRow.scopes) : false,
+				}
 			: null,
 		servers: servers.map((s) => ({
 			name: s.name,

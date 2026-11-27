@@ -394,7 +394,11 @@ test.describe('dataset layout, desktop', { tag: '@G1' }, () => {
 		page
 	}) => {
 		await openDataset(page);
-		// An open(ish) product in the last layer, so the jump has a long way to go.
+		// An open(ish) product in the last layer, so the jump has a long way to go. Rows render as
+		// their category nears the screen, so the test scrolls there to read one.
+		await page.evaluate(() =>
+			window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'instant' })
+		);
 		const target = page
 			.locator('#layer-infrastructure tr[data-product-id]:not([data-bucket="closed"])')
 			.last();

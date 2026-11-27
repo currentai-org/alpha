@@ -14,6 +14,7 @@ const {
 	finishConnect,
 	GoogleConnectError,
 	GOOGLE_SCOPES,
+	googleGrantLacksDrive,
 	googleServerFor,
 	sealRefreshToken,
 	startConnect,
@@ -28,6 +29,7 @@ const app = {
 	connectorUrl: "http://google:8000/mcp",
 };
 const ISSUER = "https://accounts.google.com";
+const GOOGLE_DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.readonly";
 const READ_ONLY = GOOGLE_SCOPES.filter((s) => s.startsWith("https://"));
 
 const b64 = (v: unknown) => Buffer.from(JSON.stringify(v)).toString("base64url");
@@ -70,7 +72,7 @@ const row = (userId: string, credential = sealRefreshToken("refresh-1", SECRET))
 });
 
 describe("Connect Google consent", () => {
-	it("asks Google for offline, read-only Gmail and Calendar access, with PKCE", async () => {
+	it("asks Google for offline, read-only Gmail, Calendar and Drive access, with PKCE", async () => {
 		const { url, state } = await startConnect(app, { discover: offline(() => ({})) });
 		const q = url.searchParams;
 		expect(q.get("access_type")).toBe("offline");
@@ -80,6 +82,7 @@ describe("Connect Google consent", () => {
 		expect(q.get("redirect_uri")).toBe(app.redirectUri);
 		const scopes = (q.get("scope") ?? "").split(" ");
 		expect(scopes).toEqual(expect.arrayContaining(READ_ONLY));
+		expect(scopes).toContain("https://www.googleapis.com/auth/drive.readonly");
 		// Nothing that could send, change or delete.
 		expect(scopes.filter((s) => s.startsWith("https://") && !s.endsWith(".readonly"))).toEqual([]);
 	});
@@ -113,6 +116,27 @@ describe("Connect Google consent", () => {
 		await expect(finishConnect(app, await callbackFor(state), { state, verifier }, { discover })).rejects.toEqual(
 			new GoogleConnectError("missing-scope")
 		);
+	});
+
+	it("connects a grant where the person unticked Drive, and records that it lacks Drive so a reconnect is offered", async () => {
+		const { state, verifier } = await startConnect(app, { discover: offline(() => ({})) });
+		const noDrive = READ_ONLY.filter((s) => s !== GOOGLE_DRIVE_SCOPE);
+		const discover = offline(() => ({
+			access_token: "ya29.a",
+			token_type: "Bearer",
+			refresh_token: "1//refresh",
+			scope: ["openid", ...noDrive].join(" "),
+			id_token: idToken({ email: "me@example.org" }),
+		}));
+		const grant = await finishConnect(app, await callbackFor(state), { state, verifier }, { discover });
+		expect(grant.scopes).toBe(["openid", ...noDrive].join(" "));
+		expect(googleGrantLacksDrive(grant.scopes)).toBe(true);
+	});
+
+	it("reads a grant from before Drive as lacking it, and a full grant as not", () => {
+		const beforeDrive = "openid https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly";
+		expect(googleGrantLacksDrive(beforeDrive)).toBe(true);
+		expect(googleGrantLacksDrive(["openid", ...READ_ONLY].join(" "))).toBe(false);
 	});
 
 	it("refuses a grant with no refresh token, which could not outlive the hour", async () => {

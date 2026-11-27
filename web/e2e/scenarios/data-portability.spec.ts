@@ -543,11 +543,15 @@ test(
 	{ tag: ['@preview-only', '@A3'] },
 	async ({ page }) => {
 		await signInAsFreshUser(page);
+		// The summary is fetched on mount, so its response means the page has hydrated and the click
+		// below reaches the row's handler. A click before that is the next test's case.
+		const hydrated = page.waitForResponse((r) => r.url().includes('/api/v2/export/summary'));
 		await page.goto('/chat/settings/account', { waitUntil: 'commit' });
 		const exportRow = page.getByRole('link', {
 			name: 'Download a ZIP of your conversations, files, and where each answer came from'
 		});
 		await expect(exportRow).toBeVisible({ timeout: 15_000 });
+		await hydrated;
 		const [download] = await Promise.all([page.waitForEvent('download'), exportRow.click()]);
 		expect(await download.failure()).toBeNull();
 
@@ -567,6 +571,41 @@ test(
 			}
 			await expect(page).toHaveURL(/\/chat\/settings\/account/);
 		});
+	}
+);
+
+// A click before the page hydrates follows the server-rendered link, so the row's click handler never
+// runs. The download still happens, and the row has to lock from what the server knows: the summary the
+// page fetches once it hydrates carries the hour. The page's scripts are held until the download starts,
+// so the click lands before hydration every time rather than on a fast or slow run.
+test(
+	'a Download clicked before the page hydrates still locks the row for the hour',
+	{ tag: ['@preview-only', '@A3'] },
+	async ({ page }) => {
+		await signInAsFreshUser(page);
+		let release!: () => void;
+		const held = new Promise<void>((resolve) => (release = resolve));
+		// Scripts only: a held stylesheet would block the first paint, and the link would never show.
+		await page.route(/\/_app\/immutable\/.*\.js(\?|$)/, async (route) => {
+			await held;
+			await route.continue();
+		});
+		await page.goto('/chat/settings/account', { waitUntil: 'commit' });
+		const exportRow = page.getByRole('link', {
+			name: 'Download a ZIP of your conversations, files, and where each answer came from'
+		});
+		await expect(exportRow).toBeVisible({ timeout: 15_000 });
+		const [download] = await Promise.all([page.waitForEvent('download'), exportRow.click()]);
+		expect(await download.failure()).toBeNull();
+		release();
+
+		const locked = page.getByTestId('export-row-locked');
+		await expect(locked, 'the export row is still a live link after an early click').toBeVisible({
+			timeout: 15_000
+		});
+		await expect(locked.getByRole('status')).toContainText('You can download again after');
+		await expect(exportRow).toHaveCount(0);
+		await expect(page).toHaveURL(/\/chat\/settings\/account/);
 	}
 );
 

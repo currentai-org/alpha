@@ -8,6 +8,8 @@
 //     date via the API, so it carries no `asOf` (see searchWikinews).
 //   • Firecrawl — general open-web search (broader reach than the encyclopedic/
 //     scholarly engines below; requires FIRECRAWL_API_KEY, unlike the others).
+//   • SearXNG — a self-hoster's own metasearch, in Firecrawl's place when there is no
+//     FIRECRAWL_API_KEY and SEARXNG_URL names an instance (searchSearxng).
 //   • OpenAlex — open scholarly index (academic/research, with real publication
 //     dates + source language; no key, polite pool via mailto).
 // A Google-scale open web index still does not exist — that stays an honest GAP
@@ -432,6 +434,62 @@ async function searchFirecrawl(
 				tbs: tbs ?? null,
 			},
 			"[search] Firecrawl search call failed"
+		);
+		throw err;
+	}
+}
+
+// SearXNG: a self-hoster's own metasearch (AGPL-3.0), through its JSON API (GET /search?format=json).
+// It fills the general-web slot Firecrawl holds, and only when no FIRECRAWL_API_KEY is set, so a
+// deployment with a key searches exactly as before. The instance must list `json` under
+// `search.formats` in its settings.yml, as selfhost/compose.yaml's `searxng` profile does; one that
+// doesn't answers 403. SearXNG's own `limiter` refuses most server-to-server calls, so a public instance
+// usually won't answer this either: point SEARXNG_URL at one you run.
+
+/** Which engine answers the general-web half of a search: Firecrawl when it has a key, else SearXNG
+ *  when SEARXNG_URL names an instance, else Firecrawl, which then throws "not configured" as before. */
+function generalWebBackend(): "firecrawl" | "searxng" {
+	if (config.FIRECRAWL_API_KEY) return "firecrawl";
+	return (config.SEARXNG_URL ?? "").trim() ? "searxng" : "firecrawl";
+}
+
+type SearxngResult = { url?: string; title?: string; content?: string; publishedDate?: string | null };
+
+async function searchSearxng(
+	query: string,
+	limit: number,
+	signal?: AbortSignal
+): Promise<SearchCandidate[]> {
+	const base = (config.SEARXNG_URL ?? "").trim().replace(/\/+$/, "");
+	if (!base) throw new Error("SEARXNG_URL not configured");
+	const url = `${base}/search?${new URLSearchParams({ q: query, format: "json", safesearch: "1" })}`;
+	const startedAt = Date.now();
+	try {
+		const data = (await getJSON(url, signal, { Accept: "application/json" })) as {
+			results?: SearxngResult[];
+		};
+		const seen = new Set<string>();
+		const out: SearchCandidate[] = [];
+		for (const r of data.results ?? []) {
+			if (!r.url || seen.has(r.url) || isFringe(r.url)) continue;
+			seen.add(r.url);
+			const asOf = r.publishedDate ? new Date(r.publishedDate) : undefined;
+			out.push({
+				title: r.title?.trim() || r.url,
+				url: r.url,
+				// The same 500-character cut as a Firecrawl description (see searchFirecrawl).
+				snippet: inlineMarkdownToText(r.content ?? "").slice(0, 500),
+				engine: "SearXNG" as const,
+				...(asOf && !Number.isNaN(asOf.getTime()) ? { asOf: asOf.toISOString() } : {}),
+			});
+			if (out.length >= limit) break;
+		}
+		return out;
+	} catch (err) {
+		// Length only, never the query text (see searchFirecrawl).
+		logger.warn(
+			{ ...engineErrorFields(err), queryLength: query.length, elapsedMs: Date.now() - startedAt, limit },
+			"[search] SearXNG search call failed"
 		);
 		throw err;
 	}
@@ -1054,7 +1112,23 @@ export async function retrieveWeb(query: string, opts: RetrieveWebOpts = {}): Pr
 			engines.push(
 				namedEngine("wikinews", runEngine((s) => searchWikinews(wikinewsQuery, wikinews, s)))
 			);
-		if (firecrawl > 0) {
+		if (firecrawl > 0 && generalWebBackend() === "searxng") {
+			// No Firecrawl key: SearXNG takes the general-web slot, with Firecrawl's budget and cap. Entity
+			// correction and scrape enrichment stay Firecrawl's, since both call Firecrawl.
+			engines.push(
+				namedEngine(
+					"searxng",
+					runEngine(
+						(s) => searchSearxng(searchQuery, firecrawl, s),
+						opts.firecrawlTimeoutMs ?? DEFAULT_FIRECRAWL_TIMEOUT_MS,
+						false
+					).then((hits) => {
+						if (hits.length > 0) armGrace();
+						return hits;
+					})
+				)
+			);
+		} else if (firecrawl > 0) {
 			const firecrawlCap = opts.firecrawlTimeoutMs ?? DEFAULT_FIRECRAWL_TIMEOUT_MS;
 			engines.push(
 				namedEngine(

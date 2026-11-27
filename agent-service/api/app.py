@@ -2901,7 +2901,7 @@ def _log_event(event: str, **fields) -> None:
     if not _LOG:
         return
     rec = {"ts": round(time.time(), 3), "event": event, **fields}
-    print(_json.dumps(rec, default=str), flush=True)
+    logsink.stdout_line(rec)
     logsink.emit(rec)                                  # no-op unless AXIOM_TOKEN is set
 
 

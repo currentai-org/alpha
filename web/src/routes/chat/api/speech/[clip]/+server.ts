@@ -39,13 +39,13 @@ export const GET: RequestHandler = async ({ params, locals, getClientAddress, re
 	// spec that plays a sealed clip gates on our player and not on the synthesis provider's uptime.
 	if ((await resolveFaultInjection(request)) === "tts_canned_clip") {
 		logger.info({ reason: "tts_canned_clip" }, "[read-aloud] canned clip, synthesis skipped");
-		throw redirect(302, CANNED_READ_ALOUD_CLIP);
+		throw redirect(302, CANNED_READ_ALOUD_CLIP, { external: false });
 	}
 	// A clip sealed in a scenario turn that replayed its model calls gets the same canned clip, so a
 	// scenario run never bills a live synthesis (readAloudSpeech.ts, `replayed`). Production never seals one.
 	if (clip.replayed) {
 		logger.info({ reason: "replayed_turn" }, "[read-aloud] canned clip, synthesis skipped");
-		throw redirect(302, CANNED_READ_ALOUD_CLIP);
+		throw redirect(302, CANNED_READ_ALOUD_CLIP, { external: false });
 	}
 
 	// The voice is logged beside the language, so Axiom can show which voice read a clip.
