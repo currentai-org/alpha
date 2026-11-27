@@ -170,7 +170,7 @@ class DockerBackend:
         return Handle(key=key, tier=tier, ref=info["Id"])
 
     def connect(self, principal: str, conversation: str, tier: Tier, *, on_wait: OnWait | None = None,
-                cancelled: Callable[[], bool] | None = None) -> Handle:
+                cancelled: Callable[[], bool] | None = None, tool: str | None = None) -> Handle:
         key = key_for(principal, conversation)
         with self._key_locks[hash(key) % len(self._key_locks)]:
             found = self.find(principal, conversation, tier)

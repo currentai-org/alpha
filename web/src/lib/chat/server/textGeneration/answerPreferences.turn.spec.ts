@@ -76,7 +76,6 @@ const APERTUS = "swiss-ai/apertus-v1.5-70b";
 const LARGE_3 = "mistral-large-2512";
 const ALIA = "BSC-LT/ALIA-40b-instruct";
 const MEDIUM = "mistral-medium-2604";
-const GLM = "zai-org/GLM-5.2";
 const BIELIK = "speakleash/Bielik-11B-v3.0-Instruct";
 
 type Recorded = {
@@ -416,7 +415,7 @@ describe("the answer-settings digest", () => {
 		{ name: "scaffolded persona Bielik", modelId: BIELIK, harness: "scaffolded" },
 		{ name: "scaffolded minimal ALIA", modelId: ALIA, harness: "scaffolded" },
 		{ name: "native Medium", modelId: MEDIUM, harness: "native" },
-		{ name: "native GLM", modelId: GLM, harness: "native" },
+		{ name: "native Large 3", modelId: LARGE_3, harness: "native" },
 	] as const;
 	const SET: readonly [DigestRule, Partial<AnswerPreferences>][] = [
 		["formal", { tone: "formal" }],
@@ -430,7 +429,7 @@ describe("the answer-settings digest", () => {
 		["emojis", { emojis: "helpful" }],
 	];
 	// Typed out, not read from harnessProfiles.ts, so an emptied omit list turns these cases red.
-	const OMITTED: Record<string, readonly DigestRule[]> = { [ALIA]: ["formal", "short"], [GLM]: ["short"], [BIELIK]: ["short"] };
+	const OMITTED: Record<string, readonly DigestRule[]> = { [ALIA]: ["formal", "short"], [BIELIK]: ["short"] };
 	const occurrences = (text: string, rule: string) => text.split(rule).length - 1;
 	const afterLastFence = (turn: string) => turn.slice(turn.lastIndexOf("</Q_FENCE>") + "</Q_FENCE>".length);
 
@@ -516,13 +515,6 @@ describe("the answer-settings digest", () => {
 		}
 		answer = { ...ANSWER_DEFAULTS, plainLanguage: true };
 		expect((await requestFor({ modelId: ALIA, harness: "scaffolded" })).userTurn).toContain(DIGEST_RULES.plainLanguage);
-	});
-
-	it("GLM gets no short rule, and keeps the plain-language rule", async () => {
-		answer = { ...ANSWER_DEFAULTS, answerLength: "short" };
-		expect((await requestFor({ modelId: GLM, harness: "native" })).userTurn).not.toContain(DIGEST_RULES.short);
-		answer = { ...ANSWER_DEFAULTS, plainLanguage: true };
-		expect((await requestFor({ modelId: GLM, harness: "native" })).userTurn).toContain(DIGEST_RULES.plainLanguage);
 	});
 
 	it("Bielik gets no short rule, and keeps the plain-language rule", async () => {

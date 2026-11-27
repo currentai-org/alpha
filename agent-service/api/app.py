@@ -3007,7 +3007,10 @@ def _metrics_record(task: Task) -> None:
                # not be reached. That distinction is the whole alertable signal: `verified: false` alone
                # cannot tell "the answer was wrong" from "the credential is dead", and those want
                # opposite responses. The value is a closed set, never the model's prose.
-               judge_error=_judge_error_kind(task.judge_reason))
+               judge_error=_judge_error_kind(task.judge_reason),
+               # "restart" when a deploy's drain ended the task, the same value its done frame
+               # carries, so a log query can count drain-time failures the person was asked to resend.
+               interrupted="restart" if (task.error or "").startswith(RESTART_ERROR) else None)
 
 # Concurrency cap: bound CONCURRENT runs (each = a hermes subprocess), independent of the task-table size.
 # MAX_TASKS bounds memory; this bounds live processes AND aggregate in-flight spend (the per-task caps,
@@ -6886,7 +6889,7 @@ def _connect_agent_sandbox(task: Task, buf) -> Handle | None:
             buf.emit("state", {"task_id": task.id, "state": "waiting_sandbox", "text": text})
     try:
         task._sbx = SANDBOX_BACKEND.connect(task.user, conversation, Tier.AGENT,
-                                            on_wait=_waiting, cancelled=lambda: task._canceled)
+                                            on_wait=_waiting, cancelled=lambda: task._canceled, tool="agent_task")
     except SandboxBusy as e:  # the host is full; say so rather than a generic failure
         _unclaim_remote(busy_key)
         if not task._canceled:  # a cancel during the wait already set its state

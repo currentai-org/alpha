@@ -1,6 +1,6 @@
 // Math routing. The arithmetic in an answer never comes from model prose:
 //
-//   1. plan       one forced `plan_turn` call on ARITHMETIC_ROUTE_MODEL (GLM) on every turn that
+//   1. plan       one forced `plan_turn` call on ARITHMETIC_ROUTE_MODEL on every turn that
 //                 `plansTurnFor` admits. Its `math` field says whether the latest message asks for a
 //                 number to be worked out and, if so, records the groups as typed lines
 //                 {factors, label} (turnPlan.ts)

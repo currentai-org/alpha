@@ -1088,30 +1088,30 @@ describe("facts a builder asks about", () => {
 			{ id: "swiss-ai/apertus-v1.5-70b" },
 			{ id: "BSC-LT/ALIA-40b-instruct" },
 			{ id: "speakleash/Bielik-11B-v3.0-Instruct" },
-			{ id: "zai-org/GLM-5.2" },
+			{ id: "aisingapore/Nemotron-SEA-LION-v4.8-120B-A12B" },
 		];
 		const lane = laneFeatureFacts(NONE, "mistral-large-2512", listed);
 		const cards = Object.fromEntries([lane.answering!, ...lane.otherModels!].map((m) => [m.name, m.card]));
 		expect(cards["Mistral Large 3"]).toBe("https://huggingface.co/mistralai/Mistral-Large-3-675B-Instruct-2512");
-		expect(cards["GLM 5.2"]).toBe("https://huggingface.co/zai-org/GLM-5.2");
+		expect(cards["SEA-LION v4.8 (Nemotron) 120B"]).toBe("https://huggingface.co/aisingapore/Nemotron-SEA-LION-v4.8-120B-A12B");
 		expect(Object.values(cards).filter(Boolean)).toHaveLength(4);
 		// ALIA's served instruct checkpoint answers 401 on Hugging Face, so it gets no link to copy.
 		const alia = lane.otherModels!.find((m) => m.name.startsWith("ALIA"));
 		expect(alia?.card).toBeUndefined();
 		const out = featuresClause(lane);
-		expect(out).toContain("model card https://huggingface.co/zai-org/GLM-5.2");
+		expect(out).toContain("model card https://huggingface.co/aisingapore/Nemotron-SEA-LION-v4.8-120B-A12B");
 		expect(out).toMatch(/for one with no card listed, say it has no public card to link/);
 	});
 
-	// Licences must not contradict Large 3's, Bielik's and GLM's cards, and Small 4,
+	// Licences must not contradict Large 3's, Bielik's and SEA-LION v4.8's cards, and Small 4,
 	// which the picker does not offer on www, must not get a made-up huggingface.co/mistralai/Mistral-Small-4 link.
 	it("states each card's own licence beside it, and gives no link for a model the list leaves out", () => {
-		const listed = [{ id: "mistral-large-2512" }, { id: "speakleash/Bielik-11B-v3.0-Instruct" }, { id: "zai-org/GLM-5.2" }, { id: "BSC-LT/ALIA-40b-instruct" }];
+		const listed = [{ id: "mistral-large-2512" }, { id: "speakleash/Bielik-11B-v3.0-Instruct" }, { id: "aisingapore/Nemotron-SEA-LION-v4.8-120B-A12B" }, { id: "BSC-LT/ALIA-40b-instruct" }];
 		const lane = laneFeatureFacts(NONE, "mistral-large-2512", listed);
 		const licences = Object.fromEntries([lane.answering!, ...lane.otherModels!].map((m) => [m.name, m.licence]));
-		expect(licences).toEqual({ "Mistral Large 3": "Apache 2.0", "Bielik 11B v3": "Apache 2.0", "GLM 5.2": "MIT", "ALIA 40B": undefined });
+		expect(licences).toEqual({ "Mistral Large 3": "Apache 2.0", "Bielik 11B v3": "Apache 2.0", "SEA-LION v4.8 (Nemotron) 120B": "MIT", "ALIA 40B": undefined });
 		const out = featuresClause(lane);
-		expect(out).toContain("licence MIT, model card https://huggingface.co/zai-org/GLM-5.2)");
+		expect(out).toContain("licence MIT, model card https://huggingface.co/aisingapore/Nemotron-SEA-LION-v4.8-120B-A12B)");
 		expect(out).toMatch(/Asked about a model not in this list, say this app does not offer it and give no link or licence for it/);
 	});
 

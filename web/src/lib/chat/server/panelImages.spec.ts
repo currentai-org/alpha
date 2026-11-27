@@ -3,9 +3,9 @@ import { catalogByGatewayId } from "$lib/chat/routing/catalog";
 import { panelModelReadsImages } from "./panelImages";
 
 describe("panelModelReadsImages", () => {
-	it("takes a catalogued model's readsImages as the catalog records it, so GLM-5.2 is text-only", () => {
-		expect(catalogByGatewayId("zai-org/GLM-5.2")?.readsImages).toBe(false);
-		expect(panelModelReadsImages("zai-org/GLM-5.2")).toBe(false);
+	it("takes a catalogued model's readsImages as the catalog records it, so the panel's SEA-LION v4.8 is text-only", () => {
+		expect(catalogByGatewayId("aisingapore/Nemotron-SEA-LION-v4.8-120B-A12B")?.readsImages).toBe(false);
+		expect(panelModelReadsImages("aisingapore/Nemotron-SEA-LION-v4.8-120B-A12B")).toBe(false);
 	});
 
 	it("reads images for the uncatalogued panel models the HF router lists with image input", () => {

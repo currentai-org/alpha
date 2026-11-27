@@ -25,7 +25,7 @@ import type { DigestRule } from "./textGeneration/answerClauses";
  * - `preTurnRetrieval`: RAG and web retrieval decided and run before the answer (pre-turn RAG, the web
  *   prelaunch, the search gate, the query rewrite and grounded-bail regen), in place of tools the model
  *   calls. For models that do not trigger a tool themselves.
- * - `mathPlanner`: the GLM turn planner and its code-checked ledger (mathRouting.ts). A model
+ * - `mathPlanner`: the turn planner and its code-checked ledger (mathRouting.ts). A model
  *   that writes its own total and stamps it "checked by code" gets a code-checked ledger instead,
  *   so the total always comes from code.
  * - `groundedDecoding`: temperature 0.1 with frequency and presence penalties and a 1024-token cap
@@ -304,13 +304,6 @@ const HARNESS_PROFILES: Readonly<Record<string, HarnessProfile>> = {
 		// guide as an outline.
 		digestOmit: ["short"],
 	},
-	// Pinned to Featherless (hfProviderPin.ts), which the HF router lists with no context length, so it
-	// gets the floor. No tricks (48 cases graded blind in both orders): all four lost to none
-	// 12 to 19, and pre-turn retrieval alone lost 11 to 20, with no fewer wrong answers.
-	// digestOmit short: with the short rule a 1,500-word guide was cut at the 4,096-token cap
-	// or empty in 3 of 6 runs, against 0 of 6 without it, and the model kept the short promise without
-	// the rule (6 of 6).
-	"zai-org/glm-5.2": { silentGiveUpMs: SILENT_GIVE_UP_MS, digestOmit: ["short"] },
 	// The model selfhost/compose.yaml's local profile serves, under its default alias. A CPU reads the
 	// ~4.7k-token first prompt at 70 tokens a second (67.6 s on a 4-vCPU runner), so it takes the short
 	// prompt in place of the persona. Pre-turn retrieval stays: llama.cpp lists no providers, so this

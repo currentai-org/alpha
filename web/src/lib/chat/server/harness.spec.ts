@@ -86,8 +86,8 @@ describe("a model the native shape does not fit carries every trick", () => {
 });
 
 describe("the rows reproduce the turn each model had before its tricks moved into them", () => {
-	it("the Mistral rows and GLM 5.2, whose tricks lost a blind A/B, carry no trick", () => {
-		for (const id of ["mistral-large-2512", "mistral-large-2610", "mistral-small-2603", "mistral-medium-2604", "zai-org/glm-5.2"])
+	it("the Mistral rows, whose tricks lost a blind A/B, carry no trick", () => {
+		for (const id of ["mistral-large-2512", "mistral-large-2610", "mistral-small-2603", "mistral-medium-2604"])
 			expect([id, [...tricksFor(id)]]).toEqual([id, []]);
 	});
 	it("every other offered row, served scaffolded until now, carries all four", () => {

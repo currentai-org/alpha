@@ -152,9 +152,10 @@ test(
 	}
 );
 
-// Chinese routes to GLM 5.2, which reads no photos (routing.spec.ts), so a photo attached to a
-// Chinese question is what moves Auto off it. Catalan stays on Mistral Medium, which reads photos, since
-// and SEA-LION v4.8 (Vietnamese) drops out of Auto whenever its circuit breaker marks it busy.
+// Vietnamese routes to SEA-LION v4.8, which reads no photos (routing.spec.ts), so a photo attached
+// to a Vietnamese question is what moves Auto off it. Chinese and Catalan stay on Mistral Medium, which reads
+// photos. SEA-LION drops out of Auto whenever its circuit breaker marks it busy, and
+// then no switch shows: a red here on a preview with SEA-LION busy is that, not a break.
 test(
 	'with Auto choosing, a photo takes the message to a model that reads photos, and the composer says why',
 	{ tag: ['@preview-only', '@A6'] },
@@ -171,7 +172,9 @@ test(
 			timeout: 10_000
 		});
 
-		await composer.fill('请详细解释这张照片里有什么，并告诉我它的主要颜色是什么。');
+		await composer.fill(
+			'Hãy giải thích chi tiết những gì có trong bức ảnh này và cho tôi biết màu chính của nó là gì.'
+		);
 		await attachFromMenu(page, { name: 'blue.png', mimeType: 'image/png', buffer: await photo() });
 		await expect(page.getByAltText('blue.png').first(), 'the photo never attached').toBeVisible({
 			timeout: 10_000

@@ -1,10 +1,24 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { MessageUpdateType } from "$lib/chat/types/MessageUpdate";
-import { createFootprintMeter, turnFootprint } from "./turnFootprint";
+
+/** Medium on a second host (Scaleway serves it beside Mistral's own): a registry model off its registry provider. */
+const MEDIUM_ON_SCALEWAY = "test/mistral-medium-on-scaleway";
+vi.mock("$lib/chat/routing/catalog", async (importOriginal) => {
+	const real = await importOriginal<typeof import("$lib/chat/routing/catalog")>();
+	return {
+		...real,
+		catalogBaseOf: (id: string | undefined) => {
+			if (id !== MEDIUM_ON_SCALEWAY) return real.catalogBaseOf(id);
+			const medium = real.catalogBaseOf("mistral-medium-2604")!;
+			return { ...medium, provider: "scaleway" as const };
+		},
+	};
+});
+
+const { createFootprintMeter, turnFootprint } = await import("./turnFootprint");
 
 const MEDIUM = "mistral-medium-2604";
 const LARGE_4 = "mistral-large-2610";
-const GLM = "zai-org/GLM-5.2";
 const APERTUS_70B = "swiss-ai/apertus-v1.5-70b";
 const APERTUS_8B = "swiss-ai/apertus-v1.5-8b";
 
@@ -52,9 +66,12 @@ describe("turnFootprint", () => {
 	});
 
 	it("prices a registry model served by a host other than the registry's provider, using its parameters", () => {
-		const f = turnFootprint({ modelId: GLM, outputTokens: 500, latencySeconds: 10 });
+		const f = turnFootprint({ modelId: MEDIUM_ON_SCALEWAY, outputTokens: 500, latencySeconds: 10 });
 		expect(f.estimated).toBe(true);
 		expect(f.energyWh!.max).toBeGreaterThan(0);
+		// Its own provider's EcoLogits figures would be Medium's on Mistral; another host is priced apart.
+		const own = turnFootprint({ modelId: MEDIUM, outputTokens: 500, latencySeconds: 10 });
+		expect(f.energyWh).not.toEqual(own.energyWh);
 	});
 
 	it("gives a longer answer more energy than a shorter one on the same model", () => {

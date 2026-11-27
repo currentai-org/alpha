@@ -738,7 +738,7 @@ export type FeatureFacts = {
  *  generic fallback, so the prompt names no maker rather than "an open source community". */
 type OfferedModel = { name: string; maker?: string; openness: string; card?: string; licence?: string; languages?: string; size?: string };
 
-// Without stated counts, a model can read a version as a size ("5.2 billion parameters" for GLM 5.2)
+// Without stated counts, a model can read a version as a size ("1.5 billion parameters" for Apertus 1.5)
 // and get GPU-fit questions wrong. Each count is the card's safetensors total
 // from the Hugging Face API (Large 3's card gives none; 675B is in its repo name).
 const PARAMETER_COUNTS: Record<string, string> = {
@@ -748,7 +748,6 @@ const PARAMETER_COUNTS: Record<string, string> = {
 	"Apertus 1.5 70B": "72 billion",
 	"ALIA 40B": "40 billion",
 	"Bielik 11B v3": "11 billion",
-	"GLM 5.2": "753 billion",
 };
 
 const languageNames = new Intl.DisplayNames(["en"], { type: "language" });
@@ -774,7 +773,6 @@ const CARD_LICENCES: Record<string, string> = {
 	"https://huggingface.co/mistralai/Mistral-Small-4-119B-2603": "Apache 2.0",
 	"https://huggingface.co/swiss-ai/Apertus-v1.5-70B": "Apache 2.0",
 	"https://huggingface.co/speakleash/Bielik-11B-v3.0-Instruct": "Apache 2.0",
-	"https://huggingface.co/zai-org/GLM-5.2": "MIT",
 	// Read when its card joined the vetted list.
 	"https://huggingface.co/aisingapore/Nemotron-SEA-LION-v4.8-120B-A12B": "MIT",
 };
@@ -938,7 +936,7 @@ function modelChoiceFact(otherModels: OfferedModel[], answering?: OfferedModel, 
 	const count = answering ? ` That is ${all.length} models${allOpen ? ", all open" : ""}; when asked which there are, name all ${all.length} and never give another number.` : "";
 	const unrecorded = allOpen ? "" : " For a model whose openness is not on record, say so rather than call it open or closed.";
 	const details = `Name each model exactly as listed, size included, never a size from another model. The model button shows names only, so give a model card's link yourself rather than saying it is in the button. Those makers and openness are the facts; never credit a model to anyone else or call it more or less open.${catalogTool ? " For anything else about a model, call search_catalog and answer from what it returns." : ""}`;
-	return fillBrand(`The model button at the right of the message box shows which model answers and switches to another for the next message: ${listed}.${count} If asked which models are available or whether they can switch, say yes and point to that button; never say this app offers only one model or that they can't switch. {organisation} runs this app and made none of these models.${unrecorded} ${details} For a licence, give the licence and model card listed above; for a model with no licence listed, say to check its card, and for one with no card listed, say it has no public card to link. Asked about a model not in this list, say this app does not offer it and give no link or licence for it. Never name a licence from memory or give any other link to a model. Asked which model suits a language, recommend the one listed as built for it, and say so when none is. A model's parameter count is the one listed above, never a number in its name or version (GLM 5.2 is not 5.2 billion). Asked whether one runs on a given GPU or machine, work from that count: weights alone take about 2 bytes per parameter at 16-bit and half a byte at 4-bit, before any cache or overhead, and say these are estimates. For a model with no count listed, say you have no verified size and point to its model card.`);
+	return fillBrand(`The model button at the right of the message box shows which model answers and switches to another for the next message: ${listed}.${count} If asked which models are available or whether they can switch, say yes and point to that button; never say this app offers only one model or that they can't switch. {organisation} runs this app and made none of these models.${unrecorded} ${details} For a licence, give the licence and model card listed above; for a model with no licence listed, say to check its card, and for one with no card listed, say it has no public card to link. Asked about a model not in this list, say this app does not offer it and give no link or licence for it. Never name a licence from memory or give any other link to a model. Asked which model suits a language, recommend the one listed as built for it, and say so when none is. A model's parameter count is the one listed above, never a number in its name or version (Apertus 1.5 is not 1.5 billion). Asked whether one runs on a given GPU or machine, work from that count: weights alone take about 2 bytes per parameter at 16-bit and half a byte at 4-bit, before any cache or overhead, and say these are estimates. For a model with no count listed, say you have no verified size and point to its model card.`);
 }
 
 // A turn that knows it ran no search says so. Told only that the answer cites what search found, a

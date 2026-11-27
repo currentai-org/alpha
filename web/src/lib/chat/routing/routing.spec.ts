@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { MODEL_HOSTS, catalog, catalogByGatewayId, orgs } from './catalog';
-import { HF_PROVIDER_PIN } from '../shared/hfProviderPin';
 import { detectLanguage, detectSkills, estimateDifficulty, heuristicClassify } from './heuristic';
 import { draftIn, type DraftAnalysis, type Difficulty } from './classifier';
 import { languageName, parentLanguage } from './languages';
@@ -14,8 +13,8 @@ const ALL_LIVE = catalog.filter((m) => m.status === 'live').map((m) => m.gateway
 const APERTUS_ONLY = ['swiss-ai/apertus-v1.5-70b'];
 /** No measured scores, so routing runs on the hand-set estimates in the benchmark table alone. */
 const NO_SCORES = { version: 1 as const, benchmarks: {}, scores: {} };
-/** Everything live except GLM-5.2. */
-const PROD_SHAPED = ALL_LIVE.filter((id) => id !== 'zai-org/GLM-5.2');
+/** Everything live: no live catalog model is withheld from production now that GLM 5.2 is gone. */
+const PROD_SHAPED = ALL_LIVE;
 
 /** The hard draft `e2e/scenarios/auto-route-xray.spec.ts` sends; keep the two in step. */
 const HARD_DRAFT =
@@ -34,7 +33,7 @@ describe('catalog', () => {
 
 	it('credits every inference provider the product names', () => {
 		const providers = new Set(catalog.map((m) => m.provider));
-		for (const id of ['infomaniak', 'nextbit', 'ai-singapore', 'plgrid', 'mistral', 'featherless']) {
+		for (const id of ['infomaniak', 'nextbit', 'ai-singapore', 'plgrid', 'mistral']) {
 			expect(providers, id).toContain(id);
 		}
 	});
@@ -47,13 +46,8 @@ describe('catalog', () => {
 		}
 	});
 
-	// One answer to "who runs it": a model the Hugging Face router pins to one provider takes
-	// that provider's org, so re-pinning moves X-ray's line with it, and Apertus 70B names the gateway's
-	// one provider for it.
-	it('takes a pinned model\'s host from its Hugging Face provider pin, and names Phoeniqs for Apertus 70B', () => {
-		const glm = catalog.find((m) => m.id === 'glm-5.2')!;
-		expect(HF_PROVIDER_PIN[glm.gatewayId!.toLowerCase()]).toBe('featherless-ai');
-		expect(MODEL_HOSTS['glm-5.2']).toBe('featherless');
+	// One answer to "who runs it": Apertus 70B names the gateway's one provider for it.
+	it('names Phoeniqs, in Switzerland, as Apertus 70B\'s host', () => {
 		expect(MODEL_HOSTS['apertus-70b']).toBe('phoeniqs');
 		expect(orgs[MODEL_HOSTS['apertus-70b']].region).toBe('Switzerland');
 	});
@@ -298,8 +292,6 @@ describe('router', () => {
 		expect(route(analysis('eng', 'M'), PROD_SHAPED)?.model.id).toBe('mistral-medium');
 		expect(route(analysis('fra', 'S'), PROD_SHAPED)?.model.id).toBe('mistral-medium');
 		expect(route(analysis('eng', 'L'), PROD_SHAPED)?.model.id).toBe('mistral-large-4');
-		// GLM 5.2 is stronger still, but Auto picks it for Chinese only.
-		expect(route(analysis('eng', 'S'), ALL_LIVE)?.model.id).toBe('mistral-medium');
 	});
 
 	// v4.8 is the only SEA-LION on any picker, and Auto offers it for Indonesian, Thai and
@@ -433,20 +425,21 @@ describe('router', () => {
 	});
 
 	it('says a better model Auto skips can be picked by hand when the picker offers it, never "isn’t available in Alpha yet"', () => {
-		// Large 4 is Auto's own pick on a large draft now, so the case takes GLM, the one served
-		// model Auto never picks, rated a clear step above Medium in English.
+		// Large 4 is Auto's own pick on a large draft now, so the case takes Large 3, a served
+		// model Auto never picks, rated here a clear step above Medium (14) in intelligence and English.
 		const table: BenchmarkTable = structuredClone(SHIPPED_BENCHMARKS);
 		delete table.models['mistral-large-4'];
-		table.models['glm-5.2'].languages.eng = 1;
-		const choice = route(analysis('eng', 'L'), ['mistral-medium-2604', 'zai-org/GLM-5.2'], {
+		table.models['mistral-large'].intelligence = 34;
+		table.models['mistral-large'].languages.eng = 1;
+		const choice = route(analysis('eng', 'L'), ['mistral-medium-2604', 'mistral-large-2512'], {
 			benchmarks: table,
 			languageScores: NO_SCORES
 		})!;
-		expect(choice.model.gatewayId, 'GLM 5.2 is hand-pick only, so Auto still answers with Medium').toBe(
+		expect(choice.model.gatewayId, 'Large 3 is hand-pick only, so Auto still answers with Medium').toBe(
 			'mistral-medium-2604'
 		);
-		expect(choice.ideal?.id).toBe('glm-5.2');
-		expect(choice.explanation).toContain('GLM 5.2 would suit this even better');
+		expect(choice.ideal?.id).toBe('mistral-large');
+		expect(choice.explanation).toContain('Mistral Large 3 would suit this even better');
 		expect(choice.explanation).toContain('you can pick it yourself');
 		expect(choice.explanation).not.toMatch(/isn’t available in Alpha yet/);
 	});
@@ -560,12 +553,12 @@ describe('router', () => {
 		expect(choice.explanation).toMatch(/\bMistral answers because/);
 	});
 
-	// auto-route-xray.spec.ts moves a chat mid-way from Spanish (Medium) to Chinese, now that
-	// Catalan stays on Medium; keep the two in step.
-	it('moves a chat Medium answered to GLM 5.2 for a short Chinese message on develop', () => {
-		const choice = route(analysis('cmn', 'S'), [...PICKER.develop], { stickTo: 'mistral-medium' })!;
+	// auto-route-xray.spec.ts moves a chat mid-way from Spanish (Medium) to Vietnamese, now that
+	// Catalan stays on Medium and Chinese does too; keep the two in step.
+	it('moves a chat Medium answered to SEA-LION v4.8 for a short Vietnamese message on develop', () => {
+		const choice = route(analysis('vie', 'S'), [...PICKER.develop], { stickTo: 'mistral-medium' })!;
 		expect(route(analysis('spa', 'S'), [...PICKER.develop])!.model.id).toBe('mistral-medium');
-		expect(choice.model.id).toBe('glm-5.2');
+		expect(choice.model.id).toBe('sea-lion-nemotron-120b');
 		expect(choice.keptForContinuity).toBe(false);
 	});
 
@@ -585,15 +578,12 @@ describe('router', () => {
 		expect(scoreModels(analysis('eng', 'L'), served).find((s) => s.model.id === 'mistral-large')?.available).toBe(false);
 	});
 
-	// GLM's measured Chinese (0.92) leads every other Chinese score but SEA-LION's, and SEA-LION
-	// is Auto's pick only for Southeast Asian languages.
-	it('sends a Chinese draft of every size to GLM 5.2 on www, and no other language', () => {
-		for (const size of ['S', 'M', 'L'] as const) {
-			expect(route(analysis('cmn', size), [...PICKER.production])?.model.id).toBe('glm-5.2');
-			for (const tag of ['eng', 'fra', 'arb', 'vie'] as const) {
-				expect(route(analysis(tag, size), [...PICKER.production])?.model.id).not.toBe('glm-5.2');
-			}
-		}
+	// No model on www is scoped to Chinese now that GLM 5.2 is gone, and SEA-LION is Auto's pick
+	// only for Southeast Asian languages, so Chinese takes the default route: Medium, and Large 4 when large.
+	it('sends a small or medium Chinese draft to Medium on www, and a large one to Large 4', () => {
+		expect(route(analysis('cmn', 'S'), [...PICKER.production])?.model.id).toBe('mistral-medium');
+		expect(route(analysis('cmn', 'M'), [...PICKER.production])?.model.id).toBe('mistral-medium');
+		expect(route(analysis('cmn', 'L'), [...PICKER.production])?.model.id).toBe('mistral-large-4');
 	});
 
 	it('reports a language gap (the dataset CTA) when a confidently detected language has weak support', () => {
@@ -669,8 +659,8 @@ describe('resolveModel', async () => {
 	it('an unserved manual pick never resolves to another model: no id, and the pick named as unavailable', () => {
 		const alia = catalog.find((m) => m.id === 'alia-40b')!;
 		expect(resolveModel('alia-40b', 'hola', APERTUS_ONLY)).toEqual({ unavailable: alia.name });
-		expect(resolveModel('glm-5.2', 'hello', APERTUS_ONLY).modelId).toBeUndefined();
-		expect(resolveModel('glm-5.2', 'hello', APERTUS_ONLY).unavailable).toBeTruthy();
+		expect(resolveModel('mistral-large-4', 'hello', APERTUS_ONLY).modelId).toBeUndefined();
+		expect(resolveModel('mistral-large-4', 'hello', APERTUS_ONLY).unavailable).toBeTruthy();
 	});
 
 	// A self-hosted stack serving only its operator's own models: Auto has no catalogued model to rank, so

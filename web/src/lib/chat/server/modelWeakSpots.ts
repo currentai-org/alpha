@@ -46,7 +46,6 @@ const ANSWER_SETTING_LABEL: Readonly<Record<AnswerSetting, () => string>> = {
  * Bielik's formal tone.
  *
  * - mistral-large-2610: suggestions off, 6 of 10.
- * - zai-org/glm-5.2: short, 9 of 15 (no short digest rule, harnessProfiles.ts); Portuguese, 11 of 15.
  * - bsc-lt/alia-40b-instruct: suggestions off, 0 of 10.
  * - speakleash/bielik-11b-v3.0-instruct: plain language, 10 of 15; short, 0 of 15; suggestions off, 0 of
  *   10; prose, 5 of 10.
@@ -54,7 +53,6 @@ const ANSWER_SETTING_LABEL: Readonly<Record<AnswerSetting, () => string>> = {
  */
 const ANSWER_WEAK_SPOTS: Readonly<Record<string, readonly AnswerSetting[]>> = {
 	'mistral-large-2610': ['noSuggestions'],
-	'zai-org/glm-5.2': ['short', 'language'],
 	'bsc-lt/alia-40b-instruct': ['noSuggestions'],
 	'speakleash/bielik-11b-v3.0-instruct': ['plainLanguage', 'short', 'noSuggestions', 'prose'],
 	'aisingapore/nemotron-sea-lion-v4.8-120b-a12b': ['plainTone']

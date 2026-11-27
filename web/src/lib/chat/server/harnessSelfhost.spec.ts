@@ -27,7 +27,6 @@ const HOSTED: Record<string, { hash: string; prompt: "persona" | "minimal" }> = 
 	"aisingapore/nemotron-sea-lion-v4.8-120b-a12b": { hash: "7205c1c253f700c4", prompt: "persona" },
 	"bsc-lt/alia-40b-instruct": { hash: "8dc8f17c05c1dec3", prompt: "minimal" },
 	"speakleash/bielik-11b-v3.0-instruct": { hash: "5dd9aa85cb47c66e", prompt: "persona" },
-	"zai-org/glm-5.2": { hash: "6774b32dcc262496", prompt: "minimal" },
 };
 
 const sha = (s: string) => createHash("sha256").update(s).digest("hex").slice(0, 16);

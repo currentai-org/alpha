@@ -75,9 +75,9 @@ test(
 		const modelInput = board.locator('[data-leaderboard-model-select]');
 		await modelInput.click();
 		await modelInput.press('ControlOrMeta+a');
-		await modelInput.pressSequentially('glm');
-		await board.getByRole('option', { name: 'GLM 5.2' }).click();
-		await expect(board).toHaveURL(/model=glm-5\.2/);
+		await modelInput.pressSequentially('bielik');
+		await board.getByRole('option', { name: 'Bielik 11B v3' }).click();
+		await expect(board).toHaveURL(/model=bielik-11b/);
 		await board.getByRole('tab', { name: 'By language' }).click();
 		await languageInput.fill('');
 		await board.getByRole('button', { name: 'Show languages' }).click();

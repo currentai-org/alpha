@@ -31,7 +31,7 @@ const bench = (ran: string, questions: number): LanguageBenchmark => ({
 });
 
 const apertus = model('apertus-70b');
-const glm = model('glm-5.2');
+const seaLion = model('sea-lion-nemotron-120b');
 const bielik = model('bielik-11b');
 const large4 = model('mistral-large-4');
 const medium = model('mistral-medium');
@@ -108,17 +108,17 @@ describe('languageBoard', () => {
 		version: 1,
 		benchmarks: { a: bench('2026-10-27', 300), b: bench('2026-10-27', 650), few: bench('2026-10-26', 20) },
 		scores: {
-			a: { 'glm-5.2': { hau: 0.86 }, 'bielik-11b': { hau: 0.28, swh: 0.9 } },
+			a: { 'sea-lion-nemotron-120b': { hau: 0.86 }, 'bielik-11b': { hau: 0.28, swh: 0.9 } },
 			b: { 'apertus-70b': { hau: 0.48, swh: 0.89 } },
 			few: { 'mistral-large-4': { hau: 0.95, swh: 0.95 } }
 		}
 	};
-	const models = [alia, apertus, bielik, glm, large4];
+	const models = [alia, apertus, bielik, seaLion, large4];
 
 	it('orders compared scores first, then too-few, then not measured, and never puts a small sample on top', () => {
 		const board = languageBoard(data, models, 'hau');
 		expect(board.map((c) => [c.model.id, c.status])).toEqual([
-			['glm-5.2', 'compared'],
+			['sea-lion-nemotron-120b', 'compared'],
 			['apertus-70b', 'compared'],
 			['bielik-11b', 'compared'],
 			['mistral-large-4', 'too-few'],
@@ -134,7 +134,7 @@ describe('languageBoard', () => {
 		expect(board.filter((c) => c.closeToTop).map((c) => c.model.id)).toEqual(['bielik-11b', 'apertus-70b']);
 	});
 	it('marks nothing close to the top when only one model can be compared', () => {
-		const one: LanguageScores = { version: 1, benchmarks: { a: bench('2026-10-27', 300) }, scores: { a: { 'glm-5.2': { yor: 0.7 } } } };
+		const one: LanguageScores = { version: 1, benchmarks: { a: bench('2026-10-27', 300) }, scores: { a: { 'sea-lion-nemotron-120b': { yor: 0.7 } } } };
 		expect(languageBoard(one, models, 'yor').some((c) => c.closeToTop)).toBe(false);
 	});
 });
@@ -144,9 +144,9 @@ describe('modelBoard', () => {
 		const data: LanguageScores = {
 			version: 1,
 			benchmarks: { a: bench('2026-10-27', 300) },
-			scores: { a: { 'glm-5.2': { hau: 0.86, cmn: 0.92 } } }
+			scores: { a: { 'sea-lion-nemotron-120b': { hau: 0.86, cmn: 0.92 } } }
 		};
-		const board = modelBoard(data, glm, ['hau', 'cmn', 'yor', 'amh'], (t) => t);
+		const board = modelBoard(data, seaLion, ['hau', 'cmn', 'yor', 'amh'], (t) => t);
 		expect(board.map((c) => [c.language, c.status])).toEqual([
 			['cmn', 'compared'],
 			['hau', 'compared'],

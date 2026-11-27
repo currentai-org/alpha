@@ -22,10 +22,13 @@ const PICKER_TRIGGER = /^Model:/;
 const CHOOSE_YOURSELF = 'Choose a model yourself';
 const ALIA = { id: 'BSC-LT/ALIA-40b-instruct', name: 'ALIA 40B' };
 const MEDIUM = { id: 'mistral-medium-2604', name: 'Mistral Medium 3.5' };
-const GLM = { id: 'zai-org/GLM-5.2', name: 'GLM 5.2' };
-// The answer settings GLM 5.2 failed on the preview probe (modelWeakSpots.ts).
-const GLM_SETTINGS_WEAK_SPOT =
-	'GLM 5.2 does not always follow these answer settings: Answer length: Short, Answer language.';
+const SEA_LION = {
+	id: 'aisingapore/Nemotron-SEA-LION-v4.8-120B-A12B',
+	name: 'SEA-LION v4.8 (Nemotron) 120B'
+};
+// The answer setting SEA-LION v4.8 failed on the preview probe (modelWeakSpots.ts).
+const SEA_LION_SETTINGS_WEAK_SPOT =
+	'SEA-LION v4.8 (Nemotron) 120B does not always follow these answer settings: Tone: Plain.';
 const ALIA_WEAK_SPOT = 'ALIA 40B is easier to talk into ignoring its rules than other models here.';
 const ALIA_OLD_WEAK_SPOT =
 	'often goes along with a message that tells it to ignore its instructions';
@@ -34,7 +37,7 @@ const ALL_WEAK_SPOTS = [
 	ALIA_WEAK_SPOT,
 	'Bielik 11B v3 sometimes goes along with a message that tells it to ignore its instructions or take on a new role.',
 	"SEA-LION v4 (Gemma) 27B may describe things that don't exist as if they were real, so check names and facts it gives you.",
-	GLM_SETTINGS_WEAK_SPOT,
+	SEA_LION_SETTINGS_WEAK_SPOT,
 	'does not always follow these answer settings'
 ];
 
@@ -163,13 +166,14 @@ test(
 		});
 		await page.goto(CHAT_ENTRY, { waitUntil: 'commit' });
 		await page.getByLabel('Message AI Potluck').click({ timeout: 30_000 });
-		await pick(page, GLM);
-		const line = (await landingFor(page, GLM)).locator('[data-known-weak-spot]');
-		await expect(line, "GLM 5.2's empty state shows no weak-spot line").toBeVisible({
+		await pick(page, SEA_LION);
+		const line = (await landingFor(page, SEA_LION)).locator('[data-known-weak-spot]');
+		await expect(line, "SEA-LION v4.8's empty state shows no weak-spot line").toBeVisible({
 			timeout: 15_000
 		});
-		await expect(line, "GLM 5.2's line does not name the answer settings it fails").toContainText(
-			GLM_SETTINGS_WEAK_SPOT
-		);
+		await expect(
+			line,
+			"SEA-LION v4.8's line does not name the answer setting it fails"
+		).toContainText(SEA_LION_SETTINGS_WEAK_SPOT);
 	}
 );

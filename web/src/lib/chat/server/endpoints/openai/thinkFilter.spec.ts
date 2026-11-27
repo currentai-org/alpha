@@ -247,12 +247,9 @@ describe("reasoningOffRequest pins a multi-provider GLM to a measured provider o
 		expect(() => reasoningOffRequest("zai-org/glm-5.3", HF)).toThrow(/no HF provider pin/);
 	});
 
-	it("pins GLM-5.2-FP8 to zai-org, its one provider, whatever the id's case", () => {
-		expect(reasoningOffRequest("zai-org/GLM-5.2-FP8", HF)).toEqual({
-			model: "zai-org/GLM-5.2-FP8:zai-org",
-			fields: { thinking: { type: "disabled" } },
-		});
-		expect(reasoningOffRequest("zai-org/glm-5.2-fp8", HF).model).toBe("zai-org/glm-5.2-fp8:zai-org");
+	it("refuses GLM-5.2 and GLM-5.2-FP8 by name, whatever the id's case, now that neither has a pin", () => {
+		expect(() => reasoningOffRequest("zai-org/GLM-5.2", HF)).toThrow(/zai-org\/GLM-5\.2 has no HF provider pin/);
+		expect(() => reasoningOffRequest("zai-org/glm-5.2-fp8", HF)).toThrow(/zai-org\/glm-5\.2-fp8 has no HF provider pin/);
 	});
 
 	it("keeps a provider suffix the id already carries", () => {
@@ -269,7 +266,7 @@ describe("reasoningOffRequest pins a multi-provider GLM to a measured provider o
 	it("turns reasoning off with `thinking` for novita, zai-org and hosts off the router", () => {
 		const off = { thinking: { type: "disabled" } };
 		expect(reasoningOffRequest("zai-org/GLM-5.3:novita", HF).fields).toEqual(off);
-		expect(reasoningOffRequest("zai-org/GLM-5.2-FP8", HF).fields).toEqual(off);
+		expect(reasoningOffRequest("zai-org/GLM-5.2-FP8:zai-org", HF).fields).toEqual(off);
 		expect(reasoningOffRequest("zai-org/GLM-5.3", "https://gateway.example/v1").fields).toEqual(off);
 	});
 
@@ -285,9 +282,9 @@ describe("reasoningOffRequest pins a multi-provider GLM to a measured provider o
 		expect(reasoningOffRequest("zai-org/GLM-5.2:deepinfra", HF).fields).toEqual({ reasoning_effort: "none" });
 	});
 
-	it("pins GLM-5.2 to featherless-ai and sends it no reasoning field", () => {
-		const req = reasoningOffRequest("zai-org/GLM-5.2", HF);
-		expect(req.model).toBe("zai-org/GLM-5.2:featherless-ai");
+	it("pins Gemma 4 to featherless-ai and sends it no reasoning field, since its verified row has none", () => {
+		const req = reasoningOffRequest("google/gemma-4-31B-it", HF);
+		expect(req.model).toBe("google/gemma-4-31B-it:featherless-ai");
 		expect(req.fields).toEqual({});
 	});
 

@@ -113,11 +113,11 @@ def build_sandbox_server(
             raise SandboxRefused("the sandbox is off on this deployment")
         return principal, session
 
-    def _handle(ctx: Context) -> tuple[str, Handle]:
+    def _handle(ctx: Context, tool: str) -> tuple[str, Handle]:
         """The conversation's sandbox, made if it has none. Called on a worker thread: on a full host connect waits
         there for a slot, and tells chat so through the call's MCP progress."""
         principal, session = _caller(ctx)
-        return principal, backend.connect(principal, session, Tier.RUN_CODE, on_wait=_progress(ctx))
+        return principal, backend.connect(principal, session, Tier.RUN_CODE, on_wait=_progress(ctx), tool=tool)
 
     def _progress(ctx: Context) -> OnWait:
         def say(text: str) -> None:
@@ -173,7 +173,7 @@ def build_sandbox_server(
     )
     async def run_code(code: str, ctx: Context) -> str:
         def go() -> str:
-            principal, h = _handle(ctx)
+            principal, h = _handle(ctx, "run_code")
             # The code arrives on stdin, so nothing is written into the workspace on its behalf.
             return _run(h, ["python3", "-"], "run_code", principal, stdin=code)
         return await to_thread.run_sync(lambda: _refusing(go))
@@ -185,7 +185,7 @@ def build_sandbox_server(
     )
     async def run_command(command: str, ctx: Context) -> str:
         def go() -> str:
-            principal, h = _handle(ctx)
+            principal, h = _handle(ctx, "run_command")
             return _run(h, ["bash", "-c", command], "run_command", principal)
         return await to_thread.run_sync(lambda: _refusing(go))
 
@@ -215,7 +215,7 @@ def build_sandbox_server(
     )
     async def write_file(path: str, content: str, ctx: Context) -> str:
         def go() -> str:
-            _, h = _handle(ctx)
+            _, h = _handle(ctx, "write_file")
             data = content.encode("utf-8")
             if len(data) > WRITE_MAX_BYTES:
                 raise SandboxRefused(f"content is {len(data)} bytes, over the {WRITE_MAX_BYTES} limit")

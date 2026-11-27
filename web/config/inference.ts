@@ -207,15 +207,21 @@ export const ROLE_MODELS = {
 	/** The math-routing turn planner, and the model that answers the math turns. */
 	ARITHMETIC_ROUTE_MODEL: "mistral-medium-2604",
 	/**
-	 * The collective second-opinion panel, in fan-out order. Qwen 3.6 left it: the router passes its
-	 * one acceptable provider, DeepInfra, through OpenRouter, which the privacy notice does not name,
-	 * and on Featherless it wrote its reasoning into the answer.
+	 * The collective second-opinion panel, in fan-out order: picker models the gateway serves from
+	 * their own hosts (SEA-LION at AI Singapore, Apertus at Phoeniqs, Bielik at PLGrid), none of them
+	 * Mistral, the default answer's family. GLM 5.2 and Gemma 4 left it: the Hugging Face router no longer
+	 * offers Featherless for either, and every router host it does offer passes the text through
+	 * OpenRouter, which the privacy notice does not name. Qwen 3.6 left for the same reason.
 	 */
-	COMPARE_PANEL: ["zai-org/GLM-5.2", "google/gemma-4-31B-it", "speakleash/Bielik-11B-v3.0-Instruct"],
+	COMPARE_PANEL: [
+		"aisingapore/Nemotron-SEA-LION-v4.8-120B-A12B",
+		"swiss-ai/apertus-v1.5-70b",
+		"speakleash/Bielik-11B-v3.0-Instruct",
+	],
 	/** Writes the second-opinion verdict. */
-	AGGREGATOR_MODEL: "zai-org/GLM-5.2",
+	AGGREGATOR_MODEL: "aisingapore/Nemotron-SEA-LION-v4.8-120B-A12B",
 	/** The sequential panel's first seat. */
-	SECOND_OPINION_MODEL: "zai-org/GLM-5.2",
+	SECOND_OPINION_MODEL: "aisingapore/Nemotron-SEA-LION-v4.8-120B-A12B",
 	/**
 	 * The RAG entity-scope guard's model. It is TASK_MODEL's Mistral Small, so it rides the same
 	 * api-internal side-call lane (MISTRAL_MODELS, `side-call-own-lane`) rather than one pinned HF

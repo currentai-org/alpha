@@ -114,6 +114,7 @@ test(
 		await expect(turnDone(reply), 'the turn finished before the person answered').toBeHidden();
 		// the person takes 25 s to read the card, longer than the old 20 s window that counted
 		// silence as "no". The wait is the contract under test, so it is a fixed delay, not a condition.
+		// The wait is also held off the write's own time budget, so the "it ran" line below still holds.
 		await page.waitForTimeout(25_000);
 		await expect(card, 'the card closed while the person was still reading it').toBeVisible();
 		await expect(turnDone(reply), 'the turn ended while the card was still open').toBeHidden();
@@ -137,6 +138,9 @@ test(
 		);
 
 		// on the same server: a tool that answers isError is shown as an error, not a result.
+		// It runs in a new chat, so its request carries none of turn one's history. A recording keyed on
+		// turn one's result would miss on every preview whose base recorded a different one.
+		await openComposer(page);
 		await send(
 			page,
 			'Now use the stub tool get_admin_lock to check whether my settings are locked.'

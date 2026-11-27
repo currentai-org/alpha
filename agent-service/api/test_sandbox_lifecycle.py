@@ -100,7 +100,7 @@ class _WaitingBackend:
     def __init__(self, full=False):
         self.full, self.cancelled = full, None
 
-    def connect(self, principal, conversation, tier, *, on_wait=None, cancelled=None):
+    def connect(self, principal, conversation, tier, *, on_wait=None, cancelled=None, tool=None):
         from sandbox_backend import SANDBOX_WAIT_TEXT, Handle, SandboxBusy
         self.cancelled = cancelled
         on_wait(SANDBOX_WAIT_TEXT)

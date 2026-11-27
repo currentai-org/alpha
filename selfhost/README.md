@@ -593,7 +593,10 @@ Every service the stack bundles or calls can be one you already run, set in `.en
 With your own Postgres, the app creates its tables there on first start, as it does in the bundled one.
 `DATABASE_URL` takes the form `postgres://<user>:<password>@<host>:5432/<database>`; the user needs to
 create tables in that database. `backup.sh` and `restore.sh` then skip the database, saying so, and
-still copy and restore the file volumes: back that database up on its own server.
+still copy and restore the file volumes: back that database up on its own server. Take that backup
+at the same time as `backup.sh`, with nobody using the app between the two, and restore both from the
+same moment. The database lists every stored file and who owns it, so a database from another moment
+can point at files the restored volume lacks, or leave files that nothing points to.
 
 ## Every service a request passes through
 

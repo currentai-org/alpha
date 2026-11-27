@@ -228,7 +228,7 @@ def test_a_run_waiting_on_a_full_host_sends_the_wait_as_progress_before_its_resu
     class Waiting:
         name = "fake"
 
-        def connect(self, principal, conversation, tier, *, on_wait=None, cancelled=None):
+        def connect(self, principal, conversation, tier, *, on_wait=None, cancelled=None, tool=None):
             on_wait(SANDBOX_WAIT_TEXT)
             return Handle(key="k", tier=tier)
 

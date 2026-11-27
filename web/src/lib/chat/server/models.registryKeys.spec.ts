@@ -20,7 +20,7 @@ const HF_BASE = "https://router.huggingface.co/v1";
 const MISTRAL_BASE = "https://api.mistral.test/v1";
 const COMPARE_BASE = "https://compare.test/v1";
 const CHAT_MODEL = "test-org/chat-model";
-const GLM = "zai-org/GLM-5.2";
+const HF_PINNED = "google/gemma-4-31B-it";
 const MISTRAL_LARGE = "mistral-large-2512";
 const MISTRAL_SMALL = "mistral-small-2603";
 const PANELIST = "test-org/panelist";
@@ -111,7 +111,7 @@ beforeEach(() => {
 		HF_BILL_TO: "test-org",
 		MISTRAL_BASE_URL: MISTRAL_BASE,
 		MISTRAL_MODELS: `${MISTRAL_LARGE},${MISTRAL_SMALL}`,
-		MODEL_ALLOWLIST: `${CHAT_MODEL},${MISTRAL_LARGE},${GLM}`,
+		MODEL_ALLOWLIST: `${CHAT_MODEL},${MISTRAL_LARGE},${HF_PINNED}`,
 		TASK_MODEL: MISTRAL_SMALL,
 		SECOND_OPINION_BASE_URL: COMPARE_BASE,
 		COMPARE_PANEL: PANELIST,
@@ -148,7 +148,7 @@ describe("model registry keys", () => {
 		const ids = mod.models.map((m) => m.id);
 		// Every keyed lane is in the registry, so the check below covers each of them.
 		expect(ids).toEqual(
-			expect.arrayContaining([CHAT_MODEL, MISTRAL_LARGE, GLM, MISTRAL_SMALL, PANELIST, "potluck-agent"])
+			expect.arrayContaining([CHAT_MODEL, MISTRAL_LARGE, HF_PINNED, MISTRAL_SMALL, PANELIST, "potluck-agent"])
 		);
 
 		const serialized = JSON.stringify(mod.models);
@@ -181,7 +181,7 @@ describe("model registry keys", () => {
 			[FALLBACK_BASE, KEYS.FALLBACK_API_KEY],
 		]);
 		expect(await keysFor(MISTRAL_LARGE)).toEqual([[MISTRAL_BASE, KEYS.MISTRAL_API_KEY]]);
-		expect(await keysFor(GLM)).toEqual([[HF_BASE, KEYS.HF_TOKEN]]);
+		expect(await keysFor(HF_PINNED)).toEqual([[HF_BASE, KEYS.HF_TOKEN]]);
 		expect(await keysFor(MISTRAL_SMALL)).toEqual([[MISTRAL_BASE, KEYS.MISTRAL_API_KEY]]);
 		expect(await keysFor(PANELIST)).toEqual([[COMPARE_BASE, KEYS.SECOND_OPINION_API_KEY]]);
 		expect(await keysFor("potluck-agent")).toEqual([["https://agent.test", KEYS.AGENT_SERVICE_TOKEN]]);

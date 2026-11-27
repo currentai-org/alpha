@@ -153,7 +153,7 @@ export const orgs: Record<OrgId, Org> = {
 		id: 'scaleway',
 		name: 'Scaleway',
 		// Paris and no retention: the provider pin's own record (server/modelProfiles.ts HF_PROVIDER_PIN).
-		blurb: 'A French cloud in Paris. It runs GLM for Alpha through Hugging Face without keeping what you send, and serves Mistral Medium 3.5 as a second host beside Mistral’s own.',
+		blurb: 'A French cloud in Paris. It serves Mistral Medium 3.5 for Alpha as a second host beside Mistral’s own.',
 		region: 'France',
 		url: 'https://www.scaleway.com'
 	},
@@ -180,7 +180,7 @@ export const orgs: Record<OrgId, Org> = {
 		id: 'featherless',
 		logo: '/logos/featherless.png',
 		name: 'Featherless',
-		blurb: 'An American host for open models. It runs GLM 5.2 and Gemma 4 for Alpha, and is one of the backends the inference gateway can send a turn to.',
+		blurb: 'An American host for open models, and one of the backends the inference gateway can send a turn to.',
 		region: 'United States',
 		url: 'https://featherless.ai'
 	},
@@ -387,7 +387,7 @@ export interface CatalogModel {
 	/**
 	 * False for a model a person may pick by hand that Auto never chooses or measures against.
 	 * `'own-languages'` lets Auto choose it only for a draft in one of its `languages`: SEA-LION v4.8
-	 * and GLM 5.2 are rated above Medium overall, so unscoped they would take every English draft too.
+	 * is rated above Medium overall, so unscoped it would take every English draft too.
 	 * `'large-tasks'` lets Auto choose it only for a draft the classifier reads as large: Large 4 is rated
 	 * far above Medium, so unscoped it would take every draft and Medium would stop being the default.
 	 */
@@ -547,24 +547,6 @@ const models: Omit<CatalogModel, 'provider'>[] = [
 		readsImages: false
 	},
 	{
-		id: 'glm-5.2',
-		name: 'GLM 5.2',
-		family: 'GLM',
-		maker: 'zhipu',
-		gatewayId: 'zai-org/GLM-5.2',
-		footprint: { ecologits: { provider: 'mistralai', model: 'glm-5-2' } },
-		tier: 'deep',
-		languages: ['zh'],
-		alsoGood: ['en'],
-		status: 'live',
-		// Auto's pick for Chinese only, at every task size: its measured Chinese (0.92) edges Large 4's
-		// gateway run (0.89), within both runs' 95% ranges.
-		autoPick: 'own-languages',
-		strength: 'A large open model, strongest in Chinese and English reasoning.',
-		// Image input: refused, "glm-5.2 is not a multimodal model" (Hugging Face; GLM 5.3 too).
-		readsImages: false
-	},
-	{
 		id: 'mistral-large',
 		name: 'Mistral Large 3',
 		family: 'Mistral',
@@ -664,7 +646,7 @@ const models: Omit<CatalogModel, 'provider'>[] = [
 /**
  * Who runs each model, keyed by catalog id. A model the Hugging Face router pins to one provider
  * (`HF_PROVIDER_PIN`, the choice of who receives visitor text) takes that provider's org, so re-pinning
- * it moves X-ray's "where it runs" line with it: GLM 5.2 runs at Featherless.
+ * it moves X-ray's "where it runs" line with it.
  */
 export const MODEL_HOSTS: Record<string, OrgId> = {
 	...PLANNED_HOSTS,

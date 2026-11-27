@@ -3070,7 +3070,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 							ctrl.signal.addEventListener("abort", () => resolve(), { once: true })
 						);
 					// The ledger rows go on the raw generation so they pass through everything the answer does:
-					// output screening and honesty. GLM writes their labels.
+					// output screening and honesty. ARITHMETIC_ROUTE_MODEL writes their labels.
 					// With math routing on, every turn's model text loses any stamp it copied, and only then does
 					// a real ledger go in front of it.
 					const turnText = turnModel !== model ? namedServedModel(textGeneration(ctx), turnModel.id) : textGeneration(ctx);

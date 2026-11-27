@@ -126,8 +126,8 @@ export function mcpServersKit(opts: {
 	const admitted = new Set<string>();
 	const refused = new Set<string>();
 	const decisions = new Map<string, ConfirmDecision>();
-	// Time a sandbox wait held the turn's clock (the route holds it while the wait is shown), so
-	// the turn's end has moved by this much.
+	// Time a sandbox wait or an open confirmation card held the turn's clock (the route holds it
+	// while either is shown), so the turn's end has moved by this much.
 	let heldMs = 0;
 	/** What a call may take now: its own cap, cut to the turn's time left less the answer's margin. */
 	const budgetFor = (capMs: number): number =>
@@ -188,6 +188,9 @@ export function mcpServersKit(opts: {
 				...(opts.signal ? { signal: opts.signal } : {}),
 			});
 			decisions.set(call.id, decision);
+			// The route holds the turn's clock while the card is open (genDeadline.setHumanWaiting), so the
+			// calls after it get that time back too: a write the person approved after a long read still runs.
+			heldMs += now() - started;
 			logger.info(
 				{ leg: "mcp-servers", server: t.server, tool: t.tool, decision, waitMs: now() - started },
 				"[mcp-servers] confirmation"

@@ -165,7 +165,6 @@ describe("resolveFeatureFacts model choice and web search", () => {
 					...listed,
 					{ id: "BSC-LT/ALIA-40b-instruct", displayName: "ALIA 40B" },
 					{ id: "speakleash/Bielik-11B-v3.0-Instruct", displayName: "Bielik 11B v3" },
-					{ id: "zai-org/GLM-5.2", displayName: "GLM 5.2" },
 				],
 			}
 		);
@@ -177,8 +176,9 @@ describe("resolveFeatureFacts model choice and web search", () => {
 		expect(clause).toMatch(/Mistral Large 3 \([^)]*broadly multilingual/);
 		expect(clause).not.toMatch(/Mistral[^()]*\([^)]*built for/);
 		expect(clause).toMatch(/recommend the one listed as built for it/);
-		expect(clause).toMatch(/GLM 5\.2 \([^)]*\)[^,]*, open weights, 753 billion parameters,/);
-		expect(clause).toMatch(/never a number in its name or version \(GLM 5\.2 is not 5\.2 billion\)/);
+		// The card's count (72 billion), not the 70 in its name or the 1.5 in its version.
+		expect(clause).toMatch(/Apertus 1\.5 70B \(made by the Swiss National AI Institute \(SNAI\), fully open, 72 billion parameters,/);
+		expect(clause).toMatch(/never a number in its name or version \(Apertus 1\.5 is not 1\.5 billion\)/);
 		expect(clause).toMatch(/For a model with no count listed, say you have no verified size and point to its model card/);
 	});
 

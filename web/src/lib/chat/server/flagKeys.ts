@@ -672,7 +672,7 @@ export const FLAG_KEYS = defineFlagKeys([
 		class: "feature",
 		owner: "chat",
 		gates:
-			"the turn planner (turnPlan.ts, mathRouting.ts, wired in conversation/[id]/+server.ts): one forced plan_turn call on ARITHMETIC_ROUTE_MODEL (GLM) on every turn the input screen allows, whose math field says whether the latest message asks for a number to be worked out and records the setup as typed lines. Code sums them and streams the checked rows and total ahead of the answer; on those turns the route model writes the answer too, and every other turn stays on the default model. The ledger carries no \"checked by code\" label (CUR-3663), and any the model copies from an older answer is removed (CUR-2199). When the plan call fails the answer carries no checked total (CUR-2134)",
+			"the turn planner (turnPlan.ts, mathRouting.ts, wired in conversation/[id]/+server.ts): one forced plan_turn call on ARITHMETIC_ROUTE_MODEL on every turn the input screen allows, whose math field says whether the latest message asks for a number to be worked out and records the setup as typed lines. Code sums them and streams the checked rows and total ahead of the answer; on those turns the route model writes the answer too, and every other turn stays on the default model. The ledger carries no \"checked by code\" label (CUR-3663), and any the model copies from an older answer is removed (CUR-2199). When the plan call fails the answer carries no checked total (CUR-2134)",
 		whenAbsent:
 			"no plan call, no ledger and no stamp stripping: every turn is the default model's prose, exactly as before",
 		ticket: "CUR-2198",

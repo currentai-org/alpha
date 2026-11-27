@@ -7,11 +7,24 @@ vi.mock("./logger", () => ({ logger: { error: (...a: unknown[]) => error(...a), 
 const { contextTokensFor, firstChunkMsFor, generationTimeoutMsFor, silentGiveUpMsFor, flattensRolesUnprobed, opensReasoningUntagged, replyLanguageRuleFits, restatesRuleAfterFence, takesStrictLane } =
 	await import("./harnessProfiles");
 const qualification = (await import("./data/model-qualification.json")).default as { checks: Record<string, unknown> };
+const { hfPinnedProvider } = await import("./endpoints/openai/providerPin");
+
+/** The HF router refuses the id by name before any call (a GLM id with no pin), so it is never offered. */
+const refusedOnRouter = (id: string) => {
+	try {
+		hfPinnedProvider(id, "https://router.huggingface.co/v1");
+		return false;
+	} catch {
+		return true;
+	}
+};
 
 describe("harness profiles", () => {
-	it("has a row for every model with a qualification record, so nothing MODEL_ALLOWLIST can offer falls to the plain harness unseen", () => {
+	it("has a row for every model with a qualification record that can still be called, so nothing MODEL_ALLOWLIST can offer falls to the plain harness unseen", () => {
 		error.mockClear();
-		for (const id of Object.keys(qualification.checks)) replyLanguageRuleFits(id);
+		const callable = Object.keys(qualification.checks).filter((id) => !refusedOnRouter(id));
+		expect(callable.length).toBeGreaterThan(0);
+		for (const id of callable) replyLanguageRuleFits(id);
 		expect(error.mock.calls.map((c) => (c[0] as { model: string }).model)).toEqual([]);
 	});
 
@@ -110,7 +123,7 @@ describe("firstChunkMsFor", () => {
 
 describe("silentGiveUpMsFor", () => {
 	it("gives the models measured fast on production a give-up past the 8s hedge and under the 45s watchdog", () => {
-		for (const id of ["swiss-ai/apertus-v1.5-8b", "mistral-large-2512", "zai-org/GLM-5.2", "speakleash/Bielik-11B-v3.0-Instruct"]) {
+		for (const id of ["swiss-ai/apertus-v1.5-8b", "mistral-large-2512", "speakleash/Bielik-11B-v3.0-Instruct"]) {
 			const ms = silentGiveUpMsFor(id);
 			expect(ms, id).toBeGreaterThan(8_000);
 			expect(ms, id).toBeLessThan(45_000);

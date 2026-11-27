@@ -23,10 +23,9 @@ describe('languageCoverage: the Languages panel names Auto’s medium-size pick 
 		}
 	});
 
-	it('does not name GLM for Pashto, or Apertus for English, and names GLM for Chinese', () => {
-		expect(all.find((l) => l.tag === 'pbt')?.model.id).not.toBe('glm-5.2');
+	it('does not name Apertus for English, and names Mistral Medium for Chinese, which no served model is scoped to', () => {
 		expect(all.find((l) => l.tag === 'eng')?.model.id).not.toBe('apertus-70b');
-		expect(all.find((l) => l.tag === 'cmn')?.model.id).toBe('glm-5.2');
+		expect(all.find((l) => l.tag === 'cmn')?.model.id).toBe('mistral-medium');
 	});
 
 	it('files a language as still-learning exactly when the still-learning notice shows for Auto’s pick', () => {
@@ -46,10 +45,12 @@ describe('languageCoverage: the Languages panel names Auto’s medium-size pick 
 		expect(coverageOf([])).toEqual({ strong: [], learning: [] });
 	});
 
-	it('stops naming a busy model Auto would skip: Chinese names GLM, and not GLM once GLM is busy', () => {
-		expect(all.find((l) => l.tag === 'cmn')?.model.id).toBe('glm-5.2');
-		const skipped = coverageOf(served, { busy: ['zai-org/GLM-5.2'] });
-		expect([...skipped.strong, ...skipped.learning].find((l) => l.tag === 'cmn')?.model.id).not.toBe('glm-5.2');
+	it('stops naming a busy model Auto would skip: Indonesian names SEA-LION v4.8, and not SEA-LION once it is busy', () => {
+		expect(all.find((l) => l.tag === 'ind')?.model.id).toBe('sea-lion-nemotron-120b');
+		const skipped = coverageOf(served, { busy: ['aisingapore/Nemotron-SEA-LION-v4.8-120B-A12B'] });
+		const ind = [...skipped.strong, ...skipped.learning].find((l) => l.tag === 'ind');
+		expect(ind).toBeDefined();
+		expect(ind?.model.id).not.toBe('sea-lion-nemotron-120b');
 	});
 });
 

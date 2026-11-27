@@ -30,8 +30,8 @@ async function openChat(
 ) {
 	await setFlagOverrides(context, baseURL, { 'auto-routing': true });
 	// Auto routes around a model marked busy, and a preview's marks outlast the turns that wrote them:
-	// a preview whose GLM 5.2 was marked busy kept every later run of the Chinese tests below on
-	// Mistral Medium. These tests are about where Auto sends a draft, so they read
+	// a preview whose SEA-LION v4.8 was marked busy would keep every later run of the Vietnamese tests
+	// below on Mistral Medium. These tests are about where Auto sends a draft, so they read
 	// a fresh busy scope of their own; auto-skips-busy-model.spec.ts covers the marks themselves.
 	if (process.env.E2E_FAULT_INJECT_TOKEN) {
 		await installBusyScopeHeader(
@@ -87,11 +87,11 @@ async function storedTurn(page: Page, answer: Locator): Promise<Stored | undefin
 }
 
 /**
- *  Auto sends this to GLM 5.2 mid-chat, off Mistral Medium, at every size (routing.spec.ts). GLM rather
- *  than SEA-LION v4.8 for Vietnamese: Auto routes around a model its circuit breaker holds busy, and
- *  SEA-LION can be held busy on the preview, so the turn would stay on Medium.
+ *  Auto sends this to SEA-LION v4.8 mid-chat, off Mistral Medium (routing.spec.ts). Chinese no
+ *  longer moves Auto: with GLM 5.2 gone it stays on Medium. Auto routes around a model its
+ *  circuit breaker holds busy, so openChat gives these tests a fresh busy scope when fault injection is on.
  */
-const CHINESE = '中国的首都是哪里？请用一句话回答。';
+const VIETNAMESE = 'Thủ đô của Việt Nam là gì? Trả lời trong một câu.';
 
 const xrayTimeouts = {
 	expanded: { timeout: 15_000 },
@@ -190,16 +190,16 @@ test(
 		);
 		const firstStored = await storedTurn(page, first);
 
-		// Chinese moves Auto from Mistral Medium to GLM 5.2 (routing.spec.ts);
+		// Vietnamese moves Auto from Mistral Medium to SEA-LION v4.8 (routing.spec.ts);
 		// Catalan stays on Medium. The send awaits the PATCH that switches the conversation. The
 		// composer had cleared its draft by then, and Auto's choice with it. Auto decides once the draft has
 		// rested 350 ms, and the pill then reads "Auto · <family>": send after that, as a person would.
-		await composer.fill(CHINESE);
+		await composer.fill(VIETNAMESE);
 		await expect(
 			page.getByRole('button', { name: /^Model: Auto · / }).first(),
-			'mid-chat, Auto never named a model to switch to for the Chinese draft'
+			'mid-chat, Auto never named a model to switch to for the Vietnamese draft'
 		).toBeVisible({ timeout: 15_000 });
-		const second = await ask(page, composer, CHINESE, 1);
+		const second = await ask(page, composer, VIETNAMESE, 1);
 		const stored = await storedTurn(page, second);
 		test.info().annotations.push({
 			type: 'autoRoute per turn',
@@ -308,7 +308,7 @@ test(
 		// `ask` fills and presses Enter at once, well inside the 350 ms the composer waits before it
 		// reads a draft, so no Auto choice has been published for this text when it sends. The page
 		// routes it then, the way the landing page routes a first message.
-		const second = await ask(page, composer, CHINESE, 1);
+		const second = await ask(page, composer, VIETNAMESE, 1);
 		const stored = await storedTurn(page, second);
 		test.info().annotations.push({
 			type: 'autoRoute per turn',
@@ -320,7 +320,7 @@ test(
 		).toBeTruthy();
 		expect(
 			stored?.autoRoute?.model,
-			'the Chinese turn stayed on the first model, so the send went out before Auto chose'
+			'the Vietnamese turn stayed on the first model, so the send went out before Auto chose'
 		).not.toBe(firstStored?.autoRoute?.model);
 
 		await openStepByStep(page, second, xrayTimeouts);
@@ -393,7 +393,7 @@ test(
 );
 
 // Mistral Large 4 scores 0.71 raw on Belebele's Amharic, under the 0.75 line where a model counts as
-// still learning a language; GLM 5.2's 0.86 is over it. The notice keys on the model that answers, not
+// still learning a language. The notice keys on the model that answers, not
 // on Auto's best available model, so a visitor who picks Large 4 sees it in the composer and beside the
 // sent answer, after a reload too.
 test(

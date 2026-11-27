@@ -6,7 +6,7 @@ import { CHAT_ENTRY } from './helpers/chatEntry';
 import { warmupContext } from './helpers/warmup';
 import { setFlagOverrides } from './helpers/flagOverride';
 import { HF_PROVIDER_PIN } from '../../src/lib/chat/shared/hfProviderPin';
-import { catalog, MODEL_HOSTS, orgs } from '../../src/lib/chat/routing/catalog';
+import { catalog, orgs } from '../../src/lib/chat/routing/catalog';
 import { startChattingPastWelcome } from './helpers/welcome';
 import { sameServedModel } from '../../config/picker';
 
@@ -265,9 +265,9 @@ test(
 		// the next model once this page's conversation exists cannot change the turn already started.
 		//
 		// The exception is a model pinned to the provider whose concurrency units production shares
-		// (hfProviderPin.ts: a GLM-5.2 call takes 4 of 10). Its turn is sent alone, after the others have
-		// finished, so this test never holds more than one call there and never pushes a visitor's GLM
-		// turn onto the busy notice.
+		// (hfProviderPin.ts: Featherless caps our account at 10 units). Its turn is sent alone, after the
+		// others have finished, so this test never holds more than one call there and never pushes a
+		// visitor's turn onto the busy notice.
 		const turns: Array<{ id: string; page: Page; conversationId: string }> = [];
 		let pagesUsed = 0;
 		const nextPage = async () =>
@@ -615,123 +615,6 @@ test(
 			answeredAs(turns[1], first),
 			`the pick made in another chat switched this one: its answer came from ${turns[1]?.model}, not ${first}`
 		).toBe(true);
-	}
-);
-
-test(
-	'a model with an HF provider pin in the allowlist is offered in the picker',
-	{ tag: ['@preview-only', '@F3'] },
-	async ({ page }) => {
-		// Preview's MODEL_ALLOWLIST names zai-org/GLM-5.2, which only the HF router serves. The
-		// picker offers it from that lane because HF_PROVIDER_PIN says which provider receives its text.
-		// Without that lane the id matches nothing in the gateway catalog and silently drops out of the list.
-		test.setTimeout(60_000);
-		await openChatEntry(page);
-		await page.getByRole('button', { name: PICKER_TRIGGER }).click({ timeout: 30_000 });
-		const options = page.locator('[data-model-id]');
-		await expect(options.first()).toBeVisible({ timeout: 10_000 });
-		const ids = await options.evaluateAll((els) =>
-			els.map((el) => (el as HTMLElement).dataset.modelId ?? '')
-		);
-		expect(
-			ids.filter((id) => HF_PROVIDER_PIN[id.toLowerCase()]),
-			`the picker offers ${ids.join(', ')}, none of them a pinned HF model, so the router lane is not reaching the list`
-		).not.toEqual([]);
-	}
-);
-
-// GLM 5.2 is on the picker from the HF router lane, pinned to one provider (hfProviderPin.ts). The loop above
-// checks the served model and provider in the stored record, but for an id with no parameter size it
-// only checks that the footer is not empty. This picks GLM 5.2 by its id and reads what the person
-// sees: the footer names GLM 5.2 and its maker, and the provenance line under it names the host its
-// text went to. Red if GLM leaves the picker, if the turn is served by anything else, or if the
-// footer stops naming the model or the provider.
-const GLM = 'zai-org/GLM-5.2';
-test(
-	'picking GLM 5.2 gets an answer whose footer names GLM 5.2 and the provider it is pinned to, with its reasoning in the collapsed panel',
-	{ tag: ['@preview-only', '@F3'] },
-	async ({ page }) => {
-		test.setTimeout(120_000);
-		const entry = catalog.find((m) => m.gatewayId === GLM);
-		const pin = HF_PROVIDER_PIN[GLM.toLowerCase()];
-		expect(entry, `${GLM} has no catalog entry, so the picker cannot offer it`).toBeTruthy();
-		expect(pin, `${GLM} has no HF provider pin, so its text could go to any provider`).toBeTruthy();
-		// The org a pin names, not the pin's own id: `deepinfra` is the org DeepInfra.
-		const providerName = orgs[MODEL_HOSTS[entry!.id]]?.name ?? pin;
-
-		await openChatEntry(page);
-		await page.getByRole('button', { name: PICKER_TRIGGER }).click({ timeout: 30_000 });
-		const option = page.locator(`[data-model-id="${GLM}"]`);
-		await expect(option, `the picker does not offer ${GLM}`).toBeVisible({ timeout: 10_000 });
-		const saved =
-			(await option.getAttribute('aria-checked')) === 'true'
-				? null
-				: page.waitForResponse(isPickSave, { timeout: 15_000 });
-		await option.click();
-		await expect(page.getByRole('button', { name: PICKER_TRIGGER })).toContainText(entry!.name, {
-			timeout: 10_000
-		});
-		if (saved)
-			expect((await saved).ok(), `the settings save after picking ${GLM} was refused`).toBe(true);
-
-		const composer = page.getByLabel('Message AI Potluck');
-		await composer.fill(`Quick check ${Date.now()}: reply with the single word "ready".`);
-		await composer.press('Enter');
-		await page.waitForURL(/\/conversation\/[a-f0-9]+/, { timeout: 30_000 });
-		const conversationId = page.url().match(/\/conversation\/([a-f0-9]+)/)?.[1];
-		if (!conversationId) throw new Error(`could not read a conversation id out of ${page.url()}`);
-
-		const answer = page.locator('[data-message-role="assistant"]').last();
-		await expect(
-			answer.getByRole('button', { name: 'Copy to clipboard', exact: true }),
-			`the turn after picking ${GLM} never finished within 60s` + warmupContext()
-		).toBeVisible({ timeout: 60_000 });
-
-		let turns: Awaited<ReturnType<typeof servedTurns>> = [];
-		await expect
-			.poll(
-				async () => (turns = await servedTurns(page, conversationId)).filter((t) => t.model).length,
-				{
-					message: `the turn after picking ${GLM} persisted no routerMetadata.model`,
-					timeout: 15_000
-				}
-			)
-			.toBe(1);
-		expect(
-			sameServedModel(GLM, turns[0].model ?? ''),
-			`picked ${GLM}, but the gateway reports ${turns[0].model} answered the turn`
-		).toBe(true);
-
-		// What the person sees: the footer button's name says which model and maker, and the line it
-		// abbreviates (its title, the whole provenance record) says which provider the text went to.
-		await expect(
-			answer.getByRole('button', { name: /How this answer was made/ }),
-			`the answer footer does not name ${entry!.name} by ${orgs[entry!.maker].name}`
-		).toHaveAccessibleName(new RegExp(`\\b${entry!.name} by ${orgs[entry!.maker].name}\\b`), {
-			timeout: 10_000
-		});
-		await expect(
-			answer.locator('[data-provenance="line"]').first(),
-			`the answer's provenance line does not say it was served via ${providerName}, the provider ${GLM} is pinned to`
-		).toHaveAttribute('title', new RegExp(`served via ${providerName}\\b`));
-
-		// GLM's reasoning sits in the collapsed Working panel, never in the answer and never
-		// dropped. Sent with reasoning off it wrote "Let me answer…" into the answer; dropped by the
-		// stream, the visitor saw no panel at all. Stored as an opening <think> block, which
-		// the page folds behind an Expand toggle.
-		const stored = turns[0].content;
-		expect(
-			stored.trimStart().startsWith('<think>') && stored.includes('</think>'),
-			`the ${GLM} answer was stored with no opening reasoning block, so the Working panel had nothing to show`
-		).toBe(true);
-		expect(
-			stored.replace(/<think>[\s\S]*?<\/think>/g, ''),
-			`the ${GLM} answer outside its reasoning block lost the word it was asked for`
-		).toMatch(/\bready\b/i);
-		await expect(
-			answer.getByRole('button', { name: 'Expand', exact: true }).first(),
-			`the ${GLM} answer shows no collapsed reasoning panel`
-		).toBeVisible({ timeout: 10_000 });
 	}
 );
 

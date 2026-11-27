@@ -295,35 +295,6 @@
         }
       ]
     },
-    "glm-5.2": {
-      "intelligence": 34,
-      "defaultSupport": 0.35,
-      "languages": {
-        "cmn": 0.95,
-        "yue": 0.72,
-        "eng": 0.9,
-        "jpn": 0.7,
-        "kor": 0.6
-      },
-      "basis": {
-        "intelligence": "measured",
-        "languages": "estimate"
-      },
-      "sources": [
-        {
-          "url": "https://artificialanalysis.ai/leaderboards/models",
-          "title": "Artificial Analysis LLM leaderboard (Intelligence Index v4.3.2)",
-          "read": "2026-10-20",
-          "covers": "intelligence"
-        },
-        {
-          "url": "https://leaderboard.sea-lion.ai/",
-          "title": "SEA-HELM leaderboard (data last updated 2026-09-18), SSR payload seaRows",
-          "read": "2026-10-20",
-          "covers": "languages"
-        }
-      ]
-    },
     "mistral-large": {
       "intelligence": 9,
       "defaultSupport": 0.35,

@@ -252,19 +252,19 @@ describe("a side-call model that Mistral serves registers on the Mistral lane", 
 	});
 });
 
-describe("a pinned GLM id in the allowlist is offered from the HF router, independent of the compare panel", () => {
+describe("a pinned id in the allowlist is offered from the HF router, independent of the compare panel", () => {
 	const HF = "https://router.huggingface.co/v1";
-	const GLM = "zai-org/GLM-5.2";
+	const PINNED = "google/gemma-4-31B-it";
 
 	beforeEach(() => {
 		Object.assign(H.cfg, { HF_BASE_URL: HF, HF_TOKEN: "hf-key", HF_BILL_TO: "test-org" });
 	});
 
 	it("offers it listed on the router, though no second-opinion setting names it", async () => {
-		H.cfg.MODEL_ALLOWLIST = `${CHAT_MODEL},${GLM}`;
+		H.cfg.MODEL_ALLOWLIST = `${CHAT_MODEL},${PINNED}`;
 		const mod = await boot();
 
-		const offered = mod.models.filter((m) => m.id === GLM);
+		const offered = mod.models.filter((m) => m.id === PINNED);
 		expect(offered).toHaveLength(1);
 		expect(offered[0].unlisted).toBe(false);
 		expect(offered[0].endpoints).toMatchObject([

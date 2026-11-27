@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from "vitest";
-import { tricksFor } from "./harnessProfiles";
 
 // Endpoints name the env var their key lives in; the lane builders read it to check the key
 // is set. These are the only keys this file's config holds.
@@ -453,14 +452,14 @@ describe("a pinned model on the HF router as a picker lane", () => {
 			multimodalEnabled: false,
 		});
 
-	it("offers an allowlisted id with a provider pin from the router, billed, with its reasoning left on and its own row's tricks, none", () => {
-		const allowlist = "swiss-ai/apertus-v1.5-70b, zai-org/GLM-5.2";
+	it("offers an allowlisted id with a provider pin from the router, billed", () => {
+		const allowlist = "swiss-ai/apertus-v1.5-70b, google/gemma-4-31B-it";
 		const lane = hfPinnedLane(`${HF}/`, "HF_TOKEN", "test-org", allowlist);
-		expect(lane?.modelIds).toEqual(["zai-org/GLM-5.2"]);
+		expect(lane?.modelIds).toEqual(["google/gemma-4-31B-it"]);
 		const allowed = selectAllowedModels(withDirectModels(gateway, lane), allowlist);
-		expect(allowed.map((m) => m.id)).toEqual(["swiss-ai/apertus-v1.5-70b", "zai-org/GLM-5.2"]);
-		const glm = routeDirectModels(shape(allowed), lane).find((m) => m.id === "zai-org/GLM-5.2");
-		expect(glm?.endpoints).toEqual([
+		expect(allowed.map((m) => m.id)).toEqual(["swiss-ai/apertus-v1.5-70b", "google/gemma-4-31B-it"]);
+		const pinned = routeDirectModels(shape(allowed), lane).find((m) => m.id === "google/gemma-4-31B-it");
+		expect(pinned?.endpoints).toEqual([
 			{
 				type: "openai",
 				baseURL: HF,
@@ -468,19 +467,18 @@ describe("a pinned model on the HF router as a picker lane", () => {
 				defaultHeaders: { "X-HF-Bill-To": "test-org" },
 			},
 		]);
-		// An id that missed its row would get every trick, so an empty set shows the routed id found it.
-		expect([...tricksFor(glm?.id)]).toEqual([]);
 	});
 
 	it("never offers a GLM id with no provider pin, so the router cannot pick who receives its text", () => {
 		expect(hfPinnedLane(HF, "HF_TOKEN", "test-org", "zai-org/GLM-5.3")).toBeNull();
+		expect(hfPinnedLane(HF, "HF_TOKEN", "test-org", "zai-org/GLM-5.2")).toBeNull();
 	});
 
 	it("offers nothing the allowlist does not name, and nothing when the router, its key, or a router URL is missing", () => {
 		expect(hfPinnedLane(HF, "HF_TOKEN", "", "swiss-ai/apertus-v1.5-70b")).toBeNull();
-		expect(hfPinnedLane("", "HF_TOKEN", "", "zai-org/GLM-5.2")).toBeNull();
-		expect(hfPinnedLane(HF, "UNSET_KEY", "", "zai-org/GLM-5.2")).toBeNull();
-		expect(hfPinnedLane("https://gateway.example/v1", "HF_TOKEN", "", "zai-org/GLM-5.2")).toBeNull();
+		expect(hfPinnedLane("", "HF_TOKEN", "", "google/gemma-4-31B-it")).toBeNull();
+		expect(hfPinnedLane(HF, "UNSET_KEY", "", "google/gemma-4-31B-it")).toBeNull();
+		expect(hfPinnedLane("https://gateway.example/v1", "HF_TOKEN", "", "google/gemma-4-31B-it")).toBeNull();
 	});
 });
 

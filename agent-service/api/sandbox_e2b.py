@@ -481,7 +481,7 @@ class E2BBackend:
     _PROBE_SECS = 5.0
 
     def connect(self, principal: str, conversation: str, tier: Tier, *, on_wait: OnWait | None = None,
-                cancelled: Callable[[], bool] | None = None) -> Handle:
+                cancelled: Callable[[], bool] | None = None, tool: str | None = None) -> Handle:
         """The conversation's sandbox, resumed or new. On a full host it waits up to `busy_wait_secs` for a slot,
         asking again with a growing pause and telling `on_wait` once when the wait starts; `cancelled`
         ends the wait early. The wait holds no lock, and runs on the caller's thread, which is never a request's
@@ -495,7 +495,7 @@ class E2BBackend:
             except SandboxBusy:
                 left = started + self._cfg.busy_wait_secs - self._clock()
                 if left <= 0 or (cancelled is not None and cancelled()):
-                    self._log_busy(tier, "gave_up" if waiting else "refused", started)
+                    self._log_busy(tier, "gave_up" if waiting else "refused", started, tool)
                     raise
                 if not waiting:
                     waiting = True
@@ -505,13 +505,13 @@ class E2BBackend:
                 step = min(step * 1.5, self._WAIT_MAX_STEP_SECS)
                 continue
             if waiting:
-                self._log_busy(tier, "waited", started)
+                self._log_busy(tier, "waited", started, tool)
             return h
 
-    def _log_busy(self, tier: Tier, outcome: str, started: float) -> None:
+    def _log_busy(self, tier: Tier, outcome: str, started: float, tool: str | None) -> None:
         """One `sandbox.host_busy` per connect that met a full host: `refused` at once, `waited` for a slot and got
         one, or `gave_up` after the wait. The alert counts the ones a person was turned away by."""
-        self._log("sandbox.host_busy", tier=tier.value, slots=len(self._on()), outcome=outcome,
+        self._log("sandbox.host_busy", tier=tier.value, tool=tool, slots=len(self._on()), outcome=outcome,
                   waited_ms=int((self._clock() - started) * 1000))
 
     def _connect_once(self, principal: str, conversation: str, tier: Tier, *, probe: bool) -> Handle:

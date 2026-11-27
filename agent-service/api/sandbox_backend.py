@@ -129,7 +129,7 @@ class SandboxBackend(Protocol):
     name: str
 
     def connect(self, principal: str, conversation: str, tier: Tier, *, on_wait: OnWait | None = None,
-                cancelled: Callable[[], bool] | None = None) -> Handle: ...
+                cancelled: Callable[[], bool] | None = None, tool: str | None = None) -> Handle: ...
     def find(self, principal: str, conversation: str, tier: Tier) -> Handle | None: ...
     def destroy(self, principal: str, conversation: str) -> int: ...
     def sweep(self, older_than_secs: float, *, running_older_than_secs: float | None = None,
@@ -185,7 +185,7 @@ class BwrapBackend:
         self._existing_workdir = existing_workdir
 
     def connect(self, principal: str, conversation: str, tier: Tier, *, on_wait: OnWait | None = None,
-                cancelled: Callable[[], bool] | None = None) -> Handle:
+                cancelled: Callable[[], bool] | None = None, tool: str | None = None) -> Handle:
         # A child of this machine is never refused for room, so there is nothing to wait for.
         return Handle(key=key_for(principal, conversation), tier=tier, ref=self._workdir_for(principal, conversation))
 

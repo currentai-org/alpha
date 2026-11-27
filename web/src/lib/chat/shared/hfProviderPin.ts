@@ -12,19 +12,8 @@
  */
 export const HF_PROVIDER_PIN: Readonly<Record<string, string>> = {
 	// Hosts in the EU first, then the US, never China, so neither Z.ai's own endpoint nor Novita.
-	// Scaleway and Together answer 402 "Pay-as-you go is not enabled" for our org's billing.
-	// DeepInfra is not used: the router hands `:deepinfra` calls to OpenRouter, which
-	// then calls DeepInfra (header `x-inference-provider: openrouter`, OpenRouter's `gen-` ids), so
-	// OpenRouter would receive the text. Featherless serves GLM-5.2 itself. Its cost: our
-	// account has 10 units, shared with Gemma 4 below and with every preview, and a GLM-5.2 call takes
-	// 4, so a third call at once answers 429 "concurrency_limit_exceeded". A turn then fails over and
-	// shows the busy copy (upstreamBusy.ts), a panelist is skipped, and a probe marks the model busy
-	// (modelBusy.ts). It honours no reasoning-off field for GLM-5.2.
-	"zai-org/glm-5.2": "featherless-ai",
-	// The known exception: Z.ai's own endpoint is GLM-5.2-FP8's only provider on the router, and
-	// production's second opinion runs it. Pinned so the choice is written down; it moves off Z.ai with
-	//.
-	"zai-org/glm-5.2-fp8": "zai-org",
+	// GLM has no row: no router host serves GLM 5.2 or 5.3 without passing the text through OpenRouter,
+	// so Alpha calls no GLM model.
 	// The second-opinion panel's other two members. Unpinned, the router sends them to Novita
 	// or DeepInfra. Featherless caps our account at 10 units and a Qwen call costs 2, so a burst answers
 	// 429; DeepInfra answered 30 of 30 at once and stores no prompts or answers. Qwen's

@@ -294,12 +294,13 @@ def test_a_full_host_that_frees_a_slot_inside_the_wait_gets_the_sandbox_after_on
 
     b, fake, now, events = _waiting_backend(monkeypatch, busy_creates=2)
     statuses: list[str] = []
-    h = b.connect("alice", "c1", Tier.RUN_CODE, on_wait=statuses.append)
+    h = b.connect("alice", "c1", Tier.RUN_CODE, on_wait=statuses.append, tool="run_code")
     assert h.ref.sandbox_id == "s0"
     assert statuses == [SANDBOX_WAIT_TEXT] == ["Waiting for a free sandbox…"]
     assert fake.asked_at == [1000.0, 1005.0, 1012.5]  # 5 s, then half again: inside the breaker's 30 s
     assert [(e, f["outcome"]) for e, f in events] == [("sandbox.host_busy", "waited")]
     assert events[0][1]["waited_ms"] == 12_500
+    assert events[0][1]["tool"] == "run_code"
 
 
 def test_a_host_still_full_past_the_wait_gives_up_with_the_busy_sentence(monkeypatch):
@@ -310,12 +311,13 @@ def test_a_host_still_full_past_the_wait_gives_up_with_the_busy_sentence(monkeyp
     b, fake, now, events = _waiting_backend(monkeypatch, busy_creates=None)
     statuses: list[str] = []
     with pytest.raises(SandboxBusy, match=r"^the sandbox host is full right now; try again in a minute$"):
-        b.connect("alice", "c1", Tier.RUN_CODE, on_wait=statuses.append)
+        b.connect("alice", "c1", Tier.RUN_CODE, on_wait=statuses.append, tool="write_file")
     assert now[0] == 1060.0
     assert statuses == [SANDBOX_WAIT_TEXT]
     gaps = [b2 - a for a, b2 in zip(fake.asked_at, fake.asked_at[1:], strict=False)]
     assert gaps and min(gaps) >= 5.0 and max(gaps) <= 10.0
     assert [(e, f["outcome"], f["waited_ms"]) for e, f in events] == [("sandbox.host_busy", "gave_up", 60_000)]
+    assert events[0][1]["tool"] == "write_file"
 
 
 def test_a_wait_of_zero_refuses_at_once_as_before(monkeypatch):

@@ -20,6 +20,8 @@ export type PickerSite = (typeof pickerSites)[number];
 // Its lane needs `mistral-large-2610` in each prd config's MISTRAL_MODELS.
 // Mistral Large 3 (`mistral-large-2512`) is on no site's picker: Large 4 replaces it, and Medium is
 // Large 4's only stand-in.
+// GLM 5.2 is on no site's picker: every host the Hugging Face router offers for it, or for GLM 5.3,
+// passes the text through OpenRouter, which the privacy notice does not name.
 const PRODUCTION_PICKER = [
 	"mistral-medium-2604",
 	"mistral-large-2610",
@@ -27,7 +29,6 @@ const PRODUCTION_PICKER = [
 	"aisingapore/Nemotron-SEA-LION-v4.8-120B-A12B",
 	"BSC-LT/ALIA-40b-instruct",
 	"speakleash/Bielik-11B-v3.0-Instruct",
-	"zai-org/GLM-5.2",
 ] as const;
 
 /** A model taken off every site's picker for a while, kept in the lists below so restoring it is one deletion. */
@@ -66,7 +67,6 @@ export const PICKER_BEFORE_WITHDRAWALS: Readonly<Record<PickerSite, readonly str
 		"aisingapore/Nemotron-SEA-LION-v4.8-120B-A12B",
 		"BSC-LT/ALIA-40b-instruct",
 		"speakleash/Bielik-11B-v3.0-Instruct",
-		"zai-org/GLM-5.2",
 	],
 	production: PRODUCTION_PICKER,
 	lasagne: PRODUCTION_PICKER,

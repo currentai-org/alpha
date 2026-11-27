@@ -78,7 +78,7 @@ export interface RoutingConfig {
 /**
  * The raw Belebele accuracy below which a model is still learning a language. Four choices
  * per question, so 0.25 is guessing and 0.75 sits two thirds of the way from guessing to perfect. In
- * Amharic, GLM 5.2 (0.86) clears it; Large 4 (0.71), Apertus 70B (0.566), Medium 3.5 (0.441) and
+ * Amharic, Large 4 (0.71), Apertus 70B (0.566), Medium 3.5 (0.441) and
  * Bielik 11B (0.32) do not.
  */
 const STILL_LEARNING_RAW = 0.75;

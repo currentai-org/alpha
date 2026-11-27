@@ -251,12 +251,11 @@ describe("wireModelId pins a table model on every HF-router call, whatever the c
 		expect(() => wire({ laneModelId: "zai-org/GLM-5.3" })).toThrow(/no HF provider pin/);
 	});
 
-	it("pins GLM-5.2-FP8 to zai-org, the known exception until", () => {
-		expect(wire({ baseModelId: "zai-org/GLM-5.2-FP8", provider: "auto" })).toBe("zai-org/GLM-5.2-FP8:zai-org");
-	});
-
-	it("pins GLM-5.2 to featherless-ai, never deepinfra, which the router now passes through OpenRouter", () => {
-		expect(wire({ baseModelId: "zai-org/GLM-5.2", provider: "auto" })).toBe("zai-org/GLM-5.2:featherless-ai");
+	it("refuses GLM-5.2 and GLM-5.2-FP8 by name, since no router host serves them without OpenRouter", () => {
+		expect(() => wire({ baseModelId: "zai-org/GLM-5.2", provider: "auto" })).toThrow(/zai-org\/GLM-5\.2 has no HF provider pin/);
+		expect(() => wire({ baseModelId: "zai-org/GLM-5.2-FP8", provider: "auto" })).toThrow(
+			/zai-org\/GLM-5\.2-FP8 has no HF provider pin/
+		);
 	});
 
 	it("pins the second-opinion panel's Qwen to deepinfra and Gemma to featherless-ai, never the router's pick", () => {
@@ -275,7 +274,7 @@ describe("wireModelId pins a table model on every HF-router call, whatever the c
 	});
 
 	it("pins a lane modelId too, and leaves one that already names a provider alone", () => {
-		expect(wire({ laneModelId: "zai-org/GLM-5.2" })).toBe("zai-org/GLM-5.2:featherless-ai");
+		expect(wire({ laneModelId: "Qwen/Qwen3.6-35B-A3B" })).toBe("Qwen/Qwen3.6-35B-A3B:deepinfra");
 		expect(wire({ laneModelId: "zai-org/GLM-5.3:scaleway" })).toBe("zai-org/GLM-5.3:scaleway");
 	});
 

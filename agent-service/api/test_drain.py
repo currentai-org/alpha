@@ -134,7 +134,7 @@ def test_a_task_outlasting_the_drain_ends_as_a_restart_with_a_done_frame_not_a_d
     """The contract when a task runs past AGENT_DRAIN_SECS: its stream still gets a `done` frame, FAILED
     with interrupted="restart" (what chat turns into "the service restarted, try again"), before the
     process exits, and the durable record says the same for a reader after the restart."""
-    proc, base, _log = server(stub_secs=60, AGENT_DRAIN_SECS="2", AGENT_DRAIN_LINGER_SECS="1")
+    proc, base, log = server(stub_secs=60, AGENT_DRAIN_SECS="2", AGENT_DRAIN_LINGER_SECS="1")
     task_id = _start_task(base, "s-drain-3")
     frames, finished = [], threading.Event()
     threading.Thread(target=_stream_events, args=(base, task_id, frames, finished), daemon=True).start()
@@ -146,3 +146,7 @@ def test_a_task_outlasting_the_drain_ends_as_a_restart_with_a_done_frame_not_a_d
     assert done, f"the stream ended without a done frame (a dropped stream): {frames}"
     assert done[0]["state"] == "FAILED" and done[0]["interrupted"] == "restart", done[0]
     assert proc.wait(20) is not None
+    # The log line a production query reads: the task ended as a restart.
+    lines = [json.loads(ln) for ln in log.read_text().splitlines() if ln.startswith("{")]
+    finished_lines = [r for r in lines if r.get("event") == "run.finished" and r.get("id") == task_id]
+    assert finished_lines and finished_lines[0]["interrupted"] == "restart", finished_lines

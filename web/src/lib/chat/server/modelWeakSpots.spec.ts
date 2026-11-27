@@ -71,9 +71,6 @@ describe("knownWeakSpotFor", () => {
 		expect(knownWeakSpotFor("mistral-large-2610")).toBe(
 			"Mistral Large 4 does not always follow these answer settings: Suggestions: Off."
 		);
-		expect(knownWeakSpotFor("zai-org/GLM-5.2")).toBe(
-			"GLM 5.2 does not always follow these answer settings: Answer length: Short, Answer language."
-		);
 		expect(knownWeakSpotFor("aisingapore/Nemotron-SEA-LION-v4.8-120B-A12B")).toBe(
 			"SEA-LION v4.8 (Nemotron) 120B does not always follow these answer settings: Tone: Plain."
 		);

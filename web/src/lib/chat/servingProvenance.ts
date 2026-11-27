@@ -175,9 +175,8 @@ const PUBLIC_MODEL_PAGES = new Map(
 		"mistralai/Mistral-Medium-3.5-128B",
 		// Public and ungated.
 		"mistralai/Mistral-Small-4-119B-2603",
-		// Public: GLM ungated, Bielik behind the same click-through as Apertus. ALIA's
+		// Public: Bielik is behind the same click-through as Apertus. ALIA's
 		// served BSC-LT/ALIA-40b-instruct answers 401, so it is left off.
-		"zai-org/GLM-5.2",
 		"speakleash/Bielik-11B-v3.0-Instruct",
 		// 200 and ungated. It is in the picker, and without this entry its X-ray row names
 		// the model with nothing to check it against.

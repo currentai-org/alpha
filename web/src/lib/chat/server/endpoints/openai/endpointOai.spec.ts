@@ -1119,17 +1119,17 @@ describe("thinking is off on a GLM side call, and only there", () => {
 		};
 	}
 
-	it("sends thinking disabled to zai-org on an HF-router GLM-5.2-FP8 side call, never reasoning_effort", async () => {
-		const body = await sentBody("zai-org/GLM-5.2-FP8", {});
+	it("sends thinking disabled on a GLM side call that names zai-org, never reasoning_effort", async () => {
+		const body = await sentBody("zai-org/GLM-5.2-FP8:zai-org", {});
 		expect(body.model).toBe("zai-org/GLM-5.2-FP8:zai-org");
 		expect(body.thinking).toEqual({ type: "disabled" });
 		expect(body.reasoning_effort).toBeUndefined();
 	});
 
-	// GLM-5.2 is pinned to Featherless, whose profile row honours no reasoning-off field, so a side
-	// call sends neither and its reasoning is dropped from the text instead.
-	it("sends a GLM-5.2 side call to featherless-ai with no reasoning_effort and no thinking field", async () => {
-		const body = await sentBody("zai-org/GLM-5.2", {});
+	// Featherless's profile row for GLM-5.2 honours no reasoning-off field, so a side call there sends
+	// neither and its reasoning is dropped from the text instead.
+	it("sends a GLM side call that names featherless-ai no reasoning_effort and no thinking field", async () => {
+		const body = await sentBody("zai-org/GLM-5.2:featherless-ai", {});
 		expect(body.model).toBe("zai-org/GLM-5.2:featherless-ai");
 		expect(body.reasoning_effort).toBeUndefined();
 		expect(body.thinking).toBeUndefined();
@@ -1162,43 +1162,16 @@ describe("thinking is off on a GLM side call, and only there", () => {
 		expect(seen).toHaveLength(0);
 	});
 
-	it("leaves thinking on for the GLM answer, and still pins its provider", async () => {
-		const body = await sentBody("zai-org/GLM-5.2", { servesUserAnswer: true });
+	it("leaves thinking on for the GLM answer", async () => {
+		const body = await sentBody("zai-org/GLM-5.2:featherless-ai", { servesUserAnswer: true });
 		expect(body.thinking).toBeUndefined();
+		expect(body.reasoning_effort).toBeUndefined();
 		expect(body.model).toBe("zai-org/GLM-5.2:featherless-ai");
 	});
 
-	it("pins a GLM call that asked for provider auto, so the router never picks who gets the text", async () => {
-		const body = await sentBody("zai-org/GLM-5.2", { servesUserAnswer: true, provider: "auto" });
-		expect(body.model).toBe("zai-org/GLM-5.2:featherless-ai");
-	});
-
-	// Sent with reasoning off, GLM 5.2 writes its reasoning into the answer ("Let me answer from the
-	// document."). With it on, the provider streams it apart, into the Working panel. The side call,
-	// pinned the same way, sends no reasoning-off field, since Featherless honours none.
-	it("keeps reasoning on for a GLM answer on the HF router, pinned to featherless-ai like its side call", async () => {
-		const send = async (servesUserAnswer: boolean) => {
-			const seen = stubPlainServer();
-			const endpoint = await endpointOai({
-				type: "openai",
-				baseURL: "https://router.huggingface.co/v1",
-				apiKey: "sk-test",
-				model: { id: "zai-org/GLM-5.2", name: "zai-org/GLM-5.2", parameters: {} },
-			});
-			const stream = await endpoint({
-				messages: [{ from: "user", content: "hi" }],
-				locals: undefined,
-				servesUserAnswer,
-			} as Parameters<typeof endpoint>[0]);
-			for await (const _ of stream) void _;
-			return JSON.parse(String(seen[0].body)) as { model: string; reasoning_effort?: string };
-		};
-		const answer = await send(true);
-		expect(answer.model).toBe("zai-org/GLM-5.2:featherless-ai");
-		expect(answer.reasoning_effort).toBeUndefined();
-		const side = await send(false);
-		expect(side.model).toBe("zai-org/GLM-5.2:featherless-ai");
-		expect(side.reasoning_effort).toBeUndefined();
+	it("pins a table model on an answer that asked for provider auto, so the router never picks who gets the text", async () => {
+		const body = await sentBody("google/gemma-4-31B-it", { servesUserAnswer: true, provider: "auto" });
+		expect(body.model).toBe("google/gemma-4-31B-it:featherless-ai");
 	});
 
 	it("lets an explicit per-request provider win over the pin", async () => {
