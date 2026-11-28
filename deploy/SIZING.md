@@ -1,8 +1,9 @@
 # Sizing an Alpha deployment
 
 How many people one deployment holds, and how big its database gets, from a measured load run and from
-production's own aggregates. The load run is a k6 harness in the source repository, run by a workflow
-there on a pull request labelled `load-run`. Neither ships with the public snapshot.
+production's own aggregates. The serverless run below used a k6 harness that stays with the hosted
+instance's own deploy files. The compose run uses the same k6 script, in `deploy/loadtest/`, run by
+`.github/workflows/load.yml` on a pull request labelled `load-run` or by hand.
 
 ## What the run measured
 

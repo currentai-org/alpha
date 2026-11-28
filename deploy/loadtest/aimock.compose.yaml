@@ -1,0 +1,21 @@
+# Load and soak runs only (.github/workflows/load.yml): deploy/compose.yaml answers from aimock (MIT,
+# github.com/CopilotKit/aimock), the mock OpenAI-compatible model web/scripts/mock-model-e2e.sh uses, so
+# a run spends no tokens and needs no GPU, and every turn still takes the app's real model path. Added
+# through COMPOSE_FILE (up.sh), so deploy/compose.yaml itself, with its published image, is what is
+# measured. The database port is published on loopback for the connection sampler.
+services:
+  aimock:
+    # aimock 1.48.0, the digest mock-model-e2e.sh pins. Bump both together.
+    image: ghcr.io/copilotkit/aimock@sha256:51d8e426ff99f42fa8050bb06548ff541adef2d759e5f83a33bdbf1b47a5f29d
+    command: ["--fixtures", "/fixtures/fixtures.json", "--host", "0.0.0.0", "--validate-on-load"]
+    volumes: ["${GITHUB_WORKSPACE:-..}/web/e2e/mock-model:/fixtures:ro"]
+  db:
+    ports: ["127.0.0.1:5432:5432"]
+  web:
+    depends_on:
+      aimock: { condition: service_started }
+    environment:
+      MODEL_ALLOWLIST: mistral-large-2610
+      TASK_MODEL: mistral-large-2610
+      # Unset by default, as deploy/compose.yaml ships; the workflow's pg_pool_max input sets it.
+      PG_POOL_MAX: ${PG_POOL_MAX:-}
