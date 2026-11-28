@@ -3,7 +3,7 @@
  * reading it is asking: the Redeploy www workflow's smoke, post-deploy-smoke's rollback net, and anyone checking prod
  * during an incident.
  *
- * A literal "OK"/200 returned unconditionally would let a deployment serving "No models available" pass
+ * A 200 returned unconditionally would let a deployment serving "No models available" pass
  * every check.
  *
  * The mock here is `models`, NOT `ensureModelsReady`: stubbing the gate itself proves the route's
@@ -57,6 +57,25 @@ describe("chat healthcheck", () => {
 
 		expect(res.status).toBe(200);
 		expect(H.ready).toHaveBeenCalledTimes(1);
+		expect(await res.json()).toEqual({ ok: true, app: "up", registry: "ok" });
+	});
+
+	// A monitor that reads the body can tell "the app is down" from "the app is up and its model
+	// provider is not": the status stays 503 (no chat turn), the body says the app itself answered.
+	it("the 503 body reports the app up and the registry degraded", async () => {
+		H.ready.mockRejectedValue(new Error("connect ECONNREFUSED"));
+		const { GET } = await import("./+server");
+
+		const res = await call(GET);
+
+		expect(res.status).toBe(503);
+		expect(res.headers.get("content-type")).toBe("application/json");
+		expect(await res.json()).toEqual({
+			ok: false,
+			app: "up",
+			registry: "degraded",
+			reason: expect.stringMatching(/registry is unavailable/i),
+		});
 	});
 
 	// THE ONE THAT MATTERS, and the one the previous spec could not express. This is the exact
@@ -82,7 +101,12 @@ describe("chat healthcheck", () => {
 		const text = await res.text();
 
 		expect(res.status).toBe(503);
-		expect(JSON.parse(text)).toEqual({ ok: false, reason: expect.stringMatching(/registry is unavailable/i) });
+		expect(JSON.parse(text)).toEqual({
+			ok: false,
+			app: "up",
+			registry: "degraded",
+			reason: expect.stringMatching(/registry is unavailable/i),
+		});
 		expect(text).not.toMatch(/ECONNREFUSED|gateway\.internal/);
 		expect(H.logError).toHaveBeenCalledWith(
 			{ err: expect.stringContaining("ECONNREFUSED gateway.internal.example.test") },

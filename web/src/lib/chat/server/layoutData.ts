@@ -322,8 +322,16 @@ export async function getLayoutSettings(locals: App.Locals): Promise<LayoutSetti
 	// Validate against THIS user's effective registry (catalog + their own local endpoint, if any) —
 	// the bare global validModelIdSchema alone would reset a valid `local:*` selection back to the
 	// default every time this loads, since a per-user model never appears in the shared `models` array.
+	// Only once a registry has been published. While the model provider is unreachable the registry is
+	// empty and there is no default to reset to, so a saved pick is left as it is rather than the load
+	// throwing on `defaultModel.id`.
+	const canServe = defaultModel !== undefined;
 	const effectiveValidModelIdSchema = await getEffectiveValidModelIdSchema(locals);
-	if (settings && !effectiveValidModelIdSchema.safeParse(settings?.activeModel).success) {
+	if (
+		canServe &&
+		settings &&
+		!effectiveValidModelIdSchema.safeParse(settings?.activeModel).success
+	) {
 		settings.activeModel = defaultModel.id;
 		await collections.settings.updateOne(authCondition(locals), {
 			$set: { activeModel: defaultModel.id },
@@ -331,6 +339,7 @@ export async function getLayoutSettings(locals: App.Locals): Promise<LayoutSetti
 	}
 
 	if (
+		canServe &&
 		settings?.activeModel &&
 		models.find((m) => m.id === settings?.activeModel)?.unlisted === true
 	) {

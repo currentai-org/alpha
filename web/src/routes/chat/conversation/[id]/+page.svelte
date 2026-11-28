@@ -454,6 +454,9 @@ Modified by Current AI from huggingface/chat-ui.
 		// retried it pre-accept and still couldn't admit). Steers applyEarlyStreamFailure's cache-MISS
 		// copy to the calm "busy" message instead of "connection lost" - it isn't the user's network.
 		let capacityShed = false;
+		// Set when that 503 came from the request gate because the server has no model registry (its model
+		// provider is unreachable). The terminal copy then says the model is unavailable, not "busy".
+		let modelUnavailable = false;
 		// Assigned inside the try once the target message exists; called from the
 		// after-loop, the no-iterator early return, AND the catch — hence function
 		// scope rather than a try-local const.
@@ -759,7 +762,11 @@ Modified by Current AI from huggingface/chat-ui.
 					{
 						type: MessageUpdateType.Status,
 						status: MessageUpdateStatus.Error,
-						message: capacityShed ? ERROR_MESSAGES.atCapacity : ERROR_MESSAGES.connectionLost,
+						message: modelUnavailable
+							? ERROR_MESSAGES.modelUnavailable
+							: capacityShed
+								? ERROR_MESSAGES.atCapacity
+								: ERROR_MESSAGES.connectionLost,
 					},
 				];
 			};
@@ -928,7 +935,8 @@ Modified by Current AI from huggingface/chat-ui.
 						requestFailedEarly = true;
 						// A 503 here is the admission gate's capacity shed, already retried to exhaustion by the vet.
 						// Remember that so the terminal copy is the calm "busy" message, not "connection lost".
-						if (err.status === 503) capacityShed = true;
+						if (err.status === 503 && err.message === ERROR_MESSAGES.modelUnavailable) modelUnavailable = true;
+						else if (err.status === 503) capacityShed = true;
 						return undefined;
 					}
 					requestRefused = true;

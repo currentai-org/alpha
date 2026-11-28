@@ -2,7 +2,7 @@ import { localeCookieName } from '$lib/i18n/locales';
 import type { Cookies } from '@sveltejs/kit';
 import { authenticateRequest } from '$lib/chat/server/auth';
 import { config } from '$lib/chat/server/config';
-import { defaultModel } from '$lib/chat/server/models';
+import { defaultModel, registryCanServe } from '$lib/chat/server/models';
 import { servingFor } from '$lib/chat/server/serving';
 import { resolveTriggerStrategy } from '$lib/chat/search/triggerStrategy';
 import { getTuning } from '$lib/chat/server/tuning';
@@ -170,6 +170,10 @@ export async function loadChatShellData(
 		publicConfig,
 		...featureFlags,
 		models,
+		// True while the model registry cannot serve (its model provider was unreachable): the page still
+		// renders, with an empty model list, and the chat says the model is unavailable instead of
+		// offering a composer. handle.ts lets page loads through in that state.
+		modelsUnavailable: !registryCanServe(),
 		// Models whose turns keep ending on a 429 right now. Auto skips them; a hand pick stays.
 		busyModels: busyModelIds,
 		// How often an open tab re-reads those marks from /chat/api/busy (routing/busyHere.ts).
