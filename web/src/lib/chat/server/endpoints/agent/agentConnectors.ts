@@ -5,8 +5,6 @@
 // service keeps the list in the task's memory and hands it to its model gateway, which relays the engine's
 // calls with the token swapped in, so the token never reaches the sandbox (agent-service/api/mcp_relay.py).
 import { googleServerFor } from "$lib/chat/server/connectors/google";
-import { getDb } from "$lib/chat/server/db/client";
-import { userGoogleConnections } from "$lib/chat/server/db/schema";
 
 /** One connector as /run takes it. */
 export type AgentConnector = { name: string; url: string; headers: Record<string, string> };
@@ -25,10 +23,6 @@ export async function agentConnectorsFor(
 	locals: App.Locals | undefined,
 	deps: AgentConnectorDeps = {}
 ): Promise<AgentConnector[]> {
-	const google = await (deps.googleFor ?? googleServerFor)(
-		locals,
-		{ read: async () => (await getDb().select().from(userGoogleConnections).limit(1))[0] ?? null },
-		deps.googleStub ? "google_connector_stub" : null
-	);
+	const google = await (deps.googleFor ?? googleServerFor)(locals, {}, deps.googleStub ? "google_connector_stub" : null);
 	return google ? [{ name: google.name, url: google.url, headers: { ...google.headers } }] : [];
 }
