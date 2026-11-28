@@ -22,7 +22,17 @@ vi.mock("$lib/chat/server/textGeneration/faultInjection", () => ({
 
 // A person's own servers. The store is faked; its userId scoping is in the query itself.
 const store = vi.hoisted(() => ({
-	rows: [] as { id: string; userId: string; name: string; url: string; credential: string | null; createdAt: Date }[],
+	rows: [] as {
+		id: string;
+		userId: string;
+		name: string;
+		url: string;
+		credential: string | null;
+		authKind?: "bearer" | "oauth";
+		oauthState?: string | null;
+		needsReconnect?: boolean;
+		createdAt: Date;
+	}[],
 	created: [] as { userId: string; name: string; url: string; credential: string | null }[],
 	deleted: [] as [string, string][],
 }));
@@ -38,6 +48,15 @@ vi.mock("$lib/chat/server/db/userMcpServers", () => ({
 	},
 }));
 vi.mock("$lib/chat/server/config", () => ({ config: { BETTER_AUTH_SECRET: "page-test-secret" } }));
+// Whether an added URL runs the MCP authorization flow. The probe itself is oauthConnect.spec.ts's.
+const oauthProbe = vi.hoisted(() => ({ uses: false, asked: [] as string[] }));
+vi.mock("$lib/chat/server/mcp/oauthConnect", async (importOriginal) => ({
+	...(await importOriginal<typeof import("$lib/chat/server/mcp/oauthConnect")>()),
+	serverUsesOAuth: async (url: string) => {
+		oauthProbe.asked.push(url);
+		return oauthProbe.uses;
+	},
+}));
 
 // A person's Google connection. The store is faked; the turn's token exchange is
 // connectors/google.spec.ts's, so the server it would add is left out here.
@@ -111,6 +130,37 @@ describe("adding and removing a server of your own", () => {
 		store.rows = [];
 		store.created = [];
 		store.deleted = [];
+		oauthProbe.uses = false;
+		oauthProbe.asked = [];
+	});
+
+	it("stores a tokenless server that runs the sign-in flow as an OAuth server and sends the person to connect it", async () => {
+		flag.on = true;
+		oauthProbe.uses = true;
+		await expect(actions.add(post(SIGNED_IN, { name: "notes", url: "https://notes.example.com/mcp" }))).rejects.toMatchObject({
+			status: 303,
+			location: "/chat/api/connectors/mcp/new/connect",
+		});
+		expect(store.created).toEqual([
+			{ userId: "acct-1", name: "notes", url: "https://notes.example.com/mcp", credential: null, authKind: "oauth" },
+		]);
+	});
+
+	it("keeps a tokenless server that has no sign-in flow as a plain server, with no redirect", async () => {
+		flag.on = true;
+		const res = await actions.add(post(SIGNED_IN, { name: "notes", url: "https://notes.example.com/mcp" }));
+		expect(res).toEqual({ added: "notes" });
+		expect(oauthProbe.asked).toEqual(["https://notes.example.com/mcp"]);
+		expect(store.created[0]).toMatchObject({ credential: null });
+		expect(store.created[0]).not.toHaveProperty("authKind");
+	});
+
+	it("never probes for a sign-in flow when the person gave a token", async () => {
+		flag.on = true;
+		oauthProbe.uses = true;
+		const res = await actions.add(post(SIGNED_IN, { name: "notes", url: "https://notes.example.com/mcp", token: "tok_secret_123" }));
+		expect(res).toEqual({ added: "notes" });
+		expect(oauthProbe.asked).toEqual([]);
 	});
 
 	it("refuses a guest, and stores nothing", async () => {
@@ -158,6 +208,55 @@ describe("adding and removing a server of your own", () => {
 		expect(data.signedIn).toBe(true);
 		expect(data.servers.map((s) => [s.name, s.ownId])).toEqual([["mine", "r1"]]);
 		expect(data.servers[0].tools.length).toBe(3);
+	});
+});
+
+describe("Connect and Reconnect on a server that has you sign in", () => {
+	afterEach(() => {
+		store.rows = [];
+	});
+	const oauthRow = async (state: object | null, needsReconnect: boolean) => {
+		const { sealOAuthState } = await import("$lib/chat/server/mcp/oauthProvider");
+		return {
+			id: "o1",
+			userId: "acct-1",
+			name: "notes",
+			url: "https://notes.example.com/mcp",
+			credential: null,
+			authKind: "oauth" as const,
+			oauthState: state ? sealOAuthState(state, "page-test-secret") : null,
+			needsReconnect,
+			createdAt: new Date(0),
+		};
+	};
+	const loadSignedIn = async () =>
+		(await load({ ...event(), locals: SIGNED_IN } as unknown as LoadEvent)) as {
+			servers: { name: string; ownId: string | null; signIn: string | null; tools: unknown[] }[];
+		};
+
+	it("lists a server not yet signed in to with Connect, though a turn cannot reach it", async () => {
+		flag.on = true;
+		store.rows = [await oauthRow(null, false)];
+		const notes = (await loadSignedIn()).servers.find((s) => s.name === "notes");
+		expect(notes).toMatchObject({ ownId: "o1", signIn: "connect", tools: [] });
+	});
+
+	it("still offers Connect, not Reconnect, to a server never signed in to that a turn marked", async () => {
+		flag.on = true;
+		store.rows = [await oauthRow(null, true)];
+		expect((await loadSignedIn()).servers.find((s) => s.name === "notes")?.signIn).toBe("connect");
+	});
+
+	it("offers Reconnect once a signed-in server's sign-in stopped working", async () => {
+		flag.on = true;
+		store.rows = [await oauthRow({ tokens: { access_token: "fake-access", token_type: "Bearer" } }, true)];
+		expect((await loadSignedIn()).servers.find((s) => s.name === "notes")).toMatchObject({ ownId: "o1", signIn: "reconnect" });
+	});
+
+	it("offers neither to an operator's server or a token server", async () => {
+		flag.on = true;
+		store.rows = [{ id: "r1", userId: "acct-1", name: "mine", url: "https://mcp-stub.e2e.invalid/mcp", credential: null, createdAt: new Date(0) }];
+		expect((await loadSignedIn()).servers.map((s) => s.signIn)).toEqual([null]);
 	});
 });
 

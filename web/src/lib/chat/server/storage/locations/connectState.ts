@@ -16,10 +16,17 @@ export const CONNECT_COOKIE_PATH = `${CHAT_API_PATH}/storage/locations/hf`;
 /** Long enough to read a consent screen, short enough that a stale tab cannot finish a connect. */
 export const CONNECT_TTL_SECONDS = 600;
 
-type ConnectState = { state: string; verifier: string; accountId: string; bucket?: string; expiresAt: number };
+type ConnectState = {
+	state: string;
+	verifier: string;
+	accountId: string;
+	bucket?: string;
+	serverId?: string;
+	expiresAt: number;
+};
 
 export function sealConnectState(
-	input: { state: string; verifier: string; accountId: string; bucket?: string },
+	input: { state: string; verifier: string; accountId: string; bucket?: string; serverId?: string },
 	secret: string,
 	now = Date.now()
 ): string {
@@ -39,7 +46,7 @@ export function checkConnectState(
 	accountId: string,
 	secret: string,
 	now = Date.now()
-): { ok: true; verifier: string; bucket?: string } | { ok: false; reason: ConnectRefusal } {
+): { ok: true; verifier: string; bucket?: string; serverId?: string } | { ok: false; reason: ConnectRefusal } {
 	if (!cookie || !returnedState) return { ok: false, reason: "missing" };
 	let parsed: ConnectState;
 	try {
@@ -51,5 +58,10 @@ export function checkConnectState(
 	if (parsed.expiresAt <= now) return { ok: false, reason: "expired" };
 	if (parsed.accountId !== accountId) return { ok: false, reason: "other-account" };
 	if (!sameState(parsed.state, returnedState)) return { ok: false, reason: "state-mismatch" };
-	return { ok: true, verifier: parsed.verifier, ...(parsed.bucket ? { bucket: parsed.bucket } : {}) };
+	return {
+		ok: true,
+		verifier: parsed.verifier,
+		...(parsed.bucket ? { bucket: parsed.bucket } : {}),
+		...(parsed.serverId ? { serverId: parsed.serverId } : {}),
+	};
 }

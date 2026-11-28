@@ -14,6 +14,9 @@ export const base: string = APP_SURFACE === 'chat' ? '' : CHAT_ROUTE_ROOT;
 /** Chat's home as a link target: `/chat` on the site surface, `/` on the chat surface. */
 export const chatHome: string = base || '/';
 
+/** Where Connect and Reconnect send the browser: the route that starts an MCP server's sign-in. */
+export const mcpConnectPath = (id: string): string => `${base}/api/connectors/mcp/${encodeURIComponent(id)}/connect`;
+
 /**
  * Paths that keep their `/chat` prefix on the chat surface and are served there in place, never
  * redirected. Each is registered somewhere outside this repo, or called by a client that

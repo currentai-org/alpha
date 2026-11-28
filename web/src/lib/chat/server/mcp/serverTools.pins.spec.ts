@@ -140,3 +140,21 @@ describe("parseMcpServers pins", () => {
 		expect(logged.error).toEqual(["[mcp-servers] server entry dropped", "[mcp-servers] server entry dropped"]);
 	});
 });
+
+describe("listServerTools reuses a listing for a few minutes, unless asked for a fresh one", () => {
+	beforeEach(() => resetServerToolsCache());
+
+	it("answers a second listing from the cache, and a fresh one from the server", async () => {
+		let calls = 0;
+		const connect = async () => {
+			calls++;
+			return listing([READ])();
+		};
+		await listServerTools([server()], { connect });
+		await listServerTools([server()], { connect });
+		expect(calls).toBe(1);
+		const fresh = await listServerTools([server()], { connect, fresh: true });
+		expect(calls).toBe(2);
+		expect(fresh.map((t) => t.tool)).toEqual(["read_setting"]);
+	});
+});
