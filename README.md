@@ -36,7 +36,7 @@ the image build), and internet access: the first start pulls images and download
 git clone https://github.com/currentai-org/alpha.git
 cd alpha/selfhost
 sed "s/^BETTER_AUTH_SECRET=.*/BETTER_AUTH_SECRET=$(openssl rand -hex 32)/" .env.example > .env
-docker compose --profile locl up --build --wait
+docker compose --profile local up --build --wait
 ```
 <!-- readme-walk:end -->
 
