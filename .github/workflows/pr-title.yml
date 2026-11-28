@@ -8,6 +8,9 @@ name: Pull request title
 on:
   pull_request:
     types: [opened, edited, reopened, synchronize]
+  # A required check must also report in the merge queue. There the title was already checked on the pull
+  # request, so the queue's run passes.
+  merge_group:
 
 permissions: {}
 
@@ -18,6 +21,7 @@ jobs:
     timeout-minutes: 2
     steps:
       - name: Check the title
+        if: github.event_name == 'pull_request'
         env:
           TITLE: ${{ github.event.pull_request.title }}
         run: |
