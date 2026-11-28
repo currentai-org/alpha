@@ -325,7 +325,7 @@ Compose reads `.env` next to `compose.yaml`.
 | `LLAMA_ARG_N_GPU_LAYERS` | `all`, with `compose.gpu.yaml` only | How many of the model's layers llama.cpp puts on the GPU: a number, `auto` or `all`. |
 | `GUARD_SHADOW_URL` | none | A Shieldstral endpoint's base. Set, every turn is screened and a block stops it; with the `safety` profile, `http://shieldstral:8080`. |
 | `SAFETY_MODEL_URL`, `SAFETY_MODEL_FILE` | a pinned Shieldstral Q4_K_M GGUF | With `--profile safety`: the GGUF the classifier downloads, and the file name it is kept under. Change both together. |
-| `ALPHA_IMAGE` | `ghcr.io/currentai-org/alpha:0.3.0-preview.1` | With `compose.release.yaml` only: another release tag or a digest of the app image. |
+| `ALPHA_IMAGE` | `ghcr.io/currentai-org/alpha:0.3.0-preview.2` | With `compose.release.yaml` only: another release tag or a digest of the app image. | <!-- x-release-please-version -->
 | `SMTP_URL` | none | Your mail server, as `smtp://user:password@host:587` (or `smtps://` on 465). Sign-in codes and workspace invitations go out through it. Unset, people sign in with email and password instead. |
 | `SMTP_FROM` | `Alpha <noreply@` your `PUBLIC_ORIGIN` host `>` | The sender address. Set it to one your mail server accepts. |
 | `ALPHA_OPEN_SIGNUP` | unset: closed after the first account | With no mailer, password sign-up closes once one account exists. `true` keeps it open to anyone who reaches the stack. Ignored when a mailer is set. |

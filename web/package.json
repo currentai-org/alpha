@@ -2,7 +2,7 @@
 	"name": "aipotluck-web",
 	"private": true,
 	"license": "MIT AND Apache-2.0",
-	"version": "0.3.0-preview.1",
+	"version": "0.3.0-preview.2",
 	"packageManager": "pnpm@11.0.8",
 	"type": "module",
 	"scripts": {
