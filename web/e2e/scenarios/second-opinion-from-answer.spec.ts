@@ -8,14 +8,15 @@ import { turnDone } from './helpers/turn';
 // Second opinion could not be found among an answer's actions:
 // it rendered only at the foot of X-ray's Step by step. The answer now carries a Second opinion action
 // that opens X-ray there, so this starts from the answer, never from the X-ray tabs, and holds out for
-// the panel's verdict on the page and on the stored message.
+// the panel's verdict on the page and on the stored message. The action also starts the run, so this
+// never clicks the offer's own "Get a collective second opinion" button.
 
 const QUESTION = 'What is the capital of Australia?';
 
 type Stored = { id: string; verdict?: { agreement?: string } };
 
 test(
-	"an answer's Second opinion action opens the offer in X-ray, and the panel returns a verdict that is stored on the answer",
+	"an answer's Second opinion action opens the offer in X-ray and starts the panel by itself, and the verdict is stored on the answer",
 	{ tag: ['@preview-only'] },
 	async ({ page }) => {
 		// One turn (up to 90s) and one panel fan-out (30-50s, up to 120s), after setup.
@@ -45,7 +46,11 @@ test(
 			timeout: 15_000
 		});
 
-		await offer.getByRole('button', { name: /Get a collective second opinion/ }).click();
+		// One click asked for it: the panel is already running, with no offer button left to press.
+		await expect(
+			offer.getByRole('button', { name: /Get a collective second opinion/ }),
+			'the action opened the offer but did not start the panel'
+		).toHaveCount(0, { timeout: 15_000 });
 		await expect(
 			offer.locator('[data-second-opinion-verdict]'),
 			'the panel never returned a verdict on the answer'

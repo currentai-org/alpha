@@ -6,7 +6,7 @@
 	import { provenanceLine, ranOn } from '$lib/chat/provenanceLine';
 	import { chromeCopy } from '$lib/chat/chromeCopy';
 	import { m } from '$lib/paraglide/messages.js';
-	import { stackOpen, xrayMessageId, xraySecondOpinion } from '$lib/chat/stores/stack';
+	import { secondOpinionStart, stackOpen, xrayMessageId, xraySecondOpinion } from '$lib/chat/stores/stack';
 	import { weakSpotsOpen } from '$lib/chat/stores/weakSpots';
 	import { useShowServing } from '$lib/chat/stores/showServing.svelte';
 	import OrgLogo from './OrgLogo.svelte';
@@ -122,11 +122,14 @@
 		xrayMessageId.set(messageId);
 		stackOpen.set(true);
 	}
-	// Second opinion lives in Step by step, so this action opens XRAY there on this answer.
+	// Second opinion lives in Step by step, so this action opens XRAY there on this answer and starts
+	// the run: the button already says what the visitor wants.
 	function openSecondOpinion() {
 		xrayMessageId.set(messageId);
 		xraySecondOpinion.set(true);
 		stackOpen.set(true);
+		// Set after stackOpen: opening clears nothing, closing clears a pending request (stack.ts).
+		secondOpinionStart.set(messageId);
 	}
 </script>
 

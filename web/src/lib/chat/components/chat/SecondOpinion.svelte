@@ -1,4 +1,23 @@
+<script lang="ts" module>
+	import { SvelteMap, SvelteSet } from "svelte/reactivity";
+	import type { Message as StoredMessage } from "$lib/chat/types/Message";
+
+	// The offer unmounts with its X-ray tab and remounts with fresh state, and the answer's own message
+	// is not updated with a live run's result, so both live here for the page: a second Second opinion
+	// click mid-run must not start the fan-out again, and one after a verdict shows it.
+	const started = new SvelteSet<string>();
+	const returned = new SvelteMap<
+		string,
+		{
+			opinions: NonNullable<StoredMessage["opinions"]>;
+			unanswered: NonNullable<StoredMessage["unanswered"]>;
+			verdict: NonNullable<StoredMessage["verdict"]>;
+		}
+	>();
+</script>
+
 <script lang="ts">
+	import { untrack } from "svelte";
 	import { page } from "$app/state";
 	import { base } from "$lib/chat/paths";
 	import { elapsedSeconds } from "$lib/chat/utils/elapsed.svelte";
@@ -16,6 +35,7 @@
 	import { m } from "$lib/paraglide/messages.js";
 	import { assistHostLabel } from "$lib/chat/utils/trace/assistHost";
 	import { historyKeyring } from "$lib/chat/crypto/historyKeyring.svelte";
+	import { secondOpinionStart } from "$lib/chat/stores/stack";
 
 	// Collective second opinion. The Apertus answer is shown
 	// above; one click fans the question out to a panel of independent open models in
@@ -41,11 +61,15 @@
 	let { question, messageId, opinions, verdict, unanswered: persistedUnanswered }: Props = $props();
 
 	// svelte-ignore state_referenced_locally
-	let takes = $state<Opinion[]>(opinions ? [...opinions] : []);
+	const kept = !opinions?.length && messageId ? returned.get(messageId) : undefined;
 	// svelte-ignore state_referenced_locally
-	let unanswered = $state<NonNullable<Message["unanswered"]>>(persistedUnanswered ? [...persistedUnanswered] : []);
+	let takes = $state<Opinion[]>(opinions?.length ? [...opinions] : kept ? [...kept.opinions] : []);
 	// svelte-ignore state_referenced_locally
-	let panelVerdict = $state<Verdict | undefined>(verdict);
+	let unanswered = $state<NonNullable<Message["unanswered"]>>(
+		persistedUnanswered ? [...persistedUnanswered] : kept ? [...kept.unanswered] : []
+	);
+	// svelte-ignore state_referenced_locally
+	let panelVerdict = $state<Verdict | undefined>(verdict ?? kept?.verdict);
 	let loading = $state(false);
 	let unavailable = $state(false);
 	// WHY the panel is unavailable, not just that it is. `not_configured` is permanent (see
@@ -135,10 +159,24 @@
 		}
 	}
 
+	// An answer's Second opinion action asks for this answer's run: take the request once and start it,
+	// unless this answer already has a run in flight or a verdict to show.
+	$effect(() => {
+		if (!messageId || $secondOpinionStart !== messageId) return;
+		secondOpinionStart.set(undefined);
+		const id = messageId;
+		untrack(() => {
+			if (loading || done || started.has(id)) return;
+			void getCollective();
+		});
+	});
+
 	async function getCollective() {
 		const q = (question ?? "").trim();
 		if (!q || loading) return;
 		loading = true;
+		if (messageId) started.add(messageId);
+		let succeeded = false;
 		unavailable = false;
 		unavailableReason = null;
 		panelStatus = [];
@@ -218,6 +256,8 @@
 			takes = final.opinions;
 			unanswered = Array.isArray(final.unanswered) ? final.unanswered : [];
 			panelVerdict = final.verdict as Verdict;
+			succeeded = true;
+			if (messageId) returned.set(messageId, { opinions: takes, unanswered, verdict: panelVerdict });
 			// Count the panel toward the session energy estimate: it ran N independent open models plus
 			// a synthesiser — real inference the footprint otherwise misses. Same output-token proxy as a
 			// normal reply, summed over every take + the verdict. Recorded once, here in the live fetch
@@ -244,6 +284,8 @@
 		} finally {
 			loading = false;
 			controller = null;
+			// Only a returned verdict stays marked; a failed or cancelled run can be asked for again.
+			if (messageId && !succeeded) started.delete(messageId);
 		}
 	}
 </script>

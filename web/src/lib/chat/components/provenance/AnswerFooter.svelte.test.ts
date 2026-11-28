@@ -135,8 +135,8 @@ describe('AnswerFooter — Second opinion opens X-ray on this answer', () => {
 		expect(page.getByRole('button', { name: 'Second opinion' }).elements()).toHaveLength(0);
 	});
 
-	it('opens X-ray on this answer and asks it for the second-opinion offer', async () => {
-		const { stackOpen, xrayMessageId, xraySecondOpinion } = await import('$lib/chat/stores/stack');
+	it('opens X-ray on this answer, asks it for the second-opinion offer and asks that offer to start', async () => {
+		const { secondOpinionStart, stackOpen, xrayMessageId, xraySecondOpinion } = await import('$lib/chat/stores/stack');
 		const { get } = await import('svelte/store');
 		stackOpen.set(false);
 		await render(AnswerFooter, { messageId: 'm7', content: 'x', secondOpinion: true });
@@ -145,6 +145,7 @@ describe('AnswerFooter — Second opinion opens X-ray on this answer', () => {
 		expect(get(stackOpen)).toBe(true);
 		expect(get(xrayMessageId)).toBe('m7');
 		expect(get(xraySecondOpinion)).toBe(true);
+		expect(get(secondOpinionStart)).toBe('m7');
 	});
 });
 
