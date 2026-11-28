@@ -35,6 +35,38 @@ describe('mistralKey', () => {
 	});
 });
 
+describe('a production deployment is never a per-ticket preview', () => {
+	beforeEach(() => {
+		for (const k of Object.keys(cfg)) delete cfg[k];
+		cfg.MISTRAL_API_KEY = 'main-workspace';
+		cfg.MISTRAL_API_KEY_CI = 'ci-workspace';
+		cfg.TASK_MODEL = 'mistral-small-2603';
+		vi.unstubAllEnvs();
+	});
+	const PICKER = 'mistral-medium-2604,mistral-large-2610,mistral-small-2603';
+
+	it.each(['v0.3.0', 'v0.3.0-preview.3', 'v1.2.10-rc.1'])(
+		'a production build from release tag %s keeps the picker order and bills MISTRAL_API_KEY',
+		(tag) => {
+			expect(ticketBranchAllowlist(PICKER, tag)).toBe(PICKER);
+			expect(mistralKeyEnv(tag)).toBe('MISTRAL_API_KEY');
+			expect(mistralChatLane(tag).apiKey).toBe('main-workspace');
+		}
+	);
+
+	it('a production deployment keeps the picker order whatever its ref', () => {
+		vi.stubEnv('DEPLOY_ENV', 'production');
+		expect(ticketBranchAllowlist(PICKER, 'hotfix/some-branch')).toBe(PICKER);
+		expect(mistralKeyEnv('hotfix/some-branch')).toBe('MISTRAL_API_KEY');
+	});
+
+	it('a beta tag or a preview deployment of a branch is still a per-ticket preview', () => {
+		vi.stubEnv('DEPLOY_ENV', 'preview');
+		expect(ticketBranchAllowlist(PICKER, 'v0.3.0-beta.1').split(',')[0]).toBe('mistral-small-2603');
+		expect(mistralKeyEnv('dev/cur-1-thing')).toBe('MISTRAL_API_KEY_CI');
+	});
+});
+
 describe('ticketBranchAllowlist', () => {
 	const SPEC = 'mistral-large-2512,swiss-ai/apertus-v1.5-70b,mistral-small-2603';
 

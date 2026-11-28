@@ -9,6 +9,9 @@
 #                                 (ZENTROPI_S1_ENDPOINT_URL, web/config/safetyScreen.ts), whose env var wins
 #                                 over the deployed address. A screen that cannot answer fails closed, so
 #                                 the build comes up and every turn is declined, as a broken screen would.
+#                                 PROVE_RED=default-model: GIT_REF names a per-ticket branch, so the build
+#                                 puts TASK_MODEL ahead of the picker's default (mistralKey.ts), as a
+#                                 production build misread as a preview once did.
 #                                 PROVE_RED=provider: every model base URL in DEAD_PROVIDER, which also
 #                                 leaves the model list empty, so the build never comes up, as in a real
 #                                 provider outage.
@@ -27,6 +30,10 @@ env)
 	answer)
 		echo "--env GUARD_SHADOW_URL=http://127.0.0.1:9 --env ZENTROPI_S1_ENDPOINT_URL=http://127.0.0.1:9"
 		echo "::notice title=prove_red::the build's input screens point at a closed port" >&2
+		;;
+	default-model)
+		echo "--env GIT_REF=prove-red/a-ticket-branch"
+		echo "::notice title=prove_red::the build reads its ref as a per-ticket branch, so its default model is TASK_MODEL" >&2
 		;;
 	provider)
 		args=()
