@@ -132,7 +132,12 @@ async function refreshOnce(
 	fetchFn: FetchLike
 ): Promise<{ ok: true; state: McpOAuthState } | { ok: false; reason: string }> {
 	if (!state.tokens?.refresh_token) return { ok: false, reason: "no-refresh-token" };
-	const provider = providerForRow(row, { redirectUrl: mcpOAuthCallbackUrl() ?? "http://localhost/unused", secret });
+	// Injury: the refreshed tokens are kept in memory only and never written back to the row.
+	const provider = new RowOAuthProvider({
+		state: oauthStateOf(row, secret),
+		redirectUrl: mcpOAuthCallbackUrl() ?? "http://localhost/unused",
+		persist: async () => {},
+	});
 	try {
 		const result = await auth(provider, { serverUrl: row.url, fetchFn });
 		if (result !== "AUTHORIZED") return { ok: false, reason: "refresh-wants-consent" };
