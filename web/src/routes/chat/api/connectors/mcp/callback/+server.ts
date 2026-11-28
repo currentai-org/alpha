@@ -9,6 +9,8 @@ import {
 	mcpOAuthCallbackUrl,
 } from "$lib/chat/server/mcp/oauthConnect";
 import { getUserMcpServer } from "$lib/chat/server/db/userMcpServers";
+import { mcpOAuthFetchFor } from "$lib/chat/server/mcp/oauthE2eStub";
+import { resolveFaultInjection } from "$lib/chat/server/textGeneration/faultInjection";
 import { checkConnectState } from "$lib/chat/server/storage/locations/connectState";
 import { credentialSecret } from "$lib/chat/server/storage/locations/sealedSecret";
 
@@ -21,7 +23,7 @@ function back(outcome: "connected" | "denied" | "failed"): never {
 // The provider sends the browser back here after its consent screen. Check the sealed state against
 // the account, find the server it was for, let the SDK trade the code for tokens, and go back to
 // Connectors, which reads `mcp` or `mcp_error` and says what happened.
-export const GET: RequestHandler = async ({ locals, cookies, url }) => {
+export const GET: RequestHandler = async ({ locals, cookies, request, url }) => {
 	if (!mcpServersEnabled()) error(404, "Not found");
 	const accountId = locals.user?._id?.toString();
 	if (!accountId) error(401, "Sign in to connect a server.");
@@ -38,7 +40,12 @@ export const GET: RequestHandler = async ({ locals, cookies, url }) => {
 	const code = url.searchParams.get("code");
 	if (!row || row.authKind !== "oauth" || !redirectUrl || !code) back("failed");
 	try {
-		await finishMcpConnect(row, { redirectUrl, code, iss: url.searchParams.get("iss") ?? undefined });
+		await finishMcpConnect(row, {
+			redirectUrl,
+			code,
+			iss: url.searchParams.get("iss") ?? undefined,
+			fetchFn: mcpOAuthFetchFor(await resolveFaultInjection(request)),
+		});
 	} catch (e) {
 		logger.warn(
 			{ leg: "mcp-oauth", server: row.name, err: e instanceof Error ? e.message : String(e) },

@@ -9,6 +9,8 @@ import {
 	startMcpConnect,
 } from "$lib/chat/server/mcp/oauthConnect";
 import { getUserMcpServer } from "$lib/chat/server/db/userMcpServers";
+import { mcpOAuthFetchFor } from "$lib/chat/server/mcp/oauthE2eStub";
+import { resolveFaultInjection } from "$lib/chat/server/textGeneration/faultInjection";
 import { newState } from "$lib/chat/server/storage/locations/hfOAuth";
 import { CONNECT_TTL_SECONDS, sealConnectState } from "$lib/chat/server/storage/locations/connectState";
 import { credentialSecret } from "$lib/chat/server/storage/locations/sealedSecret";
@@ -18,7 +20,7 @@ const CONNECTORS = `${base}/settings/connectors`;
 // Connect (or Reconnect) on one of the person's own OAuth MCP servers lands here. The SDK registers
 // the client if it has to, starts PKCE and names the provider's consent page; the state and server id
 // go into a short-lived cookie bound to the account, and the browser goes to the provider.
-export const GET: RequestHandler = async ({ locals, cookies, params, url }) => {
+export const GET: RequestHandler = async ({ locals, cookies, params, request, url }) => {
 	if (!mcpServersEnabled()) error(404, "Not found");
 	const accountId = locals.user?._id?.toString();
 	if (!accountId) error(401, "Sign in to connect a server.");
@@ -32,7 +34,11 @@ export const GET: RequestHandler = async ({ locals, cookies, params, url }) => {
 	const state = newState();
 	let started: Awaited<ReturnType<typeof startMcpConnect>>;
 	try {
-		started = await startMcpConnect(row, { redirectUrl, stateParam: state });
+		started = await startMcpConnect(row, {
+			redirectUrl,
+			stateParam: state,
+			fetchFn: mcpOAuthFetchFor(await resolveFaultInjection(request)),
+		});
 	} catch (e) {
 		logger.warn(
 			{ leg: "mcp-oauth", server: row.name, err: e instanceof Error ? e.message : String(e) },

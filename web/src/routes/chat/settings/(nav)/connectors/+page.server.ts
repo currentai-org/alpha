@@ -15,6 +15,7 @@ import { isReadOnly, listServerTools } from "$lib/chat/server/mcp/serverTools";
 import { readMcpToolPolicies, serversForRequest } from "$lib/chat/server/mcp/turnKit";
 import { checkNewServer, sealServerToken, userServerConfigs } from "$lib/chat/server/mcp/userServers";
 import { oauthStateOf, serverUsesOAuth } from "$lib/chat/server/mcp/oauthConnect";
+import { mcpOAuthFetchFor } from "$lib/chat/server/mcp/oauthE2eStub";
 import {
 	createUserMcpServer,
 	deleteUserMcpServer,
@@ -122,7 +123,8 @@ export const actions: Actions = {
 		const checked = checkNewServer(input, taken, own.length);
 		// The token is never echoed back, even on a refusal.
 		if (!checked.ok) return fail(400, { error: checked.error, name: input.name, url: input.url });
-		if (!checked.token && (await serverUsesOAuth(checked.url))) {
+		const oauthFetch = mcpOAuthFetchFor(await resolveFaultInjection(request));
+		if (!checked.token && (await serverUsesOAuth(checked.url, oauthFetch))) {
 			const row = await createUserMcpServer({
 				userId: accountId,
 				name: checked.name,
