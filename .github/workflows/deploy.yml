@@ -18,6 +18,8 @@
 # pull request is the gate for production. The jobs' own ref checks back the environments' rules. It is not
 # `production`, which holds the agent service's deploys. Repository variables VERCEL_SCOPE (the Vercel team)
 # and VERCEL_PROJECT name the target. A fork or a copy without them gets a notice and deploys nothing.
+# Each environment's variable DEPLOYMENT_JSON is the installation's identity file (hosts, status page,
+# passkey domain, mail sender), written into the build by .github/scripts/write-deployment-config.sh.
 name: Deploy
 
 on:
@@ -71,6 +73,12 @@ jobs:
           node-version-file: .nvmrc
           # A release build must not read a cache another run could have written.
           package-manager-cache: false
+
+      - name: Write the installation's identity file
+        if: steps.configured.outputs.run == 'true'
+        env:
+          DEPLOYMENT_JSON: ${{ vars.DEPLOYMENT_JSON }}
+        run: .github/scripts/write-deployment-config.sh
 
       - name: Deploy a preview build
         id: deploy
@@ -159,6 +167,12 @@ jobs:
           node-version-file: .nvmrc
           # A release build must not read a cache another run could have written.
           package-manager-cache: false
+
+      - name: Write the installation's identity file
+        if: steps.configured.outputs.run == 'true'
+        env:
+          DEPLOYMENT_JSON: ${{ vars.DEPLOYMENT_JSON }}
+        run: .github/scripts/write-deployment-config.sh
 
       - name: Deploy without the domain
         id: deploy
