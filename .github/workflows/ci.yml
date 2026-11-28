@@ -170,6 +170,9 @@ jobs:
       # deploy.yml's smoke must not blame a build for a site host that is down for every build.
       - name: deploy smoke's legal-page verdicts
         run: .github/scripts/legal-page.test.sh
+      # A prove_red run must never post to the team's alerts channel.
+      - name: alerts stay off the channel under prove_red
+        run: .github/scripts/tell-alerts.test.sh
       - name: actionlint
         run: |
           tarball="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
