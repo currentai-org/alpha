@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Smoke one running Alpha web container: the health check, the model list, then one chat
-# turn as a signed-out guest, requiring a non-empty answer. Exits non-zero on any failure.
+# turn as a signed-out guest, requiring a non-empty answer that no safety screen declined. Exits
+# non-zero on any failure.
 #
 #   deploy/smoke.sh                                  # against http://localhost:3000
 #   SMOKE_BASE=https://alpha.example deploy/smoke.sh
@@ -63,6 +64,9 @@ turn() {
 		| ($ev | map(select(.type=="finalAnswer") | .text) | last)
 		// ($ev | map(select(.type=="stream") | .token) | join(""))' < "$out")
 	err=$(jq -rRs '[split("\n")[] | fromjson? | select(.type=="status" and .status=="error") | .message] | first // empty' < "$out")
+	# A safety decline streams a `safety` (input screen) or `outputSafety` (answer screen) update, then its
+	# decline copy as the final answer. That copy is not empty, so it is checked on its own.
+	declined=$(jq -rRs '[split("\n")[] | fromjson? | select(.type=="safety" or .type=="outputSafety") | "\(.type) \(.kind // "")"] | first // empty' < "$out")
 	first_s=$(jq -rRs --argjson t0 "$t0" '[split("\n")[] | select(length > 0) | split("\t") as [$t, $l]
 		| select(($l | fromjson? | .type) == "stream") | ($t | tonumber) - $t0] | first // empty | . * 10 | round / 10' < "$out.stamped")
 	total_s=$(jq -rRs --argjson t0 "$t0" '[split("\n")[] | select(length > 0) | split("\t")[0] | tonumber] | last // empty
@@ -74,6 +78,7 @@ newid() { cat /proc/sys/kernel/random/uuid; }
 first_answer_id=$(newid)
 turn "$PROMPT" "$(newid)" "$first_answer_id" || fail "turn request failed (curl exit $?)"
 [ -z "$err" ] || fail "the turn ended on an error: $err"
+[ -z "$declined" ] || fail "the safety screen declined the turn ($declined), so no model answered it"
 [ -n "$(tr -d '[:space:]' <<<"$answer")" ] || { head -c 2000 "$out" >&2; fail "empty answer"; }
 if [ -n "${SMOKE_EXPECT:-}" ] && ! grep -qF -- "$SMOKE_EXPECT" <<<"$answer"; then
 	fail "the answer does not contain the expected text: $answer"
@@ -84,7 +89,7 @@ echo "ok   turn 1: first word after ${first_s:-?} s, whole answer after ${total_
 # 5. Optionally a follow-up turn on the first answer, to time a turn whose prompt the model has mostly seen.
 #    Report-only: what it prints is a measurement, and a failure here never fails the smoke.
 if [ -n "${SMOKE_SECOND_PROMPT:-}" ]; then
-	if turn "$SMOKE_SECOND_PROMPT" "$first_answer_id" "$(newid)" && [ -z "$err" ] && [ -n "$(tr -d '[:space:]' <<<"$answer")" ]; then
+	if turn "$SMOKE_SECOND_PROMPT" "$first_answer_id" "$(newid)" && [ -z "$err" ] && [ -z "$declined" ] && [ -n "$(tr -d '[:space:]' <<<"$answer")" ]; then
 		echo "ok   turn 2: first word after ${first_s:-?} s, whole answer after ${total_s:-?} s"
 	else
 		echo "WARN turn 2 did not answer (report-only): ${err:-no answer}" >&2

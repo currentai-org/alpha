@@ -327,11 +327,38 @@ jobs:
           COMPOSE_FILE: compose.yaml:compose.release.yaml
         run: docker compose --profile local down -v || true
 
+  # The other way to run a release: deploy/compose.yaml on the pulled digest, with aimock as the model. The
+  # guest turn must be the mock's answer, so a digest whose turns all come back declined or errored never
+  # gets a version tag (.github/deploy-compose-smoke.sh).
+  deploy-compose-smoke:
+    name: deploy compose smoke on the pulled image
+    needs: publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: read # pull the candidate by digest
+    env:
+      POSTGRES_IMAGE: mirror.gcr.io/library/postgres:17-alpine
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Boot deploy/compose.yaml on the pulled image and chat
+        env:
+          DIGEST: ${{ needs.publish.outputs.digest }}
+        run: ALPHA_IMAGE="$IMAGE@$DIGEST" ./.github/deploy-compose-smoke.sh
+
   # The version tags, put on the digest that passed the scan and the smoke. Retagging moves no bytes,
   # and the signature and attestation are on the digest, so they stay valid.
   release-tags:
     name: tag the verified digest
-    needs: [publish, smoke]
+    needs: [publish, smoke, deploy-compose-smoke]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
