@@ -4,6 +4,7 @@ import { getReturnFromGenerator } from "$lib/chat/utils/getReturnFromGenerator";
 import { logger } from "$lib/chat/server/logger";
 import { config } from "$lib/chat/server/config";
 import { createOpenAIClient } from "$lib/chat/server/openaiClient";
+import { createChatCompletion } from "$lib/chat/server/chatRequest";
 import { firstKey } from "$lib/chat/server/env/firstKey";
 import { defaultModel, taskModel } from "$lib/chat/server/models";
 import { flattenForApertus } from "$lib/chat/server/endpoints/openai/flattenForApertus";
@@ -293,7 +294,8 @@ export async function decideSearchViaTool(
 				...classifierBillingHeaders(lane, locals),
 			},
 		});
-		const res = await client.chat.completions.create(
+		const res = await createChatCompletion(
+			client,
 			{
 				model: lane.modelId,
 				// The files ride as context, so a question about them doesn't read as a lookup. One
@@ -321,6 +323,7 @@ export async function decideSearchViaTool(
 				// known off switch here, or it waits out the timeout.
 				...measuredReasoningOff(lane.modelId, lane.baseURL),
 			},
+			{ baseURL: lane.baseURL },
 			{
 				timeout: CLASSIFIER_HTTP_TIMEOUT_MS,
 				headers: { "X-use-cache": "false", ...classifierRequestHeaders(lane, locals) }

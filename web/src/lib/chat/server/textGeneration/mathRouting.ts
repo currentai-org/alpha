@@ -27,7 +27,7 @@ import { endpointApiKey } from "$lib/chat/server/endpointKey";
 import { flagEnabledOr } from "$lib/chat/server/flags";
 import { logger } from "$lib/chat/server/logger";
 import { createOpenAIClient } from "$lib/chat/server/openaiClient";
-import { reasoningOffRequest } from "$lib/chat/server/endpoints/openai/thinkFilter";
+import { createChatCompletion } from "$lib/chat/server/chatRequest";
 import { MessageUpdateType, type MessageUpdate } from "$lib/chat/types/MessageUpdate";
 import { extractInlineToolCallArgs, rawToolCallArgs, type ToolCallMessage } from "./forcedToolCallLane";
 import {
@@ -132,10 +132,9 @@ async function forcedToolCall(
 	const billTo = ((Reflect.get(config, "HF_BILL_TO") as string | undefined) ?? "").trim();
 	// GLM reasons before a tool call unless told not to, and these calls need none. Which field turns
 	// reasoning off depends on the provider (thinkFilter.ts): zai-org reads `thinking`, while Scaleway
-	// reads `reasoning_effort: "none"`. The request is built inside the try because a GLM id with no
-	// provider pin throws here, which fails the plan rather than the turn.
+	// reads `reasoning_effort: "none"`; chatRequest.ts picks the field. The request is built inside the
+	// try because a GLM id with no provider pin throws there, which fails the plan rather than the turn.
 	try {
-		const reasoningOff = reasoningOffRequest(lane.modelId, lane.baseURL, config.OPENAI_BASE_URL);
 		const client: OpenAI = await createOpenAIClient({
 			baseURL: lane.baseURL,
 			apiKey: lane.apiKey,
@@ -146,23 +145,22 @@ async function forcedToolCall(
 			},
 		});
 		const sentAt = Date.now();
-		const response = await client.chat.completions
-			.create(
-				{
-					model: reasoningOff.model,
-					messages: [
-						{ role: "system", content: body.system },
-						...(body.transcript as OpenAI.Chat.Completions.ChatCompletionMessageParam[]),
-					],
-					tools: [body.tool as OpenAI.Chat.Completions.ChatCompletionTool],
-					tool_choice: { type: "function", function: { name } },
-					temperature: 0,
-					max_tokens: body.maxTokens,
-					...(reasoningOff.fields as Record<string, unknown>),
-				},
-				{ signal, timeout: PLAN_TIMEOUT_MS }
-			)
-			.asResponse();
+		const response = await createChatCompletion(
+			client,
+			{
+				model: lane.modelId,
+				messages: [
+					{ role: "system", content: body.system },
+					...(body.transcript as OpenAI.Chat.Completions.ChatCompletionMessageParam[]),
+				],
+				tools: [body.tool as OpenAI.Chat.Completions.ChatCompletionTool],
+				tool_choice: { type: "function", function: { name } },
+				temperature: 0,
+				max_tokens: body.maxTokens,
+			},
+			{ baseURL: lane.baseURL, reasoning: "off", gatewayBaseURL: config.OPENAI_BASE_URL },
+			{ signal, timeout: PLAN_TIMEOUT_MS }
+		).asResponse();
 		diag.ttfbMs = Date.now() - sentAt;
 		diag.provider = response.headers.get("x-inference-provider") ?? undefined;
 		if (!response.ok) throw new Error(`${name} call answered ${response.status}`);

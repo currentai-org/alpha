@@ -24,6 +24,7 @@ import type { CatalogEntry } from "./syftCatalog";
 import type { EndpointPick } from "./syftSources";
 import { logger } from "$lib/chat/server/logger";
 import { hfBillToHeader } from "$lib/chat/server/hfBillTo";
+import { postChatCompletion } from "$lib/chat/server/chatRequest";
 import { isHfRouter } from "$lib/chat/server/endpoints/openai/providerPin";
 
 /** Discriminated tri-state so a confident-empty stays distinguishable from undecided through the cache
@@ -310,20 +311,19 @@ async function callRouterModel(opts: {
 	signal?.addEventListener("abort", onAbort, { once: true });
 
 	const doFetch = (withFormat: boolean): Promise<Response> => {
-		const body: Record<string, unknown> = {
+		const body = {
 			model,
 			messages: [
-				{ role: "system", content: system },
-				{ role: "user", content: user },
+				{ role: "system" as const, content: system },
+				{ role: "user" as const, content: user },
 			],
 			max_tokens: ROUTER_MAX_TOKENS,
-			stream: false,
+			stream: false as const,
+			...(withFormat ? { response_format: { type: "json_object" as const } } : {}),
 		};
-		if (withFormat) {
-			body.response_format = { type: "json_object" };
-		}
-		return fetch(`${baseURL}/chat/completions`, {
-			method: "POST",
+		// Roles kept: the reply must parse as a JSON pick list, and nobody has measured that with the
+		// prompt flattened, so an Apertus primary still gets the system role here.
+		return postChatCompletion(baseURL, body, { roles: "keep" }, {
 			headers: {
 				"content-type": "application/json",
 				authorization: `Bearer ${key}`,
@@ -335,7 +335,6 @@ async function callRouterModel(opts: {
 				// Providers"), and every routing call falls to `undecided`. Omitted when unset.
 				...hfBillToHeader(baseURL, { ownLane: false }, billTo),
 			},
-			body: JSON.stringify(body),
 			signal: fetchCtrl.signal,
 		});
 	};

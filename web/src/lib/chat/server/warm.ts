@@ -56,6 +56,7 @@ import { sameServedModel } from "../../../../config/picker";
 import { syftEnabled, syftRouter } from "$lib/chat/server/rag/env";
 import { getDb } from "$lib/chat/server/db/client";
 import { logger } from "$lib/chat/server/logger";
+import { postChatCompletion } from "$lib/chat/server/chatRequest";
 
 /**
  * Every leg below throttles on real `Date.now()`, and the per-leg windows are short — 15s for db,
@@ -236,15 +237,11 @@ export async function warmModel(): Promise<void> {
 	const ok = await timedWarm(
 		"model",
 		async () => {
-			const res = await fetch(`${baseURL}/chat/completions`, {
-				method: "POST",
-				headers: {
-					"content-type": "application/json",
-					authorization: `Bearer ${key}`,
-					// The HF router WAF 403s the OpenAI SDK's default UA; mirror the endpoint's override.
-					"User-Agent": APP_USER_AGENT,
-				},
-				body: JSON.stringify({
+			// Through the request builder like every other call. Roles kept: the messages below already
+			// take the shape the answer lane sends this model.
+			const res = await postChatCompletion(
+				baseURL,
+				{
 					model: id,
 					// A different prompt every call, so no response cache can answer it. The gateway's
 					// LiteLLM cache answers a fixed "hi" itself (`x-litellm-cache-key` present, under a
@@ -261,9 +258,18 @@ export async function warmModel(): Promise<void> {
 							],
 					max_tokens: 1,
 					stream: false,
-				}),
-				signal: AbortSignal.timeout(20_000),
-			});
+				},
+				{ roles: "keep" },
+				{
+					headers: {
+						"content-type": "application/json",
+						authorization: `Bearer ${key}`,
+						// The HF router WAF 403s the OpenAI SDK's default UA; mirror the endpoint's override.
+						"User-Agent": APP_USER_AGENT,
+					},
+					signal: AbortSignal.timeout(20_000),
+				}
+			);
 			// A 429 is the host answering that its per-minute limit is full, which real turns hit too in a
 			// busy minute. It says the lane is up and says nothing about the model, so it is no verdict:
 			// logged as busy, kept out of model:warm's failure count below.

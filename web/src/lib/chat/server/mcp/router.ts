@@ -25,6 +25,7 @@ export function isReadAloudIntent(text: string): boolean {
 export async function routerLane(): Promise<{
 	client: Awaited<ReturnType<typeof createOpenAIClient>>;
 	model: string;
+	baseURL: string;
 }> {
 	const cfg = (k: string): string | undefined => {
 		const v = Reflect.get(config, k);
@@ -44,5 +45,5 @@ export async function routerLane(): Promise<{
 		timeout: 8_000,
 		defaultHeaders: { "User-Agent": APP_USER_AGENT },
 	});
-	return { client, model };
+	return { client, model, baseURL };
 }
