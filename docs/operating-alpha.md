@@ -118,12 +118,13 @@ restored this way.
 
 ## What watches the hosted install
 
-The deploy smoke runs in this repository. The other checks run from the maintainers' monitoring, outside it,
-and post to the same alerts channel.
+The deploy smoke and the app's own scheduled job run from this repository. The other checks run from the
+maintainers' monitoring, outside it, and post to the same alerts channel.
 
 | Check | How often | Where it tells |
 | --- | --- | --- |
 | The deploy smoke | every deploy | the run, the alerts channel on verdict 2 |
+| The app's scheduled job (`/chat/api/probes`, in `web/vercel.json`): the safety screen and the judge, each sent a probe through the real screening path | every 3 minutes, on production only | the alerts channel, after three failed probes in a row |
 | A real chat turn against production | scheduled every 20 minutes; GitHub delivers it about every 90, at worst about 4 hours apart | the alerts channel, after two failed runs |
 | The same turn against develop | hourly | the alerts channel |
 | `/chat/healthcheck` URL monitor | every 3 minutes | email |
@@ -132,10 +133,14 @@ and post to the same alerts channel.
 `/chat/healthcheck` answers 503 only when the model registry can't serve a turn. It answers 200 while a
 safety screen or the judge fails closed.
 
-**The gap.** A build that is healthy but declines every turn shows only on the real chat turn, which can
-take about 5 hours in the worst case (the scheduler's longest gap plus the alert's wait), or on the deploy
-smoke if a deploy caused it. Nothing else catches it sooner. If users report every message being declined,
-send a guest turn yourself before trusting the health check.
+**A build that is healthy but declines every turn.** On production, the scheduled job alerts in about 10
+minutes when the safety screen or the judge fails closed. A decline with any other cause shows only on the
+real chat turn, which can take about 5 hours in the worst case, or on the deploy smoke if a deploy caused it.
+
+Develop has no alert after a deploy. Vercel runs the scheduled job only on a production deployment, and
+develop is a preview with no alerts webhook, so a screen that dies there after the smoke passed is not
+reported. If users report every message being declined, send a guest turn yourself before trusting the
+health check.
 
 ## Read logs, errors and status
 
