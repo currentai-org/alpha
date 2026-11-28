@@ -35,9 +35,26 @@ const SLACK_URL = "https://hooks.slack.test/triggers/x";
 const HB_URL = "https://uptime.test/api/v1/heartbeat/dep";
 // INSTANCE, read the same way; "" is www. A test sets it to stand in for an event instance.
 const instanceEnv = vi.hoisted(() => ({ value: "" }));
+// Where the alert says it came from: PUBLIC_ORIGIN, the deployment's own URL and the deploy environment.
+const sourceEnv = vi.hoisted(() => ({
+	origin: "https://chat.example.org",
+	deployment: "",
+	env: "production" as "production" | "preview" | "development" | null,
+}));
 vi.mock("$lib/chat/server/env/firstKey", () => ({
 	firstKey: (_keys: string[], name: string) =>
-		name === "instance" ? instanceEnv.value : name === "betterstackDependencyHeartbeat" ? HB_URL : SLACK_URL,
+		name === "instance"
+			? instanceEnv.value
+			: name === "publicOrigin"
+				? sourceEnv.origin
+				: name === "betterstackDependencyHeartbeat"
+					? HB_URL
+					: SLACK_URL,
+}));
+vi.mock("$lib/chat/server/deployEnv", () => ({ deployEnv: () => sourceEnv.env }));
+vi.mock("$lib/server/runtimeEnv", async (importOriginal) => ({
+	...(await importOriginal<typeof import("$lib/server/runtimeEnv")>()),
+	deploymentUrl: () => sourceEnv.deployment || undefined,
 }));
 vi.mock("$lib/chat/server/logger", () => ({
 	logger: { info: vi.fn(), warn: vi.fn() },
@@ -300,10 +317,38 @@ describe("an event instance's alert names the instance", () => {
 		} finally {
 			instanceEnv.value = "";
 		}
-		expect(bodyOf(0)).toContain("aipotluck prod (lugano) — Coop verdict path");
+		expect(bodyOf(0)).toContain("chat.example.org (lugano) — Coop verdict path");
 	});
-	it("a firing alert on www, where INSTANCE is unset, stays plain", async () => {
+	it("a firing alert on production, where INSTANCE is unset, names only the host", async () => {
 		for (let i = 0; i < 3; i++) await recordProbe(KEY, false, opts);
-		expect(bodyOf(0)).toContain("aipotluck prod — Coop verdict path");
+		expect(bodyOf(0)).toContain("🔴 chat.example.org — Coop verdict path");
+	});
+});
+
+describe("an alert from a non-production deployment says so", () => {
+	it("a preview names its environment and its own deployment URL, never reading as production", async () => {
+		sourceEnv.env = "preview";
+		sourceEnv.origin = "https://develop.example.org";
+		sourceEnv.deployment = "app-abc123.vercel.app";
+		try {
+			for (let i = 0; i < 3; i++) await recordProbe(KEY, false, opts);
+		} finally {
+			sourceEnv.env = "production";
+			sourceEnv.origin = "https://chat.example.org";
+			sourceEnv.deployment = "";
+		}
+		expect(bodyOf(0)).toContain("develop.example.org (preview app-abc123.vercel.app) — Coop verdict path");
+		expect(bodyOf(0)).not.toContain("prod");
+	});
+	it("an installation with no PUBLIC_ORIGIN or environment still says what it can", async () => {
+		sourceEnv.env = null;
+		sourceEnv.origin = "";
+		try {
+			for (let i = 0; i < 3; i++) await recordProbe(KEY, false, opts);
+		} finally {
+			sourceEnv.env = "production";
+			sourceEnv.origin = "https://chat.example.org";
+		}
+		expect(bodyOf(0)).toContain("this installation (unknown environment) — Coop verdict path");
 	});
 });

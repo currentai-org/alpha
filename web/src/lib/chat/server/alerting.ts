@@ -9,8 +9,10 @@ import { eq } from "drizzle-orm";
 import { getDb } from "$lib/chat/server/db/client";
 import { alertState } from "$lib/chat/server/db/schema";
 import { firstKey } from "$lib/chat/server/env/firstKey";
+import { deployEnv } from "$lib/chat/server/deployEnv";
 import { DEFAULT_INSTANCE, deploymentInstance } from "$lib/chat/server/instance";
 import { logger, securityLogger } from "$lib/chat/server/logger";
+import { deploymentUrl } from "$lib/server/runtimeEnv";
 import { postSlackWebhook } from "../../../../scripts/lib/slackWebhook.mjs";
 
 // Consecutive UNHEALTHY probes before firing — a single blip / cold-start never reaches it; sustained
@@ -40,9 +42,28 @@ type ProbeOpts = {
 
 /** The deployment an alert comes from. An event instance names itself, so its alert can't be read as
  *  www's or alpha's: each instance runs its own probes against its own config. */
+/** Who is alerting: the installation's host, then what kind of deployment it is when that isn't
+ *  production, and the event instance when it isn't the default. A preview shares develop's
+ *  PUBLIC_ORIGIN, so it also names its own deployment URL, which keeps a throwaway build from reading
+ *  as the develop host. */
 function alertSource(): string {
 	const instance = deploymentInstance({ INSTANCE: firstKey(["INSTANCE"], "instance", { allowEmpty: true }) });
-	return instance === DEFAULT_INSTANCE ? "aipotluck prod" : `aipotluck prod (${instance})`;
+	const origin = firstKey(["PUBLIC_ORIGIN"], "publicOrigin", { allowEmpty: true });
+	let host = "";
+	try {
+		host = origin ? new URL(origin).host : "";
+	} catch {
+		host = "";
+	}
+	const env = deployEnv();
+	const tags: string[] = [];
+	if (env !== "production") {
+		const deployment = deploymentUrl() ?? "";
+		tags.push(deployment ? `${env ?? "unknown environment"} ${deployment}` : (env ?? "unknown environment"));
+	}
+	if (instance !== DEFAULT_INSTANCE) tags.push(instance);
+	const name = host || "this installation";
+	return tags.length ? `${name} (${tags.join(", ")})` : name;
 }
 
 type AlertVals = {
