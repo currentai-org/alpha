@@ -5,8 +5,8 @@
 #   .github/selfhost-gpu-config-check.sh
 #
 # With the local and safety profiles, `docker compose -f compose.yaml -f compose.gpu.yaml config` must
-# give llama and shieldstral an NVIDIA device request for every GPU with the gpu capability, the pinned
-# server-cuda image, and LLAMA_ARG_N_GPU_LAYERS=all; compose.yaml alone must give neither service a device
+# give llama, shieldstral and qwen3guard an NVIDIA device request for every GPU with the gpu capability, the pinned
+# server-cuda image, and LLAMA_ARG_N_GPU_LAYERS=all; compose.yaml alone must give none of them a device
 # request, so the override is what adds it. Then both pinned images must carry the same llama.cpp release
 # label, so a bump of the CPU pin that leaves the CUDA pin behind fails here (needs registry access).
 # Prints one PASS/FAIL line per claim and GPU CONFIG PASS or GPU CONFIG FAIL last; exits 1 on any FAIL.
@@ -31,7 +31,7 @@ profiles=(--profile local --profile safety)
 gpu=$(docker compose -f compose.yaml -f compose.gpu.yaml "${profiles[@]}" config --format json)
 cpu=$(docker compose -f compose.yaml "${profiles[@]}" config --format json)
 
-for svc in llama shieldstral; do
+for svc in llama shieldstral qwen3guard; do
 	dev=$(jq -c --arg s "$svc" '.services[$s].deploy.resources.reservations.devices // []' <<<"$gpu")
 	echo "$svc devices: $dev"
 	if jq -e 'any(.[]; .driver == "nvidia" and (.count == -1 or .count == "all") and ((.capabilities // []) | index("gpu")))' <<<"$dev" >/dev/null; then

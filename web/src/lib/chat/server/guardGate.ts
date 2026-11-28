@@ -56,11 +56,8 @@ import {
 	type GuardPolicy,
 	type GuardRule,
 } from "$lib/chat/server/guardPolicy";
-import {
-	shieldstralJudge,
-	shieldstralConfigured,
-	SHIELDSTRAL_MODEL,
-} from "$lib/chat/server/detectors/shieldstral";
+import { shieldstralConfigured } from "$lib/chat/server/detectors/shieldstral";
+import { safetyScreen, screenJudge, safetyScreenConfigured, safetyScreenModels } from "$lib/chat/server/detectors/safetyScreen";
 import { makeS1Judge, S1CallLimiter, s1Configured, s1RuleIdsFor, S1_RULES, type S1UnitJudge } from "$lib/chat/server/detectors/s1";
 import { S1_JUDGE } from "../../../../config/safetyScreen";
 import { SELFHOST_CLASSIFIER_SLOTS, SELFHOST_FIRST_PASSES } from "../../../../config/selfhostScreen.mjs";
@@ -172,7 +169,7 @@ export const S1_SAFETY_JUDGE_FLAG = "s1-safety-judge";
  *  `s1-safety-judge` on, text goes to S1 alone (runGuardScreen), so a configured Shieldstral does not
  *  count. Pictures are always Shieldstral's (guardPrimaryConfigured). */
 export function textScreenConfigured(): boolean {
-	return flagEnabledOr(S1_SAFETY_JUDGE_FLAG, () => false) ? s1Configured() : shieldstralConfigured();
+	return flagEnabledOr(S1_SAFETY_JUDGE_FLAG, () => false) ? s1Configured() : safetyScreenConfigured();
 }
 
 let warnedNoScreen = false;
@@ -314,7 +311,7 @@ export type GuardScreenDeps = {
 
 type FirstPassGroup = { name: string; query: string; threshold: number; rules: readonly string[] };
 
-/** The first passes for this operation. On a self-host edition, a Shieldstral input screen
+/** The first passes for this operation. On a self-host edition, a Shieldstral-only input screen
  *  asks each text unit one question per SELFHOST_FIRST_PASSES group, and that group's rules only when
  *  its answer is yes or missing; every other rule is asked as before. The safety profile runs
  *  Shieldstral on CPU, where one call per rule runs a benign turn past the screen's 20 s deadline.
@@ -322,7 +319,18 @@ type FirstPassGroup = { name: string; query: string; threshold: number; rules: r
 function firstPassesFor(deps: Pick<GuardScreenDeps, "firstPasses" | "s1" | "screen">): readonly FirstPassGroup[] {
 	if (deps.firstPasses) return deps.firstPasses;
 	if (deps.s1 || (deps.screen ?? "input") !== "input" || !isSelfHostEdition()) return [];
-	return SELFHOST_FIRST_PASSES;
+	return shieldstralAnswersEveryRule() ? SELFHOST_FIRST_PASSES : [];
+}
+
+/** True when SAFETY_SCREEN is `shieldstral`. A group's question is no rule's query, so only a judge that
+ *  answers any question can ask it: the pairing routes each query by its rule key (detectors/safetyScreen.ts),
+ *  and Qwen3Guard answers its rules from one call per unit anyway. A bad SAFETY_SCREEN asks every rule. */
+function shieldstralAnswersEveryRule(): boolean {
+	try {
+		return safetyScreen() === "shieldstral";
+	} catch {
+		return false;
+	}
 }
 
 /** The rules this operation asks: the ones meant for its screen, minus any whose flag is off for the
@@ -416,16 +424,16 @@ async function screenOnce(input: GuardScreenInput, deps: GuardScreenDeps): Promi
 		);
 		return UNKNOWN_SCREEN(0, false);
 	}
-	// The DETECTOR seam: the default Shieldstral judge unless one is injected.
+	// The DETECTOR seam: the judge SAFETY_SCREEN names (detectors/safetyScreen.ts) unless one is injected.
 	// The misconfig check applies ONLY to the default judge — an injected judge (tests, the shadow) owns
 	// its own reachability, and an unreachable one simply returns UNKNOWN outcomes.
-	const judge = deps.judge ?? shieldstralJudge;
+	const judge = deps.judge ?? screenJudge;
 	// An S1 screen of text alone needs no Shieldstral endpoint; an image unit still does.
-	if (!deps.judge && !shieldstralConfigured() && !(deps.s1 && input.images.length === 0)) {
+	if (!deps.judge && !safetyScreenConfigured() && !(deps.s1 && input.images.length === 0)) {
 		// Loud misconfiguration, never a silent off (invariant 5): the guard screens every turn, the address is missing.
 		log.error(
 			{ gateSource: "guard" },
-			"[guard] GUARD_SHADOW_URL is unset — screening UNKNOWN (child fails closed) until the endpoint is configured."
+			"[guard] GUARD_SHADOW_URL (or QWEN3GUARD_URL, per SAFETY_SCREEN) is unset — screening UNKNOWN (child fails closed) until the endpoint is configured."
 		);
 		return UNKNOWN_SCREEN(0, false);
 	}
@@ -1007,11 +1015,11 @@ export type GuardProbe = {
  *  flag says ON. */
 export async function probeGuardHealth(deps: GuardScreenDeps = {}): Promise<GuardProbe | null> {
 	// No endpoint AND no injected judge ⇒ nothing to probe. An injected judge (tests) is always probed.
-	if (!deps.judge && !shieldstralConfigured()) return null;
+	if (!deps.judge && !safetyScreenConfigured()) return null;
 	const benign = await runGuardScreen(textInput(GUARD_PROBE_BENIGN), deps);
 	const violative = await runGuardScreen(textInput(GUARD_PROBE_VIOLATIVE), deps);
 	// One adapter, one expected id — the probe asserts the served model IS Shieldstral.
-	return probeVerdict(benign, violative, SHIELDSTRAL_MODEL);
+	return probeVerdict(benign, violative, safetyScreenModels());
 }
 
 /** The S1 twin of probeGuardHealth: the same two fixtures through runGuardScreen with `s1` as
@@ -1050,18 +1058,18 @@ export async function probeS1Health(s1: S1UnitJudge, deps: GuardScreenDeps = {})
 function probeVerdict(
 	benign: GuardScreen,
 	violative: GuardScreen,
-	expectedModel: string,
+	expectedModel: string | string[],
 	faults: { unanswered: boolean; wrongModel: boolean } = { unanswered: false, wrongModel: false }
 ): GuardProbe {
 	const transportOk = benign.transportOk && violative.transportOk && !faults.unanswered;
 	const parseOk = benign.status === "safe" && violative.blockHits.some((r) => r.key === GUARD_PROBE_CATEGORY);
 
 	const base = (s: string) => s.split(":")[0].trim().toLowerCase();
-	const expected = base(expectedModel);
+	const expected = new Set([expectedModel].flat().map(base));
 	const served = [...new Set([...benign.servedModels, ...violative.servedModels])];
 	const anyMissing = benign.servedModelMissing || violative.servedModelMissing || faults.wrongModel;
 	const identityAsserted = served.length > 0;
-	const identityOk = identityAsserted && !anyMissing && served.every((m) => base(m) === expected);
+	const identityOk = identityAsserted && !anyMissing && served.every((m) => expected.has(base(m)));
 
 	return {
 		healthy: transportOk && parseOk && identityOk,

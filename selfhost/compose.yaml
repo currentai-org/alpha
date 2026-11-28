@@ -77,11 +77,50 @@ services:
       start_period: 30s
     restart: unless-stopped
 
+  # Only with --profile safety (or safety-qwen3guard-only): Qwen's Qwen3Guard-Gen-0.6B safety classifier
+  # (Apache-2.0), served on CPU by the llama.cpp image the local profile pins. It screens every turn in
+  # one call (SAFETY_SCREEN=qwen3guard, the self-host default), and Shieldstral below answers the four
+  # rules it cannot. Nothing screens until .env also sets QWEN3GUARD_URL=http://qwen3guard:8080 and
+  # GUARD_SHADOW_URL (README.md, "A safety screen"). The GGUF is a community conversion
+  # (QuantFactory/Qwen3Guard-Gen-0.6B-GGUF, Q8_0, sha256 a5108bc2...d2cc) pinned by commit; Qwen publishes
+  # no GGUF. The alias is the model id the app asks for, which its health probe expects back.
+  qwen3guard:
+    profiles: [safety, safety-qwen3guard-only]
+    image: ${LLAMACPP_IMAGE:-ghcr.io/ggml-org/llama.cpp:server@sha256:41988e510b6fe0a0b5b9be00a9dbf91d9f0fa691da173d7b06d97d370329fe84}
+    command:
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      # Without --model, this llama.cpp build ignores --model-url and starts as a model router.
+      - --model-url
+      - ${QWEN3GUARD_MODEL_URL:-https://huggingface.co/QuantFactory/Qwen3Guard-Gen-0.6B-GGUF/resolve/be4e562404e1bd6d6e01bed9c5fcf1ddb4a6c6aa/Qwen3Guard-Gen-0.6B.Q8_0.gguf}
+      - --model
+      - /models/${QWEN3GUARD_MODEL_FILE:-Qwen3Guard-Gen-0.6B.Q8_0-be4e562.gguf}
+      - --alias
+      - Qwen/Qwen3Guard-Gen-0.6B
+      # Four slots of 6,144 tokens: a screened chunk is at most 12,000 characters.
+      - --parallel
+      - "4"
+      - --ctx-size
+      - "24576"
+      - --jinja
+    environment:
+      LLAMA_CACHE: /models
+    volumes: ["${LOCAL_MODELS_DIR:-models}:/models"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 120
+      start_period: 30s
+
   # Only with --profile safety: Mistral's Shieldstral-1.0-3B safety classifier (Apache-2.0), served on CPU
-  # by the llama.cpp image the local profile pins. It does nothing until .env also sets
-  # GUARD_SHADOW_URL=http://shieldstral:8080, which turns the screen on for every turn (guardGate.ts) and
-  # it then blocks, it does not just log. With the URL set and this service down or too slow, a turn fails
-  # closed: README.md, "A safety screen", has the latency this costs on CPU.
+  # by the llama.cpp image the local profile pins. In the default pairing it answers four rules per turn
+  # (the two child rules, self-harm method, anthro); with SAFETY_SCREEN=shieldstral it answers all 17. It
+  # does nothing until .env sets GUARD_SHADOW_URL=http://shieldstral:8080, which turns the screen on for
+  # every turn (guardGate.ts) and it then blocks, it does not just log. With the URL set and this service
+  # down or too slow, a turn fails closed: README.md, "A safety screen", has the latency this costs.
   # Mistral publishes no GGUF, so this pins a community conversion by commit (Abiray/Shieldstral-1.0-3B-GGUF,
   # Q4_K_M, sha256 c76cb8e1...33b3), text only: no vision projector is loaded, so a picture is not screened
   # and its turn fails closed. The alias is the model id the app asks for, which its health probe expects back.
@@ -441,6 +480,7 @@ services:
       shieldstral: { condition: service_healthy, required: false }
       rerank: { condition: service_healthy, required: false }
       searxng: { condition: service_healthy, required: false }
+      qwen3guard: { condition: service_healthy, required: false }
       seaweedfs: { condition: service_healthy, required: false }
       agent-init: { condition: service_completed_successfully, required: false }
       agent: { condition: service_healthy, required: false }
@@ -527,6 +567,8 @@ services:
       # questions about a similarly named organisation grounded on its page (README.md, "Document RAG and the full web search engine").
       RAG_RERANK_MIN_SCORE: ${RAG_RERANK_MIN_SCORE:-0.005}
       RAG_RERANK_RELATIVE_RATIO: ${RAG_RERANK_RELATIVE_RATIO:-0.05}
+      QWEN3GUARD_URL: ${QWEN3GUARD_URL:-}
+      SAFETY_SCREEN: ${SAFETY_SCREEN:-}
       CSAM_SCAN_PROVIDER: ${CSAM_SCAN_PROVIDER:-}
       CSAM_SCAN_BASE_URL: ${CSAM_SCAN_BASE_URL:-}
       CSAM_SCAN_TOKEN: ${CSAM_SCAN_TOKEN:-}

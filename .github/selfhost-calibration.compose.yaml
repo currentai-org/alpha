@@ -1,0 +1,7 @@
+# Added through -f only by .github/workflows/safety-screen-calibration.yml. Publishes the two safety
+# classifiers on the runner's loopback so the calibration spec, which runs on the host, can call them.
+services:
+  shieldstral:
+    ports: ["127.0.0.1:18080:8080"]
+  qwen3guard:
+    ports: ["127.0.0.1:18081:8080"]

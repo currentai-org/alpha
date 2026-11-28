@@ -1,4 +1,4 @@
-// The self-host Shieldstral screen asks one question per first-pass group before that group's rules,
+// The self-host Shieldstral-only screen (SAFETY_SCREEN=shieldstral) asks one question per first-pass group before that group's rules,
 // so a benign turn on the safety profile's CPU makes fewer classifier calls than it has
 // rules. Verdicts must not move: a group that says yes or gives no answer has all its rules asked, and
 // child rules and ungrouped rules are asked regardless. A hosted edition keeps one call per rule.
@@ -37,8 +37,9 @@ async function judgeWith(firstPass: boolean | "unknown", fires: string[] = []) {
 	return { judge, asked };
 }
 
-async function screenAs(edition: "selfhost" | "hosted", judge: JudgeFn) {
+async function screenAs(edition: "selfhost" | "hosted", judge: JudgeFn, safetyScreen = "shieldstral") {
 	vi.stubEnv("ALPHA_EDITION", edition);
+	vi.stubEnv("SAFETY_SCREEN", safetyScreen);
 	const { runGuardScreen, rulesForScreen } = await import("./guardGate");
 	const { loadGuardPolicy } = await import("./guardPolicy");
 	const rules = rulesForScreen(loadGuardPolicy()!.entries, {});
@@ -123,5 +124,12 @@ describe("the self-host screen's first pass makes fewer calls without changing a
 		const { rules } = await screenAs("hosted", judge);
 		expect(asked.filter((q) => groupByQuery.has(q) || SELFHOST_FIRST_PASSES.some((g) => g.name === q))).toEqual([]);
 		expect(asked).toHaveLength(rules.length);
+	});
+
+	it("the paired screen asks no group question, since it routes each query by its rule", async () => {
+		const { judge, asked } = await judgeWith(false);
+		const { result, rules } = await screenAs("selfhost", judge, "qwen3guard");
+		expect(asked.sort()).toEqual(rules.map((r) => r.key).sort());
+		expect(result.status).toBe("safe");
 	});
 });

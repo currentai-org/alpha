@@ -1100,6 +1100,12 @@ export const ENV_MANIFEST = {
 		secret: true,
 		desc: "CI only: Axiom token for the dataset where failing scenario tests are recorded and read back. The app does not read it.",
 	},
+	SAFETY_SCREEN: {
+		desc: "Which detector screens chat text: \"shieldstral\" (one yes/no call per rule), \"qwen3guard\" (Qwen3Guard-Gen-0.6B in one call for 13 rules, Shieldstral for the child rules, self-harm method and anthro), or \"qwen3guard-only\" (Qwen3Guard alone; no crisis message, no child fail-closed, no anthro). Unset: web/config/safetyScreen.ts decides by edition, qwen3guard for ALPHA_EDITION=selfhost and shieldstral otherwise. An unrecognised value is an error and every screen answers unknown. The operator's override, never needed on our hosted deployments (detectors/safetyScreen.ts).",
+	},
+	QWEN3GUARD_URL: {
+		desc: "OpenAI-compatible base URL of the Qwen3Guard-Gen-0.6B endpoint (the self-host compose safety profile's http://qwen3guard:8080). Read when SAFETY_SCREEN resolves to qwen3guard or qwen3guard-only; unset there, every screen answers unknown and a turn fails closed. Privacy note: this endpoint receives the full text of every message.",
+	},
 	SAFETY_SCREEN_TOKEN: {
 		secret: true,
 		desc: "Bearer token the agent service presents to POST /chat/api/safety/screen. Set the same value in the agent service's config. Config, not a switch: the route returns 503 while it is unset.",
