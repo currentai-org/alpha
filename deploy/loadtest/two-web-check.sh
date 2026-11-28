@@ -6,8 +6,9 @@
 #
 # 1. reach:   requests reach both processes.
 # 2. session: one guest session's turns are all answered, across both processes (no 401 or 404).
-# 3. limit:   the per-session limit (RATE_LIMIT, 20 a minute as shipped) refuses the 21st turn in a minute
-#             while turns alternate processes. A limit kept in one process's memory would let about 40 through.
+# 3. limit:   the per-session limit refuses the turn past RATE_LIMIT in a minute while turns alternate
+#             processes. The stack ships with no RATE_LIMIT, and then there is no per-minute limit at all,
+#             so the job sets 20. A limit kept in one process's memory would let about 40 through.
 # 4. stop:    Stop sent to the process that is not streaming ends a long answer. Stop markers live in
 #             Postgres, and the streaming process polls them once a second.
 #
@@ -98,23 +99,25 @@ curl -sS -N -c "$JAR" -b "$JAR" -H "origin: $BASE" -D "$TMP/stream.h" -o "$TMP/s
 STREAM=$!
 sleep 5
 STREAM_BY=$(served "$TMP/stream.h")
-STOP_BY=""
+# A Stop that reached the streaming process would end it through that process's own memory and prove
+# nothing. So health checks run until one lands on the streaming process; the proxy's next turn, the Stop,
+# then goes to the other.
 for _ in 1 2 3 4; do
-	curl -sS -o /dev/null -c "$JAR" -b "$JAR" -H "origin: $BASE" -H 'content-type: application/json' -d '{}' \
-		-D "$TMP/stop.h" "$BASE/conversation/$ID/stop-generating"
-	STOP_BY=$(served "$TMP/stop.h")
-	STOPPED=$(date +%s.%N)
-	[ -n "$STOP_BY" ] && [ "$STOP_BY" != "$STREAM_BY" ] && break
-	curl -sS -o /dev/null "$BASE/healthcheck" # move the proxy's turn on to the other process, then stop again
+	curl -sS -o /dev/null -D "$TMP/nudge.h" "$BASE/healthcheck"
+	[ "$(served "$TMP/nudge.h")" = "$STREAM_BY" ] && break
 done
+STOP_STATUS=$(curl -sS -o "$TMP/stop.b" -c "$JAR" -b "$JAR" -H "origin: $BASE" -H 'content-type: application/json' \
+	-d '{}' -D "$TMP/stop.h" -w '%{http_code}' "$BASE/conversation/$ID/stop-generating")
+STOP_BY=$(served "$TMP/stop.h")
+STOPPED=$(date +%s.%N)
 wait "$STREAM"
 ENDED=$(date +%s.%N)
 AFTER=$(awk -v a="$STOPPED" -v b="$ENDED" 'BEGIN { printf "%.1f", b - a }')
 TOTAL=$(awk -v a="$START" -v b="$ENDED" 'BEGIN { printf "%.1f", b - a }')
 FULL=$(jq -r '.fixtures[0].response.content | split(" ") | .[-1]' "$LONG_FIXTURES/fixtures.json")
 CUT=$(grep -q -F "$FULL" "$TMP/stream.b" && echo "reached the answer's last word" || echo "ended before the answer's last word")
-result stop "$([ -n "$STREAM_BY" ] && [ "$STOP_BY" != "$STREAM_BY" ] && awk -v s="$AFTER" 'BEGIN { exit !(s < 6) }' && [[ "$CUT" == ended* ]] && echo true || echo false)" \
-	"streamed by $STREAM_BY, Stop answered by $STOP_BY; the stream ended ${AFTER}s after Stop, ${TOTAL}s after it began, and $CUT"
+result stop "$([ -n "$STREAM_BY" ] && [ "$STOP_BY" != "$STREAM_BY" ] && [ "$STOP_STATUS" = 200 ] && awk -v s="$AFTER" 'BEGIN { exit !(s < 6) }' && [[ "$CUT" == ended* ]] && echo true || echo false)" \
+	"streamed by $STREAM_BY, Stop answered HTTP $STOP_STATUS by $STOP_BY ($(head -c 120 "$TMP/stop.b")); the stream ended ${AFTER}s after Stop, ${TOTAL}s after it began, and $CUT"
 (cd deploy && AIMOCK_FIXTURES='' docker compose up -d --wait --wait-timeout 120 aimock) >/dev/null
 
 jq -s '.' "$RESULTS" > "$OUT/checks.json"
@@ -126,5 +129,6 @@ jq -s '.' "$RESULTS" > "$OUT/checks.json"
 	jq -r '.[] | "| \(.name) | \(if .pass then "pass" else "**fail**" end) | \(.detail) |"' "$OUT/checks.json"
 	echo
 } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
-rm -rf "$TMP"
-jq -e 'all(.pass)' "$OUT/checks.json" >/dev/null
+# Kept beside checks.json when a check fails: the headers and bodies say why.
+jq -e 'all(.pass)' "$OUT/checks.json" >/dev/null && rm -rf "$TMP" && exit 0
+exit 1

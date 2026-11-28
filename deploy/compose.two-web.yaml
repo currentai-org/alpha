@@ -16,7 +16,18 @@
 # this one, every visitor arrives from that proxy's address: add `trusted_proxies static <its address>` to
 # the Caddyfile below and set XFF_DEPTH to 2.
 services:
+  # Each web process migrates the database as it starts. Two starting together on an empty database race
+  # each other's CREATE TABLE, so this runs the migrations once and both processes wait for it. Their own
+  # migrate then finds nothing to apply.
+  migrate:
+    extends: { file: compose.yaml, service: web }
+    command: ["scripts/db-migrate.mjs"]
+    ports: !reset []
+    restart: "no"
+
   web:
+    depends_on:
+      migrate: { condition: service_completed_successfully }
     # The proxy publishes the port now; the processes are reached only through it.
     ports: !reset []
     deploy:

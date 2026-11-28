@@ -216,6 +216,8 @@ jobs:
       cancel-in-progress: false
     env:
       TWO_WEB: "1"
+      # The stack ships with no per-minute limit; 20 lets two-web-check.sh see one hold across processes.
+      RATE_LIMIT: "20"
       LEVELS: "150 200 300 400"
       HOLD: 3m
       PG_POOL_MAX: "10"
@@ -226,10 +228,16 @@ jobs:
       - name: Boot the compose stack with two web processes and the mock model
         run: |
           bash deploy/loadtest/up.sh
-          cd deploy && docker compose ps web
+          cd deploy && docker compose ps -a migrate web
+          # Both processes start on an empty database: the migrate service must have run the migrations
+          # once, and neither process may have restarted.
+          docker compose ps -a --format '{{.Service}} {{.State}} {{.ExitCode}}' migrate | grep -q '^migrate exited 0$'
           for id in $(docker compose ps -q web); do
+            docker inspect --format '{{.Name}} restarts={{.RestartCount}}' "$id"
+            [ "$(docker inspect --format '{{.RestartCount}}' "$id")" = 0 ]
             docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$id" | grep '^PG_POOL_MAX=10$'
           done
+          ! docker compose logs db | grep -E 'ERROR: .*(already exists|duplicate key)' 
       - name: Check the two processes act as one app
         run: bash deploy/loadtest/two-web-check.sh
       - name: Pull k6
