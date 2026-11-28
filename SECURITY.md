@@ -8,11 +8,11 @@ vulnerability**. Please do not open a public issue for it.
 Say what you found, where in the code it lives, and how to reproduce it. A report about the hosted service
 at aipotluck.org is welcome too, as long as you only test against your own account and data.
 
-We will confirm we have your report and tell you what we plan to do about it. Fixes are made in the private
-monorepo this snapshot comes from, deployed there first, and arrive here with the next snapshot. Tell us if
-you would like to be credited.
+We will confirm we have your report and tell you what we plan to do about it. Fixes are made in this
+repository, in a private security advisory until they ship, and reach the hosted service and the published
+image with the next release. Tell us if you would like to be credited.
 
-## What this snapshot leaves out
+## What this repository leaves out
 
 Secrets, deployment settings and account ids are not in this tree. The optional S1 safety judge's
 policies (`web/src/lib/chat/server/rules-s1.json`) ship in full. Its judge endpoint and the Mila
