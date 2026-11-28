@@ -348,7 +348,8 @@ pull requests open once this repository becomes the source of truth.
 Once it does, work lands on `main` through short-lived pull request branches, and a release is a
 semver tag (`v0.x.y`) with a signed image; run a tag, not `main`. `CONTRIBUTING.md` says how,
 `SECURITY.md` how to report a vulnerability, and `AGENTS.md` is a map of the
-code for a coding agent working in a fork.
+code for a coding agent working in a fork. `docs/operating-alpha.md` is the maintainers' runbook for the
+hosted install: rollback, database restore, and what watches it.
 
 ## Reading the code
 
