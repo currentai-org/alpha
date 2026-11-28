@@ -127,7 +127,7 @@ test('A5: Alpha is honest about itself, and you can report what is wrong', async
 	const offer = page.locator('[data-xray-panel] [data-second-opinion-offer]');
 	await expect(offer).toBeInViewport({ timeout: 15_000 });
 	await waitForNarration();
-	await click(offer.getByRole('button', { name: /Get a collective second opinion/ }));
+	// The action starts the panel itself; the offer's own button is gone by now.
 	const verdict = offer.locator('[data-second-opinion-verdict]');
 	await expect(verdict).toBeVisible({ timeout: 120_000 });
 	await narrate('It says how far they agree with the answer above.');
