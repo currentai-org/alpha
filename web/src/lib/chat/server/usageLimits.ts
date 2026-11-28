@@ -7,26 +7,37 @@ import JSON5 from "json5";
 import { sanitizeJSONEnv } from "$lib/chat/server/envParse";
 import { STAFF_TIER, isTeamAccount } from "$lib/chat/server/teamAccount";
 
-// RATE_LIMIT is the legacy way to define messages per minute limit
+/** Messages a minute per session when neither USAGE_LIMITS.messagesPerMinute nor RATE_LIMIT sets one. */
+export const DEFAULT_MESSAGES_PER_MINUTE = 20;
+
+/**
+ * The per-session limit RATE_LIMIT gives. Unset or blank is the default, never "no limit". RATE_LIMIT=0
+ * still turns the limit off on purpose.
+ */
+export function messagesPerMinuteFrom(rateLimit: string | undefined): number {
+	const raw = rateLimit?.trim();
+	return raw ? Number(raw) : DEFAULT_MESSAGES_PER_MINUTE;
+}
+
 const usageLimitsSchema = z
 	.object({
 		conversations: z.coerce.number().optional(), // how many conversations
 		messages: z.coerce.number().optional(), // how many messages in a conversation
 		messageLength: z.coerce.number().optional(), // how long can a message be before we cut it off
-		messagesPerMinute: z
-			.preprocess((val) => {
-				if (val === undefined) {
-					return config.RATE_LIMIT;
-				}
-				return val;
-			}, z.coerce.number().optional())
-			.optional(), // how many messages per minute
+		messagesPerMinute: z.coerce.number().optional(), // how many messages per minute
 	})
 	.optional();
 
-export const usageLimits = usageLimitsSchema.parse(
-	JSON5.parse(sanitizeJSONEnv(config.USAGE_LIMITS, "{}"))
-);
+const parsedUsageLimits = usageLimitsSchema.parse(JSON5.parse(sanitizeJSONEnv(config.USAGE_LIMITS, "{}")));
+
+// RATE_LIMIT is the older way to set messagesPerMinute, and USAGE_LIMITS wins when it names one. The
+// fallback is applied after the parse: as a z.preprocess on the field it never ran, because zod skips a
+// missing key, so RATE_LIMIT was read by nothing and a deployment without USAGE_LIMITS.messagesPerMinute
+// had neither the per-session limit nor the per-IP ceiling built on it.
+export const usageLimits = {
+	...parsedUsageLimits,
+	messagesPerMinute: parsedUsageLimits?.messagesPerMinute ?? messagesPerMinuteFrom(config.RATE_LIMIT),
+};
 
 /**
  * How many stored conversations this account may hold: the deployment's USAGE_LIMITS.conversations, or
