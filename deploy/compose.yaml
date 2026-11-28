@@ -48,7 +48,7 @@ services:
 
   web:
     # A release tag, never a moving one. Change it to upgrade (README.md, "Upgrade").
-    image: ${ALPHA_IMAGE:-ghcr.io/currentai-org/alpha:0.3.0-preview.1}
+    image: ${ALPHA_IMAGE:-ghcr.io/currentai-org/alpha:0.3.0-preview.2} # x-release-please-version
     # Every `up` checks the registry, so a local image that once took this tag (an older `--build`)
     # is replaced by the signed one rather than run under its name. A start needs the registry.
     pull_policy: always

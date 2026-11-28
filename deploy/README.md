@@ -23,14 +23,13 @@ The server deletes expired guest data itself, once a day, with no cron: `../self
 ("Expired guest data") says what goes and how to confirm a run with `docker compose logs web`.
 
 The image is `ghcr.io/currentai-org/alpha`, for linux/amd64 and linux/arm64. `compose.yaml` pins a
-release tag (`0.3.0-preview.1`). Other tags: `X.Y.Z` and `X.Y` for each release, `stable` for the newest
+release tag (`0.3.0-preview.2`). <!-- x-release-please-version --> Other tags: `X.Y.Z` and `X.Y` for each release, `stable` for the newest
 release, `main` and `sha-<commit>` when a maintainer runs the workflow by hand on main. There is no
 `latest`. Pre-release tags (`X.Y.Z-preview.N`, `-rc.N`) publish only their own tag, never `X.Y` or `stable`.
 Releases are semver tags (`vX.Y.Z` in git, `X.Y.Z` on the image), never date tags. `main` is the
 edge build for testing: pin a release tag or a digest, not `main`.
 
-No image can be pulled until the repository's first release tag has been published. This file never
-builds, so what runs is always the pulled image. Until then, or to run your own changes, use
+This file never builds, so what runs is always the pulled image. To run your own changes, use
 `../selfhost/`, which builds from this checkout under its own tag (about 6 GB of RAM once).
 
 ## Verify the image
@@ -39,12 +38,14 @@ builds, so what runs is always the pulled image. Until then, or to run your own 
 [cosign](https://github.com/sigstore/cosign) keyless signing and records a build provenance
 attestation. Check both before you run a new tag:
 
+<!-- x-release-please-start-version -->
+
 ```sh
-cosign verify ghcr.io/currentai-org/alpha:0.3.0-preview.1 \
+cosign verify ghcr.io/currentai-org/alpha:0.3.0-preview.2 \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
   --certificate-identity-regexp '^https://github.com/currentai-org/alpha/\.github/workflows/image\.yml@refs/(tags/v.+|heads/main)$'
 
-gh attestation verify oci://ghcr.io/currentai-org/alpha:0.3.0-preview.1 --repo currentai-org/alpha
+gh attestation verify oci://ghcr.io/currentai-org/alpha:0.3.0-preview.2 --repo currentai-org/alpha
 ```
 
 The first command passes only if the signature came from that workflow in this repository, run for a
@@ -52,8 +53,10 @@ version tag or for main. The second checks the provenance: which commit and whic
 the image. Each platform image also carries an SPDX SBOM:
 
 ```sh
-docker buildx imagetools inspect ghcr.io/currentai-org/alpha:0.3.0-preview.1 --format '{{ json .SBOM }}'
+docker buildx imagetools inspect ghcr.io/currentai-org/alpha:0.3.0-preview.2 --format '{{ json .SBOM }}'
 ```
+
+<!-- x-release-please-end -->
 
 To pin what you verified exactly, set `ALPHA_IMAGE=ghcr.io/currentai-org/alpha@sha256:<digest>` in
 `.env`. `cosign verify` prints the digest.

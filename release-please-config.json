@@ -11,7 +11,13 @@
   "packages": {
     ".": {
       "changelog-path": "CHANGELOG.md",
-      "extra-files": [{ "type": "json", "path": "web/package.json", "jsonpath": "$.version" }]
+      "extra-files": [
+        { "type": "json", "path": "web/package.json", "jsonpath": "$.version" },
+        { "type": "generic", "path": "selfhost/compose.release.yaml" },
+        { "type": "generic", "path": "deploy/compose.yaml" },
+        { "type": "generic", "path": "selfhost/README.md" },
+        { "type": "generic", "path": "deploy/README.md" }
+      ]
     }
   }
 }
