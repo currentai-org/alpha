@@ -14,7 +14,8 @@
 # small host, not a ceiling. The summary prints the runner's CPU count and the image it ran.
 #
 # Started by the `load-run` label on a pull request (the pull request's tree, with the image its
-# deploy/compose.yaml names), by `load-levels` for the load job alone, or by workflow_dispatch. It reads no secret. Warn-only: nothing here fails
+# deploy/compose.yaml names), by `load-levels` for the load job alone, by `load-capacity` for the
+# capacity job alone, or by workflow_dispatch. It reads no secret. Warn-only: nothing here fails
 # the job on a number.
 name: Load and soak
 
@@ -138,6 +139,57 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: load-soak-${{ github.run_id }}-${{ github.run_attempt }}
+          path: loadtest-out/
+          retention-days: 90
+          if-no-files-found: warn
+
+  capacity:
+    # Where one stack bends. The load job's 20 and 60 users never queue: the stack answers exactly the
+    # turns offered. This climbs past that, once with aimock's instant answers and once with slow-model/'s,
+    # which streams about 380 words after 0.8 s at about 40 tokens a second, so each turn holds its
+    # connection for several seconds as a real answer does. RATE_LIMIT_IP_MULTIPLIER=0 turns off the
+    # per-IP abuse ceiling, which every k6 user shares one address against. k6 shares the runner's 4 CPUs
+    # at these levels too, so read a bend beside the runner's own CPU in the stack logs.
+    name: Find where the compose stack bends
+    if: github.event_name == 'workflow_dispatch' || (github.event.label.name == 'load-capacity' && github.actor != 'dependabot[bot]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    concurrency:
+      group: load-capacity-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: false
+    env:
+      LEVELS: "60 150 300 600"
+      HOLD: 3m
+      RATE_LIMIT_IP_MULTIPLIER: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Boot the compose stack with the mock model
+        run: bash deploy/loadtest/up.sh
+      - name: Pull k6
+        run: docker pull -q "$K6_IMAGE"
+      - name: Climb with instant answers
+        run: bash deploy/loadtest/run-levels.sh instant
+      - name: Climb with slow answers
+        working-directory: deploy
+        run: |
+          AIMOCK_FIXTURES="$GITHUB_WORKSPACE/deploy/loadtest/slow-model" docker compose up -d --wait --wait-timeout 120 aimock
+          cd .. && bash deploy/loadtest/run-levels.sh slow
+      - name: Stack logs and runner load
+        if: always()
+        working-directory: deploy
+        run: |
+          mkdir -p ../loadtest-out
+          docker compose logs --no-color > ../loadtest-out/compose.log 2>&1 || true
+          { uptime; nproc; free -m; } > ../loadtest-out/runner.txt
+      - name: Keep the summaries
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: load-capacity-${{ github.run_id }}-${{ github.run_attempt }}
           path: loadtest-out/
           retention-days: 90
           if-no-files-found: warn

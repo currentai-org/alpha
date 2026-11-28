@@ -1,0 +1,15 @@
+{
+  "fixtures": [
+    {
+      "match": {},
+      "response": {
+        "content": "Here is a longer answer, paced like a real model so each turn holds its connection for several seconds. It covers the question in a few short paragraphs, the way a careful assistant would, with enough text that the stream runs on while other people's turns arrive. Here is a longer answer, paced like a real model so each turn holds its connection for several seconds. It covers the question in a few short paragraphs, the way a careful assistant would, with enough text that the stream runs on while other people's turns arrive. Here is a longer answer, paced like a real model so each turn holds its connection for several seconds. It covers the question in a few short paragraphs, the way a careful assistant would, with enough text that the stream runs on while other people's turns arrive. Here is a longer answer, paced like a real model so each turn holds its connection for several seconds. It covers the question in a few short paragraphs, the way a careful assistant would, with enough text that the stream runs on while other people's turns arrive. Here is a longer answer, paced like a real model so each turn holds its connection for several seconds. It covers the question in a few short paragraphs, the way a careful assistant would, with enough text that the stream runs on while other people's turns arrive. Here is a longer answer, paced like a real model so each turn holds its connection for several seconds. It covers the question in a few short paragraphs, the way a careful assistant would, with enough text that the stream runs on while other people's turns arrive. Here is a longer answer, paced like a real model so each turn holds its connection for several seconds. It covers the question in a few short paragraphs, the way a careful assistant would, with enough text that the stream runs on while other people's turns arrive. Here is a longer answer, paced like a real model so each turn holds its connection for several seconds. It covers the question in a few short paragraphs, the way a careful assistant would, with enough text that the stream runs on while other people's turns arrive."
+      },
+      "streamingProfile": {
+        "ttft": 800,
+        "tps": 40,
+        "jitter": 0.1
+      }
+    }
+  ]
+}

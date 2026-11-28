@@ -8,7 +8,8 @@ services:
     # aimock 1.48.0, the digest mock-model-e2e.sh pins. Bump both together.
     image: ghcr.io/copilotkit/aimock@sha256:51d8e426ff99f42fa8050bb06548ff541adef2d759e5f83a33bdbf1b47a5f29d
     command: ["--fixtures", "/fixtures/fixtures.json", "--host", "0.0.0.0", "--validate-on-load"]
-    volumes: ["${GITHUB_WORKSPACE:-..}/web/e2e/mock-model:/fixtures:ro"]
+    # AIMOCK_FIXTURES picks another fixtures directory: slow-model/ paces each answer like a real model.
+    volumes: ["${AIMOCK_FIXTURES:-${GITHUB_WORKSPACE:-..}/web/e2e/mock-model}:/fixtures:ro"]
   db:
     ports: ["127.0.0.1:5432:5432"]
   web:
@@ -19,3 +20,6 @@ services:
       TASK_MODEL: mistral-large-2610
       # Unset by default, as deploy/compose.yaml ships; the workflow's pg_pool_max input sets it.
       PG_POOL_MAX: ${PG_POOL_MAX:-}
+      # The capacity job sets 0: every k6 user shares one address, so the per-IP abuse ceiling would
+      # measure itself rather than the stack. Empty keeps the default.
+      RATE_LIMIT_IP_MULTIPLIER: ${RATE_LIMIT_IP_MULTIPLIER:-}
