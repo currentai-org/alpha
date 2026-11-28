@@ -145,7 +145,6 @@ export async function handleRequest({ event, resolve }: HandleInput): Promise<Re
 						await ensureModelsReady();
 						registryDownLogged = false;
 					} catch (e) {
-						if (e) throw e; // deliberate break: the gate rethrows as before the fix (to be reverted)
 						const wantsHtml =
 							isGet && !isApi && (event.request.headers.get("accept")?.includes("text/html") ?? true);
 						if (dev && wantsHtml) {
