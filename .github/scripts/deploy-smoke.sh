@@ -2,8 +2,9 @@
 # Smoke for deploy.yml. It exits with one of three verdicts:
 #   0  a visitor could use the deployment.
 #   1  the build is at fault: it must not take the host, or must give it back.
-#   2  the guest turn failed here and on the build the host serves now, so the fault is upstream (the
-#      model provider), not this build. deploy.yml goes ahead with a warning and rechecks it.
+#   2  the guest turn or the legal page failed here and on the build the host serves now, so the fault is
+#      upstream (the model provider, or the site host the legal pages live on), not this build. deploy.yml
+#      goes ahead with a warning and rechecks it.
 #
 # The checks, in order:
 #   1. /chat/healthcheck and / answer 200 (six tries, ten seconds apart). The app builds its model list
@@ -12,8 +13,11 @@
 #      With no CURRENT, a first deploy, it is 1.
 #   2. / carries the chat composer's data-testid, so a page that loads without the chat surface fails.
 #   3. The identity the build was given is the one it serves. When the identity file names a
-#      statusPageUrl, /api/status must return it; when it names a siteHost, /privacy-notice must resolve to
-#      200 on another host. A build that lost its identity file fails here.
+#      statusPageUrl, /api/status must return it; when it names a siteHost, /privacy-notice must redirect to
+#      another host whose page answers 200 (legal-page.sh). A build that lost its identity file fails here.
+#      A target that gives a connection error or a 5xx is retried once, then tried from CURRENT: failing
+#      there too means the site host is down for every build, so the checks go on and a smoke that
+#      otherwise passes ends in 2.
 #   4. With PICKER_SITE set, /api/models lists the committed picker's first entry for that site
 #      (web/config/picker.ts) first, so a build that would hand every visitor another default model fails.
 #      Steps 2 to 4 run only on a build that is up, and their failure is always 1.
@@ -43,6 +47,8 @@ hdr=()
 if [ -n "${BYPASS:-}" ]; then hdr=(-H "x-vercel-protection-bypass: $BYPASS"); fi
 code() { curl -sS "${hdr[@]}" -o /dev/null -w '%{http_code}' -L "$1" || echo 000; }
 fail() { echo "::error title=deploy smoke::$base: $*"; echo "verdict 1: the build is at fault"; exit 1; }
+# shellcheck source=legal-page.sh
+. "$(dirname "$0")/legal-page.sh"
 
 # up URL: /chat/healthcheck and / both 200 within six tries, ten seconds apart.
 up() {
@@ -56,10 +62,12 @@ up() {
 	done
 	return 1
 }
-# provider_down: verdict 2, or exit 0 with the step output provider_down=true under PROVIDER_DOWN_OK=1.
+# provider_down WHAT [WHO]: verdict 2, or exit 0 with the step output provider_down=true under
+# PROVIDER_DOWN_OK=1, which starts deploy.yml's recheck. WHO is what is down, the model provider by default.
 provider_down() {
-	echo "::warning title=deploy smoke::$base: $1 here and on $current too, so the model provider is the likely fault, not this build"
-	echo "verdict 2: the provider is down; the deploy goes ahead"
+	local who=${2:-the model provider}
+	echo "::warning title=deploy smoke::$base: $1 here and on $current too, so $who is the likely fault, not this build"
+	echo "verdict 2: $who is down; the deploy goes ahead"
 	if [ "${PROVIDER_DOWN_OK:-}" = 1 ]; then
 		echo "provider_down=true" >> "${GITHUB_OUTPUT:-/dev/null}"
 		exit 0
@@ -86,11 +94,16 @@ if [ -f "$identity" ]; then
 		echo "ok   /api/status names the status page"
 	fi
 	if [ -n "$(jq -r '.siteHost // empty' "$identity")" ]; then
-		read -r final status < <(curl -sS "${hdr[@]}" -o /dev/null -L --max-time 20 -w '%{url_effective} %{http_code}' "$base/privacy-notice" || echo "none 000")
-		host=${final#*://}; host=${host%%/*}
-		[ "$status" = 200 ] && [ "$host" != "${base#*://}" ] ||
-			fail "/privacy-notice ended at $final ($status), not on the site host: the build has no site host"
-		echo "ok   /privacy-notice resolves on $host"
+		lrc=0
+		legal_verdict "$base" "$current" || lrc=$?
+		[ "$lrc" != 1 ] || fail "$LEGAL_WHY"
+		if [ "$lrc" = 2 ]; then
+			# The rest still runs: a down site host must not hide a broken build behind verdict 2.
+			site_down=$LEGAL_WHY
+			echo "down $LEGAL_WHY"
+		else
+			echo "ok   $LEGAL_WHY"
+		fi
 	fi
 else
 	echo "no $identity, so the deployment's identity is not checked"
@@ -128,6 +141,7 @@ answers() {
 rc=0
 answers "$base" || rc=$?
 if [ "$rc" = 0 ]; then
+	[ -z "${site_down:-}" ] || provider_down "the legal page failed ($site_down)" "the site host"
 	echo "smoke ok on $base"
 	echo "verdict 0: a visitor can use it"
 	exit 0
