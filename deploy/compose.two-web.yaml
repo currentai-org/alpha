@@ -1,0 +1,59 @@
+# Two web processes behind one port, for a host that has outgrown one. One web process runs its JavaScript
+# on one core, and on a 4-core host it fills that core at about 150 users with streamed answers while the
+# other cores idle (SIZING.md, "Where it bends, and why"). This file adds a second process and a proxy that
+# takes turns between them, on the port web used to publish.
+#
+#   docker compose -f compose.yaml -f compose.two-web.yaml up -d
+#
+# Change `replicas` for more than two. Each process opens up to PG_POOL_MAX database connections (set it to
+# 10 or so), and stock Postgres allows 100, so stay under about nine processes. Needs Compose 2.24 or later.
+#
+# What the processes share lives in Postgres: sessions, rate-limit counts, daily caps and Stop markers.
+# .github/workflows/load.yml's `two-web` job checks each of those across the processes.
+#
+# The proxy passes each visitor's address on in X-Forwarded-For, and web reads it from there (ADDRESS_HEADER,
+# XFF_DEPTH), so the per-IP limits still see visitors, not the proxy. With a TLS proxy of your own in front of
+# this one, every visitor arrives from that proxy's address: add `trusted_proxies static <its address>` to
+# the Caddyfile below and set XFF_DEPTH to 2.
+services:
+  web:
+    # The proxy publishes the port now; the processes are reached only through it.
+    ports: !reset []
+    deploy:
+      replicas: 2
+    environment:
+      ADDRESS_HEADER: X-Forwarded-For
+      XFF_DEPTH: "1"
+
+  proxy:
+    # Caddy 2.10.2 (Apache-2.0).
+    image: caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
+    depends_on:
+      web: { condition: service_started }
+    ports: ["127.0.0.1:${PORT:-3000}:3000"]
+    configs:
+      - source: caddyfile
+        target: /etc/caddy/Caddyfile
+    restart: unless-stopped
+
+configs:
+  caddyfile:
+    content: |
+      {
+      	admin off
+      }
+      :3000 {
+      	reverse_proxy {
+      		# Every web process, looked up by its service name, so a changed `replicas` needs no edit here.
+      		dynamic a web 3000 {
+      			refresh 5s
+      		}
+      		lb_policy round_robin
+      		# A process that stops answering is skipped until it does again.
+      		fail_duration 10s
+      		# Chat answers stream: send each piece on as it arrives.
+      		flush_interval -1
+      		# Which process answered, so a check can see that both do.
+      		header_down X-Served-By {http.reverse_proxy.upstream.hostport}
+      	}
+      }
