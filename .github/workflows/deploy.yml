@@ -19,7 +19,7 @@
 # A failed health check gets the same comparison, because the model list comes from the provider at boot.
 # A failed identity check always counts against the new build. A manual run's prove_red input breaks one
 # run on purpose, to show the gate holds: `identity` deploys without the identity file, `answer` deploys
-# with the safety screen on a closed port (every turn declines), and `provider` (develop only) deploys two
+# with every input safety screen on a closed port (every turn declines), and `provider` (develop only) deploys two
 # builds with every model base URL on a closed port and smokes one against the other, moving no host.
 #
 # The Vercel project is not connected to this repository, so no branch, pull request, fork or Dependabot
@@ -47,7 +47,7 @@ on:
       prove_red:
         description: >-
           Break this run on purpose, to show the gate holds: `identity` drops the identity file, `answer`
-          puts the safety screen on a closed port, `provider` (develop only) smokes two builds with dead model
+          puts every input safety screen on a closed port, `provider` (develop only) smokes two builds with dead model
           base URLs against each other and moves no host
         type: choice
         options: [none, identity, answer, provider]
