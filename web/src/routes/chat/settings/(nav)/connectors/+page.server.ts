@@ -62,7 +62,11 @@ export const load: PageServerLoad = async ({ locals, request }) => {
 		if (!oauthStateOf(row).tokens?.access_token) return "connect";
 		return row.needsReconnect || leftOut.has(row.id) ? "reconnect" : null;
 	};
-	const [tools, policies] = await Promise.all([listServerTools(servers), readMcpToolPolicies(locals)]);
+	// Listings are cached for a few minutes, which would hide a sign-in the provider stopped honouring in
+	// that time. Under the OAuth stand-in's faults the page asks every server again, so a spec sees the
+	// provider's answer on the next load. Everywhere else the cached listing stands.
+	const fresh = faultInjection === "mcp_oauth_stub" || faultInjection === "mcp_oauth_stub_signed_out";
+	const [tools, policies] = await Promise.all([listServerTools(servers, { fresh }), readMcpToolPolicies(locals)]);
 	const listed = new Set(servers.map((s) => s.name));
 	const signInRows = ownRows.filter((r) => (!listed.has(r.name) || leftOut.has(r.id)) && signInOf(r) !== null);
 	const reachable = servers.filter((s) => !signInRows.some((r) => r.name === s.name));
