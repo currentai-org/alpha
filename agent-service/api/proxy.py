@@ -48,6 +48,7 @@ from dataclasses import dataclass, field
 
 import httpx
 import logsink
+import mcp_relay
 from aiolimiter import AsyncLimiter
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
@@ -329,6 +330,12 @@ class Grant:
     # The model ids upstream reported serving on this grant's calls, read off each response. Returned on
     # revoke so the task records what actually ran, not only what was asked for.
     served_models: set[str] = field(default_factory=set)
+    # The turn owner's connectors this grant relays (mcp_relay.py): name -> where it goes and what it carries.
+    # In memory only, like the grant itself; the headers hold a person's access token.
+    mcp: dict[str, mcp_relay.Relay] = field(default_factory=dict, repr=False)
+    # what the relay refused or was refused, returned on revoke so the task's answer can say so
+    mcp_refused: list[dict] = field(default_factory=list)
+    mcp_unauthorized: set[str] = field(default_factory=set)
 
 
 _GRANTS: dict[str, Grant] = {}
@@ -369,6 +376,27 @@ class GrantReq(BaseModel):
     label: str = Field(default="", max_length=64)     # task id, for the operational log (never the nonce)
     attempt: int = Field(default=0, ge=0)             # best-of attempt number; 0 = derive/judge/route grant
     model: str = Field(default="", max_length=200)    # pin every call on this grant to this model
+    # The turn owner's connectors, name -> {url, headers}; see mcp_relay.py. Empty for every grant but an agent
+    # attempt whose person has a connector and whose policy offers it.
+    mcp: dict[str, dict] = Field(default_factory=dict)
+
+
+def _mcp_relays(raw: dict[str, dict]) -> dict[str, mcp_relay.Relay]:
+    """The grant's relays, or a 422 naming the connector and what is wrong with it, never a header value."""
+    if len(raw) > mcp_relay.MAX_CONNECTORS:
+        raise HTTPException(422, f"at most {mcp_relay.MAX_CONNECTORS} connectors per grant")
+    out: dict[str, mcp_relay.Relay] = {}
+    for name, entry in raw.items():
+        if not mcp_relay.NAME_RE.match(name):
+            raise HTTPException(422, "a connector name must be lowercase letters, digits, - and _")
+        url = mcp_relay.normalise_url(entry.get("url") if isinstance(entry, dict) else None)
+        if url is None:
+            raise HTTPException(422, f"connector {name!r}: url must be http or https, with a host and no credentials")
+        headers = mcp_relay.check_headers(entry.get("headers", {}) if isinstance(entry, dict) else None)
+        if headers is None:
+            raise HTTPException(422, f"connector {name!r}: headers must be a small object of header name to value")
+        out[name] = mcp_relay.Relay(url=url, headers=headers)
+    return out
 
 
 @app.post("/admin/grant")
@@ -384,14 +412,19 @@ def grant(req: GrantReq, authorization: str | None = Header(default=None)) -> di
     max_tokens = req.max_tokens
     if GRANT_MAX_TOKENS > 0:
         max_tokens = GRANT_MAX_TOKENS if req.max_tokens == 0 else min(req.max_tokens, GRANT_MAX_TOKENS)
+    relays = _mcp_relays(req.mcp)
     with _LOCK:
         _purge_expired_locked(now)
         if req.nonce not in _GRANTS and len(_GRANTS) >= MAX_GRANTS:
             raise HTTPException(503, f"gateway at capacity ({MAX_GRANTS} active grants)")
         _GRANTS[req.nonce] = Grant(max_requests=max_requests, max_tokens=max_tokens, expires_at=now + ttl,
-                                   label=req.label, attempt=req.attempt, model=req.model.strip())
+                                   label=req.label, attempt=req.attempt, model=req.model.strip(), mcp=relays)
+    if req.attempt or relays:
+        # An agent attempt's grant, with the names of the connectors it relays (never a URL or a header): the
+        # record of which person's connectors a task was given.
+        _plog("grant.registered", label=req.label, attempt=req.attempt, mcp=sorted(relays))
     return {"ok": True, "ttl_secs": ttl, "max_requests": max_requests, "max_tokens": max_tokens,
-            "model": req.model.strip() or None}
+            "model": req.model.strip() or None, "mcp": sorted(relays)}
 
 
 @app.delete("/admin/grant/{nonce}")
@@ -402,9 +435,11 @@ def revoke(nonce: str, authorization: str | None = Header(default=None)) -> dict
     with _LOCK:
         g = _GRANTS.pop(nonce, None)
     if not g:
-        return {"ok": True, "requests": 0, "tokens": 0, "usage_seen": False, "cap_hit": False, "served_models": []}
+        return {"ok": True, "requests": 0, "tokens": 0, "usage_seen": False, "cap_hit": False, "served_models": [],
+                "mcp_refused": [], "mcp_unauthorized": []}
     return {"ok": True, "requests": g.used_requests, "tokens": g.used_tokens,
-            "usage_seen": g.usage_seen, "cap_hit": g.rejected > 0, "served_models": sorted(g.served_models)}
+            "usage_seen": g.usage_seen, "cap_hit": g.rejected > 0, "served_models": sorted(g.served_models),
+            "mcp_refused": list(g.mcp_refused), "mcp_unauthorized": sorted(g.mcp_unauthorized)}
 
 
 def _nonce_from(authorization: str | None) -> str:
@@ -1248,6 +1283,117 @@ async def chat_completions(request: Request, authorization: str | None = Header(
                              headers=_record_backend(served, r.headers, nonce))
 
 
+# ---- connector relay (mcp_relay.py) --------------------------------------------------------------------------
+MCP_RELAY_TIMEOUT = float(os.environ.get("GATEWAY_MCP_TIMEOUT", "60"))
+MCP_RELAY_MAX_BYTES = int(os.environ.get("GATEWAY_MCP_MAX_BYTES", str(8 * 1024 * 1024)))
+# What the engine's MCP client may say to the connector, and what comes back. Its own Authorization (the nonce)
+# is never forwarded: the stored header takes its place.
+_MCP_REQ_HEADERS = ("content-type", "accept", "mcp-session-id", "mcp-protocol-version", "last-event-id")
+_MCP_RESP_HEADERS = ("content-type", "mcp-session-id")
+
+
+def _mcp_note(nonce: str, server: str, *, refused: dict | None = None, unauthorized: bool = False) -> None:
+    with _LOCK:
+        g = _GRANTS.get(nonce)
+        if g is None:
+            return
+        if refused is not None and len(g.mcp_refused) < 20:
+            g.mcp_refused.append(refused)
+        if unauthorized:
+            g.mcp_unauthorized.add(server)
+
+
+def _mcp_json(payload: dict | list, status: int = 200) -> Response:
+    return Response(json.dumps(payload).encode(), status_code=status, media_type="application/json")
+
+
+async def mcp_connector(name: str, request: Request, authorization: str | None = Header(default=None)):
+    """Relay the engine's MCP traffic for connector `name` to the one URL this grant holds for it, with the
+    stored headers in place of the nonce. tools/call is relayed only for a read-only tool of the pinned listing;
+    a 401 or 403 from the connector is recorded and answered as a tool error that says to reconnect."""
+    nonce = _nonce_from(authorization)
+    with _LOCK:
+        g = _live_grant_locked(nonce, time.monotonic())
+        if g is None:
+            raise HTTPException(401, "unknown or expired nonce")
+        relay = g.mcp.get(name)
+        if relay is None:
+            raise HTTPException(404, "no such connector on this task")
+        url, stored = relay.url, dict(relay.headers)
+        ident = {"label": g.label, "attempt": g.attempt}
+    body = await request.body() if request.method == "POST" else b""
+    if len(body) > MCP_RELAY_MAX_BYTES:
+        raise HTTPException(413, "request too large")
+    msgs = mcp_relay.jsonrpc_messages(body, "application/json") if body else []
+    single = msgs[0] if len(msgs) == 1 and body.lstrip()[:1] == b"{" else None
+    calls = [m for m in msgs if m.get("method") == "tools/call"]
+    if calls and single is None:
+        raise HTTPException(400, "a batch may not carry tools/call")
+    if single is not None and single.get("method") == "tools/call":
+        params = single.get("params") if isinstance(single.get("params"), dict) else {}
+        tool = params.get("name")
+        with _LOCK:
+            reason = relay.refusal(tool)
+        if reason is not None:
+            _mcp_note(nonce, name, refused={"server": name, "tool": str(tool)[:100], "reason": reason})
+            _plog("mcp.refused", server=name, tool=str(tool)[:100], reason=reason, **ident)
+            return _mcp_json(mcp_relay.tool_error(single.get("id"), mcp_relay.refused_call_text(name, str(tool), reason)))
+    fwd = {k: v for k in _MCP_REQ_HEADERS if (v := request.headers.get(k))}
+    fwd.update(stored)
+    # follow_redirects stays off: the grant names one destination, and a redirect would name another.
+    client = httpx.AsyncClient(timeout=MCP_RELAY_TIMEOUT, follow_redirects=False)
+    try:
+        upstream = client.build_request(request.method, url, content=body or None, headers=fwd)
+        r = await client.send(upstream, stream=True)
+    except httpx.HTTPError as e:
+        await client.aclose()
+        _plog("mcp.upstream_error", server=name, error=type(e).__name__, **ident)
+        raise HTTPException(502, f"{mcp_relay.display_name(name)} did not answer") from None
+    if r.status_code in (401, 403):
+        await r.aclose()
+        await client.aclose()
+        _mcp_note(nonce, name, unauthorized=True)
+        _plog("mcp.unauthorized", server=name, status=r.status_code, **ident)
+        text = mcp_relay.unauthorized_text(name)
+        if single is not None and "id" in single:
+            make = mcp_relay.tool_error if single.get("method") == "tools/call" else mcp_relay.rpc_error
+            return _mcp_json(make(single.get("id"), text))
+        raise HTTPException(401, text)
+    if 300 <= r.status_code < 400:
+        await r.aclose()
+        await client.aclose()
+        _plog("mcp.redirect_refused", server=name, status=r.status_code, **ident)
+        raise HTTPException(502, f"{mcp_relay.display_name(name)} answered with a redirect, which is not followed")
+    headers = {k: v for k in _MCP_RESP_HEADERS if (v := r.headers.get(k))}
+    if request.method == "GET":
+        # The server's notification stream: relayed as it arrives.
+        async def stream():
+            try:
+                async for chunk in r.aiter_raw():
+                    yield chunk
+            finally:
+                await r.aclose()
+                await client.aclose()
+        return StreamingResponse(stream(), status_code=r.status_code, headers=headers)
+    try:
+        raw = b""
+        async for chunk in r.aiter_raw():
+            raw += chunk
+            if len(raw) > MCP_RELAY_MAX_BYTES:
+                raise HTTPException(502, f"{mcp_relay.display_name(name)} sent more than this relay carries")
+    finally:
+        await r.aclose()
+        await client.aclose()
+    if r.status_code == 200 and any(m.get("method") == "tools/list" for m in msgs):
+        tools = mcp_relay.listed_tools(mcp_relay.jsonrpc_messages(raw, r.headers.get("content-type")))
+        with _LOCK:
+            relay.record_listing(tools)
+    return Response(raw, status_code=r.status_code, headers=headers)
+
+
+app.add_api_route("/mcp/{name}", mcp_connector, methods=["GET", "POST", "DELETE"])
+
+
 @app.get("/healthz")
 def healthz() -> dict:
     now = time.monotonic()
@@ -1290,6 +1436,8 @@ public_app = FastAPI(title="Agent Service — model gateway (public)", docs_url=
                      openapi_url=None)
 public_app.add_api_route("/v1/models", models, methods=["GET"])
 public_app.add_api_route("/v1/chat/completions", chat_completions, methods=["POST"])
+# A connector relayed for the task, under the same nonce (mcp_connector above).
+public_app.add_api_route("/mcp/{name}", mcp_connector, methods=["GET", "POST", "DELETE"])
 
 
 @public_app.get("/healthz")

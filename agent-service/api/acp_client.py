@@ -430,13 +430,14 @@ def _discard(path: str | None) -> None:
 
 
 def _kilo_launch(attempt_home: str, agent_home: str, model: str, model_env: dict, permission_policy: str,
-                 sandbox_prefix: list[str], kilo_bin: str, local: bool) -> tuple[str, list[str], dict, str | None]:
+                 sandbox_prefix: list[str], kilo_bin: str, local: bool,
+                 connector_names: list[str] | None = None) -> tuple[str, list[str], dict, str | None]:
     """(command, args, env, args_file) for one Kilo attempt, with its config written into `attempt_home`.
 
     `agent_home` is that same directory as Kilo will see it (the guest path on a remote sandbox). `local` is a
     launch on this machine; a remote backend checks its own guest for the binary (app.py's Kilo opener)."""
     base_url = model_env.get("HF_BASE_URL") or os.environ.get("AGENT_MODEL_BASE_URL", "")
-    kilo_config.write_config(attempt_home, model, base_url, permission_policy)
+    kilo_config.write_config(attempt_home, model, base_url, permission_policy, connector_names or ())
     env = {**model_env, **kilo_config.kilo_env(agent_home)}
     args_file = None
     if local:
@@ -999,6 +1000,16 @@ def build_mcp_servers(cfg, env, task_id: str = "") -> list[HttpMcpServer]:
     return out
 
 
+def connector_servers(names: list[str], gateway_base: str, nonce: str) -> list[HttpMcpServer]:
+    """ACP `mcpServers` for the turn owner's connectors: each is the gateway's relay for it, `<gateway>/mcp/<name>`,
+    with the task's nonce as the bearer. The connector's own token stays on the gateway (mcp_relay.py), so the
+    engine and the agent's shell can find only a nonce that dies with the task."""
+    if not gateway_base or not nonce:
+        return []
+    return [HttpMcpServer(type="http", name=n, url=f"{gateway_base}/mcp/{n}",
+                          headers=[HttpHeader(name="Authorization", value=f"Bearer {nonce}")]) for n in names]
+
+
 def prompt_blocks(text: str, images: list[tuple[str, str]]) -> list:
     """One ACP prompt: the turn's text, then each image as `(mime, base64 data)`. Hermes advertises
     `prompt_capabilities.image` and turns an image block into an OpenAI `image_url` part."""
@@ -1027,6 +1038,7 @@ async def _acp_run(work: str, attempt_home: str, prompt: str, nonce, timeout_sec
                    open_stdio: Callable[[list[str], dict], contextlib.AbstractAsyncContextManager] | None = None,
                    session_cwd: str | None = None,
                    mcp_servers: list[HttpMcpServer] | None = None,
+                   connector_names: list[str] | None = None,
                    images: list[tuple[str, str]] | None = None,
                    engine: str = "hermes",
                    kilo_bin: str = "kilo",
@@ -1070,6 +1082,8 @@ async def _acp_run(work: str, attempt_home: str, prompt: str, nonce, timeout_sec
 
     `mcp_servers` (inert if empty): ACP MCP server entries from `build_mcp_servers`, passed on
     new_session. The caller decides whether this task gets them at all (app.py `_task_mcp_servers`).
+    `connector_names` are the person's connectors among them, relayed by the gateway, which refuses every tool
+    that is not read-only; on Kilo their tools run without a card (kilo_config.kilo_permissions).
 
     `engine` (ENGINES, temporary): "hermes" is everything above, unchanged. "kilo" drives `kilo acp` instead,
     with its config from kilo_config.py written into `attempt_home`; `agent_home` is that directory as Kilo sees
@@ -1081,7 +1095,7 @@ async def _acp_run(work: str, attempt_home: str, prompt: str, nonce, timeout_sec
     if engine == "kilo":
         command, args, model_env, args_file = _kilo_launch(
             attempt_home, agent_home or attempt_home, model, model_env, permission_policy, sandbox_prefix,
-            kilo_bin, local=open_stdio is None)
+            kilo_bin, local=open_stdio is None, connector_names=connector_names)
         # Kilo writes and reads files with its own tools, inside the sandbox. Offering the client fs methods would
         # have this machine write the guest paths Kilo mirrors an approved edit to.
         caps = ClientCapabilities(fs=FileSystemCapabilities(read_text_file=False, write_text_file=False))

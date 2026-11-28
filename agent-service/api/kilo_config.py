@@ -35,7 +35,7 @@ _KILO_NEVER = ("webfetch", "websearch", "codesearch", "repo_clone", "repo_overvi
                "markdown_source", "recall", "kilo_memory_recall", "kilo_memory_save", "doom_loop")
 
 
-def kilo_permissions(permission_policy: str) -> dict[str, str]:
+def kilo_permissions(permission_policy: str, connector_names: tuple[str, ...] | list[str] = ()) -> dict[str, str]:
     """Kilo's `permission` block for one resolved policy (allow / confirm / deny_writes).
 
     Order is the contract: Kilo evaluates rules in config order and the LAST match wins, so the catch-all comes
@@ -45,7 +45,12 @@ def kilo_permissions(permission_policy: str) -> dict[str, str]:
 
     `external_directory` (a path outside the session folder) asks, rather than being denied, because the sandbox
     is what contains files: a shell command that writes to /tmp would otherwise fail inside a task that the
-    person approved."""
+    person approved.
+
+    `connector_names` are the turn owner's own connectors, which the gateway relays read-only tools for and refuses
+    the rest (mcp_relay.py). Kilo names an MCP tool `<server>_<tool>`, so `<name>_*` lets those run without a card
+    under allow and confirm: nobody is watching an agent turn to answer one, and the read-only rule is enforced
+    where the engine cannot reach. Under deny_writes they are denied with everything else."""
     deny_writes = permission_policy == "deny_writes"
     perms: dict[str, str] = {"*": "deny" if deny_writes else "ask"}
     for key in _KILO_READ_ONLY:
@@ -53,13 +58,16 @@ def kilo_permissions(permission_policy: str) -> dict[str, str]:
     for key in _KILO_WRITES:
         perms[key] = "deny" if deny_writes else "ask"
     perms["external_directory"] = "deny" if deny_writes else "ask"
+    for name in connector_names:
+        perms[f"{name}_*"] = "deny" if deny_writes else "allow"
     for key in _KILO_NEVER:
         perms[key] = "deny"
     return perms
 
 
 def kilo_config(model: str, base_url: str, permission_policy: str, *,
-                context_tokens: int = 128_000, output_tokens: int = 16_384) -> dict:
+                context_tokens: int = 128_000, output_tokens: int = 16_384,
+                connector_names: tuple[str, ...] | list[str] = ()) -> dict:
     """The whole Kilo config for one attempt: our OpenAI-compatible gateway as the only provider, the task's
     model, the policy's permissions, and every feature that would reach a Kilo service turned off.
 
@@ -82,7 +90,7 @@ def kilo_config(model: str, base_url: str, permission_policy: str, *,
             "models": {model: {"name": model, "tool_call": True,
                                "limit": {"context": context_tokens, "output": output_tokens}}},
         }},
-        "permission": kilo_permissions(permission_policy),
+        "permission": kilo_permissions(permission_policy, connector_names),
         "share": "disabled",
         "autoupdate": False,
         "snapshot": False,
@@ -131,13 +139,15 @@ def _env_int(name: str, default: int) -> int:
     return value if value > 0 else default
 
 
-def write_config(attempt_home: str, model: str, base_url: str, permission_policy: str) -> Path:
+def write_config(attempt_home: str, model: str, base_url: str, permission_policy: str,
+                 connector_names: tuple[str, ...] | list[str] = ()) -> Path:
     """Write the attempt's Kilo config as Kilo's global config (`<home>/config/kilo/kilo.json`, which is where
     XDG_CONFIG_HOME from `kilo_env` points it). Returns the path. Written whole each attempt, never merged:
     the attempt home is new for every attempt (app.py names it by task id and attempt number)."""
     cfg = kilo_config(model, base_url, permission_policy,
                       context_tokens=_env_int("AGENT_MODEL_CONTEXT_TOKENS", 128_000),
-                      output_tokens=_env_int("AGENT_MODEL_OUTPUT_TOKENS", 16_384))
+                      output_tokens=_env_int("AGENT_MODEL_OUTPUT_TOKENS", 16_384),
+                      connector_names=connector_names)
     path = Path(attempt_home, "config", "kilo", "kilo.json")
     path.parent.mkdir(parents=True, exist_ok=True)
     # The session folder outlives a turn and the agent can write it, and this runs outside the sandbox, so a

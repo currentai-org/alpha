@@ -1,0 +1,253 @@
+# CI-only override for selfhost/compose.yaml (.github/workflows/selfhost.yml, the agent-connectors job). A
+# self-hoster's `docker compose up` never reads this file; the job adds it through COMPOSE_FILE.
+#
+# Agent mode with a person's connected Google account, end to end, with no Google account and no model:
+#
+# - `google` stands in for the Google connector at the address compose already gives it
+#   (http://google:8000/mcp). It takes only the access token Google's stand-in in the web app hands out
+#   (web/src/lib/chat/server/connectors/googleE2eStub.ts, STUB_ACCESS_TOKEN), lists two read-only Gmail tools
+#   and one that sends, and answers a search with one fixed message. A search for "lapsed-access" answers 401,
+#   as Google does once a person's access has lapsed. Each request is printed on one `google-stub request` line
+#   with whether its bearer was the stand-in's token, never the token itself.
+# - `model` is a scripted OpenAI-compatible model: with a Gmail tool offered it calls it (the send tool when
+#   the task asks to send, the lapsed search when it asks about lapsed access), and once a tool answered it
+#   quotes the answer back. With no Gmail tool offered it says so. Everything else gets a short fixed reply.
+# - The agent service's derive and judge side calls are off, since the scripted model cannot write a spec.
+services:
+  google:
+    image: python@sha256:9ef1a599f863231c3d91e941389bfdc4a2d6070557243d54df1a4e57015b960e
+    command: ["python", "-u", "/stub/google_stub.py"]
+    configs:
+      - source: google_stub
+        target: /stub/google_stub.py
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+      start_period: 2s
+
+  model:
+    profiles: [agent]
+    image: python@sha256:9ef1a599f863231c3d91e941389bfdc4a2d6070557243d54df1a4e57015b960e
+    command: ["python", "-u", "/stub/model_stub.py"]
+    configs:
+      - source: model_stub
+        target: /stub/model_stub.py
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/v1/models')"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  gateway:
+    depends_on:
+      model: { condition: service_healthy }
+
+  agent:
+    environment:
+      AGENT_AUTODERIVE_VERIFY: "0"
+      AGENT_JUDGE_VERIFY: "0"
+
+configs:
+  google_stub:
+    content: |
+      import json
+      import sys
+      from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+      ACCESS = "ya29.e2e-google-access"
+      LAPSED = "lapsed-access"
+      MESSAGE = ("From: allotment-society@example.org. Subject: Plot 7 rota. "
+                 "The plot 7 watering rota moves to Thursdays from next week.")
+      TOOLS = [
+          {"name": "search_gmail_messages", "description": "Search the person's Gmail and return matching messages.",
+           "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]},
+           "annotations": {"readOnlyHint": True}},
+          {"name": "get_gmail_message_content", "description": "Read one Gmail message by its id.",
+           "inputSchema": {"type": "object", "properties": {"message_id": {"type": "string"}}, "required": ["message_id"]},
+           "annotations": {"readOnlyHint": True}},
+          {"name": "send_gmail_message", "description": "Send an email from the person's Gmail.",
+           "inputSchema": {"type": "object", "properties": {"to": {"type": "string"}, "body": {"type": "string"}}}},
+      ]
+
+
+      class Handler(BaseHTTPRequestHandler):
+          protocol_version = "HTTP/1.1"
+
+          def _send(self, status, payload=None, extra=None):
+              body = json.dumps(payload).encode() if payload is not None else b""
+              self.send_response(status)
+              if payload is not None:
+                  self.send_header("content-type", "application/json")
+              for k, v in (extra or {}).items():
+                  self.send_header(k, v)
+              self.send_header("content-length", str(len(body)))
+              self.end_headers()
+              self.wfile.write(body)
+
+          def do_GET(self):
+              self._send(200 if self.path == "/health" else 405, {} if self.path == "/health" else None)
+
+          def do_DELETE(self):
+              self._send(200, {})
+
+          def do_POST(self):
+              raw = self.rfile.read(int(self.headers.get("content-length") or 0))
+              try:
+                  msg = json.loads(raw or b"{}")
+              except ValueError:
+                  msg = {}
+              method = msg.get("method")
+              params = msg.get("params") or {}
+              tool = params.get("name") if method == "tools/call" else None
+              args = params.get("arguments") or {}
+              bearer_ok = self.headers.get("authorization") == "Bearer " + ACCESS
+              print("google-stub request " + json.dumps({"method": method, "tool": tool, "bearer_ok": bearer_ok},
+                                                       sort_keys=True), flush=True)
+              if not bearer_ok or (tool == "search_gmail_messages" and LAPSED in str(args.get("query", ""))):
+                  self._send(401, None)
+                  return
+              if "id" not in msg:
+                  self._send(202, None)
+                  return
+              if method == "initialize":
+                  result = {"protocolVersion": params.get("protocolVersion") or "2025-06-18",
+                            "capabilities": {"tools": {"listChanged": False}},
+                            "serverInfo": {"name": "google-workspace-e2e-stub", "version": "1"}}
+              elif method == "tools/list":
+                  result = {"tools": TOOLS}
+              elif tool == "search_gmail_messages":
+                  result = {"content": [{"type": "text", "text": "1 message: " + MESSAGE}]}
+              elif tool == "get_gmail_message_content":
+                  result = {"content": [{"type": "text", "text": MESSAGE}]}
+              elif tool == "send_gmail_message":
+                  print("google-stub SENT a message, which the gateway should have refused", flush=True)
+                  result = {"content": [{"type": "text", "text": "sent"}]}
+              else:
+                  result = {}
+              self._send(200, {"jsonrpc": "2.0", "id": msg["id"], "result": result}, {"mcp-session-id": "stub-session"})
+
+          def log_message(self, *args):
+              pass
+
+
+      if __name__ == "__main__":
+          print("google-stub listening on 8000", flush=True)
+          sys.stdout.flush()
+          ThreadingHTTPServer(("0.0.0.0", 8000), Handler).serve_forever()
+
+  model_stub:
+    content: |
+      import json
+      import sys
+      import time
+      from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+      MODEL = "stub-model"
+
+
+      def text_of(content):
+          if isinstance(content, str):
+              return content
+          if isinstance(content, list):
+              return " ".join(p.get("text", "") for p in content if isinstance(p, dict))
+          return ""
+
+
+      def decide(req):
+          """(text, tool_call) for one chat completion request."""
+          msgs = req.get("messages") or []
+          names = [t.get("function", {}).get("name", "") for t in req.get("tools") or []]
+          asked = " ".join(text_of(m.get("content")) for m in msgs if m.get("role") == "user")
+          tool_msgs = [text_of(m.get("content")) for m in msgs if m.get("role") == "tool"]
+          if tool_msgs:
+              return "Your Gmail tool answered: " + tool_msgs[-1][:600], None
+          if "Gmail" not in asked:
+              return "stub reply", None
+          search = next((n for n in names if n.endswith("search_gmail_messages")), None)
+          send = next((n for n in names if n.endswith("send_gmail_message")), None)
+          if "Send a reply" in asked and send:
+              return None, (send, {"to": "allotment-society@example.org", "body": "Thanks"})
+          if search:
+              query = "lapsed-access plot 7" if "lapsed" in asked else "plot 7 rota"
+              return None, (search, {"query": query})
+          return "No Google tools were offered to this task.", None
+
+
+      class Handler(BaseHTTPRequestHandler):
+          protocol_version = "HTTP/1.1"
+
+          def _json(self, payload):
+              body = json.dumps(payload).encode()
+              self.send_response(200)
+              self.send_header("content-type", "application/json")
+              self.send_header("content-length", str(len(body)))
+              self.end_headers()
+              self.wfile.write(body)
+
+          def do_GET(self):
+              if self.path.rstrip("/").endswith("/models"):
+                  self._json({"object": "list", "data": [{"id": MODEL, "object": "model", "owned_by": "stub"}]})
+              else:
+                  self.send_response(404)
+                  self.send_header("content-length", "0")
+                  self.end_headers()
+
+          def do_POST(self):
+              raw = self.rfile.read(int(self.headers.get("content-length") or 0))
+              try:
+                  req = json.loads(raw or b"{}")
+              except ValueError:
+                  req = {}
+              text, call = decide(req)
+              names = [t.get("function", {}).get("name", "") for t in req.get("tools") or []]
+              gmail = sorted(n for n in names if "gmail" in n)
+              print("model-stub call " + json.dumps({"gmail_tools": gmail, "tool_call": call[0] if call else None},
+                                                    sort_keys=True), flush=True)
+              usage = {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
+              cid, now = "chatcmpl-stub", int(time.time())
+              if call:
+                  tc = {"id": "call_stub_1", "type": "function",
+                        "function": {"name": call[0], "arguments": json.dumps(call[1])}}
+              if not req.get("stream"):
+                  message = {"role": "assistant", "content": text}
+                  if call:
+                      message = {"role": "assistant", "content": None, "tool_calls": [tc]}
+                  self._json({"id": cid, "object": "chat.completion", "created": now, "model": MODEL,
+                              "choices": [{"index": 0, "message": message,
+                                           "finish_reason": "tool_calls" if call else "stop"}], "usage": usage})
+                  return
+              self.send_response(200)
+              self.send_header("content-type", "text/event-stream")
+              self.send_header("cache-control", "no-cache")
+              self.send_header("connection", "close")
+              self.end_headers()
+
+              def chunk(delta, finish=None, extra=None):
+                  c = {"id": cid, "object": "chat.completion.chunk", "created": now, "model": MODEL,
+                       "choices": [{"index": 0, "delta": delta, "finish_reason": finish}]}
+                  c.update(extra or {})
+                  self.wfile.write(("data: " + json.dumps(c) + "\n\n").encode())
+                  self.wfile.flush()
+
+              if call:
+                  chunk({"role": "assistant", "tool_calls": [{"index": 0, **tc}]})
+                  chunk({}, "tool_calls")
+              else:
+                  chunk({"role": "assistant", "content": text})
+                  chunk({}, "stop")
+              self.wfile.write(("data: " + json.dumps({"id": cid, "object": "chat.completion.chunk", "created": now,
+                                                       "model": MODEL, "choices": [], "usage": usage}) + "\n\n").encode())
+              self.wfile.write(b"data: [DONE]\n\n")
+              self.wfile.flush()
+              self.close_connection = True
+
+          def log_message(self, *args):
+              pass
+
+
+      if __name__ == "__main__":
+          print("model-stub listening on 8080", flush=True)
+          sys.stdout.flush()
+          ThreadingHTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
