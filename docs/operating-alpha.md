@@ -57,6 +57,37 @@ that passed its smoke but breaks something the smoke doesn't check.
 On develop the same steps apply with `vercel alias set <url> <develop host> --scope <team>`. A develop host
 that a merge broke is better fixed by merging the revert the job opened.
 
+## Prove the production gate holds
+
+Do this after a release whose deploy changed `deploy.yml` or `.github/scripts/deploy-smoke.sh`, and at least
+once per minor version. Each run builds a deliberately broken copy of the release and checks that the smoke
+keeps it off the domain. The domain must not move, so users never see the broken copy.
+
+1. Wait for the release's own Deploy run to finish green, and note the deployment the domain serves:
+   `vercel inspect https://<production host> --scope <team>`.
+2. Run Deploy by hand on the release tag, once per mode:
+
+   ```sh
+   gh workflow run deploy.yml --ref <tag> -f prove_red=identity
+   gh workflow run deploy.yml --ref <tag> -f prove_red=answer
+   ```
+
+   Start the second once the first has finished: both use the production concurrency group, so the second
+   waits anyway. `identity` deploys without the identity file. `answer` deploys with every input safety
+   screen on a closed port, so every turn is declined. `provider` runs on develop only.
+3. Read each run's "Smoke the deployment before the domain moves" step. A pass looks like this:
+   - `identity`: a line saying `/api/status` names status page 'none' and the build lost its identity, then
+     `verdict 1: the build is at fault`.
+   - `answer`: `SMOKE FAIL: the safety screen declined the turn`, the same turn sent to the deployment the
+     domain serves and answered there, then `verdict 1: the build is at fault`.
+
+   In both, the run is red and "Move the domain to this deployment" is skipped.
+4. Run `vercel inspect` again. It must name the same deployment as in step 1. If it names a prove-red
+   deployment, roll back (above) at once: the gate failed.
+5. Post the two run links in the alerts channel, as evidence the gate held for that release.
+
+A run that ends `verdict 0` or moves the domain is a broken gate, not a passed test. Treat it as an incident.
+
 ## Restore the database from a snapshot
 
 This is a last resort. A restore removes every write made since the snapshot, including conversations,
