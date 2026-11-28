@@ -10,10 +10,6 @@
 // `ask` is the open contribution the gap needs — shown in the CTA and prefilled into the
 // Raise-your-hand form's detail (via the contributeOpen store's { topic }).
 
-import { chromeLanguage } from "$lib/chat/chromeCopy";
-import { detectLanguage } from "$lib/chat/routing/heuristic";
-import { fromIso1 } from "$lib/chat/routing/languages";
-
 export interface StarterGap {
 	node: string;
 	ask: string;
@@ -23,29 +19,19 @@ export interface StarterGap {
 // (Wikipedia + Firecrawl + OpenAlex), never a full open web index — so this gap holds for
 // ANY web-grounded turn, not just a curated prompt. Surfacing it does NOT violate the
 // no-inference honesty rule below (we aren't guessing a gap from model output — it's a fixed,
-// known property of the websearch node, same text the node's map description names). Shown ONCE
-// per conversation, on the FIRST web-grounded answer, then demure — the "emphasize a component
-// the first time it activates, quiet after" trace principle. `node` matches WEBSEARCH_NODE.
+// known property of the websearch node, same text the node's map description names). It shows
+// only inside X-ray's "This answer" tab, never under the answer itself: it is an invitation to
+// contribute, not part of the reply, and under a reply it read as internal copy.
+// `node` matches WEBSEARCH_NODE.
 const WEB_SEARCH_GAP: StarterGap = {
 	node: "websearch",
 	ask: "a Google-scale open web search index",
 };
 
-/** WEB_SEARCH_GAP for the first web-grounded answer, or undefined when that answer is written in a
- *  different language from the card. The card follows the browser's language (chromeCopy.ts), so an
- *  English browser asking in French would get an English recruitment line under a French answer.
- *  The answer's language is the routing heuristic's verdict on its text, counting its runners-up: the
- *  heuristic reads short French answers ("La capitale du Japon est Tokyo.") as Spanish with French
- *  second, so counting the runners-up keeps a French browser's card on most answers. The
- *  cost is a French card under a Spanish answer in a French browser, which is still the reader's own language. An undecided
- *  verdict shows no card, since the card is an optional invitation and the answer is never wrong
- *  without it. */
-export function webSearchGapFor(answer: string | undefined, uiLang: string | null | undefined): StarterGap | undefined {
-	if (!answer) return undefined;
-	const card = fromIso1(chromeLanguage(uiLang));
-	const verdict = detectLanguage(answer);
-	const readsAs = verdict.value === card || verdict.alternatives.some((a) => a.value === card);
-	return readsAs ? WEB_SEARCH_GAP : undefined;
+/** The open gap X-ray's "This answer" tab offers for an answer: the gap its question deliberately
+ *  surfaces (a curated prompt), else the web-search gap when the answer searched the web, else none. */
+export function gapForAnswer(question: string | undefined | null, searchedWeb: boolean): StarterGap | undefined {
+	return gapForPrompt(question) ?? (searchedWeb ? WEB_SEARCH_GAP : undefined);
 }
 
 // Keyed by the prompt text. Kept SEPARATE from `suggestions` (string[]) so the starters
@@ -82,7 +68,7 @@ const BY_NORM: Record<string, StarterGap> = Object.fromEntries(
 
 /** The gap a curated prompt deliberately surfaces, or undefined for prompts that don't
  *  target one (e.g. the provenance/governance starter). Matches on normalized text. */
-export function gapForPrompt(text: string | undefined | null): StarterGap | undefined {
+function gapForPrompt(text: string | undefined | null): StarterGap | undefined {
 	if (!text) return undefined;
 	return BY_NORM[normalizeStarter(text)];
 }

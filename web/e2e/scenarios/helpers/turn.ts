@@ -18,7 +18,7 @@ import { dirname, join } from 'node:path';
 // spec-isolation gate counts it.
 
 // The label is translated (`message_retry`), so a spec in a French browser sees "Réessayer". Matching
-// only "Retry" made every non-English turn read as never finished: gap-card-language's French test
+// only "Retry" made every non-English turn read as never finished: a French-browser test
 // waited out its 90 s on a turn that had ended. The name is read from every shipped locale.
 const messagesDir = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'messages');
 const RETRY_LABELS = ['en', 'fr', 'es', 'de'].map(

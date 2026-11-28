@@ -57,13 +57,12 @@ function liveLineStems(lang: string): string[] {
 	return [...fixed, ...named];
 }
 
-// The two lines that sit directly under an answer, the footer's "How this was made" link and
-// the open-gap card, follow the answer's language. They must not show in English under a
-// French or Spanish answer. The link is under every answer a model served, so it is asserted
-// outright; the card shows only on a turn that searched the web, so it is read when it is there.
+// The footer's "How this was made" link under an answer follows the browser's language, so it must not
+// show in English under a French or Spanish answer. It is under every answer a model served,
+// so it is asserted outright. The open-gap card no longer sits under any answer.
 async function expectChromeInAnswerLanguage(
 	assistantMessage: Locator,
-	expected: { howMade: string; gapAction: string }
+	expected: { howMade: string }
 ) {
 	const howMade = assistantMessage.locator('[data-how-made]');
 	await expect(
@@ -75,20 +74,10 @@ async function expectChromeInAnswerLanguage(
 		'the "How this was made" link stayed English under an answer in another language'
 	).toContainText(expected.howMade);
 	await expect(howMade).not.toContainText('How this was made');
-
-	const gap = assistantMessage.locator('[data-gap-invite]');
-	if ((await gap.count()) > 0) {
-		await expect(
-			gap,
-			'the open-gap card stayed English under an answer in another language'
-		).toContainText(expected.gapAction);
-		await expect(gap).not.toContainText(/Open gap|Help build it|open stack/);
-	} else {
-		test.info().annotations.push({
-			type: 'CUR-2394',
-			description: 'this turn did not search the web, so no open-gap card to read'
-		});
-	}
+	await expect(
+		assistantMessage.locator('[data-gap-invite]'),
+		'an open-gap card sits under the answer; it belongs in X-ray only'
+	).toHaveCount(0);
 }
 
 // Every visitor in this file writes in a language other than English, so none of their
@@ -213,8 +202,7 @@ test.describe('a French browser', () => {
 			});
 
 			await expectChromeInAnswerLanguage(assistantMessage, {
-				howMade: 'Comment cette réponse a été produite',
-				gapAction: 'Aider à la construire'
+				howMade: 'Comment cette réponse a été produite'
 			});
 
 			// A French browser watches the answer being made in French. Every status line the
@@ -564,8 +552,7 @@ test(
 		).toBe('spa');
 
 		await expectChromeInAnswerLanguage(assistantMessage, {
-			howMade: 'Cómo se hizo esta respuesta',
-			gapAction: 'Ayuda a construirlo'
+			howMade: 'Cómo se hizo esta respuesta'
 		});
 	}
 );

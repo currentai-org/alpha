@@ -100,7 +100,6 @@ Modified by Current AI from huggingface/chat-ui.
 	import SessionFootprint from '$lib/chat/components/SessionFootprint.svelte';
 	import { routerExamples } from '$lib/chat/constants/routerExamples';
 	import type { RouterFollowUp, RouterExample } from '$lib/chat/constants/routerExamples';
-	import { gapForPrompt, webSearchGapFor } from '$lib/chat/constants/starterGaps';
 	import FeatureAnnouncementToast from '../FeatureAnnouncementToast.svelte';
 	import { getActiveAnnouncement } from '$lib/chat/utils/featureAnnouncements';
 	import { usePublicConfig } from '$lib/chat/utils/PublicConfig.svelte';
@@ -254,20 +253,6 @@ Modified by Current AI from huggingface/chat-ui.
 	let draftOverLimit = $derived.by(() => {
 		const limit = page.data.messageLengthLimit;
 		return typeof limit === 'number' && limit > 0 && draft.length > limit;
-	});
-
-	// The FIRST web-grounded answer in this conversation — the only one that auto-surfaces the
-	// always-true "no open Google-scale index" gap (WEB_SEARCH_GAP). Emphasize the web-search
-	// component the first time it activates, then go quiet (later searches show no gap). A
-	// curated starter gap still takes precedence where one exists.
-	// `void loading` forces a recompute when a turn FINISHES (loading true→false): the streamed
-	// message's webSearch is set mid-turn but an in-place mutation doesn't always retrigger this
-	// `.find()`; recomputing on the loading edge (exactly when the gap's `!loading` gate opens)
-	// picks up the just-set sources so the CTA appears live, not only after a reload.
-	let firstWebGroundedId = $derived.by(() => {
-		void loading;
-		return messages.find((m) => m.from === 'assistant' && (m.webSearch?.sources?.length ?? 0) > 0)
-			?.id;
 	});
 
 	// Highlight-to-reply: drop a selection from an answer into the composer as a Markdown quote,
@@ -1371,12 +1356,6 @@ Modified by Current AI from huggingface/chat-ui.
 								{message}
 								turnNumber={idx + 1}
 								modelId={currentModel.id}
-								gap={message.from === 'assistant'
-									? (gapForPrompt(messages[idx - 1]?.content) ??
-										(message.id === firstWebGroundedId
-											? webSearchGapFor(message.content, page.data.uiLang)
-											: undefined))
-									: undefined}
 								question={message.from === 'assistant' ? messages[idx - 1]?.content : undefined}
 								alternatives={messagesAlternatives.find((a) => a.includes(message.id)) ?? []}
 								isAuthor={!shared}

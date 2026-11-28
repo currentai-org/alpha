@@ -26,7 +26,7 @@ async function chatWithSearchAlways(page: Page) {
 	const composer = page.getByLabel('Message AI Potluck');
 	await composer.click({ timeout: 30_000 });
 	await openComposerTool(page, 'Web search', { timeout: 15_000 });
-	// Same control and choice gap-card-language.spec.ts drives: Off, Auto, Always.
+	// Same control and choice open-gap-card-in-xray.spec.ts drives: Off, Auto, Always.
 	const always = toolGroup(page, 'Web search').getByRole('menuitemradio', { name: /^Always\b/ });
 	await always.click();
 	await expect(always, 'web search never moved to Always').toHaveAttribute('aria-checked', 'true');

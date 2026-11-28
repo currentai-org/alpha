@@ -69,9 +69,7 @@ Modified by Current AI from huggingface/chat-ui.
 	import DispositionNotice from './DispositionNotice.svelte';
 	import CacheNotice from './CacheNotice.svelte';
 	import { provenanceFacts } from '$lib/chat/utils/trace/provenanceFacts';
-	import GapInvite from './GapInvite.svelte';
 	import StillLearningNote from './StillLearningNote.svelte';
-	import type { StarterGap } from '$lib/chat/constants/starterGaps';
 	import ReportButton from './ReportButton.svelte';
 	import DeclineChallenge from './DeclineChallenge.svelte';
 	import LanguageReportNote from '$lib/chat/components/language-data/LanguageReportNote.svelte';
@@ -107,16 +105,12 @@ Modified by Current AI from huggingface/chat-ui.
 		// this is the fallback since we serve a single model with no Omni routing,
 		// so routerMetadata is usually empty.
 		modelId?: string;
-		// The open-stack gap this answer's originating prompt deliberately surfaces, if any
-		// (resolved by ChatWindow from the preceding user prompt; see starterGaps). Drives the
-		// honest "touches a gap → get involved" CTA. Undefined for prompts that target no gap.
-		gap?: StarterGap;
 		onretry?: (payload: { id: Message['id']; content?: string }) => void;
 		/** Continue this answer from where the time limit cut it off. */
 		oncontinue?: (payload: { id: Message['id'] }) => void;
 		onshowAlternateMsg?: (payload: { id: Message['id'] }) => void;
 		// The user prompt this assistant answer responds to (resolved by ChatWindow from
-		// the preceding message, like `gap`). Lets the user request an independent second
+		// the preceding message). Lets the user request an independent second
 		// opinion on the same question. Undefined for user messages / no prior prompt.
 		question?: string;
 		// Highlight-to-reply: when the reader selects text inside an answer, a small "Quote"
@@ -142,7 +136,6 @@ Modified by Current AI from huggingface/chat-ui.
 		editMsdgId = $bindable(null),
 		isLast = false,
 		modelId,
-		gap,
 		question,
 		onretry,
 		oncontinue,
@@ -359,7 +352,7 @@ Modified by Current AI from huggingface/chat-ui.
 		stripArtifacts(message.content.replace(THINK_BLOCK_REGEX, '')).trim()
 	);
 
-	// The open-gap card and the footer's "How this was made" follow the language the visitor's browser
+	// The footer's "How this was made" follows the language the visitor's browser
 	// asks for (chromeCopy.ts), like the live request log above them.
 	const chromeLang = $derived(page.data.uiLang ?? 'en');
 
@@ -1212,13 +1205,6 @@ Modified by Current AI from huggingface/chat-ui.
 						flash={urlNoticeFlash}
 					/>
 				</div>
-			{/if}
-
-			<!-- Honest "touches an open gap → get involved" CTA. Only when this turn's prompt
-			     deliberately surfaces a known gap (starterGaps) and the answer actually ran —
-			     never on a safety decline (no answer to attach a gap to). -->
-			{#if gap && !loading && message.content && !message.moderation?.flagged}
-				<GapInvite {gap} lang={chromeLang} />
 			{/if}
 
 			<!-- the low-resource notice offers to try anyway. Retry would only bring the same notice
