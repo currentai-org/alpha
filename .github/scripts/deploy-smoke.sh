@@ -39,7 +39,7 @@ fi
 hdr=()
 if [ -n "${BYPASS:-}" ]; then hdr=(-H "x-vercel-protection-bypass: $BYPASS"); fi
 code() { curl -sS "${hdr[@]}" -o /dev/null -w '%{http_code}' -L "$1" || echo 000; }
-fail() { echo "::error title=deploy smoke::$base: $*"; exit 1; }
+fail() { echo "::error title=deploy smoke::$base: $*"; echo "verdict 1: the build is at fault"; exit 1; }
 
 # up URL: /chat/healthcheck and / both 200 within six tries, ten seconds apart.
 up() {
@@ -56,6 +56,7 @@ up() {
 # provider_down: verdict 2, or exit 0 with the step output provider_down=true under PROVIDER_DOWN_OK=1.
 provider_down() {
 	echo "::warning title=deploy smoke::$base: $1 here and on $current too, so the model provider is the likely fault, not this build"
+	echo "verdict 2: the provider is down; the deploy goes ahead"
 	if [ "${PROVIDER_DOWN_OK:-}" = 1 ]; then
 		echo "provider_down=true" >> "${GITHUB_OUTPUT:-/dev/null}"
 		exit 0
@@ -115,6 +116,7 @@ rc=0
 answers "$base" || rc=$?
 if [ "$rc" = 0 ]; then
 	echo "smoke ok on $base"
+	echo "verdict 0: a visitor can use it"
 	exit 0
 fi
 if [ "$rc" = 3 ]; then why="was declined by a safety screen"; else why="got no answer"; fi
