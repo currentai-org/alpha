@@ -36,6 +36,30 @@ When development moves here, the model is trunk-based:
   host, and a release tag deploys production (`.github/workflows/deploy.yml`).
 - If you run Alpha yourself, pin a tag or a digest, not `main`.
 
+## The merge bar
+
+A change counts as done when it clears three checks, two of them after the merge:
+
+1. Before the merge, every required check on the pull request is green. One of them is the scenario
+   suite against a mock model (`e2e.yml`'s `mock-model` job, `web/scripts/mock-model-e2e.sh`), which runs
+   the app, Postgres and a mock model on the runner and reads no secret, so a fork's pull request runs it
+   too.
+2. After the merge, `deploy.yml` deploys `main` to the develop host and sends it one real guest chat turn.
+   A build that fails it never takes the host, or the host moves back and a revert of the merge opens.
+3. Then the evidence: one scenario spec that drives the change, run against the develop host with its
+   real model, passing, and its result read. Link the run, or paste its last lines, in the pull request.
+
+```sh
+cd web
+SCENARIO_BASE_URL=https://<develop host> SCENARIO_DATABASE_URL=<its database URL> SCENARIO_CHAT_SURFACE=1 \
+  pnpm test:e2e:scenarios e2e/scenarios/<file>.spec.ts
+```
+
+The sign-in helper reads its one-time code from that database, so this run needs a maintainer's
+credentials.
+
+A change with nothing a spec can drive (a workflow, a document) says so in its pull request instead.
+
 ## Report an issue
 
 Open a GitHub issue for bugs, unclear code, or a hosted service you couldn't replace. Include the file
