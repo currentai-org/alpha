@@ -182,17 +182,17 @@ describe("enforceRequestRateLimits", () => {
 	});
 
 	// The ceiling is on unless someone turns it off, and sized for a room behind one NAT.
-	it("enforces the per-IP ceiling by default, at 25 × the per-session rate, when no multiplier is set", async () => {
+	it("enforces the per-IP ceiling by default, at 200 × the per-session rate, when no multiplier is set", async () => {
 		mockConfig.RATE_LIMIT_IP_MULTIPLIER = "";
 		countDocuments
 			.mockResolvedValueOnce(1) // per-session: under 5
-			.mockResolvedValueOnce(126); // per-IP: over 5 * 25 = 125 → throw
+			.mockResolvedValueOnce(1001); // per-IP: over 5 * 200 = 1000 → throw
 		await expect(enforceRequestRateLimits(OPTS)).rejects.toMatchObject({ status: 429 });
 	});
 
 	it("lets a room of visitors through the default per-IP ceiling right up to it", async () => {
 		mockConfig.RATE_LIMIT_IP_MULTIPLIER = "";
-		countDocuments.mockResolvedValueOnce(1).mockResolvedValueOnce(125); // exactly at the ceiling
+		countDocuments.mockResolvedValueOnce(1).mockResolvedValueOnce(1000); // exactly at the ceiling
 		await expect(enforceRequestRateLimits(OPTS)).resolves.toBeUndefined();
 	});
 
@@ -205,11 +205,11 @@ describe("enforceRequestRateLimits", () => {
 
 	it("words the per-IP refusal for a shared network, and the composer holds it like any rate limit", async () => {
 		mockConfig.RATE_LIMIT_IP_MULTIPLIER = "";
-		countDocuments.mockResolvedValueOnce(1).mockResolvedValueOnce(126);
+		countDocuments.mockResolvedValueOnce(1).mockResolvedValueOnce(1001);
 		const refusal = await enforceRequestRateLimits(OPTS).catch((e: { body: { message: string } }) => e);
 		const message = (refusal as { body: { message: string } }).body.message;
 		expect(message).toMatch(/your network/);
-		expect(message).toMatch(/more than 125 a minute/); // 5 per session × the default multiplier of 25
+		expect(message).toMatch(/more than 1000 a minute/); // 5 per session × the default multiplier of 200
 		expect(isRateLimitMessage(message)).toBe(true);
 	});
 
@@ -225,7 +225,7 @@ describe("enforceRequestRateLimits", () => {
 
 	it("says how long on the per-IP ceiling's refusal too, so a room at an event sees Send held", async () => {
 		mockConfig.RATE_LIMIT_IP_MULTIPLIER = "";
-		countDocuments.mockResolvedValueOnce(1).mockResolvedValueOnce(126);
+		countDocuments.mockResolvedValueOnce(1).mockResolvedValueOnce(1001);
 		const refusal = (await enforceRequestRateLimits(OPTS).catch((e) => e)) as {
 			status: number;
 			body: { message: string; retryAfterSeconds?: number };

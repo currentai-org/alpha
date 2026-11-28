@@ -28,14 +28,15 @@ import { chatTurnRoom, chatTurnsUsedText, recordChatTurn } from "$lib/chat/serve
  */
 /**
  * The per-IP ceiling is this many times the per-session rate when RATE_LIMIT_IP_MULTIPLIER
- * is unset. At the default RATE_LIMIT of 20 that is 500 messages a minute from one IP.
+ * is unset. At the default RATE_LIMIT of 20 that is 4,000 messages a minute from one IP, the same
+ * as the hosted deployment sets.
  *
- * Sized for a room, not a person. A conference or live demo puts a few hundred visitors behind one
- * conference NAT address; 300 of them each sending once in the same minute is 300, under 500. A
- * script that rotates sessions from one address is held to 500 a minute.
- * RATE_LIMIT_IP_MULTIPLIER still overrides it, and 0 turns the ceiling off.
+ * Sized for a room, not a person. A workshop on venue Wi-Fi puts a few hundred people behind one
+ * NAT address, and 300 of them get about 13 messages a minute each before the room is refused. A
+ * script that rotates sessions from one address is held to 4,000 a minute; an instance open to the
+ * public can lower RATE_LIMIT_IP_MULTIPLIER, and 0 turns the ceiling off.
  */
-const DEFAULT_IP_MULTIPLIER = 25;
+const DEFAULT_IP_MULTIPLIER = 200;
 
 /** The per-session limit's refusal, naming the limit so a visitor knows what they hit. Contains "too many
  *  messages" so the composer holds it (isRateLimitMessage) and keeps the unsent text. */
