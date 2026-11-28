@@ -16,10 +16,11 @@
 #     host back if the new build still fails once the serving build answers, and ends red if neither answers
 #     by then.
 #   - nothing served the host before (a first deploy): the new build is at fault.
+# A failed health check gets the same comparison, because the model list comes from the provider at boot.
 # A failed identity check always counts against the new build. A manual run's prove_red input breaks one
 # run on purpose, to show the gate holds: `identity` deploys without the identity file, `answer` deploys
-# with every model base URL pointed at a closed port, and `provider` (develop only) deploys two such builds
-# and smokes one against the other, moving no host.
+# with the safety screen on a closed port (every turn declines), and `provider` (develop only) deploys two
+# builds with every model base URL on a closed port and smokes one against the other, moving no host.
 #
 # The Vercel project is not connected to this repository, so no branch, pull request, fork or Dependabot
 # update ever builds there with the project's secrets; this workflow is the only way a commit reaches it.
@@ -46,8 +47,8 @@ on:
       prove_red:
         description: >-
           Break this run on purpose, to show the gate holds: `identity` drops the identity file, `answer`
-          points the build's model base URLs at a closed port, `provider` (develop only) smokes two such
-          builds against each other and moves no host
+          puts the safety screen on a closed port, `provider` (develop only) smokes two builds with dead model
+          base URLs against each other and moves no host
         type: choice
         options: [none, identity, answer, provider]
         default: none

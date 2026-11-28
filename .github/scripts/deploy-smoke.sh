@@ -6,17 +6,19 @@
 #      model provider), not this build. deploy.yml goes ahead with a warning and rechecks it.
 #
 # The checks, in order:
-#   1. /chat/healthcheck and / answer 200 (six tries, ten seconds apart), and / carries the chat composer's
-#      data-testid, so a page that loads without the chat surface fails.
-#   2. The identity the build was given is the one it serves. When the identity file names a
+#   1. /chat/healthcheck and / answer 200 (six tries, ten seconds apart). The app builds its model list
+#      from the provider at boot, so a provider outage fails this step too: when it fails, CURRENT gets the
+#      same check. CURRENT up means this build is at fault (1); CURRENT down too means the provider is (2).
+#      With no CURRENT, a first deploy, it is 1.
+#   2. / carries the chat composer's data-testid, so a page that loads without the chat surface fails.
+#   3. The identity the build was given is the one it serves. When the identity file names a
 #      statusPageUrl, /api/status must return it; when it names a siteHost, /privacy-notice must resolve to
-#      200 on another host. A build that lost its identity file fails here.
-#   Neither calls the model provider (the model registry boots from a committed snapshot), so a provider
-#   outage leaves them passing, and their failure is always verdict 1.
-#   3. One real chat turn as a signed-out guest (deploy/smoke.sh). It is judged on errors and safety
+#      200 on another host. A build that lost its identity file fails here. Steps 2 and 3 run only on a
+#      build that is up, and their failure is always 1.
+#   4. One real chat turn as a signed-out guest (deploy/smoke.sh). It is judged on errors and safety
 #      declines only, never on the answer's wording. An error is retried once after 20 s; a decline is not.
 #      When the turn fails, CURRENT gets the same turn: if CURRENT answers, this build is at fault (1); if
-#      it fails too, the provider is (2). With no CURRENT, a first deploy, the turn's failure is 1.
+#      it fails too, the provider is (2). With no CURRENT, the turn's failure is 1.
 #
 #   BASE=<url> [CURRENT=<url>] [BYPASS=<secret>] [IDENTITY=<file>] [PROVIDER_DOWN_OK=1] .github/scripts/deploy-smoke.sh
 # CURRENT is the deployment the host serves now. BYPASS is Vercel's deployment protection bypass secret,
@@ -39,15 +41,34 @@ if [ -n "${BYPASS:-}" ]; then hdr=(-H "x-vercel-protection-bypass: $BYPASS"); fi
 code() { curl -sS "${hdr[@]}" -o /dev/null -w '%{http_code}' -L "$1" || echo 000; }
 fail() { echo "::error title=deploy smoke::$base: $*"; exit 1; }
 
-up=false
-for attempt in 1 2 3 4 5 6; do
-	health=$(code "$base/chat/healthcheck")
-	root=$(code "$base/")
-	echo "attempt $attempt: healthcheck=$health root=$root"
-	if [ "$health" = 200 ] && [ "$root" = 200 ]; then up=true; break; fi
-	sleep 10
-done
-$up || fail "healthcheck=$health root=$root"
+# up URL: /chat/healthcheck and / both 200 within six tries, ten seconds apart.
+up() {
+	local attempt health root
+	for attempt in 1 2 3 4 5 6; do
+		health=$(code "$1/chat/healthcheck")
+		root=$(code "$1/")
+		echo "$1 attempt $attempt: healthcheck=$health root=$root"
+		if [ "$health" = 200 ] && [ "$root" = 200 ]; then return 0; fi
+		sleep 10
+	done
+	return 1
+}
+# provider_down: verdict 2, or exit 0 with the step output provider_down=true under PROVIDER_DOWN_OK=1.
+provider_down() {
+	echo "::warning title=deploy smoke::$base: $1 here and on $current too, so the model provider is the likely fault, not this build"
+	if [ "${PROVIDER_DOWN_OK:-}" = 1 ]; then
+		echo "provider_down=true" >> "${GITHUB_OUTPUT:-/dev/null}"
+		exit 0
+	fi
+	exit 2
+}
+
+if ! up "$base"; then
+	[ -n "$current" ] || fail "it never came up, and no build served the host before this one to compare with"
+	echo "$base never came up; checking $current, which the host serves now"
+	if up "$current"; then fail "it never came up, and $current is up: this build is at fault"; fi
+	provider_down "the app never came up"
+fi
 curl -sS "${hdr[@]}" -L "$base/" | grep -q 'data-testid="chat-scroll"' ||
 	fail "/ is 200 but has no chat-scroll marker: the chat surface is not at the root"
 echo "ok   / serves the chat"
@@ -104,9 +125,4 @@ echo "a guest's turn $why on $base; sending the same turn to $current, which the
 crc=0
 answers "$current" || crc=$?
 [ "$crc" != 0 ] || fail "a guest's turn $why here, and $current answers it: this build is at fault"
-echo "::warning title=deploy smoke::$base: a guest's turn $why here and on $current too, so the model provider is the likely fault, not this build"
-if [ "${PROVIDER_DOWN_OK:-}" = 1 ]; then
-	echo "provider_down=true" >> "${GITHUB_OUTPUT:-/dev/null}"
-	exit 0
-fi
-exit 2
+provider_down "a guest's turn $why"
