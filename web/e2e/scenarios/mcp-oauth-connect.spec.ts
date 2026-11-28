@@ -61,9 +61,10 @@ test(
 					maxRedirects: 0
 				});
 				const consent = new URL(res.headers()['location'] ?? 'about:blank');
-				expect(consent.origin, `the connect did not send the person to the sign-in (${res.status()})`).toBe(
-					CONSENT_HOST
-				);
+				expect(
+					consent.origin,
+					`the connect did not send the person to the sign-in (${res.status()})`
+				).toBe(CONSENT_HOST);
 				expect(consent.searchParams.get('code_challenge_method')).toBe('S256');
 				back = new URL(consent.searchParams.get('redirect_uri') ?? '');
 				back.searchParams.set('code', consent.searchParams.get('code_challenge') ?? '');
@@ -76,14 +77,19 @@ test(
 
 		await page.goto(chatPath('/settings/connectors'), { waitUntil: 'load' });
 		const form = page.getByTestId('connector-add-form');
-		await expect(form, 'Settings → Connectors does not offer the add form').toBeVisible({ timeout: 30_000 });
+		await expect(form, 'Settings → Connectors does not offer the add form').toBeVisible({
+			timeout: 30_000
+		});
 		await form.getByLabel('Name').fill(SERVER_NAME);
 		await form.getByLabel('Server URL').fill(SERVER_URL);
 		await form.getByRole('button', { name: 'Add server' }).click();
 
 		// Adding a tokenless server that signs you in goes straight on to its sign-in.
 		await expect
-			.poll(() => back?.href, { message: 'adding the server never reached its sign-in', timeout: 30_000 })
+			.poll(() => back?.href, {
+				message: 'adding the server never reached its sign-in',
+				timeout: 30_000
+			})
 			.toBeTruthy();
 		await page.goto(back!.href, { waitUntil: 'load' });
 		await expect(page, 'the callback did not come back to Connectors as connected').toHaveURL(
