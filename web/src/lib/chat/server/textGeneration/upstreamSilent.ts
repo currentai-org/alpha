@@ -27,6 +27,7 @@ const TOOL_STEP_TYPES: ReadonlySet<MessageUpdateType> = new Set([
 	MessageUpdateType.AgentTools,
 	MessageUpdateType.WebSearch,
 	MessageUpdateType.SearchAttempt,
+	MessageUpdateType.SearchProgress,
 	MessageUpdateType.Mcp,
 	MessageUpdateType.McpCall,
 	MessageUpdateType.Rag,

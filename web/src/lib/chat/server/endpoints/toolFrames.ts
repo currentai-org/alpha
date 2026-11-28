@@ -31,3 +31,13 @@ export async function* framesWhile(work: Promise<unknown>, frames: ToolFrames): 
 	}
 	yield* frames.take();
 }
+
+/** One reader over two kits' frames (composeKits), so composing the MCP kit onto the native one keeps the
+ *  native kit's search frames. Nothing pushes to it: each kit pushes to its own. */
+export function mergedFrames(a: ToolFrames, b: ToolFrames): ToolFrames {
+	return {
+		push: (frame) => a.push(frame),
+		take: () => [...a.take(), ...b.take()],
+		next: () => Promise.race([a.next(), b.next()]),
+	};
+}

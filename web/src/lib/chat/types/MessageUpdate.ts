@@ -38,6 +38,7 @@ export type MessageUpdate =
 	| MessageAgentConfirmResultUpdate
 	| MessageCalculationUpdate
 	| MessageMcpCallUpdate
+	| MessageSearchProgressUpdate
 	| MessageFootprintUpdate;
 
 export enum MessageUpdateType {
@@ -72,6 +73,7 @@ export enum MessageUpdateType {
 	AgentConfirmResult = "agentConfirmResult",
 	Calculation = "calculation",
 	McpCall = "mcpCall",
+	SearchProgress = "searchProgress",
 	Footprint = "footprint",
 }
 
@@ -507,6 +509,20 @@ export interface MessageMcpCallUpdate {
 	input?: string;
 	/** What it printed, clipped. */
 	output?: string;
+}
+
+// One web search of a native turn started or came back, so the live log can show each search
+// running and then how many sources it brought. It never carries the query: the words a search sent out
+// are not on screen before the model has decided whether to answer or decline. Live only: streamUpdate.ts
+// keeps it out of the stored updates, and the receipt reads the turn's webSearch stamp instead.
+export interface MessageSearchProgressUpdate {
+	type: MessageUpdateType.SearchProgress;
+	/** Which search of the turn, from 1, so the update for its return replaces the one for its start. */
+	n: number;
+	/** Absent while the search runs; once it returns, the sources it added (0 for none). */
+	sources?: number;
+	/** It ran out of time or failed. */
+	failed?: boolean;
 }
 
 // Emitted when an MCP open component (an open HF Space tool, e.g. TTS / image gen) ran for this turn.

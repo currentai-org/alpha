@@ -21,6 +21,7 @@ import { searchTodayLine } from "./searchGrounding";
 import { queryLanguageMismatch, rewriteQueryNote, type LanguageRead } from "../search/queryLanguage";
 import { readMessageLanguage } from "../declineCopy";
 import { logger } from "../logger";
+import { toolFrames } from "../endpoints/toolFrames";
 import type { RewriteTurn } from "../search/queryRewrite";
 import type { Message } from "$lib/chat/types/Message";
 
@@ -190,6 +191,10 @@ export function nativeToolKit(opts: {
 	let queue: Promise<unknown> = Promise.resolve();
 	const evidence: string[] = [];
 	let calculated = false;
+	// Each web search shows on the live log as it starts and again when it comes back, by its number and
+	// never its query.
+	const frames = toolFrames();
+	let searches = 0;
 
 	const serial = <T>(fn: () => Promise<T>): Promise<T> => {
 		const next = queue.then(fn, fn);
@@ -257,15 +262,35 @@ export function nativeToolKit(opts: {
 				? vettedWeb(query, { preShaped: false, history: opts.preSearch?.history })
 				: fetchWeb(query);
 		fetched?.catch(() => undefined);
+		const n = fetched ? ++searches : 0;
+		if (fetched) frames.push({ searchProgress: { n } });
+		const cameBack = (sources: number, failed?: boolean) =>
+			frames.push({ searchProgress: { n, sources, ...(failed ? { failed } : {}) } });
 		return serial(async (): Promise<NativeToolResult> => {
-			if (pageRead || !fetched) return { content: LINKED_PAGE_ONLY };
-			const got = await fetched;
-			if ("note" in got) return { content: got.note };
+			if (pageRead || !fetched) {
+				if (fetched) cameBack(0);
+				return { content: LINKED_PAGE_ONLY };
+			}
+			const got = await fetched.catch((error: unknown) => {
+				cameBack(0, true);
+				throw error;
+			});
+			if ("note" in got) {
+				cameBack(0);
+				return { content: got.note };
+			}
 			const { r, failed } = got;
-			if (failed) return { content: SEARCH_UNFINISHED, searchFailed: failed };
-			if (!r?.merged.length) return { content: WEB_NOTHING, searchEmpty: true };
+			if (failed) {
+				cameBack(0, true);
+				return { content: SEARCH_UNFINISHED, searchFailed: failed };
+			}
+			if (!r?.merged.length) {
+				cameBack(0);
+				return { content: WEB_NOTHING, searchEmpty: true };
+			}
 			const numberedWeb = numberWebSources(r.merged, numbered, r.credibility);
 			numbered += numberedWeb.sources.length;
+			cameBack(numberedWeb.sources.length);
 			evidence.push(numberedWeb.evidence);
 			webStamp = {
 				query: webStamp ? `${webStamp.query}; ${r.query}` : r.query,
@@ -369,6 +394,7 @@ export function nativeToolKit(opts: {
 	return {
 		label: "native",
 		definitions,
+		frames,
 		grounding: () => ({
 			evidence: evidence.filter(Boolean),
 			sources: [...(webStamp?.sources ?? []), ...(ragStamp?.sources ?? [])],

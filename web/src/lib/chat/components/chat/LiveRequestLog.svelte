@@ -8,14 +8,13 @@
 	// "writing…" is genuinely active). The fine-grained server-internal steps (history read, screen-clear,
 	// guards, persist) have no live signal and belong in the after-the-fact receipt, not here.
 	//
-	// Open-web search is deliberately NOT promoted to a concrete "searched · N sources" line here: unlike
-	// RAG, a web search round-trips the user's literal query to an external engine, so a live "searched ·
-	// N sources" line can disclose a concerning query mid-stream, before the model's own disposition (real
-	// answer vs. self-decline) is known. The generic "Searching the open web…" line (liveRequestLabels.ts)
-	// already gives the honest live signal without naming the query or count; the concrete web sources
-	// still show, honestly,
-	// in the after-the-fact ProvenanceTrace receipt once the turn is done (which already withholds on a
-	// formal decline) — deferred, not hidden.
+	// Open-web search never names its query or its sources live: a search round-trips the user's literal
+	// query to an external engine, so showing either mid-stream can disclose a concerning query before the
+	// model's own disposition (real answer vs. self-decline) is known. The concrete sources show in the
+	// after-the-fact ProvenanceTrace receipt, which already withholds on a formal decline. Each
+	// search still shows as a numbered row, running and then how many sources it brought (searchRows),
+	// because a minute of "Searching the web…" read the same moving or hung. The server never sends the
+	// query in those frames, so there is nothing here to leak.
 	//
 	// It also owns the live STACK-MAP pulse (moved here from ProvenanceTrace): while the turn runs, the map
 	// nodes that are genuinely active pulse; on unmount (turn done / nav) the pulse clears.
@@ -28,6 +27,7 @@
 		failoverLine,
 		latchModelLabel,
 		liveActiveLine,
+		searchRows,
 		liveModelLabel,
 		UNKNOWN_MODEL_LABEL,
 	} from "./liveRequestLabels";
@@ -103,6 +103,9 @@
 			});
 		}
 		if (facts.vault) out.push({ key: "vault", text: "Federated synthesis", done: true });
+		for (const row of searchRows({ updates: message.updates, answered: facts.answered, declined: facts.declined, copy: t })) {
+			out.push({ key: row.key, text: row.text, done: true, mark: row.mark });
+		}
 		// The primary didn't answer and a backup model took over. Named with both models, so the
 		// "<primary> is computing…" the line showed a moment ago reads as the first half of the switch.
 		if (message.failover) {
@@ -193,7 +196,10 @@
 		>
 			{#if line.done}
 				<span class="text-[var(--ap-live)]" aria-hidden="true">{line.mark ?? "✓"}</span>
-				<span class="text-[var(--ap-ink-3)]">{line.text}</span>
+				<span
+					class="text-[var(--ap-ink-3)]"
+					data-testid={line.key.startsWith("search-") ? "live-search-row" : undefined}>{line.text}</span
+				>
 			{:else}
 				<!-- Nudge the dot up ~1px: items-center box-centers it, but next to the mono text its optical
 				     center sits low (reads as a baseline period). relative/-top lifts it to the text midline. -->

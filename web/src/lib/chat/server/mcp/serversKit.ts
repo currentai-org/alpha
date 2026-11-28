@@ -17,7 +17,7 @@ import type {
 	TextGenerationStreamOutputSimplified,
 } from "$lib/chat/server/endpoints/types";
 import { DEFAULT_TOOL_CALL_TIMEOUT_MS, runMcpTool } from "./executor";
-import { toolFrames } from "../endpoints/toolFrames";
+import { mergedFrames, toolFrames } from "../endpoints/toolFrames";
 import { parseToolArgs } from "./schema";
 import { awaitConfirmation, CONFIRM_WINDOW_MS, type ConfirmDecision, type ConfirmStore } from "./confirm";
 import { connectServer, isReadOnly, type Connect, type ServerTool } from "./serverTools";
@@ -373,7 +373,11 @@ export function composeKits(base: NativeToolKit | undefined, extra: NativeToolKi
 			? { retrievalOf: (calls: StreamedToolCall[]) => base.retrievalOf?.(calls.filter((c) => !ownsExtra(c))) }
 			: {}),
 		...(before ? { beforeRun: (calls: StreamedToolCall[]) => before(calls.filter(ownsExtra)) } : {}),
-		// Only the MCP kit's calls show frames while they run.
-		...(extra.frames ? { frames: extra.frames } : base.frames ? { frames: base.frames } : {}),
+		// The sandbox's waits and the native kit's searches both show while they run.
+		...(extra.frames && base.frames
+			? { frames: mergedFrames(base.frames, extra.frames) }
+			: extra.frames || base.frames
+				? { frames: extra.frames ?? base.frames }
+				: {}),
 	};
 }

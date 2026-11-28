@@ -1209,6 +1209,27 @@ describe("generate — a sandbox wait becomes the live phase", () => {
 	});
 });
 
+// Each web search's start and return reach the client as their own update, for the live log's rows.
+describe("generate — a web search's progress becomes a live update", () => {
+	it("sends one SearchProgress update per frame, with the frame's number, count and failure", async () => {
+		const updates = await collect(
+			testCtx({
+				endpoint: endpointYielding([
+					{ token: specialToken(), generated_text: null, searchProgress: { n: 1 } },
+					{ token: specialToken(), generated_text: null, searchProgress: { n: 1, sources: 6 } },
+					{ token: specialToken(), generated_text: null, searchProgress: { n: 2, sources: 0, failed: true } },
+					{ token: specialToken(), generated_text: "done" },
+				]),
+			})
+		);
+		expect(updates.filter((u) => u.type === MessageUpdateType.SearchProgress)).toEqual([
+			{ type: MessageUpdateType.SearchProgress, n: 1 },
+			{ type: MessageUpdateType.SearchProgress, n: 1, sources: 6 },
+			{ type: MessageUpdateType.SearchProgress, n: 2, sources: 0, failed: true },
+		]);
+	});
+});
+
 describe("generate — the sustained tool-round 429 fault reaches the endpoint", () => {
 	async function paramsFor(faultInjection: string | undefined) {
 		let seen: Record<string, unknown> | undefined;
