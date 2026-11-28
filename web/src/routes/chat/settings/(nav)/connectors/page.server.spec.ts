@@ -38,6 +38,15 @@ vi.mock("$lib/chat/server/db/userMcpServers", () => ({
 	},
 }));
 vi.mock("$lib/chat/server/config", () => ({ config: { BETTER_AUTH_SECRET: "page-test-secret" } }));
+// Whether an added URL runs the MCP authorization flow. The probe itself is oauthConnect.spec.ts's.
+const oauthProbe = vi.hoisted(() => ({ uses: false, asked: [] as string[] }));
+vi.mock("$lib/chat/server/mcp/oauthConnect", async (importOriginal) => ({
+	...(await importOriginal<typeof import("$lib/chat/server/mcp/oauthConnect")>()),
+	serverUsesOAuth: async (url: string) => {
+		oauthProbe.asked.push(url);
+		return oauthProbe.uses;
+	},
+}));
 
 // A person's Google connection. The store is faked; the turn's token exchange is
 // connectors/google.spec.ts's, so the server it would add is left out here.
@@ -111,6 +120,37 @@ describe("adding and removing a server of your own", () => {
 		store.rows = [];
 		store.created = [];
 		store.deleted = [];
+		oauthProbe.uses = false;
+		oauthProbe.asked = [];
+	});
+
+	it("stores a tokenless server that runs the sign-in flow as an OAuth server and sends the person to connect it", async () => {
+		flag.on = true;
+		oauthProbe.uses = true;
+		await expect(actions.add(post(SIGNED_IN, { name: "notes", url: "https://notes.example.com/mcp" }))).rejects.toMatchObject({
+			status: 303,
+			location: "/chat/api/connectors/mcp/new/connect",
+		});
+		expect(store.created).toEqual([
+			{ userId: "acct-1", name: "notes", url: "https://notes.example.com/mcp", credential: null, authKind: "oauth" },
+		]);
+	});
+
+	it("keeps a tokenless server that has no sign-in flow as a plain server, with no redirect", async () => {
+		flag.on = true;
+		const res = await actions.add(post(SIGNED_IN, { name: "notes", url: "https://notes.example.com/mcp" }));
+		expect(res).toEqual({ added: "notes" });
+		expect(oauthProbe.asked).toEqual(["https://notes.example.com/mcp"]);
+		expect(store.created[0]).toMatchObject({ credential: null });
+		expect(store.created[0]).not.toHaveProperty("authKind");
+	});
+
+	it("never probes for a sign-in flow when the person gave a token", async () => {
+		flag.on = true;
+		oauthProbe.uses = true;
+		const res = await actions.add(post(SIGNED_IN, { name: "notes", url: "https://notes.example.com/mcp", token: "tok_secret_123" }));
+		expect(res).toEqual({ added: "notes" });
+		expect(oauthProbe.asked).toEqual([]);
 	});
 
 	it("refuses a guest, and stores nothing", async () => {

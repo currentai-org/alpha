@@ -200,7 +200,13 @@
 				use:enhance={() => {
 					clearGoogleNote();
 					adding = true;
-					return async ({ update }) => {
+					return async ({ result, update }) => {
+						// A server that has you sign in comes back as a redirect to its connect route, which
+						// leaves this app for the server's own sign-in page: a full page load, never a client one.
+						if (result.type === "redirect") {
+							window.location.assign(result.location);
+							return;
+						}
 						await update();
 						adding = false;
 					};
@@ -220,7 +226,10 @@
 					<Field.Root>
 						<Field.Label>Bearer token (optional)</Field.Label>
 						<Field.Control name="token" type="password" autocomplete="off" />
-						<Field.Description>Sent only to this server. Stored encrypted and never shown again.</Field.Description>
+						<Field.Description>
+								Sent only to this server. Stored encrypted and never shown again. Leave it empty for a server
+								that has you sign in: you’ll go to its sign-in page next.
+							</Field.Description>
 					</Field.Root>
 				</Stack>
 				{#if refused?.error}

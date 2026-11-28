@@ -4,13 +4,17 @@
 // kept by session like the rest of their settings.
 //
 // A signed-in person can also add a server of their own by URL with an optional bearer token, and
-// remove it. Its token is sealed before it is stored and never comes back to the page.
-import { error, fail } from "@sveltejs/kit";
+// remove it. Its token is sealed before it is stored and never comes back to the page. A server added
+// without a token that runs the MCP authorization flow is stored as an OAuth server, and the person is
+// sent straight on to sign in to it.
+import { error, fail, redirect } from "@sveltejs/kit";
+import { mcpConnectPath } from "$lib/chat/paths";
 import type { Actions, PageServerLoad } from "./$types";
 import { configuredMcpServers, mcpServersEnabled } from "$lib/chat/server/mcp/servers";
 import { isReadOnly, listServerTools } from "$lib/chat/server/mcp/serverTools";
 import { readMcpToolPolicies, serversForRequest } from "$lib/chat/server/mcp/turnKit";
 import { checkNewServer, sealServerToken, userServerConfigs } from "$lib/chat/server/mcp/userServers";
+import { serverUsesOAuth } from "$lib/chat/server/mcp/oauthConnect";
 import {
 	createUserMcpServer,
 	deleteUserMcpServer,
@@ -93,6 +97,16 @@ export const actions: Actions = {
 		const checked = checkNewServer(input, taken, own.length);
 		// The token is never echoed back, even on a refusal.
 		if (!checked.ok) return fail(400, { error: checked.error, name: input.name, url: input.url });
+		if (!checked.token && (await serverUsesOAuth(checked.url))) {
+			const row = await createUserMcpServer({
+				userId: accountId,
+				name: checked.name,
+				url: checked.url,
+				credential: null,
+				authKind: "oauth",
+			});
+			redirect(303, mcpConnectPath(row.id));
+		}
 		await createUserMcpServer({
 			userId: accountId,
 			name: checked.name,
