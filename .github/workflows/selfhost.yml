@@ -6,7 +6,8 @@
 # gateway starts on Open WebUI's env names. `agent-connectors`: an agent turn uses its owner's own Google connector and no
 # one else's, read-only, with the token kept out of the sandbox. `s3-secret`: the s3 profile's SeaweedFS refuses a blank
 # secret, and leaving the profile out needs no key. No job reads a secret: models download from
-# Hugging Face without a token.
+# Hugging Face without a token. `readme-walk`: the top-level README's commands, run as written on a fresh
+# runner, reach a first answer in 15 minutes.
 name: Self-host smoke
 
 on:
@@ -571,3 +572,25 @@ jobs:
             exit 1
           fi
           echo "the smoke failed on the hosted edition's decline, as it should"
+
+  # The top-level README's own commands, replayed by .github/selfhost-readme-walk.sh from an empty
+  # directory on a fresh runner: no model cache, no image cache and no secret, as a stranger starts. It
+  # clones this checkout in place of the README's URL, so a pull request walks its own tree, times every
+  # command, and fails over 15 minutes to a first answer. The merge queue skips it; the pull request
+  # and main both run it.
+  readme-walk:
+    name: a stranger's README walk reaches a first answer in 15 minutes
+    if: github.event_name != 'merge_group'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Walk the README
+        env:
+          WALK_SOURCE: ${{ github.workspace }}
+        run: .github/selfhost-readme-walk.sh README.md

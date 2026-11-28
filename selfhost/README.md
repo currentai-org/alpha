@@ -6,17 +6,18 @@ ours. No PostHog, Firecrawl, E2B, Doppler or our model gateway is involved.
 
 ## Run it
 
-You need Docker with Compose v2.20 or newer and about 4 GB of free RAM. Building the app image needs
-about 6 GB of RAM once.
+You need git, `openssl`, and Docker with Compose v2.20 or newer, and about 4 GB of free RAM. Building the
+app image needs about 6 GB of RAM once. The first start needs internet access to pull images and
+download the model from Hugging Face, with no account or token. From a clone of the repo:
 
 ```sh
 cd selfhost
-cp .env.example .env
-# put a random string in BETTER_AUTH_SECRET:  openssl rand -hex 32
-docker compose --profile local up --build
+sed "s/^BETTER_AUTH_SECRET=.*/BETTER_AUTH_SECRET=$(openssl rand -hex 32)/" .env.example > .env
+docker compose --profile local up --build --wait
 ```
 
-Open http://localhost:3000 and chat as a guest. The first start builds the app image (about 4 minutes
+`up --wait` returns once every service is healthy. Open http://localhost:3000 and chat as a guest, or
+run `SMOKE_NO_UP=1 ./smoke.sh` to send one guest turn and print the answer without a browser. The first start builds the app image (about 4 minutes
 on 8 CPUs) and downloads the model (about 400 MB). Later starts take seconds.
 
 `compose.yaml` always builds the app from this checkout and tags it `alpha-selfhost-web`. To run the
@@ -29,7 +30,7 @@ docker compose -f compose.yaml -f compose.release.yaml --profile local up
 ```
 
 `ALPHA_IMAGE` in `.env` picks another tag or a digest; pin one, never `main`. `../deploy/README.md` says how to verify the
-image's signature. No tag can be pulled until the first release is published.
+image's signature. The release tags are listed on the repo's Releases page.
 
 The default local model is Qwen2.5 0.5B Instruct, chosen so the first answer arrives on a plain CPU,
 not for its quality. A CPU reads Alpha's system prompt, 2,613 tokens, before the first word appears:
