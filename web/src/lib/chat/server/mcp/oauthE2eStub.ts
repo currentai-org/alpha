@@ -133,7 +133,7 @@ export function mcpOAuthStubFetch(opts: { signedOut: boolean; accessLifetimeMs?:
 				}
 				return json(200, tokens(now()));
 			}
-			if (grant === "refresh_token" && issuedAt(REFRESH_TOKEN, form.get("refresh_token")) !== null) {
+			if (grant === "refresh_token" && !opts.signedOut && issuedAt(REFRESH_TOKEN, form.get("refresh_token")) !== null) {
 				return json(200, tokens(now()));
 			}
 			return json(400, { error: "invalid_grant" });
@@ -141,7 +141,7 @@ export function mcpOAuthStubFetch(opts: { signedOut: boolean; accessLifetimeMs?:
 		if (path === "/mcp") {
 			const bearer = new Headers(init?.headers).get("authorization");
 			const signedInAt = bearer?.startsWith("Bearer ") ? issuedAt(ACCESS_TOKEN, bearer.slice(7)) : null;
-			if (signedInAt === null) return new Response(null, { status: 401 });
+			if (opts.signedOut || signedInAt === null) return new Response(null, { status: 401 });
 			if (opts.accessLifetimeMs !== undefined && now() - signedInAt > opts.accessLifetimeMs) {
 				return new Response(null, { status: 401 });
 			}
