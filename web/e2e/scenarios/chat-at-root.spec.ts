@@ -8,6 +8,15 @@
 import { test, expect } from './helpers/test';
 import { composerHydrated, sendOpensConversation } from './helpers/composer';
 import { turnDone } from './helpers/turn';
+import { readDeploymentFile } from '../../config/deployment.mjs';
+
+// The site hosts this installation's deployment file names, which the deployment under test was built
+// from: a chat-surface host sends a site page to one of them, or 404s when the file names none (a
+// single-host self-host, whose chat has no site to send anyone to).
+const deployment = readDeploymentFile();
+const siteHosts = [deployment.siteHost, deployment.siteDevelopHost].filter(
+	(host): host is string => typeof host === 'string' && host.length > 0
+);
 
 test.describe('chat at the root of a chat-surface host', { tag: ['@root', '@mock-model'] }, () => {
 	test('the root opens the composer, a sent turn lives at /conversation/<id>, and a reload keeps it', async ({
@@ -58,10 +67,14 @@ test.describe('chat at the root of a chat-surface host', { tag: ['@root', '@mock
 		request
 	}) => {
 		const res = await request.get('/map?from=alpha', { maxRedirects: 0 });
+		if (siteHosts.length === 0) {
+			expect(res.status()).toBe(404);
+			return;
+		}
 		expect(res.status()).toBe(308);
-		// www for a production deployment, develop.aipotluck.org for a preview one like alpha-develop.
-		expect(res.headers()['location']).toMatch(
-			/^https:\/\/(www|develop)\.aipotluck\.org\/map\?from=alpha$/
+		// The site's production host for a production deployment, its develop host for a preview one.
+		expect(siteHosts.map((host) => `https://${host}/map?from=alpha`)).toContain(
+			res.headers()['location']
 		);
 	});
 
