@@ -90,7 +90,8 @@ CPU is the mean over each 3-minute hold. The database held 10 connections at eve
 **The knee is about 150 users with streamed answers, and the limiter is the one Node process.** From 150 paced
 users the web container uses a full core or more, which is the single JavaScript thread plus Node's helper
 threads. Past that, added users add only waiting: throughput stops at about 1,500 turns a minute, p95
-doubles by 200 users, and at 250 a few turns fail with a 5xx that the app does not log. The rest of the
+doubles by 200 users, and at 250 a few turns fail. k6 counts a 5xx and a dropped connection together, and
+the app logs no error for either, so which one these were is not known. The rest of the
 box is not the limit. The runner is never more than 59% busy, so about 1.6 of its 4 cores sit idle, k6
 uses under a tenth of a core, and db CPU stays flat from 200 users up.
 
