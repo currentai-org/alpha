@@ -26,8 +26,9 @@ When development moves here, the model is trunk-based:
   migration or breaking configuration change to its notes. Merging it tags `main`, and that cuts the
   release.
 - Until `v0.3.0`, releases are previews: each one is the next `v0.3.0-preview.N`, deployed and imaged
-  like any release. To cut `v0.3.0` itself, merge a commit whose message ends in a `Release-As: 0.3.0`
-  line, then set `versioning` in `release-please-config.json` back to `default` and `prerelease` to
+  like any release. At the feature freeze, set `prerelease-type` in `release-please-config.json` to
+  `rc` and merge a commit whose message ends in a `Release-As: 0.3.0-rc.1` line. To cut `v0.3.0`
+  itself, end one in `Release-As: 0.3.0`, then set `versioning` back to `default` and `prerelease` to
   `false`.
 - Each tag gets one container image on GHCR, signed with cosign, with an SBOM and a provenance
   attestation. The `main` tag is the edge build.
