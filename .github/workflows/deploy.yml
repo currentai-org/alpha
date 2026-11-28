@@ -30,6 +30,10 @@
 #   - `web-production` admits only tags matching v*.*.*, and holds VERCEL_TOKEN and the variable
 #     PRODUCTION_HOST, which a configured project must set. It may hold VERCEL_BYPASS_SECRET too.
 # Both may hold SLACK_ALERT_WEBHOOK, the alerts channel's incoming webhook (.github/scripts/tell-alerts.sh).
+# Both may hold NEON_API_KEY, a Neon API key limited to that environment's database project, with the variables
+# NEON_PROJECT_ID and NEON_BRANCH_ID (the branch the deployment serves). With them a job snapshots the database
+# when the push or tag adds a migration, then migrates it before the build deploys; without them the build
+# migrates, as before.
 # Neither has required reviewers: a reviewed merge to main is the gate for develop, and a merged release
 # pull request is the gate for production. The jobs' own ref checks back the environments' rules. It is not
 # `production`, which holds the agent service's deploys. Repository variables VERCEL_SCOPE (the Vercel team)
@@ -111,6 +115,7 @@ jobs:
         if: steps.configured.outputs.run == 'true'
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         if: steps.configured.outputs.run == 'true'
         with:
@@ -123,6 +128,48 @@ jobs:
         env:
           DEPLOYMENT_JSON: ${{ vars.DEPLOYMENT_JSON }}
         run: .github/scripts/write-deployment-config.sh && .github/scripts/deploy-prove-red.sh identity
+
+      # A migration runs here, before the build that needs it deploys, so a failed one deploys nothing. Moving
+      # the host back does not undo it, so a migration must leave the schema usable by the build before it
+      # (migrations.yml checks a pull request for that) and a move-back needs no database change. As a last
+      # resort, when this push adds a migration a Neon branch is taken first (pre-develop-<sha>); db-restore.yml
+      # restores the database from it by hand, which also removes every write made since
+      # (.github/scripts/neon-snapshot.sh).
+      - name: Snapshot the database if this push migrates it
+        id: snapshot
+        if: steps.configured.outputs.run == 'true'
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+          NEON_BRANCH_ID: ${{ vars.NEON_BRANCH_ID }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ -z "$NEON_API_KEY" ] || [ -z "$NEON_PROJECT_ID" ] || [ -z "$NEON_BRANCH_ID" ]; then
+            echo "::notice title=no snapshot::NEON_API_KEY (web-develop environment), NEON_PROJECT_ID or NEON_BRANCH_ID is not set, so no snapshot was taken and the build migrates the database."
+            exit 0
+          fi
+          echo "neon=true" >> "$GITHUB_OUTPUT"
+          # A push compares with the commit main was on before it; a manual run with the commit before it.
+          prev=$BEFORE
+          if [ -z "$prev" ] || [[ "$prev" =~ ^0+$ ]]; then prev=$(git rev-parse HEAD^ 2>/dev/null || true); fi
+          if [ "$(.github/scripts/neon-snapshot.sh needed HEAD "$prev")" != true ]; then
+            echo "this push adds no migration; no snapshot taken" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          id=$(.github/scripts/neon-snapshot.sh snapshot "develop-${GITHUB_SHA::7}")
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          echo "database snapshot before migrating: branch pre-develop-${GITHUB_SHA::7} ($id)" >> "$GITHUB_STEP_SUMMARY"
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        if: steps.snapshot.outputs.neon == 'true'
+      - name: Migrate the database before the build deploys
+        if: steps.snapshot.outputs.neon == 'true'
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+          NEON_BRANCH_ID: ${{ vars.NEON_BRANCH_ID }}
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts --filter "./web..."
+          .github/scripts/deploy-migrate.sh
 
       - name: Deploy a preview build
         id: deploy
@@ -175,6 +222,7 @@ jobs:
         if: steps.configured.outputs.run == 'true' && env.PROVE_RED != 'provider'
         env:
           PREV: ${{ steps.prev.outputs.url }}
+          SNAPSHOT: ${{ steps.snapshot.outputs.id }}
         run: |
           rc=0
           BASE="https://$DEVELOP_HOST" CURRENT="$PREV" PROVIDER_DOWN_OK=1 .github/scripts/deploy-smoke.sh || rc=$?
@@ -183,6 +231,9 @@ jobs:
           if [ -n "$PREV" ]; then
             echo "::error::the smoke failed on $DEVELOP_HOST; moving it back to $PREV"
             npx --yes "$VERCEL_CLI" alias set "$PREV" "$DEVELOP_HOST" --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN"
+            if [ -n "$SNAPSHOT" ]; then
+              echo "The database keeps this push's migrations. If $PREV cannot run on them, run db-restore.yml on develop with develop-${GITHUB_SHA::7}; it restores the database from pre-develop-${GITHUB_SHA::7} and removes every write made since." >> "$GITHUB_STEP_SUMMARY"
+            fi
           else
             echo "::error::the smoke failed on $DEVELOP_HOST, and it served nothing before, so it stays on this build"
           fi
@@ -196,6 +247,14 @@ jobs:
           .github/scripts/tell-alerts.sh "🟠 develop deployed $GITHUB_SHA although no guest turn answered, on the new
           build or on the one $DEVELOP_HOST served. The model provider is the likely fault. The recheck smokes it
           every 15 minutes for $RECHECK_MINUTES minutes."
+
+      - name: Keep the newest three database snapshots
+        if: always() && steps.snapshot.outputs.id != ''
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+          NEON_BRANCH_ID: ${{ vars.NEON_BRANCH_ID }}
+        run: .github/scripts/neon-snapshot.sh prune
 
   revert:
     name: Open a revert of the merge that broke develop
@@ -335,6 +394,44 @@ jobs:
           DEPLOYMENT_JSON: ${{ vars.DEPLOYMENT_JSON }}
         run: .github/scripts/write-deployment-config.sh && .github/scripts/deploy-prove-red.sh identity
 
+      # A migration runs here, before the build that needs it deploys, so a failed one deploys nothing. Moving
+      # the host back does not undo it, so a migration must leave the schema usable by the build before it
+      # (migrations.yml checks a pull request for that) and a move-back needs no database change. As a last
+      # resort, when this release adds a migration a Neon branch is taken first (pre-<tag>); db-restore.yml
+      # restores the database from it by hand, which also removes every write made since
+      # (.github/scripts/neon-snapshot.sh).
+      - name: Snapshot the database if this release migrates it
+        id: snapshot
+        if: steps.configured.outputs.run == 'true'
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+          NEON_BRANCH_ID: ${{ vars.NEON_BRANCH_ID }}
+        run: |
+          if [ -z "$NEON_API_KEY" ] || [ -z "$NEON_PROJECT_ID" ] || [ -z "$NEON_BRANCH_ID" ]; then
+            echo "::notice title=no snapshot::NEON_API_KEY (web-production environment), NEON_PROJECT_ID or NEON_BRANCH_ID is not set, so no snapshot was taken and the build migrates the database."
+            exit 0
+          fi
+          echo "neon=true" >> "$GITHUB_OUTPUT"
+          if [ "$(.github/scripts/neon-snapshot.sh needed "$TAG")" != true ]; then
+            echo "this release adds no migration; no snapshot taken" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          id=$(.github/scripts/neon-snapshot.sh snapshot "$TAG")
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          echo "database snapshot before migrating: branch pre-$TAG ($id)" >> "$GITHUB_STEP_SUMMARY"
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+        if: steps.snapshot.outputs.neon == 'true'
+      - name: Migrate the database before the build deploys
+        if: steps.snapshot.outputs.neon == 'true'
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+          NEON_BRANCH_ID: ${{ vars.NEON_BRANCH_ID }}
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts --filter "./web..."
+          .github/scripts/deploy-migrate.sh
+
       - name: Deploy without the domain
         id: deploy
         if: steps.configured.outputs.run == 'true'
@@ -384,6 +481,7 @@ jobs:
         if: steps.configured.outputs.run == 'true'
         env:
           PREV: ${{ steps.prev.outputs.url }}
+          SNAPSHOT: ${{ steps.snapshot.outputs.id }}
         run: |
           rc=0
           BASE="https://$PRODUCTION_HOST" CURRENT="$PREV" PROVIDER_DOWN_OK=1 .github/scripts/deploy-smoke.sh || rc=$?
@@ -391,6 +489,9 @@ jobs:
           if [ -n "$PREV" ]; then
             echo "::error::the smoke failed on $PRODUCTION_HOST; moving it back to $PREV"
             npx --yes "$VERCEL_CLI" promote "$PREV" --yes --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN"
+            if [ -n "$SNAPSHOT" ]; then
+              echo "The database keeps this release's migrations. If $PREV cannot run on them, run db-restore.yml on production from $TAG; it restores the database from pre-$TAG and removes every write made since." >> "$GITHUB_STEP_SUMMARY"
+            fi
           else
             echo "::error::the smoke failed on $PRODUCTION_HOST, and it served nothing before, so it stays on this release"
           fi
@@ -402,6 +503,14 @@ jobs:
           .github/scripts/tell-alerts.sh "🟠 $PRODUCTION_HOST took $TAG although no guest turn answered, on the new
           release or on the one it served. The model provider is the likely fault. The recheck smokes it every 15
           minutes for $RECHECK_MINUTES minutes."
+
+      - name: Keep the newest three database snapshots
+        if: always() && steps.snapshot.outputs.id != ''
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+          NEON_BRANCH_ID: ${{ vars.NEON_BRANCH_ID }}
+        run: .github/scripts/neon-snapshot.sh prune
 
   recheck-production:
     name: Recheck production after a provider failure

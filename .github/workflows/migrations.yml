@@ -1,0 +1,70 @@
+# A migration must leave the schema usable by the release before it, because a failed release is rolled
+# back by moving the domain, and the database keeps the new migration. So a rename, a drop, a type change
+# or a new NOT NULL column without a default ships as two releases (expand, then contract): add the new
+# shape and let the code write both, then remove the old shape once no release reads it.
+#
+# This runs squawk (sbdchd/squawk, Apache-2.0) on the migrations a pull request adds and fails on the
+# rules that break the release before it. squawk's other rules (locking, timeouts) are left to review. A
+# pull request that is itself the contract step, removing what an earlier release stopped reading, carries
+# the `migration-contract` label, and the check then passes with a notice.
+#
+# It warns for one release before it blocks, so a rule that refuses a migration someone needs shows up as a
+# warning first: set BLOCK to "true" once a release has shipped with it.
+name: Migrations
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, labeled, unlabeled]
+    paths: ["web/drizzle/**"]
+
+permissions: {}
+
+jobs:
+  rollback-safe:
+    name: migrations leave the schema usable by the release before
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      CONTRACT: ${{ contains(github.event.pull_request.labels.*.name, 'migration-contract') }}
+      SQUAWK: squawk-cli@2.72.0
+      BLOCK: "false"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - name: Check the added migrations
+        run: |
+          set -o pipefail
+          mapfile -t added < <(git diff --name-only --diff-filter=A "$BASE_SHA" HEAD -- 'web/drizzle/*.sql' | grep -v '\.down\.sql$' || true)
+          if [ ${#added[@]} -eq 0 ]; then
+            echo "no migration added"
+            exit 0
+          fi
+          printf 'checking %s\n' "${added[@]}"
+          # The rules whose change the release before cannot run on. ban-drop-not-null is left out: making a
+          # column nullable never breaks code that still writes it.
+          unsafe='["ban-drop-column","ban-drop-table","ban-drop-database","ban-truncate-cascade","renaming-column","renaming-object","renaming-table","changing-column-type","adding-required-field","adding-not-nullable-field"]'
+          npx --yes "$SQUAWK" --reporter json "${added[@]}" > squawk.json || true
+          jq -e 'type == "array"' squawk.json > /dev/null || { echo "::error::squawk produced no report"; cat squawk.json; exit 1; }
+          hits=$(jq -r --argjson u "$unsafe" '.[] | select(.rule_name as $r | $u | index($r)) | "\(.file):\(.line + 1) \(.rule_name): \(.message)"' squawk.json)
+          if [ -z "$hits" ]; then
+            echo "every added migration leaves the schema usable by the release before"
+            exit 0
+          fi
+          if [ "$CONTRACT" = true ]; then
+            echo "::notice title=contract migration::labelled migration-contract, so these pass: $hits"
+            exit 0
+          fi
+          level=warning
+          if [ "$BLOCK" = true ]; then level=error; fi
+          while IFS= read -r h; do echo "::$level title=migration breaks a rollback::$h"; done <<< "$hits"
+          echo "Split it into an expand release and a later contract release, or label the pull request migration-contract if it is the contract step (.github/workflows/migrations.yml)."
+          [ "$BLOCK" != true ]
