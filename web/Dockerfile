@@ -22,7 +22,7 @@
 # nothing else, with no shell or package manager. Most of the base image's scan findings were in
 # packages the server never runs (util-linux, PAM, perl, ncurses).
 
-FROM mirror.gcr.io/library/node:24-trixie-slim@sha256:af02d57b57719b9657a45199a79264a9437940cd55b3c7b3fc99615654f124a0 AS build
+FROM mirror.gcr.io/library/node:24-trixie-slim@sha256:4d00acb4bcc42c454c4eb801526f7ad7f772ea3bd4fd168c5cc2e384abcbb9d4 AS build
 WORKDIR /app
 # The version in package.json's packageManager field.
 RUN npm install -g pnpm@11.0.8
@@ -41,7 +41,7 @@ RUN pnpm build:operator-cli
 # Production dependencies only, from the same lockfile: the runtime stage below copies this tree, not
 # the build's, so no dev dependency ships. drizzle-kit and vite's tooling bring esbuild's Go binaries,
 # which carried every Go finding the image scan reported.
-FROM mirror.gcr.io/library/node:24-trixie-slim@sha256:af02d57b57719b9657a45199a79264a9437940cd55b3c7b3fc99615654f124a0 AS prod-deps
+FROM mirror.gcr.io/library/node:24-trixie-slim@sha256:4d00acb4bcc42c454c4eb801526f7ad7f772ea3bd4fd168c5cc2e384abcbb9d4 AS prod-deps
 WORKDIR /app
 RUN npm install -g pnpm@11.0.8
 COPY . .
@@ -51,7 +51,7 @@ RUN pnpm install --frozen-lockfile --prod --filter aipotluck-web...
 RUN mkdir -p /data/files
 
 # The image that serves, and the last stage, so a build with no --target builds it.
-FROM gcr.io/distroless/nodejs24-debian13:latest@sha256:ba59ac9916b424cdfaaa8299695530251535843623a6d8f93d40b0a2ef69e390
+FROM gcr.io/distroless/nodejs24-debian13:latest@sha256:235cae47d37e0ba4ab70a723ed0bfd4f619c04d16d4226371d5d0c71a52f9211
 ARG GIT_SHA=""
 ARG GIT_REF=""
 ARG APP_SURFACE=""
