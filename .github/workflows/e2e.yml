@@ -8,11 +8,13 @@
 #   the queue batch that the job deploys itself: the Vercel project is not connected to this repository,
 #   so nothing else builds one. It runs only for a queue batch (a merge_group event, or a push to one of
 #   Mergify's `mergify/merge-queue/` branches), never for Dependabot, and never in a fork of this repository.
-#   It runs in the `merge-queue-e2e` environment, which alone holds VERCEL_TOKEN and SCENARIO_ENV, so a pull
-#   request's code never runs with a model key or the project's token.
+#   It runs in the `merge-queue-e2e` environment. That environment never holds VERCEL_TOKEN: the token can
+#   deploy every project on the Vercel team, and a queue batch runs code no maintainer has approved yet,
+#   including edits to this file. Only deploy.yml's jobs hold it, on main and on release tags. So until
+#   previews are built by Vercel's own Git integration, this job finds no token and skips.
 #
-# With no secrets set (a fork, or before the environment is configured) `provider-contract` says so in
-# a notice and passes.
+# With no secrets set (a fork, or the environment as it is today) `provider-contract` says so in a
+# notice and passes.
 name: E2E
 
 on:
