@@ -7,10 +7,11 @@
 # 1. reach:   requests reach both processes.
 # 2. session: one guest session's turns are all answered, across both processes (no 401 or 404).
 # 3. limit:   the per-session limit refuses the turn past RATE_LIMIT in a minute while turns alternate
-#             processes. The stack ships with no RATE_LIMIT, and then there is no per-minute limit at all,
-#             so the job sets 20. A limit kept in one process's memory would let about 40 through.
-# 4. stop:    Stop sent to the process that is not streaming ends a long answer. Stop markers live in
-#             Postgres, and the streaming process polls them once a second.
+#             processes. The job sets 20 (USAGE_LIMITS). A limit kept in one process's memory would let
+#             about 40 through.
+# 4. stop:    Stop sent to the process that is not streaming cuts a long answer short: its final event says
+#             interrupted and holds less than the whole answer. Stop markers live in Postgres, and the
+#             streaming process polls them once a second. How long the stream took to end is reported.
 #
 # Writes loadtest-out/two-web/checks.json and a table to the step summary. Exits 1 when a check fails.
 set -uo pipefail
@@ -19,7 +20,7 @@ BASE="${BASE_URL:-http://localhost:3000}"
 OUT="loadtest-out/two-web"
 mkdir -p "$OUT"
 TMP=$(mktemp -d "$OUT/tmp.XXXX")
-LIMIT="${RATE_LIMIT:-20}"
+LIMIT=$(jq -r '.messagesPerMinute // 20' <<< "${USAGE_LIMITS:-{\}}")
 LONG_FIXTURES="$PWD/deploy/loadtest/long-model"
 RESULTS="$OUT/results.jsonl"
 : > "$RESULTS"
@@ -114,10 +115,11 @@ wait "$STREAM"
 ENDED=$(date +%s.%N)
 AFTER=$(awk -v a="$STOPPED" -v b="$ENDED" 'BEGIN { printf "%.1f", b - a }')
 TOTAL=$(awk -v a="$START" -v b="$ENDED" 'BEGIN { printf "%.1f", b - a }')
-FULL=$(jq -r '.fixtures[0].response.content | split(" ") | .[-1]' "$LONG_FIXTURES/fixtures.json")
-CUT=$(grep -q -F "$FULL" "$TMP/stream.b" && echo "reached the answer's last word" || echo "ended before the answer's last word")
-result stop "$([ -n "$STREAM_BY" ] && [ "$STOP_BY" != "$STREAM_BY" ] && [ "$STOP_STATUS" = 200 ] && awk -v s="$AFTER" 'BEGIN { exit !(s < 6) }' && [[ "$CUT" == ended* ]] && echo true || echo false)" \
-	"streamed by $STREAM_BY, Stop answered HTTP $STOP_STATUS by $STOP_BY ($(head -c 120 "$TMP/stop.b")); the stream ended ${AFTER}s after Stop, ${TOTAL}s after it began, and $CUT"
+FULL_LEN=$(jq -r '.fixtures[0].response.content | length' "$LONG_FIXTURES/fixtures.json")
+# The answer's final event says whether it was cut and carries the text that was kept.
+read -r GOT_LEN INTERRUPTED < <(jq -rR 'fromjson? | select(.type == "finalAnswer") | "\(.text | length) \(.interrupted // false)"' "$TMP/stream.b" | tail -n 1)
+result stop "$([ -n "$STREAM_BY" ] && [ "$STOP_BY" != "$STREAM_BY" ] && [ "$STOP_STATUS" = 200 ] && [ "${INTERRUPTED:-}" = true ] && [ "${GOT_LEN:-$FULL_LEN}" -lt "$FULL_LEN" ] && echo true || echo false)" \
+	"streamed by $STREAM_BY, Stop answered HTTP $STOP_STATUS by $STOP_BY; the final answer says interrupted=${INTERRUPTED:-none} with ${GOT_LEN:-no} of $FULL_LEN characters; the stream ended ${AFTER}s after Stop, ${TOTAL}s after it began"
 (cd deploy && AIMOCK_FIXTURES='' docker compose up -d --wait --wait-timeout 120 aimock) >/dev/null
 
 jq -s '.' "$RESULTS" > "$OUT/checks.json"

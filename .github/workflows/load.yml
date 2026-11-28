@@ -216,8 +216,9 @@ jobs:
       cancel-in-progress: false
     env:
       TWO_WEB: "1"
-      # The stack ships with no per-minute limit; 20 lets two-web-check.sh see one hold across processes.
-      RATE_LIMIT: "20"
+      # The stack ships with no per-minute limit, and images up to 0.3.0-preview.2 ignore RATE_LIMIT, so the
+      # limit two-web-check.sh checks across processes is set here.
+      USAGE_LIMITS: '{"messagesPerMinute":20}'
       LEVELS: "150 200 300 400"
       HOLD: 3m
       PG_POOL_MAX: "10"

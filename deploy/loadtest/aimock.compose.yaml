@@ -23,6 +23,6 @@ services:
       # The capacity job sets 0: every k6 user shares one address, so the per-IP abuse ceiling would
       # measure itself rather than the stack. Empty keeps the default.
       RATE_LIMIT_IP_MULTIPLIER: ${RATE_LIMIT_IP_MULTIPLIER:-}
-      # Messages a minute per session. deploy/compose.yaml passes none, so a stack has no per-minute limit;
-      # the two-web job sets 20 to check the limit holds across processes. Empty keeps none.
-      RATE_LIMIT: ${RATE_LIMIT:-}
+      # The two-web job sets {"messagesPerMinute":20} to check the per-session limit holds across processes.
+      # RATE_LIMIT would be the plain way, but images up to 0.3.0-preview.2 ignore it. Empty keeps none.
+      USAGE_LIMITS: ${USAGE_LIMITS:-}
