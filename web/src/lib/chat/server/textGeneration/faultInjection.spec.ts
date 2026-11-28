@@ -255,6 +255,26 @@ describe("input_screen_declines_rule's judge", () => {
 	});
 });
 
+describe("input_image_sexual_unanswered's judge", () => {
+	it("leaves the sexual-content rule unanswered on a picture only, and answers no to everything else", async () => {
+		const { imageSexualUnansweredJudge } = await import("./faultInjection");
+		const RULES = (await import("$lib/chat/server/rules.json")).default as Record<string, { guard?: { query?: string } }>;
+		const ctx = { instruct: "", opSignal: new AbortController().signal, timeoutMs: 1, log: { info() {}, warn() {} } };
+		const picture = { kind: "image" as const, image: {} as never };
+		const text = { kind: "text" as const, text: "x" };
+		const unknownOn: string[] = [];
+		for (const [key, rule] of Object.entries(RULES)) {
+			if (!rule.guard?.query) continue;
+			for (const target of [picture, text]) {
+				const out = await imageSexualUnansweredJudge(target, rule.guard.query, 0.5, ctx as never);
+				if (out.answer.kind === "unknown") unknownOn.push(`${target.kind}:${key}`);
+				else expect(out.answer.yes, `${target.kind}:${key}`).toBe(false);
+			}
+		}
+		expect(unknownOn).toEqual(["image:chat-block-sexual"]);
+	});
+});
+
 describe("resolveProbeRequest", () => {
 	function probeReq(headers: Record<string, string>): Request {
 		return new Request("https://example.vercel.app/chat/api/warm", { headers });

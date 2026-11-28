@@ -718,6 +718,14 @@ throwaway container in its namespaces:
   Shieldstral endpoint does not screen text then. Read `web/src/lib/chat/server/guardGate.ts` before you
   open this to the public. The boot log's `SELF-HOST, NO COOP` line is about Coop, the review service,
   which this directory does not run.
+- **Adult content.** With a Shieldstral endpoint, the screen declines sexually explicit text and any
+  picture that shows nudity or a person posed sexually, whatever their age, and it refuses a picture
+  those two checks could not answer for (`rules.json`: rules marked `adultContent`). That is our hosted
+  policy. To run your own, set `ADULT_CONTENT_SCREEN=off`: both rules stop being asked, so adult
+  content is answered and an unanswered picture check no longer refuses it. The child-safety rules
+  (`chat-block-child-*`) keep running and keep refusing a picture they could not check; nothing switches
+  them off. The switch is honoured only with `ALPHA_EDITION=selfhost` (compose sets it); any other
+  edition ignores it and logs an error (`guardGate.ts`, `adultContentScreenOff`).
 - **Status banner.** No incident banner and no "Status page" link (settings, a failed answer) show unless
   `STATUS_PAGE_URL` names your own Better Stack page; with it set, both lead there.
 - **Embeddings.** Nothing is embedded unless `RAG_EMBEDDING_BASE_URL` (or a dedicated `*_ENDPOINT_URL`) names

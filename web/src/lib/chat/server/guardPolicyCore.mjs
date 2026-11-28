@@ -31,6 +31,8 @@
 export const GUARD_ACTIONS = ["block", "log"];
 /** The screens a rule can be limited to with `guard.screens`. */
 const GUARD_SCREENS = ["input", "output"];
+/** The units a rule can be limited to with `guard.units`: a text chunk or one picture. */
+const GUARD_UNITS = ["text", "image"];
 
 const CHILD_NS = "chat-block-child";
 const CONTENT_NS = "chat-block";
@@ -60,6 +62,12 @@ export function tierForKey(key) {
  *   means both. "input" alone keeps a question about the writer off the assistant's own answer
  * @property {string} [flag] a flag key that must be on for the visitor before the input screen
  *   asks this rule; only a caller that evaluated it for the visitor can turn the rule on
+ * @property {Array<"text" | "image">} [units] which units ask this rule's question; absent means
+ *   both. "image" alone keeps a question about what a picture shows off text chunks
+ * @property {true} [imageFailsClosed] a picture this rule could not answer for is refused as
+ *   couldn't-check, the way an unanswered child-tier query is; text keeps the content fail-open
+ * @property {true} [adultContent] the rule screens adult sexual content, which a self-host operator may
+ *   switch off (ADULT_CONTENT_SCREEN=off, guardGate.ts). Never allowed on a child-tier rule
  */
 
 /**
@@ -211,12 +219,36 @@ export function validateGuardPolicy(rules) {
 			// A flag that is off would silently drop a child rule, which fails CLOSED everywhere else.
 			errors.push(`${key}: a "${CHILD_NS}-*" rule cannot be gated by a flag`);
 		}
+		const units = g.units;
+		const unitsOk =
+			units === undefined ||
+			(Array.isArray(units) &&
+				units.length > 0 &&
+				units.every((x) => GUARD_UNITS.includes(x)) &&
+				new Set(units).size === units.length);
+		if (!unitsOk) {
+			errors.push(`${key}: guard.units must be a non-empty list of ${GUARD_UNITS.join("|")} when present`);
+		}
+		if (g.imageFailsClosed !== undefined && g.imageFailsClosed !== true) {
+			errors.push(`${key}: guard.imageFailsClosed must be true when present`);
+		}
+		if (g.imageFailsClosed === true && Array.isArray(units) && !units.includes("image")) {
+			errors.push(`${key}: guard.imageFailsClosed on a rule no picture is asked (guard.units has no "image")`);
+		}
+		if (g.adultContent !== undefined && g.adultContent !== true) {
+			errors.push(`${key}: guard.adultContent must be true when present`);
+		}
+		if (g.adultContent === true && tier === "child") {
+			// The operator's switch drops adultContent rules; a child rule must never be one of them.
+			errors.push(`${key}: a "${CHILD_NS}-*" rule cannot be marked adultContent (child safety is never switchable)`);
+		}
 		if (
 			tier !== null &&
 			query &&
 			GUARD_ACTIONS.includes(action) &&
 			(g.threshold === undefined || isThreshold(g.threshold)) &&
-			screensOk
+			screensOk &&
+			unitsOk
 		) {
 			entries.push({
 				key,
@@ -226,6 +258,9 @@ export function validateGuardPolicy(rules) {
 				threshold: /** @type {number | undefined} */ (g.threshold),
 				...(screens ? { screens: /** @type {Array<"input" | "output">} */ (screens) } : {}),
 				...(flag ? { flag } : {}),
+				...(units ? { units: /** @type {Array<"text" | "image">} */ (units) } : {}),
+				...(g.imageFailsClosed === true ? { imageFailsClosed: true } : {}),
+				...(g.adultContent === true && tier !== "child" ? { adultContent: true } : {}),
 			});
 		}
 	}

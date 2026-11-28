@@ -64,7 +64,20 @@
 		"message": "This request was declined because it goes against our content policy.",
 		"guard": {
 			"query": "Does this content contain or request sexually explicit material, including erotica or pornographic depictions?",
-			"action": "block"
+			"action": "block",
+			"imageFailsClosed": true,
+			"adultContent": true
+		}
+	},
+	"chat-block-sexual-nudity-image": {
+		"label": "Sexual content",
+		"message": "This request was declined because it goes against our content policy.",
+		"guard": {
+			"query": "Does this image show a person who is nude or partly nude, with genitals, buttocks or a woman's nipples visible, or a person posed or dressed in a sexual way?",
+			"action": "block",
+			"units": ["image"],
+			"imageFailsClosed": true,
+			"adultContent": true
 		}
 	},
 	"chat-block-anthro": {

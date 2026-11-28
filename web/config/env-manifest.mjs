@@ -71,6 +71,9 @@ export const ENV_MANIFEST = {
 	// unset -> the sized default is correct.
 	ADMIN_TOKEN_MAX_FAILS: {},
 	ADMIN_TOKEN_WINDOW_MIN: {},
+	ADULT_CONTENT_SCREEN: {
+		desc: "Self-host only. \"off\" switches off the adult sexual-content rules of the chat screen: every rules.json rule marked adultContent (chat-block-sexual and the picture nudity rule chat-block-sexual-nudity-image), and the refusal of a picture those rules could not check. The child-safety rules keep running. Honoured only on ALPHA_EDITION=selfhost; any other edition ignores it and logs an error once (guardGate.ts adultContentScreenOff).",
+	},
 	AGENT_GENERATION_TIMEOUT_MS: {
 		desc: "Watchdog for an agent-mode turn, in ms. Default 155000, which is also the ceiling: a larger value is clamped (see deadlineLadder.ts). Needs a redeploy to change.",
 	},

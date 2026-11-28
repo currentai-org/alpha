@@ -34,6 +34,8 @@
 </script>
 
 <div
+	data-testid="safety-badge"
+	data-unscreened={unscreened}
 	class="{traced
 		? ''
 		: 'mt-1.5'} flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-[length:var(--ap-text-1)] text-[var(--ap-ink-3)]"

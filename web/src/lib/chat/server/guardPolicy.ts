@@ -38,6 +38,12 @@ export type GuardRule = {
 	screens?: Array<"input" | "output">;
 	/** A flag that must be on for the visitor before the input screen asks this rule. */
 	flag?: string;
+	/** Which units ask this rule's question; absent means both. */
+	units?: Array<"text" | "image">;
+	/** An unanswered query on a picture refuses it as couldn't-check, as the child tier does. */
+	imageFailsClosed?: true;
+	/** Adult sexual content: a self-host may switch it off with ADULT_CONTENT_SCREEN=off. */
+	adultContent?: true;
 };
 
 /** The reserved `_shield` config block: the global screening knobs. Internal — consumed only through

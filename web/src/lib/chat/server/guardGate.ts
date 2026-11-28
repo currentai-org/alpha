@@ -7,7 +7,9 @@
 // owned in-repo by the hybrid rules.json; enforcement reads the typed record, never COOP_* env (invariant 2).
 //
 // FAIL-MODE CONTRACT (invariant 1 — identical to the Coop owner-points): child fails CLOSED, content
-// fails OPEN. An UNKNOWN screen flags childSafety and allows contentPolicy.
+// fails OPEN. An UNKNOWN screen flags childSafety and allows contentPolicy. One exception, per unit: a
+// content rule marked `imageFailsClosed` closes like a child query when it goes unanswered on a PICTURE,
+// because with no hash check a picture's only screen is this one. Its text units stay open.
 //
 // SCREEN (run all categories, no umbrella gate — an umbrella recall gate missed genuinely-unsafe
 // fixtures at any plausible threshold while the full fan-out costs ~234ms warm; the per-category
@@ -229,6 +231,32 @@ export function inputJudgesFor(
 	return {};
 }
 
+// ── the self-host adult-content switch ───────────────────────────────────────────────────
+// The hosted instance refuses every sexually explicit or nude picture, whatever the subject's age. A
+// self-host operator may run an adult-content policy of their own: ADULT_CONTENT_SCREEN=off drops every
+// rule marked `adultContent` in rules.json (chat-block-sexual and the image nudity rule), and with them
+// the image fail-closed they carry. The child-safety rules are never marked (the validator refuses it),
+// so they run whatever this says. Honoured only on ALPHA_EDITION=selfhost, the same line CSAM_SCAN=off
+// draws; a hosted process ignores it and logs an error once. Read from process.env live, like the edition.
+let warnedHostedAdultOff = false;
+
+/** True when a self-host operator switched the adult-content rules off. */
+export function adultContentScreenOff(log: Pick<MinimalLogger, "error"> = defaultLogger): boolean {
+	const asked = (process.env.ADULT_CONTENT_SCREEN ?? "").trim().toLowerCase() === "off";
+	if (!asked) return false;
+	if (isSelfHostEdition()) return true;
+	if (!warnedHostedAdultOff) {
+		warnedHostedAdultOff = true;
+		log.error({ gateSource: "guard" }, "[guard] ADULT_CONTENT_SCREEN=off is ignored: it is honoured only on ALPHA_EDITION=selfhost");
+	}
+	return false;
+}
+
+/** Is `rule` asked on a unit of this kind? (`guard.units`) */
+function askedOn(rule: GuardRule, kind: JudgeTarget["kind"]): boolean {
+	return !rule.units || rule.units.includes(kind);
+}
+
 // ── chunking (the corpus → text-unit formula) ──────────────────────────────────────────────────────
 /** 1..N bounded chunk count over the screened part of the corpus. Clamped: never negative, never 0 for
  *  non-empty text, 0 only for empty text. */
@@ -331,11 +359,13 @@ function firstPassesFor(deps: Pick<GuardScreenDeps, "firstPasses" | "s1" | "scre
 export function rulesForScreen(entries: GuardRule[], deps: Pick<GuardScreenDeps, "screen" | "enabledFlags">): GuardRule[] {
 	const screen = deps.screen ?? "input";
 	const declineDistress = screen === "input" && deps.enabledFlags?.has(SELF_HARM_DISTRESS_DECLINES_FLAG) === true;
+	const adultOff = adultContentScreenOff();
 	return entries
 		.filter(
 			(r) =>
 				(!r.screens || r.screens.includes(screen)) &&
-				(!r.flag || (screen === "input" && deps.enabledFlags?.has(r.flag) === true))
+				(!r.flag || (screen === "input" && deps.enabledFlags?.has(r.flag) === true)) &&
+				!(adultOff && r.adultContent && r.tier !== "child")
 		)
 		.map((r) => (declineDistress && r.action === "log" && SELF_HARM_KEYS.has(r.key) ? { ...r, action: "block" as const } : r));
 }
@@ -345,8 +375,9 @@ export function rulesForScreen(entries: GuardRule[], deps: Pick<GuardScreenDeps,
  *  `logHits`). */
 export type GuardScreen = {
 	status: "safe" | "unsafe" | "unknown";
-	/** A CHILD-tier query (or a unit the preparer could not produce) went unanswered. Only this closes
-	 *  child safety; a content-tier UNKNOWN fails open like every other content verdict. */
+	/** A CHILD-tier query, an `imageFailsClosed` query on a picture, or a unit the preparer
+	 *  could not produce went unanswered. Only this closes the turn as couldn't-check; any other
+	 *  content-tier UNKNOWN fails open like every other content verdict. */
 	childUnknown: boolean;
 	blockHits: GuardRule[];
 	logHits: GuardRule[];
@@ -444,14 +475,20 @@ async function screenOnce(input: GuardScreenInput, deps: GuardScreenDeps): Promi
 	// verdicts land inside the deadline and the content queries take whatever budget is left. A 100k-char
 	// paste is 9 chunks × 14 rules = 126 calls at concurrency 6, which runs past 20s in file order.
 	const asked = rulesForScreen(policy.entries, deps);
-	const rules = [...asked.filter((r) => r.tier === "child"), ...asked.filter((r) => r.tier !== "child")];
+	// Image fail-closed rules queue next, ahead of the rest of the content tier, for the same reason.
+	const closesOnImage = (r: GuardRule) => r.tier !== "child" && r.imageFailsClosed === true;
+	const rules = [
+		...asked.filter((r) => r.tier === "child"),
+		...asked.filter(closesOnImage),
+		...asked.filter((r) => r.tier !== "child" && !closesOnImage(r)),
+	];
 	// S1 answers the rules it covers on this screen, one request group per text chunk.
 	const s1 = deps.s1;
 	const s1Phase = deps.screen ?? "input";
 	const s1Ids = s1 ? s1RuleIdsFor(s1Phase) : undefined;
 	// Rules with no S1 policy are not asked on an S1 text unit. guardGate.s1.spec.ts "every rule the screen
 	// asks has an S1 policy except the four retired at 100%" pins which rules those are.
-	const s1Rules = s1Ids ? rules.filter((r) => s1Ids.has(r.key)) : [];
+	const s1Rules = s1Ids ? rules.filter((r) => s1Ids.has(r.key) && askedOn(r, "text")) : [];
 
 	const units: JudgeTarget[] = [
 		...chunks.map((t) => ({ kind: "text" as const, text: t })),
@@ -490,7 +527,9 @@ async function screenOnce(input: GuardScreenInput, deps: GuardScreenDeps): Promi
 	const grouped = new Set<string>();
 	const firstPasses = (s1 ? [] : firstPassesFor(deps))
 		.map((g) => {
-			const own = rules.filter((r) => g.rules.includes(r.key) && r.tier !== "child" && !grouped.has(r.key));
+			const own = rules.filter(
+				(r) => g.rules.includes(r.key) && r.tier !== "child" && askedOn(r, "text") && !grouped.has(r.key)
+			);
 			for (const r of own) grouped.add(r.key);
 			return { ...g, own };
 		})
@@ -503,9 +542,10 @@ async function screenOnce(input: GuardScreenInput, deps: GuardScreenDeps): Promi
 		units.length > 1 ? Math.min(baseConcurrency, deps.longScreenConcurrency ?? LONG_SCREEN_CONCURRENCY) : baseConcurrency;
 	// Each group adds one call per text chunk, counted up front so the deadline covers a chunk whose
 	// groups all say yes.
-	const totalCalls = s1
-		? s1Rules.length * chunks.length + rules.length * input.images.length
-		: rules.length * units.length + firstPasses.length * chunks.length;
+	const textRules = rules.filter((r) => askedOn(r, "text")).length;
+	const imageRules = rules.filter((r) => askedOn(r, "image")).length;
+	const totalCalls =
+		(s1 ? s1Rules.length : textRules + firstPasses.length) * chunks.length + imageRules * input.images.length;
 	let doneCalls = 0;
 	let reportedPart = 0;
 	const progress = () => {
@@ -579,6 +619,10 @@ async function screenOnce(input: GuardScreenInput, deps: GuardScreenDeps): Promi
 				);
 			});
 		}
+		// An image fail-closed rule closes like a child query on a picture, so it also rides with the child
+		// queries: a long paste's deadline can't leave it unasked.
+		const closesOn = (rule: GuardRule, target: JudgeTarget) =>
+			rule.tier === "child" || (target.kind === "image" && rule.imageFailsClosed === true);
 		const ask = (rule: GuardRule, target: JudgeTarget, ui: number) =>
 			sem.run(async () => {
 				const o = await judge(target, rule.query, thresholdFor(policy, rule), ctx);
@@ -588,7 +632,8 @@ async function screenOnce(input: GuardScreenInput, deps: GuardScreenDeps): Promi
 					imageClearCount.set(rule.key, (imageClearCount.get(rule.key) ?? 0) + 1);
 				if (o.answer.kind === "unknown") {
 					unitUnknown[ui] = true;
-					if (rule.tier === "child") childUnknown = true;
+					// A picture an imageFailsClosed rule could not answer for closes as couldn't-check.
+					if (closesOn(rule, target)) childUnknown = true;
 					else if (units.length > 1 && opController.signal.aborted) contentDeadlineUnasked = true;
 				} else if (o.answer.yes) fire(rule);
 			});
@@ -597,8 +642,9 @@ async function screenOnce(input: GuardScreenInput, deps: GuardScreenDeps): Promi
 		for (const rule of rules) {
 			units.forEach((target, ui) => {
 				if (s1 && target.kind === "text") return;
+				if (!askedOn(rule, target.kind)) return;
 				if (target.kind === "text" && grouped.has(rule.key)) return;
-				(rule.tier === "child" ? childJobs : jobs).push(ask(rule, target, ui));
+				(closesOn(rule, target) ? childJobs : jobs).push(ask(rule, target, ui));
 			});
 		}
 		for (const group of firstPasses) {

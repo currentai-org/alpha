@@ -83,6 +83,8 @@
 // attachment text could not be screened declined before any model call, never answered unscreened.
 // `input_screen_declines_rule` answers the input screen's harassment question yes and every
 // other no, so a spec sees a message declined under "Respectful communication".
+// `input_image_sexual_unanswered` leaves the sexual-content question unanswered on pictures only, so a
+// spec sees a picture turn declined as couldn't-check and a text turn still answered.
 // `input_screen_declines_child_picture` answers yes to the child sexual content rule's question on
 // every picture and no to everything else, so a spec sends a plain test picture and sees the decline
 // take it out of My files and into quarantine (quarantineDeclinedPictures.ts).
@@ -163,6 +165,15 @@ export const harassmentRuleJudge: JudgeFn = async (_target, query) => ({
 	httpOk: true,
 });
 
+const SEXUAL_QUERY = RULES["chat-block-sexual"].guard.query;
+/** `input_image_sexual_unanswered`'s guard: the sexual-content rule goes unanswered on a picture, and
+ *  every other query (that rule on text included) answers no, so a spec sees a picture turn declined as
+ *  couldn't-check and a text turn answered, with no real picture of anything. */
+export const imageSexualUnansweredJudge: JudgeFn = async (target, query) =>
+	target.kind === "image" && query === SEXUAL_QUERY
+		? { answer: { kind: "unknown" }, httpOk: true }
+		: { answer: { kind: "token", yes: false }, httpOk: true };
+
 const CHILD_SEXUAL_CONTENT_QUERY = RULES["chat-block-child-sexual-content"].guard.query;
 /** `input_screen_declines_child_picture`'s guard: yes to the child sexual content rule on a picture,
  *  no to every other question and to all text, so the decline comes from the picture alone. */
@@ -227,6 +238,9 @@ export const FAULT_NAMES = [
 	"output_guard_unreachable",
 	"input_guard_unreachable",
 	"input_screen_declines_rule",
+	// The input screen's sexual-content rule goes unanswered on pictures only (imageSexualUnansweredJudge),
+	// so a spec sees a picture refused as couldn't-check while text is still answered.
+	"input_image_sexual_unanswered",
 	"input_screen_declines_child_picture",
 	"output_screen_recheck_clears",
 	"session_rate_limit_low",
