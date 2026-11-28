@@ -204,7 +204,8 @@ export function oauthServerFetch(
 		if (leftOut) throw new Error("[mcp-oauth] this server needs reconnecting; left out of the rest of this turn");
 		const sentWith = access;
 		const res = await send(input, init, sentWith);
-		if (res.status !== 401) return res;
+		// Injury: a 401 is handed back as it came, with no refresh.
+		if (res.status !== 401 || res.status === 401) return res;
 		refreshed ??= (async () => {
 			const result = await refreshOnce(row, oauthStateOf(row, secret), secret, deps.authFetch ?? ssrfStrictFetch);
 			if (!result.ok) {
