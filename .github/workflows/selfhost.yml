@@ -7,7 +7,8 @@
 # one else's, read-only, with the token kept out of the sandbox. `s3-secret`: the s3 profile's SeaweedFS refuses a blank
 # secret, and leaving the profile out needs no key. No job reads a secret: models download from
 # Hugging Face without a token. `readme-walk`: the top-level README's commands, run as written on a fresh
-# runner, reach a first answer in 15 minutes.
+# runner, reach a first answer in 15 minutes. `dead-provider`: with the model provider unreachable the
+# pages stay up, health says the registry is degraded, and chat says the model is unavailable.
 name: Self-host smoke
 
 on:
@@ -594,3 +595,22 @@ jobs:
         env:
           WALK_SOURCE: ${{ github.workspace }}
         run: .github/selfhost-readme-walk.sh README.md
+
+  # The stack with OPENAI_BASE_URL on a closed port (.github/selfhost-dead-provider-smoke.sh): the home
+  # page and /api/status answer 200, /healthcheck answers 503 with the app up and the registry degraded,
+  # and starting a chat gets a 503 carrying the model-unavailable copy the chat shows.
+  dead-provider:
+    name: a dead model provider leaves the pages up and says the model is unavailable
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Boot against a closed provider port
+        run: .github/selfhost-dead-provider-smoke.sh

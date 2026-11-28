@@ -130,13 +130,21 @@ export async function handleRequest({ event, resolve }: HandleInput): Promise<Re
 					p.includes("/.well-known/") ||
 					p.startsWith(`${CHAT_ROUTE_ROOT}/admin`);
 				if (!modelFree) {
-					const { ensureModelsReady } = await import("$lib/chat/server/models");
+					const { ensureModelsReady, registryCanServe } = await import("$lib/chat/server/models");
+					const isGet = event.request.method === "GET";
+					const isApi = routePath.startsWith(`${CHAT_ROUTE_ROOT}/api/`);
 					try {
+						// The import above already waited for the boot attempt. A page GET finding the registry
+						// still down starts the retry without waiting on it: one retry is up to three tries per
+						// lane at 15 s each, and a visitor's page must not hang that long to say the model is
+						// unavailable. The retry logs its own failure; the next page view sees the outcome.
+						if (isGet && !isApi && !registryCanServe()) {
+							void ensureModelsReady().catch(() => {});
+							throw new Error("Model registry unavailable (retry started in the background)");
+						}
 						await ensureModelsReady();
 						registryDownLogged = false;
 					} catch (e) {
-						const isGet = event.request.method === "GET";
-						const isApi = routePath.startsWith(`${CHAT_ROUTE_ROOT}/api/`);
 						const wantsHtml =
 							isGet && !isApi && (event.request.headers.get("accept")?.includes("text/html") ?? true);
 						if (dev && wantsHtml) {

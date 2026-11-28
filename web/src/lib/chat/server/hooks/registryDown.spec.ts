@@ -11,6 +11,7 @@ import { ERROR_MESSAGES } from "$lib/chat/stores/errors";
 
 const H = vi.hoisted(() => ({
 	ready: vi.fn(),
+	canServe: vi.fn(() => false),
 	warn: vi.fn(),
 }));
 
@@ -22,7 +23,10 @@ vi.mock("$lib/chat/server/auth", () => ({
 	loginEnabled: () => false,
 	refreshSessionCookie: vi.fn(),
 }));
-vi.mock("$lib/chat/server/models", () => ({ ensureModelsReady: H.ready }));
+vi.mock("$lib/chat/server/models", () => ({
+	ensureModelsReady: H.ready,
+	registryCanServe: H.canServe,
+}));
 vi.mock("$lib/chat/server/config", () => ({
 	config: {
 		checkForUpdates: vi.fn(async () => {}),
@@ -42,6 +46,7 @@ const resolve = vi.fn(async () => new Response("resolved", { status: 200 }));
 beforeEach(() => {
 	vi.clearAllMocks();
 	H.ready.mockReset().mockRejectedValue(new Error("connect ECONNREFUSED provider.example.test:443"));
+	H.canServe.mockReset().mockReturnValue(false);
 });
 
 async function throughHook(
@@ -58,6 +63,14 @@ async function throughHook(
 }
 
 describe("the registry gate while the model provider is unreachable", () => {
+	it("a page GET does not wait on the registry retry, which can take most of a minute", async () => {
+		H.ready.mockReset().mockReturnValue(new Promise(() => {}));
+		await expect(throughHook("/chat/", { accept: "text/html" })).rejects.toThrow(
+			"reached authenticateRequest"
+		);
+		expect(H.ready).toHaveBeenCalledTimes(1);
+	});
+
 	it("a page GET carries on past the gate instead of failing", async () => {
 		await expect(throughHook("/chat/", { accept: "text/html" })).rejects.toThrow(
 			"reached authenticateRequest"
