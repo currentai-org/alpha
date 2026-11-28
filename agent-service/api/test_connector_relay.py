@@ -6,6 +6,7 @@ task store."""
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import ClassVar
 
 import app
 import mcp_relay
@@ -74,7 +75,7 @@ def test_messages_are_read_from_a_json_body_and_from_an_event_stream():
 class _Connector(BaseHTTPRequestHandler):
     """A stand-in MCP server: lists one read-only and one write tool and answers a search. It answers 401 to any
     bearer but TOKEN, and to a search for LAPSED."""
-    seen: list = []
+    seen: ClassVar[list] = []
 
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers.get("content-length") or 0)) or b"{}")
