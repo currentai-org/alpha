@@ -28,7 +28,7 @@ dnspython==2.9.2
 # such script fails at import. Matches what Claude's and ChatGPT's own code-execution tools
 # ship by default; bwrap + the egress lockdown are the actual security boundary
 # here, not the package list.
-pandas==3.0.6
+pandas==3.1.0
 numpy==2.5.4
 # pandas' Excel writer and reader: asked for an Excel file, the agent failed
 # twice at import and fell back to CSV.
@@ -37,7 +37,7 @@ openpyxl==3.1.5
 # "matplotlib absent", and told the person to install pandoc; asked for Word, it wrote a .txt.
 matplotlib==3.11.2
 python-docx==1.2.0
-reportlab==5.0.1
+reportlab==5.1.0
 # Reads the text of the agent's PDFs for the artifacts screen (api/doc_text.py, which also uses
 # python-docx and openpyxl above). 6.19.0 is the first release clear of the 2026-10-01 parser advisories.
 pypdf==6.21.4
