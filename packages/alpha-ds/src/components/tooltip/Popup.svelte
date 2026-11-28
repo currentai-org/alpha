@@ -1,7 +1,8 @@
 <!--
   @component
   Base UI `Tooltip.Popup` (engine: bits-ui Tooltip.Content). Inverse surface, DM Mono micro —
-  a transient label, not a panel.
+  a transient label, not a panel. Long unbroken strings (a path, a bucket name) wrap anywhere
+  rather than overflow the 16rem width.
 -->
 <script lang="ts">
 	import { Tooltip as Engine, type TooltipContentProps } from 'bits-ui';
@@ -21,7 +22,7 @@
 	{...position}
 	{...rest}
 	class={cn(
-		'z-tooltip max-w-64 motion-popup rounded-sharp bg-inverse px-2 py-1 type-label text-fg-inverse normal-case',
+		'z-tooltip max-w-64 motion-popup rounded-sharp bg-inverse px-2 py-1 type-label wrap-anywhere text-fg-inverse normal-case',
 		className
 	)}
 >

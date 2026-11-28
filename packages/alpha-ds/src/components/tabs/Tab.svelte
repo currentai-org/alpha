@@ -5,12 +5,13 @@
 <script lang="ts">
 	import { Tabs as Engine, type TabsTriggerProps } from 'bits-ui';
 	import { cn } from '../../internal/cn.ts';
-	import { tabsTabRecipe, tabsVariant } from './tabs.recipe.ts';
+	import { tabsTabRecipe, tabsVariant, tabsWrap } from './tabs.recipe.ts';
 
 	let { class: className, children, ...rest }: TabsTriggerProps = $props();
 	const variant = tabsVariant();
+	const wrap = tabsWrap();
 </script>
 
-<Engine.Trigger {...rest} class={cn(tabsTabRecipe({ variant }), className)}>
+<Engine.Trigger {...rest} class={cn(tabsTabRecipe({ variant, wrap }), className)}>
 	{@render children?.()}
 </Engine.Trigger>

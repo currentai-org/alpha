@@ -1,4 +1,5 @@
-import FilesPanel from './FilesPanel.svelte';
+// FilesPanel's location tabs carry tooltips, which need the Tooltip.Provider the harness mounts.
+import FilesPanel from './FilesPanel.locationTabs.harness.svelte';
 import { render } from 'vitest-browser-svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { page, userEvent } from 'vitest/browser';
@@ -83,7 +84,7 @@ describe('Storage location tabs', () => {
 		await expect.element(open).toHaveAttribute('aria-selected', 'true');
 		await expect.element(open).toHaveAccessibleName('Alpha storage 2 files');
 		await expect.element(open.getByTestId('location-count')).toHaveTextContent('2');
-		await expect.element(page.getByRole('tab', { name: /someone\/alpha-files/ })).toHaveAttribute('aria-selected', 'false');
+		await expect.element(page.getByRole('tab', { name: /alpha-files/ })).toHaveAttribute('aria-selected', 'false');
 		await expect.element(page.getByRole('tabpanel')).toBeVisible();
 		expect(open.element().getAttribute('aria-controls'), 'the tab does not name its panel').toBe(
 			page.getByRole('tabpanel').element().id
@@ -93,7 +94,7 @@ describe('Storage location tabs', () => {
 	it('moves the selection with ArrowRight, End and Home, and keeps one tab in the tab order', async () => {
 		await render(FilesPanel, { initialFiles: files, initialLocations: state([alpha, bucket]) });
 		const first = page.getByRole('tab', { name: /Alpha storage/ });
-		const second = page.getByRole('tab', { name: /someone\/alpha-files/ });
+		const second = page.getByRole('tab', { name: /alpha-files/ });
 		(first.element() as HTMLElement).focus();
 		await userEvent.keyboard('{ArrowRight}');
 		await expect.element(second).toHaveAttribute('aria-selected', 'true');
