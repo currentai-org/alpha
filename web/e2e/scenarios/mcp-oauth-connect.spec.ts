@@ -73,12 +73,13 @@ test(
 					`the connect did not send the person to the sign-in (${res.status()})`
 				).toBe(CONSENT_HOST);
 				expect(consent.searchParams.get('code_challenge_method')).toBe('S256');
-				back = new URL(consent.searchParams.get('redirect_uri') ?? '');
-				back.searchParams.set('code', consent.searchParams.get('code_challenge') ?? '');
-				back.searchParams.set('state', consent.searchParams.get('state') ?? '');
+				const next = new URL(consent.searchParams.get('redirect_uri') ?? '');
+				next.searchParams.set('code', consent.searchParams.get('code_challenge') ?? '');
+				next.searchParams.set('state', consent.searchParams.get('state') ?? '');
 				const headers = { ...res.headers() };
 				delete headers['location'];
 				await route.fulfill({ response: res, status: 200, headers, body: 'consent' });
+				back = next;
 			}
 		);
 
@@ -98,6 +99,11 @@ test(
 				timeout: 30_000
 			})
 			.toBeTruthy();
+		// The connect's own navigation must have landed before the spec navigates to the callback, or
+		// the one still committing aborts the other.
+		await page.waitForURL((url) => /\/api\/connectors\/mcp\/[^/]+\/connect$/.test(url.pathname), {
+			waitUntil: 'load'
+		});
 		await page.goto(back!.href, { waitUntil: 'load' });
 		await expect(page, 'the callback did not come back to Connectors as connected').toHaveURL(
 			/\/settings\/connectors\?mcp=connected/,
