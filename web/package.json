@@ -9,6 +9,7 @@
 		"dev": "vite dev",
 		"build": "vite build",
 		"build:operator-cli": "vite build -c vite.operator-cli.config.ts",
+		"vercel-build": "node scripts/check-node-pin.mjs && node scripts/verify-route-configs.mjs && node scripts/check-guard-policy.mjs && node scripts/check-preview-db-scope.mjs && node scripts/db-migrate.mjs && node scripts/gen-models-snapshot.mjs && node scripts/bake-flag-definitions.mjs && vite build && node scripts/upload-posthog-sourcemaps.mjs",
 		"gen:models-snapshot": "node scripts/gen-models-snapshot.mjs",
 		"build:static": "ADAPTER=static vite build",
 		"preview": "vite preview",
