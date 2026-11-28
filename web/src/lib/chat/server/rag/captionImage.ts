@@ -14,6 +14,7 @@ import { APP_USER_AGENT } from "$lib/chat/constants/app";
 import sharp from "sharp";
 import { config } from "$lib/chat/server/config";
 import { createOpenAIClient } from "$lib/chat/server/openaiClient";
+import { createChatCompletion } from "$lib/chat/server/chatRequest";
 import { ragVisionModel, embeddingBillTo, embeddingToken } from "./env";
 import { titleFromFilename } from "$lib/chat/constants/ragUpload";
 import { logger } from "$lib/chat/server/logger";
@@ -151,22 +152,26 @@ export async function captionImage(input: {
 				...hfBillToHeader(config.OPENAI_BASE_URL, { ownLane: false }, billTo),
 			},
 		});
-		const res = await client.chat.completions.create({
-			model,
-			messages: [
-				{
-					role: "user",
-					// Text instruction BEFORE the image part (sequential processing improves extraction).
-					content: [
-						{ type: "text", text: VISION_PROMPT },
-						{ type: "image_url", image_url: { url: dataUrl, detail: "auto" } },
-					],
-				},
-			],
-			temperature: 0,
-			max_tokens: 800,
-			stream: false,
-		});
+		const res = await createChatCompletion(
+			client,
+			{
+				model,
+				messages: [
+					{
+						role: "user",
+						// Text instruction BEFORE the image part (sequential processing improves extraction).
+						content: [
+							{ type: "text", text: VISION_PROMPT },
+							{ type: "image_url", image_url: { url: dataUrl, detail: "auto" } },
+						],
+					},
+				],
+				temperature: 0,
+				max_tokens: 800,
+				stream: false,
+			},
+			{ baseURL: config.OPENAI_BASE_URL }
+		);
 		content = res.choices?.[0]?.message?.content ?? "";
 	} catch (e) {
 		logger.warn(e, "[rag] image caption call failed");

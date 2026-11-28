@@ -2,6 +2,7 @@ import { APP_USER_AGENT } from "$lib/chat/constants/app";
 import type OpenAI from "openai";
 import { config } from "$lib/chat/server/config";
 import { endpointApiKey } from "$lib/chat/server/endpointKey";
+import { createChatCompletion } from "$lib/chat/server/chatRequest";
 
 /**
  * A client on TASK_MODEL's own registered lane, with the model id to send. null when TASK_MODEL is
@@ -12,7 +13,7 @@ import { endpointApiKey } from "$lib/chat/server/endpointKey";
  */
 async function taskModelClient(
 	timeoutMs: number
-): Promise<{ client: OpenAI; modelId: string } | null> {
+): Promise<{ client: OpenAI; modelId: string; baseURL: string } | null> {
 	const modelId = ((Reflect.get(config, "TASK_MODEL") as string | undefined) ?? "").trim();
 	if (!modelId) return null;
 	// Imported here, not at the top: models.ts reads its whole config at import, and specs of the
@@ -32,7 +33,7 @@ async function taskModelClient(
 	});
 	// The endpoint's `modelId` is the id its host knows the model by: a router can name
 	// mistral-small-2603 `mistralai/mistral-small-2603` and answer 400 to ours.
-	return { client, modelId: ep.modelId || modelId };
+	return { client, modelId: ep.modelId || modelId, baseURL: ep.baseURL };
 }
 
 /**
@@ -50,7 +51,8 @@ export async function forcedTaskModelToolCall(opts: {
 }): Promise<unknown> {
 	const lane = await taskModelClient(opts.timeoutMs);
 	if (!lane) return null;
-	const res = await lane.client.chat.completions.create(
+	const res = await createChatCompletion(
+		lane.client,
 		{
 			model: lane.modelId,
 			messages: [
@@ -62,6 +64,7 @@ export async function forcedTaskModelToolCall(opts: {
 			temperature: 0,
 			max_tokens: opts.maxTokens,
 		},
+		{ baseURL: lane.baseURL },
 		{ signal: opts.signal, timeout: opts.timeoutMs }
 	);
 	return res.choices?.[0]?.message?.tool_calls?.[0] ?? null;

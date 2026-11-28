@@ -216,6 +216,56 @@ export default defineConfig(
 		}
 	},
 	{
+		// Every chat-completion request is built by src/lib/chat/server/chatRequest.ts, which applies the
+		// model and provider quirks in modelProfiles.ts (flattened roles, the reasoning-off field, an
+		// accepted effort). A caller that builds its own body has to remember each of them, and the ones
+		// that forgot sent a system role to a deployment that refuses it or `reasoning_effort: "none"` to
+		// gpt-oss. The files ignored below send or match a request this rule cannot route through the
+		// builder; each says why. Specs are out: the live ones send raw bodies on purpose, to measure the
+		// wire.
+		//
+		// This block repeats noHostEnvRead: a second no-restricted-syntax entry for the same files
+		// replaces the first in flat config rather than merging with it, so a file here carries both.
+		files: ['src/**/*.{ts,js,svelte}'],
+		ignores: [
+			RUNTIME_ENV_MODULE,
+			'**/*.spec.ts',
+			'**/*.test.ts',
+			'**/*.svelte.test.ts',
+			// The builder itself.
+			'src/lib/chat/server/chatRequest.ts',
+			// The main answer path, which applies the profile itself around native-first and the strict lane.
+			'src/lib/chat/server/endpoints/openai/endpointOai.ts',
+			// The replay recorder matches recorded request paths; it sends nothing.
+			'src/lib/chat/server/endpoints/openai/modelReplay.ts',
+			// The Folkways adapter forwards a client's own body upstream; it builds none.
+			'src/routes/folkways-adapter/**',
+			// Shieldstral and Qwen3Guard are classifier endpoints with their own chat templates and no profile row.
+			'src/lib/chat/server/detectors/shieldstral.ts',
+			'src/lib/chat/server/detectors/qwen3guard.ts',
+			'src/lib/chat/server/guardGate.ts',
+			'src/lib/chat/server/guardShadow.ts'
+		],
+		rules: {
+			'no-restricted-syntax': [
+				'error',
+				...noHostEnvRead,
+				{
+					selector: "MemberExpression[object.property.name='chat'][property.name='completions']",
+					message:
+						'Send chat completions through createChatCompletion in $lib/chat/server/chatRequest, which applies the model and provider quirks from modelProfiles.ts.'
+				},
+				{
+					// A string or template that ends in the chat-completions route, wherever it is built.
+					selector:
+						'TemplateElement[value.raw=/(^|\\x2f)chat\\x2fcompletions(\\?|$)/], Literal[value=/(^|\\x2f)chat\\x2fcompletions(\\?|$)/]',
+					message:
+						'Post chat completions through postChatCompletion in $lib/chat/server/chatRequest, which applies the model and provider quirks from modelProfiles.ts.'
+				}
+			]
+		}
+	},
+	{
 		// MODEL_ALLOWLIST is read only in config/picker.ts; eslint-rules/no-model-allowlist-read.js says
 		// why. Specs are linted too: the live specs are where the stale reads were.
 		files: ['src/**/*.{ts,js,svelte}', 'e2e/**/*.{ts,js,mjs}'],
