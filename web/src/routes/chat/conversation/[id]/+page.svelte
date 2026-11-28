@@ -1595,10 +1595,9 @@ Modified by Current AI from huggingface/chat-ui.
 				$error = "Too much traffic, please try again.";
 			} else if (err instanceof Error && isRateLimitMessage(err.message)) {
 				// Only our own limiter's copy: a provider's 429 that merely contains the
-				// number is not the visitor sending too much, and must not say so. The copy is
-				// shown as sent, because it names the limit the visitor hit.
+				// number is not the visitor sending too much, and must not say so.
 				requestRefused = true;
-				$error = err.message;
+				$error = ERROR_MESSAGES.rateLimited;
 			} else if (!firstContentSeen && applyEarlyStreamFailure) {
 				// EARLY failure: a non-abort stream/connection error threw before any
 				// token rendered — same regime as the watchdog timeout, so take the same

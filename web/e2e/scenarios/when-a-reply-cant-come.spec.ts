@@ -151,7 +151,7 @@ test(
 			await composer.press('Enter');
 			const refusedAt = Date.now();
 			await expect(
-				page.getByText('Too many messages: this chat allows 1 every 30 seconds.', { exact: false }),
+				page.getByText('You are sending too many messages. Try again later.'),
 				'a send past the limit was not refused with the rate-limit copy; if it answered, the fault never reached the server'
 			).toBeVisible({ timeout: 30_000 });
 			await expect(composer, 'the refused question should be back in the composer').toHaveValue(

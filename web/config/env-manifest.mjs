@@ -1037,7 +1037,7 @@ export const ENV_MANIFEST = {
 		desc: "Messages per minute per session. Default 20.",
 	},
 	RATE_LIMIT_IP_MULTIPLIER: {
-		desc: "Per-IP limit as a multiple of RATE_LIMIT. Default 200, so 4,000 a minute from one address. 0 turns the per-IP limit off.",
+		desc: "Per-IP limit as a multiple of RATE_LIMIT. 0 turns the per-IP limit off.",
 	},
 	REASONING_SUMMARY: {
 		desc: "\"true\" shows a summary of the model's reasoning.",
