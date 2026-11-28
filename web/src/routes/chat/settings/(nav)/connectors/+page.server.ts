@@ -15,7 +15,7 @@ import { isReadOnly, listServerTools } from "$lib/chat/server/mcp/serverTools";
 import { readMcpToolPolicies, serversForRequest } from "$lib/chat/server/mcp/turnKit";
 import { checkNewServer, sealServerToken, userServerConfigs } from "$lib/chat/server/mcp/userServers";
 import { oauthStateOf, serverUsesOAuth } from "$lib/chat/server/mcp/oauthConnect";
-import { mcpOAuthFetchFor } from "$lib/chat/server/mcp/oauthE2eStub";
+import { isMcpOAuthStubFault, mcpOAuthFetchFor } from "$lib/chat/server/mcp/oauthE2eStub";
 import {
 	createUserMcpServer,
 	deleteUserMcpServer,
@@ -65,7 +65,7 @@ export const load: PageServerLoad = async ({ locals, request }) => {
 	// Listings are cached for a few minutes, which would hide a sign-in the provider stopped honouring in
 	// that time. Under the OAuth stand-in's faults the page asks every server again, so a spec sees the
 	// provider's answer on the next load. Everywhere else the cached listing stands.
-	const fresh = faultInjection === "mcp_oauth_stub" || faultInjection === "mcp_oauth_stub_signed_out";
+	const fresh = isMcpOAuthStubFault(faultInjection);
 	const [tools, policies] = await Promise.all([listServerTools(servers, { fresh }), readMcpToolPolicies(locals)]);
 	const listed = new Set(servers.map((s) => s.name));
 	const signInRows = ownRows.filter((r) => (!listed.has(r.name) || leftOut.has(r.id)) && signInOf(r) !== null);
