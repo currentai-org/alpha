@@ -169,23 +169,14 @@ test(
 			await expect(page.getByText('Report this response')).toBeVisible({ timeout: 10_000 });
 
 			// The reasons open into the empty space under the flag, never over the answer being
-			// reported. The old popup always opened upward and covered the reply and its open-gap banner,
-			// down to one letter of "Help build it". This answer is short, so there is room below.
+			// reported. The old popup always opened upward and covered the reply. This answer is
+			// short, so there is room below.
 			const flagBox = (await reportButton.boundingBox())!;
 			const menuBox = (await menu.boundingBox())!;
 			expect(
 				menuBox.y,
 				'the reason menu opened upward over the answer it reports, though the space below the flag was empty'
 			).toBeGreaterThanOrEqual(flagBox.y + flagBox.height);
-			const helpBuild = page.getByRole('button', { name: /help build it/i }).last();
-			if (await helpBuild.isVisible()) {
-				const bannerBox = (await helpBuild.boundingBox())!;
-				expect(
-					bannerBox.y + bannerBox.height <= menuBox.y || bannerBox.y >= menuBox.y + menuBox.height,
-					'the reason menu covers the open-gap banner\'s "Help build it" button'
-				).toBe(true);
-			}
-
 			await expect(
 				reasons,
 				'the reason list should offer several plain-language choices rather than one free-text box, which would make the user do the classifying'

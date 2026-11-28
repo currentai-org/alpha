@@ -5,12 +5,12 @@
 	import PotluckMark from "../PotluckMark.svelte";
 	import RiArrowRightLine from "~icons/ri/arrow-right-line";
 
-	// "This answer touches a gap in the open stack → get involved." Shown under an answer
-	// whose originating prompt deliberately surfaces a known gap (see starterGaps). Two
-	// honest actions, both reusing existing seams: pulse + deep-link the gap's node on the
-	// live-stack map (the same `ap:flash` CustomEvent SafetyBadge/SourceStrip use), and open
-	// the contribution form prefilled with the gap's ask (the contributeOpen { topic } seam
-	// the live-stack map's own gap nodes already use). No new machinery.
+	// "This answer touches a gap in the open stack → get involved." Shown only in X-ray's "This
+	// answer" tab, never under the answer itself: it is an invitation to contribute, not
+	// part of the reply. Two honest actions, both reusing existing seams: pulse + deep-link the gap's
+	// node on X-ray's stack map (the `ap:flash` CustomEvent StackXRay listens for), and open the
+	// contribution form prefilled with the gap's ask (the contributeOpen { topic } seam the live-stack
+	// map's own gap nodes already use). No new machinery.
 	interface Props {
 		gap: StarterGap;
 		/** The visitor's chrome language (chromeCopy.ts); the card follows it when it has a translation. */
@@ -28,8 +28,7 @@
 	};
 </script>
 
-<!-- A quiet caption line under the answer, styled like the provenance footer beneath it (maker ·
-     model · How this was made): same type, same muted ink, an underlined link as the one action. The
+<!-- A quiet caption line in X-ray's receipt: muted ink, an underlined link as the one action. The
      Potluck mark says whose invitation this is. Neutral, never gap-red — in the chat red reads as an
      error (red is reserved for the safety/decline signal).
      it is an invitation, not a fact about the answer, so it is marked as a note of its own
@@ -37,7 +36,7 @@
 <div
 	role="note"
 	aria-label={card.copy.gapAria}
-	class="mt-3 flex max-w-xl flex-wrap items-center gap-x-1.5 gap-y-0.5 type-caption text-fg-3"
+	class="flex max-w-xl flex-wrap items-center gap-x-1.5 gap-y-0.5 type-caption text-fg-3"
 	title={card.copy.gapTitle}
 	data-gap-invite
 >

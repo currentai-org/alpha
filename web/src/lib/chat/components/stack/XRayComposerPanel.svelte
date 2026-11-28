@@ -5,7 +5,9 @@
 	import { page } from '$app/state';
 	import { Tabs } from '@aipotluck/alpha-ds';
 	import { xrayMessageId, xraySecondOpinion } from '$lib/chat/stores/stack';
+	import { gapForAnswer } from '$lib/chat/constants/starterGaps';
 	import AnswerReceipt from './AnswerReceipt.svelte';
+	import GapInvite from './GapInvite.svelte';
 	import PromptView from './PromptView.svelte';
 	import StackXRay from './StackXRay.svelte';
 	import StepByStep from './StepByStep.svelte';
@@ -56,6 +58,16 @@
 		index > 0 && messages.slice(0, index).filter((m) => m.from !== 'system').length > 1
 	);
 	const turnNumber = $derived(answer ? answers.indexOf(answer) + 1 : undefined);
+	// The open-gap invitation lives here and nowhere under the answer. Only once the answer
+	// has finished and actually ran: never on a safety decline, which has no answer to attach it to.
+	const gap = $derived(
+		answer &&
+			answer.content &&
+			!answer.moderation?.flagged &&
+			!(loading && answer === answers.at(-1))
+			? gapForAnswer(question, (answer.webSearch?.sources?.length ?? 0) > 0)
+			: undefined
+	);
 
 	// The panel opens by easing its height up, taking that height from the thread, so the answer's footer
 	// would slide under the panel's edge. While it opens, the thread scrolls to keep that footer, the line
@@ -146,6 +158,9 @@
 						signedIn={Boolean(page.data.user)}
 						attachedFiles={asked?.files?.map((f) => f.name) ?? []}
 					/>
+					{#if gap}
+						<GapInvite {gap} lang={page.data.uiLang ?? 'en'} />
+					{/if}
 					<!-- Once the answer is stored: the prompt is rebuilt from the saved chat. -->
 					{#if page.params.id && !(loading && answer === answers.at(-1))}
 						<PromptView conversationId={page.params.id} messageId={answer.id} />

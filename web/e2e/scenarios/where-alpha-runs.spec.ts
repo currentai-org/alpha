@@ -155,32 +155,12 @@ test(
 			return await expectAnAccountOfWhereItCameFrom(assistantMessage);
 		});
 
-		// The first web-grounded answer carries an "open gap → get involved" invitation. It is
-		// not a fact about this answer, so it must not read as part of the provenance readout it sits
-		// under: it is its own note, holds no provenance line, and its sentence ends before the call to
-		// action rather than running into it ("…search index get involved →"); the action is "Help build it". Whether the line shows at
-		// all depends on the turn searching the web, so this reads whatever gap text the answer has.
-		const gapText = assistantMessage.getByText(/open gap/i);
-		if ((await gapText.count()) > 0) {
-			const note = assistantMessage.getByRole('note', { name: 'An open gap in the stack' });
-			await expect(
-				note,
-				'the open-gap invitation renders as another line of the provenance readout instead of a note of its own'
-			).toHaveCount(1);
-			await expect(
-				note.locator('[title*="served via"], [data-provenance]'),
-				'the open-gap note contains the provenance line, so the two still read as one readout'
-			).toHaveCount(0);
-			expect(
-				(await note.innerText()).replace(/\s+/g, ' '),
-				'the gap sentence runs straight into its call to action with no stop between them'
-			).toMatch(/\.\s*Help build it/);
-		} else {
-			test.info().annotations.push({
-				type: 'CUR-1873',
-				description: 'no open-gap line on this answer; nothing to check'
-			});
-		}
+		// The open-gap invitation is not a fact about this answer, so it never sits under it: it
+		// lives in X-ray's This answer tab (open-gap-card-in-xray.spec.ts).
+		await expect(
+			assistantMessage.locator('[data-gap-invite]'),
+			'an open-gap invitation sits under the answer, where it reads as part of the provenance readout'
+		).toHaveCount(0);
 
 		if ((await provenance.count()) > 0) {
 			// The naming branch. Reached wherever the lane reports provenance — production today, and
