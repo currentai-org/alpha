@@ -23,10 +23,12 @@
 	import StorageUsage from './StorageUsage.svelte';
 	import ChooseLocationDialog from './ChooseLocationDialog.svelte';
 	import TransferDialog from './TransferDialog.svelte';
-	import { ALPHA_LOCATION_ID, ASK_EVERY_TIME, type LocationsState, locationLabel } from './locationTypes';
+	import { ALPHA_LOCATION_ID, ASK_EVERY_TIME, type LocationsState, locationLabel, locationTabNames } from './locationTypes';
 	import FilePreviewDialog from './FilePreviewDialog.svelte';
 	import { THUMBNAIL_MAX_BYTES } from './previewKind';
-	import { Button, Tabs } from '@aipotluck/alpha-ds';
+	import { Button, Tabs, Tooltip } from '@aipotluck/alpha-ds';
+	import OrgLogo from '$lib/chat/components/provenance/OrgLogo.svelte';
+	import { orgs } from '$lib/chat/routing/catalog';
 	import { formatBytes } from './formatBytes';
 	import RiRefreshLine from '~icons/ri/refresh-line';
 
@@ -106,6 +108,7 @@
 	);
 	const openedOnAlpha = viewing === ALPHA_LOCATION_ID;
 	const viewingAlpha = $derived(viewing === ALPHA_LOCATION_ID);
+	const tabNames = $derived(locationTabNames(locState?.locations ?? []));
 	const viewingLabel = $derived(locState?.locations.find((l) => l.id === viewing)?.label ?? 'Alpha storage');
 	let pendingFiles = $state<File[]>([]);
 	let chooseOpen = $state(false);
@@ -441,19 +444,42 @@
 	     open tab is where a dropped file goes, so the panel needs no separate "Adding to" line. -->
 	{#if locState && locState.locations.length > 0}
 		<!-- A segmented control: the places are few, and each is a whole view of the files. -->
-		<Tabs.Root value={viewing} onValueChange={switchTo} variant="segment" class="gap-3">
+		<Tabs.Root value={viewing} onValueChange={switchTo} variant="segment" wrap class="gap-3">
 			<Tabs.List aria-label={m.storage_location()} data-testid="location-tabs">
 				{#each locState.locations as loc (loc.id)}
 					{@const count = countFor(loc.id)}
-					<Tabs.Tab value={loc.id} data-location-id={loc.id}>
-						<span class="max-w-64 truncate">{locationLabel(loc)}</span>
-						{#if count !== undefined}
-							<span class="tabular-nums opacity-70" aria-hidden="true" data-testid="location-count"
-								>{count}</span
+					{@const tabName = tabNames.get(loc.id)}
+					<!-- CUR-4441: the tab names what tells this place apart, uncut and in its own case (a bucket
+					     name is case-sensitive), wrapping when it is long; the tooltip, on hover and on focus,
+					     names the place in full. -->
+					<Tooltip.Root>
+						<Tooltip.Trigger>
+							{#snippet child({ props })}
+								<Tabs.Tab
+									{...props}
+									value={loc.id}
+									data-location-id={loc.id}
+								>
+									{#if tabName?.provider}<OrgLogo org={orgs[tabName.provider]} size="xs" />{/if}
+									<span class="min-w-0">{tabName?.name ?? locationLabel(loc)}</span>
+									{#if count !== undefined}
+										<span class="tabular-nums opacity-70" aria-hidden="true" data-testid="location-count"
+											>{count}</span
+										>
+										<span class="sr-only">{count === 1 ? m.account_oneFile() : m.account_nFiles({ count })}</span>
+									{/if}
+								</Tabs.Tab>
+							{/snippet}
+						</Tooltip.Trigger>
+						<Tooltip.Portal>
+							<Tooltip.Positioner side="top"
+								><Tooltip.Popup
+									>{#each tabName?.full ?? [locationLabel(loc)] as line, i (i)}<span class="block">{line}</span
+										>{/each}</Tooltip.Popup
+								></Tooltip.Positioner
 							>
-							<span class="sr-only">{count === 1 ? m.account_oneFile() : m.account_nFiles({ count })}</span>
-						{/if}
-					</Tabs.Tab>
+						</Tooltip.Portal>
+					</Tooltip.Root>
 				{/each}
 			</Tabs.List>
 			{#each locState.locations as loc (loc.id)}

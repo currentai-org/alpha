@@ -32,6 +32,13 @@ export default {
 						'`line`: ruled strip, ink bar under the selected tab. `segment`: a segmented control, for a few peer views of one place (storage locations). Applied to the List and its Tabs.'
 				},
 				{
+					name: 'wrap',
+					type: 'boolean',
+					default: 'false',
+					description:
+						'Each tab keeps its label whole and in its own case, wrapping when long instead of truncating. For labels that are names someone chose (a bucket, a folder), where case carries meaning. Tabs grow to fit and shrink to the list width.'
+				},
+				{
 					name: 'orientation',
 					type: "'horizontal' | 'vertical'",
 					default: "'horizontal'",

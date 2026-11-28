@@ -26,15 +26,27 @@ export const tabsTabRecipe = tv({
 	variants: {
 		variant: {
 			line: [
-				'relative -mb-px h-control-md border-b-2 border-transparent px-3 text-fg-3',
+				'relative -mb-px border-b-2 border-transparent px-3 text-fg-3',
 				'hover:text-fg-1 ui-selected:border-fg-1 ui-selected:text-fg-1',
 				'ui-vertical:mr-[-1px] ui-vertical:mb-0 ui-vertical:border-r-2 ui-vertical:border-b-0'
 			],
 			segment:
-				'h-control-sm shrink-0 px-3 text-fg-2 rounded-sharp hover:bg-tint-hover hover:text-fg-1 ui-selected:bg-fg-1 ui-selected:text-surface-1'
+				'px-3 text-fg-2 rounded-sharp hover:bg-tint-hover hover:text-fg-1 ui-selected:bg-fg-1 ui-selected:text-surface-1'
+		},
+		// `wrap`: the label is a name someone chose (a bucket, a folder), so it keeps its own case and
+		// wraps rather than being cut. The tab grows to fit and may shrink to the list's width.
+		wrap: {
+			false: '',
+			true: 'h-auto max-w-full shrink py-1 text-left normal-case wrap-anywhere'
 		}
 	},
-	defaultVariants: { variant: 'line' }
+	compoundVariants: [
+		{ variant: 'line', wrap: false, class: 'h-control-md' },
+		{ variant: 'segment', wrap: false, class: 'h-control-sm shrink-0' },
+		{ variant: 'line', wrap: true, class: 'min-h-control-md' },
+		{ variant: 'segment', wrap: true, class: 'min-h-control-sm' }
+	],
+	defaultVariants: { variant: 'line', wrap: false }
 });
 
 export type TabsVariant = 'line' | 'segment';
@@ -42,4 +54,9 @@ export type TabsVariant = 'line' | 'segment';
 /** The variant the enclosing `Tabs.Root` chose. */
 export function tabsVariant(): TabsVariant {
 	return getContext<{ variant: TabsVariant } | undefined>('alpha-ds.tabs')?.variant ?? 'line';
+}
+
+/** Whether the enclosing `Tabs.Root` asked its tabs to wrap long labels. */
+export function tabsWrap(): boolean {
+	return getContext<{ wrap?: boolean } | undefined>('alpha-ds.tabs')?.wrap ?? false;
 }
