@@ -43,7 +43,12 @@ export const load: PageServerLoad = async ({ locals, request }) => {
 	const accountId = accountOf(locals);
 	const ownRows: UserMcpServerRow[] = accountId && mcpServers ? await listUserMcpServers(accountId) : [];
 	// The e2e stub is listed when the request carries its fault, so a spec sees what its turn will use.
-	const general = mcpServers ? serversForRequest(faultInjection, userServerConfigs(ownRows, { faultInjection })) : [];
+	// An OAuth server whose sign-in this listing found no longer working moves to Reconnect below.
+	const leftOut = new Set<string>();
+	const onReconnectNeeded = (id: string) => void leftOut.add(id);
+	const general = mcpServers
+		? serversForRequest(faultInjection, userServerConfigs(ownRows, { faultInjection, onReconnectNeeded }))
+		: [];
 	// Listed with its tools when connected, so the page shows what a turn would offer and each tool's choice.
 	const googleServer = googleOn ? await googleServerFor(locals, {}, faultInjection) : null;
 	const servers = googleServer ? [...general.filter((s) => s.name !== GOOGLE_SERVER_NAME), googleServer] : general;
@@ -54,11 +59,12 @@ export const load: PageServerLoad = async ({ locals, request }) => {
 	const signInOf = (row: UserMcpServerRow): "connect" | "reconnect" | null => {
 		if (row.authKind !== "oauth") return null;
 		if (!oauthStateOf(row).tokens?.access_token) return "connect";
-		return row.needsReconnect ? "reconnect" : null;
+		return row.needsReconnect || leftOut.has(row.id) ? "reconnect" : null;
 	};
 	const [tools, policies] = await Promise.all([listServerTools(servers), readMcpToolPolicies(locals)]);
 	const listed = new Set(servers.map((s) => s.name));
-	const signInRows = ownRows.filter((r) => !listed.has(r.name) && signInOf(r) !== null);
+	const signInRows = ownRows.filter((r) => (!listed.has(r.name) || leftOut.has(r.id)) && signInOf(r) !== null);
+	const reachable = servers.filter((s) => !signInRows.some((r) => r.name === s.name));
 	return {
 		signedIn: Boolean(accountId),
 		mcpServers,
@@ -72,7 +78,7 @@ export const load: PageServerLoad = async ({ locals, request }) => {
 				}
 			: null,
 		servers: [
-			...servers.map((s) => ({
+			...reachable.map((s) => ({
 				name: s.name,
 				// The host only: a path or query string can carry something an operator would not show.
 				host: new URL(s.url).host,
@@ -124,7 +130,7 @@ export const actions: Actions = {
 				credential: null,
 				authKind: "oauth",
 			});
-			redirect(303, mcpConnectPath(row.id));
+			redirect(303, mcpConnectPath(row.id), { external: false });
 		}
 		await createUserMcpServer({
 			userId: accountId,

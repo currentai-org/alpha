@@ -12,7 +12,7 @@ import { listUserMcpServers, type UserMcpServerRow } from "$lib/chat/server/db/u
 import type { FaultInjectionName } from "$lib/chat/server/textGeneration/faultInjection";
 import { NAME_RE, originScopedFetch, type FetchLike, type McpServerConfig } from "./servers";
 import { STUB_URL, stubMcpFetch } from "./e2eStub";
-import { oauthStateOf, refreshOAuthRow } from "./oauthConnect";
+import { oauthServerFetch, oauthStateOf, refreshOAuthRow } from "./oauthConnect";
 
 /** HKDF info for these tokens, so a sealed storage-location credential cannot be opened as one. */
 const SEAL_INFO = "aipotluck/user-mcp-server-credential/v1";
@@ -52,7 +52,13 @@ export function sealServerToken(token: string, secret = credentialSecret()): str
 	return seal(token, secret, SEAL_INFO);
 }
 
-type ConfigDeps = { secret?: string; faultInjection?: FaultInjectionName | null; baseFetch?: FetchLike };
+type ConfigDeps = {
+	secret?: string;
+	faultInjection?: FaultInjectionName | null;
+	baseFetch?: FetchLike;
+	/** Hears the id of an OAuth server whose sign-in stopped working while this request reached it. */
+	onReconnectNeeded?: (rowId: string) => void;
+};
 
 /**
  * The person's rows as servers a turn can reach. A token that no longer opens (the sealing secret
@@ -62,10 +68,11 @@ export function userServerConfigs(rows: UserMcpServerRow[], deps: ConfigDeps = {
 	const out: McpServerConfig[] = [];
 	for (const row of rows) {
 		let headers: Record<string, string> = {};
+		let access: string | undefined;
 		if (row.authKind === "oauth") {
 			// refreshOAuthRow ran first; a server marked for reconnecting sits this turn out.
 			if (row.needsReconnect) continue;
-			const access = oauthStateOf(row, deps.secret ?? credentialSecret()).tokens?.access_token;
+			access = oauthStateOf(row, deps.secret ?? credentialSecret()).tokens?.access_token;
 			if (!access) continue;
 			headers = { Authorization: `Bearer ${access}` };
 		} else if (row.credential) {
@@ -81,7 +88,15 @@ export function userServerConfigs(rows: UserMcpServerRow[], deps: ConfigDeps = {
 		// The e2e stub answers in-process, and only while its fault is on (e2eStub.ts).
 		const base =
 			deps.faultInjection === "mcp_stub_server" && row.url === STUB_URL ? stubMcpFetch : (deps.baseFetch ?? ssrfStrictFetch);
-		out.push({ name: row.name, url: row.url, headers, origin, fetch: originScopedFetch(origin, base) });
+		const scoped = originScopedFetch(origin, base);
+		// An OAuth server's 401 gets one refresh of its tokens for the whole request (oauthServerFetch).
+		const fetch = access
+			? oauthServerFetch(row, access, scoped, {
+					...(deps.secret ? { secret: deps.secret } : {}),
+					...(deps.onReconnectNeeded ? { onReconnectNeeded: deps.onReconnectNeeded } : {}),
+				})
+			: scoped;
+		out.push({ name: row.name, url: row.url, headers, origin, fetch });
 	}
 	return out;
 }
