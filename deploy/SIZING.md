@@ -82,7 +82,7 @@ These hold any single account to a share of the deployment's capacity:
 
 - Inference. A real model adds its own time to first token and its own concurrency limit, and on a
   real deployment that is usually the first limit reached.
-- Long answers. The canned reply streams for a few seconds; a real answer can hold a connection open for
-  a minute.
+- Long answers. The canned reply sends three short pieces at once; a real answer can hold a connection
+  open for a minute.
 - The compose stack itself. This run was serverless on Neon. A single Node process with a raised
   `PG_POOL_MAX` has not been measured yet.

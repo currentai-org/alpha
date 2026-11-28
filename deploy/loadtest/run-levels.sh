@@ -1,29 +1,31 @@
 #!/usr/bin/env bash
 # k6-chat.js at each of $LEVELS virtual users, one after the other, with the database's connections
-# sampled every 5 s while each level runs. Called by .github/workflows/load.yml from the repository root.
+# sampled every 5 s while each level runs. Called by .github/workflows/load.yml from the repository root
+# as `run-levels.sh <pass>`, once per PG_POOL_MAX setting.
 #
 # Needs DATABASE_URL (the stack's database on loopback), K6_IMAGE, LEVELS, HOLD and THINK_SECS. Writes
-# loadtest-out/levels/<level>.json (k6's row), <level>-full.json (k6's whole summary), <level>-db.json (the
+# loadtest-out/<pass>/<level>.json (k6's row), <level>-full.json (k6's whole summary), <level>-db.json (the
 # database's peak connections and size) and appends a table to the step summary.
 #
 # Warn-only: a level k6 cannot finish is a ::warning::, and the script exits 0.
 set -uo pipefail
 
-OUT="loadtest-out/levels"
+PASS="${1:?usage: run-levels.sh <pass>}"
+OUT="loadtest-out/$PASS"
 mkdir -p "$OUT"
 chmod 777 "$OUT" # the k6 image runs as a non-root user
 
 db() { psql "$DATABASE_URL" -tAq -c "$1" 2>/dev/null; }
 
 {
-	echo "### Levels"
+	echo "### $PASS"
 	echo
 	echo "| VUs | turns/min | turn p50 | turn p95 | first byte p95 | create p95 | errors | 429 | 5xx | peak DB connections |"
 	echo "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
 } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
 
 for VUS in $LEVELS; do
-	LABEL="${VUS}vu"
+	LABEL="${PASS}-${VUS}vu"
 	echo "== $LABEL"
 
 	# Peak connections while the level runs. Every connection but the sampler's own is the app's.
@@ -66,5 +68,5 @@ done
 
 SIZE=$(db "select pg_size_pretty(pg_database_size(current_database()))") || SIZE="unread"
 echo >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
-echo "Database size after the levels: $SIZE" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+echo "Database size after the $PASS pass: $SIZE" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
 exit 0

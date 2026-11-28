@@ -5,7 +5,7 @@
 # app's real model path, so the numbers are the app's and its database's, never inference.
 #
 # - load: k6 (deploy/loadtest/k6-chat.js) at 20 and 60 virtual users, 3 minutes each, with peak database
-#   connections.
+#   connections, once with PG_POOL_MAX as shipped and once at 10.
 # - soak: k6 at 20 virtual users for soak_hours (5 by default), sampling `docker stats` for web and db
 #   once a minute (soak-stats.sh), then memory after the first hour and 100 minutes before the end
 #   against the last ten minutes (soak-verdict.sh).
@@ -64,8 +64,17 @@ jobs:
         run: bash deploy/loadtest/up.sh
       - name: Pull k6
         run: docker pull -q "$K6_IMAGE"
-      - name: Run the levels
-        run: bash deploy/loadtest/run-levels.sh
+      # Twice: as deploy/compose.yaml ships (PG_POOL_MAX unset, one connection), then with the 10 that
+      # SIZING.md recommends for one long-lived process.
+      - name: Run the levels as shipped
+        run: bash deploy/loadtest/run-levels.sh "pool-${PG_POOL_MAX:-unset}"
+      - name: Run the levels with PG_POOL_MAX=10
+        if: env.PG_POOL_MAX != '10'
+        working-directory: deploy
+        run: |
+          PG_POOL_MAX=10 docker compose up -d --wait --wait-timeout 300 web
+          docker compose exec -T web printenv PG_POOL_MAX
+          cd .. && bash deploy/loadtest/run-levels.sh pool-10
       - name: Stack logs
         if: always()
         working-directory: deploy
