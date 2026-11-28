@@ -7,11 +7,11 @@
 
 # At the service's pins
 numpy==2.5.4
-pandas==3.0.6
+pandas==3.1.0
 matplotlib==3.11.2
 openpyxl==3.1.5
 python-docx==1.2.0
-reportlab==5.0.1
+reportlab==5.1.0
 
 # E2B code-interpreter's list, at versions with Python 3.14 wheels. pillow and requests stay at Hermes' own pins
 # (its pyproject at HERMES_SHA): a newer one here replaces the version Hermes runs on, and the Dockerfile's pip check
