@@ -260,6 +260,10 @@ export async function endpointOai(
 	// report is the bare alias on a healthy turn too, and on a substituted turn alike, so this is the correct thing to diff it
 	// against, not the suffixed wire id resolveProviderModelId builds per call.
 	const requestedModel = laneModelId ?? model.id ?? model.name;
+	// Our id for this model, for every harness-row lookup. A lane with a wire map sends the host's own
+	// name (`requestedModel`, a deployment hash or `mistralai/…`), and no harness row is keyed by a wire
+	// name, so rows are looked up by our id.
+	const profileModel = servedAs ?? requestedModel;
 	// A lane that names its own key reaches its host directly, so it never takes the default pin.
 	const ownLane = Boolean(endpointApiKey({ apiKeyEnv: input.apiKeyEnv }));
 	// The host's report of the model we asked for, recorded under our own id only once the version is
@@ -806,7 +810,7 @@ export async function endpointOai(
 			{
 				const reserveTokens =
 					{ ...model.parameters, ...generateSettings }.max_tokens ?? DEFAULT_ANSWER_RESERVE;
-				const contextTokens = contextTokensFor(requestedModel);
+				const contextTokens = contextTokensFor(profileModel);
 				const fit = fitHistory(messagesOpenAI, { contextTokens, reserveTokens });
 				if (fit.kind === "overflow") {
 					logger.warn(
@@ -891,7 +895,7 @@ export async function endpointOai(
 			// attempt goes to a deployment that accepts roles (apertusStrictLane.ts); the model's harness
 			// row says whether it takes the lane (harnessProfiles.ts). Side calls are not pinned, because
 			// pinned to one deployment the arithmetic pre-checks run past their 8s timeout.
-			const strictLane = takesStrictLane(modelId);
+			const strictLane = takesStrictLane(servedAs ?? modelId);
 			const fallbackOverride = gatewayFallbackOverride(
 				servesUserAnswer || strictLane,
 				baseURL,

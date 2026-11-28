@@ -1393,6 +1393,36 @@ describe("the history is fitted to the lane's context before the call", () => {
 		).rejects.toBeInstanceOf(MessageTooLongError);
 		expect(seen).toHaveLength(0);
 	});
+
+	// A wire map sends a model under the host's own name (`mistralai/…` on both routers today, or a
+	// deployment hash). The context comes from our id's row (524,288 for Large 4, 262,144 for Medium),
+	// never the 32,000 floor a wire name falls to, so a 100k-character paste (about 25k tokens) goes out.
+	// A `mistralai/…` wire name for each mapped model, and a deployment hash.
+	for (const [ours, wire] of [
+		["mistral-large-2610", "mistralai/mistral-large-2610"],
+		["mistral-large-2610", "3f9c2a7e1b"],
+		["mistral-medium-2604", "mistralai/mistral-medium-3-5"],
+	]) {
+		it(`reads the context from our id when the lane renames the model (${ours} as ${wire})`, async () => {
+			const seen = stubPlainServer();
+			const endpoint = await endpointOai({
+				type: "openai",
+				baseURL: "http://127.0.0.1:11434/v1",
+				apiKey: "sk-",
+				// A real Large 4 turn reserves its answer plus 12,288 reasoning tokens (harnessProfiles.ts).
+				model: { id: ours, name: ours, parameters: { max_tokens: 16_384 } },
+				modelId: wire,
+				servedAs: ours,
+			});
+			const stream = await endpoint({
+				messages: [{ from: "user", content: "z".repeat(100_000) }],
+				locals: undefined,
+			} as Parameters<typeof endpoint>[0]);
+			for await (const _ of stream) void _;
+			expect(seen).toHaveLength(1);
+			expect(JSON.parse(String(seen[0].body)).model).toBe(wire);
+		});
+	}
 });
 
 // A compare model reaches its host on its own key. With OPENAI_PROVIDER set, sending

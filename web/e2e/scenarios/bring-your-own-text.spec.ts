@@ -159,6 +159,58 @@ test(
 	}
 );
 
+// Large 4's lane sends it under the host's own name (`mistralai/mistral-large-2610`); its history is
+// fitted to its own 524,288-token context, so this paste (about 25k tokens) is read. Pinned, so the
+// turn is Large 4's and no other's.
+test(
+	'a 100,000-character paste pinned to Large 4 is read, never refused as too long for it',
+	{ tag: ['@real-screen', '@preview-only'] },
+	async ({ page, context, baseURL }) => {
+		test.setTimeout(240_000);
+		await setFlagOverrides(context, baseURL!, { multimodal: false });
+		await openChat(page, pinnedChatEntry(LARGE_4));
+
+		const story = PRIDE_AND_PREJUDICE.repeat(Math.ceil(100_000 / PRIDE_AND_PREJUDICE.length)).slice(
+			0,
+			100_000
+		);
+		await page.getByLabel('Message AI Potluck').evaluate((el, text) => {
+			const data = new DataTransfer();
+			data.setData('text/plain', text);
+			el.dispatchEvent(
+				new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true })
+			);
+		}, story);
+		await expect(
+			page.getByText('Pasted Content').first(),
+			'the long paste did not turn into a chip, so this test is not exercising the path it is named for'
+		).toBeVisible({ timeout: 10_000 });
+
+		const composer = page.getByLabel('Message AI Potluck');
+		await composer.fill('Summarize this story in two sentences.');
+		await composer.press('Enter');
+
+		await page.waitForURL(/\/chat\/conversation\/[a-f0-9]+/, { timeout: 30_000 });
+		const answer = page.locator('[data-message-role="assistant"]').last();
+		await expect(
+			turnDone(answer),
+			'no finished reply to a 100k-character paste on Large 4' + warmupContext()
+		).toBeVisible({
+			timeout: 180_000
+		});
+		// Our own refusal copy (chatTooLong.ts), never the model's wording.
+		await expect(
+			answer.getByText(/This message is too long for .* to read/),
+			'Large 4 refused a paste well inside its 524,288-token context: the history was fitted to the wrong size'
+		).toHaveCount(0);
+		// The input screen running out of time is the test above's path; here the model has to get the paste.
+		await expect(
+			answer.getByText(/couldn['’]t finish the safety check/i),
+			"the screen didn't finish, so this run never reached Large 4's context fit"
+		).toHaveCount(0);
+	}
+);
+
 // When the guard is slow, a long paste runs the input screen past its deadline, and the
 // content rules queued last never get asked. Allowing the turn then let anyone skip those rules by
 // padding a paste. `input_screen_unfinished` ends the real screen once every child-safety query has
