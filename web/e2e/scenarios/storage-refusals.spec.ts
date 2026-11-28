@@ -85,7 +85,9 @@ test(
 				415
 			);
 			await expect(
-				page.getByText(/^That file type isn't supported\. Add a TXT, Markdown, CSV, PDF, DOCX/),
+				page.getByText(
+					/^That file type isn't supported\. Add a TXT, Markdown, CSV, JSON, PDF, DOCX, XLSX, PPTX, ODT/
+				),
 				'the wrong-type refusal does not say which types are accepted'
 			).toBeVisible({ timeout: 10_000 });
 

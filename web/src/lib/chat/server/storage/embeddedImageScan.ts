@@ -1,6 +1,6 @@
 /**
- * The known-abuse image check for every file a person gives us, including the pictures inside a PDF
- * or an Office file. A photo is scanned as itself. A PDF or DOCX has each embedded image
+ * The known-abuse image check for every file a person gives us, including the pictures inside a PDF,
+ * an Office, OpenDocument or EPUB file, or an RTF. A photo is scanned as itself. A PDF or DOCX has each embedded image
  * decoded, re-encoded as PNG and scanned, so a picture cannot get past the check by arriving inside
  * a document. Chat attachments (parseRequest.ts) and My files (custodialStorage.ts) both call this.
  *
@@ -39,9 +39,9 @@ export class UnscannableFileError extends Error {
 	}
 }
 
-/** How a file is checked: as an image, by walking a PDF, by walking a zip-based Office file, or not
- *  at all (text, which has no pixels to hash). */
-export type ScanTarget = "image" | "pdf" | "office" | null;
+/** How a file is checked: as an image, by walking a PDF, by walking a zip-based Office, OpenDocument
+ *  or EPUB file, by the pictures written into an RTF, or not at all (text, which has no pixels to hash). */
+export type ScanTarget = "image" | "pdf" | "office" | "rtf" | null;
 
 const OFFICE_MIMES = new Set([
 	"application/zip",
@@ -51,6 +51,7 @@ const OFFICE_MIMES = new Set([
 	"application/vnd.oasis.opendocument.text",
 	"application/vnd.oasis.opendocument.spreadsheet",
 	"application/vnd.oasis.opendocument.presentation",
+	"application/epub+zip",
 ]);
 
 /** The check a sniffed mime gets. Pass the type read from the bytes, never the declared one. */
@@ -160,9 +161,10 @@ function checkDeadline(ctx: Ctx) {
 	if (ctx.now() > ctx.deadline) throw new UnscannableFileError("time budget exceeded");
 }
 
-async function collect(bytes: Uint8Array, target: "pdf" | "office", ctx: Ctx, depth: number): Promise<void> {
+async function collect(bytes: Uint8Array, target: "pdf" | "office" | "rtf", ctx: Ctx, depth: number): Promise<void> {
 	if (depth > MAX_NEST_DEPTH) throw new UnscannableFileError("nested too deep");
 	if (target === "pdf") await collectFromPdf(bytes, ctx);
+	else if (target === "rtf") await collectFromRtf(bytes, ctx);
 	else await collectFromArchive(bytes, ctx, depth);
 }
 
@@ -308,10 +310,71 @@ async function collectFromArchive(bytes: Uint8Array, ctx: Ctx, depth: number): P
 			// Document structure and fonts: no pixels.
 		} else if (/\.(odttf|fntdata)$/i.test(name)) {
 			// Word's obfuscated embedded fonts, which no sniffer recognises.
+		} else if (!mime && (/(^|\/)printerSettings\d*\.bin$/i.test(name) || name === "layout-cache")) {
+			// CUR-4664: Excel's and PowerPoint's saved printer setup (a DEVMODE record) and LibreOffice
+			// Writer's page-layout cache. Neither holds pixels. Passed over only when the sniff finds no
+			// format at all: a picture, or an archive of pictures, renamed to either name is still
+			// scanned above or refused below.
 		} else {
 			throw new UnscannableFileError(`archive part of type ${mime ?? "unknown"}`);
 		}
 	}
+}
+
+// ── RTF ────────────────────────────────────────────────────────────────────────────────────────────
+// An RTF carries a picture as a `{\pict …}` group of hex digits (CUR-4664). A PNG or JPEG blip is
+// decoded and scanned like any other picture. Every other picture format (WMF, EMF, a device bitmap,
+// a Mac PICT), raw `\bin` data and an embedded object (`\objdata`) refuse the file: they may hold a
+// picture this check cannot see. Word writes a WMF copy of each picture under `\nonshppict`, so a
+// Word-made RTF with pictures is refused, which is the fail-closed answer.
+
+const RTF_SCANNABLE_BLIP = /\\(pngblip|jpegblip)(?![a-z])/i;
+
+async function collectFromRtf(bytes: Uint8Array, ctx: Ctx): Promise<void> {
+	// RTF is 7-bit text; latin1 keeps every byte at its own index.
+	const rtf = new TextDecoder("latin1").decode(bytes);
+	if (/\\(objdata|objemb|objlink|bin)(?![a-z])/i.test(rtf)) throw new UnscannableFileError("rtf holds an object or binary data");
+	for (let at = rtf.indexOf("\\pict"); at !== -1; at = rtf.indexOf("\\pict", at + 1)) {
+		checkDeadline(ctx);
+		// `\pict` must be a whole control word, not the start of `\pictprop` or similar.
+		if (/[a-z]/i.test(rtf[at + 5] ?? "")) continue;
+		const end = groupEnd(rtf, at);
+		const body = withoutSubgroups(rtf.slice(at, end));
+		if (!RTF_SCANNABLE_BLIP.test(body)) throw new UnscannableFileError("rtf picture in a format we cannot decode");
+		const hex = body.replace(/\\[a-z]+-?\d* ?/gi, "").replace(/\s+/g, "");
+		if (!/^(?:[0-9a-f]{2})+$/i.test(hex)) throw new UnscannableFileError("rtf picture data is not hex");
+		keep(await pngFromImageBytes(Buffer.from(hex, "hex"), ctx), ctx);
+		at = end;
+	}
+}
+
+/** Index just past the `}` closing the group that `at` sits in. An unclosed group runs to the end. */
+function groupEnd(rtf: string, at: number): number {
+	let depth = 1;
+	for (let i = at; i < rtf.length; i++) {
+		const c = rtf[i];
+		if (c === "\\") i++;
+		else if (c === "{") depth++;
+		else if (c === "}" && --depth === 0) return i;
+	}
+	return rtf.length;
+}
+
+/** A group's own text with nested groups (`{\*\picprop …}`, `{\*\blipuid …}`) cut out. */
+function withoutSubgroups(group: string): string {
+	let out = "";
+	let depth = 0;
+	for (let i = 0; i < group.length; i++) {
+		const c = group[i];
+		if (c === "\\" && depth === 0) {
+			out += c + (group[i + 1] ?? "");
+			i++;
+		} else if (c === "\\") i++;
+		else if (c === "{") depth++;
+		else if (c === "}") depth = Math.max(0, depth - 1);
+		else if (depth === 0) out += c;
+	}
+	return out;
 }
 
 async function pngFromImageBytes(bytes: Uint8Array, ctx: Ctx): Promise<Buffer> {

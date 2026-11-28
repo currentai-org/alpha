@@ -16,7 +16,7 @@ import {
 } from "$lib/chat/server/rag/extractFile";
 import { captionImage, RagCaptionError } from "$lib/chat/server/rag/captionImage";
 import { createRagDocument, RagWriteError } from "$lib/chat/server/rag/adminWrites";
-import { UPLOAD_MAX_BYTES, UPLOAD_MAX_BYTES_ANY } from "$lib/chat/constants/ragUpload";
+import { RAG_UPLOAD_KINDS, UPLOAD_MAX_BYTES, UPLOAD_MAX_BYTES_ANY } from "$lib/chat/constants/ragUpload";
 
 /** FK-safe actor id for createdBy/audit: a real user id or null (password login has no user row). */
 function actorId(locals: App.Locals): string | null {
@@ -55,7 +55,7 @@ export const POST: RequestHandler = async ({ request, locals, cookies, getClient
 	if (bytes.byteLength > UPLOAD_MAX_BYTES_ANY) throw error(413, "That file is too large.");
 
 	const kind = await resolveUploadKind({ bytes, name: file.name, declaredMime: file.type });
-	if (!kind) throw error(415, "Unsupported file type.");
+	if (!kind || !RAG_UPLOAD_KINDS.includes(kind)) throw error(415, "Unsupported file type.");
 	// Per-kind cap for EVERY kind (the image path skips extractTextFromUpload's internal check).
 	if (bytes.byteLength > UPLOAD_MAX_BYTES[kind]) {
 		throw error(413, `That ${kind} file is too large.`);

@@ -24,6 +24,7 @@ import {
 	titleFromFilename,
 	UPLOAD_MAX_BYTES,
 	UPLOAD_MAX_BYTES_ANY,
+	ZIP_KIND_BY_EXTENSION,
 	type UploadKind,
 } from "$lib/chat/constants/ragUpload";
 
@@ -67,8 +68,9 @@ export async function resolveUploadKind(input: {
 	if (sniffedMime) {
 		const byMime = classifyByMime(sniffedMime);
 		if (byMime) return byMime;
-		// A .docx is a zip container some detectors report generically as application/zip.
-		if (sniffedMime === "application/zip" && extensionOf(input.name) === "docx") return "docx";
+		// A .docx, .xlsx, .odt or .epub is a zip container a sniff of the first few KB can report as a
+		// bare application/zip; the name picks the format only then (CUR-4664).
+		if (sniffedMime === "application/zip") return ZIP_KIND_BY_EXTENSION[extensionOf(input.name)] ?? null;
 		// A definitively-sniffed binary we don't support — do NOT trust the extension. Reject.
 		return null;
 	}
