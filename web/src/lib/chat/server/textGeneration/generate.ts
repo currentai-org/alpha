@@ -223,6 +223,7 @@ async function* generateImpl(
 		...(faultInjection === "tool_round_rate_limited" ? { rateLimitToolRound: true } : {}),
 		...(faultInjection === "tool_round_rate_limited_sustained" ? { rateLimitToolRoundSustained: true } : {}),
 		...(faultInjection === "wrong_model_served" ? { substituteServedModel: WRONG_MODEL_SUBSTITUTE } : {}),
+		...(faultInjection === "google_connector_stub" ? { googleConnectorStub: true } : {}),
 		...(faultInjection === "model_replay" ? { replayModelCalls: "new_episodes" as const } : {}),
 		...(faultInjection === "model_replay_none" ? { replayModelCalls: "none" as const } : {}),
 		...(turnDeadlineAt !== undefined ? { turnDeadlineAt } : {}),

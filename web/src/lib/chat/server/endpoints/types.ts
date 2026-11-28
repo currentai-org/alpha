@@ -173,6 +173,11 @@ export interface EndpointParameters {
 	 */
 	substituteServedModel?: string;
 	/**
+	 * The `google_connector_stub` fault: the agent endpoint gets the person's Google connection's access
+	 * token from Google's stand-in (connectors/googleE2eStub.ts). Same preview/development-only gate.
+	 */
+	googleConnectorStub?: boolean;
+	/**
 	 * The `model_replay` faults: the answer's model calls are served from a recording
 	 * when one matches (endpoints/openai/modelReplay.ts). On a miss, `new_episodes` calls the model and
 	 * records it, and `none` fails the call. Same preview/development-only gate.

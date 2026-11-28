@@ -21,6 +21,7 @@ import { isTeamAccount } from "$lib/chat/server/teamAccount";
 import { keepAgentFiles, type SavedAgentFile } from "./agentFiles";
 import { agentRunFiles } from "./agentAttachments";
 import { assistantNameSentence, serverBrand } from "$lib/chat/server/serverBrand";
+import { agentConnectorsFor } from "./agentConnectors";
 
 /**
  * Agent endpoint: agent mode answers inside the chat.
@@ -1009,7 +1010,7 @@ export async function endpointAgent(
 		);
 	}
 
-	return async function ({ messages, abortSignal, locals, conversationId, unhardenedUserText, clientInstructions, agentAttach, replyLanguage, saveAgentFiles, turnDeadlineAt }) {
+	return async function ({ messages, abortSignal, locals, conversationId, unhardenedUserText, clientInstructions, agentAttach, replyLanguage, saveAgentFiles, turnDeadlineAt, googleConnectorStub }) {
 		const identityPreamble = agentIdentityPreamble(identityModelId, replyLanguage);
 		const autoApprove = await agentAutoApproveFor(locals);
 		// Per-visitor attribution. We hold ONE static AGENT_SERVICE_TOKEN for every visitor, so the
@@ -1186,6 +1187,10 @@ export async function endpointAgent(
 				const prior = conversationId ? priorAgentMachine(messages) : { continues: false };
 				// The conversation's photos, so the agent sees what the person attached.
 				const files = await agentRunFiles(messages);
+				// The person's own connectors, picked from this signed-in session alone (agentConnectors.ts).
+				// Each carries a short-lived access token for the agent service's gateway to relay with;
+				// with none, the body below is the one it always was.
+				const connectors = await agentConnectorsFor(locals, { googleStub: googleConnectorStub === true });
 				const submitOnce = (pin: string | undefined) =>
 					agentFetch(`${runBase}/run`, {
 						method: "POST",
@@ -1213,6 +1218,7 @@ export async function endpointAgent(
 							// Auto mode, per person. Absent means ask mode service-side.
 							...(autoApprove ? { approval_mode: "auto" } : {}),
 							...(files.length > 0 ? { files } : {}),
+							...(connectors.length > 0 ? { connectors } : {}),
 						}),
 						signal: abortSignal,
 					});

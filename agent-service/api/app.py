@@ -54,6 +54,7 @@ from urllib.parse import quote, urlparse
 import home_machine
 import logsink
 import mcp_config
+import mcp_relay
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import PlainTextResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
@@ -770,7 +771,7 @@ def _unclaim_remote(key: str) -> None:
 
 
 def _gateway_grant(nonce: str, max_steps: int, max_tokens: int, label: str = "", attempt: int = 0,
-                   model: str = "") -> None:
+                   model: str = "", connectors: list | None = None) -> None:
     """Register a per-task nonce + caps with the gateway before launching the agent (raises on failure).
 
     `label`/`attempt` are forensic only: the gateway logs them on a router.failover so a provider stall can
@@ -780,12 +781,17 @@ def _gateway_grant(nonce: str, max_steps: int, max_tokens: int, label: str = "",
     body = {"nonce": nonce, "max_requests": max_steps, "max_tokens": max_tokens, "label": label, "attempt": attempt}
     if model:
         body["model"] = model
+    if connectors:
+        # the turn owner's connectors, relayed by the gateway (mcp_relay.py); absent otherwise, so a task without
+        # one sends the grant it always did
+        body["mcp"] = {c["name"]: {"url": c["url"], "headers": c["headers"]} for c in connectors}
     r = httpx.post(f"{MODEL_PROXY_URL}/admin/grant", headers={"authorization": f"Bearer {PROXY_ADMIN_KEY}"},
                    json=body, timeout=10.0)
     r.raise_for_status()
 
 
-def _gateway_revoke(nonce: str, served: list | None = None) -> tuple[int, int, bool, bool]:
+def _gateway_revoke(nonce: str, served: list | None = None,
+                    connector_report: dict | None = None) -> tuple[int, int, bool, bool]:
     """Revoke the nonce and return (model_calls, tokens, usage_seen, cap_hit). usage_seen=False means the
     spend-cap could not meter (upstream emitted no usage) — only the request cap actually bounded spend.
     cap_hit=True means the gateway refused at least one call (step/spend cap fired) — the AUTHORITATIVE
@@ -800,6 +806,10 @@ def _gateway_revoke(nonce: str, served: list | None = None) -> tuple[int, int, b
             for m in d.get("served_models") or []:
                 if isinstance(m, str) and m and m not in served:
                     served.append(m)
+        if connector_report is not None:
+            # what the connector relay refused, and which connectors refused the task's token
+            connector_report.setdefault("refused", []).extend(d.get("mcp_refused") or [])
+            connector_report.setdefault("unauthorized", []).extend(d.get("mcp_unauthorized") or [])
         return (int(d.get("requests", 0)), int(d.get("tokens", 0)),
                 bool(d.get("usage_seen", False)), bool(d.get("cap_hit", False)))
     except Exception:  # noqa: BLE001 — revoke is best-effort cleanup; the grant cap still bounded the run
@@ -2677,6 +2687,14 @@ class Task:
     # scratch watchdog), and `object | None` made every one of those calls a type error while telling a
     # reader nothing about the signature they have to match.
     _acp_confirm: Callable[[str, str], None] | None = field(default=None, repr=False)  # loop-threadsafe resolve
+    # The turn owner's connectors from the /run body, `[{name, url, headers}]` (mcp_relay.py). The headers carry
+    # a person's short-lived access token, so this lives in memory only: never a store column, never logged, never
+    # in _model_env. `_connectors_live` is the subset this task's policy offers, set once in _run; each attempt's
+    # grant carries it, and the engine reaches it only through the gateway. `_connector_notices` are the lines the
+    # answer ends with when the relay refused a call or the connector refused the token.
+    _connectors: list = field(default_factory=list, repr=False)
+    _connectors_live: list = field(default_factory=list, repr=False)
+    _connector_notices: list = field(default_factory=list, repr=False)
     _confirm_wait_secs: float = field(default=0.0, repr=False)  # accumulated paused-clock seconds, this attempt
     model_calls: int = 0        # persisted: gateway-metered calls this task made
     tokens: int = 0             # persisted: gateway-metered tokens this task spent (feeds the per-user budget)
@@ -5405,6 +5423,8 @@ def _done_payload(task: Task) -> dict:
             "attempt_rejections": list(task.attempt_rejections),
             "artifacts": list(task.artifacts), "artifacts_dropped": task.artifacts_dropped,
             "expired": task.session_expired, "unrun_detail": task.unrun_detail,
+            # the lines the answer ends with when a connector refused the task's access or the relay refused a call
+            "connector_notices": list(task._connector_notices),
             # whether THIS turn reused a prior turn's session workdir (see _run's (task.user,
             # session_id) lookup). The chat client's honesty caveat needs this to scope its "claimed
             # action, zero tools observed" check to continued sessions only — a fresh session's plain
@@ -5865,7 +5885,8 @@ def _grant_attempt_budget(task: Task, nonce: str | None, attempts: int) -> tuple
         return nonce, None
     try:
         _gateway_grant(nonce, task._max_steps, task._max_tokens, label=task.id, attempt=attempts,
-                       model=task.model or AGENT_MODEL)
+                       model=task.model or AGENT_MODEL,
+                       **({"connectors": task._connectors_live} if task._connectors_live else {}))
     except Exception as e:  # noqa: BLE001 — any grant failure means the same thing: this attempt cannot run
         return None, f"attempt {attempts}: model gateway unavailable ({type(e).__name__})"
     return nonce, None
@@ -6012,7 +6033,71 @@ def _mcp_offered(permission_policy: str) -> bool:
     the execute kinds (see _PERMISSION_COVERS), never for an `mcp__*` call. A config-writing MCP tool is a
     write, so under those policies the servers are left off the session entirely, the same floor
     _deny_writes_toolsets applies to `terminal`. "staged" has already resolved to one of the others here."""
-    return permission_policy == "allow" and bool(MCP_CONFIG.servers)
+    return _mcp_policy_allows(permission_policy) and bool(MCP_CONFIG.servers)
+
+
+def _mcp_policy_allows(permission_policy: str) -> bool:
+    """The policy floor every MCP server shares, the operator's and a person's own connectors alike: "allow" only
+    (see _mcp_offered)."""
+    return permission_policy == "allow"
+
+
+def _connectors_offered(task: Task, permission_policy: str, nonce: str | None, use_acp: bool) -> list:
+    """The turn owner's connectors this task gets: under the MCP policy floor, over ACP, and only with a gateway
+    grant to relay them, since the token must never reach the sandbox itself. Otherwise none."""
+    if not task._connectors or not use_acp or not nonce or not MODEL_PROXY_URL:
+        return []
+    return list(task._connectors) if _mcp_policy_allows(permission_policy) else []
+
+
+def _connector_gateway_base(remote: bool) -> str:
+    """Where the engine reaches the gateway: its public face from a remote sandbox, the private one under bwrap."""
+    return (AGENT_GATEWAY_PUBLIC_URL if remote else MODEL_PROXY_URL).rstrip("/")
+
+
+def _accept_connectors(raw: list, task_id: str) -> list:
+    """The /run body's connectors that are well formed, as plain dicts. A malformed one is dropped and logged by
+    name and reason only; no URL or header value is ever logged."""
+    out, seen = [], set()
+    for c in raw[: mcp_relay.MAX_CONNECTORS]:
+        name = c.name
+        url = mcp_relay.normalise_url(c.url)
+        headers = mcp_relay.check_headers(c.headers)
+        reason = ("bad name" if not mcp_relay.NAME_RE.match(name) else "duplicate name" if name in seen
+                  else "bad url" if url is None else "bad headers" if headers is None
+                  else "name taken by an operator server" if any(s.name == name for s in MCP_CONFIG.servers) else None)
+        if reason:
+            _log_event("run.connector_dropped", id=task_id, connector=name[:32], reason=reason)
+            continue
+        seen.add(name)
+        out.append({"name": name, "url": url, "headers": headers})
+    return out
+
+
+def _report_kw(task: Task, report: dict) -> dict:
+    """`_gateway_revoke`'s connector_report argument, passed only for a task the relay could have acted for."""
+    return {"connector_report": report} if task._connectors_live else {}
+
+
+def _connector_notices(report: dict) -> list[str]:
+    """The lines a task's answer ends with, from what the relay recorded across the task's grants."""
+    notes: list[str] = []
+    for server in sorted(set(report.get("unauthorized") or [])):
+        who = mcp_relay.display_name(str(server))
+        notes.append(f"{who} stopped accepting this task's access partway through, so this answer may be missing "
+                     f"what it needed from your {who} account. Reconnect {who} in Settings, Connectors, and run "
+                     "the task again.")
+    seen = set()
+    for r in report.get("refused") or []:
+        if not isinstance(r, dict):
+            continue
+        key = (r.get("server"), r.get("tool"))
+        if key in seen:
+            continue
+        seen.add(key)
+        notes.append(f"This task tried {r.get('tool')} on {mcp_relay.display_name(str(r.get('server')))}, and it was "
+                     f"refused: {r.get('reason')}. An agent task can only read from your connected accounts.")
+    return notes
 
 
 def _execute_attempt(
@@ -6048,9 +6133,14 @@ def _execute_attempt(
         import acp_client
         mcp_servers = (acp_client.build_mcp_servers(MCP_CONFIG, os.environ, task.id)
                        if _mcp_offered(permission_policy) else [])
+        remote = task._sbx is not None
+        # the person's connectors, as the gateway's relay for each under this attempt's nonce: no token here
+        connector_names = [c["name"] for c in task._connectors_live] if nonce else []
+        if connector_names:
+            mcp_servers = [*mcp_servers, *acp_client.connector_servers(
+                connector_names, _connector_gateway_base(remote), nonce or "")]
         try:
             remote_rel = Path(attempt_home).name
-            remote = task._sbx is not None
             review_work = ((RemoteWork(SANDBOX_BACKEND, task._sbx, _remote_work()) if task._sbx is not None else work)
                            if task._approval_mode == "auto" else None)
             kilo = AGENT_ENGINE == "kilo"   # temporary switch, see AGENT_ENGINE
@@ -6085,7 +6175,7 @@ def _execute_attempt(
                                if review_work is not None else None),
                 on_confirmation_open=task._on_confirmation_open,
                 on_confirmation_close=task._on_confirmation_close,
-                mcp_servers=mcp_servers,
+                mcp_servers=mcp_servers, **({"connector_names": connector_names} if connector_names else {}),
                 images=[a.model_image for a in task._attachments if a.model_image]))
             stderr = ""
         except TimeoutError:
@@ -6169,6 +6259,7 @@ def _run(task: Task) -> None:
     reqs = toks = 0
     usage_seen = False
     cap_hit = False
+    connector_report: dict = {}           # what the connector relay recorded across this task's grants
     last_judge_reason = ""                 # last LLM-judge rejection (surfaced in the summary when unverified)
     buf: _EventBuffer | None = None
     # Bound here rather than probed for with locals().get() in the handlers below: a name a reader
@@ -6373,6 +6464,10 @@ def _run(task: Task) -> None:
         # human sentence is the UI's job, not this field's.
         task.tier, task.tasks_done, task.tasks_required = (
             decision["tier"], decision["tasks_done"], decision["tasks_required"])
+        task._connectors_live = _connectors_offered(task, decision["policy"], nonce, use_acp)
+        if task._connectors:
+            _log_event("run.connectors_offered", id=task.id, connectors=[c["name"] for c in task._connectors_live],
+                       policy=decision["policy"])
         # built once per task, passed into acp_client._acp_run below — acp_client.py cannot
         # import State/_TERMINAL (app.py imports acp_client, not the reverse), so these closures live
         # here and are forwarded as plain callables. Both guard against clobbering a state something
@@ -6542,7 +6637,7 @@ def _run(task: Task) -> None:
             # that had metered fine. `cap_hit` stays per-attempt on purpose: _detect_run_failure below
             # asks whether THIS attempt was throttled, not whether any of them were.
             if nonce:
-                a_reqs, a_toks, a_usage, cap_hit = _gateway_revoke(nonce, task.served_models)
+                a_reqs, a_toks, a_usage, cap_hit = _gateway_revoke(nonce, task.served_models, **_report_kw(task, connector_report))
                 reqs += a_reqs; toks += a_toks
                 usage_seen = usage_seen or a_usage
             else:
@@ -6839,11 +6934,18 @@ def _run(task: Task) -> None:
             # and by then the per-attempt revokes have already consumed the grants, so this call returns
             # (0, 0) and an assignment would throw away everything the attempts had spent, recording zero
             # tokens for a canceled task against a real bill.
-            f_reqs, f_toks, f_usage, f_cap = _gateway_revoke(nonce)
+            f_reqs, f_toks, f_usage, f_cap = _gateway_revoke(nonce, **_report_kw(task, connector_report))
             reqs += f_reqs; toks += f_toks
             usage_seen = usage_seen or f_usage
             cap_hit = cap_hit or f_cap
         task.model_calls, task.tokens = reqs, toks         # persisted: feeds the durable record + per-user spend ledger
+        # What the connector relay refused or was refused, said at the end of the answer the person reads.
+        task._connector_notices = _connector_notices(connector_report)
+        if task._connector_notices:
+            task.result = "\n\n".join([*([task.result.rstrip()] if task.result and task.result.strip() else []),
+                                        *task._connector_notices])
+            _log_event("run.connector_notices", id=task.id, refused=len(connector_report.get("refused") or []),
+                       unauthorized=sorted(set(connector_report.get("unauthorized") or [])))
         if nonce and task.summary:                         # fold the metered tally into the op-log
             note = "" if (usage_seen or not task._max_tokens) else " (spend-cap inert: no usage from upstream)"
             task.summary += f" | {reqs} model calls, {toks} tok{note}"
@@ -7362,6 +7464,13 @@ class RunFile(BaseModel):
     image: RunImage | None = None
 
 
+class RunConnector(BaseModel):
+    """One of the turn owner's connectors, chosen by the caller from its own signed-in session (mcp_relay.py)."""
+    name: str = Field(max_length=32)
+    url: str = Field(max_length=2048)
+    headers: dict[str, str] = Field(default_factory=dict)
+
+
 class RunRequest(BaseModel):
     prompt: str
     verify: VerifySpec | None = None     # if set, the agent's self-report never decides success — this does
@@ -7400,6 +7509,9 @@ class RunRequest(BaseModel):
     # the files attached in this conversation, read by the caller from its own storage. The
     # caller screens them; this service screens text only.
     files: list[RunFile] = Field(default_factory=list, max_length=ATTACHMENT_MAX_FILES)
+    # the turn owner's connectors, each with a short-lived access token in its headers. Kept in the task's memory
+    # and relayed by the gateway (mcp_relay.py); absent is exactly the run it always was.
+    connectors: list[RunConnector] = Field(default_factory=list, max_length=mcp_relay.MAX_CONNECTORS)
 
 
 class RunResponse(BaseModel):
@@ -7576,12 +7688,15 @@ def run(req: RunRequest, user: str = Depends(require_user), _account: None = Dep
         task._continues_session = bool(req.session_id) and req.continues_session
         task._approval_mode = req.approval_mode
         task._attachments = attachments
+        task._connectors = _accept_connectors(req.connectors, task.id)
         task.model = task_model
         _RUN_START[task.id] = _monotonic()  # before _store_task, so the task is never
         # visible in TASKS without a matching _RUN_START entry — closes the orphan-reaper startup race.
         _store_task(task)
         _metric_inc("agent_runs_submitted_total")
         _log_event("run.submitted", id=task.id, user=user, max_steps=steps, max_tokens=tokens, model=task_model)
+        # names only: which of the person's connectors the caller sent for this task
+        _log_event("run.connectors", id=task.id, user=user, connectors=[c["name"] for c in task._connectors])
         threading.Thread(target=_run, args=(task,), daemon=True).start()  # _run releases slot + reservation in its finally
     except Exception:
         _release_slot()                                    # never leak a slot/reservation if launch failed before _run took over
