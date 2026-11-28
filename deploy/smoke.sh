@@ -8,6 +8,7 @@
 #   SMOKE_EXPECT='fixed sentence' deploy/smoke.sh    # also require the answer to contain this text
 #   SMOKE_CHAT_PATH= deploy/smoke.sh                 # a chat-surface build: chat at the root, not /chat
 #   SMOKE_SECOND_PROMPT='...' deploy/smoke.sh        # then a follow-up turn in the same conversation, report-only
+#   SMOKE_HEADER='name: value' deploy/smoke.sh       # send one more header on every request (a Vercel bypass)
 #
 # Each turn prints how long its first word and its whole answer took, measured from the request.
 #
@@ -25,11 +26,13 @@ trap 'rm -rf "$tmp"' EXIT
 jar="$tmp/jar"
 out="$tmp/turn"
 fail() { echo "SMOKE FAIL: $*" >&2; exit 1; }
+hdr=()
+[ -z "${SMOKE_HEADER:-}" ] || hdr=(-H "$SMOKE_HEADER")
 
 # 1. The app can serve a turn: the healthcheck is 200 only once the model registry can.
 code=""
 for _ in $(seq 1 "${SMOKE_READY_TRIES:-60}"); do
-	code=$(curl -s -o "$tmp/health" -w '%{http_code}' --max-time 10 "$BASE$CHAT/healthcheck" || true)
+	code=$(curl -s "${hdr[@]}" -o "$tmp/health" -w '%{http_code}' --max-time 10 "$BASE$CHAT/healthcheck" || true)
 	[ "$code" = 200 ] && break
 	sleep 5
 done
@@ -37,13 +40,13 @@ done
 echo "ok   $CHAT/healthcheck 200"
 
 # 2. The model list.
-models=$(curl -sf --max-time 20 "$BASE$CHAT/api/models") || fail "GET $CHAT/api/models failed"
+models=$(curl -sf "${hdr[@]}" --max-time 20 "$BASE$CHAT/api/models") || fail "GET $CHAT/api/models failed"
 model=$(jq -r '.[0].id // .[0].name // empty' <<<"$models")
 [ -n "$model" ] || fail "no model advertised: $(head -c 500 <<<"$models")"
 echo "ok   model $model"
 
 # 3. A guest conversation. The POST mints the session cookie.
-cid=$(curl -sf --max-time 20 -c "$jar" -b "$jar" -H "origin: $BASE" -H 'content-type: application/json' \
+cid=$(curl -sf "${hdr[@]}" --max-time 20 -c "$jar" -b "$jar" -H "origin: $BASE" -H 'content-type: application/json' \
 	-d "{\"model\":\"$model\"}" "$BASE$CHAT/conversation" | jq -r '.conversationId // empty') \
 	|| fail "POST $CHAT/conversation failed"
 [ -n "$cid" ] || fail "no conversationId"
@@ -56,7 +59,7 @@ turn() {
 	local data t0 code=0
 	data=$(jq -cn --arg p "$1" --arg id "$2" --arg a "$3" '{inputs:$p, id:$id, is_retry:false, newMessageIds:{assistant:$a}}')
 	t0=$EPOCHREALTIME
-	curl -sN --max-time "${SMOKE_TURN_TIMEOUT:-180}" -c "$jar" -b "$jar" -H "origin: $BASE" \
+	curl -sN "${hdr[@]}" --max-time "${SMOKE_TURN_TIMEOUT:-180}" -c "$jar" -b "$jar" -H "origin: $BASE" \
 		-F "data=$data" "$BASE$CHAT/conversation/$cid" |
 		while IFS= read -r line; do printf '%s\t%s\n' "$EPOCHREALTIME" "$line"; done > "$out.stamped" || code=$?
 	cut -f2- "$out.stamped" > "$out"

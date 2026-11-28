@@ -5,6 +5,9 @@
 #     tag, so one tag ships both. Any other pre-release tag (vX.Y.Z-beta) publishes an image and deploys nothing.
 # A manual run (workflow_dispatch) does the same from the ref it is started on: main for develop, a release
 # tag for production. Any other ref deploys nothing.
+# Every smoke (.github/scripts/deploy-smoke.sh) sends one real guest chat turn and checks the identity the
+# build serves. Develop smokes after its alias moves too: red there moves the host back and opens a revert
+# of the merge. A manual run's prove_red input fails one smoke on purpose, to show its gate holds.
 #
 # The Vercel project is not connected to this repository, so no branch, pull request, fork or Dependabot
 # update ever builds there with the project's secrets; this workflow is the only way a commit reaches it.
@@ -27,6 +30,14 @@ on:
     branches: [main]
     tags: ["v*.*.*"]
   workflow_dispatch:
+    inputs:
+      prove_red:
+        description: >-
+          Make one smoke fail on purpose, to show its gate holds: `before` fails the smoke before the host or
+          domain moves, `after` fails develop's smoke after the alias moves (which moves it back and opens a revert)
+        type: choice
+        options: [none, before, after]
+        default: none
 
 permissions:
   contents: read
@@ -45,11 +56,14 @@ jobs:
     concurrency:
       group: deploy-develop
       cancel-in-progress: false
+    outputs:
+      rolled_back: ${{ steps.after.outputs.rolled_back }}
     env:
       VERCEL_SCOPE: ${{ vars.VERCEL_SCOPE }}
       VERCEL_PROJECT: ${{ vars.VERCEL_PROJECT }}
       DEVELOP_HOST: ${{ vars.DEVELOP_HOST }}
       VERCEL_CLI: vercel@65.14.0
+      NEVER_ANSWERED: deploy.yml prove_red asked for this smoke to fail
     steps:
       - name: Is a Vercel project configured
         id: configured
@@ -97,7 +111,19 @@ jobs:
         env:
           BASE: ${{ steps.deploy.outputs.url }}
           BYPASS: ${{ secrets.VERCEL_BYPASS_SECRET }}
+          SMOKE_EXPECT: ${{ inputs.prove_red == 'before' && env.NEVER_ANSWERED || '' }}
         run: .github/scripts/deploy-smoke.sh
+
+      - name: Record the deployment the develop host serves now
+        id: prev
+        if: steps.configured.outputs.run == 'true'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          # None on a project's first deploy: the host is then left where this run points it.
+          prev=$(npx --yes "$VERCEL_CLI" api "/v13/deployments/$DEVELOP_HOST" --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN" | jq -r '.url // empty') || prev=""
+          echo "url=${prev:+https://$prev}" >> "$GITHUB_OUTPUT"
+          echo "$DEVELOP_HOST served ${prev:-nothing} before this run" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Point the develop host at this deployment
         if: steps.configured.outputs.run == 'true'
@@ -106,11 +132,47 @@ jobs:
           URL: ${{ steps.deploy.outputs.url }}
         run: npx --yes "$VERCEL_CLI" alias set "$URL" "$DEVELOP_HOST" --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN"
 
-      - name: Smoke the develop host
+      # Red here means the merge broke the develop host: the host goes back to the build it served, and the
+      # revert job opens a pull request that reverts the merge.
+      - name: Smoke the develop host, and move it back if broken
+        id: after
         if: steps.configured.outputs.run == 'true'
         env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           BYPASS: ${{ secrets.VERCEL_BYPASS_SECRET }}
-        run: BASE="https://$DEVELOP_HOST" .github/scripts/deploy-smoke.sh
+          PREV: ${{ steps.prev.outputs.url }}
+          SMOKE_EXPECT: ${{ inputs.prove_red == 'after' && env.NEVER_ANSWERED || '' }}
+        run: |
+          if BASE="https://$DEVELOP_HOST" .github/scripts/deploy-smoke.sh; then exit 0; fi
+          echo "rolled_back=true" >> "$GITHUB_OUTPUT"
+          if [ -n "$PREV" ]; then
+            echo "::error::the smoke failed on $DEVELOP_HOST; moving it back to $PREV"
+            npx --yes "$VERCEL_CLI" alias set "$PREV" "$DEVELOP_HOST" --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN"
+          else
+            echo "::error::the smoke failed on $DEVELOP_HOST, and it served nothing before, so it stays on this build"
+          fi
+          exit 1
+
+  revert:
+    name: Open a revert of the merge that broke develop
+    needs: develop
+    if: always() && needs.develop.outputs.rolled_back == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - name: Push a revert branch and open its pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: .github/scripts/open-develop-revert.sh
 
   production:
     name: Deploy a release to production
@@ -129,6 +191,7 @@ jobs:
       VERCEL_PROJECT: ${{ vars.VERCEL_PROJECT }}
       PRODUCTION_HOST: ${{ vars.PRODUCTION_HOST }}
       VERCEL_CLI: vercel@65.14.0
+      NEVER_ANSWERED: deploy.yml prove_red asked for this smoke to fail
       TAG: ${{ github.ref_name }}
     steps:
       - name: Is a Vercel project configured
@@ -187,10 +250,12 @@ jobs:
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "deployed $VERCEL_PROJECT (production) at $url from $TAG ($GITHUB_SHA)" >> "$GITHUB_STEP_SUMMARY"
 
+      # Red here leaves the domain on the release it serves: this deployment never takes it.
       - name: Smoke the deployment before the domain moves
         if: steps.configured.outputs.run == 'true'
         env:
           BASE: ${{ steps.deploy.outputs.url }}
+          SMOKE_EXPECT: ${{ inputs.prove_red == 'before' && env.NEVER_ANSWERED || '' }}
         run: .github/scripts/deploy-smoke.sh
 
       - name: Record the deployment the domain serves now
