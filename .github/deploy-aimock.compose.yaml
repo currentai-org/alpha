@@ -1,0 +1,16 @@
+# CI only (.github/deploy-compose-smoke.sh): deploy/compose.yaml answers from aimock (MIT,
+# github.com/CopilotKit/aimock), the mock OpenAI-compatible model web/scripts/mock-model-e2e.sh uses, so
+# the smoke needs no tokens and no GPU and its answer text is known. Added through COMPOSE_FILE, so the
+# rest of deploy/compose.yaml is what runs.
+services:
+  aimock:
+    # aimock 1.48.0, the digest mock-model-e2e.sh pins. Bump both together.
+    image: ghcr.io/copilotkit/aimock@sha256:51d8e426ff99f42fa8050bb06548ff541adef2d759e5f83a33bdbf1b47a5f29d
+    command: ["--fixtures", "/fixtures/fixtures.json", "--host", "0.0.0.0", "--validate-on-load"]
+    volumes: ["${GITHUB_WORKSPACE:-..}/web/e2e/mock-model:/fixtures:ro"]
+  web:
+    depends_on:
+      aimock: { condition: service_started }
+    environment:
+      MODEL_ALLOWLIST: mistral-large-2610
+      TASK_MODEL: mistral-large-2610

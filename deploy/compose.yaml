@@ -60,6 +60,10 @@ services:
     stop_grace_period: 30s
     environment:
       DATABASE_URL: postgres://alpha:${POSTGRES_PASSWORD:-alpha}@db:5432/alpha
+      # The self-host edition. Unset, the image runs as the hosted service, which fails closed on every
+      # turn when no safety classifier is configured. With it, a stack with no classifier answers
+      # unscreened and says so in its boot log; ../selfhost/README.md, "A safety screen", adds one.
+      ALPHA_EDITION: ${ALPHA_EDITION:-selfhost}
       PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:3000}
       ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:3000}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET (openssl rand -hex 32)}

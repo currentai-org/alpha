@@ -500,3 +500,36 @@ jobs:
             exit 1
           fi
           exit 0
+
+  deploy-compose:
+    # deploy/compose.yaml as a self-hoster runs it, on the image it names, with aimock as the model
+    # (.github/deploy-compose-smoke.sh). The guest turn must come back as the mock's answer: an error or a
+    # safety decline fails. A second boot with ALPHA_EDITION=hosted must fail on the decline, which proves
+    # the check still catches a stack that declines every turn.
+    name: deploy compose stack answers a guest turn
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      # Docker Hub limits anonymous pulls from GitHub-hosted runners' shared addresses.
+      POSTGRES_IMAGE: mirror.gcr.io/library/postgres:17-alpine
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: The stack answers a guest turn
+        run: ./.github/deploy-compose-smoke.sh
+      - name: The hosted edition's declines fail the check
+        run: |
+          set +e
+          ALPHA_EDITION=hosted ./.github/deploy-compose-smoke.sh > hosted.log 2>&1
+          code=$?
+          set -e
+          grep -E '^(ok|SMOKE)' hosted.log || true
+          if [ "$code" -eq 0 ] || ! grep -q 'the safety screen declined the turn' hosted.log; then
+            echo "::error title=deploy compose smoke::with ALPHA_EDITION=hosted every turn is declined, and the smoke should have failed on it (exit $code). Read hosted.log above."
+            cat hosted.log
+            exit 1
+          fi
+          echo "the smoke failed on the hosted edition's decline, as it should"
