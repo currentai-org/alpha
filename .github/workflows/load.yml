@@ -1,0 +1,201 @@
+# How much one compose stack (deploy/compose.yaml, the published image beside Postgres and SeaweedFS)
+# holds, and whether it holds it for hours. deploy/SIZING.md carries the numbers.
+#
+# The model is aimock (deploy/loadtest/aimock.compose.yaml): no tokens, no GPU, and every turn takes the
+# app's real model path, so the numbers are the app's and its database's, never inference.
+#
+# - load: k6 (deploy/loadtest/k6-chat.js) at 20 and 60 virtual users, 3 minutes each, with peak database
+#   connections, once with PG_POOL_MAX as shipped and once at 10.
+# - soak: k6 at 20 virtual users for soak_hours (5 by default), sampling `docker stats` for web and db
+#   once a minute (soak-stats.sh), then memory after the first hour and 100 minutes before the end
+#   against the last ten minutes (soak-verdict.sh).
+#
+# k6 runs on the same GitHub-hosted runner as the stack, so it shares the app's 4 CPUs: this measures one
+# small host, not a ceiling. The summary prints the runner's CPU count and the image it ran.
+#
+# Started by the `load-run` label on a pull request (the pull request's tree, with the image its
+# deploy/compose.yaml names), by `load-levels` for the load job alone, by `load-capacity` for the
+# capacity job alone, or by workflow_dispatch. It reads no secret. Warn-only: nothing here fails
+# the job on a number.
+name: Load and soak
+
+on:
+  pull_request:
+    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      soak_hours:
+        description: Hours the soak holds its load
+        default: "5"
+      pg_pool_max:
+        description: PG_POOL_MAX for the web service (empty = unset, as deploy/compose.yaml ships)
+        default: ""
+
+permissions: {}
+
+env:
+  K6_IMAGE: grafana/k6:1.3.0
+  THINK_SECS: "5"
+  DATABASE_URL: postgres://alpha:alpha@127.0.0.1:5432/alpha
+  PG_POOL_MAX: ${{ inputs.pg_pool_max }}
+  # Docker Hub limits anonymous pulls from GitHub-hosted runners' shared addresses.
+  POSTGRES_IMAGE: mirror.gcr.io/library/postgres:17-alpine
+
+jobs:
+  load:
+    name: Load the compose stack at 20 and 60 users
+    # `load-levels` runs this job alone, without a new soak.
+    if: github.event_name == 'workflow_dispatch' || ((github.event.label.name == 'load-run' || github.event.label.name == 'load-levels') && github.actor != 'dependabot[bot]')
+    # GitHub-hosted on purpose: the stack must not share a host with anything else.
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    # Per job, so a new load run need not wait out a soak still holding its hours.
+    concurrency:
+      group: load-levels-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: false
+    env:
+      LEVELS: "20 60"
+      HOLD: 3m
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Boot the compose stack with the mock model
+        run: bash deploy/loadtest/up.sh
+      - name: Pull k6
+        run: docker pull -q "$K6_IMAGE"
+      # Twice: as deploy/compose.yaml ships (PG_POOL_MAX unset, one connection), then with the 10 that
+      # SIZING.md recommends for one long-lived process.
+      - name: Run the levels as shipped
+        run: bash deploy/loadtest/run-levels.sh "pool-${PG_POOL_MAX:-unset}"
+      - name: Run the levels with PG_POOL_MAX=10
+        if: env.PG_POOL_MAX != '10'
+        working-directory: deploy
+        run: |
+          PG_POOL_MAX=10 docker compose up -d --wait --wait-timeout 300 web
+          docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$(docker compose ps -q web)" | grep '^PG_POOL_MAX=10$'
+          cd .. && bash deploy/loadtest/run-levels.sh pool-10
+      - name: Stack logs
+        if: always()
+        working-directory: deploy
+        run: |
+          mkdir -p ../loadtest-out
+          docker compose logs --no-color > ../loadtest-out/compose.log 2>&1 || true
+      - name: Keep the summaries
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: load-levels-${{ github.run_id }}-${{ github.run_attempt }}
+          path: loadtest-out/
+          retention-days: 90
+          if-no-files-found: warn
+
+  soak:
+    name: Soak the compose stack at 20 users
+    if: github.event_name == 'workflow_dispatch' || (github.event.label.name == 'load-run' && github.actor != 'dependabot[bot]')
+    runs-on: ubuntu-latest
+    # A GitHub-hosted job ends at 6 hours.
+    timeout-minutes: 355
+    permissions:
+      contents: read
+    concurrency:
+      group: load-soak-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: false
+    env:
+      SOAK_HOURS: ${{ inputs.soak_hours || '5' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Boot the compose stack with the mock model
+        run: bash deploy/loadtest/up.sh
+      - name: Pull k6
+        run: docker pull -q "$K6_IMAGE"
+      - name: Soak
+        run: |
+          case "$SOAK_HOURS" in '' | *[!0-9]*) echo "::error::soak_hours must be a whole number"; exit 1 ;; esac
+          mkdir -p loadtest-out/soak && chmod 777 loadtest-out/soak
+          (cd deploy && exec bash loadtest/soak-stats.sh "$GITHUB_WORKSPACE/loadtest-out/soak/stats.jsonl") &
+          SAMPLER=$!
+          HOLD="$(( SOAK_HOURS * 60 ))m"
+          docker run --rm --network host \
+            -e VUS=20 -e HOLD="$HOLD" -e THINK_SECS -e LABEL=soak-20vu \
+            -v "$PWD/deploy/loadtest:/scripts:ro" -v "$PWD/loadtest-out/soak:/out" \
+            "$K6_IMAGE" run --quiet /scripts/k6-chat.js || echo "::warning::k6 exited $? in the soak"
+          kill "$SAMPLER" 2>/dev/null || true
+          jq -r '"### Soak turns\n\n\(.turns_hold) turns over \(.hold_secs / 3600) h, turn p95 \(.turn_p95_ms) ms, errors \(.error_rate * 100)%, declined \(.turn_declined), 429 \(.turn_429), 5xx \(.turn_5xx)"' \
+            loadtest-out/soak/soak-20vu.json >> "$GITHUB_STEP_SUMMARY" || true
+      - name: Soak verdict
+        if: always()
+        run: bash deploy/loadtest/soak-verdict.sh loadtest-out/soak/stats.jsonl
+      - name: Stack logs
+        if: always()
+        working-directory: deploy
+        run: docker compose logs --no-color --since 30m > ../loadtest-out/soak/compose-tail.log 2>&1 || true
+      - name: Keep the soak
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: load-soak-${{ github.run_id }}-${{ github.run_attempt }}
+          path: loadtest-out/
+          retention-days: 90
+          if-no-files-found: warn
+
+  capacity:
+    # Where one stack bends. The load job's 20 and 60 users never queue: the stack answers exactly the
+    # turns offered. This climbs past that, once with aimock's instant answers and once with slow-model/'s,
+    # which streams about 380 words after 0.8 s at about 40 tokens a second, so each turn holds its
+    # connection for several seconds as a real answer does. RATE_LIMIT_IP_MULTIPLIER=0 turns off the
+    # per-IP abuse ceiling, which every k6 user shares one address against. PG_POOL_MAX is 10, as SIZING.md
+    # recommends, so the database connection is not the limit being measured. k6 shares the runner's 4
+    # CPUs at these levels too, so run-levels.sh samples CPU for web, db, k6 and the whole runner beside
+    # each level (cpu-sample.sh): that table names what fills up first.
+    name: Find where the compose stack bends
+    if: github.event_name == 'workflow_dispatch' || (github.event.label.name == 'load-capacity' && github.actor != 'dependabot[bot]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    concurrency:
+      group: load-capacity-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: false
+    env:
+      # The earlier climb (60 150 300 600) answered everything at 150 and queued at 300.
+      LEVELS: "150 200 250 300"
+      HOLD: 3m
+      RATE_LIMIT_IP_MULTIPLIER: "0"
+      PG_POOL_MAX: "10"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Boot the compose stack with the mock model
+        run: |
+          bash deploy/loadtest/up.sh
+          cd deploy && docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$(docker compose ps -q web)" | grep '^PG_POOL_MAX=10$'
+      - name: Pull k6
+        run: docker pull -q "$K6_IMAGE"
+      - name: Climb with instant answers
+        run: bash deploy/loadtest/run-levels.sh instant
+      - name: Climb with slow answers
+        working-directory: deploy
+        run: |
+          AIMOCK_FIXTURES="$GITHUB_WORKSPACE/deploy/loadtest/slow-model" docker compose up -d --wait --wait-timeout 120 aimock
+          cd .. && bash deploy/loadtest/run-levels.sh slow
+      - name: Stack logs and runner load
+        if: always()
+        working-directory: deploy
+        run: |
+          mkdir -p ../loadtest-out
+          docker compose logs --no-color > ../loadtest-out/compose.log 2>&1 || true
+          { uptime; nproc; free -m; } > ../loadtest-out/runner.txt
+      - name: Keep the summaries
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: load-capacity-${{ github.run_id }}-${{ github.run_attempt }}
+          path: loadtest-out/
+          retention-days: 90
+          if-no-files-found: warn
