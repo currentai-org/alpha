@@ -128,7 +128,7 @@ jobs:
         if: steps.configured.outputs.run == 'true'
         run: |
           npx --yes "$VERCEL_CLI" link --yes --project "$VERCEL_PROJECT" --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN"
-          read -ra extra < <(.github/scripts/deploy-prove-red.sh env)
+          read -ra extra < <(.github/scripts/deploy-prove-red.sh env) || true  # read is 1 on no output
           url=$(npx --yes "$VERCEL_CLI" deploy --yes "${extra[@]}" --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN")
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "deployed $VERCEL_PROJECT (preview) at $url from $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
@@ -339,7 +339,7 @@ jobs:
         if: steps.configured.outputs.run == 'true'
         run: |
           npx --yes "$VERCEL_CLI" link --yes --project "$VERCEL_PROJECT" --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN"
-          read -ra extra < <(.github/scripts/deploy-prove-red.sh env)
+          read -ra extra < <(.github/scripts/deploy-prove-red.sh env) || true  # read is 1 on no output
           url=$(npx --yes "$VERCEL_CLI" deploy --prod --skip-domain --yes "${extra[@]}" --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN")
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "deployed $VERCEL_PROJECT (production) at $url from $TAG ($GITHUB_SHA)" >> "$GITHUB_STEP_SUMMARY"
