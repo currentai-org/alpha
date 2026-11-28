@@ -1,8 +1,8 @@
 # Deploys the web app to the Vercel project, the way a self-hoster deploys a release:
 #   - every push to main: a preview build, aliased to the develop host (DEVELOP_HOST) once its smoke passes.
-#   - a release tag vX.Y.Z on main: a production build, which takes the production domain once its smoke
-#     passes and moves back if the domain's smoke fails. image.yml publishes the signed image from the same
-#     tag, so one tag ships both. A pre-release tag (vX.Y.Z-rc.1) publishes an image and deploys nothing.
+#   - a release tag on main, vX.Y.Z or a preview vX.Y.Z-preview.N: a production build, which takes the
+#     production domain once its smoke passes and moves back if the domain's smoke fails. image.yml publishes the signed image from the same
+#     tag, so one tag ships both. Any other pre-release tag (vX.Y.Z-rc.1) publishes an image and deploys nothing.
 # A manual run (workflow_dispatch) does the same from the ref it is started on: main for develop, a release
 # tag for production. Any other ref deploys nothing.
 #
@@ -131,8 +131,8 @@ jobs:
           if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_SCOPE" ] || [ -z "$VERCEL_PROJECT" ]; then
             echo "::notice title=deploy skipped::VERCEL_TOKEN (web-production environment), VERCEL_SCOPE or VERCEL_PROJECT is not set, so nothing was deployed."
             echo "run=false" >> "$GITHUB_OUTPUT"
-          elif ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::notice title=deploy skipped::$TAG is not a release tag vX.Y.Z (a pre-release publishes its image only), so nothing was deployed."
+          elif ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-preview\.[0-9]+)?$ ]]; then
+            echo "::notice title=deploy skipped::$TAG is not a release tag vX.Y.Z or vX.Y.Z-preview.N (another pre-release publishes its image only), so nothing was deployed."
             echo "run=false" >> "$GITHUB_OUTPUT"
           else
             echo "run=true" >> "$GITHUB_OUTPUT"
