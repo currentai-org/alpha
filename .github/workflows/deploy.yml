@@ -6,14 +6,29 @@
 # A manual run (workflow_dispatch) does the same from the ref it is started on: main for develop, a release
 # tag for production. Any other ref deploys nothing.
 #
+# Every smoke (.github/scripts/deploy-smoke.sh) checks the identity the build serves and sends one real guest
+# chat turn, judged on errors and declines only. A turn that fails on the new build is sent to the build the
+# host serves now:
+#   - the serving build answers: the new build is at fault. It never takes the host, or the host moves back.
+#     On develop the revert job then opens a revert of the merge, at most one an hour.
+#   - the serving build fails too: the provider is the likely fault, so the deploy goes ahead with a warning,
+#     tells the alerts channel, and the recheck job smokes the host every 15 minutes for 3 hours. It moves the
+#     host back if the new build still fails once the serving build answers, and ends red if neither answers
+#     by then.
+#   - nothing served the host before (a first deploy): the new build is at fault.
+# A failed identity check always counts against the new build. A manual run's prove_red input breaks one
+# run on purpose, to show the gate holds: `identity` deploys without the identity file, `answer` deploys
+# with every model base URL pointed at a closed port, and `provider` (develop only) deploys two such builds
+# and smokes one against the other, moving no host.
+#
 # The Vercel project is not connected to this repository, so no branch, pull request, fork or Dependabot
 # update ever builds there with the project's secrets; this workflow is the only way a commit reaches it.
 # Each job runs in its own environment, so neither job's secrets reach the other:
 #   - `web-develop` admits only main, and holds VERCEL_TOKEN, VERCEL_BYPASS_SECRET (Vercel's deployment
-#     protection bypass, since a preview build answers 401 without it) and the variable DEVELOP_HOST.
+#     protection bypass, sent when set) and the variable DEVELOP_HOST.
 #   - `web-production` admits only tags matching v*.*.*, and holds VERCEL_TOKEN and the variable
-#     PRODUCTION_HOST (unset means the deployment takes its domains straight away, with no smoke of the
-#     domain and no rollback).
+#     PRODUCTION_HOST, which a configured project must set. It may hold VERCEL_BYPASS_SECRET too.
+# Both may hold SLACK_ALERT_WEBHOOK, the alerts channel's incoming webhook (.github/scripts/tell-alerts.sh).
 # Neither has required reviewers: a reviewed merge to main is the gate for develop, and a merged release
 # pull request is the gate for production. The jobs' own ref checks back the environments' rules. It is not
 # `production`, which holds the agent service's deploys. Repository variables VERCEL_SCOPE (the Vercel team)
@@ -27,9 +42,32 @@ on:
     branches: [main]
     tags: ["v*.*.*"]
   workflow_dispatch:
+    inputs:
+      prove_red:
+        description: >-
+          Break this run on purpose, to show the gate holds: `identity` drops the identity file, `answer`
+          points the build's model base URLs at a closed port, `provider` (develop only) smokes two such
+          builds against each other and moves no host
+        type: choice
+        options: [none, identity, answer, provider]
+        default: none
+      recheck_minutes:
+        description: How long the recheck watches a deploy that went ahead on a provider failure
+        type: string
+        default: "180"
 
 permissions:
   contents: read
+
+env:
+  PROVE_RED: ${{ inputs.prove_red || 'none' }}
+  RECHECK_MINUTES: ${{ inputs.recheck_minutes || '180' }}
+  VERCEL_CLI: vercel@65.14.0
+  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+  # Every model base URL the app reads, for prove_red's dead provider. Port 9 refuses the connection.
+  DEAD_PROVIDER: >-
+    OPENAI_BASE_URL MISTRAL_BASE_URL MISTRAL_CHAT_BASE_URL FALLBACK_BASE_URL HF_BASE_URL CLEF_BASE_URL
+    SECOND_OPINION_BASE_URL FOLKWAYS_UPSTREAM_BASE_URL
 
 jobs:
   develop:
@@ -45,16 +83,21 @@ jobs:
     concurrency:
       group: deploy-develop
       cancel-in-progress: false
+    outputs:
+      rolled_back: ${{ steps.after.outputs.rolled_back }}
+      provider_down: ${{ steps.before.outputs.provider_down || steps.after.outputs.provider_down }}
+      watch: ${{ steps.deploy.outputs.url }}
+      current: ${{ steps.prev.outputs.url }}
     env:
       VERCEL_SCOPE: ${{ vars.VERCEL_SCOPE }}
       VERCEL_PROJECT: ${{ vars.VERCEL_PROJECT }}
       DEVELOP_HOST: ${{ vars.DEVELOP_HOST }}
-      VERCEL_CLI: vercel@65.14.0
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      BYPASS: ${{ secrets.VERCEL_BYPASS_SECRET }}
+      SLACK_ALERT_WEBHOOK: ${{ secrets.SLACK_ALERT_WEBHOOK }}
     steps:
       - name: Is a Vercel project configured
         id: configured
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
           if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_SCOPE" ] || [ -z "$VERCEL_PROJECT" ] || [ -z "$DEVELOP_HOST" ]; then
             echo "::notice title=deploy skipped::VERCEL_TOKEN or DEVELOP_HOST (web-develop environment), VERCEL_SCOPE or VERCEL_PROJECT is not set, so nothing was deployed."
@@ -78,39 +121,145 @@ jobs:
         if: steps.configured.outputs.run == 'true'
         env:
           DEPLOYMENT_JSON: ${{ vars.DEPLOYMENT_JSON }}
-        run: .github/scripts/write-deployment-config.sh
+        run: .github/scripts/write-deployment-config.sh && .github/scripts/deploy-prove-red.sh identity
 
       - name: Deploy a preview build
         id: deploy
         if: steps.configured.outputs.run == 'true'
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
           npx --yes "$VERCEL_CLI" link --yes --project "$VERCEL_PROJECT" --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN"
-          url=$(npx --yes "$VERCEL_CLI" deploy --yes --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN")
+          read -ra extra < <(.github/scripts/deploy-prove-red.sh env)
+          url=$(npx --yes "$VERCEL_CLI" deploy --yes "${extra[@]}" --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN")
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "deployed $VERCEL_PROJECT (preview) at $url from $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$PROVE_RED" = provider ]; then
+            # The stand-in for the build the host serves: the same dead provider, so both turns fail.
+            standin=$(npx --yes "$VERCEL_CLI" deploy --yes "${extra[@]}" --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN")
+            echo "standin=$standin" >> "$GITHUB_OUTPUT"
+            echo "prove_red=provider: $standin stands in for the build $DEVELOP_HOST serves" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
-      # A broken build never takes the develop host: the host keeps the build it served until this passes.
+      - name: Record the deployment the develop host serves now
+        id: prev
+        if: steps.configured.outputs.run == 'true'
+        env:
+          STANDIN: ${{ steps.deploy.outputs.standin }}
+        run: |
+          if [ -n "$STANDIN" ]; then echo "url=$STANDIN" >> "$GITHUB_OUTPUT"; exit 0; fi
+          # None on a project's first deploy: a failed turn then counts against the new build.
+          prev=$(npx --yes "$VERCEL_CLI" api "/v13/deployments/$DEVELOP_HOST" --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN" | jq -r '.url // empty') || prev=""
+          echo "url=${prev:+https://$prev}" >> "$GITHUB_OUTPUT"
+          echo "$DEVELOP_HOST served ${prev:-nothing} before this run" >> "$GITHUB_STEP_SUMMARY"
+
+      # A build at fault never takes the develop host: the host keeps the build it served.
       - name: Smoke the deployment before the alias moves
+        id: before
         if: steps.configured.outputs.run == 'true'
         env:
           BASE: ${{ steps.deploy.outputs.url }}
-          BYPASS: ${{ secrets.VERCEL_BYPASS_SECRET }}
+          CURRENT: ${{ steps.prev.outputs.url }}
+          PROVIDER_DOWN_OK: "1"
         run: .github/scripts/deploy-smoke.sh
 
       - name: Point the develop host at this deployment
-        if: steps.configured.outputs.run == 'true'
+        if: steps.configured.outputs.run == 'true' && env.PROVE_RED != 'provider'
         env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           URL: ${{ steps.deploy.outputs.url }}
         run: npx --yes "$VERCEL_CLI" alias set "$URL" "$DEVELOP_HOST" --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN"
 
-      - name: Smoke the develop host
-        if: steps.configured.outputs.run == 'true'
+      # Red here means the merge broke the develop host: the host goes back to the build it served, and the
+      # revert job opens a pull request that reverts the merge.
+      - name: Smoke the develop host, and move it back if broken
+        id: after
+        if: steps.configured.outputs.run == 'true' && env.PROVE_RED != 'provider'
         env:
-          BYPASS: ${{ secrets.VERCEL_BYPASS_SECRET }}
-        run: BASE="https://$DEVELOP_HOST" .github/scripts/deploy-smoke.sh
+          PREV: ${{ steps.prev.outputs.url }}
+        run: |
+          rc=0
+          BASE="https://$DEVELOP_HOST" CURRENT="$PREV" PROVIDER_DOWN_OK=1 .github/scripts/deploy-smoke.sh || rc=$?
+          [ "$rc" = 0 ] && exit 0
+          echo "rolled_back=true" >> "$GITHUB_OUTPUT"
+          if [ -n "$PREV" ]; then
+            echo "::error::the smoke failed on $DEVELOP_HOST; moving it back to $PREV"
+            npx --yes "$VERCEL_CLI" alias set "$PREV" "$DEVELOP_HOST" --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN"
+          else
+            echo "::error::the smoke failed on $DEVELOP_HOST, and it served nothing before, so it stays on this build"
+          fi
+          exit 1
+
+      - name: Tell the alerts channel the deploy went ahead on a provider failure
+        if: steps.before.outputs.provider_down == 'true' || steps.after.outputs.provider_down == 'true'
+        env:
+          URL: ${{ steps.deploy.outputs.url }}
+        run: >-
+          .github/scripts/tell-alerts.sh "🟠 develop deployed $GITHUB_SHA although no guest turn answered, on the new
+          build or on the one $DEVELOP_HOST served. The model provider is the likely fault. The recheck smokes it
+          every 15 minutes for $RECHECK_MINUTES minutes."
+
+  revert:
+    name: Open a revert of the merge that broke develop
+    needs: develop
+    if: always() && needs.develop.outputs.rolled_back == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: web-develop
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - name: Push a revert branch and open its pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SLACK_ALERT_WEBHOOK: ${{ secrets.SLACK_ALERT_WEBHOOK }}
+        run: .github/scripts/open-develop-revert.sh
+
+  recheck-develop:
+    name: Recheck develop after a provider failure
+    needs: develop
+    if: needs.develop.outputs.provider_down == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    environment: web-develop
+    # A later run's recheck replaces this one; this one also ends once the host serves another deployment.
+    concurrency:
+      group: recheck-develop
+      cancel-in-progress: true
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    env:
+      VERCEL_SCOPE: ${{ vars.VERCEL_SCOPE }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      BYPASS: ${{ secrets.VERCEL_BYPASS_SECRET }}
+      SLACK_ALERT_WEBHOOK: ${{ secrets.SLACK_ALERT_WEBHOOK }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - name: Write the installation's identity file
+        env:
+          DEPLOYMENT_JSON: ${{ vars.DEPLOYMENT_JSON }}
+        run: .github/scripts/write-deployment-config.sh && .github/scripts/deploy-prove-red.sh identity
+      - name: Smoke the develop host every 15 minutes
+        id: recheck
+        env:
+          WATCH: ${{ needs.develop.outputs.watch }}
+          CURRENT: ${{ needs.develop.outputs.current }}
+          HOST: ${{ env.PROVE_RED != 'provider' && vars.DEVELOP_HOST || '' }}
+          MOVE_BACK: alias
+        run: .github/scripts/deploy-recheck.sh
+      - name: Open a revert of the merge
+        if: failure() && steps.recheck.outputs.rolled_back == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: .github/scripts/open-develop-revert.sh
 
   production:
     name: Deploy a release to production
@@ -124,23 +273,34 @@ jobs:
     concurrency:
       group: deploy-production
       cancel-in-progress: false
+    outputs:
+      provider_down: ${{ steps.before.outputs.provider_down || steps.after.outputs.provider_down }}
+      watch: ${{ steps.deploy.outputs.url }}
+      current: ${{ steps.prev.outputs.url }}
     env:
       VERCEL_SCOPE: ${{ vars.VERCEL_SCOPE }}
       VERCEL_PROJECT: ${{ vars.VERCEL_PROJECT }}
       PRODUCTION_HOST: ${{ vars.PRODUCTION_HOST }}
-      VERCEL_CLI: vercel@65.14.0
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      BYPASS: ${{ secrets.VERCEL_BYPASS_SECRET }}
+      SLACK_ALERT_WEBHOOK: ${{ secrets.SLACK_ALERT_WEBHOOK }}
       TAG: ${{ github.ref_name }}
     steps:
       - name: Is a Vercel project configured
         id: configured
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
           if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_SCOPE" ] || [ -z "$VERCEL_PROJECT" ]; then
             echo "::notice title=deploy skipped::VERCEL_TOKEN (web-production environment), VERCEL_SCOPE or VERCEL_PROJECT is not set, so nothing was deployed."
             echo "run=false" >> "$GITHUB_OUTPUT"
           elif ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-(preview|rc)\.[0-9]+)?$ ]]; then
             echo "::notice title=deploy skipped::$TAG is not a release tag vX.Y.Z, vX.Y.Z-preview.N or vX.Y.Z-rc.N (another pre-release publishes its image only), so nothing was deployed."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          elif [ -z "$PRODUCTION_HOST" ]; then
+            # Without it the deployment would take its domains unsmoked, with nothing to move back to.
+            echo "::error::PRODUCTION_HOST (web-production environment) is not set. Set it to the production domain, so a release is smoked there before it serves and moved back if it breaks."
+            exit 1
+          elif [ "$PROVE_RED" = provider ]; then
+            echo "::notice title=deploy skipped::prove_red=provider runs on develop only, so nothing was deployed."
             echo "run=false" >> "$GITHUB_OUTPUT"
           else
             echo "run=true" >> "$GITHUB_OUTPUT"
@@ -172,42 +332,40 @@ jobs:
         if: steps.configured.outputs.run == 'true'
         env:
           DEPLOYMENT_JSON: ${{ vars.DEPLOYMENT_JSON }}
-        run: .github/scripts/write-deployment-config.sh
+        run: .github/scripts/write-deployment-config.sh && .github/scripts/deploy-prove-red.sh identity
 
       - name: Deploy without the domain
         id: deploy
         if: steps.configured.outputs.run == 'true'
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
           npx --yes "$VERCEL_CLI" link --yes --project "$VERCEL_PROJECT" --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN"
-          args=(deploy --prod --yes --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN")
-          if [ -n "$PRODUCTION_HOST" ]; then args+=(--skip-domain); fi
-          url=$(npx --yes "$VERCEL_CLI" "${args[@]}")
+          read -ra extra < <(.github/scripts/deploy-prove-red.sh env)
+          url=$(npx --yes "$VERCEL_CLI" deploy --prod --skip-domain --yes "${extra[@]}" --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN")
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "deployed $VERCEL_PROJECT (production) at $url from $TAG ($GITHUB_SHA)" >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Record the deployment the domain serves now
+        id: prev
+        if: steps.configured.outputs.run == 'true'
+        run: |
+          # None on a project's first deploy: a failed turn then counts against the new build.
+          prev=$(npx --yes "$VERCEL_CLI" api "/v13/deployments/$PRODUCTION_HOST" --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN" | jq -r '.url // empty') || prev=""
+          echo "url=${prev:+https://$prev}" >> "$GITHUB_OUTPUT"
+          echo "$PRODUCTION_HOST served ${prev:-nothing} before this run" >> "$GITHUB_STEP_SUMMARY"
+
+      # A build at fault leaves the domain on the release it serves: this deployment never takes it.
       - name: Smoke the deployment before the domain moves
+        id: before
         if: steps.configured.outputs.run == 'true'
         env:
           BASE: ${{ steps.deploy.outputs.url }}
+          CURRENT: ${{ steps.prev.outputs.url }}
+          PROVIDER_DOWN_OK: "1"
         run: .github/scripts/deploy-smoke.sh
 
-      - name: Record the deployment the domain serves now
-        id: prev
-        if: steps.configured.outputs.run == 'true' && env.PRODUCTION_HOST != ''
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-        run: |
-          set -o pipefail
-          prev=$(npx --yes "$VERCEL_CLI" api "/v13/deployments/$PRODUCTION_HOST" --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN" | jq -er .url)
-          echo "url=https://$prev" >> "$GITHUB_OUTPUT"
-          echo "$PRODUCTION_HOST served https://$prev before this run" >> "$GITHUB_STEP_SUMMARY"
-
       - name: Move the domain to this deployment
-        if: steps.configured.outputs.run == 'true' && env.PRODUCTION_HOST != ''
+        if: steps.configured.outputs.run == 'true'
         env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           URL: ${{ steps.deploy.outputs.url }}
         run: |
           set -o pipefail
@@ -221,12 +379,56 @@ jobs:
           fi
 
       - name: Smoke the domain, and move it back if broken
-        if: steps.configured.outputs.run == 'true' && env.PRODUCTION_HOST != ''
+        id: after
+        if: steps.configured.outputs.run == 'true'
         env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           PREV: ${{ steps.prev.outputs.url }}
         run: |
-          if BASE="https://$PRODUCTION_HOST" .github/scripts/deploy-smoke.sh; then exit 0; fi
-          echo "::error::the smoke failed on $PRODUCTION_HOST; moving it back to $PREV"
-          npx --yes "$VERCEL_CLI" promote "$PREV" --yes --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN"
+          rc=0
+          BASE="https://$PRODUCTION_HOST" CURRENT="$PREV" PROVIDER_DOWN_OK=1 .github/scripts/deploy-smoke.sh || rc=$?
+          [ "$rc" = 0 ] && exit 0
+          if [ -n "$PREV" ]; then
+            echo "::error::the smoke failed on $PRODUCTION_HOST; moving it back to $PREV"
+            npx --yes "$VERCEL_CLI" promote "$PREV" --yes --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN"
+          else
+            echo "::error::the smoke failed on $PRODUCTION_HOST, and it served nothing before, so it stays on this release"
+          fi
           exit 1
+
+      - name: Tell the alerts channel the release went ahead on a provider failure
+        if: steps.before.outputs.provider_down == 'true' || steps.after.outputs.provider_down == 'true'
+        run: >-
+          .github/scripts/tell-alerts.sh "🟠 $PRODUCTION_HOST took $TAG although no guest turn answered, on the new
+          release or on the one it served. The model provider is the likely fault. The recheck smokes it every 15
+          minutes for $RECHECK_MINUTES minutes."
+
+  recheck-production:
+    name: Recheck production after a provider failure
+    needs: production
+    if: needs.production.outputs.provider_down == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    environment: web-production
+    concurrency:
+      group: recheck-production
+      cancel-in-progress: true
+    env:
+      VERCEL_SCOPE: ${{ vars.VERCEL_SCOPE }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      BYPASS: ${{ secrets.VERCEL_BYPASS_SECRET }}
+      SLACK_ALERT_WEBHOOK: ${{ secrets.SLACK_ALERT_WEBHOOK }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Write the installation's identity file
+        env:
+          DEPLOYMENT_JSON: ${{ vars.DEPLOYMENT_JSON }}
+        run: .github/scripts/write-deployment-config.sh && .github/scripts/deploy-prove-red.sh identity
+      - name: Smoke the domain every 15 minutes
+        env:
+          WATCH: ${{ needs.production.outputs.watch }}
+          CURRENT: ${{ needs.production.outputs.current }}
+          HOST: ${{ vars.PRODUCTION_HOST }}
+          MOVE_BACK: promote
+        run: .github/scripts/deploy-recheck.sh
