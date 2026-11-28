@@ -1,0 +1,77 @@
+# Restores a database from the snapshot deploy.yml took before a deploy migrated it, by hand.
+#
+# Use it as a last resort. Migrations are written so the build before them can run on the new schema
+# (migrations.yml), so moving the host back is normally the whole rollback. Run this only when the build the
+# host is back on cannot run on the migrated schema. It restores the database from the Neon branch
+# pre-<snapshot> and removes every write made since that branch was taken: conversations, messages, settings.
+# Those writes are kept on a branch named rolled-back-<snapshot>-<run id> and must be copied back by hand.
+#
+#   - develop: run it from main, and type the snapshot's name after pre-, for example develop-1a2b3c4 (the
+#     deploy run's summary names it). It runs in the web-develop environment, which admits only main.
+#   - production: run it from the release tag (Run workflow, then pick the tag as the ref), and type that tag.
+#     It runs in the web-production environment, which admits only release tags.
+name: Restore a database from its snapshot
+
+on:
+  workflow_dispatch:
+    inputs:
+      database:
+        description: Which deployment's database to restore
+        type: choice
+        options: [develop, production]
+        default: develop
+      confirm:
+        description: >-
+          The snapshot's name after pre-: develop-<sha> on develop, or on production the release tag you picked
+          as the ref
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: deploy-${{ inputs.database }}
+  cancel-in-progress: false
+
+jobs:
+  restore:
+    name: Restore the database from a snapshot
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: ${{ inputs.database == 'production' && 'web-production' || 'web-develop' }}
+    permissions:
+      contents: read
+    env:
+      DATABASE: ${{ inputs.database }}
+      CONFIRM: ${{ inputs.confirm }}
+      REF: ${{ github.ref }}
+      REF_NAME: ${{ github.ref_name }}
+    steps:
+      - name: The ref and the snapshot name agree
+        run: |
+          if [ "$DATABASE" = production ]; then
+            if [[ "$REF" != refs/tags/v* ]] || [ "$CONFIRM" != "$REF_NAME" ]; then
+              echo "::error::production restores from the release tag picked as the ref, typed to confirm. This run is on $REF_NAME and typed \"$CONFIRM\". Nothing was restored."
+              exit 1
+            fi
+          elif [ "$REF" != refs/heads/main ] || ! [[ "$CONFIRM" =~ ^[A-Za-z0-9._-]+$ ]]; then
+            echo "::error::develop restores from main, with the snapshot's name after pre- typed. This run is on $REF_NAME and typed \"$CONFIRM\". Nothing was restored."
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Restore
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+          NEON_BRANCH_ID: ${{ vars.NEON_BRANCH_ID }}
+        run: |
+          set -o pipefail
+          if [ -z "$NEON_API_KEY" ] || [ -z "$NEON_PROJECT_ID" ] || [ -z "$NEON_BRANCH_ID" ]; then
+            echo "::error::NEON_API_KEY, NEON_PROJECT_ID or NEON_BRANCH_ID is not set in this database's environment."
+            exit 1
+          fi
+          start=$(date +%s)
+          .github/scripts/neon-snapshot.sh restore "$CONFIRM" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "the restore took $(( $(date +%s) - start )) s" | tee -a "$GITHUB_STEP_SUMMARY"

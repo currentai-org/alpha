@@ -4,8 +4,11 @@
 #                                 check against; with PROVE_RED=identity it then deletes the build's copy,
 #                                 so the build ships without its identity, as a real break would.
 #   deploy-prove-red.sh env       prints `vercel deploy` arguments for a dead upstream on a closed port.
-#                                 PROVE_RED=answer: the safety screen (GUARD_SHADOW_URL). It fails closed,
-#                                 so the build comes up and every turn is declined, as a broken screen would.
+#                                 PROVE_RED=answer: every input screen the turn can use, Shieldstral
+#                                 (GUARD_SHADOW_URL) and, with the s1-safety-judge flag on, the S1 judge
+#                                 (ZENTROPI_S1_ENDPOINT_URL, web/config/safetyScreen.ts), whose env var wins
+#                                 over the deployed address. A screen that cannot answer fails closed, so
+#                                 the build comes up and every turn is declined, as a broken screen would.
 #                                 PROVE_RED=provider: every model base URL in DEAD_PROVIDER, which also
 #                                 leaves the model list empty, so the build never comes up, as in a real
 #                                 provider outage.
@@ -22,8 +25,8 @@ identity)
 env)
 	case ${PROVE_RED:-none} in
 	answer)
-		echo "--env GUARD_SHADOW_URL=http://127.0.0.1:9"
-		echo "::notice title=prove_red::the build's safety screen points at a closed port" >&2
+		echo "--env GUARD_SHADOW_URL=http://127.0.0.1:9 --env ZENTROPI_S1_ENDPOINT_URL=http://127.0.0.1:9"
+		echo "::notice title=prove_red::the build's input screens point at a closed port" >&2
 		;;
 	provider)
 		args=()
