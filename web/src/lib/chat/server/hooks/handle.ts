@@ -45,6 +45,10 @@ type HandleInput = Parameters<Handle>[0];
 // reaching this handle, so the gaps between them are the stages.
 let firstChatRequestTimed = false;
 
+// One warn per outage, not one per page view: set when a page first serves with the registry down,
+// cleared once the registry builds again.
+let registryDownLogged = false;
+
 /** Where an unauthenticated forced-login redirect sends someone: the sign-in chooser at `/login`
  *  (upstream chat-ui redirected straight to Hugging Face; this app does not). */
 async function redirectUnauthenticated(event: RequestEvent): Promise<Response> {
@@ -94,8 +98,8 @@ export async function handleRequest({ event, resolve }: HandleInput): Promise<Re
 
 			// Gate requests on the model registry — a no-op once built. When the load-time build failed
 			// (upstream blip), this RETRIES it, so a failed top-level await never leaves the
-			// instance permanently unusable (see ensureModelsReady). A failure
-			// here 500s only THIS request; a later one retries. Imported DYNAMICALLY on purpose: a
+			// instance permanently unusable (see ensureModelsReady). A later
+			// request retries. Imported DYNAMICALLY on purpose: a
 			// static import would pull models.ts (and its catalog fetch) into the hooks boot graph,
 			// making even the healthcheck wait on the upstream — lazily loaded, the model-free
 			// surfaces below stay independent of upstream health.
@@ -107,9 +111,9 @@ export async function handleRequest({ event, resolve }: HandleInput): Promise<Re
 			// /admin panels (reports/export are model-free ops surfaces; the tuning pages do read the
 			// registry and surface their own error while it's empty). HEAD is deliberately NOT
 			// exempt: SvelteKit dispatches HEAD to the route's GET handler (body stripped), so a HEAD
-			// would execute model-dependent code. Everything else — every page render (the layout
-			// load reads the registry) and the chat/API surface — must not run against an empty
-			// registry. /api/warm is NOT exempt on purpose: each warm ping (cron or client) doubles
+			// would execute model-dependent code. Everything else waits on the registry; when it
+			// cannot build, page GETs carry on without models and the chat/API surface gets a 503
+			// (see the catch below). /api/warm is NOT exempt on purpose: each warm ping (cron or client) doubles
 			// as a heal attempt.
 			{
 				const p = routePath;
@@ -121,24 +125,61 @@ export async function handleRequest({ event, resolve }: HandleInput): Promise<Re
 					p.endsWith("/api/contribute") ||
 					p.endsWith("/api/cms/invalidate") ||
 					p.endsWith("/api/v2/public-config") ||
+					// The incident banner's state: a status page is read most while something is down.
+					p === `${CHAT_ROUTE_ROOT}/api/status` ||
 					p.includes("/.well-known/") ||
 					p.startsWith(`${CHAT_ROUTE_ROOT}/admin`);
 				if (!modelFree) {
-					const { ensureModelsReady } = await import("$lib/chat/server/models");
+					const { ensureModelsReady, registryCanServe } = await import("$lib/chat/server/models");
+					const isGet = event.request.method === "GET";
+					const isApi = routePath.startsWith(`${CHAT_ROUTE_ROOT}/api/`);
 					try {
+						// The import above already waited for the boot attempt. A page GET finding the registry
+						// still down starts the retry without waiting on it: one retry is up to three tries per
+						// lane at 15 s each, and a visitor's page must not hang that long to say the model is
+						// unavailable. The retry logs its own failure; the next page view sees the outcome.
+						if (isGet && !isApi && !registryCanServe()) {
+							void ensureModelsReady().catch(() => {});
+							throw new Error("Model registry unavailable (retry started in the background)");
+						}
 						await ensureModelsReady();
+						registryDownLogged = false;
 					} catch (e) {
 						const wantsHtml =
-							event.request.method === "GET" &&
-							!routePath.startsWith(`${CHAT_ROUTE_ROOT}/api/`) &&
-							(event.request.headers.get("accept")?.includes("text/html") ?? true);
+							isGet && !isApi && (event.request.headers.get("accept")?.includes("text/html") ?? true);
 						if (dev && wantsHtml) {
 							error(
 								503,
 								"Local /chat is not configured (missing DATABASE_URL, OPENAI_BASE_URL, or related secrets). The /alpha landing demo runs without them — use http://127.0.0.1:5199/alpha. To run real /chat locally, use `pnpm dev:local` (Doppler)."
 							);
 						}
-						throw e;
+						// A model provider that cannot be reached must not take the pages down with it. A GET
+						// outside the API (a page render, its __data.json, the root redirect) carries on with the
+						// registry empty: the layout load then sends `modelsUnavailable`, and the chat says the
+						// model is unavailable in place of the composer. Every page GET is also a heal attempt.
+						if (isGet && !isApi) {
+							if (!registryDownLogged) {
+								registryDownLogged = true;
+								logger.warn(
+									{ err: e instanceof Error ? e.message : String(e) },
+									"[models] Registry unavailable; serving pages without models until it builds"
+								);
+							}
+						} else {
+							// The chat and API surfaces need a model. A clean 503 with the copy the client shows,
+							// not a framework 500 whose body says nothing a visitor can act on. `message` is the
+							// field the chat client reads off a refused request; `error` is for everyone else.
+							return new Response(
+								JSON.stringify({
+									error: ERROR_MESSAGES.modelUnavailable,
+									message: ERROR_MESSAGES.modelUnavailable,
+								}),
+								{
+									status: 503,
+									headers: { "content-type": "application/json", "retry-after": "15" },
+								}
+							);
+						}
 					}
 				}
 			}

@@ -14,7 +14,10 @@ vi.mock("$lib/chat/server/auth", () => ({
 	loginEnabled: () => true,
 	refreshSessionCookie: vi.fn(),
 }));
-vi.mock("$lib/chat/server/models", () => ({ ensureModelsReady: vi.fn(async () => {}) }));
+vi.mock("$lib/chat/server/models", () => ({
+	ensureModelsReady: vi.fn(async () => {}),
+	registryCanServe: () => true,
+}));
 vi.mock("$lib/chat/server/config", () => ({
 	config: {
 		checkForUpdates: vi.fn(async () => {}),

@@ -15,6 +15,9 @@ export const ERROR_MESSAGES = {
 	// or the user's fault: the service is briefly saturated. Distinct copy so the user isn't told to
 	// check a connection that's fine.
 	atCapacity: "AI Potluck is busy right now. Please try again in a moment.",
+	// The server could not build its model list because the model provider is unreachable. The
+	// request gate answers chat and API requests with this copy (503), and the chat shows it.
+	modelUnavailable: "The model is unavailable right now. Try again in a minute.",
 	// A conversation link from before signing in (or from a different session/browser). Distinct from
 	// "not found" because nothing is broken; the link belongs to another session.
 	conversationUnavailable: "That conversation isn't available in this session.",

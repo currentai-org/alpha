@@ -29,6 +29,10 @@ import { runInBackground } from "$lib/chat/server/vercelBackground";
 // The canary runs under waitUntil so it is not frozen with the response; a floating
 // promise would count the frozen time in its `ms`.
 //
+// The status code answers "can this instance serve a chat turn". The JSON body separates the two
+// things a reader may need apart: `app` is "up" whenever this handler answers at all (pages and status
+// keep serving while the provider is down), and `registry` says whether the model registry can serve.
+//
 // The endpoint is public, so a failure body says only which condition failed. The underlying error
 // can name hosts or upstream messages; it goes to the server log, not to the caller.
 export async function GET({ request }: { request: Request }) {
@@ -43,7 +47,8 @@ export async function GET({ request }: { request: Request }) {
 	}
 	const headers: Record<string, string> = {};
 	if (await cronAuthorized(request)) headers["x-custodial-master-kid"] = activeMasterKid() ?? "none";
-	return new Response("OK", { status: 200, headers });
+	headers["content-type"] = "application/json";
+	return new Response(JSON.stringify({ ok: true, app: "up", registry: "ok" }), { status: 200, headers });
 }
 
 function unavailable(reason: string, err?: unknown): Response {
@@ -52,7 +57,12 @@ function unavailable(reason: string, err?: unknown): Response {
 		`[healthcheck] 503: ${reason}`
 	);
 	return new Response(
-		JSON.stringify({ ok: false, reason: `${reason} — this instance cannot serve a chat turn` }),
+		JSON.stringify({
+			ok: false,
+			app: "up",
+			registry: "degraded",
+			reason: `${reason} — this instance cannot serve a chat turn`,
+		}),
 		{ status: 503, headers: { "content-type": "application/json" } }
 	);
 }

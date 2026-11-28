@@ -249,6 +249,39 @@ describe("layoutData", () => {
 		expect(getLayoutUser(createTestLocals())).toBeNull();
 	});
 
+	// The model provider is unreachable, so the registry never built and there is no default model.
+	// Page renders carry on in that state (hooks/handle.ts), so this load must answer, and must not
+	// rewrite a saved pick it cannot check.
+	it("getLayoutSettings answers with an empty registry and leaves a signed-in user's saved model alone", async () => {
+		const { registryCanServe } = await import("./models");
+		expect(registryCanServe()).toBe(false); // precondition: this test env has no model provider
+
+		const { user, locals } = await createTestUser();
+		await collections.settings.insertOne({
+			userId: user._id,
+			activeModel: "example-org/saved-model",
+			streamingMode: "smooth",
+			directPaste: false,
+			hapticsEnabled: true,
+			customPrompts: {},
+			customPromptsEnabled: {},
+			multimodalOverrides: {},
+			artifactsOverrides: {},
+			reasoningEffortOverrides: {},
+			reasoningOverrides: {},
+			hidePromptExamples: {},
+			welcomeModalSeenAt: null,
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		});
+
+		const settings = await getLayoutSettings(locals);
+
+		expect(settings.activeModel).toBe("example-org/saved-model");
+		const stored = await collections.settings.findOne({ userId: user._id });
+		expect(stored?.activeModel).toBe("example-org/saved-model");
+	});
+
 	it("getLayoutSettings returns defaults for session-only locals", async () => {
 		const locals = createTestLocals({ sessionId: "guest-session" });
 		const settings = await getLayoutSettings(locals);
