@@ -4311,6 +4311,11 @@ def test_proxy_backend_provenance_reads_the_response_not_the_config():
 
     # A host that merely ends in an allowed suffix is not that host.
     assert proxy._backend_swiss("api.inference.cscs.ch.evil.example") is False
+    # The set comes from the catalog's host table: Phoeniqs is Swiss, Featherless is not.
+    assert proxy._backend_swiss("maas.phoeniqs.com") is True
+    assert proxy._backend_swiss("api.featherless.ai") is False
+    swiss = proxy.SWISS_BACKENDS
+    assert swiss == {"api.inference.cscs.ch", "api.infomaniak.com", "api.swissai.svc.cscs.ch", "maas.phoeniqs.com"}
 
 
 def test_proxy_usage_int_rejects_bools_and_negatives():

@@ -45,6 +45,7 @@ import threading
 import time
 import urllib.parse
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import httpx
 import logsink
@@ -554,12 +555,15 @@ def _no_cache(body: bytes, prov: Provider) -> bytes:
 # falsifiably, rather than assume per config.
 BACKEND_HEADER = "x-litellm-model-api-base"
 
-# Ported from the chat app's `backendIsSwiss()` (servingProvenance.ts) so the two agree on the claim.
-# `api.swissai.svc.cscs.ch` is our own host and is not in the chat app's list, which only covers traffic
-# through the gateway, so it is listed here.
-# maas.phoeniqs.com: Apertus 1.5 70B's host on the gateway, a Swiss provider.
-SWISS_BACKENDS = frozenset({"api.inference.cscs.ch", "api.swissai.svc.cscs.ch", "api.infomaniak.com",
-                            "maas.phoeniqs.com"})
+# The hosts whose catalog org is in Switzerland, the same set the chat app's `backendIsSwiss()` reads.
+# Generated from the catalog's host table (BACKEND_HOSTS, web/src/lib/chat/routing/catalog.ts) by
+# `pnpm gen:served-backends` into served_backends.json beside this file, which the image's `COPY api/`
+# carries. It includes `api.swissai.svc.cscs.ch`, CSCS's direct host that this service dials. A missing
+# or unreadable file raises at import: a proxy that cannot place a backend must not start and call
+# every one unknown.
+SWISS_BACKENDS = frozenset(
+    json.loads((Path(__file__).resolve().with_name("served_backends.json")).read_text("utf-8"))["swissHosts"]
+)
 
 
 def _backend_of(headers) -> str:
