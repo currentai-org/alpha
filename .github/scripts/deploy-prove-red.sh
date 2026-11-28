@@ -3,9 +3,12 @@
 #   deploy-prove-red.sh identity  keeps a copy of the identity file in $RUNNER_TEMP for the smoke to
 #                                 check against; with PROVE_RED=identity it then deletes the build's copy,
 #                                 so the build ships without its identity, as a real break would.
-#   deploy-prove-red.sh env       prints `vercel deploy` arguments: with PROVE_RED=answer or provider, an
-#                                 --env for each base URL in DEAD_PROVIDER, pointed at a closed port, so the
-#                                 build's model calls fail while its pages still serve.
+#   deploy-prove-red.sh env       prints `vercel deploy` arguments for a dead upstream on a closed port.
+#                                 PROVE_RED=answer: the safety screen (GUARD_SHADOW_URL). It fails closed,
+#                                 so the build comes up and every turn is declined, as a broken screen would.
+#                                 PROVE_RED=provider: every model base URL in DEAD_PROVIDER, which also
+#                                 leaves the model list empty, so the build never comes up, as in a real
+#                                 provider outage.
 set -euo pipefail
 file=web/config/deployment.json
 case ${1:?identity or env} in
@@ -18,7 +21,11 @@ identity)
 	;;
 env)
 	case ${PROVE_RED:-none} in
-	answer | provider)
+	answer)
+		echo "--env GUARD_SHADOW_URL=http://127.0.0.1:9"
+		echo "::notice title=prove_red::the build's safety screen points at a closed port" >&2
+		;;
+	provider)
 		args=()
 		for key in ${DEAD_PROVIDER:?}; do args+=(--env "$key=http://127.0.0.1:9/v1"); done
 		echo "${args[*]}"
