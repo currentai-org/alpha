@@ -25,12 +25,35 @@ export async function createUserMcpServer(input: {
 	name: string;
 	url: string;
 	credential: string | null;
+	authKind?: "bearer" | "oauth";
 }): Promise<UserMcpServerRow> {
 	const [row] = await getDb()
 		.insert(userMcpServers)
 		.values({ ...input, id: newId() })
 		.returning();
 	return row;
+}
+
+/** One of the person's servers, or null when the id is not theirs. */
+export async function getUserMcpServer(userId: string, id: string): Promise<UserMcpServerRow | null> {
+	const [row] = await getDb()
+		.select()
+		.from(userMcpServers)
+		.where(and(eq(userMcpServers.userId, userId), eq(userMcpServers.id, id)))
+		.limit(1);
+	return row ?? null;
+}
+
+/** Stores an OAuth server's sealed sign-in state and whether it needs reconnecting. */
+export async function saveUserMcpServerOAuth(
+	userId: string,
+	id: string,
+	update: { oauthState?: string | null; needsReconnect?: boolean }
+): Promise<void> {
+	await getDb()
+		.update(userMcpServers)
+		.set(update)
+		.where(and(eq(userMcpServers.userId, userId), eq(userMcpServers.id, id)));
 }
 
 /** Deletes one of the person's servers. Returns whether a row of theirs was removed. */

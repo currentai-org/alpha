@@ -12,6 +12,7 @@ import { listUserMcpServers, type UserMcpServerRow } from "$lib/chat/server/db/u
 import type { FaultInjectionName } from "$lib/chat/server/textGeneration/faultInjection";
 import { NAME_RE, originScopedFetch, type FetchLike, type McpServerConfig } from "./servers";
 import { STUB_URL, stubMcpFetch } from "./e2eStub";
+import { oauthStateOf, refreshOAuthRow } from "./oauthConnect";
 
 /** HKDF info for these tokens, so a sealed storage-location credential cannot be opened as one. */
 const SEAL_INFO = "aipotluck/user-mcp-server-credential/v1";
@@ -61,7 +62,13 @@ export function userServerConfigs(rows: UserMcpServerRow[], deps: ConfigDeps = {
 	const out: McpServerConfig[] = [];
 	for (const row of rows) {
 		let headers: Record<string, string> = {};
-		if (row.credential) {
+		if (row.authKind === "oauth") {
+			// refreshOAuthRow ran first; a server marked for reconnecting sits this turn out.
+			if (row.needsReconnect) continue;
+			const access = oauthStateOf(row, deps.secret ?? credentialSecret()).tokens?.access_token;
+			if (!access) continue;
+			headers = { Authorization: `Bearer ${access}` };
+		} else if (row.credential) {
 			try {
 				headers = { Authorization: `Bearer ${open(row.credential, deps.secret ?? credentialSecret(), SEAL_INFO)}` };
 			} catch (e) {
@@ -88,7 +95,8 @@ export async function userMcpServersFor(
 	const userId = locals?.user?._id?.toString();
 	if (!userId) return [];
 	try {
-		return userServerConfigs(await list(userId), { faultInjection });
+		const rows = await Promise.all((await list(userId)).map((row) => refreshOAuthRow(row)));
+		return userServerConfigs(rows, { faultInjection });
 	} catch (e) {
 		logger.warn(
 			{ leg: "mcp-servers", err: e instanceof Error ? e.message : String(e) },
