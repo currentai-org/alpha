@@ -148,8 +148,10 @@ jobs:
     # turns offered. This climbs past that, once with aimock's instant answers and once with slow-model/'s,
     # which streams about 380 words after 0.8 s at about 40 tokens a second, so each turn holds its
     # connection for several seconds as a real answer does. RATE_LIMIT_IP_MULTIPLIER=0 turns off the
-    # per-IP abuse ceiling, which every k6 user shares one address against. k6 shares the runner's 4 CPUs
-    # at these levels too, so read a bend beside the runner's own CPU in the stack logs.
+    # per-IP abuse ceiling, which every k6 user shares one address against. PG_POOL_MAX is 10, as SIZING.md
+    # recommends, so the database connection is not the limit being measured. k6 shares the runner's 4
+    # CPUs at these levels too, so run-levels.sh samples CPU for web, db, k6 and the whole runner beside
+    # each level (cpu-sample.sh): that table names what fills up first.
     name: Find where the compose stack bends
     if: github.event_name == 'workflow_dispatch' || (github.event.label.name == 'load-capacity' && github.actor != 'dependabot[bot]')
     runs-on: ubuntu-latest
@@ -160,15 +162,19 @@ jobs:
       group: load-capacity-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: false
     env:
-      LEVELS: "60 150 300 600"
+      # The earlier climb (60 150 300 600) answered everything at 150 and queued at 300.
+      LEVELS: "150 200 250 300"
       HOLD: 3m
       RATE_LIMIT_IP_MULTIPLIER: "0"
+      PG_POOL_MAX: "10"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
       - name: Boot the compose stack with the mock model
-        run: bash deploy/loadtest/up.sh
+        run: |
+          bash deploy/loadtest/up.sh
+          cd deploy && docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$(docker compose ps -q web)" | grep '^PG_POOL_MAX=10$'
       - name: Pull k6
         run: docker pull -q "$K6_IMAGE"
       - name: Climb with instant answers
