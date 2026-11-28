@@ -57,7 +57,7 @@ fi
 cd selfhost
 export BETTER_AUTH_SECRET=env-drift-placeholder
 set -f # `--profile *` is compose's every-profile wildcard, not a file glob
-for args in "" "--profile local" "--profile s3" "--profile agent" "--profile safety" "--profile *" \
+for args in "" "--profile local" "--profile s3" "--profile agent" "--profile safety" "--profile safety-qwen3guard-only" "--profile *" \
 	"-f compose.yaml -f compose.gpu.yaml --profile local"; do
 	# shellcheck disable=SC2086 # split on purpose: each entry is several arguments
 	if docker compose $args config -q >"$work/config.err" 2>&1; then

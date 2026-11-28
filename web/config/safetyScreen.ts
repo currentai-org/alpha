@@ -88,3 +88,30 @@ const MILA_SP_GUARD_RAW = {
 parseMilaSpGuardConfig(MILA_SP_GUARD_RAW);
 
 export const MILA_SP_GUARD = MILA_SP_GUARD_RAW;
+
+// Which detector screens chat text (SAFETY_SCREEN, detectors/safetyScreen.ts). A reviewed product
+// decision per edition, so it lives here and the env var is only the operator's override.
+//   shieldstral      Shieldstral-1.0-3B answers one yes/no question per rule (17 calls per input turn).
+//   qwen3guard       Qwen3Guard-Gen-0.6B screens the turn in one call and answers 13 rules from its
+//                    categories; Shieldstral answers the four rules whose handling is special (the two
+//                    child rules, which fail closed, self-harm method, which gets the crisis message,
+//                    and anthro). The self-host default: it fits a CPU where the 17 calls do not.
+//   qwen3guard-only  Qwen3Guard alone, for very weak hardware. It cannot give the crisis message, fail
+//                    the child rules closed from a child-specific verdict, or see anthropomorphism
+//                    (selfhost/README.md, "A safety screen"). Never a default.
+export const SAFETY_SCREENS = ["shieldstral", "qwen3guard", "qwen3guard-only"] as const;
+export type SafetyScreen = (typeof SAFETY_SCREENS)[number];
+
+export const SAFETY_SCREEN_DEFAULT: Record<"hosted" | "selfhost", SafetyScreen> = {
+	hosted: "shieldstral",
+	selfhost: "qwen3guard",
+};
+
+/** The rules the paired screen keeps on Shieldstral: Qwen3Guard has no category for them (anthro), no
+ *  child-specific one (both child rules), or no method-versus-distress split for self-harm. */
+export const SHIELDSTRAL_PAIRED_RULES = [
+	"chat-block-child-sexual-content",
+	"chat-block-child-grooming",
+	"chat-block-self-harm",
+	"chat-block-anthro",
+] as const;

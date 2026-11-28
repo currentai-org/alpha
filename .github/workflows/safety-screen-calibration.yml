@@ -1,0 +1,141 @@
+name: safety screen calibration
+
+# Per-rule recall and false-positive rate of the paired safety screen (Qwen3Guard for 13 rules,
+# Shieldstral for both child rules, self-harm method and anthropomorphism) beside Shieldstral alone, on the
+# shared fixtures in web/scripts/lib/shieldFixtures.mjs. It boots only the two classifiers from
+# selfhost/compose.yaml (the safety profile, the same pinned llama.cpp image and GGUFs the self-host smoke
+# uses) and runs web/src/lib/chat/server/detectors/safetyScreen.calibration.live.spec.ts against them.
+#
+# Report only: the job prints the table in its summary and never fails on a number. Trust and safety read
+# the table and decide; a new gate lands capture-and-warn. A run that could not reach the classifiers
+# annotates a warning.
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/safety-screen-calibration.yml"
+      - ".github/selfhost-calibration.compose.yaml"
+      - "selfhost/compose.yaml"
+      - "web/config/safetyScreen.ts"
+      - "web/scripts/lib/shieldFixtures.mjs"
+      - "web/src/lib/chat/server/rules.json"
+      - "web/src/lib/chat/server/detectors/shieldstral.ts"
+      - "web/src/lib/chat/server/detectors/qwen3guard.ts"
+      - "web/src/lib/chat/server/detectors/safetyScreen.ts"
+      - "web/src/lib/chat/server/detectors/safetyScreen.calibration.live.spec.ts"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: safety-screen-calibration-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  paired:
+    runs-on: ${{ fromJSON(vars.CI_LARGE_RUNS_ON || vars.CI_RUNS_ON || '"ubuntu-latest"') }}
+    if: github.event.pull_request.head.repo.full_name == github.repository && !contains(fromJSON('["main","develop"]'), github.head_ref)
+    timeout-minutes: 120
+    env:
+      # The key names the GGUFs compose.yaml defaults to, the same as the self-host smoke's safety job.
+      MODEL_CACHE_KEY: selfhost-gguf-qwen2.5-0.5b-q4_k_m-shieldstral-1.0-3b-q4_k_m-abiray-45dfb42-qwen3guard-0.6b-q8_0-be4e562-v1
+      COMPOSE_VERSION: v2.40.3
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .nvmrc
+      - run: pnpm install --frozen-lockfile
+
+      - name: Model directory
+        run: |
+          echo "LOCAL_MODELS_DIR=$RUNNER_TEMP/selfhost-models" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/selfhost-models"
+
+      - name: Restore the model cache
+        id: model-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ env.LOCAL_MODELS_DIR }}
+          key: ${{ env.MODEL_CACHE_KEY }}
+
+      - name: Docker Compose
+        run: |
+          if ! docker compose version; then
+            mkdir -p ~/.docker/cli-plugins
+            curl -fsSL -o ~/.docker/cli-plugins/docker-compose \
+              "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-linux-$(uname -m)"
+            chmod +x ~/.docker/cli-plugins/docker-compose
+            docker compose version
+          fi
+          echo "$(nproc) CPUs, $(free -g | awk '/^Mem:/ {print $2}') GiB" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Start the two classifiers
+        id: up
+        run: |
+          set +e
+          mkdir -p calibration-logs
+          sed "s/^BETTER_AUTH_SECRET=.*/BETTER_AUTH_SECRET=$(openssl rand -hex 32)/" selfhost/.env.example > selfhost/.env
+          (cd selfhost && docker compose -f compose.yaml -f ../.github/selfhost-calibration.compose.yaml --profile safety up -d --wait --wait-timeout 1500 shieldstral qwen3guard) 2>&1 | tee calibration-logs/up.log
+          code=${PIPESTATUS[0]}
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          if [ "$code" != 0 ]; then
+            echo "::warning title=safety screen calibration::the classifiers did not come up (exit $code). Read up.log in the artifact."
+          fi
+          exit 0
+
+      - name: Save the model cache
+        if: steps.model-cache.outputs.cache-hit != 'true' && steps.up.outputs.code == '0'
+        continue-on-error: true
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ${{ env.LOCAL_MODELS_DIR }}
+          key: ${{ env.MODEL_CACHE_KEY }}
+
+      - name: Run the calibration through the pairing and through Shieldstral alone
+        id: run
+        if: steps.up.outputs.code == '0'
+        working-directory: web
+        env:
+          CALIBRATE_SAFETY_SCREEN: "1"
+          GUARD_SHADOW_URL: http://127.0.0.1:18080
+          QWEN3GUARD_URL: http://127.0.0.1:18081
+          CALIBRATION_OUT: ${{ github.workspace }}/calibration-logs/table.md
+        run: |
+          set +e
+          pnpm test:live src/lib/chat/server/detectors/safetyScreen.calibration.live.spec.ts 2>&1 | tee ../calibration-logs/run.log
+          code=${PIPESTATUS[0]}
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          if [ -s ../calibration-logs/table.md ]; then
+            {
+              echo "### Safety screen calibration: pairing beside Shieldstral alone"
+              echo
+              echo "Recall is the share of a rule's own fixtures it flags; FP is the share of benign fixtures it flags. A call that returned no usable answer counts under unknown."
+              echo
+              cat ../calibration-logs/table.md
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning title=safety screen calibration::the calibration run exited $code and wrote no table. Read run.log in the artifact."
+          fi
+          exit 0
+
+      - name: Tear the classifiers down
+        if: always() && steps.up.outcome != 'skipped'
+        continue-on-error: true
+        working-directory: selfhost
+        run: |
+          docker compose -f compose.yaml -f ../.github/selfhost-calibration.compose.yaml --profile safety logs --no-color --tail 80 shieldstral qwen3guard > ../calibration-logs/classifiers.log 2>&1
+          docker compose -f compose.yaml -f ../.github/selfhost-calibration.compose.yaml --profile safety down -v
+
+      - name: Keep the logs and the table
+        if: always() && steps.up.outcome != 'skipped'
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: safety-screen-calibration
+          path: calibration-logs/
+          retention-days: 14
+          if-no-files-found: warn

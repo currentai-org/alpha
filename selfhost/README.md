@@ -71,44 +71,92 @@ request.
 Out of the box nothing checks a message before the model sees it (Configuration, Moderation, below).
 Each option here costs no subscription: it runs on hardware you already have, with open weights.
 
-**The `safety` profile** runs Mistral's Shieldstral-1.0-3B classifier (Apache-2.0) in a second
-llama.cpp container on CPU. Add one line to `.env` and start both profiles:
+**The `safety` profile** runs two classifiers in llama.cpp containers on CPU: Qwen's
+Qwen3Guard-Gen-0.6B (Apache-2.0) and Mistral's Shieldstral-1.0-3B (Apache-2.0). Add two lines to `.env`
+and start both profiles:
 
 ```sh
-echo 'GUARD_SHADOW_URL=http://shieldstral:8080' >> .env
+printf 'GUARD_SHADOW_URL=http://shieldstral:8080\nQWEN3GUARD_URL=http://qwen3guard:8080\n' >> .env
 docker compose --profile local --profile safety up --build
 ```
 
-The variable's name is historical: with it set, the screen **enforces**. Every turn is screened
+The first variable's name is historical: with it set, the screen **enforces**. Every turn is screened
 against the rules in `web/src/lib/chat/server/rules.json`, and a block stops the turn before the model
-answers (`inputGate.ts`, `guardGate.ts`). The profile alone, without the line, screens nothing.
+answers (`inputGate.ts`, `guardGate.ts`). The profile alone, without the lines, screens nothing.
+
+**`SAFETY_SCREEN` picks who screens.** A self-host reads `qwen3guard` when it is unset; Current AI's own
+deployments read `shieldstral` (`web/config/safetyScreen.ts`). One value per row, and no value falls back
+to another:
+
+| `SAFETY_SCREEN` | Who answers | Needs |
+| --- | --- | --- |
+| `qwen3guard` (self-host default) | Qwen3Guard answers 13 rules from one call per turn. Shieldstral answers four rules on every turn: both child rules, self-harm method and anthro, and every rule of a picture. | both URLs |
+| `shieldstral` | Shieldstral answers every rule, 17 calls per turn. Too slow for CPU, right for a GPU. | `GUARD_SHADOW_URL` |
+| `qwen3guard-only` | Qwen3Guard answers everything it can. For very weak hardware, never the default. | `QWEN3GUARD_URL` |
+
+To switch to Shieldstral alone, add one line to `.env` (the Qwen3Guard container then sits idle):
+
+```sh
+echo 'SAFETY_SCREEN=shieldstral' >> .env
+```
+
+For `qwen3guard-only`, set `SAFETY_SCREEN=qwen3guard-only` and `QWEN3GUARD_URL`, and start
+`--profile safety-qwen3guard-only` in place of `--profile safety`.
+
+**What Qwen3Guard routes coarsely.** Its fixed taxonomy does not match our rules one to one. In the
+default pairing these are the 13 rules it answers, and where it reads a rule coarsely:
+
+- **Self-harm other than method.** Eating, and any other self-harm label, fires `self-harm-eating`. It
+  has no label for intent, passive ideation ("everyone would be better off without me") or hedged
+  distress, so those three rules (which only log) never fire from it, and a turn that carries only that
+  passes the screen.
+- **Hate, harassment and toxic language** are all its "Unethical Acts" label, so one hit fires all four
+  rules: the person sees the generic decline whichever rule is named.
+- **Fraud, drugs.** Both read "Non-violent Illegal Acts". The fraud rule's allowance for made-up sample
+  data is lost: a request for fake test records can be declined as illegal or as PII.
+- **"Politically Sensitive Topics", "Copyright Violation" and "Jailbreak"** are ignored. They are not in
+  our rules (injection defense is structural), and the first would decline political questions.
+- **"Controversial"** is read as safe: only "Unsafe" blocks. An "Unsafe" with no category it recognises
+  is unknown, and an unknown screen declines the turn.
+- **Pictures** are not read by Qwen3Guard; the pairing sends them to Shieldstral, as before.
+- **Long messages.** A message of about 1,000 tokens took about 12 s on a loaded 4-CPU laptop against the
+  8 s per-call limit, so a long paste can run out of time and be declined.
+
+Only the four rules Shieldstral answers keep our policy text. **In `qwen3guard-only` mode these are
+lost:** self-harm method gets the generic decline in place of the crisis message (an overdose question
+reads as "illegal acts"); the two child rules cannot fail closed from a child-specific verdict (a Sexual
+Content or Unethical Acts label makes them unknown, so the turn is declined, but grooming that reads
+neither passes); and anthropomorphism ("do you really love me") is not screened. Use the default pairing
+unless the machine cannot run the 3B model.
 
 What to expect:
 
-- **It runs out of time often on CPU, and what happens then depends on the rule.** One short message is 11 classifier calls, where hosted
-  Alpha makes 17, one per rule. The child-safety rules and six others are asked one by one; for the
-  other nine, three grouped questions are asked first, and a group's rules only when its answer is yes
-  (`web/config/selfhostScreen.mjs`). The app sends at most 4 calls at once, one per classifier slot, and gives
-  the whole screen at least 20 s (`operationDeadlineMs` in `rules.json`), 5 s more per extra round of
-  4 calls. A call can take until the screen's deadline, since a request waits inside llama.cpp for a
-  slot. On an 8-CPU machine under other load, with the classifier
-  capped at 4 CPUs, a warm screen took 25 to 36 s and its slowest call 11 to 17 s; the first screen after
-  start took 121 s. On a second 8-CPU machine, the first turn after start ran out
-  of time at 20 s and the second, a blocked one, finished in 18 s. Only the child-safety rules fail closed: when one of their
+- **It runs out of time often on CPU, and what happens then depends on the rule.** In the default
+  pairing a short message is one Qwen3Guard call plus four Shieldstral calls, for the two child-safety
+  rules, the self-harm method rule and anthropomorphism (`detectors/safetyScreen.ts`); on a loaded 4-CPU
+  laptop that was estimated at 1.2 to 8 s, not measured as a run of the pairing. With
+  `SAFETY_SCREEN=shieldstral` it is 11 Shieldstral calls, where hosted Alpha makes 17, one per rule: the
+  child-safety rules and six others are asked one by one, and for the other nine three grouped
+  questions are asked first, and a group's rules only when its answer is yes (`web/config/selfhostScreen.mjs`).
+  The app sends at most 4 calls at once, one per classifier slot, and gives the whole screen at least
+  20 s (`operationDeadlineMs` in `rules.json`), 5 s more per extra round of 4 calls. In that mode, on an
+  8-CPU machine under other load with the classifier capped at 4 CPUs, a warm screen took 25 to 36 s and
+  the first screen after start took 121 s. Only the child-safety rules fail closed: when one of their
   checks runs out of time, the turn is declined as unchecked. When only content checks (violence,
   self-harm and the rest) run out of time on a short message, the turn is answered without them and
   the web log records a `[failopen]` warning (`guardGate.ts`). A long message whose content checks were
-  still waiting when the screen ran out of time is declined as unchecked. So on CPU expect both declined
-  turns and turns answered unscreened. A screen that finds a block before it runs out of time still
-  blocks. For a usable screen, give it a GPU: add `compose.gpu.yaml` ("On an NVIDIA GPU", above).
-  The self-host CI's `safety-profile` job prints the times on every pull request. Its chat turns report
-  and never fail, because on a CPU runner the screen often runs out of time; only its direct classifier
-  check, which does not depend on CPU speed, is a failure of its own (for now it raises a warning).
-- **Text only.** No vision projector is loaded, so a turn with a picture cannot be screened and is
-  declined, and a stored picture is refused.
-- **The weights are a community conversion.** Mistral publishes no GGUF. The profile pins
-  `Abiray/Shieldstral-1.0-3B-GGUF`, Q4_K_M, by commit. `SAFETY_MODEL_URL` and `SAFETY_MODEL_FILE` point at another file.
-  About 2.1 GB to download, and 2.5 to 4.5 GB of RAM while running.
+  still waiting when the screen ran out of time is declined as unchecked. A screen that finds a block
+  before it runs out of time still blocks. For a usable screen, give it a GPU: add `compose.gpu.yaml`
+  ("On an NVIDIA GPU", above). The self-host CI's `safety-profile` job prints the times on every pull
+  request. Its chat turns report and never fail, because on a CPU runner the screen often runs out of
+  time.
+- **Text.** No vision projector is loaded, so Shieldstral cannot read a picture here: a turn with a
+  picture is declined, and a stored picture is refused.
+- **The weights are community conversions.** Neither maker publishes a GGUF. The profile pins
+  `QuantFactory/Qwen3Guard-Gen-0.6B-GGUF` (Q8_0, about 0.8 GB) and `Abiray/Shieldstral-1.0-3B-GGUF`
+  (Q4_K_M, about 2.1 GB) by commit. `QWEN3GUARD_MODEL_URL` and `QWEN3GUARD_MODEL_FILE`, or
+  `SAFETY_MODEL_URL` and `SAFETY_MODEL_FILE`, point at another file. Together they need about 3 GB to
+  download and 3 to 5 GB of RAM while running.
 - **Two side checks turn on with it.** `violence-recheck` and `support-signal-classifier` follow
   `GUARD_SHADOW_URL` (Feature flags, below). Both call your `TASK_MODEL` (unset, the first model `MODEL_ALLOWLIST` offers),
   not the classifier. `ALPHA_FLAGS=-violence-recheck,-support-signal-classifier` turns them off.
@@ -324,6 +372,8 @@ Compose reads `.env` next to `compose.yaml`.
 | `LLAMACPP_IMAGE` | llama.cpp's `server` image, pinned by digest; its `server-cuda` build with `compose.gpu.yaml` | Another llama.cpp server build. The `safety` profile uses it too. |
 | `LLAMA_ARG_N_GPU_LAYERS` | `all`, with `compose.gpu.yaml` only | How many of the model's layers llama.cpp puts on the GPU: a number, `auto` or `all`. |
 | `GUARD_SHADOW_URL` | none | A Shieldstral endpoint's base. Set, every turn is screened and a block stops it; with the `safety` profile, `http://shieldstral:8080`. |
+| `QWEN3GUARD_URL` | none | A Qwen3Guard-Gen-0.6B endpoint's base, read when `SAFETY_SCREEN` is `qwen3guard` or `qwen3guard-only`; with the `safety` profile, `http://qwen3guard:8080`. |
+| `SAFETY_SCREEN` | `qwen3guard` on a self-host | `qwen3guard`, `shieldstral` or `qwen3guard-only` (A safety screen, above). |
 | `SAFETY_MODEL_URL`, `SAFETY_MODEL_FILE` | a pinned Shieldstral Q4_K_M GGUF | With `--profile safety`: the GGUF the classifier downloads, and the file name it is kept under. Change both together. |
 | `ALPHA_IMAGE` | `ghcr.io/currentai-org/alpha:0.3.0-preview.2` | With `compose.release.yaml` only: another release tag or a digest of the app image. | <!-- x-release-please-version -->
 | `SMTP_URL` | none | Your mail server, as `smtp://user:password@host:587` (or `smtps://` on 465). Sign-in codes and workspace invitations go out through it. Unset, people sign in with email and password instead. |
@@ -708,9 +758,10 @@ throwaway container in its namespaces:
   that fails, it logs the provider and skips it, and every other sign-in method still works.
 - **Moderation.** No safety classifier is configured, so nothing checks a message before the model sees
   it. That holds with `DEPLOY_ENV=production` too, because compose sets `ALPHA_EDITION=selfhost`, and the
-  boot log then says `SELF-HOST, NO SCREEN`, so the gap is never silent (`selfHostWithoutScreen` in
-  `guardGate.ts`). "A safety screen (optional)", above, runs one beside the stack. To screen every turn, name a classifier: a Shieldstral endpoint in
-  `GUARD_SHADOW_URL` (`detectors/shieldstral.ts`), which also screens pictures, or Zentropi S1 for text
+  boot log then says `SELF-HOST, NO SCREEN`, so the gap is never silent (`guardGate.ts`,
+  `selfHostWithoutScreen`). "A safety screen (optional)", above, runs one beside the stack. To screen every turn, name a classifier: the bundled pairing (a Shieldstral endpoint in
+  `GUARD_SHADOW_URL`, which also screens pictures, and a Qwen3Guard endpoint in `QWEN3GUARD_URL`;
+  `detectors/safetyScreen.ts`), or Zentropi S1 for text
   with `ZENTROPI_S1_ENDPOINT_URL` and `HF_TOKEN` (`detectors/s1.ts`); `s1-safety-judge` turns on by itself
   when both are set. A configured classifier turns the screen on, and `violence-recheck` and
   `support-signal-classifier` follow `GUARD_SHADOW_URL` as the sign that a screen is configured. Both call your

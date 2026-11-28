@@ -1,7 +1,7 @@
 # What a stranger does with this repository, and the two self-host claims a privacy-minded operator most
 # wants proven. `smoke`: `selfhost/smoke.sh` writes selfhost/.env from .env.example, runs
 # `docker compose --profile local up --build` with a small local model, and sends one chat turn as a
-# signed-out guest; a guest turn with web search cites the page a keyless Firecrawl stand-in returned; then the daily cleanup deletes an aged guest conversation, and the README's backup and restore run on that stack, and every service must come back by itself after a crash and a daemon restart. `safety-profile`: the Shieldstral screen beside it (report only). `socket-proxy`: the
+# signed-out guest; a guest turn with web search cites the page a keyless Firecrawl stand-in returned; then the daily cleanup deletes an aged guest conversation, and the README's backup and restore run on that stack, and every service must come back by itself after a crash and a daemon restart. `safety-profile`: the Qwen3Guard and Shieldstral screen beside it (report only). `socket-proxy`: the
 # agent profile's socket proxy refuses host-root creates. `agent-owui-names`: the agent profile's model
 # gateway starts on Open WebUI's env names. `agent-connectors`: an agent turn uses its owner's own Google connector and no
 # one else's, read-only, with the token kept out of the sandbox. `s3-secret`: the s3 profile's SeaweedFS refuses a blank
@@ -210,9 +210,9 @@ jobs:
         run: docker compose --profile local down -v
 
   safety-profile:
-    # The safety profile (selfhost/compose.yaml, service shieldstral): Shieldstral-1.0-3B on llama.cpp on
-    # the runner's CPU beside the local profile, with GUARD_SHADOW_URL pointed at it, so the screen
-    # enforces. .github/selfhost-safety-smoke.sh sends one benign and one clearly disallowed guest turn and
+    # The safety profile (selfhost/compose.yaml, services qwen3guard and shieldstral): Qwen3Guard-Gen-0.6B
+    # and Shieldstral-1.0-3B on llama.cpp on the runner's CPU beside the local profile, with QWEN3GUARD_URL
+    # and GUARD_SHADOW_URL pointed at them (the self-host default pairing), so the screen enforces. .github/selfhost-safety-smoke.sh sends one benign and one clearly disallowed guest turn and
     # reports each verdict from the turn's stream and the web log, plus whether llama.cpp returned the
     # top_logprobs the app scores with, and prints the classifier's timings to the run summary.
     # No secret: both models download from Hugging Face without a token. The two chat turns are report-only:
@@ -227,8 +227,8 @@ jobs:
     permissions:
       contents: read
     env:
-      # The key names both GGUFs compose.yaml defaults to; bump it when either changes.
-      MODEL_CACHE_KEY: selfhost-gguf-qwen2.5-0.5b-q4_k_m-shieldstral-1.0-3b-q4_k_m-abiray-45dfb42-v1
+      # The key names the three GGUFs compose.yaml defaults to; bump it when any of them changes.
+      MODEL_CACHE_KEY: selfhost-gguf-qwen2.5-0.5b-q4_k_m-shieldstral-1.0-3b-q4_k_m-abiray-45dfb42-qwen3guard-0.6b-q8_0-be4e562-v1
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -257,6 +257,7 @@ jobs:
           # .env.example as a forker copies it, plus the one line README.md's safety section adds.
           sed "s/^BETTER_AUTH_SECRET=.*/BETTER_AUTH_SECRET=$(openssl rand -hex 32)/" selfhost/.env.example > selfhost/.env
           echo "GUARD_SHADOW_URL=http://shieldstral:8080" >> selfhost/.env
+          echo "QWEN3GUARD_URL=http://qwen3guard:8080" >> selfhost/.env
           started=$(date +%s)
           (cd selfhost && docker compose --profile local --profile safety up -d --build --wait --wait-timeout 1500) 2>&1 | tee smoke-logs/up.log
           up=${PIPESTATUS[0]}
@@ -266,7 +267,7 @@ jobs:
             code=${PIPESTATUS[0]}
           else
             code=$up
-            (cd selfhost && docker compose --profile local --profile safety logs --no-color --tail 120 web shieldstral) > smoke-logs/up-failure.log 2>&1
+            (cd selfhost && docker compose --profile local --profile safety logs --no-color --tail 120 web shieldstral qwen3guard) > smoke-logs/up-failure.log 2>&1
           fi
           echo "code=$code" >> "$GITHUB_OUTPUT"
           echo "safety profile smoke exited $code" >> "$GITHUB_STEP_SUMMARY"
@@ -310,7 +311,7 @@ jobs:
 
   gpu-config:
     # selfhost/compose.gpu.yaml without a GPU, since no runner has one: .github/selfhost-gpu-config-check.sh
-    # requires `docker compose -f compose.yaml -f compose.gpu.yaml config` to give llama and shieldstral an
+    # requires `docker compose -f compose.yaml -f compose.gpu.yaml config` to give llama, shieldstral and qwen3guard an
     # NVIDIA device request, the pinned server-cuda image and LLAMA_ARG_N_GPU_LAYERS=all, compose.yaml alone
     # to give them none, and both llama.cpp pins to be the same release. Starts nothing. Whether a model
     # actually runs on a GPU is untested in CI. Blocking: a FAIL line fails the job.
