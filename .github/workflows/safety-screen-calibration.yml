@@ -7,7 +7,7 @@ name: safety screen calibration
 # uses) and runs web/src/lib/chat/server/detectors/safetyScreen.calibration.live.spec.ts against them.
 #
 # Report only: the job prints the table in its summary and never fails on a number. Trust and safety read
-# the table and decide (CLAUDE.md Tests and gates rule 7). A run that could not reach the classifiers
+# the table and decide; a new gate lands capture-and-warn. A run that could not reach the classifiers
 # annotates a warning.
 
 on:
@@ -133,9 +133,8 @@ jobs:
       - name: Keep the logs and the table
         if: always() && steps.up.outcome != 'skipped'
         continue-on-error: true
-        uses: ./.github/actions/artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          mode: upload
           name: safety-screen-calibration
           path: calibration-logs/
           retention-days: 14
