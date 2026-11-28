@@ -45,6 +45,7 @@ import { detectNameAdoption } from "$lib/chat/server/nameGuard";
 import { stripFenceTags, stripResponseTags } from "$lib/chat/server/textGeneration/grounding";
 import {
 	harassmentRuleJudge,
+	imageSexualUnansweredJudge,
 	childPictureJudge,
 	QUESTION_SAVE_DELAY_MS,
 	outputScreenWindowFaultMs,
@@ -1040,6 +1041,7 @@ export async function POST({ request, locals, params, getClientAddress }) {
 								// does for the output screen.
 								...(faultInjection === "input_guard_unreachable" ? { judge: unreachableGuardJudge } : {}),
 								...(faultInjection === "input_screen_declines_rule" ? { judge: harassmentRuleJudge } : {}),
+								...(faultInjection === "input_image_sexual_unanswered" ? { judge: imageSexualUnansweredJudge } : {}),
 								...(faultInjection === "input_screen_declines_child_picture" ? { judge: childPictureJudge } : {}),
 							},
 						}
