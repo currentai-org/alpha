@@ -35,7 +35,8 @@ import { recordRateLimitTrip, clearRateLimitTrip, recordCsamMatch } from "$lib/c
 import { reportCsamMatchToCoop, reportHitToCoop } from "$lib/chat/server/moderation";
 import { runInBackground } from "$lib/chat/server/vercelBackground";
 import { csamScanAllowsUploads, CsamScannerUnconfiguredError } from "./csamScan";
-import { scanFileForCsam } from "./embeddedImageScan";
+import { scanFileForCsam, type ScanTarget } from "./embeddedImageScan";
+import type { UploadKind } from "$lib/chat/constants/ragUpload";
 import {
 	memoKeyStore,
 	openCustodialObject,
@@ -423,12 +424,12 @@ async function screenUpload(owner: Owner, relativePath: string, content: Blob, o
 	// listing or download could reach it.
 	//
 	// An incomplete scanner config refuses every file, whatever its kind. With no scanner at all the
-	// file is taken and the scan logs that no hash check ran. A photo is scanned as itself and a PDF
-	// or DOCX by every picture inside it; a text file has none.
+	// file is taken and the scan logs that no hash check ran. A photo is scanned as itself and a PDF,
+	// office file, EPUB or RTF by every picture inside it; a text file has none.
 	// UnscannableFileError (a picture we cannot decode) propagates like the scanner being down.
 	if (!csamScanAllowsUploads()) throw new CsamScannerUnconfiguredError();
-	const scanTarget = kind === "image" || kind === "pdf" ? kind : kind === "docx" ? "office" : null;
-	if ((scanTarget === "pdf" || scanTarget === "office") && opts.documentsAllowed === false) {
+	const scanTarget = scanTargetForKind(kind);
+	if ((scanTarget === "pdf" || scanTarget === "office" || scanTarget === "rtf") && opts.documentsAllowed === false) {
 		throw new DocumentInputNotAllowedError();
 	}
 	const collected: Buffer[] = [];
@@ -537,6 +538,26 @@ async function sniffMime(header: Uint8Array): Promise<string | undefined> {
 		return (await fileTypeFromBuffer(header))?.mime;
 	} catch {
 		return undefined;
+	}
+}
+
+/** How a stored kind's pictures are checked. Every zip-based format is walked part by part. */
+function scanTargetForKind(kind: UploadKind): ScanTarget {
+	switch (kind) {
+		case "image":
+		case "pdf":
+		case "rtf":
+			return kind;
+		case "docx":
+		case "xlsx":
+		case "pptx":
+		case "odt":
+		case "ods":
+		case "odp":
+		case "epub":
+			return "office";
+		default:
+			return null;
 	}
 }
 

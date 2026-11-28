@@ -386,6 +386,49 @@ describe("uploadCustodialFile — CSAM scan ( fail closed per )", () => {
 		expect(uploadFile).not.toHaveBeenCalled();
 	});
 
+	it("stores a real spreadsheet, slide deck, OpenDocument, RTF, EPUB and JSON file, each scanned by the pictures inside it", async () => {
+		const office = (name: string) =>
+			new Blob([readFileSync(fileURLToPath(new URL(`../fixtures/office-formats/${name}`, import.meta.url)))]);
+		const { uploadCustodialFile } = await import("./custodialStorage");
+		const files: [string, Blob, boolean][] = [
+			["sheets/scores.xlsx", office("sheet.xlsx"), false],
+			// LibreOffice saves a thumbnail picture of the first sheet, and it is scanned too.
+			["sheets/scores.ods", office("sheet.ods"), true],
+			["slides/deck.pptx", office("slides-with-picture.pptx"), true],
+			["slides/deck.odp", office("slides-with-picture.odp"), true],
+			["docs/letter.odt", office("doc-with-picture.odt"), true],
+			["docs/letter.rtf", office("with-picture.rtf"), true],
+			["books/guide.epub", office("book-with-picture.epub"), true],
+			["data/scores.json", new Blob(['{"name":"ada","score":3}']), false],
+		];
+		for (const [path, blob, hasPicture] of files) {
+			vi.mocked(scanCsamHash).mockClear();
+			listFiles.mockReturnValue(asyncGen([]));
+			await uploadCustodialFile(ME, path, blob);
+			expect(uploadFile, `${path} was not stored`).toHaveBeenLastCalledWith(
+				expect.objectContaining({ file: { path: `users/${ME}/${path}`, content: blob } })
+			);
+			if (hasPicture) expect(scanCsamHash, `${path}'s picture never reached the scanner`).toHaveBeenCalled();
+			else expect(scanCsamHash).not.toHaveBeenCalled();
+		}
+	});
+
+	it("refuses a spreadsheet or RTF unopened for an account document-attachments does not select", async () => {
+		const office = (name: string) =>
+			new Blob([readFileSync(fileURLToPath(new URL(`../fixtures/office-formats/${name}`, import.meta.url)))]);
+		const { uploadCustodialFile, DocumentInputNotAllowedError } = await import("./custodialStorage");
+		for (const [path, name] of [
+			["sheets/scores.xlsx", "sheet.xlsx"],
+			["docs/letter.rtf", "with-picture.rtf"],
+		]) {
+			listFiles.mockReturnValue(asyncGen([]));
+			await expect(uploadCustodialFile(ME, path, office(name), { documentsAllowed: false })).rejects.toBeInstanceOf(
+				DocumentInputNotAllowedError
+			);
+		}
+		expect(uploadFile).not.toHaveBeenCalled();
+	});
+
 	it("refuses a PDF unopened for an account document-attachments does not select, and writes nothing", async () => {
 		listFiles.mockReturnValue(asyncGen([]));
 		const { uploadCustodialFile, DocumentInputNotAllowedError } = await import("./custodialStorage");

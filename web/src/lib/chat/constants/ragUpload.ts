@@ -3,7 +3,54 @@
 // it — the accept list, size caps, and file-kind mapping live in ONE place. Client checks are for
 // UX feedback only; the server re-sniffs and re-validates every byte (never trust the picker).
 
-export type UploadKind = "text" | "markdown" | "csv" | "json" | "html" | "pdf" | "docx" | "image";
+export type UploadKind =
+	| "text"
+	| "markdown"
+	| "csv"
+	| "json"
+	| "html"
+	| "pdf"
+	| "docx"
+	| "image"
+	// CUR-4664: kinds My files stores that the RAG admin path does not read to text (RAG_UPLOAD_KINDS).
+	| "xlsx"
+	| "pptx"
+	| "odt"
+	| "ods"
+	| "odp"
+	| "rtf"
+	| "epub";
+
+/** The kinds the RAG admin upload reads to text or captions. The rest of UploadKind is stored by My
+ *  files but has no extractor here, so the admin route refuses it as unsupported. */
+export const RAG_UPLOAD_KINDS: readonly UploadKind[] = ["text", "markdown", "csv", "json", "html", "pdf", "docx", "image"];
+
+/** Sniffed mime → kind for the binary formats that are not images (CUR-4664). The OOXML and ODF
+ *  formats and EPUB are zip containers; RTF has its own `{\rtf` signature. */
+const BINARY_MIME_KIND: Record<string, UploadKind> = {
+	"application/pdf": "pdf",
+	"application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+	"application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+	"application/vnd.oasis.opendocument.text": "odt",
+	"application/vnd.oasis.opendocument.spreadsheet": "ods",
+	"application/vnd.oasis.opendocument.presentation": "odp",
+	"application/rtf": "rtf",
+	"application/epub+zip": "epub",
+};
+
+/** Zip-container kinds by extension. A sniff that reads only a file's first few KB can see the zip
+ *  but not which format it is (an OOXML file whose [Content_Types].xml comes late); the name then
+ *  picks between them, and the archive walk still opens every part. */
+export const ZIP_KIND_BY_EXTENSION: Record<string, UploadKind> = {
+	docx: "docx",
+	xlsx: "xlsx",
+	pptx: "pptx",
+	odt: "odt",
+	ods: "ods",
+	odp: "odp",
+	epub: "epub",
+};
 
 /**
  * Photo types the known-abuse scanner (HMA) cannot hash: it answers HTTP 500 to a HEIC, and the
@@ -52,6 +99,13 @@ export const UPLOAD_MAX_BYTES: Record<UploadKind, number> = {
 	pdf: 4_000_000,
 	docx: 4_000_000,
 	image: 4_000_000,
+	xlsx: 4_000_000,
+	pptx: 4_000_000,
+	odt: 4_000_000,
+	ods: 4_000_000,
+	odp: 4_000_000,
+	rtf: 4_000_000,
+	epub: 4_000_000,
 };
 
 const EXT_KIND: Record<string, UploadKind> = {
@@ -97,7 +151,7 @@ export function classifyByMime(mime: string | undefined): UploadKind | null {
 	const m = (mime || "").toLowerCase().split(";")[0].trim();
 	if (!m) return null;
 	if (m.startsWith("image/")) return "image";
-	if (m === "application/pdf") return "pdf";
+	if (BINARY_MIME_KIND[m]) return BINARY_MIME_KIND[m];
 	if (m.includes("wordprocessingml")) return "docx";
 	if (m === "text/csv" || m === "text/tab-separated-values") return "csv";
 	if (m === "application/json" || m === "application/x-ndjson" || m === "application/jsonl")

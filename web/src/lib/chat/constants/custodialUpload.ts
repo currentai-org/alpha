@@ -128,17 +128,27 @@ export const CUSTODIAL_UPLOADS_PER_HOUR = 60;
 export const CUSTODIAL_RATE_WINDOW_MS = 60 * 60 * 1000;
 
 /**
- * What a person may store. Deliberately NARROWER than the RAG admin path's list: this is a
- * general-purpose file store a stranger uploads to, so the set is the one the design actually
- * shows (PDF, DOCX, TXT, CSV, PNG/JPG) rather than everything the extractor happens to parse.
+ * What a person may store. This is a general-purpose file store a stranger uploads to, so a kind is
+ * here only when every picture it can hold is checked: an image as itself, a PDF by walking it, the
+ * zip-based office formats and EPUB by walking every part of the archive, and an RTF by its embedded
+ * pictures (`embeddedImageScan.ts`). Spreadsheets, slides, OpenDocument, RTF, JSON
+ * and EPUB came in with CUR-4664, for the agent to open in its sandbox.
  * Enforced from a magic-byte sniff, never from the filename — see `resolveUploadKind`.
  */
 export const CUSTODIAL_ALLOWED_KINDS: readonly UploadKind[] = [
 	"text",
 	"markdown",
 	"csv",
+	"json",
 	"pdf",
 	"docx",
+	"xlsx",
+	"pptx",
+	"odt",
+	"ods",
+	"odp",
+	"rtf",
+	"epub",
 	"image",
 ] as const;
 
