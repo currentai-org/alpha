@@ -14,7 +14,7 @@
 # small host, not a ceiling. The summary prints the runner's CPU count and the image it ran.
 #
 # Started by the `load-run` label on a pull request (the pull request's tree, with the image its
-# deploy/compose.yaml names) or by workflow_dispatch. It reads no secret. Warn-only: nothing here fails
+# deploy/compose.yaml names), by `load-levels` for the load job alone, or by workflow_dispatch. It reads no secret. Warn-only: nothing here fails
 # the job on a number.
 name: Load and soak
 
@@ -43,7 +43,8 @@ env:
 jobs:
   load:
     name: Load the compose stack at 20 and 60 users
-    if: github.event_name == 'workflow_dispatch' || (github.event.label.name == 'load-run' && github.actor != 'dependabot[bot]')
+    # `load-levels` runs this job alone, without a new soak.
+    if: github.event_name == 'workflow_dispatch' || ((github.event.label.name == 'load-run' || github.event.label.name == 'load-levels') && github.actor != 'dependabot[bot]')
     # GitHub-hosted on purpose: the stack must not share a host with anything else.
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -73,7 +74,7 @@ jobs:
         working-directory: deploy
         run: |
           PG_POOL_MAX=10 docker compose up -d --wait --wait-timeout 300 web
-          docker compose exec -T web printenv PG_POOL_MAX
+          docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$(docker compose ps -q web)" | grep '^PG_POOL_MAX=10$'
           cd .. && bash deploy/loadtest/run-levels.sh pool-10
       - name: Stack logs
         if: always()
