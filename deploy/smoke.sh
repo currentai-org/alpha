@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Smoke one running Alpha web container: the health check, the model list, then one chat
-# turn as a signed-out guest, requiring a non-empty answer that no safety screen declined. Exits
-# non-zero on any failure.
+# turn as a signed-out guest, requiring a non-empty answer that no safety screen declined. Exits 3
+# when a safety screen declined the turn and 1 on any other failure, so a caller can retry an error
+# without retrying a decline.
 #
 #   deploy/smoke.sh                                  # against http://localhost:3000
 #   SMOKE_BASE=https://alpha.example deploy/smoke.sh
@@ -26,6 +27,7 @@ trap 'rm -rf "$tmp"' EXIT
 jar="$tmp/jar"
 out="$tmp/turn"
 fail() { echo "SMOKE FAIL: $*" >&2; exit 1; }
+declined() { echo "SMOKE FAIL: $*" >&2; exit 3; }
 hdr=()
 [ -z "${SMOKE_HEADER:-}" ] || hdr=(-H "$SMOKE_HEADER")
 
@@ -81,7 +83,7 @@ newid() { cat /proc/sys/kernel/random/uuid; }
 first_answer_id=$(newid)
 turn "$PROMPT" "$(newid)" "$first_answer_id" || fail "turn request failed (curl exit $?)"
 [ -z "$err" ] || fail "the turn ended on an error: $err"
-[ -z "$declined" ] || fail "the safety screen declined the turn ($declined), so no model answered it"
+[ -z "$declined" ] || declined "the safety screen declined the turn ($declined), so no model answered it"
 [ -n "$(tr -d '[:space:]' <<<"$answer")" ] || { head -c 2000 "$out" >&2; fail "empty answer"; }
 if [ -n "${SMOKE_EXPECT:-}" ] && ! grep -qF -- "$SMOKE_EXPECT" <<<"$answer"; then
 	fail "the answer does not contain the expected text: $answer"

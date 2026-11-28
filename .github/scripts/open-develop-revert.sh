@@ -7,11 +7,25 @@
 # Without it, this opens an issue linking the branch instead. Either way a maintainer merges or closes
 # it; nothing here merges. A pull request opened with this run's token starts no workflows, so its
 # checks run once someone closes and reopens it, or pushes to it.
+#
+# At most one an hour: when this job opened a revert in the last hour, a second red means the first did
+# not fix develop (or the revert itself is red), so it opens nothing, tells the alerts channel, and fails.
 set -euo pipefail
 sha=${GITHUB_SHA:?}
 short=${sha:0:8}
 branch="revert-develop-$short"
 subject=$(git log -1 --format=%s "$sha")
+
+since=$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)
+recent=$(gh api "repos/$GITHUB_REPOSITORY/pulls?state=all&sort=created&direction=desc&per_page=30" |
+	jq -r --arg since "$since" '[.[] | select((.head.ref | startswith("revert-develop-")) and .created_at >= $since)] | length')
+recent_issues=$(gh api "repos/$GITHUB_REPOSITORY/issues?state=all&since=$since&per_page=30" |
+	jq -r --arg since "$since" '[.[] | select(.pull_request == null and (.title | startswith("develop broke at")) and .created_at >= $since)] | length')
+if [ "$((recent + recent_issues))" -gt 0 ]; then
+	.github/scripts/tell-alerts.sh "🔴 develop failed its smoke again at $short within an hour of the last automatic revert, so no second revert was opened. The host is back on the build it served before; a person needs to look."
+	echo "::error::a revert was opened in the last hour, so this one is not; the host is back on the build it served before"
+	exit 1
+fi
 
 git config user.name "github-actions[bot]"
 git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
