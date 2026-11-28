@@ -401,6 +401,11 @@ async function* generateImpl(
 			};
 			continue;
 		}
+		// One web search started or came back, so the live log shows it running and then its count.
+		if (output.searchProgress) {
+			yield { type: MessageUpdateType.SearchProgress, ...output.searchProgress };
+			continue;
+		}
 		// The configured MCP servers' calls in this round, one update each, for the trace.
 		if (output.mcpCalls) {
 			for (const c of output.mcpCalls) {

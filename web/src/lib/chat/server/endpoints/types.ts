@@ -262,7 +262,7 @@ export interface NativeToolKit {
 }
 
 /** What a running tool call may show before it returns. */
-export type ToolRunFrame = Pick<TextGenerationStreamOutputSimplified, "sandboxWait">;
+export type ToolRunFrame = Pick<TextGenerationStreamOutputSimplified, "sandboxWait" | "searchProgress">;
 
 /** The frames a kit's running calls push, for the tool loop to read while they run (toolFrames.ts). */
 export interface ToolFrames {
@@ -287,6 +287,8 @@ export type TextGenerationStreamOutputSimplified = TextGenerationStreamOutput & 
 	toolRetrieval?: ToolRetrieval;
 	/** A code sandbox started waiting for a slot on a full host, or that wait ended. */
 	sandboxWait?: "waiting" | "ready";
+	/** One web search started or came back (MessageSearchProgressUpdate's fields). */
+	searchProgress?: { n: number; sources?: number; failed?: boolean };
 	/** The calculate calls code just evaluated, one per call, for the UI. */
 	calculations?: { expression: string; result?: string; error?: string; counts?: string }[];
 	/** One tool round's cost, evaluation through the next request's headers. */

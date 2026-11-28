@@ -393,9 +393,11 @@ export async function applyMessageUpdate(
 	// Append updates for audit/replay (streams too, to preserve ordering). AgentStep is a
 	// transient live-stack animation beat (the step history persists in the <think> block and
 	// the verified answer), so it streams to the client but is NOT written to the audit log.
+	// SearchProgress is the same: the live log's rows, which the webSearch stamp outlives.
 	if (
 		!(event.type === MessageUpdateType.Status && event.status === MessageUpdateStatus.KeepAlive) &&
-		event.type !== MessageUpdateType.AgentStep
+		event.type !== MessageUpdateType.AgentStep &&
+		event.type !== MessageUpdateType.SearchProgress
 	) {
 		message.updates?.push(event.type === MessageUpdateType.Stream ? { ...event } : event);
 	}

@@ -57,6 +57,11 @@ interface ChromeCopy {
 	thinking: (model: string) => string;
 	writing: (model: string) => string;
 	retrieved: (from: string, count: number) => string;
+	/** The nth web search on the live log, while it runs, once it brought sources, and when it
+	 *  did not finish. Numbered, never named by its query. */
+	searchRunning: (n: number) => string;
+	searchFound: (n: number, count: number) => string;
+	searchUnfinished: (n: number) => string;
 	declined: string;
 	failover: (from: string, to: string, skipped: boolean) => string;
 }
@@ -92,6 +97,9 @@ const EN: ChromeCopy = {
 	thinking: (m) => `${m} is computing…`,
 	writing: (m) => `${m} is writing the reply…`,
 	retrieved: (from, n) => `Retrieved from ${from} · ${n} source${n === 1 ? "" : "s"}`,
+	searchRunning: (n) => `Web search ${n}…`,
+	searchFound: (n, count) => `Web search ${n} · ${count} source${count === 1 ? "" : "s"}`,
+	searchUnfinished: (n) => `Web search ${n} · didn't finish`,
 	declined: "Declined by the safety screen",
 	failover: (from, to, skipped) => `${from} ${skipped ? "was skipped" : "didn't answer"} · switched to ${to} (backup)`,
 };
@@ -129,6 +137,9 @@ const COPY: Record<ChromeLanguage, ChromeCopy> = {
 		thinking: (m) => `${m} réfléchit…`,
 		writing: (m) => `${m} rédige la réponse…`,
 		retrieved: (from, n) => `Trouvé dans ${from} · ${n} source${n === 1 ? "" : "s"}`,
+		searchRunning: (n) => `Recherche web ${n}…`,
+		searchFound: (n, count) => `Recherche web ${n} · ${count} source${count === 1 ? "" : "s"}`,
+		searchUnfinished: (n) => `Recherche web ${n} · inachevée`,
 		declined: "Refusé par le filtre de sécurité",
 		failover: (from, to, skipped) =>
 			`${from} ${skipped ? "a été ignoré" : "n'a pas répondu"} · relais par ${to} (secours)`,
@@ -164,6 +175,9 @@ const COPY: Record<ChromeLanguage, ChromeCopy> = {
 		thinking: (m) => `${m} está pensando…`,
 		writing: (m) => `${m} está redactando la respuesta…`,
 		retrieved: (from, n) => `Encontrado en ${from} · ${n} fuente${n === 1 ? "" : "s"}`,
+		searchRunning: (n) => `Búsqueda web ${n}…`,
+		searchFound: (n, count) => `Búsqueda web ${n} · ${count} fuente${count === 1 ? "" : "s"}`,
+		searchUnfinished: (n) => `Búsqueda web ${n} · no terminó`,
 		declined: "Rechazado por el filtro de seguridad",
 		failover: (from, to, skipped) =>
 			`${from} ${skipped ? "se omitió" : "no respondió"} · cambio a ${to} (respaldo)`,
@@ -199,6 +213,9 @@ const COPY: Record<ChromeLanguage, ChromeCopy> = {
 		thinking: (m) => `${m} denkt nach…`,
 		writing: (m) => `${m} schreibt die Antwort…`,
 		retrieved: (from, n) => `Gefunden in ${from} · ${n} Quelle${n === 1 ? "" : "n"}`,
+		searchRunning: (n) => `Websuche ${n}…`,
+		searchFound: (n, count) => `Websuche ${n} · ${count} Quelle${count === 1 ? "" : "n"}`,
+		searchUnfinished: (n) => `Websuche ${n} · nicht abgeschlossen`,
 		declined: "Von der Sicherheitsprüfung abgelehnt",
 		failover: (from, to, skipped) =>
 			`${from} ${skipped ? "wurde übersprungen" : "hat nicht geantwortet"} · gewechselt zu ${to} (Ersatz)`,
@@ -234,6 +251,9 @@ const COPY: Record<ChromeLanguage, ChromeCopy> = {
 		thinking: (m) => `${m} sta ragionando…`,
 		writing: (m) => `${m} sta scrivendo la risposta…`,
 		retrieved: (from, n) => `Trovato in ${from} · ${n} font${n === 1 ? "e" : "i"}`,
+		searchRunning: (n) => `Ricerca web ${n}…`,
+		searchFound: (n, count) => `Ricerca web ${n} · ${count} font${count === 1 ? "e" : "i"}`,
+		searchUnfinished: (n) => `Ricerca web ${n} · non completata`,
 		declined: "Rifiutato dal filtro di sicurezza",
 		failover: (from, to, skipped) =>
 			`${from} ${skipped ? "è stato saltato" : "non ha risposto"} · passato a ${to} (riserva)`,
@@ -269,6 +289,9 @@ const COPY: Record<ChromeLanguage, ChromeCopy> = {
 		thinking: (m) => `${m} está pensando…`,
 		writing: (m) => `${m} está escrevendo a resposta…`,
 		retrieved: (from, n) => `Encontrado em ${from} · ${n} fonte${n === 1 ? "" : "s"}`,
+		searchRunning: (n) => `Pesquisa web ${n}…`,
+		searchFound: (n, count) => `Pesquisa web ${n} · ${count} fonte${count === 1 ? "" : "s"}`,
+		searchUnfinished: (n) => `Pesquisa web ${n} · não terminou`,
 		declined: "Recusado pelo filtro de segurança",
 		failover: (from, to, skipped) =>
 			`${from} ${skipped ? "foi ignorado" : "não respondeu"} · trocado para ${to} (reserva)`,
@@ -304,6 +327,9 @@ const COPY: Record<ChromeLanguage, ChromeCopy> = {
 		thinking: (m) => `${m} denkt na…`,
 		writing: (m) => `${m} schrijft het antwoord…`,
 		retrieved: (from, n) => `Gevonden in ${from} · ${n} bron${n === 1 ? "" : "nen"}`,
+		searchRunning: (n) => `Webzoekopdracht ${n}…`,
+		searchFound: (n, count) => `Webzoekopdracht ${n} · ${count} bron${count === 1 ? "" : "nen"}`,
+		searchUnfinished: (n) => `Webzoekopdracht ${n} · niet afgerond`,
 		declined: "Geweigerd door de veiligheidscontrole",
 		failover: (from, to, skipped) =>
 			`${from} ${skipped ? "is overgeslagen" : "gaf geen antwoord"} · overgeschakeld naar ${to} (reserve)`,

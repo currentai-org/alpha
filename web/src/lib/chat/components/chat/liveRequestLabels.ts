@@ -24,7 +24,13 @@
 // guessing the default would reintroduce the bug in the one state where we have the least evidence.
 
 import { resolveModelIdentity } from "$lib/chat/identity";
-import { SANDBOX_WAIT_PHASE, type FailoverReason } from "$lib/chat/types/MessageUpdate";
+import {
+	MessageUpdateType,
+	SANDBOX_WAIT_PHASE,
+	type FailoverReason,
+	type MessageSearchProgressUpdate,
+	type MessageUpdate,
+} from "$lib/chat/types/MessageUpdate";
 import { chromeCopy, type ChromeCopy } from "$lib/chat/chromeCopy";
 
 /** Said when nothing identifies the model yet. Deliberately generic — see the header. */
@@ -186,4 +192,37 @@ const ELAPSED_AFTER_MS = 5000;
  */
 export function elapsedLabel(ms: number): string {
 	return ms < ELAPSED_AFTER_MS ? "" : `${Math.floor(ms / 1000)}s`;
+}
+
+/** One web search of the turn as the live log shows it. */
+export type SearchRow = { key: string; text: string; mark: string };
+
+/**
+ * Each web search a native turn has run, in the order they started, by number: running, then how many
+ * sources it brought. Never its query, which could put a worrying question on screen before the model
+ * has decided whether to answer it. A turn can search for over a minute, and a bare "Searching the
+ * web…" reads the same whether that work is moving or hung. The rows go once the
+ * answer starts, like the rest of the log, and never show on a declined turn.
+ */
+export function searchRows(opts: {
+	updates?: readonly MessageUpdate[];
+	answered: boolean;
+	declined: boolean;
+	copy?: ChromeCopy;
+}): SearchRow[] {
+	if (opts.answered || opts.declined) return [];
+	const t = opts.copy ?? chromeCopy("en");
+	// Keyed by n, so a search's return replaces its start and keeps the start's place in the order.
+	const byN = new Map<number, MessageSearchProgressUpdate>();
+	for (const u of opts.updates ?? []) if (u.type === MessageUpdateType.SearchProgress) byN.set(u.n, u);
+	return [...byN.values()].map((s) => ({
+		key: `search-${s.n}`,
+		text:
+			s.sources === undefined
+				? t.searchRunning(s.n)
+				: s.failed
+					? t.searchUnfinished(s.n)
+					: t.searchFound(s.n, s.sources),
+		mark: s.sources === undefined ? "○" : s.failed ? "✕" : "✓",
+	}));
 }

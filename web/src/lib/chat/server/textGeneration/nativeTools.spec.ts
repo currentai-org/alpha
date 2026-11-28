@@ -625,3 +625,78 @@ describe("a query in another non-English language than the person's is sent back
 		expect(e.seen).toEqual([{ engine: "web", query: "diseñador del Park Güell" }]);
 	});
 });
+
+// A turn can search for over a minute, so each search shows on the live log as it starts and
+// again when it comes back with its count, by number and never by query. The frames stream while the
+// search runs, not after.
+describe("each web search streams a progress frame when it starts and when it comes back", () => {
+	const progress = (outputs: Awaited<ReturnType<typeof run>>) =>
+		outputs.filter((o) => o.searchProgress).map((o) => o.searchProgress);
+
+	it("streams a frame as the search starts, before the search has returned, and never the query", async () => {
+		const e = engines();
+		let returned = false;
+		e.web.mockImplementationOnce(async (query: string) => {
+			await new Promise((resolve) => setTimeout(resolve, 300));
+			returned = true;
+			return { query, merged: [hit("https://w/1", query)], asOf: "2026-10-29", relevanceVerified: true };
+		});
+		stub([call("web_search", { query: "eu ai act news" }, "c1"), answer("ok")]);
+		const endpoint = await endpointOai({
+			type: "openai",
+			baseURL: "https://api.mistral.ai/v1",
+			apiKey: "sk-test",
+			model: { id: MODEL, name: MODEL, parameters: {}, supportsTools: true },
+		});
+		const stream = await endpoint({
+			messages: [{ from: "user", content: "eu ai act news?" }],
+			locals: undefined,
+			servesUserAnswer: true,
+			nativeTools: nativeToolKit({ locals: undefined, web: true, engines: e as never }),
+		} as Parameters<typeof endpoint>[0]);
+		const seen: Array<{ frame: unknown; returned: boolean }> = [];
+		for await (const o of stream) if (o.searchProgress) seen.push({ frame: o.searchProgress, returned });
+		expect(JSON.stringify(seen)).not.toContain("eu ai act");
+		expect(seen).toEqual([
+			{ frame: { n: 1 }, returned: false },
+			{ frame: { n: 1, sources: 1 }, returned: true },
+		]);
+	});
+
+	it("numbers searches across rounds and counts an empty one as 0 and an unfinished one as failed", async () => {
+		const e = engines();
+		e.web
+			.mockImplementationOnce(async (query: string) => ({
+				query,
+				merged: [hit("https://w/1", query), hit("https://w/2", query)],
+				asOf: "2026-10-29",
+				relevanceVerified: true,
+			}))
+			.mockResolvedValueOnce({ query: "b", merged: [], asOf: "", relevanceVerified: true })
+			.mockImplementationOnce(async (_q: string, o?: WebOpts) => {
+				o?.onFailed?.("timeout");
+				return undefined as never;
+			});
+		stub([
+			call("web_search", { query: "a" }, "c1"),
+			call("web_search", { query: "b" }, "c2"),
+			call("web_search", { query: "c" }, "c3"),
+			answer("done"),
+		]);
+		const outputs = await run(nativeToolKit({ locals: undefined, web: true, engines: e as never }));
+		expect(progress(outputs)).toEqual([
+			{ n: 1 },
+			{ n: 1, sources: 2 },
+			{ n: 2 },
+			{ n: 2, sources: 0 },
+			{ n: 3 },
+			{ n: 3, sources: 0, failed: true },
+		]);
+	});
+
+	it("streams nothing for a turn that searched nothing", async () => {
+		stub([call("search_catalog", { query: "project X" }, "c1"), answer("ok")]);
+		const outputs = await run(nativeToolKit({ locals: undefined, web: true, engines: engines() as never }));
+		expect(progress(outputs)).toEqual([]);
+	});
+});

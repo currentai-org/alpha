@@ -148,3 +148,32 @@ describe("the sandbox_call_hangs fault", () => {
 		await expect(pending).rejects.toBeDefined();
 	});
 });
+
+// The native kit's search rows and the sandbox's wait both stream while a round runs, so composing the
+// two kits must read both kits' frames, not only the sandbox's.
+describe("composeKits reads the frames of both kits", () => {
+	it("yields a frame the base kit pushes and one the MCP kit pushes during the same round", async () => {
+		const { composeKits } = await import("./serversKit");
+		const { toolFrames } = await import("../endpoints/toolFrames");
+		const kit = (frames: ReturnType<typeof toolFrames>) => ({
+			label: "k",
+			definitions: [],
+			run: async () => ({ content: "" }),
+			frames,
+		});
+		const base = toolFrames();
+		const extra = toolFrames();
+		const composed = composeKits(kit(base), kit(extra));
+		const running = new Promise<void>((resolve) =>
+			setTimeout(() => {
+				base.push({ searchProgress: { n: 1 } });
+				extra.push({ sandboxWait: "waiting" });
+				setTimeout(resolve, 20);
+			}, 10)
+		);
+		const seen = [];
+		for await (const frame of framesWhile(running, composed.frames!)) seen.push(frame);
+		expect(seen).toEqual(expect.arrayContaining([{ searchProgress: { n: 1 } }, { sandboxWait: "waiting" }]));
+		expect(seen).toHaveLength(2);
+	});
+});

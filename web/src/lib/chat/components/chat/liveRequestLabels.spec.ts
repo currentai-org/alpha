@@ -11,9 +11,11 @@ import {
 	latchModelLabel,
 	liveActiveLine,
 	liveModelLabel,
+	searchRows,
 	UNKNOWN_MODEL_LABEL
 } from './liveRequestLabels';
 import { chromeCopy } from '$lib/chat/chromeCopy';
+import { MessageUpdateType, type MessageUpdate } from '$lib/chat/types/MessageUpdate';
 
 // The copy itself is the contract, so the spec states it rather than importing it.
 const PRE_PHASE_LINE = 'Working on it…';
@@ -354,5 +356,39 @@ describe('elapsedLabel — a step that holds says how long it has run', () => {
 	it('counts whole seconds from five on', () => {
 		expect(elapsedLabel(5000)).toBe('5s');
 		expect(elapsedLabel(44_800)).toBe('44s');
+	});
+});
+
+describe('searchRows — each web search shows by number while it runs, then its count, never its query', () => {
+	const started = (n: number) => ({ type: MessageUpdateType.SearchProgress, n }) as MessageUpdate;
+	const came = (n: number, sources: number, failed?: boolean) =>
+		({ type: MessageUpdateType.SearchProgress, n, sources, ...(failed ? { failed } : {}) }) as MessageUpdate;
+
+	it('shows a running search, and replaces it in place with its count once it returns', () => {
+		const updates = [started(1), started(2), came(1, 6)];
+		expect(searchRows({ updates, answered: false, declined: false })).toEqual([
+			{ key: 'search-1', text: 'Web search 1 · 6 sources', mark: '✓' },
+			{ key: 'search-2', text: 'Web search 2…', mark: '○' }
+		]);
+	});
+
+	it('says one source, and says a search that did not finish', () => {
+		const updates = [came(1, 1), came(2, 0, true)];
+		expect(searchRows({ updates, answered: false, declined: false }).map((r) => r.text)).toEqual([
+			'Web search 1 · 1 source',
+			"Web search 2 · didn't finish"
+		]);
+	});
+
+	it('shows nothing once the answer is streaming, and nothing on a declined turn', () => {
+		const updates = [came(1, 3)];
+		expect(searchRows({ updates, answered: true, declined: false })).toEqual([]);
+		expect(searchRows({ updates, answered: false, declined: true })).toEqual([]);
+	});
+
+	it("follows the visitor's chrome language", () => {
+		expect(searchRows({ updates: [came(1, 3)], answered: false, declined: false, copy: chromeCopy('es') })[0].text).toBe(
+			'Búsqueda web 1 · 3 fuentes'
+		);
 	});
 });
