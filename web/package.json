@@ -10,6 +10,7 @@
 		"build": "vite build",
 		"build:operator-cli": "vite build -c vite.operator-cli.config.ts",
 		"gen:models-snapshot": "node scripts/gen-models-snapshot.mjs",
+		"gen:served-backends": "vite-node --options.transformMode.ssr='/.*/' scripts/gen-served-backends.ts --write",
 		"build:static": "ADAPTER=static vite build",
 		"preview": "vite preview",
 		"prepare": "node scripts/compile-i18n.mjs --if-installed && (svelte-kit sync || true)",
