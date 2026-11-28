@@ -2,7 +2,7 @@
 	import { enhance } from "$app/forms";
 	import { Badge, Button, Field, Inline, Stack, Toggle, ToggleGroup } from "@aipotluck/alpha-ds";
 	import { page } from "$app/state";
-	import { base, CHAT_API_PATH } from "$lib/chat/paths";
+	import { base, CHAT_API_PATH, mcpConnectPath } from "$lib/chat/paths";
 	import { mcpToolPolicyFor, type McpToolPolicy } from "$lib/chat/mcpToolPolicy";
 	import type { ActionData, PageData } from "./$types";
 
@@ -41,6 +41,18 @@
 		if (err === "denied") return "Google wasn’t connected: you cancelled on Google’s screen.";
 		if (err === "scopes") return "Google wasn’t connected: Gmail and Calendar both need to be ticked on Google’s screen.";
 		if (err) return "Google couldn’t be connected just now. Try again.";
+		return undefined;
+	});
+
+	// What the sign-in callback for a server of the person's own sent back
+	// (api/connectors/mcp/callback/+server.ts). Cleared by any later action, like the Google note.
+	const mcpNote = $derived.by(() => {
+		if (googleNoteCleared) return undefined;
+		const q = page.url.searchParams;
+		if (q.get("mcp") === "connected") return "Your server is connected.";
+		const err = q.get("mcp_error");
+		if (err === "denied") return "Your server wasn’t connected: you cancelled on its sign-in page.";
+		if (err) return "Your server couldn’t be connected just now. Try again.";
 		return undefined;
 	});
 
@@ -134,6 +146,10 @@
 		</section>
 	{/if}
 
+	{#if mcpNote}
+		<p class="m-0 type-body text-fg-1" role="status" data-connector-mcp-note>{mcpNote}</p>
+	{/if}
+
 	{#if data.servers.length === 0}
 		<p class="type-body text-fg-2" data-connectors-empty>No services are connected to this chat yet.</p>
 	{/if}
@@ -145,17 +161,39 @@
 				<span class="type-caption text-fg-2">{server.host}</span>
 			</div>
 			<div class="flex flex-wrap items-center justify-between gap-2">
-				<span class="type-caption text-fg-2" data-connector-status={server.tools.length > 0 ? "connected" : "unreachable"}>
-					{#if server.tools.length > 0}Connected · {server.tools.length} {server.tools.length === 1 ? "tool" : "tools"}{:else}Not answering{/if}
+				<span
+					class="type-caption text-fg-2"
+					data-connector-status={server.signIn ?? (server.tools.length > 0 ? "connected" : "unreachable")}
+				>
+					{#if server.signIn === "connect"}Not signed in{:else if server.signIn === "reconnect"}Signed out{:else if server.tools.length > 0}Connected · {server.tools.length} {server.tools.length === 1 ? "tool" : "tools"}{:else}Not answering{/if}
 				</span>
 				{#if server.ownId}
-					<form method="POST" action="?/remove" use:enhance={clearGoogleNote}>
-						<input type="hidden" name="id" value={server.ownId} />
-						<Button type="submit" variant="secondary" size="sm" aria-label="Remove {server.name}">Remove</Button>
-					</form>
+					<Inline justify="end">
+						{#if server.signIn}
+							<!-- A full page load: the connect route sends the browser on to the server's own sign-in page. -->
+							<Button
+								href={mcpConnectPath(server.ownId)}
+								variant="primary"
+								size="sm"
+								data-sveltekit-reload
+								aria-label="{server.signIn === 'connect' ? 'Connect' : 'Reconnect'} {server.name}"
+								>{server.signIn === "connect" ? "Connect" : "Reconnect"}</Button
+							>
+						{/if}
+						<form method="POST" action="?/remove" use:enhance={clearGoogleNote}>
+							<input type="hidden" name="id" value={server.ownId} />
+							<Button type="submit" variant="secondary" size="sm" aria-label="Remove {server.name}">Remove</Button>
+						</form>
+					</Inline>
 				{/if}
 			</div>
-			{#if server.tools.length === 0}
+			{#if server.signIn === "connect"}
+				<p class="type-body text-fg-2">Sign in to this server to let chat use its tools.</p>
+			{:else if server.signIn === "reconnect"}
+				<p class="type-body text-fg-2">
+					Your sign-in to this server stopped working, so its tools are left out of chat. Reconnect to sign in again.
+				</p>
+			{:else if server.tools.length === 0}
 				<p class="type-body text-fg-2">This service didn’t answer just now, so its tools aren’t listed. They’re left out of chat until it does.</p>
 			{:else}
 				<ul class="flex flex-col gap-3" aria-label="Tools on {server.name}">

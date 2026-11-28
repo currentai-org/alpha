@@ -14,7 +14,7 @@ import { configuredMcpServers, mcpServersEnabled } from "$lib/chat/server/mcp/se
 import { isReadOnly, listServerTools } from "$lib/chat/server/mcp/serverTools";
 import { readMcpToolPolicies, serversForRequest } from "$lib/chat/server/mcp/turnKit";
 import { checkNewServer, sealServerToken, userServerConfigs } from "$lib/chat/server/mcp/userServers";
-import { serverUsesOAuth } from "$lib/chat/server/mcp/oauthConnect";
+import { oauthStateOf, serverUsesOAuth } from "$lib/chat/server/mcp/oauthConnect";
 import {
 	createUserMcpServer,
 	deleteUserMcpServer,
@@ -49,7 +49,16 @@ export const load: PageServerLoad = async ({ locals, request }) => {
 	const servers = googleServer ? [...general.filter((s) => s.name !== GOOGLE_SERVER_NAME), googleServer] : general;
 	const googleRow = googleOn && accountId ? await getUserGoogleConnection(accountId) : null;
 	const ownIdByName = new Map(ownRows.map((r) => [r.name, r.id]));
+	// An OAuth server with no tokens yet offers Connect; one whose sign-in stopped working offers
+	// Reconnect. Neither is in `general`, which holds only servers a turn can reach.
+	const signInOf = (row: UserMcpServerRow): "connect" | "reconnect" | null => {
+		if (row.authKind !== "oauth") return null;
+		if (!oauthStateOf(row).tokens?.access_token) return "connect";
+		return row.needsReconnect ? "reconnect" : null;
+	};
 	const [tools, policies] = await Promise.all([listServerTools(servers), readMcpToolPolicies(locals)]);
+	const listed = new Set(servers.map((s) => s.name));
+	const signInRows = ownRows.filter((r) => !listed.has(r.name) && signInOf(r) !== null);
 	return {
 		signedIn: Boolean(accountId),
 		mcpServers,
@@ -62,21 +71,31 @@ export const load: PageServerLoad = async ({ locals, request }) => {
 					driveMissing: googleRow ? googleGrantLacksDrive(googleRow.scopes) : false,
 				}
 			: null,
-		servers: servers.map((s) => ({
-			name: s.name,
-			// The host only: a path or query string can carry something an operator would not show.
-			host: new URL(s.url).host,
-			// Set for a server the person added, which they can remove; absent for the operator's.
-			ownId: ownIdByName.get(s.name) ?? null,
-			tools: tools
-				.filter((t) => t.server === s.name)
-				.map((t) => ({
-					fnName: t.fnName,
-					name: t.tool,
-					description: t.definition.function.description.replace(`[${t.server}] `, ""),
-					readOnly: isReadOnly(t),
-				})),
-		})),
+		servers: [
+			...servers.map((s) => ({
+				name: s.name,
+				// The host only: a path or query string can carry something an operator would not show.
+				host: new URL(s.url).host,
+				// Set for a server the person added, which they can remove; absent for the operator's.
+				ownId: ownIdByName.get(s.name) ?? null,
+				signIn: null as "connect" | "reconnect" | null,
+				tools: tools
+					.filter((t) => t.server === s.name)
+					.map((t) => ({
+						fnName: t.fnName,
+						name: t.tool,
+						description: t.definition.function.description.replace(`[${t.server}] `, ""),
+						readOnly: isReadOnly(t),
+					})),
+			})),
+			...signInRows.map((row) => ({
+				name: row.name,
+				host: new URL(row.url).host,
+				ownId: row.id,
+				signIn: signInOf(row),
+				tools: [] as { fnName: string; name: string; description: string; readOnly: boolean }[],
+			})),
+		],
 		policies,
 	};
 };
