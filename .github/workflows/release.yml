@@ -1,0 +1,68 @@
+# Keeps a release pull request open on main with release-please (googleapis/release-please-action,
+# Apache-2.0). It reads the conventional-commit titles merged since the last release, picks the next
+# semver version, and writes CHANGELOG.md and version.txt. Merging that pull request tags main vX.Y.Z and
+# writes a GitHub release; the tag then starts deploy.yml's production deploy and image.yml's signed image.
+# release-please-config.json and .release-please-manifest.json hold its settings and the current version.
+# release-please finds the current version through the GitHub release named in the manifest, so a release a
+# maintainer tags by hand also needs that GitHub release, created on the tag, and the manifest set to its
+# version, or the next release pull request proposes the same version again.
+#
+# It runs as a GitHub App, not GITHUB_TOKEN: a pull request opened with GITHUB_TOKEN runs no checks, so it
+# could never pass the merge queue, and a tag pushed with it starts no workflow, so nothing would deploy.
+# The `release` environment admits only main and holds the app's client id (variable RELEASE_APP_CLIENT_ID)
+# and private key (secret RELEASE_APP_PRIVATE_KEY); the app needs contents, pull requests and issues
+# (labels) write on this repository only. A fork or a copy without them gets a notice and releases nothing.
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    name: Release pull request
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: release
+    steps:
+      - name: Is a release app configured
+        id: configured
+        env:
+          CLIENT_ID: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+        run: |
+          if [ -z "$CLIENT_ID" ] || [ -z "$KEY" ]; then
+            echo "::notice title=release skipped::RELEASE_APP_CLIENT_ID or RELEASE_APP_PRIVATE_KEY (release environment) is not set, so no release pull request was opened."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        id: app
+        if: steps.configured.outputs.run == 'true'
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: write
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        id: release
+        if: steps.configured.outputs.run == 'true'
+        with:
+          token: ${{ steps.app.outputs.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+      - name: Summary
+        if: steps.release.outputs.release_created == 'true'
+        env:
+          TAG: ${{ steps.release.outputs.tag_name }}
+        run: echo "released $TAG; deploy.yml and image.yml run from the tag" >> "$GITHUB_STEP_SUMMARY"

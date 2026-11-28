@@ -19,12 +19,21 @@ When development moves here, the model is trunk-based:
 - Branch off `main`, keep the branch short-lived, and open a pull request. The merge queue merges it
   once its checks pass. There is no long-lived `develop` or `release` branch. A maintenance branch
   `release/vX.Y` appears only when an older line needs a patch.
-- A release is a semver tag, `v0.x.y`; there are no date tags. A release pull request writes the
-  changelog and calls out any database migration and any breaking configuration change.
+- A pull request's title is a conventional commit (`fix: …`, `feat(chat): …`, `!` before the colon for
+  a breaking change), because it becomes the squash commit that the changelog is built from.
+- A release is a semver tag, `v0.x.y`; there are no date tags. release-please keeps a release pull
+  request open on `main` with the next version and `CHANGELOG.md`. Before merging it, add any database
+  migration or breaking configuration change to its notes. Merging it tags `main`, and that cuts the
+  release.
+- Until `v0.3.0`, releases are previews: each one is the next `v0.3.0-preview.N`, deployed and imaged
+  like any release. At the feature freeze, set `prerelease-type` in `release-please-config.json` to
+  `rc` and merge a commit whose message ends in a `Release-As: 0.3.0-rc.1` line. To cut `v0.3.0`
+  itself, end one in `Release-As: 0.3.0`, then set `versioning` back to `default` and `prerelease` to
+  `false`.
 - Each tag gets one container image on GHCR, signed with cosign, with an SBOM and a provenance
   attestation. The `main` tag is the edge build.
-- The hosted instance deploys the way a self-hoster would: `main` goes to staging, and production moves
-  when a tag is cut.
+- The hosted instance deploys the way a self-hoster would: every merge to `main` deploys to its develop
+  host, and a release tag deploys production (`.github/workflows/deploy.yml`).
 - If you run Alpha yourself, pin a tag or a digest, not `main`.
 
 ## Report an issue
