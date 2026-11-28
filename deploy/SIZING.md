@@ -45,6 +45,32 @@ On Vercel, the build puts the functions beside the Neon host in `DATABASE_URL` u
 `FUNCTION_REGION` names a region (`web/src/lib/functionRegion.js`). For any other host, set
 `FUNCTION_REGION` to the database's region.
 
+## The compose stack on one host
+
+`deploy/compose.yaml` on one GitHub-hosted runner (4 vCPU, 16 GB), with aimock as the model, so again no
+inference ran. The same k6 script and guests, 3-minute holds. The load generator shares the runner's CPUs,
+so the bend below is where this box bends, k6 included.
+
+| Answers | Users | Turns/min | Turn p50 | Turn p95 | First byte p95 | Errors | Peak DB connections |
+| ------- | ----- | --------- | -------- | -------- | -------------- | ------ | ------------------- |
+| instant | 60    | 704       | 0.11 s   | 0.12 s   | 0.01 s         | 0%     | 1                   |
+| instant | 150   | 1,759     | 0.11 s   | 0.12 s   | 0.01 s         | 0%     | 1                   |
+| instant | 300   | 3,190     | 0.26 s   | 2.2 s    | 1.0 s          | 0%     | 1                   |
+| instant | 600   | 2,947     | 7.3 s    | 10.8 s   | 5.2 s          | 0%     | 1                   |
+| paced   | 60    | 549       | 1.6 s    | 1.6 s    | 0.02 s         | 0%     | 2                   |
+| paced   | 150   | 1,359     | 1.6 s    | 1.8 s    | 0.15 s         | 0%     | 1                   |
+| paced   | 300   | 1,685     | 5.7 s    | 8.2 s    | 3.3 s          | 0%     | 1                   |
+| paced   | 600   | 1,601     | 17.3 s   | 19.7 s   | 10.2 s         | 2.0%   | 1                   |
+
+"Paced" answers stream for about 1.6 s each (`deploy/loadtest/slow-model/`). No turn was declined.
+`PG_POOL_MAX` was unset, as the stack ships. At 20 and 60 users with instant answers, setting it to 10 made no
+measurable difference (p95 125 ms against 126 ms).
+
+**About 150 concurrent users on one 4-vCPU host, limiter not yet identified.** Up to 150 the stack answers
+every turn offered at full speed; at 300 turns queue, and at 600 it answers fewer turns than at 300. The
+single database connection, the single Node process and k6's share of the CPUs are all candidates, and this
+run cannot tell them apart. Runs 46100795711 (levels) and 46109899970 (the climb).
+
 ## Database size
 
 From production, read as aggregates only, on 2026-11-06:
