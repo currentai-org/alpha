@@ -86,6 +86,7 @@ export type FaultInjectionName =
 	| 'google_connector_stub'
 	| 'mcp_oauth_stub'
 	| 'mcp_oauth_stub_signed_out'
+	| 'mcp_oauth_stub_expiring'
 	| 'sandbox_host_full'
 	| 'input_screen_unfinished'
 	| 'agent_route_down'

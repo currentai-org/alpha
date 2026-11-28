@@ -7,10 +7,15 @@
 //
 // The stand-in keeps no state, so every process answers a request the same way: the authorization
 // code is the PKCE challenge itself (the spec answers the consent screen with it), and the token
-// endpoint checks it against the verifier the SDK sends.
+// endpoint checks it against the verifier the SDK sends. Each token carries the time it was issued,
+// and the tool's description names the time of the access token the server was reached with, so a spec
+// can see which sign-in the app sent.
 //
 // `mcp_oauth_stub_signed_out` is the same provider after the person took the app off their account
 // there: it refuses the access token at the MCP server and the refresh token at the token endpoint.
+//
+// `mcp_oauth_stub_expiring` is the same provider with short-lived access tokens: the MCP server answers
+// 401 to an access token issued more than five seconds ago, and the refresh token still refreshes.
 import { createHash } from "node:crypto";
 import { ssrfStrictFetch } from "$lib/chat/server/urlSafety";
 import type { FaultInjectionName } from "$lib/chat/server/textGeneration/faultInjection";
@@ -26,15 +31,39 @@ const REGISTRATION_ENDPOINT = `${MCP_OAUTH_STUB_ORIGIN}/register`;
 const CLIENT_ID = "e2e-mcp-oauth-client";
 const ACCESS_TOKEN = "e2e-mcp-oauth-access";
 const REFRESH_TOKEN = "e2e-mcp-oauth-refresh";
+/** How long an access token lasts under `mcp_oauth_stub_expiring`. */
+export const MCP_OAUTH_STUB_EXPIRING_MS = 5_000;
 /** The fact only the stand-in's tool returns. */
 export const MCP_OAUTH_STUB_FACT = "the shed key is under the blue pot";
 
-const FIXTURE: McpFixture = {
+/** A token of `kind` issued now: `<kind>.<issued at, in ms>`. */
+const issue = (kind: string, now: number) => `${kind}.${now}`;
+
+/** When a token of `kind` was issued, or null for anything the stand-in did not issue. */
+function issuedAt(kind: string, token: string | null | undefined): number | null {
+	const m = token?.match(/^([\w-]+)\.(\d+)$/);
+	return m && m[1] === kind ? Number(m[2]) : null;
+}
+
+function tokens(now: number) {
+	return {
+		access_token: issue(ACCESS_TOKEN, now),
+		token_type: "Bearer",
+		expires_in: 3600,
+		refresh_token: issue(REFRESH_TOKEN, now),
+	};
+}
+
+/** The tool's description, naming when the access token the server was reached with was issued. */
+export const mcpOAuthStubToolDescription = (signedInAt: number) =>
+	`Read one of the person's notes, by its title. Signed in at ${signedInAt}.`;
+
+const fixtureFor = (signedInAt: number): McpFixture => ({
 	serverName: "mcp-oauth-e2e-stub",
 	tools: [
 		{
 			name: "read_note",
-			description: "Read one of the person's notes, by its title.",
+			description: mcpOAuthStubToolDescription(signedInAt),
 			inputSchema: {
 				type: "object",
 				properties: { title: { type: "string", description: "The note's title" } },
@@ -47,8 +76,7 @@ const FIXTURE: McpFixture = {
 		tool === "read_note"
 			? { content: [{ type: "text", text: `Note: ${MCP_OAUTH_STUB_FACT}.` }] }
 			: { content: [{ type: "text", text: `unknown tool ${tool}` }], isError: true },
-};
-const answerMcp = fixtureFetch(FIXTURE);
+});
 
 function json(status: number, body: unknown): Response {
 	return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -66,9 +94,11 @@ async function bodyText(init: RequestInit | undefined): Promise<string> {
 
 /**
  * The MCP server and its authorization server, answered in-process. `signedOut`: the person took the
- * app off their account at the provider, so neither token works any more.
+ * app off their account at the provider, so neither token works any more. `accessLifetimeMs`: the MCP
+ * server refuses an access token issued longer ago than this; with none, an access token never expires.
  */
-export function mcpOAuthStubFetch(opts: { signedOut: boolean }): FetchLike {
+export function mcpOAuthStubFetch(opts: { signedOut: boolean; accessLifetimeMs?: number; now?: () => number }): FetchLike {
+	const now = opts.now ?? Date.now;
 	return async (input, init) => {
 		const url = new URL(String(input));
 		if (url.origin !== MCP_OAUTH_STUB_ORIGIN) return json(404, { error: "not_found" });
@@ -101,20 +131,33 @@ export function mcpOAuthStubFetch(opts: { signedOut: boolean }): FetchLike {
 				if (!code || !verifier || s256(verifier) !== code || form.get("client_id") !== CLIENT_ID) {
 					return json(400, { error: "invalid_grant" });
 				}
-				return json(200, { access_token: ACCESS_TOKEN, token_type: "Bearer", expires_in: 3600, refresh_token: REFRESH_TOKEN });
+				return json(200, tokens(now()));
 			}
-			if (grant === "refresh_token" && !opts.signedOut && form.get("refresh_token") === REFRESH_TOKEN) {
-				return json(200, { access_token: ACCESS_TOKEN, token_type: "Bearer", expires_in: 3600, refresh_token: REFRESH_TOKEN });
+			if (grant === "refresh_token" && !opts.signedOut && issuedAt(REFRESH_TOKEN, form.get("refresh_token")) !== null) {
+				return json(200, tokens(now()));
 			}
 			return json(400, { error: "invalid_grant" });
 		}
 		if (path === "/mcp") {
 			const bearer = new Headers(init?.headers).get("authorization");
-			if (opts.signedOut || bearer !== `Bearer ${ACCESS_TOKEN}`) return new Response(null, { status: 401 });
-			return answerMcp(url, init);
+			const signedInAt = bearer?.startsWith("Bearer ") ? issuedAt(ACCESS_TOKEN, bearer.slice(7)) : null;
+			if (opts.signedOut || signedInAt === null) return new Response(null, { status: 401 });
+			if (opts.accessLifetimeMs !== undefined && now() - signedInAt > opts.accessLifetimeMs) {
+				return new Response(null, { status: 401 });
+			}
+			return fixtureFetch(fixtureFor(signedInAt))(url, init);
 		}
 		return json(404, { error: "not_found" });
 	};
+}
+
+/** The faults that answer the stand-in's host in-process. */
+export function isMcpOAuthStubFault(faultInjection: FaultInjectionName | null | undefined): boolean {
+	return (
+		faultInjection === "mcp_oauth_stub" ||
+		faultInjection === "mcp_oauth_stub_signed_out" ||
+		faultInjection === "mcp_oauth_stub_expiring"
+	);
 }
 
 /**
@@ -123,8 +166,11 @@ export function mcpOAuthStubFetch(opts: { signedOut: boolean }): FetchLike {
  * still goes through the guard. The fault arrives here only after faultInjection.ts's gate passed.
  */
 export function mcpOAuthFetchFor(faultInjection: FaultInjectionName | null | undefined): FetchLike {
-	if (faultInjection !== "mcp_oauth_stub" && faultInjection !== "mcp_oauth_stub_signed_out") return ssrfStrictFetch;
-	const stub = mcpOAuthStubFetch({ signedOut: faultInjection === "mcp_oauth_stub_signed_out" });
+	if (!isMcpOAuthStubFault(faultInjection)) return ssrfStrictFetch;
+	const stub = mcpOAuthStubFetch({
+		signedOut: faultInjection === "mcp_oauth_stub_signed_out",
+		...(faultInjection === "mcp_oauth_stub_expiring" ? { accessLifetimeMs: MCP_OAUTH_STUB_EXPIRING_MS } : {}),
+	});
 	return (input, init) =>
 		new URL(String(input)).origin === MCP_OAUTH_STUB_ORIGIN ? stub(input, init) : ssrfStrictFetch(input, init);
 }

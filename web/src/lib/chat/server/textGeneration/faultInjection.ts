@@ -272,9 +272,11 @@ export const FAULT_NAMES = [
 	// A person's own MCP server that signs them in with OAuth, and its authorization server, answered
 	// in-process (mcp/oauthE2eStub.ts), on the add form, the connect and callback routes, the connectors
 	// page and the turn. The `_signed_out` variant is the same provider after the person took the app off
-	// their account there: it refuses the access token and the refresh token.
+	// their account there: it refuses the access token and the refresh token. The `_expiring` variant
+	// refuses an access token issued more than a few seconds ago and still honours the refresh token.
 	"mcp_oauth_stub",
 	"mcp_oauth_stub_signed_out",
+	"mcp_oauth_stub_expiring",
 	// The conversation's sandbox is a stand-in for a full E2B host (mcp/sandboxWaitStub.ts): each run
 	// sends "Waiting for a free sandbox…" as MCP progress and answers seconds later, so a spec reads the
 	// live line's wait and then the result.
