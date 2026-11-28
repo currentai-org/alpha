@@ -3,13 +3,17 @@
 //
 // A signed-in person adds an MCP server of their own that signs them in with OAuth, from Settings →
 // Connectors: the add form sends them to its sign-in, they come back connected and see its tool. Then
+// the provider's access token expires: the server answers 401, the app refreshes, the server stays
+// connected, and a fresh page load shows the app reaching it with the refreshed token it stored. Last,
 // they take the app off their account at the provider, and the page offers Reconnect.
 //
 // The server and its authorization server are answered inside the app under the `mcp_oauth_stub`
 // faults (src/lib/chat/server/mcp/oauthE2eStub.ts); everything between them is the real code: the
 // MCP SDK's discovery, client registration, PKCE and code exchange, the sealed state cookie and the
 // sealed sign-in on the row, the MCP client listing the tool with the access token, and the one
-// refresh after the server's 401. Only the provider's consent screen is answered here, by sending the
+// refresh after the server's 401, written back to the row. The stand-in's tool description names the
+// issue time of the access token the server was reached with, which is how the spec sees which sign-in
+// the app sent. Only the provider's consent screen is answered here, by sending the
 // person back to the callback with the code, as the provider does after they allow it.
 //
 // Runs in mock-model-e2e.sh only, which hands this spec its fault token as MOCK_E2E_FAULT_TOKEN.
@@ -24,7 +28,10 @@ const SERVER_URL = 'https://mcp-oauth.e2e.invalid/mcp';
 const CONSENT_HOST = 'https://mcp-oauth.e2e.invalid';
 const SERVER_NAME = 'notes';
 
-/** The provider as it is now: signed in, or after the person took the app off their account there. */
+/**
+ * The provider as it is now: signed in, with short-lived access tokens, or after the person took the
+ * app off their account there.
+ */
 let fault: FaultInjectionName = 'mcp_oauth_stub';
 const faultHeaders = () => faultInjectionHeaders(fault, process.env.MOCK_E2E_FAULT_TOKEN);
 
@@ -110,6 +117,52 @@ test(
 			body: await server.screenshot(),
 			contentType: 'image/png'
 		});
+
+		// The stand-in names, in the tool's description, when the access token it was reached with was
+		// issued.
+		const signedInAt = async (on: Page): Promise<string | undefined> => {
+			const text = await on
+				.locator(`[data-connector-tool="${SERVER_NAME}__read_note"]`)
+				.innerText();
+			return /Signed in at (\d+)/.exec(text)?.[1];
+		};
+		const firstSignIn = await signedInAt(page);
+		expect(
+			firstSignIn,
+			'the listing does not name the sign-in the server was reached with'
+		).toBeTruthy();
+
+		// The provider's access tokens now last five seconds, and this one is older: the server answers
+		// the next listing with a 401, the app refreshes once and repeats the request with the new token.
+		// The wait is the token's age on the app's own clock, which is the stand-in's.
+		await page.waitForTimeout(6_000);
+		fault = 'mcp_oauth_stub_expiring';
+		await page.goto(chatPath('/settings/connectors'), { waitUntil: 'load' });
+		await expect(
+			server.locator('[data-connector-status="connected"]'),
+			'a server whose access token expired is not listed as connected, so the refresh after its 401 failed'
+		).toContainText('Connected · 1 tool', { timeout: 30_000 });
+		await expect(server.getByRole('link', { name: `Reconnect ${SERVER_NAME}` })).toHaveCount(0);
+		const refreshedSignIn = await signedInAt(page);
+		expect(
+			Number(refreshedSignIn),
+			'the server was not reached with a newer access token after its 401'
+		).toBeGreaterThan(Number(firstSignIn));
+
+		// A fresh page, with access tokens that no longer expire, so nothing refreshes: the server is
+		// reached with whatever the row holds, which must be the refreshed token, not the first one.
+		fault = 'mcp_oauth_stub';
+		const fresh = await page.context().newPage();
+		await stubOn(fresh, (p) => /\/settings\/connectors(\/__data\.json)?$/.test(p));
+		await fresh.goto(chatPath('/settings/connectors'), { waitUntil: 'load' });
+		await expect(
+			fresh.locator(`[data-connector="${SERVER_NAME}"] [data-connector-status="connected"]`)
+		).toContainText('Connected · 1 tool', { timeout: 30_000 });
+		expect(
+			await signedInAt(fresh),
+			'a fresh page reached the server with the first access token, so the refreshed one was never stored'
+		).toBe(refreshedSignIn);
+		await fresh.close();
 
 		// The person takes the app off their account at the provider. The next listing gets a 401, the one
 		// refresh is refused, and the server is marked for reconnecting.
