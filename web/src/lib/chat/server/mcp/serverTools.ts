@@ -139,7 +139,8 @@ export function resetServerToolsCache(): void {
  */
 export async function listServerTools(
 	servers: McpServerConfig[],
-	opts: { connect?: Connect; now?: () => number } = {}
+	/** `fresh`: ask every server again rather than reuse a cached listing (the listing is still cached). */
+	opts: { connect?: Connect; now?: () => number; fresh?: boolean } = {}
 ): Promise<ServerTool[]> {
 	const connect = opts.connect ?? connectServer;
 	const now = opts.now ?? Date.now;
@@ -147,7 +148,7 @@ export async function listServerTools(
 		servers.map(async (server) => {
 			const key = `${server.url}|${Object.keys(server.headers).sort().join(",")}|${canonicalJson(server.pins ?? null)}`;
 			const hit = cache.get(server.name);
-			if (hit && hit.key === key && now() - hit.at < LIST_TTL_MS) return hit.tools;
+			if (!opts.fresh && hit && hit.key === key && now() - hit.at < LIST_TTL_MS) return hit.tools;
 			const started = now();
 			let conn: McpConnection | undefined;
 			try {

@@ -26,6 +26,9 @@ const row = (over: Partial<Row> = {}): Row => ({
 	name: "notes",
 	url: "https://notes.example.com/mcp",
 	credential: sealServerToken(TOKEN, SECRET),
+	authKind: "bearer",
+	oauthState: null,
+	needsReconnect: false,
 	createdAt: new Date(0),
 	...over,
 });

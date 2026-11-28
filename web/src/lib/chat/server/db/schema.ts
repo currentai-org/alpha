@@ -1380,6 +1380,15 @@ export const userMcpServers = pgTable(
 		name: text("name").notNull(),
 		url: text("url").notNull(),
 		credential: text("credential"),
+		// "bearer": `credential` is the static token above. "oauth": the server uses the MCP
+		// authorization flow, and `oauthState` holds the registered client, the tokens and the
+		// in-flight PKCE verifier as one JSON blob, sealed under its own info string
+		// (mcp/oauthProvider.ts). It never leaves the server either.
+		authKind: text("auth_kind", { enum: ["bearer", "oauth"] }).notNull().default("bearer"),
+		oauthState: text("oauth_state"),
+		// Set when a refresh failed or the server refused the tokens; the turn leaves the server
+		// out and Settings → Connectors offers Reconnect. Cleared by a completed authorization.
+		needsReconnect: boolean("needs_reconnect").notNull().default(false),
 		createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 	},
 	(t) => [uniqueIndex("user_mcp_servers_user_name_idx").on(t.userId, t.name)]
