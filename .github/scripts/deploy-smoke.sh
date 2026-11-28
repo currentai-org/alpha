@@ -13,18 +13,21 @@
 #   2. / carries the chat composer's data-testid, so a page that loads without the chat surface fails.
 #   3. The identity the build was given is the one it serves. When the identity file names a
 #      statusPageUrl, /api/status must return it; when it names a siteHost, /privacy-notice must resolve to
-#      200 on another host. A build that lost its identity file fails here. Steps 2 and 3 run only on a
-#      build that is up, and their failure is always 1.
-#   4. One real chat turn as a signed-out guest (deploy/smoke.sh). It is judged on errors and safety
+#      200 on another host. A build that lost its identity file fails here.
+#   4. With PICKER_SITE set, /api/models lists the committed picker's first entry for that site
+#      (web/config/picker.ts) first, so a build that would hand every visitor another default model fails.
+#      Steps 2 to 4 run only on a build that is up, and their failure is always 1.
+#   5. One real chat turn as a signed-out guest (deploy/smoke.sh). It is judged on errors and safety
 #      declines only, never on the answer's wording. An error is retried once after 20 s; a decline is not.
 #      When the turn fails, CURRENT gets the same turn: if CURRENT answers, this build is at fault (1); if
 #      it fails too, the provider is (2). With no CURRENT, the turn's failure is 1.
 #
-#   BASE=<url> [CURRENT=<url>] [BYPASS=<secret>] [IDENTITY=<file>] [PROVIDER_DOWN_OK=1] .github/scripts/deploy-smoke.sh
+#   BASE=<url> [CURRENT=<url>] [BYPASS=<secret>] [IDENTITY=<file>] [PICKER_SITE=<site>] [PROVIDER_DOWN_OK=1] .github/scripts/deploy-smoke.sh
 # CURRENT is the deployment the host serves now. BYPASS is Vercel's deployment protection bypass secret,
 # sent as a header when set. IDENTITY is the identity file the build was given: by default the copy
 # .github/scripts/deploy-prove-red.sh keeps in $RUNNER_TEMP, so a build that dropped the file still fails
-# step 2, or web/config/deployment.json. PROVIDER_DOWN_OK=1 turns verdict 2 into exit 0 with the step
+# step 3, or web/config/deployment.json. PICKER_SITE names the picker list this deployment serves
+# (develop or production). PROVIDER_DOWN_OK=1 turns verdict 2 into exit 0 with the step
 # output provider_down=true, for a workflow step that goes ahead and lets a later job act on it.
 set -u
 base=${BASE:?BASE is the URL to smoke}
@@ -91,6 +94,16 @@ if [ -f "$identity" ]; then
 	fi
 else
 	echo "no $identity, so the deployment's identity is not checked"
+fi
+
+if [ -n "${PICKER_SITE:-}" ]; then
+	want_model=$(node --input-type=module -e "const { PICKER } = await import('./web/config/picker.ts'); process.stdout.write(PICKER[process.argv[1]]?.[0] ?? '')" "$PICKER_SITE") ||
+		fail "could not read the $PICKER_SITE picker from web/config/picker.ts"
+	[ -n "$want_model" ] || fail "web/config/picker.ts has no $PICKER_SITE list"
+	got_model=$(curl -sS "${hdr[@]}" --max-time 20 "$base/api/models" | jq -r '.[0].id // empty' 2>/dev/null)
+	[ "$got_model" = "$want_model" ] ||
+		fail "/api/models lists ${got_model:-nothing} first, not $want_model, the $PICKER_SITE picker's default: every visitor would get another model"
+	echo "ok   /api/models lists $want_model first"
 fi
 
 # turn URL: 0 when a guest's turn is answered, 3 when a safety screen declined it, 1 on any other failure.

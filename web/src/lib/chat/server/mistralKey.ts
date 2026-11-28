@@ -3,14 +3,20 @@
 // limits a whole workspace, so those branches bill MISTRAL_API_KEY_CI, a key in a second workspace, and the
 // integration branches keep MISTRAL_API_KEY and its limit to themselves. Unset, per-ticket previews take the router lane like develop.
 import { config } from "$lib/chat/server/config";
-import { gitRef } from "$lib/server/runtimeEnv";
+import { deployEnvName, gitRef } from "$lib/server/runtimeEnv";
 import refs from "../../../../scripts/lib/integration-refs.json";
 
 const INTEGRATION_REFS = new Set<string>([refs.production, ...refs.staging]);
 
-// A preview built from a per-ticket branch: not production, not develop, and known at all.
-function isTicketBranch(branch = gitRef() ?? ""): boolean {
-	return Boolean(branch) && !INTEGRATION_REFS.has(branch);
+// The release tags a production deployment builds from: the pattern .github/workflows/deploy.yml
+// admits (vX.Y.Z, vX.Y.Z-preview.N, vX.Y.Z-rc.N). Production's ref is the tag, never `main`.
+const RELEASE_TAG = /^v\d+\.\d+\.\d+(-(preview|rc)\.\d+)?$/;
+
+// A preview built from a per-ticket branch: known at all, not an integration branch, not a release tag,
+// and not a production deployment, whatever its ref.
+function isTicketBranch(branch = gitRef() ?? "", env = deployEnvName() ?? ""): boolean {
+	if (!branch || INTEGRATION_REFS.has(branch) || RELEASE_TAG.test(branch)) return false;
+	return env.trim() !== "production";
 }
 
 export function mistralKeyEnv(

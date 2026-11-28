@@ -52,9 +52,10 @@ on:
         description: >-
           Break this run on purpose, to show the gate holds: `identity` drops the identity file, `answer`
           puts every input safety screen on a closed port, `provider` (develop only) smokes two builds with dead model
-          base URLs against each other and moves no host
+          base URLs against each other and moves no host, `default-model` makes the build read its ref as a
+          per-ticket branch, so it serves another default model
         type: choice
-        options: [none, identity, answer, provider]
+        options: [none, identity, answer, provider, default-model]
         default: none
       recheck_minutes:
         description: How long the recheck watches a deploy that went ahead on a provider failure
@@ -97,6 +98,8 @@ jobs:
       VERCEL_SCOPE: ${{ vars.VERCEL_SCOPE }}
       VERCEL_PROJECT: ${{ vars.VERCEL_PROJECT }}
       DEVELOP_HOST: ${{ vars.DEVELOP_HOST }}
+      # The picker list the smoke expects this deployment's default model from (web/config/picker.ts).
+      PICKER_SITE: develop
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       BYPASS: ${{ secrets.VERCEL_BYPASS_SECRET }}
       SLACK_ALERT_WEBHOOK: ${{ secrets.SLACK_ALERT_WEBHOOK }}
@@ -341,6 +344,7 @@ jobs:
       VERCEL_SCOPE: ${{ vars.VERCEL_SCOPE }}
       VERCEL_PROJECT: ${{ vars.VERCEL_PROJECT }}
       PRODUCTION_HOST: ${{ vars.PRODUCTION_HOST }}
+      PICKER_SITE: production
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       BYPASS: ${{ secrets.VERCEL_BYPASS_SECRET }}
       SLACK_ALERT_WEBHOOK: ${{ secrets.SLACK_ALERT_WEBHOOK }}
