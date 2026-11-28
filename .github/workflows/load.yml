@@ -124,7 +124,7 @@ jobs:
             -v "$PWD/deploy/loadtest:/scripts:ro" -v "$PWD/loadtest-out/soak:/out" \
             "$K6_IMAGE" run --quiet /scripts/k6-chat.js || echo "::warning::k6 exited $? in the soak"
           kill "$SAMPLER" 2>/dev/null || true
-          jq -r '"### Soak turns\n\n\(.turns_hold) turns over \(.hold_secs / 3600) h, turn p95 \(.turn_p95_ms) ms, errors \(.error_rate * 100)%, 429 \(.turn_429), 5xx \(.turn_5xx)"' \
+          jq -r '"### Soak turns\n\n\(.turns_hold) turns over \(.hold_secs / 3600) h, turn p95 \(.turn_p95_ms) ms, errors \(.error_rate * 100)%, declined \(.turn_declined), 429 \(.turn_429), 5xx \(.turn_5xx)"' \
             loadtest-out/soak/soak-20vu.json >> "$GITHUB_STEP_SUMMARY" || true
       - name: Soak verdict
         if: always()

@@ -20,8 +20,8 @@ db() { psql "$DATABASE_URL" -tAq -c "$1" 2>/dev/null; }
 {
 	echo "### $PASS"
 	echo
-	echo "| VUs | turns/min | turn p50 | turn p95 | first byte p95 | create p95 | errors | 429 | 5xx | peak DB connections |"
-	echo "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
+	echo "| VUs | turns/min | turn p50 | turn p95 | first byte p95 | create p95 | errors | declined | 429 | 5xx | peak DB connections |"
+	echo "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
 } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
 
 for VUS in $LEVELS; do
@@ -59,10 +59,10 @@ for VUS in $LEVELS; do
 			echo "::warning::$LABEL is not evidence: $(jq -r '"\(.turns_hold) hold turns, error rate \(.error_rate)"' "$OUT/$LABEL.json"). Read k6's own errors above."
 		fi
 		jq -r --argjson peak "${PEAK:-0}" \
-			'"| \(.vus) | \(.turns_per_min) | \(.turn_p50_ms) ms | \(.turn_p95_ms) ms | \(.ttfb_p95_ms) ms | \(.create_p95_ms) ms | \(if .error_rate == null then "n/a" else ((.error_rate * 10000 | round) / 100 | tostring) + "%" end) | \(.turn_429) | \(.turn_5xx) | \($peak) |"' \
+			'"| \(.vus) | \(.turns_per_min) | \(.turn_p50_ms) ms | \(.turn_p95_ms) ms | \(.ttfb_p95_ms) ms | \(.create_p95_ms) ms | \(if .error_rate == null then "n/a" else ((.error_rate * 10000 | round) / 100 | tostring) + "%" end) | \(.turn_declined // "n/a") | \(.turn_429) | \(.turn_5xx) | \($peak) |"' \
 			"$OUT/$LABEL.json" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
 	else
-		echo "| $VUS | k6 wrote no summary (exit $CODE) | | | | | | | | $PEAK |" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+		echo "| $VUS | k6 wrote no summary (exit $CODE) | | | | | | | | | $PEAK |" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
 	fi
 done
 

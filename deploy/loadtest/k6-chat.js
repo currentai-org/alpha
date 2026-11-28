@@ -69,6 +69,7 @@ const turnFailed = new Rate('turn_failed');
 const turns429 = new Counter('turn_429');
 const turns5xx = new Counter('turn_5xx');
 const createFailed = new Counter('create_failed');
+const turnsDeclined = new Counter('turn_declined');
 
 // The request schema takes the turn's `id` only as a UUID; anything else is refused at parse, before the
 // turn path runs, so a non-UUID id measures the error path instead of chat.
@@ -90,8 +91,10 @@ function createConversation(model, tags) {
 	return { res, id: res.status === 200 ? res.json('conversationId') : null };
 }
 
-// One turn the way the browser sends it. Answered only when the stream carried the final answer and no
-// error status.
+// One turn the way the browser sends it. Answered only when the stream carried the final answer, no error
+// status and no safety decline. A decline also ends in a final answer (its decline copy), and a stack
+// that declines every turn would otherwise read as a fast, healthy one.
+const declinedIn = (body) => body.includes('"type":"safety"') || body.includes('"type":"outputSafety"');
 function sendTurn(id, inputs, tags) {
 	const turnId = uuid();
 	const payload = JSON.stringify({ inputs, id: turnId, is_retry: false, webSearchMode: 'off' });
@@ -103,12 +106,14 @@ function sendTurn(id, inputs, tags) {
 		tags: { name: 'turn', ...tags },
 		timeout: '120s'
 	});
+	const declined = typeof res.body === 'string' && declinedIn(res.body);
 	const answered =
 		res.status === 200 &&
 		typeof res.body === 'string' &&
 		res.body.includes('"finalAnswer"') &&
-		!res.body.includes('"status":"error"');
-	return { res, answered };
+		!res.body.includes('"status":"error"') &&
+		!declined;
+	return { res, answered, declined };
 }
 
 const snippet = (res) => (typeof res.body === 'string' ? res.body.slice(0, 200) : '');
@@ -166,7 +171,7 @@ export default function (data) {
 			return;
 		}
 	}
-	const { res, answered } = sendTurn(
+	const { res, answered, declined } = sendTurn(
 		conversationId,
 		PROMPTS[(__VU + __ITER) % PROMPTS.length],
 		tags
@@ -181,6 +186,7 @@ export default function (data) {
 		console.warn(`VU ${__VU} turn not answered: HTTP ${res.status} ${snippet(res)}`);
 	}
 	check(res, { 'turn answered': () => answered });
+	if (declined) turnsDeclined.add(1, tags);
 	if (res.status === 429) turns429.add(1, tags);
 	if (res.status >= 500 || res.status === 0) turns5xx.add(1, tags);
 	if (!answered) conversationId = null; // start clean after a failure, as a person would reload
@@ -212,13 +218,14 @@ export function handleSummary(data) {
 		error_rate: v('turn_failed{phase:hold}', 'rate'),
 		turn_429: v('turn_429', 'count') || 0,
 		turn_5xx: v('turn_5xx', 'count') || 0,
+		turn_declined: v('turn_declined', 'count') || 0,
 		create_failed: v('create_failed', 'count') || 0
 	};
 	const line =
 		`${LABEL}: ${VUS} VUs, ${row.turns_hold} turns in the hold (${row.turns_per_min}/min), ` +
 		`turn p50 ${row.turn_p50_ms}ms p95 ${row.turn_p95_ms}ms, first byte p95 ${row.ttfb_p95_ms}ms, ` +
 		`errors ${row.error_rate === null ? 'n/a' : (row.error_rate * 100).toFixed(2) + '%'} ` +
-		`(429 ${row.turn_429}, 5xx ${row.turn_5xx}, create failed ${row.create_failed})\n`;
+		`(declined ${row.turn_declined}, 429 ${row.turn_429}, 5xx ${row.turn_5xx}, create failed ${row.create_failed})\n`;
 	return {
 		stdout: line,
 		[`/out/${LABEL}.json`]: JSON.stringify(row),
