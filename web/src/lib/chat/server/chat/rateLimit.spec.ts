@@ -71,6 +71,21 @@ describe("enforceRequestRateLimits", () => {
 		expect(recordRateLimitTrip.mock.calls[0][0]).toContain("session");
 	});
 
+	it("a visitor refused by the per-session limit is told the limit, in words the composer holds", async () => {
+		countDocuments.mockResolvedValue(6); // 6 > 5
+		const refusal = (await enforceRequestRateLimits(OPTS).catch((e) => e)) as { body: { message: string } };
+		expect(refusal.body.message).toMatch(/allows 5 a minute/);
+		expect(isRateLimitMessage(refusal.body.message)).toBe(true);
+	});
+
+	it("a refusal under the fault's 30-second window names that window, not a minute", async () => {
+		countDocuments.mockResolvedValue(2);
+		const refusal = (await enforceRequestRateLimits({ ...OPTS, perSession: { limit: 1, windowMs: 30_000 } }).catch(
+			(e) => e
+		)) as { body: { message: string } };
+		expect(refusal.body.message).toMatch(/allows 1 every 30 seconds/);
+	});
+
 	// The session_rate_limit_low fault's override replaces both the limit and the window.
 	it("with a per-session override, refuses past its limit and records events for its window, not a minute", async () => {
 		countDocuments.mockResolvedValue(2); // 2 > 1, though 2 ≤ messagesPerMinute's 5
@@ -194,6 +209,7 @@ describe("enforceRequestRateLimits", () => {
 		const refusal = await enforceRequestRateLimits(OPTS).catch((e: { body: { message: string } }) => e);
 		const message = (refusal as { body: { message: string } }).body.message;
 		expect(message).toMatch(/your network/);
+		expect(message).toMatch(/more than 125 a minute/); // 5 per session × the default multiplier of 25
 		expect(isRateLimitMessage(message)).toBe(true);
 	});
 

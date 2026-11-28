@@ -3,7 +3,6 @@ import { hashIp } from "$lib/chat/server/db/ipHash";
 import { countLiveEvents, recordEvent, recordEvents, secondsUntilRoom } from "$lib/chat/server/db/eventWindow";
 import { usageLimits } from "$lib/chat/server/usageLimits";
 import { logger } from "$lib/chat/server/logger.js";
-import { ERROR_MESSAGES } from "$lib/chat/stores/errors";
 import type { MessageEvent } from "$lib/chat/types/MessageEvent";
 import { error } from "@sveltejs/kit";
 import { recordRateLimitTrip } from "$lib/chat/server/alerting";
@@ -38,11 +37,22 @@ import { chatTurnRoom, chatTurnsUsedText, recordChatTurn } from "$lib/chat/serve
  */
 const DEFAULT_IP_MULTIPLIER = 25;
 
-/** The per-IP ceiling's refusal. Names the shared-network case so a room at an event reads it as
- *  "wait a minute", not as a fault. Contains "too many messages" so the composer holds it
- *  (isRateLimitMessage) and keeps the unsent text. */
-const IP_CEILING_MESSAGE =
-	"Too many messages are coming from your network right now. If you're at an event sharing Wi-Fi, wait a minute and try again.";
+/** The per-session limit's refusal, naming the limit so a visitor knows what they hit. Contains "too many
+ *  messages" so the composer holds it (isRateLimitMessage) and keeps the unsent text. */
+export const sessionLimitMessage = (limit: number, windowMs = 60_000) =>
+	`Too many messages: this chat allows ${limit} ${perWindow(windowMs)}. Send will work again in a moment.`;
+
+/** The per-IP ceiling's refusal. Names the shared-network case and its size so a room at an event reads
+ *  it as "wait a minute", not as a fault. Contains "too many messages" for the composer, as above. */
+export const ipCeilingMessage = (limit: number, windowMs = 60_000) =>
+	`Too many messages are coming from your network right now: more than ${limit} ${perWindow(windowMs)}. If you're at an event sharing Wi-Fi, wait a minute and try again.`;
+
+/** "a minute" for the usual window, "every 30 seconds" for a fault override's shorter one. */
+function perWindow(windowMs: number): string {
+	if (windowMs === 60_000) return "a minute";
+	const seconds = Math.round(windowMs / 1000);
+	return seconds % 60 === 0 ? `every ${seconds / 60} minutes` : `every ${seconds} seconds`;
+}
 
 /** The daily cap could not be counted. Contains "request limit" so the composer holds it. */
 const DAILY_CAP_UNCHECKED_MESSAGE =
@@ -114,7 +124,7 @@ export async function enforceRequestRateLimits(opts: {
 			const retryAfterSeconds =
 				(await secondsUntilRoom({ type, userId }, perSessionLimit, "rate-limit:session")) ||
 				Math.ceil(windowMs / 1000);
-			error(429, ERROR_MESSAGES.rateLimited, { retryAfterSeconds });
+			error(429, sessionLimitMessage(perSessionLimit, windowMs), { retryAfterSeconds });
 		}
 		// Per-IP ceiling, ON by default and deliberately loose: a conference or
 		// lecture-hall NAT puts hundreds of phones behind ONE address, so this is a room-sized abuse
@@ -138,7 +148,7 @@ export async function enforceRequestRateLimits(opts: {
 				const retryAfterSeconds =
 					(await secondsUntilRoom({ type, ipHash }, perSessionLimit * multiplier, "rate-limit:ip")) ||
 					Math.ceil(windowMs / 1000);
-				error(429, IP_CEILING_MESSAGE, { retryAfterSeconds });
+				error(429, ipCeilingMessage(perSessionLimit * multiplier, windowMs), { retryAfterSeconds });
 			}
 		}
 	}
