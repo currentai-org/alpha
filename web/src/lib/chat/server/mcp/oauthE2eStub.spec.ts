@@ -10,7 +10,8 @@ vi.mock("$lib/chat/server/flags", () => ({ flagEnabledOr: () => false, ensureFla
 
 const { auth } = await import("@modelcontextprotocol/client");
 const { RowOAuthProvider } = await import("./oauthProvider");
-const { MCP_OAUTH_STUB_ORIGIN, MCP_OAUTH_STUB_URL, mcpOAuthStubFetch } = await import("./oauthE2eStub");
+const { MCP_OAUTH_STUB_ORIGIN, MCP_OAUTH_STUB_URL, mcpOAuthFetchFor, mcpOAuthStubFetch } = await import("./oauthE2eStub");
+const { ssrfStrictFetch } = await import("$lib/chat/server/urlSafety");
 const { connectMcp } = await import("./client");
 type State = import("./oauthProvider").McpOAuthState;
 
@@ -96,5 +97,24 @@ describe("the OAuth MCP stand-in, through the real SDK", () => {
 				if (r !== "AUTHORIZED") throw new Error(r);
 			})
 		).rejects.toThrow();
+	});
+});
+
+describe("mcpOAuthFetchFor: only the stand-in's faults arm it", () => {
+	it("is the strict SSRF guard itself with no fault, or any other fault", () => {
+		expect(mcpOAuthFetchFor(null)).toBe(ssrfStrictFetch);
+		expect(mcpOAuthFetchFor(undefined)).toBe(ssrfStrictFetch);
+		expect(mcpOAuthFetchFor("google_connector_stub")).toBe(ssrfStrictFetch);
+	});
+
+	it("answers the stand-in's host in-process under its fault, signed in or signed out", async () => {
+		const meta = await mcpOAuthFetchFor("mcp_oauth_stub")(`${MCP_OAUTH_STUB_ORIGIN}/.well-known/oauth-protected-resource/mcp`);
+		expect(((await meta.json()) as { resource: string }).resource).toBe(MCP_OAUTH_STUB_URL);
+		const mcp = await mcpOAuthFetchFor("mcp_oauth_stub_signed_out")(MCP_OAUTH_STUB_URL, { method: "POST", body: "{}" });
+		expect(mcp.status).toBe(401);
+	});
+
+	it("still sends any other host through the guard under the fault, which refuses a loopback address", async () => {
+		await expect(mcpOAuthFetchFor("mcp_oauth_stub")("http://127.0.0.1:9/mcp")).rejects.toThrow();
 	});
 });

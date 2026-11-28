@@ -6,13 +6,14 @@
 // build the turn's server config, where it rides as `Authorization: Bearer …` through the same
 // origin-scoped fetch an operator's header gets, so no redirect can carry it to another host.
 import { logger } from "$lib/chat/server/logger";
-import { isValidUrlStrict, ssrfStrictFetch } from "$lib/chat/server/urlSafety";
+import { isValidUrlStrict } from "$lib/chat/server/urlSafety";
 import { credentialSecret, open, seal, SealedSecretError } from "$lib/chat/server/storage/locations/sealedSecret";
 import { listUserMcpServers, type UserMcpServerRow } from "$lib/chat/server/db/userMcpServers";
 import type { FaultInjectionName } from "$lib/chat/server/textGeneration/faultInjection";
 import { NAME_RE, originScopedFetch, type FetchLike, type McpServerConfig } from "./servers";
 import { STUB_URL, stubMcpFetch } from "./e2eStub";
 import { oauthServerFetch, oauthStateOf, refreshOAuthRow } from "./oauthConnect";
+import { mcpOAuthFetchFor } from "./oauthE2eStub";
 
 /** HKDF info for these tokens, so a sealed storage-location credential cannot be opened as one. */
 const SEAL_INFO = "aipotluck/user-mcp-server-credential/v1";
@@ -66,6 +67,8 @@ type ConfigDeps = {
  */
 export function userServerConfigs(rows: UserMcpServerRow[], deps: ConfigDeps = {}): McpServerConfig[] {
 	const out: McpServerConfig[] = [];
+	// The strict SSRF guard, or under the OAuth stand-in's fault, the stand-in for its own host.
+	const guarded = mcpOAuthFetchFor(deps.faultInjection);
 	for (const row of rows) {
 		let headers: Record<string, string> = {};
 		let access: string | undefined;
@@ -87,11 +90,12 @@ export function userServerConfigs(rows: UserMcpServerRow[], deps: ConfigDeps = {
 		const origin = new URL(row.url).origin;
 		// The e2e stub answers in-process, and only while its fault is on (e2eStub.ts).
 		const base =
-			deps.faultInjection === "mcp_stub_server" && row.url === STUB_URL ? stubMcpFetch : (deps.baseFetch ?? ssrfStrictFetch);
+			deps.faultInjection === "mcp_stub_server" && row.url === STUB_URL ? stubMcpFetch : (deps.baseFetch ?? guarded);
 		const scoped = originScopedFetch(origin, base);
 		// An OAuth server's 401 gets one refresh of its tokens for the whole request (oauthServerFetch).
 		const fetch = access
 			? oauthServerFetch(row, access, scoped, {
+					authFetch: guarded,
 					...(deps.secret ? { secret: deps.secret } : {}),
 					...(deps.onReconnectNeeded ? { onReconnectNeeded: deps.onReconnectNeeded } : {}),
 				})
@@ -110,7 +114,8 @@ export async function userMcpServersFor(
 	const userId = locals?.user?._id?.toString();
 	if (!userId) return [];
 	try {
-		const rows = await Promise.all((await list(userId)).map((row) => refreshOAuthRow(row)));
+		const authFetch = mcpOAuthFetchFor(faultInjection);
+		const rows = await Promise.all((await list(userId)).map((row) => refreshOAuthRow(row, Date.now(), authFetch)));
 		return userServerConfigs(rows, { faultInjection });
 	} catch (e) {
 		logger.warn(

@@ -12,6 +12,8 @@
 // `mcp_oauth_stub_signed_out` is the same provider after the person took the app off their account
 // there: it refuses the access token at the MCP server and the refresh token at the token endpoint.
 import { createHash } from "node:crypto";
+import { ssrfStrictFetch } from "$lib/chat/server/urlSafety";
+import type { FaultInjectionName } from "$lib/chat/server/textGeneration/faultInjection";
 import { fixtureFetch, type McpFixture } from "./e2eStub";
 import type { FetchLike } from "./servers";
 
@@ -113,4 +115,16 @@ export function mcpOAuthStubFetch(opts: { signedOut: boolean }): FetchLike {
 		}
 		return json(404, { error: "not_found" });
 	};
+}
+
+/**
+ * The fetch a person's OAuth server is reached and signed in through. With no stand-in fault it is the
+ * strict SSRF guard itself. Under one, the stand-in's host is answered in-process and every other host
+ * still goes through the guard. The fault arrives here only after faultInjection.ts's gate passed.
+ */
+export function mcpOAuthFetchFor(faultInjection: FaultInjectionName | null | undefined): FetchLike {
+	if (faultInjection !== "mcp_oauth_stub" && faultInjection !== "mcp_oauth_stub_signed_out") return ssrfStrictFetch;
+	const stub = mcpOAuthStubFetch({ signedOut: faultInjection === "mcp_oauth_stub_signed_out" });
+	return (input, init) =>
+		new URL(String(input)).origin === MCP_OAUTH_STUB_ORIGIN ? stub(input, init) : ssrfStrictFetch(input, init);
 }

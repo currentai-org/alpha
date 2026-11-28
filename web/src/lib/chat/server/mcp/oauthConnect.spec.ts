@@ -168,6 +168,14 @@ describe("oauthServerFetch: a 401 from the server, at connect or at a tool call"
 		expect(saved).toContainEqual({ id: "srv-1", update: { needsReconnect: true } });
 	});
 
+	it("refreshes through the fetch it was given, which a stand-in fault chooses", async () => {
+		const { inner } = server(["fresh"]);
+		const authFetch = vi.fn(async () => new Response(null, { status: 500 }));
+		const fetch = oauthServerFetch(signedIn(), "old", inner, { secret: "test-secret", authFetch });
+		await fetch("https://mcp.example/mcp", rpc);
+		expect(vi.mocked(auth).mock.calls[0][1]).toMatchObject({ fetchFn: authFetch });
+	});
+
 	it("never throws into the turn when marking the server fails", async () => {
 		sdk.throws = new Error("invalid_grant");
 		const db = await import("$lib/chat/server/db/userMcpServers");

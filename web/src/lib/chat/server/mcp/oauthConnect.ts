@@ -1,6 +1,8 @@
 // Connecting a person's own MCP server that runs the MCP authorization flow. The SDK's
 // `auth()` does the protocol; this file binds it to one server row and the person who owns it, and
-// keeps every request it makes to the authorization server behind the strict SSRF guard.
+// keeps every request it makes to the authorization server behind the strict SSRF guard. Each entry
+// point takes the fetch to use, which is that guard unless a stand-in fault chose otherwise
+// (oauthE2eStub.ts `mcpOAuthFetchFor`).
 import { auth, discoverOAuthProtectedResourceMetadata } from "@modelcontextprotocol/client";
 import { config } from "$lib/chat/server/config";
 import { logger } from "$lib/chat/server/logger";
@@ -53,9 +55,9 @@ export function providerForRow(
  * (RFC 9728). Checked when a server is added without a token. A server that answers nothing usable is
  * treated as needing no sign-in, which is what it was before this existed.
  */
-export async function serverUsesOAuth(url: string): Promise<boolean> {
+export async function serverUsesOAuth(url: string, fetchFn: FetchLike = ssrfStrictFetch): Promise<boolean> {
 	try {
-		const meta = await discoverOAuthProtectedResourceMetadata(url, {}, ssrfStrictFetch);
+		const meta = await discoverOAuthProtectedResourceMetadata(url, {}, fetchFn);
 		return (meta.authorization_servers?.length ?? 0) > 0;
 	} catch {
 		return false;
@@ -67,10 +69,10 @@ export type StartResult = { kind: "authorized" } | { kind: "redirect"; url: URL 
 /** Starts (or, with tokens still good, skips) the sign-in for one of the person's servers. */
 export async function startMcpConnect(
 	row: UserMcpServerRow,
-	opts: { redirectUrl: string; stateParam: string }
+	opts: { redirectUrl: string; stateParam: string; fetchFn?: FetchLike }
 ): Promise<StartResult> {
 	const provider = providerForRow(row, opts);
-	const result = await auth(provider, { serverUrl: row.url, fetchFn: ssrfStrictFetch });
+	const result = await auth(provider, { serverUrl: row.url, fetchFn: opts.fetchFn ?? ssrfStrictFetch });
 	if (result === "AUTHORIZED") {
 		await saveUserMcpServerOAuth(row.userId, row.id, { needsReconnect: false });
 		return { kind: "authorized" };
@@ -82,14 +84,14 @@ export async function startMcpConnect(
 /** Trades the code the provider sent back for tokens, and clears the reconnect mark. */
 export async function finishMcpConnect(
 	row: UserMcpServerRow,
-	opts: { redirectUrl: string; code: string; iss?: string }
+	opts: { redirectUrl: string; code: string; iss?: string; fetchFn?: FetchLike }
 ): Promise<void> {
 	const provider = providerForRow(row, { redirectUrl: opts.redirectUrl });
 	const result = await auth(provider, {
 		serverUrl: row.url,
 		authorizationCode: opts.code,
 		...(opts.iss ? { iss: opts.iss } : {}),
-		fetchFn: ssrfStrictFetch,
+		fetchFn: opts.fetchFn ?? ssrfStrictFetch,
 	});
 	if (result !== "AUTHORIZED") throw new Error("mcp oauth: the code exchange did not authorize");
 	await saveUserMcpServerOAuth(row.userId, row.id, { needsReconnect: false });
@@ -126,12 +128,13 @@ async function markReconnect(row: UserMcpServerRow, reason: string): Promise<voi
 async function refreshOnce(
 	row: UserMcpServerRow,
 	state: McpOAuthState,
-	secret: string
+	secret: string,
+	fetchFn: FetchLike
 ): Promise<{ ok: true; state: McpOAuthState } | { ok: false; reason: string }> {
 	if (!state.tokens?.refresh_token) return { ok: false, reason: "no-refresh-token" };
 	const provider = providerForRow(row, { redirectUrl: mcpOAuthCallbackUrl() ?? "http://localhost/unused", secret });
 	try {
-		const result = await auth(provider, { serverUrl: row.url, fetchFn: ssrfStrictFetch });
+		const result = await auth(provider, { serverUrl: row.url, fetchFn });
 		if (result !== "AUTHORIZED") return { ok: false, reason: "refresh-wants-consent" };
 	} catch (e) {
 		return { ok: false, reason: e instanceof Error ? e.message : String(e) };
@@ -145,7 +148,11 @@ async function refreshOnce(
  * with `needsReconnect` set and is marked so in the database, so the turn leaves it out and Settings →
  * Connectors offers Reconnect.
  */
-export async function refreshOAuthRow(row: UserMcpServerRow, now = Date.now()): Promise<UserMcpServerRow> {
+export async function refreshOAuthRow(
+	row: UserMcpServerRow,
+	now = Date.now(),
+	fetchFn: FetchLike = ssrfStrictFetch
+): Promise<UserMcpServerRow> {
 	if (row.authKind !== "oauth" || row.needsReconnect) return row;
 	const secret = credentialSecret();
 	const state = oauthStateOf(row, secret);
@@ -155,7 +162,7 @@ export async function refreshOAuthRow(row: UserMcpServerRow, now = Date.now()): 
 	};
 	if (!state.tokens?.access_token) return reconnect("no-tokens");
 	if (!tokensDue(state, now)) return row;
-	const refreshed = await refreshOnce(row, state, secret);
+	const refreshed = await refreshOnce(row, state, secret, fetchFn);
 	if (!refreshed.ok) return reconnect(refreshed.reason);
 	return { ...row, oauthState: sealOAuthState(refreshed.state, secret) };
 }
@@ -176,7 +183,7 @@ export function oauthServerFetch(
 	row: UserMcpServerRow,
 	accessToken: string,
 	inner: FetchLike,
-	deps: { secret?: string; onReconnectNeeded?: (rowId: string) => void } = {}
+	deps: { secret?: string; onReconnectNeeded?: (rowId: string) => void; authFetch?: FetchLike } = {}
 ): FetchLike {
 	const secret = deps.secret ?? credentialSecret();
 	let access = accessToken;
@@ -199,7 +206,7 @@ export function oauthServerFetch(
 		const res = await send(input, init, sentWith);
 		if (res.status !== 401) return res;
 		refreshed ??= (async () => {
-			const result = await refreshOnce(row, oauthStateOf(row, secret), secret);
+			const result = await refreshOnce(row, oauthStateOf(row, secret), secret, deps.authFetch ?? ssrfStrictFetch);
 			if (!result.ok) {
 				await leaveOut(result.reason);
 				return null;
