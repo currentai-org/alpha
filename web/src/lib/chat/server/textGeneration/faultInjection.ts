@@ -269,6 +269,12 @@ export const FAULT_NAMES = [
 	// in-process (connectors/googleE2eStub.ts), on the connect and callback routes, the connectors page
 	// and the turn.
 	"google_connector_stub",
+	// A person's own MCP server that signs them in with OAuth, and its authorization server, answered
+	// in-process (mcp/oauthE2eStub.ts), on the add form, the connect and callback routes, the connectors
+	// page and the turn. The `_signed_out` variant is the same provider after the person took the app off
+	// their account there: it refuses the access token and the refresh token.
+	"mcp_oauth_stub",
+	"mcp_oauth_stub_signed_out",
 	// The conversation's sandbox is a stand-in for a full E2B host (mcp/sandboxWaitStub.ts): each run
 	// sends "Waiting for a free sandbox…" as MCP progress and answers seconds later, so a spec reads the
 	// live line's wait and then the result.

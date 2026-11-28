@@ -84,6 +84,8 @@ export type FaultInjectionName =
 	| 'mcp_stub_server'
 	| 'mcp_stub_server_swapped'
 	| 'google_connector_stub'
+	| 'mcp_oauth_stub'
+	| 'mcp_oauth_stub_signed_out'
 	| 'sandbox_host_full'
 	| 'input_screen_unfinished'
 	| 'agent_route_down'
