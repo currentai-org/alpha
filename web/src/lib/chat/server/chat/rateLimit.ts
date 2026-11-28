@@ -88,20 +88,14 @@ export async function enforceRequestRateLimits(opts: {
 	const perSessionLimit = opts.perSession?.limit ?? usageLimits?.messagesPerMinute;
 
 	// Register the event for ratelimiting — best-effort. Rate-limit bookkeeping is infrastructure and
-	// must NEVER take down a turn: a DB blip here must not 500 the request before the model runs.
-	// Fire-and-forget (not awaited): the worst case of a failed OR still-in-flight insert
-	// is one un-recorded event for the perSession count just below — a slight under-count that is already
-	// the documented acceptable case for a soft per-minute limit, so there's nothing gained by blocking the
-	// turn on this write landing before we proceed.
+	// must NEVER take down a turn: recordEvent never throws, so a DB blip only leaves this send uncounted.
 	// Count against the SAME keyed hash we store here (domain "rate-limit"). When no pepper is
 	// configured hashIp returns null and the row carries no ipHash.
 	const ipHash = hashIp(clientAddress, "rate-limit") ?? undefined;
 	const windowMs = opts.perSession?.windowMs ?? 60_000;
-	const recorded = recordEvent({ type, userId, ipHash }, windowMs, "rate-limit");
-	// The fault's override waits for this send's own row, so the count below always includes it. Left
-	// to race, a limit of one would refuse the second send only when the insert won.
-	if (opts.perSession) await recorded;
-	else void recorded;
+	// Wait for this send's own row, so the count below always includes it. Left to race, the count
+	// on a remote database finished first and the send past the limit went through.
+	await recordEvent({ type, userId, ipHash }, windowMs, "rate-limit");
 
 	if (perSessionLimit) {
 		// Per-SESSION limit (each guest/user has a unique sessionId) — the fair, NAT-SAFE primary
