@@ -62,7 +62,7 @@ for VUS in $LEVELS; do
 		[.[] | select(.t >= $from and .t <= $to)] as $s
 		| def st(f): [$s[] | f | numbers] as $v
 			| if ($v | length) == 0 then null else {mean: (($v | add) / ($v | length) * 10 | round / 10), peak: ($v | max)} end;
-		{label: $label, samples: ($s | length), nproc: $s[0].nproc, web: st(.cpu.web), db: st(.cpu.db), k6: st(.cpu.k6),
+		{label: $label, samples: ($s | length), nproc: $s[0].nproc, web: st(.cpu.web), web_1: st(.cpu.web_1), web_2: st(.cpu.web_2), db: st(.cpu.db), k6: st(.cpu.k6),
 			aimock: st(.cpu.aimock), runner_busy: st(.runner_busy_pct), load1: st(.load1)}' \
 		"$OUT/$LABEL-cpu.jsonl" > "$OUT/$LABEL-cpu.json" 2>/dev/null || echo "{\"label\":\"$LABEL\"}" > "$OUT/$LABEL-cpu.json"
 	jq -r --arg vus "$VUS" 'def mp(x): if x == null then "n/a" else "\(x.mean)% / \(x.peak)%" end;
@@ -90,7 +90,7 @@ done
 SIZE=$(db "select pg_size_pretty(pg_database_size(current_database()))") || SIZE="unread"
 {
 	echo
-	echo "CPU over each hold. A container's 100% is one core; the runner's 100% is every core, k6's included."
+	echo "CPU over each hold. A container's 100% is one core; the runner's 100% is every core, k6's included. With several web processes, web is their sum ($PASS-<level>-cpu.json has each)."
 	echo
 	cat "$CPU_TABLE"
 } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"

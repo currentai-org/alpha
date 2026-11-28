@@ -107,10 +107,38 @@ single connection: p95 0.63 s against 2.2 s, and 3,443 turns a minute against 3,
 - **Host.** One GitHub-hosted `ubuntu-latest` runner, 4 vCPU and 16 GB, with k6 on the same box. Image
   `0.3.0-preview.1`, `PG_POOL_MAX=10`, `RATE_LIMIT_IP_MULTIPLIER=0`. Run 46125660813.
 - **Going past it.** More cores in one machine do not help, because one Node process uses one of them.
-  Run more web processes: several `web` replicas behind a proxy, or a second host. Each process holds its
-  own `PG_POOL_MAX` connections, so ten processes at 10 fill stock Postgres's 100. More than one web process
-  has not been measured, so check that the rate limits and sessions behave across processes before relying
-  on it. A faster core moves the knee up by roughly its speed.
+  Run more web processes: `compose.two-web.yaml` (below), or a second host. A faster core moves the knee
+  up by roughly its speed.
+
+### Two web processes
+
+`compose.two-web.yaml` runs two web processes behind a Caddy proxy on the same port
+(`docker compose -f compose.yaml -f compose.two-web.yaml up -d`). The same runner, fixture and holds as
+above, `PG_POOL_MAX=10` in each process. CPU is the sum of both processes, with each one's share after it.
+
+| Answers | Users | Turns/min | Turn p50 | Turn p95 | First byte p95 | Errors | web CPU (each)  | db CPU | Runner busy |
+| ------- | ----- | --------- | -------- | -------- | -------------- | ------ | --------------- | ------ | ----------- |
+| instant | 300   | 3,514     | 0.12 s   | 0.14 s   | 0.02 s         | 0%     | 84% (41%, 43%)  | 58%    | 42%         |
+| instant | 400   | 4,671     | 0.12 s   | 0.19 s   | 0.04 s         | 0%     | 117% (57%, 60%) | 80%    | 56%         |
+| paced   | 150   | 1,369     | 1.6 s    | 1.6 s    | 0.01 s         | 0%     | 78% (40%, 39%)  | 29%    | 37%         |
+| paced   | 200   | 1,819     | 1.6 s    | 1.7 s    | 0.02 s         | 0%     | 108% (54%, 54%) | 40%    | 50%         |
+| paced   | 300   | 2,625     | 1.7 s    | 2.7 s    | 0.56 s         | 0.1%   | 168% (89%, 80%) | 57%    | 75%         |
+| paced   | 400   | 2,827     | 2.9 s    | 7.7 s    | 2.9 s          | 0.1%   | 200% (99%, 100%) | 69%   | 86%         |
+
+**Two processes move the knee with streamed answers from about 150 users to about 300.** At 300 they answer
+2,625 turns a minute at p95 2.7 s, where one process answered 1,446 at p95 10.6 s. At 400 both processes
+are full and the runner is 86% busy (93% at peak), so on this 4-vCPU box a third process would compete with
+the database and k6 for cores. Past 300 users, add cores with the processes. Each process holds its own
+`PG_POOL_MAX` connections, so ten processes at 10 fill stock Postgres's 100.
+
+The processes act as one app (`deploy/loadtest/two-web-check.sh`, run 46132014021, image `0.3.0-preview.2`). One guest session's
+turns were answered on both processes. The per-session limit refused the 21st turn in a minute while turns
+alternated between them. A Stop that the proxy sent to the process not streaming cut the answer short.
+Sessions, rate-limit counts and Stop markers are all kept in Postgres.
+
+Two processes started together on an empty database raced each other's migrations, and Postgres refused a
+duplicate `CREATE TABLE`. The overlay runs the migrations once in a `migrate` service that both processes
+wait for. The climb is run 46128815421, image `0.3.0-preview.1`.
 
 ### Five hours at 20 users
 

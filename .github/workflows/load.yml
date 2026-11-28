@@ -15,7 +15,7 @@
 #
 # Started by the `load-run` label on a pull request (the pull request's tree, with the image its
 # deploy/compose.yaml names), by `load-levels` for the load job alone, by `load-capacity` for the
-# capacity job alone, or by workflow_dispatch. It reads no secret. Warn-only: nothing here fails
+# capacity job alone, by `load-two-web` for the two-web job alone, or by workflow_dispatch. It reads no secret. Warn-only: nothing here fails
 # the job on a number.
 name: Load and soak
 
@@ -196,6 +196,85 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: load-capacity-${{ github.run_id }}-${{ github.run_attempt }}
+          path: loadtest-out/
+          retention-days: 90
+          if-no-files-found: warn
+
+  two-web:
+    # deploy/compose.two-web.yaml: two web processes behind a proxy. First the checks that they act as one
+    # app (two-web-check.sh: both reached, a session across both, the per-session limit, Stop from the other
+    # process), then the capacity climb on them, to compare with the capacity job's one process. Only by its
+    # own label, never with workflow_dispatch: one heavy job at a time.
+    name: Two web processes act as one and how far they climb
+    if: github.event.label.name == 'load-two-web' && github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    concurrency:
+      group: load-two-web-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: false
+    env:
+      TWO_WEB: "1"
+      # The stack ships with no per-minute limit, and images up to 0.3.0-preview.2 ignore RATE_LIMIT, so the
+      # limit two-web-check.sh checks across processes is set here.
+      USAGE_LIMITS: '{"messagesPerMinute":20}'
+      LEVELS: "150 200 300 400"
+      HOLD: 3m
+      PG_POOL_MAX: "10"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Boot the compose stack with two web processes and the mock model
+        run: bash deploy/loadtest/up.sh
+      # A step of its own: up.sh hands COMPOSE_FILE, with the overlay in it, to the steps after it.
+      - name: Check the processes migrated once and never restarted
+        working-directory: deploy
+        run: |
+          docker compose ps -a migrate web
+          # Both processes start on an empty database: the migrate service must have run the migrations
+          # once, and neither process may have restarted.
+          docker compose ps -a --format '{{.Service}} {{.State}} {{.ExitCode}}' migrate | grep -q '^migrate exited 0$'
+          for id in $(docker compose ps -q web); do
+            docker inspect --format '{{.Name}} restarts={{.RestartCount}}' "$id"
+            [ "$(docker inspect --format '{{.RestartCount}}' "$id")" = 0 ]
+            docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$id" | grep '^PG_POOL_MAX=10$'
+          done
+          ! docker compose logs db | grep -E 'ERROR: .*(already exists|duplicate key)'
+
+      - name: Check the two processes act as one app
+        run: bash deploy/loadtest/two-web-check.sh
+      - name: Pull k6
+        if: ${{ !cancelled() }}
+        run: docker pull -q "$K6_IMAGE"
+      # Every k6 user shares one address, so the per-IP ceiling comes off for the climb, as in the capacity
+      # job. It is read at boot, so both processes restart with it.
+      - name: Climb with instant answers
+        if: ${{ !cancelled() }}
+        run: |
+          (cd deploy && RATE_LIMIT_IP_MULTIPLIER=0 docker compose up -d --wait --wait-timeout 300 web)
+          # The proxy looks the processes up again every 5 s; let it drop the old addresses first.
+          sleep 12
+          bash deploy/loadtest/run-levels.sh two-web-instant
+      - name: Climb with slow answers
+        if: ${{ !cancelled() }}
+        working-directory: deploy
+        run: |
+          AIMOCK_FIXTURES="$GITHUB_WORKSPACE/deploy/loadtest/slow-model" RATE_LIMIT_IP_MULTIPLIER=0 docker compose up -d --wait --wait-timeout 120 aimock
+          cd .. && bash deploy/loadtest/run-levels.sh two-web-slow
+      - name: Stack logs and runner load
+        if: always()
+        working-directory: deploy
+        run: |
+          mkdir -p ../loadtest-out
+          docker compose logs --no-color > ../loadtest-out/compose.log 2>&1 || true
+          { uptime; nproc; free -m; } > ../loadtest-out/runner.txt
+      - name: Keep the summaries
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: load-two-web-${{ github.run_id }}-${{ github.run_attempt }}
           path: loadtest-out/
           retention-days: 90
           if-no-files-found: warn
