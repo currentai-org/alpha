@@ -112,6 +112,22 @@ describe("enforceRequestRateLimits", () => {
 		await expect(pending).rejects.toMatchObject({ status: 429 });
 	});
 
+	// On a remote database the count can finish before this send's own row is written, and then the
+	// send past the limit is let through: a limit of 20 refused the 22nd turn on develop, not the 21st.
+	it("counts only after this send's own row has landed, so the send past messagesPerMinute is refused every time", async () => {
+		let stored = 5; // the five sends before this one, at the limit of 5
+		let land: () => void = () => {};
+		insertOne.mockImplementation(
+			() => new Promise<void>((resolve) => (land = () => ((stored += 1), resolve())))
+		);
+		countDocuments.mockImplementation(async () => stored);
+		const pending = enforceRequestRateLimits(OPTS);
+		await new Promise((r) => setTimeout(r, 10));
+		expect(countDocuments).not.toHaveBeenCalled(); // still waiting on this send's insert
+		land();
+		await expect(pending).rejects.toMatchObject({ status: 429 });
+	});
+
 	// Under the session_rate_limit_low override (one send per 30 s), a second send is refused with the
 	// wait left on the first send's row, so the edit box can count it down. This covers the server-side
 	// refusal without a real model turn.
