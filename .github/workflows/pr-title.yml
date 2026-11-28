@@ -1,0 +1,30 @@
+# A pull request's title becomes its squash commit's subject, and release.yml builds the changelog and the
+# next version from those subjects, so the title must be a conventional commit: `type: what changes`, or
+# `type(scope): …`, with `!` before the colon for a breaking change. feat bumps the minor version (the patch
+# before 1.0), fix and perf the patch; the other types are left out of the changelog. A title that does not
+# parse is left out of the release too, so this check names it before the merge.
+name: Pull request title
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions: {}
+
+jobs:
+  conventional:
+    name: title is a conventional commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Check the title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          re='^(feat|fix|perf|refactor|docs|test|build|ci|chore|revert)(\([a-z0-9._/-]+\))?!?: [^ ].*'
+          if [[ "$TITLE" =~ $re ]]; then
+            echo "ok: $TITLE"
+            exit 0
+          fi
+          echo "::error title=pull request title::\"$TITLE\" is not a conventional commit. Start it with a type, such as \"fix: \" or \"feat(chat): \", so the release changelog can read it. CONTRIBUTING.md lists the types."
+          exit 1

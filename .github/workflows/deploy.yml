@@ -1,48 +1,52 @@
-# Deploys main to the Vercel project's production. The Vercel project is not connected to this repository,
-# so no branch, pull request, fork or Dependabot update ever builds there with the project's secrets; this
-# workflow is the only way a commit reaches it, and it only ever runs code already merged to main.
+# Deploys the web app to the Vercel project, the way a self-hoster deploys a release:
+#   - every push to main: a preview build, aliased to the develop host (DEVELOP_HOST) once its smoke passes.
+#   - a release tag vX.Y.Z on main: a production build, which takes the production domain once its smoke
+#     passes and moves back if the domain's smoke fails. image.yml publishes the signed image from the same
+#     tag, so one tag ships both. A pre-release tag (vX.Y.Z-rc.1) publishes an image and deploys nothing.
+# A manual run (workflow_dispatch) does the same from the ref it is started on: main for develop, a release
+# tag for production. Any other ref deploys nothing.
 #
-# The job runs in the `web-production` environment, which holds VERCEL_TOKEN and admits only `main`. It has no
-# required reviewers, by design: a reviewed merge to main is the gate, and the job's own ref check below backs
-# the environment's branch rule. It is not `production`, which admits only `v*` tags for the agent service's
-# deploys, so neither job's secrets reach the other's. Repository variables name the
-# target: VERCEL_SCOPE (the Vercel team), VERCEL_PROJECT, and PRODUCTION_HOST (the domain it serves; unset
-# means the deployment takes its domains straight away, with no smoke of the domain and no rollback).
-# A fork or a copy without them gets a notice and deploys nothing.
-#
-# The build is deployed without its domain and smoked at its own URL first, so a broken build never takes
-# the domain. Then the domain moves to it and is smoked again; if that fails, the domain goes back to the
-# deployment it served before this run.
+# The Vercel project is not connected to this repository, so no branch, pull request, fork or Dependabot
+# update ever builds there with the project's secrets; this workflow is the only way a commit reaches it.
+# Each job runs in its own environment, so neither job's secrets reach the other:
+#   - `web-develop` admits only main, and holds VERCEL_TOKEN, VERCEL_BYPASS_SECRET (Vercel's deployment
+#     protection bypass, since a preview build answers 401 without it) and the variable DEVELOP_HOST.
+#   - `web-production` admits only tags matching v*.*.*, and holds VERCEL_TOKEN and the variable
+#     PRODUCTION_HOST (unset means the deployment takes its domains straight away, with no smoke of the
+#     domain and no rollback).
+# Neither has required reviewers: a reviewed merge to main is the gate for develop, and a merged release
+# pull request is the gate for production. The jobs' own ref checks back the environments' rules. It is not
+# `production`, which holds the agent service's deploys. Repository variables VERCEL_SCOPE (the Vercel team)
+# and VERCEL_PROJECT name the target. A fork or a copy without them gets a notice and deploys nothing.
 name: Deploy
 
 on:
   push:
     branches: [main]
+    tags: ["v*.*.*"]
   workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: deploy-production
-  cancel-in-progress: false
-
 jobs:
-  production:
-    name: Deploy main to production
+  develop:
+    name: Deploy main to develop
     # main only, and never for Dependabot: its updates reach main through a reviewed pull request like any other.
     if: >-
       github.ref == 'refs/heads/main' &&
-      !startsWith(github.ref_name, 'dependabot/') &&
       github.actor != 'dependabot[bot]' &&
       github.triggering_actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    environment: web-production
+    environment: web-develop
+    concurrency:
+      group: deploy-develop
+      cancel-in-progress: false
     env:
       VERCEL_SCOPE: ${{ vars.VERCEL_SCOPE }}
       VERCEL_PROJECT: ${{ vars.VERCEL_PROJECT }}
-      PRODUCTION_HOST: ${{ vars.PRODUCTION_HOST }}
+      DEVELOP_HOST: ${{ vars.DEVELOP_HOST }}
       VERCEL_CLI: vercel@65.14.0
     steps:
       - name: Is a Vercel project configured
@@ -50,8 +54,8 @@ jobs:
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
-          if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_SCOPE" ] || [ -z "$VERCEL_PROJECT" ]; then
-            echo "::notice title=deploy skipped::VERCEL_TOKEN (web-production environment), VERCEL_SCOPE or VERCEL_PROJECT is not set, so nothing was deployed."
+          if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_SCOPE" ] || [ -z "$VERCEL_PROJECT" ] || [ -z "$DEVELOP_HOST" ]; then
+            echo "::notice title=deploy skipped::VERCEL_TOKEN or DEVELOP_HOST (web-develop environment), VERCEL_SCOPE or VERCEL_PROJECT is not set, so nothing was deployed."
             echo "run=false" >> "$GITHUB_OUTPUT"
           else
             echo "run=true" >> "$GITHUB_OUTPUT"
@@ -65,6 +69,93 @@ jobs:
         if: steps.configured.outputs.run == 'true'
         with:
           node-version-file: .nvmrc
+          # A release build must not read a cache another run could have written.
+          package-manager-cache: false
+
+      - name: Deploy a preview build
+        id: deploy
+        if: steps.configured.outputs.run == 'true'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          npx --yes "$VERCEL_CLI" link --yes --project "$VERCEL_PROJECT" --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN"
+          url=$(npx --yes "$VERCEL_CLI" deploy --yes --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN")
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "deployed $VERCEL_PROJECT (preview) at $url from $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+
+      # A broken build never takes the develop host: the host keeps the build it served until this passes.
+      - name: Smoke the deployment before the alias moves
+        if: steps.configured.outputs.run == 'true'
+        env:
+          BASE: ${{ steps.deploy.outputs.url }}
+          BYPASS: ${{ secrets.VERCEL_BYPASS_SECRET }}
+        run: .github/scripts/deploy-smoke.sh
+
+      - name: Point the develop host at this deployment
+        if: steps.configured.outputs.run == 'true'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          URL: ${{ steps.deploy.outputs.url }}
+        run: npx --yes "$VERCEL_CLI" alias set "$URL" "$DEVELOP_HOST" --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN"
+
+      - name: Smoke the develop host
+        if: steps.configured.outputs.run == 'true'
+        env:
+          BYPASS: ${{ secrets.VERCEL_BYPASS_SECRET }}
+        run: BASE="https://$DEVELOP_HOST" .github/scripts/deploy-smoke.sh
+
+  production:
+    name: Deploy a release to production
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') &&
+      github.actor != 'dependabot[bot]' &&
+      github.triggering_actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: web-production
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    env:
+      VERCEL_SCOPE: ${{ vars.VERCEL_SCOPE }}
+      VERCEL_PROJECT: ${{ vars.VERCEL_PROJECT }}
+      PRODUCTION_HOST: ${{ vars.PRODUCTION_HOST }}
+      VERCEL_CLI: vercel@65.14.0
+      TAG: ${{ github.ref_name }}
+    steps:
+      - name: Is a Vercel project configured
+        id: configured
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_SCOPE" ] || [ -z "$VERCEL_PROJECT" ]; then
+            echo "::notice title=deploy skipped::VERCEL_TOKEN (web-production environment), VERCEL_SCOPE or VERCEL_PROJECT is not set, so nothing was deployed."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          elif ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::notice title=deploy skipped::$TAG is not a release tag vX.Y.Z (a pre-release publishes its image only), so nothing was deployed."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        if: steps.configured.outputs.run == 'true'
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: The tag is on main
+        if: steps.configured.outputs.run == 'true'
+        run: |
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::$TAG ($GITHUB_SHA) is not on main. A release is cut by merging the release pull request, which tags main."
+            exit 1
+          fi
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        if: steps.configured.outputs.run == 'true'
+        with:
+          node-version-file: .nvmrc
+          # A release build must not read a cache another run could have written.
+          package-manager-cache: false
 
       - name: Deploy without the domain
         id: deploy
@@ -77,7 +168,7 @@ jobs:
           if [ -n "$PRODUCTION_HOST" ]; then args+=(--skip-domain); fi
           url=$(npx --yes "$VERCEL_CLI" "${args[@]}")
           echo "url=$url" >> "$GITHUB_OUTPUT"
-          echo "deployed $VERCEL_PROJECT (production) at $url from $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+          echo "deployed $VERCEL_PROJECT (production) at $url from $TAG ($GITHUB_SHA)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Smoke the deployment before the domain moves
         if: steps.configured.outputs.run == 'true'
