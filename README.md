@@ -28,7 +28,7 @@ The `CUR-` and `SOL-` ids in comments and tests refer to the project's internal 
 
 `selfhost/` runs Alpha on one machine: the app, Postgres, and a small open model on CPU, with no key and
 none of our hosted services. You need git, `openssl`, and Docker with Compose v2.20 or newer, about 4 GB of free RAM (6 GB once, for
-the image build), and internet access: the first start pulls images and downloads the model (about
+the image build), about 15 GB of free disk, and internet access: the first start pulls images and downloads the model (about
 400 MB) from Hugging Face, with no account or token.
 
 <!-- readme-walk:start -->

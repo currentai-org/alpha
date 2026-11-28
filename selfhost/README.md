@@ -7,7 +7,7 @@ ours. No PostHog, Firecrawl, E2B, Doppler or our model gateway is involved.
 ## Run it
 
 You need git, `openssl`, and Docker with Compose v2.20 or newer, and about 4 GB of free RAM. Building the
-app image needs about 6 GB of RAM once. The first start needs internet access to pull images and
+app image needs about 6 GB of RAM once, and the images, build cache and model take about 15 GB of disk. The first start needs internet access to pull images and
 download the model from Hugging Face, with no account or token. From a clone of the repo:
 
 ```sh
