@@ -167,6 +167,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+      # deploy.yml's smoke must not blame a build for a site host that is down for every build.
+      - name: deploy smoke's legal-page verdicts
+        run: .github/scripts/legal-page.test.sh
       - name: actionlint
         run: |
           tarball="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"

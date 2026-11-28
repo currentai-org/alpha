@@ -29,7 +29,7 @@ The smoke (`.github/scripts/deploy-smoke.sh`) ends in one verdict line:
 | --- | --- | --- |
 | `verdict 0` | a guest turn answered | the host moves to the new build |
 | `verdict 1` | the build is at fault: the old build answers the same turn | the host never moves, or moves back. On develop a revert of the merge is opened |
-| `verdict 2` | the provider is down: neither build answers | the deploy goes ahead, the alerts channel is told, and a recheck smokes the host every 15 minutes for 3 hours |
+| `verdict 2` | the model provider, or the site host the legal pages redirect to, fails for both builds | the deploy goes ahead, the alerts channel is told, and a recheck smokes the host every 15 minutes for 3 hours |
 
 A deploy that moved the host back is red, and its log says "moving it back to <url>".
 
